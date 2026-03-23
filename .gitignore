@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+data/
+*.joblib
+*.pkl
+.DS_Store
+node_modules/
+.next/
+web/.env.local
