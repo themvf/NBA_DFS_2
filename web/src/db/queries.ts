@@ -248,4 +248,49 @@ export async function getTeamStats(season = CURRENT_SEASON): Promise<TeamStatsRo
     .orderBy(desc(nbaTeamStats.pace));
 }
 
+// ── Schedule ─────────────────────────────────────────────────
+
+export type ScheduleRow = {
+  id: number;
+  gameDate: string;
+  vegasTotal: number | null;
+  homeWinProb: number | null;
+  homeMl: number | null;
+  awayMl: number | null;
+  homeTeamId: number | null;
+  awayTeamId: number | null;
+  homeName: string | null;
+  homeLogo: string | null;
+  homeAbbrev: string | null;
+  awayName: string | null;
+  awayLogo: string | null;
+  awayAbbrev: string | null;
+};
+
+export async function getRecentSchedule(days = 7): Promise<ScheduleRow[]> {
+  const result = await db.execute<ScheduleRow>(sql`
+    SELECT
+      m.id,
+      m.game_date        AS "gameDate",
+      m.vegas_total      AS "vegasTotal",
+      m.vegas_prob_home  AS "homeWinProb",
+      m.home_ml          AS "homeMl",
+      m.away_ml          AS "awayMl",
+      m.home_team_id     AS "homeTeamId",
+      m.away_team_id     AS "awayTeamId",
+      ht.name            AS "homeName",
+      ht.logo_url        AS "homeLogo",
+      ht.abbreviation    AS "homeAbbrev",
+      at.name            AS "awayName",
+      at.logo_url        AS "awayLogo",
+      at.abbreviation    AS "awayAbbrev"
+    FROM nba_matchups m
+    LEFT JOIN teams ht ON ht.team_id = m.home_team_id
+    LEFT JOIN teams at ON at.team_id = m.away_team_id
+    WHERE m.game_date >= CURRENT_DATE - (${days} * INTERVAL '1 day')
+    ORDER BY m.game_date DESC, m.id
+  `);
+  return result.rows;
+}
+
 export { CURRENT_SEASON };
