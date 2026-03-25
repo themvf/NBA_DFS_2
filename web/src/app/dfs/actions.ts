@@ -177,6 +177,103 @@ function computeLeverage(
   return Math.round(ourProj * Math.pow(1 - ownFraction, contrarianFactor) * ceilingBonus * 1000) / 1000;
 }
 
+// ── DK API fetcher ────────────────────────────────────────────
+
+const DK_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  "Accept": "application/json",
+};
+
+const POS_ORDER = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"];
+
+type DkApiPlayer = {
+  name: string; dkId: number; teamAbbrev: string;
+  eligiblePositions: string; salary: number;
+  gameInfo: string; avgFptsDk: number | null;
+};
+
+async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[]> {
+  const url = `https://api.draftkings.com/draftgroups/v1/draftgroups/${draftGroupId}/draftables`;
+  const resp = await fetch(url, { headers: DK_HEADERS, next: { revalidate: 0 } });
+  if (!resp.ok) throw new Error(`DK API ${resp.status}: ${url}`);
+  const { draftables } = await resp.json() as { draftables: Record<string, unknown>[] };
+
+  // Group by playerId — each player has one entry per eligible roster slot
+  const byPlayer = new Map<number, typeof draftables>();
+  for (const entry of draftables) {
+    const pid = entry.playerId as number;
+    if (!byPlayer.has(pid)) byPlayer.set(pid, []);
+    byPlayer.get(pid)!.push(entry);
+  }
+
+  const ET_OFFSET = -4 * 60; // EDT = UTC-4
+  const players: DkApiPlayer[] = [];
+
+  for (const [, entries] of byPlayer) {
+    const sorted = [...entries].sort((a, b) => (a.rosterSlotId as number) - (b.rosterSlotId as number));
+    const canonical = sorted[0];
+
+    const allPos = new Set<string>(["UTIL"]);
+    for (const e of sorted) {
+      const pos = e.position as string;
+      if (pos) allPos.add(pos);
+    }
+    const eligiblePositions = [...allPos]
+      .sort((a, b) => {
+        const ai = POS_ORDER.indexOf(a), bi = POS_ORDER.indexOf(b);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      })
+      .join("/");
+
+    // DK's own FPTS projection (stat attribute id=279)
+    let avgFptsDk: number | null = null;
+    for (const attr of (canonical.draftStatAttributes as { id: number; value: string }[] ?? [])) {
+      if (attr.id === 279) { avgFptsDk = parseFloat(attr.value) || null; break; }
+    }
+
+    // Game info string from competition object
+    let gameInfo = "";
+    const comp = canonical.competition as Record<string, unknown> | null;
+    if (comp) {
+      const name = ((comp.name as string) ?? "").replace(" @ ", "@").replace(/ /g, "");
+      const start = comp.startTime as string;
+      if (start) {
+        const dt = new Date(start);
+        const etMs = dt.getTime() + ET_OFFSET * 60000;
+        const etDt = new Date(etMs);
+        const mm = String(etDt.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(etDt.getUTCDate()).padStart(2, "0");
+        const yyyy = etDt.getUTCFullYear();
+        const hh = etDt.getUTCHours() % 12 || 12;
+        const min = String(etDt.getUTCMinutes()).padStart(2, "0");
+        const ampm = etDt.getUTCHours() < 12 ? "AM" : "PM";
+        gameInfo = `${name} ${mm}/${dd}/${yyyy} ${hh}:${min}${ampm} ET`;
+      } else {
+        gameInfo = name;
+      }
+    }
+
+    players.push({
+      name:              (canonical.displayName as string) ?? "",
+      dkId:              canonical.draftableId as number,
+      teamAbbrev:        ((canonical.teamAbbreviation as string) ?? "").toUpperCase(),
+      eligiblePositions,
+      salary:            canonical.salary as number ?? 0,
+      gameInfo,
+      avgFptsDk,
+    });
+  }
+  return players;
+}
+
+async function resolveDraftGroupId(contestId: number): Promise<number> {
+  const url = `https://api.draftkings.com/contests/v1/contests/${contestId}`;
+  const resp = await fetch(url, { headers: DK_HEADERS, next: { revalidate: 0 } });
+  if (!resp.ok) throw new Error(`DK API ${resp.status} for contest ${contestId}`);
+  const data = await resp.json() as { contestDetail: { draftGroupId: number } };
+  return data.contestDetail.draftGroupId;
+}
+
 // ── Parse slate date from game_info ──────────────────────────
 
 function parseSlateDate(gameInfo: string): string | null {
@@ -189,26 +286,25 @@ function parseSlateDate(gameInfo: string): string | null {
 // ── Server Actions ────────────────────────────────────────────
 
 export async function processDkSlate(formData: FormData): Promise<{
-  ok: boolean;
-  message: string;
-  playerCount?: number;
-  matchRate?: number;
+  ok: boolean; message: string; playerCount?: number; matchRate?: number;
 }> {
   const dkFile = formData.get("dkFile") as File | null;
   const lsFile = formData.get("lsFile") as File | null;
   if (!dkFile) return { ok: false, message: "DK CSV required" };
 
-  const dkContent = await dkFile.text();
-  const lsContent = lsFile ? await lsFile.text() : null;
-
-  const dkPlayers_ = parseDkCsv(dkContent);
+  const dkPlayers_ = parseDkCsv(await dkFile.text());
   if (dkPlayers_.length === 0) return { ok: false, message: "No players parsed from DK CSV" };
 
-  const lsMap: Map<string, LinestarEntry> = lsContent
-    ? parseLinestarCsv(lsContent)
-    : new Map();
+  const lsMap = lsFile ? parseLinestarCsv(await lsFile.text()) : new Map<string, LinestarEntry>();
+  return enrichAndSave(dkPlayers_, lsMap);
+}
 
-  // Determine slate date from first game_info
+// ── Shared enrichment (used by both CSV and API paths) ───────
+
+async function enrichAndSave(
+  dkPlayers_: DkApiPlayer[],
+  lsMap: Map<string, LinestarEntry>,
+): Promise<{ ok: boolean; message: string; playerCount?: number; matchRate?: number }> {
   let slateDate = "";
   for (const p of dkPlayers_) {
     const d = parseSlateDate(p.gameInfo);
@@ -216,10 +312,8 @@ export async function processDkSlate(formData: FormData): Promise<{
   }
   if (!slateDate) slateDate = new Date().toISOString().slice(0, 10);
 
-  // Count games
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 
-  // Upsert slate
   const [slate] = await db
     .insert(dkSlates)
     .values({ slateDate, gameCount })
@@ -227,30 +321,20 @@ export async function processDkSlate(formData: FormData): Promise<{
     .returning({ id: dkSlates.id });
   const slateId = slate.id;
 
-  // Load DB context: teams, matchups, team stats, player stats
   const teamRows = await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams);
   const abbrevToId = new Map(teamRows.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
 
-  const matchupRows = await db
-    .select()
-    .from(nbaMatchups)
-    .where(eq(nbaMatchups.gameDate, slateDate));
+  const matchupRows = await db.select().from(nbaMatchups).where(eq(nbaMatchups.gameDate, slateDate));
   const matchupByTeam = new Map<number, typeof matchupRows[0]>();
   for (const m of matchupRows) {
     if (m.homeTeamId) matchupByTeam.set(m.homeTeamId, m);
     if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
   }
 
-  const teamStatRows = await db
-    .select()
-    .from(nbaTeamStats)
-    .where(eq(nbaTeamStats.season, CURRENT_SEASON));
+  const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, CURRENT_SEASON));
   const statsByTeam = new Map(teamStatRows.map((r) => [r.teamId, r]));
 
-  const playerStatRows = await db
-    .select()
-    .from(nbaPlayerStats)
-    .where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+  const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
   const playersByTeam = new Map<number, typeof playerStatRows>();
   for (const ps of playerStatRows) {
     const arr = playersByTeam.get(ps.teamId) ?? [];
@@ -263,17 +347,14 @@ export async function processDkSlate(formData: FormData): Promise<{
   const insertValues = [];
 
   for (const p of dkPlayers_) {
-    // Team lookup
     const canonical = DK_OVERRIDES[p.teamAbbrev] ?? p.teamAbbrev;
     const teamId    = abbrevToId.get(canonical) ?? null;
     const matchup   = teamId ? matchupByTeam.get(teamId) ?? null : null;
     const matchupId = matchup?.id ?? null;
 
-    // LineStar merge
     const ls = findLinestarMatch(p.name, p.salary, lsMap);
     if (ls) lsMatched++;
 
-    // Our projection
     let ourProj: number | null = null;
     let ourLeverage: number | null = null;
     let spgForLev = 0, bpgForLev = 0;
@@ -283,7 +364,6 @@ export async function processDkSlate(formData: FormData): Promise<{
       const oppId    = matchup.homeTeamId === teamId ? matchup.awayTeamId : matchup.homeTeamId;
       const oppStat  = oppId ? statsByTeam.get(oppId) : null;
 
-      // Fuzzy player name match
       const candidates = playersByTeam.get(teamId) ?? [];
       let bestPlayer: typeof playerStatRows[0] | null = null;
       let bestDist = 4;
@@ -296,7 +376,7 @@ export async function processDkSlate(formData: FormData): Promise<{
         ourProj = computeOurProjection(
           bestPlayer,
           teamStat.pace ?? LEAGUE_AVG_PACE,
-          oppStat.pace ?? LEAGUE_AVG_PACE,
+          oppStat.pace  ?? LEAGUE_AVG_PACE,
           oppStat.defRtg ?? LEAGUE_AVG_DEF_RTG,
           matchup.vegasTotal,
         );
@@ -312,43 +392,26 @@ export async function processDkSlate(formData: FormData): Promise<{
     }
 
     insertValues.push({
-      slateId,
-      dkPlayerId:        p.dkId,
-      name:              p.name,
-      teamAbbrev:        p.teamAbbrev,
-      teamId,
-      matchupId,
-      eligiblePositions: p.eligiblePositions,
-      salary:            p.salary,
-      gameInfo:          p.gameInfo,
-      avgFptsDk:         p.avgFptsDk,
-      linestarProj:      ls?.linestarProj ?? null,
-      projOwnPct:        ls?.projOwnPct  ?? null,
-      ourProj,
-      ourLeverage,
-      isOut:             ls?.isOut ?? false,
+      slateId, dkPlayerId: p.dkId, name: p.name,
+      teamAbbrev: p.teamAbbrev, teamId, matchupId,
+      eligiblePositions: p.eligiblePositions, salary: p.salary,
+      gameInfo: p.gameInfo, avgFptsDk: p.avgFptsDk,
+      linestarProj: ls?.linestarProj ?? null, projOwnPct: ls?.projOwnPct ?? null,
+      ourProj, ourLeverage, isOut: ls?.isOut ?? false,
     });
   }
 
-  // Upsert in batches of 50
   for (let i = 0; i < insertValues.length; i += 50) {
     const batch = insertValues.slice(i, i + 50);
-    await db
-      .insert(dkPlayers)
-      .values(batch)
-      .onConflictDoUpdate({
-        target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
-        set: {
-          linestarProj:      sql`EXCLUDED.linestar_proj`,
-          projOwnPct:        sql`EXCLUDED.proj_own_pct`,
-          ourProj:           sql`EXCLUDED.our_proj`,
-          ourLeverage:       sql`EXCLUDED.our_leverage`,
-          isOut:             sql`EXCLUDED.is_out`,
-          avgFptsDk:         sql`EXCLUDED.avg_fpts_dk`,
-          eligiblePositions: sql`EXCLUDED.eligible_positions`,
-          gameInfo:          sql`EXCLUDED.game_info`,
-        },
-      });
+    await db.insert(dkPlayers).values(batch).onConflictDoUpdate({
+      target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
+      set: {
+        linestarProj: sql`EXCLUDED.linestar_proj`, projOwnPct: sql`EXCLUDED.proj_own_pct`,
+        ourProj: sql`EXCLUDED.our_proj`, ourLeverage: sql`EXCLUDED.our_leverage`,
+        isOut: sql`EXCLUDED.is_out`, avgFptsDk: sql`EXCLUDED.avg_fpts_dk`,
+        eligiblePositions: sql`EXCLUDED.eligible_positions`, gameInfo: sql`EXCLUDED.game_info`,
+      },
+    });
   }
 
   revalidatePath("/dfs");
@@ -359,6 +422,21 @@ export async function processDkSlate(formData: FormData): Promise<{
     playerCount: insertValues.length,
     matchRate: matchRate ?? undefined,
   };
+}
+
+export async function loadSlateFromContestId(contestId: string): Promise<{
+  ok: boolean; message: string; playerCount?: number;
+}> {
+  try {
+    const dgId     = await resolveDraftGroupId(parseInt(contestId, 10));
+    const players  = await fetchDkPlayersFromApi(dgId);
+    if (players.length === 0) return { ok: false, message: "No players returned from DK API" };
+    // LineStar: skip for now (no cookie in browser flow)
+    const result = await enrichAndSave(players, new Map());
+    return { ...result, message: `[API] ${result.message}` };
+  } catch (e) {
+    return { ok: false, message: String(e) };
+  }
 }
 
 export async function runOptimizer(

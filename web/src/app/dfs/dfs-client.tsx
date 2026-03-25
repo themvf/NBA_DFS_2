@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, runOptimizer, saveLineups, exportLineups } from "./actions";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -48,10 +48,12 @@ function displayPos(eligiblePositions: string): string {
 export default function DfsClient({ players, slateDate, accuracy, comparison, strategySummary }: Props) {
   const [isPending, startTransition] = useTransition();
 
-  // ── Upload state ──────────────────────────────────────────
+  // ── Load state ────────────────────────────────────────────
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const dkFileRef = useRef<HTMLInputElement>(null);
   const lsFileRef = useRef<HTMLInputElement>(null);
+  const [contestId, setContestId] = useState("");
+  const [loadMode, setLoadMode] = useState<"api" | "csv">("api");
 
   // ── Game filter ───────────────────────────────────────────
   const allGames = useMemo(() => {
@@ -127,6 +129,14 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
   // ── Handlers ──────────────────────────────────────────────
 
+  async function handleLoadApi() {
+    if (!contestId.trim()) { setUploadMsg({ ok: false, text: "Enter a DK contest ID" }); return; }
+    startTransition(async () => {
+      const res = await loadSlateFromContestId(contestId.trim());
+      setUploadMsg({ ok: res.ok, text: res.message });
+    });
+  }
+
   async function handleUpload() {
     const dkFile = dkFileRef.current?.files?.[0];
     const lsFile = lsFileRef.current?.files?.[0];
@@ -195,26 +205,69 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         </div>
       </div>
 
-      {/* Upload Panel */}
+      {/* Load Slate Panel */}
       <div className="rounded-lg border bg-card p-4">
-        <h2 className="text-sm font-semibold mb-3">Load Slate</h2>
-        <div className="flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">DK Salary CSV</label>
-            <input ref={dkFileRef} type="file" accept=".csv" className="text-sm" />
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold">Load Slate</h2>
+          <div className="flex rounded border text-xs overflow-hidden">
+            <button
+              onClick={() => setLoadMode("api")}
+              className={`px-3 py-1 ${loadMode === "api" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+            >
+              Contest ID
+            </button>
+            <button
+              onClick={() => setLoadMode("csv")}
+              className={`px-3 py-1 border-l ${loadMode === "csv" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+            >
+              CSV Upload
+            </button>
           </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">LineStar CSV (optional)</label>
-            <input ref={lsFileRef} type="file" accept=".csv" className="text-sm" />
-          </div>
-          <button
-            onClick={handleUpload}
-            disabled={isPending}
-            className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isPending ? "Processing…" : "Load"}
-          </button>
         </div>
+
+        {loadMode === "api" ? (
+          <div className="flex items-end gap-3">
+            <div className="flex-1 max-w-xs">
+              <label className="text-xs text-gray-500 block mb-1">
+                DK Contest ID{" "}
+                <span className="text-gray-400">(from the contest URL on DraftKings)</span>
+              </label>
+              <input
+                type="text"
+                value={contestId}
+                onChange={(e) => setContestId(e.target.value)}
+                placeholder="e.g. 189058648"
+                className="w-full rounded border px-3 py-1.5 text-sm font-mono"
+              />
+            </div>
+            <button
+              onClick={handleLoadApi}
+              disabled={isPending || !contestId.trim()}
+              className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isPending ? "Loading…" : "Load from DK API"}
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">DK Salary CSV</label>
+              <input ref={dkFileRef} type="file" accept=".csv" className="text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">LineStar CSV (optional)</label>
+              <input ref={lsFileRef} type="file" accept=".csv" className="text-sm" />
+            </div>
+            <button
+              onClick={handleUpload}
+              disabled={isPending}
+              className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isPending ? "Processing…" : "Load from CSV"}
+            </button>
+          </div>
+        )}
+
         {uploadMsg && (
           <p className={`mt-2 text-sm ${uploadMsg.ok ? "text-green-700" : "text-red-600"}`}>
             {uploadMsg.text}
