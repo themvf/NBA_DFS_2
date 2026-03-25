@@ -1,0 +1,37 @@
+name: Daily NBA Stats Ingest
+
+on:
+  schedule:
+    # 7:00 AM ET = 12:00 UTC (UTC-5 in winter / UTC-4 in summer)
+    # Using 12:00 UTC covers both EST and EDT safely
+    - cron: "0 12 * * *"
+  workflow_dispatch:  # allow manual trigger
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Seed NBA teams (idempotent)
+        run: python -m ingest.nba_teams
+
+      - name: Fetch rolling player + team stats
+        run: python -m ingest.nba_stats
+
+      - name: Fetch today's schedule + Vegas odds
+        run: python -m ingest.nba_schedule
