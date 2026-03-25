@@ -18,7 +18,7 @@ DATA_DIR.mkdir(exist_ok=True)
 
 @dataclass
 class NbaApiConfig:
-    season: str = "2024-25"          # nba_api season string format
+    season: str = "2025-26"          # nba_api season string format
     rolling_games: int = 10          # rolling window for player stat averages
     timeout_seconds: int = 30
     # stats.nba.com requires a browser-like User-Agent; nba_api sets this automatically
