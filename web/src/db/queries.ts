@@ -58,7 +58,7 @@ export async function getDkPlayers(): Promise<DkPlayerRow[]> {
       t.name               AS "teamName",
       t.logo_url           AS "teamLogo",
       m.vegas_total        AS "vegasTotal",
-      m.home_win_prob      AS "homeWinProb",
+      m.vegas_prob_home    AS "homeWinProb",
       m.home_team_id       AS "homeTeamId",
       ds.slate_date        AS "slateDate"
     FROM dk_players dp
