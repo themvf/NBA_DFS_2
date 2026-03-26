@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 function Nav() {
   const links = [
     { href: "/dfs", label: "DFS" },
+    { href: "/analytics", label: "Analytics" },
     { href: "/stats", label: "Team Stats" },
     { href: "/schedule", label: "Schedule" },
   ];

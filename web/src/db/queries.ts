@@ -293,4 +293,135 @@ export async function getRecentSchedule(days = 7): Promise<ScheduleRow[]> {
   return result.rows;
 }
 
+// ── Analytics (cross-slate calibration) ──────────────────────
+
+export type CrossSlateAccuracyRow = {
+  slateDate: string;
+  n: number;
+  ourMAE: number | null;
+  ourBias: number | null;
+  lsMAE: number | null;
+  lsBias: number | null;
+  ownCorr: number | null;
+};
+
+export async function getCrossSlateAccuracy(): Promise<CrossSlateAccuracyRow[]> {
+  const result = await db.execute<CrossSlateAccuracyRow>(sql`
+    SELECT
+      ds.slate_date                                                            AS "slateDate",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "n",
+      AVG(ABS(dp.our_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourMAE",
+      AVG(dp.our_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourBias",
+      AVG(ABS(dp.linestar_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsMAE",
+      AVG(dp.linestar_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsBias",
+      CORR(dp.proj_own_pct, dp.actual_own_pct)
+        FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) AS "ownCorr"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    GROUP BY ds.slate_date
+    HAVING COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL) > 0
+    ORDER BY ds.slate_date ASC
+  `);
+  return result.rows;
+}
+
+export type PositionAccuracyRow = {
+  position: string;
+  n: number;
+  mae: number | null;
+  bias: number | null;
+};
+
+export async function getPositionAccuracy(): Promise<PositionAccuracyRow[]> {
+  const result = await db.execute<PositionAccuracyRow>(sql`
+    SELECT
+      CASE
+        WHEN dp.eligible_positions LIKE '%PG%' THEN 'PG'
+        WHEN dp.eligible_positions LIKE '%SG%' THEN 'SG'
+        WHEN dp.eligible_positions LIKE '%SF%' THEN 'SF'
+        WHEN dp.eligible_positions LIKE '%PF%' THEN 'PF'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END AS "position",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "n",
+      AVG(ABS(dp.our_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "mae",
+      AVG(dp.our_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "bias"
+    FROM dk_players dp
+    GROUP BY 1
+    ORDER BY mae DESC NULLS LAST
+  `);
+  return result.rows;
+}
+
+export type SalaryTierAccuracyRow = {
+  salaryTier: string;
+  tierMin: number | null;
+  n: number;
+  mae: number | null;
+  bias: number | null;
+};
+
+export async function getSalaryTierAccuracy(): Promise<SalaryTierAccuracyRow[]> {
+  const result = await db.execute<SalaryTierAccuracyRow>(sql`
+    SELECT
+      CASE
+        WHEN dp.salary < 5000 THEN 'Under $5k'
+        WHEN dp.salary < 6000 THEN '$5k–$6k'
+        WHEN dp.salary < 7000 THEN '$6k–$7k'
+        WHEN dp.salary < 8000 THEN '$7k–$8k'
+        WHEN dp.salary < 9000 THEN '$8k–$9k'
+        ELSE '$9k+'
+      END AS "salaryTier",
+      MIN(dp.salary) AS "tierMin",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "n",
+      AVG(ABS(dp.our_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "mae",
+      AVG(dp.our_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "bias"
+    FROM dk_players dp
+    GROUP BY 1
+    ORDER BY MIN(dp.salary) ASC NULLS LAST
+  `);
+  return result.rows;
+}
+
+export type LeverageCalibrationRow = {
+  leverageQuartile: number;
+  avgLeverage: number | null;
+  avgProj: number | null;
+  avgActual: number | null;
+  avgBeat: number | null;
+  n: number;
+};
+
+export async function getLeverageCalibration(): Promise<LeverageCalibrationRow[]> {
+  const result = await db.execute<LeverageCalibrationRow>(sql`
+    SELECT
+      sub.quartile               AS "leverageQuartile",
+      AVG(sub.our_leverage)      AS "avgLeverage",
+      AVG(sub.our_proj)          AS "avgProj",
+      AVG(sub.actual_fpts)       AS "avgActual",
+      AVG(sub.actual_fpts - sub.our_proj) AS "avgBeat",
+      COUNT(*)::int              AS "n"
+    FROM (
+      SELECT
+        NTILE(4) OVER (ORDER BY our_leverage ASC NULLS LAST) AS quartile,
+        our_leverage,
+        our_proj,
+        actual_fpts
+      FROM dk_players
+      WHERE our_leverage IS NOT NULL AND actual_fpts IS NOT NULL
+    ) sub
+    GROUP BY sub.quartile
+    ORDER BY sub.quartile
+  `);
+  return result.rows;
+}
+
 export { CURRENT_SEASON };
