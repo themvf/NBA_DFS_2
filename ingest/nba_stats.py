@@ -6,6 +6,9 @@ No API key required — nba_api sets a browser-like User-Agent automatically.
 Rate limiting: stats.nba.com returns HTTP 429 if called too quickly.
 A 0.6s sleep between requests is sufficient for single-process use.
 
+Retry logic: stats.nba.com is flaky, especially from CI/shared IPs. All
+endpoint calls use exponential backoff (3 attempts, 2x backoff from 10s).
+
 Data fetched:
   - Team stats: pace, OffRtg, DefRtg via LeagueDashTeamStats (Advanced)
   - Player stats: 10-game rolling averages via LeagueGameLog (per CLAUDE.md)
@@ -20,6 +23,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from typing import Callable, TypeVar
 
 from datetime import date, timedelta
 
@@ -32,7 +36,59 @@ from ingest.nba_teams import NBA_ID_TO_ABBREV
 
 logger = logging.getLogger(__name__)
 
-SLEEP_SECONDS = 0.6  # stay under stats.nba.com rate limit
+SLEEP_SECONDS = 1.0   # stay under stats.nba.com rate limit (increased from 0.6)
+_MAX_RETRIES  = 3
+_RETRY_BASE   = 10.0  # seconds; doubles on each retry (10, 20, 40)
+
+T = TypeVar("T")
+
+
+def _call_with_retry(fn: Callable[[], T], label: str) -> T:
+    """Call an nba_api endpoint with exponential backoff.
+
+    stats.nba.com is unreliable from CI environments — it returns HTTP 429,
+    timeouts, or malformed JSON under load. This wrapper retries up to
+    _MAX_RETRIES times before raising.
+    """
+    import requests
+
+    delay = _RETRY_BASE
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            return fn()
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout,
+        ) as exc:
+            if attempt == _MAX_RETRIES:
+                raise
+            logger.warning(
+                "%s: network error on attempt %d/%d (%s). Retrying in %.0fs...",
+                label, attempt, _MAX_RETRIES, exc, delay,
+            )
+            time.sleep(delay)
+            delay *= 2
+        except requests.exceptions.HTTPError as exc:
+            if attempt == _MAX_RETRIES:
+                raise
+            status = exc.response.status_code if exc.response is not None else "?"
+            logger.warning(
+                "%s: HTTP %s on attempt %d/%d. Retrying in %.0fs...",
+                label, status, attempt, _MAX_RETRIES, delay,
+            )
+            time.sleep(delay)
+            delay *= 2
+        except Exception as exc:  # noqa: BLE001 — catch nba_api JSON decode errors
+            if attempt == _MAX_RETRIES:
+                raise
+            logger.warning(
+                "%s: unexpected error on attempt %d/%d (%s). Retrying in %.0fs...",
+                label, attempt, _MAX_RETRIES, type(exc).__name__, delay,
+            )
+            time.sleep(delay)
+            delay *= 2
+    raise RuntimeError(f"{label}: all {_MAX_RETRIES} attempts failed")  # unreachable
 
 
 def fetch_team_stats(db: DatabaseManager, season: str) -> int:
@@ -45,12 +101,15 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
     logger.info("Fetching team stats for season %s ...", season)
     time.sleep(SLEEP_SECONDS)
 
-    endpoint = LeagueDashTeamStats(
-        season=season,
-        per_mode_detailed="PerGame",
-        measure_type_detailed_defense="Advanced",
-    )
-    df: pd.DataFrame = endpoint.get_data_frames()[0]
+    def _fetch() -> pd.DataFrame:
+        endpoint = LeagueDashTeamStats(
+            season=season,
+            per_mode_detailed="PerGame",
+            measure_type_detailed_defense="Advanced",
+        )
+        return endpoint.get_data_frames()[0]
+
+    df: pd.DataFrame = _call_with_retry(_fetch, "LeagueDashTeamStats")
 
     if df.empty:
         logger.warning("LeagueDashTeamStats returned empty DataFrame for season %s", season)
@@ -101,13 +160,16 @@ def fetch_player_rolling_stats(db: DatabaseManager, season: str, n_games: int = 
     logger.info("Fetching player game logs from %s for season %s ...", date_from, season)
     time.sleep(SLEEP_SECONDS)
 
-    endpoint = LeagueGameLog(
-        season=season,
-        player_or_team_abbreviation="P",
-        direction="DESC",
-        date_from_nullable=date_from,
-    )
-    df: pd.DataFrame = endpoint.get_data_frames()[0]
+    def _fetch() -> pd.DataFrame:
+        endpoint = LeagueGameLog(
+            season=season,
+            player_or_team_abbreviation="P",
+            direction="DESC",
+            date_from_nullable=date_from,
+        )
+        return endpoint.get_data_frames()[0]
+
+    df: pd.DataFrame = _call_with_retry(_fetch, "LeagueGameLog")
 
     if df.empty:
         logger.warning("LeagueGameLog returned empty DataFrame")

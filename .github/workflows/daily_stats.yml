@@ -2,9 +2,8 @@ name: Daily NBA Stats Ingest
 
 on:
   schedule:
-    # 7:00 AM ET = 12:00 UTC (UTC-5 in winter / UTC-4 in summer)
-    # Using 12:00 UTC covers both EST and EDT safely
-    - cron: "0 12 * * *"
+    # 7:10 AM ET = 12:10 UTC — offset from :00 to avoid stats.nba.com thundering herd
+    - cron: "10 12 * * *"
   workflow_dispatch:  # allow manual trigger
 
 jobs:
@@ -34,4 +33,5 @@ jobs:
         run: python -m ingest.nba_stats
 
       - name: Fetch today's schedule + Vegas odds
+        if: always()  # run even if stats step failed — odds data is independent
         run: python -m ingest.nba_schedule
