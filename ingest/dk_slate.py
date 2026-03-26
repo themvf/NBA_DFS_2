@@ -152,7 +152,7 @@ def build_player_pool(
     # Today's matchups (home + away team → matchup row)
     matchups = db.execute(
         """
-        SELECT id, home_team_id, away_team_id, vegas_total
+        SELECT id, home_team_id, away_team_id, vegas_total, home_ml, away_ml
         FROM nba_matchups
         WHERE game_date = %s
         """,
@@ -234,12 +234,16 @@ def build_player_pool(
         stats    = match_player_stats(p["name"], players_by_team.get(team_id or -1, []))
         our_proj = None
         if stats and matchup and team_id:
-            opp_id   = matchup["away_team_id"] if matchup["home_team_id"] == team_id else matchup["home_team_id"]
+            is_home  = (matchup["home_team_id"] == team_id)
+            opp_id   = matchup["away_team_id"] if is_home else matchup["home_team_id"]
             team_r   = ratings_by_team.get(team_id, {})
             opp_r    = ratings_by_team.get(opp_id, {})
             our_proj = compute_our_projection(
                 stats, team_r, opp_r,
                 vegas_total=matchup.get("vegas_total"),
+                home_ml=matchup.get("home_ml"),
+                away_ml=matchup.get("away_ml"),
+                is_home=is_home,
             )
             if our_proj:
                 matched_stats += 1

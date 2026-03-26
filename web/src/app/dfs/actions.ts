@@ -16,10 +16,12 @@ import { eq, sql, and } from "drizzle-orm";
 import { optimizeLineups, buildMultiEntryCSV } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
 
-const LEAGUE_AVG_PACE    = 100.0;
-const LEAGUE_AVG_DEF_RTG = 112.0;
-const LEAGUE_AVG_TOTAL   = 228.0;
-const CURRENT_SEASON     = "2025-26";
+const LEAGUE_AVG_PACE       = 100.0;
+const LEAGUE_AVG_DEF_RTG   = 112.0;
+const LEAGUE_AVG_TOTAL      = 228.0;
+const LEAGUE_AVG_TEAM_TOTAL = 114.0;
+const LEAGUE_AVG_USAGE      = 20.0;
+const CURRENT_SEASON        = "2025-26";
 
 // ── NBA abbreviation overrides (DK → standard) ──────────────
 const DK_OVERRIDES: Record<string, string> = {
@@ -122,6 +124,27 @@ function findLinestarMatch(name: string, salary: number, map: Map<string, Linest
 
 // ── Projection helpers ────────────────────────────────────────
 
+function mlToProb(ml: number): number {
+  return ml >= 0 ? 100 / (ml + 100) : Math.abs(ml) / (Math.abs(ml) + 100);
+}
+
+function computeTeamImpliedTotal(
+  vegasTotal: number,
+  homeMl: number | null,
+  awayMl: number | null,
+  isHome: boolean,
+): number {
+  if (homeMl == null || awayMl == null) return vegasTotal / 2;
+  const rawHome = mlToProb(homeMl);
+  const rawAway = mlToProb(awayMl);
+  const vig = rawHome + rawAway;
+  const homeProbClean = rawHome / vig;
+  // Each 2.5% deviation from 50% ≈ 1 point of spread in NBA
+  const impliedSpread = Math.max(-15, Math.min(15, (homeProbClean - 0.5) / 0.025));
+  const homeImplied = vegasTotal / 2 + impliedSpread / 2;
+  return isHome ? homeImplied : vegasTotal - homeImplied;
+}
+
 function computeOurProjection(
   player: {
     avgMinutes: number | null; ppg: number | null; rpg: number | null;
@@ -133,34 +156,57 @@ function computeOurProjection(
   oppPace: number,
   oppDefRtg: number,
   vegasTotal: number | null = null,
+  homeMl: number | null = null,
+  awayMl: number | null = null,
+  isHome = false,
 ): number | null {
   const avgMinutes = player.avgMinutes ?? 0;
   if (avgMinutes < 10) return null;
 
-  const ppg       = player.ppg       ?? 0;
-  const rpg       = player.rpg       ?? 0;
-  const apg       = player.apg       ?? 0;
-  const spg       = player.spg       ?? 0;
-  const bpg       = player.bpg       ?? 0;
-  const tovpg     = player.tovpg     ?? 0;
-  const threefgm  = player.threefgmPg ?? 0;
-  const ddRate    = player.ddRate    ?? 0;
+  const ppg      = player.ppg       ?? 0;
+  const rpg      = player.rpg       ?? 0;
+  const apg      = player.apg       ?? 0;
+  const spg      = player.spg       ?? 0;
+  const bpg      = player.bpg       ?? 0;
+  const tovpg    = player.tovpg     ?? 0;
+  const threefgm = player.threefgmPg ?? 0;
+  const ddRate   = player.ddRate    ?? 0;
+  const usage    = player.usageRate ?? LEAGUE_AVG_USAGE;
 
-  const gamePace     = (teamPace + oppPace) / 2;
-  const paceFactor   = gamePace / LEAGUE_AVG_PACE;
-  const totalFactor  = vegasTotal ? vegasTotal / LEAGUE_AVG_TOTAL : 1.0;
-  const combinedEnv  = paceFactor * 0.4 + totalFactor * 0.6;
-  const defFactor    = oppDefRtg / LEAGUE_AVG_DEF_RTG;  // higher DefRtg = easier scoring
+  // Environment factors
+  const gamePace    = (teamPace + oppPace) / 2;
+  const paceFactor  = gamePace / LEAGUE_AVG_PACE;
+
+  // Team-specific implied total from moneylines (not raw O/U ÷ 2)
+  const totalFactor = vegasTotal
+    ? computeTeamImpliedTotal(vegasTotal, homeMl, awayMl, isHome) / LEAGUE_AVG_TEAM_TOTAL
+    : 1.0;
+
+  const combinedEnv = paceFactor * 0.4 + totalFactor * 0.6;
+  const defFactor   = oppDefRtg / LEAGUE_AVG_DEF_RTG;
+
+  // Usage rate as volume multiplier: stars capture more extra possessions
+  const usageFactor  = Math.min(2.0, Math.max(0.5, usage / LEAGUE_AVG_USAGE));
+  const adjustedEnv  = 1.0 + (combinedEnv - 1.0) * usageFactor;
+
+  // Per-stat projections
+  const projPts  = ppg   * defFactor;
+  const projReb  = rpg   * adjustedEnv;
+  const projAst  = apg   * defFactor * (1.0 + (combinedEnv - 1.0) * 0.5); // defense primary, pace secondary
+  const projStl  = spg   * adjustedEnv;
+  const projBlk  = bpg   * adjustedEnv;
+  const projTov  = tovpg * adjustedEnv;
+  const projDd   = ddRate * adjustedEnv;  // more possessions = more DD chances
 
   const fpts = (
-    ppg    * defFactor   * 1.0
-    + rpg  * combinedEnv * 1.25
-    + apg  * defFactor   * 1.5
-    + spg  * combinedEnv * 2.0
-    + bpg  * combinedEnv * 2.0
-    - tovpg * combinedEnv * 0.5
+    projPts * 1.0
+    + projReb * 1.25
+    + projAst * 1.5
+    + projStl * 2.0
+    + projBlk * 2.0
+    - projTov * 0.5
     + threefgm * 0.5
-    + ddRate   * 1.5
+    + projDd   * 1.5
   );
   return Math.round(fpts * 100) / 100;
 }
@@ -373,12 +419,16 @@ async function enrichAndSave(
       }
 
       if (bestPlayer && teamStat && oppStat) {
+        const isHome = matchup.homeTeamId === teamId;
         ourProj = computeOurProjection(
           bestPlayer,
-          teamStat.pace ?? LEAGUE_AVG_PACE,
-          oppStat.pace  ?? LEAGUE_AVG_PACE,
-          oppStat.defRtg ?? LEAGUE_AVG_DEF_RTG,
+          teamStat.pace    ?? LEAGUE_AVG_PACE,
+          oppStat.pace     ?? LEAGUE_AVG_PACE,
+          oppStat.defRtg   ?? LEAGUE_AVG_DEF_RTG,
           matchup.vegasTotal,
+          matchup.homeMl,
+          matchup.awayMl,
+          isHome,
         );
         spgForLev = bestPlayer.spg ?? 0;
         bpgForLev = bestPlayer.bpg ?? 0;
