@@ -67,18 +67,43 @@ def fetch_linestar_for_draft_group(
     Returns:
         Dict keyed by (player_name_lower, salary_int) →
         {linestar_proj, proj_own_pct, is_out}
+
+    Returns an empty dict (rather than raising) if the DNN_COOKIE is missing,
+    expired, or rejected (HTTP 401/403). The caller handles an empty map by
+    writing NULL for linestar_proj and proj_own_pct on all players.
     """
-    cookie = dnn_cookie or os.environ.get("DNN_COOKIE", "")
-    period_id = _get_period_id_for_draft_group(dk_draft_group_id, cookie)
-    logger.info("Resolved draftGroupId %d → LineStar periodId %d", dk_draft_group_id, period_id)
+    try:
+        cookie = dnn_cookie or os.environ.get("DNN_COOKIE", "")
+        period_id = _get_period_id_for_draft_group(dk_draft_group_id, cookie)
+        logger.info("Resolved draftGroupId %d → LineStar periodId %d", dk_draft_group_id, period_id)
 
-    data      = _fetch_salaries_v5(period_id, cookie)
-    players   = _parse_salaries(data)
-    ownership = _parse_ownership(data)
-    linestar_map = _build_linestar_map(players, ownership)
+        data      = _fetch_salaries_v5(period_id, cookie)
+        players   = _parse_salaries(data)
+        ownership = _parse_ownership(data)
+        linestar_map = _build_linestar_map(players, ownership)
 
-    logger.info("LineStar: %d players for periodId %d", len(linestar_map), period_id)
-    return linestar_map
+        logger.info("LineStar: %d players for periodId %d", len(linestar_map), period_id)
+        return linestar_map
+
+    except requests.exceptions.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "?"
+        if status in (401, 403):
+            logger.warning(
+                "LineStar auth failed (HTTP %s) — DNN_COOKIE likely expired or missing. "
+                "Continuing without LineStar projections.",
+                status,
+            )
+            return {}
+        raise
+
+    except ValueError as exc:
+        # Period ID discovery failed (no matching slate found after all probes).
+        # Treat as a soft failure — cookie is likely stale or slate not yet listed.
+        logger.warning(
+            "LineStar period ID lookup failed: %s — continuing without LineStar projections.",
+            exc,
+        )
+        return {}
 
 
 def fetch_live_ownership(
