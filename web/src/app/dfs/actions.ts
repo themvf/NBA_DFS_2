@@ -12,7 +12,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups } from "@/db/schema";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, buildMultiEntryCSV } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
 
@@ -570,4 +570,152 @@ export async function exportLineups(
 ): Promise<string> {
   const entryRows = entryTemplate.split(/\r?\n/).filter(Boolean);
   return buildMultiEntryCSV(lineups, entryRows);
+}
+
+// ── Results Upload (Phase 3) ──────────────────────────────────
+
+type ResultPlayer = { name: string; actualFpts: number; actualOwnPct?: number };
+
+function parseStandingsCsv(content: string): ResultPlayer[] {
+  // DK contest standings: positional columns
+  // Row cols: 0=Rank, 1=EntryId, ..., 7=Player, 8=Roster Position, 9=%Drafted, 10=FPTS
+  const lines = content.split(/\r?\n/).filter(Boolean).slice(1); // skip header
+  const seen = new Map<string, ResultPlayer>();
+  for (const line of lines) {
+    const cells = line.split(",");
+    if (cells.length < 11) continue;
+    const name    = cells[7]?.trim() ?? "";
+    const ownStr  = (cells[9]?.trim() ?? "").replace("%", "");
+    const fptsStr = cells[10]?.trim() ?? "";
+    if (!name) continue;
+    const actualFpts    = parseFloat(fptsStr);
+    const actualOwnPct  = parseFloat(ownStr);
+    if (isNaN(actualFpts)) continue;
+    if (!seen.has(name)) {
+      seen.set(name, { name, actualFpts, actualOwnPct: isNaN(actualOwnPct) ? undefined : actualOwnPct });
+    }
+  }
+  return Array.from(seen.values());
+}
+
+function parseResultsCsv(content: string): ResultPlayer[] {
+  // DK results CSV: named columns — Name, Salary, FPTS (or Total Points / ActualFpts)
+  const lines = content.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const col = (name: string) => header.findIndex((h) => h === name);
+
+  const nameCol  = col("Name");
+  const fptsCol  = [col("FPTS"), col("Total Points"), col("ActualFpts"), col("Actual FPTS")]
+    .find((c) => c !== -1) ?? -1;
+
+  if (nameCol === -1 || fptsCol === -1) return [];
+
+  const players: ResultPlayer[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+    const name = cells[nameCol] ?? "";
+    if (!name) continue;
+    const actualFpts = parseFloat(cells[fptsCol] ?? "");
+    if (!isNaN(actualFpts)) {
+      players.push({ name, actualFpts });
+    }
+  }
+  return players;
+}
+
+export async function uploadResults(formData: FormData): Promise<{
+  ok: boolean;
+  message: string;
+  updated?: number;
+  total?: number;
+  matchRate?: number;
+}> {
+  const file = formData.get("resultsFile") as File | null;
+  if (!file) return { ok: false, message: "Results CSV required" };
+
+  const content = await file.text();
+  const firstLine = content.split("\n")[0] ?? "";
+  const isStandings = firstLine.includes("EntryId") || firstLine.includes("%Drafted");
+
+  const resultPlayers = isStandings ? parseStandingsCsv(content) : parseResultsCsv(content);
+
+  if (resultPlayers.length === 0) {
+    return { ok: false, message: "No players with FPTS found in the file" };
+  }
+
+  // Most recent slate
+  const [slate] = await db
+    .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+    .from(dkSlates)
+    .orderBy(desc(dkSlates.slateDate))
+    .limit(1);
+
+  if (!slate) return { ok: false, message: "No slate found — load a slate first" };
+
+  const pool = await db
+    .select({ id: dkPlayers.id, name: dkPlayers.name })
+    .from(dkPlayers)
+    .where(eq(dkPlayers.slateId, slate.id));
+
+  if (pool.length === 0) {
+    return { ok: false, message: `No players in slate ${slate.slateDate}` };
+  }
+
+  // Match + update
+  let updated = 0;
+  for (const rp of resultPlayers) {
+    let match = pool.find((p) => p.name === rp.name);
+    if (!match) {
+      let bestDist = 4;
+      for (const p of pool) {
+        const d = levenshtein(rp.name.toLowerCase(), p.name.toLowerCase());
+        if (d < bestDist) { bestDist = d; match = p; }
+      }
+    }
+    if (match) {
+      await db
+        .update(dkPlayers)
+        .set({ actualFpts: rp.actualFpts, actualOwnPct: rp.actualOwnPct ?? null })
+        .where(eq(dkPlayers.id, match.id));
+      updated++;
+    }
+  }
+
+  // Roll up lineup actuals
+  const lineupRows = await db
+    .select({ id: dkLineups.id, playerIds: dkLineups.playerIds })
+    .from(dkLineups)
+    .where(eq(dkLineups.slateId, slate.id));
+
+  let lineupsUpdated = 0;
+  for (const lineup of lineupRows) {
+    const ids = (lineup.playerIds ?? "")
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n));
+    if (ids.length === 0) continue;
+
+    const [row] = await db
+      .select({ total: sql<number | null>`SUM(${dkPlayers.actualFpts})` })
+      .from(dkPlayers)
+      .where(and(inArray(dkPlayers.id, ids), sql`${dkPlayers.actualFpts} IS NOT NULL`));
+
+    if (row?.total != null) {
+      await db.update(dkLineups).set({ actualFpts: row.total }).where(eq(dkLineups.id, lineup.id));
+      lineupsUpdated++;
+    }
+  }
+
+  revalidatePath("/dfs");
+
+  const matchRate = Math.round((updated / resultPlayers.length) * 100);
+  const lineupNote = lineupRows.length > 0 ? `, ${lineupsUpdated}/${lineupRows.length} lineup actuals updated` : "";
+  return {
+    ok: true,
+    message: `${updated}/${resultPlayers.length} players matched (${matchRate}%)${lineupNote} — slate ${slate.slateDate}`,
+    updated,
+    total: resultPlayers.length,
+    matchRate,
+  };
 }

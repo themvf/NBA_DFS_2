@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups } from "./actions";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -84,6 +84,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Export ────────────────────────────────────────────────
   const [entryTemplate, setEntryTemplate] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+
+  // ── Results upload ────────────────────────────────────────
+  const resultsFileRef = useRef<HTMLInputElement>(null);
+  const [resultsMsg, setResultsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isUploadingResults, setIsUploadingResults] = useState(false);
 
   // ── Filtered + sorted player pool ─────────────────────────
   const filteredPlayers = useMemo(() => {
@@ -192,6 +197,18 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     a.download = `dk_nba_lineups_${slateDate ?? "export"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleUploadResults() {
+    const file = resultsFileRef.current?.files?.[0];
+    if (!file) { setResultsMsg({ ok: false, text: "Select a results CSV first" }); return; }
+    setIsUploadingResults(true);
+    setResultsMsg(null);
+    const fd = new FormData();
+    fd.append("resultsFile", file);
+    const res = await uploadResults(fd);
+    setIsUploadingResults(false);
+    setResultsMsg({ ok: res.ok, text: res.message });
   }
 
   // ── Render ────────────────────────────────────────────────
@@ -623,6 +640,34 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </table>
         </div>
       )}
+
+      {/* Upload Results */}
+      <div className="rounded-lg border bg-card p-4">
+        <h2 className="text-sm font-semibold mb-1">Upload Results</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Upload a DK results CSV or contest standings CSV to populate actual FPTS and update lineup actuals for the most recent slate.
+        </p>
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">
+              DK Results CSV or Contest Standings CSV
+            </label>
+            <input ref={resultsFileRef} type="file" accept=".csv" className="text-sm" />
+          </div>
+          <button
+            onClick={handleUploadResults}
+            disabled={isUploadingResults}
+            className="rounded bg-purple-600 px-4 py-1.5 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
+          >
+            {isUploadingResults ? "Uploading…" : "Upload & Analyze"}
+          </button>
+        </div>
+        {resultsMsg && (
+          <p className={`mt-2 text-sm ${resultsMsg.ok ? "text-green-700" : "text-red-600"}`}>
+            {resultsMsg.text}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
