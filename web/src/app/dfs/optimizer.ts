@@ -97,13 +97,35 @@ export function optimizeLineups(
 
   if (eligible.length < ROSTER_SIZE) return [];
 
+  // Probe for feasibility — run a single test solve (no history, no exposure cap)
+  // to discover which constraints the current pool can satisfy. Relax progressively:
+  //   1st try: full constraints (stack + bring-back)
+  //   2nd try: no bring-back  (bring-back requires an opponent player that may be expensive)
+  //   3rd try: no stack either (matchupId missing or pool too thin per game)
+  const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
+  const probe = (ms: number, bb: number) =>
+    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb);
+
+  let effectiveMinStack  = minStack;
+  let effectiveBringBack = bringBackThreshold;
+
+  if (!probe(effectiveMinStack, effectiveBringBack)) {
+    effectiveBringBack = 0;           // disable bring-back
+  }
+  if (!probe(effectiveMinStack, effectiveBringBack)) {
+    effectiveMinStack = 0;            // disable stacking too
+  }
+
   const exposureCount = new Map<number, number>(eligible.map((p) => [p.id, 0]));
   const lineups: GeneratedLineup[] = [];
   const previousLineupSets: Set<number>[] = [];
 
   for (let i = 0; i < nLineups; i++) {
     const maxExp = Math.ceil(nLineups * maxExposure);
-    const lineup = solveOneLineup(eligible, mode, minStack, maxExp, exposureCount, previousLineupSets, bringBackThreshold);
+    const lineup = solveOneLineup(
+      eligible, mode, effectiveMinStack, maxExp,
+      exposureCount, previousLineupSets, effectiveBringBack,
+    );
     if (!lineup) break;
 
     lineups.push(lineup);

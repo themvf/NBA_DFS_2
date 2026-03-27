@@ -960,10 +960,25 @@ export async function runOptimizer(
         const score = settings.mode === "gpp" ? p.ourLeverage : p.ourProj;
         return score != null && (score as number) > 0 && p.salary > 0;
       });
+      const guards   = eligible.filter((p) => p.eligiblePositions.includes("PG") || p.eligiblePositions.includes("SG")).length;
+      const forwards = eligible.filter((p) => p.eligiblePositions.includes("SF") || p.eligiblePositions.includes("PF")).length;
+      const centers  = eligible.filter((p) => p.eligiblePositions.includes("C")).length;
+      const withMatchup = eligible.filter((p) => p.matchupId != null).length;
+      const hint = eligible.length < 15
+        ? " Pool too small — click Refresh Player Status to reset OUT flags, then re-paste LineStar data."
+        : guards < 3
+          ? " Not enough guards (need ≥3 PG/SG)."
+          : forwards < 3
+            ? " Not enough forwards (need ≥3 SF/PF)."
+            : centers < 1
+              ? " No centers in pool."
+              : withMatchup < 8
+                ? " Most players missing matchup data — reload slate via Contest ID."
+                : " Try reducing lineup count or switching to Cash mode.";
       return {
         ok: false,
-        error: `No lineups generated — ${eligible.length} eligible players in pool. ` +
-          `Check: position coverage, salary cap headroom, game stacking requirements, or reduce lineup count.`,
+        error: `No lineups — ${eligible.length} eligible: ${guards}G / ${forwards}F / ${centers}C` +
+          `, ${withMatchup}/${eligible.length} with matchup data.${hint}`,
       };
     }
     return { ok: true, lineups };
