@@ -273,7 +273,7 @@ type DkApiPlayer = {
   name: string; dkId: number; teamAbbrev: string;
   eligiblePositions: string; salary: number;
   gameInfo: string; avgFptsDk: number | null;
-  /** DK injury status: "None" | "O" | "Q" | "GTD" | "D" */
+  /** DK injury status: "None" | "O" | "Q" | "GTD" | "D" | "OUT" */
   dkStatus: string;
   /** True = DK has locked this player out of draftability */
   isDisabled: boolean;
@@ -595,8 +595,9 @@ async function enrichAndSave(
       }
     }
 
-    // isOut: DK status is authoritative; LineStar proj==0 is a fallback signal
-    const dkIsOut = p.isDisabled || ["O", "Out"].includes(p.dkStatus);
+    // isOut: DK status is authoritative; LineStar proj==0 is a fallback signal.
+    // DK returns "O", "Out", or "OUT" for scratches — normalise to upper-case.
+    const dkIsOut = p.isDisabled || ["O", "OUT"].includes(p.dkStatus.toUpperCase());
     const isOut   = dkIsOut || (ls?.isOut ?? false);
 
     const projForLev = isOut ? 0 : (ourProj ?? ls?.linestarProj ?? 0);
@@ -896,11 +897,13 @@ export async function refreshPlayerStatus(slateId: number): Promise<{
     if (!resp.ok) throw new Error(`DK API ${resp.status}`);
     const { draftables } = await resp.json() as { draftables: Record<string, unknown>[] };
 
-    // Build map: draftableId → isOut (status "O" or isDisabled)
+    // Build map: draftableId → isOut.
+    // DK uses "O", "Out", and "OUT" (case varies) for scratches; normalise.
     const liveStatus = new Map<number, boolean>();
     for (const d of draftables) {
       const draftableId = d.draftableId as number;
-      const isOut = !!(d.isDisabled as boolean) || ["O", "Out"].includes((d.status as string) ?? "");
+      const s = ((d.status as string) ?? "").toUpperCase();
+      const isOut = !!(d.isDisabled as boolean) || s === "O" || s === "OUT";
       liveStatus.set(draftableId, isOut);
     }
 
