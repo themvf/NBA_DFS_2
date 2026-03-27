@@ -108,13 +108,20 @@ export function optimizeLineups(
 
   let effectiveMinStack  = minStack;
   let effectiveBringBack = bringBackThreshold;
+  let relaxed = false;
 
   if (!probe(effectiveMinStack, effectiveBringBack)) {
     effectiveBringBack = 0;           // disable bring-back
+    relaxed = true;
   }
   if (!probe(effectiveMinStack, effectiveBringBack)) {
     effectiveMinStack = 0;            // disable stacking too
+    relaxed = true;
   }
+
+  // Adaptive diversity: small or thin pools can't sustain 3-player diff between
+  // every pair of lineups — drop to 2 when eligible < 55 or constraints were relaxed.
+  const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
 
   const exposureCount = new Map<number, number>(eligible.map((p) => [p.id, 0]));
   const lineups: GeneratedLineup[] = [];
@@ -124,7 +131,7 @@ export function optimizeLineups(
     const maxExp = Math.ceil(nLineups * maxExposure);
     const lineup = solveOneLineup(
       eligible, mode, effectiveMinStack, maxExp,
-      exposureCount, previousLineupSets, effectiveBringBack,
+      exposureCount, previousLineupSets, effectiveBringBack, effectiveMinChanges,
     );
     if (!lineup) break;
 
@@ -147,6 +154,7 @@ function solveOneLineup(
   exposureCount: Map<number, number>,
   previousLineupSets: Set<number>[],
   bringBackThreshold = 3,
+  minChanges = mode === "gpp" ? 3 : 2,
 ): GeneratedLineup | null {
   // Group by matchupId for game stacking
   const gamePlayers = new Map<number, OptimizerPlayer[]>();
@@ -168,8 +176,6 @@ function solveOneLineup(
       if (teams.size === 2) bringBackGames.push(mid);
     }
   }
-
-  const minChanges = mode === "gpp" ? 3 : 2;
 
   const constraints: SolverModel["constraints"] = {
     salary:    { max: SALARY_CAP },
