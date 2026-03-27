@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv } from "./actions";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -96,10 +96,12 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [refreshMsg, setRefreshMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ── LineStar manual upload ────────────────────────────────
+  // ── LineStar input: CSV file or paste ────────────────────
+  const [lsMode, setLsMode] = useState<"csv" | "paste">("paste");
   const lsUploadRef = useRef<HTMLInputElement>(null);
   const [lsUploadMsg, setLsUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isUploadingLs, setIsUploadingLs] = useState(false);
+  const [lsPasteText, setLsPasteText] = useState("");
 
   // ── LineStar cookie status ────────────────────────────────
   const [cookieStatus, setCookieStatus] = useState<{ ok: boolean; message: string } | null>(null);
@@ -245,6 +247,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const fd = new FormData();
     fd.append("lsFile", file);
     const res = await uploadLinestarCsv(fd);
+    setIsUploadingLs(false);
+    setLsUploadMsg({ ok: res.ok, text: res.message });
+  }
+
+  async function handleApplyPaste() {
+    if (!lsPasteText.trim()) { setLsUploadMsg({ ok: false, text: "Paste LineStar data first" }); return; }
+    setIsUploadingLs(true);
+    setLsUploadMsg(null);
+    const res = await applyLinestarPaste(lsPasteText);
     setIsUploadingLs(false);
     setLsUploadMsg({ ok: res.ok, text: res.message });
   }
@@ -404,26 +415,72 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             )}
           </div>
 
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">
-                LineStar CSV <span className="text-gray-400">(manual upload when cookie expired)</span>
-              </label>
-              <input ref={lsUploadRef} type="file" accept=".csv" className="text-sm" />
+          {/* Input mode toggle */}
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-gray-500">Input:</span>
+            <div className="flex rounded border text-xs overflow-hidden">
+              <button
+                onClick={() => setLsMode("paste")}
+                className={`px-3 py-1 ${lsMode === "paste" ? "bg-purple-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                Paste
+              </button>
+              <button
+                onClick={() => setLsMode("csv")}
+                className={`px-3 py-1 border-l ${lsMode === "csv" ? "bg-purple-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                CSV File
+              </button>
             </div>
-            <button
-              onClick={handleUploadLinestarCsv}
-              disabled={isUploadingLs}
-              className="rounded bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
-            >
-              {isUploadingLs ? "Uploading…" : "Upload LineStar CSV"}
-            </button>
-            {lsUploadMsg && (
-              <span className={`text-sm ${lsUploadMsg.ok ? "text-green-700" : "text-red-600"}`}>
-                {lsUploadMsg.text}
-              </span>
-            )}
           </div>
+
+          {lsMode === "paste" ? (
+            <div className="space-y-2">
+              <label className="text-xs text-gray-500">
+                Select all rows on the LineStar salary page and paste below
+              </label>
+              <textarea
+                value={lsPasteText}
+                onChange={(e) => setLsPasteText(e.target.value)}
+                rows={4}
+                placeholder={"Pos\tTeam\tPlayer\tSalary\tprojOwn%\t...\nC\t\tNikola Jokic\t$12500\t35.1%\t..."}
+                className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
+              />
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleApplyPaste}
+                  disabled={isUploadingLs || !lsPasteText.trim()}
+                  className="rounded bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {isUploadingLs ? "Applying…" : "Apply LineStar Data"}
+                </button>
+                {lsUploadMsg && (
+                  <span className={`text-sm ${lsUploadMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                    {lsUploadMsg.text}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">LineStar salary CSV export</label>
+                <input ref={lsUploadRef} type="file" accept=".csv" className="text-sm" />
+              </div>
+              <button
+                onClick={handleUploadLinestarCsv}
+                disabled={isUploadingLs}
+                className="rounded bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                {isUploadingLs ? "Uploading…" : "Upload CSV"}
+              </button>
+              {lsUploadMsg && (
+                <span className={`text-sm ${lsUploadMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                  {lsUploadMsg.text}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

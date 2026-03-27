@@ -92,6 +92,31 @@ function parseLinestarCsv(content: string): Map<string, LinestarEntry> {
   return map;
 }
 
+/** Parse tab-separated data pasted directly from the LineStar web table.
+ *  Columns: Pos, Team, Player, Salary, projOwn%, actualOwn%, Diff, Proj
+ *  Uses the Salary cell ($NNNNN) as an anchor — position-independent. */
+function parseLinestarPasteText(text: string): Map<string, LinestarEntry> {
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  const map = new Map<string, LinestarEntry>();
+  for (const line of lines) {
+    const cells = line.split("\t").map((c) => c.trim());
+    // Anchor on the salary cell: "$" followed by 4-5 digits
+    const salaryIdx = cells.findIndex((c) => /^\$\d{4,5}$/.test(c));
+    if (salaryIdx < 1) continue;
+    const playerName = cells[salaryIdx - 1];
+    if (!playerName || playerName.toLowerCase() === "player") continue; // skip header
+    const salary  = parseInt(cells[salaryIdx].replace(/\D/g, ""), 10);
+    if (!salary) continue;
+    // projOwn% is the column immediately after salary
+    const projOwn = parseFloat((cells[salaryIdx + 1] ?? "").replace("%", "")) || 0;
+    // Proj is 4 columns after salary: projOwn%, actualOwn%, Diff, Proj
+    const proj    = parseFloat(cells[salaryIdx + 4] ?? "") || 0;
+    const isOut   = proj === 0;
+    map.set(`${playerName.toLowerCase()}|${salary}`, { linestarProj: proj, projOwnPct: projOwn, isOut });
+  }
+  return map;
+}
+
 // Simple Levenshtein for fuzzy name matching
 function levenshtein(a: string, b: string): number {
   const m = a.length, n = b.length;
@@ -748,24 +773,12 @@ export async function checkLinestarCookie(): Promise<{ ok: boolean; message: str
   }
 }
 
-/**
- * Re-inject LineStar projections + ownership into the current slate by
- * uploading a LineStar salary CSV manually. Recomputes our_leverage for
- * every matched player. Useful when DNN_COOKIE is expired but you can still
- * export the LineStar CSV from the browser.
- */
-export async function uploadLinestarCsv(formData: FormData): Promise<{
-  ok: boolean; message: string; matched: number; total: number;
-}> {
-  const file = formData.get("lsFile") as File | null;
-  if (!file) return { ok: false, message: "No file provided", matched: 0, total: 0 };
-
-  const lsMap = parseLinestarCsv(await file.text());
-  if (lsMap.size === 0) return { ok: false, message: "No players parsed from LineStar CSV", matched: 0, total: 0 };
-
-  // Target most recent slate
+/** Shared: write a LineStar map into the most-recent slate's player pool. */
+async function _applyLinestarMap(
+  lsMap: Map<string, LinestarEntry>,
+): Promise<{ ok: boolean; message: string; matched: number; total: number }> {
   const slateRows = await db
-    .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+    .select({ id: dkSlates.id })
     .from(dkSlates)
     .orderBy(desc(dkSlates.slateDate))
     .limit(1);
@@ -785,29 +798,46 @@ export async function uploadLinestarCsv(formData: FormData): Promise<{
     const ls = findLinestarMatch(p.name, p.salary, lsMap);
     if (!ls) continue;
     matched++;
-    // Recompute leverage with real ownership
     let ourLeverage: number | null = null;
     if (p.ourProj && !p.isOut && ls.projOwnPct != null) {
       const fieldProj = p.avgFptsDk ?? ls.linestarProj ?? null;
       ourLeverage = computeLeverage(p.ourProj, ls.projOwnPct, fieldProj);
     }
     await db.update(dkPlayers)
-      .set({
-        linestarProj: ls.linestarProj,
-        projOwnPct:   ls.projOwnPct,
-        isOut:        ls.isOut || (p.isOut ?? false),
-        ourLeverage,
-      })
+      .set({ linestarProj: ls.linestarProj, projOwnPct: ls.projOwnPct,
+             isOut: ls.isOut || (p.isOut ?? false), ourLeverage })
       .where(eq(dkPlayers.id, p.id));
   }
 
   revalidatePath("/dfs");
+  const pct = pool.length > 0 ? Math.round(matched / pool.length * 100) : 0;
   return {
     ok: true,
-    message: `LineStar data applied — ${matched}/${pool.length} players matched (${Math.round(matched / pool.length * 100)}%)`,
+    message: `LineStar data applied — ${matched}/${pool.length} players matched (${pct}%)`,
     matched,
     total: pool.length,
   };
+}
+
+/** Inject LineStar data from an uploaded CSV file. */
+export async function uploadLinestarCsv(formData: FormData): Promise<{
+  ok: boolean; message: string; matched: number; total: number;
+}> {
+  const file = formData.get("lsFile") as File | null;
+  if (!file) return { ok: false, message: "No file provided", matched: 0, total: 0 };
+  const lsMap = parseLinestarCsv(await file.text());
+  if (lsMap.size === 0) return { ok: false, message: "No players parsed from LineStar CSV", matched: 0, total: 0 };
+  return _applyLinestarMap(lsMap);
+}
+
+/** Inject LineStar data from text pasted directly from the LineStar web table. */
+export async function applyLinestarPaste(text: string): Promise<{
+  ok: boolean; message: string; matched: number; total: number;
+}> {
+  if (!text.trim()) return { ok: false, message: "No data provided", matched: 0, total: 0 };
+  const lsMap = parseLinestarPasteText(text);
+  if (lsMap.size === 0) return { ok: false, message: "No players parsed — expected tab-separated LineStar data", matched: 0, total: 0 };
+  return _applyLinestarMap(lsMap);
 }
 
 export async function loadSlateFromContestId(contestId: string, cashLine?: number): Promise<{
