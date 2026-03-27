@@ -363,6 +363,98 @@ export async function processDkSlate(formData: FormData): Promise<{
   return enrichAndSave(dkPlayers_, lsMap, isNaN(cashLine!) ? undefined : cashLine);
 }
 
+// ── Auto-populate matchups from DK player pool ───────────────
+//
+// Called when no nba_matchups rows exist for the slate date — happens when
+// the web UI loads a slate before daily_stats.yml has run. Parses games from
+// the "away@home" game key in each player's game_info, upserts matchup rows,
+// then optionally fills Vegas totals/MLs from The Odds API if ODDS_API_KEY
+// is available in the environment.
+
+async function ensureMatchupsForSlate(
+  slateDate: string,
+  dkPlayers_: DkApiPlayer[],
+  abbrevToId: Map<string, number>,
+): Promise<void> {
+  const existing = await db.select({ id: nbaMatchups.id })
+    .from(nbaMatchups)
+    .where(eq(nbaMatchups.gameDate, slateDate));
+  if (existing.length > 0) return;
+
+  const resolve = (abbrev: string): number | null => {
+    const canonical = DK_OVERRIDES[abbrev] ?? abbrev;
+    return abbrevToId.get(canonical) ?? null;
+  };
+
+  // Parse unique game keys like "CHI@OKC" → away=CHI, home=OKC
+  const gameSeen = new Set<string>();
+  const games: { homeTeamId: number; awayTeamId: number }[] = [];
+  for (const p of dkPlayers_) {
+    const key = p.gameInfo.split(" ")[0];
+    if (!key || gameSeen.has(key)) continue;
+    gameSeen.add(key);
+    const [awayAbbr, homeAbbr] = key.split("@");
+    const homeTeamId = resolve(homeAbbr ?? "");
+    const awayTeamId = resolve(awayAbbr ?? "");
+    if (homeTeamId && awayTeamId) games.push({ homeTeamId, awayTeamId });
+  }
+
+  if (games.length > 0) {
+    await db.insert(nbaMatchups)
+      .values(games.map((g) => ({ gameDate: slateDate, ...g })))
+      .onConflictDoNothing();
+  }
+
+  // Fetch Vegas odds if API key is available
+  const oddsKey = process.env.ODDS_API_KEY;
+  if (oddsKey && games.length > 0) {
+    try {
+      const oddsUrl = new URL("https://api.the-odds-api.com/v4/sports/basketball_nba/odds/");
+      oddsUrl.searchParams.set("apiKey", oddsKey);
+      oddsUrl.searchParams.set("regions", "us");
+      oddsUrl.searchParams.set("markets", "h2h,totals");
+      oddsUrl.searchParams.set("oddsFormat", "american");
+      const oddsResp = await fetch(oddsUrl.toString(), { next: { revalidate: 0 } });
+      if (oddsResp.ok) {
+        const oddsGames = await oddsResp.json() as Array<{
+          home_team: string; away_team: string;
+          bookmakers: Array<{ markets: Array<{ key: string; outcomes: Array<{ name: string; price: number; point?: number }> }> }>;
+        }>;
+
+        // Build home-name → matchup lookup
+        const matchupRows = await db.execute<{ id: number; homeName: string }>(sql`
+          SELECT m.id, t.name AS "homeName"
+          FROM nba_matchups m
+          JOIN teams t ON t.team_id = m.home_team_id
+          WHERE m.game_date = ${slateDate}
+        `);
+        const byHome = new Map(matchupRows.rows.map((r) => [r.homeName, r.id]));
+
+        for (const og of oddsGames) {
+          const mid = byHome.get(og.home_team);
+          if (!mid) continue;
+          const bm = og.bookmakers[0];
+          if (!bm) continue;
+          const h2h    = bm.markets.find((m) => m.key === "h2h");
+          const totals = bm.markets.find((m) => m.key === "totals");
+          const homeMl = h2h?.outcomes.find((o) => o.name === og.home_team)?.price ?? null;
+          const awayMl = h2h?.outcomes.find((o) => o.name === og.away_team)?.price ?? null;
+          const vegasTotal = totals?.outcomes.find((o) => o.name === "Over")?.point ?? null;
+          if (homeMl || awayMl || vegasTotal) {
+            await db.execute(sql`
+              UPDATE nba_matchups
+              SET home_ml = ${homeMl}, away_ml = ${awayMl}, vegas_total = ${vegasTotal}
+              WHERE id = ${mid}
+            `);
+          }
+        }
+      }
+    } catch {
+      // Odds fetch is best-effort — projections proceed without Vegas context
+    }
+  }
+}
+
 // ── Shared enrichment (used by both CSV and API paths) ───────
 
 async function enrichAndSave(
@@ -401,6 +493,9 @@ async function enrichAndSave(
 
   const teamRows = await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams);
   const abbrevToId = new Map(teamRows.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
+
+  // Auto-populate matchups from DK player pool if schedule hasn't run yet
+  await ensureMatchupsForSlate(slateDate, dkPlayers_, abbrevToId);
 
   const matchupRows = await db.select().from(nbaMatchups).where(eq(nbaMatchups.gameDate, slateDate));
   const matchupByTeam = new Map<number, typeof matchupRows[0]>();
