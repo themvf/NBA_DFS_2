@@ -147,15 +147,22 @@ def upsert_nba_matchup(
 
 # ── DK slate / player upserts ─────────────────────────────────────────────────
 
-def upsert_dk_slate(db: DatabaseManager, slate_date: str, game_count: int = 0) -> int:
+def upsert_dk_slate(
+    db: DatabaseManager,
+    slate_date: str,
+    game_count: int = 0,
+    dk_draft_group_id: int | None = None,
+) -> int:
     row = db.execute_one(
         """
-        INSERT INTO dk_slates (slate_date, game_count)
-        VALUES (%s, %s)
-        ON CONFLICT (slate_date) DO UPDATE SET game_count = EXCLUDED.game_count
+        INSERT INTO dk_slates (slate_date, game_count, dk_draft_group_id)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (slate_date) DO UPDATE SET
+            game_count = EXCLUDED.game_count,
+            dk_draft_group_id = COALESCE(EXCLUDED.dk_draft_group_id, dk_slates.dk_draft_group_id)
         RETURNING id
         """,
-        (slate_date, game_count),
+        (slate_date, game_count, dk_draft_group_id),
     )
     return row["id"] if row else 0
 

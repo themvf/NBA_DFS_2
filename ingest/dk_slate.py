@@ -205,6 +205,9 @@ def build_player_pool(
     for p in dk_players:
         result = dict(p)
 
+        # DK injury status — authoritative; set before LineStar merge
+        dk_is_out = p.get("is_disabled", False) or p.get("dk_status", "None") in ("O", "Out")
+
         # LineStar merge
         ls_key  = (p["name"].lower(), p["salary"])
         ls_data = linestar_map.get(ls_key)
@@ -220,6 +223,9 @@ def build_player_pool(
             result["linestar_proj"] = None
             result["proj_own_pct"]  = None
             result["is_out"]        = False
+
+        # Combine DK status + LineStar signal; DK is authoritative
+        result["is_out"] = dk_is_out or result.get("is_out", False)
 
         # Team + matchup lookup
         team_id = match_team_id(p["team_abbrev"], abbrev_cache)
@@ -358,7 +364,7 @@ def run(
         if p.get("game_info")
     })
 
-    slate_id = upsert_dk_slate(db, slate_date, game_count)
+    slate_id = upsert_dk_slate(db, slate_date, game_count, dk_draft_group_id=dgid)
     print(f"Slate ID: {slate_id}")
 
     pool = build_player_pool(db, dk_players, linestar_map, slate_date, season)

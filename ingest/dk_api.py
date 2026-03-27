@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any
 
 import requests
@@ -34,7 +35,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 _PROJ_STAT_ID = 279         # DK stat attribute ID for projected FPTS
-_ET_OFFSET    = timedelta(hours=-4)   # EDT = UTC-4 (Mar-Nov)
+_ET_ZONE      = ZoneInfo("America/New_York")  # handles EDT/EST automatically
 _TIMEOUT      = 15
 _HEADERS = {
     "User-Agent": (
@@ -105,6 +106,10 @@ def fetch_dk_players(draft_group_id: int) -> list[dict]:
                     pass
                 break
 
+        # Injury / availability status from DK
+        dk_status   = canonical.get("status", "None") or "None"  # "None","O","Q","GTD","D"
+        is_disabled = bool(canonical.get("isDisabled", False))    # True = DK locked player out
+
         players.append({
             "name":               canonical.get("displayName", ""),
             "dk_id":              canonical["draftableId"],
@@ -113,6 +118,8 @@ def fetch_dk_players(draft_group_id: int) -> list[dict]:
             "salary":             canonical.get("salary", 0),
             "game_info":          _format_game_info(canonical.get("competition", {})),
             "avg_fpts_dk":        avg_fpts_dk,
+            "dk_status":          dk_status,
+            "is_disabled":        is_disabled,
         })
 
     logger.info("Fetched %d players from draftGroupId %d", len(players), draft_group_id)
@@ -132,7 +139,7 @@ def _format_game_info(competition: dict) -> str:
         return name_compact
     try:
         dt_utc = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        dt_et  = dt_utc + _ET_OFFSET
+        dt_et  = dt_utc.astimezone(_ET_ZONE)   # correct for both EST and EDT
         return f"{name_compact} {dt_et.strftime('%m/%d/%Y')} {dt_et.strftime('%I:%M%p')} ET"
     except (ValueError, AttributeError):
         return name_compact

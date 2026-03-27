@@ -87,6 +87,7 @@ TABLES = [
         game_count INTEGER DEFAULT 0,
         dk_draft_group_id INTEGER,
         linestar_period_id INTEGER,
+        cash_line DOUBLE PRECISION,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(slate_date)
     )

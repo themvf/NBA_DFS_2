@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults } from "./actions";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -91,6 +91,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const resultsFileRef = useRef<HTMLInputElement>(null);
   const [resultsMsg, setResultsMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isUploadingResults, setIsUploadingResults] = useState(false);
+
+  // ── Status refresh ────────────────────────────────────────
+  const [refreshMsg, setRefreshMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // ── Filtered + sorted player pool ─────────────────────────
   const filteredPlayers = useMemo(() => {
@@ -215,6 +219,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setResultsMsg({ ok: res.ok, text: res.message });
   }
 
+  async function handleRefreshStatus() {
+    if (!players[0]?.slateId) { setRefreshMsg({ ok: false, text: "No slate loaded" }); return; }
+    setIsRefreshing(true);
+    setRefreshMsg(null);
+    const res = await refreshPlayerStatus(players[0].slateId);
+    setIsRefreshing(false);
+    setRefreshMsg({ ok: res.ok, text: res.message });
+  }
+
   // ── Render ────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -317,6 +330,27 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           <p className={`mt-2 text-sm ${uploadMsg.ok ? "text-green-700" : "text-red-600"}`}>
             {uploadMsg.text}
           </p>
+        )}
+
+        {/* Refresh player status — re-hits DK API to catch late scratches */}
+        {players.length > 0 && (
+          <div className="mt-3 pt-3 border-t flex items-center gap-3">
+            <button
+              onClick={handleRefreshStatus}
+              disabled={isRefreshing}
+              className="rounded bg-amber-500 px-3 py-1.5 text-sm text-white hover:bg-amber-600 disabled:opacity-50"
+            >
+              {isRefreshing ? "Refreshing…" : "Refresh Player Status"}
+            </button>
+            <span className="text-xs text-gray-400">
+              Re-checks DK API for late scratches / GTD updates
+            </span>
+            {refreshMsg && (
+              <span className={`text-sm ${refreshMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {refreshMsg.text}
+              </span>
+            )}
+          </div>
         )}
       </div>
 

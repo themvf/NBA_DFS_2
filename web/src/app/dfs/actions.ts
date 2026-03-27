@@ -31,10 +31,7 @@ const DK_OVERRIDES: Record<string, string> = {
 
 // ── CSV Parsers ───────────────────────────────────────────────
 
-function parseDkCsv(content: string): Array<{
-  name: string; dkId: number; teamAbbrev: string; eligiblePositions: string;
-  salary: number; gameInfo: string; avgFptsDk: number | null;
-}> {
+function parseDkCsv(content: string): DkApiPlayer[] {
   const lines = content.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
 
@@ -64,6 +61,9 @@ function parseDkCsv(content: string): Array<{
       salary:            parseInt(salaryStr, 10) || 0,
       gameInfo:          cells[gameInfoCol] ?? "",
       avgFptsDk:         parseFloat(cells[avgCol] ?? "") || null,
+      // CSV doesn't carry DK injury status — rely on LineStar for is_out
+      dkStatus:    "None",
+      isDisabled:  false,
     });
   }
   return players;
@@ -241,6 +241,10 @@ type DkApiPlayer = {
   name: string; dkId: number; teamAbbrev: string;
   eligiblePositions: string; salary: number;
   gameInfo: string; avgFptsDk: number | null;
+  /** DK injury status: "None" | "O" | "Q" | "GTD" | "D" */
+  dkStatus: string;
+  /** True = DK has locked this player out of draftability */
+  isDisabled: boolean;
 };
 
 async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[]> {
@@ -257,7 +261,6 @@ async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[
     byPlayer.get(pid)!.push(entry);
   }
 
-  const ET_OFFSET = -4 * 60; // EDT = UTC-4
   const players: DkApiPlayer[] = [];
 
   for (const [, entries] of byPlayer) {
@@ -282,23 +285,29 @@ async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[
       if (attr.id === 279) { avgFptsDk = parseFloat(attr.value) || null; break; }
     }
 
-    // Game info string from competition object
+    // DK injury / availability status
+    const dkStatus   = (canonical.status as string) || "None";
+    const isDisabled = !!(canonical.isDisabled as boolean);
+
+    // Game info string — use Intl to handle EDT/EST automatically
     let gameInfo = "";
     const comp = canonical.competition as Record<string, unknown> | null;
     if (comp) {
-      const name = ((comp.name as string) ?? "").replace(" @ ", "@").replace(/ /g, "");
+      const name  = ((comp.name as string) ?? "").replace(" @ ", "@").replace(/ /g, "");
       const start = comp.startTime as string;
       if (start) {
-        const dt = new Date(start);
-        const etMs = dt.getTime() + ET_OFFSET * 60000;
-        const etDt = new Date(etMs);
-        const mm = String(etDt.getUTCMonth() + 1).padStart(2, "0");
-        const dd = String(etDt.getUTCDate()).padStart(2, "0");
-        const yyyy = etDt.getUTCFullYear();
-        const hh = etDt.getUTCHours() % 12 || 12;
-        const min = String(etDt.getUTCMinutes()).padStart(2, "0");
-        const ampm = etDt.getUTCHours() < 12 ? "AM" : "PM";
-        gameInfo = `${name} ${mm}/${dd}/${yyyy} ${hh}:${min}${ampm} ET`;
+        try {
+          const dt    = new Date(start);
+          const parts = new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/New_York",
+            month: "2-digit", day: "2-digit", year: "numeric",
+            hour: "numeric", minute: "2-digit", hour12: true,
+          }).formatToParts(dt);
+          const p = (t: string) => parts.find((x) => x.type === t)?.value ?? "";
+          gameInfo = `${name} ${p("month")}/${p("day")}/${p("year")} ${p("hour")}:${p("minute")}${p("dayPeriod")} ET`;
+        } catch {
+          gameInfo = name;
+        }
       } else {
         gameInfo = name;
       }
@@ -312,6 +321,8 @@ async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[
       salary:            canonical.salary as number ?? 0,
       gameInfo,
       avgFptsDk,
+      dkStatus,
+      isDisabled,
     });
   }
   return players;
@@ -358,6 +369,7 @@ async function enrichAndSave(
   dkPlayers_: DkApiPlayer[],
   lsMap: Map<string, LinestarEntry>,
   cashLine?: number,
+  draftGroupId?: number,
 ): Promise<{ ok: boolean; message: string; playerCount?: number; matchRate?: number }> {
   let slateDate = "";
   for (const p of dkPlayers_) {
@@ -368,13 +380,22 @@ async function enrichAndSave(
 
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 
-  const slateValues: { slateDate: string; gameCount: number; cashLine?: number } = { slateDate, gameCount };
+  const slateValues: {
+    slateDate: string; gameCount: number;
+    cashLine?: number; dkDraftGroupId?: number;
+  } = { slateDate, gameCount };
   if (cashLine != null) slateValues.cashLine = cashLine;
+  if (draftGroupId != null) slateValues.dkDraftGroupId = draftGroupId;
+
+  const conflictSet: Record<string, unknown> = { gameCount };
+  if (cashLine != null) conflictSet.cashLine = cashLine;
+  // COALESCE: don't overwrite an existing draft group ID with null (CSV re-load)
+  if (draftGroupId != null) conflictSet.dkDraftGroupId = draftGroupId;
 
   const [slate] = await db
     .insert(dkSlates)
     .values(slateValues)
-    .onConflictDoUpdate({ target: dkSlates.slateDate, set: { gameCount, ...(cashLine != null ? { cashLine } : {}) } })
+    .onConflictDoUpdate({ target: dkSlates.slateDate, set: conflictSet })
     .returning({ id: dkSlates.id });
   const slateId = slate.id;
 
@@ -447,7 +468,11 @@ async function enrichAndSave(
       }
     }
 
-    const projForLev = ls?.isOut ? 0 : (ourProj ?? ls?.linestarProj ?? 0);
+    // isOut: DK status is authoritative; LineStar proj==0 is a fallback signal
+    const dkIsOut = p.isDisabled || ["O", "Out"].includes(p.dkStatus);
+    const isOut   = dkIsOut || (ls?.isOut ?? false);
+
+    const projForLev = isOut ? 0 : (ourProj ?? ls?.linestarProj ?? 0);
     if (projForLev && ls?.projOwnPct != null) {
       // field_proj: DK's own projection is the primary ownership driver in the field;
       // LineStar is a reasonable fallback when avg_fpts_dk is unavailable.
@@ -461,7 +486,7 @@ async function enrichAndSave(
       eligiblePositions: p.eligiblePositions, salary: p.salary,
       gameInfo: p.gameInfo, avgFptsDk: p.avgFptsDk,
       linestarProj: ls?.linestarProj ?? null, projOwnPct: ls?.projOwnPct ?? null,
-      ourProj, ourLeverage, isOut: ls?.isOut ?? false,
+      ourProj, ourLeverage, isOut,
     });
   }
 
@@ -496,10 +521,80 @@ export async function loadSlateFromContestId(contestId: string, cashLine?: numbe
     const players  = await fetchDkPlayersFromApi(dgId);
     if (players.length === 0) return { ok: false, message: "No players returned from DK API" };
     // LineStar: skip for now (no cookie in browser flow)
-    const result = await enrichAndSave(players, new Map(), cashLine);
+    const result = await enrichAndSave(players, new Map(), cashLine, dgId);
     return { ...result, message: `[API] ${result.message}` };
   } catch (e) {
     return { ok: false, message: String(e) };
+  }
+}
+
+/**
+ * Re-fetch the DK draftables API for the current slate and update is_out for
+ * every player whose injury status has changed since the slate was loaded.
+ *
+ * Requires dk_draft_group_id to be saved on dk_slates (set when loading via
+ * Contest ID). Players no longer present in the API response are marked OUT
+ * (DK removes confirmed scratches from the draftable list before lock).
+ */
+export async function refreshPlayerStatus(slateId: number): Promise<{
+  ok: boolean; message: string; updated: number;
+}> {
+  try {
+    // Get the draft group ID saved when the slate was loaded
+    const slateRows = await db
+      .select({ dkDraftGroupId: dkSlates.dkDraftGroupId })
+      .from(dkSlates)
+      .where(eq(dkSlates.id, slateId));
+    const dgId = slateRows[0]?.dkDraftGroupId;
+    if (!dgId) {
+      return {
+        ok: false,
+        message: "No draft group ID saved for this slate — reload via Contest ID first",
+        updated: 0,
+      };
+    }
+
+    // Fetch live draftables
+    const url  = `https://api.draftkings.com/draftgroups/v1/draftgroups/${dgId}/draftables`;
+    const resp = await fetch(url, { headers: DK_HEADERS, next: { revalidate: 0 } });
+    if (!resp.ok) throw new Error(`DK API ${resp.status}`);
+    const { draftables } = await resp.json() as { draftables: Record<string, unknown>[] };
+
+    // Build map: draftableId → isOut (status "O" or isDisabled)
+    const liveStatus = new Map<number, boolean>();
+    for (const d of draftables) {
+      const draftableId = d.draftableId as number;
+      const isOut = !!(d.isDisabled as boolean) || ["O", "Out"].includes((d.status as string) ?? "");
+      liveStatus.set(draftableId, isOut);
+    }
+
+    // Compare against stored players
+    const stored = await db
+      .select({ id: dkPlayers.id, dkPlayerId: dkPlayers.dkPlayerId, isOut: dkPlayers.isOut })
+      .from(dkPlayers)
+      .where(eq(dkPlayers.slateId, slateId));
+
+    let updated = 0;
+    for (const p of stored) {
+      const live = liveStatus.get(p.dkPlayerId);
+      // Player absent from API = DK removed them (scratch confirmed)
+      const newIsOut = live === undefined ? true : live;
+      if (newIsOut !== (p.isOut ?? false)) {
+        await db.update(dkPlayers).set({ isOut: newIsOut }).where(eq(dkPlayers.id, p.id));
+        updated++;
+      }
+    }
+
+    revalidatePath("/dfs");
+    return {
+      ok: true,
+      message: updated > 0
+        ? `${updated} player status update${updated > 1 ? "s" : ""} applied`
+        : "All player statuses are current — no changes",
+      updated,
+    };
+  } catch (e) {
+    return { ok: false, message: String(e), updated: 0 };
   }
 }
 
