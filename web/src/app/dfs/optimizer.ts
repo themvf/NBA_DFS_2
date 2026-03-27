@@ -129,10 +129,17 @@ export function optimizeLineups(
 
   for (let i = 0; i < nLineups; i++) {
     const maxExp = Math.ceil(nLineups * maxExposure);
-    const lineup = solveOneLineup(
+    let lineup = solveOneLineup(
       eligible, mode, effectiveMinStack, maxExp,
       exposureCount, previousLineupSets, effectiveBringBack, effectiveMinChanges,
     );
+    // If still infeasible, relax diversity to 1 (just prevent exact duplicates)
+    if (!lineup && effectiveMinChanges > 1) {
+      lineup = solveOneLineup(
+        eligible, mode, effectiveMinStack, maxExp,
+        exposureCount, previousLineupSets, effectiveBringBack, 1,
+      );
+    }
     if (!lineup) break;
 
     lineups.push(lineup);
@@ -216,7 +223,13 @@ function solveOneLineup(
     }
   }
 
-  for (let i = 0; i < previousLineupSets.length; i++) {
+  // Only enforce diversity against the last DIV_WINDOW lineups.
+  // Applying it to ALL prior lineups causes the ILP to become infeasible
+  // after ~5-7 lineups on a small pool (each new lineup must simultaneously
+  // differ from every previous one).
+  const DIV_WINDOW = 5;
+  const divWindow = previousLineupSets.slice(-DIV_WINDOW);
+  for (let i = 0; i < divWindow.length; i++) {
     constraints[`div_${i}`] = { max: ROSTER_SIZE - minChanges };
   }
 
@@ -259,9 +272,9 @@ function solveOneLineup(
       entry[`bb_away_${p.matchupId}`] = isHome ? -1 : 1;
     }
 
-    // Diversity
-    for (let i = 0; i < previousLineupSets.length; i++) {
-      if (previousLineupSets[i].has(p.id)) {
+    // Diversity (rolling window only)
+    for (let i = 0; i < divWindow.length; i++) {
+      if (divWindow[i].has(p.id)) {
         entry[`div_${i}`] = 1;
       }
     }

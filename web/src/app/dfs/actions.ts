@@ -103,7 +103,14 @@ function parseLinestarPasteText(text: string): Map<string, LinestarEntry> {
     // Anchor on the salary cell: "$" followed by 4-5 digits
     const salaryIdx = cells.findIndex((c) => /^\$\d{4,5}$/.test(c));
     if (salaryIdx < 1) continue;
-    const playerName = cells[salaryIdx - 1];
+    // Handle two LineStar formats:
+    //   "Pos | Team | Player | Salary | ..." → cells[salaryIdx-1] = player
+    //   "Pos | Player | Team | Salary | ..." → cells[salaryIdx-1] = team abbrev (2-4 caps)
+    // If the cell before salary looks like a team abbreviation, step back one more.
+    let playerName = cells[salaryIdx - 1];
+    if (/^[A-Z]{2,4}$/.test(playerName) && salaryIdx >= 2) {
+      playerName = cells[salaryIdx - 2];
+    }
     if (!playerName || playerName.toLowerCase() === "player") continue; // skip header
     const salary  = parseInt(cells[salaryIdx].replace(/\D/g, ""), 10);
     if (!salary) continue;
