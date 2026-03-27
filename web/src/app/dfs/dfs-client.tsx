@@ -399,7 +399,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   ? "bg-green-100 text-green-800"
                   : "bg-red-100 text-red-700"
               }`}>
-                {cookieStatus.ok ? "✓ Valid" : "✗ Expired"} — {cookieStatus.message}
+                {cookieStatus.ok ? "✓ Valid" : cookieStatus.message.includes("expired") ? "✗ Expired" : "✗ Error"} — {cookieStatus.message}
               </span>
             )}
           </div>

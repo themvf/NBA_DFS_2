@@ -644,9 +644,15 @@ const LS_HEADERS = {
 
 /** Try to fetch LineStar projections + ownership using DNN_COOKIE from env.
  *  Returns an empty map if the cookie is missing, expired, or the API fails. */
+function normalizeDnnCookie(raw: string): string {
+  // Strip accidental ".DOTNETNUKE=" prefix if the user pasted the full cookie string
+  return raw.startsWith(".DOTNETNUKE=") ? raw.slice(".DOTNETNUKE=".length) : raw;
+}
+
 async function tryFetchLinestarMap(draftGroupId: number): Promise<Map<string, LinestarEntry>> {
-  const cookie = process.env.DNN_COOKIE;
-  if (!cookie) return new Map();
+  const raw = process.env.DNN_COOKIE;
+  if (!raw) return new Map();
+  const cookie = normalizeDnnCookie(raw);
   try {
     const periodId = await resolveLinestarPeriodId(draftGroupId, cookie);
     if (!periodId) return new Map();
@@ -721,19 +727,22 @@ function parseLinestarApiResponse(data: unknown): Map<string, LinestarEntry> {
 }
 
 /** Check if the DNN_COOKIE in Vercel env is valid without fetching full data. */
-export async function checkLinestarCookie(): Promise<{ ok: boolean; message: string }> {
+export async function checkLinestarCookie(): Promise<{ ok: boolean; message: string; status?: number }> {
   const cookie = process.env.DNN_COOKIE;
   if (!cookie) return { ok: false, message: "DNN_COOKIE not set — add it to Vercel env vars" };
+  const cookieValue = normalizeDnnCookie(cookie);
   try {
     const resp = await fetch(`${LS_BASE}/GetPeriodInformation?site=1&sport=5`, {
-      headers: { ...LS_HEADERS, Cookie: `.DOTNETNUKE=${cookie}` },
+      headers: { ...LS_HEADERS, Cookie: `.DOTNETNUKE=${cookieValue}` },
       next: { revalidate: 0 },
     });
     if (resp.status === 401 || resp.status === 403)
-      return { ok: false, message: "Cookie expired — update DNN_COOKIE in Vercel → Settings → Environment Variables" };
+      return { ok: false, message: "Cookie expired — update DNN_COOKIE in Vercel → Settings → Env Vars", status: resp.status };
+    if (resp.status === 404)
+      return { ok: false, message: "Endpoint not found (HTTP 404) — use manual CSV upload instead", status: 404 };
     if (!resp.ok)
-      return { ok: false, message: `LineStar returned HTTP ${resp.status}` };
-    return { ok: true, message: "LineStar cookie is valid" };
+      return { ok: false, message: `LineStar returned HTTP ${resp.status}`, status: resp.status };
+    return { ok: true, message: "Cookie is valid" };
   } catch (e) {
     return { ok: false, message: `Connection failed: ${String(e)}` };
   }
