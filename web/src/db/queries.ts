@@ -193,23 +193,22 @@ export type StrategySummaryRow = {
   avgLeverage: number | null;
 };
 
-export async function getDkStrategySummary(
-  cashThreshold = 300
-): Promise<StrategySummaryRow[]> {
+export async function getDkStrategySummary(): Promise<StrategySummaryRow[]> {
   const result = await db.execute<StrategySummaryRow>(sql`
     SELECT
       dl.strategy,
       COUNT(DISTINCT dl.slate_id)::int AS "nSlates",
       COUNT(*)::int AS "totalLineups",
       AVG(dl.actual_fpts) AS "avgActualFpts",
-      COUNT(*) FILTER (WHERE dl.actual_fpts >= ${cashThreshold})::int AS "totalCashed",
+      COUNT(*) FILTER (WHERE dl.actual_fpts >= COALESCE(ds.cash_line, 300))::int AS "totalCashed",
       ROUND(
-        100.0 * COUNT(*) FILTER (WHERE dl.actual_fpts >= ${cashThreshold}) / COUNT(*),
+        100.0 * COUNT(*) FILTER (WHERE dl.actual_fpts >= COALESCE(ds.cash_line, 300)) / COUNT(*),
         1
       ) AS "cashRate",
       MAX(dl.actual_fpts) AS "bestSingleLineup",
       AVG(dl.leverage) AS "avgLeverage"
     FROM dk_lineups dl
+    JOIN dk_slates ds ON ds.id = dl.slate_id
     WHERE dl.actual_fpts IS NOT NULL
     GROUP BY dl.strategy
     ORDER BY AVG(dl.actual_fpts) DESC NULLS LAST

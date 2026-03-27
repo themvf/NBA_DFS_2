@@ -89,6 +89,7 @@ export const dkSlates = pgTable("dk_slates", {
   gameCount: integer("game_count").default(0),
   dkDraftGroupId: integer("dk_draft_group_id"),
   linestarPeriodId: integer("linestar_period_id"),
+  cashLine: doublePrecision("cash_line"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

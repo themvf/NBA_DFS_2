@@ -53,6 +53,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const dkFileRef = useRef<HTMLInputElement>(null);
   const lsFileRef = useRef<HTMLInputElement>(null);
   const [contestId, setContestId] = useState("");
+  const [cashLineInput, setCashLineInput] = useState("");
   const [loadMode, setLoadMode] = useState<"api" | "csv">("api");
 
   // ── Game filter ───────────────────────────────────────────
@@ -137,7 +138,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   async function handleLoadApi() {
     if (!contestId.trim()) { setUploadMsg({ ok: false, text: "Enter a DK contest ID" }); return; }
     startTransition(async () => {
-      const res = await loadSlateFromContestId(contestId.trim());
+      const cashLine = cashLineInput ? parseFloat(cashLineInput) : undefined;
+      const res = await loadSlateFromContestId(contestId.trim(), isNaN(cashLine!) ? undefined : cashLine);
       setUploadMsg({ ok: res.ok, text: res.message });
     });
   }
@@ -149,6 +151,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const fd = new FormData();
     fd.append("dkFile", dkFile);
     if (lsFile) fd.append("lsFile", lsFile);
+    if (cashLineInput) fd.append("cashLine", cashLineInput);
     startTransition(async () => {
       const res = await processDkSlate(fd);
       setUploadMsg({ ok: res.ok, text: res.message });
@@ -257,6 +260,18 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                 className="w-full rounded border px-3 py-1.5 text-sm font-mono"
               />
             </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Cash Line <span className="text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="number"
+                value={cashLineInput}
+                onChange={(e) => setCashLineInput(e.target.value)}
+                placeholder="e.g. 285"
+                className="w-24 rounded border px-3 py-1.5 text-sm"
+              />
+            </div>
             <button
               onClick={handleLoadApi}
               disabled={isPending || !contestId.trim()}
@@ -274,6 +289,18 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             <div>
               <label className="text-xs text-gray-500 block mb-1">LineStar CSV (optional)</label>
               <input ref={lsFileRef} type="file" accept=".csv" className="text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Cash Line <span className="text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="number"
+                value={cashLineInput}
+                onChange={(e) => setCashLineInput(e.target.value)}
+                placeholder="e.g. 285"
+                className="w-24 rounded border px-3 py-1.5 text-sm"
+              />
             </div>
             <button
               onClick={handleUpload}

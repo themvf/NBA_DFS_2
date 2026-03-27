@@ -334,15 +334,17 @@ function parseSlateDate(gameInfo: string): string | null {
 export async function processDkSlate(formData: FormData): Promise<{
   ok: boolean; message: string; playerCount?: number; matchRate?: number;
 }> {
-  const dkFile = formData.get("dkFile") as File | null;
-  const lsFile = formData.get("lsFile") as File | null;
+  const dkFile    = formData.get("dkFile") as File | null;
+  const lsFile    = formData.get("lsFile") as File | null;
+  const cashLineStr = formData.get("cashLine") as string | null;
   if (!dkFile) return { ok: false, message: "DK CSV required" };
 
   const dkPlayers_ = parseDkCsv(await dkFile.text());
   if (dkPlayers_.length === 0) return { ok: false, message: "No players parsed from DK CSV" };
 
-  const lsMap = lsFile ? parseLinestarCsv(await lsFile.text()) : new Map<string, LinestarEntry>();
-  return enrichAndSave(dkPlayers_, lsMap);
+  const lsMap   = lsFile ? parseLinestarCsv(await lsFile.text()) : new Map<string, LinestarEntry>();
+  const cashLine = cashLineStr ? parseFloat(cashLineStr) : undefined;
+  return enrichAndSave(dkPlayers_, lsMap, isNaN(cashLine!) ? undefined : cashLine);
 }
 
 // ── Shared enrichment (used by both CSV and API paths) ───────
@@ -350,6 +352,7 @@ export async function processDkSlate(formData: FormData): Promise<{
 async function enrichAndSave(
   dkPlayers_: DkApiPlayer[],
   lsMap: Map<string, LinestarEntry>,
+  cashLine?: number,
 ): Promise<{ ok: boolean; message: string; playerCount?: number; matchRate?: number }> {
   let slateDate = "";
   for (const p of dkPlayers_) {
@@ -360,10 +363,13 @@ async function enrichAndSave(
 
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 
+  const slateValues: { slateDate: string; gameCount: number; cashLine?: number } = { slateDate, gameCount };
+  if (cashLine != null) slateValues.cashLine = cashLine;
+
   const [slate] = await db
     .insert(dkSlates)
-    .values({ slateDate, gameCount })
-    .onConflictDoUpdate({ target: dkSlates.slateDate, set: { gameCount } })
+    .values(slateValues)
+    .onConflictDoUpdate({ target: dkSlates.slateDate, set: { gameCount, ...(cashLine != null ? { cashLine } : {}) } })
     .returning({ id: dkSlates.id });
   const slateId = slate.id;
 
@@ -474,7 +480,7 @@ async function enrichAndSave(
   };
 }
 
-export async function loadSlateFromContestId(contestId: string): Promise<{
+export async function loadSlateFromContestId(contestId: string, cashLine?: number): Promise<{
   ok: boolean; message: string; playerCount?: number;
 }> {
   try {
@@ -482,7 +488,7 @@ export async function loadSlateFromContestId(contestId: string): Promise<{
     const players  = await fetchDkPlayersFromApi(dgId);
     if (players.length === 0) return { ok: false, message: "No players returned from DK API" };
     // LineStar: skip for now (no cookie in browser flow)
-    const result = await enrichAndSave(players, new Map());
+    const result = await enrichAndSave(players, new Map(), cashLine);
     return { ...result, message: `[API] ${result.message}` };
   } catch (e) {
     return { ok: false, message: String(e) };
