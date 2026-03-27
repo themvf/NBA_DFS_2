@@ -516,9 +516,11 @@ export async function runOptimizer(
       dp.our_proj AS "ourProj", dp.our_leverage AS "ourLeverage",
       dp.linestar_proj AS "linestarProj", dp.proj_own_pct AS "projOwnPct",
       dp.is_out AS "isOut", dp.game_info AS "gameInfo",
-      t.logo_url AS "teamLogo", t.name AS "teamName"
+      t.logo_url AS "teamLogo", t.name AS "teamName",
+      m.home_team_id AS "homeTeamId"
     FROM dk_players dp
     LEFT JOIN teams t ON t.team_id = dp.team_id
+    LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
     WHERE dp.slate_id = ${slateId}
   `);
 

@@ -74,6 +74,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [nLineups, setNLineups] = useState(20);
   const [minStack, setMinStack] = useState(2);
   const [maxExposure, setMaxExposure] = useState(0.6);
+  const [bringBackThreshold, setBringBackThreshold] = useState(3);
   const [strategy, setStrategy] = useState("gpp");
 
   // ── Lineups ───────────────────────────────────────────────
@@ -173,7 +174,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       .map((g) => gameToMatchup.get(g))
       .filter((id): id is number => id != null);
 
-    const settings: OptimizerSettings = { mode, nLineups, minStack, maxExposure };
+    const settings: OptimizerSettings = { mode, nLineups, minStack, maxExposure, bringBackThreshold };
     const res = await runOptimizer(players[0].slateId, gameFilter, settings);
     setIsOptimizing(false);
     if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
@@ -398,6 +399,21 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               <option value={0.6}>60%</option>
               <option value={0.7}>70%</option>
               <option value={1.0}>100%</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">
+              Bring-back{" "}
+              <span className="text-gray-400 font-normal">(GPP)</span>
+            </label>
+            <select
+              value={bringBackThreshold}
+              onChange={(e) => setBringBackThreshold(parseInt(e.target.value))}
+              className="rounded border px-2 py-1 text-sm"
+            >
+              <option value={0}>Off</option>
+              <option value={3}>3+ → 1 back</option>
+              <option value={2}>2+ → 1 back</option>
             </select>
           </div>
           <button

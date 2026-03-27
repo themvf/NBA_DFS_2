@@ -51,7 +51,10 @@ export type OptimizerPlayer = Pick<
   | "gameInfo"
   | "teamLogo"
   | "teamName"
->;
+> & {
+  /** Home team ID for the player's matchup — used for bring-back enforcement. */
+  homeTeamId: number | null;
+};
 
 export type LineupSlot = "PG" | "SG" | "SF" | "PF" | "C" | "G" | "F" | "UTIL";
 
@@ -68,6 +71,13 @@ export type OptimizerSettings = {
   nLineups: number;
   minStack: number;
   maxExposure: number;
+  /**
+   * Bring-back threshold (GPP only).
+   * If a team contributes ≥ this many players to a lineup, the optimizer
+   * must include ≥ 1 player from their opponent in that matchup.
+   * 0 = disabled; 3 = standard GPP construction (3+1 or 4+1 stacks).
+   */
+  bringBackThreshold: number;
 };
 
 const SALARY_CAP = 50000;
@@ -77,7 +87,7 @@ export function optimizeLineups(
   pool: OptimizerPlayer[],
   settings: OptimizerSettings
 ): GeneratedLineup[] {
-  const { mode, nLineups, minStack, maxExposure } = settings;
+  const { mode, nLineups, minStack, maxExposure, bringBackThreshold } = settings;
 
   const eligible = pool.filter((p) => {
     if (p.isOut) return false;
@@ -93,7 +103,7 @@ export function optimizeLineups(
 
   for (let i = 0; i < nLineups; i++) {
     const maxExp = Math.ceil(nLineups * maxExposure);
-    const lineup = solveOneLineup(eligible, mode, minStack, maxExp, exposureCount, previousLineupSets);
+    const lineup = solveOneLineup(eligible, mode, minStack, maxExp, exposureCount, previousLineupSets, bringBackThreshold);
     if (!lineup) break;
 
     lineups.push(lineup);
@@ -113,7 +123,8 @@ function solveOneLineup(
   minStack: number,
   maxExposureCount: number,
   exposureCount: Map<number, number>,
-  previousLineupSets: Set<number>[]
+  previousLineupSets: Set<number>[],
+  bringBackThreshold = 3,
 ): GeneratedLineup | null {
   // Group by matchupId for game stacking
   const gamePlayers = new Map<number, OptimizerPlayer[]>();
@@ -125,6 +136,16 @@ function solveOneLineup(
   const stackableGames = Array.from(gamePlayers.entries())
     .filter(([, players]) => players.length >= minStack)
     .map(([mid]) => mid);
+
+  // Bring-back: matchups where both teams have players in the pool
+  // (threshold 0 = disabled; only applies in GPP mode)
+  const bringBackGames: number[] = [];
+  if (mode === "gpp" && bringBackThreshold >= 2) {
+    for (const [mid, players] of gamePlayers) {
+      const teams = new Set(players.map((p) => p.teamId).filter(Boolean));
+      if (teams.size === 2) bringBackGames.push(mid);
+    }
+  }
 
   const minChanges = mode === "gpp" ? 3 : 2;
 
@@ -141,6 +162,21 @@ function solveOneLineup(
     f_count:   { min: 3 },   // SF + PF + F slots (3 F-eligible players needed)
     stack_count: { min: 1 }, // at least one game stacked
   };
+
+  // Bring-back constraints: if team A has ≥ threshold players in the lineup,
+  // team B (their opponent) must have ≥ 1.
+  //
+  // Formulated as two symmetric max-constraints per matchup:
+  //   home_net = Σ home_players - Σ away_players  → home_net ≤ threshold - 1
+  //   away_net = Σ away_players - Σ home_players  → away_net ≤ threshold - 1
+  //
+  // Example (threshold=3): 3 home + 0 away → home_net=3 > 2 → infeasible.
+  // Optimizer must include ≥1 away player (home_net drops to 2 → feasible).
+  const bringBackMax = bringBackThreshold - 1;
+  for (const mid of bringBackGames) {
+    constraints[`bb_home_${mid}`] = { max: bringBackMax };
+    constraints[`bb_away_${mid}`] = { max: bringBackMax };
+  }
 
   for (const p of pool) {
     const used = exposureCount.get(p.id) ?? 0;
@@ -182,6 +218,14 @@ function solveOneLineup(
     // Game stack
     if (p.matchupId != null && stackableGames.includes(p.matchupId)) {
       entry[`game_${p.matchupId}`] = 1;
+    }
+
+    // Bring-back: home team players contribute +1 to home_net, −1 to away_net.
+    // Away team players are the mirror image.
+    if (p.matchupId != null && bringBackGames.includes(p.matchupId) && p.teamId != null) {
+      const isHome = p.teamId === p.homeTeamId;
+      entry[`bb_home_${p.matchupId}`] = isHome ? 1 : -1;
+      entry[`bb_away_${p.matchupId}`] = isHome ? -1 : 1;
     }
 
     // Diversity
