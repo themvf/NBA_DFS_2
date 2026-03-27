@@ -585,6 +585,31 @@ async function enrichAndSave(
     });
   }
 
+  // ── Baseline ownership when LineStar unavailable ────────────
+  // Players without proj_own_pct get a proportional estimate from avg_fpts_dk
+  // or our_proj, anchored at 15% average. This ensures leverage is always
+  // computed so GPP mode works even without a LineStar cookie.
+  const refProjs = insertValues
+    .filter((p) => p.projOwnPct == null)
+    .map((p) => p.avgFptsDk ?? p.ourProj ?? 0)
+    .filter((v) => v > 0);
+  const poolAvg = refProjs.length > 0 ? refProjs.reduce((a, b) => a + b, 0) / refProjs.length : 0;
+
+  if (poolAvg > 0) {
+    for (const p of insertValues) {
+      if (p.projOwnPct != null) continue;
+      const ref = p.avgFptsDk ?? p.ourProj ?? 0;
+      if (!ref) continue;
+      const baseOwn = Math.max(1, Math.min(50, (ref / poolAvg) * 15));
+      p.projOwnPct = Math.round(baseOwn * 100) / 100;
+      // Re-compute leverage now that we have an ownership estimate
+      if (p.ourProj && !p.isOut) {
+        const fieldProj = p.avgFptsDk ?? null;
+        p.ourLeverage = computeLeverage(p.ourProj, p.projOwnPct, fieldProj);
+      }
+    }
+  }
+
   for (let i = 0; i < insertValues.length; i += 50) {
     const batch = insertValues.slice(i, i + 50);
     await db.insert(dkPlayers).values(batch).onConflictDoUpdate({
@@ -608,15 +633,184 @@ async function enrichAndSave(
   };
 }
 
+// ── LineStar API helpers ──────────────────────────────────────
+
+const LS_BASE    = "https://www.linestarapp.com/DesktopModules/DailyFantasyApi/API/Fantasy";
+const LS_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  "Accept": "application/json",
+  "Referer": "https://www.linestarapp.com/DesktopModules/DailyFantasyApi/",
+};
+
+/** Try to fetch LineStar projections + ownership using DNN_COOKIE from env.
+ *  Returns an empty map if the cookie is missing, expired, or the API fails. */
+async function tryFetchLinestarMap(draftGroupId: number): Promise<Map<string, LinestarEntry>> {
+  const cookie = process.env.DNN_COOKIE;
+  if (!cookie) return new Map();
+  try {
+    const periodId = await resolveLinestarPeriodId(draftGroupId, cookie);
+    if (!periodId) return new Map();
+    const data = await fetchLinestarSalaries(periodId, cookie);
+    return parseLinestarApiResponse(data);
+  } catch {
+    return new Map();
+  }
+}
+
+async function resolveLinestarPeriodId(draftGroupId: number, cookie: string): Promise<number | null> {
+  try {
+    const resp = await fetch(`${LS_BASE}/GetPeriodInformation?site=1&sport=5`, {
+      headers: { ...LS_HEADERS, Cookie: `.DOTNETNUKE=${cookie}` },
+      next: { revalidate: 0 },
+    });
+    if (!resp.ok) return null;
+    const periods = await resp.json() as Array<{ PeriodId?: number; Id?: number }>;
+    const list = Array.isArray(periods) ? periods : (periods as { Periods?: typeof periods }).Periods ?? [];
+    for (const period of list.slice(0, 10)) {
+      const pid = period.PeriodId ?? period.Id;
+      if (!pid) continue;
+      // Probe: fetch salaries and see if this period matches our draft group
+      const probe = await fetchLinestarSalaries(pid, cookie).catch(() => null);
+      if (!probe) continue;
+      const slates = (probe as { Slates?: Array<{ DfsSlateId?: number }> }).Slates ?? [];
+      if (slates.some((s) => s.DfsSlateId === draftGroupId)) return pid;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchLinestarSalaries(periodId: number, cookie: string): Promise<unknown> {
+  const resp = await fetch(`${LS_BASE}/GetSalariesV5?periodId=${periodId}&site=1&sport=5`, {
+    headers: { ...LS_HEADERS, Cookie: `.DOTNETNUKE=${cookie}` },
+    next: { revalidate: 0 },
+  });
+  if (!resp.ok) throw new Error(`LineStar ${resp.status}`);
+  return resp.json();
+}
+
+function parseLinestarApiResponse(data: unknown): Map<string, LinestarEntry> {
+  const d = data as {
+    SalaryContainerJson?: string;
+    Ownership?: { Projected?: Record<string, Array<{ SalaryId: number; Owned: number }>> };
+  };
+  const map = new Map<string, LinestarEntry>();
+  if (!d.SalaryContainerJson) return map;
+  let container: { Salaries?: Array<{ Id: number; Name: string; SAL: number; PP: number; STAT?: number; IS?: number }> };
+  try { container = JSON.parse(d.SalaryContainerJson); } catch { return map; }
+
+  // Build salary-id → avg ownership map
+  const ownTotals = new Map<number, number>(); const ownCounts = new Map<number, number>();
+  for (const entries of Object.values(d.Ownership?.Projected ?? {})) {
+    if (!Array.isArray(entries)) continue;
+    for (const e of entries) {
+      ownTotals.set(e.SalaryId, (ownTotals.get(e.SalaryId) ?? 0) + e.Owned);
+      ownCounts.set(e.SalaryId, (ownCounts.get(e.SalaryId) ?? 0) + 1);
+    }
+  }
+
+  for (const p of container.Salaries ?? []) {
+    const isOut = p.STAT === 4 || p.IS === 1;
+    const proj  = parseFloat(String(p.PP)) || 0;
+    const own   = ownCounts.get(p.Id) ? (ownTotals.get(p.Id)! / ownCounts.get(p.Id)!) : 0;
+    const key   = `${p.Name.toLowerCase()}|${p.SAL}`;
+    map.set(key, { linestarProj: proj, projOwnPct: own, isOut });
+  }
+  return map;
+}
+
+/** Check if the DNN_COOKIE in Vercel env is valid without fetching full data. */
+export async function checkLinestarCookie(): Promise<{ ok: boolean; message: string }> {
+  const cookie = process.env.DNN_COOKIE;
+  if (!cookie) return { ok: false, message: "DNN_COOKIE not set — add it to Vercel env vars" };
+  try {
+    const resp = await fetch(`${LS_BASE}/GetPeriodInformation?site=1&sport=5`, {
+      headers: { ...LS_HEADERS, Cookie: `.DOTNETNUKE=${cookie}` },
+      next: { revalidate: 0 },
+    });
+    if (resp.status === 401 || resp.status === 403)
+      return { ok: false, message: "Cookie expired — update DNN_COOKIE in Vercel → Settings → Environment Variables" };
+    if (!resp.ok)
+      return { ok: false, message: `LineStar returned HTTP ${resp.status}` };
+    return { ok: true, message: "LineStar cookie is valid" };
+  } catch (e) {
+    return { ok: false, message: `Connection failed: ${String(e)}` };
+  }
+}
+
+/**
+ * Re-inject LineStar projections + ownership into the current slate by
+ * uploading a LineStar salary CSV manually. Recomputes our_leverage for
+ * every matched player. Useful when DNN_COOKIE is expired but you can still
+ * export the LineStar CSV from the browser.
+ */
+export async function uploadLinestarCsv(formData: FormData): Promise<{
+  ok: boolean; message: string; matched: number; total: number;
+}> {
+  const file = formData.get("lsFile") as File | null;
+  if (!file) return { ok: false, message: "No file provided", matched: 0, total: 0 };
+
+  const lsMap = parseLinestarCsv(await file.text());
+  if (lsMap.size === 0) return { ok: false, message: "No players parsed from LineStar CSV", matched: 0, total: 0 };
+
+  // Target most recent slate
+  const slateRows = await db
+    .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+    .from(dkSlates)
+    .orderBy(desc(dkSlates.slateDate))
+    .limit(1);
+  if (!slateRows[0]) return { ok: false, message: "No slate loaded yet", matched: 0, total: 0 };
+  const slateId = slateRows[0].id;
+
+  const pool = await db
+    .select({
+      id: dkPlayers.id, name: dkPlayers.name, salary: dkPlayers.salary,
+      avgFptsDk: dkPlayers.avgFptsDk, ourProj: dkPlayers.ourProj, isOut: dkPlayers.isOut,
+    })
+    .from(dkPlayers)
+    .where(eq(dkPlayers.slateId, slateId));
+
+  let matched = 0;
+  for (const p of pool) {
+    const ls = findLinestarMatch(p.name, p.salary, lsMap);
+    if (!ls) continue;
+    matched++;
+    // Recompute leverage with real ownership
+    let ourLeverage: number | null = null;
+    if (p.ourProj && !p.isOut && ls.projOwnPct != null) {
+      const fieldProj = p.avgFptsDk ?? ls.linestarProj ?? null;
+      ourLeverage = computeLeverage(p.ourProj, ls.projOwnPct, fieldProj);
+    }
+    await db.update(dkPlayers)
+      .set({
+        linestarProj: ls.linestarProj,
+        projOwnPct:   ls.projOwnPct,
+        isOut:        ls.isOut || (p.isOut ?? false),
+        ourLeverage,
+      })
+      .where(eq(dkPlayers.id, p.id));
+  }
+
+  revalidatePath("/dfs");
+  return {
+    ok: true,
+    message: `LineStar data applied — ${matched}/${pool.length} players matched (${Math.round(matched / pool.length * 100)}%)`,
+    matched,
+    total: pool.length,
+  };
+}
+
 export async function loadSlateFromContestId(contestId: string, cashLine?: number): Promise<{
   ok: boolean; message: string; playerCount?: number;
 }> {
   try {
-    const dgId     = await resolveDraftGroupId(parseInt(contestId, 10));
-    const players  = await fetchDkPlayersFromApi(dgId);
+    const dgId    = await resolveDraftGroupId(parseInt(contestId, 10));
+    const players = await fetchDkPlayersFromApi(dgId);
     if (players.length === 0) return { ok: false, message: "No players returned from DK API" };
-    // LineStar: skip for now (no cookie in browser flow)
-    const result = await enrichAndSave(players, new Map(), cashLine, dgId);
+    // Auto-fetch LineStar if DNN_COOKIE is available in the server environment
+    const lsMap = await tryFetchLinestarMap(dgId);
+    const result = await enrichAndSave(players, lsMap, cashLine, dgId);
     return { ...result, message: `[API] ${result.message}` };
   } catch (e) {
     return { ok: false, message: String(e) };

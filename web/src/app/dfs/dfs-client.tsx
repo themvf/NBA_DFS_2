@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus } from "./actions";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -95,6 +95,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Status refresh ────────────────────────────────────────
   const [refreshMsg, setRefreshMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // ── LineStar manual upload ────────────────────────────────
+  const lsUploadRef = useRef<HTMLInputElement>(null);
+  const [lsUploadMsg, setLsUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isUploadingLs, setIsUploadingLs] = useState(false);
+
+  // ── LineStar cookie status ────────────────────────────────
+  const [cookieStatus, setCookieStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [isCheckingCookie, setIsCheckingCookie] = useState(false);
 
   // ── Filtered + sorted player pool ─────────────────────────
   const filteredPlayers = useMemo(() => {
@@ -228,6 +237,26 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setRefreshMsg({ ok: res.ok, text: res.message });
   }
 
+  async function handleUploadLinestarCsv() {
+    const file = lsUploadRef.current?.files?.[0];
+    if (!file) { setLsUploadMsg({ ok: false, text: "Select a LineStar CSV first" }); return; }
+    setIsUploadingLs(true);
+    setLsUploadMsg(null);
+    const fd = new FormData();
+    fd.append("lsFile", file);
+    const res = await uploadLinestarCsv(fd);
+    setIsUploadingLs(false);
+    setLsUploadMsg({ ok: res.ok, text: res.message });
+  }
+
+  async function handleCheckCookie() {
+    setIsCheckingCookie(true);
+    setCookieStatus(null);
+    const res = await checkLinestarCookie();
+    setIsCheckingCookie(false);
+    setCookieStatus(res);
+  }
+
   // ── Render ────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -352,6 +381,50 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             )}
           </div>
         )}
+
+        {/* LineStar tools — manual CSV upload + cookie health check */}
+        <div className="mt-3 pt-3 border-t space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-600">LineStar</span>
+            <button
+              onClick={handleCheckCookie}
+              disabled={isCheckingCookie}
+              className="rounded border px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {isCheckingCookie ? "Checking…" : "Check Cookie"}
+            </button>
+            {cookieStatus && (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                cookieStatus.ok
+                  ? "bg-green-100 text-green-800"
+                  : "bg-red-100 text-red-700"
+              }`}>
+                {cookieStatus.ok ? "✓ Valid" : "✗ Expired"} — {cookieStatus.message}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                LineStar CSV <span className="text-gray-400">(manual upload when cookie expired)</span>
+              </label>
+              <input ref={lsUploadRef} type="file" accept=".csv" className="text-sm" />
+            </div>
+            <button
+              onClick={handleUploadLinestarCsv}
+              disabled={isUploadingLs}
+              className="rounded bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
+            >
+              {isUploadingLs ? "Uploading…" : "Upload LineStar CSV"}
+            </button>
+            {lsUploadMsg && (
+              <span className={`text-sm ${lsUploadMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {lsUploadMsg.text}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Game Filter */}

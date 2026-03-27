@@ -199,6 +199,30 @@ def compute_our_projection(
 # ── Leverage ──────────────────────────────────────────────────────────────────
 
 
+def compute_baseline_ownership(
+    ref_proj: float,
+    pool_avg_proj: float,
+    anchor: float = 15.0,
+) -> float:
+    """Estimate contest ownership % from a player's projection relative to the pool.
+
+    Used when LineStar ownership data is unavailable. Proportional model:
+      own = anchor × (ref_proj / pool_avg_proj)
+    where anchor ≈ 15% (empirically: 800% total ownership / ~53 rostered players).
+
+    Caps at [1%, 50%] to stay realistic.
+
+    Args:
+        ref_proj:      Player projection — avg_fpts_dk preferred, else our_proj.
+        pool_avg_proj: Average ref_proj across the player pool.
+        anchor:        Expected average ownership % (default 15%).
+    """
+    if pool_avg_proj <= 0:
+        return anchor
+    own = anchor * (ref_proj / pool_avg_proj)
+    return round(max(1.0, min(50.0, own)), 2)
+
+
 def compute_leverage(
     our_proj: float,
     proj_own_pct: float,

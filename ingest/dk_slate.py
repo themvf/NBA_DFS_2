@@ -32,7 +32,7 @@ from rapidfuzz import fuzz, process
 from config import load_config
 from db.database import DatabaseManager
 from db.queries import build_team_abbrev_cache, upsert_dk_player, upsert_dk_slate
-from model.dfs_projections import compute_leverage, compute_our_projection
+from model.dfs_projections import compute_baseline_ownership, compute_leverage, compute_our_projection
 
 logger = logging.getLogger(__name__)
 
@@ -274,11 +274,43 @@ def build_player_pool(
 
         enriched.append(result)
 
+    # ── Baseline ownership when LineStar is unavailable ──────────────────────
+    # Compute pool average of the reference projection (avg_fpts_dk preferred).
+    # Players that already have LineStar proj_own_pct keep it unchanged.
+    ref_projs = [
+        (p.get("avg_fpts_dk") or p.get("our_proj") or 0)
+        for p in enriched
+        if not p.get("proj_own_pct")   # only for players without real ownership
+    ]
+    pool_avg = sum(ref_projs) / len(ref_projs) if ref_projs else 0.0
+
+    baseline_applied = 0
+    for p in enriched:
+        if p.get("proj_own_pct") is not None:
+            continue   # real LineStar data — keep it
+        ref = p.get("avg_fpts_dk") or p.get("our_proj") or 0
+        if not ref or pool_avg <= 0:
+            continue
+        p["proj_own_pct"] = compute_baseline_ownership(ref, pool_avg)
+        # Re-compute leverage with the now-available ownership estimate
+        proj_for_lev = 0 if p.get("is_out") else (p.get("our_proj") or p.get("linestar_proj"))
+        if proj_for_lev:
+            stats_row = None   # already folded into our_proj; no raw stats here
+            field_proj = p.get("avg_fpts_dk") or p.get("linestar_proj")
+            p["our_leverage"] = compute_leverage(
+                proj_for_lev,
+                p["proj_own_pct"],
+                field_proj=field_proj,
+            )
+        baseline_applied += 1
+
     n = len(dk_players)
     print(f"  {n} DK players processed")
     print(f"  LineStar match: {matched_linestar}/{n} ({100*matched_linestar//n if n else 0}%)")
     print(f"  Team resolved:  {matched_team}/{n}")
     print(f"  Stats matched:  {matched_stats}/{n}")
+    if baseline_applied:
+        print(f"  Baseline own%:  {baseline_applied} players (no LineStar data)")
     return enriched
 
 
