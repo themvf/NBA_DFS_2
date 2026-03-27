@@ -160,7 +160,10 @@ function solveOneLineup(
     c_count:   { min: 1 },   // C slot
     g_count:   { min: 3 },   // PG + SG + G slots (3 G-eligible players needed)
     f_count:   { min: 3 },   // SF + PF + F slots (3 F-eligible players needed)
-    stack_count: { min: 1 }, // at least one game stacked
+    // Stack constraint only applies when games with enough players exist.
+    // If matchupId is null for all players (no schedule data), omitting this
+    // prevents the solver from being immediately infeasible.
+    ...(stackableGames.length > 0 ? { stack_count: { min: 1 } } : {}),
   };
 
   // Bring-back constraints: if team A has ≥ threshold players in the lineup,

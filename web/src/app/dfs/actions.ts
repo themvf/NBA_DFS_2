@@ -803,9 +803,10 @@ async function _applyLinestarMap(
       const fieldProj = p.avgFptsDk ?? ls.linestarProj ?? null;
       ourLeverage = computeLeverage(p.ourProj, ls.projOwnPct, fieldProj);
     }
+    // Do NOT touch isOut — DK API status is the authoritative source.
+    // LineStar proj=0 does not mean the player is scratched.
     await db.update(dkPlayers)
-      .set({ linestarProj: ls.linestarProj, projOwnPct: ls.projOwnPct,
-             isOut: ls.isOut || (p.isOut ?? false), ourLeverage })
+      .set({ linestarProj: ls.linestarProj, projOwnPct: ls.projOwnPct, ourLeverage })
       .where(eq(dkPlayers.id, p.id));
   }
 
@@ -953,6 +954,18 @@ export async function runOptimizer(
 
   try {
     const lineups = optimizeLineups(pool, settings);
+    if (lineups.length === 0) {
+      const eligible = pool.filter((p) => {
+        if (p.isOut) return false;
+        const score = settings.mode === "gpp" ? p.ourLeverage : p.ourProj;
+        return score != null && (score as number) > 0 && p.salary > 0;
+      });
+      return {
+        ok: false,
+        error: `No lineups generated — ${eligible.length} eligible players in pool. ` +
+          `Check: position coverage, salary cap headroom, game stacking requirements, or reduce lineup count.`,
+      };
+    }
     return { ok: true, lineups };
   } catch (e) {
     return { ok: false, error: String(e) };
