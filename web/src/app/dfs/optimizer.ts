@@ -91,8 +91,12 @@ export function optimizeLineups(
 
   const eligible = pool.filter((p) => {
     if (p.isOut) return false;
-    const score = mode === "gpp" ? p.ourLeverage : p.ourProj;
-    return score != null && score > 0 && p.salary > 0;
+    // Use ourProj for eligibility in both modes: any player who can score is
+    // a valid lineup member (serves as a salary filler in GPP if leverage < 0).
+    // Excluding negative-leverage players from the ILP entirely can make the
+    // salary-cap constraint infeasible when all positive-leverage players are
+    // high-salary. The objective function naturally minimises their usage.
+    return p.ourProj != null && p.ourProj > 0 && p.salary > 0;
   });
 
   if (eligible.length < ROSTER_SIZE) return [];

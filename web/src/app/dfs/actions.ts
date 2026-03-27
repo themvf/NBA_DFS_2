@@ -967,8 +967,7 @@ export async function runOptimizer(
     if (lineups.length === 0) {
       const eligible = pool.filter((p) => {
         if (p.isOut) return false;
-        const score = settings.mode === "gpp" ? p.ourLeverage : p.ourProj;
-        return score != null && (score as number) > 0 && p.salary > 0;
+        return p.ourProj != null && (p.ourProj as number) > 0 && p.salary > 0;
       });
       const guards   = eligible.filter((p) => p.eligiblePositions.includes("PG") || p.eligiblePositions.includes("SG")).length;
       const forwards = eligible.filter((p) => p.eligiblePositions.includes("SF") || p.eligiblePositions.includes("PF")).length;
