@@ -202,41 +202,41 @@ def compute_our_projection(
 def compute_leverage(
     our_proj: float,
     proj_own_pct: float,
-    our_win_prob: float | None = None,
-    vegas_win_prob: float | None = None,
-    contrarian_factor: float = 0.7,
+    field_proj: float | None = None,
     spg: float = 0.0,
     bpg: float = 0.0,
+    contrarian_factor: float = 0.7,
 ) -> float:
     """Compute GPP leverage score for a player.
 
-    Combines projected FPTS, projected ownership (lower = more leverage),
-    and a ceiling bonus for high-variance players (big steal/block upside).
+    Core idea: leverage measures how much MORE we like a player than the field
+    does, amplified at low ownership.  A negative score means the model is
+    below-field on this player — they should be faded in GPP.
+
+        edge     = our_proj − field_proj
+        leverage = edge × (1 − own_pct/100)^contrarian × ceiling_bonus
 
     Args:
         our_proj:          Our projected DK FPTS.
         proj_own_pct:      Projected ownership % (0–100).
-        our_win_prob:      Our model win probability (not used in NBA — pass None).
-        vegas_win_prob:    Vegas implied win probability (not used in NBA — pass None).
+        field_proj:        Best available estimate of what drives field ownership:
+                             1st choice — avg_fpts_dk (DK's projection on the salary page,
+                               which is what most contestants use when building lineups)
+                             2nd choice — linestar_proj
+                             Falls back to our_proj if neither is available (positive
+                             leverage for all projected players; old behaviour).
+        spg:               Steals per game — ceiling/boom proxy.
+        bpg:               Blocks per game — ceiling/boom proxy.
         contrarian_factor: Ownership discount exponent (0.7 = moderate contrarian).
-        spg:               Steals per game — boom-game proxy.
-        bpg:               Blocks per game — boom-game proxy.
 
     Returns:
-        Leverage score (higher = better GPP play).
+        Leverage score. Positive = good GPP target (we like more than field at
+        low ownership). Negative = fade (below-field view or over-owned).
     """
-    own_fraction = max(0.0, min(1.0, proj_own_pct / 100))
-    base = our_proj * (1 - own_fraction) ** contrarian_factor
+    # Edge: how much more bullish we are than the market
+    edge = (our_proj - field_proj) if field_proj is not None else our_proj
 
-    # Edge multiplier: amplify when our model disagrees with Vegas win prob.
-    # In NBA we typically don't run a separate win-prob model, so this stays 1.0.
-    if our_win_prob is not None and vegas_win_prob is not None and vegas_win_prob > 0:
-        edge = max(0.0, our_win_prob - vegas_win_prob)
-        base *= 1 + edge * 2
-
-    # Ceiling bonus: players with high steal/block upside can boom in ways
-    # that pace/defense adjustments don't fully capture
-    ceiling_bonus = 1.0 + spg * 0.05 + bpg * 0.04
-    base *= ceiling_bonus
-
-    return round(base, 3)
+    own_fraction   = max(0.0, min(1.0, proj_own_pct / 100.0))
+    ceiling_bonus  = 1.0 + spg * 0.05 + bpg * 0.04
+    leverage       = edge * (1.0 - own_fraction) ** contrarian_factor * ceiling_bonus
+    return round(leverage, 3)

@@ -469,7 +469,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                         {delta != null ? (delta >= 0 ? "+" : "") + delta.toFixed(1) : "—"}
                       </td>
                       <td className="px-3 py-1.5 text-xs">{p.projOwnPct != null ? p.projOwnPct.toFixed(1) + "%" : "—"}</td>
-                      <td className="px-3 py-1.5 text-xs font-medium">{fmt1(p.ourLeverage)}</td>
+                      <td className={`px-3 py-1.5 text-xs font-medium ${
+                        p.ourLeverage == null ? "" :
+                        p.ourLeverage > 0 ? "text-green-700" : "text-red-400"
+                      }`}>{fmt1(p.ourLeverage)}</td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{value != null ? value.toFixed(2) : "—"}</td>
                     </tr>
                   );

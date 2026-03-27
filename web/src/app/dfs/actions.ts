@@ -214,13 +214,18 @@ function computeOurProjection(
 function computeLeverage(
   ourProj: number,
   projOwnPct: number,
+  fieldProj: number | null = null,
   spg = 0,
   bpg = 0,
   contrarianFactor = 0.7,
 ): number {
+  // edge = how much more bullish we are than the field's expectation.
+  // fieldProj priority: avg_fpts_dk (DK's salary-page projection, which drives
+  // most contest ownership) → linestar_proj → fallback to ourProj (old behaviour).
+  const edge         = fieldProj != null ? ourProj - fieldProj : ourProj;
   const ownFraction  = Math.max(0, Math.min(1, projOwnPct / 100));
   const ceilingBonus = 1.0 + spg * 0.05 + bpg * 0.04;
-  return Math.round(ourProj * Math.pow(1 - ownFraction, contrarianFactor) * ceilingBonus * 1000) / 1000;
+  return Math.round(edge * Math.pow(1 - ownFraction, contrarianFactor) * ceilingBonus * 1000) / 1000;
 }
 
 // ── DK API fetcher ────────────────────────────────────────────
@@ -444,7 +449,10 @@ async function enrichAndSave(
 
     const projForLev = ls?.isOut ? 0 : (ourProj ?? ls?.linestarProj ?? 0);
     if (projForLev && ls?.projOwnPct != null) {
-      ourLeverage = computeLeverage(projForLev, ls.projOwnPct, spgForLev, bpgForLev);
+      // field_proj: DK's own projection is the primary ownership driver in the field;
+      // LineStar is a reasonable fallback when avg_fpts_dk is unavailable.
+      const fieldProj = p.avgFptsDk ?? ls?.linestarProj ?? null;
+      ourLeverage = computeLeverage(projForLev, ls.projOwnPct, fieldProj, spgForLev, bpgForLev);
     }
 
     insertValues.push({

@@ -254,9 +254,13 @@ def build_player_pool(
         proj_for_leverage = 0 if is_out else (our_proj or result.get("linestar_proj"))
         our_leverage = None
         if proj_for_leverage and result.get("proj_own_pct") is not None:
+            # field_proj = what other contestants see; DK's projection is the
+            # primary ownership driver; LineStar is a reasonable fallback.
+            field_proj = p.get("avg_fpts_dk") or result.get("linestar_proj")
             our_leverage = compute_leverage(
                 proj_for_leverage,
                 result["proj_own_pct"],
+                field_proj=field_proj,
                 spg=stats.get("spg", 0.0) if stats else 0.0,
                 bpg=stats.get("bpg", 0.0) if stats else 0.0,
             )

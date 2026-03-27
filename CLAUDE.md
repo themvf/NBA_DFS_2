@@ -41,6 +41,7 @@ PTS × 1.0 | REB × 1.25 | AST × 1.5 | STL × 2.0 | BLK × 2.0 | TOV × -0.5
 - **`avg_minutes` directly from the API** — do not derive from min_pct × 48.
 - **Assists** get partial pace adjustment (50% of `combined_env`) in addition to defensive factor.
 - **DD rate** scaled by `adjusted_env` — more possessions = more double-double chances.
+- **Leverage = edge × contrarian × ceiling**, where `edge = our_proj − field_proj`. `field_proj` priority: `avg_fpts_dk` (DK's salary-page projection, which drives most contest ownership) → `linestar_proj` → fallback to raw `our_proj`. Negative leverage = below-field on this player → correct GPP fade. The optimizer filters `leverage > 0` for GPP mode, so negative-leverage players are excluded from GPP pools.
 
 ### League Average Constants (2025-26)
 ```python
