@@ -336,7 +336,7 @@ async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[
       })
       .join("/");
 
-    // DK's own FPTS projection (stat attribute id=279)
+    // DK's own FPTS projection (stat attribute id=219)
     let avgFptsDk: number | null = null;
     for (const attr of (canonical.draftStatAttributes as { id: number; value: string }[] ?? [])) {
       if (attr.id === 219) { avgFptsDk = parseFloat(attr.value) || null; break; }
