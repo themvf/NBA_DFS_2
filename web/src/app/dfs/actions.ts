@@ -615,6 +615,7 @@ async function enrichAndSave(
       gameInfo: p.gameInfo, avgFptsDk: p.avgFptsDk,
       linestarProj: ls?.linestarProj ?? null, projOwnPct: ls?.projOwnPct ?? null,
       ourProj, ourLeverage, isOut,
+      _spg: spgForLev, _bpg: bpgForLev,  // transient: ceiling bonus for leverage recalc
     });
   }
 
@@ -638,13 +639,13 @@ async function enrichAndSave(
       // Re-compute leverage now that we have an ownership estimate
       if (p.ourProj && !p.isOut) {
         const fieldProj = p.avgFptsDk ?? null;
-        p.ourLeverage = computeLeverage(p.ourProj, p.projOwnPct, fieldProj);
+        p.ourLeverage = computeLeverage(p.ourProj, p.projOwnPct, fieldProj, p._spg, p._bpg);
       }
     }
   }
 
   for (let i = 0; i < insertValues.length; i += 50) {
-    const batch = insertValues.slice(i, i + 50);
+    const batch = insertValues.slice(i, i + 50).map(({ _spg, _bpg, ...rest }) => rest);
     await db.insert(dkPlayers).values(batch).onConflictDoUpdate({
       target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
       set: {
@@ -793,23 +794,43 @@ async function _applyLinestarMap(
   if (!slateRows[0]) return { ok: false, message: "No slate loaded yet", matched: 0, total: 0 };
   const slateId = slateRows[0].id;
 
-  const pool = await db
-    .select({
-      id: dkPlayers.id, name: dkPlayers.name, salary: dkPlayers.salary,
-      avgFptsDk: dkPlayers.avgFptsDk, ourProj: dkPlayers.ourProj, isOut: dkPlayers.isOut,
-    })
-    .from(dkPlayers)
-    .where(eq(dkPlayers.slateId, slateId));
+  const pool = await db.execute<{
+    id: number; name: string; salary: number; teamId: number | null;
+    avgFptsDk: number | null; ourProj: number | null; isOut: boolean | null;
+  }>(sql`
+    SELECT id, name, salary, team_id AS "teamId",
+           avg_fpts_dk AS "avgFptsDk", our_proj AS "ourProj", is_out AS "isOut"
+    FROM dk_players WHERE slate_id = ${slateId}
+  `);
+
+  // Load player stats for ceiling bonus (spg/bpg)
+  const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+  const playersByTeam = new Map<number, typeof playerStatRows>();
+  for (const ps of playerStatRows) {
+    const arr = playersByTeam.get(ps.teamId) ?? [];
+    arr.push(ps);
+    playersByTeam.set(ps.teamId, arr);
+  }
 
   let matched = 0;
-  for (const p of pool) {
+  for (const p of pool.rows) {
     const ls = findLinestarMatch(p.name, p.salary, lsMap);
     if (!ls) continue;
     matched++;
     let ourLeverage: number | null = null;
     if (p.ourProj && !p.isOut && ls.projOwnPct != null) {
       const fieldProj = p.avgFptsDk ?? ls.linestarProj ?? null;
-      ourLeverage = computeLeverage(p.ourProj, ls.projOwnPct, fieldProj);
+      // Look up spg/bpg for ceiling bonus
+      let spg = 0, bpg = 0;
+      if (p.teamId) {
+        const candidates = playersByTeam.get(p.teamId) ?? [];
+        let bestDist = 4;
+        for (const ps of candidates) {
+          const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
+          if (d < bestDist) { bestDist = d; spg = ps.spg ?? 0; bpg = ps.bpg ?? 0; }
+        }
+      }
+      ourLeverage = computeLeverage(p.ourProj, ls.projOwnPct, fieldProj, spg, bpg);
     }
     // Do NOT touch isOut — DK API status is the authoritative source.
     // LineStar proj=0 does not mean the player is scratched.
@@ -819,12 +840,12 @@ async function _applyLinestarMap(
   }
 
   revalidatePath("/dfs");
-  const pct = pool.length > 0 ? Math.round(matched / pool.length * 100) : 0;
+  const pct = pool.rows.length > 0 ? Math.round(matched / pool.rows.length * 100) : 0;
   return {
     ok: true,
-    message: `LineStar data applied — ${matched}/${pool.length} players matched (${pct}%)`,
+    message: `LineStar data applied — ${matched}/${pool.rows.length} players matched (${pct}%)`,
     matched,
-    total: pool.length,
+    total: pool.rows.length,
   };
 }
 
