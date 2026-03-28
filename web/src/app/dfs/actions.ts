@@ -351,35 +351,36 @@ export async function backfillTeamStats(): Promise<{ ok: boolean; message: strin
     const dbTeams = await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams);
     const abbrevMap = new Map(dbTeams.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
 
-    let updated = 0;
+    // Collect all valid rows, then single batch upsert (avoids 30 serial DB round-trips)
+    const batch: Array<typeof nbaTeamStats.$inferInsert> = [];
     for (const row of rows) {
       const nbaId = row.TEAM_ID as number;
       const abbrev = NBA_ID_TO_ABBREV[nbaId];
       const teamId = abbrev ? abbrevMap.get(abbrev) : undefined;
       if (!teamId) continue;
+      batch.push({
+        teamId,
+        season: CURRENT_SEASON,
+        pace: (row.PACE as number) ?? null,
+        offRtg: (row.OFF_RATING as number) ?? null,
+        defRtg: (row.DEF_RATING as number) ?? null,
+      });
+    }
 
-      await db.insert(nbaTeamStats)
-        .values({
-          teamId,
-          season: CURRENT_SEASON,
-          pace: row.PACE as number ?? null,
-          offRtg: row.OFF_RATING as number ?? null,
-          defRtg: row.DEF_RATING as number ?? null,
-        })
-        .onConflictDoUpdate({
-          target: [nbaTeamStats.teamId, nbaTeamStats.season],
-          set: {
-            pace: sql`EXCLUDED.pace`,
-            offRtg: sql`EXCLUDED.off_rtg`,
-            defRtg: sql`EXCLUDED.def_rtg`,
-            fetchedAt: sql`NOW()`,
-          },
-        });
-      updated++;
+    if (batch.length > 0) {
+      await db.insert(nbaTeamStats).values(batch).onConflictDoUpdate({
+        target: [nbaTeamStats.teamId, nbaTeamStats.season],
+        set: {
+          pace: sql`EXCLUDED.pace`,
+          offRtg: sql`EXCLUDED.off_rtg`,
+          defRtg: sql`EXCLUDED.def_rtg`,
+          fetchedAt: sql`NOW()`,
+        },
+      });
     }
 
     revalidatePath("/dfs");
-    return { ok: true, message: `Team stats: ${updated}/30 teams updated for ${CURRENT_SEASON}` };
+    return { ok: true, message: `Team stats: ${batch.length}/30 teams updated for ${CURRENT_SEASON}` };
   } catch (e) {
     return { ok: false, message: `Team stats failed: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -387,89 +388,57 @@ export async function backfillTeamStats(): Promise<{ ok: boolean; message: strin
 
 export async function backfillPlayerStats(): Promise<{ ok: boolean; message: string }> {
   try {
-    const dateFrom = new Date(Date.now() - 30 * 86400_000);
-    const mm = String(dateFrom.getMonth() + 1).padStart(2, "0");
-    const dd = String(dateFrom.getDate()).padStart(2, "0");
-    const yyyy = dateFrom.getFullYear();
-
-    const data = await fetchNbaStats("https://stats.nba.com/stats/leaguegamelog", {
+    // LeagueDashPlayerStats with LastNGames=10 returns pre-aggregated per-game averages
+    // (one row per active player) — far smaller payload than LeagueGameLog which returns
+    // one row per player-game and requires client-side grouping + averaging.
+    const data = await fetchNbaStats("https://stats.nba.com/stats/leaguedashplayerstats", {
       Season: CURRENT_SEASON,
       SeasonType: "Regular Season",
-      PlayerOrTeam: "P",
-      Direction: "DESC",
-      Sorter: "DATE",
-      DateFrom: `${mm}/${dd}/${yyyy}`,
+      PerMode: "PerGame",
+      MeasureType: "Base",
+      LastNGames: "10",
     });
     const rows = parseNbaResponse(data);
-    if (rows.length === 0) return { ok: false, message: "No game log data returned" };
+    if (rows.length === 0) return { ok: false, message: "No player stats data returned" };
 
     // Build abbreviation → team_id cache
     const dbTeams = await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams);
     const abbrevMap = new Map(dbTeams.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
 
-    // Group by player, take last 10 games
-    const byPlayer = new Map<number, typeof rows>();
-    for (const row of rows) {
-      const pid = row.PLAYER_ID as number;
-      const arr = byPlayer.get(pid) ?? [];
-      arr.push(row);
-      byPlayer.set(pid, arr);
-    }
-
-    let updated = 0;
-    const N_GAMES = 10;
     const batch: Array<typeof nbaPlayerStats.$inferInsert> = [];
 
-    for (const [playerId, games] of byPlayer) {
-      const recent = games.slice(0, N_GAMES);
-      const n = recent.length;
-      if (n === 0) continue;
+    for (const row of rows) {
+      const playerId = row.PLAYER_ID as number;
+      if (!playerId) continue;
 
-      const name = recent[0].PLAYER_NAME as string;
-      const teamAbbrev = (recent[0].TEAM_ABBREVIATION as string).toUpperCase();
+      const name = row.PLAYER_NAME as string;
+      const teamAbbrev = (row.TEAM_ABBREVIATION as string ?? "").toUpperCase();
       const teamId = abbrevMap.get(teamAbbrev) ?? null;
+      const n = Math.max(Number(row.GP) || 1, 1);
 
-      const avg = (col: string) => recent.reduce((s, r) => s + (Number(r[col]) || 0), 0) / n;
-      const parseMin = (v: unknown) => {
-        const s = String(v ?? "0");
-        if (s.includes(":")) { const [m, sec] = s.split(":"); return Number(m) + Number(sec) / 60; }
-        return Number(s) || 0;
-      };
+      const r = (v: unknown) => Math.round((Number(v) || 0) * 10) / 10;
 
-      const avgMin = recent.reduce((s, r) => s + parseMin(r.MIN), 0) / n;
-      const ppg = avg("PTS"), rpg = avg("REB"), apg = avg("AST");
-      const spg = avg("STL"), bpg = avg("BLK"), tovpg = avg("TOV");
-      const threefgmPg = avg("FG3M");
-      const fgaPg = avg("FGA"), ftaPg = avg("FTA");
+      // DD2 = double-double count over the last N games; divide by GP for rate
+      const dd2 = Number(row.DD2) || 0;
+      const ddRate = Math.round((dd2 / n) * 1000) / 1000;
 
-      // Usage rate proxy
-      const usageRate = avgMin > 0
-        ? Math.round(((fgaPg + 0.44 * ftaPg + tovpg) / Math.max(avgMin / 48 * 200, 1)) * 1000) / 10
-        : 0;
-
-      // Double-double rate
-      const ddCount = recent.filter((r) => {
-        const cats = [Number(r.PTS)||0, Number(r.REB)||0, Number(r.AST)||0,
-                      Number(r.STL)||0, Number(r.BLK)||0];
-        return cats.filter((c) => c >= 10).length >= 2;
-      }).length;
-      const ddRate = Math.round((ddCount / n) * 1000) / 1000;
+      // USG_PCT is a proper usage rate (0–1 scale) from the endpoint; convert to %
+      const usgRaw = Number(row.USG_PCT) || 0;
+      const usageRate = Math.round(usgRaw * 1000) / 10; // e.g. 0.254 → 25.4
 
       batch.push({
         playerId, season: CURRENT_SEASON, teamId, name, position: null, games: n,
-        avgMinutes: Math.round(avgMin * 10) / 10,
-        ppg: Math.round(ppg * 10) / 10, rpg: Math.round(rpg * 10) / 10,
-        apg: Math.round(apg * 10) / 10, spg: Math.round(spg * 10) / 10,
-        bpg: Math.round(bpg * 10) / 10, tovpg: Math.round(tovpg * 10) / 10,
-        threefgmPg: Math.round(threefgmPg * 10) / 10,
+        avgMinutes: r(row.MIN),
+        ppg: r(row.PTS), rpg: r(row.REB), apg: r(row.AST),
+        spg: r(row.STL), bpg: r(row.BLK), tovpg: r(row.TOV),
+        threefgmPg: r(row.FG3M),
         usageRate, ddRate,
       });
-      updated++;
     }
 
-    // Batch upsert
-    for (let i = 0; i < batch.length; i += 50) {
-      const chunk = batch.slice(i, i + 50);
+    // Single batch upsert (Neon handles up to ~500 rows fine)
+    for (let i = 0; i < batch.length; i += 100) {
+      const chunk = batch.slice(i, i + 100);
       await db.insert(nbaPlayerStats).values(chunk).onConflictDoUpdate({
         target: [nbaPlayerStats.playerId, nbaPlayerStats.season],
         set: {
@@ -484,7 +453,7 @@ export async function backfillPlayerStats(): Promise<{ ok: boolean; message: str
     }
 
     revalidatePath("/dfs");
-    return { ok: true, message: `Player stats: ${updated} players updated (last ${N_GAMES} games)` };
+    return { ok: true, message: `Player stats: ${batch.length} players updated (last 10 games)` };
   } catch (e) {
     return { ok: false, message: `Player stats failed: ${e instanceof Error ? e.message : String(e)}` };
   }
