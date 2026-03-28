@@ -119,8 +119,15 @@ export function optimizeLineups(
     relaxed = true;
   }
   if (!probe(effectiveMinStack, effectiveBringBack)) {
-    effectiveMinStack = 0;            // disable stacking too
+    effectiveMinStack  = 0;           // disable stacking too
+    effectiveBringBack = 0;           // bring-back needs gamePlayers, empty when minStack=0
     relaxed = true;
+  }
+  // Third probe: verify even the first lineup (no history, no exposure caps)
+  // is feasible after full relaxation. Does NOT guarantee subsequent lineups
+  // succeed — exposure caps and diversity can still exhaust the pool mid-run.
+  if (relaxed && !probe(effectiveMinStack, effectiveBringBack)) {
+    return [];                        // genuinely infeasible — bail early
   }
 
   // Adaptive diversity: small or thin pools can't sustain 3-player diff between
@@ -167,12 +174,16 @@ function solveOneLineup(
   bringBackThreshold = 3,
   minChanges = mode === "gpp" ? 3 : 2,
 ): GeneratedLineup | null {
-  // Group by matchupId for game stacking
+  // Group by matchupId for game stacking.
+  // When minStack <= 0 stacking is effectively disabled — skip entirely to avoid
+  // polluting the model with trivial helper variables that bloat the B&B tree.
   const gamePlayers = new Map<number, OptimizerPlayer[]>();
-  for (const p of pool) {
-    if (p.matchupId == null) continue;
-    if (!gamePlayers.has(p.matchupId)) gamePlayers.set(p.matchupId, []);
-    gamePlayers.get(p.matchupId)!.push(p);
+  if (minStack > 0) {
+    for (const p of pool) {
+      if (p.matchupId == null) continue;
+      if (!gamePlayers.has(p.matchupId)) gamePlayers.set(p.matchupId, []);
+      gamePlayers.get(p.matchupId)!.push(p);
+    }
   }
   const stackableGames = Array.from(gamePlayers.entries())
     .filter(([, players]) => players.length >= minStack)
@@ -187,6 +198,9 @@ function solveOneLineup(
       if (teams.size === 2) bringBackGames.push(mid);
     }
   }
+
+  const stackableSet = new Set(stackableGames);
+  const bringBackSet = new Set(bringBackGames);
 
   const constraints: SolverModel["constraints"] = {
     salary:    { max: SALARY_CAP },
@@ -264,13 +278,13 @@ function solveOneLineup(
     if (pos.includes("F"))  entry.f_count  = 1;  // SF or PF eligible → F flex
 
     // Game stack
-    if (p.matchupId != null && stackableGames.includes(p.matchupId)) {
+    if (p.matchupId != null && stackableSet.has(p.matchupId)) {
       entry[`game_${p.matchupId}`] = 1;
     }
 
     // Bring-back: home team players contribute +1 to home_net, −1 to away_net.
     // Away team players are the mirror image.
-    if (p.matchupId != null && bringBackGames.includes(p.matchupId) && p.teamId != null) {
+    if (p.matchupId != null && bringBackSet.has(p.matchupId) && p.teamId != null) {
       const isHome = p.teamId === p.homeTeamId;
       entry[`bb_home_${p.matchupId}`] = isHome ? 1 : -1;
       entry[`bb_away_${p.matchupId}`] = isHome ? -1 : 1;
@@ -313,7 +327,7 @@ function solveOneLineup(
   const result = solver.Solve(model);
   if (!result.feasible) return null;
 
-  const selected = pool.filter((p) => result[`p_${p.id}`] === 1);
+  const selected = pool.filter((p) => (result[`p_${p.id}`] ?? 0) >= 0.5);
   if (selected.length !== ROSTER_SIZE) return null;
 
   const slots = assignPositions(selected);
