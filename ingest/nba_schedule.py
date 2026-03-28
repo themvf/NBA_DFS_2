@@ -54,7 +54,7 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
     time.sleep(SLEEP_SECONDS)
 
     def _fetch():
-        return ScoreboardV2(game_date=target_date)
+        return ScoreboardV2(game_date=target_date, timeout=60)
 
     scoreboard = _call_with_retry(_fetch, "ScoreboardV2")
     game_header = scoreboard.game_header.get_data_frame()

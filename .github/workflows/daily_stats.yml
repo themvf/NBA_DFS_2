@@ -34,4 +34,5 @@ jobs:
 
       - name: Fetch today's schedule + Vegas odds
         if: always()  # run even if stats step failed — odds data is independent
+        continue-on-error: true  # stats.nba.com blocks CI IPs; don't fail the whole workflow
         run: python -m ingest.nba_schedule

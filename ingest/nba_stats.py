@@ -106,6 +106,7 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
             season=season,
             per_mode_detailed="PerGame",
             measure_type_detailed_defense="Advanced",
+            timeout=60,
         )
         return endpoint.get_data_frames()[0]
 
@@ -166,6 +167,7 @@ def fetch_player_rolling_stats(db: DatabaseManager, season: str, n_games: int = 
             player_or_team_abbreviation="P",
             direction="DESC",
             date_from_nullable=date_from,
+            timeout=60,
         )
         return endpoint.get_data_frames()[0]
 
