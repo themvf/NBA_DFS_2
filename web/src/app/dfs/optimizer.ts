@@ -346,8 +346,8 @@ function assignPositions(
     }
   };
 
-  // Pure C (no F or G)
-  fill(["C"], (p) => p.eligiblePositions.includes("C") && !p.eligiblePositions.includes("F") && !p.eligiblePositions.includes("G"));
+  // C-eligible (includes PF/C) — assign before PF step consumes them
+  fill(["C"], (p) => p.eligiblePositions.includes("C") && !p.eligiblePositions.includes("G"));
   // Pure PG (no SG)
   fill(["PG"], (p) => p.eligiblePositions.includes("PG") && !p.eligiblePositions.includes("SG"));
   // Pure SG (no PG)
