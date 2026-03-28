@@ -206,7 +206,7 @@ def build_player_pool(
         result = dict(p)
 
         # DK injury status — authoritative; set before LineStar merge
-        dk_is_out = p.get("is_disabled", False) or p.get("dk_status", "None") in ("O", "Out")
+        dk_is_out = p.get("is_disabled", False) or p.get("dk_status", "None").upper() in ("O", "OUT")
 
         # LineStar merge
         ls_key  = (p["name"].lower(), p["salary"])
@@ -271,6 +271,8 @@ def build_player_pool(
                 bpg=stats.get("bpg", 0.0) if stats else 0.0,
             )
         result["our_leverage"] = our_leverage
+        result["_spg"] = stats.get("spg", 0.0) if stats else 0.0
+        result["_bpg"] = stats.get("bpg", 0.0) if stats else 0.0
 
         enriched.append(result)
 
@@ -278,9 +280,10 @@ def build_player_pool(
     # Compute pool average of the reference projection (avg_fpts_dk preferred).
     # Players that already have LineStar proj_own_pct keep it unchanged.
     ref_projs = [
-        (p.get("avg_fpts_dk") or p.get("our_proj") or 0)
-        for p in enriched
-        if not p.get("proj_own_pct")   # only for players without real ownership
+        v for p in enriched
+        if p.get("proj_own_pct") is None   # only for players without real ownership
+        for v in [(p.get("avg_fpts_dk") or p.get("our_proj") or 0)]
+        if v > 0   # exclude zero-projection players from diluting the average
     ]
     pool_avg = sum(ref_projs) / len(ref_projs) if ref_projs else 0.0
 
@@ -295,12 +298,13 @@ def build_player_pool(
         # Re-compute leverage with the now-available ownership estimate
         proj_for_lev = 0 if p.get("is_out") else (p.get("our_proj") or p.get("linestar_proj"))
         if proj_for_lev:
-            stats_row = None   # already folded into our_proj; no raw stats here
             field_proj = p.get("avg_fpts_dk") or p.get("linestar_proj")
             p["our_leverage"] = compute_leverage(
                 proj_for_lev,
                 p["proj_own_pct"],
                 field_proj=field_proj,
+                spg=p.get("_spg", 0.0),
+                bpg=p.get("_bpg", 0.0),
             )
         baseline_applied += 1
 

@@ -19,6 +19,7 @@ TABLES = [
         abbreviation TEXT NOT NULL UNIQUE,
         conference TEXT DEFAULT '',
         division TEXT DEFAULT '',
+        nba_id INTEGER,
         logo_url TEXT DEFAULT '',
         created_at TIMESTAMPTZ DEFAULT NOW()
     )
@@ -68,14 +69,15 @@ TABLES = [
     CREATE TABLE IF NOT EXISTS nba_matchups (
         id SERIAL PRIMARY KEY,
         game_date DATE NOT NULL,
-        game_id TEXT NOT NULL UNIQUE,
+        game_id TEXT UNIQUE,
         home_team_id INTEGER REFERENCES teams(team_id),
         away_team_id INTEGER REFERENCES teams(team_id),
         vegas_total DOUBLE PRECISION,
         home_ml INTEGER,
         away_ml INTEGER,
         vegas_prob_home DOUBLE PRECISION,
-        fetched_at TIMESTAMPTZ DEFAULT NOW()
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(game_date, home_team_id, away_team_id)
     )
     """,
 
@@ -137,7 +139,46 @@ TABLES = [
     """,
 ]
 
-MIGRATIONS = []
+MIGRATIONS = [
+    # 2026-03-28: Relax game_id NOT NULL → nullable so TS web can insert without it
+    "ALTER TABLE nba_matchups ALTER COLUMN game_id DROP NOT NULL",
+    # 2026-03-28: Add composite unique on (game_date, home, away) to match Drizzle schema
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'nba_matchups_date_teams_key'
+        ) THEN
+            ALTER TABLE nba_matchups
+            ADD CONSTRAINT nba_matchups_date_teams_key
+            UNIQUE (game_date, home_team_id, away_team_id);
+        END IF;
+    END $$""",
+    # 2026-03-28: Add nba_id to teams if missing (matches Drizzle schema)
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'teams' AND column_name = 'nba_id'
+        ) THEN
+            ALTER TABLE teams ADD COLUMN nba_id INTEGER;
+        END IF;
+    END $$""",
+    # 2026-03-28: Add position/games to nba_player_stats if missing (matches Drizzle)
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_player_stats' AND column_name = 'position'
+        ) THEN
+            ALTER TABLE nba_player_stats ADD COLUMN position TEXT;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_player_stats' AND column_name = 'games'
+        ) THEN
+            ALTER TABLE nba_player_stats ADD COLUMN games INTEGER;
+        END IF;
+    END $$""",
+]
 
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_nba_team_stats_season ON nba_team_stats(team_id, season)",

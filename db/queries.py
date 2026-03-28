@@ -131,7 +131,8 @@ def upsert_nba_matchup(
             vegas_total, home_ml, away_ml, vegas_prob_home
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (game_id) DO UPDATE SET
+        ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
+            game_id = COALESCE(EXCLUDED.game_id, nba_matchups.game_id),
             vegas_total = EXCLUDED.vegas_total,
             home_ml = EXCLUDED.home_ml,
             away_ml = EXCLUDED.away_ml,

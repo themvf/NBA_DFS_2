@@ -649,6 +649,8 @@ async function enrichAndSave(
     await db.insert(dkPlayers).values(batch).onConflictDoUpdate({
       target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
       set: {
+        salary: sql`EXCLUDED.salary`, teamId: sql`EXCLUDED.team_id`,
+        matchupId: sql`EXCLUDED.matchup_id`,
         linestarProj: sql`EXCLUDED.linestar_proj`, projOwnPct: sql`EXCLUDED.proj_own_pct`,
         ourProj: sql`EXCLUDED.our_proj`, ourLeverage: sql`EXCLUDED.our_leverage`,
         isOut: sql`EXCLUDED.is_out`, avgFptsDk: sql`EXCLUDED.avg_fpts_dk`,

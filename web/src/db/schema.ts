@@ -49,6 +49,8 @@ export const nbaPlayerStats = pgTable(
       .notNull()
       .references(() => teams.teamId),
     name: text("name").notNull(),
+    position: text("position"),
+    games: integer("games"),
     avgMinutes: doublePrecision("avg_minutes"),
     ppg: doublePrecision("ppg"),
     rpg: doublePrecision("rpg"),
@@ -69,6 +71,7 @@ export const nbaMatchups = pgTable(
   {
     id: serial("id").primaryKey(),
     gameDate: date("game_date").notNull(),
+    gameId: text("game_id").unique(),
     homeTeamId: integer("home_team_id").references(() => teams.teamId),
     awayTeamId: integer("away_team_id").references(() => teams.teamId),
     homeMl: integer("home_ml"),

@@ -47,11 +47,16 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
     """
     from nba_api.stats.endpoints import ScoreboardV2
 
+    from ingest.nba_stats import _call_with_retry
+
     target_date = game_date or date.today().isoformat()
     logger.info("Fetching NBA schedule for %s ...", target_date)
     time.sleep(SLEEP_SECONDS)
 
-    scoreboard = ScoreboardV2(game_date=target_date)
+    def _fetch():
+        return ScoreboardV2(game_date=target_date)
+
+    scoreboard = _call_with_retry(_fetch, "ScoreboardV2")
     game_header = scoreboard.game_header.get_data_frame()
 
     if game_header.empty:
