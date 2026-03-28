@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste } from "./actions";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -95,6 +95,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Status refresh ────────────────────────────────────────
   const [refreshMsg, setRefreshMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // ── Backfill season data ──────────────────────────────────
+  const [backfillMsg, setBackfillMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isBackfilling, setIsBackfilling] = useState(false);
 
   // ── LineStar input: CSV file or paste ────────────────────
   const [lsMode, setLsMode] = useState<"csv" | "paste">("paste");
@@ -239,6 +243,16 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const res = await refreshPlayerStatus(players[0].slateId);
     setIsRefreshing(false);
     setRefreshMsg({ ok: res.ok, text: res.message });
+  }
+
+  async function handleBackfill() {
+    setIsBackfilling(true);
+    setBackfillMsg(null);
+    const t1 = await backfillTeamStats();
+    if (!t1.ok) { setIsBackfilling(false); setBackfillMsg({ ok: false, text: t1.message }); return; }
+    const t2 = await backfillPlayerStats();
+    setIsBackfilling(false);
+    setBackfillMsg({ ok: t2.ok, text: `${t1.message}  •  ${t2.message}` });
   }
 
   async function handleUploadLinestarCsv() {
@@ -394,6 +408,25 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             )}
           </div>
         )}
+
+        {/* Season data backfill — replaces GitHub Actions workflow */}
+        <div className="mt-3 pt-3 border-t flex items-center gap-3">
+          <button
+            onClick={handleBackfill}
+            disabled={isBackfilling}
+            className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {isBackfilling ? "Fetching stats…" : "Backfill Season Data"}
+          </button>
+          <span className="text-xs text-gray-400">
+            Fetches team pace/ratings + player rolling averages from stats.nba.com
+          </span>
+          {backfillMsg && (
+            <span className={`text-sm ${backfillMsg.ok ? "text-green-700" : "text-red-600"}`}>
+              {backfillMsg.text}
+            </span>
+          )}
+        </div>
 
         {/* LineStar tools — manual CSV upload + cookie health check */}
         <div className="mt-3 pt-3 border-t space-y-3">

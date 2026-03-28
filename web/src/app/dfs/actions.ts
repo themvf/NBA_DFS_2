@@ -285,6 +285,211 @@ function computePoolOwnership(
   return result;
 }
 
+// ── NBA Stats API (stats.nba.com) backfill ─────────────────────
+
+const NBA_STATS_HEADERS: Record<string, string> = {
+  Referer: "https://stats.nba.com/",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  Accept: "application/json, text/plain, */*",
+  "x-nba-stats-origin": "stats",
+  "x-nba-stats-token": "true",
+};
+
+/** Parse the stats.nba.com response format: { resultSets: [{ headers, rowSet }] } */
+function parseNbaResponse(data: { resultSets: Array<{ headers: string[]; rowSet: unknown[][] }> }) {
+  const rs = data.resultSets[0];
+  return rs.rowSet.map((row) => {
+    const obj: Record<string, unknown> = {};
+    for (let i = 0; i < rs.headers.length; i++) obj[rs.headers[i]] = row[i];
+    return obj;
+  });
+}
+
+/** Fetch with retry (stats.nba.com is flaky). */
+async function fetchNbaStats(url: string, params: Record<string, string>, retries = 3) {
+  const qs = new URLSearchParams(params).toString();
+  let lastErr: unknown;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const resp = await fetch(`${url}?${qs}`, {
+        headers: NBA_STATS_HEADERS,
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!resp.ok) throw new Error(`NBA API ${resp.status}: ${resp.statusText}`);
+      return await resp.json();
+    } catch (e) {
+      lastErr = e;
+      if (i < retries - 1) await new Promise((r) => setTimeout(r, (i + 1) * 5000));
+    }
+  }
+  throw lastErr;
+}
+
+/** NBA numeric team ID → standard 3-letter abbreviation */
+const NBA_ID_TO_ABBREV: Record<number, string> = {
+  1610612737:"ATL",1610612738:"BOS",1610612751:"BKN",1610612766:"CHA",
+  1610612741:"CHI",1610612739:"CLE",1610612742:"DAL",1610612743:"DEN",
+  1610612765:"DET",1610612744:"GSW",1610612745:"HOU",1610612754:"IND",
+  1610612746:"LAC",1610612747:"LAL",1610612763:"MEM",1610612748:"MIA",
+  1610612749:"MIL",1610612750:"MIN",1610612740:"NOP",1610612752:"NYK",
+  1610612760:"OKC",1610612753:"ORL",1610612755:"PHI",1610612756:"PHX",
+  1610612757:"POR",1610612758:"SAC",1610612759:"SAS",1610612761:"TOR",
+  1610612762:"UTA",1610612764:"WAS",
+};
+
+export async function backfillTeamStats(): Promise<{ ok: boolean; message: string }> {
+  try {
+    const data = await fetchNbaStats("https://stats.nba.com/stats/leaguedashteamstats", {
+      Season: CURRENT_SEASON,
+      SeasonType: "Regular Season",
+      MeasureType: "Advanced",
+      PerMode: "PerGame",
+    });
+    const rows = parseNbaResponse(data);
+
+    // Build abbreviation → team_id cache
+    const dbTeams = await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams);
+    const abbrevMap = new Map(dbTeams.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
+
+    let updated = 0;
+    for (const row of rows) {
+      const nbaId = row.TEAM_ID as number;
+      const abbrev = NBA_ID_TO_ABBREV[nbaId];
+      const teamId = abbrev ? abbrevMap.get(abbrev) : undefined;
+      if (!teamId) continue;
+
+      await db.insert(nbaTeamStats)
+        .values({
+          teamId,
+          season: CURRENT_SEASON,
+          pace: row.PACE as number ?? null,
+          offRtg: row.OFF_RATING as number ?? null,
+          defRtg: row.DEF_RATING as number ?? null,
+        })
+        .onConflictDoUpdate({
+          target: [nbaTeamStats.teamId, nbaTeamStats.season],
+          set: {
+            pace: sql`EXCLUDED.pace`,
+            offRtg: sql`EXCLUDED.off_rtg`,
+            defRtg: sql`EXCLUDED.def_rtg`,
+            fetchedAt: sql`NOW()`,
+          },
+        });
+      updated++;
+    }
+
+    revalidatePath("/dfs");
+    return { ok: true, message: `Team stats: ${updated}/30 teams updated for ${CURRENT_SEASON}` };
+  } catch (e) {
+    return { ok: false, message: `Team stats failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+export async function backfillPlayerStats(): Promise<{ ok: boolean; message: string }> {
+  try {
+    const dateFrom = new Date(Date.now() - 30 * 86400_000);
+    const mm = String(dateFrom.getMonth() + 1).padStart(2, "0");
+    const dd = String(dateFrom.getDate()).padStart(2, "0");
+    const yyyy = dateFrom.getFullYear();
+
+    const data = await fetchNbaStats("https://stats.nba.com/stats/leaguegamelog", {
+      Season: CURRENT_SEASON,
+      SeasonType: "Regular Season",
+      PlayerOrTeam: "P",
+      Direction: "DESC",
+      Sorter: "DATE",
+      DateFrom: `${mm}/${dd}/${yyyy}`,
+    });
+    const rows = parseNbaResponse(data);
+    if (rows.length === 0) return { ok: false, message: "No game log data returned" };
+
+    // Build abbreviation → team_id cache
+    const dbTeams = await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams);
+    const abbrevMap = new Map(dbTeams.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
+
+    // Group by player, take last 10 games
+    const byPlayer = new Map<number, typeof rows>();
+    for (const row of rows) {
+      const pid = row.PLAYER_ID as number;
+      const arr = byPlayer.get(pid) ?? [];
+      arr.push(row);
+      byPlayer.set(pid, arr);
+    }
+
+    let updated = 0;
+    const N_GAMES = 10;
+    const batch: Array<typeof nbaPlayerStats.$inferInsert> = [];
+
+    for (const [playerId, games] of byPlayer) {
+      const recent = games.slice(0, N_GAMES);
+      const n = recent.length;
+      if (n === 0) continue;
+
+      const name = recent[0].PLAYER_NAME as string;
+      const teamAbbrev = (recent[0].TEAM_ABBREVIATION as string).toUpperCase();
+      const teamId = abbrevMap.get(teamAbbrev) ?? null;
+
+      const avg = (col: string) => recent.reduce((s, r) => s + (Number(r[col]) || 0), 0) / n;
+      const parseMin = (v: unknown) => {
+        const s = String(v ?? "0");
+        if (s.includes(":")) { const [m, sec] = s.split(":"); return Number(m) + Number(sec) / 60; }
+        return Number(s) || 0;
+      };
+
+      const avgMin = recent.reduce((s, r) => s + parseMin(r.MIN), 0) / n;
+      const ppg = avg("PTS"), rpg = avg("REB"), apg = avg("AST");
+      const spg = avg("STL"), bpg = avg("BLK"), tovpg = avg("TOV");
+      const threefgmPg = avg("FG3M");
+      const fgaPg = avg("FGA"), ftaPg = avg("FTA");
+
+      // Usage rate proxy
+      const usageRate = avgMin > 0
+        ? Math.round(((fgaPg + 0.44 * ftaPg + tovpg) / Math.max(avgMin / 48 * 200, 1)) * 1000) / 10
+        : 0;
+
+      // Double-double rate
+      const ddCount = recent.filter((r) => {
+        const cats = [Number(r.PTS)||0, Number(r.REB)||0, Number(r.AST)||0,
+                      Number(r.STL)||0, Number(r.BLK)||0];
+        return cats.filter((c) => c >= 10).length >= 2;
+      }).length;
+      const ddRate = Math.round((ddCount / n) * 1000) / 1000;
+
+      batch.push({
+        playerId, season: CURRENT_SEASON, teamId, name, position: null, games: n,
+        avgMinutes: Math.round(avgMin * 10) / 10,
+        ppg: Math.round(ppg * 10) / 10, rpg: Math.round(rpg * 10) / 10,
+        apg: Math.round(apg * 10) / 10, spg: Math.round(spg * 10) / 10,
+        bpg: Math.round(bpg * 10) / 10, tovpg: Math.round(tovpg * 10) / 10,
+        threefgmPg: Math.round(threefgmPg * 10) / 10,
+        usageRate, ddRate,
+      });
+      updated++;
+    }
+
+    // Batch upsert
+    for (let i = 0; i < batch.length; i += 50) {
+      const chunk = batch.slice(i, i + 50);
+      await db.insert(nbaPlayerStats).values(chunk).onConflictDoUpdate({
+        target: [nbaPlayerStats.playerId, nbaPlayerStats.season],
+        set: {
+          teamId: sql`EXCLUDED.team_id`, name: sql`EXCLUDED.name`,
+          games: sql`EXCLUDED.games`, avgMinutes: sql`EXCLUDED.avg_minutes`,
+          ppg: sql`EXCLUDED.ppg`, rpg: sql`EXCLUDED.rpg`, apg: sql`EXCLUDED.apg`,
+          spg: sql`EXCLUDED.spg`, bpg: sql`EXCLUDED.bpg`, tovpg: sql`EXCLUDED.tovpg`,
+          threefgmPg: sql`EXCLUDED.threefgm_pg`, usageRate: sql`EXCLUDED.usage_rate`,
+          ddRate: sql`EXCLUDED.dd_rate`, fetchedAt: sql`NOW()`,
+        },
+      });
+    }
+
+    revalidatePath("/dfs");
+    return { ok: true, message: `Player stats: ${updated} players updated (last ${N_GAMES} games)` };
+  } catch (e) {
+    return { ok: false, message: `Player stats failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 // ── DK API fetcher ────────────────────────────────────────────
 
 const DK_HEADERS = {
@@ -567,6 +772,7 @@ async function enrichAndSave(
   const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
   const playersByTeam = new Map<number, typeof playerStatRows>();
   for (const ps of playerStatRows) {
+    if (ps.teamId == null) continue;
     const arr = playersByTeam.get(ps.teamId) ?? [];
     arr.push(ps);
     playersByTeam.set(ps.teamId, arr);
@@ -841,6 +1047,7 @@ async function _applyLinestarMap(
   const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
   const playersByTeam = new Map<number, typeof playerStatRows>();
   for (const ps of playerStatRows) {
+    if (ps.teamId == null) continue;
     const arr = playersByTeam.get(ps.teamId) ?? [];
     arr.push(ps);
     playersByTeam.set(ps.teamId, arr);

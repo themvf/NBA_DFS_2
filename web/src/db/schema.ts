@@ -45,9 +45,7 @@ export const nbaPlayerStats = pgTable(
     id: serial("id").primaryKey(),
     playerId: integer("player_id").notNull(),
     season: text("season").notNull(),
-    teamId: integer("team_id")
-      .notNull()
-      .references(() => teams.teamId),
+    teamId: integer("team_id").references(() => teams.teamId),
     name: text("name").notNull(),
     position: text("position"),
     games: integer("games"),
