@@ -213,6 +213,7 @@ function solveOneLineup(
     c_count:   { min: 1 },   // C slot
     g_count:   { min: 3 },   // PG + SG + G slots (3 G-eligible players needed)
     f_count:   { min: 3 },   // SF + PF + F slots (3 F-eligible players needed)
+    fc_cover:  { min: 4 },   // SF + PF + F + C need 4 distinct bodies (PF/C overlap guard)
     // Stack constraint only applies when games with enough players exist.
     // If matchupId is null for all players (no schedule data), omitting this
     // prevents the solver from being immediately infeasible.
@@ -276,6 +277,7 @@ function solveOneLineup(
     if (pos.includes("C"))  entry.c_count  = 1;
     if (pos.includes("G"))  entry.g_count  = 1;  // PG or SG eligible → G flex
     if (pos.includes("F"))  entry.f_count  = 1;  // SF or PF eligible → F flex
+    if (pos.includes("F") || pos.includes("C")) entry.fc_cover = 1;  // PF/C overlap guard
 
     // Game stack
     if (p.matchupId != null && stackableSet.has(p.matchupId)) {
@@ -341,46 +343,58 @@ function solveOneLineup(
 }
 
 /**
- * Assign 8 NBA players to PG/SG/SF/PF/C/G/F/UTIL slots.
- * Greedy: pure-position players first, flex players fill remaining slots.
+ * Assign 8 NBA players to PG/SG/SF/PF/C/G/F/UTIL slots using backtracking.
+ *
+ * Each slot has strict eligibility rules:
+ *   PG → "PG", SG → "SG", SF → "SF", PF → "PF", C → "C",
+ *   G → "G" (PG or SG), F → "F" (SF or PF), UTIL → any.
+ *
+ * Backtracking guarantees a valid assignment is found if one exists.
+ * With only 8 players the search space is heavily pruned and instant.
  */
 function assignPositions(
   players: OptimizerPlayer[]
 ): Record<LineupSlot, OptimizerPlayer> | null {
-  const assigned = new Map<LineupSlot, OptimizerPlayer>();
-  const unassigned = [...players];
+  const slots: LineupSlot[] = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"];
 
-  const fill = (slots: LineupSlot[], filter: (p: OptimizerPlayer) => boolean) => {
-    for (const slot of slots) {
-      if (assigned.has(slot)) continue;
-      const idx = unassigned.findIndex(filter);
-      if (idx >= 0) {
-        assigned.set(slot, unassigned.splice(idx, 1)[0]);
-      }
+  const canFill = (slot: LineupSlot, pos: string): boolean => {
+    switch (slot) {
+      case "PG":   return pos.includes("PG");
+      case "SG":   return pos.includes("SG");
+      case "SF":   return pos.includes("SF");
+      case "PF":   return pos.includes("PF");
+      case "C":    return pos.includes("C");
+      case "G":    return pos.includes("G");
+      case "F":    return pos.includes("F");
+      case "UTIL": return true;
     }
   };
 
-  // C-eligible (includes PF/C) — assign before PF step consumes them
-  fill(["C"], (p) => p.eligiblePositions.includes("C") && !p.eligiblePositions.includes("G"));
-  // Pure PG (no SG)
-  fill(["PG"], (p) => p.eligiblePositions.includes("PG") && !p.eligiblePositions.includes("SG"));
-  // Pure SG (no PG)
-  fill(["SG"], (p) => p.eligiblePositions.includes("SG") && !p.eligiblePositions.includes("PG"));
-  // Pure SF (no PF)
-  fill(["SF"], (p) => p.eligiblePositions.includes("SF") && !p.eligiblePositions.includes("PF"));
-  // Pure PF (no SF)
-  fill(["PF"], (p) => p.eligiblePositions.includes("PF") && !p.eligiblePositions.includes("SF"));
-  // Any C-eligible fills remaining C slot
-  fill(["C"], (p) => p.eligiblePositions.includes("C"));
-  // G-eligible fills PG, SG, then G
-  fill(["PG", "SG", "G"], (p) => p.eligiblePositions.includes("G"));
-  // F-eligible fills SF, PF, then F
-  fill(["SF", "PF", "F"], (p) => p.eligiblePositions.includes("F"));
-  // UTIL: anyone
-  fill(["UTIL"], () => true);
+  const assignment: (OptimizerPlayer | null)[] = new Array(8).fill(null);
+  const used = new Set<number>();
 
-  if (assigned.size !== 8) return null;
-  return Object.fromEntries(assigned) as Record<LineupSlot, OptimizerPlayer>;
+  const solve = (slotIdx: number): boolean => {
+    if (slotIdx === 8) return true;
+    const slot = slots[slotIdx];
+    for (const p of players) {
+      if (used.has(p.id)) continue;
+      if (!canFill(slot, p.eligiblePositions)) continue;
+      assignment[slotIdx] = p;
+      used.add(p.id);
+      if (solve(slotIdx + 1)) return true;
+      used.delete(p.id);
+      assignment[slotIdx] = null;
+    }
+    return false;
+  };
+
+  if (!solve(0)) return null;
+
+  const result = {} as Record<LineupSlot, OptimizerPlayer>;
+  for (let i = 0; i < 8; i++) {
+    result[slots[i]] = assignment[i]!;
+  }
+  return result;
 }
 
 /**
