@@ -113,6 +113,7 @@ TABLES = [
         proj_own_pct REAL,
         our_proj REAL,
         our_leverage REAL,
+        our_own_pct REAL,
         is_out BOOLEAN DEFAULT FALSE,
         actual_fpts REAL,
         actual_own_pct REAL,
@@ -176,6 +177,15 @@ MIGRATIONS = [
             WHERE table_name = 'nba_player_stats' AND column_name = 'games'
         ) THEN
             ALTER TABLE nba_player_stats ADD COLUMN games INTEGER;
+        END IF;
+    END $$""",
+    # 2026-03-28: Add our_own_pct to dk_players for ownership model tracking
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'our_own_pct'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN our_own_pct REAL;
         END IF;
     END $$""",
 ]

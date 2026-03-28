@@ -21,6 +21,7 @@ export type DkPlayerRow = {
   linestarProj: number | null;
   projOwnPct: number | null;
   ourProj: number | null;
+  ourOwnPct: number | null;
   ourLeverage: number | null;
   isOut: boolean | null;
   actualFpts: number | null;
@@ -51,6 +52,7 @@ export async function getDkPlayers(): Promise<DkPlayerRow[]> {
       dp.linestar_proj     AS "linestarProj",
       dp.proj_own_pct      AS "projOwnPct",
       dp.our_proj          AS "ourProj",
+      dp.our_own_pct       AS "ourOwnPct",
       dp.our_leverage      AS "ourLeverage",
       dp.is_out            AS "isOut",
       dp.actual_fpts       AS "actualFpts",

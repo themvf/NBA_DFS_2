@@ -260,6 +260,31 @@ function computeLeverage(
   return Math.round(edge * Math.pow(1 - ownFraction, contrarianFactor) * ceilingBonus * 1000) / 1000;
 }
 
+/** Compute pool-level ownership estimates based on our projections.
+ *  Model: score = ourProj / sqrt(salary/$1K)  → normalize to 800% (8 lineup slots).
+ *  Returns a Map of array-index → ownership percentage. */
+function computePoolOwnership(
+  players: Array<{ ourProj: number | null; salary: number; isOut: boolean }>,
+): Map<number, number> {
+  const TOTAL_OWN = 800; // 8 roster slots × 100%
+
+  const scores: { idx: number; score: number }[] = [];
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i];
+    if (p.isOut || p.ourProj == null || p.ourProj <= 0 || p.salary <= 0) continue;
+    scores.push({ idx: i, score: p.ourProj / Math.sqrt(p.salary / 1000) });
+  }
+
+  const total = scores.reduce((s, e) => s + e.score, 0);
+  if (total === 0) return new Map();
+
+  const result = new Map<number, number>();
+  for (const { idx, score } of scores) {
+    result.set(idx, Math.round((score / total) * TOTAL_OWN * 10) / 10);
+  }
+  return result;
+}
+
 // ── DK API fetcher ────────────────────────────────────────────
 
 const DK_HEADERS = {
@@ -314,7 +339,7 @@ async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[
     // DK's own FPTS projection (stat attribute id=279)
     let avgFptsDk: number | null = null;
     for (const attr of (canonical.draftStatAttributes as { id: number; value: string }[] ?? [])) {
-      if (attr.id === 279) { avgFptsDk = parseFloat(attr.value) || null; break; }
+      if (attr.id === 219) { avgFptsDk = parseFloat(attr.value) || null; break; }
     }
 
     // DK injury / availability status
@@ -614,7 +639,7 @@ async function enrichAndSave(
       eligiblePositions: p.eligiblePositions, salary: p.salary,
       gameInfo: p.gameInfo, avgFptsDk: p.avgFptsDk,
       linestarProj: ls?.linestarProj ?? null, projOwnPct: ls?.projOwnPct ?? null,
-      ourProj, ourLeverage, isOut,
+      ourProj, ourLeverage, ourOwnPct: null as number | null, isOut,
       _spg: spgForLev, _bpg: bpgForLev,  // transient: ceiling bonus for leverage recalc
     });
   }
@@ -644,6 +669,12 @@ async function enrichAndSave(
     }
   }
 
+  // ── Our ownership model ─────────────────────────────────────
+  const ownMap = computePoolOwnership(insertValues);
+  for (const [idx, ownPct] of ownMap) {
+    (insertValues[idx] as Record<string, unknown>).ourOwnPct = ownPct;
+  }
+
   for (let i = 0; i < insertValues.length; i += 50) {
     const batch = insertValues.slice(i, i + 50).map(({ _spg, _bpg, ...rest }) => rest);
     await db.insert(dkPlayers).values(batch).onConflictDoUpdate({
@@ -653,6 +684,7 @@ async function enrichAndSave(
         matchupId: sql`EXCLUDED.matchup_id`,
         linestarProj: sql`EXCLUDED.linestar_proj`, projOwnPct: sql`EXCLUDED.proj_own_pct`,
         ourProj: sql`EXCLUDED.our_proj`, ourLeverage: sql`EXCLUDED.our_leverage`,
+        ourOwnPct: sql`EXCLUDED.our_own_pct`,
         isOut: sql`EXCLUDED.is_out`, avgFptsDk: sql`EXCLUDED.avg_fpts_dk`,
         eligiblePositions: sql`EXCLUDED.eligible_positions`, gameInfo: sql`EXCLUDED.game_info`,
       },
@@ -839,6 +871,15 @@ async function _applyLinestarMap(
     await db.update(dkPlayers)
       .set({ linestarProj: ls.linestarProj, projOwnPct: ls.projOwnPct, ourLeverage })
       .where(eq(dkPlayers.id, p.id));
+  }
+
+  // Recompute our ownership model after LineStar update
+  const ownMap = computePoolOwnership(
+    pool.rows.map((p) => ({ ourProj: p.ourProj, salary: p.salary, isOut: p.isOut ?? false })),
+  );
+  for (const [idx, ownPct] of ownMap) {
+    const p = pool.rows[idx];
+    await db.update(dkPlayers).set({ ourOwnPct: ownPct }).where(eq(dkPlayers.id, p.id));
   }
 
   revalidatePath("/dfs");

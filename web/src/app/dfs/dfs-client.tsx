@@ -13,7 +13,7 @@ type Props = {
   strategySummary: StrategySummaryRow[];
 };
 
-type SortCol = "name" | "salary" | "linestarProj" | "ourProj" | "delta" | "projOwnPct" | "ourLeverage" | "value";
+type SortCol = "name" | "salary" | "avgFptsDk" | "linestarProj" | "ourProj" | "delta" | "projOwnPct" | "ourOwnPct" | "ourLeverage" | "value";
 
 function parseGameKey(gameInfo: string | null): string {
   if (!gameInfo) return "Unknown";
@@ -117,11 +117,13 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       let av: number, bv: number;
       switch (sortCol) {
         case "salary":      av = a.salary;          bv = b.salary;          break;
+        case "avgFptsDk":   av = a.avgFptsDk ?? -99; bv = b.avgFptsDk ?? -99; break;
         case "linestarProj":av = a.linestarProj ?? -99; bv = b.linestarProj ?? -99; break;
         case "ourProj":     av = a.ourProj ?? -99;  bv = b.ourProj ?? -99;  break;
         case "delta":       av = (a.ourProj ?? 0) - (a.linestarProj ?? 0);
                             bv = (b.ourProj ?? 0) - (b.linestarProj ?? 0); break;
         case "projOwnPct":  av = a.projOwnPct ?? -99; bv = b.projOwnPct ?? -99; break;
+        case "ourOwnPct":   av = a.ourOwnPct ?? -99; bv = b.ourOwnPct ?? -99; break;
         case "ourLeverage": av = a.ourLeverage ?? -99; bv = b.ourLeverage ?? -99; break;
         case "value":       av = (a.ourProj ?? 0) / (a.salary / 1000);
                             bv = (b.ourProj ?? 0) / (b.salary / 1000);    break;
@@ -612,10 +614,12 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <SortHeader col="name" label="Player" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Team</th>
                   <SortHeader col="salary" label="Salary" />
+                  <SortHeader col="avgFptsDk" label="DK Proj" />
                   <SortHeader col="linestarProj" label="LS Proj" />
                   <SortHeader col="ourProj" label="Our Proj" />
                   <SortHeader col="delta" label="Delta" />
-                  <SortHeader col="projOwnPct" label="Own%" />
+                  <SortHeader col="projOwnPct" label="LS Own%" />
+                  <SortHeader col="ourOwnPct" label="Our Own%" />
                   <SortHeader col="ourLeverage" label="Leverage" />
                   <SortHeader col="value" label="Value" />
                 </tr>
@@ -641,6 +645,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{p.teamAbbrev}</td>
                       <td className="px-3 py-1.5 font-mono text-xs">{fmtSalary(p.salary)}</td>
+                      <td className="px-3 py-1.5 text-xs text-gray-500">{fmt1(p.avgFptsDk)}</td>
                       <td className="px-3 py-1.5 text-xs">{fmt1(p.linestarProj)}</td>
                       <td className="px-3 py-1.5 text-xs font-medium">{fmt1(p.ourProj)}</td>
                       <td className={`px-3 py-1.5 text-xs font-medium ${
@@ -649,6 +654,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                         {delta != null ? (delta >= 0 ? "+" : "") + delta.toFixed(1) : "—"}
                       </td>
                       <td className="px-3 py-1.5 text-xs">{p.projOwnPct != null ? p.projOwnPct.toFixed(1) + "%" : "—"}</td>
+                      <td className="px-3 py-1.5 text-xs">{p.ourOwnPct != null ? p.ourOwnPct.toFixed(1) + "%" : "—"}</td>
                       <td className={`px-3 py-1.5 text-xs font-medium ${
                         p.ourLeverage == null ? "" :
                         p.ourLeverage > 0 ? "text-green-700" : "text-red-400"
