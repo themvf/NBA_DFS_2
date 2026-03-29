@@ -223,7 +223,7 @@ def fetch_player_rolling_stats(db: DatabaseManager, season: str, n_games: int = 
         fta_pg  = _ewma(group["FTA"]) or 0.0
         tov_pg  = tovpg or 0.0
         min_pg  = avg_minutes or 1.0
-        usage_rate = ((fga_pg + 0.44 * fta_pg + tov_pg) / max(min_pg / 48.0 * 200, 1)) * 100
+        usage_rate = ((fga_pg + 0.44 * fta_pg + tov_pg) / max(min_pg / 48.0 * 100, 1)) * 100
 
         # Double-double rate: EWMA of per-game binary (1=DD, 0=no DD)
         def _has_dd(r) -> bool:

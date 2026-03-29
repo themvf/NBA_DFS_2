@@ -23,6 +23,9 @@ export type DkPlayerRow = {
   ourProj: number | null;
   ourOwnPct: number | null;
   ourLeverage: number | null;
+  projFloor: number | null;
+  projCeiling: number | null;
+  boomRate: number | null;
   propPts: number | null;
   propReb: number | null;
   propAst: number | null;
@@ -61,6 +64,9 @@ export async function getDkPlayers(): Promise<DkPlayerRow[]> {
       dp.prop_reb          AS "propReb",
       dp.prop_ast          AS "propAst",
       dp.is_out            AS "isOut",
+      dp.proj_floor        AS "projFloor",
+      dp.proj_ceiling      AS "projCeiling",
+      dp.boom_rate         AS "boomRate",
       dp.actual_fpts       AS "actualFpts",
       dp.actual_own_pct    AS "actualOwnPct",
       t.name               AS "teamName",

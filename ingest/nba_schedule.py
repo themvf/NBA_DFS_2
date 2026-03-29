@@ -141,31 +141,28 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             logger.debug("No matchup found for Odds API home team: %s", home_name)
             continue
 
-        h2h = next(
-            (m for m in g.get("bookmakers", [{}])[0].get("markets", []) if m["key"] == "h2h"),
-            None,
-        )
-        totals = next(
-            (m for m in g.get("bookmakers", [{}])[0].get("markets", []) if m["key"] == "totals"),
-            None,
-        )
+        # Consensus across ALL bookmakers for h2h (moneylines) and totals
+        away_name = g.get("away_team", "")
+        home_prices: list[int] = []
+        away_prices: list[int] = []
+        total_points: list[float] = []
+        for bm in g.get("bookmakers") or []:
+            for market in bm.get("markets", []):
+                if market["key"] == "h2h":
+                    for o in market.get("outcomes", []):
+                        if o["name"] == home_name:
+                            home_prices.append(o["price"])
+                        elif o["name"] == away_name:
+                            away_prices.append(o["price"])
+                elif market["key"] == "totals":
+                    over = next((o for o in market.get("outcomes", []) if o["name"] == "Over"), None)
+                    if over and over.get("point") is not None:
+                        total_points.append(float(over["point"]))
 
-        home_ml = away_ml = None
-        vegas_total = None
-        vegas_prob_home = None
-
-        if h2h:
-            outcomes = {o["name"]: o["price"] for o in h2h.get("outcomes", [])}
-            home_ml = outcomes.get(home_name)
-            away_name = g.get("away_team", "")
-            away_ml = outcomes.get(away_name)
-            if home_ml and away_ml:
-                vegas_prob_home = _ml_to_prob(home_ml, away_ml)
-
-        if totals:
-            over = next((o for o in totals.get("outcomes", []) if o["name"] == "Over"), None)
-            if over:
-                vegas_total = over.get("point")
+        home_ml = round(sum(home_prices) / len(home_prices)) if home_prices else None
+        away_ml = round(sum(away_prices) / len(away_prices)) if away_prices else None
+        vegas_total = round(sum(total_points) / len(total_points) * 2) / 2 if total_points else None
+        vegas_prob_home = _ml_to_prob(home_ml, away_ml) if home_ml and away_ml else None
 
         db.execute(
             """

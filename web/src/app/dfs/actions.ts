@@ -449,7 +449,9 @@ export async function backfillPlayerStats(): Promise<{ ok: boolean; message: str
           ppg: sql`EXCLUDED.ppg`, rpg: sql`EXCLUDED.rpg`, apg: sql`EXCLUDED.apg`,
           spg: sql`EXCLUDED.spg`, bpg: sql`EXCLUDED.bpg`, tovpg: sql`EXCLUDED.tovpg`,
           threefgmPg: sql`EXCLUDED.threefgm_pg`, usageRate: sql`EXCLUDED.usage_rate`,
-          ddRate: sql`EXCLUDED.dd_rate`, fetchedAt: sql`NOW()`,
+          ddRate: sql`EXCLUDED.dd_rate`,
+          fptsStd: sql`COALESCE(EXCLUDED.fpts_std, nba_player_stats.fpts_std)`,
+          fetchedAt: sql`NOW()`,
         },
       });
     }
@@ -629,6 +631,7 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
         playersByTeam.set(ps.teamId, arr);
       }
 
+      const updatedProjs = new Map<number, number>();
       for (const p of pool.rows) {
         if (!updatedIds.has(p.id)) continue;
         if (!p.teamId) continue;
@@ -668,11 +671,12 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
         await db.update(dkPlayers)
           .set({ ourProj, ourLeverage })
           .where(eq(dkPlayers.id, p.id));
+        updatedProjs.set(p.id, ourProj);
       }
 
       // Recompute ownership model after projection updates
       const ownMap = computePoolOwnership(
-        pool.rows.map((p) => ({ ourProj: p.ourProj, salary: p.salary, isOut: p.isOut ?? false })),
+        pool.rows.map((p) => ({ ourProj: updatedProjs.get(p.id) ?? p.ourProj, salary: p.salary, isOut: p.isOut ?? false })),
       );
       for (const [idx, ownPct] of ownMap) {
         await db.update(dkPlayers)
@@ -745,7 +749,7 @@ async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[
     // DK's own FPTS projection (stat attribute id=219)
     let avgFptsDk: number | null = null;
     for (const attr of (canonical.draftStatAttributes as { id: number; value: string }[] ?? [])) {
-      if (attr.id === 219) { avgFptsDk = parseFloat(attr.value) || null; break; }
+      if (attr.id === 279) { avgFptsDk = parseFloat(attr.value) || null; break; }
     }
 
     // DK injury / availability status
@@ -907,13 +911,24 @@ async function ensureMatchupsForSlate(
         for (const og of oddsGames) {
           const mid = byHome.get(og.home_team);
           if (!mid) continue;
-          const bm = og.bookmakers[0];
-          if (!bm) continue;
-          const h2h    = bm.markets.find((m) => m.key === "h2h");
-          const totals = bm.markets.find((m) => m.key === "totals");
-          const homeMl = h2h?.outcomes.find((o) => o.name === og.home_team)?.price ?? null;
-          const awayMl = h2h?.outcomes.find((o) => o.name === og.away_team)?.price ?? null;
-          const vegasTotal = totals?.outcomes.find((o) => o.name === "Over")?.point ?? null;
+          // Consensus across all bookmakers for moneylines and totals
+          const homePrices: number[] = [], awayPrices: number[] = [], totalPoints: number[] = [];
+          for (const bm of og.bookmakers ?? []) {
+            for (const market of bm.markets ?? []) {
+              if (market.key === "h2h") {
+                const ho = market.outcomes.find((o) => o.name === og.home_team);
+                const ao = market.outcomes.find((o) => o.name === og.away_team);
+                if (ho) homePrices.push(ho.price);
+                if (ao) awayPrices.push(ao.price);
+              } else if (market.key === "totals") {
+                const over = market.outcomes.find((o) => o.name === "Over");
+                if (over?.point != null) totalPoints.push(over.point);
+              }
+            }
+          }
+          const homeMl = homePrices.length ? Math.round(homePrices.reduce((a, b) => a + b, 0) / homePrices.length) : null;
+          const awayMl = awayPrices.length ? Math.round(awayPrices.reduce((a, b) => a + b, 0) / awayPrices.length) : null;
+          const vegasTotal = totalPoints.length ? Math.round(totalPoints.reduce((a, b) => a + b, 0) / totalPoints.length * 2) / 2 : null;
           if (homeMl || awayMl || vegasTotal) {
             await db.execute(sql`
               UPDATE nba_matchups
@@ -1410,8 +1425,8 @@ function parseHistoricalPaste(text: string): Map<string, HistoricalEntry> {
 function syntheticDkId(name: string, salary: number): number {
   let h = 5381;
   const s = `${name.toLowerCase()}_${salary}`;
-  for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
-  return (Math.abs(h) % 900_000_000) + 10_000_000_000;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return (h % 900_000_000) + 10_000_000_000;
 }
 
 /**
