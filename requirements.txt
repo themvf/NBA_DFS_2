@@ -6,3 +6,4 @@ psycopg2-binary>=2.9,<3
 pytest>=8.0
 rapidfuzz>=3.0
 nba_api>=1.5
+pybaseball>=2.2
