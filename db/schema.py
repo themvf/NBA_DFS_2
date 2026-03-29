@@ -94,7 +94,7 @@ TABLES = [
         field_size INTEGER,
         contest_format TEXT DEFAULT 'gpp',
         created_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(slate_date)
+        UNIQUE(slate_date, contest_type, contest_format)
     )
     """,
 
@@ -242,6 +242,21 @@ MIGRATIONS = [
             WHERE table_name = 'dk_slates' AND column_name = 'contest_format'
         ) THEN
             ALTER TABLE dk_slates ADD COLUMN contest_format TEXT DEFAULT 'gpp';
+        END IF;
+    END $$""",
+    # 2026-03-28: Replace UNIQUE(slate_date) with UNIQUE(slate_date, contest_type, contest_format)
+    # so GPP and Cash slates for the same date can coexist as separate rows.
+    """DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'dk_slates_slate_date_key'
+        ) THEN
+            ALTER TABLE dk_slates DROP CONSTRAINT dk_slates_slate_date_key;
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'dk_slates_date_type_format_key'
+        ) THEN
+            ALTER TABLE dk_slates ADD CONSTRAINT dk_slates_date_type_format_key
+            UNIQUE (slate_date, contest_type, contest_format);
         END IF;
     END $$""",
 ]

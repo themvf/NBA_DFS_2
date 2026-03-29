@@ -84,18 +84,22 @@ export const nbaMatchups = pgTable(
   ]
 );
 
-export const dkSlates = pgTable("dk_slates", {
-  id: serial("id").primaryKey(),
-  slateDate: date("slate_date").notNull().unique(),
-  gameCount: integer("game_count").default(0),
-  dkDraftGroupId: integer("dk_draft_group_id"),
-  linestarPeriodId: integer("linestar_period_id"),
-  cashLine: doublePrecision("cash_line"),
-  contestType: text("contest_type").default("main"),
-  fieldSize: integer("field_size"),
-  contestFormat: text("contest_format").default("gpp"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const dkSlates = pgTable(
+  "dk_slates",
+  {
+    id: serial("id").primaryKey(),
+    slateDate: date("slate_date").notNull(),
+    gameCount: integer("game_count").default(0),
+    dkDraftGroupId: integer("dk_draft_group_id"),
+    linestarPeriodId: integer("linestar_period_id"),
+    cashLine: doublePrecision("cash_line"),
+    contestType: text("contest_type").default("main"),
+    fieldSize: integer("field_size"),
+    contestFormat: text("contest_format").default("gpp"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [unique("dk_slates_date_type_format_key").on(t.slateDate, t.contestType, t.contestFormat)]
+);
 
 export const dkPlayers = pgTable(
   "dk_players",

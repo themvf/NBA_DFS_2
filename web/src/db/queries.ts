@@ -74,7 +74,7 @@ export async function getDkPlayers(): Promise<DkPlayerRow[]> {
     LEFT JOIN teams t ON t.team_id = dp.team_id
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
     WHERE ds.id = (
-      SELECT id FROM dk_slates ORDER BY slate_date DESC LIMIT 1
+      SELECT id FROM dk_slates ORDER BY slate_date DESC, id DESC LIMIT 1
     )
     ORDER BY dp.our_leverage DESC NULLS LAST, dp.our_proj DESC NULLS LAST
   `);
@@ -99,7 +99,7 @@ export async function getLatestSlateInfo(): Promise<{
       contestFormat: dkSlates.contestFormat,
     })
     .from(dkSlates)
-    .orderBy(desc(dkSlates.slateDate))
+    .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -147,7 +147,7 @@ export async function getDfsAccuracy(): Promise<{
       ds.slate_date AS "slateDate"
     FROM dk_players dp
     INNER JOIN dk_slates ds ON ds.id = dp.slate_id
-    WHERE ds.id = (SELECT id FROM dk_slates ORDER BY slate_date DESC LIMIT 1)
+    WHERE ds.id = (SELECT id FROM dk_slates ORDER BY slate_date DESC, id DESC LIMIT 1)
     GROUP BY ds.slate_date
   `);
   const metrics = metricResult.rows[0];
@@ -161,7 +161,7 @@ export async function getDfsAccuracy(): Promise<{
       dp.actual_fpts AS "actualFpts", t.logo_url AS "teamLogo"
     FROM dk_players dp
     LEFT JOIN teams t ON t.team_id = dp.team_id
-    WHERE dp.slate_id = (SELECT id FROM dk_slates ORDER BY slate_date DESC LIMIT 1)
+    WHERE dp.slate_id = (SELECT id FROM dk_slates ORDER BY slate_date DESC, id DESC LIMIT 1)
       AND dp.actual_fpts IS NOT NULL
     ORDER BY ABS(COALESCE(dp.our_proj, 0) - dp.actual_fpts) DESC NULLS LAST
   `);
@@ -190,7 +190,7 @@ export async function getDkLineupComparison(): Promise<LineupStrategyRow[]> {
       AVG(dl.leverage) AS "avgLeverage",
       mode() WITHIN GROUP (ORDER BY dl.stack_team) AS "topStack"
     FROM dk_lineups dl
-    WHERE dl.slate_id = (SELECT id FROM dk_slates ORDER BY slate_date DESC LIMIT 1)
+    WHERE dl.slate_id = (SELECT id FROM dk_slates ORDER BY slate_date DESC, id DESC LIMIT 1)
     GROUP BY dl.strategy
     ORDER BY AVG(dl.actual_fpts) DESC NULLS LAST, dl.strategy
   `);

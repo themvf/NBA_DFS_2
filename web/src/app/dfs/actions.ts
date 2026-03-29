@@ -953,7 +953,10 @@ async function enrichAndSave(
   const [slate] = await db
     .insert(dkSlates)
     .values(slateValues)
-    .onConflictDoUpdate({ target: dkSlates.slateDate, set: conflictSet })
+    .onConflictDoUpdate({
+      target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat],
+      set: conflictSet,
+    })
     .returning({ id: dkSlates.id });
   const slateId = slate.id;
 
@@ -1416,11 +1419,19 @@ export async function saveHistoricalSlate(
   if (parsed.size === 0)
     return { ok: false, message: "No players parsed — expected tab-separated LineStar data", created: 0, updated: 0 };
 
-  // Find existing slate for this date
+  // Find existing slate matching this date + contest type + format (all three must match)
+  const effectiveType   = contestType   ?? "main";
+  const effectiveFormat = contestFormat ?? "gpp";
   const existingSlate = await db
     .select({ id: dkSlates.id })
     .from(dkSlates)
-    .where(eq(dkSlates.slateDate, date))
+    .where(
+      and(
+        eq(dkSlates.slateDate, date),
+        eq(dkSlates.contestType, effectiveType),
+        eq(dkSlates.contestFormat, effectiveFormat),
+      )
+    )
     .limit(1);
 
   const abbrevCache = new Map(
@@ -1476,17 +1487,13 @@ export async function saveHistoricalSlate(
     .values({
       slateDate: date,
       gameCount: 0,
-      ...(contestType   && { contestType }),
+      contestType:   effectiveType,
+      contestFormat: effectiveFormat,
       ...(fieldSize != null && { fieldSize }),
-      ...(contestFormat && { contestFormat }),
     })
     .onConflictDoUpdate({
-      target: dkSlates.slateDate,
-      set: {
-        ...(contestType   && { contestType }),
-        ...(fieldSize != null && { fieldSize }),
-        ...(contestFormat && { contestFormat }),
-      },
+      target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat],
+      set: { ...(fieldSize != null && { fieldSize }) },
     })
     .returning({ id: dkSlates.id });
 
