@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ComposedChart,
   Line,
@@ -17,6 +18,7 @@ import type {
   SalaryTierAccuracyRow,
   LeverageCalibrationRow,
 } from "@/db/queries";
+import { saveHistoricalSlate } from "@/app/dfs/actions";
 
 const fmt1 = (v: number | null | undefined) =>
   v == null ? "—" : v.toFixed(1);
@@ -50,6 +52,32 @@ export default function AnalyticsClient({
 }: Props) {
   const hasData = crossSlate.length > 0;
 
+  // ── Historical slate import ───────────────────────────────
+  const [historicalDate, setHistoricalDate] = useState("");
+  const [historicalText, setHistoricalText] = useState("");
+  const [historicalMsg, setHistoricalMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [contestTiming, setContestTiming] = useState<"early" | "main" | "late">("main");
+  const [contestFormat, setContestFormat] = useState<"gpp" | "cash">("gpp");
+  const [fieldSizeInput, setFieldSizeInput] = useState("");
+
+  async function handleSaveHistorical() {
+    if (!historicalDate) { setHistoricalMsg({ ok: false, text: "Pick a date first" }); return; }
+    if (!historicalText.trim()) { setHistoricalMsg({ ok: false, text: "Paste LineStar data first" }); return; }
+    setIsSaving(true);
+    setHistoricalMsg(null);
+    const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
+    const res = await saveHistoricalSlate(
+      historicalDate, historicalText,
+      contestTiming,
+      fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
+      contestFormat,
+    );
+    setIsSaving(false);
+    setHistoricalMsg({ ok: res.ok, text: res.message });
+    if (res.ok) setHistoricalText("");
+  }
+
   return (
     <div className="space-y-8 p-6 max-w-5xl mx-auto">
       <div>
@@ -59,9 +87,96 @@ export default function AnalyticsClient({
         </p>
       </div>
 
+      {/* Save Historical Slate */}
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Save Historical Slate</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Navigate to a past date on LineStar → select all rows → paste below.
+            If the slate was already loaded, updates existing records. Otherwise creates a new historical slate.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500 whitespace-nowrap">Date</label>
+            <input
+              type="date"
+              value={historicalDate}
+              onChange={(e) => setHistoricalDate(e.target.value)}
+              className="rounded border px-2 py-1 text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Timing</label>
+            <div className="flex rounded border text-xs overflow-hidden">
+              {(["early", "main", "late"] as const).map((t, i) => (
+                <button
+                  key={t}
+                  onClick={() => setContestTiming(t)}
+                  className={`px-3 py-1 capitalize ${i > 0 ? "border-l" : ""} ${
+                    contestTiming === t ? "bg-slate-700 text-white" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Format</label>
+            <div className="flex rounded border text-xs overflow-hidden">
+              {(["gpp", "cash"] as const).map((f, i) => (
+                <button
+                  key={f}
+                  onClick={() => setContestFormat(f)}
+                  className={`px-3 py-1 uppercase ${i > 0 ? "border-l" : ""} ${
+                    contestFormat === f ? "bg-slate-700 text-white" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">
+              Field Size <span className="text-gray-400">(opt)</span>
+            </label>
+            <input
+              type="number"
+              value={fieldSizeInput}
+              onChange={(e) => setFieldSizeInput(e.target.value)}
+              placeholder="e.g. 12500"
+              className="w-28 rounded border px-2 py-1 text-xs"
+            />
+          </div>
+        </div>
+        <textarea
+          value={historicalText}
+          onChange={(e) => setHistoricalText(e.target.value)}
+          rows={5}
+          placeholder={"Pos\tTeam\tPlayer\tSalary\tprojOwn%\tactualOwn%\tDiff\tProj\tScored\nC\t\tNikola Jokic\t$12500\t35.1%\t38.2%\t+3.1%\t54.2\t61.5"}
+          className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSaveHistorical}
+            disabled={isSaving || !historicalDate || !historicalText.trim()}
+            className="rounded bg-slate-600 px-4 py-1.5 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
+          >
+            {isSaving ? "Saving…" : "Save Historical Data"}
+          </button>
+          {historicalMsg && (
+            <span className={`text-sm ${historicalMsg.ok ? "text-green-700" : "text-red-600"}`}>
+              {historicalMsg.text}
+            </span>
+          )}
+        </div>
+      </div>
+
       {!hasData && (
         <div className="rounded-lg border bg-card p-6 text-center text-sm text-gray-400">
-          No result data available yet. Upload a DK results CSV from the <a href="/dfs" className="underline">DFS page</a> after each slate to populate these charts.
+          No accuracy data yet — save a historical slate above, or upload a DK results CSV from the <a href="/dfs" className="underline">DFS page</a>.
         </div>
       )}
 
