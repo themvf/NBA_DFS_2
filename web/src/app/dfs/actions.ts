@@ -1327,6 +1327,7 @@ export async function applyLinestarPaste(text: string): Promise<{
 // ── Historical slate import ────────────────────────────────────
 
 type HistoricalEntry = {
+  position: string;
   linestarProj: number;
   projOwnPct: number;
   actualOwnPct: number;
@@ -1363,16 +1364,20 @@ function parseHistoricalPaste(text: string): Map<string, HistoricalEntry> {
     const salary     = parseInt(cells[salaryIdx].replace(/\D/g, ""), 10);
     if (!salary) continue;
 
+    // Position is always cells[0] (first column in every LineStar format)
+    const posRaw = cells[0]?.trim() ?? "";
+    const position = /^(PG|SG|SF|PF|C)(\/(?:PG|SG|SF|PF|C))*$/.test(posRaw) ? posRaw : "UTIL";
+
     const projOwnPct   = parseFloat((cells[salaryIdx + 1] ?? "").replace("%", "")) || 0;
     const actualOwnPct = parseFloat((cells[salaryIdx + 2] ?? "").replace("%", "")) || 0;
     const linestarProj = parseFloat(cells[salaryIdx + 4] ?? "") || 0;
-    // actualFpts is in col +5 for historical data; absent on live/today paste
+    // actualFpts is in col +5 for historical data (labelled "Scored" or "Actual")
     const rawActual    = cells[salaryIdx + 5] ?? "";
     const actualFpts   = rawActual !== "" && !isNaN(parseFloat(rawActual))
       ? parseFloat(rawActual) : null;
 
     map.set(`${playerName.toLowerCase()}|${salary}`, {
-      linestarProj, projOwnPct, actualOwnPct, actualFpts,
+      position, linestarProj, projOwnPct, actualOwnPct, actualFpts,
       teamAbbrev: teamAbbrev.toUpperCase(),
     });
   }
@@ -1500,7 +1505,7 @@ export async function saveHistoricalSlate(
         slateId, dkPlayerId, name,
         teamAbbrev: entry.teamAbbrev || "UNK",
         teamId, salary,
-        eligiblePositions: "UTIL",
+        eligiblePositions: entry.position || "UTIL",
         linestarProj:  entry.linestarProj  || null,
         projOwnPct:    entry.projOwnPct    || null,
         actualOwnPct:  entry.actualOwnPct  || null,

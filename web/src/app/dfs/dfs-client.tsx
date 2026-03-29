@@ -645,14 +645,60 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             points + ownership. If the slate was already loaded, updates existing records.
             If not, creates a new historical slate for MAE tracking.
           </p>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500 whitespace-nowrap">Date</label>
-            <input
-              type="date"
-              value={historicalDate}
-              onChange={(e) => setHistoricalDate(e.target.value)}
-              className="rounded border px-2 py-1 text-xs"
-            />
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 whitespace-nowrap">Date</label>
+              <input
+                type="date"
+                value={historicalDate}
+                onChange={(e) => setHistoricalDate(e.target.value)}
+                className="rounded border px-2 py-1 text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Timing</label>
+              <div className="flex rounded border text-xs overflow-hidden">
+                {(["early", "main", "late"] as const).map((t, i) => (
+                  <button
+                    key={t}
+                    onClick={() => setContestTiming(t)}
+                    className={`px-2 py-1 capitalize ${i > 0 ? "border-l" : ""} ${
+                      contestTiming === t ? "bg-slate-700 text-white" : "text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Format</label>
+              <div className="flex rounded border text-xs overflow-hidden">
+                {(["gpp", "cash"] as const).map((f, i) => (
+                  <button
+                    key={f}
+                    onClick={() => setContestFormat(f)}
+                    className={`px-2 py-1 uppercase ${i > 0 ? "border-l" : ""} ${
+                      contestFormat === f ? "bg-slate-700 text-white" : "text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Field Size <span className="text-gray-400">(opt)</span>
+              </label>
+              <input
+                type="number"
+                value={fieldSizeInput}
+                onChange={(e) => setFieldSizeInput(e.target.value)}
+                placeholder="e.g. 12500"
+                className="w-28 rounded border px-2 py-1 text-xs"
+              />
+            </div>
           </div>
           <textarea
             value={historicalText}
