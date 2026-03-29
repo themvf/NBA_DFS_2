@@ -114,6 +114,9 @@ TABLES = [
         our_proj REAL,
         our_leverage REAL,
         our_own_pct REAL,
+        prop_pts REAL,
+        prop_reb REAL,
+        prop_ast REAL,
         is_out BOOLEAN DEFAULT FALSE,
         actual_fpts REAL,
         actual_own_pct REAL,
@@ -186,6 +189,31 @@ MIGRATIONS = [
             WHERE table_name = 'dk_players' AND column_name = 'our_own_pct'
         ) THEN
             ALTER TABLE dk_players ADD COLUMN our_own_pct REAL;
+        END IF;
+    END $$""",
+    # 2026-03-28: Add player prop lines (pts/reb/ast over-under from Odds API)
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_pts'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_pts REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_reb'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_reb REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_ast'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_ast REAL;
         END IF;
     END $$""",
 ]

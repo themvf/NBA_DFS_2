@@ -181,6 +181,151 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
     return updated
 
 
+def fetch_player_props(db: DatabaseManager, api_key: str, game_date: str | None = None) -> int:
+    """Fetch player pts/reb/ast over-under lines from The Odds API.
+
+    Matches Odds API player names to dk_players for the current slate using
+    exact then fuzzy (Levenshtein ≤ 3) matching.  Updates prop_pts, prop_reb,
+    prop_ast columns.  Returns number of players updated.
+
+    Requires the current slate to already be loaded into dk_players.
+    """
+    if not api_key:
+        logger.info("ODDS_API_KEY not set — skipping player props fetch")
+        return 0
+
+    target_date = game_date or date.today().isoformat()
+
+    # Step 1: Get event IDs for today's NBA games
+    try:
+        resp = requests.get(
+            "https://api.the-odds-api.com/v4/sports/basketball_nba/events",
+            params={"apiKey": api_key, "dateFormat": "iso"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        events = resp.json()
+    except requests.RequestException as e:
+        logger.warning("Odds API events request failed: %s", e)
+        return 0
+
+    # Filter to target date (games can tip off late ET = next day UTC, so use ±36h window)
+    from datetime import datetime, timezone, timedelta
+    target_start = datetime.fromisoformat(target_date).replace(tzinfo=timezone.utc)
+    target_end   = target_start + timedelta(hours=36)
+    today_events = [
+        e for e in events
+        if target_start <= datetime.fromisoformat(
+            e["commence_time"].replace("Z", "+00:00")
+        ) < target_end
+    ]
+    if not today_events:
+        logger.info("No events found for %s — skipping player props", target_date)
+        return 0
+
+    # Step 2: Get current slate players from DB
+    slate_players = db.execute(
+        """
+        SELECT dp.id, dp.name
+        FROM dk_players dp
+        INNER JOIN dk_slates ds ON ds.id = dp.slate_id
+        WHERE ds.slate_date = %s
+        """,
+        (target_date,),
+    )
+    if not slate_players:
+        logger.warning("No dk_players for %s — load a DK slate first", target_date)
+        return 0
+
+    player_lookup = {row["name"].lower(): row for row in slate_players}
+
+    # Step 3: Fetch props per event and accumulate by player name
+    prop_data: dict[str, dict[str, float]] = {}  # {lower_name: {pts, reb, ast}}
+    MARKET_TO_KEY = {
+        "player_points": "pts",
+        "player_rebounds": "reb",
+        "player_assists": "ast",
+    }
+
+    for event in today_events:
+        try:
+            r = requests.get(
+                f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event['id']}/odds",
+                params={
+                    "apiKey": api_key,
+                    "regions": "us",
+                    "markets": "player_points,player_rebounds,player_assists",
+                    "oddsFormat": "american",
+                },
+                timeout=20,
+            )
+            r.raise_for_status()
+            data = r.json()
+        except requests.RequestException as e:
+            logger.debug("Event %s props failed: %s", event["id"], e)
+            continue
+
+        bookmaker = (data.get("bookmakers") or [None])[0]
+        if not bookmaker:
+            continue
+
+        for market in bookmaker.get("markets", []):
+            stat_key = MARKET_TO_KEY.get(market["key"])
+            if not stat_key:
+                continue
+            for outcome in market.get("outcomes", []):
+                if outcome.get("description", "").lower() != "over":
+                    continue
+                pname = outcome["name"].lower()
+                point = outcome.get("point")
+                if point is None:
+                    continue
+                prop_data.setdefault(pname, {})[stat_key] = float(point)
+
+    # Step 4: Match prop names to slate players and write to DB
+    updated = 0
+    for prop_name, props in prop_data.items():
+        row = player_lookup.get(prop_name)
+        if not row:
+            # Fuzzy match
+            best_dist, best_row = 4, None
+            for dk_name, dk_row in player_lookup.items():
+                d = _levenshtein(prop_name, dk_name)
+                if d < best_dist:
+                    best_dist, best_row = d, dk_row
+            row = best_row
+        if not row:
+            continue
+
+        db.execute(
+            """
+            UPDATE dk_players
+            SET prop_pts = COALESCE(%s, prop_pts),
+                prop_reb = COALESCE(%s, prop_reb),
+                prop_ast = COALESCE(%s, prop_ast)
+            WHERE id = %s
+            """,
+            (props.get("pts"), props.get("reb"), props.get("ast"), row["id"]),
+        )
+        updated += 1
+
+    print(f"Player props: {updated} players updated for {target_date}")
+    return updated
+
+
+def _levenshtein(a: str, b: str) -> int:
+    """Levenshtein edit distance for fuzzy player name matching."""
+    m, n = len(a), len(b)
+    dp = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev = dp[:]
+        dp[0] = i
+        for j in range(1, n + 1):
+            dp[j] = (prev[j - 1] if a[i - 1] == b[j - 1]
+                     else 1 + min(prev[j], dp[j - 1], prev[j - 1]))
+    return dp[n]
+
+
 def _ml_to_prob(home_ml: int, away_ml: int) -> float:
     """Convert American moneylines to vig-removed home win probability."""
     def ml_to_raw(ml: int) -> float:
@@ -205,3 +350,4 @@ if __name__ == "__main__":
 
     fetch_schedule(db, args.date)
     fetch_odds(db, config.odds_api.api_key, args.date)
+    fetch_player_props(db, config.odds_api.api_key, args.date)

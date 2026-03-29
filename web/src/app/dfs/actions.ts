@@ -191,6 +191,7 @@ function computeOurProjection(
   homeMl: number | null = null,
   awayMl: number | null = null,
   isHome = false,
+  props: { propPts?: number | null; propReb?: number | null; propAst?: number | null } = {},
 ): number | null {
   const avgMinutes = player.avgMinutes ?? 0;
   if (avgMinutes < 10) return null;
@@ -221,10 +222,11 @@ function computeOurProjection(
   const usageFactor  = Math.min(2.0, Math.max(0.5, usage / LEAGUE_AVG_USAGE));
   const adjustedEnv  = 1.0 + (combinedEnv - 1.0) * usageFactor;
 
-  // Per-stat projections
-  const projPts  = ppg   * defFactor;
-  const projReb  = rpg   * adjustedEnv;
-  const projAst  = apg   * defFactor * (1.0 + (combinedEnv - 1.0) * 0.5); // defense primary, pace secondary
+  // Per-stat projections — use market prop lines when available (they already
+  // bake in matchup, pace, and injury context), fall back to formula otherwise.
+  const projPts  = props.propPts  != null ? props.propPts  : ppg  * defFactor;
+  const projReb  = props.propReb  != null ? props.propReb  : rpg  * adjustedEnv;
+  const projAst  = props.propAst  != null ? props.propAst  : apg  * defFactor * (1.0 + (combinedEnv - 1.0) * 0.5);
   const projStl  = spg   * adjustedEnv;
   const projBlk  = bpg   * adjustedEnv;
   const projTov  = tovpg * adjustedEnv;
@@ -456,6 +458,218 @@ export async function backfillPlayerStats(): Promise<{ ok: boolean; message: str
     return { ok: true, message: `Player stats: ${batch.length} players updated (last 10 games)` };
   } catch (e) {
     return { ok: false, message: `Player stats failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+// ── Player props (The Odds API) ───────────────────────────────
+
+export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string }> {
+  try {
+    const oddsApiKey = process.env.ODDS_API_KEY;
+    if (!oddsApiKey) return { ok: false, message: "ODDS_API_KEY not set in Vercel env vars" };
+
+    // Get current slate
+    const [slate] = await db
+      .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+      .from(dkSlates).orderBy(desc(dkSlates.slateDate)).limit(1);
+    if (!slate) return { ok: false, message: "No slate loaded — load a slate first" };
+    const targetDate = slate.slateDate; // "YYYY-MM-DD"
+
+    // Step 1: Get events for today (36h window to handle ET→UTC offset)
+    const eventsResp = await fetch(
+      `https://api.the-odds-api.com/v4/sports/basketball_nba/events?apiKey=${oddsApiKey}&dateFormat=iso`,
+      { next: { revalidate: 0 } },
+    );
+    if (!eventsResp.ok) throw new Error(`Odds API events: HTTP ${eventsResp.status}`);
+    const allEvents = await eventsResp.json() as Array<{ id: string; commence_time: string }>;
+
+    const windowStart = new Date(`${targetDate}T00:00:00Z`).getTime();
+    const windowEnd   = windowStart + 36 * 3_600_000;
+    const todayEvents = allEvents.filter((e) => {
+      const t = new Date(e.commence_time).getTime();
+      return t >= windowStart && t < windowEnd;
+    });
+    if (todayEvents.length === 0)
+      return { ok: false, message: `No NBA events found for ${targetDate}` };
+
+    // Step 2: Get slate players for matching
+    const slatePlayers = await db
+      .select({ id: dkPlayers.id, name: dkPlayers.name, teamId: dkPlayers.teamId })
+      .from(dkPlayers).where(eq(dkPlayers.slateId, slate.id));
+
+    // Step 3: Collect props across all events
+    type PropSet = { pts?: number; reb?: number; ast?: number };
+    const propData = new Map<string, PropSet>(); // key = lower-cased player name
+
+    for (const event of todayEvents) {
+      const qs = new URLSearchParams({
+        apiKey: oddsApiKey, regions: "us",
+        markets: "player_points,player_rebounds,player_assists",
+        oddsFormat: "american",
+      });
+      try {
+        const r = await fetch(
+          `https://api.the-odds-api.com/v4/sports/basketball_nba/events/${event.id}/odds?${qs}`,
+          { next: { revalidate: 0 } },
+        );
+        if (!r.ok) continue;
+        const data = await r.json() as {
+          bookmakers: Array<{
+            markets: Array<{
+              key: string;
+              outcomes: Array<{ name: string; description: string; point?: number }>;
+            }>;
+          }>;
+        };
+        const bm = data.bookmakers?.[0];
+        if (!bm) continue;
+        for (const market of bm.markets) {
+          const statKey = market.key === "player_points" ? "pts"
+                        : market.key === "player_rebounds" ? "reb"
+                        : market.key === "player_assists" ? "ast" : null;
+          if (!statKey) continue;
+          for (const o of market.outcomes) {
+            if (o.description?.toLowerCase() !== "over" || o.point == null) continue;
+            const key = o.name.toLowerCase();
+            const entry = propData.get(key) ?? {};
+            (entry as Record<string, number>)[statKey] = o.point;
+            propData.set(key, entry);
+          }
+        }
+      } catch { /* skip individual event failures */ }
+    }
+
+    if (propData.size === 0)
+      return { ok: false, message: "No player props returned by Odds API (check API key / plan)" };
+
+    // Step 4: Match props → slate players (exact then fuzzy)
+    // Map name → id for slate players
+    const nameToPlayer = new Map(slatePlayers.map((p) => [p.name.toLowerCase(), p]));
+
+    let propMatched = 0;
+    const updates: Array<{ id: number; pts?: number; reb?: number; ast?: number }> = [];
+    for (const [propName, props] of propData) {
+      let match = nameToPlayer.get(propName);
+      if (!match) {
+        let bestDist = 4, bestMatch: typeof slatePlayers[0] | null = null;
+        for (const [dkName, p] of nameToPlayer) {
+          const d = levenshtein(propName, dkName);
+          if (d < bestDist) { bestDist = d; bestMatch = p; }
+        }
+        match = bestMatch ?? undefined;
+      }
+      if (!match) continue;
+      updates.push({ id: match.id, ...props });
+      propMatched++;
+    }
+
+    // Step 5: Store props + recompute ourProj for matched players
+    if (updates.length > 0) {
+      // Bulk update props
+      for (const u of updates) {
+        await db.update(dkPlayers)
+          .set({
+            ...(u.pts != null && { propPts: u.pts }),
+            ...(u.reb != null && { propReb: u.reb }),
+            ...(u.ast != null && { propAst: u.ast }),
+          })
+          .where(eq(dkPlayers.id, u.id));
+      }
+
+      // Recompute ourProj using props for all matched players
+      const updatedIds = new Set(updates.map((u) => u.id));
+      const pool = await db.execute<{
+        id: number; name: string; salary: number;
+        teamId: number | null; matchupId: number | null;
+        avgFptsDk: number | null; projOwnPct: number | null;
+        isOut: boolean | null; ourProj: number | null;
+        propPts: number | null; propReb: number | null; propAst: number | null;
+      }>(sql`
+        SELECT id, name, salary, team_id AS "teamId", matchup_id AS "matchupId",
+               avg_fpts_dk AS "avgFptsDk", proj_own_pct AS "projOwnPct",
+               is_out AS "isOut", our_proj AS "ourProj",
+               prop_pts AS "propPts", prop_reb AS "propReb", prop_ast AS "propAst"
+        FROM dk_players WHERE slate_id = ${slate.id}
+      `);
+
+      const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, CURRENT_SEASON));
+      const statsByTeam  = new Map(teamStatRows.map((r) => [r.teamId, r]));
+
+      const matchupRows   = await db.select().from(nbaMatchups).where(eq(nbaMatchups.gameDate, targetDate));
+      const matchupByTeam = new Map<number, typeof matchupRows[0]>();
+      for (const m of matchupRows) {
+        if (m.homeTeamId) matchupByTeam.set(m.homeTeamId, m);
+        if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
+      }
+
+      const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+      const playersByTeam  = new Map<number, typeof playerStatRows>();
+      for (const ps of playerStatRows) {
+        if (ps.teamId == null) continue;
+        const arr = playersByTeam.get(ps.teamId) ?? [];
+        arr.push(ps);
+        playersByTeam.set(ps.teamId, arr);
+      }
+
+      for (const p of pool.rows) {
+        if (!updatedIds.has(p.id)) continue;
+        if (!p.teamId) continue;
+        const teamStat = statsByTeam.get(p.teamId);
+        const matchup  = matchupByTeam.get(p.teamId);
+        if (!teamStat || !matchup) continue;
+
+        const oppId   = matchup.homeTeamId === p.teamId ? matchup.awayTeamId : matchup.homeTeamId;
+        const oppStat = oppId ? statsByTeam.get(oppId) : null;
+        if (!oppStat) continue;
+
+        const candidates = playersByTeam.get(p.teamId) ?? [];
+        let bestPlayer: typeof playerStatRows[0] | null = null;
+        let bestDist = 4;
+        for (const ps of candidates) {
+          const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
+          if (d < bestDist) { bestDist = d; bestPlayer = ps; }
+        }
+        if (!bestPlayer) continue;
+
+        const isHome = matchup.homeTeamId === p.teamId;
+        const ourProj = computeOurProjection(
+          bestPlayer,
+          teamStat.pace  ?? LEAGUE_AVG_PACE,
+          oppStat.pace   ?? LEAGUE_AVG_PACE,
+          oppStat.defRtg ?? LEAGUE_AVG_DEF_RTG,
+          matchup.vegasTotal, matchup.homeMl, matchup.awayMl, isHome,
+          { propPts: p.propPts, propReb: p.propReb, propAst: p.propAst },
+        );
+        if (ourProj == null) continue;
+
+        const fieldProj = p.avgFptsDk ?? null;
+        const projOwnPct = p.projOwnPct ?? 15;
+        const ourLeverage = computeLeverage(ourProj, projOwnPct, fieldProj,
+          bestPlayer.spg ?? 0, bestPlayer.bpg ?? 0);
+
+        await db.update(dkPlayers)
+          .set({ ourProj, ourLeverage })
+          .where(eq(dkPlayers.id, p.id));
+      }
+
+      // Recompute ownership model after projection updates
+      const ownMap = computePoolOwnership(
+        pool.rows.map((p) => ({ ourProj: p.ourProj, salary: p.salary, isOut: p.isOut ?? false })),
+      );
+      for (const [idx, ownPct] of ownMap) {
+        await db.update(dkPlayers)
+          .set({ ourOwnPct: ownPct })
+          .where(eq(dkPlayers.id, pool.rows[idx].id));
+      }
+    }
+
+    revalidatePath("/dfs");
+    return {
+      ok: true,
+      message: `Player props: ${propMatched}/${slatePlayers.length} players matched across ${todayEvents.length} games`,
+    };
+  } catch (e) {
+    return { ok: false, message: `Props failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 

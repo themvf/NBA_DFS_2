@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats } from "./actions";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -99,6 +99,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Backfill season data ──────────────────────────────────
   const [backfillMsg, setBackfillMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isBackfilling, setIsBackfilling] = useState(false);
+
+  // ── Player props ──────────────────────────────────────────
+  const [propsMsg, setPropsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isFetchingProps, setIsFetchingProps] = useState(false);
 
   // ── LineStar input: CSV file or paste ────────────────────
   const [lsMode, setLsMode] = useState<"csv" | "paste">("paste");
@@ -243,6 +247,14 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const res = await refreshPlayerStatus(players[0].slateId);
     setIsRefreshing(false);
     setRefreshMsg({ ok: res.ok, text: res.message });
+  }
+
+  async function handleFetchProps() {
+    setIsFetchingProps(true);
+    setPropsMsg(null);
+    const res = await fetchPlayerProps();
+    setIsFetchingProps(false);
+    setPropsMsg({ ok: res.ok, text: res.message });
   }
 
   async function handleBackfill() {
@@ -404,6 +416,27 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             {refreshMsg && (
               <span className={`text-sm ${refreshMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {refreshMsg.text}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Player props from The Odds API */}
+        {players.length > 0 && (
+          <div className="mt-3 pt-3 border-t flex items-center gap-3">
+            <button
+              onClick={handleFetchProps}
+              disabled={isFetchingProps}
+              className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {isFetchingProps ? "Fetching props…" : "Fetch Player Props"}
+            </button>
+            <span className="text-xs text-gray-400">
+              Pulls pts/reb/ast over-under lines from The Odds API and updates projections
+            </span>
+            {propsMsg && (
+              <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {propsMsg.text}
               </span>
             )}
           </div>
