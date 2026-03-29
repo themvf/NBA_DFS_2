@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps } from "./actions";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps, saveHistoricalSlate } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -103,6 +103,12 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Player props ──────────────────────────────────────────
   const [propsMsg, setPropsMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isFetchingProps, setIsFetchingProps] = useState(false);
+
+  // ── Historical slate import ───────────────────────────────
+  const [historicalDate, setHistoricalDate] = useState("");
+  const [historicalText, setHistoricalText] = useState("");
+  const [historicalMsg, setHistoricalMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isSavingHistorical, setIsSavingHistorical] = useState(false);
 
   // ── LineStar input: CSV file or paste ────────────────────
   const [lsMode, setLsMode] = useState<"csv" | "paste">("paste");
@@ -247,6 +253,17 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const res = await refreshPlayerStatus(players[0].slateId);
     setIsRefreshing(false);
     setRefreshMsg({ ok: res.ok, text: res.message });
+  }
+
+  async function handleSaveHistorical() {
+    if (!historicalDate) { setHistoricalMsg({ ok: false, text: "Pick a date first" }); return; }
+    if (!historicalText.trim()) { setHistoricalMsg({ ok: false, text: "Paste LineStar data first" }); return; }
+    setIsSavingHistorical(true);
+    setHistoricalMsg(null);
+    const res = await saveHistoricalSlate(historicalDate, historicalText);
+    setIsSavingHistorical(false);
+    setHistoricalMsg({ ok: res.ok, text: res.message });
+    if (res.ok) setHistoricalText("");
   }
 
   async function handleFetchProps() {
@@ -549,6 +566,46 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               )}
             </div>
           )}
+        </div>
+
+        {/* Historical slate import — save past LineStar data for model training */}
+        <div className="mt-3 pt-3 border-t space-y-2">
+          <span className="text-xs font-medium text-gray-600">Save Historical Slate</span>
+          <p className="text-xs text-gray-400">
+            On LineStar, navigate to a past date → select all rows → paste below. Saves actual
+            points + ownership. If the slate was already loaded, updates existing records.
+            If not, creates a new historical slate for MAE tracking.
+          </p>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500 whitespace-nowrap">Date</label>
+            <input
+              type="date"
+              value={historicalDate}
+              onChange={(e) => setHistoricalDate(e.target.value)}
+              className="rounded border px-2 py-1 text-xs"
+            />
+          </div>
+          <textarea
+            value={historicalText}
+            onChange={(e) => setHistoricalText(e.target.value)}
+            rows={4}
+            placeholder={"Pos\tTeam\tPlayer\tSalary\tprojOwn%\tactualOwn%\tDiff\tProj\tActual\nC\tDEN\tNikola Jokic\t$12500\t35.1%\t38.2%\t+3.1\t54.2\t61.5"}
+            className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
+          />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSaveHistorical}
+              disabled={isSavingHistorical || !historicalDate || !historicalText.trim()}
+              className="rounded bg-slate-600 px-3 py-1.5 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
+            >
+              {isSavingHistorical ? "Saving…" : "Save Historical Data"}
+            </button>
+            {historicalMsg && (
+              <span className={`text-sm ${historicalMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {historicalMsg.text}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

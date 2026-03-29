@@ -1303,6 +1303,194 @@ export async function applyLinestarPaste(text: string): Promise<{
   return _applyLinestarMap(lsMap);
 }
 
+// ── Historical slate import ────────────────────────────────────
+
+type HistoricalEntry = {
+  linestarProj: number;
+  projOwnPct: number;
+  actualOwnPct: number;
+  actualFpts: number | null;
+  teamAbbrev: string;
+};
+
+/**
+ * Parse LineStar historical paste. Same column anchor as the live parser
+ * (salary = $NNNN) but also captures actualOwnPct (+2) and actualFpts (+5).
+ *
+ * Live format:   Pos | Team | Player | Salary | projOwn% | actualOwn% | Diff | Proj
+ * History adds:  ... | Actual (col +5 after salary)
+ */
+function parseHistoricalPaste(text: string): Map<string, HistoricalEntry> {
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  const map = new Map<string, HistoricalEntry>();
+
+  for (const line of lines) {
+    const cells = line.split("\t").map((c) => c.trim());
+    const salaryIdx = cells.findIndex((c) => /^\$\d{4,5}$/.test(c));
+    if (salaryIdx < 1) continue;
+
+    let playerName = cells[salaryIdx - 1];
+    let teamAbbrev = "";
+    if (/^[A-Z]{2,4}$/.test(playerName) && salaryIdx >= 2) {
+      teamAbbrev = playerName;
+      playerName = cells[salaryIdx - 2];
+    } else if (salaryIdx >= 2) {
+      teamAbbrev = cells[salaryIdx - 2] ?? "";
+    }
+    if (!playerName || playerName.toLowerCase() === "player") continue;
+
+    const salary     = parseInt(cells[salaryIdx].replace(/\D/g, ""), 10);
+    if (!salary) continue;
+
+    const projOwnPct   = parseFloat((cells[salaryIdx + 1] ?? "").replace("%", "")) || 0;
+    const actualOwnPct = parseFloat((cells[salaryIdx + 2] ?? "").replace("%", "")) || 0;
+    const linestarProj = parseFloat(cells[salaryIdx + 4] ?? "") || 0;
+    // actualFpts is in col +5 for historical data; absent on live/today paste
+    const rawActual    = cells[salaryIdx + 5] ?? "";
+    const actualFpts   = rawActual !== "" && !isNaN(parseFloat(rawActual))
+      ? parseFloat(rawActual) : null;
+
+    map.set(`${playerName.toLowerCase()}|${salary}`, {
+      linestarProj, projOwnPct, actualOwnPct, actualFpts,
+      teamAbbrev: teamAbbrev.toUpperCase(),
+    });
+  }
+  return map;
+}
+
+/** Deterministic synthetic DK player ID for historical records.
+ *  Uses a range > 10 billion to avoid collision with real DK IDs (~20–50M). */
+function syntheticDkId(name: string, salary: number): number {
+  let h = 5381;
+  const s = `${name.toLowerCase()}_${salary}`;
+  for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
+  return (Math.abs(h) % 900_000_000) + 10_000_000_000;
+}
+
+/**
+ * Save historical LineStar data (past slate results) to Neon.
+ *
+ * Two modes determined automatically:
+ *   - Slate already exists for `date` → update actual_fpts + actual_own_pct
+ *     on existing dk_players rows (updates ourProj-based training pairs)
+ *   - No slate exists → create dk_slate + dk_players with synthetic IDs
+ *     (stores linestarProj + actual for LineStar MAE tracking)
+ */
+export async function saveHistoricalSlate(
+  date: string,
+  text: string,
+): Promise<{ ok: boolean; message: string; created: number; updated: number }> {
+  if (!date) return { ok: false, message: "Date is required", created: 0, updated: 0 };
+  if (!text.trim()) return { ok: false, message: "No data pasted", created: 0, updated: 0 };
+
+  const parsed = parseHistoricalPaste(text);
+  if (parsed.size === 0)
+    return { ok: false, message: "No players parsed — expected tab-separated LineStar data", created: 0, updated: 0 };
+
+  // Find existing slate for this date
+  const existingSlate = await db
+    .select({ id: dkSlates.id })
+    .from(dkSlates)
+    .where(eq(dkSlates.slateDate, date))
+    .limit(1);
+
+  const abbrevCache = new Map(
+    (await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams))
+      .map((t) => [t.abbreviation.toUpperCase(), t.teamId]),
+  );
+
+  // ── Mode 1: slate exists → update actual results on existing rows ──────────
+  if (existingSlate[0]) {
+    const slateId = existingSlate[0].id;
+    const pool = await db.execute<{
+      id: number; name: string; salary: number;
+    }>(sql`SELECT id, name, salary FROM dk_players WHERE slate_id = ${slateId}`);
+
+    let updated = 0;
+    for (const p of pool.rows) {
+      const entry = parsed.get(`${p.name.toLowerCase()}|${p.salary}`);
+      let match = entry;
+      if (!match) {
+        let bestDist = 4;
+        for (const [key, val] of parsed) {
+          const [pName, salStr] = key.split("|");
+          if (parseInt(salStr, 10) !== p.salary) continue;
+          const d = levenshtein(p.name.toLowerCase(), pName);
+          if (d < bestDist) { bestDist = d; match = val; }
+        }
+      }
+      if (!match) continue;
+
+      await db.update(dkPlayers)
+        .set({
+          actualFpts:   match.actualFpts,
+          actualOwnPct: match.actualOwnPct || null,
+          linestarProj: match.linestarProj || null,
+          projOwnPct:   match.projOwnPct   || null,
+        })
+        .where(eq(dkPlayers.id, p.id));
+      updated++;
+    }
+
+    revalidatePath("/dfs");
+    return {
+      ok: true,
+      message: `Updated ${updated}/${pool.rows.length} players with actual results for ${date}`,
+      created: 0,
+      updated,
+    };
+  }
+
+  // ── Mode 2: no slate → create dk_slate + dk_players with synthetic IDs ─────
+  const [newSlate] = await db
+    .insert(dkSlates)
+    .values({ slateDate: date, gameCount: 0 })
+    .onConflictDoUpdate({ target: dkSlates.slateDate, set: { gameCount: 0 } })
+    .returning({ id: dkSlates.id });
+
+  const slateId = newSlate.id;
+  let created = 0;
+
+  for (const [key, entry] of parsed) {
+    const [playerName, salStr] = key.split("|");
+    const salary    = parseInt(salStr, 10);
+    const dkPlayerId = syntheticDkId(playerName, salary);
+    const teamId    = abbrevCache.get(entry.teamAbbrev) ?? null;
+    const name      = playerName.replace(/\b\w/g, (c) => c.toUpperCase()); // restore title case
+
+    await db.insert(dkPlayers)
+      .values({
+        slateId, dkPlayerId, name,
+        teamAbbrev: entry.teamAbbrev || "UNK",
+        teamId, salary,
+        eligiblePositions: "UTIL",
+        linestarProj:  entry.linestarProj  || null,
+        projOwnPct:    entry.projOwnPct    || null,
+        actualOwnPct:  entry.actualOwnPct  || null,
+        actualFpts:    entry.actualFpts,
+        isOut: false,
+      })
+      .onConflictDoUpdate({
+        target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
+        set: {
+          linestarProj:  sql`EXCLUDED.linestar_proj`,
+          projOwnPct:    sql`EXCLUDED.proj_own_pct`,
+          actualOwnPct:  sql`EXCLUDED.actual_own_pct`,
+          actualFpts:    sql`EXCLUDED.actual_fpts`,
+        },
+      });
+    created++;
+  }
+
+  revalidatePath("/dfs");
+  return {
+    ok: true,
+    message: `Created historical slate for ${date} with ${created} players (synthetic IDs — ourProj will be null)`,
+    created,
+    updated: 0,
+  };
+}
+
 export async function loadSlateFromContestId(contestId: string, cashLine?: number): Promise<{
   ok: boolean; message: string; playerCount?: number;
 }> {
