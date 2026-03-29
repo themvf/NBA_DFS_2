@@ -1,4 +1,4 @@
-"""Configuration for NBA DFS v2."""
+"""Configuration for NBA DFS v2 + MLB expansion."""
 
 from __future__ import annotations
 
@@ -25,6 +25,14 @@ class NbaApiConfig:
 
 
 @dataclass
+class MlbApiConfig:
+    season: str = "2025"               # MLB season year (not a range like NBA "2025-26")
+    rolling_games: int = 15            # rolling window for batter/pitcher stat averages
+    base_url: str = "https://statsapi.mlb.com/api/v1"
+    timeout_seconds: int = 20
+
+
+@dataclass
 class OddsApiConfig:
     api_key: str = ""
     base_url: str = "https://api.the-odds-api.com/v4"
@@ -41,6 +49,7 @@ class OddsApiConfig:
 @dataclass
 class AppConfig:
     nba_api: NbaApiConfig = field(default_factory=NbaApiConfig)
+    mlb_api: MlbApiConfig = field(default_factory=MlbApiConfig)
     odds_api: OddsApiConfig = field(default_factory=OddsApiConfig)
     database_url: Optional[str] = None
 
