@@ -1,12 +1,23 @@
-"""PostgreSQL schema for NBA DFS v2.
+"""PostgreSQL schema for NBA DFS v2 + MLB expansion.
 
 Tables:
+  NBA:
   - teams              30 NBA teams with standard 3-letter abbreviations
   - nba_team_stats     Pace, OffRtg, DefRtg per team per season
   - nba_player_stats   Rolling 10-game averages per player
   - nba_matchups       Daily game schedule with Vegas odds
-  - dk_slates          DraftKings slate per date
-  - dk_players         Player pool per slate (merged DK + LineStar)
+
+  MLB:
+  - mlb_teams          30 MLB teams with ballpark info
+  - mlb_park_factors   Run/HR park factor multipliers per team per season
+  - mlb_matchups       Daily schedule with Vegas odds + confirmed starters
+  - mlb_batter_stats   Rolling per-game batting stats (15-game EWMA)
+  - mlb_pitcher_stats  Rolling per-game pitching stats
+  - mlb_team_stats     Team offensive + bullpen environment
+
+  Shared:
+  - dk_slates          DraftKings slate per date (sport column: 'nba' | 'mlb')
+  - dk_players         Player pool per slate (sport-agnostic structure)
   - dk_lineups         Generated lineups for strategy comparison
 """
 
@@ -65,7 +76,7 @@ TABLES = [
     )
     """,
 
-    # ── Daily game schedule + Vegas odds ─────────────────────
+    # ── Daily NBA schedule + Vegas odds ──────────────────────
     """
     CREATE TABLE IF NOT EXISTS nba_matchups (
         id SERIAL PRIMARY KEY,
@@ -82,10 +93,165 @@ TABLES = [
     )
     """,
 
+    # ── MLB teams ─────────────────────────────────────────────
+    # Separate table from NBA `teams` — different ID space, ballpark metadata,
+    # and dk_abbrev overrides (DK uses non-standard MLB abbreviations).
+    """
+    CREATE TABLE IF NOT EXISTS mlb_teams (
+        team_id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        abbreviation TEXT NOT NULL UNIQUE,
+        dk_abbrev TEXT,
+        ballpark TEXT,
+        city TEXT,
+        division TEXT,
+        mlb_id INTEGER UNIQUE,
+        logo_url TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    # ── MLB park factors (updated annually) ──────────────────
+    # runs_factor: e.g. 1.15 at Coors, 0.88 at Petco Park.
+    # hr_factor: separate — parks affect HR more than other hits.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_park_factors (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES mlb_teams(team_id),
+        season TEXT NOT NULL,
+        runs_factor DOUBLE PRECISION DEFAULT 1.0,
+        hr_factor DOUBLE PRECISION DEFAULT 1.0,
+        UNIQUE(team_id, season)
+    )
+    """,
+
+    # ── Daily MLB schedule + Vegas odds + confirmed starters ──
+    """
+    CREATE TABLE IF NOT EXISTS mlb_matchups (
+        id SERIAL PRIMARY KEY,
+        game_date DATE NOT NULL,
+        game_id TEXT UNIQUE,
+        home_team_id INTEGER REFERENCES mlb_teams(team_id),
+        away_team_id INTEGER REFERENCES mlb_teams(team_id),
+        home_sp_id INTEGER,
+        away_sp_id INTEGER,
+        vegas_total DOUBLE PRECISION,
+        home_ml INTEGER,
+        away_ml INTEGER,
+        vegas_prob_home DOUBLE PRECISION,
+        home_implied DOUBLE PRECISION,
+        away_implied DOUBLE PRECISION,
+        ballpark TEXT,
+        weather_temp INTEGER,
+        wind_speed INTEGER,
+        wind_direction TEXT,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(game_date, home_team_id, away_team_id)
+    )
+    """,
+
+    # ── MLB batter stats (15-game EWMA, same α=0.25 as NBA) ──
+    # wrc_plus_vs_l / wrc_plus_vs_r: L/R split for pitcher matchup.
+    # fpts_std: per-game FPTS standard deviation for Monte Carlo.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_batter_stats (
+        id SERIAL PRIMARY KEY,
+        player_id INTEGER NOT NULL,
+        season TEXT NOT NULL,
+        team_id INTEGER REFERENCES mlb_teams(team_id),
+        name TEXT NOT NULL,
+        batting_order INTEGER,
+        games INTEGER,
+        pa_pg DOUBLE PRECISION,
+        avg DOUBLE PRECISION,
+        obp DOUBLE PRECISION,
+        slg DOUBLE PRECISION,
+        iso DOUBLE PRECISION,
+        babip DOUBLE PRECISION,
+        wrc_plus DOUBLE PRECISION,
+        k_pct DOUBLE PRECISION,
+        bb_pct DOUBLE PRECISION,
+        hr_pg DOUBLE PRECISION,
+        singles_pg DOUBLE PRECISION,
+        doubles_pg DOUBLE PRECISION,
+        triples_pg DOUBLE PRECISION,
+        rbi_pg DOUBLE PRECISION,
+        runs_pg DOUBLE PRECISION,
+        sb_pg DOUBLE PRECISION,
+        hbp_pg DOUBLE PRECISION,
+        wrc_plus_vs_l DOUBLE PRECISION,
+        wrc_plus_vs_r DOUBLE PRECISION,
+        avg_fpts_pg DOUBLE PRECISION,
+        fpts_std DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(player_id, season)
+    )
+    """,
+
+    # ── MLB pitcher stats ─────────────────────────────────────
+    # hand: 'R' or 'L' — critical for batter L/R split application.
+    # xfip: best ERA predictor; preferred over ERA for projections.
+    # win_pct + qs_pct: used to estimate W bonus and QS probability.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_pitcher_stats (
+        id SERIAL PRIMARY KEY,
+        player_id INTEGER NOT NULL,
+        season TEXT NOT NULL,
+        team_id INTEGER REFERENCES mlb_teams(team_id),
+        name TEXT NOT NULL,
+        hand TEXT,
+        games INTEGER,
+        ip_pg DOUBLE PRECISION,
+        era DOUBLE PRECISION,
+        fip DOUBLE PRECISION,
+        xfip DOUBLE PRECISION,
+        k_per_9 DOUBLE PRECISION,
+        bb_per_9 DOUBLE PRECISION,
+        hr_per_9 DOUBLE PRECISION,
+        k_pct DOUBLE PRECISION,
+        bb_pct DOUBLE PRECISION,
+        hr_fb_pct DOUBLE PRECISION,
+        whip DOUBLE PRECISION,
+        avg_fpts_pg DOUBLE PRECISION,
+        fpts_std DOUBLE PRECISION,
+        win_pct DOUBLE PRECISION,
+        qs_pct DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(player_id, season)
+    )
+    """,
+
+    # ── MLB team offensive + bullpen environment ──────────────
+    # team_wrc_plus: opposing lineup quality index (100 = avg).
+    # team_k_pct: how often the team strikes out (scales pitcher K count).
+    # bullpen_era/fip: used when SP is projected to not finish the game.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_team_stats (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES mlb_teams(team_id),
+        season TEXT NOT NULL,
+        team_wrc_plus DOUBLE PRECISION,
+        team_k_pct DOUBLE PRECISION,
+        team_bb_pct DOUBLE PRECISION,
+        team_iso DOUBLE PRECISION,
+        team_ops DOUBLE PRECISION,
+        bullpen_era DOUBLE PRECISION,
+        bullpen_fip DOUBLE PRECISION,
+        staff_k_pct DOUBLE PRECISION,
+        staff_bb_pct DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(team_id, season)
+    )
+    """,
+
     # ── DFS slates ────────────────────────────────────────────
+    # sport: 'nba' | 'mlb' — distinguishes same-date slates across sports.
+    # UNIQUE includes sport so an NBA GPP and MLB GPP on the same date
+    # are stored as separate rows.
     """
     CREATE TABLE IF NOT EXISTS dk_slates (
         id SERIAL PRIMARY KEY,
+        sport TEXT DEFAULT 'nba',
         slate_date DATE NOT NULL,
         game_count INTEGER DEFAULT 0,
         dk_draft_group_id INTEGER,
@@ -95,11 +261,15 @@ TABLES = [
         field_size INTEGER,
         contest_format TEXT DEFAULT 'gpp',
         created_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(slate_date, contest_type, contest_format)
+        UNIQUE(slate_date, contest_type, contest_format, sport)
     )
     """,
 
     # ── DFS player pool ───────────────────────────────────────
+    # team_id: FK to NBA teams (NULL for MLB players).
+    # mlb_team_id: FK to mlb_teams (NULL for NBA players).
+    # matchup_id: plain integer — refers to nba_matchups or mlb_matchups
+    #   depending on the parent slate's sport column.
     """
     CREATE TABLE IF NOT EXISTS dk_players (
         id SERIAL PRIMARY KEY,
@@ -108,6 +278,7 @@ TABLES = [
         name TEXT NOT NULL,
         team_abbrev TEXT NOT NULL,
         team_id INTEGER REFERENCES teams(team_id),
+        mlb_team_id INTEGER REFERENCES mlb_teams(team_id),
         matchup_id INTEGER,
         eligible_positions TEXT NOT NULL,
         salary INTEGER NOT NULL,
@@ -297,6 +468,44 @@ MIGRATIONS = [
             UNIQUE (slate_date, contest_type, contest_format);
         END IF;
     END $$""",
+
+    # ── 2026-03-29: MLB Expansion ─────────────────────────────
+
+    # Add sport column to dk_slates (default 'nba' for all existing rows)
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_slates' AND column_name = 'sport'
+        ) THEN
+            ALTER TABLE dk_slates ADD COLUMN sport TEXT DEFAULT 'nba';
+            UPDATE dk_slates SET sport = 'nba' WHERE sport IS NULL;
+        END IF;
+    END $$""",
+    # Migrate dk_slates unique constraint to include sport column.
+    # NBA + MLB slates on the same date are now distinct rows.
+    """DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'dk_slates_date_type_format_key'
+        ) THEN
+            ALTER TABLE dk_slates DROP CONSTRAINT dk_slates_date_type_format_key;
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'dk_slates_date_type_format_sport_key'
+        ) THEN
+            ALTER TABLE dk_slates ADD CONSTRAINT dk_slates_date_type_format_sport_key
+            UNIQUE (slate_date, contest_type, contest_format, sport);
+        END IF;
+    END $$""",
+    # Add mlb_team_id to dk_players for MLB slate support.
+    # team_id (NBA) remains for NBA players; mlb_team_id is set for MLB players.
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'mlb_team_id'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN mlb_team_id INTEGER REFERENCES mlb_teams(team_id);
+        END IF;
+    END $$""",
 ]
 
 INDEXES = [
@@ -307,4 +516,13 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_dk_players_slate ON dk_players(slate_id, our_leverage DESC NULLS LAST)",
     "CREATE INDEX IF NOT EXISTS idx_dk_players_team ON dk_players(team_id, slate_id)",
     "CREATE INDEX IF NOT EXISTS idx_dk_lineups_slate ON dk_lineups(slate_id, strategy)",
+    # MLB indexes
+    "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_team ON mlb_batter_stats(team_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_player ON mlb_batter_stats(player_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_team ON mlb_pitcher_stats(team_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_player ON mlb_pitcher_stats(player_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_season ON mlb_team_stats(team_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_dk_players_mlb_team ON dk_players(mlb_team_id, slate_id)",
+    "CREATE INDEX IF NOT EXISTS idx_dk_slates_sport_date ON dk_slates(sport, slate_date DESC)",
 ]

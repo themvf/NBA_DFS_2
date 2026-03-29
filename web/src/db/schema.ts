@@ -5,12 +5,15 @@ import {
   integer,
   bigint,
   doublePrecision,
+  real,
   boolean,
   date,
   timestamp,
   unique,
   index,
 } from "drizzle-orm/pg-core";
+
+// ── NBA tables ────────────────────────────────────────────────
 
 export const teams = pgTable("teams", {
   teamId: serial("team_id").primaryKey(),
@@ -85,10 +88,164 @@ export const nbaMatchups = pgTable(
   ]
 );
 
+// ── MLB tables ────────────────────────────────────────────────
+
+export const mlbTeams = pgTable("mlb_teams", {
+  teamId: serial("team_id").primaryKey(),
+  name: text("name").notNull().unique(),
+  abbreviation: text("abbreviation").notNull().unique(),
+  dkAbbrev: text("dk_abbrev"),
+  ballpark: text("ballpark"),
+  city: text("city"),
+  division: text("division"),
+  mlbId: integer("mlb_id").unique(),
+  logoUrl: text("logo_url").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const mlbParkFactors = pgTable(
+  "mlb_park_factors",
+  {
+    id: serial("id").primaryKey(),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => mlbTeams.teamId),
+    season: text("season").notNull(),
+    runsFactor: doublePrecision("runs_factor").default(1.0),
+    hrFactor: doublePrecision("hr_factor").default(1.0),
+  },
+  (t) => [unique("mlb_park_factors_team_season_key").on(t.teamId, t.season)]
+);
+
+export const mlbMatchups = pgTable(
+  "mlb_matchups",
+  {
+    id: serial("id").primaryKey(),
+    gameDate: date("game_date").notNull(),
+    gameId: text("game_id").unique(),
+    homeTeamId: integer("home_team_id").references(() => mlbTeams.teamId),
+    awayTeamId: integer("away_team_id").references(() => mlbTeams.teamId),
+    homeSpId: integer("home_sp_id"),
+    awaySpId: integer("away_sp_id"),
+    vegasTotal: doublePrecision("vegas_total"),
+    homeMl: integer("home_ml"),
+    awayMl: integer("away_ml"),
+    vegasProbHome: doublePrecision("vegas_prob_home"),
+    homeImplied: doublePrecision("home_implied"),
+    awayImplied: doublePrecision("away_implied"),
+    ballpark: text("ballpark"),
+    weatherTemp: integer("weather_temp"),
+    windSpeed: integer("wind_speed"),
+    windDirection: text("wind_direction"),
+    fetchedAt: timestamp("fetched_at").defaultNow(),
+  },
+  (t) => [
+    unique("mlb_matchups_date_teams_key").on(t.gameDate, t.homeTeamId, t.awayTeamId),
+    index("idx_mlb_matchups_date").on(t.gameDate),
+  ]
+);
+
+export const mlbBatterStats = pgTable(
+  "mlb_batter_stats",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id").notNull(),
+    season: text("season").notNull(),
+    teamId: integer("team_id").references(() => mlbTeams.teamId),
+    name: text("name").notNull(),
+    battingOrder: integer("batting_order"),
+    games: integer("games"),
+    paPg: doublePrecision("pa_pg"),
+    avg: doublePrecision("avg"),
+    obp: doublePrecision("obp"),
+    slg: doublePrecision("slg"),
+    iso: doublePrecision("iso"),
+    babip: doublePrecision("babip"),
+    wrcPlus: doublePrecision("wrc_plus"),
+    kPct: doublePrecision("k_pct"),
+    bbPct: doublePrecision("bb_pct"),
+    hrPg: doublePrecision("hr_pg"),
+    singlesPg: doublePrecision("singles_pg"),
+    doublesPg: doublePrecision("doubles_pg"),
+    triplesPg: doublePrecision("triples_pg"),
+    rbiPg: doublePrecision("rbi_pg"),
+    runsPg: doublePrecision("runs_pg"),
+    sbPg: doublePrecision("sb_pg"),
+    hbpPg: doublePrecision("hbp_pg"),
+    wrcPlusVsL: doublePrecision("wrc_plus_vs_l"),
+    wrcPlusVsR: doublePrecision("wrc_plus_vs_r"),
+    avgFptsPg: doublePrecision("avg_fpts_pg"),
+    fptsStd: doublePrecision("fpts_std"),
+    fetchedAt: timestamp("fetched_at").defaultNow(),
+  },
+  (t) => [
+    unique("mlb_batter_stats_player_season_key").on(t.playerId, t.season),
+    index("idx_mlb_batter_stats_team").on(t.teamId, t.season),
+  ]
+);
+
+export const mlbPitcherStats = pgTable(
+  "mlb_pitcher_stats",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id").notNull(),
+    season: text("season").notNull(),
+    teamId: integer("team_id").references(() => mlbTeams.teamId),
+    name: text("name").notNull(),
+    hand: text("hand"),
+    games: integer("games"),
+    ipPg: doublePrecision("ip_pg"),
+    era: doublePrecision("era"),
+    fip: doublePrecision("fip"),
+    xfip: doublePrecision("xfip"),
+    kPer9: doublePrecision("k_per_9"),
+    bbPer9: doublePrecision("bb_per_9"),
+    hrPer9: doublePrecision("hr_per_9"),
+    kPct: doublePrecision("k_pct"),
+    bbPct: doublePrecision("bb_pct"),
+    hrFbPct: doublePrecision("hr_fb_pct"),
+    whip: doublePrecision("whip"),
+    avgFptsPg: doublePrecision("avg_fpts_pg"),
+    fptsStd: doublePrecision("fpts_std"),
+    winPct: doublePrecision("win_pct"),
+    qsPct: doublePrecision("qs_pct"),
+    fetchedAt: timestamp("fetched_at").defaultNow(),
+  },
+  (t) => [
+    unique("mlb_pitcher_stats_player_season_key").on(t.playerId, t.season),
+    index("idx_mlb_pitcher_stats_team").on(t.teamId, t.season),
+  ]
+);
+
+export const mlbTeamStats = pgTable(
+  "mlb_team_stats",
+  {
+    id: serial("id").primaryKey(),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => mlbTeams.teamId),
+    season: text("season").notNull(),
+    teamWrcPlus: doublePrecision("team_wrc_plus"),
+    teamKPct: doublePrecision("team_k_pct"),
+    teamBbPct: doublePrecision("team_bb_pct"),
+    teamIso: doublePrecision("team_iso"),
+    teamOps: doublePrecision("team_ops"),
+    bullpenEra: doublePrecision("bullpen_era"),
+    bullpenFip: doublePrecision("bullpen_fip"),
+    staffKPct: doublePrecision("staff_k_pct"),
+    staffBbPct: doublePrecision("staff_bb_pct"),
+    fetchedAt: timestamp("fetched_at").defaultNow(),
+  },
+  (t) => [unique("mlb_team_stats_team_season_key").on(t.teamId, t.season)]
+);
+
+// ── Shared DFS tables ─────────────────────────────────────────
+
 export const dkSlates = pgTable(
   "dk_slates",
   {
     id: serial("id").primaryKey(),
+    sport: text("sport").default("nba"),
     slateDate: date("slate_date").notNull(),
     gameCount: integer("game_count").default(0),
     dkDraftGroupId: integer("dk_draft_group_id"),
@@ -99,7 +256,12 @@ export const dkSlates = pgTable(
     contestFormat: text("contest_format").default("gpp"),
     createdAt: timestamp("created_at").defaultNow(),
   },
-  (t) => [unique("dk_slates_date_type_format_key").on(t.slateDate, t.contestType, t.contestFormat)]
+  (t) => [
+    unique("dk_slates_date_type_format_sport_key").on(
+      t.slateDate, t.contestType, t.contestFormat, t.sport
+    ),
+    index("idx_dk_slates_sport_date").on(t.sport, t.slateDate),
+  ]
 );
 
 export const dkPlayers = pgTable(
@@ -112,28 +274,36 @@ export const dkPlayers = pgTable(
     dkPlayerId: bigint("dk_player_id", { mode: "number" }).notNull(),
     name: text("name").notNull(),
     teamAbbrev: text("team_abbrev").notNull(),
+    // team_id: NBA team (NULL for MLB players)
     teamId: integer("team_id").references(() => teams.teamId),
-    matchupId: integer("matchup_id").references(() => nbaMatchups.id),
+    // mlb_team_id: MLB team (NULL for NBA players)
+    mlbTeamId: integer("mlb_team_id").references(() => mlbTeams.teamId),
+    // matchup_id is a plain integer — references nba_matchups OR mlb_matchups
+    // depending on the parent slate's sport column. No FK enforced here.
+    matchupId: integer("matchup_id"),
     eligiblePositions: text("eligible_positions").notNull(),
     salary: integer("salary").notNull(),
     gameInfo: text("game_info"),
-    avgFptsDk: doublePrecision("avg_fpts_dk"),
-    linestarProj: doublePrecision("linestar_proj"),
-    projOwnPct: doublePrecision("proj_own_pct"),
-    ourProj: doublePrecision("our_proj"),
-    ourLeverage: doublePrecision("our_leverage"),
-    ourOwnPct: doublePrecision("our_own_pct"),
-    propPts: doublePrecision("prop_pts"),
-    propReb: doublePrecision("prop_reb"),
-    propAst: doublePrecision("prop_ast"),
-    projFloor: doublePrecision("proj_floor"),
-    projCeiling: doublePrecision("proj_ceiling"),
-    boomRate: doublePrecision("boom_rate"),
+    avgFptsDk: real("avg_fpts_dk"),
+    linestarProj: real("linestar_proj"),
+    projOwnPct: real("proj_own_pct"),
+    ourProj: real("our_proj"),
+    ourLeverage: real("our_leverage"),
+    ourOwnPct: real("our_own_pct"),
+    propPts: real("prop_pts"),
+    propReb: real("prop_reb"),
+    propAst: real("prop_ast"),
+    projFloor: real("proj_floor"),
+    projCeiling: real("proj_ceiling"),
+    boomRate: real("boom_rate"),
     isOut: boolean("is_out").default(false),
-    actualFpts: doublePrecision("actual_fpts"),
-    actualOwnPct: doublePrecision("actual_own_pct"),
+    actualFpts: real("actual_fpts"),
+    actualOwnPct: real("actual_own_pct"),
   },
-  (t) => [unique("dk_players_slate_player_key").on(t.slateId, t.dkPlayerId)]
+  (t) => [
+    unique("dk_players_slate_player_key").on(t.slateId, t.dkPlayerId),
+    index("idx_dk_players_mlb_team").on(t.mlbTeamId, t.slateId),
+  ]
 );
 
 export const dkLineups = pgTable(
@@ -156,11 +326,18 @@ export const dkLineups = pgTable(
   (t) => [unique("dk_lineups_slate_strategy_num_key").on(t.slateId, t.strategy, t.lineupNum)]
 );
 
-// Type inference
+// ── Type inference ────────────────────────────────────────────
+
 export type Team = typeof teams.$inferSelect;
 export type NbaTeamStats = typeof nbaTeamStats.$inferSelect;
 export type NbaPlayerStats = typeof nbaPlayerStats.$inferSelect;
 export type NbaMatchup = typeof nbaMatchups.$inferSelect;
+export type MlbTeam = typeof mlbTeams.$inferSelect;
+export type MlbParkFactors = typeof mlbParkFactors.$inferSelect;
+export type MlbMatchup = typeof mlbMatchups.$inferSelect;
+export type MlbBatterStats = typeof mlbBatterStats.$inferSelect;
+export type MlbPitcherStats = typeof mlbPitcherStats.$inferSelect;
+export type MlbTeamStats = typeof mlbTeamStats.$inferSelect;
 export type DkSlate = typeof dkSlates.$inferSelect;
 export type DkPlayer = typeof dkPlayers.$inferSelect;
 export type DkLineup = typeof dkLineups.$inferSelect;
