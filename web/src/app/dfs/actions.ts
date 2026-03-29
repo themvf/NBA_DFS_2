@@ -497,9 +497,14 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
       .select({ id: dkPlayers.id, name: dkPlayers.name, teamId: dkPlayers.teamId })
       .from(dkPlayers).where(eq(dkPlayers.slateId, slate.id));
 
-    // Step 3: Collect props across all events
+    // Step 3: Collect props across all events — average across all bookmakers.
+    // Taking bookmakers[0] is non-deterministic (order varies by API call).
+    // Consensus average across all available books is the most stable and
+    // accurate single line to use as a projection input.
     type PropSet = { pts?: number; reb?: number; ast?: number };
-    const propData = new Map<string, PropSet>(); // key = lower-cased player name
+    // Accumulators: player → stat → [sum, count] for averaging
+    type Accumulator = Record<string, [number, number]>;
+    const propAccum = new Map<string, Accumulator>(); // key = lower-cased player name
 
     for (const event of todayEvents) {
       const qs = new URLSearchParams({
@@ -515,28 +520,41 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
         if (!r.ok) continue;
         const data = await r.json() as {
           bookmakers: Array<{
+            key: string;
             markets: Array<{
               key: string;
               outcomes: Array<{ name: string; description: string; point?: number }>;
             }>;
           }>;
         };
-        const bm = data.bookmakers?.[0];
-        if (!bm) continue;
-        for (const market of bm.markets) {
-          const statKey = market.key === "player_points" ? "pts"
-                        : market.key === "player_rebounds" ? "reb"
-                        : market.key === "player_assists" ? "ast" : null;
-          if (!statKey) continue;
-          for (const o of market.outcomes) {
-            if (o.description?.toLowerCase() !== "over" || o.point == null) continue;
-            const key = o.name.toLowerCase();
-            const entry = propData.get(key) ?? {};
-            (entry as Record<string, number>)[statKey] = o.point;
-            propData.set(key, entry);
+        // Iterate ALL bookmakers, not just [0]
+        for (const bm of (data.bookmakers ?? [])) {
+          for (const market of bm.markets) {
+            const statKey = market.key === "player_points" ? "pts"
+                          : market.key === "player_rebounds" ? "reb"
+                          : market.key === "player_assists" ? "ast" : null;
+            if (!statKey) continue;
+            for (const o of market.outcomes) {
+              if (o.description?.toLowerCase() !== "over" || o.point == null) continue;
+              const key = o.name.toLowerCase();
+              const accum = propAccum.get(key) ?? {};
+              const [sum, cnt] = accum[statKey] ?? [0, 0];
+              accum[statKey] = [sum + o.point, cnt + 1];
+              propAccum.set(key, accum);
+            }
           }
         }
       } catch { /* skip individual event failures */ }
+    }
+
+    // Collapse accumulators → consensus averages
+    const propData = new Map<string, PropSet>();
+    for (const [player, accum] of propAccum) {
+      const entry: PropSet = {};
+      for (const [stat, [sum, cnt]] of Object.entries(accum)) {
+        (entry as Record<string, number>)[stat] = Math.round((sum / cnt) * 2) / 2; // round to nearest 0.5
+      }
+      propData.set(player, entry);
     }
 
     if (propData.size === 0)

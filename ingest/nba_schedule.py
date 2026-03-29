@@ -239,13 +239,16 @@ def fetch_player_props(db: DatabaseManager, api_key: str, game_date: str | None 
 
     player_lookup = {row["name"].lower(): row for row in slate_players}
 
-    # Step 3: Fetch props per event and accumulate by player name
-    prop_data: dict[str, dict[str, float]] = {}  # {lower_name: {pts, reb, ast}}
+    # Step 3: Fetch props per event and accumulate by player name.
+    # Average across ALL bookmakers — consensus is more stable and accurate
+    # than whichever book happens to be index [0] on any given API call.
     MARKET_TO_KEY = {
         "player_points": "pts",
         "player_rebounds": "reb",
         "player_assists": "ast",
     }
+    # Accumulators: {lower_name: {stat: [sum, count]}} for computing averages
+    prop_accum: dict[str, dict[str, list]] = {}
 
     for event in today_events:
         try:
@@ -265,22 +268,32 @@ def fetch_player_props(db: DatabaseManager, api_key: str, game_date: str | None 
             logger.debug("Event %s props failed: %s", event["id"], e)
             continue
 
-        bookmaker = (data.get("bookmakers") or [None])[0]
-        if not bookmaker:
-            continue
+        # Iterate ALL bookmakers, not just [0]
+        for bookmaker in data.get("bookmakers") or []:
+            for market in bookmaker.get("markets", []):
+                stat_key = MARKET_TO_KEY.get(market["key"])
+                if not stat_key:
+                    continue
+                for outcome in market.get("outcomes", []):
+                    if outcome.get("description", "").lower() != "over":
+                        continue
+                    pname = outcome["name"].lower()
+                    point = outcome.get("point")
+                    if point is None:
+                        continue
+                    entry = prop_accum.setdefault(pname, {})
+                    if stat_key not in entry:
+                        entry[stat_key] = [0.0, 0]
+                    entry[stat_key][0] += float(point)
+                    entry[stat_key][1] += 1
 
-        for market in bookmaker.get("markets", []):
-            stat_key = MARKET_TO_KEY.get(market["key"])
-            if not stat_key:
-                continue
-            for outcome in market.get("outcomes", []):
-                if outcome.get("description", "").lower() != "over":
-                    continue
-                pname = outcome["name"].lower()
-                point = outcome.get("point")
-                if point is None:
-                    continue
-                prop_data.setdefault(pname, {})[stat_key] = float(point)
+    # Collapse accumulators → consensus averages (rounded to nearest 0.5)
+    prop_data: dict[str, dict[str, float]] = {}
+    for pname, stats in prop_accum.items():
+        prop_data[pname] = {
+            stat: round(total / count * 2) / 2
+            for stat, (total, count) in stats.items()
+        }
 
     # Step 4: Match prop names to slate players and write to DB
     updated = 0
