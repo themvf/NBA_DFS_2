@@ -86,9 +86,18 @@ export async function getDkPlayers(): Promise<DkPlayerRow[]> {
 export async function getLatestSlateInfo(): Promise<{
   slateDate: string;
   gameCount: number | null;
+  contestType: string | null;
+  fieldSize: number | null;
+  contestFormat: string | null;
 } | null> {
   const rows = await db
-    .select({ slateDate: dkSlates.slateDate, gameCount: dkSlates.gameCount })
+    .select({
+      slateDate: dkSlates.slateDate,
+      gameCount: dkSlates.gameCount,
+      contestType: dkSlates.contestType,
+      fieldSize: dkSlates.fieldSize,
+      contestFormat: dkSlates.contestFormat,
+    })
     .from(dkSlates)
     .orderBy(desc(dkSlates.slateDate))
     .limit(1);

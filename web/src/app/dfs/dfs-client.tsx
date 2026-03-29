@@ -56,6 +56,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [cashLineInput, setCashLineInput] = useState("");
   const [loadMode, setLoadMode] = useState<"api" | "csv">("api");
 
+  // ── Contest metadata ──────────────────────────────────────
+  const [contestTiming, setContestTiming] = useState<"early" | "main" | "late">("main");
+  const [fieldSizeInput, setFieldSizeInput] = useState("");
+  const [contestFormat, setContestFormat] = useState<"gpp" | "cash">("gpp");
+
   // ── Game filter ───────────────────────────────────────────
   const allGames = useMemo(() => {
     const keys = new Set<string>();
@@ -170,8 +175,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   async function handleLoadApi() {
     if (!contestId.trim()) { setUploadMsg({ ok: false, text: "Enter a DK contest ID" }); return; }
     startTransition(async () => {
-      const cashLine = cashLineInput ? parseFloat(cashLineInput) : undefined;
-      const res = await loadSlateFromContestId(contestId.trim(), isNaN(cashLine!) ? undefined : cashLine);
+      const cashLine  = cashLineInput ? parseFloat(cashLineInput) : undefined;
+      const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
+      const res = await loadSlateFromContestId(
+        contestId.trim(),
+        isNaN(cashLine!) ? undefined : cashLine,
+        contestTiming,
+        fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
+        contestFormat,
+      );
       setUploadMsg({ ok: res.ok, text: res.message });
     });
   }
@@ -184,6 +196,9 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     fd.append("dkFile", dkFile);
     if (lsFile) fd.append("lsFile", lsFile);
     if (cashLineInput) fd.append("cashLine", cashLineInput);
+    fd.append("contestType", contestTiming);
+    if (fieldSizeInput) fd.append("fieldSize", fieldSizeInput);
+    fd.append("contestFormat", contestFormat);
     startTransition(async () => {
       const res = await processDkSlate(fd);
       setUploadMsg({ ok: res.ok, text: res.message });
@@ -260,7 +275,13 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     if (!historicalText.trim()) { setHistoricalMsg({ ok: false, text: "Paste LineStar data first" }); return; }
     setIsSavingHistorical(true);
     setHistoricalMsg(null);
-    const res = await saveHistoricalSlate(historicalDate, historicalText);
+    const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
+    const res = await saveHistoricalSlate(
+      historicalDate, historicalText,
+      contestTiming,
+      fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
+      contestFormat,
+    );
     setIsSavingHistorical(false);
     setHistoricalMsg({ ok: res.ok, text: res.message });
     if (res.ok) setHistoricalText("");
@@ -341,6 +362,54 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             >
               CSV Upload
             </button>
+          </div>
+        </div>
+
+        {/* Contest metadata — shared across both load modes */}
+        <div className="flex flex-wrap items-end gap-4 mb-3">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Timing</label>
+            <div className="flex rounded border text-xs overflow-hidden">
+              {(["early", "main", "late"] as const).map((t, i) => (
+                <button
+                  key={t}
+                  onClick={() => setContestTiming(t)}
+                  className={`px-3 py-1 capitalize ${i > 0 ? "border-l" : ""} ${
+                    contestTiming === t ? "bg-slate-700 text-white" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Format</label>
+            <div className="flex rounded border text-xs overflow-hidden">
+              {(["gpp", "cash"] as const).map((f, i) => (
+                <button
+                  key={f}
+                  onClick={() => setContestFormat(f)}
+                  className={`px-3 py-1 uppercase ${i > 0 ? "border-l" : ""} ${
+                    contestFormat === f ? "bg-slate-700 text-white" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">
+              Field Size <span className="text-gray-400">(optional)</span>
+            </label>
+            <input
+              type="number"
+              value={fieldSizeInput}
+              onChange={(e) => setFieldSizeInput(e.target.value)}
+              placeholder="e.g. 12500"
+              className="w-28 rounded border px-3 py-1.5 text-sm"
+            />
           </div>
         </div>
 

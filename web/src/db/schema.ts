@@ -91,6 +91,9 @@ export const dkSlates = pgTable("dk_slates", {
   dkDraftGroupId: integer("dk_draft_group_id"),
   linestarPeriodId: integer("linestar_period_id"),
   cashLine: doublePrecision("cash_line"),
+  contestType: text("contest_type").default("main"),
+  fieldSize: integer("field_size"),
+  contestFormat: text("contest_format").default("gpp"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -795,17 +795,28 @@ function parseSlateDate(gameInfo: string): string | null {
 export async function processDkSlate(formData: FormData): Promise<{
   ok: boolean; message: string; playerCount?: number; matchRate?: number;
 }> {
-  const dkFile    = formData.get("dkFile") as File | null;
-  const lsFile    = formData.get("lsFile") as File | null;
-  const cashLineStr = formData.get("cashLine") as string | null;
+  const dkFile        = formData.get("dkFile") as File | null;
+  const lsFile        = formData.get("lsFile") as File | null;
+  const cashLineStr   = formData.get("cashLine") as string | null;
+  const contestType   = (formData.get("contestType") as string | null) || undefined;
+  const fieldSizeStr  = formData.get("fieldSize") as string | null;
+  const contestFormat = (formData.get("contestFormat") as string | null) || undefined;
   if (!dkFile) return { ok: false, message: "DK CSV required" };
 
   const dkPlayers_ = parseDkCsv(await dkFile.text());
   if (dkPlayers_.length === 0) return { ok: false, message: "No players parsed from DK CSV" };
 
-  const lsMap   = lsFile ? parseLinestarCsv(await lsFile.text()) : new Map<string, LinestarEntry>();
+  const lsMap    = lsFile ? parseLinestarCsv(await lsFile.text()) : new Map<string, LinestarEntry>();
   const cashLine = cashLineStr ? parseFloat(cashLineStr) : undefined;
-  return enrichAndSave(dkPlayers_, lsMap, isNaN(cashLine!) ? undefined : cashLine);
+  const fieldSize = fieldSizeStr ? parseInt(fieldSizeStr, 10) : undefined;
+  return enrichAndSave(
+    dkPlayers_, lsMap,
+    isNaN(cashLine!) ? undefined : cashLine,
+    undefined,
+    contestType,
+    fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
+    contestFormat,
+  );
 }
 
 // ── Auto-populate matchups from DK player pool ───────────────
@@ -907,6 +918,9 @@ async function enrichAndSave(
   lsMap: Map<string, LinestarEntry>,
   cashLine?: number,
   draftGroupId?: number,
+  contestType?: string,
+  fieldSize?: number,
+  contestFormat?: string,
 ): Promise<{ ok: boolean; message: string; playerCount?: number; matchRate?: number }> {
   let slateDate = "";
   for (const p of dkPlayers_) {
@@ -920,14 +934,21 @@ async function enrichAndSave(
   const slateValues: {
     slateDate: string; gameCount: number;
     cashLine?: number; dkDraftGroupId?: number;
+    contestType?: string; fieldSize?: number; contestFormat?: string;
   } = { slateDate, gameCount };
   if (cashLine != null) slateValues.cashLine = cashLine;
   if (draftGroupId != null) slateValues.dkDraftGroupId = draftGroupId;
+  if (contestType) slateValues.contestType = contestType;
+  if (fieldSize != null) slateValues.fieldSize = fieldSize;
+  if (contestFormat) slateValues.contestFormat = contestFormat;
 
   const conflictSet: Record<string, unknown> = { gameCount };
   if (cashLine != null) conflictSet.cashLine = cashLine;
   // COALESCE: don't overwrite an existing draft group ID with null (CSV re-load)
   if (draftGroupId != null) conflictSet.dkDraftGroupId = draftGroupId;
+  if (contestType) conflictSet.contestType = contestType;
+  if (fieldSize != null) conflictSet.fieldSize = fieldSize;
+  if (contestFormat) conflictSet.contestFormat = contestFormat;
 
   const [slate] = await db
     .insert(dkSlates)
@@ -1379,6 +1400,9 @@ function syntheticDkId(name: string, salary: number): number {
 export async function saveHistoricalSlate(
   date: string,
   text: string,
+  contestType?: string,
+  fieldSize?: number,
+  contestFormat?: string,
 ): Promise<{ ok: boolean; message: string; created: number; updated: number }> {
   if (!date) return { ok: false, message: "Date is required", created: 0, updated: 0 };
   if (!text.trim()) return { ok: false, message: "No data pasted", created: 0, updated: 0 };
@@ -1444,8 +1468,21 @@ export async function saveHistoricalSlate(
   // ── Mode 2: no slate → create dk_slate + dk_players with synthetic IDs ─────
   const [newSlate] = await db
     .insert(dkSlates)
-    .values({ slateDate: date, gameCount: 0 })
-    .onConflictDoUpdate({ target: dkSlates.slateDate, set: { gameCount: 0 } })
+    .values({
+      slateDate: date,
+      gameCount: 0,
+      ...(contestType   && { contestType }),
+      ...(fieldSize != null && { fieldSize }),
+      ...(contestFormat && { contestFormat }),
+    })
+    .onConflictDoUpdate({
+      target: dkSlates.slateDate,
+      set: {
+        ...(contestType   && { contestType }),
+        ...(fieldSize != null && { fieldSize }),
+        ...(contestFormat && { contestFormat }),
+      },
+    })
     .returning({ id: dkSlates.id });
 
   const slateId = newSlate.id;
@@ -1491,7 +1528,13 @@ export async function saveHistoricalSlate(
   };
 }
 
-export async function loadSlateFromContestId(contestId: string, cashLine?: number): Promise<{
+export async function loadSlateFromContestId(
+  contestId: string,
+  cashLine?: number,
+  contestType?: string,
+  fieldSize?: number,
+  contestFormat?: string,
+): Promise<{
   ok: boolean; message: string; playerCount?: number;
 }> {
   try {
@@ -1500,7 +1543,7 @@ export async function loadSlateFromContestId(contestId: string, cashLine?: numbe
     if (players.length === 0) return { ok: false, message: "No players returned from DK API" };
     // Auto-fetch LineStar if DNN_COOKIE is available in the server environment
     const lsMap = await tryFetchLinestarMap(dgId);
-    const result = await enrichAndSave(players, lsMap, cashLine, dgId);
+    const result = await enrichAndSave(players, lsMap, cashLine, dgId, contestType, fieldSize, contestFormat);
     return { ...result, message: `[API] ${result.message}` };
   } catch (e) {
     return { ok: false, message: String(e) };

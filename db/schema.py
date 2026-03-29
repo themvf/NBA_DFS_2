@@ -90,6 +90,9 @@ TABLES = [
         dk_draft_group_id INTEGER,
         linestar_period_id INTEGER,
         cash_line DOUBLE PRECISION,
+        contest_type TEXT DEFAULT 'main',
+        field_size INTEGER,
+        contest_format TEXT DEFAULT 'gpp',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(slate_date)
     )
@@ -214,6 +217,31 @@ MIGRATIONS = [
             WHERE table_name = 'dk_players' AND column_name = 'prop_ast'
         ) THEN
             ALTER TABLE dk_players ADD COLUMN prop_ast REAL;
+        END IF;
+    END $$""",
+    # 2026-03-28: Add contest metadata to dk_slates
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_slates' AND column_name = 'contest_type'
+        ) THEN
+            ALTER TABLE dk_slates ADD COLUMN contest_type TEXT DEFAULT 'main';
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_slates' AND column_name = 'field_size'
+        ) THEN
+            ALTER TABLE dk_slates ADD COLUMN field_size INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_slates' AND column_name = 'contest_format'
+        ) THEN
+            ALTER TABLE dk_slates ADD COLUMN contest_format TEXT DEFAULT 'gpp';
         END IF;
     END $$""",
 ]
