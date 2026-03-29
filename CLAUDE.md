@@ -398,3 +398,220 @@ When loading a slate, the user can optionally input the cash line for the contes
 ### Phase 5 — Adaptive Learning
 11. **Bayesian prior updating** — Start with population priors per position (e.g., PG averages), update toward player EWMA as sample grows. Shrinks aggressive projections for small sample sizes (< 5 games) toward the mean.
 12. **Calibration feedback loop** — After each slate, compute MAE/bias per position/salary tier and store as correction deltas. Auto-apply to next slate's projections. PGs overvalued by 2 FPTS → subtract 2 from next slate's PG projections automatically.
+
+---
+
+## MLB Expansion Plan
+
+### Architecture Decision
+
+Parallel MLB tables alongside existing NBA tables. Add `sport TEXT DEFAULT 'nba'` to `dk_slates`.
+`dk_players` and `dk_lineups` are sport-agnostic — no changes needed to those tables.
+
+### New Tables
+
+**`mlb_teams`** — 30 MLB teams
+```
+team_id SERIAL PK | name | abbreviation | dk_abbrev | ballpark | city | division | mlb_id | logo_url
+```
+
+**`mlb_park_factors`** — updated annually
+```
+id | team_id FK | season | runs_factor | hr_factor
+(Coors ≈ 1.15 runs, Petco ≈ 0.88 — affects batter and pitcher projections)
+```
+
+**`mlb_matchups`** — same shape as nba_matchups plus pitchers and weather
+```
+id | game_date | game_id (MLB gamePk, UNIQUE) | home_team_id | away_team_id
+home_sp_id | away_sp_id                     ← confirmed starter FK to mlb_pitcher_stats
+vegas_total | home_ml | away_ml | vegas_prob_home
+home_implied | away_implied               ← team-specific run totals from moneylines
+ballpark | weather_temp | wind_speed | wind_direction
+```
+
+**`mlb_batter_stats`** — rolling 15-game EWMA (same α=0.25 as NBA)
+```
+player_id | season | team_id | name | batting_order
+pa_pg | avg | obp | slg | iso | babip | wrc_plus | k_pct | bb_pct
+hr_pg | singles_pg | doubles_pg | triples_pg | rbi_pg | runs_pg | sb_pg | hbp_pg
+wrc_plus_vs_l | wrc_plus_vs_r   ← L/R splits
+avg_fpts_pg | fpts_std
+UNIQUE (player_id, season)
+```
+
+**`mlb_pitcher_stats`** — season + rolling
+```
+player_id | season | team_id | name | hand (R/L)
+ip_pg | era | fip | xfip | k_per_9 | bb_per_9 | hr_per_9
+k_pct | bb_pct | hr_fb_pct | whip
+avg_fpts_pg | fpts_std | win_pct | qs_pct
+UNIQUE (player_id, season)
+```
+
+**`mlb_team_stats`** — offensive + bullpen environment
+```
+team_id | season | team_wrc_plus | team_k_pct | team_bb_pct | team_iso | team_ops
+bullpen_era | bullpen_fip | staff_k_pct | staff_bb_pct
+UNIQUE (team_id, season)
+```
+
+### Data Sources
+
+| Source | What | Notes |
+|---|---|---|
+| MLB Stats API (`statsapi.mlb.com`) | Schedule, teams, rosters, results | Free, no auth, no IP blocks |
+| pybaseball | FanGraphs batting/pitching (wRC+, xFIP, ISO) | Cache aggressively — FanGraphs rate-limits |
+| The Odds API | Game O/U, moneylines | `sport_key = "baseball_mlb"` |
+| DraftKings API | Player pool, salaries | Already integrated, sport-agnostic |
+| LineStar | Projected ownership, injury status | MLB sport ID unknown — discover empirically |
+
+**MLB Stats API key endpoints:**
+```
+GET /api/v1/schedule?sportId=1&date=YYYY-MM-DD     # daily game schedule
+GET /api/v1/teams?sportId=1                         # all 30 teams + mlb_id
+GET /api/v1/sports/1/players?season=2025            # full active roster
+GET /api/v1/schedule/{gamePk}/boxscore              # post-game results
+```
+No API key required. No IP restrictions.
+
+### DraftKings MLB Scoring
+
+**Batters:**
+```
+1B: +3.0 | 2B: +5.0 | 3B: +8.0 | HR: +10.0
+RBI: +2.0 | R: +2.0 | BB: +2.0 | HBP: +2.0 | SB: +5.0
+```
+
+**Starting Pitchers:**
+```
+IP:  +2.25 (per inning)    K:    +2.0
+W:   +4.0                   ER:   -2.0
+H:   -0.6                   BB:   -0.6
+HBP: -0.6
+CG:  +2.5   CGSO: +2.5   NH: +5.0   (too rare to model — omit)
+```
+
+**Classic lineup slots** (10 players, $50,000 cap):
+```
+SP  SP  C  1B  2B  3B  SS  OF  OF  OF  UTIL
+UTIL = any hitter (C/1B/2B/3B/SS/OF). Pitchers cannot fill UTIL.
+```
+
+**Showdown slates** (single-game, 6 players — out of scope for Phase 1):
+```
+CPT × 1 (1.5× scoring, 1.5× salary)
+FLEX × 5
+```
+Set `contest_format = 'showdown'` on `dk_slates` — optimizer will detect and refuse to process until Phase 2 optimizer adds Showdown mode.
+
+### Projection Model Design
+
+Two entirely separate models — batters and pitchers share no logic.
+
+**Batter projection:**
+```
+1. Base: per-game rates (hr_pg, singles_pg, doubles_pg, rbi_pg, runs_pg, bb_pg, sb_pg, hbp_pg)
+2. Matchup: use wrc_plus_vs_l or wrc_plus_vs_r based on opposing SP hand
+3. Pitcher quality: opponent xFIP / LEAGUE_AVG_XFIP scales ER/hit rates
+4. Park: multiply HR by hr_factor, all scoring by runs_factor
+5. Game environment: team_implied / LEAGUE_AVG_TEAM_TOTAL (same formula as NBA)
+6. Batting order PA weight:
+     1-2: ×1.08    3-4: ×1.05    5-6: ×1.00    7-9: ×0.93
+7. DK FPTS = 1B×3 + 2B×5 + 3B×8 + HR×10 + RBI×2 + R×2 + BB×2 + HBP×2 + SB×5
+```
+
+**Pitcher projection:**
+```
+1. Base: ip_pg, k_per_9, era, xfip
+2. Opposing lineup: team_wrc_plus / 100 scales ER rate; team_k_pct scales K count
+3. Park: runs_factor inversely scales ER
+4. Win probability: from moneyline using existing _ml_to_prob()
+5. DK FPTS = ip×2.25 + k×2 + win_prob×4 - er×2 - h×0.6 - bb×0.6
+```
+
+**Monte Carlo:** Same `compute_monte_carlo()` function — fpts_std powers it identically.
+Change boom_threshold per sport: batters = 35 FPTS, pitchers = 50 FPTS.
+
+**League average constants (2025 MLB):**
+```python
+MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5   # runs per game per team
+MLB_LEAGUE_AVG_XFIP       = 4.20  # league average xFIP
+```
+
+### Stacking — Core MLB Strategy
+
+MLB DFS without stacking is playing at a severe disadvantage. **4-5 correlated batters
+from the same consecutive batting order positions** dramatically increases ceiling variance.
+
+**Stack types:**
+- **Primary stack:** 4–5 batters from Team A (consecutive batting order preferred — 1-2-3-4 more correlated than 1-3-6-8)
+- **Bring-back:** 1–2 batters from Team B (the opponent). Captures game-script correlation.
+- **Mini-stack:** 2–3 batters from a second game
+- **Game stack:** 5+ batters across both teams in a single high-total game
+
+**Critical anti-correlation rule:** Do NOT stack SP's opposing batters.
+If your lineup contains SP from Team A, do NOT also have batters from Team B facing him.
+Your pitcher is trying to suppress the same batters you'd be stacking.
+
+**Optimizer additions for MLB:**
+```
+min_team_batters: int = 4        # at least 4 hitters from one team
+max_team_batters: int = 6        # cap to prevent 8-man stacks
+bring_back: bool = True          # require 1+ from opposing team
+no_sp_stack: bool = True         # block pitcher-opponent batter combos
+```
+
+### Issues to Anticipate
+
+| Issue | Mitigation |
+|---|---|
+| **Lineup confirmation latency** — batting order not posted until 3–4h pre-game | Store `batting_order = NULL` until confirmed; surface warning in UI for unconfirmed players |
+| **Starter scratches** — SP can change within 1h of first pitch | Store "probable" vs "confirmed" status; add confirmation flag to `mlb_matchups` |
+| **DK stat attribute ID differs from NBA 279** | Discover empirically on first test slate — inspect `draftStatAttributes` array |
+| **LineStar MLB sport ID unknown** | Discover empirically — inspect network requests on a LineStar MLB slate |
+| **Name matching — accents** | Normalize with `unicodedata.normalize('NFKD', ...)` before fuzzy matching (Acuña → Acuna) |
+| **DK team abbreviation overrides** | MLB has more non-standard DK abbrevs than NBA — build `MLB_DK_ABBREV_OVERRIDES` map |
+| **Park factors seasonality** | Update `mlb_park_factors` annually; Coors changes year-to-year based on humidor |
+| **Doubleheaders** | Two distinct gamePks — both appear in slate; UNIQUE on game_id handles it |
+| **pybaseball rate limiting** | Add sleep between calls; cache to local CSV before writing to Neon |
+| **Season format** | MLB uses `"2025"` not `"2025-26"` — new `MLB_SEASON` constant |
+| **DH slot** | All 30 teams use DH since 2022 — include DH in position list; DH maps to UTIL |
+| **Showdown slates** | Detect via contest_format; block optimizer with clear error until Showdown mode built |
+| **Weather** | Wind blowing out at Wrigley materially impacts run environment — add weather API or manual input |
+
+### Phase Plan
+
+| Phase | Scope | New/Modified Files |
+|---|---|---|
+| **P1 — Schema** | New MLB tables, `sport` col on dk_slates | `db/schema.py`, `web/src/db/schema.ts`, `db/queries.py` |
+| **P2 — Teams + Schedule** | 30 MLB teams, schedule ingestion, Odds API | `ingest/mlb_teams.py`, `ingest/mlb_schedule.py` |
+| **P3 — Stats Ingestion** | pybaseball batters + pitchers, EWMA | `ingest/mlb_stats.py` |
+| **P4 — Slate Pipeline** | DK API reuse, MLB abbrev overrides, matchup linking | `ingest/mlb_slate.py`, minor changes to `ingest/dk_api.py` |
+| **P5 — Projection Model** | Batter model, pitcher model, park factors | `model/mlb_projections.py` |
+| **P6 — Web Actions** | MLB slate load, MLB-specific columns in queries | `web/src/app/dfs/actions.ts`, `web/src/db/queries.ts` |
+| **P7 — Frontend** | Sport switcher, pitcher rows, stacking view | `web/src/app/dfs/page.tsx`, new components |
+| **P8 — Optimizer** | MLB lineup slots, stacking + bring-back constraints | `web/src/app/dfs/actions.ts` optimizer section |
+
+### Reuse Map
+
+**Zero changes needed:**
+- `dk_api.py` — DK API is sport-agnostic (no sport parameter)
+- `compute_monte_carlo()` — works for any FPTS distribution
+- `compute_leverage()` — works for any sport
+- `compute_team_implied_total()` — same moneyline math
+- `_ml_to_prob()` — same formula
+- `_levenshtein()` — same fuzzy matching
+- LineStar auth/cookie flow — only sport ID parameter differs
+
+**Parameterize (small changes):**
+- `config.py` — add `MlbApiConfig`, `sport_key = "baseball_mlb"` for Odds
+- `linestar_fetch.py` — make `_SPORT` a parameter (not hardcoded `5`)
+- `dk_api.py` — make `_POS_ORDER` a parameter; stat attribute ID per sport
+
+**New files (parallel to NBA equivalents):**
+- `ingest/mlb_teams.py` → analogous to `ingest/nba_teams.py`
+- `ingest/mlb_stats.py` → analogous to `ingest/nba_stats.py` (uses pybaseball)
+- `ingest/mlb_schedule.py` → analogous to `ingest/nba_schedule.py` (uses MLB Stats API)
+- `ingest/mlb_slate.py` → analogous to `ingest/dk_slate.py`
+- `model/mlb_projections.py` → analogous to `model/dfs_projections.py`
