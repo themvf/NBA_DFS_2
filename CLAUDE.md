@@ -28,23 +28,89 @@
 
 ## Projection Model
 
-### DK Scoring
+### How `ourProj` is computed
+
+Data flows through three stages every time a slate is loaded:
+
 ```
-PTS × 1.0 | REB × 1.25 | AST × 1.5 | STL × 2.0 | BLK × 2.0 | TOV × -0.5
+stats.nba.com  ──→  10-game rolling averages (refreshed weekly via refresh_stats.bat)
+nba_matchups   ──→  vegasTotal, homeMl, awayMl (from The Odds API, game-level)
+nba_team_stats ──→  pace, offRtg, defRtg per team
+Odds API       ──→  propPts, propReb, propAst per player (fetched via "Fetch Player Props" button)
+LineStar       ──→  linestarProj (display only), projOwnPct (feeds leverage — NOT blended into ourProj)
+DK API         ──→  avgFptsDk (field projection baseline for leverage)
+```
+
+**Stage 1 — Environment factors**
+```
+paceFactor  = avg(teamPace, oppPace) / LEAGUE_AVG_PACE
+totalFactor = teamImpliedTotal(vegasTotal, homeMl, awayMl, isHome) / LEAGUE_AVG_TEAM_TOTAL
+combinedEnv = paceFactor × 0.4 + totalFactor × 0.6
+defFactor   = oppDefRtg / LEAGUE_AVG_DEF_RTG
+usageFactor = clamp(playerUsage / LEAGUE_AVG_USAGE, 0.5, 2.0)
+adjustedEnv = 1 + (combinedEnv − 1) × usageFactor
+```
+
+**Stage 2 — Per-stat projections**
+Props (pts/reb/ast) are used directly when available — they already bake in matchup,
+pace, and injury context. Rolling-average formula is the fallback.
+```
+pts = propPts  ?? (ppg  × defFactor)
+reb = propReb  ?? (rpg  × adjustedEnv)
+ast = propAst  ?? (apg  × defFactor × (1 + (combinedEnv−1) × 0.5))
+stl = spg  × adjustedEnv            ← always formula (props rarely available)
+blk = bpg  × adjustedEnv
+tov = tovpg × adjustedEnv
+3pm = threefgmPg                     ← no adjustment (shot selection, not pace)
+dd  = ddRate × adjustedEnv
+```
+
+**Stage 3 — DK fantasy points**
+```
+ourProj = pts×1 + reb×1.25 + ast×1.5 + stl×2 + blk×2 − tov×0.5 + 3pm×0.5 + dd×1.5
+```
+Players with < 10 avg minutes get `ourProj = null` and are excluded from optimization.
+
+### How `ourLeverage` is computed
+
+LineStar is **not blended** into `ourProj`. It provides `projOwnPct` which feeds leverage:
+```
+edge        = ourProj − fieldProj
+              (fieldProj priority: avgFptsDk → linestarProj → null)
+              positive = we like this player MORE than the field does
+
+ourLeverage = edge × (1 − projOwn%)^0.7 × ceilingBonus
+ceilingBonus = 1 + spg×0.05 + bpg×0.04
+```
+Negative leverage = we are below-field on this player → correct GPP fade.
+The optimizer filters `leverage > 0` for GPP mode.
+
+### How `ourOwnPct` is computed
+
+Our own ownership estimate (independent of LineStar):
+```
+score    = ourProj / √(salary / $1K)
+ourOwnPct = score / poolTotal × 800%   (800 = 8 roster slots × 100%)
+```
+
+### DK Scoring Reference
+```
+PTS × 1.0 | REB × 1.25 | AST × 1.5 | STL × 2.0 | BLK × 2.0 | TOV × −0.5
 3PM × 0.5 (bonus) | DD × 1.5 (bonus)
 ```
 
 ### Key Design Decisions
-- **Implied team total** (not raw O/U ÷ 2): derive each team's expected points from moneylines using `compute_team_implied_total()`. A -180 home favorite in a 230 O/U game gets ~118 implied, not 115.
+- **Implied team total** (not raw O/U ÷ 2): derive each team's expected points from moneylines using `computeTeamImpliedTotal()`. A -180 home favorite in a 230 O/U game gets ~118 implied, not 115.
 - **Usage rate** scales the pace/environment benefit. Stars (30%+ usage) capture more extra possessions in high-pace games. Capped at 0.5×–2.0×.
-- **No blowout curve**: NBA teams rarely blow out enough to affect starter minutes — do not apply blowout adjustments.
+- **Props replace formula for pts/reb/ast** when available. Market lines already embed defFactor, paceFactor, and injury status — applying additional adjustments on top would double-count.
+- **No blowout curve**: NBA teams rarely blow out enough to affect starter minutes.
 - **`avg_minutes` directly from the API** — do not derive from min_pct × 48.
 - **Assists** get partial pace adjustment (50% of `combined_env`) in addition to defensive factor.
 - **DD rate** scaled by `adjusted_env` — more possessions = more double-double chances.
-- **Leverage = edge × contrarian × ceiling**, where `edge = our_proj − field_proj`. `field_proj` priority: `avg_fpts_dk` (DK's salary-page projection, which drives most contest ownership) → `linestar_proj` → fallback to raw `our_proj`. Negative leverage = below-field on this player → correct GPP fade. The optimizer filters `leverage > 0` for GPP mode, so negative-leverage players are excluded from GPP pools.
+- **LineStar delta** (`ourProj − linestarProj`) is the primary edge signal for GPP. Do not blend LineStar into `ourProj` — the disagreement IS the edge.
 
 ### League Average Constants (2025-26)
-```python
+```
 LEAGUE_AVG_PACE       = 100.0
 LEAGUE_AVG_DEF_RTG    = 112.0
 LEAGUE_AVG_TOTAL      = 228.0
@@ -52,14 +118,33 @@ LEAGUE_AVG_TEAM_TOTAL = 114.0
 LEAGUE_AVG_USAGE      = 20.0
 ```
 
+### Player Stats Source
+- Use `LeagueDashPlayerStats?LastNGames=10&PerMode=PerGame` (not `LeagueGameLog`) for rolling averages.
+  Returns one pre-aggregated row per player. Much faster than LeagueGameLog (one row per player-game).
+  Provides real `USG_PCT` and `DD2` (double-double count).
+- stats.nba.com blocks Vercel/cloud IPs — run `refresh_stats.bat` locally (weekly).
+  The Odds API has no IP restrictions — player props work from Vercel directly.
+
+## Data Refresh Workflow
+
+```
+Weekly  : refresh_stats.bat          → team pace/ratings + player rolling stats → Neon
+Daily   : python -m ingest.nba_schedule  → today's schedule + game-level odds → Neon
+Daily   : "Fetch Player Props" button    → pts/reb/ast prop lines → dk_players → recompute ourProj
+Each slate: "Load Slate" button          → reads all of the above from Neon → dk_players upserted
+```
+
 ## GitHub Actions
 
-### `daily_stats.yml` — runs at 12:10 UTC (7:10 AM ET) daily
-- Offset from :00 to avoid stats.nba.com thundering herd
-- Steps: seed teams → fetch player/team stats → fetch schedule + odds
-- Schedule step uses `if: always()` so odds fetch even if stats step fails
+The `daily_stats.yml` workflow was removed (2026-03-28) because stats.nba.com blocks
+GitHub shared runner IPs (ReadTimeout on every attempt).
 
-### `load_slate.yml` — manual `workflow_dispatch`
+Replacement:
+- Stats refresh: run `refresh_stats.bat` locally (no IP block from home network)
+- Slate load: "Load Slate" button in the web UI
+- Props: "Fetch Player Props" button (Odds API works from Vercel — no IP block)
+
+### `load_slate.yml` — manual `workflow_dispatch` (still active if needed)
 - Requires: `contest_id` (from DK contest URL)
 - Optional: `date_override` (YYYY-MM-DD), `season`
 - Uses `DNN_COOKIE` secret for LineStar — if missing/expired, LineStar projections will be NULL but the slate still loads
