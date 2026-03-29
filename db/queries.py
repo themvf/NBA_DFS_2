@@ -79,15 +79,16 @@ def upsert_nba_player_stats(
     threefgm_pg: float,
     usage_rate: float,
     dd_rate: float,
+    fpts_std: float | None = None,
 ) -> None:
     db.execute(
         """
         INSERT INTO nba_player_stats (
             player_id, season, team_id, name, position, games,
             avg_minutes, ppg, rpg, apg, spg, bpg, tovpg,
-            threefgm_pg, usage_rate, dd_rate
+            threefgm_pg, usage_rate, dd_rate, fpts_std
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (player_id, season) DO UPDATE SET
             team_id = EXCLUDED.team_id,
             name = EXCLUDED.name,
@@ -103,12 +104,13 @@ def upsert_nba_player_stats(
             threefgm_pg = EXCLUDED.threefgm_pg,
             usage_rate = EXCLUDED.usage_rate,
             dd_rate = EXCLUDED.dd_rate,
+            fpts_std = EXCLUDED.fpts_std,
             fetched_at = NOW()
         """,
         (
             player_id, season, team_id, name, position, games,
             avg_minutes, ppg, rpg, apg, spg, bpg, tovpg,
-            threefgm_pg, usage_rate, dd_rate,
+            threefgm_pg, usage_rate, dd_rate, fpts_std,
         ),
     )
 
@@ -153,17 +155,19 @@ def upsert_dk_slate(
     slate_date: str,
     game_count: int = 0,
     dk_draft_group_id: int | None = None,
+    contest_type: str = "main",
+    contest_format: str = "gpp",
 ) -> int:
     row = db.execute_one(
         """
-        INSERT INTO dk_slates (slate_date, game_count, dk_draft_group_id)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (slate_date) DO UPDATE SET
+        INSERT INTO dk_slates (slate_date, game_count, dk_draft_group_id, contest_type, contest_format)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (slate_date, contest_type, contest_format) DO UPDATE SET
             game_count = EXCLUDED.game_count,
             dk_draft_group_id = COALESCE(EXCLUDED.dk_draft_group_id, dk_slates.dk_draft_group_id)
         RETURNING id
         """,
-        (slate_date, game_count, dk_draft_group_id),
+        (slate_date, game_count, dk_draft_group_id, contest_type, contest_format),
     )
     return row["id"] if row else 0
 
@@ -174,9 +178,10 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
         INSERT INTO dk_players (
             slate_id, dk_player_id, name, team_abbrev, team_id, matchup_id,
             eligible_positions, salary, game_info, avg_fpts_dk,
-            linestar_proj, proj_own_pct, our_proj, our_leverage, is_out
+            linestar_proj, proj_own_pct, our_proj, our_leverage,
+            proj_floor, proj_ceiling, boom_rate, is_out
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (slate_id, dk_player_id) DO UPDATE SET
             name = EXCLUDED.name,
             team_abbrev = EXCLUDED.team_abbrev,
@@ -190,6 +195,9 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             proj_own_pct = EXCLUDED.proj_own_pct,
             our_proj = EXCLUDED.our_proj,
             our_leverage = EXCLUDED.our_leverage,
+            proj_floor = EXCLUDED.proj_floor,
+            proj_ceiling = EXCLUDED.proj_ceiling,
+            boom_rate = EXCLUDED.boom_rate,
             is_out = EXCLUDED.is_out
         """,
         (
@@ -207,6 +215,9 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             player.get("proj_own_pct"),
             player.get("our_proj"),
             player.get("our_leverage"),
+            player.get("proj_floor"),
+            player.get("proj_ceiling"),
+            player.get("boom_rate"),
             player.get("is_out", False),
         ),
     )

@@ -184,6 +184,18 @@ def fetch_player_rolling_stats(db: DatabaseManager, season: str, n_games: int = 
     abbrev_cache = build_team_abbrev_cache(db)
 
     # Group by player — each player appears up to n_games times
+    EWMA_ALPHA = 0.25  # recent game weighted ~2.5× more than a game 5 dates back
+
+    def _ewma(series: pd.Series) -> float | None:
+        """EWMA of a stat series sorted newest-first. Returns most recent smoothed value."""
+        vals = series.dropna()
+        if vals.empty:
+            return None
+        # Reverse to oldest-first so ewm weights recent (last) values most heavily
+        chronological = vals.iloc[::-1].reset_index(drop=True)
+        smoothed = chronological.ewm(alpha=EWMA_ALPHA, adjust=False).mean()
+        return float(smoothed.iloc[-1])
+
     updated = 0
     for player_id, group in df.groupby("PLAYER_ID"):
         group = group.head(n_games)  # ensure at most n_games rows
@@ -195,30 +207,45 @@ def fetch_player_rolling_stats(db: DatabaseManager, season: str, n_games: int = 
         team_abbrev = str(group["TEAM_ABBREVIATION"].iloc[0]).upper()
         team_id = abbrev_cache.get(team_abbrev)
 
-        # Per-game averages
-        avg_minutes = _safe_float(group["MIN"].apply(_parse_minutes).mean())
-        ppg         = _safe_float(group["PTS"].mean())
-        rpg         = _safe_float(group["REB"].mean())
-        apg         = _safe_float(group["AST"].mean())
-        spg         = _safe_float(group["STL"].mean())
-        bpg         = _safe_float(group["BLK"].mean())
-        tovpg       = _safe_float(group["TOV"].mean())
-        threefgm_pg = _safe_float(group["FG3M"].mean())
+        # EWMA per-game stats — recency-weighted averages
+        min_series  = group["MIN"].apply(_parse_minutes)
+        avg_minutes = _ewma(min_series)
+        ppg         = _ewma(group["PTS"])
+        rpg         = _ewma(group["REB"])
+        apg         = _ewma(group["AST"])
+        spg         = _ewma(group["STL"])
+        bpg         = _ewma(group["BLK"])
+        tovpg       = _ewma(group["TOV"])
+        threefgm_pg = _ewma(group["FG3M"])
 
-        # Usage rate proxy: (FGA + 0.44*FTA + TOV) / (avg_min/48 * pace*2 * games)
-        # Simplified: per-possession usage relative to a 100-pace game
-        fga_pg  = _safe_float(group["FGA"].mean()) or 0.0
-        fta_pg  = _safe_float(group["FTA"].mean()) or 0.0
+        # Usage rate: derived from EWMA components for consistency
+        fga_pg  = _ewma(group["FGA"]) or 0.0
+        fta_pg  = _ewma(group["FTA"]) or 0.0
         tov_pg  = tovpg or 0.0
         min_pg  = avg_minutes or 1.0
         usage_rate = ((fga_pg + 0.44 * fta_pg + tov_pg) / max(min_pg / 48.0 * 200, 1)) * 100
 
-        # Double-double rate: fraction of games with 2+ categories >= 10
+        # Double-double rate: EWMA of per-game binary (1=DD, 0=no DD)
         def _has_dd(r) -> bool:
             cats = [r.get("PTS", 0) or 0, r.get("REB", 0) or 0, r.get("AST", 0) or 0,
                     r.get("STL", 0) or 0, r.get("BLK", 0) or 0]
             return sum(c >= 10 for c in cats) >= 2
-        dd_rate = group.apply(_has_dd, axis=1).mean()
+        dd_binary = group.apply(_has_dd, axis=1).astype(float)
+        dd_rate   = _ewma(dd_binary) or 0.0
+
+        # Per-game DK FPTS std dev (for Monte Carlo variance estimation).
+        # Uses simple std dev — we want historical spread, not a recency-weighted one.
+        fpts_series = (
+            group["PTS"].fillna(0) * 1.0
+            + group["REB"].fillna(0) * 1.25
+            + group["AST"].fillna(0) * 1.5
+            + group["STL"].fillna(0) * 2.0
+            + group["BLK"].fillna(0) * 2.0
+            - group["TOV"].fillna(0) * 0.5
+            + group["FG3M"].fillna(0) * 0.5
+            + dd_binary * 1.5
+        )
+        fpts_std = _safe_float(fpts_series.std()) if len(fpts_series) > 1 else None
 
         # Position: nba_api LeagueGameLog doesn't include position — set None,
         # it gets populated by DK CSV eligible_positions at slate time
@@ -240,6 +267,7 @@ def fetch_player_rolling_stats(db: DatabaseManager, season: str, n_games: int = 
             threefgm_pg=threefgm_pg or 0.0,
             usage_rate=round(usage_rate, 1),
             dd_rate=round(float(dd_rate), 3),
+            fpts_std=round(fpts_std, 3) if fpts_std is not None else None,
         )
         updated += 1
 

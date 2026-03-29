@@ -59,6 +59,7 @@ TABLES = [
         threefgm_pg DOUBLE PRECISION,
         usage_rate DOUBLE PRECISION,
         dd_rate DOUBLE PRECISION,
+        fpts_std REAL,
         fetched_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(player_id, season)
     )
@@ -120,6 +121,9 @@ TABLES = [
         prop_pts REAL,
         prop_reb REAL,
         prop_ast REAL,
+        proj_floor REAL,
+        proj_ceiling REAL,
+        boom_rate REAL,
         is_out BOOLEAN DEFAULT FALSE,
         actual_fpts REAL,
         actual_own_pct REAL,
@@ -242,6 +246,40 @@ MIGRATIONS = [
             WHERE table_name = 'dk_slates' AND column_name = 'contest_format'
         ) THEN
             ALTER TABLE dk_slates ADD COLUMN contest_format TEXT DEFAULT 'gpp';
+        END IF;
+    END $$""",
+    # 2026-03-28: Add fpts_std to nba_player_stats for Monte Carlo variance
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_player_stats' AND column_name = 'fpts_std'
+        ) THEN
+            ALTER TABLE nba_player_stats ADD COLUMN fpts_std REAL;
+        END IF;
+    END $$""",
+    # 2026-03-28: Add Monte Carlo columns to dk_players
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'proj_floor'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN proj_floor REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'proj_ceiling'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN proj_ceiling REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'boom_rate'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN boom_rate REAL;
         END IF;
     END $$""",
     # 2026-03-28: Replace UNIQUE(slate_date) with UNIQUE(slate_date, contest_type, contest_format)

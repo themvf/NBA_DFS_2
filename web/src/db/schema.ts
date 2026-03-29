@@ -59,6 +59,7 @@ export const nbaPlayerStats = pgTable(
     threefgmPg: doublePrecision("threefgm_pg"),
     usageRate: doublePrecision("usage_rate"),
     ddRate: doublePrecision("dd_rate"),
+    fptsStd: doublePrecision("fpts_std"),
     fetchedAt: timestamp("fetched_at").defaultNow(),
   },
   (t) => [unique("nba_player_stats_player_season_key").on(t.playerId, t.season)]
@@ -125,6 +126,9 @@ export const dkPlayers = pgTable(
     propPts: doublePrecision("prop_pts"),
     propReb: doublePrecision("prop_reb"),
     propAst: doublePrecision("prop_ast"),
+    projFloor: doublePrecision("proj_floor"),
+    projCeiling: doublePrecision("proj_ceiling"),
+    boomRate: doublePrecision("boom_rate"),
     isOut: boolean("is_out").default(false),
     actualFpts: doublePrecision("actual_fpts"),
     actualOwnPct: doublePrecision("actual_own_pct"),

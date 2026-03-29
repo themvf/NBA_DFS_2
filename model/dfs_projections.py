@@ -23,6 +23,8 @@ Key constants calibrated to 2025-26 NBA season averages.
 
 from __future__ import annotations
 
+import random
+
 LEAGUE_AVG_PACE       = 100.0   # NBA possessions per 48 min
 LEAGUE_AVG_DEF_RTG    = 112.0   # NBA defensive rating league average
 LEAGUE_AVG_TOTAL      = 228.0   # NBA Vegas game total approximate average
@@ -94,6 +96,7 @@ def compute_our_projection(
     home_ml: int | None = None,
     away_ml: int | None = None,
     is_home: bool = False,
+    days_rest: int | None = None,
 ) -> float | None:
     """Compute our DFS projection for an NBA player.
 
@@ -182,6 +185,19 @@ def compute_our_projection(
     # two stat categories ≥ 10; scale with usage-adjusted environment
     proj_dd   = dd_rate * adjusted_env
 
+    # ── Rest/travel factor ────────────────────────────────────────────────────
+    # B2B 2nd night: ~5% performance decline (fatigue, travel load)
+    # 3-in-4 nights: ~3% decline
+    # 4+ days rest: ~2% uplift (full recovery, especially for older players)
+    if days_rest is None or days_rest == 3:
+        rest_factor = 1.0    # normal 2-day rest or unknown
+    elif days_rest <= 1:
+        rest_factor = 0.95   # back-to-back
+    elif days_rest == 2:
+        rest_factor = 0.97   # 3-in-4 nights
+    else:
+        rest_factor = 1.02   # 4+ days rest
+
     # ── DK NBA scoring ────────────────────────────────────────────────────────
     fpts = (
         proj_pts * 1.0
@@ -192,8 +208,42 @@ def compute_our_projection(
         - proj_tov * 0.5
         + proj_3pm * 0.5    # 3-pointer bonus
         + proj_dd  * 1.5    # expected double-double bonus per game
-    )
+    ) * rest_factor
     return round(fpts, 2)
+
+
+# ── Monte Carlo ───────────────────────────────────────────────────────────────
+
+GPP_BOOM_THRESHOLD = 50.0   # DK FPTS ≥ 50 considered a tournament-winning game
+MONTE_CARLO_SIMS   = 1000
+
+
+def compute_monte_carlo(
+    our_proj: float,
+    fpts_std: float,
+    n_sims: int = MONTE_CARLO_SIMS,
+    boom_threshold: float = GPP_BOOM_THRESHOLD,
+) -> tuple[float, float, float]:
+    """Simulate player FPTS distribution and return (floor, ceiling, boom_rate).
+
+    Assumes FPTS ~ Normal(our_proj, fpts_std). Samples are clamped at 0.
+
+    Args:
+        our_proj:       Central projection (mean of the normal distribution).
+        fpts_std:       Historical per-game FPTS standard deviation.
+        n_sims:         Number of Monte Carlo draws (default 1000).
+        boom_threshold: DK FPTS threshold defining a "boom" game (default 50).
+
+    Returns:
+        floor      — 10th percentile: the realistic downside scenario.
+        ceiling    — 90th percentile: the realistic upside (GPP pay-off scenario).
+        boom_rate  — P(FPTS ≥ boom_threshold): tournament viability score.
+    """
+    samples = sorted(max(0.0, random.gauss(our_proj, fpts_std)) for _ in range(n_sims))
+    floor    = samples[int(0.10 * n_sims)]
+    ceiling  = samples[int(0.90 * n_sims)]
+    boom_rate = sum(1 for s in samples if s >= boom_threshold) / n_sims
+    return round(floor, 2), round(ceiling, 2), round(boom_rate, 3)
 
 
 # ── Leverage ──────────────────────────────────────────────────────────────────

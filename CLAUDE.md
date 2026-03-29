@@ -355,3 +355,46 @@ When loading a slate, the user can optionally input the cash line for the contes
 | 2 | Phase 3 — Results web upload | Removes manual step after every slate | Medium |
 | 3 | Phase 1 — `/analytics` route | Core model calibration visibility | High |
 | 4 | Phase 4 — Cash line calibration | Accuracy of strategy leaderboard | Low |
+
+---
+
+## Model Improvement Roadmap
+
+### Priority Implementation Order
+
+| Priority | Feature | Phase | Status |
+|----------|---------|-------|--------|
+| 1 | EWMA rolling stats (α=0.25) | Phase 1 — Better Signal | ✅ Done |
+| 2 | Rest/travel features (B2B penalty) | Phase 1 — Better Signal | ✅ Done |
+| 3 | Monte Carlo ceiling/floor/boom | Phase 2 — Distributions | ✅ Done |
+| 4 | Position-specific prop weighting | Phase 1 — Better Signal | Planned |
+| 5 | HMM regime detection | Phase 2 — Distributions | Planned |
+| 6 | KL-divergence ownership gap | Phase 3 — Mispricings | Planned |
+| 7 | Behavioral bias inventory | Phase 3 — Mispricings | Planned |
+| 8 | Kelly Criterion lineup sizing | Phase 4 — Game Theory | Planned |
+| 9 | Network graph stacking | Phase 4 — Game Theory | Planned |
+| 10 | GPP vs Cash objective functions | Phase 4 — Game Theory | Planned |
+| 11 | Bayesian prior updating | Phase 5 — Adaptive | Planned |
+| 12 | Calibration feedback loop | Phase 5 — Adaptive | Planned |
+
+### Phase 1 — Better Signal
+1. **EWMA rolling stats** — Replace flat N-game average with exponential weighted moving average (α=0.25). Most recent game gets ~2.5× the weight of a game 5 days back. Implemented in `ingest/nba_stats.py` — stored ppg/rpg/etc. are now EWMA-smoothed.
+2. **Rest/travel features** — B2B 2nd night −5%, 3-in-4 nights −3%, 4+ days rest +2%. Applied as scalar multiplier on final FPTS in `model/dfs_projections.py`. Rest days computed from nba_matchups history in `ingest/dk_slate.py`.
+3. **Position-specific prop weighting** — Centers rely more on reb props (less on pts). Guards rely more on ast props. Currently props fully replace the formula; partial blending weighted by position would improve accuracy for hybrid roles.
+
+### Phase 2 — Probability Distributions
+4. **Monte Carlo ceiling/floor** — 1000 simulations per player sampling from N(ourProj, ftpsStd). Stores P10 (floor), P90 (ceiling), boom_rate = P(FPTS ≥ 50) in `dk_players`. `fpts_std` computed from per-game FPTS variance and stored in `nba_player_stats`. Implemented in `model/dfs_projections.py`.
+5. **HMM regime detection** — Hidden Markov Model with 3 states (hot streak / average / slump). Regime probabilities inform whether to trust or discount the EWMA, particularly for players recently injured or returning from rest.
+
+### Phase 3 — Market Mispricings
+6. **KL-divergence ownership gap** — Measure information difference between our projection distribution and the field's implied ownership distribution. Large KL-divergence = market mispricing = GPP opportunity beyond simple edge × (1 − own).
+7. **Behavioral economics bias inventory** — The field systematically over-owns: stars coming off big games (recency bias), players in nationally televised games (availability heuristic), players with round salary numbers. Inventory and systematically fade these biases.
+
+### Phase 4 — Game Theory
+8. **Kelly Criterion lineup sizing** — Derive optimal number of lineups per contest from edge and variance. f* = edge / variance. Prevents both over-exposure (too many lineups on same players) and under-exposure (leaving +EV plays on the table).
+9. **Network graph stacking** — Model player correlations as a directed graph (pass chains, usage trees). Stacks that maximize correlated upside given low collective ownership outperform naive same-team stacks.
+10. **Contest-type objective functions** — GPP: maximize variance-adjusted ceiling (P90 score). Cash: maximize floor (P10 score). Separate optimizer modes instead of the current `leverage > 0` filter for GPP.
+
+### Phase 5 — Adaptive Learning
+11. **Bayesian prior updating** — Start with population priors per position (e.g., PG averages), update toward player EWMA as sample grows. Shrinks aggressive projections for small sample sizes (< 5 games) toward the mean.
+12. **Calibration feedback loop** — After each slate, compute MAE/bias per position/salary tier and store as correction deltas. Auto-apply to next slate's projections. PGs overvalued by 2 FPTS → subtract 2 from next slate's PG projections automatically.

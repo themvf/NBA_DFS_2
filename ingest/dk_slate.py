@@ -32,7 +32,7 @@ from rapidfuzz import fuzz, process
 from config import load_config
 from db.database import DatabaseManager
 from db.queries import build_team_abbrev_cache, upsert_dk_player, upsert_dk_slate
-from model.dfs_projections import compute_baseline_ownership, compute_leverage, compute_our_projection
+from model.dfs_projections import compute_baseline_ownership, compute_leverage, compute_monte_carlo, compute_our_projection
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +145,7 @@ def build_player_pool(
     season: str = "2025-26",
 ) -> list[dict]:
     """Merge DK, LineStar, and DB data into an enriched player pool."""
+    from datetime import date as _date
 
     # Single-query caches
     abbrev_cache = build_team_abbrev_cache(db)
@@ -181,12 +182,12 @@ def build_player_pool(
         ratings = []
     ratings_by_team: dict[int, dict] = {r["team_id"]: r for r in ratings}
 
-    # Player stats for active teams only
+    # Player stats for active teams only (includes fpts_std for Monte Carlo)
     if active_ids:
         player_stats = db.execute(
             f"""
             SELECT name, team_id, avg_minutes, ppg, rpg, apg,
-                   spg, bpg, tovpg, threefgm_pg, usage_rate, dd_rate
+                   spg, bpg, tovpg, threefgm_pg, usage_rate, dd_rate, fpts_std
             FROM nba_player_stats
             WHERE season = %s AND team_id IN ({placeholders})
             """,
@@ -197,6 +198,27 @@ def build_player_pool(
     players_by_team: dict[int, list[dict]] = {}
     for ps in player_stats:
         players_by_team.setdefault(ps["team_id"], []).append(ps)
+
+    # Days of rest per team: query last game before today to compute rest days.
+    # B2B detection relies on nba_matchups history being populated.
+    today = _date.fromisoformat(slate_date)
+    team_days_rest: dict[int, int | None] = {}
+    for tid in active_ids:
+        rows = db.execute(
+            """
+            SELECT MAX(game_date) AS last_game
+            FROM nba_matchups
+            WHERE game_date < %s AND (home_team_id = %s OR away_team_id = %s)
+            """,
+            (slate_date, tid, tid),
+        )
+        last_game = rows[0]["last_game"] if rows and rows[0]["last_game"] else None
+        if last_game:
+            if isinstance(last_game, str):
+                last_game = _date.fromisoformat(last_game)
+            team_days_rest[tid] = (today - last_game).days
+        else:
+            team_days_rest[tid] = None
 
     # Process each player
     enriched = []
@@ -239,21 +261,31 @@ def build_player_pool(
         # Player stats + our projection
         stats    = match_player_stats(p["name"], players_by_team.get(team_id or -1, []))
         our_proj = None
+        proj_floor = proj_ceiling = boom_rate = None
         if stats and matchup and team_id:
-            is_home  = (matchup["home_team_id"] == team_id)
-            opp_id   = matchup["away_team_id"] if is_home else matchup["home_team_id"]
-            team_r   = ratings_by_team.get(team_id, {})
-            opp_r    = ratings_by_team.get(opp_id, {})
-            our_proj = compute_our_projection(
+            is_home   = (matchup["home_team_id"] == team_id)
+            opp_id    = matchup["away_team_id"] if is_home else matchup["home_team_id"]
+            team_r    = ratings_by_team.get(team_id, {})
+            opp_r     = ratings_by_team.get(opp_id, {})
+            days_rest = team_days_rest.get(team_id)
+            our_proj  = compute_our_projection(
                 stats, team_r, opp_r,
                 vegas_total=matchup.get("vegas_total"),
                 home_ml=matchup.get("home_ml"),
                 away_ml=matchup.get("away_ml"),
                 is_home=is_home,
+                days_rest=days_rest,
             )
             if our_proj:
                 matched_stats += 1
-        result["our_proj"] = our_proj
+                # Monte Carlo: simulate FPTS distribution using historical variance
+                fpts_std = stats.get("fpts_std")
+                if fpts_std and fpts_std > 0:
+                    proj_floor, proj_ceiling, boom_rate = compute_monte_carlo(our_proj, fpts_std)
+        result["our_proj"]    = our_proj
+        result["proj_floor"]  = proj_floor
+        result["proj_ceiling"] = proj_ceiling
+        result["boom_rate"]   = boom_rate
 
         # Leverage
         is_out = result.get("is_out", False)
@@ -408,20 +440,23 @@ def run(
     saved = 0
     for p in pool:
         upsert_dk_player(db, slate_id, {
-            "dk_player_id":      p["dk_id"],
-            "name":              p["name"],
-            "team_abbrev":       p["team_abbrev"],
-            "eligible_positions":p["eligible_positions"],
-            "salary":            p["salary"],
-            "team_id":           p.get("team_id"),
-            "matchup_id":        p.get("matchup_id"),
-            "game_info":         p.get("game_info"),
-            "avg_fpts_dk":       p.get("avg_fpts_dk"),
-            "linestar_proj":     p.get("linestar_proj"),
-            "proj_own_pct":      p.get("proj_own_pct"),
-            "our_proj":          p.get("our_proj"),
-            "our_leverage":      p.get("our_leverage"),
-            "is_out":            p.get("is_out", False),
+            "dk_player_id":       p["dk_id"],
+            "name":               p["name"],
+            "team_abbrev":        p["team_abbrev"],
+            "eligible_positions": p["eligible_positions"],
+            "salary":             p["salary"],
+            "team_id":            p.get("team_id"),
+            "matchup_id":         p.get("matchup_id"),
+            "game_info":          p.get("game_info"),
+            "avg_fpts_dk":        p.get("avg_fpts_dk"),
+            "linestar_proj":      p.get("linestar_proj"),
+            "proj_own_pct":       p.get("proj_own_pct"),
+            "our_proj":           p.get("our_proj"),
+            "our_leverage":       p.get("our_leverage"),
+            "proj_floor":         p.get("proj_floor"),
+            "proj_ceiling":       p.get("proj_ceiling"),
+            "boom_rate":          p.get("boom_rate"),
+            "is_out":             p.get("is_out", False),
         })
         saved += 1
 
