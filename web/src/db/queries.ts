@@ -1,6 +1,6 @@
 import { db } from ".";
-import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups } from "./schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
+import { eq, desc, sql, gte, and } from "drizzle-orm";
 
 const CURRENT_SEASON = "2025-26";
 
@@ -226,8 +226,9 @@ export async function getDfsAccuracy(sport: Sport = "nba"): Promise<{
       dp.our_proj AS "ourProj", dp.linestar_proj AS "linestarProj",
       dp.actual_fpts AS "actualFpts", t.logo_url AS "teamLogo"
     FROM dk_players dp
+    INNER JOIN dk_slates ds ON ds.id = dp.slate_id
     LEFT JOIN teams t ON t.team_id = dp.team_id
-    WHERE dp.slate_id = (SELECT id FROM dk_slates ORDER BY slate_date DESC, id DESC LIMIT 1)
+    WHERE dp.slate_id = (SELECT id FROM dk_slates WHERE sport = ${sport} ORDER BY slate_date DESC, id DESC LIMIT 1)
       AND dp.actual_fpts IS NOT NULL
     ORDER BY ABS(COALESCE(dp.our_proj, 0) - dp.actual_fpts) DESC NULLS LAST
   `);
@@ -377,6 +378,94 @@ export async function getRecentSchedule(days = 7): Promise<ScheduleRow[]> {
     ORDER BY m.game_date DESC, m.id
   `);
   return result.rows;
+}
+
+export type MlbScheduleRow = {
+  id: number;
+  gameDate: string;
+  vegasTotal: number | null;
+  vegasProbHome: number | null;
+  homeMl: number | null;
+  awayMl: number | null;
+  homeImplied: number | null;
+  awayImplied: number | null;
+  homeTeamId: number | null;
+  awayTeamId: number | null;
+  homeName: string | null;
+  homeLogo: string | null;
+  homeAbbrev: string | null;
+  awayName: string | null;
+  awayLogo: string | null;
+  awayAbbrev: string | null;
+};
+
+export async function getRecentMlbSchedule(days = 7): Promise<MlbScheduleRow[]> {
+  const result = await db.execute<MlbScheduleRow>(sql`
+    SELECT
+      m.id,
+      m.game_date          AS "gameDate",
+      m.vegas_total        AS "vegasTotal",
+      m.vegas_prob_home    AS "vegasProbHome",
+      m.home_ml            AS "homeMl",
+      m.away_ml            AS "awayMl",
+      m.home_implied       AS "homeImplied",
+      m.away_implied       AS "awayImplied",
+      m.home_team_id       AS "homeTeamId",
+      m.away_team_id       AS "awayTeamId",
+      ht.name              AS "homeName",
+      ht.logo_url          AS "homeLogo",
+      ht.abbreviation      AS "homeAbbrev",
+      at.name              AS "awayName",
+      at.logo_url          AS "awayLogo",
+      at.abbreviation      AS "awayAbbrev"
+    FROM mlb_matchups m
+    LEFT JOIN mlb_teams ht ON ht.team_id = m.home_team_id
+    LEFT JOIN mlb_teams at ON at.team_id = m.away_team_id
+    WHERE m.game_date >= CURRENT_DATE - (${days} * INTERVAL '1 day')
+    ORDER BY m.game_date DESC, m.id
+  `);
+  return result.rows;
+}
+
+// ── MLB Team Stats ────────────────────────────────────────────
+
+export type MlbTeamStatsRow = {
+  teamId: number;
+  name: string;
+  abbreviation: string;
+  logoUrl: string | null;
+  division: string | null;
+  teamWrcPlus: number | null;
+  teamIso: number | null;
+  teamOps: number | null;
+  teamKPct: number | null;
+  teamBbPct: number | null;
+  bullpenEra: number | null;
+  bullpenFip: number | null;
+  staffKPct: number | null;
+};
+
+export async function getMlbTeamStats(season = "2025"): Promise<MlbTeamStatsRow[]> {
+  return db
+    .select({
+      teamId: mlbTeams.teamId,
+      name: mlbTeams.name,
+      abbreviation: mlbTeams.abbreviation,
+      logoUrl: mlbTeams.logoUrl,
+      division: mlbTeams.division,
+      teamWrcPlus: mlbTeamStats.teamWrcPlus,
+      teamIso: mlbTeamStats.teamIso,
+      teamOps: mlbTeamStats.teamOps,
+      teamKPct: mlbTeamStats.teamKPct,
+      teamBbPct: mlbTeamStats.teamBbPct,
+      bullpenEra: mlbTeamStats.bullpenEra,
+      bullpenFip: mlbTeamStats.bullpenFip,
+      staffKPct: mlbTeamStats.staffKPct,
+    })
+    .from(mlbTeamStats)
+    .innerJoin(mlbTeams, eq(mlbTeams.teamId, mlbTeamStats.teamId))
+    .where(eq(mlbTeamStats.season, season))
+    .orderBy(desc(mlbTeamStats.teamWrcPlus));
 }
 
 // ── Analytics (cross-slate calibration) ──────────────────────

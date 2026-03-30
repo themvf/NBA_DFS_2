@@ -1,0 +1,59 @@
+name: Load MLB DFS Slate
+
+on:
+  workflow_dispatch:
+    inputs:
+      contest_id:
+        description: "DraftKings contest ID (from DK URL)"
+        required: true
+        type: string
+      date_override:
+        description: "Slate date override (YYYY-MM-DD, leave blank for auto)"
+        required: false
+        type: string
+      season:
+        description: "MLB season year (e.g. 2025)"
+        required: false
+        default: "2025"
+        type: string
+
+jobs:
+  load-mlb-slate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      DNN_COOKIE:   ${{ secrets.DNN_COOKIE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch today's MLB schedule + odds (ensures matchups exist)
+        run: |
+          DATE_ARG=""
+          if [ -n "${{ inputs.date_override }}" ]; then
+            DATE_ARG="--date ${{ inputs.date_override }}"
+          fi
+          python -m ingest.mlb_schedule $DATE_ARG
+
+      - name: Load MLB DK slate via API + LineStar API
+        run: |
+          DATE_ARG=""
+          if [ -n "${{ inputs.date_override }}" ]; then
+            DATE_ARG="--date ${{ inputs.date_override }}"
+          fi
+          python -m ingest.mlb_slate \
+            --contest-id ${{ inputs.contest_id }} \
+            --linestar-api \
+            --season "${{ inputs.season }}" \
+            $DATE_ARG
