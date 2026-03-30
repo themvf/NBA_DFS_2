@@ -38,6 +38,7 @@ import logging
 from datetime import date, timedelta
 
 import pandas as pd
+import requests
 
 from config import load_config
 from db.database import DatabaseManager
@@ -347,6 +348,96 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
     return updated
 
 
+def fetch_batter_splits(db: DatabaseManager, season: str) -> int:
+    """Fetch wRC+ vs LHP and vs RHP from FanGraphs and update mlb_batter_stats.
+
+    Uses the FanGraphs internal leaders API (same endpoint pybaseball uses for
+    batting_stats) with month=13 (vs LHP) and month=14 (vs RHP) split parameters.
+    Falls back gracefully if the endpoint is unavailable — columns stay NULL
+    and compute_batter_projection uses matchup_factor=1.0 (neutral).
+
+    Returns count of players updated with split data.
+    """
+    year = int(season)
+    _FG_URL = "https://www.fangraphs.com/api/leaders/major-league/data"
+    _FG_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Referer": "https://www.fangraphs.com/",
+    }
+    _FG_PARAMS_BASE = {
+        "pos": "all", "stats": "bat", "lg": "all",
+        "qual": "20", "type": "8",
+        "season": str(year), "season1": str(year),
+        "ind": "0", "team": "0", "rost": "0", "age": "0",
+        "filter": "", "players": "0",
+        "startdate": "", "enddate": "",
+        "pageitems": "2000000000", "pagenum": "1",
+    }
+
+    # Fetch both splits: month=13 = vs LHP, month=14 = vs RHP
+    splits: dict[str, dict[int, float]] = {"L": {}, "R": {}}  # hand → playerid → wrc+
+    for month, hand in [(13, "L"), (14, "R")]:
+        params = {**_FG_PARAMS_BASE, "month": str(month)}
+        try:
+            resp = requests.get(_FG_URL, params=params, headers=_FG_HEADERS, timeout=30)
+            resp.raise_for_status()
+            raw = resp.json()
+            rows = raw.get("data", raw) if isinstance(raw, dict) else raw
+            for row in rows:
+                pid_raw = row.get("playerid") or row.get("PlayerID")
+                wrc_raw = row.get("wRC+")
+                if pid_raw is None or wrc_raw is None:
+                    continue
+                try:
+                    pid = int(float(pid_raw))
+                    wrc = float(wrc_raw)
+                    if not (0 < wrc < 400):
+                        continue
+                    splits[hand][pid] = wrc
+                except (TypeError, ValueError):
+                    continue
+            logger.info("FanGraphs splits vs %sHP: %d players", hand, len(splits[hand]))
+        except Exception as exc:
+            logger.warning("FanGraphs split (vs %sHP) failed: %s", hand, exc)
+
+    if not splits["L"] and not splits["R"]:
+        print(f"Batter splits: no data returned for {season} — skipping L/R split update")
+        return 0
+
+    # Update players that have matching FG playerid in mlb_batter_stats
+    conn = db.get_connection()
+    updated = 0
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, player_id FROM mlb_batter_stats WHERE season = %s",
+                (season,)
+            )
+            rows = cur.fetchall()
+            for row_id, player_id in rows:
+                wrc_l = splits["L"].get(player_id)
+                wrc_r = splits["R"].get(player_id)
+                if wrc_l is None and wrc_r is None:
+                    continue
+                cur.execute(
+                    """UPDATE mlb_batter_stats
+                       SET wrc_plus_vs_l = %s, wrc_plus_vs_r = %s, fetched_at = NOW()
+                       WHERE id = %s""",
+                    (wrc_l, wrc_r, row_id)
+                )
+                updated += 1
+        conn.commit()
+    except Exception as exc:
+        logger.warning("DB update for batter splits failed: %s", exc)
+        conn.rollback()
+    finally:
+        conn.close()
+
+    print(f"Batter splits: {updated} players updated with L/R wRC+ for {season}")
+    return updated
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _fetch_batting(
@@ -508,3 +599,4 @@ if __name__ == "__main__":
     fetch_team_stats(db, season)
     fetch_batter_stats(db, season, days=args.days)
     fetch_pitcher_stats(db, season, days=args.days)
+    fetch_batter_splits(db, season)

@@ -11,7 +11,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups } from "@/db/schema";
+import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors } from "@/db/schema";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, buildMultiEntryCSV } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
@@ -975,10 +975,10 @@ async function enrichAndSave(
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 
   const slateValues: {
-    slateDate: string; gameCount: number;
+    slateDate: string; gameCount: number; sport: string;
     cashLine?: number; dkDraftGroupId?: number;
     contestType?: string; fieldSize?: number; contestFormat?: string;
-  } = { slateDate, gameCount };
+  } = { slateDate, gameCount, sport: "nba" };
   if (cashLine != null) slateValues.cashLine = cashLine;
   if (draftGroupId != null) slateValues.dkDraftGroupId = draftGroupId;
   if (contestType) slateValues.contestType = contestType;
@@ -997,7 +997,7 @@ async function enrichAndSave(
     .insert(dkSlates)
     .values(slateValues)
     .onConflictDoUpdate({
-      target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat],
+      target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat, dkSlates.sport],
       set: conflictSet,
     })
     .returning({ id: dkSlates.id });
@@ -1600,6 +1600,481 @@ export async function loadSlateFromContestId(
     const lsMap = await tryFetchLinestarMap(dgId);
     const result = await enrichAndSave(players, lsMap, cashLine, dgId, contestType, fieldSize, contestFormat);
     return { ...result, message: `[API] ${result.message}` };
+  } catch (e) {
+    return { ok: false, message: String(e) };
+  }
+}
+
+// ── MLB slate loading ─────────────────────────────────────────
+
+const MLB_DK_OVERRIDES: Record<string, string> = {
+  CHW: "CWS", ATH: "OAK", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", WAS: "WSH",
+};
+
+const MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5;
+const MLB_LEAGUE_AVG_XFIP      = 4.20;
+const MLB_LEAGUE_AVG_K_PCT     = 0.225;
+const MLB_CURRENT_SEASON       = "2025";
+const MLB_ORDER_PA_FACTOR: Record<number, number> = {
+  1: 1.08, 2: 1.08, 3: 1.05, 4: 1.05,
+  5: 1.00, 6: 1.00, 7: 0.93, 8: 0.93, 9: 0.93,
+};
+
+function mlbCap(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+
+function mlbWinProb(matchup: Record<string, unknown>, isHome: boolean): number {
+  const hml = matchup.homeMl as number | null;
+  const aml = matchup.awayMl as number | null;
+  if (hml != null && aml != null) {
+    const rh = hml >= 0 ? 100 / (hml + 100) : Math.abs(hml) / (Math.abs(hml) + 100);
+    const ra = aml >= 0 ? 100 / (aml + 100) : Math.abs(aml) / (Math.abs(aml) + 100);
+    const tot = rh + ra;
+    if (tot > 0) return isHome ? rh / tot : ra / tot;
+  }
+  const vph = matchup.vegasProbHome as number | null;
+  if (vph != null) return isHome ? vph : 1 - vph;
+  return 0.5;
+}
+
+function dkBatterFpts(s: number, d: number, t: number, hr: number,
+  rbi: number, runs: number, bb: number, hbp: number, sb: number) {
+  return s * 3 + d * 5 + t * 8 + hr * 10 + rbi * 2 + runs * 2 + bb * 2 + hbp * 2 + sb * 5;
+}
+
+function dkPitcherFpts(ip: number, k: number, er: number, h: number, bb: number, wp: number) {
+  return ip * 2.25 + k * 2 - er * 2 - h * 0.6 - bb * 0.6 + wp * 4;
+}
+
+function computeMlbBatterProj(
+  b: Record<string, unknown>,
+  matchup: Record<string, unknown>,
+  oppSp: Record<string, unknown> | null,
+  park: Record<string, unknown> | null,
+  isHome: boolean,
+): number | null {
+  if (((b.games as number) || 0) < 3) return null;
+  const sPg = (b.singlesPg as number) || 0, dPg = (b.doublesPg as number) || 0;
+  const tPg = (b.triplesPg as number) || 0, hrPg = (b.hrPg as number) || 0;
+  const rbiPg = (b.rbiPg as number) || 0, runsPg = (b.runsPg as number) || 0;
+  const hbpPg = (b.hbpPg as number) || 0, sbPg = (b.sbPg as number) || 0;
+  const bbPct = (b.bbPct as number) || 0.085, paPg = (b.paPg as number) || 4.0;
+  const bbPg = bbPct * paPg;
+  if (sPg + dPg + hrPg + rbiPg + runsPg + bbPg < 0.05) return null;
+
+  const implied = isHome
+    ? ((matchup.homeImplied as number) || ((matchup.vegasTotal as number) || 9) / 2)
+    : ((matchup.awayImplied as number) || ((matchup.vegasTotal as number) || 9) / 2);
+  const envFactor   = mlbCap(implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.5, 2.0);
+  const runsPf      = mlbCap((park?.runsFactor as number) || 1.0, 0.7, 1.3);
+  const hrPf        = mlbCap((park?.hrFactor  as number) || 1.0, 0.7, 1.5);
+  const orderFactor = MLB_ORDER_PA_FACTOR[(b.battingOrder as number)] || 1.0;
+  let xfipFactor = 1.0;
+  if (oppSp) {
+    const spXfip = (oppSp.xfip as number) || (oppSp.era as number) || MLB_LEAGUE_AVG_XFIP;
+    xfipFactor = mlbCap(spXfip / MLB_LEAGUE_AVG_XFIP, 0.6, 1.8);
+  }
+  let matchupFactor = 1.0;
+  const wrcBase = b.wrcPlus as number | null;
+  if (oppSp && (oppSp.hand as string) && wrcBase && wrcBase > 0) {
+    const hand  = ((oppSp.hand as string) || "").toUpperCase();
+    const wrcVs = hand === "L" ? (b.wrcPlusVsL as number | null) : (b.wrcPlusVsR as number | null);
+    if (wrcVs) matchupFactor = mlbCap(wrcVs / wrcBase, 0.5, 1.75);
+  }
+  const hf  = mlbCap(envFactor * runsPf * xfipFactor * orderFactor * matchupFactor, 0.3, 3.0);
+  const hrf = mlbCap(envFactor * hrPf   * xfipFactor * orderFactor * matchupFactor, 0.3, 3.0);
+  const wf  = mlbCap(envFactor * xfipFactor * orderFactor, 0.3, 3.0);
+  const sf  = mlbCap(envFactor * orderFactor, 0.3, 3.0);
+  const fpts = dkBatterFpts(sPg*hf, dPg*hf, tPg*hf, hrPg*hrf, rbiPg*hf, runsPg*hf, bbPg*wf, hbpPg*wf, sbPg*sf);
+  return fpts > 0 ? Math.round(fpts * 100) / 100 : null;
+}
+
+function computeMlbPitcherProj(
+  p: Record<string, unknown>,
+  matchup: Record<string, unknown>,
+  oppTeam: Record<string, unknown> | null,
+  park: Record<string, unknown> | null,
+  isHome: boolean,
+): number | null {
+  if (((p.games as number) || 0) < 2) return null;
+  const ipPg = (p.ipPg as number) || 0;
+  if (ipPg < 0.5) return null;
+  const kPer9  = (p.kPer9 as number)  || 0;
+  const bbPer9 = (p.bbPer9 as number) || 0;
+  const era    = (p.era as number)   || 4.5;
+  const whip   = (p.whip as number)  || 1.3;
+  const xfip   = (p.xfip as number)  || era;
+  const ip = ipPg, k = kPer9 / 9 * ip, bb = bbPer9 / 9 * ip;
+  const er = xfip / 9 * ip, h = Math.max(0, whip * ip - bb);
+  const oppWrc  = oppTeam ? ((oppTeam.teamWrcPlus as number) || 100) : 100;
+  const oppKPct = oppTeam ? ((oppTeam.teamKPct as number)   || MLB_LEAGUE_AVG_K_PCT) : MLB_LEAGUE_AVG_K_PCT;
+  const owf = mlbCap(oppWrc / 100, 0.6, 1.6), okf = mlbCap(oppKPct / MLB_LEAGUE_AVG_K_PCT, 0.6, 1.6);
+  const runsPf  = mlbCap((park?.runsFactor as number) || 1.0, 0.7, 1.3);
+  const histWin = (p.winPct as number) || 0;
+  const teamWin = mlbWinProb(matchup, isHome);
+  const effWin  = histWin > 0 ? (histWin + teamWin) / 2 : 0;
+  const fpts = dkPitcherFpts(ip, k * okf, er * owf * runsPf, h * owf * runsPf, bb, effWin);
+  return fpts > 0 ? Math.round(fpts * 100) / 100 : null;
+}
+
+function isPitcherPos(pos: string): boolean {
+  return pos.includes("SP") || pos.includes("RP");
+}
+
+async function ensureMatchupsForMlbSlate(
+  slateDate: string,
+  dkPlayers_: DkApiPlayer[],
+  abbrevToId: Map<string, number>,
+): Promise<void> {
+  const existing = await db.select({ id: mlbMatchups.id })
+    .from(mlbMatchups)
+    .where(eq(mlbMatchups.gameDate, slateDate));
+  if (existing.length > 0) return;
+
+  const resolve = (abbrev: string): number | null => {
+    const canon = MLB_DK_OVERRIDES[abbrev] ?? abbrev;
+    return abbrevToId.get(canon) ?? null;
+  };
+  const gameSeen = new Set<string>();
+  const games: { homeTeamId: number; awayTeamId: number }[] = [];
+  for (const p of dkPlayers_) {
+    const key = p.gameInfo.split(" ")[0];
+    if (!key || gameSeen.has(key)) continue;
+    gameSeen.add(key);
+    const [awayAbbr, homeAbbr] = key.split("@");
+    const homeTeamId = resolve(homeAbbr ?? "");
+    const awayTeamId = resolve(awayAbbr ?? "");
+    if (homeTeamId && awayTeamId) games.push({ homeTeamId, awayTeamId });
+  }
+  if (games.length > 0) {
+    await db.insert(mlbMatchups)
+      .values(games.map((g) => ({ gameDate: slateDate, ...g })))
+      .onConflictDoNothing();
+  }
+  // Fetch Vegas odds if key available
+  const oddsKey = process.env.ODDS_API_KEY;
+  if (oddsKey && games.length > 0) {
+    try {
+      const oddsUrl = new URL("https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/");
+      oddsUrl.searchParams.set("apiKey", oddsKey);
+      oddsUrl.searchParams.set("regions", "us");
+      oddsUrl.searchParams.set("markets", "h2h,totals");
+      oddsUrl.searchParams.set("oddsFormat", "american");
+      const oddsResp = await fetch(oddsUrl.toString(), { next: { revalidate: 0 } });
+      if (oddsResp.ok) {
+        const oddsGames = await oddsResp.json() as Array<{
+          home_team: string; away_team: string;
+          bookmakers: Array<{ markets: Array<{ key: string; outcomes: Array<{ name: string; price: number; point?: number }> }> }>;
+        }>;
+        const matchupRows = await db.execute<{ id: number; homeName: string }>(sql`
+          SELECT mm.id, mt.name AS "homeName"
+          FROM mlb_matchups mm
+          JOIN mlb_teams mt ON mt.team_id = mm.home_team_id
+          WHERE mm.game_date = ${slateDate}
+        `);
+        const byHome = new Map(matchupRows.rows.map((r) => [r.homeName, r.id]));
+        for (const og of oddsGames) {
+          const mid = byHome.get(og.home_team);
+          if (!mid) continue;
+          const hPs: number[] = [], aPs: number[] = [], tots: number[] = [];
+          for (const bm of og.bookmakers ?? []) {
+            for (const market of bm.markets ?? []) {
+              if (market.key === "h2h") {
+                const ho = market.outcomes.find((o) => o.name === og.home_team);
+                const ao = market.outcomes.find((o) => o.name === og.away_team);
+                if (ho) hPs.push(ho.price);
+                if (ao) aPs.push(ao.price);
+              } else if (market.key === "totals") {
+                const over = market.outcomes.find((o) => o.name === "Over");
+                if (over?.point != null) tots.push(over.point);
+              }
+            }
+          }
+          const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b) / arr.length) : null;
+          const homeMl = avg(hPs), awayMl = avg(aPs);
+          const vegasTotal = tots.length ? Math.round(tots.reduce((a, b) => a + b) / tots.length * 2) / 2 : null;
+          // Compute implied run totals from moneylines
+          let homeImplied: number | null = null, awayImplied: number | null = null;
+          if (vegasTotal && homeMl != null && awayMl != null) {
+            const rh = homeMl >= 0 ? 100 / (homeMl + 100) : Math.abs(homeMl) / (Math.abs(homeMl) + 100);
+            const ra = awayMl >= 0 ? 100 / (awayMl + 100) : Math.abs(awayMl) / (Math.abs(awayMl) + 100);
+            const tot = rh + ra;
+            const homeWinClean = tot > 0 ? rh / tot : 0.5;
+            const spread = Math.max(-10, Math.min(10, (homeWinClean - 0.5) / 0.025)) / 2;
+            homeImplied = Math.round((vegasTotal / 2 + spread) * 10) / 10;
+            awayImplied = Math.round((vegasTotal - homeImplied) * 10) / 10;
+          }
+          if (homeMl || awayMl || vegasTotal) {
+            await db.execute(sql`
+              UPDATE mlb_matchups
+              SET home_ml = ${homeMl}, away_ml = ${awayMl}, vegas_total = ${vegasTotal},
+                  home_implied = ${homeImplied}, away_implied = ${awayImplied}
+              WHERE id = ${mid}
+            `);
+          }
+        }
+      }
+    } catch { /* best-effort */ }
+  }
+}
+
+async function enrichAndSaveMlb(
+  dkPlayers_: DkApiPlayer[],
+  lsMap: Map<string, LinestarEntry>,
+  cashLine?: number,
+  draftGroupId?: number,
+  contestType?: string,
+  fieldSize?: number,
+  contestFormat?: string,
+): Promise<{ ok: boolean; message: string; playerCount?: number; matchRate?: number }> {
+  let slateDate = "";
+  for (const p of dkPlayers_) {
+    const d = parseSlateDate(p.gameInfo);
+    if (d) { slateDate = d; break; }
+  }
+  if (!slateDate) slateDate = new Date().toISOString().slice(0, 10);
+  const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
+
+  const slateVals: Record<string, unknown> = { slateDate, gameCount, sport: "mlb" };
+  if (cashLine != null)     slateVals.cashLine     = cashLine;
+  if (draftGroupId != null) slateVals.dkDraftGroupId = draftGroupId;
+  if (contestType)          slateVals.contestType  = contestType;
+  if (fieldSize != null)    slateVals.fieldSize    = fieldSize;
+  if (contestFormat)        slateVals.contestFormat = contestFormat;
+
+  const conflictVals: Record<string, unknown> = { gameCount };
+  if (cashLine != null)     conflictVals.cashLine     = cashLine;
+  if (draftGroupId != null) conflictVals.dkDraftGroupId = draftGroupId;
+  if (contestType)          conflictVals.contestType  = contestType;
+  if (fieldSize != null)    conflictVals.fieldSize    = fieldSize;
+  if (contestFormat)        conflictVals.contestFormat = contestFormat;
+
+  const [slate] = await db
+    .insert(dkSlates)
+    .values(slateVals as typeof dkSlates.$inferInsert)
+    .onConflictDoUpdate({
+      target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat, dkSlates.sport],
+      set: conflictVals,
+    })
+    .returning({ id: dkSlates.id });
+  const slateId = slate.id;
+
+  // Build MLB team abbrev → teamId cache
+  const mlbTeamRows = await db.select({ teamId: mlbTeams.teamId, abbreviation: mlbTeams.abbreviation }).from(mlbTeams);
+  const abbrevToId  = new Map(mlbTeamRows.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
+
+  await ensureMatchupsForMlbSlate(slateDate, dkPlayers_, abbrevToId);
+
+  const matchupRows = await db.select().from(mlbMatchups).where(eq(mlbMatchups.gameDate, slateDate));
+  const matchupByTeam = new Map<number, typeof matchupRows[0]>();
+  for (const m of matchupRows) {
+    if (m.homeTeamId) matchupByTeam.set(m.homeTeamId, m);
+    if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
+  }
+
+  // Load stats tables once
+  const batterRows  = await db.select().from(mlbBatterStats).where(eq(mlbBatterStats.season, MLB_CURRENT_SEASON));
+  const pitcherRows = await db.select().from(mlbPitcherStats).where(eq(mlbPitcherStats.season, MLB_CURRENT_SEASON));
+  const teamStatRows = await db.select().from(mlbTeamStatsTable).where(eq(mlbTeamStatsTable.season, MLB_CURRENT_SEASON));
+  const parkRows    = await db.select().from(mlbParkFactors).where(eq(mlbParkFactors.season, MLB_CURRENT_SEASON));
+
+  // Index stats by team
+  const battersByTeam  = new Map<number, typeof batterRows>();
+  const pitchersByTeam = new Map<number, typeof pitcherRows>();
+  for (const b of batterRows) {
+    if (b.teamId == null) continue;
+    const arr = battersByTeam.get(b.teamId) ?? [];
+    arr.push(b); battersByTeam.set(b.teamId, arr);
+  }
+  for (const p of pitcherRows) {
+    if (p.teamId == null) continue;
+    const arr = pitchersByTeam.get(p.teamId) ?? [];
+    arr.push(p); pitchersByTeam.set(p.teamId, arr);
+  }
+  const teamStatsMap = new Map(teamStatRows.map((r) => [r.teamId, r]));
+  const parkMap      = new Map(parkRows.map((r) => [r.teamId, r]));
+
+  // SP pre-pass: one SP per team
+  const spByTeam = new Map<number, typeof pitcherRows[0]>();
+  for (const p of dkPlayers_) {
+    if (!isPitcherPos(p.eligiblePositions)) continue;
+    const canon = MLB_DK_OVERRIDES[p.teamAbbrev] ?? p.teamAbbrev;
+    const tid = abbrevToId.get(canon);
+    if (!tid || spByTeam.has(tid)) continue;
+    const candidates = pitchersByTeam.get(tid) ?? [];
+    let best: typeof pitcherRows[0] | null = null, bestDist = 4;
+    for (const ps of candidates) {
+      const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
+      if (d < bestDist) { bestDist = d; best = ps; }
+    }
+    if (best) spByTeam.set(tid, best);
+  }
+
+  let lsMatched = 0, projComputed = 0;
+  const insertValues: Array<Record<string, unknown>> = [];
+
+  for (const p of dkPlayers_) {
+    const canon = MLB_DK_OVERRIDES[p.teamAbbrev] ?? p.teamAbbrev;
+    const mlbTeamId = abbrevToId.get(canon) ?? null;
+    const matchup   = mlbTeamId ? matchupByTeam.get(mlbTeamId) ?? null : null;
+    const matchupId = matchup?.id ?? null;
+
+    const ls = findLinestarMatch(p.name, p.salary, lsMap);
+    if (ls) lsMatched++;
+
+    const isHome = matchup?.homeTeamId === mlbTeamId;
+    const park   = matchup ? parkMap.get(matchup.homeTeamId ?? 0) ?? null : null;
+
+    let ourProj: number | null  = null;
+    let ourLeverage: number | null = null;
+
+    if (mlbTeamId && matchup) {
+      if (isPitcherPos(p.eligiblePositions)) {
+        // Pitcher projection
+        const candidates = pitchersByTeam.get(mlbTeamId) ?? [];
+        let best: typeof pitcherRows[0] | null = null, bestDist = 4;
+        for (const ps of candidates) {
+          const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
+          if (d < bestDist) { bestDist = d; best = ps; }
+        }
+        if (best) {
+          const oppTeamId = isHome ? matchup.awayTeamId : matchup.homeTeamId;
+          const oppTeam   = oppTeamId ? teamStatsMap.get(oppTeamId) ?? null : null;
+          ourProj = computeMlbPitcherProj(
+            best as unknown as Record<string, unknown>, matchup as unknown as Record<string, unknown>,
+            oppTeam as unknown as Record<string, unknown> | null, park as unknown as Record<string, unknown> | null, isHome,
+          );
+          if (ourProj) projComputed++;
+        }
+      } else {
+        // Batter projection
+        const candidates = battersByTeam.get(mlbTeamId) ?? [];
+        let best: typeof batterRows[0] | null = null, bestDist = 4;
+        for (const b of candidates) {
+          const d = levenshtein(p.name.toLowerCase(), b.name.toLowerCase());
+          if (d < bestDist) { bestDist = d; best = b; }
+        }
+        if (best) {
+          const oppTeamId = isHome ? matchup.awayTeamId : matchup.homeTeamId;
+          const oppSp     = oppTeamId ? spByTeam.get(oppTeamId) ?? null : null;
+          ourProj = computeMlbBatterProj(
+            best as unknown as Record<string, unknown>, matchup as unknown as Record<string, unknown>,
+            oppSp as unknown as Record<string, unknown> | null, park as unknown as Record<string, unknown> | null, isHome,
+          );
+          if (ourProj) projComputed++;
+        }
+      }
+    }
+
+    const dkIsOut = p.isDisabled || ["O", "OUT"].includes(p.dkStatus.toUpperCase());
+    const isOut   = dkIsOut || (ls?.isOut ?? false);
+    const projForLev = isOut ? 0 : (ourProj ?? ls?.linestarProj ?? 0);
+    if (projForLev && ls?.projOwnPct != null) {
+      const fieldProj = p.avgFptsDk ?? ls?.linestarProj ?? null;
+      ourLeverage = computeLeverage(projForLev, ls.projOwnPct, fieldProj);
+    }
+
+    insertValues.push({
+      slateId, dkPlayerId: p.dkId, name: p.name,
+      teamAbbrev: p.teamAbbrev, teamId: null, mlbTeamId, matchupId,
+      eligiblePositions: p.eligiblePositions, salary: p.salary,
+      gameInfo: p.gameInfo, avgFptsDk: p.avgFptsDk,
+      linestarProj: ls?.linestarProj ?? null, projOwnPct: ls?.projOwnPct ?? null,
+      ourProj, ourLeverage, ourOwnPct: null as number | null, isOut,
+    });
+  }
+
+  // Baseline ownership for players without LineStar
+  const refProjs = insertValues.filter((p) => p.projOwnPct == null).map((p) => (p.avgFptsDk as number) ?? (p.ourProj as number) ?? 0).filter((v) => v > 0);
+  const poolAvg = refProjs.length > 0 ? refProjs.reduce((a, b) => a + b) / refProjs.length : 0;
+  if (poolAvg > 0) {
+    for (const p of insertValues) {
+      if (p.projOwnPct != null) continue;
+      const ref = (p.avgFptsDk as number) ?? (p.ourProj as number) ?? 0;
+      if (!ref) continue;
+      p.projOwnPct = Math.round(Math.max(1, Math.min(50, (ref / poolAvg) * 15)) * 100) / 100;
+      if (p.ourProj && !p.isOut) {
+        const fieldProj = (p.avgFptsDk as number) ?? null;
+        p.ourLeverage = computeLeverage(p.ourProj as number, p.projOwnPct as number, fieldProj);
+      }
+    }
+  }
+
+  const ownMap = computePoolOwnership(insertValues as Array<{ ourProj: number | null; salary: number; isOut: boolean }>);
+  for (const [idx, ownPct] of ownMap) {
+    (insertValues[idx] as Record<string, unknown>).ourOwnPct = ownPct;
+  }
+
+  for (let i = 0; i < insertValues.length; i += 50) {
+    const batch = insertValues.slice(i, i + 50);
+    await db.insert(dkPlayers).values(batch as typeof dkPlayers.$inferInsert[]).onConflictDoUpdate({
+      target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
+      set: {
+        salary: sql`EXCLUDED.salary`, mlbTeamId: sql`EXCLUDED.mlb_team_id`,
+        matchupId: sql`EXCLUDED.matchup_id`,
+        linestarProj: sql`EXCLUDED.linestar_proj`, projOwnPct: sql`EXCLUDED.proj_own_pct`,
+        ourProj: sql`EXCLUDED.our_proj`, ourLeverage: sql`EXCLUDED.our_leverage`,
+        ourOwnPct: sql`EXCLUDED.our_own_pct`,
+        isOut: sql`EXCLUDED.is_out`, avgFptsDk: sql`EXCLUDED.avg_fpts_dk`,
+        eligiblePositions: sql`EXCLUDED.eligible_positions`, gameInfo: sql`EXCLUDED.game_info`,
+      },
+    });
+  }
+
+  revalidatePath("/dfs");
+  const matchRate = lsMap.size > 0 ? Math.round((lsMatched / dkPlayers_.length) * 100) : null;
+  return {
+    ok: true,
+    message: `Saved ${insertValues.length} MLB players (${projComputed} with our proj)${matchRate != null ? `, LineStar ${matchRate}% matched` : ""}`,
+    playerCount: insertValues.length,
+    matchRate: matchRate ?? undefined,
+  };
+}
+
+/** Fetch LineStar for MLB (sport=2). Same probe logic as NBA but different sport param. */
+async function tryFetchLinestarMapMlb(draftGroupId: number): Promise<Map<string, LinestarEntry>> {
+  const raw = process.env.DNN_COOKIE;
+  if (!raw) return new Map();
+  const cookie = normalizeDnnCookie(raw);
+  try {
+    // MLB period discovery: same endpoint but sport=2 (NBA uses sport=5)
+    const resp = await fetch(`${LS_BASE}/GetPeriodInformation?site=1&sport=2`, {
+      headers: { ...LS_HEADERS, Cookie: `.DOTNETNUKE=${cookie}` },
+      next: { revalidate: 0 },
+    });
+    if (!resp.ok) return new Map();
+    const periods = await resp.json() as Array<{ PeriodId?: number; Id?: number }>;
+    const list = Array.isArray(periods) ? periods : (periods as { Periods?: typeof periods }).Periods ?? [];
+    for (const period of list.slice(0, 10)) {
+      const pid = period.PeriodId ?? period.Id;
+      if (!pid) continue;
+      const probe = await fetch(`${LS_BASE}/GetSalariesV5?periodId=${pid}&site=1&sport=2`, {
+        headers: { ...LS_HEADERS, Cookie: `.DOTNETNUKE=${cookie}` },
+        next: { revalidate: 0 },
+      }).then((r) => r.ok ? r.json() : null).catch(() => null);
+      if (!probe) continue;
+      const slates = (probe as { Slates?: Array<{ DfsSlateId?: number }> }).Slates ?? [];
+      if (slates.some((s) => s.DfsSlateId === draftGroupId)) {
+        return parseLinestarApiResponse(probe);
+      }
+    }
+  } catch { /* best-effort */ }
+  return new Map();
+}
+
+export async function loadMlbSlateFromContestId(
+  contestId: string,
+  cashLine?: number,
+  contestType?: string,
+  fieldSize?: number,
+  contestFormat?: string,
+): Promise<{ ok: boolean; message: string; playerCount?: number }> {
+  try {
+    const dgId    = await resolveDraftGroupId(parseInt(contestId, 10));
+    const players = await fetchDkPlayersFromApi(dgId);
+    if (players.length === 0) return { ok: false, message: "No players returned from DK API" };
+    const lsMap = await tryFetchLinestarMapMlb(dgId);
+    const result = await enrichAndSaveMlb(players, lsMap, cashLine, dgId, contestType, fieldSize, contestFormat);
+    return { ...result, message: `[MLB API] ${result.message}` };
   } catch (e) {
     return { ok: false, message: String(e) };
   }

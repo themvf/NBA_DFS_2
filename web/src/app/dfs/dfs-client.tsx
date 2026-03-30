@@ -4,7 +4,7 @@ import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps } from "./actions";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -191,7 +191,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     startTransition(async () => {
       const cashLine  = cashLineInput ? parseFloat(cashLineInput) : undefined;
       const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
-      const res = await loadSlateFromContestId(
+      const fn = sport === "mlb" ? loadMlbSlateFromContestId : loadSlateFromContestId;
+      const res = await fn(
         contestId.trim(),
         isNaN(cashLine!) ? undefined : cashLine,
         contestTiming,
