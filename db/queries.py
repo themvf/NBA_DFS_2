@@ -177,16 +177,17 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
     db.execute(
         """
         INSERT INTO dk_players (
-            slate_id, dk_player_id, name, team_abbrev, team_id, matchup_id,
+            slate_id, dk_player_id, name, team_abbrev, team_id, mlb_team_id, matchup_id,
             eligible_positions, salary, game_info, avg_fpts_dk,
             linestar_proj, proj_own_pct, our_proj, our_leverage,
             proj_floor, proj_ceiling, boom_rate, is_out
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (slate_id, dk_player_id) DO UPDATE SET
             name = EXCLUDED.name,
             team_abbrev = EXCLUDED.team_abbrev,
             team_id = EXCLUDED.team_id,
+            mlb_team_id = EXCLUDED.mlb_team_id,
             matchup_id = EXCLUDED.matchup_id,
             eligible_positions = EXCLUDED.eligible_positions,
             salary = EXCLUDED.salary,
@@ -207,6 +208,7 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             player["name"],
             player["team_abbrev"],
             player.get("team_id"),
+            player.get("mlb_team_id"),
             player.get("matchup_id"),
             player["eligible_positions"],
             player["salary"],
