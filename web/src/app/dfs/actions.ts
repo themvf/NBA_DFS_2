@@ -2528,6 +2528,17 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
     const matchupRows = await db.select().from(nbaMatchups).where(eq(nbaMatchups.gameDate, slate.slateDate));
     const matchupById = new Map(matchupRows.map((m) => [m.id, m]));
 
+    // Build abbrev → teamId fallback (dk_players.team_id may be null)
+    const teamRows = await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams);
+    const abbrevToId = new Map(teamRows.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
+
+    // Build teamId → matchup fallback (dk_players.matchup_id may be null)
+    const matchupByTeam = new Map<number, typeof matchupRows[0]>();
+    for (const m of matchupRows) {
+      if (m.homeTeamId) matchupByTeam.set(m.homeTeamId, m);
+      if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
+    }
+
     const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, CURRENT_SEASON));
     const statsByTeam = new Map(teamStatRows.map((r) => [r.teamId, r]));
 
@@ -2554,14 +2565,21 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       let ourProj: number | null = null;
       let spgForLev = 0, bpgForLev = 0;
 
-      const matchup = p.matchupId ? matchupById.get(p.matchupId) ?? null : null;
+      // Resolve teamId — stored value may be null; fall back to abbreviation lookup
+      const canonical = DK_OVERRIDES[p.teamAbbrev.toUpperCase()] ?? p.teamAbbrev.toUpperCase();
+      const resolvedTeamId = p.teamId ?? abbrevToId.get(canonical) ?? null;
 
-      if (p.teamId && matchup) {
-        const teamStat = statsByTeam.get(p.teamId);
-        const oppId    = matchup.homeTeamId === p.teamId ? matchup.awayTeamId : matchup.homeTeamId;
+      // Resolve matchup — stored matchupId may be null; fall back to teamId map
+      const matchup = (p.matchupId ? matchupById.get(p.matchupId) : null)
+        ?? (resolvedTeamId ? matchupByTeam.get(resolvedTeamId) : null)
+        ?? null;
+
+      if (resolvedTeamId && matchup) {
+        const teamStat = statsByTeam.get(resolvedTeamId);
+        const oppId    = matchup.homeTeamId === resolvedTeamId ? matchup.awayTeamId : matchup.homeTeamId;
         const oppStat  = oppId ? statsByTeam.get(oppId) : null;
 
-        const candidates = playersByTeam.get(p.teamId) ?? [];
+        const candidates = playersByTeam.get(resolvedTeamId) ?? [];
         let bestPlayer: typeof playerStatRows[0] | null = null;
         let bestDist = 4;
         for (const ps of candidates) {
@@ -2570,7 +2588,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
         }
 
         if (bestPlayer) {
-          const isHome = matchup.homeTeamId === p.teamId;
+          const isHome = matchup.homeTeamId === resolvedTeamId;
           ourProj = computeOurProjection(
             bestPlayer,
             teamStat?.pace   ?? LEAGUE_AVG_PACE,
