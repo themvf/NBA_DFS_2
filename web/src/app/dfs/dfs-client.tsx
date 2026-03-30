@@ -3,7 +3,8 @@
 import { useState, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
-import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps } from "./actions";
+import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
+import { processDkSlate, loadSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -100,9 +101,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [strategy, setStrategy] = useState("gpp");
 
   // ── Lineups ───────────────────────────────────────────────
-  const [lineups, setLineups] = useState<GeneratedLineup[] | null>(null);
+  const [lineups,    setLineups]    = useState<GeneratedLineup[]    | null>(null);
+  const [mlbLineups, setMlbLineups] = useState<MlbGeneratedLineup[] | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
+  const [antiCorrMax, setAntiCorrMax] = useState(1); // MLB: max batters facing your own SP
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   // ── Export ────────────────────────────────────────────────
@@ -221,6 +224,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setIsOptimizing(true);
     setOptimizeError(null);
     setLineups(null);
+    setMlbLineups(null);
 
     // Build game → matchupId map for filtering
     const gameToMatchup = new Map<string, number>();
@@ -231,24 +235,39 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       .map((g) => gameToMatchup.get(g))
       .filter((id): id is number => id != null);
 
-    const settings: OptimizerSettings = { mode, nLineups, minStack, maxExposure, bringBackThreshold };
-    const res = await runOptimizer(players[0].slateId, gameFilter, settings);
-    setIsOptimizing(false);
-    if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
-    setLineups(res.lineups);
+    if (sport === "mlb") {
+      const settings: MlbOptimizerSettings = {
+        mode, nLineups, minStack, maxExposure,
+        bringBackThreshold, antiCorrMax,
+      };
+      const res = await runMlbOptimizer(players[0].slateId, gameFilter, settings);
+      setIsOptimizing(false);
+      if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
+      setMlbLineups(res.lineups);
+    } else {
+      const settings: OptimizerSettings = { mode, nLineups, minStack, maxExposure, bringBackThreshold };
+      const res = await runOptimizer(players[0].slateId, gameFilter, settings);
+      setIsOptimizing(false);
+      if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
+      setLineups(res.lineups);
+    }
   }
 
   async function handleSave() {
-    if (!lineups || !players[0]?.slateId) return;
+    const activeLineups = sport === "nba" ? lineups : mlbLineups;
+    if (!activeLineups || !players[0]?.slateId) return;
     setSaveMsg(null);
-    const res = await saveLineups(players[0].slateId, lineups, strategy);
+    const res = await saveLineups(players[0].slateId, activeLineups, strategy);
     setSaveMsg(res.ok ? `Saved ${res.saved} lineups as "${strategy}"` : "Save failed");
   }
 
   async function handleExport() {
-    if (!lineups) return;
+    const activeLineups = sport === "nba" ? lineups : mlbLineups;
+    if (!activeLineups) return;
     setIsExporting(true);
-    const csvStr = await exportLineups(lineups, entryTemplate);
+    const csvStr = sport === "mlb"
+      ? await exportMlbLineups(mlbLineups!, entryTemplate)
+      : await exportLineups(lineups!, entryTemplate);
     setIsExporting(false);
     if (!csvStr) return;
     const blob = new Blob([csvStr], { type: "text/csv" });
@@ -665,8 +684,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         </div>
       )}
 
-      {/* Optimizer Settings — NBA only (MLB optimizer coming soon) */}
-      {sport === "nba" && <div className="rounded-lg border bg-card p-4">
+      {/* Optimizer Settings */}
+      <div className="rounded-lg border bg-card p-4">
         <h2 className="text-sm font-semibold mb-3">Optimizer Settings</h2>
         <div className="flex flex-wrap gap-4 items-end">
           <div>
@@ -714,21 +733,40 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               <option value={1.0}>100%</option>
             </select>
           </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">
-              Bring-back{" "}
-              <span className="text-gray-400 font-normal">(GPP)</span>
-            </label>
-            <select
-              value={bringBackThreshold}
-              onChange={(e) => setBringBackThreshold(parseInt(e.target.value))}
-              className="rounded border px-2 py-1 text-sm"
-            >
-              <option value={0}>Off</option>
-              <option value={3}>3+ → 1 back</option>
-              <option value={2}>2+ → 1 back</option>
-            </select>
-          </div>
+          {sport === "nba" && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Bring-back{" "}
+                <span className="text-gray-400 font-normal">(GPP)</span>
+              </label>
+              <select
+                value={bringBackThreshold}
+                onChange={(e) => setBringBackThreshold(parseInt(e.target.value))}
+                className="rounded border px-2 py-1 text-sm"
+              >
+                <option value={0}>Off</option>
+                <option value={3}>3+ → 1 back</option>
+                <option value={2}>2+ → 1 back</option>
+              </select>
+            </div>
+          )}
+          {sport === "mlb" && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Anti-Corr{" "}
+                <span className="text-gray-400 font-normal">(SP opp batters)</span>
+              </label>
+              <select
+                value={antiCorrMax}
+                onChange={(e) => setAntiCorrMax(parseInt(e.target.value))}
+                className="rounded border px-2 py-1 text-sm"
+              >
+                <option value={0}>Off (0)</option>
+                <option value={1}>Max 1</option>
+                <option value={2}>Max 2</option>
+              </select>
+            </div>
+          )}
           <button
             onClick={handleOptimize}
             disabled={isOptimizing || filteredPlayers.length === 0}
@@ -738,7 +776,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </button>
         </div>
         {optimizeError && <p className="mt-2 text-sm text-red-600">{optimizeError}</p>}
-      </div>}
+      </div>
 
       {/* Player Pool Table */}
       {filteredPlayers.length > 0 && (
@@ -816,12 +854,17 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         </div>
       )}
 
-      {/* Generated Lineups — NBA only */}
-      {sport === "nba" && lineups && lineups.length > 0 && (
+      {/* Generated Lineups */}
+      {((sport === "nba" ? lineups : mlbLineups) ?? []).length > 0 && (() => {
+        const activeLineups = (sport === "nba" ? lineups : mlbLineups)!;
+        const slotNames = sport === "nba"
+          ? ["PG","SG","SF","PF","C","G","F","UTIL"]
+          : ["P1","P2","C","1B","2B","3B","SS","OF1","OF2","OF3"];
+        return (
         <div className="rounded-lg border bg-card p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold">
-              {lineups.length} Lineups Generated
+              {activeLineups.length} Lineups Generated
             </h2>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
@@ -844,7 +887,9 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
           {/* Lineup cards */}
           <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-            {lineups.map((lineup, i) => (
+            {activeLineups.map((lineup, i) => {
+              const slots = lineup.slots as Record<string, typeof lineup.players[0]>;
+              return (
               <div key={i} className="rounded border p-2 text-xs">
                 <div className="flex items-center gap-4 mb-1 text-gray-500">
                   <span className="font-medium text-gray-800">#{i + 1}</span>
@@ -853,11 +898,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <span>Lev: <strong className="text-gray-800">{lineup.leverageScore.toFixed(1)}</strong></span>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {(["PG","SG","SF","PF","C","G","F","UTIL"] as const).map((slot) => {
-                    const p = lineup.slots[slot];
+                  {slotNames.map((slot) => {
+                    const p = slots[slot];
                     return p ? (
                       <span key={slot} className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5">
-                        <span className="text-gray-400">{slot}</span>
+                        <span className="text-gray-400">{slot.replace(/\d$/, "")}</span>
                         {p.teamLogo && <img src={p.teamLogo} alt="" className="h-3 w-3" />}
                         <span className="font-medium">{p.name}</span>
                         <span className="text-gray-400">{fmt1(p.ourProj)}</span>
@@ -866,7 +911,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Multi-entry export */}
@@ -878,7 +924,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             <textarea
               value={entryTemplate}
               onChange={(e) => setEntryTemplate(e.target.value)}
-              placeholder="Entry ID,Contest Name,Contest ID,Entry Fee,PG,SG,SF,PF,C,G,F,UTIL&#10;12345,NBA..."
+              placeholder={sport === "mlb"
+                ? "Entry ID,Contest Name,Contest ID,Entry Fee,P,P,C,1B,2B,3B,SS,OF,OF,OF\n12345,MLB..."
+                : "Entry ID,Contest Name,Contest ID,Entry Fee,PG,SG,SF,PF,C,G,F,UTIL\n12345,NBA..."
+              }
               rows={4}
               className="w-full rounded border px-2 py-1 text-xs font-mono"
             />
@@ -891,7 +940,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Accuracy Panel */}
       {accuracy && (

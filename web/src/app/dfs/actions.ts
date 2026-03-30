@@ -15,6 +15,16 @@ import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, 
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, buildMultiEntryCSV } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
+import { optimizeMlbLineups, buildMlbMultiEntryCSV } from "./mlb-optimizer";
+import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
+
+/** Minimal lineup shape accepted by saveLineups — satisfied by both NBA and MLB lineup types. */
+type LineupForSave = {
+  players: Array<{ id: number; teamAbbrev: string }>;
+  totalSalary: number;
+  projFpts: number;
+  leverageScore: number;
+};
 
 const LEAGUE_AVG_PACE       = 100.0;
 const LEAGUE_AVG_DEF_RTG   = 112.0;
@@ -1728,7 +1738,7 @@ export async function runOptimizer(
 
 export async function saveLineups(
   slateId: number,
-  lineups: GeneratedLineup[],
+  lineups: LineupForSave[],
   strategy: string,
 ): Promise<{ ok: boolean; saved: number }> {
   let saved = 0;
@@ -1776,6 +1786,71 @@ export async function exportLineups(
 ): Promise<string> {
   const entryRows = entryTemplate.split(/\r?\n/).filter(Boolean);
   return buildMultiEntryCSV(lineups, entryRows);
+}
+
+// ── MLB Optimizer ─────────────────────────────────────────────
+
+export async function runMlbOptimizer(
+  slateId: number,
+  gameFilter: number[],
+  settings: MlbOptimizerSettings,
+): Promise<{ ok: boolean; lineups?: MlbGeneratedLineup[]; error?: string }> {
+  const rows = await db.execute<MlbOptimizerPlayer>(sql`
+    SELECT
+      dp.id, dp.dk_player_id AS "dkPlayerId", dp.name, dp.team_abbrev AS "teamAbbrev",
+      dp.mlb_team_id AS "teamId", dp.matchup_id AS "matchupId",
+      dp.eligible_positions AS "eligiblePositions", dp.salary,
+      dp.our_proj AS "ourProj", dp.our_leverage AS "ourLeverage",
+      dp.linestar_proj AS "linestarProj", dp.proj_own_pct AS "projOwnPct",
+      dp.is_out AS "isOut", dp.game_info AS "gameInfo",
+      mt.logo_url AS "teamLogo", mt.name AS "teamName",
+      mm.home_team_id AS "homeTeamId"
+    FROM dk_players dp
+    LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
+    LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+    WHERE dp.slate_id = ${slateId}
+  `);
+
+  const pool: MlbOptimizerPlayer[] = rows.rows.filter((p) =>
+    gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)),
+  );
+
+  try {
+    const lineups = optimizeMlbLineups(pool, settings);
+    if (lineups.length === 0) {
+      const eligible = pool.filter(
+        (p) => !p.isOut && p.ourProj != null && (p.ourProj as number) > 0 && p.salary > 0,
+      );
+      const pitchers = eligible.filter((p) =>
+        p.eligiblePositions.includes("SP") || p.eligiblePositions.includes("RP"),
+      ).length;
+      const catchers = eligible.filter(
+        (p) => p.eligiblePositions.includes("C") && !p.eligiblePositions.includes("SP"),
+      ).length;
+      const hint = eligible.length < 20
+        ? " Pool too small — upload the DK CSV first."
+        : pitchers < 2
+          ? " Not enough pitchers (need ≥2 SP/RP)."
+          : catchers < 1
+            ? " No catchers in pool."
+            : " Try reducing lineup count or switching to Cash mode.";
+      return {
+        ok: false,
+        error: `No lineups — ${eligible.length} eligible: ${pitchers} P / ${catchers} C.${hint}`,
+      };
+    }
+    return { ok: true, lineups };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+export async function exportMlbLineups(
+  lineups: MlbGeneratedLineup[],
+  entryTemplate: string,
+): Promise<string> {
+  const entryRows = entryTemplate.split(/\r?\n/).filter(Boolean);
+  return buildMlbMultiEntryCSV(lineups, entryRows);
 }
 
 // ── Results Upload (Phase 3) ──────────────────────────────────

@@ -391,7 +391,7 @@ export type CrossSlateAccuracyRow = {
   ownCorr: number | null;
 };
 
-export async function getCrossSlateAccuracy(): Promise<CrossSlateAccuracyRow[]> {
+export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<CrossSlateAccuracyRow[]> {
   const result = await db.execute<CrossSlateAccuracyRow>(sql`
     SELECT
       ds.slate_date                                                            AS "slateDate",
@@ -408,6 +408,7 @@ export async function getCrossSlateAccuracy(): Promise<CrossSlateAccuracyRow[]> 
         FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) AS "ownCorr"
     FROM dk_players dp
     JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
     GROUP BY ds.slate_date
     HAVING COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL) > 0
     ORDER BY ds.slate_date ASC
@@ -422,23 +423,41 @@ export type PositionAccuracyRow = {
   bias: number | null;
 };
 
-export async function getPositionAccuracy(): Promise<PositionAccuracyRow[]> {
-  const result = await db.execute<PositionAccuracyRow>(sql`
-    SELECT
-      CASE
+export async function getPositionAccuracy(sport: Sport = "nba"): Promise<PositionAccuracyRow[]> {
+  // Position CASE expression differs by sport — NBA uses PG/SG/SF/PF/C,
+  // MLB uses SP/RP/C/1B/2B/3B/SS/OF.
+  const posCase = sport === "mlb"
+    ? sql`CASE
+        WHEN dp.eligible_positions LIKE '%SP%' THEN 'SP'
+        WHEN dp.eligible_positions LIKE '%RP%' THEN 'RP'
+        WHEN dp.eligible_positions LIKE '%OF%' THEN 'OF'
+        WHEN dp.eligible_positions LIKE '%SS%' THEN 'SS'
+        WHEN dp.eligible_positions LIKE '%3B%' THEN '3B'
+        WHEN dp.eligible_positions LIKE '%2B%' THEN '2B'
+        WHEN dp.eligible_positions LIKE '%1B%' THEN '1B'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`
+    : sql`CASE
         WHEN dp.eligible_positions LIKE '%PG%' THEN 'PG'
         WHEN dp.eligible_positions LIKE '%SG%' THEN 'SG'
         WHEN dp.eligible_positions LIKE '%SF%' THEN 'SF'
         WHEN dp.eligible_positions LIKE '%PF%' THEN 'PF'
         WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
         ELSE 'UTIL'
-      END AS "position",
+      END`;
+
+  const result = await db.execute<PositionAccuracyRow>(sql`
+    SELECT
+      ${posCase} AS "position",
       COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "n",
       AVG(ABS(dp.our_proj - dp.actual_fpts))
         FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "mae",
       AVG(dp.our_proj - dp.actual_fpts)
         FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "bias"
     FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
     GROUP BY 1
     ORDER BY mae DESC NULLS LAST
   `);
@@ -453,7 +472,7 @@ export type SalaryTierAccuracyRow = {
   bias: number | null;
 };
 
-export async function getSalaryTierAccuracy(): Promise<SalaryTierAccuracyRow[]> {
+export async function getSalaryTierAccuracy(sport: Sport = "nba"): Promise<SalaryTierAccuracyRow[]> {
   const result = await db.execute<SalaryTierAccuracyRow>(sql`
     SELECT
       CASE
@@ -471,6 +490,8 @@ export async function getSalaryTierAccuracy(): Promise<SalaryTierAccuracyRow[]> 
       AVG(dp.our_proj - dp.actual_fpts)
         FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "bias"
     FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
     GROUP BY 1
     ORDER BY MIN(dp.salary) ASC NULLS LAST
   `);
@@ -486,7 +507,7 @@ export type LeverageCalibrationRow = {
   n: number;
 };
 
-export async function getLeverageCalibration(): Promise<LeverageCalibrationRow[]> {
+export async function getLeverageCalibration(sport: Sport = "nba"): Promise<LeverageCalibrationRow[]> {
   const result = await db.execute<LeverageCalibrationRow>(sql`
     SELECT
       sub.quartile               AS "leverageQuartile",
@@ -497,12 +518,15 @@ export async function getLeverageCalibration(): Promise<LeverageCalibrationRow[]
       COUNT(*)::int              AS "n"
     FROM (
       SELECT
-        NTILE(4) OVER (ORDER BY our_leverage ASC NULLS LAST) AS quartile,
-        our_leverage,
-        our_proj,
-        actual_fpts
-      FROM dk_players
-      WHERE our_leverage IS NOT NULL AND actual_fpts IS NOT NULL
+        NTILE(4) OVER (ORDER BY dp.our_leverage ASC NULLS LAST) AS quartile,
+        dp.our_leverage,
+        dp.our_proj,
+        dp.actual_fpts
+      FROM dk_players dp
+      JOIN dk_slates ds ON ds.id = dp.slate_id
+      WHERE dp.our_leverage IS NOT NULL
+        AND dp.actual_fpts IS NOT NULL
+        AND ds.sport = ${sport}
     ) sub
     GROUP BY sub.quartile
     ORDER BY sub.quartile

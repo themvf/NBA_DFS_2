@@ -17,6 +17,7 @@ import type {
   PositionAccuracyRow,
   SalaryTierAccuracyRow,
   LeverageCalibrationRow,
+  Sport,
 } from "@/db/queries";
 import { saveHistoricalSlate } from "@/app/dfs/actions";
 
@@ -42,6 +43,7 @@ type Props = {
   posAccuracy: PositionAccuracyRow[];
   salaryTier: SalaryTierAccuracyRow[];
   leverageCalib: LeverageCalibrationRow[];
+  sport: Sport;
 };
 
 export default function AnalyticsClient({
@@ -49,6 +51,7 @@ export default function AnalyticsClient({
   posAccuracy,
   salaryTier,
   leverageCalib,
+  sport,
 }: Props) {
   const hasData = crossSlate.length > 0;
 
@@ -87,8 +90,8 @@ export default function AnalyticsClient({
         </p>
       </div>
 
-      {/* Save Historical Slate */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
+      {/* Save Historical Slate — NBA only (uses LineStar NBA data) */}
+      {sport === "nba" && <div className="rounded-lg border bg-card p-4 space-y-3">
         <div>
           <h2 className="text-sm font-semibold">Save Historical Slate</h2>
           <p className="text-xs text-gray-400 mt-0.5">
@@ -172,11 +175,14 @@ export default function AnalyticsClient({
             </span>
           )}
         </div>
-      </div>
+      </div>}
 
       {!hasData && (
         <div className="rounded-lg border bg-card p-6 text-center text-sm text-gray-400">
-          No accuracy data yet — save a historical slate above, or upload a DK results CSV from the <a href="/dfs" className="underline">DFS page</a>.
+          {sport === "nba"
+            ? <>No accuracy data yet — save a historical slate above, or upload a DK results CSV from the <a href="/dfs?sport=nba" className="underline">DFS page</a>.</>
+            : <>No {sport.toUpperCase()} accuracy data yet — upload a DK results CSV from the <a href={`/dfs?sport=${sport}`} className="underline">DFS page</a>.</>
+          }
         </div>
       )}
 
