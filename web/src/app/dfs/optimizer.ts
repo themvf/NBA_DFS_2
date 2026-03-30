@@ -151,6 +151,14 @@ export function optimizeLineups(
         exposureCount, previousLineupSets, effectiveBringBack, 1,
       );
     }
+    // Final fallback: disable bring-back — exposure/diversity exhaustion often
+    // makes team-pairing infeasible for later lineups even when pool is large.
+    if (!lineup && effectiveBringBack > 0) {
+      lineup = solveOneLineup(
+        eligible, mode, effectiveMinStack, maxExp,
+        exposureCount, previousLineupSets, 0, 1,
+      );
+    }
     if (!lineup) break;
 
     lineups.push(lineup);
