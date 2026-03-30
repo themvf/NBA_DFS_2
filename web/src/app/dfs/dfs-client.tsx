@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo, useTransition, useRef } from "react";
+import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
-import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps } from "./actions";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps, clearSlate } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -128,6 +128,30 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Player props ──────────────────────────────────────────
   const [propsMsg, setPropsMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isFetchingProps, setIsFetchingProps] = useState(false);
+
+  // ── Clear Slate ───────────────────────────────────────────
+  const [clearSlateConfirm, setClearSlateConfirm] = useState(false);
+  const [isClearingSlate, setIsClearingSlate] = useState(false);
+
+  // ── Backfill progress step ────────────────────────────────
+  const [backfillStep, setBackfillStep] = useState<"idle" | "team" | "player" | "done">("idle");
+
+  // ── Props elapsed timer ───────────────────────────────────
+  const [propsElapsed, setPropsElapsed] = useState(0);
+
+  // Auto-reset clear confirmation after 3s of inactivity
+  useEffect(() => {
+    if (!clearSlateConfirm) return;
+    const id = setTimeout(() => setClearSlateConfirm(false), 3000);
+    return () => clearTimeout(id);
+  }, [clearSlateConfirm]);
+
+  // Elapsed-time counter for Fetch Player Props
+  useEffect(() => {
+    if (!isFetchingProps) { setPropsElapsed(0); return; }
+    const id = setInterval(() => setPropsElapsed((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [isFetchingProps]);
 
   // ── LineStar input: CSV file or paste ────────────────────
   const [lsMode, setLsMode] = useState<"csv" | "paste">("paste");
@@ -310,6 +334,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setRefreshMsg({ ok: res.ok, text: res.message });
   }
 
+  async function handleClearSlate() {
+    if (!clearSlateConfirm) { setClearSlateConfirm(true); return; }
+    setClearSlateConfirm(false);
+    setIsClearingSlate(true);
+    await clearSlate(sport);
+    setIsClearingSlate(false);
+    // revalidatePath in the server action triggers a router refresh automatically
+  }
+
   async function handleFetchProps() {
     setIsFetchingProps(true);
     setPropsMsg(null);
@@ -321,10 +354,18 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   async function handleBackfill() {
     setIsBackfilling(true);
     setBackfillMsg(null);
+    setBackfillStep("team");
     const t1 = await backfillTeamStats();
-    if (!t1.ok) { setIsBackfilling(false); setBackfillMsg({ ok: false, text: t1.message }); return; }
+    if (!t1.ok) {
+      setIsBackfilling(false);
+      setBackfillStep("idle");
+      setBackfillMsg({ ok: false, text: t1.message });
+      return;
+    }
+    setBackfillStep("player");
     const t2 = await backfillPlayerStats();
     setIsBackfilling(false);
+    setBackfillStep("done");
     setBackfillMsg({ ok: t2.ok, text: `${t1.message}  •  ${t2.message}` });
   }
 
@@ -363,7 +404,24 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold">{sport.toUpperCase()} DFS Optimizer</h1>
-        {slateDate && <p className="text-sm text-gray-500">Latest slate: {slateDate} · {players.length} players</p>}
+        {slateDate && (
+          <div className="flex items-center gap-3 mt-0.5">
+            <p className="text-sm text-gray-500">Latest slate: {slateDate} · {players.length} players</p>
+            {players.length > 0 && (
+              <button
+                onClick={handleClearSlate}
+                disabled={isClearingSlate}
+                className={`text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 ${
+                  clearSlateConfirm
+                    ? "border-red-400 bg-red-50 text-red-600 hover:bg-red-100 font-medium"
+                    : "border-gray-300 text-gray-400 hover:border-red-300 hover:text-red-500"
+                }`}
+              >
+                {isClearingSlate ? "Clearing…" : clearSlateConfirm ? "Confirm Clear" : "Clear All Slate"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Load Slate Panel */}
@@ -538,17 +596,25 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
         {/* Player props from The Odds API — NBA only (pts/reb/ast) */}
         {sport === "nba" && players.length > 0 && (
-          <div className="mt-3 pt-3 border-t flex items-center gap-3">
-            <button
-              onClick={handleFetchProps}
-              disabled={isFetchingProps}
-              className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {isFetchingProps ? "Fetching props…" : "Fetch Player Props"}
-            </button>
-            <span className="text-xs text-gray-400">
-              Pulls pts/reb/ast over-under lines from The Odds API and updates projections
-            </span>
+          <div className="mt-3 pt-3 border-t space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleFetchProps}
+                disabled={isFetchingProps}
+                className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Fetch Player Props
+              </button>
+              <span className="text-xs text-gray-400">
+                Pulls pts/reb/ast lines from The Odds API · updates projections (~20s)
+              </span>
+            </div>
+            {isFetchingProps && (
+              <div className="flex items-center gap-2 text-sm text-emerald-700">
+                <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+                <span>Fetching props… ({propsElapsed}s)</span>
+              </div>
+            )}
             {propsMsg && (
               <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {propsMsg.text}
@@ -559,17 +625,48 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
         {/* Season data backfill — NBA only (stats.nba.com) */}
         {sport === "nba" && (
-          <div className="mt-3 pt-3 border-t flex items-center gap-3">
-            <button
-              onClick={handleBackfill}
-              disabled={isBackfilling}
-              className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {isBackfilling ? "Fetching stats…" : "Backfill Season Data"}
-            </button>
-            <span className="text-xs text-gray-400">
-              Fetches team pace/ratings + player rolling averages from stats.nba.com
-            </span>
+          <div className="mt-3 pt-3 border-t space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleBackfill}
+                disabled={isBackfilling}
+                className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {isBackfilling ? "Fetching stats…" : "Backfill Season Data"}
+              </button>
+              <span className="text-xs text-gray-400">
+                Fetches team pace/ratings + player rolling averages from stats.nba.com
+              </span>
+            </div>
+            {(isBackfilling || backfillStep === "done") && (
+              <div className="flex items-center gap-3 text-sm">
+                {/* Step 1: Team Stats */}
+                <div className="flex items-center gap-1.5">
+                  {backfillStep === "team"
+                    ? <span className="inline-block h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                    : <span className={`inline-block h-4 w-4 rounded-full text-[10px] leading-none flex items-center justify-center ${backfillStep === "player" || backfillStep === "done" ? "bg-green-500 text-white" : "bg-gray-200"}`}>
+                        {(backfillStep === "player" || backfillStep === "done") ? "✓" : ""}
+                      </span>
+                  }
+                  <span className={backfillStep === "team" ? "text-blue-600 font-medium" : (backfillStep === "player" || backfillStep === "done") ? "text-green-700" : "text-gray-400"}>
+                    Team Stats
+                  </span>
+                </div>
+                <span className="text-gray-300">→</span>
+                {/* Step 2: Player Stats */}
+                <div className="flex items-center gap-1.5">
+                  {backfillStep === "player"
+                    ? <span className="inline-block h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                    : <span className={`inline-block h-4 w-4 rounded-full text-[10px] leading-none flex items-center justify-center ${backfillStep === "done" ? "bg-green-500 text-white" : "bg-gray-200"}`}>
+                        {backfillStep === "done" ? "✓" : ""}
+                      </span>
+                  }
+                  <span className={backfillStep === "player" ? "text-blue-600 font-medium" : backfillStep === "done" ? "text-green-700" : "text-gray-400"}>
+                    Player Stats
+                  </span>
+                </div>
+              </div>
+            )}
             {backfillMsg && (
               <span className={`text-sm ${backfillMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {backfillMsg.text}

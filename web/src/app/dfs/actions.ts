@@ -17,6 +17,7 @@ import { optimizeLineups, buildMultiEntryCSV } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
 import { optimizeMlbLineups, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
+import type { Sport } from "@/db/queries";
 
 /** Minimal lineup shape accepted by saveLineups — satisfied by both NBA and MLB lineup types. */
 type LineupForSave = {
@@ -2474,4 +2475,32 @@ export async function uploadResults(formData: FormData): Promise<{
     total: resultPlayers.length,
     matchRate,
   };
+}
+
+// ── Clear Slate ───────────────────────────────────────────────
+
+export async function clearSlate(sport: Sport): Promise<{ ok: boolean; message: string }> {
+  try {
+    const [slate] = await db
+      .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+      .from(dkSlates)
+      .where(eq(dkSlates.sport, sport))
+      .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
+      .limit(1);
+
+    if (!slate) return { ok: false, message: "No slate found to clear" };
+
+    // Delete in FK order — no cascade configured on child tables
+    const deletedLineups = await db.delete(dkLineups).where(eq(dkLineups.slateId, slate.id)).returning({ id: dkLineups.id });
+    const deletedPlayers = await db.delete(dkPlayers).where(eq(dkPlayers.slateId, slate.id)).returning({ id: dkPlayers.id });
+    await db.delete(dkSlates).where(eq(dkSlates.id, slate.id));
+
+    revalidatePath("/dfs");
+    return {
+      ok: true,
+      message: `Cleared slate ${slate.slateDate}: ${deletedPlayers.length} players, ${deletedLineups.length} lineups deleted`,
+    };
+  } catch (e) {
+    return { ok: false, message: `Clear slate failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
