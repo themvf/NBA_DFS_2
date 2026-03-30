@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
-import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps, clearSlate } from "./actions";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -121,10 +121,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [refreshMsg, setRefreshMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ── Backfill season data ──────────────────────────────────
-  const [backfillMsg, setBackfillMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [isBackfilling, setIsBackfilling] = useState(false);
-
   // ── Player props ──────────────────────────────────────────
   const [propsMsg, setPropsMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isFetchingProps, setIsFetchingProps] = useState(false);
@@ -132,9 +128,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Clear Slate ───────────────────────────────────────────
   const [clearSlateConfirm, setClearSlateConfirm] = useState(false);
   const [isClearingSlate, setIsClearingSlate] = useState(false);
-
-  // ── Backfill progress step ────────────────────────────────
-  const [backfillStep, setBackfillStep] = useState<"idle" | "team" | "player" | "done">("idle");
 
   // ── Props elapsed timer ───────────────────────────────────
   const [propsElapsed, setPropsElapsed] = useState(0);
@@ -349,24 +342,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const res = await fetchPlayerProps();
     setIsFetchingProps(false);
     setPropsMsg({ ok: res.ok, text: res.message });
-  }
-
-  async function handleBackfill() {
-    setIsBackfilling(true);
-    setBackfillMsg(null);
-    setBackfillStep("team");
-    const t1 = await backfillTeamStats();
-    if (!t1.ok) {
-      setIsBackfilling(false);
-      setBackfillStep("idle");
-      setBackfillMsg({ ok: false, text: t1.message });
-      return;
-    }
-    setBackfillStep("player");
-    const t2 = await backfillPlayerStats();
-    setIsBackfilling(false);
-    setBackfillStep("done");
-    setBackfillMsg({ ok: t2.ok, text: `${t1.message}  •  ${t2.message}` });
   }
 
   async function handleUploadLinestarCsv() {
@@ -618,58 +593,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             {propsMsg && (
               <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {propsMsg.text}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Season data backfill — NBA only (stats.nba.com) */}
-        {sport === "nba" && (
-          <div className="mt-3 pt-3 border-t space-y-2">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleBackfill}
-                disabled={isBackfilling}
-                className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {isBackfilling ? "Fetching stats…" : "Backfill Season Data"}
-              </button>
-              <span className="text-xs text-gray-400">
-                Fetches team pace/ratings + player rolling averages from stats.nba.com
-              </span>
-            </div>
-            {(isBackfilling || backfillStep === "done") && (
-              <div className="flex items-center gap-3 text-sm">
-                {/* Step 1: Team Stats */}
-                <div className="flex items-center gap-1.5">
-                  {backfillStep === "team"
-                    ? <span className="inline-block h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-                    : <span className={`inline-block h-4 w-4 rounded-full text-[10px] leading-none flex items-center justify-center ${backfillStep === "player" || backfillStep === "done" ? "bg-green-500 text-white" : "bg-gray-200"}`}>
-                        {(backfillStep === "player" || backfillStep === "done") ? "✓" : ""}
-                      </span>
-                  }
-                  <span className={backfillStep === "team" ? "text-blue-600 font-medium" : (backfillStep === "player" || backfillStep === "done") ? "text-green-700" : "text-gray-400"}>
-                    Team Stats
-                  </span>
-                </div>
-                <span className="text-gray-300">→</span>
-                {/* Step 2: Player Stats */}
-                <div className="flex items-center gap-1.5">
-                  {backfillStep === "player"
-                    ? <span className="inline-block h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-                    : <span className={`inline-block h-4 w-4 rounded-full text-[10px] leading-none flex items-center justify-center ${backfillStep === "done" ? "bg-green-500 text-white" : "bg-gray-200"}`}>
-                        {backfillStep === "done" ? "✓" : ""}
-                      </span>
-                  }
-                  <span className={backfillStep === "player" ? "text-blue-600 font-medium" : backfillStep === "done" ? "text-green-700" : "text-gray-400"}>
-                    Player Stats
-                  </span>
-                </div>
-              </div>
-            )}
-            {backfillMsg && (
-              <span className={`text-sm ${backfillMsg.ok ? "text-green-700" : "text-red-600"}`}>
-                {backfillMsg.text}
               </span>
             )}
           </div>

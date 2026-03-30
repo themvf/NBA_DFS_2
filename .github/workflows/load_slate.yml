@@ -46,6 +46,9 @@ jobs:
           fi
           python -m ingest.nba_schedule $DATE_ARG
 
+      - name: Refresh NBA team + player rolling stats
+        run: python -m ingest.nba_stats --season "${{ inputs.season }}"
+
       - name: Load DK slate via API + LineStar API
         run: |
           DATE_ARG=""
