@@ -2504,3 +2504,131 @@ export async function clearSlate(sport: Sport): Promise<{ ok: boolean; message: 
     return { ok: false, message: `Clear slate failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
+// ── Recompute Projections ─────────────────────────────────────
+// Re-runs the NBA projection model against current Neon stats (nba_team_stats,
+// nba_player_stats) for the already-loaded slate. No external API calls.
+// Use after running refresh_nba_stats to apply updated stats to a loaded slate.
+
+export async function recomputeProjections(): Promise<{ ok: boolean; message: string }> {
+  try {
+    const [slate] = await db
+      .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+      .from(dkSlates)
+      .where(eq(dkSlates.sport, "nba"))
+      .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
+      .limit(1);
+
+    if (!slate) return { ok: false, message: "No NBA slate loaded" };
+
+    const currentPlayers = await db.select().from(dkPlayers).where(eq(dkPlayers.slateId, slate.id));
+    if (currentPlayers.length === 0) return { ok: false, message: "No players in current slate" };
+
+    // All data sourced from Neon — no external API calls
+    const matchupRows = await db.select().from(nbaMatchups).where(eq(nbaMatchups.gameDate, slate.slateDate));
+    const matchupById = new Map(matchupRows.map((m) => [m.id, m]));
+
+    const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, CURRENT_SEASON));
+    const statsByTeam = new Map(teamStatRows.map((r) => [r.teamId, r]));
+
+    const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+    const playersByTeam = new Map<number, typeof playerStatRows>();
+    for (const ps of playerStatRows) {
+      if (ps.teamId == null) continue;
+      const arr = playersByTeam.get(ps.teamId) ?? [];
+      arr.push(ps);
+      playersByTeam.set(ps.teamId, arr);
+    }
+
+    let projComputed = 0;
+    const enriched: Array<{
+      slateId: number; dkPlayerId: number; name: string; teamAbbrev: string;
+      teamId: number | null; mlbTeamId: number | null; matchupId: number | null;
+      eligiblePositions: string; salary: number; gameInfo: string | null;
+      avgFptsDk: number | null; linestarProj: number | null; projOwnPct: number | null;
+      isOut: boolean; ourProj: number | null; ourLeverage: number | null; ourOwnPct: number | null;
+      _spg: number; _bpg: number;
+    }> = [];
+
+    for (const p of currentPlayers) {
+      let ourProj: number | null = null;
+      let spgForLev = 0, bpgForLev = 0;
+
+      const matchup = p.matchupId ? matchupById.get(p.matchupId) ?? null : null;
+
+      if (p.teamId && matchup) {
+        const teamStat = statsByTeam.get(p.teamId);
+        const oppId    = matchup.homeTeamId === p.teamId ? matchup.awayTeamId : matchup.homeTeamId;
+        const oppStat  = oppId ? statsByTeam.get(oppId) : null;
+
+        const candidates = playersByTeam.get(p.teamId) ?? [];
+        let bestPlayer: typeof playerStatRows[0] | null = null;
+        let bestDist = 4;
+        for (const ps of candidates) {
+          const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
+          if (d < bestDist) { bestDist = d; bestPlayer = ps; }
+        }
+
+        if (bestPlayer) {
+          const isHome = matchup.homeTeamId === p.teamId;
+          ourProj = computeOurProjection(
+            bestPlayer,
+            teamStat?.pace   ?? LEAGUE_AVG_PACE,
+            oppStat?.pace    ?? LEAGUE_AVG_PACE,
+            oppStat?.defRtg  ?? LEAGUE_AVG_DEF_RTG,
+            matchup.vegasTotal,
+            matchup.homeMl,
+            matchup.awayMl,
+            isHome,
+          );
+          spgForLev = bestPlayer.spg ?? 0;
+          bpgForLev = bestPlayer.bpg ?? 0;
+          if (ourProj) projComputed++;
+        }
+      }
+
+      const isOut = p.isOut ?? false;
+      let ourLeverage: number | null = null;
+      const projForLev = isOut ? 0 : (ourProj ?? p.linestarProj ?? 0);
+      if (projForLev && p.projOwnPct != null) {
+        const fieldProj = p.avgFptsDk ?? p.linestarProj ?? null;
+        ourLeverage = computeLeverage(projForLev, p.projOwnPct, fieldProj, spgForLev, bpgForLev);
+      }
+
+      enriched.push({
+        slateId: p.slateId, dkPlayerId: p.dkPlayerId, name: p.name,
+        teamAbbrev: p.teamAbbrev, teamId: p.teamId ?? null, mlbTeamId: p.mlbTeamId ?? null,
+        matchupId: p.matchupId ?? null, eligiblePositions: p.eligiblePositions,
+        salary: p.salary, gameInfo: p.gameInfo ?? null,
+        avgFptsDk: p.avgFptsDk ?? null, linestarProj: p.linestarProj ?? null,
+        projOwnPct: p.projOwnPct ?? null, isOut,
+        ourProj, ourLeverage, ourOwnPct: null,
+        _spg: spgForLev, _bpg: bpgForLev,
+      });
+    }
+
+    // Pool ownership runs after all projections are computed
+    const ownMap = computePoolOwnership(enriched);
+    for (const [idx, ownPct] of ownMap) {
+      enriched[idx].ourOwnPct = ownPct;
+    }
+
+    // Batch upsert — only ourProj, ourLeverage, ourOwnPct are overwritten
+    for (let i = 0; i < enriched.length; i += 50) {
+      const batch = enriched.slice(i, i + 50).map(({ _spg, _bpg, ...rest }) => rest);
+      await db.insert(dkPlayers).values(batch).onConflictDoUpdate({
+        target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
+        set: {
+          ourProj:     sql`EXCLUDED.our_proj`,
+          ourLeverage: sql`EXCLUDED.our_leverage`,
+          ourOwnPct:   sql`EXCLUDED.our_own_pct`,
+        },
+      });
+    }
+
+    revalidatePath("/dfs");
+    return { ok: true, message: `Projections updated: ${projComputed}/${currentPlayers.length} players` };
+  } catch (e) {
+    return { ok: false, message: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}

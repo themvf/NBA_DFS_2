@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
-import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate } from "./actions";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -131,6 +131,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
   // ── Props elapsed timer ───────────────────────────────────
   const [propsElapsed, setPropsElapsed] = useState(0);
+
+  // ── Recompute projections ─────────────────────────────────
+  const [projMsg, setProjMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isRecomputing, setIsRecomputing] = useState(false);
 
   // Auto-reset clear confirmation after 3s of inactivity
   useEffect(() => {
@@ -342,6 +346,14 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const res = await fetchPlayerProps();
     setIsFetchingProps(false);
     setPropsMsg({ ok: res.ok, text: res.message });
+  }
+
+  async function handleRecomputeProjections() {
+    setIsRecomputing(true);
+    setProjMsg(null);
+    const res = await recomputeProjections();
+    setIsRecomputing(false);
+    setProjMsg({ ok: res.ok, text: res.message });
   }
 
   async function handleUploadLinestarCsv() {
@@ -564,6 +576,29 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             {refreshMsg && (
               <span className={`text-sm ${refreshMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {refreshMsg.text}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Fetch Projections — reads from Neon, no external API */}
+        {sport === "nba" && players.length > 0 && (
+          <div className="mt-3 pt-3 border-t space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRecomputeProjections}
+                disabled={isRecomputing}
+                className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {isRecomputing ? "Computing…" : "Fetch Projections"}
+              </button>
+              <span className="text-xs text-gray-400">
+                Re-runs projection model against current Neon stats — no API calls
+              </span>
+            </div>
+            {projMsg && (
+              <span className={`text-sm ${projMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {projMsg.text}
               </span>
             )}
           </div>
