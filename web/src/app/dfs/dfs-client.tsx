@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition, useRef } from "react";
-import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow } from "@/db/queries";
+import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import { processDkSlate, loadSlateFromContestId, runOptimizer, saveLineups, exportLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, backfillTeamStats, backfillPlayerStats, fetchPlayerProps } from "./actions";
 
@@ -11,6 +11,7 @@ type Props = {
   accuracy: { metrics: DfsAccuracyMetrics; players: DfsAccuracyRow[] } | null;
   comparison: LineupStrategyRow[];
   strategySummary: StrategySummaryRow[];
+  sport: Sport;
 };
 
 type SortCol = "name" | "salary" | "avgFptsDk" | "linestarProj" | "ourProj" | "delta" | "projOwnPct" | "ourOwnPct" | "ourLeverage" | "value";
@@ -28,8 +29,20 @@ function fmtSalary(v: number): string {
   return `$${v.toLocaleString()}`;
 }
 
-// NBA position badge color
-function posBadgeColor(pos: string): string {
+// Position badge color — sport-aware
+function posBadgeColor(pos: string, sport: Sport): string {
+  if (sport === "mlb") {
+    if (pos.includes("SP")) return "bg-orange-100 text-orange-800";
+    if (pos.includes("RP")) return "bg-amber-100 text-amber-800";
+    if (pos.includes("OF")) return "bg-green-100 text-green-800";
+    if (pos.includes("SS")) return "bg-blue-100 text-blue-800";
+    if (pos.includes("3B")) return "bg-indigo-100 text-indigo-800";
+    if (pos.includes("2B")) return "bg-sky-100 text-sky-800";
+    if (pos.includes("1B")) return "bg-cyan-100 text-cyan-800";
+    if (pos.includes("C"))  return "bg-red-100 text-red-800";
+    return "bg-gray-100 text-gray-700";
+  }
+  // NBA
   if (pos.includes("PG")) return "bg-blue-100 text-blue-800";
   if (pos.includes("SG")) return "bg-indigo-100 text-indigo-800";
   if (pos.includes("SF")) return "bg-green-100 text-green-800";
@@ -38,14 +51,18 @@ function posBadgeColor(pos: string): string {
   return "bg-gray-100 text-gray-700";
 }
 
-// Simplified display position
-function displayPos(eligiblePositions: string): string {
+// Simplified display position — sport-aware
+function displayPos(eligiblePositions: string, sport: Sport): string {
   const parts = eligiblePositions.split("/");
+  if (sport === "mlb") {
+    const primary = parts.find((p) => ["SP","RP","C","1B","2B","3B","SS","OF"].includes(p));
+    return primary ?? parts[0] ?? "UTIL";
+  }
   const primary = parts.find((p) => ["PG","SG","SF","PF","C"].includes(p));
   return primary ?? parts[0] ?? "UTIL";
 }
 
-export default function DfsClient({ players, slateDate, accuracy, comparison, strategySummary }: Props) {
+export default function DfsClient({ players, slateDate, accuracy, comparison, strategySummary, sport }: Props) {
   const [isPending, startTransition] = useTransition();
 
   // ── Load state ────────────────────────────────────────────
@@ -238,7 +255,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = `dk_nba_lineups_${slateDate ?? "export"}.csv`;
+    a.download = `dk_${sport}_lineups_${slateDate ?? "export"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -317,8 +334,23 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">NBA DFS Optimizer</h1>
+          <h1 className="text-2xl font-bold">{sport.toUpperCase()} DFS Optimizer</h1>
           {slateDate && <p className="text-sm text-gray-500">Latest slate: {slateDate} · {players.length} players</p>}
+        </div>
+        {/* Sport switcher — full server re-render on switch */}
+        <div className="flex rounded border text-sm overflow-hidden">
+          <a
+            href="?sport=nba"
+            className={`px-4 py-1.5 font-medium ${sport === "nba" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+          >
+            NBA
+          </a>
+          <a
+            href="?sport=mlb"
+            className={`px-4 py-1.5 border-l font-medium ${sport === "mlb" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+          >
+            MLB
+          </a>
         </div>
       </div>
 
@@ -484,8 +516,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </div>
         )}
 
-        {/* Player props from The Odds API */}
-        {players.length > 0 && (
+        {/* Player props from The Odds API — NBA only (pts/reb/ast) */}
+        {sport === "nba" && players.length > 0 && (
           <div className="mt-3 pt-3 border-t flex items-center gap-3">
             <button
               onClick={handleFetchProps}
@@ -505,24 +537,26 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </div>
         )}
 
-        {/* Season data backfill — replaces GitHub Actions workflow */}
-        <div className="mt-3 pt-3 border-t flex items-center gap-3">
-          <button
-            onClick={handleBackfill}
-            disabled={isBackfilling}
-            className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {isBackfilling ? "Fetching stats…" : "Backfill Season Data"}
-          </button>
-          <span className="text-xs text-gray-400">
-            Fetches team pace/ratings + player rolling averages from stats.nba.com
-          </span>
-          {backfillMsg && (
-            <span className={`text-sm ${backfillMsg.ok ? "text-green-700" : "text-red-600"}`}>
-              {backfillMsg.text}
+        {/* Season data backfill — NBA only (stats.nba.com) */}
+        {sport === "nba" && (
+          <div className="mt-3 pt-3 border-t flex items-center gap-3">
+            <button
+              onClick={handleBackfill}
+              disabled={isBackfilling}
+              className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {isBackfilling ? "Fetching stats…" : "Backfill Season Data"}
+            </button>
+            <span className="text-xs text-gray-400">
+              Fetches team pace/ratings + player rolling averages from stats.nba.com
             </span>
-          )}
-        </div>
+            {backfillMsg && (
+              <span className={`text-sm ${backfillMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {backfillMsg.text}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* LineStar tools — manual CSV upload + cookie health check */}
         <div className="mt-3 pt-3 border-t space-y-3">
@@ -648,8 +682,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         </div>
       )}
 
-      {/* Optimizer Settings */}
-      <div className="rounded-lg border bg-card p-4">
+      {/* Optimizer Settings — NBA only (MLB optimizer coming soon) */}
+      {sport === "nba" && <div className="rounded-lg border bg-card p-4">
         <h2 className="text-sm font-semibold mb-3">Optimizer Settings</h2>
         <div className="flex flex-wrap gap-4 items-end">
           <div>
@@ -721,7 +755,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </button>
         </div>
         {optimizeError && <p className="mt-2 text-sm text-red-600">{optimizeError}</p>}
-      </div>
+      </div>}
 
       {/* Player Pool Table */}
       {filteredPlayers.length > 0 && (
@@ -759,11 +793,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   const delta = p.ourProj != null && p.linestarProj != null
                     ? p.ourProj - p.linestarProj : null;
                   const value = p.ourProj != null ? p.ourProj / (p.salary / 1000) : null;
-                  const pos = displayPos(p.eligiblePositions);
+                  const pos = displayPos(p.eligiblePositions, sport);
                   return (
                     <tr key={p.id} className={`hover:bg-gray-50 ${p.isOut ? "opacity-40 line-through" : ""}`}>
                       <td className="px-3 py-1.5">
-                        <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${posBadgeColor(p.eligiblePositions)}`}>
+                        <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${posBadgeColor(p.eligiblePositions, sport)}`}>
                           {pos}
                         </span>
                       </td>
@@ -799,8 +833,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         </div>
       )}
 
-      {/* Generated Lineups */}
-      {lineups && lineups.length > 0 && (
+      {/* Generated Lineups — NBA only */}
+      {sport === "nba" && lineups && lineups.length > 0 && (
         <div className="rounded-lg border bg-card p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold">

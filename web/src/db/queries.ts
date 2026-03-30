@@ -4,6 +4,10 @@ import { eq, desc, sql } from "drizzle-orm";
 
 const CURRENT_SEASON = "2025-26";
 
+// ── Sport discriminator ──────────────────────────────────────
+// Add new sports here as the project expands.
+export type Sport = "nba" | "mlb";
+
 // ── DFS Player Pool ──────────────────────────────────────────
 
 export type DkPlayerRow = {
@@ -39,9 +43,59 @@ export type DkPlayerRow = {
   homeWinProb: number | null;
   homeTeamId: number | null;
   slateDate: string | null;
+  sport: string | null;
 };
 
-export async function getDkPlayers(): Promise<DkPlayerRow[]> {
+export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]> {
+  if (sport === "mlb") {
+    const result = await db.execute<DkPlayerRow>(sql`
+      SELECT
+        dp.id,
+        dp.slate_id           AS "slateId",
+        dp.dk_player_id       AS "dkPlayerId",
+        dp.name,
+        dp.team_abbrev        AS "teamAbbrev",
+        dp.mlb_team_id        AS "teamId",
+        dp.matchup_id         AS "matchupId",
+        dp.eligible_positions AS "eligiblePositions",
+        dp.salary,
+        dp.game_info          AS "gameInfo",
+        dp.avg_fpts_dk        AS "avgFptsDk",
+        dp.linestar_proj      AS "linestarProj",
+        dp.proj_own_pct       AS "projOwnPct",
+        dp.our_proj           AS "ourProj",
+        dp.our_own_pct        AS "ourOwnPct",
+        dp.our_leverage       AS "ourLeverage",
+        dp.prop_pts           AS "propPts",
+        dp.prop_reb           AS "propReb",
+        dp.prop_ast           AS "propAst",
+        dp.is_out             AS "isOut",
+        dp.proj_floor         AS "projFloor",
+        dp.proj_ceiling       AS "projCeiling",
+        dp.boom_rate          AS "boomRate",
+        dp.actual_fpts        AS "actualFpts",
+        dp.actual_own_pct     AS "actualOwnPct",
+        mt.name               AS "teamName",
+        mt.logo_url           AS "teamLogo",
+        mm.vegas_total        AS "vegasTotal",
+        mm.vegas_prob_home    AS "homeWinProb",
+        mm.home_team_id       AS "homeTeamId",
+        ds.slate_date         AS "slateDate",
+        ds.sport              AS "sport"
+      FROM dk_players dp
+      INNER JOIN dk_slates ds ON ds.id = dp.slate_id
+      LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
+      LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+      WHERE ds.id = (
+        SELECT id FROM dk_slates WHERE sport = 'mlb'
+        ORDER BY slate_date DESC, id DESC LIMIT 1
+      )
+      ORDER BY dp.our_leverage DESC NULLS LAST, dp.our_proj DESC NULLS LAST
+    `);
+    return result.rows;
+  }
+
+  // NBA (default)
   const result = await db.execute<DkPlayerRow>(sql`
     SELECT
       dp.id,
@@ -74,13 +128,15 @@ export async function getDkPlayers(): Promise<DkPlayerRow[]> {
       m.vegas_total        AS "vegasTotal",
       m.vegas_prob_home    AS "homeWinProb",
       m.home_team_id       AS "homeTeamId",
-      ds.slate_date        AS "slateDate"
+      ds.slate_date        AS "slateDate",
+      ds.sport             AS "sport"
     FROM dk_players dp
     INNER JOIN dk_slates ds ON ds.id = dp.slate_id
     LEFT JOIN teams t ON t.team_id = dp.team_id
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
     WHERE ds.id = (
-      SELECT id FROM dk_slates ORDER BY slate_date DESC, id DESC LIMIT 1
+      SELECT id FROM dk_slates WHERE sport = 'nba'
+      ORDER BY slate_date DESC, id DESC LIMIT 1
     )
     ORDER BY dp.our_leverage DESC NULLS LAST, dp.our_proj DESC NULLS LAST
   `);
@@ -89,7 +145,7 @@ export async function getDkPlayers(): Promise<DkPlayerRow[]> {
 
 // ── Slate Info ───────────────────────────────────────────────
 
-export async function getLatestSlateInfo(): Promise<{
+export async function getLatestSlateInfo(sport: Sport = "nba"): Promise<{
   slateDate: string;
   gameCount: number | null;
   contestType: string | null;
@@ -105,6 +161,7 @@ export async function getLatestSlateInfo(): Promise<{
       contestFormat: dkSlates.contestFormat,
     })
     .from(dkSlates)
+    .where(eq(dkSlates.sport, sport))
     .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
     .limit(1);
   return rows[0] ?? null;
@@ -134,7 +191,7 @@ export type DfsAccuracyRow = {
   teamLogo: string | null;
 };
 
-export async function getDfsAccuracy(): Promise<{
+export async function getDfsAccuracy(sport: Sport = "nba"): Promise<{
   metrics: DfsAccuracyMetrics;
   players: DfsAccuracyRow[];
 } | null> {
@@ -153,7 +210,10 @@ export async function getDfsAccuracy(): Promise<{
       ds.slate_date AS "slateDate"
     FROM dk_players dp
     INNER JOIN dk_slates ds ON ds.id = dp.slate_id
-    WHERE ds.id = (SELECT id FROM dk_slates ORDER BY slate_date DESC, id DESC LIMIT 1)
+    WHERE ds.id = (
+      SELECT id FROM dk_slates WHERE sport = ${sport}
+      ORDER BY slate_date DESC, id DESC LIMIT 1
+    )
     GROUP BY ds.slate_date
   `);
   const metrics = metricResult.rows[0];
@@ -186,7 +246,7 @@ export type LineupStrategyRow = {
   topStack: string | null;
 };
 
-export async function getDkLineupComparison(): Promise<LineupStrategyRow[]> {
+export async function getDkLineupComparison(sport: Sport = "nba"): Promise<LineupStrategyRow[]> {
   const result = await db.execute<LineupStrategyRow>(sql`
     SELECT
       dl.strategy,
@@ -196,7 +256,10 @@ export async function getDkLineupComparison(): Promise<LineupStrategyRow[]> {
       AVG(dl.leverage) AS "avgLeverage",
       mode() WITHIN GROUP (ORDER BY dl.stack_team) AS "topStack"
     FROM dk_lineups dl
-    WHERE dl.slate_id = (SELECT id FROM dk_slates ORDER BY slate_date DESC, id DESC LIMIT 1)
+    WHERE dl.slate_id = (
+      SELECT id FROM dk_slates WHERE sport = ${sport}
+      ORDER BY slate_date DESC, id DESC LIMIT 1
+    )
     GROUP BY dl.strategy
     ORDER BY AVG(dl.actual_fpts) DESC NULLS LAST, dl.strategy
   `);
@@ -216,7 +279,7 @@ export type StrategySummaryRow = {
   avgLeverage: number | null;
 };
 
-export async function getDkStrategySummary(): Promise<StrategySummaryRow[]> {
+export async function getDkStrategySummary(sport: Sport = "nba"): Promise<StrategySummaryRow[]> {
   const result = await db.execute<StrategySummaryRow>(sql`
     SELECT
       dl.strategy,
@@ -233,6 +296,7 @@ export async function getDkStrategySummary(): Promise<StrategySummaryRow[]> {
     FROM dk_lineups dl
     JOIN dk_slates ds ON ds.id = dl.slate_id
     WHERE dl.actual_fpts IS NOT NULL
+      AND ds.sport = ${sport}
     GROUP BY dl.strategy
     ORDER BY AVG(dl.actual_fpts) DESC NULLS LAST
   `);
