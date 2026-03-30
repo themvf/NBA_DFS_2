@@ -894,7 +894,8 @@ async function ensureMatchupsForSlate(
   slateDate: string,
   dkPlayers_: Array<{ gameInfo: string | null }>,
   abbrevToId: Map<string, number>,
-): Promise<void> {
+): Promise<string[]> {
+  const debug: string[] = [];
   const resolve = (abbrev: string): number | null => {
     const canonical = DK_OVERRIDES[abbrev] ?? abbrev;
     return abbrevToId.get(canonical) ?? null;
@@ -910,16 +911,21 @@ async function ensureMatchupsForSlate(
     const [awayAbbr, homeAbbr] = key.split("@");
     const homeTeamId = resolve(homeAbbr ?? "");
     const awayTeamId = resolve(awayAbbr ?? "");
-    if (homeTeamId && awayTeamId) games.push({ homeTeamId, awayTeamId });
+    if (homeTeamId && awayTeamId) {
+      games.push({ homeTeamId, awayTeamId });
+    } else {
+      debug.push(`gameInfo parse failed: "${key}" → home=${homeAbbr}→${homeTeamId ?? "null"} away=${awayAbbr}→${awayTeamId ?? "null"}`);
+    }
   }
+  debug.push(`games parsed from gameInfo: ${[...gameSeen].join(", ") || "none"}`);
 
   // Always insert — unique constraint on (game_date, home_team_id, away_team_id)
   // means onConflictDoNothing skips true duplicates but adds missing games.
-  // We never early-return: stale rows from other dates/tests can coexist.
   if (games.length > 0) {
     await db.insert(nbaMatchups)
       .values(games.map((g) => ({ gameDate: slateDate, ...g })))
       .onConflictDoNothing();
+    debug.push(`matchup upsert: ${games.length} games attempted`);
   }
 
   // Only fetch odds for matchup rows that still have no vegasTotal (avoid wasting quota)
@@ -927,8 +933,11 @@ async function ensureMatchupsForSlate(
     .from(nbaMatchups)
     .where(and(eq(nbaMatchups.gameDate, slateDate), sql`vegas_total IS NULL`))
     .limit(1);
+  debug.push(`rows needing odds: ${needsOdds.length}`);
 
   const oddsKey = process.env.ODDS_API_KEY;
+  debug.push(`ODDS_API_KEY: ${oddsKey ? `set (${oddsKey.slice(0, 6)}…)` : "NOT SET"}`);
+
   if (oddsKey && needsOdds.length > 0) {
     try {
       const oddsUrl = new URL("https://api.the-odds-api.com/v4/sports/basketball_nba/odds/");
@@ -937,11 +946,13 @@ async function ensureMatchupsForSlate(
       oddsUrl.searchParams.set("markets", "h2h,totals");
       oddsUrl.searchParams.set("oddsFormat", "american");
       const oddsResp = await fetch(oddsUrl.toString(), { next: { revalidate: 0 } });
+      debug.push(`Odds API status: ${oddsResp.status} ${oddsResp.statusText}`);
       if (oddsResp.ok) {
         const oddsGames = await oddsResp.json() as Array<{
           home_team: string; away_team: string;
           bookmakers: Array<{ markets: Array<{ key: string; outcomes: Array<{ name: string; price: number; point?: number }> }> }>;
         }>;
+        debug.push(`Odds API games returned: ${oddsGames.length} — ${oddsGames.map((g) => `${g.away_team} @ ${g.home_team}`).join(", ") || "none"}`);
 
         // Build home-name → matchup lookup
         const matchupRows = await db.execute<{ id: number; homeName: string }>(sql`
@@ -951,11 +962,12 @@ async function ensureMatchupsForSlate(
           WHERE m.game_date = ${slateDate}
         `);
         const byHome = new Map(matchupRows.rows.map((r) => [r.homeName, r.id]));
+        debug.push(`nba_matchups home names for ${slateDate}: ${[...byHome.keys()].join(", ") || "none"}`);
 
+        let oddsUpdated = 0;
         for (const og of oddsGames) {
           const mid = byHome.get(og.home_team);
-          if (!mid) continue;
-          // Consensus across all bookmakers for moneylines and totals
+          if (!mid) { debug.push(`no matchup found for "${og.home_team}"`); continue; }
           const homePrices: number[] = [], awayPrices: number[] = [], totalPoints: number[] = [];
           for (const bm of og.bookmakers ?? []) {
             for (const market of bm.markets ?? []) {
@@ -979,13 +991,24 @@ async function ensureMatchupsForSlate(
               SET home_ml = ${homeMl}, away_ml = ${awayMl}, vegas_total = ${vegasTotal}
               WHERE id = ${mid}
             `);
+            oddsUpdated++;
           }
         }
+        debug.push(`odds updated: ${oddsUpdated} matchups`);
+      } else {
+        const body = await oddsResp.text().catch(() => "");
+        debug.push(`Odds API error body: ${body.slice(0, 200)}`);
       }
-    } catch {
-      // Odds fetch is best-effort — projections proceed without Vegas context
+    } catch (e) {
+      debug.push(`Odds API exception: ${e instanceof Error ? e.message : String(e)}`);
     }
+  } else if (!oddsKey) {
+    debug.push("skipping odds: key not set");
+  } else {
+    debug.push("skipping odds: all matchups already have vegasTotal");
   }
+
+  return debug;
 }
 
 // ── Shared enrichment (used by both CSV and API paths) ───────
@@ -2222,6 +2245,9 @@ export async function runOptimizer(
       const forwards = eligible.filter((p) => p.eligiblePositions.includes("SF") || p.eligiblePositions.includes("PF")).length;
       const centers  = eligible.filter((p) => p.eligiblePositions.includes("C")).length;
       const withMatchup = eligible.filter((p) => p.matchupId != null).length;
+      const withLeverage = settings.mode === "gpp"
+        ? eligible.filter((p) => p.ourLeverage != null).length
+        : eligible.length;
       const hint = eligible.length < 15
         ? " Pool too small — click Refresh Player Status to reset OUT flags, then re-paste LineStar data."
         : guards < 3
@@ -2232,7 +2258,9 @@ export async function runOptimizer(
               ? " No centers in pool."
               : withMatchup < 8
                 ? " Most players missing matchup data — reload slate via Contest ID."
-                : " Try reducing lineup count or switching to Cash mode.";
+                : withLeverage === 0 && settings.mode === "gpp"
+                  ? " No leverage scores — paste LineStar data then re-run Fetch Projections, or switch to Cash mode."
+                  : " Try reducing lineup count or switching to Cash mode.";
       return {
         ok: false,
         error: `No lineups — ${eligible.length} eligible: ${guards}G / ${forwards}F / ${centers}C` +
@@ -2566,7 +2594,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
     // Ensure nba_matchups has rows for today + real Vegas odds from The Odds API.
     // If rows are missing (e.g. load_slate ran without nba_schedule), this creates
     // them from gameInfo strings and fetches live odds before we query below.
-    await ensureMatchupsForSlate(slate.slateDate, currentPlayers, abbrevToId);
+    const _matchupDebug = await ensureMatchupsForSlate(slate.slateDate, currentPlayers, abbrevToId);
 
     // Query matchups — now guaranteed to exist (with real odds when ODDS_API_KEY set)
     const matchupRows = await db.select().from(nbaMatchups).where(eq(nbaMatchups.gameDate, slate.slateDate));
@@ -2685,7 +2713,8 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
     }
 
     revalidatePath("/dfs");
-    return { ok: true, message: `Projections updated: ${projComputed}/${currentPlayers.length} players` };
+    const debugSuffix = _matchupDebug.length > 0 ? `\n${_matchupDebug.join("\n")}` : "";
+    return { ok: true, message: `Projections updated: ${projComputed}/${currentPlayers.length} players${debugSuffix}` };
   } catch (e) {
     return { ok: false, message: `Failed: ${e instanceof Error ? e.message : String(e)}` };
   }

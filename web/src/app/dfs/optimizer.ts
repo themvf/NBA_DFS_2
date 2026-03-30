@@ -261,7 +261,10 @@ function solveOneLineup(
 
   for (const p of pool) {
     const key = `p_${p.id}`;
-    const score = (mode === "gpp" ? p.ourLeverage : p.ourProj) ?? 0;
+    // GPP: prefer leverage; fall back to ourProj when leverage is null (e.g. LineStar
+    // paste applied before re-running Fetch Projections). Using 0 for all players produces
+    // a degenerate all-zero ILP that javascript-lp-solver cannot solve reliably.
+    const score = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
     const pos = p.eligiblePositions;
     const entry: Record<string, number> = {
       score,
