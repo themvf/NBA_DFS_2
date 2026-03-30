@@ -47,6 +47,7 @@ from db.queries import (
     upsert_mlb_pitcher_stats,
     upsert_mlb_team_stats,
 )
+from model.mlb_projections import dk_batter_fpts, dk_pitcher_fpts
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ def fetch_batter_stats(db: DatabaseManager, season: str, days: int = 45) -> int:
         hbp_pg      = _pg("HBP")
         pa_pg       = _pg("PA")
 
-        avg_fpts_pg = _dk_batter_fpts(
+        avg_fpts_pg = dk_batter_fpts(
             singles=singles_pg, doubles=doubles_pg, triples=triples_pg,
             hr=hr_pg, rbi=rbi_pg, runs=runs_pg, bb=bb_pg,
             hbp=hbp_pg, sb=sb_pg,
@@ -247,7 +248,7 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45) -> int
         h_pg   = _pg("H")
         bb_pg  = _pg("BB")
 
-        avg_fpts_pg = _dk_pitcher_fpts(
+        avg_fpts_pg = dk_pitcher_fpts(
             ip=ip_pg, k=k_pg, er=er_pg, h=h_pg, bb=bb_pg,
             win_prob=win_pct or 0.0,
         )
@@ -344,44 +345,6 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
 
     print(f"Team stats: {updated}/30 teams updated for {season}")
     return updated
-
-
-# ── DK FPTS formulas ──────────────────────────────────────────────────────────
-
-def _dk_batter_fpts(
-    singles: float, doubles: float, triples: float, hr: float,
-    rbi: float, runs: float, bb: float, hbp: float, sb: float,
-) -> float:
-    """DraftKings MLB batter FPTS per game from per-game rate inputs."""
-    return (
-        singles * 3.0
-        + doubles * 5.0
-        + triples * 8.0
-        + hr * 10.0
-        + rbi * 2.0
-        + runs * 2.0
-        + bb * 2.0
-        + hbp * 2.0
-        + sb * 5.0
-    )
-
-
-def _dk_pitcher_fpts(
-    ip: float, k: float, er: float, h: float, bb: float, win_prob: float,
-) -> float:
-    """DraftKings MLB pitcher FPTS per start.
-
-    win_prob: historical win probability (W / GS).  Applied as the expected
-    contribution of the +4 win bonus.
-    """
-    return (
-        ip * 2.25
-        + k * 2.0
-        - er * 2.0
-        - h * 0.6
-        - bb * 0.6
-        + win_prob * 4.0
-    )
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

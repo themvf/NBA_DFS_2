@@ -5,10 +5,8 @@ Mirrors dk_slate.py but adapted for MLB:
   - mlb_team_id (not team_id) in dk_players
   - Matchup → mlb_matchups (not nba_matchups)
   - Separate batter / pitcher stat lookup
-  - Park factor adjustment: runs_factor applied to avg_fpts_pg
-  - Phase 4 projection uses avg_fpts_pg × park_factor as our_proj.
-    Phase 5 will add pitcher handedness, batting-order PA weights,
-    implied-total scaling, and opposing team K%.
+  - Full projection model: env factor, park factors, xFIP quality,
+    batting-order PA weight, L/R splits, opposing K%, win probability.
 
 DK MLB DraftGroup API note:
   Same endpoint as NBA: /draftgroups/v1/draftgroups/{id}/draftables
@@ -51,6 +49,7 @@ from model.dfs_projections import (
     compute_leverage,
     compute_monte_carlo,
 )
+from model.mlb_projections import compute_batter_projection, compute_pitcher_projection
 
 logger = logging.getLogger(__name__)
 
@@ -123,12 +122,11 @@ def build_player_pool_mlb(
 ) -> list[dict]:
     """Merge DK, LineStar, MLB stats, and park factors into an enriched pool.
 
-    Phase 4 projection:
-        our_proj = avg_fpts_pg × park_factor
-        (park_factor = runs_factor for batters; 1/runs_factor for pitchers)
-
-    Phase 5 will replace this with the full MLB projection model
-    (pitcher matchup, batting order, team K%, implied total scaling).
+    Phase 5 projection (full model):
+        Batters: env_factor (implied total), park runs/HR factors, xFIP quality,
+                 batting-order PA weight, L/R split wRC+ ratio.
+        Pitchers: opposing lineup wRC+ / K%, park runs factor, win probability
+                  blend (historical win_pct + team moneyline).
     """
     abbrev_cache = build_mlb_team_abbrev_cache(db)
 
@@ -170,16 +168,20 @@ def build_player_pool_mlb(
     active_team_ids = list(matchup_by_team.keys())
 
     # Batter and pitcher stats for active teams
-    batters_by_team:  dict[int, list[dict]] = {}
-    pitchers_by_team: dict[int, list[dict]] = {}
+    batters_by_team:   dict[int, list[dict]] = {}
+    pitchers_by_team:  dict[int, list[dict]] = {}
+    team_stats_by_team: dict[int, dict]     = {}
 
     if active_team_ids:
         ph = ",".join(["%s"] * len(active_team_ids))
 
         batter_rows = db.execute(
             f"""
-            SELECT name, team_id, avg_fpts_pg, fpts_std, pa_pg,
-                   hr_pg, sb_pg, wrc_plus, k_pct, bb_pct
+            SELECT name, team_id, games, avg_fpts_pg, fpts_std,
+                   pa_pg, bb_pct, batting_order,
+                   singles_pg, doubles_pg, triples_pg, hr_pg,
+                   rbi_pg, runs_pg, hbp_pg, sb_pg,
+                   wrc_plus, k_pct, wrc_plus_vs_l, wrc_plus_vs_r
             FROM mlb_batter_stats
             WHERE season = %s AND team_id IN ({ph})
             """,
@@ -190,8 +192,9 @@ def build_player_pool_mlb(
 
         pitcher_rows = db.execute(
             f"""
-            SELECT name, team_id, avg_fpts_pg, fpts_std, ip_pg,
-                   k_per_9, era, xfip, hand, win_pct, qs_pct
+            SELECT name, team_id, games, avg_fpts_pg, fpts_std,
+                   ip_pg, k_per_9, bb_per_9, era, xfip, whip,
+                   hand, win_pct, qs_pct
             FROM mlb_pitcher_stats
             WHERE season = %s AND team_id IN ({ph})
             """,
@@ -199,6 +202,31 @@ def build_player_pool_mlb(
         )
         for row in pitcher_rows:
             pitchers_by_team.setdefault(row["team_id"], []).append(row)
+
+        team_stat_rows = db.execute(
+            f"""
+            SELECT team_id, team_wrc_plus, team_k_pct
+            FROM mlb_team_stats
+            WHERE season = %s AND team_id IN ({ph})
+            """,
+            [season] + active_team_ids,
+        )
+        for row in team_stat_rows:
+            team_stats_by_team[row["team_id"]] = row
+
+    # SP pre-pass: identify today's starting pitchers from DK eligible_positions.
+    # Stored by the SP's own team_id so batters can look up their opp_sp via
+    # the opposing team_id at projection time.
+    sp_by_team: dict[int, dict] = {}
+    for _p in dk_players:
+        if not _is_sp(_p.get("eligible_positions", "")):
+            continue
+        _tid = match_mlb_team_id(_p["team_abbrev"], abbrev_cache)
+        if not _tid or _tid in sp_by_team:
+            continue
+        _sp_stats = match_player_stats(_p["name"], pitchers_by_team.get(_tid, []))
+        if _sp_stats:
+            sp_by_team[_tid] = _sp_stats
 
     enriched = []
     matched_linestar = matched_team = matched_stats = 0
@@ -237,12 +265,13 @@ def build_player_pool_mlb(
         matchup = matchup_by_team.get(mlb_team_id) if mlb_team_id else None
         result["matchup_id"] = matchup["id"] if matchup else None
 
-        # Park factor for this game
-        runs_factor = 1.0
+        # Game context: home/away status, park dict, opposing team stats
+        is_home = matchup.get("_is_home", False) if matchup else False
+        park = park_factors.get(matchup["home_team_id"]) if matchup else None
+        opp_team_id = None
         if matchup:
-            pf = park_factors.get(matchup["home_team_id"])
-            if pf:
-                runs_factor = float(pf["runs_factor"] or 1.0)
+            opp_team_id = matchup["away_team_id"] if is_home else matchup["home_team_id"]
+        opp_team = team_stats_by_team.get(opp_team_id) if opp_team_id else None
 
         # Player type + stats match
         positions    = p.get("eligible_positions", "")
@@ -256,26 +285,37 @@ def build_player_pool_mlb(
             else:
                 stats = match_player_stats(p["name"], batters_by_team.get(mlb_team_id, []))
 
-        # Phase 4 projection: avg_fpts_pg scaled by park factor
+        # Phase 5 projection: full MLB model
         our_proj = None
         proj_floor = proj_ceiling = boom_rate = None
-        if stats and stats.get("avg_fpts_pg") and not result.get("is_out"):
-            base = float(stats["avg_fpts_pg"])
+        if stats and not result.get("is_out"):
             if pitcher_flag:
-                # More runs = harder for pitchers: discount at hitter-friendly parks
-                our_proj = round(base / runs_factor, 2)
+                our_proj = compute_pitcher_projection(
+                    pitcher=stats,
+                    matchup=matchup or {},
+                    opp_team=opp_team,
+                    park=park,
+                    is_home=is_home,
+                )
                 boom_threshold = _SP_BOOM_THRESHOLD if sp_flag else _RP_BOOM_THRESHOLD
             else:
-                # Batters benefit from hitter-friendly parks
-                our_proj = round(base * runs_factor, 2)
+                opp_sp = sp_by_team.get(opp_team_id) if opp_team_id else None
+                our_proj = compute_batter_projection(
+                    batter=stats,
+                    matchup=matchup or {},
+                    opp_sp=opp_sp,
+                    park=park,
+                    is_home=is_home,
+                )
                 boom_threshold = _BAT_BOOM_THRESHOLD
 
             fpts_std = stats.get("fpts_std")
-            if fpts_std and fpts_std > 0:
+            if our_proj and fpts_std and fpts_std > 0:
                 proj_floor, proj_ceiling, boom_rate = compute_monte_carlo(
                     our_proj, float(fpts_std), boom_threshold=boom_threshold,
                 )
-            matched_stats += 1
+            if our_proj:
+                matched_stats += 1
 
         result["our_proj"]     = our_proj
         result["proj_floor"]   = proj_floor
