@@ -865,11 +865,6 @@ async function ensureMatchupsForSlate(
   dkPlayers_: Array<{ gameInfo: string | null }>,
   abbrevToId: Map<string, number>,
 ): Promise<void> {
-  const existing = await db.select({ id: nbaMatchups.id })
-    .from(nbaMatchups)
-    .where(eq(nbaMatchups.gameDate, slateDate));
-  if (existing.length > 0) return;
-
   const resolve = (abbrev: string): number | null => {
     const canonical = DK_OVERRIDES[abbrev] ?? abbrev;
     return abbrevToId.get(canonical) ?? null;
@@ -888,15 +883,23 @@ async function ensureMatchupsForSlate(
     if (homeTeamId && awayTeamId) games.push({ homeTeamId, awayTeamId });
   }
 
+  // Always insert — unique constraint on (game_date, home_team_id, away_team_id)
+  // means onConflictDoNothing skips true duplicates but adds missing games.
+  // We never early-return: stale rows from other dates/tests can coexist.
   if (games.length > 0) {
     await db.insert(nbaMatchups)
       .values(games.map((g) => ({ gameDate: slateDate, ...g })))
       .onConflictDoNothing();
   }
 
-  // Fetch Vegas odds if API key is available
+  // Only fetch odds for matchup rows that still have no vegasTotal (avoid wasting quota)
+  const needsOdds = await db.select({ id: nbaMatchups.id })
+    .from(nbaMatchups)
+    .where(and(eq(nbaMatchups.gameDate, slateDate), sql`vegas_total IS NULL`))
+    .limit(1);
+
   const oddsKey = process.env.ODDS_API_KEY;
-  if (oddsKey && games.length > 0) {
+  if (oddsKey && needsOdds.length > 0) {
     try {
       const oddsUrl = new URL("https://api.the-odds-api.com/v4/sports/basketball_nba/odds/");
       oddsUrl.searchParams.set("apiKey", oddsKey);
@@ -2512,11 +2515,13 @@ export async function clearSlate(sport: Sport): Promise<{ ok: boolean; message: 
 
 export async function recomputeProjections(): Promise<{ ok: boolean; message: string }> {
   try {
+    // Pick the largest slate on the most recent date (gameCount DESC breaks ties
+    // when multiple slates share a date, e.g. a 2-game test alongside a 6-game main)
     const [slate] = await db
       .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
       .from(dkSlates)
       .where(eq(dkSlates.sport, "nba"))
-      .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
+      .orderBy(desc(dkSlates.slateDate), desc(dkSlates.gameCount), desc(dkSlates.id))
       .limit(1);
 
     if (!slate) return { ok: false, message: "No NBA slate loaded" };
