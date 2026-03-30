@@ -332,26 +332,9 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{sport.toUpperCase()} DFS Optimizer</h1>
-          {slateDate && <p className="text-sm text-gray-500">Latest slate: {slateDate} · {players.length} players</p>}
-        </div>
-        {/* Sport switcher — full server re-render on switch */}
-        <div className="flex rounded border text-sm overflow-hidden">
-          <a
-            href="?sport=nba"
-            className={`px-4 py-1.5 font-medium ${sport === "nba" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            NBA
-          </a>
-          <a
-            href="?sport=mlb"
-            className={`px-4 py-1.5 border-l font-medium ${sport === "mlb" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            MLB
-          </a>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold">{sport.toUpperCase()} DFS Optimizer</h1>
+        {slateDate && <p className="text-sm text-gray-500">Latest slate: {slateDate} · {players.length} players</p>}
       </div>
 
       {/* Load Slate Panel */}
