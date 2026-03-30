@@ -186,6 +186,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
   // ── Handlers ──────────────────────────────────────────────
 
+  function handleClear() {
+    setContestId("");
+    setCashLineInput("");
+    setFieldSizeInput("");
+    setUploadMsg(null);
+    if (dkFileRef.current) dkFileRef.current.value = "";
+    if (lsFileRef.current) lsFileRef.current.value = "";
+  }
+
   async function handleLoadApi() {
     if (!contestId.trim()) { setUploadMsg({ ok: false, text: "Enter a DK contest ID" }); return; }
     startTransition(async () => {
@@ -361,19 +370,27 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold">Load Slate</h2>
-          <div className="flex rounded border text-xs overflow-hidden">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setLoadMode("api")}
-              className={`px-3 py-1 ${loadMode === "api" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+              onClick={handleClear}
+              className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded border border-gray-200 hover:border-gray-300"
             >
-              Contest ID
+              Clear
             </button>
-            <button
-              onClick={() => setLoadMode("csv")}
-              className={`px-3 py-1 border-l ${loadMode === "csv" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-            >
-              CSV Upload
-            </button>
+            <div className="flex rounded border text-xs overflow-hidden">
+              <button
+                onClick={() => setLoadMode("api")}
+                className={`px-3 py-1 ${loadMode === "api" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                Contest ID
+              </button>
+              <button
+                onClick={() => setLoadMode("csv")}
+                className={`px-3 py-1 border-l ${loadMode === "csv" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                CSV Upload
+              </button>
+            </div>
           </div>
         </div>
 

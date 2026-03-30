@@ -1058,13 +1058,13 @@ async function enrichAndSave(
         if (d < bestDist) { bestDist = d; bestPlayer = ps; }
       }
 
-      if (bestPlayer && teamStat && oppStat) {
+      if (bestPlayer) {
         const isHome = matchup.homeTeamId === teamId;
         ourProj = computeOurProjection(
           bestPlayer,
-          teamStat.pace    ?? LEAGUE_AVG_PACE,
-          oppStat.pace     ?? LEAGUE_AVG_PACE,
-          oppStat.defRtg   ?? LEAGUE_AVG_DEF_RTG,
+          teamStat?.pace    ?? LEAGUE_AVG_PACE,
+          oppStat?.pace     ?? LEAGUE_AVG_PACE,
+          oppStat?.defRtg   ?? LEAGUE_AVG_DEF_RTG,
           matchup.vegasTotal,
           matchup.homeMl,
           matchup.awayMl,
@@ -2173,9 +2173,9 @@ export async function runOptimizer(
     WHERE dp.slate_id = ${slateId}
   `);
 
-  const pool: OptimizerPlayer[] = rows.rows.filter((p) =>
-    gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId))
-  );
+  const pool: OptimizerPlayer[] = rows.rows
+    .map((p) => ({ ...p, ourProj: p.ourProj ?? p.linestarProj ?? null }))
+    .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
 
   try {
     const lineups = optimizeLineups(pool, settings);
