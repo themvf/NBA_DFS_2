@@ -848,7 +848,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             {isOptimizing ? "Optimizing…" : "Optimize"}
           </button>
         </div>
-        {optimizeError && <p className="mt-2 text-sm text-red-600">{optimizeError}</p>}
+        {optimizeError && <p className="mt-2 text-sm text-red-600 whitespace-pre-wrap">{optimizeError}</p>}
       </div>
 
       {/* Player Pool Table */}

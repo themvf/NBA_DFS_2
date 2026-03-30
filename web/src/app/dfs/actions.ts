@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors } from "@/db/schema";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { optimizeLineups, buildMultiEntryCSV } from "./optimizer";
+import { optimizeLineups, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
 import { optimizeMlbLineups, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
@@ -2261,10 +2261,12 @@ export async function runOptimizer(
                 : withLeverage === 0 && settings.mode === "gpp"
                   ? " No leverage scores — paste LineStar data then re-run Fetch Projections, or switch to Cash mode."
                   : " Try reducing lineup count or switching to Cash mode.";
+      const diagLines = probeOptimizerAll(pool, settings);
       return {
         ok: false,
         error: `No lineups — ${eligible.length} eligible: ${guards}G / ${forwards}F / ${centers}C` +
-          `, ${withMatchup}/${eligible.length} with matchup data.${hint}`,
+          `, ${withMatchup}/${eligible.length} with matchup data.${hint}\n` +
+          diagLines.join(" | "),
       };
     }
     return { ok: true, lineups };

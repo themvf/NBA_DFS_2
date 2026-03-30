@@ -428,3 +428,61 @@ export function buildMultiEntryCSV(
 
   return rows.join("\n");
 }
+
+/**
+ * Diagnostic probe — runs the three progressive probes and returns a debug
+ * string array so the caller can surface results in an error message.
+ * Called only when optimizeLineups returns [] (zero lineups generated).
+ */
+export function probeOptimizerAll(
+  pool: OptimizerPlayer[],
+  settings: OptimizerSettings,
+): string[] {
+  const { mode, nLineups, minStack, bringBackThreshold } = settings;
+
+  const eligible = pool.filter((p) => {
+    if (p.isOut) return false;
+    return p.ourProj != null && p.ourProj > 0 && p.salary > 0;
+  });
+
+  if (eligible.length < ROSTER_SIZE) {
+    return [`eligible=${eligible.length} (< ${ROSTER_SIZE})`];
+  }
+
+  const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
+  const probe = (ms: number, bb: number) =>
+    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb);
+
+  const withScore = eligible.filter((p) => {
+    const s = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
+    return s > 0;
+  }).length;
+  const withNegScore = eligible.filter((p) => {
+    const s = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
+    return s < 0;
+  }).length;
+
+  const p1 = probe(minStack, bringBackThreshold);
+  const p2 = probe(minStack, 0);
+  const p3 = probe(0, 0);
+
+  // Sample the top 3 players by score so we can see what values the ILP received
+  const sorted = [...eligible].sort((a, b) => {
+    const sa = (mode === "gpp" ? (a.ourLeverage ?? a.ourProj) : a.ourProj) ?? 0;
+    const sb = (mode === "gpp" ? (b.ourLeverage ?? b.ourProj) : b.ourProj) ?? 0;
+    return sb - sa;
+  });
+  const top3 = sorted.slice(0, 3).map((p) => {
+    const s = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
+    return `${p.name}(${s.toFixed(1)})`;
+  }).join(", ");
+
+  return [
+    `eligible=${eligible.length} pos=${eligible.filter(p=>p.eligiblePositions.includes("PG")||p.eligiblePositions.includes("SG")).length}G/${eligible.filter(p=>p.eligiblePositions.includes("SF")||p.eligiblePositions.includes("PF")).length}F/${eligible.filter(p=>p.eligiblePositions.includes("C")).length}C`,
+    `scores: ${withScore}+ / ${withNegScore}- / ${eligible.length - withScore - withNegScore}zero`,
+    `top3: ${top3}`,
+    `probe(stack=${minStack},bb=${bringBackThreshold}): ${p1 ? "PASS" : "FAIL"}`,
+    `probe(stack=${minStack},bb=0): ${p2 ? "PASS" : "FAIL"}`,
+    `probe(0,0): ${p3 ? "PASS" : "FAIL"}`,
+  ];
+}
