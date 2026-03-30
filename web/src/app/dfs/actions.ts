@@ -2533,10 +2533,31 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
     const abbrevToId = new Map(teamRows.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
 
     // Build teamId → matchup fallback (dk_players.matchup_id may be null)
-    const matchupByTeam = new Map<number, typeof matchupRows[0]>();
+    type MatchupLike = { id: number; homeTeamId: number | null; awayTeamId: number | null; vegasTotal: number | null; homeMl: number | null; awayMl: number | null };
+    const matchupByTeam = new Map<number, MatchupLike>();
     for (const m of matchupRows) {
       if (m.homeTeamId) matchupByTeam.set(m.homeTeamId, m);
       if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
+    }
+
+    // Synthetic matchup fallback: parse gameInfo "MIN@DAL 03/30/2026 08:00PM ET"
+    // so projections work even when nba_schedule failed to populate nba_matchups
+    const uniqueGameInfos = [...new Set(currentPlayers.map((p) => p.gameInfo).filter(Boolean) as string[])];
+    for (const gi of uniqueGameInfos) {
+      const gm = gi.match(/^([A-Z]+)@([A-Z]+)/i);
+      if (!gm) continue;
+      const awayCanon = DK_OVERRIDES[gm[1].toUpperCase()] ?? gm[1].toUpperCase();
+      const homeCanon = DK_OVERRIDES[gm[2].toUpperCase()] ?? gm[2].toUpperCase();
+      const awayId = abbrevToId.get(awayCanon);
+      const homeId = abbrevToId.get(homeCanon);
+      if (!awayId || !homeId) continue;
+      if (matchupByTeam.has(homeId)) continue; // real matchup already covers this game
+      const synthetic: MatchupLike = {
+        id: -1, homeTeamId: homeId, awayTeamId: awayId,
+        vegasTotal: LEAGUE_AVG_TOTAL, homeMl: null, awayMl: null,
+      };
+      matchupByTeam.set(homeId, synthetic);
+      matchupByTeam.set(awayId, synthetic);
     }
 
     const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, CURRENT_SEASON));
@@ -2570,7 +2591,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       const resolvedTeamId = p.teamId ?? abbrevToId.get(canonical) ?? null;
 
       // Resolve matchup — stored matchupId may be null; fall back to teamId map
-      const matchup = (p.matchupId ? matchupById.get(p.matchupId) : null)
+      const matchup: MatchupLike | null = (p.matchupId ? matchupById.get(p.matchupId) : null)
         ?? (resolvedTeamId ? matchupByTeam.get(resolvedTeamId) : null)
         ?? null;
 
