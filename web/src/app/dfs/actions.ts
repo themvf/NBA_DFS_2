@@ -106,13 +106,33 @@ function parseLinestarCsv(content: string): Map<string, LinestarEntry> {
 /** Parse tab-separated data pasted directly from the LineStar web table.
  *  Columns: Pos, Team, Player, Salary, projOwn%, actualOwn%, Diff, Proj
  *  Uses the Salary cell ($NNNNN) as an anchor — position-independent. */
+/** Normalize a player name for robust matching:
+ *  lowercase → strip periods/apostrophes → remove Jr/Sr/II/III → sort tokens.
+ *  "De'Aaron Fox" → "aaron dearron fox" (tokens sorted)
+ *  "E.J. Harkless" → "ej harkless"
+ *  "Nickeil Alexander-Walker" → "alexanderwalker nickeil"
+ */
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[.']/g, "")
+    .replace(/\b(jr|sr|ii|iii|iv)\b/g, "")
+    .replace(/[-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
 function parseLinestarPasteText(text: string): Map<string, LinestarEntry> {
   const lines = text.split(/\r?\n/).filter(Boolean);
   const map = new Map<string, LinestarEntry>();
   for (const line of lines) {
     const cells = line.split("\t").map((c) => c.trim());
-    // Anchor on the salary cell: "$" followed by 4-5 digits
-    const salaryIdx = cells.findIndex((c) => /^\$\d{4,5}$/.test(c));
+    // Anchor on the salary cell — handle both "$4900" and "$4,900" browser clipboard formats
+    const salaryIdx = cells.findIndex((c) => /^\$[\d,]{4,7}$/.test(c));
     if (salaryIdx < 1) continue;
     // Handle two LineStar formats:
     //   "Pos | Team | Player | Salary | ..." → cells[salaryIdx-1] = player
@@ -151,15 +171,25 @@ function levenshtein(a: string, b: string): number {
   return dp[m][n];
 }
 
-function findLinestarMatch(name: string, salary: number, map: Map<string, LinestarEntry>) {
+function findLinestarMatch(name: string, salary: number, map: Map<string, LinestarEntry>): LinestarEntry | null {
+  // 1. Exact match (name + salary) — fastest path
   const exact = map.get(`${name.toLowerCase()}|${salary}`);
   if (exact) return exact;
+
+  // 2. Exact normalized name, any salary — handles "$11,500" vs "$11500" parse differences
+  const normDk = normalizeName(name);
+  for (const [key, val] of map.entries()) {
+    const lsName = key.split("|")[0];
+    if (normalizeName(lsName) === normDk) return val;
+  }
+
+  // 3. Fuzzy normalized name (Levenshtein ≤ 3), same salary — last resort
   let best: LinestarEntry | null = null;
   let bestDist = 4;
   for (const [key, val] of map.entries()) {
     const [lsName, lsSalStr] = key.split("|");
     if (parseInt(lsSalStr, 10) !== salary) continue;
-    const dist = levenshtein(name.toLowerCase(), lsName);
+    const dist = levenshtein(normDk, normalizeName(lsName));
     if (dist < bestDist) { bestDist = dist; best = val; }
   }
   return best;
@@ -1283,7 +1313,7 @@ async function _applyLinestarMap(
   const slateRows = await db
     .select({ id: dkSlates.id })
     .from(dkSlates)
-    .orderBy(desc(dkSlates.slateDate))
+    .orderBy(desc(dkSlates.slateDate), desc(dkSlates.gameCount), desc(dkSlates.id))
     .limit(1);
   if (!slateRows[0]) return { ok: false, message: "No slate loaded yet", matched: 0, total: 0 };
   const slateId = slateRows[0].id;
