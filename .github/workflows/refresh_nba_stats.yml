@@ -1,0 +1,35 @@
+name: Refresh NBA Stats
+
+on:
+  schedule:
+    # 11:00 AM ET daily (16:00 UTC) — runs before afternoon/evening slates
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "NBA season (e.g. 2025-26)"
+        required: false
+        default: "2025-26"
+        type: string
+
+jobs:
+  refresh-stats:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh NBA team + player rolling stats
+        run: python -m ingest.nba_stats --season "${{ inputs.season || '2025-26' }}"
