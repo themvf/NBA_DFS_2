@@ -581,58 +581,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </div>
         )}
 
-        {/* Fetch Projections — reads from Neon, no external API */}
-        {sport === "nba" && players.length > 0 && (
-          <div className="mt-3 pt-3 border-t space-y-2">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleRecomputeProjections}
-                disabled={isRecomputing}
-                className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {isRecomputing ? "Computing…" : "Fetch Projections"}
-              </button>
-              <span className="text-xs text-gray-400">
-                Re-runs projection model against current Neon stats — no API calls
-              </span>
-            </div>
-            {projMsg && (
-              <span className={`text-sm ${projMsg.ok ? "text-green-700" : "text-red-600"}`}>
-                {projMsg.text}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Player props from The Odds API — NBA only (pts/reb/ast) */}
-        {sport === "nba" && players.length > 0 && (
-          <div className="mt-3 pt-3 border-t space-y-2">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleFetchProps}
-                disabled={isFetchingProps}
-                className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
-              >
-                Fetch Player Props
-              </button>
-              <span className="text-xs text-gray-400">
-                Pulls pts/reb/ast lines from The Odds API · updates projections (~20s)
-              </span>
-            </div>
-            {isFetchingProps && (
-              <div className="flex items-center gap-2 text-sm text-emerald-700">
-                <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-                <span>Fetching props… ({propsElapsed}s)</span>
-              </div>
-            )}
-            {propsMsg && (
-              <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
-                {propsMsg.text}
-              </span>
-            )}
-          </div>
-        )}
-
         {/* LineStar tools — manual CSV upload + cookie health check */}
         <div className="mt-3 pt-3 border-t space-y-3">
           <div className="flex items-center gap-2">
@@ -722,6 +670,58 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             </div>
           )}
         </div>
+
+        {/* Fetch Projections — run after LineStar to compute leverage scores */}
+        {sport === "nba" && players.length > 0 && (
+          <div className="mt-3 pt-3 border-t space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRecomputeProjections}
+                disabled={isRecomputing}
+                className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {isRecomputing ? "Computing…" : "Fetch Projections"}
+              </button>
+              <span className="text-xs text-gray-400">
+                Run after applying LineStar · re-computes projections + leverage scores
+              </span>
+            </div>
+            {projMsg && (
+              <span className={`text-sm ${projMsg.ok ? "text-green-700" : "text-red-600"} whitespace-pre-wrap`}>
+                {projMsg.text}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Player props from The Odds API — NBA only (pts/reb/ast) */}
+        {sport === "nba" && players.length > 0 && (
+          <div className="mt-3 pt-3 border-t space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleFetchProps}
+                disabled={isFetchingProps}
+                className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Fetch Player Props
+              </button>
+              <span className="text-xs text-gray-400">
+                Pulls pts/reb/ast lines from The Odds API · updates projections (~20s)
+              </span>
+            </div>
+            {isFetchingProps && (
+              <div className="flex items-center gap-2 text-sm text-emerald-700">
+                <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+                <span>Fetching props… ({propsElapsed}s)</span>
+              </div>
+            )}
+            {propsMsg && (
+              <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {propsMsg.text}
+              </span>
+            )}
+          </div>
+        )}
 
       </div>
 
