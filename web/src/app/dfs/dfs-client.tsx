@@ -107,12 +107,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [mlbLineups, setMlbLineups] = useState<MlbGeneratedLineup[] | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
+  const [optimizeWarning, setOptimizeWarning] = useState<string | null>(null);
   const [antiCorrMax, setAntiCorrMax] = useState(1); // MLB: max batters facing your own SP
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [lastRequestedLineupCount, setLastRequestedLineupCount] = useState<number | null>(null);
 
   // ── Export ────────────────────────────────────────────────
   const [entryTemplate, setEntryTemplate] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // ── Results upload ────────────────────────────────────────
   const resultsFileRef = useRef<HTMLInputElement>(null);
@@ -256,8 +259,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     if (!players[0]?.slateId) { setOptimizeError("No slate loaded"); return; }
     setIsOptimizing(true);
     setOptimizeError(null);
+    setOptimizeWarning(null);
+    setExportError(null);
     setLineups(null);
     setMlbLineups(null);
+    setLastRequestedLineupCount(nLineups);
 
     // Build game → matchupId map for filtering
     const gameToMatchup = new Map<string, number>();
@@ -276,6 +282,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       const res = await runMlbOptimizer(players[0].slateId, gameFilter, settings);
       setIsOptimizing(false);
       if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
+      setOptimizeWarning(res.warning ?? null);
       setMlbLineups(res.lineups);
     } else {
       const settings: OptimizerSettings = {
@@ -286,6 +293,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       const res = await runOptimizer(players[0].slateId, gameFilter, settings);
       setIsOptimizing(false);
       if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
+      setOptimizeWarning(res.warning ?? null);
       setLineups(res.lineups);
     }
   }
@@ -301,12 +309,17 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   async function handleExport() {
     const activeLineups = sport === "nba" ? lineups : mlbLineups;
     if (!activeLineups) return;
+    setExportError(null);
     setIsExporting(true);
-    const csvStr = sport === "mlb"
+    const result = sport === "mlb"
       ? await exportMlbLineups(mlbLineups!, entryTemplate)
       : await exportLineups(lineups!, entryTemplate);
     setIsExporting(false);
-    if (!csvStr) return;
+    if (!result.ok || !result.csv) {
+      setExportError(result.error ?? "Export failed");
+      return;
+    }
+    const csvStr = result.csv;
     const blob = new Blob([csvStr], { type: "text/csv" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -875,6 +888,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </button>
         </div>
         {optimizeError && <p className="mt-2 text-sm text-red-600 whitespace-pre-wrap">{optimizeError}</p>}
+        {optimizeWarning && <p className="mt-2 text-sm text-amber-700">{optimizeWarning}</p>}
       </div>
 
       {/* Player Pool Table */}
@@ -963,7 +977,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         <div className="rounded-lg border bg-card p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold">
-              {activeLineups.length} Lineups Generated
+              {activeLineups.length}{lastRequestedLineupCount != null ? ` / ${lastRequestedLineupCount}` : ""} Lineups Generated
             </h2>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
@@ -1037,6 +1051,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             >
               {isExporting ? "Exporting…" : "Export CSV"}
             </button>
+            {exportError && <p className="mt-2 text-xs text-red-600">{exportError}</p>}
           </div>
         </div>
         );

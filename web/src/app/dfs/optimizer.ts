@@ -17,6 +17,7 @@ import "server-only";
  */
 
 import type { DkPlayerRow } from "@/db/queries";
+import { parseCsvLine, stringifyCsvLine } from "./csv";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const solver = require("javascript-lp-solver") as {
@@ -86,6 +87,40 @@ export type OptimizerSettings = {
 const SALARY_CAP = 50000;
 const SALARY_FLOOR = 49000;   // DK lineups must spend close to the cap
 const ROSTER_SIZE = 8;
+const LINEUP_SLOTS: LineupSlot[] = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"];
+
+function finiteOrNull(value: number | null | undefined): number | null {
+  return value != null && Number.isFinite(value) ? value : null;
+}
+
+function getPlayerProjection(p: OptimizerPlayer): number | null {
+  return finiteOrNull(p.ourProj);
+}
+
+function getPlayerLeverage(p: OptimizerPlayer): number {
+  return finiteOrNull(p.ourLeverage) ?? 0;
+}
+
+function getPlayerScore(p: OptimizerPlayer, mode: "cash" | "gpp"): number {
+  if (mode === "gpp") {
+    const leverage = finiteOrNull(p.ourLeverage);
+    if (leverage != null) return leverage;
+  }
+  return getPlayerProjection(p) ?? 0;
+}
+
+function canFillSlot(slot: LineupSlot, pos: string): boolean {
+  switch (slot) {
+    case "PG":   return pos.includes("PG");
+    case "SG":   return pos.includes("SG");
+    case "SF":   return pos.includes("SF");
+    case "PF":   return pos.includes("PF");
+    case "C":    return pos.includes("C");
+    case "G":    return pos.includes("G");
+    case "F":    return pos.includes("F");
+    case "UTIL": return true;
+  }
+}
 
 export function optimizeLineups(
   pool: OptimizerPlayer[],
@@ -101,7 +136,8 @@ export function optimizeLineups(
     // Excluding negative-leverage players from the ILP entirely can make the
     // salary-cap constraint infeasible when all positive-leverage players are
     // high-salary. The objective function naturally minimises their usage.
-    if (!(p.ourProj != null && p.ourProj > 0 && p.salary > 0)) return false;
+    const ourProj = getPlayerProjection(p);
+    if (!(ourProj != null && ourProj > 0 && p.salary > 0)) return false;
     if (minSalaryFilter != null && p.salary < minSalaryFilter) return false;
     if (maxSalaryFilter != null && p.salary > maxSalaryFilter) return false;
     return true;
@@ -216,12 +252,15 @@ function solveOneLineup(
   minChanges = mode === "gpp" ? 3 : 2,
   salaryFloor = SALARY_FLOOR,
 ): GeneratedLineup | null {
+  const availablePool = pool.filter((p) => (exposureCount.get(p.id) ?? 0) < maxExposureCount);
+  if (availablePool.length < ROSTER_SIZE) return null;
+
   // Group by matchupId for game stacking.
   // When minStack <= 0 stacking is effectively disabled — skip entirely to avoid
   // polluting the model with trivial helper variables that bloat the B&B tree.
   const gamePlayers = new Map<number, OptimizerPlayer[]>();
   if (minStack > 0) {
-    for (const p of pool) {
+    for (const p of availablePool) {
       if (p.matchupId == null) continue;
       if (!gamePlayers.has(p.matchupId)) gamePlayers.set(p.matchupId, []);
       gamePlayers.get(p.matchupId)!.push(p);
@@ -245,27 +284,21 @@ function solveOneLineup(
   const bringBackSet = new Set(bringBackGames);
 
   const constraints: SolverModel["constraints"] = {
-    salary:    { min: salaryFloor, max: SALARY_CAP },
-    total:     { equal: ROSTER_SIZE },
-    // NBA position slot requirements
-    pg_count:  { min: 1 },   // PG slot
-    sg_count:  { min: 1 },   // SG slot
-    sf_count:  { min: 1 },   // SF slot
-    pf_count:  { min: 1 },   // PF slot
-    c_count:   { min: 1 },   // C slot
-    g_count:    { min: 3 },   // PG + SG + G slots (3 G-eligible players needed)
-    f_count:    { min: 3 },   // SF + PF + F slots (3 F-eligible players needed)
-    fc_cover:   { min: 4 },   // SF + PF + F + C need 4 distinct bodies (PF/C overlap guard)
-    // Hall condition guard: a PF/C player satisfies both pf_count and c_count individually
-    // but can only fill ONE slot. fc_cover counts SF players as FC-eligible (they have "F"),
-    // so 3 SF + 1 PF/C passes fc_cover=4 yet leaves 1 body for 2 slots {PF, C} — Hall
-    // violation. Requiring 2 distinct PF-or-C eligible players prevents this.
-    pf_c_cover: { min: 2 },   // PF + C slots need 2 distinct bodies
+    salary: { min: salaryFloor, max: SALARY_CAP },
+    total:  { equal: ROSTER_SIZE },
     // Stack constraint only applies when games with enough players exist.
     // If matchupId is null for all players (no schedule data), omitting this
     // prevents the solver from being immediately infeasible.
     ...(stackableGames.length > 0 ? { stack_count: { min: 1 } } : {}),
   };
+
+  for (const slot of LINEUP_SLOTS) {
+    constraints[`slot_${slot}`] = { equal: 1 };
+  }
+
+  for (const p of availablePool) {
+    constraints[`use_${p.id}`] = { max: 1 };
+  }
 
   // Bring-back constraints: if team A has ≥ threshold players in the lineup,
   // team B (their opponent) must have ≥ 1.
@@ -280,13 +313,6 @@ function solveOneLineup(
   for (const mid of bringBackGames) {
     constraints[`bb_home_${mid}`] = { max: bringBackMax };
     constraints[`bb_away_${mid}`] = { max: bringBackMax };
-  }
-
-  for (const p of pool) {
-    const used = exposureCount.get(p.id) ?? 0;
-    if (used >= maxExposureCount) {
-      constraints[`excl_player_${p.id}`] = { max: 0 };
-    }
   }
 
   // Only enforce diversity against the last DIV_WINDOW lineups.
@@ -305,68 +331,43 @@ function solveOneLineup(
 
   const variables: SolverModel["variables"] = {};
   const binaries: SolverModel["binaries"] = {};
+  const variableMeta = new Map<string, { player: OptimizerPlayer; slot: LineupSlot }>();
 
-  for (const p of pool) {
-    const key = `p_${p.id}`;
-    // GPP: prefer leverage; fall back to ourProj when leverage is null/undefined/NaN.
-    // Using 0 for all players produces a degenerate all-zero ILP that javascript-lp-solver
-    // cannot solve reliably.
-    //
-    // NaN guard: PostgreSQL REAL columns can store float NaN distinct from NULL.
-    // ?? only catches null/undefined — NaN passes through and corrupts the ILP objective.
-    // NaN leverage must fall through to ourProj (not clamp to 0), which preserves the
-    // player's projection value and avoids discarding legitimate plays.
-    const leverageIsUsable = mode === "gpp"
-      && p.ourLeverage != null
-      && Number.isFinite(p.ourLeverage);
-    const rawScore = (leverageIsUsable ? p.ourLeverage! : p.ourProj) ?? 0;
-    // Final guard: ourProj could also be NaN — clamp anything non-finite to 0.
-    const score = Number.isFinite(rawScore) ? rawScore : 0;
+  for (const p of availablePool) {
+    const score = getPlayerScore(p, mode);
     const pos = p.eligiblePositions;
-    const entry: Record<string, number> = {
-      score,
-      salary: p.salary,
-      total: 1,
-    };
 
-    // Position contributions
-    if (pos.includes("PG")) entry.pg_count = 1;
-    if (pos.includes("SG")) entry.sg_count = 1;
-    if (pos.includes("SF")) entry.sf_count = 1;
-    if (pos.includes("PF")) entry.pf_count = 1;
-    if (pos.includes("C"))  entry.c_count  = 1;
-    if (pos.includes("G"))  entry.g_count  = 1;  // PG or SG eligible → G flex
-    if (pos.includes("F"))  entry.f_count  = 1;  // SF or PF eligible → F flex
-    if (pos.includes("F") || pos.includes("C"))  entry.fc_cover   = 1;  // PF/C overlap guard
-    if (pos.includes("PF") || pos.includes("C")) entry.pf_c_cover = 1;  // Hall condition: {PF,C} need 2 bodies
+    for (const slot of LINEUP_SLOTS) {
+      if (!canFillSlot(slot, pos)) continue;
+      const key = `s_${slot}_${p.id}`;
+      const entry: Record<string, number> = {
+        score,
+        salary: p.salary,
+        total: 1,
+        [`slot_${slot}`]: 1,
+        [`use_${p.id}`]: 1,
+      };
 
-    // Game stack
-    if (p.matchupId != null && stackableSet.has(p.matchupId)) {
-      entry[`game_${p.matchupId}`] = 1;
-    }
-
-    // Bring-back: home team players contribute +1 to home_net, −1 to away_net.
-    // Away team players are the mirror image.
-    if (p.matchupId != null && bringBackSet.has(p.matchupId) && p.teamId != null) {
-      const isHome = p.teamId === p.homeTeamId;
-      entry[`bb_home_${p.matchupId}`] = isHome ? 1 : -1;
-      entry[`bb_away_${p.matchupId}`] = isHome ? -1 : 1;
-    }
-
-    // Diversity (rolling window only)
-    for (let i = 0; i < divWindow.length; i++) {
-      if (divWindow[i].has(p.id)) {
-        entry[`div_${i}`] = 1;
+      if (p.matchupId != null && stackableSet.has(p.matchupId)) {
+        entry[`game_${p.matchupId}`] = 1;
       }
-    }
 
-    // Exposure cap
-    if ((exposureCount.get(p.id) ?? 0) >= maxExposureCount) {
-      entry[`excl_player_${p.id}`] = 1;
-    }
+      if (p.matchupId != null && bringBackSet.has(p.matchupId) && p.teamId != null) {
+        const isHome = p.teamId === p.homeTeamId;
+        entry[`bb_home_${p.matchupId}`] = isHome ? 1 : -1;
+        entry[`bb_away_${p.matchupId}`] = isHome ? -1 : 1;
+      }
 
-    variables[key] = entry;
-    binaries[key] = 1;
+      for (let i = 0; i < divWindow.length; i++) {
+        if (divWindow[i].has(p.id)) {
+          entry[`div_${i}`] = 1;
+        }
+      }
+
+      variables[key] = entry;
+      binaries[key] = 1;
+      variableMeta.set(key, { player: p, slot });
+    }
   }
 
   // Stack helper variables
@@ -390,72 +391,24 @@ function solveOneLineup(
   const result = solver.Solve(model);
   if (!result.feasible) return null;
 
-  const selected = pool.filter((p) => (result[`p_${p.id}`] ?? 0) >= 0.5);
-  if (selected.length !== ROSTER_SIZE) return null;
-
-  const slots = assignPositions(selected);
-  if (!slots) return null;
-
-  const totalSalary = selected.reduce((s, p) => s + p.salary, 0);
-  const projFpts = selected.reduce((s, p) => s + (p.ourProj ?? 0), 0);
-  const leverageScore = selected.reduce((s, p) => s + (p.ourLeverage ?? 0), 0);
-
-  return { players: selected, slots, totalSalary, projFpts, leverageScore };
-}
-
-/**
- * Assign 8 NBA players to PG/SG/SF/PF/C/G/F/UTIL slots using backtracking.
- *
- * Each slot has strict eligibility rules:
- *   PG → "PG", SG → "SG", SF → "SF", PF → "PF", C → "C",
- *   G → "G" (PG or SG), F → "F" (SF or PF), UTIL → any.
- *
- * Backtracking guarantees a valid assignment is found if one exists.
- * With only 8 players the search space is heavily pruned and instant.
- */
-function assignPositions(
-  players: OptimizerPlayer[]
-): Record<LineupSlot, OptimizerPlayer> | null {
-  const slots: LineupSlot[] = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"];
-
-  const canFill = (slot: LineupSlot, pos: string): boolean => {
-    switch (slot) {
-      case "PG":   return pos.includes("PG");
-      case "SG":   return pos.includes("SG");
-      case "SF":   return pos.includes("SF");
-      case "PF":   return pos.includes("PF");
-      case "C":    return pos.includes("C");
-      case "G":    return pos.includes("G");
-      case "F":    return pos.includes("F");
-      case "UTIL": return true;
-    }
-  };
-
-  const assignment: (OptimizerPlayer | null)[] = new Array(8).fill(null);
-  const used = new Set<number>();
-
-  const solve = (slotIdx: number): boolean => {
-    if (slotIdx === 8) return true;
-    const slot = slots[slotIdx];
-    for (const p of players) {
-      if (used.has(p.id)) continue;
-      if (!canFill(slot, p.eligiblePositions)) continue;
-      assignment[slotIdx] = p;
-      used.add(p.id);
-      if (solve(slotIdx + 1)) return true;
-      used.delete(p.id);
-      assignment[slotIdx] = null;
-    }
-    return false;
-  };
-
-  if (!solve(0)) return null;
-
-  const result = {} as Record<LineupSlot, OptimizerPlayer>;
-  for (let i = 0; i < 8; i++) {
-    result[slots[i]] = assignment[i]!;
+  const slots = {} as Record<LineupSlot, OptimizerPlayer>;
+  for (const slot of LINEUP_SLOTS) {
+    const key = Array.from(variableMeta.keys()).find((varKey) => {
+      const meta = variableMeta.get(varKey)!;
+      return meta.slot === slot && (result[varKey] ?? 0) >= 0.5;
+    });
+    if (!key) return null;
+    slots[slot] = variableMeta.get(key)!.player;
   }
-  return result;
+
+  const selectedPlayers = LINEUP_SLOTS.map((slot) => slots[slot]);
+  if (new Set(selectedPlayers.map((p) => p.id)).size !== ROSTER_SIZE) return null;
+
+  const totalSalary = selectedPlayers.reduce((s, p) => s + p.salary, 0);
+  const projFpts = selectedPlayers.reduce((s, p) => s + (getPlayerProjection(p) ?? 0), 0);
+  const leverageScore = selectedPlayers.reduce((s, p) => s + getPlayerLeverage(p), 0);
+
+  return { players: selectedPlayers, slots, totalSalary, projFpts, leverageScore };
 }
 
 /**
@@ -467,21 +420,27 @@ export function buildMultiEntryCSV(
   lineups: GeneratedLineup[],
   entryRows: string[]
 ): string {
-  if (lineups.length === 0 || entryRows.length < 2) return "";
+  if (lineups.length === 0) return "";
+  if (entryRows.length < 2) {
+    throw new Error("Entry template must include a header row and at least one entry row.");
+  }
+  if (entryRows.length - 1 < lineups.length) {
+    throw new Error(`Entry template has ${entryRows.length - 1} entries for ${lineups.length} lineups.`);
+  }
 
-  const header = entryRows[0];
-  const rows = [header];
+  const rows = [stringifyCsvLine(parseCsvLine(entryRows[0]))];
 
   for (let i = 0; i < lineups.length; i++) {
     const lineup = lineups[i];
-    const entryLine = entryRows[i + 1] ?? entryRows[1];
-    const cols = entryLine.split(",");
-    const slotOrder: LineupSlot[] = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"];
-    for (let j = 0; j < 8; j++) {
-      const player = lineup.slots[slotOrder[j]];
+    const cols = parseCsvLine(entryRows[i + 1]);
+    if (cols.length < 4 + LINEUP_SLOTS.length) {
+      throw new Error(`Entry row ${i + 2} is missing required DraftKings columns.`);
+    }
+    for (let j = 0; j < LINEUP_SLOTS.length; j++) {
+      const player = lineup.slots[LINEUP_SLOTS[j]];
       cols[4 + j] = player ? `${player.name} (${player.dkPlayerId})` : "";
     }
-    rows.push(cols.join(","));
+    rows.push(stringifyCsvLine(cols));
   }
 
   return rows.join("\n");
@@ -501,7 +460,8 @@ export function probeOptimizerAll(
   const { minSalaryFilter, maxSalaryFilter } = settings;
   const eligible = pool.filter((p) => {
     if (p.isOut) return false;
-    if (!(p.ourProj != null && p.ourProj > 0 && p.salary > 0)) return false;
+    const ourProj = getPlayerProjection(p);
+    if (!(ourProj != null && ourProj > 0 && p.salary > 0)) return false;
     if (minSalaryFilter != null && p.salary < minSalaryFilter) return false;
     if (maxSalaryFilter != null && p.salary > maxSalaryFilter) return false;
     return true;
@@ -517,8 +477,7 @@ export function probeOptimizerAll(
   const probeNoFloor = (ms: number, bb: number) =>
     !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, 0);
 
-  const scoreOf = (p: OptimizerPlayer) =>
-    (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
+  const scoreOf = (p: OptimizerPlayer) => getPlayerScore(p, mode);
 
   const withScore    = eligible.filter((p) => scoreOf(p) > 0).length;
   const withNegScore = eligible.filter((p) => scoreOf(p) < 0).length;
