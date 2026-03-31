@@ -159,11 +159,22 @@ export function optimizeLineups(
         exposureCount, previousLineupSets, effectiveBringBack, 1,
       );
     }
-    // Final fallback: disable bring-back — exposure/diversity exhaustion often
+    // 3rd fallback: disable bring-back — exposure/diversity exhaustion often
     // makes team-pairing infeasible for later lineups even when pool is large.
     if (!lineup && effectiveBringBack > 0) {
       lineup = solveOneLineup(
         eligible, mode, effectiveMinStack, maxExp,
+        exposureCount, previousLineupSets, 0, 1,
+      );
+    }
+    // 4th fallback: disable stack — when effectiveBringBack was already 0 from
+    // the probe phase, the 3rd fallback above is skipped entirely. If minStack
+    // combined with the $49k salary floor and diversity still blocks lineup N,
+    // retry without any stacking requirement. A non-stacked lineup is better
+    // than stopping short of nLineups.
+    if (!lineup && effectiveMinStack > 0) {
+      lineup = solveOneLineup(
+        eligible, mode, 0, maxExp,
         exposureCount, previousLineupSets, 0, 1,
       );
     }
