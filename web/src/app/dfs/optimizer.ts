@@ -18,6 +18,7 @@ import "server-only";
 
 import type { DkPlayerRow } from "@/db/queries";
 import { parseCsvLine, stringifyCsvLine } from "./csv";
+import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const solver = require("javascript-lp-solver") as {
@@ -126,7 +127,15 @@ export function optimizeLineups(
   pool: OptimizerPlayer[],
   settings: OptimizerSettings
 ): GeneratedLineup[] {
+  return optimizeLineupsWithDebug(pool, settings).lineups;
+}
+
+export function optimizeLineupsWithDebug(
+  pool: OptimizerPlayer[],
+  settings: OptimizerSettings
+): { lineups: GeneratedLineup[]; debug: OptimizerDebugInfo } {
   const { mode, nLineups, minStack, maxExposure, bringBackThreshold } = settings;
+  const totalStart = Date.now();
 
   const { minSalaryFilter, maxSalaryFilter } = settings;
   const eligible = pool.filter((p) => {
@@ -143,7 +152,33 @@ export function optimizeLineups(
     return true;
   });
 
-  if (eligible.length < ROSTER_SIZE) return [];
+  const debug: OptimizerDebugInfo = {
+    sport: "nba",
+    mode,
+    eligibleCount: eligible.length,
+    requestedLineups: nLineups,
+    builtLineups: 0,
+    totalMs: 0,
+    probeMs: 0,
+    maxExposureCount: Math.ceil(nLineups * maxExposure),
+    relaxedConstraints: [],
+    probeSummary: [],
+    lineupSummaries: [],
+    terminationReason: "completed",
+    effectiveSettings: {
+      minStack,
+      bringBackThreshold,
+      maxExposure,
+      minChanges: mode === "gpp" ? 3 : 2,
+      salaryFloor: SALARY_FLOOR,
+    },
+  };
+
+  if (eligible.length < ROSTER_SIZE) {
+    debug.terminationReason = "insufficient_pool";
+    debug.totalMs = Date.now() - totalStart;
+    return { lineups: [], debug };
+  }
 
   // Probe for feasibility — run a single test solve (no history, no exposure cap)
   // to discover which constraints the current pool can satisfy. Relax progressively:
@@ -154,43 +189,59 @@ export function optimizeLineups(
   //            causing all 8 cheapest eligible players to collectively exceed the $50k cap or
   //            sit below the $49k floor — remove the floor rather than return 0 lineups)
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
-  const probe = (ms: number, bb: number) =>
-    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb);
-  const probeNoFloor = (ms: number, bb: number) =>
-    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, 0);
+  const timedProbe = (label: string, ms: number, bb: number, salaryFloor = SALARY_FLOOR): boolean => {
+    const start = Date.now();
+    const success = !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, salaryFloor);
+    const durationMs = Date.now() - start;
+    debug.probeMs += durationMs;
+    debug.probeSummary.push({ label, success, durationMs });
+    return success;
+  };
 
   let effectiveMinStack   = minStack;
   let effectiveBringBack  = bringBackThreshold;
   let effectiveSalaryFloor = SALARY_FLOOR;
   let relaxed = false;
 
-  if (!probe(effectiveMinStack, effectiveBringBack)) {
+  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
     effectiveBringBack = 0;           // disable bring-back
     relaxed = true;
+    debug.relaxedConstraints.push("bring-back disabled");
   }
-  if (!probe(effectiveMinStack, effectiveBringBack)) {
+  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
     effectiveMinStack  = 0;           // disable stacking too
     effectiveBringBack = 0;           // bring-back needs gamePlayers, empty when minStack=0
     relaxed = true;
+    debug.relaxedConstraints.push("stacking disabled");
   }
   // Third probe: verify even the first lineup (no history, no exposure caps)
   // is feasible after full relaxation. Does NOT guarantee subsequent lineups
   // succeed — exposure caps and diversity can still exhaust the pool mid-run.
-  if (relaxed && !probe(effectiveMinStack, effectiveBringBack)) {
+  if (relaxed && !timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
     // Fourth probe: the $49k salary floor may be blocking when all projection-eligible
     // players happen to be high-salary (cheap fillers filtered out by ourProj > 0).
     // Disable the floor rather than returning zero lineups.
-    if (!probeNoFloor(0, 0)) {
-      return [];                      // genuinely infeasible — bail early
+    if (!timedProbe("stack=0,bringBack=0,floor=0", 0, 0, 0)) {
+      debug.terminationReason = "probe_infeasible";
+      debug.totalMs = Date.now() - totalStart;
+      return { lineups: [], debug }; // genuinely infeasible — bail early
     }
     effectiveSalaryFloor = 0;
     effectiveMinStack    = 0;
     effectiveBringBack   = 0;
+    debug.relaxedConstraints.push("salary floor disabled");
   }
 
   // Adaptive diversity: small or thin pools can't sustain 3-player diff between
   // every pair of lineups — drop to 2 when eligible < 55 or constraints were relaxed.
   const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
+  debug.effectiveSettings = {
+    minStack: effectiveMinStack,
+    bringBackThreshold: effectiveBringBack,
+    maxExposure,
+    minChanges: effectiveMinChanges,
+    salaryFloor: effectiveSalaryFloor,
+  };
 
   const exposureCount = new Map<number, number>(eligible.map((p) => [p.id, 0]));
   const lineups: GeneratedLineup[] = [];
@@ -198,24 +249,36 @@ export function optimizeLineups(
 
   for (let i = 0; i < nLineups; i++) {
     const maxExp = Math.ceil(nLineups * maxExposure);
-    let lineup = solveOneLineup(
-      eligible, mode, effectiveMinStack, maxExp,
-      exposureCount, previousLineupSets, effectiveBringBack, effectiveMinChanges, effectiveSalaryFloor,
-    );
+    const attempts: OptimizerLineupAttemptDebug[] = [];
+    const runAttempt = (
+      stage: string,
+      stack: number,
+      bringBack: number,
+      minChanges: number,
+      salaryFloor: number,
+    ): GeneratedLineup | null => {
+      const start = Date.now();
+      const result = solveOneLineup(
+        eligible, mode, stack, maxExp,
+        exposureCount, previousLineupSets, bringBack, minChanges, salaryFloor,
+      );
+      attempts.push({
+        stage,
+        success: result != null,
+        durationMs: Date.now() - start,
+      });
+      return result;
+    };
+
+    let lineup = runAttempt("base", effectiveMinStack, effectiveBringBack, effectiveMinChanges, effectiveSalaryFloor);
     // If still infeasible, relax diversity to 1 (just prevent exact duplicates)
     if (!lineup && effectiveMinChanges > 1) {
-      lineup = solveOneLineup(
-        eligible, mode, effectiveMinStack, maxExp,
-        exposureCount, previousLineupSets, effectiveBringBack, 1, effectiveSalaryFloor,
-      );
+      lineup = runAttempt("diversity=1", effectiveMinStack, effectiveBringBack, 1, effectiveSalaryFloor);
     }
     // 3rd fallback: disable bring-back — exposure/diversity exhaustion often
     // makes team-pairing infeasible for later lineups even when pool is large.
     if (!lineup && effectiveBringBack > 0) {
-      lineup = solveOneLineup(
-        eligible, mode, effectiveMinStack, maxExp,
-        exposureCount, previousLineupSets, 0, 1, effectiveSalaryFloor,
-      );
+      lineup = runAttempt("bringBack=0", effectiveMinStack, 0, 1, effectiveSalaryFloor);
     }
     // 4th fallback: disable stack — when effectiveBringBack was already 0 from
     // the probe phase, the 3rd fallback above is skipped entirely. If minStack
@@ -223,12 +286,21 @@ export function optimizeLineups(
     // retry without any stacking requirement. A non-stacked lineup is better
     // than stopping short of nLineups.
     if (!lineup && effectiveMinStack > 0) {
-      lineup = solveOneLineup(
-        eligible, mode, 0, maxExp,
-        exposureCount, previousLineupSets, 0, 1, effectiveSalaryFloor,
-      );
+      lineup = runAttempt("stack=0", 0, 0, 1, effectiveSalaryFloor);
     }
-    if (!lineup) break;
+    const durationMs = attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
+    debug.lineupSummaries.push({
+      lineupNumber: i + 1,
+      status: lineup ? "built" : "failed",
+      durationMs,
+      winningStage: attempts.find((attempt) => attempt.success)?.stage,
+      attempts,
+    });
+    if (!lineup) {
+      debug.terminationReason = "lineup_failed";
+      debug.stoppedAtLineup = i + 1;
+      break;
+    }
 
     lineups.push(lineup);
     const lineupSet = new Set(lineup.players.map((p) => p.id));
@@ -238,7 +310,11 @@ export function optimizeLineups(
     }
   }
 
-  return lineups;
+  debug.builtLineups = lineups.length;
+  debug.totalMs = Date.now() - totalStart;
+  if (lineups.length === nLineups) debug.terminationReason = "completed";
+
+  return { lineups, debug };
 }
 
 function solveOneLineup(

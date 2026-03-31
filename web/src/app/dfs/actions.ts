@@ -13,9 +13,10 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors } from "@/db/schema";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { optimizeLineups, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
+import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
-import { optimizeMlbLineups, buildMlbMultiEntryCSV } from "./mlb-optimizer";
+import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
+import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
 import type { Sport } from "@/db/queries";
 
@@ -32,6 +33,7 @@ type OptimizerRunResult<T> = {
   lineups?: T[];
   error?: string;
   warning?: string;
+  debug?: OptimizerDebugInfo;
 };
 
 type CsvExportResult = {
@@ -2334,7 +2336,7 @@ export async function runOptimizer(
     .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
 
   try {
-    const lineups = optimizeLineups(pool, settings);
+    const { lineups, debug } = optimizeLineupsWithDebug(pool, settings);
     if (lineups.length === 0) {
       const eligible = pool.filter((p) => {
         if (p.isOut) return false;
@@ -2366,6 +2368,7 @@ export async function runOptimizer(
         error: `No lineups — ${eligible.length} eligible: ${guards}G / ${forwards}F / ${centers}C` +
           `, ${withMatchup}/${eligible.length} with matchup data.${hint}\n` +
           diagLines.join(" | "),
+        debug,
       };
     }
     let warning: string | undefined;
@@ -2380,7 +2383,7 @@ export async function runOptimizer(
     } else if (lineups.length < settings.nLineups) {
       warning = buildPartialGenerationWarning(lineups, settings.nLineups, settings.maxExposure, false);
     }
-    return { ok: true, lineups, warning };
+    return { ok: true, lineups, warning, debug };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
@@ -2481,7 +2484,7 @@ export async function runMlbOptimizer(
     .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
 
   try {
-    const lineups = optimizeMlbLineups(pool, settings);
+    const { lineups, debug } = optimizeMlbLineupsWithDebug(pool, settings);
     if (lineups.length === 0) {
       const eligible = pool.filter(
         (p) => !p.isOut && p.ourProj != null && p.ourProj > 0 && p.salary > 0,
@@ -2502,6 +2505,7 @@ export async function runMlbOptimizer(
       return {
         ok: false,
         error: `No lineups — ${eligible.length} eligible: ${pitchers} P / ${catchers} C.${hint}`,
+        debug,
       };
     }
     let warning: string | undefined;
@@ -2516,7 +2520,7 @@ export async function runMlbOptimizer(
     } else if (lineups.length < settings.nLineups) {
       warning = buildPartialGenerationWarning(lineups, settings.nLineups, settings.maxExposure, false);
     }
-    return { ok: true, lineups, warning };
+    return { ok: true, lineups, warning, debug };
   } catch (e) {
     return { ok: false, error: String(e) };
   }

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow, StrategySummaryRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
+import type { OptimizerDebugInfo } from "./optimizer-debug";
 import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections } from "./actions";
 
 type Props = {
@@ -28,6 +29,14 @@ function fmt1(v: number | null | undefined): string {
 
 function fmtSalary(v: number): string {
   return `$${v.toLocaleString()}`;
+}
+
+function fmtDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}:${String(seconds).padStart(2, "0")}` : `${seconds}s`;
 }
 
 // Position badge color — sport-aware
@@ -108,6 +117,9 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [optimizeWarning, setOptimizeWarning] = useState<string | null>(null);
+  const [optimizeDebug, setOptimizeDebug] = useState<OptimizerDebugInfo | null>(null);
+  const [optimizeStartedAt, setOptimizeStartedAt] = useState<number | null>(null);
+  const [optimizeElapsedMs, setOptimizeElapsedMs] = useState(0);
   const [antiCorrMax, setAntiCorrMax] = useState(1); // MLB: max batters facing your own SP
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [lastRequestedLineupCount, setLastRequestedLineupCount] = useState<number | null>(null);
@@ -155,6 +167,16 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     return () => clearInterval(id);
   }, [isFetchingProps]);
 
+  useEffect(() => {
+    if (!isOptimizing || optimizeStartedAt == null) {
+      setOptimizeElapsedMs(0);
+      return;
+    }
+    setOptimizeElapsedMs(Date.now() - optimizeStartedAt);
+    const id = setInterval(() => setOptimizeElapsedMs(Date.now() - optimizeStartedAt), 1000);
+    return () => clearInterval(id);
+  }, [isOptimizing, optimizeStartedAt]);
+
   // ── LineStar input: CSV file or paste ────────────────────
   const [lsMode, setLsMode] = useState<"csv" | "paste">("paste");
   const lsUploadRef = useRef<HTMLInputElement>(null);
@@ -165,6 +187,19 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── LineStar cookie status ────────────────────────────────
   const [cookieStatus, setCookieStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [isCheckingCookie, setIsCheckingCookie] = useState(false);
+
+  const optimizeStatusText = !isOptimizing
+    ? null
+    : optimizeElapsedMs >= 60_000
+      ? "Still solving. This is longer than expected and usually means the slate is highly constrained."
+      : optimizeElapsedMs >= 20_000
+        ? "Long solve in progress. Exposure, stacking, and diversity constraints can make the solver much slower."
+        : "Solver request is running on the server.";
+
+  const slowestLineup = optimizeDebug?.lineupSummaries.reduce<OptimizerDebugInfo["lineupSummaries"][number] | null>(
+    (best, current) => !best || current.durationMs > best.durationMs ? current : best,
+    null,
+  ) ?? null;
 
   // ── Filtered + sorted player pool ─────────────────────────
   const filteredPlayers = useMemo(() => {
@@ -258,8 +293,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   async function handleOptimize() {
     if (!players[0]?.slateId) { setOptimizeError("No slate loaded"); return; }
     setIsOptimizing(true);
+    setOptimizeStartedAt(Date.now());
+    setOptimizeElapsedMs(0);
     setOptimizeError(null);
     setOptimizeWarning(null);
+    setOptimizeDebug(null);
     setExportError(null);
     setLineups(null);
     setMlbLineups(null);
@@ -274,27 +312,42 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       .map((g) => gameToMatchup.get(g))
       .filter((id): id is number => id != null);
 
-    if (sport === "mlb") {
-      const settings: MlbOptimizerSettings = {
-        mode, nLineups, minStack, maxExposure,
-        bringBackThreshold, antiCorrMax,
-      };
-      const res = await runMlbOptimizer(players[0].slateId, gameFilter, settings);
+    try {
+      if (sport === "mlb") {
+        const settings: MlbOptimizerSettings = {
+          mode, nLineups, minStack, maxExposure,
+          bringBackThreshold, antiCorrMax,
+        };
+        const res = await runMlbOptimizer(players[0].slateId, gameFilter, settings);
+        if (!res.ok || !res.lineups) {
+          setOptimizeDebug(res.debug ?? null);
+          setOptimizeError(res.error ?? "Optimizer failed");
+          return;
+        }
+        setOptimizeWarning(res.warning ?? null);
+        setOptimizeDebug(res.debug ?? null);
+        setMlbLineups(res.lineups);
+      } else {
+        const settings: OptimizerSettings = {
+          mode, nLineups, minStack, maxExposure, bringBackThreshold,
+          minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter) : null,
+          maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter) : null,
+        };
+        const res = await runOptimizer(players[0].slateId, gameFilter, settings);
+        if (!res.ok || !res.lineups) {
+          setOptimizeDebug(res.debug ?? null);
+          setOptimizeError(res.error ?? "Optimizer failed");
+          return;
+        }
+        setOptimizeWarning(res.warning ?? null);
+        setOptimizeDebug(res.debug ?? null);
+        setLineups(res.lineups);
+      }
+    } catch (e) {
+      setOptimizeError(e instanceof Error ? e.message : String(e));
+    } finally {
       setIsOptimizing(false);
-      if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
-      setOptimizeWarning(res.warning ?? null);
-      setMlbLineups(res.lineups);
-    } else {
-      const settings: OptimizerSettings = {
-        mode, nLineups, minStack, maxExposure, bringBackThreshold,
-        minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter) : null,
-        maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter) : null,
-      };
-      const res = await runOptimizer(players[0].slateId, gameFilter, settings);
-      setIsOptimizing(false);
-      if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
-      setOptimizeWarning(res.warning ?? null);
-      setLineups(res.lineups);
+      setOptimizeStartedAt(null);
     }
   }
 
@@ -887,8 +940,87 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             {isOptimizing ? "Optimizing…" : "Optimize"}
           </button>
         </div>
+        {isOptimizing && (
+          <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+            <p className="font-medium">Optimizer running: {fmtDuration(optimizeElapsedMs)}</p>
+            {optimizeStatusText && <p className="mt-1 text-xs text-blue-800">{optimizeStatusText}</p>}
+          </div>
+        )}
         {optimizeError && <p className="mt-2 text-sm text-red-600 whitespace-pre-wrap">{optimizeError}</p>}
         {optimizeWarning && <p className="mt-2 text-sm text-amber-700">{optimizeWarning}</p>}
+        {optimizeDebug && (
+          <details className="mt-2 rounded border bg-gray-50 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-gray-800">
+              Optimizer Debug: {optimizeDebug.builtLineups}/{optimizeDebug.requestedLineups} built in {fmtDuration(optimizeDebug.totalMs)}
+            </summary>
+            <div className="mt-3 space-y-3 text-xs text-gray-700">
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="rounded border bg-white p-2">
+                  <p><strong>Eligible:</strong> {optimizeDebug.eligibleCount}</p>
+                  <p><strong>Probe time:</strong> {fmtDuration(optimizeDebug.probeMs)}</p>
+                  <p><strong>Termination:</strong> {optimizeDebug.terminationReason}{optimizeDebug.stoppedAtLineup ? ` at lineup ${optimizeDebug.stoppedAtLineup}` : ""}</p>
+                  <p><strong>Exposure cap:</strong> {optimizeDebug.maxExposureCount} max uses per player</p>
+                </div>
+                <div className="rounded border bg-white p-2">
+                  <p><strong>Effective stack:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
+                  <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackThreshold}</p>
+                  <p><strong>Effective diversity:</strong> {optimizeDebug.effectiveSettings.minChanges}</p>
+                  {"antiCorrMax" in optimizeDebug.effectiveSettings && optimizeDebug.effectiveSettings.antiCorrMax != null && (
+                    <p><strong>Effective anti-corr:</strong> {optimizeDebug.effectiveSettings.antiCorrMax}</p>
+                  )}
+                  {optimizeDebug.effectiveSettings.salaryFloor != null && (
+                    <p><strong>Salary floor:</strong> ${optimizeDebug.effectiveSettings.salaryFloor.toLocaleString()}</p>
+                  )}
+                </div>
+              </div>
+              {optimizeDebug.relaxedConstraints.length > 0 && (
+                <p><strong>Relaxed constraints:</strong> {optimizeDebug.relaxedConstraints.join(", ")}</p>
+              )}
+              {slowestLineup && (
+                <p><strong>Slowest lineup:</strong> #{slowestLineup.lineupNumber} in {fmtDuration(slowestLineup.durationMs)}</p>
+              )}
+              {optimizeDebug.probeSummary.length > 0 && (
+                <div>
+                  <p className="mb-1 font-medium text-gray-800">Probe Timings</p>
+                  <div className="space-y-1 rounded border bg-white p-2">
+                    {optimizeDebug.probeSummary.map((probe) => (
+                      <div key={`${probe.label}-${probe.durationMs}`} className="flex items-center justify-between gap-3">
+                        <span>{probe.label}</span>
+                        <span className={probe.success ? "text-green-700" : "text-red-600"}>
+                          {probe.success ? "PASS" : "FAIL"} · {fmtDuration(probe.durationMs)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {optimizeDebug.lineupSummaries.length > 0 && (
+                <div>
+                  <p className="mb-1 font-medium text-gray-800">Lineup Attempts</p>
+                  <div className="max-h-56 space-y-2 overflow-y-auto rounded border bg-white p-2">
+                    {optimizeDebug.lineupSummaries.map((lineup) => (
+                      <div key={lineup.lineupNumber} className="rounded border p-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium">
+                            #{lineup.lineupNumber} {lineup.status === "built" ? "built" : "failed"}
+                          </span>
+                          <span>{fmtDuration(lineup.durationMs)}{lineup.winningStage ? ` via ${lineup.winningStage}` : ""}</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                          {lineup.attempts.map((attempt) => (
+                            <span key={`${lineup.lineupNumber}-${attempt.stage}`} className="rounded bg-gray-100 px-1.5 py-0.5">
+                              {attempt.stage}: {attempt.success ? "ok" : "fail"} ({fmtDuration(attempt.durationMs)})
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </details>
+        )}
       </div>
 
       {/* Player Pool Table */}
