@@ -253,9 +253,14 @@ function solveOneLineup(
     sf_count:  { min: 1 },   // SF slot
     pf_count:  { min: 1 },   // PF slot
     c_count:   { min: 1 },   // C slot
-    g_count:   { min: 3 },   // PG + SG + G slots (3 G-eligible players needed)
-    f_count:   { min: 3 },   // SF + PF + F slots (3 F-eligible players needed)
-    fc_cover:  { min: 4 },   // SF + PF + F + C need 4 distinct bodies (PF/C overlap guard)
+    g_count:    { min: 3 },   // PG + SG + G slots (3 G-eligible players needed)
+    f_count:    { min: 3 },   // SF + PF + F slots (3 F-eligible players needed)
+    fc_cover:   { min: 4 },   // SF + PF + F + C need 4 distinct bodies (PF/C overlap guard)
+    // Hall condition guard: a PF/C player satisfies both pf_count and c_count individually
+    // but can only fill ONE slot. fc_cover counts SF players as FC-eligible (they have "F"),
+    // so 3 SF + 1 PF/C passes fc_cover=4 yet leaves 1 body for 2 slots {PF, C} — Hall
+    // violation. Requiring 2 distinct PF-or-C eligible players prevents this.
+    pf_c_cover: { min: 2 },   // PF + C slots need 2 distinct bodies
     // Stack constraint only applies when games with enough players exist.
     // If matchupId is null for all players (no schedule data), omitting this
     // prevents the solver from being immediately infeasible.
@@ -303,15 +308,19 @@ function solveOneLineup(
 
   for (const p of pool) {
     const key = `p_${p.id}`;
-    // GPP: prefer leverage; fall back to ourProj when leverage is null (e.g. LineStar
-    // paste applied before re-running Fetch Projections). Using 0 for all players produces
-    // a degenerate all-zero ILP that javascript-lp-solver cannot solve reliably.
-    const rawScore = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
-    // Guard NaN and ±Infinity: PostgreSQL REAL columns can store float NaN as a value
-    // distinct from NULL. The ?? operator only catches null/undefined — NaN passes through
-    // unchanged. A single NaN coefficient in the objective makes javascript-lp-solver's
-    // branch-and-bound return feasible:false because NaN comparisons always evaluate false,
-    // causing the solver to incorrectly prune all valid branches.
+    // GPP: prefer leverage; fall back to ourProj when leverage is null/undefined/NaN.
+    // Using 0 for all players produces a degenerate all-zero ILP that javascript-lp-solver
+    // cannot solve reliably.
+    //
+    // NaN guard: PostgreSQL REAL columns can store float NaN distinct from NULL.
+    // ?? only catches null/undefined — NaN passes through and corrupts the ILP objective.
+    // NaN leverage must fall through to ourProj (not clamp to 0), which preserves the
+    // player's projection value and avoids discarding legitimate plays.
+    const leverageIsUsable = mode === "gpp"
+      && p.ourLeverage != null
+      && Number.isFinite(p.ourLeverage);
+    const rawScore = (leverageIsUsable ? p.ourLeverage! : p.ourProj) ?? 0;
+    // Final guard: ourProj could also be NaN — clamp anything non-finite to 0.
     const score = Number.isFinite(rawScore) ? rawScore : 0;
     const pos = p.eligiblePositions;
     const entry: Record<string, number> = {
@@ -328,7 +337,8 @@ function solveOneLineup(
     if (pos.includes("C"))  entry.c_count  = 1;
     if (pos.includes("G"))  entry.g_count  = 1;  // PG or SG eligible → G flex
     if (pos.includes("F"))  entry.f_count  = 1;  // SF or PF eligible → F flex
-    if (pos.includes("F") || pos.includes("C")) entry.fc_cover = 1;  // PF/C overlap guard
+    if (pos.includes("F") || pos.includes("C"))  entry.fc_cover   = 1;  // PF/C overlap guard
+    if (pos.includes("PF") || pos.includes("C")) entry.pf_c_cover = 1;  // Hall condition: {PF,C} need 2 bodies
 
     // Game stack
     if (p.matchupId != null && stackableSet.has(p.matchupId)) {
@@ -512,9 +522,10 @@ export function probeOptimizerAll(
 
   const withScore    = eligible.filter((p) => scoreOf(p) > 0).length;
   const withNegScore = eligible.filter((p) => scoreOf(p) < 0).length;
-  // NaN/Infinity values are neither > 0 nor < 0 — count them separately so we know
-  // if non-finite scores could be corrupting the ILP objective.
-  const withNanScore = eligible.filter((p) => !Number.isFinite(scoreOf(p))).length;
+  // Separate NaN from zero: NaN is neither > 0 nor < 0, so without explicit tracking
+  // it silently inflates the "zero" bucket and obscures data quality problems.
+  const withNanScore  = eligible.filter((p) => !Number.isFinite(scoreOf(p))).length;
+  const withZeroScore = eligible.length - withScore - withNegScore - withNanScore;
 
   const p1 = probe(minStack, bringBackThreshold);
   const p2 = probe(minStack, 0);
@@ -549,7 +560,7 @@ export function probeOptimizerAll(
   return [
     `eligible=${eligible.length} slots: ${pgCount}PG/${sgCount}SG/${sfCount}SF/${pfCount}PF/${cCount}C`,
     `salary: min=$${salMin?.toLocaleString()} max=$${salMax?.toLocaleString()} cheapest8=$${min8.toLocaleString()} (floor=$${SALARY_FLOOR.toLocaleString()})`,
-    `scores: ${withScore}+ / ${withNegScore}- / ${eligible.length - withScore - withNegScore}zero${withNanScore > 0 ? ` (${withNanScore} NaN — ILP objective poisoned!)` : ""}`,
+    `scores: ${withScore}+ / ${withNegScore}- / ${withZeroScore}zero${withNanScore > 0 ? ` / ${withNanScore}NaN — ILP objective poisoned!` : ""}`,
     `top3: ${top3}`,
     `probe(stack=${minStack},bb=${bringBackThreshold}): ${p1 ? "PASS" : "FAIL"}`,
     `probe(stack=${minStack},bb=0): ${p2 ? "PASS" : "FAIL"}`,
