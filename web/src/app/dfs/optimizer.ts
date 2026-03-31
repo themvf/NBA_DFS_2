@@ -78,6 +78,9 @@ export type OptimizerSettings = {
    * 0 = disabled; 3 = standard GPP construction (3+1 or 4+1 stacks).
    */
   bringBackThreshold: number;
+  /** Per-player salary filters — exclude players outside this range from the eligible pool. */
+  minSalaryFilter?: number | null;
+  maxSalaryFilter?: number | null;
 };
 
 const SALARY_CAP = 50000;
@@ -90,6 +93,7 @@ export function optimizeLineups(
 ): GeneratedLineup[] {
   const { mode, nLineups, minStack, maxExposure, bringBackThreshold } = settings;
 
+  const { minSalaryFilter, maxSalaryFilter } = settings;
   const eligible = pool.filter((p) => {
     if (p.isOut) return false;
     // Use ourProj for eligibility in both modes: any player who can score is
@@ -97,7 +101,10 @@ export function optimizeLineups(
     // Excluding negative-leverage players from the ILP entirely can make the
     // salary-cap constraint infeasible when all positive-leverage players are
     // high-salary. The objective function naturally minimises their usage.
-    return p.ourProj != null && p.ourProj > 0 && p.salary > 0;
+    if (!(p.ourProj != null && p.ourProj > 0 && p.salary > 0)) return false;
+    if (minSalaryFilter != null && p.salary < minSalaryFilter) return false;
+    if (maxSalaryFilter != null && p.salary > maxSalaryFilter) return false;
+    return true;
   });
 
   if (eligible.length < ROSTER_SIZE) return [];
@@ -449,9 +456,13 @@ export function probeOptimizerAll(
 ): string[] {
   const { mode, nLineups, minStack, bringBackThreshold } = settings;
 
+  const { minSalaryFilter, maxSalaryFilter } = settings;
   const eligible = pool.filter((p) => {
     if (p.isOut) return false;
-    return p.ourProj != null && p.ourProj > 0 && p.salary > 0;
+    if (!(p.ourProj != null && p.ourProj > 0 && p.salary > 0)) return false;
+    if (minSalaryFilter != null && p.salary < minSalaryFilter) return false;
+    if (maxSalaryFilter != null && p.salary > maxSalaryFilter) return false;
+    return true;
   });
 
   if (eligible.length < ROSTER_SIZE) {

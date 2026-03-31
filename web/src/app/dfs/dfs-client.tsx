@@ -98,6 +98,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [minStack, setMinStack] = useState(2);
   const [maxExposure, setMaxExposure] = useState(0.6);
   const [bringBackThreshold, setBringBackThreshold] = useState(3);
+  const [minSalaryFilter, setMinSalaryFilter] = useState("");
+  const [maxSalaryFilter, setMaxSalaryFilter] = useState("");
   const [strategy, setStrategy] = useState("gpp");
 
   // ── Lineups ───────────────────────────────────────────────
@@ -276,7 +278,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
       setMlbLineups(res.lineups);
     } else {
-      const settings: OptimizerSettings = { mode, nLineups, minStack, maxExposure, bringBackThreshold };
+      const settings: OptimizerSettings = {
+        mode, nLineups, minStack, maxExposure, bringBackThreshold,
+        minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter) : null,
+        maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter) : null,
+      };
       const res = await runOptimizer(players[0].slateId, gameFilter, settings);
       setIsOptimizing(false);
       if (!res.ok || !res.lineups) { setOptimizeError(res.error ?? "Optimizer failed"); return; }
@@ -840,6 +846,26 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               </select>
             </div>
           )}
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Min Salary</label>
+            <input
+              type="number" min={3000} max={50000} step={100}
+              value={minSalaryFilter}
+              onChange={(e) => setMinSalaryFilter(e.target.value)}
+              placeholder="e.g. 4500"
+              className="w-28 rounded border px-2 py-1 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Max Salary</label>
+            <input
+              type="number" min={3000} max={50000} step={100}
+              value={maxSalaryFilter}
+              onChange={(e) => setMaxSalaryFilter(e.target.value)}
+              placeholder="e.g. 9000"
+              className="w-28 rounded border px-2 py-1 text-sm"
+            />
+          </div>
           <button
             onClick={handleOptimize}
             disabled={isOptimizing || filteredPlayers.length === 0}
