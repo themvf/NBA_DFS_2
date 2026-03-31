@@ -114,12 +114,18 @@ export function optimizeLineups(
   //   1st try: full constraints (stack + bring-back)
   //   2nd try: no bring-back  (bring-back requires an opponent player that may be expensive)
   //   3rd try: no stack either (matchupId missing or pool too thin per game)
+  //   4th try: no salary floor (eligible pool filtered to ourProj>0 may exclude cheap fillers,
+  //            causing all 8 cheapest eligible players to collectively exceed the $50k cap or
+  //            sit below the $49k floor — remove the floor rather than return 0 lineups)
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
   const probe = (ms: number, bb: number) =>
     !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb);
+  const probeNoFloor = (ms: number, bb: number) =>
+    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, 0);
 
-  let effectiveMinStack  = minStack;
-  let effectiveBringBack = bringBackThreshold;
+  let effectiveMinStack   = minStack;
+  let effectiveBringBack  = bringBackThreshold;
+  let effectiveSalaryFloor = SALARY_FLOOR;
   let relaxed = false;
 
   if (!probe(effectiveMinStack, effectiveBringBack)) {
@@ -135,7 +141,15 @@ export function optimizeLineups(
   // is feasible after full relaxation. Does NOT guarantee subsequent lineups
   // succeed — exposure caps and diversity can still exhaust the pool mid-run.
   if (relaxed && !probe(effectiveMinStack, effectiveBringBack)) {
-    return [];                        // genuinely infeasible — bail early
+    // Fourth probe: the $49k salary floor may be blocking when all projection-eligible
+    // players happen to be high-salary (cheap fillers filtered out by ourProj > 0).
+    // Disable the floor rather than returning zero lineups.
+    if (!probeNoFloor(0, 0)) {
+      return [];                      // genuinely infeasible — bail early
+    }
+    effectiveSalaryFloor = 0;
+    effectiveMinStack    = 0;
+    effectiveBringBack   = 0;
   }
 
   // Adaptive diversity: small or thin pools can't sustain 3-player diff between
@@ -150,13 +164,13 @@ export function optimizeLineups(
     const maxExp = Math.ceil(nLineups * maxExposure);
     let lineup = solveOneLineup(
       eligible, mode, effectiveMinStack, maxExp,
-      exposureCount, previousLineupSets, effectiveBringBack, effectiveMinChanges,
+      exposureCount, previousLineupSets, effectiveBringBack, effectiveMinChanges, effectiveSalaryFloor,
     );
     // If still infeasible, relax diversity to 1 (just prevent exact duplicates)
     if (!lineup && effectiveMinChanges > 1) {
       lineup = solveOneLineup(
         eligible, mode, effectiveMinStack, maxExp,
-        exposureCount, previousLineupSets, effectiveBringBack, 1,
+        exposureCount, previousLineupSets, effectiveBringBack, 1, effectiveSalaryFloor,
       );
     }
     // 3rd fallback: disable bring-back — exposure/diversity exhaustion often
@@ -164,18 +178,18 @@ export function optimizeLineups(
     if (!lineup && effectiveBringBack > 0) {
       lineup = solveOneLineup(
         eligible, mode, effectiveMinStack, maxExp,
-        exposureCount, previousLineupSets, 0, 1,
+        exposureCount, previousLineupSets, 0, 1, effectiveSalaryFloor,
       );
     }
     // 4th fallback: disable stack — when effectiveBringBack was already 0 from
     // the probe phase, the 3rd fallback above is skipped entirely. If minStack
-    // combined with the $49k salary floor and diversity still blocks lineup N,
+    // combined with the salary floor and diversity still blocks lineup N,
     // retry without any stacking requirement. A non-stacked lineup is better
     // than stopping short of nLineups.
     if (!lineup && effectiveMinStack > 0) {
       lineup = solveOneLineup(
         eligible, mode, 0, maxExp,
-        exposureCount, previousLineupSets, 0, 1,
+        exposureCount, previousLineupSets, 0, 1, effectiveSalaryFloor,
       );
     }
     if (!lineup) break;
@@ -200,6 +214,7 @@ function solveOneLineup(
   previousLineupSets: Set<number>[],
   bringBackThreshold = 3,
   minChanges = mode === "gpp" ? 3 : 2,
+  salaryFloor = SALARY_FLOOR,
 ): GeneratedLineup | null {
   // Group by matchupId for game stacking.
   // When minStack <= 0 stacking is effectively disabled — skip entirely to avoid
@@ -230,7 +245,7 @@ function solveOneLineup(
   const bringBackSet = new Set(bringBackGames);
 
   const constraints: SolverModel["constraints"] = {
-    salary:    { min: SALARY_FLOOR, max: SALARY_CAP },
+    salary:    { min: salaryFloor, max: SALARY_CAP },
     total:     { equal: ROSTER_SIZE },
     // NBA position slot requirements
     pg_count:  { min: 1 },   // PG slot
@@ -483,6 +498,8 @@ export function probeOptimizerAll(
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
   const probe = (ms: number, bb: number) =>
     !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb);
+  const probeNoFloor = (ms: number, bb: number) =>
+    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, 0);
 
   const withScore = eligible.filter((p) => {
     const s = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
@@ -496,6 +513,16 @@ export function probeOptimizerAll(
   const p1 = probe(minStack, bringBackThreshold);
   const p2 = probe(minStack, 0);
   const p3 = probe(0, 0);
+  // 4th probe: same as p3 but with salary floor removed — confirms whether the
+  // $49k floor is the blocking constraint (eligible pool filtered to ourProj > 0
+  // may exclude cheap fillers, leaving only high-salary players that can't sum to ≤$50k)
+  const p4 = !p3 ? probeNoFloor(0, 0) : null;
+
+  // Salary range: min and sum-of-8-cheapest to surface salary floor issues
+  const salaries = eligible.map((p) => p.salary).sort((a, b) => a - b);
+  const salMin = salaries[0];
+  const salMax = salaries[salaries.length - 1];
+  const min8 = salaries.slice(0, 8).reduce((s, v) => s + v, 0);
 
   // Sample the top 3 players by score so we can see what values the ILP received
   const sorted = [...eligible].sort((a, b) => {
@@ -510,10 +537,12 @@ export function probeOptimizerAll(
 
   return [
     `eligible=${eligible.length} pos=${eligible.filter(p=>p.eligiblePositions.includes("PG")||p.eligiblePositions.includes("SG")).length}G/${eligible.filter(p=>p.eligiblePositions.includes("SF")||p.eligiblePositions.includes("PF")).length}F/${eligible.filter(p=>p.eligiblePositions.includes("C")).length}C`,
+    `salary: min=$${salMin?.toLocaleString()} max=$${salMax?.toLocaleString()} cheapest8=$${min8.toLocaleString()} (floor=$${SALARY_FLOOR.toLocaleString()})`,
     `scores: ${withScore}+ / ${withNegScore}- / ${eligible.length - withScore - withNegScore}zero`,
     `top3: ${top3}`,
     `probe(stack=${minStack},bb=${bringBackThreshold}): ${p1 ? "PASS" : "FAIL"}`,
     `probe(stack=${minStack},bb=0): ${p2 ? "PASS" : "FAIL"}`,
     `probe(0,0): ${p3 ? "PASS" : "FAIL"}`,
+    ...(p4 !== null ? [`probe(0,0,no-floor): ${p4 ? "PASS — salary floor was blocking" : "FAIL — position/pool issue"}`] : []),
   ];
 }
