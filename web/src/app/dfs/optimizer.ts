@@ -19,6 +19,7 @@ import "server-only";
 import type { DkPlayerRow } from "@/db/queries";
 import { parseCsvLine, stringifyCsvLine } from "./csv";
 import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
+import type { NbaPreparedOptimizerRun } from "./optimizer-job-types";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const solver = require("javascript-lp-solver") as {
@@ -89,6 +90,11 @@ const SALARY_CAP = 50000;
 const SALARY_FLOOR = 49000;   // DK lineups must spend close to the cap
 const ROSTER_SIZE = 8;
 const LINEUP_SLOTS: LineupSlot[] = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"];
+
+type NextNbaLineupResult = {
+  lineup: GeneratedLineup | null;
+  summary: OptimizerDebugInfo["lineupSummaries"][number];
+};
 
 function finiteOrNull(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
@@ -315,6 +321,187 @@ export function optimizeLineupsWithDebug(
   if (lineups.length === nLineups) debug.terminationReason = "completed";
 
   return { lineups, debug };
+}
+
+export function prepareNbaOptimizerRun(
+  pool: OptimizerPlayer[],
+  settings: OptimizerSettings,
+): { prepared?: NbaPreparedOptimizerRun; debug: OptimizerDebugInfo } {
+  const totalStart = Date.now();
+  const { mode, nLineups, minStack, maxExposure, bringBackThreshold } = settings;
+  const { minSalaryFilter, maxSalaryFilter } = settings;
+
+  const eligible = pool.filter((p) => {
+    if (p.isOut) return false;
+    const ourProj = getPlayerProjection(p);
+    if (!(ourProj != null && ourProj > 0 && p.salary > 0)) return false;
+    if (minSalaryFilter != null && p.salary < minSalaryFilter) return false;
+    if (maxSalaryFilter != null && p.salary > maxSalaryFilter) return false;
+    return true;
+  });
+
+  const debug: OptimizerDebugInfo = {
+    sport: "nba",
+    mode,
+    eligibleCount: eligible.length,
+    requestedLineups: nLineups,
+    builtLineups: 0,
+    totalMs: 0,
+    probeMs: 0,
+    maxExposureCount: Math.ceil(nLineups * maxExposure),
+    relaxedConstraints: [],
+    probeSummary: [],
+    lineupSummaries: [],
+    terminationReason: "completed",
+    effectiveSettings: {
+      minStack,
+      bringBackThreshold,
+      maxExposure,
+      minChanges: mode === "gpp" ? 3 : 2,
+      salaryFloor: SALARY_FLOOR,
+    },
+  };
+
+  if (eligible.length < ROSTER_SIZE) {
+    debug.terminationReason = "insufficient_pool";
+    debug.totalMs = Date.now() - totalStart;
+    return { debug };
+  }
+
+  const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
+  const timedProbe = (label: string, ms: number, bb: number, salaryFloor = SALARY_FLOOR): boolean => {
+    const start = Date.now();
+    const success = !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, salaryFloor);
+    const durationMs = Date.now() - start;
+    debug.probeMs += durationMs;
+    debug.probeSummary.push({ label, success, durationMs });
+    return success;
+  };
+
+  let effectiveMinStack = minStack;
+  let effectiveBringBack = bringBackThreshold;
+  let effectiveSalaryFloor = SALARY_FLOOR;
+  let relaxed = false;
+
+  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
+    effectiveBringBack = 0;
+    relaxed = true;
+    debug.relaxedConstraints.push("bring-back disabled");
+  }
+  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
+    effectiveMinStack = 0;
+    effectiveBringBack = 0;
+    relaxed = true;
+    debug.relaxedConstraints.push("stacking disabled");
+  }
+  if (relaxed && !timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
+    if (!timedProbe("stack=0,bringBack=0,floor=0", 0, 0, 0)) {
+      debug.terminationReason = "probe_infeasible";
+      debug.totalMs = Date.now() - totalStart;
+      return { debug };
+    }
+    effectiveSalaryFloor = 0;
+    effectiveMinStack = 0;
+    effectiveBringBack = 0;
+    debug.relaxedConstraints.push("salary floor disabled");
+  }
+
+  const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
+  debug.effectiveSettings = {
+    minStack: effectiveMinStack,
+    bringBackThreshold: effectiveBringBack,
+    maxExposure,
+    minChanges: effectiveMinChanges,
+    salaryFloor: effectiveSalaryFloor,
+  };
+  debug.totalMs = Date.now() - totalStart;
+
+  return {
+    prepared: {
+      sport: "nba",
+      mode,
+      requestedLineups: nLineups,
+      maxExposureCount: debug.maxExposureCount,
+      eligibleCount: eligible.length,
+      pool: eligible,
+      effectiveSettings: {
+        minStack: effectiveMinStack,
+        bringBackThreshold: effectiveBringBack,
+        maxExposure,
+        minChanges: effectiveMinChanges,
+        salaryFloor: effectiveSalaryFloor,
+      },
+      relaxedConstraints: [...debug.relaxedConstraints],
+      probeSummary: [...debug.probeSummary],
+    },
+    debug,
+  };
+}
+
+export function buildNextNbaLineup(
+  prepared: NbaPreparedOptimizerRun,
+  priorLineupPlayerIds: number[][],
+): NextNbaLineupResult {
+  const exposureCount = new Map<number, number>(prepared.pool.map((p) => [p.id, 0]));
+  const previousLineupSets = priorLineupPlayerIds.map((ids) => new Set(ids));
+
+  for (const lineup of priorLineupPlayerIds) {
+    for (const playerId of lineup) {
+      exposureCount.set(playerId, (exposureCount.get(playerId) ?? 0) + 1);
+    }
+  }
+
+  const attempts: OptimizerLineupAttemptDebug[] = [];
+  const runAttempt = (
+    stage: string,
+    stack: number,
+    bringBack: number,
+    minChanges: number,
+    salaryFloor: number,
+  ): GeneratedLineup | null => {
+    const start = Date.now();
+    const result = solveOneLineup(
+      prepared.pool,
+      prepared.mode,
+      stack,
+      prepared.maxExposureCount,
+      exposureCount,
+      previousLineupSets,
+      bringBack,
+      minChanges,
+      salaryFloor,
+    );
+    attempts.push({
+      stage,
+      success: result != null,
+      durationMs: Date.now() - start,
+    });
+    return result;
+  };
+
+  const { minStack, bringBackThreshold, minChanges, salaryFloor } = prepared.effectiveSettings;
+  let lineup = runAttempt("base", minStack, bringBackThreshold, minChanges, salaryFloor);
+  if (!lineup && minChanges > 1) {
+    lineup = runAttempt("diversity=1", minStack, bringBackThreshold, 1, salaryFloor);
+  }
+  if (!lineup && bringBackThreshold > 0) {
+    lineup = runAttempt("bringBack=0", minStack, 0, 1, salaryFloor);
+  }
+  if (!lineup && minStack > 0) {
+    lineup = runAttempt("stack=0", 0, 0, 1, salaryFloor);
+  }
+
+  const durationMs = attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
+  return {
+    lineup,
+    summary: {
+      lineupNumber: priorLineupPlayerIds.length + 1,
+      status: lineup ? "built" : "failed",
+      durationMs,
+      winningStage: attempts.find((attempt) => attempt.success)?.stage,
+      attempts,
+    },
+  };
 }
 
 function solveOneLineup(

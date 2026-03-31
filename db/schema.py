@@ -319,6 +319,55 @@ TABLES = [
         UNIQUE(slate_id, strategy, lineup_num)
     )
     """,
+
+    # â”€â”€ Durable optimizer jobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    """
+    CREATE TABLE IF NOT EXISTS optimizer_jobs (
+        id SERIAL PRIMARY KEY,
+        sport TEXT NOT NULL,
+        slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+        client_token TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        requested_lineups INTEGER NOT NULL,
+        built_lineups INTEGER NOT NULL DEFAULT 0,
+        eligible_count INTEGER,
+        settings_json JSONB NOT NULL,
+        snapshot_json JSONB NOT NULL,
+        selected_matchups_json JSONB NOT NULL,
+        pool_snapshot_json JSONB NOT NULL,
+        effective_settings_json JSONB,
+        probe_summary_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        relaxed_constraints_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        workflow_run_id TEXT,
+        probe_ms INTEGER,
+        total_ms INTEGER,
+        termination_reason TEXT,
+        warning TEXT,
+        error TEXT,
+        started_at TIMESTAMPTZ,
+        finished_at TIMESTAMPTZ,
+        heartbeat_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS optimizer_job_lineups (
+        id SERIAL PRIMARY KEY,
+        job_id INTEGER NOT NULL REFERENCES optimizer_jobs(id) ON DELETE CASCADE,
+        lineup_num INTEGER NOT NULL,
+        slot_player_ids_json JSONB NOT NULL,
+        player_ids_json JSONB NOT NULL,
+        total_salary INTEGER NOT NULL,
+        proj_fpts DOUBLE PRECISION NOT NULL,
+        leverage DOUBLE PRECISION NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        winning_stage TEXT,
+        attempts_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(job_id, lineup_num)
+    )
+    """,
 ]
 
 MIGRATIONS = [
@@ -525,4 +574,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_season ON mlb_team_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_dk_players_mlb_team ON dk_players(mlb_team_id, slate_id)",
     "CREATE INDEX IF NOT EXISTS idx_dk_slates_sport_date ON dk_slates(sport, slate_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_lookup ON optimizer_jobs(client_token, sport, slate_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_created ON optimizer_jobs(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_optimizer_job_lineups_job ON optimizer_job_lineups(job_id, lineup_num)",
 ]

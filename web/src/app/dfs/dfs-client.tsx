@@ -5,7 +5,8 @@ import type { DkPlayerRow, DfsAccuracyMetrics, DfsAccuracyRow, LineupStrategyRow
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
-import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, runOptimizer, runMlbOptimizer, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections } from "./actions";
+import type { CreateOptimizerJobResponse, OptimizerJobStatusResponse, PersistedOptimizerJobLineup } from "./optimizer-job-types";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -39,6 +40,22 @@ function fmtDuration(ms: number): string {
   return minutes > 0 ? `${minutes}:${String(seconds).padStart(2, "0")}` : `${seconds}s`;
 }
 
+const OPTIMIZER_CLIENT_TOKEN_KEY = "dfsOptimizerClientToken";
+const NBA_SLOT_NAMES = ["PG","SG","SF","PF","C","G","F","UTIL"] as const;
+const MLB_SLOT_NAMES = ["P1","P2","C","1B","2B","3B","SS","OF1","OF2","OF3"] as const;
+
+function getOrCreateOptimizerClientToken(): string {
+  const existing = window.localStorage.getItem(OPTIMIZER_CLIENT_TOKEN_KEY);
+  if (existing) return existing;
+  const next = window.crypto?.randomUUID?.() ?? `client-${Date.now()}`;
+  window.localStorage.setItem(OPTIMIZER_CLIENT_TOKEN_KEY, next);
+  return next;
+}
+
+function optimizerJobStorageKey(sport: Sport, slateId: number): string {
+  return `dfsOptimizerJob:${sport}:${slateId}`;
+}
+
 // Position badge color — sport-aware
 function posBadgeColor(pos: string, sport: Sport): string {
   if (sport === "mlb") {
@@ -70,6 +87,64 @@ function displayPos(eligiblePositions: string, sport: Sport): string {
   }
   const primary = parts.find((p) => ["PG","SG","SF","PF","C"].includes(p));
   return primary ?? parts[0] ?? "UTIL";
+}
+
+function buildNbaLineupsFromPersisted(
+  persisted: PersistedOptimizerJobLineup[],
+  playersById: Map<number, DkPlayerRow>,
+): GeneratedLineup[] {
+  return persisted.flatMap((lineup) => {
+    const slots = {} as GeneratedLineup["slots"];
+    for (const slot of NBA_SLOT_NAMES) {
+      const playerId = lineup.slotPlayerIds[slot];
+      const player = playerId != null ? playersById.get(playerId) : undefined;
+      if (!player) return [];
+      slots[slot] = player as unknown as GeneratedLineup["slots"][typeof slot];
+    }
+
+    const players = lineup.playerIds
+      .map((id) => playersById.get(id))
+      .filter((player): player is DkPlayerRow => !!player)
+      .map((player) => player as unknown as GeneratedLineup["players"][number]);
+    if (players.length !== lineup.playerIds.length) return [];
+
+    return [{
+      players,
+      slots,
+      totalSalary: lineup.totalSalary,
+      projFpts: lineup.projFpts,
+      leverageScore: lineup.leverageScore,
+    }];
+  });
+}
+
+function buildMlbLineupsFromPersisted(
+  persisted: PersistedOptimizerJobLineup[],
+  playersById: Map<number, DkPlayerRow>,
+): MlbGeneratedLineup[] {
+  return persisted.flatMap((lineup) => {
+    const slots = {} as MlbGeneratedLineup["slots"];
+    for (const slot of MLB_SLOT_NAMES) {
+      const playerId = lineup.slotPlayerIds[slot];
+      const player = playerId != null ? playersById.get(playerId) : undefined;
+      if (!player) return [];
+      slots[slot] = player as unknown as MlbGeneratedLineup["slots"][typeof slot];
+    }
+
+    const players = lineup.playerIds
+      .map((id) => playersById.get(id))
+      .filter((player): player is DkPlayerRow => !!player)
+      .map((player) => player as unknown as MlbGeneratedLineup["players"][number]);
+    if (players.length !== lineup.playerIds.length) return [];
+
+    return [{
+      players,
+      slots,
+      totalSalary: lineup.totalSalary,
+      projFpts: lineup.projFpts,
+      leverageScore: lineup.leverageScore,
+    }];
+  });
 }
 
 export default function DfsClient({ players, slateDate, accuracy, comparison, strategySummary, sport }: Props) {
@@ -114,6 +189,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Lineups ───────────────────────────────────────────────
   const [lineups,    setLineups]    = useState<GeneratedLineup[]    | null>(null);
   const [mlbLineups, setMlbLineups] = useState<MlbGeneratedLineup[] | null>(null);
+  const [optimizerJobId, setOptimizerJobId] = useState<number | null>(null);
+  const [optimizerClientToken, setOptimizerClientToken] = useState<string | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [optimizeWarning, setOptimizeWarning] = useState<string | null>(null);
@@ -188,18 +265,146 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [cookieStatus, setCookieStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [isCheckingCookie, setIsCheckingCookie] = useState(false);
 
+  const playersById = useMemo(
+    () => new Map(players.map((player) => [player.id, player])),
+    [players],
+  );
+  const currentSlateId = players[0]?.slateId ?? null;
+
   const optimizeStatusText = !isOptimizing
     ? null
-    : optimizeElapsedMs >= 60_000
-      ? "Still solving. This is longer than expected and usually means the slate is highly constrained."
-      : optimizeElapsedMs >= 20_000
-        ? "Long solve in progress. Exposure, stacking, and diversity constraints can make the solver much slower."
-        : "Solver request is running on the server.";
+    : lastRequestedLineupCount != null && ((sport === "nba" ? lineups : mlbLineups)?.length ?? 0) > 0
+      ? `Built ${((sport === "nba" ? lineups : mlbLineups)?.length ?? 0)} of ${lastRequestedLineupCount} lineups so far.`
+      : optimizeElapsedMs >= 60_000
+        ? "Still solving. This is longer than expected and usually means the slate is highly constrained."
+        : optimizeElapsedMs >= 20_000
+          ? "Long solve in progress. Exposure, stacking, and diversity constraints can make the solver much slower."
+          : "Optimizer job is queued or running on the server."
 
   const slowestLineup = optimizeDebug?.lineupSummaries.reduce<OptimizerDebugInfo["lineupSummaries"][number] | null>(
     (best, current) => !best || current.durationMs > best.durationMs ? current : best,
     null,
   ) ?? null;
+
+  function applyOptimizerJobResult(result: OptimizerJobStatusResponse) {
+    setOptimizerJobId(result.job.id);
+    window.localStorage.setItem(
+      optimizerJobStorageKey(result.job.sport, result.job.slateId),
+      String(result.job.id),
+    );
+    setLastRequestedLineupCount(result.job.requestedLineups);
+    setOptimizeDebug(result.debug ?? null);
+    setOptimizeWarning(result.job.warning ?? null);
+    setOptimizeError(result.job.error ?? null);
+
+    const startedAt = result.job.startedAt ?? result.job.createdAt;
+    setOptimizeStartedAt(startedAt ? Date.parse(startedAt) : null);
+
+    if (sport === "mlb") {
+      setMlbLineups(buildMlbLineupsFromPersisted(result.lineups, playersById));
+      setLineups(null);
+    } else {
+      setLineups(buildNbaLineupsFromPersisted(result.lineups, playersById));
+      setMlbLineups(null);
+    }
+
+    setIsOptimizing(result.job.status === "queued" || result.job.status === "running");
+  }
+
+  useEffect(() => {
+    setOptimizerClientToken(getOrCreateOptimizerClientToken());
+  }, []);
+
+  useEffect(() => {
+    if (!optimizerClientToken || !currentSlateId) return;
+    const clientToken = optimizerClientToken;
+    const slateId = currentSlateId;
+
+    let cancelled = false;
+    async function hydrateActiveJob() {
+      const params = new URLSearchParams({
+        clientToken,
+        sport,
+        slateId: String(slateId),
+      });
+
+      const resp = await fetch(`/api/optimizer/jobs?${params.toString()}`, { cache: "no-store" });
+      const data = await resp.json() as { ok: boolean; job?: OptimizerJobStatusResponse["job"] | null; error?: string } & Partial<OptimizerJobStatusResponse>;
+      if (cancelled || !data.ok) return;
+      if (data.job) {
+        applyOptimizerJobResult(data as OptimizerJobStatusResponse);
+        return;
+      }
+
+      const lastJobId = window.localStorage.getItem(optimizerJobStorageKey(sport, slateId));
+      if (!lastJobId) return;
+
+      const lastResp = await fetch(`/api/optimizer/jobs/${lastJobId}`, { cache: "no-store" });
+      const lastData = await lastResp.json() as OptimizerJobStatusResponse | { ok: false; error: string };
+      if (
+        cancelled
+        || !lastResp.ok
+        || !lastData.ok
+        || lastData.job.sport !== sport
+        || lastData.job.slateId !== slateId
+        || lastData.job.clientToken !== clientToken
+      ) {
+        return;
+      }
+      applyOptimizerJobResult(lastData);
+    }
+
+    hydrateActiveJob().catch((error) => {
+      if (!cancelled) {
+        setOptimizeError(error instanceof Error ? error.message : String(error));
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [currentSlateId, optimizerClientToken, playersById, sport]);
+
+  useEffect(() => {
+    if (!optimizerJobId) return;
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      const resp = await fetch(`/api/optimizer/jobs/${optimizerJobId}`, { cache: "no-store" });
+      const data = await resp.json() as OptimizerJobStatusResponse | { ok: false; error: string };
+      if (cancelled) return;
+
+      if (!resp.ok || !data.ok) {
+        setOptimizeError(("error" in data && data.error) ? data.error : "Optimizer polling failed.");
+        setIsOptimizing(false);
+        return;
+      }
+
+      applyOptimizerJobResult(data);
+      if (data.job.status === "queued" || data.job.status === "running") {
+        timeoutId = setTimeout(() => {
+          poll().catch((error) => {
+            if (!cancelled) {
+              setOptimizeError(error instanceof Error ? error.message : String(error));
+              setIsOptimizing(false);
+            }
+          });
+        }, 2500);
+      }
+    };
+
+    poll().catch((error) => {
+      if (!cancelled) {
+        setOptimizeError(error instanceof Error ? error.message : String(error));
+        setIsOptimizing(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [optimizerJobId, playersById, sport]);
 
   // ── Filtered + sorted player pool ─────────────────────────
   const filteredPlayers = useMemo(() => {
@@ -292,6 +497,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
   async function handleOptimize() {
     if (!players[0]?.slateId) { setOptimizeError("No slate loaded"); return; }
+    if (!optimizerClientToken) { setOptimizeError("Optimizer client token unavailable."); return; }
     setIsOptimizing(true);
     setOptimizeStartedAt(Date.now());
     setOptimizeElapsedMs(0);
@@ -301,6 +507,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setExportError(null);
     setLineups(null);
     setMlbLineups(null);
+    setOptimizerJobId(null);
     setLastRequestedLineupCount(nLineups);
 
     // Build game → matchupId map for filtering
@@ -313,41 +520,39 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       .filter((id): id is number => id != null);
 
     try {
-      if (sport === "mlb") {
-        const settings: MlbOptimizerSettings = {
-          mode, nLineups, minStack, maxExposure,
-          bringBackThreshold, antiCorrMax,
-        };
-        const res = await runMlbOptimizer(players[0].slateId, gameFilter, settings);
-        if (!res.ok || !res.lineups) {
-          setOptimizeDebug(res.debug ?? null);
-          setOptimizeError(res.error ?? "Optimizer failed");
-          return;
-        }
-        setOptimizeWarning(res.warning ?? null);
-        setOptimizeDebug(res.debug ?? null);
-        setMlbLineups(res.lineups);
-      } else {
-        const settings: OptimizerSettings = {
-          mode, nLineups, minStack, maxExposure, bringBackThreshold,
-          minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter) : null,
-          maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter) : null,
-        };
-        const res = await runOptimizer(players[0].slateId, gameFilter, settings);
-        if (!res.ok || !res.lineups) {
-          setOptimizeDebug(res.debug ?? null);
-          setOptimizeError(res.error ?? "Optimizer failed");
-          return;
-        }
-        setOptimizeWarning(res.warning ?? null);
-        setOptimizeDebug(res.debug ?? null);
-        setLineups(res.lineups);
+      const settings = sport === "mlb"
+        ? {
+            mode, nLineups, minStack, maxExposure,
+            bringBackThreshold, antiCorrMax,
+          } satisfies MlbOptimizerSettings
+        : {
+            mode, nLineups, minStack, maxExposure, bringBackThreshold,
+            minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter, 10) : null,
+            maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter, 10) : null,
+          } satisfies OptimizerSettings;
+
+      const resp = await fetch("/api/optimizer/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sport,
+          slateId: players[0].slateId,
+          clientToken: optimizerClientToken,
+          selectedMatchupIds: gameFilter,
+          settings,
+        }),
+      });
+      const data = await resp.json() as CreateOptimizerJobResponse;
+      if (!resp.ok || !data.ok || !data.jobId) {
+        setOptimizeError(data.error ?? "Optimizer job creation failed.");
+        setIsOptimizing(false);
+        return;
       }
+
+      setOptimizerJobId(data.jobId);
     } catch (e) {
       setOptimizeError(e instanceof Error ? e.message : String(e));
-    } finally {
       setIsOptimizing(false);
-      setOptimizeStartedAt(null);
     }
   }
 

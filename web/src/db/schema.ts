@@ -9,6 +9,7 @@ import {
   boolean,
   date,
   timestamp,
+  jsonb,
   unique,
   index,
 } from "drizzle-orm/pg-core";
@@ -326,6 +327,67 @@ export const dkLineups = pgTable(
   (t) => [unique("dk_lineups_slate_strategy_num_key").on(t.slateId, t.strategy, t.lineupNum)]
 );
 
+export const optimizerJobs = pgTable(
+  "optimizer_jobs",
+  {
+    id: serial("id").primaryKey(),
+    sport: text("sport").notNull(),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    clientToken: text("client_token").notNull(),
+    status: text("status").notNull().default("queued"),
+    requestedLineups: integer("requested_lineups").notNull(),
+    builtLineups: integer("built_lineups").notNull().default(0),
+    eligibleCount: integer("eligible_count"),
+    settingsJson: jsonb("settings_json").notNull(),
+    snapshotJson: jsonb("snapshot_json").notNull(),
+    selectedMatchupsJson: jsonb("selected_matchups_json").notNull(),
+    poolSnapshotJson: jsonb("pool_snapshot_json").notNull(),
+    effectiveSettingsJson: jsonb("effective_settings_json"),
+    probeSummaryJson: jsonb("probe_summary_json").notNull().default([]),
+    relaxedConstraintsJson: jsonb("relaxed_constraints_json").notNull().default([]),
+    workflowRunId: text("workflow_run_id"),
+    probeMs: integer("probe_ms"),
+    totalMs: integer("total_ms"),
+    terminationReason: text("termination_reason"),
+    warning: text("warning"),
+    error: text("error"),
+    startedAt: timestamp("started_at"),
+    finishedAt: timestamp("finished_at"),
+    heartbeatAt: timestamp("heartbeat_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_optimizer_jobs_lookup").on(t.clientToken, t.sport, t.slateId, t.status),
+    index("idx_optimizer_jobs_created").on(t.createdAt),
+  ]
+);
+
+export const optimizerJobLineups = pgTable(
+  "optimizer_job_lineups",
+  {
+    id: serial("id").primaryKey(),
+    jobId: integer("job_id")
+      .notNull()
+      .references(() => optimizerJobs.id),
+    lineupNum: integer("lineup_num").notNull(),
+    slotPlayerIdsJson: jsonb("slot_player_ids_json").notNull(),
+    playerIdsJson: jsonb("player_ids_json").notNull(),
+    totalSalary: integer("total_salary").notNull(),
+    projFpts: doublePrecision("proj_fpts").notNull(),
+    leverage: doublePrecision("leverage").notNull(),
+    durationMs: integer("duration_ms").notNull(),
+    winningStage: text("winning_stage"),
+    attemptsJson: jsonb("attempts_json").notNull().default([]),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    unique("optimizer_job_lineups_job_num_key").on(t.jobId, t.lineupNum),
+    index("idx_optimizer_job_lineups_job").on(t.jobId, t.lineupNum),
+  ]
+);
+
 // ── Type inference ────────────────────────────────────────────
 
 export type Team = typeof teams.$inferSelect;
@@ -341,3 +403,5 @@ export type MlbTeamStats = typeof mlbTeamStats.$inferSelect;
 export type DkSlate = typeof dkSlates.$inferSelect;
 export type DkPlayer = typeof dkPlayers.$inferSelect;
 export type DkLineup = typeof dkLineups.$inferSelect;
+export type OptimizerJob = typeof optimizerJobs.$inferSelect;
+export type OptimizerJobLineup = typeof optimizerJobLineups.$inferSelect;

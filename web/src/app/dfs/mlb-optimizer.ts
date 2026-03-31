@@ -21,6 +21,7 @@ import "server-only";
 import type { DkPlayerRow } from "@/db/queries";
 import { parseCsvLine, stringifyCsvLine } from "./csv";
 import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
+import type { MlbPreparedOptimizerRun } from "./optimizer-job-types";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const solver = require("javascript-lp-solver") as {
@@ -80,6 +81,11 @@ export type MlbOptimizerSettings = {
 
 const MLB_SALARY_CAP = 50000;
 const MLB_ROSTER_SIZE = 10;
+
+type NextMlbLineupResult = {
+  lineup: MlbGeneratedLineup | null;
+  summary: OptimizerDebugInfo["lineupSummaries"][number];
+};
 
 /** True if the position string marks a pitcher slot. */
 function isPitcher(pos: string): boolean {
@@ -233,6 +239,171 @@ export function optimizeMlbLineupsWithDebug(
   if (lineups.length === nLineups) debug.terminationReason = "completed";
 
   return { lineups, debug };
+}
+
+export function prepareMlbOptimizerRun(
+  pool: MlbOptimizerPlayer[],
+  settings: MlbOptimizerSettings,
+): { prepared?: MlbPreparedOptimizerRun; debug: OptimizerDebugInfo } {
+  const totalStart = Date.now();
+  const { mode, nLineups, minStack, maxExposure, bringBackThreshold, antiCorrMax } = settings;
+
+  const eligible = pool.filter(
+    (p) => !p.isOut && p.ourProj != null && p.ourProj > 0 && p.salary > 0,
+  );
+  const debug: OptimizerDebugInfo = {
+    sport: "mlb",
+    mode,
+    eligibleCount: eligible.length,
+    requestedLineups: nLineups,
+    builtLineups: 0,
+    totalMs: 0,
+    probeMs: 0,
+    maxExposureCount: Math.ceil(nLineups * maxExposure),
+    relaxedConstraints: [],
+    probeSummary: [],
+    lineupSummaries: [],
+    terminationReason: "completed",
+    effectiveSettings: {
+      minStack,
+      bringBackThreshold,
+      maxExposure,
+      minChanges: mode === "gpp" ? 3 : 2,
+      antiCorrMax,
+    },
+  };
+  if (eligible.length < MLB_ROSTER_SIZE) {
+    debug.terminationReason = "insufficient_pool";
+    debug.totalMs = Date.now() - totalStart;
+    return { debug };
+  }
+
+  const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
+  const timedProbe = (label: string, ms: number, bb: number, ac: number) => {
+    const start = Date.now();
+    const success = !!solveMlbLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, ac);
+    const durationMs = Date.now() - start;
+    debug.probeMs += durationMs;
+    debug.probeSummary.push({ label, success, durationMs });
+    return success;
+  };
+
+  let effectiveMinStack = minStack;
+  let effectiveBringBack = bringBackThreshold;
+  let effectiveAntiCorr = antiCorrMax;
+  let relaxed = false;
+
+  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},antiCorr=${effectiveAntiCorr}`, effectiveMinStack, effectiveBringBack, effectiveAntiCorr)) {
+    effectiveBringBack = 0;
+    relaxed = true;
+    debug.relaxedConstraints.push("bring-back disabled");
+  }
+  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},antiCorr=${effectiveAntiCorr}`, effectiveMinStack, effectiveBringBack, effectiveAntiCorr)) {
+    effectiveAntiCorr = MLB_ROSTER_SIZE;
+    relaxed = true;
+    debug.relaxedConstraints.push("anti-correlation disabled");
+  }
+  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},antiCorr=${effectiveAntiCorr}`, effectiveMinStack, effectiveBringBack, effectiveAntiCorr)) {
+    effectiveMinStack = 0;
+    relaxed = true;
+    debug.relaxedConstraints.push("stacking disabled");
+  }
+  if (relaxed && !timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},antiCorr=${effectiveAntiCorr}`, effectiveMinStack, effectiveBringBack, effectiveAntiCorr)) {
+    debug.terminationReason = "probe_infeasible";
+    debug.totalMs = Date.now() - totalStart;
+    return { debug };
+  }
+
+  const effectiveMinChanges = mode === "gpp" && eligible.length >= 60 && !relaxed ? 3 : 2;
+  debug.effectiveSettings = {
+    minStack: effectiveMinStack,
+    bringBackThreshold: effectiveBringBack,
+    maxExposure,
+    minChanges: effectiveMinChanges,
+    antiCorrMax: effectiveAntiCorr,
+  };
+  debug.totalMs = Date.now() - totalStart;
+
+  return {
+    prepared: {
+      sport: "mlb",
+      mode,
+      requestedLineups: nLineups,
+      maxExposureCount: debug.maxExposureCount,
+      eligibleCount: eligible.length,
+      pool: eligible,
+      effectiveSettings: {
+        minStack: effectiveMinStack,
+        bringBackThreshold: effectiveBringBack,
+        maxExposure,
+        minChanges: effectiveMinChanges,
+        antiCorrMax: effectiveAntiCorr,
+      },
+      relaxedConstraints: [...debug.relaxedConstraints],
+      probeSummary: [...debug.probeSummary],
+    },
+    debug,
+  };
+}
+
+export function buildNextMlbLineup(
+  prepared: MlbPreparedOptimizerRun,
+  priorLineupPlayerIds: number[][],
+): NextMlbLineupResult {
+  const exposureCount = new Map<number, number>(prepared.pool.map((p) => [p.id, 0]));
+  const previousLineupSets = priorLineupPlayerIds.map((ids) => new Set(ids));
+
+  for (const lineup of priorLineupPlayerIds) {
+    for (const playerId of lineup) {
+      exposureCount.set(playerId, (exposureCount.get(playerId) ?? 0) + 1);
+    }
+  }
+
+  const attempts: OptimizerLineupAttemptDebug[] = [];
+  const runAttempt = (
+    stage: string,
+    stack: number,
+    bringBack: number,
+    antiCorr: number,
+    minChanges: number,
+  ): MlbGeneratedLineup | null => {
+    const start = Date.now();
+    const result = solveMlbLineup(
+      prepared.pool,
+      prepared.mode,
+      stack,
+      prepared.maxExposureCount,
+      exposureCount,
+      previousLineupSets,
+      bringBack,
+      antiCorr,
+      minChanges,
+    );
+    attempts.push({
+      stage,
+      success: result != null,
+      durationMs: Date.now() - start,
+    });
+    return result;
+  };
+
+  const { minStack, bringBackThreshold, antiCorrMax, minChanges } = prepared.effectiveSettings;
+  let lineup = runAttempt("base", minStack, bringBackThreshold, antiCorrMax, minChanges);
+  if (!lineup && minChanges > 1) {
+    lineup = runAttempt("diversity=1", minStack, bringBackThreshold, antiCorrMax, 1);
+  }
+
+  const durationMs = attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
+  return {
+    lineup,
+    summary: {
+      lineupNumber: priorLineupPlayerIds.length + 1,
+      status: lineup ? "built" : "failed",
+      durationMs,
+      winningStage: attempts.find((attempt) => attempt.success)?.stage,
+      attempts,
+    },
+  };
 }
 
 function solveMlbLineup(
