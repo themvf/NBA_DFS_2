@@ -306,7 +306,13 @@ function solveOneLineup(
     // GPP: prefer leverage; fall back to ourProj when leverage is null (e.g. LineStar
     // paste applied before re-running Fetch Projections). Using 0 for all players produces
     // a degenerate all-zero ILP that javascript-lp-solver cannot solve reliably.
-    const score = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
+    const rawScore = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
+    // Guard NaN and ±Infinity: PostgreSQL REAL columns can store float NaN as a value
+    // distinct from NULL. The ?? operator only catches null/undefined — NaN passes through
+    // unchanged. A single NaN coefficient in the objective makes javascript-lp-solver's
+    // branch-and-bound return feasible:false because NaN comparisons always evaluate false,
+    // causing the solver to incorrectly prune all valid branches.
+    const score = Number.isFinite(rawScore) ? rawScore : 0;
     const pos = p.eligiblePositions;
     const entry: Record<string, number> = {
       score,
@@ -501,14 +507,14 @@ export function probeOptimizerAll(
   const probeNoFloor = (ms: number, bb: number) =>
     !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, 0);
 
-  const withScore = eligible.filter((p) => {
-    const s = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
-    return s > 0;
-  }).length;
-  const withNegScore = eligible.filter((p) => {
-    const s = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
-    return s < 0;
-  }).length;
+  const scoreOf = (p: OptimizerPlayer) =>
+    (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
+
+  const withScore    = eligible.filter((p) => scoreOf(p) > 0).length;
+  const withNegScore = eligible.filter((p) => scoreOf(p) < 0).length;
+  // NaN/Infinity values are neither > 0 nor < 0 — count them separately so we know
+  // if non-finite scores could be corrupting the ILP objective.
+  const withNanScore = eligible.filter((p) => !Number.isFinite(scoreOf(p))).length;
 
   const p1 = probe(minStack, bringBackThreshold);
   const p2 = probe(minStack, 0);
@@ -524,25 +530,30 @@ export function probeOptimizerAll(
   const salMax = salaries[salaries.length - 1];
   const min8 = salaries.slice(0, 8).reduce((s, v) => s + v, 0);
 
+  // Per-slot position counts — the aggregate G/F/C counts don't reveal if a specific
+  // required slot (PG, SG, SF, PF, or C) has 0 eligible players, which would make
+  // the corresponding min:1 constraint infeasible regardless of total pool size.
+  const pgCount = eligible.filter((p) => p.eligiblePositions.includes("PG")).length;
+  const sgCount = eligible.filter((p) => p.eligiblePositions.includes("SG")).length;
+  const sfCount = eligible.filter((p) => p.eligiblePositions.includes("SF")).length;
+  const pfCount = eligible.filter((p) => p.eligiblePositions.includes("PF")).length;
+  const cCount  = eligible.filter((p) => p.eligiblePositions.includes("C")).length;
+
   // Sample the top 3 players by score so we can see what values the ILP received
-  const sorted = [...eligible].sort((a, b) => {
-    const sa = (mode === "gpp" ? (a.ourLeverage ?? a.ourProj) : a.ourProj) ?? 0;
-    const sb = (mode === "gpp" ? (b.ourLeverage ?? b.ourProj) : b.ourProj) ?? 0;
-    return sb - sa;
-  });
+  const sorted = [...eligible].sort((a, b) => scoreOf(b) - scoreOf(a));
   const top3 = sorted.slice(0, 3).map((p) => {
-    const s = (mode === "gpp" ? (p.ourLeverage ?? p.ourProj) : p.ourProj) ?? 0;
-    return `${p.name}(${s.toFixed(1)})`;
+    const s = scoreOf(p);
+    return `${p.name}(${Number.isFinite(s) ? s.toFixed(1) : "NaN"})`;
   }).join(", ");
 
   return [
-    `eligible=${eligible.length} pos=${eligible.filter(p=>p.eligiblePositions.includes("PG")||p.eligiblePositions.includes("SG")).length}G/${eligible.filter(p=>p.eligiblePositions.includes("SF")||p.eligiblePositions.includes("PF")).length}F/${eligible.filter(p=>p.eligiblePositions.includes("C")).length}C`,
+    `eligible=${eligible.length} slots: ${pgCount}PG/${sgCount}SG/${sfCount}SF/${pfCount}PF/${cCount}C`,
     `salary: min=$${salMin?.toLocaleString()} max=$${salMax?.toLocaleString()} cheapest8=$${min8.toLocaleString()} (floor=$${SALARY_FLOOR.toLocaleString()})`,
-    `scores: ${withScore}+ / ${withNegScore}- / ${eligible.length - withScore - withNegScore}zero`,
+    `scores: ${withScore}+ / ${withNegScore}- / ${eligible.length - withScore - withNegScore}zero${withNanScore > 0 ? ` (${withNanScore} NaN — ILP objective poisoned!)` : ""}`,
     `top3: ${top3}`,
     `probe(stack=${minStack},bb=${bringBackThreshold}): ${p1 ? "PASS" : "FAIL"}`,
     `probe(stack=${minStack},bb=0): ${p2 ? "PASS" : "FAIL"}`,
     `probe(0,0): ${p3 ? "PASS" : "FAIL"}`,
-    ...(p4 !== null ? [`probe(0,0,no-floor): ${p4 ? "PASS — salary floor was blocking" : "FAIL — position/pool issue"}`] : []),
+    ...(p4 !== null ? [`probe(0,0,no-floor): ${p4 ? "PASS — salary floor was blocking" : `FAIL — check slot counts above for 0-player positions`}`] : []),
   ];
 }
