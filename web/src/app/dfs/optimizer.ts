@@ -81,6 +81,7 @@ export type OptimizerSettings = {
 };
 
 const SALARY_CAP = 50000;
+const SALARY_FLOOR = 49000;   // DK lineups must spend close to the cap
 const ROSTER_SIZE = 8;
 
 export function optimizeLineups(
@@ -211,7 +212,7 @@ function solveOneLineup(
   const bringBackSet = new Set(bringBackGames);
 
   const constraints: SolverModel["constraints"] = {
-    salary:    { max: SALARY_CAP },
+    salary:    { min: SALARY_FLOOR, max: SALARY_CAP },
     total:     { equal: ROSTER_SIZE },
     // NBA position slot requirements
     pg_count:  { min: 1 },   // PG slot
