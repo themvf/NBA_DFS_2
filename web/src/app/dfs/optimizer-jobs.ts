@@ -21,6 +21,7 @@ import {
   type MlbOptimizerSettings,
 } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
+import { normalizeNbaRuleSelections, validateNbaRuleSelections } from "./nba-optimizer-rules";
 import type {
   CreateOptimizerJobRequest,
   MlbPreparedOptimizerRun,
@@ -486,6 +487,12 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
   if (poolSnapshot.length === 0) {
     throw new Error("No players available for the selected slate and games.");
   }
+  if (input.sport === "nba") {
+    const validation = validateNbaRuleSelections(poolSnapshot as OptimizerPlayer[], input.settings as OptimizerSettings);
+    if (!validation.ok) {
+      throw new Error(validation.error);
+    }
+  }
 
   const snapshot: OptimizerJobSnapshot = {
     sport: input.sport,
@@ -544,6 +551,8 @@ export async function prepareOptimizerJob(jobId: number): Promise<PrepareResult>
     : prepareNbaOptimizerRun(pool as OptimizerPlayer[], settings as OptimizerSettings);
 
   if (!preparedResult.prepared) {
+    const errorMessage = ("error" in preparedResult ? preparedResult.error : undefined)
+      ?? "Optimizer preflight failed before a lineup could be built.";
     await db
       .update(optimizerJobs)
       .set({
@@ -555,7 +564,7 @@ export async function prepareOptimizerJob(jobId: number): Promise<PrepareResult>
         relaxedConstraintsJson: preparedResult.debug.relaxedConstraints,
         effectiveSettingsJson: preparedResult.debug.effectiveSettings,
         terminationReason: preparedResult.debug.terminationReason,
-        error: "Optimizer preflight failed before a lineup could be built.",
+        error: errorMessage,
         startedAt: job.startedAt ?? now,
         heartbeatAt: now,
         finishedAt: now,
@@ -566,7 +575,7 @@ export async function prepareOptimizerJob(jobId: number): Promise<PrepareResult>
     return {
       ok: false,
       debug: preparedResult.debug,
-      error: "Optimizer preflight failed before a lineup could be built.",
+      error: errorMessage,
     };
   }
 
@@ -654,6 +663,7 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
     maxExposureCount: Math.ceil(job.requestedLineups * (settings as OptimizerSettings).maxExposure),
     eligibleCount: job.eligibleCount ?? pool.length,
     pool: pool as OptimizerPlayer[],
+    ruleSelections: normalizeNbaRuleSelections(settings as OptimizerSettings),
     effectiveSettings: {
       minStack: effectiveSettings.minStack,
       bringBackThreshold: effectiveSettings.bringBackThreshold,
@@ -747,7 +757,7 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
 
 function buildPartialWarning(built: number, requested: number): string | null {
   if (built === 0 || built >= requested) return null;
-  return `Built ${built} of ${requested} lineups. Additional lineups were infeasible under the current constraints.`;
+  return `Built ${built} of ${requested} lineups. Additional lineups were infeasible under the current exposure, lock, block, or stack constraints.`;
 }
 
 export async function finalizeOptimizerJob(jobId: number) {

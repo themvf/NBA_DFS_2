@@ -6,6 +6,11 @@ import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { CreateOptimizerJobResponse, OptimizerJobStatusResponse, PersistedOptimizerJobLineup } from "./optimizer-job-types";
+import {
+  normalizeNbaRuleSelections,
+  validateNbaRuleSelections,
+  type NbaTeamStackRule,
+} from "./nba-optimizer-rules";
 import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections } from "./actions";
 
 type Props = {
@@ -18,6 +23,12 @@ type Props = {
 };
 
 type SortCol = "name" | "salary" | "avgFptsDk" | "linestarProj" | "ourProj" | "delta" | "projOwnPct" | "ourOwnPct" | "ourLeverage" | "value";
+type NbaRuleState = {
+  playerLocks: number[];
+  playerBlocks: number[];
+  blockedTeamIds: number[];
+  requiredTeamStacks: NbaTeamStackRule[];
+};
 
 function parseGameKey(gameInfo: string | null): string {
   if (!gameInfo) return "Unknown";
@@ -41,8 +52,15 @@ function fmtDuration(ms: number): string {
 }
 
 const OPTIMIZER_CLIENT_TOKEN_KEY = "dfsOptimizerClientToken";
+const NBA_RULE_STORAGE_PREFIX = "dfsOptimizerNbaRules";
 const NBA_SLOT_NAMES = ["PG","SG","SF","PF","C","G","F","UTIL"] as const;
 const MLB_SLOT_NAMES = ["P1","P2","C","1B","2B","3B","SS","OF1","OF2","OF3"] as const;
+const EMPTY_NBA_RULE_STATE: NbaRuleState = {
+  playerLocks: [],
+  playerBlocks: [],
+  blockedTeamIds: [],
+  requiredTeamStacks: [],
+};
 
 function getOrCreateOptimizerClientToken(): string {
   const existing = window.localStorage.getItem(OPTIMIZER_CLIENT_TOKEN_KEY);
@@ -54,6 +72,27 @@ function getOrCreateOptimizerClientToken(): string {
 
 function optimizerJobStorageKey(sport: Sport, slateId: number): string {
   return `dfsOptimizerJob:${sport}:${slateId}`;
+}
+
+function optimizerNbaRuleStorageKey(slateId: number): string {
+  return `${NBA_RULE_STORAGE_PREFIX}:${slateId}`;
+}
+
+function readStoredNbaRuleState(slateId: number): NbaRuleState {
+  const raw = window.localStorage.getItem(optimizerNbaRuleStorageKey(slateId));
+  if (!raw) return EMPTY_NBA_RULE_STATE;
+  try {
+    const parsed = JSON.parse(raw) as Partial<NbaRuleState>;
+    const normalized = normalizeNbaRuleSelections({
+      playerLocks: Array.isArray(parsed.playerLocks) ? parsed.playerLocks : [],
+      playerBlocks: Array.isArray(parsed.playerBlocks) ? parsed.playerBlocks : [],
+      blockedTeamIds: Array.isArray(parsed.blockedTeamIds) ? parsed.blockedTeamIds : [],
+      requiredTeamStacks: Array.isArray(parsed.requiredTeamStacks) ? parsed.requiredTeamStacks : [],
+    });
+    return normalized;
+  } catch {
+    return EMPTY_NBA_RULE_STATE;
+  }
 }
 
 // Position badge color — sport-aware
@@ -185,6 +224,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [minSalaryFilter, setMinSalaryFilter] = useState("");
   const [maxSalaryFilter, setMaxSalaryFilter] = useState("");
   const [strategy, setStrategy] = useState("gpp");
+  const [lockedPlayerIds, setLockedPlayerIds] = useState<number[]>([]);
+  const [blockedPlayerIds, setBlockedPlayerIds] = useState<number[]>([]);
+  const [blockedTeamIds, setBlockedTeamIds] = useState<number[]>([]);
+  const [requiredTeamStacks, setRequiredTeamStacks] = useState<NbaTeamStackRule[]>([]);
 
   // ── Lineups ───────────────────────────────────────────────
   const [lineups,    setLineups]    = useState<GeneratedLineup[]    | null>(null);
@@ -270,6 +313,13 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     [players],
   );
   const currentSlateId = players[0]?.slateId ?? null;
+  const lockedPlayerSet = useMemo(() => new Set(lockedPlayerIds), [lockedPlayerIds]);
+  const blockedPlayerSet = useMemo(() => new Set(blockedPlayerIds), [blockedPlayerIds]);
+  const blockedTeamSet = useMemo(() => new Set(blockedTeamIds), [blockedTeamIds]);
+  const requiredTeamStackMap = useMemo(
+    () => new Map(requiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize])),
+    [requiredTeamStacks],
+  );
 
   const optimizeStatusText = !isOptimizing
     ? null
@@ -314,6 +364,36 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   useEffect(() => {
     setOptimizerClientToken(getOrCreateOptimizerClientToken());
   }, []);
+
+  useEffect(() => {
+    if (sport !== "nba" || !currentSlateId) {
+      setLockedPlayerIds([]);
+      setBlockedPlayerIds([]);
+      setBlockedTeamIds([]);
+      setRequiredTeamStacks([]);
+      return;
+    }
+
+    const stored = readStoredNbaRuleState(currentSlateId);
+    setLockedPlayerIds(stored.playerLocks);
+    setBlockedPlayerIds(stored.playerBlocks);
+    setBlockedTeamIds(stored.blockedTeamIds);
+    setRequiredTeamStacks(stored.requiredTeamStacks);
+  }, [currentSlateId, sport]);
+
+  useEffect(() => {
+    if (sport !== "nba" || !currentSlateId) return;
+    const nextState: NbaRuleState = {
+      playerLocks: lockedPlayerIds,
+      playerBlocks: blockedPlayerIds,
+      blockedTeamIds,
+      requiredTeamStacks,
+    };
+    window.localStorage.setItem(
+      optimizerNbaRuleStorageKey(currentSlateId),
+      JSON.stringify(nextState),
+    );
+  }, [blockedPlayerIds, blockedTeamIds, currentSlateId, lockedPlayerIds, requiredTeamStacks, sport]);
 
   useEffect(() => {
     if (!optimizerClientToken || !currentSlateId) return;
@@ -432,9 +512,79 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     });
   }, [filteredPlayers, sortCol, sortDir]);
 
+  const filteredTeams = useMemo(() => {
+    if (sport !== "nba") return [];
+    const byId = new Map<number, { teamId: number; teamAbbrev: string; teamName: string | null; teamLogo: string | null }>();
+    for (const player of filteredPlayers) {
+      if (player.teamId == null || byId.has(player.teamId)) continue;
+      byId.set(player.teamId, {
+        teamId: player.teamId,
+        teamAbbrev: player.teamAbbrev,
+        teamName: player.teamName,
+        teamLogo: player.teamLogo,
+      });
+    }
+    return Array.from(byId.values()).sort((a, b) => a.teamAbbrev.localeCompare(b.teamAbbrev));
+  }, [filteredPlayers, sport]);
+
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => d === "desc" ? "asc" : "desc");
     else { setSortCol(col); setSortDir("desc"); }
+  }
+
+  function togglePlayerLock(player: DkPlayerRow) {
+    if (sport !== "nba") return;
+    setBlockedPlayerIds((current) => current.filter((id) => id !== player.id));
+    setLockedPlayerIds((current) =>
+      current.includes(player.id)
+        ? current.filter((id) => id !== player.id)
+        : [...current, player.id],
+    );
+  }
+
+  function togglePlayerBlock(player: DkPlayerRow) {
+    if (sport !== "nba") return;
+    setLockedPlayerIds((current) => current.filter((id) => id !== player.id));
+    setBlockedPlayerIds((current) =>
+      current.includes(player.id)
+        ? current.filter((id) => id !== player.id)
+        : [...current, player.id],
+    );
+  }
+
+  function toggleTeamBlock(teamId: number) {
+    if (sport !== "nba") return;
+    setRequiredTeamStacks((current) => current.filter((rule) => rule.teamId !== teamId));
+    setBlockedTeamIds((current) =>
+      current.includes(teamId)
+        ? current.filter((id) => id !== teamId)
+        : [...current, teamId],
+    );
+  }
+
+  function updateTeamStackRule(teamId: number, value: string) {
+    if (sport !== "nba") return;
+    const stackSize = Number(value);
+    setBlockedTeamIds((current) => current.filter((id) => id !== teamId));
+    setRequiredTeamStacks((current) => {
+      const remaining = current.filter((rule) => rule.teamId !== teamId);
+      if (![2, 3, 4, 5].includes(stackSize)) return remaining;
+      return [...remaining, { teamId, stackSize: stackSize as 2 | 3 | 4 | 5 }]
+        .sort((a, b) => a.teamId - b.teamId);
+    });
+  }
+
+  function clearLocks() {
+    setLockedPlayerIds([]);
+  }
+
+  function clearBlocks() {
+    setBlockedPlayerIds([]);
+    setBlockedTeamIds([]);
+  }
+
+  function clearTeamRules() {
+    setRequiredTeamStacks([]);
   }
 
   function SortHeader({ col, label }: { col: SortCol; label: string }) {
@@ -529,7 +679,21 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             mode, nLineups, minStack, maxExposure, bringBackThreshold,
             minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter, 10) : null,
             maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter, 10) : null,
+            playerLocks: lockedPlayerIds,
+            playerBlocks: blockedPlayerIds,
+            blockedTeamIds,
+            requiredTeamStacks,
           } satisfies OptimizerSettings;
+
+      if (sport === "nba") {
+        const validation = validateNbaRuleSelections(filteredPlayers, settings);
+        if (!validation.ok) {
+          window.alert(validation.error);
+          setOptimizeError(validation.error);
+          setIsOptimizing(false);
+          return;
+        }
+      }
 
       const resp = await fetch("/api/optimizer/jobs", {
         method: "POST",
@@ -1228,6 +1392,88 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         )}
       </div>
 
+      {sport === "nba" && filteredPlayers.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">NBA Rule Controls</h2>
+              <p className="text-xs text-gray-500">
+                Locks persist per slate. Every lineup must satisfy one selected team stack when team stack rules are set.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={clearLocks}
+                disabled={lockedPlayerIds.length === 0}
+                className="rounded border px-3 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+              >
+                Clear Locks
+              </button>
+              <button
+                onClick={clearBlocks}
+                disabled={blockedPlayerIds.length === 0 && blockedTeamIds.length === 0}
+                className="rounded border px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Clear Blocks
+              </button>
+              <button
+                onClick={clearTeamRules}
+                disabled={requiredTeamStacks.length === 0}
+                className="rounded border px-3 py-1 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+              >
+                Clear Team Rules
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">{lockedPlayerIds.length} locked</span>
+            <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-700">
+              {blockedPlayerIds.length + blockedTeamIds.length} blocked rules
+            </span>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+              {requiredTeamStacks.length} team stacks
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {filteredTeams.map((team) => {
+              const isBlocked = blockedTeamSet.has(team.teamId);
+              const stackSize = requiredTeamStackMap.get(team.teamId);
+              return (
+                <div key={team.teamId} className={`rounded border p-3 ${isBlocked ? "border-red-200 bg-red-50" : stackSize ? "border-emerald-200 bg-emerald-50" : "bg-white"}`}>
+                  <div className="flex items-center gap-2">
+                    {team.teamLogo && <img src={team.teamLogo} alt="" className="h-5 w-5" />}
+                    <div>
+                      <p className="text-sm font-medium">{team.teamAbbrev}</p>
+                      <p className="text-[11px] text-gray-500">{team.teamName ?? team.teamAbbrev}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      onClick={() => toggleTeamBlock(team.teamId)}
+                      className={`rounded border px-2 py-1 text-xs ${isBlocked ? "border-red-300 bg-red-100 text-red-700" : "text-gray-600 hover:bg-gray-50"}`}
+                    >
+                      {isBlocked ? "Blocked" : "Block Team"}
+                    </button>
+                    <select
+                      value={stackSize ?? ""}
+                      onChange={(e) => updateTeamStackRule(team.teamId, e.target.value)}
+                      disabled={isBlocked}
+                      className="rounded border px-2 py-1 text-xs disabled:opacity-50"
+                    >
+                      <option value="">No Stack</option>
+                      <option value="2">Stack 2</option>
+                      <option value="3">Stack 3</option>
+                      <option value="4">Stack 4</option>
+                      <option value="5">Stack 5</option>
+                    </select>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Player Pool Table */}
       {filteredPlayers.length > 0 && (
         <div className="rounded-lg border bg-card overflow-hidden">
@@ -1248,6 +1494,9 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Pos</th>
                   <SortHeader col="name" label="Player" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Team</th>
+                  {sport === "nba" && (
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Rules</th>
+                  )}
                   <SortHeader col="salary" label="Salary" />
                   <SortHeader col="avgFptsDk" label="DK Proj" />
                   <SortHeader col="linestarProj" label="LS Proj" />
@@ -1265,8 +1514,19 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                     ? p.ourProj - p.linestarProj : null;
                   const value = p.ourProj != null ? p.ourProj / (p.salary / 1000) : null;
                   const pos = displayPos(p.eligiblePositions, sport);
+                  const isLocked = lockedPlayerSet.has(p.id);
+                  const isBlocked = blockedPlayerSet.has(p.id);
+                  const isTeamBlocked = p.teamId != null && blockedTeamSet.has(p.teamId);
+                  const stackSize = p.teamId != null ? requiredTeamStackMap.get(p.teamId) : undefined;
                   return (
-                    <tr key={p.id} className={`hover:bg-gray-50 ${p.isOut ? "opacity-40 line-through" : ""}`}>
+                    <tr
+                      key={p.id}
+                      className={`hover:bg-gray-50 ${
+                        p.isOut ? "opacity-40 line-through" : ""
+                      } ${
+                        isLocked ? "bg-blue-50" : isBlocked || isTeamBlocked ? "bg-red-50" : ""
+                      }`}
+                    >
                       <td className="px-3 py-1.5">
                         <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${posBadgeColor(p.eligiblePositions, sport)}`}>
                           {pos}
@@ -1277,8 +1537,42 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                           <img src={p.teamLogo} alt="" className="inline-block mr-1.5 h-4 w-4 align-middle" />
                         )}
                         {p.name}
+                        {sport === "nba" && (
+                          <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+                            {isLocked && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">LOCK</span>}
+                            {(isBlocked || isTeamBlocked) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">BLOCK</span>}
+                            {stackSize != null && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">STACK {stackSize}</span>}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{p.teamAbbrev}</td>
+                      {sport === "nba" && (
+                        <td className="px-3 py-1.5 text-xs">
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              onClick={() => togglePlayerLock(p)}
+                              disabled={isTeamBlocked && !isLocked}
+                              className={`rounded border px-2 py-0.5 ${
+                                isLocked
+                                  ? "border-blue-300 bg-blue-100 text-blue-700"
+                                  : "text-gray-600 hover:bg-gray-50"
+                              } disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              {isLocked ? "Locked" : "Lock"}
+                            </button>
+                            <button
+                              onClick={() => togglePlayerBlock(p)}
+                              className={`rounded border px-2 py-0.5 ${
+                                isBlocked
+                                  ? "border-red-300 bg-red-100 text-red-700"
+                                  : "text-gray-600 hover:bg-gray-50"
+                              }`}
+                            >
+                              {isBlocked ? "Blocked" : "Block"}
+                            </button>
+                          </div>
+                        </td>
+                      )}
                       <td className="px-3 py-1.5 font-mono text-xs">{fmtSalary(p.salary)}</td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{fmt1(p.avgFptsDk)}</td>
                       <td className="px-3 py-1.5 text-xs">{fmt1(p.linestarProj)}</td>

@@ -20,6 +20,12 @@ import type { DkPlayerRow } from "@/db/queries";
 import { parseCsvLine, stringifyCsvLine } from "./csv";
 import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
 import type { NbaPreparedOptimizerRun } from "./optimizer-job-types";
+import {
+  normalizeNbaRuleSelections,
+  validateNbaRuleSelections,
+  type NbaTeamStackRule,
+  type NormalizedNbaRuleSelections,
+} from "./nba-optimizer-rules";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const solver = require("javascript-lp-solver") as {
@@ -84,6 +90,10 @@ export type OptimizerSettings = {
   /** Per-player salary filters — exclude players outside this range from the eligible pool. */
   minSalaryFilter?: number | null;
   maxSalaryFilter?: number | null;
+  playerLocks?: number[];
+  playerBlocks?: number[];
+  blockedTeamIds?: number[];
+  requiredTeamStacks?: NbaTeamStackRule[];
 };
 
 const SALARY_CAP = 50000;
@@ -129,6 +139,27 @@ function canFillSlot(slot: LineupSlot, pos: string): boolean {
   }
 }
 
+function filterEligibleNbaPool(
+  pool: OptimizerPlayer[],
+  settings: OptimizerSettings,
+  ruleSelections: NormalizedNbaRuleSelections,
+): OptimizerPlayer[] {
+  const blockedPlayers = new Set(ruleSelections.playerBlocks);
+  const blockedTeams = new Set(ruleSelections.blockedTeamIds);
+  const { minSalaryFilter, maxSalaryFilter } = settings;
+
+  return pool.filter((player) => {
+    if (player.isOut) return false;
+    if (blockedPlayers.has(player.id)) return false;
+    if (player.teamId != null && blockedTeams.has(player.teamId)) return false;
+    const ourProj = getPlayerProjection(player);
+    if (!(ourProj != null && ourProj > 0 && player.salary > 0)) return false;
+    if (minSalaryFilter != null && player.salary < minSalaryFilter) return false;
+    if (maxSalaryFilter != null && player.salary > maxSalaryFilter) return false;
+    return true;
+  });
+}
+
 export function optimizeLineups(
   pool: OptimizerPlayer[],
   settings: OptimizerSettings
@@ -142,21 +173,9 @@ export function optimizeLineupsWithDebug(
 ): { lineups: GeneratedLineup[]; debug: OptimizerDebugInfo } {
   const { mode, nLineups, minStack, maxExposure, bringBackThreshold } = settings;
   const totalStart = Date.now();
-
-  const { minSalaryFilter, maxSalaryFilter } = settings;
-  const eligible = pool.filter((p) => {
-    if (p.isOut) return false;
-    // Use ourProj for eligibility in both modes: any player who can score is
-    // a valid lineup member (serves as a salary filler in GPP if leverage < 0).
-    // Excluding negative-leverage players from the ILP entirely can make the
-    // salary-cap constraint infeasible when all positive-leverage players are
-    // high-salary. The objective function naturally minimises their usage.
-    const ourProj = getPlayerProjection(p);
-    if (!(ourProj != null && ourProj > 0 && p.salary > 0)) return false;
-    if (minSalaryFilter != null && p.salary < minSalaryFilter) return false;
-    if (maxSalaryFilter != null && p.salary > maxSalaryFilter) return false;
-    return true;
-  });
+  const ruleValidation = validateNbaRuleSelections(pool, settings);
+  const ruleSelections = ruleValidation.normalized;
+  const eligible = filterEligibleNbaPool(pool, settings, ruleSelections);
 
   const debug: OptimizerDebugInfo = {
     sport: "nba",
@@ -180,6 +199,12 @@ export function optimizeLineupsWithDebug(
     },
   };
 
+  if (!ruleValidation.ok) {
+    debug.terminationReason = "probe_infeasible";
+    debug.totalMs = Date.now() - totalStart;
+    return { lineups: [], debug };
+  }
+
   if (eligible.length < ROSTER_SIZE) {
     debug.terminationReason = "insufficient_pool";
     debug.totalMs = Date.now() - totalStart;
@@ -197,7 +222,7 @@ export function optimizeLineupsWithDebug(
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
   const timedProbe = (label: string, ms: number, bb: number, salaryFloor = SALARY_FLOOR): boolean => {
     const start = Date.now();
-    const success = !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, salaryFloor);
+    const success = !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, salaryFloor, ruleSelections);
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
     debug.probeSummary.push({ label, success, durationMs });
@@ -266,7 +291,7 @@ export function optimizeLineupsWithDebug(
       const start = Date.now();
       const result = solveOneLineup(
         eligible, mode, stack, maxExp,
-        exposureCount, previousLineupSets, bringBack, minChanges, salaryFloor,
+        exposureCount, previousLineupSets, bringBack, minChanges, salaryFloor, ruleSelections,
       );
       attempts.push({
         stage,
@@ -326,19 +351,12 @@ export function optimizeLineupsWithDebug(
 export function prepareNbaOptimizerRun(
   pool: OptimizerPlayer[],
   settings: OptimizerSettings,
-): { prepared?: NbaPreparedOptimizerRun; debug: OptimizerDebugInfo } {
+): { prepared?: NbaPreparedOptimizerRun; debug: OptimizerDebugInfo; error?: string } {
   const totalStart = Date.now();
   const { mode, nLineups, minStack, maxExposure, bringBackThreshold } = settings;
-  const { minSalaryFilter, maxSalaryFilter } = settings;
-
-  const eligible = pool.filter((p) => {
-    if (p.isOut) return false;
-    const ourProj = getPlayerProjection(p);
-    if (!(ourProj != null && ourProj > 0 && p.salary > 0)) return false;
-    if (minSalaryFilter != null && p.salary < minSalaryFilter) return false;
-    if (maxSalaryFilter != null && p.salary > maxSalaryFilter) return false;
-    return true;
-  });
+  const ruleValidation = validateNbaRuleSelections(pool, settings);
+  const ruleSelections = ruleValidation.normalized;
+  const eligible = filterEligibleNbaPool(pool, settings, ruleSelections);
 
   const debug: OptimizerDebugInfo = {
     sport: "nba",
@@ -362,6 +380,12 @@ export function prepareNbaOptimizerRun(
     },
   };
 
+  if (!ruleValidation.ok) {
+    debug.terminationReason = "probe_infeasible";
+    debug.totalMs = Date.now() - totalStart;
+    return { debug, error: ruleValidation.error };
+  }
+
   if (eligible.length < ROSTER_SIZE) {
     debug.terminationReason = "insufficient_pool";
     debug.totalMs = Date.now() - totalStart;
@@ -371,7 +395,7 @@ export function prepareNbaOptimizerRun(
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
   const timedProbe = (label: string, ms: number, bb: number, salaryFloor = SALARY_FLOOR): boolean => {
     const start = Date.now();
-    const success = !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, salaryFloor);
+    const success = !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, salaryFloor, ruleSelections);
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
     debug.probeSummary.push({ label, success, durationMs });
@@ -424,6 +448,7 @@ export function prepareNbaOptimizerRun(
       maxExposureCount: debug.maxExposureCount,
       eligibleCount: eligible.length,
       pool: eligible,
+      ruleSelections,
       effectiveSettings: {
         minStack: effectiveMinStack,
         bringBackThreshold: effectiveBringBack,
@@ -470,6 +495,7 @@ export function buildNextNbaLineup(
       bringBack,
       minChanges,
       salaryFloor,
+      prepared.ruleSelections,
     );
     attempts.push({
       stage,
@@ -514,8 +540,13 @@ function solveOneLineup(
   bringBackThreshold = 3,
   minChanges = mode === "gpp" ? 3 : 2,
   salaryFloor = SALARY_FLOOR,
+  ruleSelections: NormalizedNbaRuleSelections = normalizeNbaRuleSelections({}),
 ): GeneratedLineup | null {
-  const availablePool = pool.filter((p) => (exposureCount.get(p.id) ?? 0) < maxExposureCount);
+  const lockedPlayers = new Set(ruleSelections.playerLocks);
+  const requiredTeamStacks = ruleSelections.requiredTeamStacks;
+  const availablePool = pool.filter((p) =>
+    lockedPlayers.has(p.id) || (exposureCount.get(p.id) ?? 0) < maxExposureCount,
+  );
   if (availablePool.length < ROSTER_SIZE) return null;
 
   // Group by matchupId for game stacking.
@@ -532,6 +563,17 @@ function solveOneLineup(
   const stackableGames = Array.from(gamePlayers.entries())
     .filter(([, players]) => players.length >= minStack)
     .map(([mid]) => mid);
+
+  const availableTeamCounts = new Map<number, number>();
+  for (const player of availablePool) {
+    if (player.teamId == null) continue;
+    availableTeamCounts.set(player.teamId, (availableTeamCounts.get(player.teamId) ?? 0) + 1);
+  }
+  const effectiveRequiredTeamStacks = requiredTeamStacks.filter(
+    (rule) => (availableTeamCounts.get(rule.teamId) ?? 0) >= rule.stackSize,
+  );
+  const useRequiredTeamStacks = effectiveRequiredTeamStacks.length > 0;
+  if (requiredTeamStacks.length > 0 && !useRequiredTeamStacks) return null;
 
   // Bring-back: matchups where both teams have players in the pool
   // (threshold 0 = disabled; only applies in GPP mode)
@@ -552,7 +594,11 @@ function solveOneLineup(
     // Stack constraint only applies when games with enough players exist.
     // If matchupId is null for all players (no schedule data), omitting this
     // prevents the solver from being immediately infeasible.
-    ...(stackableGames.length > 0 ? { stack_count: { min: 1 } } : {}),
+    ...(useRequiredTeamStacks
+      ? { required_team_stack_count: { min: 1 } }
+      : stackableGames.length > 0
+        ? { stack_count: { min: 1 } }
+        : {}),
   };
 
   for (const slot of LINEUP_SLOTS) {
@@ -560,7 +606,7 @@ function solveOneLineup(
   }
 
   for (const p of availablePool) {
-    constraints[`use_${p.id}`] = { max: 1 };
+    constraints[`use_${p.id}`] = lockedPlayers.has(p.id) ? { equal: 1 } : { max: 1 };
   }
 
   // Bring-back constraints: if team A has ≥ threshold players in the lineup,
@@ -591,6 +637,9 @@ function solveOneLineup(
   for (const mid of stackableGames) {
     constraints[`game_${mid}`] = { min: 0 };
   }
+  for (const rule of effectiveRequiredTeamStacks) {
+    constraints[`team_${rule.teamId}`] = { min: 0 };
+  }
 
   const variables: SolverModel["variables"] = {};
   const binaries: SolverModel["binaries"] = {};
@@ -614,6 +663,9 @@ function solveOneLineup(
       if (p.matchupId != null && stackableSet.has(p.matchupId)) {
         entry[`game_${p.matchupId}`] = 1;
       }
+      if (p.teamId != null && effectiveRequiredTeamStacks.some((rule) => rule.teamId === p.teamId)) {
+        entry[`team_${p.teamId}`] = 1;
+      }
 
       if (p.matchupId != null && bringBackSet.has(p.matchupId) && p.teamId != null) {
         const isHome = p.teamId === p.homeTeamId;
@@ -634,13 +686,24 @@ function solveOneLineup(
   }
 
   // Stack helper variables
-  for (const mid of stackableGames) {
-    const key = `z_game_${mid}`;
-    variables[key] = {
-      stack_count: 1,
-      [`game_${mid}`]: -minStack,
-    };
-    binaries[key] = 1;
+  if (useRequiredTeamStacks) {
+    for (const rule of effectiveRequiredTeamStacks) {
+      const key = `z_team_${rule.teamId}`;
+      variables[key] = {
+        required_team_stack_count: 1,
+        [`team_${rule.teamId}`]: -rule.stackSize,
+      };
+      binaries[key] = 1;
+    }
+  } else {
+    for (const mid of stackableGames) {
+      const key = `z_game_${mid}`;
+      variables[key] = {
+        stack_count: 1,
+        [`game_${mid}`]: -minStack,
+      };
+      binaries[key] = 1;
+    }
   }
 
   const model: SolverModel = {
@@ -719,16 +782,11 @@ export function probeOptimizerAll(
   settings: OptimizerSettings,
 ): string[] {
   const { mode, nLineups, minStack, bringBackThreshold } = settings;
-
-  const { minSalaryFilter, maxSalaryFilter } = settings;
-  const eligible = pool.filter((p) => {
-    if (p.isOut) return false;
-    const ourProj = getPlayerProjection(p);
-    if (!(ourProj != null && ourProj > 0 && p.salary > 0)) return false;
-    if (minSalaryFilter != null && p.salary < minSalaryFilter) return false;
-    if (maxSalaryFilter != null && p.salary > maxSalaryFilter) return false;
-    return true;
-  });
+  const ruleValidation = validateNbaRuleSelections(pool, settings);
+  if (!ruleValidation.ok) {
+    return [ruleValidation.error];
+  }
+  const eligible = filterEligibleNbaPool(pool, settings, ruleValidation.normalized);
 
   if (eligible.length < ROSTER_SIZE) {
     return [`eligible=${eligible.length} (< ${ROSTER_SIZE})`];
@@ -736,9 +794,9 @@ export function probeOptimizerAll(
 
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
   const probe = (ms: number, bb: number) =>
-    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb);
+    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, SALARY_FLOOR, ruleValidation.normalized);
   const probeNoFloor = (ms: number, bb: number) =>
-    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, 0);
+    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, 0, ruleValidation.normalized);
 
   const scoreOf = (p: OptimizerPlayer) => getPlayerScore(p, mode);
 

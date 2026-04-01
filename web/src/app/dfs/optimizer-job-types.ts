@@ -2,6 +2,7 @@ import type { Sport } from "@/db/queries";
 import type { OptimizerLineupAttemptDebug, OptimizerProbeDebug, OptimizerDebugInfo } from "./optimizer-debug";
 import type { OptimizerPlayer, OptimizerSettings, LineupSlot } from "./optimizer";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbLineupSlot } from "./mlb-optimizer";
+import type { NormalizedNbaRuleSelections } from "./nba-optimizer-rules";
 
 export type OptimizerJobStatus = "queued" | "running" | "completed" | "failed";
 
@@ -26,6 +27,7 @@ export type NbaPreparedOptimizerRun = {
   maxExposureCount: number;
   eligibleCount: number;
   pool: OptimizerPlayer[];
+  ruleSelections: NormalizedNbaRuleSelections;
   effectiveSettings: {
     minStack: number;
     bringBackThreshold: number;
