@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns } from "./ensure-schema";
+import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 
@@ -46,6 +46,9 @@ export type DkPlayerRow = {
   propStl: number | null;
   propStlPrice: number | null;
   propStlBook: string | null;
+  modelProj: number | null;
+  marketProj: number | null;
+  blendProj: number | null;
   isOut: boolean | null;
   actualFpts: number | null;
   actualOwnPct: number | null;
@@ -66,6 +69,7 @@ export type DkPlayerRow = {
 
 export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]> {
   await ensureDkPlayerPropColumns();
+  await ensureProjectionExperimentTables();
 
   if (sport === "mlb") {
     const result = await db.execute<DkPlayerRow>(sql`
@@ -101,6 +105,9 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         dp.prop_stl           AS "propStl",
         dp.prop_stl_price     AS "propStlPrice",
         dp.prop_stl_book      AS "propStlBook",
+        NULL::REAL            AS "modelProj",
+        NULL::REAL            AS "marketProj",
+        NULL::REAL            AS "blendProj",
         dp.is_out             AS "isOut",
         dp.proj_floor         AS "projFloor",
         dp.proj_ceiling       AS "projCeiling",
@@ -166,6 +173,9 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       dp.prop_stl          AS "propStl",
       dp.prop_stl_price    AS "propStlPrice",
       dp.prop_stl_book     AS "propStlBook",
+      proj.model_proj_fpts AS "modelProj",
+      proj.market_proj_fpts AS "marketProj",
+      proj.final_proj_fpts AS "blendProj",
       dp.is_out            AS "isOut",
       dp.proj_floor        AS "projFloor",
       dp.proj_ceiling      AS "projCeiling",
@@ -188,6 +198,20 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
     INNER JOIN dk_slates ds ON ds.id = dp.slate_id
     LEFT JOIN teams t ON t.team_id = dp.team_id
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
+    LEFT JOIN LATERAL (
+      SELECT
+        pps.model_proj_fpts,
+        pps.market_proj_fpts,
+        pps.final_proj_fpts
+      FROM projection_runs pr
+      INNER JOIN projection_player_snapshots pps
+        ON pps.run_id = pr.id
+       AND pps.dk_player_id = dp.dk_player_id
+      WHERE pr.slate_id = dp.slate_id
+        AND pr.sport = 'nba'
+      ORDER BY pr.created_at DESC, pr.id DESC
+      LIMIT 1
+    ) proj ON true
     WHERE ds.id = (
       SELECT id FROM dk_slates WHERE sport = 'nba'
       ORDER BY slate_date DESC, id DESC LIMIT 1
