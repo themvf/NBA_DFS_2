@@ -575,6 +575,7 @@ export async function prepareOptimizerJob(jobId: number): Promise<PrepareResult>
     .set({
       status: "running",
       eligibleCount: preparedResult.debug.eligibleCount,
+      poolSnapshotJson: preparedResult.prepared.pool,
       probeMs: preparedResult.debug.probeMs,
       probeSummaryJson: preparedResult.debug.probeSummary,
       relaxedConstraintsJson: preparedResult.debug.relaxedConstraints,

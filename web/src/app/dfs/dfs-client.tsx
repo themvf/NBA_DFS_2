@@ -1369,7 +1369,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           <div className="mt-4 pt-4 border-t">
             <h3 className="text-xs font-semibold mb-2">Multi-Entry Export</h3>
             <p className="text-xs text-gray-500 mb-2">
-              Paste your DK multi-entry template CSV (with Entry IDs) below, then click Export.
+              Paste your DK multi-entry template below. Comma-separated CSV and tab-delimited DK paste format are both supported.
             </p>
             <textarea
               value={entryTemplate}
