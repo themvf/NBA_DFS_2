@@ -43,7 +43,7 @@ type CsvExportResult = {
 };
 
 type NbaPropAuditStat = "pts" | "reb" | "ast" | "blk" | "stl";
-type NbaProjectionPropStat = "pts" | "reb" | "ast";
+type NbaProjectionPropStat = NbaPropAuditStat;
 
 type PropBookCandidate = {
   bookmakerKey: string;
@@ -90,16 +90,13 @@ const NBA_PROP_MARKET_TO_STAT: Record<string, NbaPropAuditStat> = {
   player_blocks: "blk",
   player_steals: "stl",
 };
-const NBA_PROP_BOOK_PRIORITY = [
-  "draftkings",
-  "caesars",
-  "fanduel",
-  "betonlineag",
-  "fanatics",
-  "betmgm",
-  "betrivers",
-  "bovada",
-];
+const NBA_PROP_BOOK_PRIORITY: Record<NbaPropAuditStat, string[]> = {
+  pts: ["fanduel", "caesars", "betrivers", "draftkings", "betonlineag", "betmgm", "bovada", "fanatics"],
+  reb: ["fanduel", "betrivers", "caesars", "draftkings", "betonlineag", "betmgm", "bovada", "fanatics"],
+  ast: ["fanduel", "betrivers", "draftkings", "betonlineag", "caesars", "betmgm", "bovada", "fanatics"],
+  blk: ["betmgm", "fanduel", "draftkings", "bovada", "caesars", "betrivers", "betonlineag", "fanatics"],
+  stl: ["fanduel", "draftkings", "bovada", "caesars", "betonlineag", "betmgm", "betrivers", "fanatics"],
+};
 
 function finiteOrNull(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
@@ -131,10 +128,13 @@ function normalizeBookPreferenceKey(value: string | null | undefined): string {
   return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function propBookPriority(candidate: Pick<PropBookCandidate, "bookmakerKey" | "bookmakerTitle">): number {
+function propBookPriority(
+  stat: NbaProjectionPropStat,
+  candidate: Pick<PropBookCandidate, "bookmakerKey" | "bookmakerTitle">,
+): number {
   const normalizedKey = normalizeBookPreferenceKey(candidate.bookmakerKey);
   const normalizedTitle = normalizeBookPreferenceKey(candidate.bookmakerTitle);
-  const idx = NBA_PROP_BOOK_PRIORITY.findIndex((book) => book === normalizedKey || book === normalizedTitle);
+  const idx = NBA_PROP_BOOK_PRIORITY[stat].findIndex((book) => book === normalizedKey || book === normalizedTitle);
   return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
 }
 
@@ -153,7 +153,7 @@ function compareMainLineCandidates(a: Pick<PropBookCandidate, "point" | "price">
   return a.point - b.point;
 }
 
-function pickPreferredPropLine(candidates: PropBookCandidate[]): PropBookCandidate | null {
+function pickPreferredPropLine(stat: NbaProjectionPropStat, candidates: PropBookCandidate[]): PropBookCandidate | null {
   if (candidates.length === 0) return null;
 
   const bestByBook = new Map<string, PropBookCandidate>();
@@ -166,7 +166,7 @@ function pickPreferredPropLine(candidates: PropBookCandidate[]): PropBookCandida
   }
 
   return Array.from(bestByBook.values()).sort((a, b) => {
-    const priorityDiff = propBookPriority(a) - propBookPriority(b);
+    const priorityDiff = propBookPriority(stat, a) - propBookPriority(stat, b);
     if (priorityDiff !== 0) return priorityDiff;
 
     const qualityDiff = compareMainLineCandidates(a, b);
@@ -423,7 +423,13 @@ function computeOurProjection(
   homeMl: number | null = null,
   awayMl: number | null = null,
   isHome = false,
-  props: { propPts?: number | null; propReb?: number | null; propAst?: number | null } = {},
+  props: {
+    propPts?: number | null;
+    propReb?: number | null;
+    propAst?: number | null;
+    propBlk?: number | null;
+    propStl?: number | null;
+  } = {},
 ): number | null {
   const avgMinutes = player.avgMinutes ?? 0;
   if (avgMinutes < 10) return null;
@@ -459,8 +465,8 @@ function computeOurProjection(
   const projPts  = props.propPts  != null ? props.propPts  : ppg  * defFactor;
   const projReb  = props.propReb  != null ? props.propReb  : rpg  * adjustedEnv;
   const projAst  = props.propAst  != null ? props.propAst  : apg  * defFactor * (1.0 + (combinedEnv - 1.0) * 0.5);
-  const projStl  = spg   * adjustedEnv;
-  const projBlk  = bpg   * adjustedEnv;
+  const projStl  = props.propStl  != null ? props.propStl  : spg * adjustedEnv;
+  const projBlk  = props.propBlk  != null ? props.propBlk  : bpg * adjustedEnv;
   const projTov  = tovpg * adjustedEnv;
   const projDd   = ddRate * adjustedEnv;  // more possessions = more DD chances
 
@@ -739,15 +745,21 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
     // Step 3: Collect props across all events.
     // We do not average alternate lines blindly. For each bookmaker/player/stat,
     // choose the "main" over line by price proximity to a standard -110 market,
-    // then choose across books by priority (DraftKings primary, Caesars fallback).
-    type PropSet = { pts?: number; reb?: number; ast?: number };
+    // then choose across books by stat-specific bookmaker priority.
+    type SelectedPropLine = {
+      point: number;
+      price: number | null;
+      bookmakerKey: string;
+      bookmakerTitle: string;
+    };
+    type PropSet = Partial<Record<NbaProjectionPropStat, SelectedPropLine>>;
     type PropAccumulator = Partial<Record<NbaProjectionPropStat, PropBookCandidate[]>>;
     const propAccum = new Map<string, PropAccumulator>(); // key = lower-cased player name
 
     for (const event of todayEvents) {
       const qs = new URLSearchParams({
         apiKey: oddsApiKey, regions: "us",
-        markets: "player_points,player_rebounds,player_assists",
+        markets: "player_points,player_rebounds,player_assists,player_blocks,player_steals",
         oddsFormat: "american",
       });
       try {
@@ -768,9 +780,7 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
         };
         for (const bm of (data.bookmakers ?? [])) {
           for (const market of bm.markets) {
-            const statKey = market.key === "player_points" ? "pts"
-                          : market.key === "player_rebounds" ? "reb"
-                          : market.key === "player_assists" ? "ast" : null;
+            const statKey = NBA_PROP_MARKET_TO_STAT[market.key];
             if (!statKey) continue;
             for (const o of market.outcomes) {
               const point = o.point;
@@ -798,10 +808,15 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
     const propData = new Map<string, PropSet>();
     for (const [player, accum] of propAccum) {
       const entry: PropSet = {};
-      for (const stat of ["pts", "reb", "ast"] as const) {
-        const selected = pickPreferredPropLine(accum[stat] ?? []);
+      for (const stat of ["pts", "reb", "ast", "blk", "stl"] as const) {
+        const selected = pickPreferredPropLine(stat, accum[stat] ?? []);
         if (!selected) continue;
-        entry[stat] = Math.round(selected.point * 2) / 2;
+        entry[stat] = {
+          point: Math.round(selected.point * 2) / 2,
+          price: selected.price != null ? Math.round(selected.price) : null,
+          bookmakerKey: selected.bookmakerKey,
+          bookmakerTitle: selected.bookmakerTitle,
+        };
       }
       propData.set(player, entry);
     }
@@ -814,7 +829,14 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
     const nameToPlayer = new Map(slatePlayers.map((p) => [p.name.toLowerCase(), p]));
 
     let propMatched = 0;
-    const updates: Array<{ id: number; pts?: number; reb?: number; ast?: number }> = [];
+    const updates: Array<{
+      id: number;
+      pts?: SelectedPropLine;
+      reb?: SelectedPropLine;
+      ast?: SelectedPropLine;
+      blk?: SelectedPropLine;
+      stl?: SelectedPropLine;
+    }> = [];
     for (const [propName, props] of propData) {
       let match = nameToPlayer.get(propName);
       if (!match) {
@@ -836,9 +858,11 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
       for (const u of updates) {
         await db.update(dkPlayers)
           .set({
-            ...(u.pts != null && { propPts: u.pts }),
-            ...(u.reb != null && { propReb: u.reb }),
-            ...(u.ast != null && { propAst: u.ast }),
+            ...(u.pts != null && { propPts: u.pts.point, propPtsPrice: u.pts.price, propPtsBook: u.pts.bookmakerTitle }),
+            ...(u.reb != null && { propReb: u.reb.point, propRebPrice: u.reb.price, propRebBook: u.reb.bookmakerTitle }),
+            ...(u.ast != null && { propAst: u.ast.point, propAstPrice: u.ast.price, propAstBook: u.ast.bookmakerTitle }),
+            ...(u.blk != null && { propBlk: u.blk.point, propBlkPrice: u.blk.price, propBlkBook: u.blk.bookmakerTitle }),
+            ...(u.stl != null && { propStl: u.stl.point, propStlPrice: u.stl.price, propStlBook: u.stl.bookmakerTitle }),
           })
           .where(eq(dkPlayers.id, u.id));
       }
@@ -851,11 +875,13 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
         avgFptsDk: number | null; projOwnPct: number | null;
         isOut: boolean | null; ourProj: number | null;
         propPts: number | null; propReb: number | null; propAst: number | null;
+        propBlk: number | null; propStl: number | null;
       }>(sql`
         SELECT id, name, salary, team_id AS "teamId", matchup_id AS "matchupId",
                avg_fpts_dk AS "avgFptsDk", proj_own_pct AS "projOwnPct",
                is_out AS "isOut", our_proj AS "ourProj",
-               prop_pts AS "propPts", prop_reb AS "propReb", prop_ast AS "propAst"
+               prop_pts AS "propPts", prop_reb AS "propReb", prop_ast AS "propAst",
+               prop_blk AS "propBlk", prop_stl AS "propStl"
         FROM dk_players WHERE slate_id = ${slate.id}
       `);
 
@@ -906,7 +932,7 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
           oppStat.pace   ?? LEAGUE_AVG_PACE,
           oppStat.defRtg ?? LEAGUE_AVG_DEF_RTG,
           matchup.vegasTotal, matchup.homeMl, matchup.awayMl, isHome,
-          { propPts: p.propPts, propReb: p.propReb, propAst: p.propAst },
+          { propPts: p.propPts, propReb: p.propReb, propAst: p.propAst, propBlk: p.propBlk, propStl: p.propStl },
         ));
         if (ourProj == null) continue;
 
@@ -3156,6 +3182,13 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
             matchup.homeMl,
             matchup.awayMl,
             isHome,
+            {
+              propPts: p.propPts,
+              propReb: p.propReb,
+              propAst: p.propAst,
+              propBlk: p.propBlk,
+              propStl: p.propStl,
+            },
           ));
           spgForLev = bestPlayer.spg ?? 0;
           bpgForLev = bestPlayer.bpg ?? 0;

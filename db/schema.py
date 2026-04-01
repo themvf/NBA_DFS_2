@@ -366,8 +366,20 @@ TABLES = [
         our_leverage REAL,
         our_own_pct REAL,
         prop_pts REAL,
+        prop_pts_price INTEGER,
+        prop_pts_book TEXT,
         prop_reb REAL,
+        prop_reb_price INTEGER,
+        prop_reb_book TEXT,
         prop_ast REAL,
+        prop_ast_price INTEGER,
+        prop_ast_book TEXT,
+        prop_blk REAL,
+        prop_blk_price INTEGER,
+        prop_blk_book TEXT,
+        prop_stl REAL,
+        prop_stl_price INTEGER,
+        prop_stl_book TEXT,
         proj_floor REAL,
         proj_ceiling REAL,
         boom_rate REAL,
@@ -517,6 +529,102 @@ MIGRATIONS = [
             WHERE table_name = 'dk_players' AND column_name = 'prop_ast'
         ) THEN
             ALTER TABLE dk_players ADD COLUMN prop_ast REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_pts_price'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_pts_price INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_pts_book'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_pts_book TEXT;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_reb_price'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_reb_price INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_reb_book'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_reb_book TEXT;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_ast_price'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_ast_price INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_ast_book'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_ast_book TEXT;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_blk'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_blk REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_blk_price'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_blk_price INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_blk_book'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_blk_book TEXT;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_stl'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_stl REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_stl_price'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_stl_price INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'prop_stl_book'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN prop_stl_book TEXT;
         END IF;
     END $$""",
     # 2026-03-28: Add contest metadata to dk_slates

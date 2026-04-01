@@ -69,7 +69,7 @@ function fmtSalary(v: number): string {
   return `$${v.toLocaleString()}`;
 }
 
-function fmtMl(v: number | null | undefined): string {
+function fmtAmericanOdds(v: number | null | undefined): string {
   if (v == null) return "—";
   return v > 0 ? `+${v}` : `${v}`;
 }
@@ -159,40 +159,48 @@ function displayPos(eligiblePositions: string, sport: Sport): string {
   return primary ?? parts[0] ?? "UTIL";
 }
 
-function mlToProb(ml: number): number {
-  return ml >= 0 ? 100 / (ml + 100) : Math.abs(ml) / (Math.abs(ml) + 100);
-}
-
-function computeNbaTeamImplied(vegasTotal: number, homeMl: number | null, awayMl: number | null, isHome: boolean): number {
-  if (homeMl == null || awayMl == null) return vegasTotal / 2;
-  const rawHome = mlToProb(homeMl);
-  const rawAway = mlToProb(awayMl);
-  const vig = rawHome + rawAway;
-  const homeProbClean = vig > 0 ? rawHome / vig : 0.5;
-  const impliedSpread = Math.max(-15, Math.min(15, (homeProbClean - 0.5) / 0.025));
-  const homeImplied = vegasTotal / 2 + impliedSpread / 2;
-  return isHome ? homeImplied : vegasTotal - homeImplied;
-}
-
-function getPlayerOddsSummary(player: DkPlayerRow, sport: Sport): { total: string; detail: string } {
-  const isHome = player.teamId != null && player.homeTeamId != null
-    ? player.teamId === player.homeTeamId
-    : null;
-
-  const total = player.vegasTotal != null ? `O/U ${player.vegasTotal.toFixed(1)}` : "O/U —";
-
-  if (isHome == null) {
-    return { total, detail: "TT — · ML —" };
+function shortBookName(value: string | null | undefined): string {
+  switch ((value ?? "").toLowerCase()) {
+    case "fanduel": return "FD";
+    case "draftkings": return "DK";
+    case "betmgm": return "MGM";
+    case "caesars": return "CZR";
+    case "betrivers": return "BR";
+    case "betonline.ag": return "BO";
+    case "betonlineag": return "BO";
+    case "fanatics": return "FAN";
+    case "bovada": return "BOV";
+    default: return value ?? "";
   }
+}
 
-  const teamMl = isHome ? player.homeMl : player.awayMl;
-  const teamImplied = sport === "mlb"
-    ? (isHome ? player.homeImplied : player.awayImplied)
-    : (player.vegasTotal != null ? computeNbaTeamImplied(player.vegasTotal, player.homeMl, player.awayMl, isHome) : null);
+type PlayerPropToken = {
+  stat: "PTS" | "REB" | "AST" | "BLK" | "STL";
+  line: number;
+  price: number | null;
+  book: string | null;
+};
 
-  const impliedText = teamImplied != null ? `TT ${teamImplied.toFixed(1)}` : "TT —";
-  const mlText = `ML ${fmtMl(teamMl)}`;
-  return { total, detail: `${impliedText} · ${mlText}` };
+function getPlayerPropTokens(player: DkPlayerRow): PlayerPropToken[] {
+  const tokens: PlayerPropToken[] = [];
+  const fields = [
+    { stat: "PTS", line: player.propPts, price: player.propPtsPrice, book: player.propPtsBook },
+    { stat: "REB", line: player.propReb, price: player.propRebPrice, book: player.propRebBook },
+    { stat: "AST", line: player.propAst, price: player.propAstPrice, book: player.propAstBook },
+    { stat: "BLK", line: player.propBlk, price: player.propBlkPrice, book: player.propBlkBook },
+    { stat: "STL", line: player.propStl, price: player.propStlPrice, book: player.propStlBook },
+  ] as const;
+
+  for (const field of fields) {
+    if (field.line == null) continue;
+    tokens.push({
+      stat: field.stat,
+      line: field.line,
+      price: field.price ?? null,
+      book: field.book ?? null,
+    });
+  }
+  return tokens;
 }
 
 function buildNbaLineupsFromPersisted(
@@ -1215,7 +1223,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </div>
         )}
 
-        {/* Player props from The Odds API — NBA only (pts/reb/ast) */}
+        {/* Player props from The Odds API — NBA only (pts/reb/ast/blk/stl) */}
         {sport === "nba" && players.length > 0 && (
           <div className="mt-3 pt-3 border-t space-y-2">
             <div className="flex items-center gap-3">
@@ -1234,7 +1242,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                 {isAuditingProps ? "Auditing…" : "Audit Prop Coverage"}
               </button>
               <span className="text-xs text-gray-400">
-                Pulls pts/reb/ast lines from The Odds API · audit checks pts/reb/ast/blk/stl coverage by book
+                Pulls pts/reb/ast/blk/stl lines from The Odds API · audit checks coverage by book
               </span>
             </div>
             {isFetchingProps && (
@@ -1673,7 +1681,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Pos</th>
                   <SortHeader col="name" label="Player" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Team</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Odds</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Props</th>
                   {sport === "nba" && (
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Rules</th>
                   )}
@@ -1693,7 +1701,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   const delta = p.ourProj != null && p.linestarProj != null
                     ? p.ourProj - p.linestarProj : null;
                   const value = p.ourProj != null ? p.ourProj / (p.salary / 1000) : null;
-                  const odds = getPlayerOddsSummary(p, sport);
+                  const propTokens = getPlayerPropTokens(p);
                   const pos = displayPos(p.eligiblePositions, sport);
                   const isLocked = lockedPlayerSet.has(p.id);
                   const isBlocked = blockedPlayerSet.has(p.id);
@@ -1727,9 +1735,23 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{p.teamAbbrev}</td>
-                      <td className="px-3 py-1.5 text-[11px] text-gray-500 whitespace-nowrap">
-                        <div>{odds.total}</div>
-                        <div className="text-gray-400">{odds.detail}</div>
+                      <td className="px-3 py-1.5 text-[11px] text-gray-500">
+                        {propTokens.length > 0 ? (
+                          <div className="flex max-w-[280px] flex-wrap gap-1">
+                            {propTokens.map((prop) => (
+                              <span
+                                key={`${p.id}-${prop.stat}`}
+                                className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
+                              >
+                                {prop.stat} {prop.line.toFixed(1)}
+                                {prop.price != null ? ` (${fmtAmericanOdds(prop.price)})` : ""}
+                                {prop.book ? ` ${shortBookName(prop.book)}` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                       {sport === "nba" && (
                         <td className="px-3 py-1.5 text-xs">

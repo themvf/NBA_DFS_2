@@ -31,8 +31,20 @@ export type DkPlayerRow = {
   projCeiling: number | null;
   boomRate: number | null;
   propPts: number | null;
+  propPtsPrice: number | null;
+  propPtsBook: string | null;
   propReb: number | null;
+  propRebPrice: number | null;
+  propRebBook: string | null;
   propAst: number | null;
+  propAstPrice: number | null;
+  propAstBook: string | null;
+  propBlk: number | null;
+  propBlkPrice: number | null;
+  propBlkBook: string | null;
+  propStl: number | null;
+  propStlPrice: number | null;
+  propStlBook: string | null;
   isOut: boolean | null;
   actualFpts: number | null;
   actualOwnPct: number | null;
@@ -72,8 +84,20 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         dp.our_own_pct        AS "ourOwnPct",
         dp.our_leverage       AS "ourLeverage",
         dp.prop_pts           AS "propPts",
+        dp.prop_pts_price     AS "propPtsPrice",
+        dp.prop_pts_book      AS "propPtsBook",
         dp.prop_reb           AS "propReb",
+        dp.prop_reb_price     AS "propRebPrice",
+        dp.prop_reb_book      AS "propRebBook",
         dp.prop_ast           AS "propAst",
+        dp.prop_ast_price     AS "propAstPrice",
+        dp.prop_ast_book      AS "propAstBook",
+        dp.prop_blk           AS "propBlk",
+        dp.prop_blk_price     AS "propBlkPrice",
+        dp.prop_blk_book      AS "propBlkBook",
+        dp.prop_stl           AS "propStl",
+        dp.prop_stl_price     AS "propStlPrice",
+        dp.prop_stl_book      AS "propStlBook",
         dp.is_out             AS "isOut",
         dp.proj_floor         AS "projFloor",
         dp.proj_ceiling       AS "projCeiling",
@@ -125,8 +149,20 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       dp.our_own_pct       AS "ourOwnPct",
       dp.our_leverage      AS "ourLeverage",
       dp.prop_pts          AS "propPts",
+      dp.prop_pts_price    AS "propPtsPrice",
+      dp.prop_pts_book     AS "propPtsBook",
       dp.prop_reb          AS "propReb",
+      dp.prop_reb_price    AS "propRebPrice",
+      dp.prop_reb_book     AS "propRebBook",
       dp.prop_ast          AS "propAst",
+      dp.prop_ast_price    AS "propAstPrice",
+      dp.prop_ast_book     AS "propAstBook",
+      dp.prop_blk          AS "propBlk",
+      dp.prop_blk_price    AS "propBlkPrice",
+      dp.prop_blk_book     AS "propBlkBook",
+      dp.prop_stl          AS "propStl",
+      dp.prop_stl_price    AS "propStlPrice",
+      dp.prop_stl_book     AS "propStlBook",
       dp.is_out            AS "isOut",
       dp.proj_floor        AS "projFloor",
       dp.proj_ceiling      AS "projCeiling",
