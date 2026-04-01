@@ -42,12 +42,45 @@ type CsvExportResult = {
   error?: string;
 };
 
+type NbaPropAuditStat = "pts" | "reb" | "ast" | "blk" | "stl";
+
+export type NbaPropCoverageAuditBook = {
+  bookmakerKey: string;
+  bookmakerTitle: string;
+  uniquePlayers: number;
+  stats: Record<NbaPropAuditStat, number>;
+};
+
+export type NbaPropCoverageAuditLeader = {
+  stat: NbaPropAuditStat;
+  bookmakerKey: string;
+  bookmakerTitle: string;
+  count: number;
+};
+
+export type NbaPropCoverageAuditResult = {
+  ok: boolean;
+  message: string;
+  selectedGames: string[];
+  playerPoolCount: number;
+  bookmakerCount?: number;
+  books?: NbaPropCoverageAuditBook[];
+  leaders?: NbaPropCoverageAuditLeader[];
+};
+
 const LEAGUE_AVG_PACE       = 100.0;
 const LEAGUE_AVG_DEF_RTG   = 112.0;
 const LEAGUE_AVG_TOTAL      = 228.0;
 const LEAGUE_AVG_TEAM_TOTAL = 114.0;
 const LEAGUE_AVG_USAGE      = 20.0;
 const CURRENT_SEASON        = "2025-26";
+const NBA_PROP_MARKET_TO_STAT: Record<string, NbaPropAuditStat> = {
+  player_points: "pts",
+  player_rebounds: "reb",
+  player_assists: "ast",
+  player_blocks: "blk",
+  player_steals: "stl",
+};
 
 function finiteOrNull(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
@@ -65,6 +98,26 @@ function sanitizeOwnershipPct(value: number | null | undefined): number | null {
 
 function sanitizeLeverage(value: number | null | undefined): number | null {
   return finiteOrNull(value);
+}
+
+function parseSlateGameKey(gameInfo: string | null): string {
+  return gameInfo?.split(" ")[0] ?? "Unknown";
+}
+
+function extractOverOutcomePlayerName(
+  outcome: { name?: string | null; description?: string | null; point?: number | null },
+): string | null {
+  if (outcome.point == null) return null;
+  const overField =
+    outcome.name?.toLowerCase() === "over"
+      ? "name"
+      : outcome.description?.toLowerCase() === "over"
+        ? "description"
+        : null;
+  if (!overField) return null;
+  return overField === "name"
+    ? outcome.description?.trim() ?? null
+    : outcome.name?.trim() ?? null;
 }
 
 function buildPartialGenerationWarning<T extends { players: Array<{ id: number; name: string }> }>(
@@ -649,23 +702,14 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
                           : market.key === "player_assists" ? "ast" : null;
             if (!statKey) continue;
             for (const o of market.outcomes) {
-              if (o.point == null) continue;
-              const overField =
-                o.name?.toLowerCase() === "over"
-                  ? "name"
-                  : o.description?.toLowerCase() === "over"
-                    ? "description"
-                    : null;
-              if (!overField) continue;
-              const playerName =
-                overField === "name"
-                  ? o.description?.trim()
-                  : o.name?.trim();
+              const point = o.point;
+              if (point == null) continue;
+              const playerName = extractOverOutcomePlayerName(o);
               if (!playerName) continue;
               const key = playerName.toLowerCase();
               const accum = propAccum.get(key) ?? {};
               const [sum, cnt] = accum[statKey] ?? [0, 0];
-              accum[statKey] = [sum + o.point, cnt + 1];
+              accum[statKey] = [sum + point, cnt + 1];
               propAccum.set(key, accum);
             }
           }
@@ -821,6 +865,213 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
     };
   } catch (e) {
     return { ok: false, message: `Props failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+export async function auditNbaPropCoverage(gameKeys: string[]): Promise<NbaPropCoverageAuditResult> {
+  try {
+    const oddsApiKey = process.env.ODDS_API_KEY;
+    if (!oddsApiKey) {
+      return {
+        ok: false,
+        message: "ODDS_API_KEY not set in Vercel env vars",
+        selectedGames: gameKeys,
+        playerPoolCount: 0,
+      };
+    }
+
+    const [slate] = await db
+      .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+      .from(dkSlates)
+      .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
+      .limit(1);
+    if (!slate) {
+      return { ok: false, message: "No slate loaded — load a slate first", selectedGames: gameKeys, playerPoolCount: 0 };
+    }
+
+    const selectedGameSet = new Set(gameKeys.filter(Boolean));
+    const slatePlayers = await db
+      .select({ name: dkPlayers.name, gameInfo: dkPlayers.gameInfo })
+      .from(dkPlayers)
+      .where(eq(dkPlayers.slateId, slate.id));
+    const selectedPlayers = slatePlayers.filter((player) =>
+      selectedGameSet.size === 0 || selectedGameSet.has(parseSlateGameKey(player.gameInfo)),
+    );
+    if (selectedPlayers.length === 0) {
+      return {
+        ok: false,
+        message: "No players found for the selected games.",
+        selectedGames: gameKeys,
+        playerPoolCount: 0,
+      };
+    }
+
+    const exactMatches = new Map(selectedPlayers.map((player) => [player.name.toLowerCase(), player.name]));
+    const normalizedPlayers = selectedPlayers.map((player) => ({
+      canonicalName: player.name,
+      normalizedName: normalizeName(player.name),
+    }));
+
+    const eventsResp = await fetch(
+      `https://api.the-odds-api.com/v4/sports/basketball_nba/events?apiKey=${oddsApiKey}&dateFormat=iso`,
+      { next: { revalidate: 0 } },
+    );
+    if (!eventsResp.ok) throw new Error(`Odds API events: HTTP ${eventsResp.status}`);
+    const allEvents = await eventsResp.json() as Array<{ id: string; commence_time: string }>;
+
+    const windowStart = new Date(`${slate.slateDate}T00:00:00Z`).getTime();
+    const windowEnd   = windowStart + 36 * 3_600_000;
+    const todayEvents = allEvents.filter((event) => {
+      const t = new Date(event.commence_time).getTime();
+      return t >= windowStart && t < windowEnd;
+    });
+    if (todayEvents.length === 0) {
+      return {
+        ok: false,
+        message: `No NBA events found for ${slate.slateDate}`,
+        selectedGames: gameKeys,
+        playerPoolCount: selectedPlayers.length,
+      };
+    }
+
+    const emptyStats = () => ({
+      pts: new Set<string>(),
+      reb: new Set<string>(),
+      ast: new Set<string>(),
+      blk: new Set<string>(),
+      stl: new Set<string>(),
+    });
+    const coverageByBook = new Map<string, {
+      bookmakerKey: string;
+      bookmakerTitle: string;
+      uniquePlayers: Set<string>;
+      stats: Record<NbaPropAuditStat, Set<string>>;
+    }>();
+
+    for (const event of todayEvents) {
+      const qs = new URLSearchParams({
+        apiKey: oddsApiKey,
+        regions: "us",
+        markets: Object.keys(NBA_PROP_MARKET_TO_STAT).join(","),
+        oddsFormat: "american",
+      });
+      try {
+        const response = await fetch(
+          `https://api.the-odds-api.com/v4/sports/basketball_nba/events/${event.id}/odds?${qs}`,
+          { next: { revalidate: 0 } },
+        );
+        if (!response.ok) continue;
+        const data = await response.json() as {
+          bookmakers: Array<{
+            key: string;
+            title: string;
+            markets: Array<{
+              key: string;
+              outcomes: Array<{ name?: string; description?: string; point?: number }>;
+            }>;
+          }>;
+        };
+
+        for (const bookmaker of data.bookmakers ?? []) {
+          const existing = coverageByBook.get(bookmaker.key) ?? {
+            bookmakerKey: bookmaker.key,
+            bookmakerTitle: bookmaker.title,
+            uniquePlayers: new Set<string>(),
+            stats: emptyStats(),
+          };
+          for (const market of bookmaker.markets ?? []) {
+            const statKey = NBA_PROP_MARKET_TO_STAT[market.key];
+            if (!statKey) continue;
+            for (const outcome of market.outcomes ?? []) {
+              const playerName = extractOverOutcomePlayerName(outcome);
+              if (!playerName) continue;
+              const exact = exactMatches.get(playerName.toLowerCase());
+              let matchedName = exact ?? null;
+              if (!matchedName) {
+                const normalized = normalizeName(playerName);
+                let bestDist = 4;
+                for (const candidate of normalizedPlayers) {
+                  const dist = levenshtein(normalized, candidate.normalizedName);
+                  if (dist < bestDist) {
+                    bestDist = dist;
+                    matchedName = candidate.canonicalName;
+                  }
+                }
+              }
+              if (!matchedName) continue;
+              existing.uniquePlayers.add(matchedName);
+              existing.stats[statKey].add(matchedName);
+            }
+          }
+          coverageByBook.set(bookmaker.key, existing);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    const books = Array.from(coverageByBook.values())
+      .map((book) => ({
+        bookmakerKey: book.bookmakerKey,
+        bookmakerTitle: book.bookmakerTitle,
+        uniquePlayers: book.uniquePlayers.size,
+        stats: {
+          pts: book.stats.pts.size,
+          reb: book.stats.reb.size,
+          ast: book.stats.ast.size,
+          blk: book.stats.blk.size,
+          stl: book.stats.stl.size,
+        },
+      }))
+      .sort((a, b) =>
+        (b.stats.pts + b.stats.reb + b.stats.ast + b.stats.blk + b.stats.stl)
+        - (a.stats.pts + a.stats.reb + a.stats.ast + a.stats.blk + a.stats.stl)
+        || b.uniquePlayers - a.uniquePlayers
+        || a.bookmakerTitle.localeCompare(b.bookmakerTitle),
+      );
+
+    const leaders: NbaPropCoverageAuditLeader[] = (["pts", "reb", "ast", "blk", "stl"] as NbaPropAuditStat[])
+      .map((stat) => {
+        const best = books.reduce<NbaPropCoverageAuditBook | null>((leader, book) => {
+          if (!leader || book.stats[stat] > leader.stats[stat]) return book;
+          return leader;
+        }, null);
+        return best
+          ? {
+              stat,
+              bookmakerKey: best.bookmakerKey,
+              bookmakerTitle: best.bookmakerTitle,
+              count: best.stats[stat],
+            }
+          : null;
+      })
+      .filter((leader): leader is NbaPropCoverageAuditLeader => !!leader && leader.count > 0);
+
+    if (books.length === 0) {
+      return {
+        ok: false,
+        message: "No prop coverage found for the selected games.",
+        selectedGames: gameKeys,
+        playerPoolCount: selectedPlayers.length,
+      };
+    }
+
+    return {
+      ok: true,
+      message: `Audited ${books.length} bookmakers for ${selectedPlayers.length} slate players.`,
+      selectedGames: gameKeys,
+      playerPoolCount: selectedPlayers.length,
+      bookmakerCount: books.length,
+      books,
+      leaders,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      message: `Prop coverage audit failed: ${e instanceof Error ? e.message : String(e)}`,
+      selectedGames: gameKeys,
+      playerPoolCount: 0,
+    };
   }
 }
 

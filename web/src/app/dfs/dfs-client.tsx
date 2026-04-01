@@ -11,7 +11,7 @@ import {
   validateNbaRuleSelections,
   type NbaTeamStackRule,
 } from "./nba-optimizer-rules";
-import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections } from "./actions";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections, auditNbaPropCoverage } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -28,6 +28,32 @@ type NbaRuleState = {
   playerBlocks: number[];
   blockedTeamIds: number[];
   requiredTeamStacks: NbaTeamStackRule[];
+};
+
+type NbaPropCoverageAuditResult = {
+  ok: boolean;
+  message: string;
+  selectedGames: string[];
+  playerPoolCount: number;
+  bookmakerCount?: number;
+  books?: Array<{
+    bookmakerKey: string;
+    bookmakerTitle: string;
+    uniquePlayers: number;
+    stats: {
+      pts: number;
+      reb: number;
+      ast: number;
+      blk: number;
+      stl: number;
+    };
+  }>;
+  leaders?: Array<{
+    stat: "pts" | "reb" | "ast" | "blk" | "stl";
+    bookmakerKey: string;
+    bookmakerTitle: string;
+    count: number;
+  }>;
 };
 
 function parseGameKey(gameInfo: string | null): string {
@@ -261,6 +287,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Player props ──────────────────────────────────────────
   const [propsMsg, setPropsMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isFetchingProps, setIsFetchingProps] = useState(false);
+  const [propAudit, setPropAudit] = useState<NbaPropCoverageAuditResult | null>(null);
+  const [isAuditingProps, setIsAuditingProps] = useState(false);
 
   // ── Clear Slate ───────────────────────────────────────────
   const [clearSlateConfirm, setClearSlateConfirm] = useState(false);
@@ -789,6 +817,14 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setPropsMsg({ ok: res.ok, text: res.message });
   }
 
+  async function handleAuditProps() {
+    setIsAuditingProps(true);
+    setPropAudit(null);
+    const res = await auditNbaPropCoverage(Array.from(selectedGames));
+    setIsAuditingProps(false);
+    setPropAudit(res);
+  }
+
   async function handleRecomputeProjections() {
     setIsRecomputing(true);
     setProjMsg(null);
@@ -1146,8 +1182,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               >
                 Fetch Player Props
               </button>
+              <button
+                onClick={handleAuditProps}
+                disabled={isAuditingProps}
+                className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {isAuditingProps ? "Auditing…" : "Audit Prop Coverage"}
+              </button>
               <span className="text-xs text-gray-400">
-                Pulls pts/reb/ast lines from The Odds API · updates projections (~20s)
+                Pulls pts/reb/ast lines from The Odds API · audit checks pts/reb/ast/blk/stl coverage by book
               </span>
             </div>
             {isFetchingProps && (
@@ -1160,6 +1203,51 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {propsMsg.text}
               </span>
+            )}
+            {propAudit && (
+              <div className="rounded border bg-gray-50 p-3 text-xs text-gray-700 space-y-2">
+                <div className={propAudit.ok ? "text-green-700" : "text-red-600"}>{propAudit.message}</div>
+                {propAudit.ok && propAudit.books && propAudit.books.length > 0 && (
+                  <>
+                    <div className="text-gray-500">
+                      Games: {propAudit.selectedGames.join(", ") || "All selected"} · Player pool: {propAudit.playerPoolCount} · Books: {propAudit.bookmakerCount ?? propAudit.books.length}
+                    </div>
+                    {propAudit.leaders && propAudit.leaders.length > 0 && (
+                      <div className="text-gray-600">
+                        Leaders: {propAudit.leaders.map((leader) => `${leader.stat.toUpperCase()} ${leader.bookmakerTitle} (${leader.count})`).join(" · ")}
+                      </div>
+                    )}
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full border-collapse">
+                        <thead>
+                          <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+                            <th className="px-2 py-1">Book</th>
+                            <th className="px-2 py-1 text-right">Any</th>
+                            <th className="px-2 py-1 text-right">Pts</th>
+                            <th className="px-2 py-1 text-right">Reb</th>
+                            <th className="px-2 py-1 text-right">Ast</th>
+                            <th className="px-2 py-1 text-right">Blk</th>
+                            <th className="px-2 py-1 text-right">Stl</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {propAudit.books.slice(0, 12).map((book) => (
+                            <tr key={book.bookmakerKey} className="border-t border-gray-200">
+                              <td className="px-2 py-1 font-medium">{book.bookmakerTitle}</td>
+                              <td className="px-2 py-1 text-right">{book.uniquePlayers}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.pts}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.reb}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.ast}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.blk}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.stl}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}
