@@ -1,4 +1,5 @@
 import { db } from ".";
+import { ensureDkPlayerPropColumns } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 
@@ -64,6 +65,8 @@ export type DkPlayerRow = {
 };
 
 export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]> {
+  await ensureDkPlayerPropColumns();
+
   if (sport === "mlb") {
     const result = await db.execute<DkPlayerRow>(sql`
       SELECT

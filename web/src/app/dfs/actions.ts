@@ -11,6 +11,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
+import { ensureDkPlayerPropColumns } from "@/db/ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors } from "@/db/schema";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
@@ -710,6 +711,8 @@ export async function backfillPlayerStats(): Promise<{ ok: boolean; message: str
 
 export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string }> {
   try {
+    await ensureDkPlayerPropColumns();
+
     const oddsApiKey = process.env.ODDS_API_KEY;
     if (!oddsApiKey) return { ok: false, message: "ODDS_API_KEY not set in Vercel env vars" };
 
@@ -3089,6 +3092,8 @@ export async function clearSlate(sport: Sport): Promise<{ ok: boolean; message: 
 
 export async function recomputeProjections(): Promise<{ ok: boolean; message: string }> {
   try {
+    await ensureDkPlayerPropColumns();
+
     // Pick the largest slate on the most recent date (gameCount DESC breaks ties
     // when multiple slates share a date, e.g. a 2-game test alongside a 6-game main)
     const [slate] = await db
