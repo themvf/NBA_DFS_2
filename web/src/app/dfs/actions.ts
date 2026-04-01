@@ -43,6 +43,14 @@ type CsvExportResult = {
 };
 
 type NbaPropAuditStat = "pts" | "reb" | "ast" | "blk" | "stl";
+type NbaProjectionPropStat = "pts" | "reb" | "ast";
+
+type PropBookCandidate = {
+  bookmakerKey: string;
+  bookmakerTitle: string;
+  point: number;
+  price: number | null;
+};
 
 export type NbaPropCoverageAuditBook = {
   bookmakerKey: string;
@@ -74,6 +82,7 @@ const LEAGUE_AVG_TOTAL      = 228.0;
 const LEAGUE_AVG_TEAM_TOTAL = 114.0;
 const LEAGUE_AVG_USAGE      = 20.0;
 const CURRENT_SEASON        = "2025-26";
+const MAIN_LINE_TARGET_PROB = 110 / 210; // -110 hold-adjusted "main" line target
 const NBA_PROP_MARKET_TO_STAT: Record<string, NbaPropAuditStat> = {
   player_points: "pts",
   player_rebounds: "reb",
@@ -81,6 +90,16 @@ const NBA_PROP_MARKET_TO_STAT: Record<string, NbaPropAuditStat> = {
   player_blocks: "blk",
   player_steals: "stl",
 };
+const NBA_PROP_BOOK_PRIORITY = [
+  "draftkings",
+  "caesars",
+  "fanduel",
+  "betonlineag",
+  "fanatics",
+  "betmgm",
+  "betrivers",
+  "bovada",
+];
 
 function finiteOrNull(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
@@ -102,6 +121,59 @@ function sanitizeLeverage(value: number | null | undefined): number | null {
 
 function parseSlateGameKey(gameInfo: string | null): string {
   return gameInfo?.split(" ")[0] ?? "Unknown";
+}
+
+function americanToImpliedProbability(price: number): number {
+  return price > 0 ? 100 / (price + 100) : Math.abs(price) / (Math.abs(price) + 100);
+}
+
+function normalizeBookPreferenceKey(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function propBookPriority(candidate: Pick<PropBookCandidate, "bookmakerKey" | "bookmakerTitle">): number {
+  const normalizedKey = normalizeBookPreferenceKey(candidate.bookmakerKey);
+  const normalizedTitle = normalizeBookPreferenceKey(candidate.bookmakerTitle);
+  const idx = NBA_PROP_BOOK_PRIORITY.findIndex((book) => book === normalizedKey || book === normalizedTitle);
+  return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+}
+
+function mainLineDistance(price: number | null): number {
+  if (price == null) return Number.POSITIVE_INFINITY;
+  return Math.abs(americanToImpliedProbability(price) - MAIN_LINE_TARGET_PROB);
+}
+
+function compareMainLineCandidates(a: Pick<PropBookCandidate, "point" | "price">, b: Pick<PropBookCandidate, "point" | "price">): number {
+  const distanceDiff = mainLineDistance(a.price) - mainLineDistance(b.price);
+  if (distanceDiff !== 0) return distanceDiff;
+
+  const priceAbsDiff = Math.abs(Math.abs(a.price ?? 0) - 110) - Math.abs(Math.abs(b.price ?? 0) - 110);
+  if (priceAbsDiff !== 0) return priceAbsDiff;
+
+  return a.point - b.point;
+}
+
+function pickPreferredPropLine(candidates: PropBookCandidate[]): PropBookCandidate | null {
+  if (candidates.length === 0) return null;
+
+  const bestByBook = new Map<string, PropBookCandidate>();
+  for (const candidate of candidates) {
+    const bookKey = normalizeBookPreferenceKey(candidate.bookmakerKey) || normalizeBookPreferenceKey(candidate.bookmakerTitle);
+    const existing = bestByBook.get(bookKey);
+    if (!existing || compareMainLineCandidates(candidate, existing) < 0) {
+      bestByBook.set(bookKey, candidate);
+    }
+  }
+
+  return Array.from(bestByBook.values()).sort((a, b) => {
+    const priorityDiff = propBookPriority(a) - propBookPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const qualityDiff = compareMainLineCandidates(a, b);
+    if (qualityDiff !== 0) return qualityDiff;
+
+    return a.bookmakerTitle.localeCompare(b.bookmakerTitle);
+  })[0] ?? null;
 }
 
 function extractOverOutcomePlayerName(
@@ -664,14 +736,13 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
       .select({ id: dkPlayers.id, name: dkPlayers.name, teamId: dkPlayers.teamId })
       .from(dkPlayers).where(eq(dkPlayers.slateId, slate.id));
 
-    // Step 3: Collect props across all events — average across all bookmakers.
-    // Taking bookmakers[0] is non-deterministic (order varies by API call).
-    // Consensus average across all available books is the most stable and
-    // accurate single line to use as a projection input.
+    // Step 3: Collect props across all events.
+    // We do not average alternate lines blindly. For each bookmaker/player/stat,
+    // choose the "main" over line by price proximity to a standard -110 market,
+    // then choose across books by priority (DraftKings primary, Caesars fallback).
     type PropSet = { pts?: number; reb?: number; ast?: number };
-    // Accumulators: player → stat → [sum, count] for averaging
-    type Accumulator = Record<string, [number, number]>;
-    const propAccum = new Map<string, Accumulator>(); // key = lower-cased player name
+    type PropAccumulator = Partial<Record<NbaProjectionPropStat, PropBookCandidate[]>>;
+    const propAccum = new Map<string, PropAccumulator>(); // key = lower-cased player name
 
     for (const event of todayEvents) {
       const qs = new URLSearchParams({
@@ -688,13 +759,13 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
         const data = await r.json() as {
           bookmakers: Array<{
             key: string;
+            title: string;
             markets: Array<{
               key: string;
-              outcomes: Array<{ name: string; description: string; point?: number }>;
+              outcomes: Array<{ name: string; description: string; point?: number; price?: number }>;
             }>;
           }>;
         };
-        // Iterate ALL bookmakers, not just [0]
         for (const bm of (data.bookmakers ?? [])) {
           for (const market of bm.markets) {
             const statKey = market.key === "player_points" ? "pts"
@@ -708,8 +779,14 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
               if (!playerName) continue;
               const key = playerName.toLowerCase();
               const accum = propAccum.get(key) ?? {};
-              const [sum, cnt] = accum[statKey] ?? [0, 0];
-              accum[statKey] = [sum + point, cnt + 1];
+              const candidates = accum[statKey] ?? [];
+              candidates.push({
+                bookmakerKey: bm.key,
+                bookmakerTitle: bm.title,
+                point,
+                price: finiteOrNull(o.price),
+              });
+              accum[statKey] = candidates;
               propAccum.set(key, accum);
             }
           }
@@ -717,12 +794,14 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
       } catch { /* skip individual event failures */ }
     }
 
-    // Collapse accumulators → consensus averages
+    // Collapse accumulators → preferred line per player/stat
     const propData = new Map<string, PropSet>();
     for (const [player, accum] of propAccum) {
       const entry: PropSet = {};
-      for (const [stat, [sum, cnt]] of Object.entries(accum)) {
-        (entry as Record<string, number>)[stat] = Math.round((sum / cnt) * 2) / 2; // round to nearest 0.5
+      for (const stat of ["pts", "reb", "ast"] as const) {
+        const selected = pickPreferredPropLine(accum[stat] ?? []);
+        if (!selected) continue;
+        entry[stat] = Math.round(selected.point * 2) / 2;
       }
       propData.set(player, entry);
     }
