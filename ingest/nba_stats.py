@@ -1,21 +1,17 @@
-"""Fetch NBA team pace/ratings and player rolling stats from stats.nba.com.
+"""Fetch NBA team stats plus raw player/team game logs from stats.nba.com.
 
 Uses the nba_api Python package which wraps stats.nba.com endpoints.
-No API key required — nba_api sets a browser-like User-Agent automatically.
-
-Rate limiting: stats.nba.com returns HTTP 429 if called too quickly.
-A 0.6s sleep between requests is sufficient for single-process use.
-
-Retry logic: stats.nba.com is flaky, especially from CI/shared IPs. All
-endpoint calls use exponential backoff (3 attempts, 2x backoff from 10s).
+No API key required - nba_api sets a browser-like User-Agent automatically.
 
 Data fetched:
   - Team stats: pace, OffRtg, DefRtg via LeagueDashTeamStats (Advanced)
-  - Player stats: 10-game rolling averages via LeagueGameLog (per CLAUDE.md)
+  - Raw player game logs: season-long per-game rows via PlayerGameLogs
+  - Raw team game logs: season-long per-game rows via TeamGameLogs
+  - Player stats: 10-game rolling averages derived from stored raw logs
 
 Usage:
     python -m ingest.nba_stats
-    python -m ingest.nba_stats --season 2025-26
+    python -m ingest.nba_stats --season 2025-26 --season-type "Regular Season"
 """
 
 from __future__ import annotations
@@ -25,31 +21,31 @@ import logging
 import time
 from typing import Callable, TypeVar
 
-from datetime import date, timedelta
-
 import pandas as pd
 
 from config import load_config
 from db.database import DatabaseManager
-from db.queries import build_team_abbrev_cache, upsert_nba_team_stats, upsert_nba_player_stats
+from db.queries import (
+    build_team_abbrev_cache,
+    upsert_nba_player_game_logs,
+    upsert_nba_player_stats,
+    upsert_nba_team_game_logs,
+    upsert_nba_team_stats,
+)
 from ingest.nba_teams import NBA_ID_TO_ABBREV
 
 logger = logging.getLogger(__name__)
 
-SLEEP_SECONDS = 1.0   # stay under stats.nba.com rate limit (increased from 0.6)
-_MAX_RETRIES  = 3
-_RETRY_BASE   = 10.0  # seconds; doubles on each retry (10, 20, 40)
+SLEEP_SECONDS = 1.0
+_MAX_RETRIES = 3
+_RETRY_BASE = 10.0
+DEFAULT_SEASON_TYPE = "Regular Season"
 
 T = TypeVar("T")
 
 
 def _call_with_retry(fn: Callable[[], T], label: str) -> T:
-    """Call an nba_api endpoint with exponential backoff.
-
-    stats.nba.com is unreliable from CI environments — it returns HTTP 429,
-    timeouts, or malformed JSON under load. This wrapper retries up to
-    _MAX_RETRIES times before raising.
-    """
+    """Call an nba_api endpoint with exponential backoff."""
     import requests
 
     delay = _RETRY_BASE
@@ -65,7 +61,11 @@ def _call_with_retry(fn: Callable[[], T], label: str) -> T:
                 raise
             logger.warning(
                 "%s: network error on attempt %d/%d (%s). Retrying in %.0fs...",
-                label, attempt, _MAX_RETRIES, exc, delay,
+                label,
+                attempt,
+                _MAX_RETRIES,
+                exc,
+                delay,
             )
             time.sleep(delay)
             delay *= 2
@@ -75,27 +75,110 @@ def _call_with_retry(fn: Callable[[], T], label: str) -> T:
             status = exc.response.status_code if exc.response is not None else "?"
             logger.warning(
                 "%s: HTTP %s on attempt %d/%d. Retrying in %.0fs...",
-                label, status, attempt, _MAX_RETRIES, delay,
+                label,
+                status,
+                attempt,
+                _MAX_RETRIES,
+                delay,
             )
             time.sleep(delay)
             delay *= 2
-        except Exception as exc:  # noqa: BLE001 — catch nba_api JSON decode errors
+        except Exception as exc:  # noqa: BLE001
             if attempt == _MAX_RETRIES:
                 raise
             logger.warning(
                 "%s: unexpected error on attempt %d/%d (%s). Retrying in %.0fs...",
-                label, attempt, _MAX_RETRIES, type(exc).__name__, delay,
+                label,
+                attempt,
+                _MAX_RETRIES,
+                type(exc).__name__,
+                delay,
             )
             time.sleep(delay)
             delay *= 2
-    raise RuntimeError(f"{label}: all {_MAX_RETRIES} attempts failed")  # unreachable
+
+    raise RuntimeError(f"{label}: all {_MAX_RETRIES} attempts failed")
+
+
+def _safe_float(val) -> float | None:
+    try:
+        f = float(val)
+        return None if pd.isna(f) else f
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(val) -> int | None:
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_minutes(val) -> float:
+    """Parse NBA minutes string MM:SS or plain float to decimal minutes."""
+    if val is None:
+        return 0.0
+    s = str(val).strip()
+    if ":" in s:
+        parts = s.split(":")
+        try:
+            return int(parts[0]) + int(parts[1]) / 60
+        except (ValueError, IndexError):
+            return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _parse_game_date(val):
+    if val is None:
+        return None
+    try:
+        ts = pd.to_datetime(val, errors="coerce")
+        if pd.isna(ts):
+            return None
+        return ts.date()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _parse_opponent_abbreviation(matchup: str | None) -> str | None:
+    if not matchup:
+        return None
+    matchup = matchup.strip()
+    if " @ " in matchup:
+        return matchup.split(" @ ")[-1].strip().upper()
+    if " vs. " in matchup:
+        return matchup.split(" vs. ")[-1].strip().upper()
+    return None
+
+
+def _parse_is_home(matchup: str | None) -> bool | None:
+    if not matchup:
+        return None
+    if " vs. " in matchup:
+        return True
+    if " @ " in matchup:
+        return False
+    return None
+
+
+def _map_team_id(team_abbrev: str | None, nba_team_id, abbrev_cache: dict[str, int]) -> int | None:
+    if team_abbrev:
+        mapped = abbrev_cache.get(team_abbrev)
+        if mapped:
+            return mapped
+    nba_id = _safe_int(nba_team_id)
+    if nba_id is None:
+        return None
+    fallback_abbrev = NBA_ID_TO_ABBREV.get(nba_id, "").upper()
+    return abbrev_cache.get(fallback_abbrev)
 
 
 def fetch_team_stats(db: DatabaseManager, season: str) -> int:
-    """Fetch pace + OffRtg + DefRtg for all 30 teams and upsert into nba_team_stats.
-
-    Returns number of teams updated.
-    """
+    """Fetch pace, OffRtg, and DefRtg for all teams."""
     from nba_api.stats.endpoints import LeagueDashTeamStats
 
     logger.info("Fetching team stats for season %s ...", season)
@@ -111,16 +194,11 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
         return endpoint.get_data_frames()[0]
 
     df: pd.DataFrame = _call_with_retry(_fetch, "LeagueDashTeamStats")
-
     if df.empty:
         logger.warning("LeagueDashTeamStats returned empty DataFrame for season %s", season)
         return 0
 
-    # Map NBA numeric team IDs to our team_ids via abbreviation
     abbrev_cache = build_team_abbrev_cache(db)
-
-    # LeagueDashTeamStats Advanced has TEAM_ID (NBA numeric) but no TEAM_ABBREVIATION.
-    # Map via NBA_ID_TO_ABBREV from nba_teams.py.
     updated = 0
     for _, row in df.iterrows():
         nba_id = int(row["TEAM_ID"])
@@ -144,111 +222,271 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
     return updated
 
 
-def fetch_player_rolling_stats(db: DatabaseManager, season: str, n_games: int = 10) -> int:
-    """Fetch rolling n-game averages per player via LeagueGameLog.
+def fetch_player_game_logs(
+    db: DatabaseManager,
+    season: str,
+    season_type: str = DEFAULT_SEASON_TYPE,
+) -> int:
+    """Fetch season-long player game logs and persist them into Neon."""
+    from nba_api.stats.endpoints import playergamelogs
 
-    LeagueGameLog returns one row per player per game. We group by player,
-    take the last n_games, and compute averages. Double-double rate is computed
-    from individual game logs (games where 2+ stat categories >= 10).
-
-    Returns number of players updated.
-    """
-    from nba_api.stats.endpoints import LeagueGameLog
-
-    # LeagueGameLog has no last_n_games parameter — use date_from_nullable to
-    # window the last ~30 days (~10–15 games per team in that span).
-    date_from = (date.today() - timedelta(days=30)).strftime("%m/%d/%Y")
-    logger.info("Fetching player game logs from %s for season %s ...", date_from, season)
+    logger.info("Fetching raw player game logs for season %s (%s) ...", season, season_type)
     time.sleep(SLEEP_SECONDS)
 
     def _fetch() -> pd.DataFrame:
-        endpoint = LeagueGameLog(
-            season=season,
-            player_or_team_abbreviation="P",
-            direction="DESC",
-            date_from_nullable=date_from,
+        endpoint = playergamelogs.PlayerGameLogs(
+            season_nullable=season,
+            season_type_nullable=season_type,
+            player_id_nullable=None,
             timeout=60,
         )
         return endpoint.get_data_frames()[0]
 
-    df: pd.DataFrame = _call_with_retry(_fetch, "LeagueGameLog")
-
+    df: pd.DataFrame = _call_with_retry(_fetch, "PlayerGameLogs")
     if df.empty:
-        logger.warning("LeagueGameLog returned empty DataFrame")
+        logger.warning("PlayerGameLogs returned empty DataFrame")
         return 0
 
-    # Normalize column names (nba_api returns uppercase)
     df.columns = [c.upper() for c in df.columns]
-
-    # Map team abbreviations to our team_ids
     abbrev_cache = build_team_abbrev_cache(db)
+    rows: list[dict] = []
 
-    # Group by player — each player appears up to n_games times
-    EWMA_ALPHA = 0.25  # recent game weighted ~2.5× more than a game 5 dates back
+    for record in df.to_dict(orient="records"):
+        player_id = _safe_int(record.get("PLAYER_ID") or record.get("PLAYERID"))
+        game_id = record.get("GAME_ID")
+        if player_id is None or not game_id:
+            continue
+
+        matchup = record.get("MATCHUP")
+        team_abbrev = str(record.get("TEAM_ABBREVIATION") or "").upper() or None
+        opp_abbrev = _parse_opponent_abbreviation(matchup)
+
+        team_id = _map_team_id(team_abbrev, record.get("TEAM_ID"), abbrev_cache)
+        rows.append(
+            {
+                "season": season,
+                "season_type": season_type,
+                "player_id": player_id,
+                "name": str(record.get("PLAYER_NAME") or "Unknown Player"),
+                "team_id": team_id,
+                "opponent_team_id": abbrev_cache.get(opp_abbrev) if opp_abbrev else None,
+                "game_id": str(game_id),
+                "game_date": _parse_game_date(record.get("GAME_DATE")),
+                "matchup": matchup,
+                "team_abbreviation": team_abbrev,
+                "opponent_abbreviation": opp_abbrev,
+                "is_home": _parse_is_home(matchup),
+                "win_loss": record.get("WL"),
+                "minutes": _parse_minutes(record.get("MIN")),
+                "points": _safe_float(record.get("PTS")),
+                "rebounds": _safe_float(record.get("REB")),
+                "assists": _safe_float(record.get("AST")),
+                "steals": _safe_float(record.get("STL")),
+                "blocks": _safe_float(record.get("BLK")),
+                "turnovers": _safe_float(record.get("TOV")),
+                "fgm": _safe_float(record.get("FGM")),
+                "fga": _safe_float(record.get("FGA")),
+                "fg3m": _safe_float(record.get("FG3M")),
+                "fg3a": _safe_float(record.get("FG3A")),
+                "ftm": _safe_float(record.get("FTM")),
+                "fta": _safe_float(record.get("FTA")),
+                "plus_minus": _safe_float(record.get("PLUS_MINUS")),
+            }
+        )
+
+    inserted = upsert_nba_player_game_logs(db, rows)
+    print(f"Player game logs: {inserted} rows upserted for {season} ({season_type})")
+    return inserted
+
+
+def fetch_team_game_logs(
+    db: DatabaseManager,
+    season: str,
+    season_type: str = DEFAULT_SEASON_TYPE,
+) -> int:
+    """Fetch season-long team game logs and persist them into Neon."""
+    from nba_api.stats.endpoints import teamgamelogs
+
+    logger.info("Fetching raw team game logs for season %s (%s) ...", season, season_type)
+    time.sleep(SLEEP_SECONDS)
+
+    def _fetch() -> pd.DataFrame:
+        endpoint = teamgamelogs.TeamGameLogs(
+            season_nullable=season,
+            season_type_nullable=season_type,
+            league_id_nullable="00",
+            timeout=60,
+        )
+        return endpoint.get_data_frames()[0]
+
+    df: pd.DataFrame = _call_with_retry(_fetch, "TeamGameLogs")
+    if df.empty:
+        logger.warning("TeamGameLogs returned empty DataFrame")
+        return 0
+
+    df.columns = [c.upper() for c in df.columns]
+    abbrev_cache = build_team_abbrev_cache(db)
+    rows: list[dict] = []
+
+    for record in df.to_dict(orient="records"):
+        game_id = record.get("GAME_ID")
+        if not game_id:
+            continue
+
+        matchup = record.get("MATCHUP")
+        opp_abbrev = _parse_opponent_abbreviation(matchup)
+        pts = _safe_float(record.get("PTS"))
+        plus_minus = _safe_float(record.get("PLUS_MINUS"))
+        opp_pts = pts - plus_minus if pts is not None and plus_minus is not None else None
+
+        team_abbrev = str(record.get("TEAM_ABBREVIATION") or "").upper() or None
+        team_db_id = _map_team_id(team_abbrev, record.get("TEAM_ID"), abbrev_cache)
+        if team_db_id is None:
+            continue
+        rows.append(
+            {
+                "season": season,
+                "season_type": season_type,
+                "team_id": team_db_id,
+                "opponent_team_id": abbrev_cache.get(opp_abbrev) if opp_abbrev else None,
+                "team_name": str(record.get("TEAM_NAME") or "Unknown Team"),
+                "team_abbreviation": team_abbrev,
+                "opponent_abbreviation": opp_abbrev,
+                "game_id": str(game_id),
+                "game_date": _parse_game_date(record.get("GAME_DATE")),
+                "matchup": matchup,
+                "is_home": _parse_is_home(matchup),
+                "win_loss": record.get("WL"),
+                "fg3m": _safe_float(record.get("FG3M")),
+                "fg3a": _safe_float(record.get("FG3A")),
+                "opp_fg3m": _safe_float(record.get("OPP_FG3M")),
+                "opp_fg3a": _safe_float(record.get("OPP_FG3A")),
+                "pts": pts,
+                "opp_pts": opp_pts,
+                "ast": _safe_float(record.get("AST")),
+                "reb": _safe_float(record.get("REB")),
+                "opp_ast": _safe_float(record.get("OPP_AST")),
+                "opp_reb": _safe_float(record.get("OPP_REB")),
+                "fga": _safe_float(record.get("FGA")),
+                "fta": _safe_float(record.get("FTA")),
+                "oreb": _safe_float(record.get("OREB")),
+                "tov": _safe_float(record.get("TOV")),
+                "opp_fga": _safe_float(record.get("OPP_FGA")),
+                "opp_fta": _safe_float(record.get("OPP_FTA")),
+                "opp_oreb": _safe_float(record.get("OPP_OREB")),
+                "opp_tov": _safe_float(record.get("OPP_TOV")),
+                "plus_minus": plus_minus,
+            }
+        )
+
+    inserted = upsert_nba_team_game_logs(db, rows)
+    print(f"Team game logs: {inserted} rows upserted for {season} ({season_type})")
+    return inserted
+
+
+def fetch_player_rolling_stats(
+    db: DatabaseManager,
+    season: str,
+    season_type: str = DEFAULT_SEASON_TYPE,
+    n_games: int = 10,
+) -> int:
+    """Compute rolling n-game averages per player from stored raw game logs."""
+    logger.info("Computing rolling player stats from raw logs for %s (%s) ...", season, season_type)
+
+    rows = db.execute(
+        """
+        SELECT
+            player_id,
+            name,
+            team_id,
+            team_abbreviation,
+            game_id,
+            game_date,
+            minutes,
+            points,
+            rebounds,
+            assists,
+            steals,
+            blocks,
+            turnovers,
+            fga,
+            fta,
+            fg3m
+        FROM nba_player_game_logs
+        WHERE season = %s AND season_type = %s
+        ORDER BY player_id, game_date DESC NULLS LAST, game_id DESC
+        """,
+        (season, season_type),
+    )
+    df = pd.DataFrame(rows)
+    if df.empty:
+        logger.warning("No raw player game logs found for %s (%s)", season, season_type)
+        return 0
+
+    abbrev_cache = build_team_abbrev_cache(db)
+    ewma_alpha = 0.25
 
     def _ewma(series: pd.Series) -> float | None:
-        """EWMA of a stat series sorted newest-first. Returns most recent smoothed value."""
         vals = series.dropna()
         if vals.empty:
             return None
-        # Reverse to oldest-first so ewm weights recent (last) values most heavily
         chronological = vals.iloc[::-1].reset_index(drop=True)
-        smoothed = chronological.ewm(alpha=EWMA_ALPHA, adjust=False).mean()
+        smoothed = chronological.ewm(alpha=ewma_alpha, adjust=False).mean()
         return float(smoothed.iloc[-1])
 
     updated = 0
-    for player_id, group in df.groupby("PLAYER_ID"):
-        group = group.head(n_games)  # ensure at most n_games rows
+    for player_id, group in df.groupby("player_id"):
+        group = group.sort_values(["game_date", "game_id"], ascending=[False, False], na_position="last")
+        group = group.head(n_games)
         games = len(group)
         if games == 0:
             continue
 
-        name = str(group["PLAYER_NAME"].iloc[0])
-        team_abbrev = str(group["TEAM_ABBREVIATION"].iloc[0]).upper()
-        team_id = abbrev_cache.get(team_abbrev)
+        latest = group.iloc[0]
+        name = str(latest["name"])
+        team_abbrev = str(latest["team_abbreviation"]).upper() if latest["team_abbreviation"] else ""
+        team_id = abbrev_cache.get(team_abbrev) or _safe_int(latest["team_id"])
 
-        # EWMA per-game stats — recency-weighted averages
-        min_series  = group["MIN"].apply(_parse_minutes)
-        avg_minutes = _ewma(min_series)
-        ppg         = _ewma(group["PTS"])
-        rpg         = _ewma(group["REB"])
-        apg         = _ewma(group["AST"])
-        spg         = _ewma(group["STL"])
-        bpg         = _ewma(group["BLK"])
-        tovpg       = _ewma(group["TOV"])
-        threefgm_pg = _ewma(group["FG3M"])
+        avg_minutes = _ewma(group["minutes"].fillna(0))
+        ppg = _ewma(group["points"])
+        rpg = _ewma(group["rebounds"])
+        apg = _ewma(group["assists"])
+        spg = _ewma(group["steals"])
+        bpg = _ewma(group["blocks"])
+        tovpg = _ewma(group["turnovers"])
+        threefgm_pg = _ewma(group["fg3m"])
 
-        # Usage rate: derived from EWMA components for consistency
-        fga_pg  = _ewma(group["FGA"]) or 0.0
-        fta_pg  = _ewma(group["FTA"]) or 0.0
-        tov_pg  = tovpg or 0.0
-        min_pg  = avg_minutes or 1.0
+        fga_pg = _ewma(group["fga"]) or 0.0
+        fta_pg = _ewma(group["fta"]) or 0.0
+        tov_pg = tovpg or 0.0
+        min_pg = avg_minutes or 1.0
         usage_rate = ((fga_pg + 0.44 * fta_pg + tov_pg) / max(min_pg / 48.0 * 100, 1)) * 100
 
-        # Double-double rate: EWMA of per-game binary (1=DD, 0=no DD)
-        def _has_dd(r) -> bool:
-            cats = [r.get("PTS", 0) or 0, r.get("REB", 0) or 0, r.get("AST", 0) or 0,
-                    r.get("STL", 0) or 0, r.get("BLK", 0) or 0]
+        def _has_dd(row: pd.Series) -> bool:
+            cats = [
+                row.get("points", 0) or 0,
+                row.get("rebounds", 0) or 0,
+                row.get("assists", 0) or 0,
+                row.get("steals", 0) or 0,
+                row.get("blocks", 0) or 0,
+            ]
             return sum(c >= 10 for c in cats) >= 2
-        dd_binary = group.apply(_has_dd, axis=1).astype(float)
-        dd_rate   = _ewma(dd_binary) or 0.0
 
-        # Per-game DK FPTS std dev (for Monte Carlo variance estimation).
-        # Uses simple std dev — we want historical spread, not a recency-weighted one.
+        dd_binary = group.apply(_has_dd, axis=1).astype(float)
+        dd_rate = _ewma(dd_binary) or 0.0
+
         fpts_series = (
-            group["PTS"].fillna(0) * 1.0
-            + group["REB"].fillna(0) * 1.25
-            + group["AST"].fillna(0) * 1.5
-            + group["STL"].fillna(0) * 2.0
-            + group["BLK"].fillna(0) * 2.0
-            - group["TOV"].fillna(0) * 0.5
-            + group["FG3M"].fillna(0) * 0.5
+            group["points"].fillna(0) * 1.0
+            + group["rebounds"].fillna(0) * 1.25
+            + group["assists"].fillna(0) * 1.5
+            + group["steals"].fillna(0) * 2.0
+            + group["blocks"].fillna(0) * 2.0
+            - group["turnovers"].fillna(0) * 0.5
+            + group["fg3m"].fillna(0) * 0.5
             + dd_binary * 1.5
         )
         fpts_std = _safe_float(fpts_series.std()) if len(fpts_series) > 1 else None
 
-        # Position: nba_api LeagueGameLog doesn't include position — set None,
-        # it gets populated by DK CSV eligible_positions at slate time
         upsert_nba_player_stats(
             db,
             player_id=int(player_id),
@@ -275,35 +513,11 @@ def fetch_player_rolling_stats(db: DatabaseManager, season: str, n_games: int = 
     return updated
 
 
-def _parse_minutes(val) -> float:
-    """Parse NBA minutes string 'MM:SS' or plain float to decimal minutes."""
-    if val is None:
-        return 0.0
-    s = str(val).strip()
-    if ":" in s:
-        parts = s.split(":")
-        try:
-            return int(parts[0]) + int(parts[1]) / 60
-        except (ValueError, IndexError):
-            return 0.0
-    try:
-        return float(s)
-    except ValueError:
-        return 0.0
-
-
-def _safe_float(val) -> float | None:
-    try:
-        f = float(val)
-        return None if pd.isna(f) else f
-    except (TypeError, ValueError):
-        return None
-
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Fetch NBA stats from stats.nba.com")
     parser.add_argument("--season", default=None, help="Season string e.g. 2025-26")
+    parser.add_argument("--season-type", default=DEFAULT_SEASON_TYPE, help="Season type, e.g. Regular Season")
     parser.add_argument("--games", type=int, default=10, help="Rolling game window (default 10)")
     args = parser.parse_args()
 
@@ -312,4 +526,6 @@ if __name__ == "__main__":
     season = args.season or config.nba_api.season
 
     fetch_team_stats(db, season)
-    fetch_player_rolling_stats(db, season, n_games=args.games)
+    fetch_team_game_logs(db, season, season_type=args.season_type)
+    fetch_player_game_logs(db, season, season_type=args.season_type)
+    fetch_player_rolling_stats(db, season, season_type=args.season_type, n_games=args.games)

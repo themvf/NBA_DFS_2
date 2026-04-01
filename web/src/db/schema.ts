@@ -69,6 +69,92 @@ export const nbaPlayerStats = pgTable(
   (t) => [unique("nba_player_stats_player_season_key").on(t.playerId, t.season)]
 );
 
+export const nbaPlayerGameLogs = pgTable(
+  "nba_player_game_logs",
+  {
+    id: serial("id").primaryKey(),
+    season: text("season").notNull(),
+    seasonType: text("season_type").notNull(),
+    playerId: integer("player_id").notNull(),
+    name: text("name").notNull(),
+    teamId: integer("team_id").references(() => teams.teamId),
+    opponentTeamId: integer("opponent_team_id").references(() => teams.teamId),
+    gameId: text("game_id").notNull(),
+    gameDate: date("game_date"),
+    matchup: text("matchup"),
+    teamAbbreviation: text("team_abbreviation"),
+    opponentAbbreviation: text("opponent_abbreviation"),
+    isHome: boolean("is_home"),
+    winLoss: text("win_loss"),
+    minutes: doublePrecision("minutes"),
+    points: doublePrecision("points"),
+    rebounds: doublePrecision("rebounds"),
+    assists: doublePrecision("assists"),
+    steals: doublePrecision("steals"),
+    blocks: doublePrecision("blocks"),
+    turnovers: doublePrecision("turnovers"),
+    fgm: doublePrecision("fgm"),
+    fga: doublePrecision("fga"),
+    fg3m: doublePrecision("fg3m"),
+    fg3a: doublePrecision("fg3a"),
+    ftm: doublePrecision("ftm"),
+    fta: doublePrecision("fta"),
+    plusMinus: doublePrecision("plus_minus"),
+    fetchedAt: timestamp("fetched_at").defaultNow(),
+  },
+  (t) => [
+    unique("nba_player_game_logs_unique_key").on(t.season, t.seasonType, t.playerId, t.gameId),
+    index("idx_nba_player_game_logs_player_date").on(t.playerId, t.gameDate),
+    index("idx_nba_player_game_logs_team_date").on(t.teamId, t.gameDate),
+  ]
+);
+
+export const nbaTeamGameLogs = pgTable(
+  "nba_team_game_logs",
+  {
+    id: serial("id").primaryKey(),
+    season: text("season").notNull(),
+    seasonType: text("season_type").notNull(),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => teams.teamId),
+    opponentTeamId: integer("opponent_team_id").references(() => teams.teamId),
+    teamName: text("team_name").notNull(),
+    teamAbbreviation: text("team_abbreviation"),
+    opponentAbbreviation: text("opponent_abbreviation"),
+    gameId: text("game_id").notNull(),
+    gameDate: date("game_date"),
+    matchup: text("matchup"),
+    isHome: boolean("is_home"),
+    winLoss: text("win_loss"),
+    fg3m: doublePrecision("fg3m"),
+    fg3a: doublePrecision("fg3a"),
+    oppFg3m: doublePrecision("opp_fg3m"),
+    oppFg3a: doublePrecision("opp_fg3a"),
+    pts: doublePrecision("pts"),
+    oppPts: doublePrecision("opp_pts"),
+    ast: doublePrecision("ast"),
+    reb: doublePrecision("reb"),
+    oppAst: doublePrecision("opp_ast"),
+    oppReb: doublePrecision("opp_reb"),
+    fga: doublePrecision("fga"),
+    fta: doublePrecision("fta"),
+    oreb: doublePrecision("oreb"),
+    tov: doublePrecision("tov"),
+    oppFga: doublePrecision("opp_fga"),
+    oppFta: doublePrecision("opp_fta"),
+    oppOreb: doublePrecision("opp_oreb"),
+    oppTov: doublePrecision("opp_tov"),
+    plusMinus: doublePrecision("plus_minus"),
+    fetchedAt: timestamp("fetched_at").defaultNow(),
+  },
+  (t) => [
+    unique("nba_team_game_logs_unique_key").on(t.season, t.seasonType, t.teamId, t.gameId),
+    index("idx_nba_team_game_logs_team_date").on(t.teamId, t.gameDate),
+    index("idx_nba_team_game_logs_opp_date").on(t.opponentTeamId, t.gameDate),
+  ]
+);
+
 export const nbaMatchups = pgTable(
   "nba_matchups",
   {
@@ -393,6 +479,8 @@ export const optimizerJobLineups = pgTable(
 export type Team = typeof teams.$inferSelect;
 export type NbaTeamStats = typeof nbaTeamStats.$inferSelect;
 export type NbaPlayerStats = typeof nbaPlayerStats.$inferSelect;
+export type NbaPlayerGameLog = typeof nbaPlayerGameLogs.$inferSelect;
+export type NbaTeamGameLog = typeof nbaTeamGameLogs.$inferSelect;
 export type NbaMatchup = typeof nbaMatchups.$inferSelect;
 export type MlbTeam = typeof mlbTeams.$inferSelect;
 export type MlbParkFactors = typeof mlbParkFactors.$inferSelect;

@@ -5,6 +5,8 @@ Tables:
   - teams              30 NBA teams with standard 3-letter abbreviations
   - nba_team_stats     Pace, OffRtg, DefRtg per team per season
   - nba_player_stats   Rolling 10-game averages per player
+  - nba_player_game_logs  Raw per-game player logs from stats.nba.com
+  - nba_team_game_logs    Raw per-game team logs from stats.nba.com
   - nba_matchups       Daily game schedule with Vegas odds
 
   MLB:
@@ -77,6 +79,80 @@ TABLES = [
     """,
 
     # ── Daily NBA schedule + Vegas odds ──────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS nba_player_game_logs (
+        id SERIAL PRIMARY KEY,
+        season TEXT NOT NULL,
+        season_type TEXT NOT NULL,
+        player_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        team_id INTEGER REFERENCES teams(team_id),
+        opponent_team_id INTEGER REFERENCES teams(team_id),
+        game_id TEXT NOT NULL,
+        game_date DATE,
+        matchup TEXT,
+        team_abbreviation TEXT,
+        opponent_abbreviation TEXT,
+        is_home BOOLEAN,
+        win_loss TEXT,
+        minutes DOUBLE PRECISION,
+        points DOUBLE PRECISION,
+        rebounds DOUBLE PRECISION,
+        assists DOUBLE PRECISION,
+        steals DOUBLE PRECISION,
+        blocks DOUBLE PRECISION,
+        turnovers DOUBLE PRECISION,
+        fgm DOUBLE PRECISION,
+        fga DOUBLE PRECISION,
+        fg3m DOUBLE PRECISION,
+        fg3a DOUBLE PRECISION,
+        ftm DOUBLE PRECISION,
+        fta DOUBLE PRECISION,
+        plus_minus DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(season, season_type, player_id, game_id)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS nba_team_game_logs (
+        id SERIAL PRIMARY KEY,
+        season TEXT NOT NULL,
+        season_type TEXT NOT NULL,
+        team_id INTEGER NOT NULL REFERENCES teams(team_id),
+        opponent_team_id INTEGER REFERENCES teams(team_id),
+        team_name TEXT NOT NULL,
+        team_abbreviation TEXT,
+        opponent_abbreviation TEXT,
+        game_id TEXT NOT NULL,
+        game_date DATE,
+        matchup TEXT,
+        is_home BOOLEAN,
+        win_loss TEXT,
+        fg3m DOUBLE PRECISION,
+        fg3a DOUBLE PRECISION,
+        opp_fg3m DOUBLE PRECISION,
+        opp_fg3a DOUBLE PRECISION,
+        pts DOUBLE PRECISION,
+        opp_pts DOUBLE PRECISION,
+        ast DOUBLE PRECISION,
+        reb DOUBLE PRECISION,
+        opp_ast DOUBLE PRECISION,
+        opp_reb DOUBLE PRECISION,
+        fga DOUBLE PRECISION,
+        fta DOUBLE PRECISION,
+        oreb DOUBLE PRECISION,
+        tov DOUBLE PRECISION,
+        opp_fga DOUBLE PRECISION,
+        opp_fta DOUBLE PRECISION,
+        opp_oreb DOUBLE PRECISION,
+        opp_tov DOUBLE PRECISION,
+        plus_minus DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(season, season_type, team_id, game_id)
+    )
+    """,
+
     """
     CREATE TABLE IF NOT EXISTS nba_matchups (
         id SERIAL PRIMARY KEY,
@@ -561,6 +637,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_nba_team_stats_season ON nba_team_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_nba_player_stats_team ON nba_player_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_nba_player_stats_player ON nba_player_stats(player_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_nba_player_game_logs_player_date ON nba_player_game_logs(player_id, game_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nba_player_game_logs_team_date ON nba_player_game_logs(team_id, game_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nba_team_game_logs_team_date ON nba_team_game_logs(team_id, game_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nba_team_game_logs_opp_date ON nba_team_game_logs(opponent_team_id, game_date DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nba_matchups_date ON nba_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_dk_players_slate ON dk_players(slate_id, our_leverage DESC NULLS LAST)",
     "CREATE INDEX IF NOT EXISTS idx_dk_players_team ON dk_players(team_id, slate_id)",

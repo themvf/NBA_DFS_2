@@ -5,6 +5,20 @@ from __future__ import annotations
 from db.database import DatabaseManager
 
 
+def _execute_values_batch(db: DatabaseManager, sql: str, rows: list[tuple], page_size: int = 1000) -> int:
+    """Bulk insert/update rows efficiently with psycopg2 execute_values."""
+    if not rows:
+        return 0
+
+    from psycopg2.extras import execute_values
+
+    with db.connect() as conn:
+        cur = conn.cursor()
+        execute_values(cur, sql, rows, page_size=page_size)
+
+    return len(rows)
+
+
 # ── Team helpers ──────────────────────────────────────────────────────────────
 
 def build_team_abbrev_cache(db: DatabaseManager) -> dict[str, int]:
@@ -112,6 +126,161 @@ def upsert_nba_player_stats(
             avg_minutes, ppg, rpg, apg, spg, bpg, tovpg,
             threefgm_pg, usage_rate, dd_rate, fpts_std,
         ),
+    )
+
+
+def upsert_nba_player_game_logs(db: DatabaseManager, rows: list[dict]) -> int:
+    tuples = [
+        (
+            row["season"],
+            row["season_type"],
+            row["player_id"],
+            row["name"],
+            row.get("team_id"),
+            row.get("opponent_team_id"),
+            row["game_id"],
+            row.get("game_date"),
+            row.get("matchup"),
+            row.get("team_abbreviation"),
+            row.get("opponent_abbreviation"),
+            row.get("is_home"),
+            row.get("win_loss"),
+            row.get("minutes"),
+            row.get("points"),
+            row.get("rebounds"),
+            row.get("assists"),
+            row.get("steals"),
+            row.get("blocks"),
+            row.get("turnovers"),
+            row.get("fgm"),
+            row.get("fga"),
+            row.get("fg3m"),
+            row.get("fg3a"),
+            row.get("ftm"),
+            row.get("fta"),
+            row.get("plus_minus"),
+        )
+        for row in rows
+    ]
+
+    return _execute_values_batch(
+        db,
+        """
+        INSERT INTO nba_player_game_logs (
+            season, season_type, player_id, name, team_id, opponent_team_id,
+            game_id, game_date, matchup, team_abbreviation, opponent_abbreviation,
+            is_home, win_loss, minutes, points, rebounds, assists, steals,
+            blocks, turnovers, fgm, fga, fg3m, fg3a, ftm, fta, plus_minus
+        ) VALUES %s
+        ON CONFLICT (season, season_type, player_id, game_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            team_id = EXCLUDED.team_id,
+            opponent_team_id = EXCLUDED.opponent_team_id,
+            game_date = EXCLUDED.game_date,
+            matchup = EXCLUDED.matchup,
+            team_abbreviation = EXCLUDED.team_abbreviation,
+            opponent_abbreviation = EXCLUDED.opponent_abbreviation,
+            is_home = EXCLUDED.is_home,
+            win_loss = EXCLUDED.win_loss,
+            minutes = EXCLUDED.minutes,
+            points = EXCLUDED.points,
+            rebounds = EXCLUDED.rebounds,
+            assists = EXCLUDED.assists,
+            steals = EXCLUDED.steals,
+            blocks = EXCLUDED.blocks,
+            turnovers = EXCLUDED.turnovers,
+            fgm = EXCLUDED.fgm,
+            fga = EXCLUDED.fga,
+            fg3m = EXCLUDED.fg3m,
+            fg3a = EXCLUDED.fg3a,
+            ftm = EXCLUDED.ftm,
+            fta = EXCLUDED.fta,
+            plus_minus = EXCLUDED.plus_minus,
+            fetched_at = NOW()
+        """,
+        tuples,
+    )
+
+
+def upsert_nba_team_game_logs(db: DatabaseManager, rows: list[dict]) -> int:
+    tuples = [
+        (
+            row["season"],
+            row["season_type"],
+            row["team_id"],
+            row.get("opponent_team_id"),
+            row["team_name"],
+            row.get("team_abbreviation"),
+            row.get("opponent_abbreviation"),
+            row["game_id"],
+            row.get("game_date"),
+            row.get("matchup"),
+            row.get("is_home"),
+            row.get("win_loss"),
+            row.get("fg3m"),
+            row.get("fg3a"),
+            row.get("opp_fg3m"),
+            row.get("opp_fg3a"),
+            row.get("pts"),
+            row.get("opp_pts"),
+            row.get("ast"),
+            row.get("reb"),
+            row.get("opp_ast"),
+            row.get("opp_reb"),
+            row.get("fga"),
+            row.get("fta"),
+            row.get("oreb"),
+            row.get("tov"),
+            row.get("opp_fga"),
+            row.get("opp_fta"),
+            row.get("opp_oreb"),
+            row.get("opp_tov"),
+            row.get("plus_minus"),
+        )
+        for row in rows
+    ]
+
+    return _execute_values_batch(
+        db,
+        """
+        INSERT INTO nba_team_game_logs (
+            season, season_type, team_id, opponent_team_id, team_name,
+            team_abbreviation, opponent_abbreviation, game_id, game_date,
+            matchup, is_home, win_loss, fg3m, fg3a, opp_fg3m, opp_fg3a,
+            pts, opp_pts, ast, reb, opp_ast, opp_reb, fga, fta, oreb, tov,
+            opp_fga, opp_fta, opp_oreb, opp_tov, plus_minus
+        ) VALUES %s
+        ON CONFLICT (season, season_type, team_id, game_id) DO UPDATE SET
+            opponent_team_id = EXCLUDED.opponent_team_id,
+            team_name = EXCLUDED.team_name,
+            team_abbreviation = EXCLUDED.team_abbreviation,
+            opponent_abbreviation = EXCLUDED.opponent_abbreviation,
+            game_date = EXCLUDED.game_date,
+            matchup = EXCLUDED.matchup,
+            is_home = EXCLUDED.is_home,
+            win_loss = EXCLUDED.win_loss,
+            fg3m = EXCLUDED.fg3m,
+            fg3a = EXCLUDED.fg3a,
+            opp_fg3m = EXCLUDED.opp_fg3m,
+            opp_fg3a = EXCLUDED.opp_fg3a,
+            pts = EXCLUDED.pts,
+            opp_pts = EXCLUDED.opp_pts,
+            ast = EXCLUDED.ast,
+            reb = EXCLUDED.reb,
+            opp_ast = EXCLUDED.opp_ast,
+            opp_reb = EXCLUDED.opp_reb,
+            fga = EXCLUDED.fga,
+            fta = EXCLUDED.fta,
+            oreb = EXCLUDED.oreb,
+            tov = EXCLUDED.tov,
+            opp_fga = EXCLUDED.opp_fga,
+            opp_fta = EXCLUDED.opp_fta,
+            opp_oreb = EXCLUDED.opp_oreb,
+            opp_tov = EXCLUDED.opp_tov,
+            plus_minus = EXCLUDED.plus_minus,
+            fetched_at = NOW()
+        """,
+        tuples,
     )
 
 
