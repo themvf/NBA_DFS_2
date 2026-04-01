@@ -218,7 +218,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Optimizer settings ────────────────────────────────────
   const [mode, setMode] = useState<"cash" | "gpp">("gpp");
   const [nLineups, setNLineups] = useState(20);
-  const [minStack, setMinStack] = useState(2);
+  const [minStack, setMinStack] = useState(1);
   const [maxExposure, setMaxExposure] = useState(0.6);
   const [bringBackThreshold, setBringBackThreshold] = useState(3);
   const [minSalaryFilter, setMinSalaryFilter] = useState("");
@@ -1228,6 +1228,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               onChange={(e) => setMinStack(parseInt(e.target.value))}
               className="rounded border px-2 py-1 text-sm"
             >
+              <option value={1}>1</option>
               <option value={2}>2</option>
               <option value={3}>3</option>
               <option value={4}>4</option>
