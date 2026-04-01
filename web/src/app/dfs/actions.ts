@@ -11,8 +11,8 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { ensureDkPlayerPropColumns } from "@/db/ensure-schema";
-import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors } from "@/db/schema";
+import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables } from "@/db/ensure-schema";
+import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors } from "@/db/schema";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
@@ -45,6 +45,7 @@ type CsvExportResult = {
 
 type NbaPropAuditStat = "pts" | "reb" | "ast" | "blk" | "stl";
 type NbaProjectionPropStat = NbaPropAuditStat;
+type ProjectionRunSource = "load_slate" | "fetch_props" | "recompute";
 
 type PropBookCandidate = {
   bookmakerKey: string;
@@ -83,6 +84,7 @@ const LEAGUE_AVG_TOTAL      = 228.0;
 const LEAGUE_AVG_TEAM_TOTAL = 114.0;
 const LEAGUE_AVG_USAGE      = 20.0;
 const CURRENT_SEASON        = "2025-26";
+const NBA_PROJECTION_MODEL_VERSION = "blend_v1";
 const MAIN_LINE_TARGET_PROB = 110 / 210; // -110 hold-adjusted "main" line target
 const NBA_PROP_MARKET_TO_STAT: Record<string, NbaPropAuditStat> = {
   player_points: "pts",
@@ -410,7 +412,59 @@ function computeTeamImpliedTotal(
   return isHome ? homeImplied : vegasTotal - homeImplied;
 }
 
-function computeOurProjection(
+type NbaProjectionStats = {
+  pts: number;
+  reb: number;
+  ast: number;
+  stl: number;
+  blk: number;
+  tov: number;
+  threes: number;
+  dd: number;
+  fpts: number;
+};
+
+type NbaProjectionBlend = {
+  modelProj: number | null;
+  marketProj: number | null;
+  lsProj: number | null;
+  finalProj: number | null;
+  modelConfidence: number;
+  marketConfidence: number;
+  lsConfidence: number;
+  modelWeight: number;
+  marketWeight: number;
+  lsWeight: number;
+  flags: string[];
+  modelStats: NbaProjectionStats | null;
+  marketStats: NbaProjectionStats | null;
+};
+
+function countProjectionProps(props: {
+  propPts?: number | null;
+  propReb?: number | null;
+  propAst?: number | null;
+  propBlk?: number | null;
+  propStl?: number | null;
+}): number {
+  return [props.propPts, props.propReb, props.propAst, props.propBlk, props.propStl].filter((value) => value != null).length;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeBlendWeights(weights: { model: number; market: number; ls: number }): { model: number; market: number; ls: number } {
+  const total = weights.model + weights.market + weights.ls;
+  if (total <= 0) return { model: 0, market: 0, ls: 0 };
+  return {
+    model: weights.model / total,
+    market: weights.market / total,
+    ls: weights.ls / total,
+  };
+}
+
+function computeNbaProjectionStats(
   player: {
     avgMinutes: number | null; ppg: number | null; rpg: number | null;
     apg: number | null; spg: number | null; bpg: number | null;
@@ -431,9 +485,9 @@ function computeOurProjection(
     propBlk?: number | null;
     propStl?: number | null;
   } = {},
-): number | null {
+): NbaProjectionStats | null {
   const avgMinutes = player.avgMinutes ?? 0;
-  if (avgMinutes < 10) return null;
+  if (avgMinutes < 10 && countProjectionProps(props) === 0) return null;
 
   const ppg      = player.ppg       ?? 0;
   const rpg      = player.rpg       ?? 0;
@@ -481,7 +535,229 @@ function computeOurProjection(
     + threefgm * 0.5
     + projDd   * 1.5
   );
-  return Math.round(fpts * 100) / 100;
+  return {
+    pts: Math.round(projPts * 100) / 100,
+    reb: Math.round(projReb * 100) / 100,
+    ast: Math.round(projAst * 100) / 100,
+    stl: Math.round(projStl * 100) / 100,
+    blk: Math.round(projBlk * 100) / 100,
+    tov: Math.round(projTov * 100) / 100,
+    threes: Math.round(threefgm * 100) / 100,
+    dd: Math.round(projDd * 100) / 100,
+    fpts: Math.round(fpts * 100) / 100,
+  };
+}
+
+function buildNbaProjectionBlend(
+  player: {
+    avgMinutes: number | null; ppg: number | null; rpg: number | null;
+    apg: number | null; spg: number | null; bpg: number | null;
+    tovpg: number | null; threefgmPg: number | null;
+    usageRate: number | null; ddRate: number | null;
+  },
+  teamPace: number,
+  oppPace: number,
+  oppDefRtg: number,
+  vegasTotal: number | null = null,
+  homeMl: number | null = null,
+  awayMl: number | null = null,
+  isHome = false,
+  linestarProj: number | null = null,
+  props: {
+    propPts?: number | null;
+    propReb?: number | null;
+    propAst?: number | null;
+    propBlk?: number | null;
+    propStl?: number | null;
+  } = {},
+): NbaProjectionBlend {
+  const modelStats = computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, {});
+  const marketStats = computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, props);
+  const modelProj = sanitizeProjection(modelStats?.fpts ?? null);
+  const marketProj = sanitizeProjection(marketStats?.fpts ?? null);
+  const lsProj = sanitizeProjection(linestarProj);
+  const propCount = countProjectionProps(props);
+  const avgMinutes = player.avgMinutes ?? 0;
+
+  let modelConfidence = avgMinutes >= 30 ? 0.82 : avgMinutes >= 24 ? 0.72 : avgMinutes >= 18 ? 0.58 : 0.42;
+  let marketConfidence = propCount >= 4 ? 0.9 : propCount === 3 ? 0.8 : propCount === 2 ? 0.65 : propCount === 1 ? 0.45 : 0;
+  let lsConfidence = lsProj != null ? 0.35 : 0;
+  const flags: string[] = [];
+
+  if (avgMinutes < 18) flags.push("low_minutes_role");
+  if (propCount === 0) flags.push("no_props");
+  else if (propCount <= 2) flags.push("sparse_props");
+  else flags.push("dense_props");
+
+  const marketGap = modelProj != null && marketProj != null ? Math.abs(modelProj - marketProj) : 0;
+  const lsGap = modelProj != null && lsProj != null ? Math.abs(modelProj - lsProj) : 0;
+  if (marketGap >= 6) flags.push("high_market_disagreement");
+  if (lsGap >= 6) flags.push("high_ls_disagreement");
+
+  if (avgMinutes < 18 && lsProj != null && lsGap >= 6) {
+    modelConfidence = clamp01(modelConfidence - 0.12);
+    lsConfidence = clamp01(lsConfidence + 0.12);
+  }
+  if (marketGap >= 6 && marketConfidence > 0) {
+    modelConfidence = clamp01(modelConfidence - 0.08);
+    marketConfidence = clamp01(marketConfidence + 0.05);
+  }
+
+  let baseWeights = { model: 0, market: 0, ls: 0 };
+  if (marketProj != null && marketConfidence > 0) {
+    baseWeights = propCount >= 3
+      ? { model: 0.30, market: 0.60, ls: lsProj != null ? 0.10 : 0 }
+      : { model: 0.45, market: 0.45, ls: lsProj != null ? 0.10 : 0 };
+  } else {
+    baseWeights = { model: modelProj != null ? 0.75 : 0, market: 0, ls: lsProj != null ? 0.25 : 0 };
+    if (lsProj == null) baseWeights.model = modelProj != null ? 1 : 0;
+  }
+
+  const effectiveWeights = normalizeBlendWeights({
+    model: modelProj != null ? baseWeights.model * modelConfidence : 0,
+    market: marketProj != null ? baseWeights.market * marketConfidence : 0,
+    ls: lsProj != null ? baseWeights.ls * lsConfidence : 0,
+  });
+
+  const finalProj = sanitizeProjection(
+    (modelProj != null ? effectiveWeights.model * modelProj : 0)
+    + (marketProj != null ? effectiveWeights.market * marketProj : 0)
+    + (lsProj != null ? effectiveWeights.ls * lsProj : 0),
+  );
+
+  return {
+    modelProj,
+    marketProj,
+    lsProj,
+    finalProj,
+    modelConfidence: Math.round(modelConfidence * 1000) / 1000,
+    marketConfidence: Math.round(marketConfidence * 1000) / 1000,
+    lsConfidence: Math.round(lsConfidence * 1000) / 1000,
+    modelWeight: Math.round(effectiveWeights.model * 1000) / 1000,
+    marketWeight: Math.round(effectiveWeights.market * 1000) / 1000,
+    lsWeight: Math.round(effectiveWeights.ls * 1000) / 1000,
+    flags,
+    modelStats,
+    marketStats,
+  };
+}
+
+function computeOurProjection(
+  player: {
+    avgMinutes: number | null; ppg: number | null; rpg: number | null;
+    apg: number | null; spg: number | null; bpg: number | null;
+    tovpg: number | null; threefgmPg: number | null;
+    usageRate: number | null; ddRate: number | null;
+  },
+  teamPace: number,
+  oppPace: number,
+  oppDefRtg: number,
+  vegasTotal: number | null = null,
+  homeMl: number | null = null,
+  awayMl: number | null = null,
+  isHome = false,
+  props: {
+    propPts?: number | null;
+    propReb?: number | null;
+    propAst?: number | null;
+    propBlk?: number | null;
+    propStl?: number | null;
+  } = {},
+): number | null {
+  return computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, props)?.fpts ?? null;
+}
+
+async function createProjectionRun(
+  slateId: number,
+  source: ProjectionRunSource,
+  configJson: Record<string, unknown>,
+  notes?: string,
+): Promise<number> {
+  await ensureProjectionExperimentTables();
+  const [run] = await db.insert(projectionRuns).values({
+    sport: "nba",
+    slateId,
+    modelVersion: NBA_PROJECTION_MODEL_VERSION,
+    source,
+    configJson,
+    notes: notes ?? null,
+  }).returning({ id: projectionRuns.id });
+  return run.id;
+}
+
+async function recordProjectionSnapshots(
+  runId: number,
+  snapshots: Array<{
+    slateId: number;
+    dkPlayerId: number;
+    name: string;
+    teamId: number | null;
+    salary: number;
+    isOut: boolean;
+    blend: NbaProjectionBlend;
+    actualFpts?: number | null;
+  }>,
+): Promise<void> {
+  if (snapshots.length === 0) return;
+  await ensureProjectionExperimentTables();
+
+  for (let i = 0; i < snapshots.length; i += 100) {
+    const batch = snapshots.slice(i, i + 100).map((snapshot) => ({
+      runId,
+      slateId: snapshot.slateId,
+      dkPlayerId: snapshot.dkPlayerId,
+      name: snapshot.name,
+      teamId: snapshot.teamId,
+      salary: snapshot.salary,
+      isOut: snapshot.isOut,
+      modelProjFpts: snapshot.blend.modelProj,
+      marketProjFpts: snapshot.blend.marketProj,
+      linestarProjFpts: snapshot.blend.lsProj,
+      finalProjFpts: snapshot.blend.finalProj,
+      modelConfidence: snapshot.blend.modelConfidence,
+      marketConfidence: snapshot.blend.marketConfidence,
+      lsConfidence: snapshot.blend.lsConfidence,
+      modelWeight: snapshot.blend.modelWeight,
+      marketWeight: snapshot.blend.marketWeight,
+      lsWeight: snapshot.blend.lsWeight,
+      flagsJson: snapshot.blend.flags,
+      modelStatsJson: snapshot.blend.modelStats,
+      marketStatsJson: snapshot.blend.marketStats,
+      actualFpts: snapshot.actualFpts ?? null,
+    }));
+
+    await db.insert(projectionPlayerSnapshots).values(batch).onConflictDoUpdate({
+      target: [projectionPlayerSnapshots.runId, projectionPlayerSnapshots.dkPlayerId],
+      set: {
+        modelProjFpts: sql`EXCLUDED.model_proj_fpts`,
+        marketProjFpts: sql`EXCLUDED.market_proj_fpts`,
+        linestarProjFpts: sql`EXCLUDED.linestar_proj_fpts`,
+        finalProjFpts: sql`EXCLUDED.final_proj_fpts`,
+        modelConfidence: sql`EXCLUDED.model_confidence`,
+        marketConfidence: sql`EXCLUDED.market_confidence`,
+        lsConfidence: sql`EXCLUDED.ls_confidence`,
+        modelWeight: sql`EXCLUDED.model_weight`,
+        marketWeight: sql`EXCLUDED.market_weight`,
+        lsWeight: sql`EXCLUDED.ls_weight`,
+        flagsJson: sql`EXCLUDED.flags_json`,
+        modelStatsJson: sql`EXCLUDED.model_stats_json`,
+        marketStatsJson: sql`EXCLUDED.market_stats_json`,
+        actualFpts: sql`EXCLUDED.actual_fpts`,
+      },
+    });
+  }
+}
+
+async function syncProjectionSnapshotActualsForSlate(slateId: number): Promise<void> {
+  await ensureProjectionExperimentTables();
+  await db.execute(sql`
+    UPDATE projection_player_snapshots pps
+    SET actual_fpts = dp.actual_fpts
+    FROM dk_players dp
+    WHERE pps.slate_id = dp.slate_id
+      AND pps.dk_player_id = dp.dk_player_id
+      AND pps.slate_id = ${slateId}
+  `);
 }
 
 function computeLeverage(
@@ -872,16 +1148,26 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
 
       // Recompute ourProj using props for all matched players
       const updatedIds = new Set(updates.map((u) => u.id));
+      const projectionSnapshots: Array<{
+        slateId: number;
+        dkPlayerId: number;
+        name: string;
+        teamId: number | null;
+        salary: number;
+        isOut: boolean;
+        blend: NbaProjectionBlend;
+      }> = [];
       const pool = await db.execute<{
-        id: number; name: string; salary: number;
+        id: number; slateId: number; dkPlayerId: number; name: string; salary: number;
         teamId: number | null; matchupId: number | null;
-        avgFptsDk: number | null; projOwnPct: number | null;
+        avgFptsDk: number | null; projOwnPct: number | null; linestarProj: number | null;
         isOut: boolean | null; ourProj: number | null;
         propPts: number | null; propReb: number | null; propAst: number | null;
         propBlk: number | null; propStl: number | null;
       }>(sql`
-        SELECT id, name, salary, team_id AS "teamId", matchup_id AS "matchupId",
-               avg_fpts_dk AS "avgFptsDk", proj_own_pct AS "projOwnPct",
+        SELECT id, slate_id AS "slateId", dk_player_id AS "dkPlayerId", name, salary,
+               team_id AS "teamId", matchup_id AS "matchupId",
+               avg_fpts_dk AS "avgFptsDk", proj_own_pct AS "projOwnPct", linestar_proj AS "linestarProj",
                is_out AS "isOut", our_proj AS "ourProj",
                prop_pts AS "propPts", prop_reb AS "propReb", prop_ast AS "propAst",
                prop_blk AS "propBlk", prop_stl AS "propStl"
@@ -929,14 +1215,16 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
         if (!bestPlayer) continue;
 
         const isHome = matchup.homeTeamId === p.teamId;
-        const ourProj = sanitizeProjection(computeOurProjection(
+        const projectionBlend = buildNbaProjectionBlend(
           bestPlayer,
           teamStat.pace  ?? LEAGUE_AVG_PACE,
           oppStat.pace   ?? LEAGUE_AVG_PACE,
           oppStat.defRtg ?? LEAGUE_AVG_DEF_RTG,
           matchup.vegasTotal, matchup.homeMl, matchup.awayMl, isHome,
+          p.linestarProj,
           { propPts: p.propPts, propReb: p.propReb, propAst: p.propAst, propBlk: p.propBlk, propStl: p.propStl },
-        ));
+        );
+        const ourProj = projectionBlend.finalProj;
         if (ourProj == null) continue;
 
         const fieldProj = sanitizeProjection(p.avgFptsDk ?? null);
@@ -949,6 +1237,15 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
           .set({ ourProj, ourLeverage })
           .where(eq(dkPlayers.id, p.id));
         updatedProjs.set(p.id, ourProj);
+        projectionSnapshots.push({
+          slateId: p.slateId,
+          dkPlayerId: p.dkPlayerId,
+          name: p.name,
+          teamId: p.teamId,
+          salary: p.salary,
+          isOut: p.isOut ?? false,
+          blend: projectionBlend,
+        });
       }
 
       // Recompute ownership model after projection updates
@@ -964,6 +1261,13 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
           .set({ ourOwnPct: sanitizeOwnershipPct(ownPct) })
           .where(eq(dkPlayers.id, pool.rows[idx].id));
       }
+
+      const projectionRunId = await createProjectionRun(slate.id, "fetch_props", {
+        version: NBA_PROJECTION_MODEL_VERSION,
+        source: "fetch_props",
+        updatedPlayers: updatedIds.size,
+      });
+      await recordProjectionSnapshots(projectionRunId, projectionSnapshots);
     }
 
     revalidatePath("/dfs");
@@ -1535,6 +1839,15 @@ async function enrichAndSave(
   let lsMatched = 0;
   let projComputed = 0;
   const insertValues = [];
+  const projectionSnapshots: Array<{
+    slateId: number;
+    dkPlayerId: number;
+    name: string;
+    teamId: number | null;
+    salary: number;
+    isOut: boolean;
+    blend: NbaProjectionBlend;
+  }> = [];
 
   for (const p of dkPlayers_) {
     const canonical = DK_OVERRIDES[p.teamAbbrev] ?? p.teamAbbrev;
@@ -1550,6 +1863,21 @@ async function enrichAndSave(
     let ourProj: number | null = null;
     let ourLeverage: number | null = null;
     let spgForLev = 0, bpgForLev = 0;
+    let projectionBlend: NbaProjectionBlend = {
+      modelProj: null,
+      marketProj: null,
+      lsProj: linestarProj,
+      finalProj: null,
+      modelConfidence: 0,
+      marketConfidence: 0,
+      lsConfidence: linestarProj != null ? 0.35 : 0,
+      modelWeight: 0,
+      marketWeight: 0,
+      lsWeight: linestarProj != null ? 1 : 0,
+      flags: ["no_model_match"],
+      modelStats: null,
+      marketStats: null,
+    };
 
     if (teamId && matchup) {
       const teamStat = statsByTeam.get(teamId);
@@ -1566,7 +1894,7 @@ async function enrichAndSave(
 
       if (bestPlayer) {
         const isHome = matchup.homeTeamId === teamId;
-        ourProj = sanitizeProjection(computeOurProjection(
+        projectionBlend = buildNbaProjectionBlend(
           bestPlayer,
           teamStat?.pace    ?? LEAGUE_AVG_PACE,
           oppStat?.pace     ?? LEAGUE_AVG_PACE,
@@ -1575,7 +1903,9 @@ async function enrichAndSave(
           matchup.homeMl,
           matchup.awayMl,
           isHome,
-        ));
+          linestarProj,
+        );
+        ourProj = projectionBlend.finalProj;
         spgForLev = bestPlayer.spg ?? 0;
         bpgForLev = bestPlayer.bpg ?? 0;
         if (ourProj != null) projComputed++;
@@ -1605,6 +1935,15 @@ async function enrichAndSave(
       linestarProj, projOwnPct,
       ourProj, ourLeverage, ourOwnPct: null as number | null, isOut,
       _spg: spgForLev, _bpg: bpgForLev,  // transient: ceiling bonus for leverage recalc
+    });
+    projectionSnapshots.push({
+      slateId,
+      dkPlayerId: p.dkId,
+      name: p.name,
+      teamId,
+      salary: p.salary,
+      isOut,
+      blend: projectionBlend,
     });
   }
 
@@ -1656,6 +1995,14 @@ async function enrichAndSave(
       },
     });
   }
+
+  const projectionRunId = await createProjectionRun(slateId, "load_slate", {
+    version: NBA_PROJECTION_MODEL_VERSION,
+    source: "load_slate",
+    playerCount: insertValues.length,
+    hasLinestar: lsMap.size > 0,
+  });
+  await recordProjectionSnapshots(projectionRunId, projectionSnapshots);
 
   revalidatePath("/dfs");
   const matchRate = lsMap.size > 0 ? Math.round((lsMatched / dkPlayers_.length) * 100) : null;
@@ -3044,6 +3391,8 @@ export async function uploadResults(formData: FormData): Promise<{
     }
   }
 
+  await syncProjectionSnapshotActualsForSlate(slate.id);
+
   revalidatePath("/dfs");
 
   const matchRate = Math.round((updated / resultPlayers.length) * 100);
@@ -3149,10 +3498,35 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       isOut: boolean; ourProj: number | null; ourLeverage: number | null; ourOwnPct: number | null;
       _spg: number; _bpg: number;
     }> = [];
+    const projectionSnapshots: Array<{
+      slateId: number;
+      dkPlayerId: number;
+      name: string;
+      teamId: number | null;
+      salary: number;
+      isOut: boolean;
+      blend: NbaProjectionBlend;
+      actualFpts?: number | null;
+    }> = [];
 
     for (const p of currentPlayers) {
       let ourProj: number | null = null;
       let spgForLev = 0, bpgForLev = 0;
+      let projectionBlend: NbaProjectionBlend = {
+        modelProj: null,
+        marketProj: null,
+        lsProj: sanitizeProjection(p.linestarProj ?? null),
+        finalProj: null,
+        modelConfidence: 0,
+        marketConfidence: 0,
+        lsConfidence: p.linestarProj != null ? 0.35 : 0,
+        modelWeight: 0,
+        marketWeight: 0,
+        lsWeight: p.linestarProj != null ? 1 : 0,
+        flags: ["no_model_match"],
+        modelStats: null,
+        marketStats: null,
+      };
 
       // Resolve teamId — stored value may be null; fall back to abbreviation lookup
       const canonical = DK_OVERRIDES[p.teamAbbrev.toUpperCase()] ?? p.teamAbbrev.toUpperCase();
@@ -3178,7 +3552,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
 
         if (bestPlayer) {
           const isHome = matchup.homeTeamId === resolvedTeamId;
-          ourProj = sanitizeProjection(computeOurProjection(
+          projectionBlend = buildNbaProjectionBlend(
             bestPlayer,
             teamStat?.pace   ?? LEAGUE_AVG_PACE,
             oppStat?.pace    ?? LEAGUE_AVG_PACE,
@@ -3187,6 +3561,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
             matchup.homeMl,
             matchup.awayMl,
             isHome,
+            sanitizeProjection(p.linestarProj ?? null),
             {
               propPts: p.propPts,
               propReb: p.propReb,
@@ -3194,7 +3569,8 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
               propBlk: p.propBlk,
               propStl: p.propStl,
             },
-          ));
+          );
+          ourProj = projectionBlend.finalProj;
           spgForLev = bestPlayer.spg ?? 0;
           bpgForLev = bestPlayer.bpg ?? 0;
           if (ourProj != null) projComputed++;
@@ -3224,6 +3600,16 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
         ourProj, ourLeverage, ourOwnPct: null,
         _spg: spgForLev, _bpg: bpgForLev,
       });
+      projectionSnapshots.push({
+        slateId: p.slateId,
+        dkPlayerId: p.dkPlayerId,
+        name: p.name,
+        teamId: p.teamId ?? null,
+        salary: p.salary,
+        isOut,
+        blend: projectionBlend,
+        actualFpts: p.actualFpts ?? null,
+      });
     }
 
     // Pool ownership runs after all projections are computed
@@ -3244,6 +3630,13 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
         },
       });
     }
+
+    const projectionRunId = await createProjectionRun(slate.id, "recompute", {
+      version: NBA_PROJECTION_MODEL_VERSION,
+      source: "recompute",
+      playerCount: enriched.length,
+    }, _matchupDebug.join("\n") || undefined);
+    await recordProjectionSnapshots(projectionRunId, projectionSnapshots);
 
     revalidatePath("/dfs");
     const debugSuffix = _matchupDebug.length > 0 ? `\n${_matchupDebug.join("\n")}` : "";

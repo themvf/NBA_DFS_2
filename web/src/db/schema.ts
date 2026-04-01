@@ -425,6 +425,64 @@ export const dkLineups = pgTable(
   (t) => [unique("dk_lineups_slate_strategy_num_key").on(t.slateId, t.strategy, t.lineupNum)]
 );
 
+export const projectionRuns = pgTable(
+  "projection_runs",
+  {
+    id: serial("id").primaryKey(),
+    sport: text("sport").notNull(),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    modelVersion: text("model_version").notNull(),
+    source: text("source").notNull(),
+    configJson: jsonb("config_json").notNull().default({}),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_projection_runs_slate").on(t.slateId, t.createdAt),
+    index("idx_projection_runs_model").on(t.modelVersion, t.createdAt),
+  ]
+);
+
+export const projectionPlayerSnapshots = pgTable(
+  "projection_player_snapshots",
+  {
+    id: serial("id").primaryKey(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => projectionRuns.id),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    dkPlayerId: bigint("dk_player_id", { mode: "number" }).notNull(),
+    name: text("name").notNull(),
+    teamId: integer("team_id"),
+    salary: integer("salary").notNull(),
+    isOut: boolean("is_out").default(false),
+    modelProjFpts: real("model_proj_fpts"),
+    marketProjFpts: real("market_proj_fpts"),
+    linestarProjFpts: real("linestar_proj_fpts"),
+    finalProjFpts: real("final_proj_fpts"),
+    modelConfidence: real("model_confidence"),
+    marketConfidence: real("market_confidence"),
+    lsConfidence: real("ls_confidence"),
+    modelWeight: real("model_weight"),
+    marketWeight: real("market_weight"),
+    lsWeight: real("ls_weight"),
+    flagsJson: jsonb("flags_json").notNull().default([]),
+    modelStatsJson: jsonb("model_stats_json"),
+    marketStatsJson: jsonb("market_stats_json"),
+    actualFpts: real("actual_fpts"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_projection_snapshots_run").on(t.runId, t.dkPlayerId),
+    index("idx_projection_snapshots_slate").on(t.slateId, t.dkPlayerId),
+    unique("projection_snapshots_run_player_key").on(t.runId, t.dkPlayerId),
+  ]
+);
+
 export const optimizerJobs = pgTable(
   "optimizer_jobs",
   {

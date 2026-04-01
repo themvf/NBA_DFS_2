@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from ".";
 
 let ensureDkPlayerPropColumnsPromise: Promise<void> | null = null;
+let ensureProjectionExperimentTablesPromise: Promise<void> | null = null;
 
 const DK_PLAYER_PROP_COLUMN_DDLS = [
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS prop_pts_price INTEGER`,
@@ -19,6 +20,49 @@ const DK_PLAYER_PROP_COLUMN_DDLS = [
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS prop_stl_book TEXT`,
 ];
 
+const PROJECTION_EXPERIMENT_DDLS = [
+  `CREATE TABLE IF NOT EXISTS projection_runs (
+      id SERIAL PRIMARY KEY,
+      sport TEXT NOT NULL,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      model_version TEXT NOT NULL,
+      source TEXT NOT NULL,
+      config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+  `CREATE TABLE IF NOT EXISTS projection_player_snapshots (
+      id SERIAL PRIMARY KEY,
+      run_id INTEGER NOT NULL REFERENCES projection_runs(id) ON DELETE CASCADE,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      dk_player_id BIGINT NOT NULL,
+      name TEXT NOT NULL,
+      team_id INTEGER,
+      salary INTEGER NOT NULL,
+      is_out BOOLEAN DEFAULT FALSE,
+      model_proj_fpts REAL,
+      market_proj_fpts REAL,
+      linestar_proj_fpts REAL,
+      final_proj_fpts REAL,
+      model_confidence REAL,
+      market_confidence REAL,
+      ls_confidence REAL,
+      model_weight REAL,
+      market_weight REAL,
+      ls_weight REAL,
+      flags_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      model_stats_json JSONB,
+      market_stats_json JSONB,
+      actual_fpts REAL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(run_id, dk_player_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_projection_runs_slate ON projection_runs(slate_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_projection_runs_model ON projection_runs(model_version, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_projection_snapshots_run ON projection_player_snapshots(run_id, dk_player_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_projection_snapshots_slate ON projection_player_snapshots(slate_id, dk_player_id)`,
+];
+
 export async function ensureDkPlayerPropColumns(): Promise<void> {
   if (!ensureDkPlayerPropColumnsPromise) {
     ensureDkPlayerPropColumnsPromise = (async () => {
@@ -31,4 +75,18 @@ export async function ensureDkPlayerPropColumns(): Promise<void> {
     });
   }
   await ensureDkPlayerPropColumnsPromise;
+}
+
+export async function ensureProjectionExperimentTables(): Promise<void> {
+  if (!ensureProjectionExperimentTablesPromise) {
+    ensureProjectionExperimentTablesPromise = (async () => {
+      for (const ddl of PROJECTION_EXPERIMENT_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureProjectionExperimentTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureProjectionExperimentTablesPromise;
 }

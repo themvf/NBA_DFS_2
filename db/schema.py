@@ -410,6 +410,48 @@ TABLES = [
 
     # â”€â”€ Durable optimizer jobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     """
+    CREATE TABLE IF NOT EXISTS projection_runs (
+        id SERIAL PRIMARY KEY,
+        sport TEXT NOT NULL,
+        slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+        model_version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS projection_player_snapshots (
+        id SERIAL PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES projection_runs(id) ON DELETE CASCADE,
+        slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+        dk_player_id BIGINT NOT NULL,
+        name TEXT NOT NULL,
+        team_id INTEGER,
+        salary INTEGER NOT NULL,
+        is_out BOOLEAN DEFAULT FALSE,
+        model_proj_fpts REAL,
+        market_proj_fpts REAL,
+        linestar_proj_fpts REAL,
+        final_proj_fpts REAL,
+        model_confidence REAL,
+        market_confidence REAL,
+        ls_confidence REAL,
+        model_weight REAL,
+        market_weight REAL,
+        ls_weight REAL,
+        flags_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        model_stats_json JSONB,
+        market_stats_json JSONB,
+        actual_fpts REAL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(run_id, dk_player_id)
+    )
+    """,
+
+    """
     CREATE TABLE IF NOT EXISTS optimizer_jobs (
         id SERIAL PRIMARY KEY,
         sport TEXT NOT NULL,
@@ -753,6 +795,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_dk_players_slate ON dk_players(slate_id, our_leverage DESC NULLS LAST)",
     "CREATE INDEX IF NOT EXISTS idx_dk_players_team ON dk_players(team_id, slate_id)",
     "CREATE INDEX IF NOT EXISTS idx_dk_lineups_slate ON dk_lineups(slate_id, strategy)",
+    "CREATE INDEX IF NOT EXISTS idx_projection_runs_slate ON projection_runs(slate_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_projection_runs_model ON projection_runs(model_version, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_projection_snapshots_run ON projection_player_snapshots(run_id, dk_player_id)",
+    "CREATE INDEX IF NOT EXISTS idx_projection_snapshots_slate ON projection_player_snapshots(slate_id, dk_player_id)",
     # MLB indexes
     "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_team ON mlb_batter_stats(team_id, season)",
