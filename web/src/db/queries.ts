@@ -41,7 +41,12 @@ export type DkPlayerRow = {
   teamLogo: string | null;
   vegasTotal: number | null;
   homeWinProb: number | null;
+  homeMl: number | null;
+  awayMl: number | null;
   homeTeamId: number | null;
+  awayTeamId: number | null;
+  homeImplied: number | null;
+  awayImplied: number | null;
   slateDate: string | null;
   sport: string | null;
 };
@@ -79,7 +84,12 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         mt.logo_url           AS "teamLogo",
         mm.vegas_total        AS "vegasTotal",
         mm.vegas_prob_home    AS "homeWinProb",
+        mm.home_ml            AS "homeMl",
+        mm.away_ml            AS "awayMl",
         mm.home_team_id       AS "homeTeamId",
+        mm.away_team_id       AS "awayTeamId",
+        mm.home_implied       AS "homeImplied",
+        mm.away_implied       AS "awayImplied",
         ds.slate_date         AS "slateDate",
         ds.sport              AS "sport"
       FROM dk_players dp
@@ -127,7 +137,12 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       t.logo_url           AS "teamLogo",
       m.vegas_total        AS "vegasTotal",
       m.vegas_prob_home    AS "homeWinProb",
+      m.home_ml            AS "homeMl",
+      m.away_ml            AS "awayMl",
       m.home_team_id       AS "homeTeamId",
+      m.away_team_id       AS "awayTeamId",
+      NULL::DOUBLE PRECISION AS "homeImplied",
+      NULL::DOUBLE PRECISION AS "awayImplied",
       ds.slate_date        AS "slateDate",
       ds.sport             AS "sport"
     FROM dk_players dp

@@ -69,6 +69,11 @@ function fmtSalary(v: number): string {
   return `$${v.toLocaleString()}`;
 }
 
+function fmtMl(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return v > 0 ? `+${v}` : `${v}`;
+}
+
 function fmtDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   const totalSeconds = Math.floor(ms / 1000);
@@ -152,6 +157,42 @@ function displayPos(eligiblePositions: string, sport: Sport): string {
   }
   const primary = parts.find((p) => ["PG","SG","SF","PF","C"].includes(p));
   return primary ?? parts[0] ?? "UTIL";
+}
+
+function mlToProb(ml: number): number {
+  return ml >= 0 ? 100 / (ml + 100) : Math.abs(ml) / (Math.abs(ml) + 100);
+}
+
+function computeNbaTeamImplied(vegasTotal: number, homeMl: number | null, awayMl: number | null, isHome: boolean): number {
+  if (homeMl == null || awayMl == null) return vegasTotal / 2;
+  const rawHome = mlToProb(homeMl);
+  const rawAway = mlToProb(awayMl);
+  const vig = rawHome + rawAway;
+  const homeProbClean = vig > 0 ? rawHome / vig : 0.5;
+  const impliedSpread = Math.max(-15, Math.min(15, (homeProbClean - 0.5) / 0.025));
+  const homeImplied = vegasTotal / 2 + impliedSpread / 2;
+  return isHome ? homeImplied : vegasTotal - homeImplied;
+}
+
+function getPlayerOddsSummary(player: DkPlayerRow, sport: Sport): { total: string; detail: string } {
+  const isHome = player.teamId != null && player.homeTeamId != null
+    ? player.teamId === player.homeTeamId
+    : null;
+
+  const total = player.vegasTotal != null ? `O/U ${player.vegasTotal.toFixed(1)}` : "O/U —";
+
+  if (isHome == null) {
+    return { total, detail: "TT — · ML —" };
+  }
+
+  const teamMl = isHome ? player.homeMl : player.awayMl;
+  const teamImplied = sport === "mlb"
+    ? (isHome ? player.homeImplied : player.awayImplied)
+    : (player.vegasTotal != null ? computeNbaTeamImplied(player.vegasTotal, player.homeMl, player.awayMl, isHome) : null);
+
+  const impliedText = teamImplied != null ? `TT ${teamImplied.toFixed(1)}` : "TT —";
+  const mlText = `ML ${fmtMl(teamMl)}`;
+  return { total, detail: `${impliedText} · ${mlText}` };
 }
 
 function buildNbaLineupsFromPersisted(
@@ -1632,6 +1673,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Pos</th>
                   <SortHeader col="name" label="Player" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Team</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Odds</th>
                   {sport === "nba" && (
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Rules</th>
                   )}
@@ -1651,6 +1693,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   const delta = p.ourProj != null && p.linestarProj != null
                     ? p.ourProj - p.linestarProj : null;
                   const value = p.ourProj != null ? p.ourProj / (p.salary / 1000) : null;
+                  const odds = getPlayerOddsSummary(p, sport);
                   const pos = displayPos(p.eligiblePositions, sport);
                   const isLocked = lockedPlayerSet.has(p.id);
                   const isBlocked = blockedPlayerSet.has(p.id);
@@ -1684,6 +1727,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{p.teamAbbrev}</td>
+                      <td className="px-3 py-1.5 text-[11px] text-gray-500 whitespace-nowrap">
+                        <div>{odds.total}</div>
+                        <div className="text-gray-400">{odds.detail}</div>
+                      </td>
                       {sport === "nba" && (
                         <td className="px-3 py-1.5 text-xs">
                           <div className="flex flex-wrap gap-1">
