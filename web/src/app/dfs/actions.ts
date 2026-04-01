@@ -649,8 +649,20 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
                           : market.key === "player_assists" ? "ast" : null;
             if (!statKey) continue;
             for (const o of market.outcomes) {
-              if (o.description?.toLowerCase() !== "over" || o.point == null) continue;
-              const key = o.name.toLowerCase();
+              if (o.point == null) continue;
+              const overField =
+                o.name?.toLowerCase() === "over"
+                  ? "name"
+                  : o.description?.toLowerCase() === "over"
+                    ? "description"
+                    : null;
+              if (!overField) continue;
+              const playerName =
+                overField === "name"
+                  ? o.description?.trim()
+                  : o.name?.trim();
+              if (!playerName) continue;
+              const key = playerName.toLowerCase();
               const accum = propAccum.get(key) ?? {};
               const [sum, cnt] = accum[statKey] ?? [0, 0];
               accum[statKey] = [sum + o.point, cnt + 1];
@@ -1211,10 +1223,10 @@ async function enrichAndSave(
       }
     }
 
-    // isOut: DK status is authoritative; LineStar proj==0 is a fallback signal.
+    // DK status is authoritative for player availability.
     // DK returns "O", "Out", or "OUT" for scratches — normalise to upper-case.
     const dkIsOut = p.isDisabled || ["O", "OUT"].includes(p.dkStatus.toUpperCase());
-    const isOut   = dkIsOut || (ls?.isOut ?? false);
+    const isOut   = dkIsOut;
 
     const projForLev = isOut ? 0 : (ourProj ?? linestarProj ?? 0);
     if (projForLev > 0 && projOwnPct != null) {
@@ -2116,7 +2128,7 @@ async function enrichAndSaveMlb(
     }
 
     const dkIsOut = p.isDisabled || ["O", "OUT"].includes(p.dkStatus.toUpperCase());
-    const isOut   = dkIsOut || (ls?.isOut ?? false);
+    const isOut   = dkIsOut;
     const projForLev = isOut ? 0 : (ourProj ?? linestarProj ?? 0);
     if (projForLev > 0 && projOwnPct != null) {
       const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
