@@ -244,9 +244,12 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   // ── Optimizer settings ────────────────────────────────────
   const [mode, setMode] = useState<"cash" | "gpp">("gpp");
   const [nLineups, setNLineups] = useState(20);
-  const [minStack, setMinStack] = useState(1);
+  const [teamStackCount, setTeamStackCount] = useState(1);
+  const [minStack, setMinStack] = useState(() => sport === "nba" ? 2 : 1);
   const [maxExposure, setMaxExposure] = useState(0.6);
-  const [bringBackThreshold, setBringBackThreshold] = useState(3);
+  const [mlbBringBackThreshold, setMlbBringBackThreshold] = useState(3);
+  const [bringBackEnabled, setBringBackEnabled] = useState(false);
+  const [bringBackSize, setBringBackSize] = useState(1);
   const [minSalaryFilter, setMinSalaryFilter] = useState("");
   const [maxSalaryFilter, setMaxSalaryFilter] = useState("");
   const [strategy, setStrategy] = useState("gpp");
@@ -701,10 +704,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       const settings = sport === "mlb"
         ? {
             mode, nLineups, minStack, maxExposure,
-            bringBackThreshold, antiCorrMax,
+            bringBackThreshold: mlbBringBackThreshold, antiCorrMax,
           } satisfies MlbOptimizerSettings
         : {
-            mode, nLineups, minStack, maxExposure, bringBackThreshold,
+            mode, nLineups, minStack, teamStackCount, maxExposure, bringBackEnabled, bringBackSize,
             minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter, 10) : null,
             maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter, 10) : null,
             playerLocks: lockedPlayerIds,
@@ -1309,17 +1312,42 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               className="w-20 rounded border px-2 py-1 text-sm"
             />
           </div>
+          {sport === "nba" && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Team Stacks</label>
+              <select
+                value={teamStackCount}
+                onChange={(e) => setTeamStackCount(parseInt(e.target.value))}
+                className="rounded border px-2 py-1 text-sm"
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+              </select>
+            </div>
+          )}
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Min Stack</label>
+            <label className="text-xs text-gray-500 block mb-1">{sport === "nba" ? "Stack Size" : "Min Stack"}</label>
             <select
               value={minStack}
               onChange={(e) => setMinStack(parseInt(e.target.value))}
               className="rounded border px-2 py-1 text-sm"
             >
-              <option value={1}>1</option>
-              <option value={2}>2</option>
-              <option value={3}>3</option>
-              <option value={4}>4</option>
+              {sport === "nba" ? (
+                <>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                  <option value={4}>4</option>
+                  <option value={5}>5</option>
+                </>
+              ) : (
+                <>
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                  <option value={4}>4</option>
+                </>
+              )}
             </select>
           </div>
           <div>
@@ -1337,21 +1365,32 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             </select>
           </div>
           {sport === "nba" && (
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">
-                Bring-back{" "}
-                <span className="text-gray-400 font-normal">(GPP)</span>
-              </label>
-              <select
-                value={bringBackThreshold}
-                onChange={(e) => setBringBackThreshold(parseInt(e.target.value))}
-                className="rounded border px-2 py-1 text-sm"
-              >
-                <option value={0}>Off</option>
-                <option value={3}>3+ → 1 back</option>
-                <option value={2}>2+ → 1 back</option>
-              </select>
-            </div>
+            <>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Opponent Bring-back?</label>
+                <select
+                  value={bringBackEnabled ? "yes" : "no"}
+                  onChange={(e) => setBringBackEnabled(e.target.value === "yes")}
+                  className="rounded border px-2 py-1 text-sm"
+                >
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Bring-back Size</label>
+                <select
+                  value={bringBackSize}
+                  onChange={(e) => setBringBackSize(parseInt(e.target.value))}
+                  disabled={!bringBackEnabled}
+                  className="rounded border px-2 py-1 text-sm disabled:opacity-50"
+                >
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                </select>
+              </div>
+            </>
           )}
           {sport === "mlb" && (
             <div>
@@ -1420,8 +1459,18 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <p><strong>Exposure cap:</strong> {optimizeDebug.maxExposureCount} max uses per player</p>
                 </div>
                 <div className="rounded border bg-white p-2">
-                  <p><strong>Effective stack:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
-                  <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackThreshold}</p>
+                  {optimizeDebug.sport === "nba" ? (
+                    <>
+                      <p><strong>Effective team stacks:</strong> {optimizeDebug.effectiveSettings.teamStackCount ?? 1}</p>
+                      <p><strong>Effective stack size:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
+                      <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackEnabled ? `Yes (${optimizeDebug.effectiveSettings.bringBackSize ?? 1})` : "No"}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p><strong>Effective stack:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
+                      <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackThreshold ?? 0}</p>
+                    </>
+                  )}
                   <p><strong>Effective diversity:</strong> {optimizeDebug.effectiveSettings.minChanges}</p>
                   {"antiCorrMax" in optimizeDebug.effectiveSettings && optimizeDebug.effectiveSettings.antiCorrMax != null && (
                     <p><strong>Effective anti-corr:</strong> {optimizeDebug.effectiveSettings.antiCorrMax}</p>

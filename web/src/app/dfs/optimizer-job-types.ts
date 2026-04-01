@@ -30,7 +30,9 @@ export type NbaPreparedOptimizerRun = {
   ruleSelections: NormalizedNbaRuleSelections;
   effectiveSettings: {
     minStack: number;
-    bringBackThreshold: number;
+    teamStackCount: number;
+    bringBackEnabled: boolean;
+    bringBackSize: number;
     maxExposure: number;
     minChanges: number;
     salaryFloor: number;

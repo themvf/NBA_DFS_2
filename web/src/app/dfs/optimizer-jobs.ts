@@ -363,6 +363,28 @@ function buildDebugInfo(
     ?? (job.status === "completed" ? "completed" : "lineup_failed");
   const debugTerminationReason: OptimizerDebugInfo["terminationReason"] =
     terminationReason === "stale" ? "lineup_failed" : terminationReason;
+  const nbaSettings = settings as OptimizerSettings;
+  const mlbSettings = settings as MlbOptimizerSettings;
+  const fallbackEffectiveSettings: OptimizerDebugInfo["effectiveSettings"] =
+    job.sport === "mlb"
+      ? {
+          minStack: mlbSettings.minStack,
+          bringBackThreshold: mlbSettings.bringBackThreshold,
+          maxExposure: mlbSettings.maxExposure,
+          minChanges: mode === "gpp" ? 3 : 2,
+          antiCorrMax: mlbSettings.antiCorrMax,
+        }
+      : {
+          minStack: nbaSettings.minStack ?? 2,
+          teamStackCount: nbaSettings.teamStackCount ?? 1,
+          bringBackEnabled: nbaSettings.bringBackEnabled ?? ((nbaSettings.bringBackThreshold ?? 0) > 0),
+          bringBackSize:
+            (nbaSettings.bringBackEnabled ?? ((nbaSettings.bringBackThreshold ?? 0) > 0))
+              ? (nbaSettings.bringBackSize ?? 1)
+              : 0,
+          maxExposure: nbaSettings.maxExposure,
+          minChanges: mode === "gpp" ? 3 : 2,
+        };
 
   return {
     sport: job.sport as Sport,
@@ -389,12 +411,7 @@ function buildDebugInfo(
         : undefined,
     effectiveSettings:
       (job.effectiveSettingsJson as OptimizerDebugInfo["effectiveSettings"] | null)
-      ?? {
-        minStack: (settings as OptimizerSettings).minStack,
-        bringBackThreshold: (settings as OptimizerSettings).bringBackThreshold,
-        maxExposure: (settings as OptimizerSettings).maxExposure,
-        minChanges: mode === "gpp" ? 3 : 2,
-      },
+      ?? fallbackEffectiveSettings,
   };
 }
 
@@ -646,7 +663,7 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
       pool: pool as MlbOptimizerPlayer[],
       effectiveSettings: {
         minStack: effectiveSettings.minStack,
-        bringBackThreshold: effectiveSettings.bringBackThreshold,
+        bringBackThreshold: effectiveSettings.bringBackThreshold ?? 0,
         maxExposure: effectiveSettings.maxExposure,
         minChanges: effectiveSettings.minChanges,
         antiCorrMax: effectiveSettings.antiCorrMax ?? 10,
@@ -666,7 +683,11 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
     ruleSelections: normalizeNbaRuleSelections(settings as OptimizerSettings),
     effectiveSettings: {
       minStack: effectiveSettings.minStack,
-      bringBackThreshold: effectiveSettings.bringBackThreshold,
+      teamStackCount: effectiveSettings.teamStackCount ?? 1,
+      bringBackEnabled: effectiveSettings.bringBackEnabled ?? ((effectiveSettings.bringBackThreshold ?? 0) > 0),
+      bringBackSize:
+        effectiveSettings.bringBackSize
+        ?? (((effectiveSettings.bringBackEnabled ?? ((effectiveSettings.bringBackThreshold ?? 0) > 0)) ? 1 : 0)),
       maxExposure: effectiveSettings.maxExposure,
       minChanges: effectiveSettings.minChanges,
       salaryFloor: effectiveSettings.salaryFloor ?? 49000,

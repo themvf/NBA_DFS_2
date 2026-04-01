@@ -61,7 +61,7 @@ export type OptimizerPlayer = Pick<
   | "teamLogo"
   | "teamName"
 > & {
-  /** Home team ID for the player's matchup — used for bring-back enforcement. */
+  /** Home team ID for the player's matchup - used for bring-back enforcement. */
   homeTeamId: number | null;
 };
 
@@ -78,16 +78,21 @@ export type GeneratedLineup = {
 export type OptimizerSettings = {
   mode: "cash" | "gpp";
   nLineups: number;
+  /** Minimum players in each counted team stack. */
   minStack: number;
+  /** Distinct team stacks required in each lineup. */
+  teamStackCount?: number;
   maxExposure: number;
   /**
-   * Bring-back threshold (GPP only).
-   * If a team contributes ≥ this many players to a lineup, the optimizer
-   * must include ≥ 1 player from their opponent in that matchup.
-   * 0 = disabled; 3 = standard GPP construction (3+1 or 4+1 stacks).
+   * Explicit opponent bring-back configuration.
+   * When enabled, every counted team stack must include this many players
+   * from the opponent in the same matchup.
    */
-  bringBackThreshold: number;
-  /** Per-player salary filters — exclude players outside this range from the eligible pool. */
+  bringBackEnabled?: boolean;
+  bringBackSize?: number;
+  /** Legacy field kept for backward compatibility with persisted jobs. */
+  bringBackThreshold?: number;
+  /** Per-player salary filters - exclude players outside this range from the eligible pool. */
   minSalaryFilter?: number | null;
   maxSalaryFilter?: number | null;
   playerLocks?: number[];
@@ -100,6 +105,28 @@ const SALARY_CAP = 50000;
 const SALARY_FLOOR = 49000;   // DK lineups must spend close to the cap
 const ROSTER_SIZE = 8;
 const LINEUP_SLOTS: LineupSlot[] = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"];
+
+function normalizeTeamStackCount(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 1;
+  return Math.max(1, Math.min(3, Math.floor(value)));
+}
+
+function normalizeStackSize(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 2;
+  return Math.max(2, Math.min(5, Math.floor(value)));
+}
+
+function normalizeBringBackSize(
+  enabled: boolean,
+  value: number | null | undefined,
+  legacyThreshold?: number | null,
+): number {
+  if (!enabled) return 0;
+  if (value != null && Number.isFinite(value)) {
+    return Math.max(1, Math.min(3, Math.floor(value)));
+  }
+  return legacyThreshold != null && legacyThreshold > 0 ? 1 : 1;
+}
 
 type NextNbaLineupResult = {
   lineup: GeneratedLineup | null;
@@ -171,7 +198,11 @@ export function optimizeLineupsWithDebug(
   pool: OptimizerPlayer[],
   settings: OptimizerSettings
 ): { lineups: GeneratedLineup[]; debug: OptimizerDebugInfo } {
-  const { mode, nLineups, minStack, maxExposure, bringBackThreshold } = settings;
+  const { mode, nLineups, maxExposure } = settings;
+  const minStack = normalizeStackSize(settings.minStack);
+  const teamStackCount = normalizeTeamStackCount(settings.teamStackCount);
+  const bringBackEnabled = settings.bringBackEnabled ?? ((settings.bringBackThreshold ?? 0) > 0);
+  const bringBackSize = normalizeBringBackSize(bringBackEnabled, settings.bringBackSize, settings.bringBackThreshold);
   const totalStart = Date.now();
   const ruleValidation = validateNbaRuleSelections(pool, settings);
   const ruleSelections = ruleValidation.normalized;
@@ -192,7 +223,9 @@ export function optimizeLineupsWithDebug(
     terminationReason: "completed",
     effectiveSettings: {
       minStack,
-      bringBackThreshold,
+      teamStackCount,
+      bringBackEnabled,
+      bringBackSize,
       maxExposure,
       minChanges: mode === "gpp" ? 3 : 2,
       salaryFloor: SALARY_FLOOR,
@@ -211,64 +244,72 @@ export function optimizeLineupsWithDebug(
     return { lineups: [], debug };
   }
 
-  // Probe for feasibility — run a single test solve (no history, no exposure cap)
-  // to discover which constraints the current pool can satisfy. Relax progressively:
-  //   1st try: full constraints (stack + bring-back)
-  //   2nd try: no bring-back  (bring-back requires an opponent player that may be expensive)
-  //   3rd try: no stack either (matchupId missing or pool too thin per game)
-  //   4th try: no salary floor (eligible pool filtered to ourProj>0 may exclude cheap fillers,
-  //            causing all 8 cheapest eligible players to collectively exceed the $50k cap or
-  //            sit below the $49k floor — remove the floor rather than return 0 lineups)
+  // Probe for feasibility - run a single test solve (no history, no exposure cap)
+  // to discover whether the requested stack / bring-back / salary floor constraints
+  // are feasible on the current pool.
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
-  const timedProbe = (label: string, ms: number, bb: number, salaryFloor = SALARY_FLOOR): boolean => {
+  const timedProbe = (
+    label: string,
+    stackSize: number,
+    stackCount: number,
+    bringBackSizeForProbe: number,
+    salaryFloor = SALARY_FLOOR,
+  ): boolean => {
     const start = Date.now();
-    const success = !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, salaryFloor, ruleSelections);
+    const success = !!solveOneLineup(
+      eligible,
+      mode,
+      stackSize,
+      stackCount,
+      Math.ceil(nLineups * maxExposure),
+      freshCount(),
+      [],
+      bringBackSizeForProbe,
+      undefined,
+      salaryFloor,
+      ruleSelections,
+    );
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
     debug.probeSummary.push({ label, success, durationMs });
     return success;
   };
 
-  let effectiveMinStack   = minStack;
-  let effectiveBringBack  = bringBackThreshold;
+  let effectiveMinStack = minStack;
+  let effectiveTeamStackCount = teamStackCount;
+  let effectiveBringBackSize = bringBackSize;
   let effectiveSalaryFloor = SALARY_FLOOR;
-  let relaxed = false;
-
-  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
-    effectiveBringBack = 0;           // disable bring-back
-    relaxed = true;
-    debug.relaxedConstraints.push("bring-back disabled");
-  }
-  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
-    effectiveMinStack  = 0;           // disable stacking too
-    effectiveBringBack = 0;           // bring-back needs gamePlayers, empty when minStack=0
-    relaxed = true;
-    debug.relaxedConstraints.push("stacking disabled");
-  }
-  // Third probe: verify even the first lineup (no history, no exposure caps)
-  // is feasible after full relaxation. Does NOT guarantee subsequent lineups
-  // succeed — exposure caps and diversity can still exhaust the pool mid-run.
-  if (relaxed && !timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
-    // Fourth probe: the $49k salary floor may be blocking when all projection-eligible
-    // players happen to be high-salary (cheap fillers filtered out by ourProj > 0).
-    // Disable the floor rather than returning zero lineups.
-    if (!timedProbe("stack=0,bringBack=0,floor=0", 0, 0, 0)) {
+  if (!timedProbe(
+    `teamStacks=${effectiveTeamStackCount},stackSize=${effectiveMinStack},bringBack=${effectiveBringBackSize},floor=${effectiveSalaryFloor}`,
+    effectiveMinStack,
+    effectiveTeamStackCount,
+    effectiveBringBackSize,
+    effectiveSalaryFloor,
+  )) {
+    if (!timedProbe(
+      `teamStacks=${effectiveTeamStackCount},stackSize=${effectiveMinStack},bringBack=${effectiveBringBackSize},floor=0`,
+      effectiveMinStack,
+      effectiveTeamStackCount,
+      effectiveBringBackSize,
+      0,
+    )) {
       debug.terminationReason = "probe_infeasible";
       debug.totalMs = Date.now() - totalStart;
-      return { lineups: [], debug }; // genuinely infeasible — bail early
+      return { lineups: [], debug };
     }
     effectiveSalaryFloor = 0;
-    effectiveMinStack    = 0;
-    effectiveBringBack   = 0;
     debug.relaxedConstraints.push("salary floor disabled");
   }
 
   // Adaptive diversity: small or thin pools can't sustain 3-player diff between
-  // every pair of lineups — drop to 2 when eligible < 55 or constraints were relaxed.
+  // every pair of lineups - drop to 2 when eligible < 55 or constraints were relaxed.
+  const relaxed = effectiveSalaryFloor === 0;
   const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
-    bringBackThreshold: effectiveBringBack,
+    teamStackCount: effectiveTeamStackCount,
+    bringBackEnabled: effectiveBringBackSize > 0,
+    bringBackSize: effectiveBringBackSize,
     maxExposure,
     minChanges: effectiveMinChanges,
     salaryFloor: effectiveSalaryFloor,
@@ -283,15 +324,25 @@ export function optimizeLineupsWithDebug(
     const attempts: OptimizerLineupAttemptDebug[] = [];
     const runAttempt = (
       stage: string,
-      stack: number,
-      bringBack: number,
+      stackSize: number,
+      stackCount: number,
+      bringBackSizeForAttempt: number,
       minChanges: number,
       salaryFloor: number,
     ): GeneratedLineup | null => {
       const start = Date.now();
       const result = solveOneLineup(
-        eligible, mode, stack, maxExp,
-        exposureCount, previousLineupSets, bringBack, minChanges, salaryFloor, ruleSelections,
+        eligible,
+        mode,
+        stackSize,
+        stackCount,
+        maxExp,
+        exposureCount,
+        previousLineupSets,
+        bringBackSizeForAttempt,
+        minChanges,
+        salaryFloor,
+        ruleSelections,
       );
       attempts.push({
         stage,
@@ -301,23 +352,10 @@ export function optimizeLineupsWithDebug(
       return result;
     };
 
-    let lineup = runAttempt("base", effectiveMinStack, effectiveBringBack, effectiveMinChanges, effectiveSalaryFloor);
+    let lineup = runAttempt("base", effectiveMinStack, effectiveTeamStackCount, effectiveBringBackSize, effectiveMinChanges, effectiveSalaryFloor);
     // If still infeasible, relax diversity to 1 (just prevent exact duplicates)
     if (!lineup && effectiveMinChanges > 1) {
-      lineup = runAttempt("diversity=1", effectiveMinStack, effectiveBringBack, 1, effectiveSalaryFloor);
-    }
-    // 3rd fallback: disable bring-back — exposure/diversity exhaustion often
-    // makes team-pairing infeasible for later lineups even when pool is large.
-    if (!lineup && effectiveBringBack > 0) {
-      lineup = runAttempt("bringBack=0", effectiveMinStack, 0, 1, effectiveSalaryFloor);
-    }
-    // 4th fallback: disable stack — when effectiveBringBack was already 0 from
-    // the probe phase, the 3rd fallback above is skipped entirely. If minStack
-    // combined with the salary floor and diversity still blocks lineup N,
-    // retry without any stacking requirement. A non-stacked lineup is better
-    // than stopping short of nLineups.
-    if (!lineup && effectiveMinStack > 0) {
-      lineup = runAttempt("stack=0", 0, 0, 1, effectiveSalaryFloor);
+      lineup = runAttempt("diversity=1", effectiveMinStack, effectiveTeamStackCount, effectiveBringBackSize, 1, effectiveSalaryFloor);
     }
     const durationMs = attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
     debug.lineupSummaries.push({
@@ -353,7 +391,11 @@ export function prepareNbaOptimizerRun(
   settings: OptimizerSettings,
 ): { prepared?: NbaPreparedOptimizerRun; debug: OptimizerDebugInfo; error?: string } {
   const totalStart = Date.now();
-  const { mode, nLineups, minStack, maxExposure, bringBackThreshold } = settings;
+  const { mode, nLineups, maxExposure } = settings;
+  const minStack = normalizeStackSize(settings.minStack);
+  const teamStackCount = normalizeTeamStackCount(settings.teamStackCount);
+  const bringBackEnabled = settings.bringBackEnabled ?? ((settings.bringBackThreshold ?? 0) > 0);
+  const bringBackSize = normalizeBringBackSize(bringBackEnabled, settings.bringBackSize, settings.bringBackThreshold);
   const ruleValidation = validateNbaRuleSelections(pool, settings);
   const ruleSelections = ruleValidation.normalized;
   const eligible = filterEligibleNbaPool(pool, settings, ruleSelections);
@@ -373,7 +415,9 @@ export function prepareNbaOptimizerRun(
     terminationReason: "completed",
     effectiveSettings: {
       minStack,
-      bringBackThreshold,
+      teamStackCount,
+      bringBackEnabled,
+      bringBackSize,
       maxExposure,
       minChanges: mode === "gpp" ? 3 : 2,
       salaryFloor: SALARY_FLOOR,
@@ -393,9 +437,27 @@ export function prepareNbaOptimizerRun(
   }
 
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
-  const timedProbe = (label: string, ms: number, bb: number, salaryFloor = SALARY_FLOOR): boolean => {
+  const timedProbe = (
+    label: string,
+    stackSize: number,
+    stackCount: number,
+    bringBackSizeForProbe: number,
+    salaryFloor = SALARY_FLOOR,
+  ): boolean => {
     const start = Date.now();
-    const success = !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, salaryFloor, ruleSelections);
+    const success = !!solveOneLineup(
+      eligible,
+      mode,
+      stackSize,
+      stackCount,
+      Math.ceil(nLineups * maxExposure),
+      freshCount(),
+      [],
+      bringBackSizeForProbe,
+      undefined,
+      salaryFloor,
+      ruleSelections,
+    );
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
     debug.probeSummary.push({ label, success, durationMs });
@@ -403,37 +465,38 @@ export function prepareNbaOptimizerRun(
   };
 
   let effectiveMinStack = minStack;
-  let effectiveBringBack = bringBackThreshold;
+  let effectiveTeamStackCount = teamStackCount;
+  let effectiveBringBackSize = bringBackSize;
   let effectiveSalaryFloor = SALARY_FLOOR;
-  let relaxed = false;
-
-  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
-    effectiveBringBack = 0;
-    relaxed = true;
-    debug.relaxedConstraints.push("bring-back disabled");
-  }
-  if (!timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
-    effectiveMinStack = 0;
-    effectiveBringBack = 0;
-    relaxed = true;
-    debug.relaxedConstraints.push("stacking disabled");
-  }
-  if (relaxed && !timedProbe(`stack=${effectiveMinStack},bringBack=${effectiveBringBack},floor=${effectiveSalaryFloor}`, effectiveMinStack, effectiveBringBack, effectiveSalaryFloor)) {
-    if (!timedProbe("stack=0,bringBack=0,floor=0", 0, 0, 0)) {
+  if (!timedProbe(
+    `teamStacks=${effectiveTeamStackCount},stackSize=${effectiveMinStack},bringBack=${effectiveBringBackSize},floor=${effectiveSalaryFloor}`,
+    effectiveMinStack,
+    effectiveTeamStackCount,
+    effectiveBringBackSize,
+    effectiveSalaryFloor,
+  )) {
+    if (!timedProbe(
+      `teamStacks=${effectiveTeamStackCount},stackSize=${effectiveMinStack},bringBack=${effectiveBringBackSize},floor=0`,
+      effectiveMinStack,
+      effectiveTeamStackCount,
+      effectiveBringBackSize,
+      0,
+    )) {
       debug.terminationReason = "probe_infeasible";
       debug.totalMs = Date.now() - totalStart;
       return { debug };
     }
     effectiveSalaryFloor = 0;
-    effectiveMinStack = 0;
-    effectiveBringBack = 0;
     debug.relaxedConstraints.push("salary floor disabled");
   }
 
+  const relaxed = effectiveSalaryFloor === 0;
   const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
-    bringBackThreshold: effectiveBringBack,
+    teamStackCount: effectiveTeamStackCount,
+    bringBackEnabled: effectiveBringBackSize > 0,
+    bringBackSize: effectiveBringBackSize,
     maxExposure,
     minChanges: effectiveMinChanges,
     salaryFloor: effectiveSalaryFloor,
@@ -451,7 +514,9 @@ export function prepareNbaOptimizerRun(
       ruleSelections,
       effectiveSettings: {
         minStack: effectiveMinStack,
-        bringBackThreshold: effectiveBringBack,
+        teamStackCount: effectiveTeamStackCount,
+        bringBackEnabled: effectiveBringBackSize > 0,
+        bringBackSize: effectiveBringBackSize,
         maxExposure,
         minChanges: effectiveMinChanges,
         salaryFloor: effectiveSalaryFloor,
@@ -479,8 +544,9 @@ export function buildNextNbaLineup(
   const attempts: OptimizerLineupAttemptDebug[] = [];
   const runAttempt = (
     stage: string,
-    stack: number,
-    bringBack: number,
+    stackSize: number,
+    stackCount: number,
+    bringBackSizeForAttempt: number,
     minChanges: number,
     salaryFloor: number,
   ): GeneratedLineup | null => {
@@ -488,11 +554,12 @@ export function buildNextNbaLineup(
     const result = solveOneLineup(
       prepared.pool,
       prepared.mode,
-      stack,
+      stackSize,
+      stackCount,
       prepared.maxExposureCount,
       exposureCount,
       previousLineupSets,
-      bringBack,
+      bringBackSizeForAttempt,
       minChanges,
       salaryFloor,
       prepared.ruleSelections,
@@ -505,16 +572,10 @@ export function buildNextNbaLineup(
     return result;
   };
 
-  const { minStack, bringBackThreshold, minChanges, salaryFloor } = prepared.effectiveSettings;
-  let lineup = runAttempt("base", minStack, bringBackThreshold, minChanges, salaryFloor);
+  const { minStack, teamStackCount, bringBackSize, minChanges, salaryFloor } = prepared.effectiveSettings;
+  let lineup = runAttempt("base", minStack, teamStackCount, bringBackSize, minChanges, salaryFloor);
   if (!lineup && minChanges > 1) {
-    lineup = runAttempt("diversity=1", minStack, bringBackThreshold, 1, salaryFloor);
-  }
-  if (!lineup && bringBackThreshold > 0) {
-    lineup = runAttempt("bringBack=0", minStack, 0, 1, salaryFloor);
-  }
-  if (!lineup && minStack > 0) {
-    lineup = runAttempt("stack=0", 0, 0, 1, salaryFloor);
+    lineup = runAttempt("diversity=1", minStack, teamStackCount, bringBackSize, 1, salaryFloor);
   }
 
   const durationMs = attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
@@ -534,10 +595,11 @@ function solveOneLineup(
   pool: OptimizerPlayer[],
   mode: "cash" | "gpp",
   minStack: number,
+  teamStackCount: number,
   maxExposureCount: number,
   exposureCount: Map<number, number>,
   previousLineupSets: Set<number>[],
-  bringBackThreshold = 3,
+  bringBackSize = 0,
   minChanges = mode === "gpp" ? 3 : 2,
   salaryFloor = SALARY_FLOOR,
   ruleSelections: NormalizedNbaRuleSelections = normalizeNbaRuleSelections({}),
@@ -549,56 +611,64 @@ function solveOneLineup(
   );
   if (availablePool.length < ROSTER_SIZE) return null;
 
-  // Group by matchupId for game stacking.
-  // When minStack <= 0 stacking is effectively disabled — skip entirely to avoid
-  // polluting the model with trivial helper variables that bloat the B&B tree.
-  const gamePlayers = new Map<number, OptimizerPlayer[]>();
-  if (minStack > 0) {
-    for (const p of availablePool) {
-      if (p.matchupId == null) continue;
-      if (!gamePlayers.has(p.matchupId)) gamePlayers.set(p.matchupId, []);
-      gamePlayers.get(p.matchupId)!.push(p);
-    }
+  const teamPlayers = new Map<number, OptimizerPlayer[]>();
+  for (const player of availablePool) {
+    if (player.teamId == null) continue;
+    const existing = teamPlayers.get(player.teamId) ?? [];
+    existing.push(player);
+    teamPlayers.set(player.teamId, existing);
   }
-  const stackableGames = Array.from(gamePlayers.entries())
-    .filter(([, players]) => players.length >= minStack)
-    .map(([mid]) => mid);
 
   const availableTeamCounts = new Map<number, number>();
   for (const player of availablePool) {
     if (player.teamId == null) continue;
     availableTeamCounts.set(player.teamId, (availableTeamCounts.get(player.teamId) ?? 0) + 1);
   }
-  const effectiveRequiredTeamStacks = requiredTeamStacks.filter(
-    (rule) => (availableTeamCounts.get(rule.teamId) ?? 0) >= rule.stackSize,
-  );
-  const useRequiredTeamStacks = effectiveRequiredTeamStacks.length > 0;
-  if (requiredTeamStacks.length > 0 && !useRequiredTeamStacks) return null;
 
-  // Bring-back: matchups where both teams have players in the pool
-  // (threshold 0 = disabled; only applies in GPP mode)
-  const bringBackGames: number[] = [];
-  if (mode === "gpp" && bringBackThreshold >= 2) {
-    for (const [mid, players] of gamePlayers) {
-      const teams = new Set(players.map((p) => p.teamId).filter(Boolean));
-      if (teams.size === 2) bringBackGames.push(mid);
-    }
+  const teamsByMatchup = new Map<number, Set<number>>();
+  for (const player of availablePool) {
+    if (player.matchupId == null || player.teamId == null) continue;
+    const existing = teamsByMatchup.get(player.matchupId) ?? new Set<number>();
+    existing.add(player.teamId);
+    teamsByMatchup.set(player.matchupId, existing);
+  }
+  const opponentByTeamId = new Map<number, number>();
+  for (const teamIds of teamsByMatchup.values()) {
+    const matchupTeams = Array.from(teamIds);
+    if (matchupTeams.length !== 2) continue;
+    opponentByTeamId.set(matchupTeams[0], matchupTeams[1]);
+    opponentByTeamId.set(matchupTeams[1], matchupTeams[0]);
   }
 
-  const stackableSet = new Set(stackableGames);
-  const bringBackSet = new Set(bringBackGames);
+  const effectiveRequiredTeamStacks = requiredTeamStacks.filter((rule) => {
+    if ((availableTeamCounts.get(rule.teamId) ?? 0) < rule.stackSize) return false;
+    if (bringBackSize <= 0) return true;
+    const opponentTeamId = opponentByTeamId.get(rule.teamId);
+    return opponentTeamId != null && (availableTeamCounts.get(opponentTeamId) ?? 0) >= bringBackSize;
+  });
+  const bringBackActive = bringBackSize > 0;
+  const requiredStackSizeByTeam = new Map(
+    effectiveRequiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize] as const),
+  );
+  const countableTeamIds = Array.from(availableTeamCounts.keys()).filter((teamId) => {
+    const stackThreshold = requiredStackSizeByTeam.get(teamId) ?? minStack;
+    if ((availableTeamCounts.get(teamId) ?? 0) < stackThreshold) return false;
+    if (!bringBackActive) return true;
+    const opponentTeamId = opponentByTeamId.get(teamId);
+    if (opponentTeamId == null) return false;
+    return (availableTeamCounts.get(opponentTeamId) ?? 0) >= bringBackSize;
+  });
+  if (teamStackCount > 0 && countableTeamIds.length < teamStackCount) return null;
+  const useRequiredTeamStacks = effectiveRequiredTeamStacks.length > 0;
+  if (requiredTeamStacks.length > 0 && effectiveRequiredTeamStacks.length !== requiredTeamStacks.length) return null;
+
+  const countableTeamSet = new Set(countableTeamIds);
 
   const constraints: SolverModel["constraints"] = {
     salary: { min: salaryFloor, max: SALARY_CAP },
     total:  { equal: ROSTER_SIZE },
-    // Stack constraint only applies when games with enough players exist.
-    // If matchupId is null for all players (no schedule data), omitting this
-    // prevents the solver from being immediately infeasible.
-    ...(useRequiredTeamStacks
-      ? { required_team_stack_count: { min: 1 } }
-      : stackableGames.length > 0
-        ? { stack_count: { min: 1 } }
-        : {}),
+    ...(teamStackCount > 0 ? { team_stack_count: { min: teamStackCount } } : {}),
+    ...(useRequiredTeamStacks ? { required_team_stack_count: { min: 1 } } : {}),
   };
 
   for (const slot of LINEUP_SLOTS) {
@@ -609,19 +679,11 @@ function solveOneLineup(
     constraints[`use_${p.id}`] = lockedPlayers.has(p.id) ? { equal: 1 } : { max: 1 };
   }
 
-  // Bring-back constraints: if team A has ≥ threshold players in the lineup,
-  // team B (their opponent) must have ≥ 1.
-  //
-  // Formulated as two symmetric max-constraints per matchup:
-  //   home_net = Σ home_players - Σ away_players  → home_net ≤ threshold - 1
-  //   away_net = Σ away_players - Σ home_players  → away_net ≤ threshold - 1
-  //
-  // Example (threshold=3): 3 home + 0 away → home_net=3 > 2 → infeasible.
-  // Optimizer must include ≥1 away player (home_net drops to 2 → feasible).
-  const bringBackMax = bringBackThreshold - 1;
-  for (const mid of bringBackGames) {
-    constraints[`bb_home_${mid}`] = { max: bringBackMax };
-    constraints[`bb_away_${mid}`] = { max: bringBackMax };
+  for (const teamId of countableTeamIds) {
+    constraints[`team_${teamId}`] = { min: 0 };
+    if (bringBackActive) {
+      constraints[`bringback_${teamId}`] = { min: 0 };
+    }
   }
 
   // Only enforce diversity against the last DIV_WINDOW lineups.
@@ -634,9 +696,6 @@ function solveOneLineup(
     constraints[`div_${i}`] = { max: ROSTER_SIZE - minChanges };
   }
 
-  for (const mid of stackableGames) {
-    constraints[`game_${mid}`] = { min: 0 };
-  }
   for (const rule of effectiveRequiredTeamStacks) {
     constraints[`team_${rule.teamId}`] = { min: 0 };
   }
@@ -660,17 +719,17 @@ function solveOneLineup(
         [`use_${p.id}`]: 1,
       };
 
-      if (p.matchupId != null && stackableSet.has(p.matchupId)) {
-        entry[`game_${p.matchupId}`] = 1;
+      if (p.teamId != null && countableTeamSet.has(p.teamId)) {
+        entry[`team_${p.teamId}`] = 1;
       }
       if (p.teamId != null && effectiveRequiredTeamStacks.some((rule) => rule.teamId === p.teamId)) {
         entry[`team_${p.teamId}`] = 1;
       }
-
-      if (p.matchupId != null && bringBackSet.has(p.matchupId) && p.teamId != null) {
-        const isHome = p.teamId === p.homeTeamId;
-        entry[`bb_home_${p.matchupId}`] = isHome ? 1 : -1;
-        entry[`bb_away_${p.matchupId}`] = isHome ? -1 : 1;
+      if (bringBackActive && p.teamId != null) {
+        const opponentTeamId = opponentByTeamId.get(p.teamId);
+        if (opponentTeamId != null && constraints[`bringback_${opponentTeamId}`]) {
+          entry[`bringback_${opponentTeamId}`] = 1;
+        }
       }
 
       for (let i = 0; i < divWindow.length; i++) {
@@ -685,25 +744,17 @@ function solveOneLineup(
     }
   }
 
-  // Stack helper variables
-  if (useRequiredTeamStacks) {
-    for (const rule of effectiveRequiredTeamStacks) {
-      const key = `z_team_${rule.teamId}`;
-      variables[key] = {
-        required_team_stack_count: 1,
-        [`team_${rule.teamId}`]: -rule.stackSize,
-      };
-      binaries[key] = 1;
-    }
-  } else {
-    for (const mid of stackableGames) {
-      const key = `z_game_${mid}`;
-      variables[key] = {
-        stack_count: 1,
-        [`game_${mid}`]: -minStack,
-      };
-      binaries[key] = 1;
-    }
+  for (const teamId of countableTeamIds) {
+    const requiredRule = effectiveRequiredTeamStacks.find((rule) => rule.teamId === teamId);
+    const stackThreshold = requiredRule?.stackSize ?? minStack;
+    const key = `z_team_${teamId}`;
+    variables[key] = {
+      team_stack_count: 1,
+      [`team_${teamId}`]: -stackThreshold,
+      ...(requiredRule ? { required_team_stack_count: 1 } : {}),
+      ...(bringBackActive ? { [`bringback_${teamId}`]: -bringBackSize } : {}),
+    };
+    binaries[key] = 1;
   }
 
   const model: SolverModel = {
@@ -773,7 +824,7 @@ export function buildMultiEntryCSV(
 }
 
 /**
- * Diagnostic probe — runs the three progressive probes and returns a debug
+ * Diagnostic probe - runs the three progressive probes and returns a debug
  * string array so the caller can surface results in an error message.
  * Called only when optimizeLineups returns [] (zero lineups generated).
  */
@@ -781,7 +832,11 @@ export function probeOptimizerAll(
   pool: OptimizerPlayer[],
   settings: OptimizerSettings,
 ): string[] {
-  const { mode, nLineups, minStack, bringBackThreshold } = settings;
+  const { mode, nLineups } = settings;
+  const minStack = normalizeStackSize(settings.minStack);
+  const teamStackCount = normalizeTeamStackCount(settings.teamStackCount);
+  const bringBackEnabled = settings.bringBackEnabled ?? ((settings.bringBackThreshold ?? 0) > 0);
+  const bringBackSize = normalizeBringBackSize(bringBackEnabled, settings.bringBackSize, settings.bringBackThreshold);
   const ruleValidation = validateNbaRuleSelections(pool, settings);
   if (!ruleValidation.ok) {
     return [ruleValidation.error];
@@ -793,10 +848,10 @@ export function probeOptimizerAll(
   }
 
   const freshCount = () => new Map<number, number>(eligible.map((p) => [p.id, 0]));
-  const probe = (ms: number, bb: number) =>
-    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, SALARY_FLOOR, ruleValidation.normalized);
-  const probeNoFloor = (ms: number, bb: number) =>
-    !!solveOneLineup(eligible, mode, ms, nLineups, freshCount(), [], bb, undefined, 0, ruleValidation.normalized);
+  const probe = (stackSize: number, stackCount: number, bbSize: number) =>
+    !!solveOneLineup(eligible, mode, stackSize, stackCount, nLineups, freshCount(), [], bbSize, undefined, SALARY_FLOOR, ruleValidation.normalized);
+  const probeNoFloor = (stackSize: number, stackCount: number, bbSize: number) =>
+    !!solveOneLineup(eligible, mode, stackSize, stackCount, nLineups, freshCount(), [], bbSize, undefined, 0, ruleValidation.normalized);
 
   const scoreOf = (p: OptimizerPlayer) => getPlayerScore(p, mode);
 
@@ -807,13 +862,14 @@ export function probeOptimizerAll(
   const withNanScore  = eligible.filter((p) => !Number.isFinite(scoreOf(p))).length;
   const withZeroScore = eligible.length - withScore - withNegScore - withNanScore;
 
-  const p1 = probe(minStack, bringBackThreshold);
-  const p2 = probe(minStack, 0);
-  const p3 = probe(0, 0);
-  // 4th probe: same as p3 but with salary floor removed — confirms whether the
+  const p1 = probe(minStack, teamStackCount, bringBackSize);
+  const p2 = probe(minStack, teamStackCount, 0);
+  const p3 = probe(minStack, 1, 0);
+  const bringBackThreshold = bringBackSize;
+  // 4th probe: same as p3 but with salary floor removed - confirms whether the
   // $49k floor is the blocking constraint (eligible pool filtered to ourProj > 0
-  // may exclude cheap fillers, leaving only high-salary players that can't sum to ≤$50k)
-  const p4 = !p3 ? probeNoFloor(0, 0) : null;
+  // may exclude cheap fillers, leaving only high-salary players that can't sum to <= $50k)
+  const p4 = !p3 ? probeNoFloor(minStack, 1, 0) : null;
 
   // Salary range: min and sum-of-8-cheapest to surface salary floor issues
   const salaries = eligible.map((p) => p.salary).sort((a, b) => a - b);
@@ -821,7 +877,7 @@ export function probeOptimizerAll(
   const salMax = salaries[salaries.length - 1];
   const min8 = salaries.slice(0, 8).reduce((s, v) => s + v, 0);
 
-  // Per-slot position counts — the aggregate G/F/C counts don't reveal if a specific
+  // Per-slot position counts - the aggregate G/F/C counts don't reveal if a specific
   // required slot (PG, SG, SF, PF, or C) has 0 eligible players, which would make
   // the corresponding min:1 constraint infeasible regardless of total pool size.
   const pgCount = eligible.filter((p) => p.eligiblePositions.includes("PG")).length;
@@ -840,11 +896,11 @@ export function probeOptimizerAll(
   return [
     `eligible=${eligible.length} slots: ${pgCount}PG/${sgCount}SG/${sfCount}SF/${pfCount}PF/${cCount}C`,
     `salary: min=$${salMin?.toLocaleString()} max=$${salMax?.toLocaleString()} cheapest8=$${min8.toLocaleString()} (floor=$${SALARY_FLOOR.toLocaleString()})`,
-    `scores: ${withScore}+ / ${withNegScore}- / ${withZeroScore}zero${withNanScore > 0 ? ` / ${withNanScore}NaN — ILP objective poisoned!` : ""}`,
+    `scores: ${withScore}+ / ${withNegScore}- / ${withZeroScore}zero${withNanScore > 0 ? ` / ${withNanScore}NaN - ILP objective poisoned!` : ""}`,
     `top3: ${top3}`,
-    `probe(stack=${minStack},bb=${bringBackThreshold}): ${p1 ? "PASS" : "FAIL"}`,
-    `probe(stack=${minStack},bb=0): ${p2 ? "PASS" : "FAIL"}`,
-    `probe(0,0): ${p3 ? "PASS" : "FAIL"}`,
-    ...(p4 !== null ? [`probe(0,0,no-floor): ${p4 ? "PASS — salary floor was blocking" : `FAIL — check slot counts above for 0-player positions`}`] : []),
+    `probe(teamStacks=${teamStackCount},stackSize=${minStack},bringBack=${bringBackThreshold}): ${p1 ? "PASS" : "FAIL"}`,
+    `probe(teamStacks=${teamStackCount},stackSize=${minStack},bringBack=0): ${p2 ? "PASS" : "FAIL"}`,
+    `probe(teamStacks=1,stackSize=${minStack},bringBack=0): ${p3 ? "PASS" : "FAIL"}`,
+    ...(p4 !== null ? [`probe(teamStacks=1,stackSize=${minStack},bringBack=0,no-floor): ${p4 ? "PASS - salary floor was blocking" : `FAIL - check slot counts above for 0-player positions`}`] : []),
   ];
 }

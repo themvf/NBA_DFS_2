@@ -34,7 +34,10 @@ export type OptimizerDebugInfo = {
   stoppedAtLineup?: number;
   effectiveSettings: {
     minStack: number;
-    bringBackThreshold: number;
+    teamStackCount?: number;
+    bringBackEnabled?: boolean;
+    bringBackSize?: number;
+    bringBackThreshold?: number;
     maxExposure: number;
     minChanges: number;
     salaryFloor?: number;
