@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "analyze:odds-signal": "npx tsx ./scripts/analyze-nba-odds-signal.ts",
     "test:optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nba-optimizer.ts",
     "bench:optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/benchmark-nba-optimizer.ts"
   },
