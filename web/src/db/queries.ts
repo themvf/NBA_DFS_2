@@ -254,6 +254,13 @@ export type DfsAccuracyMetrics = {
   linestarBias: number | null;
   nOur: number;
   nLinestar: number;
+  ourActiveMAE: number | null;
+  ourActiveBias: number | null;
+  linestarActiveMAE: number | null;
+  linestarActiveBias: number | null;
+  nOurActive: number;
+  nLinestarActive: number;
+  nOutProjected: number;
   slateDate: string | null;
 };
 
@@ -266,6 +273,7 @@ export type DfsAccuracyRow = {
   ourProj: number | null;
   linestarProj: number | null;
   actualFpts: number | null;
+  isOut: boolean | null;
   teamLogo: string | null;
 };
 
@@ -285,6 +293,17 @@ export async function getDfsAccuracy(sport: Sport = "nba"): Promise<{
         FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "linestarBias",
       COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "nOur",
       COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL)::int AS "nLinestar",
+      AVG(ABS(dp.our_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL AND COALESCE(dp.is_out, false) = false) AS "ourActiveMAE",
+      AVG(dp.our_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL AND COALESCE(dp.is_out, false) = false) AS "ourActiveBias",
+      AVG(ABS(dp.linestar_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL AND COALESCE(dp.is_out, false) = false) AS "linestarActiveMAE",
+      AVG(dp.linestar_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL AND COALESCE(dp.is_out, false) = false) AS "linestarActiveBias",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL AND COALESCE(dp.is_out, false) = false)::int AS "nOurActive",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL AND COALESCE(dp.is_out, false) = false)::int AS "nLinestarActive",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL AND COALESCE(dp.is_out, false) = true)::int AS "nOutProjected",
       ds.slate_date AS "slateDate"
     FROM dk_players dp
     INNER JOIN dk_slates ds ON ds.id = dp.slate_id
@@ -302,7 +321,7 @@ export async function getDfsAccuracy(sport: Sport = "nba"): Promise<{
       dp.id, dp.name, dp.team_abbrev AS "teamAbbrev", dp.salary,
       dp.eligible_positions AS "eligiblePositions",
       dp.our_proj AS "ourProj", dp.linestar_proj AS "linestarProj",
-      dp.actual_fpts AS "actualFpts", t.logo_url AS "teamLogo"
+      dp.actual_fpts AS "actualFpts", dp.is_out AS "isOut", t.logo_url AS "teamLogo"
     FROM dk_players dp
     INNER JOIN dk_slates ds ON ds.id = dp.slate_id
     LEFT JOIN teams t ON t.team_id = dp.team_id

@@ -2011,17 +2011,34 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       {accuracy && (
         <div className="rounded-lg border bg-card p-4">
           <h2 className="text-sm font-semibold mb-3">Projection Accuracy — {accuracy.metrics.slateDate}</h2>
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          {accuracy.metrics.nOutProjected > 0 && (
+            <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {accuracy.metrics.nOutProjected} projected players were marked OUT on this slate. They are still included below, but the active-only metrics separate them from real on-court misses.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-4 mb-4 lg:grid-cols-4">
             <div className="rounded border p-3">
               <p className="text-xs text-gray-500 mb-1">Our Model (n={accuracy.metrics.nOur})</p>
               <p className="text-lg font-bold">{fmt1(accuracy.metrics.ourMAE)} MAE</p>
               <p className="text-xs text-gray-500">Bias: {accuracy.metrics.ourBias != null ? (accuracy.metrics.ourBias >= 0 ? "+" : "") + accuracy.metrics.ourBias.toFixed(2) : "—"}</p>
+            </div>
+            <div className="rounded border p-3">
+              <p className="text-xs text-gray-500 mb-1">Our Active Only (n={accuracy.metrics.nOurActive})</p>
+              <p className="text-lg font-bold">{fmt1(accuracy.metrics.ourActiveMAE)} MAE</p>
+              <p className="text-xs text-gray-500">Bias: {accuracy.metrics.ourActiveBias != null ? (accuracy.metrics.ourActiveBias >= 0 ? "+" : "") + accuracy.metrics.ourActiveBias.toFixed(2) : "—"}</p>
             </div>
             {accuracy.metrics.nLinestar > 0 && (
               <div className="rounded border p-3">
                 <p className="text-xs text-gray-500 mb-1">LineStar (n={accuracy.metrics.nLinestar})</p>
                 <p className="text-lg font-bold">{fmt1(accuracy.metrics.linestarMAE)} MAE</p>
                 <p className="text-xs text-gray-500">Bias: {accuracy.metrics.linestarBias != null ? (accuracy.metrics.linestarBias >= 0 ? "+" : "") + accuracy.metrics.linestarBias.toFixed(2) : "—"}</p>
+              </div>
+            )}
+            {accuracy.metrics.nLinestarActive > 0 && (
+              <div className="rounded border p-3">
+                <p className="text-xs text-gray-500 mb-1">LS Active Only (n={accuracy.metrics.nLinestarActive})</p>
+                <p className="text-lg font-bold">{fmt1(accuracy.metrics.linestarActiveMAE)} MAE</p>
+                <p className="text-xs text-gray-500">Bias: {accuracy.metrics.linestarActiveBias != null ? (accuracy.metrics.linestarActiveBias >= 0 ? "+" : "") + accuracy.metrics.linestarActiveBias.toFixed(2) : "—"}</p>
               </div>
             )}
           </div>
@@ -2042,7 +2059,14 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   const err = p.ourProj != null && p.actualFpts != null ? p.ourProj - p.actualFpts : null;
                   return (
                     <tr key={p.id} className="border-b border-gray-50">
-                      <td className="py-1 font-medium">{p.name} <span className="text-gray-400">{p.teamAbbrev}</span></td>
+                      <td className="py-1 font-medium">
+                        {p.name} <span className="text-gray-400">{p.teamAbbrev}</span>
+                        {p.isOut && (
+                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                            OUT
+                          </span>
+                        )}
+                      </td>
                       <td className="py-1 text-right">{fmt1(p.ourProj)}</td>
                       <td className="py-1 text-right text-gray-400">{fmt1(p.linestarProj)}</td>
                       <td className="py-1 text-right font-medium">{fmt1(p.actualFpts)}</td>

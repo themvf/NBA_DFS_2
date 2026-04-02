@@ -320,6 +320,79 @@ function normalizeName(name: string): string {
     .join(" ");
 }
 
+function canonicalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[.']/g, "")
+    .replace(/\b(jr|sr|ii|iii|iv)\b/g, "")
+    .replace(/[-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalizeTeamName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[.']/g, "")
+    .replace(/[-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type PropMatchCandidate = {
+  id: number;
+  name: string;
+  teamId: number | null;
+  canonicalName: string;
+  normalizedName: string;
+  firstInitial: string;
+  lastToken: string;
+};
+
+function buildPropMatchCandidate(player: { id: number; name: string; teamId: number | null }): PropMatchCandidate {
+  const canonicalName = canonicalizeName(player.name);
+  const tokens = canonicalName.split(" ").filter(Boolean);
+  return {
+    id: player.id,
+    name: player.name,
+    teamId: player.teamId,
+    canonicalName,
+    normalizedName: normalizeName(player.name),
+    firstInitial: tokens[0]?.[0] ?? "",
+    lastToken: tokens[tokens.length - 1] ?? "",
+  };
+}
+
+function matchPropToCandidates(playerName: string, candidates: PropMatchCandidate[]): PropMatchCandidate | null {
+  if (candidates.length === 0) return null;
+
+  const canonicalName = canonicalizeName(playerName);
+  const normalizedName = normalizeName(playerName);
+
+  const exactCanonical = candidates.find((candidate) => candidate.canonicalName === canonicalName);
+  if (exactCanonical) return exactCanonical;
+
+  const exactNormalized = candidates.find((candidate) => candidate.normalizedName === normalizedName);
+  if (exactNormalized) return exactNormalized;
+
+  const tokens = canonicalName.split(" ").filter(Boolean);
+  const firstInitial = tokens[0]?.[0] ?? "";
+  const lastToken = tokens[tokens.length - 1] ?? "";
+  if (!firstInitial || !lastToken) return null;
+
+  let best: PropMatchCandidate | null = null;
+  let bestDist = 3;
+  for (const candidate of candidates) {
+    if (candidate.firstInitial !== firstInitial || candidate.lastToken !== lastToken) continue;
+    const dist = levenshtein(canonicalName, candidate.canonicalName);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 function parseLinestarPasteText(text: string): Map<string, LinestarEntry> {
   const lines = text.split(/\r?\n/).filter(Boolean);
   const map = new Map<string, LinestarEntry>();
@@ -1005,7 +1078,12 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
       { next: { revalidate: 0 } },
     );
     if (!eventsResp.ok) throw new Error(`Odds API events: HTTP ${eventsResp.status}`);
-    const allEvents = await eventsResp.json() as Array<{ id: string; commence_time: string }>;
+    const allEvents = await eventsResp.json() as Array<{
+      id: string;
+      commence_time: string;
+      home_team?: string;
+      away_team?: string;
+    }>;
 
     const windowStart = new Date(`${targetDate}T00:00:00Z`).getTime();
     const windowEnd   = windowStart + 36 * 3_600_000;
@@ -1020,6 +1098,22 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
     const slatePlayers = await db
       .select({ id: dkPlayers.id, name: dkPlayers.name, teamId: dkPlayers.teamId })
       .from(dkPlayers).where(eq(dkPlayers.slateId, slate.id));
+    const slatePlayerCandidates = slatePlayers.map(buildPropMatchCandidate);
+    const playersByTeamId = new Map<number, PropMatchCandidate[]>();
+    for (const player of slatePlayerCandidates) {
+      if (player.teamId == null) continue;
+      const bucket = playersByTeamId.get(player.teamId) ?? [];
+      bucket.push(player);
+      playersByTeamId.set(player.teamId, bucket);
+    }
+    const teamRows = await db
+      .select({ teamId: teams.teamId, name: teams.name, abbreviation: teams.abbreviation })
+      .from(teams);
+    const teamIdByCanonicalName = new Map<string, number>();
+    for (const team of teamRows) {
+      teamIdByCanonicalName.set(canonicalizeTeamName(team.name), team.teamId);
+      teamIdByCanonicalName.set(canonicalizeTeamName(team.abbreviation), team.teamId);
+    }
 
     // Step 3: Collect props across all events.
     // We do not average alternate lines blindly. For each bookmaker/player/stat,
@@ -1033,9 +1127,15 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
     };
     type PropSet = Partial<Record<NbaProjectionPropStat, SelectedPropLine>>;
     type PropAccumulator = Partial<Record<NbaProjectionPropStat, PropBookCandidate[]>>;
-    const propAccum = new Map<string, PropAccumulator>(); // key = lower-cased player name
+    const propAccum = new Map<number, PropAccumulator>(); // key = dk_players.id
 
     for (const event of todayEvents) {
+      const eventTeamIds = [event.home_team, event.away_team]
+        .map((teamName) => (teamName ? teamIdByCanonicalName.get(canonicalizeTeamName(teamName)) ?? null : null))
+        .filter((teamId): teamId is number => teamId != null);
+      const eventCandidates = eventTeamIds.flatMap((teamId) => playersByTeamId.get(teamId) ?? []);
+      if (eventCandidates.length === 0) continue;
+
       const qs = new URLSearchParams({
         apiKey: oddsApiKey, regions: "us",
         markets: "player_points,player_rebounds,player_assists,player_blocks,player_steals",
@@ -1066,8 +1166,9 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
               if (point == null) continue;
               const playerName = extractOverOutcomePlayerName(o);
               if (!playerName) continue;
-              const key = playerName.toLowerCase();
-              const accum = propAccum.get(key) ?? {};
+              const matchedPlayer = matchPropToCandidates(playerName, eventCandidates);
+              if (!matchedPlayer) continue;
+              const accum = propAccum.get(matchedPlayer.id) ?? {};
               const candidates = accum[statKey] ?? [];
               candidates.push({
                 bookmakerKey: bm.key,
@@ -1076,7 +1177,7 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
                 price: finiteOrNull(o.price),
               });
               accum[statKey] = candidates;
-              propAccum.set(key, accum);
+              propAccum.set(matchedPlayer.id, accum);
             }
           }
         }
@@ -1084,8 +1185,8 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
     }
 
     // Collapse accumulators → preferred line per player/stat
-    const propData = new Map<string, PropSet>();
-    for (const [player, accum] of propAccum) {
+    const propData = new Map<number, PropSet>();
+    for (const [playerId, accum] of propAccum) {
       const entry: PropSet = {};
       for (const stat of ["pts", "reb", "ast", "blk", "stl"] as const) {
         const selected = pickPreferredPropLine(stat, accum[stat] ?? []);
@@ -1097,7 +1198,7 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
           bookmakerTitle: selected.bookmakerTitle,
         };
       }
-      propData.set(player, entry);
+      propData.set(playerId, entry);
     }
 
     if (propData.size === 0)
@@ -1105,8 +1206,6 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
 
     // Step 4: Match props → slate players (exact then fuzzy)
     // Map name → id for slate players
-    const nameToPlayer = new Map(slatePlayers.map((p) => [p.name.toLowerCase(), p]));
-
     let propMatched = 0;
     const updates: Array<{
       id: number;
@@ -1116,18 +1215,8 @@ export async function fetchPlayerProps(): Promise<{ ok: boolean; message: string
       blk?: SelectedPropLine;
       stl?: SelectedPropLine;
     }> = [];
-    for (const [propName, props] of propData) {
-      let match = nameToPlayer.get(propName);
-      if (!match) {
-        let bestDist = 4, bestMatch: typeof slatePlayers[0] | null = null;
-        for (const [dkName, p] of nameToPlayer) {
-          const d = levenshtein(propName, dkName);
-          if (d < bestDist) { bestDist = d; bestMatch = p; }
-        }
-        match = bestMatch ?? undefined;
-      }
-      if (!match) continue;
-      updates.push({ id: match.id, ...props });
+    for (const [playerId, props] of propData) {
+      updates.push({ id: playerId, ...props });
       propMatched++;
     }
 
@@ -1303,7 +1392,7 @@ export async function auditNbaPropCoverage(gameKeys: string[]): Promise<NbaPropC
 
     const selectedGameSet = new Set(gameKeys.filter(Boolean));
     const slatePlayers = await db
-      .select({ name: dkPlayers.name, gameInfo: dkPlayers.gameInfo })
+      .select({ id: dkPlayers.id, name: dkPlayers.name, gameInfo: dkPlayers.gameInfo, teamId: dkPlayers.teamId })
       .from(dkPlayers)
       .where(eq(dkPlayers.slateId, slate.id));
     const selectedPlayers = slatePlayers.filter((player) =>
@@ -1318,18 +1407,34 @@ export async function auditNbaPropCoverage(gameKeys: string[]): Promise<NbaPropC
       };
     }
 
-    const exactMatches = new Map(selectedPlayers.map((player) => [player.name.toLowerCase(), player.name]));
-    const normalizedPlayers = selectedPlayers.map((player) => ({
-      canonicalName: player.name,
-      normalizedName: normalizeName(player.name),
-    }));
+    const selectedCandidates = selectedPlayers.map(buildPropMatchCandidate);
+    const playersByTeamId = new Map<number, PropMatchCandidate[]>();
+    for (const player of selectedCandidates) {
+      if (player.teamId == null) continue;
+      const bucket = playersByTeamId.get(player.teamId) ?? [];
+      bucket.push(player);
+      playersByTeamId.set(player.teamId, bucket);
+    }
+    const teamRows = await db
+      .select({ teamId: teams.teamId, name: teams.name, abbreviation: teams.abbreviation })
+      .from(teams);
+    const teamIdByCanonicalName = new Map<string, number>();
+    for (const team of teamRows) {
+      teamIdByCanonicalName.set(canonicalizeTeamName(team.name), team.teamId);
+      teamIdByCanonicalName.set(canonicalizeTeamName(team.abbreviation), team.teamId);
+    }
 
     const eventsResp = await fetch(
       `https://api.the-odds-api.com/v4/sports/basketball_nba/events?apiKey=${oddsApiKey}&dateFormat=iso`,
       { next: { revalidate: 0 } },
     );
     if (!eventsResp.ok) throw new Error(`Odds API events: HTTP ${eventsResp.status}`);
-    const allEvents = await eventsResp.json() as Array<{ id: string; commence_time: string }>;
+    const allEvents = await eventsResp.json() as Array<{
+      id: string;
+      commence_time: string;
+      home_team?: string;
+      away_team?: string;
+    }>;
 
     const windowStart = new Date(`${slate.slateDate}T00:00:00Z`).getTime();
     const windowEnd   = windowStart + 36 * 3_600_000;
@@ -1361,6 +1466,12 @@ export async function auditNbaPropCoverage(gameKeys: string[]): Promise<NbaPropC
     }>();
 
     for (const event of todayEvents) {
+      const eventTeamIds = [event.home_team, event.away_team]
+        .map((teamName) => (teamName ? teamIdByCanonicalName.get(canonicalizeTeamName(teamName)) ?? null : null))
+        .filter((teamId): teamId is number => teamId != null);
+      const eventCandidates = eventTeamIds.flatMap((teamId) => playersByTeamId.get(teamId) ?? []);
+      if (eventCandidates.length === 0) continue;
+
       const qs = new URLSearchParams({
         apiKey: oddsApiKey,
         regions: "us",
@@ -1397,22 +1508,10 @@ export async function auditNbaPropCoverage(gameKeys: string[]): Promise<NbaPropC
             for (const outcome of market.outcomes ?? []) {
               const playerName = extractOverOutcomePlayerName(outcome);
               if (!playerName) continue;
-              const exact = exactMatches.get(playerName.toLowerCase());
-              let matchedName = exact ?? null;
-              if (!matchedName) {
-                const normalized = normalizeName(playerName);
-                let bestDist = 4;
-                for (const candidate of normalizedPlayers) {
-                  const dist = levenshtein(normalized, candidate.normalizedName);
-                  if (dist < bestDist) {
-                    bestDist = dist;
-                    matchedName = candidate.canonicalName;
-                  }
-                }
-              }
-              if (!matchedName) continue;
-              existing.uniquePlayers.add(matchedName);
-              existing.stats[statKey].add(matchedName);
+              const matchedPlayer = matchPropToCandidates(playerName, eventCandidates);
+              if (!matchedPlayer) continue;
+              existing.uniquePlayers.add(matchedPlayer.name);
+              existing.stats[statKey].add(matchedPlayer.name);
             }
           }
           coverageByBook.set(bookmaker.key, existing);
