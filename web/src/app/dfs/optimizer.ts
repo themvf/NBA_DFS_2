@@ -105,6 +105,86 @@ const SALARY_CAP = 50000;
 const SALARY_FLOOR = 49000;   // DK lineups must spend close to the cap
 const ROSTER_SIZE = 8;
 const LINEUP_SLOTS: LineupSlot[] = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"];
+const DIV_WINDOW = 5;
+const GLOBAL_KEEP_COUNT = 42;
+const SLOT_KEEP_COUNT = 18;
+const CHEAP_KEEP_COUNT = 14;
+const TEAM_KEEP_COUNT = 6;
+const REQUIRED_TEAM_KEEP_COUNT = 10;
+const TEMPLATE_FILL_KEEP_COUNT = 30;
+const TEMPLATE_CANDIDATE_LIMIT = 80;
+const MAX_REPAIR_ATTEMPTS = 8;
+const SLOT_BRANCH_LIMIT = 24;
+const BEAM_WIDTH = 160;
+
+type NbaHeuristicFailureReason =
+  | "exposure_exhausted"
+  | "no_valid_templates"
+  | "salary_feasible_fill_not_found"
+  | "diversity_repair_exhausted";
+
+type NbaHeuristicAttemptMeta = {
+  prunedCandidateCount: number;
+  templateCount: number;
+  templatesTried: number;
+  repairAttempts: number;
+  rejectedByReason: Record<string, number>;
+  failureReason?: string;
+};
+
+type NbaStackTemplate = {
+  id: string;
+  stackTeamIds: number[];
+  minCountsByTeam: Map<number, number>;
+  score: number;
+};
+
+type NbaLineupValidationResult =
+  | { ok: true; slots: Record<LineupSlot, OptimizerPlayer> }
+  | { ok: false; reason: string };
+
+type DetailedSolveResult = {
+  lineup: GeneratedLineup | null;
+  meta: NbaHeuristicAttemptMeta;
+};
+
+function createAttemptMeta(prunedCandidateCount: number): NbaHeuristicAttemptMeta {
+  return {
+    prunedCandidateCount,
+    templateCount: 0,
+    templatesTried: 0,
+    repairAttempts: 0,
+    rejectedByReason: {},
+  };
+}
+
+function incrementReject(meta: NbaHeuristicAttemptMeta, reason: string) {
+  meta.rejectedByReason[reason] = (meta.rejectedByReason[reason] ?? 0) + 1;
+}
+
+function mergeHeuristicMeta(
+  target: NbaHeuristicAttemptMeta,
+  source: NbaHeuristicAttemptMeta,
+) {
+  target.prunedCandidateCount = Math.max(target.prunedCandidateCount, source.prunedCandidateCount);
+  target.templateCount = Math.max(target.templateCount, source.templateCount);
+  target.templatesTried += source.templatesTried;
+  target.repairAttempts += source.repairAttempts;
+  for (const [reason, count] of Object.entries(source.rejectedByReason)) {
+    target.rejectedByReason[reason] = (target.rejectedByReason[reason] ?? 0) + count;
+  }
+  if (!target.failureReason && source.failureReason) {
+    target.failureReason = source.failureReason;
+  }
+}
+
+function pickFailureReason(meta: NbaHeuristicAttemptMeta): string {
+  if (meta.failureReason) return meta.failureReason;
+  if (meta.rejectedByReason.diversity_repair_exhausted) return "diversity_repair_exhausted";
+  if (meta.rejectedByReason.salary_feasible_fill_not_found) return "salary_feasible_fill_not_found";
+  if (meta.templateCount === 0) return "no_valid_templates";
+  return "salary_feasible_fill_not_found";
+}
 
 function normalizeTeamStackCount(value: number | null | undefined): number {
   if (value == null || !Number.isFinite(value)) return 1;
@@ -153,6 +233,14 @@ function getPlayerScore(p: OptimizerPlayer, mode: "cash" | "gpp"): number {
   return getPlayerProjection(p) ?? 0;
 }
 
+function getSearchScore(
+  p: OptimizerPlayer,
+  mode: "cash" | "gpp",
+  scoreAdjustments?: Map<number, number>,
+): number {
+  return getPlayerScore(p, mode) + (scoreAdjustments?.get(p.id) ?? 0);
+}
+
 function canFillSlot(slot: LineupSlot, pos: string): boolean {
   switch (slot) {
     case "PG":   return pos.includes("PG");
@@ -185,6 +273,848 @@ function filterEligibleNbaPool(
     if (maxSalaryFilter != null && player.salary > maxSalaryFilter) return false;
     return true;
   });
+}
+
+function comparePlayersForSearch(
+  a: OptimizerPlayer,
+  b: OptimizerPlayer,
+  mode: "cash" | "gpp",
+  scoreAdjustments?: Map<number, number>,
+): number {
+  const scoreDiff = getSearchScore(b, mode, scoreAdjustments) - getSearchScore(a, mode, scoreAdjustments);
+  if (Math.abs(scoreDiff) > 1e-9) return scoreDiff;
+  const projDiff = (getPlayerProjection(b) ?? 0) - (getPlayerProjection(a) ?? 0);
+  if (Math.abs(projDiff) > 1e-9) return projDiff;
+  const levDiff = getPlayerLeverage(b) - getPlayerLeverage(a);
+  if (Math.abs(levDiff) > 1e-9) return levDiff;
+  const salaryDiff = a.salary - b.salary;
+  if (salaryDiff !== 0) return salaryDiff;
+  return a.id - b.id;
+}
+
+function sortPlayersForSearch(
+  players: OptimizerPlayer[],
+  mode: "cash" | "gpp",
+  scoreAdjustments?: Map<number, number>,
+): OptimizerPlayer[] {
+  return [...players].sort((a, b) => comparePlayersForSearch(a, b, mode, scoreAdjustments));
+}
+
+function buildOpponentByTeamId(pool: OptimizerPlayer[]): Map<number, number> {
+  const teamsByMatchup = new Map<number, Set<number>>();
+  for (const player of pool) {
+    if (player.matchupId == null || player.teamId == null) continue;
+    const existing = teamsByMatchup.get(player.matchupId) ?? new Set<number>();
+    existing.add(player.teamId);
+    teamsByMatchup.set(player.matchupId, existing);
+  }
+
+  const opponentByTeamId = new Map<number, number>();
+  for (const teams of teamsByMatchup.values()) {
+    const matchupTeams = Array.from(teams);
+    if (matchupTeams.length !== 2) continue;
+    opponentByTeamId.set(matchupTeams[0], matchupTeams[1]);
+    opponentByTeamId.set(matchupTeams[1], matchupTeams[0]);
+  }
+  return opponentByTeamId;
+}
+
+function buildTeamPlayersMap(
+  pool: OptimizerPlayer[],
+  mode: "cash" | "gpp",
+  scoreAdjustments?: Map<number, number>,
+): Map<number, OptimizerPlayer[]> {
+  const byTeam = new Map<number, OptimizerPlayer[]>();
+  for (const player of pool) {
+    if (player.teamId == null) continue;
+    const existing = byTeam.get(player.teamId) ?? [];
+    existing.push(player);
+    byTeam.set(player.teamId, existing);
+  }
+  for (const [teamId, players] of byTeam) {
+    byTeam.set(teamId, sortPlayersForSearch(players, mode, scoreAdjustments));
+  }
+  return byTeam;
+}
+
+function addTopPlayers(
+  keepIds: Set<number>,
+  players: OptimizerPlayer[],
+  count: number,
+) {
+  for (const player of players.slice(0, count)) {
+    keepIds.add(player.id);
+  }
+}
+
+function addCheapestPlayers(
+  keepIds: Set<number>,
+  players: OptimizerPlayer[],
+  count: number,
+) {
+  const cheapest = [...players]
+    .sort((a, b) => a.salary - b.salary || comparePlayersForSearch(a, b, "cash"))
+    .slice(0, count);
+  for (const player of cheapest) {
+    keepIds.add(player.id);
+  }
+}
+
+function getStackThreshold(
+  teamId: number,
+  minStack: number,
+  requiredStackSizeByTeam: Map<number, number>,
+): number {
+  return requiredStackSizeByTeam.get(teamId) ?? minStack;
+}
+
+function pruneNbaCandidatePool(
+  pool: OptimizerPlayer[],
+  mode: "cash" | "gpp",
+  minStack: number,
+  bringBackSize: number,
+  ruleSelections: NormalizedNbaRuleSelections,
+): OptimizerPlayer[] {
+  if (pool.length <= 180) {
+    return sortPlayersForSearch(pool, mode);
+  }
+
+  const keepIds = new Set<number>(ruleSelections.playerLocks);
+  const sorted = sortPlayersForSearch(pool, mode);
+  const byTeam = buildTeamPlayersMap(pool, mode);
+  const opponentByTeamId = buildOpponentByTeamId(pool);
+  const requiredStackSizeByTeam = new Map(
+    ruleSelections.requiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize] as const),
+  );
+
+  addTopPlayers(keepIds, sorted, GLOBAL_KEEP_COUNT);
+  addTopPlayers(
+    keepIds,
+    [...pool].sort(
+      (a, b) => (getPlayerProjection(b) ?? 0) - (getPlayerProjection(a) ?? 0) || comparePlayersForSearch(a, b, mode),
+    ),
+    GLOBAL_KEEP_COUNT,
+  );
+  if (mode === "gpp") {
+    addTopPlayers(
+      keepIds,
+      [...pool].sort((a, b) => getPlayerLeverage(b) - getPlayerLeverage(a) || comparePlayersForSearch(a, b, mode)),
+      Math.max(18, Math.floor(GLOBAL_KEEP_COUNT / 2)),
+    );
+  }
+  addCheapestPlayers(keepIds, pool, CHEAP_KEEP_COUNT);
+
+  for (const slot of LINEUP_SLOTS) {
+    addTopPlayers(
+      keepIds,
+      sorted.filter((player) => canFillSlot(slot, player.eligiblePositions)),
+      SLOT_KEEP_COUNT,
+    );
+  }
+
+  for (const [teamId, teamPlayers] of byTeam) {
+    const requiredCount = getStackThreshold(teamId, minStack, requiredStackSizeByTeam);
+    const keepCount = requiredStackSizeByTeam.has(teamId)
+      ? Math.max(REQUIRED_TEAM_KEEP_COUNT, requiredCount + bringBackSize + 4)
+      : Math.max(TEAM_KEEP_COUNT, requiredCount + bringBackSize + 2);
+    addTopPlayers(keepIds, teamPlayers, keepCount);
+
+    if (bringBackSize > 0) {
+      const opponentTeamId = opponentByTeamId.get(teamId);
+      if (opponentTeamId != null) {
+        addTopPlayers(
+          keepIds,
+          byTeam.get(opponentTeamId) ?? [],
+          Math.max(TEAM_KEEP_COUNT, bringBackSize + 3),
+        );
+      }
+    }
+  }
+
+  return sortPlayersForSearch(
+    pool.filter((player) => keepIds.has(player.id)),
+    mode,
+  );
+}
+
+function sumTopTeamScores(
+  players: OptimizerPlayer[],
+  count: number,
+  mode: "cash" | "gpp",
+  scoreAdjustments?: Map<number, number>,
+): number {
+  return players
+    .slice(0, count)
+    .reduce((total, player) => total + getSearchScore(player, mode, scoreAdjustments) + ((getPlayerProjection(player) ?? 0) * 0.01), 0);
+}
+
+function enumerateTeamCombinations(teamIds: number[], size: number): number[][] {
+  if (size <= 0) return [[]];
+  if (teamIds.length < size) return [];
+
+  const combinations: number[][] = [];
+  const current: number[] = [];
+  const visit = (start: number) => {
+    if (current.length === size) {
+      combinations.push([...current]);
+      return;
+    }
+    for (let i = start; i <= teamIds.length - (size - current.length); i++) {
+      current.push(teamIds[i]);
+      visit(i + 1);
+      current.pop();
+    }
+  };
+  visit(0);
+  return combinations;
+}
+
+function enumerateStackTemplates(
+  pool: OptimizerPlayer[],
+  mode: "cash" | "gpp",
+  minStack: number,
+  teamStackCount: number,
+  bringBackSize: number,
+  ruleSelections: NormalizedNbaRuleSelections,
+  scoreAdjustments?: Map<number, number>,
+): NbaStackTemplate[] {
+  const byTeam = buildTeamPlayersMap(pool, mode, scoreAdjustments);
+  const availableTeamCounts = new Map<number, number>();
+  for (const [teamId, teamPlayers] of byTeam) {
+    availableTeamCounts.set(teamId, teamPlayers.length);
+  }
+  const opponentByTeamId = buildOpponentByTeamId(pool);
+  const requiredStackSizeByTeam = new Map(
+    ruleSelections.requiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize] as const),
+  );
+  const requiredTeamIds = new Set(ruleSelections.requiredTeamStacks.map((rule) => rule.teamId));
+
+  const countableTeamIds = Array.from(availableTeamCounts.keys()).filter((teamId) => {
+    const stackThreshold = getStackThreshold(teamId, minStack, requiredStackSizeByTeam);
+    if ((availableTeamCounts.get(teamId) ?? 0) < stackThreshold) return false;
+    if (bringBackSize <= 0) return true;
+    const opponentTeamId = opponentByTeamId.get(teamId);
+    return opponentTeamId != null && (availableTeamCounts.get(opponentTeamId) ?? 0) >= bringBackSize;
+  });
+
+  if (countableTeamIds.length < teamStackCount) {
+    return [];
+  }
+
+  const templates: NbaStackTemplate[] = [];
+  for (const combination of enumerateTeamCombinations(countableTeamIds, teamStackCount)) {
+    if (requiredTeamIds.size > 0 && !combination.some((teamId) => requiredTeamIds.has(teamId))) {
+      continue;
+    }
+
+    const minCountsByTeam = new Map<number, number>();
+    let feasible = true;
+    for (const teamId of combination) {
+      const stackThreshold = getStackThreshold(teamId, minStack, requiredStackSizeByTeam);
+      minCountsByTeam.set(teamId, Math.max(minCountsByTeam.get(teamId) ?? 0, stackThreshold));
+
+      if (bringBackSize > 0) {
+        const opponentTeamId = opponentByTeamId.get(teamId);
+        if (opponentTeamId == null) {
+          feasible = false;
+          break;
+        }
+        minCountsByTeam.set(opponentTeamId, Math.max(minCountsByTeam.get(opponentTeamId) ?? 0, bringBackSize));
+      }
+    }
+    if (!feasible) continue;
+
+    let totalRequiredPlayers = 0;
+    let templateScore = 0;
+    for (const [teamId, requiredCount] of minCountsByTeam) {
+      const teamPlayers = byTeam.get(teamId) ?? [];
+      if (teamPlayers.length < requiredCount) {
+        feasible = false;
+        break;
+      }
+      totalRequiredPlayers += requiredCount;
+      templateScore += sumTopTeamScores(teamPlayers, requiredCount, mode, scoreAdjustments);
+    }
+    if (!feasible || totalRequiredPlayers > ROSTER_SIZE) continue;
+
+    templates.push({
+      id: combination.join("-"),
+      stackTeamIds: [...combination],
+      minCountsByTeam,
+      score: templateScore,
+    });
+  }
+
+  return templates
+    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+    .slice(0, TEMPLATE_CANDIDATE_LIMIT);
+}
+
+function buildTemplatePool(
+  prunedPool: OptimizerPlayer[],
+  template: NbaStackTemplate,
+  mode: "cash" | "gpp",
+  lockedPlayers: Set<number>,
+  scoreAdjustments?: Map<number, number>,
+): OptimizerPlayer[] {
+  const keepIds = new Set<number>(lockedPlayers);
+  const templateTeams = new Set(template.minCountsByTeam.keys());
+  const sorted = sortPlayersForSearch(prunedPool, mode, scoreAdjustments);
+
+  for (const player of prunedPool) {
+    if (player.teamId != null && templateTeams.has(player.teamId)) {
+      keepIds.add(player.id);
+    }
+  }
+
+  addTopPlayers(keepIds, sorted, TEMPLATE_FILL_KEEP_COUNT);
+  addCheapestPlayers(keepIds, prunedPool, 8);
+
+  return sorted.filter((player) => keepIds.has(player.id));
+}
+
+function assignPlayersToSlots(players: OptimizerPlayer[]): Record<LineupSlot, OptimizerPlayer> | null {
+  const slotOptions = players
+    .map((player) => ({
+      player,
+      slots: LINEUP_SLOTS.filter((slot) => canFillSlot(slot, player.eligiblePositions)),
+    }))
+    .sort((a, b) => a.slots.length - b.slots.length || a.player.id - b.player.id);
+
+  const assignment = {} as Record<LineupSlot, OptimizerPlayer>;
+  const usedSlots = new Set<LineupSlot>();
+  const visit = (index: number): boolean => {
+    if (index >= slotOptions.length) return true;
+    const { player, slots } = slotOptions[index];
+    for (const slot of slots) {
+      if (usedSlots.has(slot)) continue;
+      usedSlots.add(slot);
+      assignment[slot] = player;
+      if (visit(index + 1)) return true;
+      usedSlots.delete(slot);
+      delete assignment[slot];
+    }
+    return false;
+  };
+
+  return visit(0) ? assignment : null;
+}
+
+function buildExactLineupFromPlayers(players: OptimizerPlayer[]): GeneratedLineup | null {
+  const slots = assignPlayersToSlots(players);
+  if (!slots) return null;
+  return {
+    players: [...players],
+    slots,
+    totalSalary: players.reduce((sum, player) => sum + player.salary, 0),
+    projFpts: players.reduce((sum, player) => sum + (getPlayerProjection(player) ?? 0), 0),
+    leverageScore: players.reduce((sum, player) => sum + getPlayerLeverage(player), 0),
+  };
+}
+
+function calculateSharedCount(players: OptimizerPlayer[], previousLineup: Set<number>): number {
+  let shared = 0;
+  for (const player of players) {
+    if (previousLineup.has(player.id)) shared++;
+  }
+  return shared;
+}
+
+function validateLineupExact(
+  players: OptimizerPlayer[],
+  minStack: number,
+  teamStackCount: number,
+  previousLineupSets: Set<number>[],
+  bringBackSize: number,
+  minChanges: number,
+  salaryFloor: number,
+  ruleSelections: NormalizedNbaRuleSelections,
+): NbaLineupValidationResult {
+  if (players.length !== ROSTER_SIZE) {
+    return { ok: false, reason: "invalid_roster_size" };
+  }
+  if (new Set(players.map((player) => player.id)).size !== ROSTER_SIZE) {
+    return { ok: false, reason: "duplicate_player" };
+  }
+
+  const totalSalary = players.reduce((sum, player) => sum + player.salary, 0);
+  if (totalSalary > SALARY_CAP) return { ok: false, reason: "salary_cap_exceeded" };
+  if (totalSalary < salaryFloor) return { ok: false, reason: "salary_floor_missed" };
+
+  const lockedPlayers = new Set(ruleSelections.playerLocks);
+  for (const playerId of lockedPlayers) {
+    if (!players.some((player) => player.id === playerId)) {
+      return { ok: false, reason: "locked_player_missing" };
+    }
+  }
+
+  const slots = assignPlayersToSlots(players);
+  if (!slots) {
+    return { ok: false, reason: "slot_assignment_failed" };
+  }
+
+  const teamCounts = new Map<number, number>();
+  for (const player of players) {
+    if (player.teamId == null) continue;
+    teamCounts.set(player.teamId, (teamCounts.get(player.teamId) ?? 0) + 1);
+  }
+
+  const opponentByTeamId = buildOpponentByTeamId(players);
+  const requiredStackSizeByTeam = new Map(
+    ruleSelections.requiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize] as const),
+  );
+  const countableTeamIds = Array.from(teamCounts.keys()).filter((teamId) => {
+    const stackThreshold = getStackThreshold(teamId, minStack, requiredStackSizeByTeam);
+    if ((teamCounts.get(teamId) ?? 0) < stackThreshold) return false;
+    if (bringBackSize <= 0) return true;
+    const opponentTeamId = opponentByTeamId.get(teamId);
+    if (opponentTeamId == null) return false;
+    return (teamCounts.get(opponentTeamId) ?? 0) >= bringBackSize;
+  });
+
+  if (countableTeamIds.length < teamStackCount) {
+    return { ok: false, reason: "stack_count_insufficient" };
+  }
+  if (
+    ruleSelections.requiredTeamStacks.length > 0
+    && !ruleSelections.requiredTeamStacks.some((rule) => countableTeamIds.includes(rule.teamId))
+  ) {
+    return { ok: false, reason: "required_team_stack_missing" };
+  }
+
+  const recentLineups = previousLineupSets.slice(-DIV_WINDOW);
+  const maxShared = ROSTER_SIZE - minChanges;
+  for (const previousLineup of recentLineups) {
+    if (calculateSharedCount(players, previousLineup) > maxShared) {
+      return { ok: false, reason: "diversity_violation" };
+    }
+  }
+
+  return { ok: true, slots };
+}
+
+function solveReducedLineup(
+  pool: OptimizerPlayer[],
+  mode: "cash" | "gpp",
+  minCountsByTeam: Map<number, number>,
+  lockedPlayers: Set<number>,
+  salaryFloor: number,
+  scoreAdjustments?: Map<number, number>,
+): GeneratedLineup | null {
+  if (pool.length < ROSTER_SIZE) return null;
+  const slotCandidates = new Map<LineupSlot, OptimizerPlayer[]>();
+  for (const slot of LINEUP_SLOTS) {
+    const candidates = sortPlayersForSearch(
+      pool.filter((player) => canFillSlot(slot, player.eligiblePositions)),
+      mode,
+      scoreAdjustments,
+    );
+    if (candidates.length === 0) return null;
+    slotCandidates.set(slot, candidates);
+  }
+
+  const orderedSlots = [...LINEUP_SLOTS].sort((a, b) => {
+    const diff = (slotCandidates.get(a)?.length ?? 0) - (slotCandidates.get(b)?.length ?? 0);
+    return diff !== 0 ? diff : LINEUP_SLOTS.indexOf(a) - LINEUP_SLOTS.indexOf(b);
+  });
+
+  type SearchState = {
+    slotAssignment: Partial<Record<LineupSlot, OptimizerPlayer>>;
+    selectedIds: Set<number>;
+    teamCounts: Map<number, number>;
+    salary: number;
+    score: number;
+    projection: number;
+    leverage: number;
+  };
+
+  function canMeetTeamMinimums(
+    selectedIds: Set<number>,
+    teamCounts: Map<number, number>,
+    remainingSlots: readonly LineupSlot[],
+  ): boolean {
+    for (const [teamId, minCount] of minCountsByTeam) {
+      const current = teamCounts.get(teamId) ?? 0;
+      if (current >= minCount) continue;
+      const remainingNeeded = minCount - current;
+      let available = 0;
+      for (const player of pool) {
+        if (player.teamId !== teamId || selectedIds.has(player.id)) continue;
+        if (remainingSlots.some((slot) => canFillSlot(slot, player.eligiblePositions))) {
+          available++;
+        }
+      }
+      if (available < remainingNeeded) return false;
+    }
+    return true;
+  }
+
+  function canPlaceLockedPlayers(selectedIds: Set<number>, remainingSlots: readonly LineupSlot[]): boolean {
+    const missingLocks = Array.from(lockedPlayers).filter((playerId) => !selectedIds.has(playerId));
+    if (missingLocks.length > remainingSlots.length) return false;
+    for (const playerId of missingLocks) {
+      const player = pool.find((candidate) => candidate.id === playerId);
+      if (!player) return false;
+      if (!remainingSlots.some((slot) => canFillSlot(slot, player.eligiblePositions))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function salaryBounds(selectedIds: Set<number>, remainingCount: number): { min: number; max: number } {
+    const unused = pool.filter((player) => !selectedIds.has(player.id));
+    const bySalaryAsc = [...unused].sort((a, b) => a.salary - b.salary);
+    const bySalaryDesc = [...unused].sort((a, b) => b.salary - a.salary);
+    return {
+      min: bySalaryAsc.slice(0, remainingCount).reduce((sum, player) => sum + player.salary, 0),
+      max: bySalaryDesc.slice(0, remainingCount).reduce((sum, player) => sum + player.salary, 0),
+    };
+  }
+
+  function scoreUpperBound(selectedIds: Set<number>, remainingCount: number): number {
+    return sortPlayersForSearch(
+      pool.filter((player) => !selectedIds.has(player.id)),
+      mode,
+      scoreAdjustments,
+    )
+      .slice(0, remainingCount)
+      .reduce((sum, player) => sum + getSearchScore(player, mode, scoreAdjustments), 0);
+  }
+
+  function estimateStateScore(state: SearchState, remainingCount: number): number {
+    const missingLocks = Array.from(lockedPlayers).filter((playerId) => !state.selectedIds.has(playerId)).length;
+    let teamShortfall = 0;
+    for (const [teamId, minCount] of minCountsByTeam) {
+      teamShortfall += Math.max(0, minCount - (state.teamCounts.get(teamId) ?? 0));
+    }
+    return state.score
+      + scoreUpperBound(state.selectedIds, remainingCount)
+      - (missingLocks * 1000)
+      - (teamShortfall * 250);
+  }
+
+  function branchCandidatesForSlot(
+    slot: LineupSlot,
+    state: SearchState,
+  ): OptimizerPlayer[] {
+    const baseCandidates = (slotCandidates.get(slot) ?? []).filter((player) => !state.selectedIds.has(player.id));
+    const nextIds = new Set<number>();
+    const selected: OptimizerPlayer[] = [];
+
+    const pushCandidate = (player: OptimizerPlayer) => {
+      if (nextIds.has(player.id)) return;
+      nextIds.add(player.id);
+      selected.push(player);
+    };
+
+    for (const player of baseCandidates.filter((candidate) => lockedPlayers.has(candidate.id))) {
+      pushCandidate(player);
+    }
+    for (const player of baseCandidates.slice(0, SLOT_BRANCH_LIMIT)) {
+      pushCandidate(player);
+    }
+    for (const player of [...baseCandidates]
+      .sort((a, b) => a.salary - b.salary || comparePlayersForSearch(a, b, mode, scoreAdjustments))
+      .slice(0, Math.max(6, Math.floor(SLOT_BRANCH_LIMIT / 3)))) {
+      pushCandidate(player);
+    }
+    for (const [teamId, minCount] of minCountsByTeam) {
+      if ((state.teamCounts.get(teamId) ?? 0) >= minCount) continue;
+      for (const player of baseCandidates.filter((candidate) => candidate.teamId === teamId).slice(0, 4)) {
+        pushCandidate(player);
+      }
+    }
+
+    return selected;
+  }
+
+  let states: SearchState[] = [{
+    slotAssignment: {},
+    selectedIds: new Set<number>(),
+    teamCounts: new Map<number, number>(),
+    salary: 0,
+    score: 0,
+    projection: 0,
+    leverage: 0,
+  }];
+
+  for (let depth = 0; depth < orderedSlots.length; depth++) {
+    const slot = orderedSlots[depth];
+    const remainingSlots = orderedSlots.slice(depth + 1);
+    const remainingCount = remainingSlots.length;
+    const nextStates: Array<SearchState & { estimate: number }> = [];
+
+    for (const state of states) {
+      const candidates = branchCandidatesForSlot(slot, state);
+
+      for (const player of candidates) {
+        const selectedIds = new Set(state.selectedIds);
+        selectedIds.add(player.id);
+        const teamCounts = new Map(state.teamCounts);
+        if (player.teamId != null) {
+          teamCounts.set(player.teamId, (teamCounts.get(player.teamId) ?? 0) + 1);
+        }
+
+        const salary = state.salary + player.salary;
+        if (salary > SALARY_CAP) continue;
+        if (!canMeetTeamMinimums(selectedIds, teamCounts, remainingSlots)) continue;
+        if (!canPlaceLockedPlayers(selectedIds, remainingSlots)) continue;
+
+        const salaryRange = salaryBounds(selectedIds, remainingCount);
+        if (salary + salaryRange.min > SALARY_CAP) continue;
+        if (salary + salaryRange.max < salaryFloor) continue;
+
+        const nextState: SearchState = {
+          slotAssignment: {
+            ...state.slotAssignment,
+            [slot]: player,
+          },
+          selectedIds,
+          teamCounts,
+          salary,
+          score: state.score + getSearchScore(player, mode, scoreAdjustments),
+          projection: state.projection + (getPlayerProjection(player) ?? 0),
+          leverage: state.leverage + getPlayerLeverage(player),
+        };
+        nextStates.push({
+          ...nextState,
+          estimate: estimateStateScore(nextState, remainingCount),
+        });
+      }
+    }
+
+    if (nextStates.length === 0) return null;
+
+    nextStates.sort((a, b) => {
+      const estimateDiff = b.estimate - a.estimate;
+      if (Math.abs(estimateDiff) > 1e-9) return estimateDiff;
+      const scoreDiff = b.score - a.score;
+      if (Math.abs(scoreDiff) > 1e-9) return scoreDiff;
+      return a.salary - b.salary;
+    });
+    states = nextStates.slice(0, BEAM_WIDTH).map(({ estimate: _estimate, ...state }) => state);
+  }
+
+  let bestState: SearchState | null = null;
+  for (const state of states) {
+    if (state.salary < salaryFloor) continue;
+    if (Array.from(lockedPlayers).some((playerId) => !state.selectedIds.has(playerId))) continue;
+    if (!canMeetTeamMinimums(state.selectedIds, state.teamCounts, [])) continue;
+    if (!canPlaceLockedPlayers(state.selectedIds, [])) continue;
+    if (!bestState || state.score > bestState.score) {
+      bestState = state;
+    }
+  }
+
+  if (!bestState) return null;
+
+  const slots = {} as Record<LineupSlot, OptimizerPlayer>;
+  for (const slot of LINEUP_SLOTS) {
+    const player = bestState.slotAssignment[slot];
+    if (!player) return null;
+    slots[slot] = player;
+  }
+
+  return {
+    players: LINEUP_SLOTS.map((slot) => slots[slot]),
+    slots,
+    totalSalary: bestState.salary,
+    projFpts: bestState.projection,
+    leverageScore: bestState.leverage,
+  };
+}
+
+function attemptRepairForDiversity(
+  lineup: GeneratedLineup,
+  pool: OptimizerPlayer[],
+  mode: "cash" | "gpp",
+  minStack: number,
+  teamStackCount: number,
+  previousLineupSets: Set<number>[],
+  bringBackSize: number,
+  minChanges: number,
+  salaryFloor: number,
+  ruleSelections: NormalizedNbaRuleSelections,
+): { lineup: GeneratedLineup | null; attempts: number } {
+  const lockedPlayers = new Set(ruleSelections.playerLocks);
+  const selectedIds = new Set(lineup.players.map((player) => player.id));
+  const recentLineups = previousLineupSets.slice(-DIV_WINDOW);
+  const overlapIds = new Set<number>();
+  const maxShared = ROSTER_SIZE - minChanges;
+  for (const previousLineup of recentLineups) {
+    if (calculateSharedCount(lineup.players, previousLineup) > maxShared) {
+      for (const player of lineup.players) {
+        if (previousLineup.has(player.id)) overlapIds.add(player.id);
+      }
+    }
+  }
+
+  const replaceablePlayers = lineup.players
+    .filter((player) => !lockedPlayers.has(player.id) && overlapIds.has(player.id))
+    .sort((a, b) => comparePlayersForSearch(a, b, mode));
+  const replacementPool = sortPlayersForSearch(
+    pool.filter((player) => !selectedIds.has(player.id)),
+    mode,
+  );
+
+  let attempts = 0;
+  for (const currentPlayer of replaceablePlayers) {
+    for (const replacement of replacementPool) {
+      if (attempts >= MAX_REPAIR_ATTEMPTS) {
+        return { lineup: null, attempts };
+      }
+      attempts++;
+      const nextPlayers = lineup.players.map((player) => player.id === currentPlayer.id ? replacement : player);
+      const validation = validateLineupExact(
+        nextPlayers,
+        minStack,
+        teamStackCount,
+        previousLineupSets,
+        bringBackSize,
+        minChanges,
+        salaryFloor,
+        ruleSelections,
+      );
+      if (!validation.ok) continue;
+      return {
+        lineup: {
+          players: nextPlayers,
+          slots: validation.slots,
+          totalSalary: nextPlayers.reduce((sum, player) => sum + player.salary, 0),
+          projFpts: nextPlayers.reduce((sum, player) => sum + (getPlayerProjection(player) ?? 0), 0),
+          leverageScore: nextPlayers.reduce((sum, player) => sum + getPlayerLeverage(player), 0),
+        },
+        attempts,
+      };
+    }
+  }
+
+  return { lineup: null, attempts };
+}
+
+function buildRecentScoreAdjustments(
+  previousLineupSets: Set<number>[],
+  mode: "cash" | "gpp",
+): Map<number, number> {
+  const recentCounts = new Map<number, number>();
+  for (const lineup of previousLineupSets.slice(-DIV_WINDOW)) {
+    for (const playerId of lineup) {
+      recentCounts.set(playerId, (recentCounts.get(playerId) ?? 0) + 1);
+    }
+  }
+
+  const weight = mode === "gpp" ? 2.5 : 1.5;
+  return new Map(
+    Array.from(recentCounts.entries()).map(([playerId, count]) => [playerId, -(count * weight)]),
+  );
+}
+
+function solveOneLineupDetailed(
+  pool: OptimizerPlayer[],
+  mode: "cash" | "gpp",
+  minStack: number,
+  teamStackCount: number,
+  maxExposureCount: number,
+  exposureCount: Map<number, number>,
+  previousLineupSets: Set<number>[],
+  bringBackSize = 0,
+  minChanges = mode === "gpp" ? 3 : 2,
+  salaryFloor = SALARY_FLOOR,
+  ruleSelections: NormalizedNbaRuleSelections = normalizeNbaRuleSelections({}),
+): DetailedSolveResult {
+  const lockedPlayers = new Set(ruleSelections.playerLocks);
+  const availablePool = pool.filter((player) =>
+    lockedPlayers.has(player.id) || (exposureCount.get(player.id) ?? 0) < maxExposureCount,
+  );
+  const prunedPool = pruneNbaCandidatePool(availablePool, mode, minStack, bringBackSize, ruleSelections);
+  const meta = createAttemptMeta(prunedPool.length);
+  const scoreAdjustments = buildRecentScoreAdjustments(previousLineupSets, mode);
+
+  if (availablePool.length < ROSTER_SIZE || prunedPool.length < ROSTER_SIZE) {
+    meta.failureReason = "exposure_exhausted";
+    incrementReject(meta, "exposure_exhausted");
+    return { lineup: null, meta };
+  }
+
+  const templates = enumerateStackTemplates(
+    prunedPool,
+    mode,
+    minStack,
+    teamStackCount,
+    bringBackSize,
+    ruleSelections,
+    scoreAdjustments,
+  );
+  meta.templateCount = templates.length;
+  if (templates.length === 0) {
+    meta.failureReason = "no_valid_templates";
+    incrementReject(meta, "no_valid_templates");
+    return { lineup: null, meta };
+  }
+
+  for (const template of templates) {
+    meta.templatesTried++;
+    const templatePool = buildTemplatePool(prunedPool, template, mode, lockedPlayers, scoreAdjustments);
+    const lineup = solveReducedLineup(
+      templatePool,
+      mode,
+      template.minCountsByTeam,
+      lockedPlayers,
+      salaryFloor,
+      scoreAdjustments,
+    );
+    if (!lineup) {
+      incrementReject(meta, "salary_feasible_fill_not_found");
+      continue;
+    }
+
+    const validation = validateLineupExact(
+      lineup.players,
+      minStack,
+      teamStackCount,
+      previousLineupSets,
+      bringBackSize,
+      minChanges,
+      salaryFloor,
+      ruleSelections,
+    );
+    if (validation.ok) {
+      return {
+        lineup: {
+          ...lineup,
+          slots: validation.slots,
+        },
+        meta,
+      };
+    }
+
+    if (validation.reason === "diversity_violation") {
+      const repaired = attemptRepairForDiversity(
+        lineup,
+        templatePool,
+        mode,
+        minStack,
+        teamStackCount,
+        previousLineupSets,
+        bringBackSize,
+        minChanges,
+        salaryFloor,
+        ruleSelections,
+      );
+      meta.repairAttempts += repaired.attempts;
+      if (repaired.lineup) {
+        return { lineup: repaired.lineup, meta };
+      }
+      incrementReject(meta, "diversity_repair_exhausted");
+      continue;
+    }
+
+    incrementReject(meta, validation.reason);
+  }
+
+  meta.failureReason = pickFailureReason(meta);
+  return { lineup: null, meta };
 }
 
 export function optimizeLineups(
@@ -305,6 +1235,7 @@ export function optimizeLineupsWithDebug(
   // every pair of lineups - drop to 2 when eligible < 55 or constraints were relaxed.
   const relaxed = effectiveSalaryFloor === 0;
   const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
+  const prunedPool = pruneNbaCandidatePool(eligible, mode, effectiveMinStack, effectiveBringBackSize, ruleSelections);
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
     teamStackCount: effectiveTeamStackCount,
@@ -314,8 +1245,15 @@ export function optimizeLineupsWithDebug(
     minChanges: effectiveMinChanges,
     salaryFloor: effectiveSalaryFloor,
   };
+  debug.heuristic = {
+    prunedCandidateCount: prunedPool.length,
+    templateCount: 0,
+    templatesTried: 0,
+    repairAttempts: 0,
+    rejectedByReason: {},
+  };
 
-  const exposureCount = new Map<number, number>(eligible.map((p) => [p.id, 0]));
+  const exposureCount = new Map<number, number>(prunedPool.map((p) => [p.id, 0]));
   const lineups: GeneratedLineup[] = [];
   const previousLineupSets: Set<number>[] = [];
 
@@ -331,8 +1269,8 @@ export function optimizeLineupsWithDebug(
       salaryFloor: number,
     ): GeneratedLineup | null => {
       const start = Date.now();
-      const result = solveOneLineup(
-        eligible,
+      const result = solveOneLineupDetailed(
+        prunedPool,
         mode,
         stackSize,
         stackCount,
@@ -344,12 +1282,19 @@ export function optimizeLineupsWithDebug(
         salaryFloor,
         ruleSelections,
       );
+      mergeHeuristicMeta(debug.heuristic!, result.meta);
       attempts.push({
         stage,
-        success: result != null,
+        success: result.lineup != null,
         durationMs: Date.now() - start,
+        prunedCandidateCount: result.meta.prunedCandidateCount,
+        templateCount: result.meta.templateCount,
+        templatesTried: result.meta.templatesTried,
+        repairAttempts: result.meta.repairAttempts,
+        rejectedByReason: result.meta.rejectedByReason,
+        failureReason: result.meta.failureReason,
       });
-      return result;
+      return result.lineup;
     };
 
     let lineup = runAttempt("base", effectiveMinStack, effectiveTeamStackCount, effectiveBringBackSize, effectiveMinChanges, effectiveSalaryFloor);
@@ -492,6 +1437,7 @@ export function prepareNbaOptimizerRun(
 
   const relaxed = effectiveSalaryFloor === 0;
   const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
+  const prunedPool = pruneNbaCandidatePool(eligible, mode, effectiveMinStack, effectiveBringBackSize, ruleSelections);
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
     teamStackCount: effectiveTeamStackCount,
@@ -500,6 +1446,13 @@ export function prepareNbaOptimizerRun(
     maxExposure,
     minChanges: effectiveMinChanges,
     salaryFloor: effectiveSalaryFloor,
+  };
+  debug.heuristic = {
+    prunedCandidateCount: prunedPool.length,
+    templateCount: 0,
+    templatesTried: 0,
+    repairAttempts: 0,
+    rejectedByReason: {},
   };
   debug.totalMs = Date.now() - totalStart;
 
@@ -510,7 +1463,7 @@ export function prepareNbaOptimizerRun(
       requestedLineups: nLineups,
       maxExposureCount: debug.maxExposureCount,
       eligibleCount: eligible.length,
-      pool: eligible,
+      pool: prunedPool,
       ruleSelections,
       effectiveSettings: {
         minStack: effectiveMinStack,
@@ -548,29 +1501,35 @@ export function buildNextNbaLineup(
     stackCount: number,
     bringBackSizeForAttempt: number,
     minChanges: number,
-    salaryFloor: number,
-  ): GeneratedLineup | null => {
-    const start = Date.now();
-    const result = solveOneLineup(
-      prepared.pool,
-      prepared.mode,
-      stackSize,
-      stackCount,
-      prepared.maxExposureCount,
+      salaryFloor: number,
+    ): GeneratedLineup | null => {
+      const start = Date.now();
+      const result = solveOneLineupDetailed(
+        prepared.pool,
+        prepared.mode,
+        stackSize,
+        stackCount,
+        prepared.maxExposureCount,
       exposureCount,
       previousLineupSets,
       bringBackSizeForAttempt,
       minChanges,
-      salaryFloor,
-      prepared.ruleSelections,
-    );
-    attempts.push({
-      stage,
-      success: result != null,
-      durationMs: Date.now() - start,
-    });
-    return result;
-  };
+        salaryFloor,
+        prepared.ruleSelections,
+      );
+      attempts.push({
+        stage,
+        success: result.lineup != null,
+        durationMs: Date.now() - start,
+        prunedCandidateCount: result.meta.prunedCandidateCount,
+        templateCount: result.meta.templateCount,
+        templatesTried: result.meta.templatesTried,
+        repairAttempts: result.meta.repairAttempts,
+        rejectedByReason: result.meta.rejectedByReason,
+        failureReason: result.meta.failureReason,
+      });
+      return result.lineup;
+    };
 
   const { minStack, teamStackCount, bringBackSize, minChanges, salaryFloor } = prepared.effectiveSettings;
   let lineup = runAttempt("base", minStack, teamStackCount, bringBackSize, minChanges, salaryFloor);
@@ -604,188 +1563,19 @@ function solveOneLineup(
   salaryFloor = SALARY_FLOOR,
   ruleSelections: NormalizedNbaRuleSelections = normalizeNbaRuleSelections({}),
 ): GeneratedLineup | null {
-  const lockedPlayers = new Set(ruleSelections.playerLocks);
-  const requiredTeamStacks = ruleSelections.requiredTeamStacks;
-  const availablePool = pool.filter((p) =>
-    lockedPlayers.has(p.id) || (exposureCount.get(p.id) ?? 0) < maxExposureCount,
-  );
-  if (availablePool.length < ROSTER_SIZE) return null;
-
-  const teamPlayers = new Map<number, OptimizerPlayer[]>();
-  for (const player of availablePool) {
-    if (player.teamId == null) continue;
-    const existing = teamPlayers.get(player.teamId) ?? [];
-    existing.push(player);
-    teamPlayers.set(player.teamId, existing);
-  }
-
-  const availableTeamCounts = new Map<number, number>();
-  for (const player of availablePool) {
-    if (player.teamId == null) continue;
-    availableTeamCounts.set(player.teamId, (availableTeamCounts.get(player.teamId) ?? 0) + 1);
-  }
-
-  const teamsByMatchup = new Map<number, Set<number>>();
-  for (const player of availablePool) {
-    if (player.matchupId == null || player.teamId == null) continue;
-    const existing = teamsByMatchup.get(player.matchupId) ?? new Set<number>();
-    existing.add(player.teamId);
-    teamsByMatchup.set(player.matchupId, existing);
-  }
-  const opponentByTeamId = new Map<number, number>();
-  for (const teamIds of teamsByMatchup.values()) {
-    const matchupTeams = Array.from(teamIds);
-    if (matchupTeams.length !== 2) continue;
-    opponentByTeamId.set(matchupTeams[0], matchupTeams[1]);
-    opponentByTeamId.set(matchupTeams[1], matchupTeams[0]);
-  }
-
-  const effectiveRequiredTeamStacks = requiredTeamStacks.filter((rule) => {
-    if ((availableTeamCounts.get(rule.teamId) ?? 0) < rule.stackSize) return false;
-    if (bringBackSize <= 0) return true;
-    const opponentTeamId = opponentByTeamId.get(rule.teamId);
-    return opponentTeamId != null && (availableTeamCounts.get(opponentTeamId) ?? 0) >= bringBackSize;
-  });
-  const bringBackActive = bringBackSize > 0;
-  const requiredStackSizeByTeam = new Map(
-    effectiveRequiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize] as const),
-  );
-  const countableTeamIds = Array.from(availableTeamCounts.keys()).filter((teamId) => {
-    const stackThreshold = requiredStackSizeByTeam.get(teamId) ?? minStack;
-    if ((availableTeamCounts.get(teamId) ?? 0) < stackThreshold) return false;
-    if (!bringBackActive) return true;
-    const opponentTeamId = opponentByTeamId.get(teamId);
-    if (opponentTeamId == null) return false;
-    return (availableTeamCounts.get(opponentTeamId) ?? 0) >= bringBackSize;
-  });
-  if (teamStackCount > 0 && countableTeamIds.length < teamStackCount) return null;
-  const useRequiredTeamStacks = effectiveRequiredTeamStacks.length > 0;
-  if (requiredTeamStacks.length > 0 && effectiveRequiredTeamStacks.length !== requiredTeamStacks.length) return null;
-
-  const countableTeamSet = new Set(countableTeamIds);
-
-  const constraints: SolverModel["constraints"] = {
-    salary: { min: salaryFloor, max: SALARY_CAP },
-    total:  { equal: ROSTER_SIZE },
-    ...(teamStackCount > 0 ? { team_stack_count: { min: teamStackCount } } : {}),
-    ...(useRequiredTeamStacks ? { required_team_stack_count: { min: 1 } } : {}),
-  };
-
-  for (const slot of LINEUP_SLOTS) {
-    constraints[`slot_${slot}`] = { equal: 1 };
-  }
-
-  for (const p of availablePool) {
-    constraints[`use_${p.id}`] = lockedPlayers.has(p.id) ? { equal: 1 } : { max: 1 };
-  }
-
-  for (const teamId of countableTeamIds) {
-    constraints[`team_${teamId}`] = { min: 0 };
-    if (bringBackActive) {
-      constraints[`bringback_${teamId}`] = { min: 0 };
-    }
-  }
-
-  // Only enforce diversity against the last DIV_WINDOW lineups.
-  // Applying it to ALL prior lineups causes the ILP to become infeasible
-  // after ~5-7 lineups on a small pool (each new lineup must simultaneously
-  // differ from every previous one).
-  const DIV_WINDOW = 5;
-  const divWindow = previousLineupSets.slice(-DIV_WINDOW);
-  for (let i = 0; i < divWindow.length; i++) {
-    constraints[`div_${i}`] = { max: ROSTER_SIZE - minChanges };
-  }
-
-  for (const rule of effectiveRequiredTeamStacks) {
-    constraints[`team_${rule.teamId}`] = { min: 0 };
-  }
-
-  const variables: SolverModel["variables"] = {};
-  const binaries: SolverModel["binaries"] = {};
-  const variableMeta = new Map<string, { player: OptimizerPlayer; slot: LineupSlot }>();
-
-  for (const p of availablePool) {
-    const score = getPlayerScore(p, mode);
-    const pos = p.eligiblePositions;
-
-    for (const slot of LINEUP_SLOTS) {
-      if (!canFillSlot(slot, pos)) continue;
-      const key = `s_${slot}_${p.id}`;
-      const entry: Record<string, number> = {
-        score,
-        salary: p.salary,
-        total: 1,
-        [`slot_${slot}`]: 1,
-        [`use_${p.id}`]: 1,
-      };
-
-      if (p.teamId != null && countableTeamSet.has(p.teamId)) {
-        entry[`team_${p.teamId}`] = 1;
-      }
-      if (p.teamId != null && effectiveRequiredTeamStacks.some((rule) => rule.teamId === p.teamId)) {
-        entry[`team_${p.teamId}`] = 1;
-      }
-      if (bringBackActive && p.teamId != null) {
-        const opponentTeamId = opponentByTeamId.get(p.teamId);
-        if (opponentTeamId != null && constraints[`bringback_${opponentTeamId}`]) {
-          entry[`bringback_${opponentTeamId}`] = 1;
-        }
-      }
-
-      for (let i = 0; i < divWindow.length; i++) {
-        if (divWindow[i].has(p.id)) {
-          entry[`div_${i}`] = 1;
-        }
-      }
-
-      variables[key] = entry;
-      binaries[key] = 1;
-      variableMeta.set(key, { player: p, slot });
-    }
-  }
-
-  for (const teamId of countableTeamIds) {
-    const requiredRule = effectiveRequiredTeamStacks.find((rule) => rule.teamId === teamId);
-    const stackThreshold = requiredRule?.stackSize ?? minStack;
-    const key = `z_team_${teamId}`;
-    variables[key] = {
-      team_stack_count: 1,
-      [`team_${teamId}`]: -stackThreshold,
-      ...(requiredRule ? { required_team_stack_count: 1 } : {}),
-      ...(bringBackActive ? { [`bringback_${teamId}`]: -bringBackSize } : {}),
-    };
-    binaries[key] = 1;
-  }
-
-  const model: SolverModel = {
-    optimize: "score",
-    opType: "max",
-    constraints,
-    variables,
-    binaries,
-  };
-
-  const result = solver.Solve(model);
-  if (!result.feasible) return null;
-
-  const slots = {} as Record<LineupSlot, OptimizerPlayer>;
-  for (const slot of LINEUP_SLOTS) {
-    const key = Array.from(variableMeta.keys()).find((varKey) => {
-      const meta = variableMeta.get(varKey)!;
-      return meta.slot === slot && (result[varKey] ?? 0) >= 0.5;
-    });
-    if (!key) return null;
-    slots[slot] = variableMeta.get(key)!.player;
-  }
-
-  const selectedPlayers = LINEUP_SLOTS.map((slot) => slots[slot]);
-  if (new Set(selectedPlayers.map((p) => p.id)).size !== ROSTER_SIZE) return null;
-
-  const totalSalary = selectedPlayers.reduce((s, p) => s + p.salary, 0);
-  const projFpts = selectedPlayers.reduce((s, p) => s + (getPlayerProjection(p) ?? 0), 0);
-  const leverageScore = selectedPlayers.reduce((s, p) => s + getPlayerLeverage(p), 0);
-
-  return { players: selectedPlayers, slots, totalSalary, projFpts, leverageScore };
+  return solveOneLineupDetailed(
+    pool,
+    mode,
+    minStack,
+    teamStackCount,
+    maxExposureCount,
+    exposureCount,
+    previousLineupSets,
+    bringBackSize,
+    minChanges,
+    salaryFloor,
+    ruleSelections,
+  ).lineup;
 }
 
 /**

@@ -8,6 +8,12 @@ export type OptimizerLineupAttemptDebug = {
   stage: string;
   success: boolean;
   durationMs: number;
+  prunedCandidateCount?: number;
+  templateCount?: number;
+  templatesTried?: number;
+  repairAttempts?: number;
+  rejectedByReason?: Record<string, number>;
+  failureReason?: string;
 };
 
 export type OptimizerLineupDebug = {
@@ -32,6 +38,13 @@ export type OptimizerDebugInfo = {
   lineupSummaries: OptimizerLineupDebug[];
   terminationReason: "completed" | "insufficient_pool" | "probe_infeasible" | "lineup_failed";
   stoppedAtLineup?: number;
+  heuristic?: {
+    prunedCandidateCount: number;
+    templateCount: number;
+    templatesTried: number;
+    repairAttempts: number;
+    rejectedByReason: Record<string, number>;
+  };
   effectiveSettings: {
     minStack: number;
     teamStackCount?: number;

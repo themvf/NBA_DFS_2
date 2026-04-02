@@ -291,6 +291,20 @@ function serializeDate(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
+function computeJobTotalMs(job: JobRecord, now = new Date()): number {
+  if (
+    job.totalMs != null
+    && Number.isFinite(job.totalMs)
+    && job.status !== "queued"
+    && job.status !== "running"
+  ) {
+    return job.totalMs;
+  }
+  const anchor = job.startedAt ?? job.createdAt;
+  if (!anchor) return job.totalMs ?? 0;
+  return Math.max(0, now.getTime() - anchor.getTime());
+}
+
 function normalizeTerminationReason(value: string | null | undefined): OptimizerJobTerminationReason | null {
   if (
     value === "completed"
@@ -327,13 +341,37 @@ function buildJobView(job: JobRecord, stale: boolean): OptimizerJobView {
     error: job.error,
     terminationReason: normalizeTerminationReason(job.terminationReason),
     workflowRunId: job.workflowRunId,
-    totalMs: job.totalMs,
+    totalMs: computeJobTotalMs(job),
     probeMs: job.probeMs,
     stale,
     createdAt: serializeDate(job.createdAt),
     startedAt: serializeDate(job.startedAt),
     heartbeatAt: serializeDate(job.heartbeatAt),
     finishedAt: serializeDate(job.finishedAt),
+  };
+}
+
+function summarizeHeuristic(
+  sport: Sport,
+  job: JobRecord,
+  lineups: PersistedOptimizerJobLineup[],
+): OptimizerDebugInfo["heuristic"] | undefined {
+  if (sport !== "nba") return undefined;
+  const attempts = lineups.flatMap((lineup) => lineup.attempts);
+  const rejectedByReason: Record<string, number> = {};
+  for (const attempt of attempts) {
+    for (const [reason, count] of Object.entries(attempt.rejectedByReason ?? {})) {
+      rejectedByReason[reason] = (rejectedByReason[reason] ?? 0) + count;
+    }
+  }
+
+  const poolSnapshot = Array.isArray(job.poolSnapshotJson) ? job.poolSnapshotJson : [];
+  return {
+    prunedCandidateCount: poolSnapshot.length || job.eligibleCount || 0,
+    templateCount: attempts.reduce((best, attempt) => Math.max(best, attempt.templateCount ?? 0), 0),
+    templatesTried: attempts.reduce((sum, attempt) => sum + (attempt.templatesTried ?? 0), 0),
+    repairAttempts: attempts.reduce((sum, attempt) => sum + (attempt.repairAttempts ?? 0), 0),
+    rejectedByReason,
   };
 }
 
@@ -392,7 +430,7 @@ function buildDebugInfo(
     eligibleCount: job.eligibleCount ?? 0,
     requestedLineups: job.requestedLineups,
     builtLineups: lineups.length,
-    totalMs: job.totalMs ?? 0,
+    totalMs: computeJobTotalMs(job),
     probeMs: job.probeMs ?? 0,
     maxExposureCount: Math.ceil(job.requestedLineups * ((settings as OptimizerSettings).maxExposure ?? 1)),
     relaxedConstraints: (job.relaxedConstraintsJson as string[]) ?? [],
@@ -409,6 +447,7 @@ function buildDebugInfo(
       debugTerminationReason === "lineup_failed" && lineups.length < job.requestedLineups
         ? lineups.length + 1
         : undefined,
+    heuristic: summarizeHeuristic(job.sport as Sport, job, lineups),
     effectiveSettings:
       (job.effectiveSettingsJson as OptimizerDebugInfo["effectiveSettings"] | null)
       ?? fallbackEffectiveSettings,
@@ -719,6 +758,7 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
       .set({
         builtLineups: Math.max(job.builtLineups, lineupNumber),
         heartbeatAt: now,
+        totalMs: computeJobTotalMs(job, now),
       })
       .where(eq(optimizerJobs.id, jobId));
     return { built: true };
@@ -739,6 +779,8 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
         builtLineups: priorLineups.length,
         heartbeatAt: now,
         terminationReason: "lineup_failed",
+        error: buildLineupFailureError(nextResult.summary),
+        totalMs: computeJobTotalMs(job, now),
       })
       .where(eq(optimizerJobs.id, jobId));
     return { built: false };
@@ -770,6 +812,7 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
     .set({
       builtLineups: Math.max(job.builtLineups, lineupNumber),
       heartbeatAt: now,
+      totalMs: computeJobTotalMs(job, now),
     })
     .where(eq(optimizerJobs.id, jobId));
 
@@ -779,6 +822,24 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
 function buildPartialWarning(built: number, requested: number): string | null {
   if (built === 0 || built >= requested) return null;
   return `Built ${built} of ${requested} lineups. Additional lineups were infeasible under the current exposure, lock, block, or stack constraints.`;
+}
+
+function buildLineupFailureError(
+  summary: OptimizerDebugInfo["lineupSummaries"][number],
+): string {
+  const failedAttempt = [...summary.attempts].reverse().find((attempt) => !attempt.success);
+  switch (failedAttempt?.failureReason) {
+    case "exposure_exhausted":
+      return "No additional lineups could be built because the exposure cap exhausted the remaining candidate pool.";
+    case "no_valid_templates":
+      return "No valid stack templates remained for the current stack and bring-back requirements.";
+    case "diversity_repair_exhausted":
+      return "A lineup candidate was found, but diversity repair could not produce a valid alternative under the current constraints.";
+    case "salary_feasible_fill_not_found":
+      return "No salary-feasible lineup fill was found for the remaining stack templates.";
+    default:
+      return "No additional lineups could be built under the current constraints.";
+  }
 }
 
 export async function finalizeOptimizerJob(jobId: number) {

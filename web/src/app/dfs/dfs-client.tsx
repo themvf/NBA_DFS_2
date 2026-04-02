@@ -415,6 +415,14 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     (best, current) => !best || current.durationMs > best.durationMs ? current : best,
     null,
   ) ?? null;
+  const debugTotalMs = optimizeDebug
+    ? (isOptimizing ? Math.max(optimizeDebug.totalMs, optimizeElapsedMs) : optimizeDebug.totalMs)
+    : 0;
+  const heuristicRejectSummary = optimizeDebug?.heuristic
+    ? Object.entries(optimizeDebug.heuristic.rejectedByReason)
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    : [];
 
   function applyOptimizerJobResult(result: OptimizerJobStatusResponse) {
     setOptimizerJobId(result.job.id);
@@ -1497,7 +1505,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         {optimizeDebug && (
           <details className="mt-2 rounded border bg-gray-50 p-3">
             <summary className="cursor-pointer text-sm font-medium text-gray-800">
-              Optimizer Debug: {optimizeDebug.builtLineups}/{optimizeDebug.requestedLineups} built in {fmtDuration(optimizeDebug.totalMs)}
+              Optimizer Debug: {optimizeDebug.builtLineups}/{optimizeDebug.requestedLineups} built in {fmtDuration(debugTotalMs)}
             </summary>
             <div className="mt-3 space-y-3 text-xs text-gray-700">
               <div className="grid gap-2 md:grid-cols-2">
@@ -1529,6 +1537,26 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   )}
                 </div>
               </div>
+              {optimizeDebug.heuristic && (
+                <div className="rounded border bg-white p-2">
+                  <p className="mb-1 font-medium text-gray-800">Heuristic Search</p>
+                  <div className="grid gap-1 md:grid-cols-2">
+                    <p><strong>Pruned candidates:</strong> {optimizeDebug.heuristic.prunedCandidateCount}</p>
+                    <p><strong>Template count:</strong> {optimizeDebug.heuristic.templateCount}</p>
+                    <p><strong>Templates tried:</strong> {optimizeDebug.heuristic.templatesTried}</p>
+                    <p><strong>Repair attempts:</strong> {optimizeDebug.heuristic.repairAttempts}</p>
+                  </div>
+                  {heuristicRejectSummary.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                      {heuristicRejectSummary.map(([reason, count]) => (
+                        <span key={reason} className="rounded bg-gray-100 px-1.5 py-0.5">
+                          {reason}: {count}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {optimizeDebug.relaxedConstraints.length > 0 && (
                 <p><strong>Relaxed constraints:</strong> {optimizeDebug.relaxedConstraints.join(", ")}</p>
               )}
@@ -1566,6 +1594,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                           {lineup.attempts.map((attempt) => (
                             <span key={`${lineup.lineupNumber}-${attempt.stage}`} className="rounded bg-gray-100 px-1.5 py-0.5">
                               {attempt.stage}: {attempt.success ? "ok" : "fail"} ({fmtDuration(attempt.durationMs)})
+                              {attempt.templateCount != null ? ` · tpl ${attempt.templateCount}` : ""}
+                              {attempt.templatesTried != null ? ` · tried ${attempt.templatesTried}` : ""}
+                              {attempt.repairAttempts != null && attempt.repairAttempts > 0 ? ` · repair ${attempt.repairAttempts}` : ""}
+                              {!attempt.success && attempt.failureReason ? ` · ${attempt.failureReason}` : ""}
                             </span>
                           ))}
                         </div>
