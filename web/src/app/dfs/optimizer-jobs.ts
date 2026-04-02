@@ -602,6 +602,18 @@ export async function prepareOptimizerJob(jobId: number): Promise<PrepareResult>
   const settings = job.settingsJson as OptimizerSettings | MlbOptimizerSettings;
   const pool = job.poolSnapshotJson as OptimizerPlayer[] | MlbOptimizerPlayer[];
 
+  await db
+    .update(optimizerJobs)
+    .set({
+      status: "running",
+      startedAt: job.startedAt ?? now,
+      heartbeatAt: now,
+      terminationReason: null,
+      error: null,
+      warning: null,
+    })
+    .where(eq(optimizerJobs.id, jobId));
+
   const preparedResult = job.sport === "mlb"
     ? prepareMlbOptimizerRun(pool as MlbOptimizerPlayer[], settings as MlbOptimizerSettings)
     : prepareNbaOptimizerRun(pool as OptimizerPlayer[], settings as OptimizerSettings);
