@@ -350,6 +350,11 @@ function parseDkCsv(content: string): DkApiPlayer[] {
       // CSV doesn't carry DK injury status — rely on LineStar for is_out
       dkStatus:    "None",
       isDisabled:  false,
+      startingLineupOrder: null,
+      inStartingLineup: null,
+      probableStarter: null,
+      likelyPitcher: null,
+      startingPitcher: null,
     });
   }
   return players;
@@ -2133,13 +2138,68 @@ type DkApiPlayer = {
   dkStatus: string;
   /** True = DK has locked this player out of draftability */
   isDisabled: boolean;
+  startingLineupOrder: number | null;
+  inStartingLineup: boolean | null;
+  probableStarter: boolean | null;
+  likelyPitcher: boolean | null;
+  startingPitcher: boolean | null;
 };
+
+type DkDraftStat = { id: number; abbr?: string; name?: string };
+
+const DK_PGA_STARTING_LINEUP_ORDER = 99;
+const DK_PGA_IN_STARTING_LINEUP = 100;
+const DK_PGA_PROBABLE_STARTER = 130;
+const DK_PGA_LIKELY_PITCHER = 137;
+const DK_PGA_STARTING_PITCHER = 110;
+const DK_DEFAULT_PROJ_STAT_ID = 279;
+
+function parseDkBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return null;
+  const lowered = value.trim().toLowerCase();
+  if (lowered === "true") return true;
+  if (lowered === "false") return false;
+  return null;
+}
+
+function parsePositiveInt(value: unknown): number | null {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveDkProjStatId(draftStats: DkDraftStat[] | undefined): number {
+  for (const stat of draftStats ?? []) {
+    if (stat.abbr === "FPPG" || stat.name === "Fantasy Points Per Game") {
+      return stat.id;
+    }
+  }
+  return DK_DEFAULT_PROJ_STAT_ID;
+}
+
+function buildPlayerGameAttrMap(attrs: unknown): Map<number, unknown> {
+  const map = new Map<number, unknown>();
+  if (!Array.isArray(attrs)) return map;
+  for (const attr of attrs as Array<{ id?: unknown; value?: unknown }>) {
+    if (typeof attr?.id === "number") map.set(attr.id, attr.value);
+  }
+  return map;
+}
+
+function isLikelyActiveMlbPitcher(player: Pick<DkApiPlayer, "eligiblePositions" | "startingPitcher" | "likelyPitcher" | "probableStarter">): boolean {
+  if (!isPitcherPos(player.eligiblePositions)) return true;
+  const signals = [player.startingPitcher, player.likelyPitcher, player.probableStarter].filter((v): v is boolean => v != null);
+  if (signals.length === 0) return true;
+  return signals.some(Boolean);
+}
 
 async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[]> {
   const url = `https://api.draftkings.com/draftgroups/v1/draftgroups/${draftGroupId}/draftables`;
   const resp = await fetch(url, { headers: DK_HEADERS, next: { revalidate: 0 } });
   if (!resp.ok) throw new Error(`DK API ${resp.status}: ${url}`);
-  const { draftables } = await resp.json() as { draftables: Record<string, unknown>[] };
+  const data = await resp.json() as { draftables: Record<string, unknown>[]; draftStats?: DkDraftStat[] };
+  const { draftables } = data;
+  const projStatId = resolveDkProjStatId(data.draftStats);
 
   // Group by playerId — each player has one entry per eligible roster slot
   const byPlayer = new Map<number, typeof draftables>();
@@ -2167,11 +2227,13 @@ async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[
       })
       .join("/");
 
-    // DK's own FPTS projection (stat attribute id=219)
+    // DK's own FPTS projection (FPPG stat id varies by sport)
     let avgFptsDk: number | null = null;
     for (const attr of (canonical.draftStatAttributes as { id: number; value: string }[] ?? [])) {
-      if (attr.id === 279) { avgFptsDk = parseFloat(attr.value) || null; break; }
+      if (attr.id === projStatId) { avgFptsDk = parseFloat(attr.value) || null; break; }
     }
+
+    const playerGameAttrs = buildPlayerGameAttrMap(canonical.playerGameAttributes);
 
     // DK injury / availability status
     const dkStatus   = (canonical.status as string) || "None";
@@ -2211,6 +2273,11 @@ async function fetchDkPlayersFromApi(draftGroupId: number): Promise<DkApiPlayer[
       avgFptsDk,
       dkStatus,
       isDisabled,
+      startingLineupOrder: parsePositiveInt(playerGameAttrs.get(DK_PGA_STARTING_LINEUP_ORDER)),
+      inStartingLineup: parseDkBoolean(playerGameAttrs.get(DK_PGA_IN_STARTING_LINEUP)),
+      probableStarter: parseDkBoolean(playerGameAttrs.get(DK_PGA_PROBABLE_STARTER)),
+      likelyPitcher: parseDkBoolean(playerGameAttrs.get(DK_PGA_LIKELY_PITCHER)),
+      startingPitcher: parseDkBoolean(playerGameAttrs.get(DK_PGA_STARTING_PITCHER)),
     });
   }
   return players;
@@ -3534,7 +3601,10 @@ async function enrichAndSaveMlb(
       }
     }
 
-    const dkIsOut = p.isDisabled || ["O", "OUT"].includes(p.dkStatus.toUpperCase());
+    const dkIsOut =
+      p.isDisabled
+      || ["O", "OUT"].includes(p.dkStatus.toUpperCase())
+      || !isLikelyActiveMlbPitcher(p);
     const isOut   = dkIsOut;
     const projForLev = isOut ? 0 : (ourProj ?? linestarProj ?? 0);
     if (projForLev > 0 && projOwnPct != null) {
@@ -3696,7 +3766,15 @@ export async function refreshPlayerStatus(slateId: number): Promise<{
     for (const d of draftables) {
       const draftableId = d.draftableId as number;
       const s = ((d.status as string) ?? "").toUpperCase();
-      const isOut = !!(d.isDisabled as boolean) || s === "O" || s === "OUT";
+      const pos = (d.position as string) ?? "";
+      const playerGameAttrs = buildPlayerGameAttrMap(d.playerGameAttributes);
+      const starterSignals = [
+        parseDkBoolean(playerGameAttrs.get(DK_PGA_STARTING_PITCHER)),
+        parseDkBoolean(playerGameAttrs.get(DK_PGA_LIKELY_PITCHER)),
+        parseDkBoolean(playerGameAttrs.get(DK_PGA_PROBABLE_STARTER)),
+      ].filter((v): v is boolean => v != null);
+      const pitcherIsLikelyActive = !pos.includes("P") || starterSignals.length === 0 || starterSignals.some(Boolean);
+      const isOut = !!(d.isDisabled as boolean) || s === "O" || s === "OUT" || !pitcherIsLikelyActive;
       liveStatus.set(draftableId, isOut);
     }
 

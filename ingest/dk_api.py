@@ -34,7 +34,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-_PROJ_STAT_ID = 279         # DK stat attribute ID for projected FPTS
+_DEFAULT_PROJ_STAT_ID = 279
 _ET_ZONE      = ZoneInfo("America/New_York")  # handles EDT/EST automatically
 _TIMEOUT      = 15
 _HEADERS = {
@@ -48,6 +48,52 @@ _HEADERS = {
 
 # Canonical ordering for position string construction
 _POS_ORDER = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"]
+
+_PGA_STARTING_LINEUP_ORDER = 99
+_PGA_IN_STARTING_LINEUP   = 100
+_PGA_PROBABLE_STARTER     = 130
+_PGA_LIKELY_PITCHER       = 137
+_PGA_STARTING_PITCHER     = 110
+
+
+def _resolve_proj_stat_id(payload: dict[str, Any]) -> int:
+    """Resolve the DraftKings FPPG stat attribute ID from response metadata."""
+    for stat in payload.get("draftStats", []):
+        stat_id = stat.get("id")
+        if not isinstance(stat_id, int):
+            continue
+        if stat.get("abbr") == "FPPG" or stat.get("name") == "Fantasy Points Per Game":
+            return stat_id
+    return _DEFAULT_PROJ_STAT_ID
+
+
+def _player_game_attr_map(entry: dict[str, Any]) -> dict[int, Any]:
+    attrs: dict[int, Any] = {}
+    for attr in entry.get("playerGameAttributes", []):
+        attr_id = attr.get("id")
+        if isinstance(attr_id, int):
+            attrs[attr_id] = attr.get("value")
+    return attrs
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+    return None
+
+
+def _positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(str(value).strip())
+    except (ValueError, TypeError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def fetch_draft_group_id(contest_id: int) -> int:
@@ -73,7 +119,9 @@ def fetch_dk_players(draft_group_id: int) -> list[dict]:
     resp = requests.get(url, headers=_HEADERS, timeout=_TIMEOUT)
     resp.raise_for_status()
 
-    raw: list[dict] = resp.json().get("draftables", [])
+    payload = resp.json()
+    raw: list[dict] = payload.get("draftables", [])
+    proj_stat_id = _resolve_proj_stat_id(payload)
 
     # Group by playerId — each player has one entry per eligible roster slot
     by_player: dict[int, list[dict]] = defaultdict(list)
@@ -96,15 +144,17 @@ def fetch_dk_players(draft_group_id: int) -> list[dict]:
         sorted_pos = sorted(all_positions, key=lambda p: _POS_ORDER.index(p) if p in _POS_ORDER else 99)
         eligible_positions = "/".join(sorted_pos)
 
-        # DK's own FPTS projection (stat attribute id=279)
+        # DK's own FPTS projection (FPPG stat id varies by sport)
         avg_fpts_dk: float | None = None
         for attr in canonical.get("draftStatAttributes", []):
-            if attr.get("id") == _PROJ_STAT_ID:
+            if attr.get("id") == proj_stat_id:
                 try:
                     avg_fpts_dk = float(attr["value"])
                 except (ValueError, TypeError):
                     pass
                 break
+
+        player_game_attrs = _player_game_attr_map(canonical)
 
         # Injury / availability status from DK
         dk_status   = canonical.get("status", "None") or "None"  # "None","O","Q","GTD","D"
@@ -120,6 +170,11 @@ def fetch_dk_players(draft_group_id: int) -> list[dict]:
             "avg_fpts_dk":        avg_fpts_dk,
             "dk_status":          dk_status,
             "is_disabled":        is_disabled,
+            "starting_lineup_order": _positive_int(player_game_attrs.get(_PGA_STARTING_LINEUP_ORDER)),
+            "in_starting_lineup":    _optional_bool(player_game_attrs.get(_PGA_IN_STARTING_LINEUP)),
+            "probable_starter":      _optional_bool(player_game_attrs.get(_PGA_PROBABLE_STARTER)),
+            "likely_pitcher":        _optional_bool(player_game_attrs.get(_PGA_LIKELY_PITCHER)),
+            "starting_pitcher":      _optional_bool(player_game_attrs.get(_PGA_STARTING_PITCHER)),
         })
 
     logger.info("Fetched %d players from draftGroupId %d", len(players), draft_group_id)

@@ -10,9 +10,8 @@ Mirrors dk_slate.py but adapted for MLB:
 
 DK MLB DraftGroup API note:
   Same endpoint as NBA: /draftgroups/v1/draftgroups/{id}/draftables
-  The _MLB_PROJ_STAT_ID = 279 is a best guess — verify on first real MLB slate.
-  If no projection attribute is found, avg_fpts_dk will be NULL and we fall
-  back entirely to our own avg_fpts_pg projection.
+  fetch_dk_players() resolves the FPPG stat attribute dynamically from the
+  response metadata, because MLB does not use the NBA stat id.
 
 LineStar MLB:
   CSV input is supported (--linestar path).  LineStar API for MLB uses
@@ -65,10 +64,6 @@ MLB_DK_ABBREV_OVERRIDES: dict[str, str] = {
     "WAS": "WSH",   # FanGraphs uses WAS; DK uses WSH
 }
 
-# DK stat attribute ID for projected FPTS.  NBA uses 279 — MLB may share it
-# or use a different ID.  Verify on first real MLB draft group.
-_MLB_PROJ_STAT_ID = 279
-
 # DK MLB boom thresholds (FPTS ≥ N defines a "boom" game for GPP targeting)
 _SP_BOOM_THRESHOLD  = 40.0   # starter:  40+ FPTS is tournament-winning
 _RP_BOOM_THRESHOLD  = 15.0   # reliever: rarely exceeds this range
@@ -94,6 +89,19 @@ def _is_pitcher(eligible_positions: str) -> bool:
 
 def _is_sp(eligible_positions: str) -> bool:
     return "SP" in eligible_positions.split("/")
+
+
+def _dk_pitcher_is_probable(player: dict) -> bool:
+    """Return True unless DK explicitly marks an MLB pitcher as non-probable."""
+    signals = [
+        player.get("starting_pitcher"),
+        player.get("likely_pitcher"),
+        player.get("probable_starter"),
+    ]
+    present = [bool(v) for v in signals if v is not None]
+    if not present:
+        return True
+    return any(present)
 
 
 def match_player_stats(dk_name: str, candidates: list[dict]) -> dict | None:
@@ -234,8 +242,16 @@ def build_player_pool_mlb(
     for p in dk_players:
         result = dict(p)
 
+        positions    = p.get("eligible_positions", "")
+        pitcher_flag = _is_pitcher(positions)
+        sp_flag      = _is_sp(positions)
+
         # DK injury status
-        dk_is_out = p.get("is_disabled", False) or p.get("dk_status", "None").upper() in ("O", "OUT")
+        dk_is_out = (
+            p.get("is_disabled", False)
+            or p.get("dk_status", "None").upper() in ("O", "OUT")
+            or (pitcher_flag and not _dk_pitcher_is_probable(p))
+        )
 
         # LineStar merge — same key format (name_lower, salary)
         ls_key  = (p["name"].lower(), p["salary"])
@@ -272,11 +288,6 @@ def build_player_pool_mlb(
         if matchup:
             opp_team_id = matchup["away_team_id"] if is_home else matchup["home_team_id"]
         opp_team = team_stats_by_team.get(opp_team_id) if opp_team_id else None
-
-        # Player type + stats match
-        positions    = p.get("eligible_positions", "")
-        pitcher_flag = _is_pitcher(positions)
-        sp_flag      = _is_sp(positions)
 
         stats = None
         if mlb_team_id:
