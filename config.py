@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Optional
 import os
@@ -26,7 +27,7 @@ class NbaApiConfig:
 
 @dataclass
 class MlbApiConfig:
-    season: str = "2025"               # MLB season year (not a range like NBA "2025-26")
+    season: str = field(default_factory=lambda: str(date.today().year))  # MLB season year
     rolling_games: int = 15            # rolling window for batter/pitcher stat averages
     base_url: str = "https://statsapi.mlb.com/api/v1"
     timeout_seconds: int = 20

@@ -11,7 +11,7 @@ import {
   validateNbaRuleSelections,
   type NbaTeamStackRule,
 } from "./nba-optimizer-rules";
-import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections, auditNbaPropCoverage } from "./actions";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections, auditNbaPropCoverage, auditMlbPropCoverage } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -50,6 +50,35 @@ type NbaPropCoverageAuditResult = {
   }>;
   leaders?: Array<{
     stat: "pts" | "reb" | "ast" | "blk" | "stl";
+    bookmakerKey: string;
+    bookmakerTitle: string;
+    count: number;
+  }>;
+};
+
+type MlbPropCoverageAuditResult = {
+  ok: boolean;
+  message: string;
+  selectedGames: string[];
+  playerPoolCount: number;
+  bookmakerCount?: number;
+  books?: Array<{
+    bookmakerKey: string;
+    bookmakerTitle: string;
+    uniquePlayers: number;
+    stats: {
+      hits: number;
+      tb: number;
+      runs: number;
+      rbis: number;
+      hr: number;
+      ks: number;
+      outs: number;
+      er: number;
+    };
+  }>;
+  leaders?: Array<{
+    stat: "hits" | "tb" | "runs" | "rbis" | "hr" | "ks" | "outs" | "er";
     bookmakerKey: string;
     bookmakerTitle: string;
     count: number;
@@ -365,6 +394,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [propsMsg, setPropsMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isFetchingProps, setIsFetchingProps] = useState(false);
   const [propAudit, setPropAudit] = useState<NbaPropCoverageAuditResult | null>(null);
+  const [mlbPropAudit, setMlbPropAudit] = useState<MlbPropCoverageAuditResult | null>(null);
   const [isAuditingProps, setIsAuditingProps] = useState(false);
 
   // ── Clear Slate ───────────────────────────────────────────
@@ -764,6 +794,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   }
 
   async function handleUpload() {
+    if (sport === "mlb") {
+      setUploadMsg({ ok: false, text: "MLB CSV upload is not wired into the app yet. Use Contest ID while the MLB workflow is being ported." });
+      return;
+    }
     const dkFile = dkFileRef.current?.files?.[0];
     const lsFile = lsFileRef.current?.files?.[0];
     if (!dkFile) { setUploadMsg({ ok: false, text: "Select a DK CSV first" }); return; }
@@ -930,6 +964,14 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const res = await auditNbaPropCoverage(Array.from(selectedGames));
     setIsAuditingProps(false);
     setPropAudit(res);
+  }
+
+  async function handleAuditMlbProps() {
+    setIsAuditingProps(true);
+    setMlbPropAudit(null);
+    const res = await auditMlbPropCoverage(Array.from(selectedGames));
+    setIsAuditingProps(false);
+    setMlbPropAudit(res);
   }
 
   async function handleRecomputeProjections() {
@@ -1347,6 +1389,75 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                               <td className="px-2 py-1 text-right">{book.stats.ast}</td>
                               <td className="px-2 py-1 text-right">{book.stats.blk}</td>
                               <td className="px-2 py-1 text-right">{book.stats.stl}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MLB prop coverage audit (coverage first before ingesting selected markets) */}
+        {sport === "mlb" && players.length > 0 && (
+          <div className="mt-3 pt-3 border-t space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleAuditMlbProps}
+                disabled={isAuditingProps}
+                className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {isAuditingProps ? "Auditing…" : "Audit Prop Coverage"}
+              </button>
+              <span className="text-xs text-gray-400">
+                Audits MLB player prop coverage by book for H/TB/R/RBI/HR/K/OUTS/ER before we choose ingestion sources
+              </span>
+            </div>
+            {mlbPropAudit && (
+              <div className="rounded border bg-gray-50 p-3 text-xs text-gray-700 space-y-2">
+                <div className={mlbPropAudit.ok ? "text-green-700" : "text-red-600"}>{mlbPropAudit.message}</div>
+                {mlbPropAudit.ok && mlbPropAudit.books && mlbPropAudit.books.length > 0 && (
+                  <>
+                    <div className="text-gray-500">
+                      Games: {mlbPropAudit.selectedGames.join(", ") || "All selected"} · Player pool: {mlbPropAudit.playerPoolCount} · Books: {mlbPropAudit.bookmakerCount ?? mlbPropAudit.books.length}
+                    </div>
+                    {mlbPropAudit.leaders && mlbPropAudit.leaders.length > 0 && (
+                      <div className="text-gray-600">
+                        Leaders: {mlbPropAudit.leaders.map((leader) => `${leader.stat.toUpperCase()} ${leader.bookmakerTitle} (${leader.count})`).join(" · ")}
+                      </div>
+                    )}
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full border-collapse">
+                        <thead>
+                          <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+                            <th className="px-2 py-1">Book</th>
+                            <th className="px-2 py-1 text-right">Any</th>
+                            <th className="px-2 py-1 text-right">H</th>
+                            <th className="px-2 py-1 text-right">TB</th>
+                            <th className="px-2 py-1 text-right">R</th>
+                            <th className="px-2 py-1 text-right">RBI</th>
+                            <th className="px-2 py-1 text-right">HR</th>
+                            <th className="px-2 py-1 text-right">K</th>
+                            <th className="px-2 py-1 text-right">Outs</th>
+                            <th className="px-2 py-1 text-right">ER</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mlbPropAudit.books.slice(0, 12).map((book) => (
+                            <tr key={book.bookmakerKey} className="border-t border-gray-200">
+                              <td className="px-2 py-1 font-medium">{book.bookmakerTitle}</td>
+                              <td className="px-2 py-1 text-right">{book.uniquePlayers}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.hits}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.tb}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.runs}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.rbis}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.hr}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.ks}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.outs}</td>
+                              <td className="px-2 py-1 text-right">{book.stats.er}</td>
                             </tr>
                           ))}
                         </tbody>

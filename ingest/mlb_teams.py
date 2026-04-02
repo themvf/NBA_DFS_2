@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from datetime import date
 
 from config import load_config
 from db.database import DatabaseManager
@@ -176,7 +177,7 @@ def seed_teams(db: DatabaseManager, season: str = "2025") -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Seed MLB teams and park factors")
-    parser.add_argument("--season", default="2025", help="Season year (default: 2025)")
+    parser.add_argument("--season", default=str(date.today().year), help="Season year (defaults to current year)")
     args = parser.parse_args()
 
     config = load_config()

@@ -46,6 +46,7 @@ type CsvExportResult = {
 
 type NbaPropAuditStat = "pts" | "reb" | "ast" | "blk" | "stl";
 type NbaProjectionPropStat = NbaPropAuditStat;
+type MlbPropAuditStat = "hits" | "tb" | "runs" | "rbis" | "hr" | "ks" | "outs" | "er";
 type ProjectionRunSource = "load_slate" | "fetch_props" | "recompute";
 
 type PropBookCandidate = {
@@ -79,6 +80,30 @@ export type NbaPropCoverageAuditResult = {
   leaders?: NbaPropCoverageAuditLeader[];
 };
 
+export type MlbPropCoverageAuditBook = {
+  bookmakerKey: string;
+  bookmakerTitle: string;
+  uniquePlayers: number;
+  stats: Record<MlbPropAuditStat, number>;
+};
+
+export type MlbPropCoverageAuditLeader = {
+  stat: MlbPropAuditStat;
+  bookmakerKey: string;
+  bookmakerTitle: string;
+  count: number;
+};
+
+export type MlbPropCoverageAuditResult = {
+  ok: boolean;
+  message: string;
+  selectedGames: string[];
+  playerPoolCount: number;
+  bookmakerCount?: number;
+  books?: MlbPropCoverageAuditBook[];
+  leaders?: MlbPropCoverageAuditLeader[];
+};
+
 const LEAGUE_AVG_PACE       = 100.0;
 const LEAGUE_AVG_DEF_RTG   = 112.0;
 const LEAGUE_AVG_TOTAL      = 228.0;
@@ -100,6 +125,17 @@ const NBA_PROP_BOOK_PRIORITY: Record<NbaPropAuditStat, string[]> = {
   ast: ["fanduel", "betrivers", "draftkings", "betonlineag", "caesars", "betmgm", "bovada", "fanatics"],
   blk: ["betmgm", "fanduel", "draftkings", "bovada", "caesars", "betrivers", "betonlineag", "fanatics"],
   stl: ["fanduel", "draftkings", "bovada", "caesars", "betonlineag", "betmgm", "betrivers", "fanatics"],
+};
+const MLB_STATS_STALE_HOURS = 48;
+const MLB_PROP_MARKET_TO_STAT: Record<string, MlbPropAuditStat> = {
+  batter_hits: "hits",
+  batter_total_bases: "tb",
+  batter_runs_scored: "runs",
+  batter_rbis: "rbis",
+  batter_home_runs: "hr",
+  pitcher_strikeouts: "ks",
+  pitcher_outs: "outs",
+  pitcher_earned_runs: "er",
 };
 
 function finiteOrNull(value: number | null | undefined): number | null {
@@ -1589,6 +1625,231 @@ export async function auditNbaPropCoverage(gameKeys: string[]): Promise<NbaPropC
 
 // ── DK API fetcher ────────────────────────────────────────────
 
+export async function auditMlbPropCoverage(gameKeys: string[]): Promise<MlbPropCoverageAuditResult> {
+  try {
+    const oddsApiKey = process.env.ODDS_API_KEY;
+    if (!oddsApiKey) {
+      return {
+        ok: false,
+        message: "ODDS_API_KEY not set in Vercel env vars",
+        selectedGames: gameKeys,
+        playerPoolCount: 0,
+      };
+    }
+
+    const [slate] = await db
+      .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+      .from(dkSlates)
+      .where(eq(dkSlates.sport, "mlb"))
+      .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
+      .limit(1);
+    if (!slate) {
+      return { ok: false, message: "No MLB slate loaded — load a slate first", selectedGames: gameKeys, playerPoolCount: 0 };
+    }
+
+    const selectedGameSet = new Set(gameKeys.filter(Boolean));
+    const slatePlayers = await db
+      .select({ id: dkPlayers.id, name: dkPlayers.name, gameInfo: dkPlayers.gameInfo, teamId: dkPlayers.mlbTeamId })
+      .from(dkPlayers)
+      .where(eq(dkPlayers.slateId, slate.id));
+    const selectedPlayers = slatePlayers.filter((player) =>
+      selectedGameSet.size === 0 || selectedGameSet.has(parseSlateGameKey(player.gameInfo)),
+    );
+    if (selectedPlayers.length === 0) {
+      return {
+        ok: false,
+        message: "No MLB players found for the selected games.",
+        selectedGames: gameKeys,
+        playerPoolCount: 0,
+      };
+    }
+
+    const selectedCandidates = selectedPlayers.map(buildPropMatchCandidate);
+    const playersByTeamId = new Map<number, PropMatchCandidate[]>();
+    for (const player of selectedCandidates) {
+      if (player.teamId == null) continue;
+      const bucket = playersByTeamId.get(player.teamId) ?? [];
+      bucket.push(player);
+      playersByTeamId.set(player.teamId, bucket);
+    }
+    const teamRows = await db
+      .select({ teamId: mlbTeams.teamId, name: mlbTeams.name, abbreviation: mlbTeams.abbreviation, dkAbbrev: mlbTeams.dkAbbrev })
+      .from(mlbTeams);
+    const teamIdByCanonicalName = new Map<string, number>();
+    for (const team of teamRows) {
+      teamIdByCanonicalName.set(canonicalizeTeamName(team.name), team.teamId);
+      teamIdByCanonicalName.set(canonicalizeTeamName(team.abbreviation), team.teamId);
+      if (team.dkAbbrev) teamIdByCanonicalName.set(canonicalizeTeamName(team.dkAbbrev), team.teamId);
+    }
+
+    const eventsResp = await fetch(
+      `https://api.the-odds-api.com/v4/sports/baseball_mlb/events?apiKey=${oddsApiKey}&dateFormat=iso`,
+      { next: { revalidate: 0 } },
+    );
+    if (!eventsResp.ok) throw new Error(`Odds API MLB events: HTTP ${eventsResp.status}`);
+    const allEvents = await eventsResp.json() as Array<{
+      id: string;
+      commence_time: string;
+      home_team?: string;
+      away_team?: string;
+    }>;
+
+    const windowStart = new Date(`${slate.slateDate}T00:00:00Z`).getTime();
+    const windowEnd   = windowStart + 36 * 3_600_000;
+    const todayEvents = allEvents.filter((event) => {
+      const t = new Date(event.commence_time).getTime();
+      return t >= windowStart && t < windowEnd;
+    });
+    if (todayEvents.length === 0) {
+      return {
+        ok: false,
+        message: `No MLB events found for ${slate.slateDate}`,
+        selectedGames: gameKeys,
+        playerPoolCount: selectedPlayers.length,
+      };
+    }
+
+    const emptyStats = () => ({
+      hits: new Set<string>(),
+      tb: new Set<string>(),
+      runs: new Set<string>(),
+      rbis: new Set<string>(),
+      hr: new Set<string>(),
+      ks: new Set<string>(),
+      outs: new Set<string>(),
+      er: new Set<string>(),
+    });
+    const coverageByBook = new Map<string, {
+      bookmakerKey: string;
+      bookmakerTitle: string;
+      uniquePlayers: Set<string>;
+      stats: Record<MlbPropAuditStat, Set<string>>;
+    }>();
+
+    for (const event of todayEvents) {
+      const eventTeamIds = [event.home_team, event.away_team]
+        .map((teamName) => (teamName ? teamIdByCanonicalName.get(canonicalizeTeamName(teamName)) ?? null : null))
+        .filter((teamId): teamId is number => teamId != null);
+      const eventCandidates = eventTeamIds.flatMap((teamId) => playersByTeamId.get(teamId) ?? []);
+      if (eventCandidates.length === 0) continue;
+
+      const qs = new URLSearchParams({
+        apiKey: oddsApiKey,
+        regions: "us",
+        markets: Object.keys(MLB_PROP_MARKET_TO_STAT).join(","),
+        oddsFormat: "american",
+      });
+      try {
+        const response = await fetch(
+          `https://api.the-odds-api.com/v4/sports/baseball_mlb/events/${event.id}/odds?${qs}`,
+          { next: { revalidate: 0 } },
+        );
+        if (!response.ok) continue;
+        const data = await response.json() as {
+          bookmakers: Array<{
+            key: string;
+            title: string;
+            markets: Array<{
+              key: string;
+              outcomes: Array<{ name?: string; description?: string; point?: number }>;
+            }>;
+          }>;
+        };
+
+        for (const bookmaker of data.bookmakers ?? []) {
+          const existing = coverageByBook.get(bookmaker.key) ?? {
+            bookmakerKey: bookmaker.key,
+            bookmakerTitle: bookmaker.title,
+            uniquePlayers: new Set<string>(),
+            stats: emptyStats(),
+          };
+          for (const market of bookmaker.markets ?? []) {
+            const statKey = MLB_PROP_MARKET_TO_STAT[market.key];
+            if (!statKey) continue;
+            for (const outcome of market.outcomes ?? []) {
+              const playerName = extractOverOutcomePlayerName(outcome);
+              if (!playerName) continue;
+              const matchedPlayer = matchPropToCandidates(playerName, eventCandidates);
+              if (!matchedPlayer) continue;
+              existing.uniquePlayers.add(matchedPlayer.name);
+              existing.stats[statKey].add(matchedPlayer.name);
+            }
+          }
+          coverageByBook.set(bookmaker.key, existing);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    const books = Array.from(coverageByBook.values())
+      .map((book) => ({
+        bookmakerKey: book.bookmakerKey,
+        bookmakerTitle: book.bookmakerTitle,
+        uniquePlayers: book.uniquePlayers.size,
+        stats: {
+          hits: book.stats.hits.size,
+          tb: book.stats.tb.size,
+          runs: book.stats.runs.size,
+          rbis: book.stats.rbis.size,
+          hr: book.stats.hr.size,
+          ks: book.stats.ks.size,
+          outs: book.stats.outs.size,
+          er: book.stats.er.size,
+        },
+      }))
+      .sort((a, b) =>
+        (b.stats.hits + b.stats.tb + b.stats.runs + b.stats.rbis + b.stats.hr + b.stats.ks + b.stats.outs + b.stats.er)
+        - (a.stats.hits + a.stats.tb + a.stats.runs + a.stats.rbis + a.stats.hr + a.stats.ks + a.stats.outs + a.stats.er)
+        || b.uniquePlayers - a.uniquePlayers
+        || a.bookmakerTitle.localeCompare(b.bookmakerTitle),
+      );
+
+    const leaders: MlbPropCoverageAuditLeader[] = (["hits", "tb", "runs", "rbis", "hr", "ks", "outs", "er"] as MlbPropAuditStat[])
+      .map((stat) => {
+        const best = books.reduce<MlbPropCoverageAuditBook | null>((leader, book) => {
+          if (!leader || book.stats[stat] > leader.stats[stat]) return book;
+          return leader;
+        }, null);
+        return best
+          ? {
+              stat,
+              bookmakerKey: best.bookmakerKey,
+              bookmakerTitle: best.bookmakerTitle,
+              count: best.stats[stat],
+            }
+          : null;
+      })
+      .filter((leader): leader is MlbPropCoverageAuditLeader => !!leader && leader.count > 0);
+
+    if (books.length === 0) {
+      return {
+        ok: false,
+        message: "No MLB prop coverage found for the selected games.",
+        selectedGames: gameKeys,
+        playerPoolCount: selectedPlayers.length,
+      };
+    }
+
+    return {
+      ok: true,
+      message: `Audited ${books.length} bookmakers for ${selectedPlayers.length} MLB slate players.`,
+      selectedGames: gameKeys,
+      playerPoolCount: selectedPlayers.length,
+      bookmakerCount: books.length,
+      books,
+      leaders,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      message: `MLB prop coverage audit failed: ${e instanceof Error ? e.message : String(e)}`,
+      selectedGames: gameKeys,
+      playerPoolCount: 0,
+    };
+  }
+}
+
 const DK_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
   "Accept": "application/json",
@@ -2580,13 +2841,82 @@ const MLB_DK_OVERRIDES: Record<string, string> = {
 const MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5;
 const MLB_LEAGUE_AVG_XFIP      = 4.20;
 const MLB_LEAGUE_AVG_K_PCT     = 0.225;
-const MLB_CURRENT_SEASON       = "2025";
 const MLB_ORDER_PA_FACTOR: Record<number, number> = {
   1: 1.08, 2: 1.08, 3: 1.05, 4: 1.05,
   5: 1.00, 6: 1.00, 7: 0.93, 8: 0.93, 9: 0.93,
 };
 
 function mlbCap(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+
+function inferMlbSeason(targetDate?: string | null): string {
+  if (targetDate) {
+    const year = Number(targetDate.slice(0, 4));
+    if (Number.isFinite(year) && year >= 2000) return String(year);
+  }
+  return String(new Date().getUTCFullYear());
+}
+
+async function validateMlbStatsReadiness(
+  season: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const [batterSummary] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      latest: sql<Date | null>`MAX(${mlbBatterStats.fetchedAt})`,
+    })
+    .from(mlbBatterStats)
+    .where(eq(mlbBatterStats.season, season));
+  const [pitcherSummary] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      latest: sql<Date | null>`MAX(${mlbPitcherStats.fetchedAt})`,
+    })
+    .from(mlbPitcherStats)
+    .where(eq(mlbPitcherStats.season, season));
+  const [teamSummary] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      latest: sql<Date | null>`MAX(${mlbTeamStatsTable.fetchedAt})`,
+    })
+    .from(mlbTeamStatsTable)
+    .where(eq(mlbTeamStatsTable.season, season));
+
+  const counts = {
+    batters: Number(batterSummary?.count ?? 0),
+    pitchers: Number(pitcherSummary?.count ?? 0),
+    teams: Number(teamSummary?.count ?? 0),
+  };
+  if (counts.batters === 0 || counts.pitchers === 0 || counts.teams === 0) {
+    return {
+      ok: false,
+      message: `MLB stats for season ${season} are missing or incomplete (batters=${counts.batters}, pitchers=${counts.pitchers}, teams=${counts.teams}). Run the refresh_mlb_stats workflow first.`,
+    };
+  }
+
+  const latestFetchedAt = [batterSummary?.latest, pitcherSummary?.latest, teamSummary?.latest]
+    .map((value) => (value instanceof Date ? value : value ? new Date(value) : null))
+    .filter((value): value is Date => value instanceof Date && Number.isFinite(value.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+
+  if (!latestFetchedAt) {
+    return {
+      ok: false,
+      message: `MLB stats freshness could not be determined for season ${season}. Run the refresh_mlb_stats workflow first.`,
+    };
+  }
+
+  const staleMs = MLB_STATS_STALE_HOURS * 60 * 60 * 1000;
+  const ageMs = Date.now() - latestFetchedAt.getTime();
+  if (ageMs > staleMs) {
+    const ageHours = Math.round(ageMs / (60 * 60 * 1000));
+    return {
+      ok: false,
+      message: `MLB stats for season ${season} are stale (${ageHours}h old). Run the refresh_mlb_stats workflow before loading the slate.`,
+    };
+  }
+
+  return { ok: true };
+}
 
 function mlbWinProb(matchup: Record<string, unknown>, isHome: boolean): number {
   const hml = matchup.homeMl as number | null;
@@ -2798,6 +3128,7 @@ async function enrichAndSaveMlb(
     if (d) { slateDate = d; break; }
   }
   if (!slateDate) slateDate = new Date().toISOString().slice(0, 10);
+  const mlbSeason = inferMlbSeason(slateDate);
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 
   const slateVals: Record<string, unknown> = { slateDate, gameCount, sport: "mlb" };
@@ -2838,10 +3169,10 @@ async function enrichAndSaveMlb(
   }
 
   // Load stats tables once
-  const batterRows  = await db.select().from(mlbBatterStats).where(eq(mlbBatterStats.season, MLB_CURRENT_SEASON));
-  const pitcherRows = await db.select().from(mlbPitcherStats).where(eq(mlbPitcherStats.season, MLB_CURRENT_SEASON));
-  const teamStatRows = await db.select().from(mlbTeamStatsTable).where(eq(mlbTeamStatsTable.season, MLB_CURRENT_SEASON));
-  const parkRows    = await db.select().from(mlbParkFactors).where(eq(mlbParkFactors.season, MLB_CURRENT_SEASON));
+  const batterRows  = await db.select().from(mlbBatterStats).where(eq(mlbBatterStats.season, mlbSeason));
+  const pitcherRows = await db.select().from(mlbPitcherStats).where(eq(mlbPitcherStats.season, mlbSeason));
+  const teamStatRows = await db.select().from(mlbTeamStatsTable).where(eq(mlbTeamStatsTable.season, mlbSeason));
+  const parkRows    = await db.select().from(mlbParkFactors).where(eq(mlbParkFactors.season, mlbSeason));
 
   // Index stats by team
   const battersByTeam  = new Map<number, typeof batterRows>();
@@ -3042,6 +3373,13 @@ export async function loadMlbSlateFromContestId(
     const dgId    = await resolveDraftGroupId(parseInt(contestId, 10));
     const players = await fetchDkPlayersFromApi(dgId);
     if (players.length === 0) return { ok: false, message: "No players returned from DK API" };
+    const slateDate = players.map((player) => parseSlateDate(player.gameInfo)).find((value): value is string => !!value)
+      ?? new Date().toISOString().slice(0, 10);
+    const mlbSeason = inferMlbSeason(slateDate);
+    const statsReady = await validateMlbStatsReadiness(mlbSeason);
+    if (!statsReady.ok) {
+      return { ok: false, message: statsReady.message ?? `MLB stats are not ready for season ${mlbSeason}` };
+    }
     const lsMap = await tryFetchLinestarMapMlb(dgId);
     const result = await enrichAndSaveMlb(players, lsMap, cashLine, dgId, contestType, fieldSize, contestFormat);
     return { ...result, message: `[MLB API] ${result.message}` };

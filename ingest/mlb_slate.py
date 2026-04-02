@@ -118,7 +118,7 @@ def build_player_pool_mlb(
     dk_players: list[dict],
     linestar_map: dict[tuple, dict],
     slate_date: str,
-    season: str = "2025",
+    season: str,
 ) -> list[dict]:
     """Merge DK, LineStar, MLB stats, and park factors into an enriched pool.
 
@@ -383,12 +383,13 @@ def run(
     draft_group_id: int | None = None,
     contest_id: int | None = None,
     date_override: str | None = None,
-    season: str = "2025",
+    season: str | None = None,
     contest_type: str = "main",
     contest_format: str = "gpp",
 ) -> None:
     config = load_config()
     db     = DatabaseManager(config.database_url)
+    season = season or config.mlb_api.season
 
     # DK player source
     dgid: int | None = None
@@ -478,7 +479,7 @@ if __name__ == "__main__":
     dk_src.add_argument("--contest-id",     type=int, metavar="ID")
     parser.add_argument("--linestar",        help="Path to LineStar CSV")
     parser.add_argument("--date",            help="Slate date YYYY-MM-DD (overrides CSV)")
-    parser.add_argument("--season",          default="2025", help="Season year (default 2025)")
+    parser.add_argument("--season",          default=None, help="Season year (defaults to current year)")
     parser.add_argument("--contest-type",    default="main", choices=["main", "showdown"])
     parser.add_argument("--contest-format",  default="gpp",  choices=["gpp", "cash"])
     args = parser.parse_args()

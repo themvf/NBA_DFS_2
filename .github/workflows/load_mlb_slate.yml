@@ -14,7 +14,6 @@ on:
       season:
         description: "MLB season year (e.g. 2025)"
         required: false
-        default: "2025"
         type: string
 
 jobs:
@@ -38,6 +37,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Resolve MLB season
+        run: |
+          BASE_DATE="${{ inputs.date_override }}"
+          if [ -z "$BASE_DATE" ]; then
+            BASE_DATE="$(date -u +%F)"
+          fi
+          SEASON="${{ inputs.season }}"
+          if [ -z "$SEASON" ]; then
+            SEASON="$(date -u -d "$BASE_DATE" +%Y)"
+          fi
+          echo "MLB_SEASON=$SEASON" >> "$GITHUB_ENV"
+
+      - name: Refresh MLB stats
+        run: python -m ingest.mlb_stats --season "$MLB_SEASON"
+
       - name: Fetch today's MLB schedule + odds (ensures matchups exist)
         run: |
           DATE_ARG=""
@@ -55,5 +69,5 @@ jobs:
           python -m ingest.mlb_slate \
             --contest-id ${{ inputs.contest_id }} \
             --linestar-api \
-            --season "${{ inputs.season }}" \
+            --season "$MLB_SEASON" \
             $DATE_ARG
