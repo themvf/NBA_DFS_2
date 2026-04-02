@@ -989,7 +989,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setLsUploadMsg(null);
     const fd = new FormData();
     fd.append("lsFile", file);
-    const res = await uploadLinestarCsv(fd);
+    const res = await uploadLinestarCsv(fd, sport);
     setIsUploadingLs(false);
     setLsUploadMsg({ ok: res.ok, text: res.message });
   }
@@ -998,7 +998,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     if (!lsPasteText.trim()) { setLsUploadMsg({ ok: false, text: "Paste LineStar data first" }); return; }
     setIsUploadingLs(true);
     setLsUploadMsg(null);
-    const res = await applyLinestarPaste(lsPasteText);
+    const res = await applyLinestarPaste(lsPasteText, sport);
     setIsUploadingLs(false);
     setLsUploadMsg({ ok: res.ok, text: res.message });
   }

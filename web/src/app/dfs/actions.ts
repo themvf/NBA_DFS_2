@@ -2493,13 +2493,15 @@ export async function checkLinestarCookie(): Promise<{ ok: boolean; message: str
 /** Shared: write a LineStar map into the most-recent slate's player pool. */
 async function _applyLinestarMap(
   lsMap: Map<string, LinestarEntry>,
+  sport: Sport,
 ): Promise<{ ok: boolean; message: string; matched: number; total: number }> {
   const slateRows = await db
     .select({ id: dkSlates.id })
     .from(dkSlates)
+    .where(eq(dkSlates.sport, sport))
     .orderBy(desc(dkSlates.slateDate), desc(dkSlates.gameCount), desc(dkSlates.id))
     .limit(1);
-  if (!slateRows[0]) return { ok: false, message: "No slate loaded yet", matched: 0, total: 0 };
+  if (!slateRows[0]) return { ok: false, message: `No ${sport.toUpperCase()} slate loaded yet`, matched: 0, total: 0 };
   const slateId = slateRows[0].id;
 
   const pool = await db.execute<{
@@ -2577,24 +2579,24 @@ async function _applyLinestarMap(
 }
 
 /** Inject LineStar data from an uploaded CSV file. */
-export async function uploadLinestarCsv(formData: FormData): Promise<{
+export async function uploadLinestarCsv(formData: FormData, sport: Sport = "nba"): Promise<{
   ok: boolean; message: string; matched: number; total: number;
 }> {
   const file = formData.get("lsFile") as File | null;
   if (!file) return { ok: false, message: "No file provided", matched: 0, total: 0 };
   const lsMap = parseLinestarCsv(await file.text());
   if (lsMap.size === 0) return { ok: false, message: "No players parsed from LineStar CSV", matched: 0, total: 0 };
-  return _applyLinestarMap(lsMap);
+  return _applyLinestarMap(lsMap, sport);
 }
 
 /** Inject LineStar data from text pasted directly from the LineStar web table. */
-export async function applyLinestarPaste(text: string): Promise<{
+export async function applyLinestarPaste(text: string, sport: Sport = "nba"): Promise<{
   ok: boolean; message: string; matched: number; total: number;
 }> {
   if (!text.trim()) return { ok: false, message: "No data provided", matched: 0, total: 0 };
   const lsMap = parseLinestarPasteText(text);
   if (lsMap.size === 0) return { ok: false, message: "No players parsed — expected tab-separated LineStar data", matched: 0, total: 0 };
-  return _applyLinestarMap(lsMap);
+  return _applyLinestarMap(lsMap, sport);
 }
 
 // ── Historical slate import ────────────────────────────────────
