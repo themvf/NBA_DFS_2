@@ -283,8 +283,13 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     for (const p of players) keys.add(parseGameKey(p.gameInfo));
     return Array.from(keys).sort();
   }, [players]);
+  const allGamesKey = useMemo(() => allGames.join("|"), [allGames]);
 
   const [selectedGames, setSelectedGames] = useState<Set<string>>(() => new Set(allGames));
+
+  useEffect(() => {
+    setSelectedGames(new Set(allGames));
+  }, [allGamesKey]);
 
   // ── Sort ──────────────────────────────────────────────────
   const [sortCol, setSortCol] = useState<SortCol>("ourLeverage");
