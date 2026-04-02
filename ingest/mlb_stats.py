@@ -58,9 +58,15 @@ logger = logging.getLogger(__name__)
 # TEX, NYM, ATL, PHI, MIA, CHC, STL, MIL, CIN, PIT, LAD, COL, ARI, SF,
 # SD, TOR) pass through unchanged.
 _FG_TEAM_MAP: dict[str, str] = {
-    "WAS": "WSH",   # FanGraphs uses "WAS"; we use "WSH"
-    "ATH": "OAK",   # Athletics may appear as "ATH" on FanGraphs in 2025
+    "WAS": "WSH",   # FanGraphs legacy code
+    "WSN": "WSH",   # FanGraphs current Nationals code
+    "ATH": "OAK",   # Athletics may appear as "ATH" on FanGraphs in 2025+
     "OAK": "OAK",   # Athletics legacy code still accepted
+    "CHW": "CWS",
+    "KCR": "KC",
+    "SDP": "SD",
+    "SFG": "SF",
+    "TBR": "TB",
 }
 
 # Minimum sample filters to reduce noise from brief call-ups / bullpen arms
@@ -406,33 +412,31 @@ def fetch_batter_splits(db: DatabaseManager, season: str) -> int:
         return 0
 
     # Update players that have matching FG playerid in mlb_batter_stats
-    conn = db.get_connection()
     updated = 0
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, player_id FROM mlb_batter_stats WHERE season = %s",
-                (season,)
-            )
-            rows = cur.fetchall()
-            for row_id, player_id in rows:
-                wrc_l = splits["L"].get(player_id)
-                wrc_r = splits["R"].get(player_id)
-                if wrc_l is None and wrc_r is None:
-                    continue
+        with db.connect() as conn:
+            with conn.cursor() as cur:
                 cur.execute(
-                    """UPDATE mlb_batter_stats
-                       SET wrc_plus_vs_l = %s, wrc_plus_vs_r = %s, fetched_at = NOW()
-                       WHERE id = %s""",
-                    (wrc_l, wrc_r, row_id)
+                    "SELECT id, player_id FROM mlb_batter_stats WHERE season = %s",
+                    (season,)
                 )
-                updated += 1
-        conn.commit()
+                rows = cur.fetchall()
+                for row in rows:
+                    row_id = row["id"] if isinstance(row, dict) else row[0]
+                    player_id = row["player_id"] if isinstance(row, dict) else row[1]
+                    wrc_l = splits["L"].get(player_id)
+                    wrc_r = splits["R"].get(player_id)
+                    if wrc_l is None and wrc_r is None:
+                        continue
+                    cur.execute(
+                        """UPDATE mlb_batter_stats
+                           SET wrc_plus_vs_l = %s, wrc_plus_vs_r = %s, fetched_at = NOW()
+                           WHERE id = %s""",
+                        (wrc_l, wrc_r, row_id)
+                    )
+                    updated += 1
     except Exception as exc:
         logger.warning("DB update for batter splits failed: %s", exc)
-        conn.rollback()
-    finally:
-        conn.close()
 
     print(f"Batter splits: {updated} players updated with L/R wRC+ for {season}")
     return updated
@@ -503,6 +507,8 @@ def _fetch_pitching(
 def _get_player_id(row: pd.Series) -> int | None:
     """Extract FanGraphs playerid as int, or None if missing."""
     raw = row.get("playerid")
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        raw = row.get("IDfg")
     if raw is None:
         return None
     try:
