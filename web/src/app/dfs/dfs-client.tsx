@@ -74,6 +74,26 @@ function fmtAmericanOdds(v: number | null | undefined): string {
   return v > 0 ? `+${v}` : `${v}`;
 }
 
+function mlToProb(ml: number): number {
+  return ml >= 0 ? 100 / (ml + 100) : Math.abs(ml) / (Math.abs(ml) + 100);
+}
+
+function computeTeamImpliedTotal(
+  vegasTotal: number,
+  homeMl: number | null,
+  awayMl: number | null,
+  isHome: boolean,
+): number {
+  if (homeMl == null || awayMl == null) return vegasTotal / 2;
+  const rawHome = mlToProb(homeMl);
+  const rawAway = mlToProb(awayMl);
+  const vig = rawHome + rawAway;
+  const homeProbClean = rawHome / vig;
+  const impliedSpread = Math.max(-15, Math.min(15, (homeProbClean - 0.5) / 0.025));
+  const homeImplied = vegasTotal / 2 + impliedSpread / 2;
+  return isHome ? homeImplied : vegasTotal - homeImplied;
+}
+
 function fmtDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   const totalSeconds = Math.floor(ms / 1000);
@@ -618,6 +638,28 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       });
     }
     return Array.from(byId.values()).sort((a, b) => a.teamAbbrev.localeCompare(b.teamAbbrev));
+  }, [filteredPlayers, sport]);
+
+  const teamOddsById = useMemo(() => {
+    const byId = new Map<number, { vegasTotal: number | null; teamTotal: number | null; moneyline: number | null }>();
+    if (sport !== "nba") return byId;
+
+    for (const player of filteredPlayers) {
+      if (player.teamId == null || byId.has(player.teamId)) continue;
+      const isHome = player.homeTeamId != null && player.teamId === player.homeTeamId;
+      const moneyline = isHome ? player.homeMl : player.awayMl;
+      const explicitTeamTotal = isHome ? player.homeImplied : player.awayImplied;
+      const derivedTeamTotal = player.vegasTotal != null
+        ? computeTeamImpliedTotal(player.vegasTotal, player.homeMl, player.awayMl, isHome)
+        : null;
+      byId.set(player.teamId, {
+        vegasTotal: player.vegasTotal ?? null,
+        teamTotal: explicitTeamTotal ?? derivedTeamTotal,
+        moneyline: moneyline ?? null,
+      });
+    }
+
+    return byId;
   }, [filteredPlayers, sport]);
 
   function toggleSort(col: SortCol) {
@@ -1662,6 +1704,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             {filteredTeams.map((team) => {
               const isBlocked = blockedTeamSet.has(team.teamId);
               const stackSize = requiredTeamStackMap.get(team.teamId);
+              const odds = teamOddsById.get(team.teamId);
               return (
                 <div key={team.teamId} className={`rounded border p-3 ${isBlocked ? "border-red-200 bg-red-50" : stackSize ? "border-emerald-200 bg-emerald-50" : "bg-white"}`}>
                   <div className="flex items-center gap-2">
@@ -1671,6 +1714,25 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                       <p className="text-[11px] text-gray-500">{team.teamName ?? team.teamAbbrev}</p>
                     </div>
                   </div>
+                  {(odds?.teamTotal != null || odds?.vegasTotal != null || odds?.moneyline != null) && (
+                    <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-gray-600">
+                      {odds?.teamTotal != null && (
+                        <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
+                          TT {odds.teamTotal.toFixed(1)}
+                        </span>
+                      )}
+                      {odds?.vegasTotal != null && (
+                        <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
+                          O/U {odds.vegasTotal.toFixed(1)}
+                        </span>
+                      )}
+                      {odds?.moneyline != null && (
+                        <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
+                          ML {fmtAmericanOdds(odds.moneyline)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-3 flex items-center gap-2">
                     <button
                       onClick={() => toggleTeamBlock(team.teamId)}
