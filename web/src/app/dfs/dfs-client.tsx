@@ -224,21 +224,39 @@ function shortBookName(value: string | null | undefined): string {
 }
 
 type PlayerPropToken = {
-  stat: "PTS" | "REB" | "AST" | "BLK" | "STL";
+  stat: string;
   line: number;
   price: number | null;
   book: string | null;
 };
 
-function getPlayerPropTokens(player: DkPlayerRow): PlayerPropToken[] {
+function isMlbPitcherPlayer(player: DkPlayerRow): boolean {
+  return player.eligiblePositions.includes("SP") || player.eligiblePositions.includes("RP");
+}
+
+function getPlayerPropTokens(player: DkPlayerRow, sport: Sport): PlayerPropToken[] {
   const tokens: PlayerPropToken[] = [];
-  const fields = [
-    { stat: "PTS", line: player.propPts, price: player.propPtsPrice, book: player.propPtsBook },
-    { stat: "REB", line: player.propReb, price: player.propRebPrice, book: player.propRebBook },
-    { stat: "AST", line: player.propAst, price: player.propAstPrice, book: player.propAstBook },
-    { stat: "BLK", line: player.propBlk, price: player.propBlkPrice, book: player.propBlkBook },
-    { stat: "STL", line: player.propStl, price: player.propStlPrice, book: player.propStlBook },
-  ] as const;
+  const fields = sport === "mlb"
+    ? (isMlbPitcherPlayer(player)
+      ? [
+          { stat: "K", line: player.propPts, price: player.propPtsPrice, book: player.propPtsBook },
+          { stat: "OUTS", line: player.propReb, price: player.propRebPrice, book: player.propRebBook },
+          { stat: "ER", line: player.propAst, price: player.propAstPrice, book: player.propAstBook },
+        ]
+      : [
+          { stat: "H", line: player.propPts, price: player.propPtsPrice, book: player.propPtsBook },
+          { stat: "TB", line: player.propReb, price: player.propRebPrice, book: player.propRebBook },
+          { stat: "R", line: player.propAst, price: player.propAstPrice, book: player.propAstBook },
+          { stat: "RBI", line: player.propBlk, price: player.propBlkPrice, book: player.propBlkBook },
+          { stat: "HR", line: player.propStl, price: player.propStlPrice, book: player.propStlBook },
+        ])
+    : [
+        { stat: "PTS", line: player.propPts, price: player.propPtsPrice, book: player.propPtsBook },
+        { stat: "REB", line: player.propReb, price: player.propRebPrice, book: player.propRebBook },
+        { stat: "AST", line: player.propAst, price: player.propAstPrice, book: player.propAstBook },
+        { stat: "BLK", line: player.propBlk, price: player.propBlkPrice, book: player.propBlkBook },
+        { stat: "STL", line: player.propStl, price: player.propStlPrice, book: player.propStlBook },
+      ];
 
   for (const field of fields) {
     if (field.line == null) continue;
@@ -250,6 +268,30 @@ function getPlayerPropTokens(player: DkPlayerRow): PlayerPropToken[] {
     });
   }
   return tokens;
+}
+
+function getPlayerOddsContext(player: DkPlayerRow): {
+  teamTotal: number | null;
+  vegasTotal: number | null;
+  moneyline: number | null;
+} {
+  const isHome = player.teamId != null && player.homeTeamId != null
+    ? player.teamId === player.homeTeamId
+    : null;
+  const moneyline = isHome == null
+    ? null
+    : (isHome ? player.homeMl : player.awayMl);
+  const explicitTeamTotal = isHome == null
+    ? null
+    : (isHome ? player.homeImplied : player.awayImplied);
+  const derivedTeamTotal = isHome != null && player.vegasTotal != null
+    ? computeTeamImpliedTotal(player.vegasTotal, player.homeMl, player.awayMl, isHome)
+    : null;
+  return {
+    teamTotal: explicitTeamTotal ?? derivedTeamTotal ?? null,
+    vegasTotal: player.vegasTotal ?? null,
+    moneyline,
+  };
 }
 
 function buildNbaLineupsFromPersisted(
@@ -953,7 +995,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   async function handleFetchProps() {
     setIsFetchingProps(true);
     setPropsMsg(null);
-    const res = await fetchPlayerProps();
+    const res = await fetchPlayerProps(sport);
     setIsFetchingProps(false);
     setPropsMsg({ ok: res.ok, text: res.message });
   }
@@ -1401,10 +1443,17 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           </div>
         )}
 
-        {/* MLB prop coverage audit (coverage first before ingesting selected markets) */}
+        {/* MLB player props and coverage audit */}
         {sport === "mlb" && players.length > 0 && (
           <div className="mt-3 pt-3 border-t space-y-2">
             <div className="flex items-center gap-3">
+              <button
+                onClick={handleFetchProps}
+                disabled={isFetchingProps}
+                className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Fetch Player Props
+              </button>
               <button
                 onClick={handleAuditMlbProps}
                 disabled={isAuditingProps}
@@ -1413,9 +1462,20 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                 {isAuditingProps ? "Auditing…" : "Audit Prop Coverage"}
               </button>
               <span className="text-xs text-gray-400">
-                Audits MLB player prop coverage by book for H/TB/R/RBI/HR/K/OUTS/ER before we choose ingestion sources
+                Pulls H/TB/R/RBI/HR/K/OUTS/ER lines from The Odds API · audit checks coverage by book
               </span>
             </div>
+            {isFetchingProps && (
+              <div className="flex items-center gap-2 text-sm text-emerald-700">
+                <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+                <span>Fetching props… ({propsElapsed}s)</span>
+              </div>
+            )}
+            {propsMsg && (
+              <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {propsMsg.text}
+              </span>
+            )}
             {mlbPropAudit && (
               <div className="rounded border bg-gray-50 p-3 text-xs text-gray-700 space-y-2">
                 <div className={mlbPropAudit.ok ? "text-green-700" : "text-red-600"}>{mlbPropAudit.message}</div>
@@ -1891,6 +1951,9 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Pos</th>
                   <SortHeader col="name" label="Player" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Team</th>
+                  {sport === "mlb" && (
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Odds</th>
+                  )}
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Props</th>
                   {sport === "nba" && (
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Rules</th>
@@ -1918,7 +1981,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   const delta = blendProj != null && p.linestarProj != null
                     ? blendProj - p.linestarProj : null;
                   const value = blendProj != null ? blendProj / (p.salary / 1000) : null;
-                  const propTokens = getPlayerPropTokens(p);
+                  const propTokens = getPlayerPropTokens(p, sport);
+                  const odds = getPlayerOddsContext(p);
                   const pos = displayPos(p.eligiblePositions, sport);
                   const isLocked = lockedPlayerSet.has(p.id);
                   const isBlocked = blockedPlayerSet.has(p.id);
@@ -1952,6 +2016,31 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{p.teamAbbrev}</td>
+                      {sport === "mlb" && (
+                        <td className="px-3 py-1.5 text-[11px] text-gray-500">
+                          {(odds.teamTotal != null || odds.vegasTotal != null || odds.moneyline != null) ? (
+                            <div className="flex max-w-[200px] flex-wrap gap-1">
+                              {odds.teamTotal != null && (
+                                <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
+                                  TT {odds.teamTotal.toFixed(1)}
+                                </span>
+                              )}
+                              {odds.vegasTotal != null && (
+                                <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
+                                  O/U {odds.vegasTotal.toFixed(1)}
+                                </span>
+                              )}
+                              {odds.moneyline != null && (
+                                <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
+                                  ML {fmtAmericanOdds(odds.moneyline)}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-3 py-1.5 text-[11px] text-gray-500">
                         {propTokens.length > 0 ? (
                           <div className="flex max-w-[280px] flex-wrap gap-1">
