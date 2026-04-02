@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables } from "@/db/ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors } from "@/db/schema";
+import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
@@ -3429,7 +3430,7 @@ export async function uploadResults(formData: FormData): Promise<{
 
   // Most recent slate
   const [slate] = await db
-    .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+    .select({ id: dkSlates.id, slateDate: dkSlates.slateDate, sport: dkSlates.sport })
     .from(dkSlates)
     .orderBy(desc(dkSlates.slateDate))
     .limit(1);
@@ -3491,11 +3492,20 @@ export async function uploadResults(formData: FormData): Promise<{
   }
 
   await syncProjectionSnapshotActualsForSlate(slate.id);
+  let analysisNote = "";
+  if (slate.sport === "nba") {
+    try {
+      await persistNbaOddsSignalReport(slate.id);
+      analysisNote = ", odds signal refreshed";
+    } catch {
+      analysisNote = ", odds signal refresh skipped";
+    }
+  }
 
   revalidatePath("/dfs");
 
   const matchRate = Math.round((updated / resultPlayers.length) * 100);
-  const lineupNote = lineupRows.length > 0 ? `, ${lineupsUpdated}/${lineupRows.length} lineup actuals updated` : "";
+  const lineupNote = `${lineupRows.length > 0 ? `, ${lineupsUpdated}/${lineupRows.length} lineup actuals updated` : ""}${analysisNote}`;
   return {
     ok: true,
     message: `${updated}/${resultPlayers.length} players matched (${matchRate}%)${lineupNote} — slate ${slate.slateDate}`,

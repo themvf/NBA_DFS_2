@@ -4,6 +4,7 @@ import { db } from ".";
 
 let ensureDkPlayerPropColumnsPromise: Promise<void> | null = null;
 let ensureProjectionExperimentTablesPromise: Promise<void> | null = null;
+let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 
 const DK_PLAYER_PROP_COLUMN_DDLS = [
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS prop_pts_price INTEGER`,
@@ -63,6 +64,21 @@ const PROJECTION_EXPERIMENT_DDLS = [
   `CREATE INDEX IF NOT EXISTS idx_projection_snapshots_slate ON projection_player_snapshots(slate_id, dk_player_id)`,
 ];
 
+const ODDS_SIGNAL_DDLS = [
+  `CREATE TABLE IF NOT EXISTS odds_signal_runs (
+      id SERIAL PRIMARY KEY,
+      sport TEXT NOT NULL,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      analysis_version TEXT NOT NULL,
+      sample_size INTEGER NOT NULL DEFAULT 0,
+      report_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(slate_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_odds_signal_runs_sport_created ON odds_signal_runs(sport, created_at DESC)`,
+];
+
 export async function ensureDkPlayerPropColumns(): Promise<void> {
   if (!ensureDkPlayerPropColumnsPromise) {
     ensureDkPlayerPropColumnsPromise = (async () => {
@@ -89,4 +105,18 @@ export async function ensureProjectionExperimentTables(): Promise<void> {
     });
   }
   await ensureProjectionExperimentTablesPromise;
+}
+
+export async function ensureOddsSignalTables(): Promise<void> {
+  if (!ensureOddsSignalTablesPromise) {
+    ensureOddsSignalTablesPromise = (async () => {
+      for (const ddl of ODDS_SIGNAL_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureOddsSignalTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureOddsSignalTablesPromise;
 }

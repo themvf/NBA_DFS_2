@@ -483,6 +483,26 @@ export const projectionPlayerSnapshots = pgTable(
   ]
 );
 
+export const oddsSignalRuns = pgTable(
+  "odds_signal_runs",
+  {
+    id: serial("id").primaryKey(),
+    sport: text("sport").notNull(),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    analysisVersion: text("analysis_version").notNull(),
+    sampleSize: integer("sample_size").notNull().default(0),
+    reportJson: jsonb("report_json").notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => [
+    unique("odds_signal_runs_slate_key").on(t.slateId),
+    index("idx_odds_signal_runs_sport_created").on(t.sport, t.createdAt),
+  ]
+);
+
 export const optimizerJobs = pgTable(
   "optimizer_jobs",
   {
@@ -558,6 +578,7 @@ export type MlbMatchup = typeof mlbMatchups.$inferSelect;
 export type MlbBatterStats = typeof mlbBatterStats.$inferSelect;
 export type MlbPitcherStats = typeof mlbPitcherStats.$inferSelect;
 export type MlbTeamStats = typeof mlbTeamStats.$inferSelect;
+export type OddsSignalRun = typeof oddsSignalRuns.$inferSelect;
 export type DkSlate = typeof dkSlates.$inferSelect;
 export type DkPlayer = typeof dkPlayers.$inferSelect;
 export type DkLineup = typeof dkLineups.$inferSelect;
