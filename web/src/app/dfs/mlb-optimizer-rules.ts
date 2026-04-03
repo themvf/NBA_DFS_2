@@ -21,6 +21,7 @@ export type MlbRulePlayer = {
   isOut: boolean | null;
   salary: number;
   ourProj: number | null;
+  linestarProj?: number | null;
 };
 
 export type NormalizedMlbRuleSelections = {
@@ -76,6 +77,15 @@ function teamName(teamId: number, teamAbbrevById: Map<number, string>): string {
 
 function isPitcher(eligiblePositions: string): boolean {
   return eligiblePositions.includes("SP") || eligiblePositions.includes("RP");
+}
+
+function effectiveProjection(player: Pick<MlbRulePlayer, "ourProj" | "linestarProj">): number | null {
+  const projection = player.ourProj ?? player.linestarProj ?? null;
+  return projection != null && Number.isFinite(projection) ? projection : null;
+}
+
+function hasPositiveProjection(player: Pick<MlbRulePlayer, "ourProj" | "linestarProj">): boolean {
+  return (effectiveProjection(player) ?? 0) > 0;
 }
 
 export function normalizeMlbRuleSelections(settings: MlbRuleSettings): NormalizedMlbRuleSelections {
@@ -171,7 +181,7 @@ export function validateMlbRuleSelections(
   }
 
   const lockedIneligible = lockedPlayers
-    .filter((player) => (!(player.ourProj != null && player.ourProj > 0) || player.salary <= 0))
+    .filter((player) => (!hasPositiveProjection(player) || player.salary <= 0))
     .map((player) => player.name);
   if (lockedIneligible.length > 0) {
     return {
@@ -214,7 +224,7 @@ export function validateMlbRuleSelections(
     if (player.teamId == null || isPitcher(player.eligiblePositions)) continue;
     if (blockedPlayers.has(player.id) || blockedTeams.has(player.teamId)) continue;
     if (player.isOut) continue;
-    if (!(player.ourProj != null && player.ourProj > 0) || player.salary <= 0) continue;
+    if (!hasPositiveProjection(player) || player.salary <= 0) continue;
     availableBatterCounts.set(player.teamId, (availableBatterCounts.get(player.teamId) ?? 0) + 1);
   }
 

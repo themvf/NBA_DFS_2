@@ -17,7 +17,7 @@ import {
   validateMlbRuleSelections,
   type MlbTeamStackRule,
 } from "./mlb-optimizer-rules";
-import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections, auditNbaPropCoverage, auditMlbPropCoverage } from "./actions";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveHistoricalSlate, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections, auditNbaPropCoverage, auditMlbPropCoverage } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -461,7 +461,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [lastRequestedLineupCount, setLastRequestedLineupCount] = useState<number | null>(null);
 
   // ── Export ────────────────────────────────────────────────
-  const [entryTemplate, setEntryTemplate] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -522,6 +521,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [lsUploadMsg, setLsUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isUploadingLs, setIsUploadingLs] = useState(false);
   const [lsPasteText, setLsPasteText] = useState("");
+  const [historicalSlateDate, setHistoricalSlateDate] = useState("");
+  const [historicalPasteText, setHistoricalPasteText] = useState("");
+  const [historicalSlateMsg, setHistoricalSlateMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isSavingHistoricalSlate, setIsSavingHistoricalSlate] = useState(false);
 
   // ── LineStar cookie status ────────────────────────────────
   const [cookieStatus, setCookieStatus] = useState<{ ok: boolean; message: string } | null>(null);
@@ -1021,8 +1024,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setExportError(null);
     setIsExporting(true);
     const result = sport === "mlb"
-      ? await exportMlbLineups(mlbLineups!, entryTemplate)
-      : await exportLineups(lineups!, entryTemplate);
+      ? await exportMlbLineups(mlbLineups!)
+      : await exportLineups(lineups!);
     setIsExporting(false);
     if (!result.ok || !result.csv) {
       setExportError(result.error ?? "Export failed");
@@ -1119,6 +1122,30 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     const res = await applyLinestarPaste(lsPasteText, sport);
     setIsUploadingLs(false);
     setLsUploadMsg({ ok: res.ok, text: res.message });
+  }
+
+  async function handleSaveHistoricalSlate() {
+    if (!historicalSlateDate) {
+      setHistoricalSlateMsg({ ok: false, text: "Choose a slate date first." });
+      return;
+    }
+    if (!historicalPasteText.trim()) {
+      setHistoricalSlateMsg({ ok: false, text: "Paste historical LineStar data first." });
+      return;
+    }
+    setIsSavingHistoricalSlate(true);
+    setHistoricalSlateMsg(null);
+    const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
+    const res = await saveHistoricalSlate(
+      sport,
+      historicalSlateDate,
+      historicalPasteText,
+      contestTiming,
+      fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
+      contestFormat,
+    );
+    setIsSavingHistoricalSlate(false);
+    setHistoricalSlateMsg({ ok: res.ok, text: res.message });
   }
 
   async function handleCheckCookie() {
@@ -1414,6 +1441,49 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             </div>
           )}
         </div>
+
+        {sport === "mlb" && (
+          <div className="mt-3 pt-3 border-t space-y-2">
+            <div>
+              <h3 className="text-xs font-medium text-gray-600">Historical Slate</h3>
+              <p className="text-xs text-gray-500">
+                Paste a LineStar historical results table to create or update an MLB slate with actual ownership and fantasy points.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Slate Date</label>
+                <input
+                  type="date"
+                  value={historicalSlateDate}
+                  onChange={(e) => setHistoricalSlateDate(e.target.value)}
+                  className="rounded border px-3 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+            <textarea
+              value={historicalPasteText}
+              onChange={(e) => setHistoricalPasteText(e.target.value)}
+              rows={4}
+              placeholder={"OF\tPHI\tBryce Harper\t$5000\t18.2%\t22.1%\t...\t9.6\t14.0"}
+              className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
+            />
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSaveHistoricalSlate}
+                disabled={isSavingHistoricalSlate || !historicalSlateDate || !historicalPasteText.trim()}
+                className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {isSavingHistoricalSlate ? "Saving…" : "Save Historical Slate"}
+              </button>
+              {historicalSlateMsg && (
+                <span className={`text-sm ${historicalSlateMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                  {historicalSlateMsg.text}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Fetch Projections — run after LineStar to compute leverage scores */}
         {sport === "nba" && players.length > 0 && (
@@ -2338,21 +2408,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           <div className="mt-4 pt-4 border-t">
             <h3 className="text-xs font-semibold mb-2">Multi-Entry Export</h3>
             <p className="text-xs text-gray-500 mb-2">
-              Paste your DK multi-entry template below. Comma-separated CSV and tab-delimited DK paste format are both supported.
+              Exports the generated lineups directly as CSV with one row per lineup.
             </p>
-            <textarea
-              value={entryTemplate}
-              onChange={(e) => setEntryTemplate(e.target.value)}
-              placeholder={sport === "mlb"
-                ? "Entry ID,Contest Name,Contest ID,Entry Fee,P,P,C,1B,2B,3B,SS,OF,OF,OF\n12345,MLB..."
-                : "Entry ID,Contest Name,Contest ID,Entry Fee,PG,SG,SF,PF,C,G,F,UTIL\n12345,NBA..."
-              }
-              rows={4}
-              className="w-full rounded border px-2 py-1 text-xs font-mono"
-            />
             <button
               onClick={handleExport}
-              disabled={isExporting || !entryTemplate}
+              disabled={isExporting}
               className="mt-2 rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {isExporting ? "Exporting…" : "Export CSV"}

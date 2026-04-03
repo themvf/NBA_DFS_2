@@ -6,7 +6,7 @@
  * processDkSlate  — parse DK CSV + LineStar CSV, compute projections, save to DB
  * runOptimizer    — run ILP optimizer with given settings, return lineups
  * saveLineups     — persist generated lineups to dk_lineups
- * exportLineups   — build multi-entry upload CSV string
+ * exportLineups   — build lineup CSV string
  */
 
 import { revalidatePath } from "next/cache";
@@ -2954,7 +2954,7 @@ type HistoricalEntry = {
  * Live format:   Pos | Team | Player | Salary | projOwn% | actualOwn% | Diff | Proj
  * History adds:  ... | Actual (col +5 after salary)
  */
-function parseHistoricalPaste(text: string): Map<string, HistoricalEntry> {
+function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, HistoricalEntry> {
   const lines = text.split(/\r?\n/).filter(Boolean);
   const map = new Map<string, HistoricalEntry>();
 
@@ -2978,7 +2978,18 @@ function parseHistoricalPaste(text: string): Map<string, HistoricalEntry> {
 
     // Position is always cells[0] (first column in every LineStar format)
     const posRaw = cells[0]?.trim() ?? "";
-    const position = /^(PG|SG|SF|PF|C)(\/(?:PG|SG|SF|PF|C))*$/.test(posRaw) ? posRaw : "UTIL";
+    const position = (() => {
+      if (sport === "mlb") {
+        if (!/^(?:P|SP|RP|C|1B|2B|3B|SS|OF)(?:\/(?:P|SP|RP|C|1B|2B|3B|SS|OF))*$/.test(posRaw)) {
+          return "UTIL";
+        }
+        return posRaw
+          .split("/")
+          .map((part) => part === "P" ? "SP" : part)
+          .join("/");
+      }
+      return /^(PG|SG|SF|PF|C)(\/(?:PG|SG|SF|PF|C))*$/.test(posRaw) ? posRaw : "UTIL";
+    })();
 
     const projOwnPct   = parseFloat((cells[salaryIdx + 1] ?? "").replace("%", "")) || 0;
     const actualOwnPct = parseFloat((cells[salaryIdx + 2] ?? "").replace("%", "")) || 0;
@@ -3015,6 +3026,7 @@ function syntheticDkId(name: string, salary: number): number {
  *     (stores linestarProj + actual for LineStar MAE tracking)
  */
 export async function saveHistoricalSlate(
+  sport: Sport,
   date: string,
   text: string,
   contestType?: string,
@@ -3024,7 +3036,7 @@ export async function saveHistoricalSlate(
   if (!date) return { ok: false, message: "Date is required", created: 0, updated: 0 };
   if (!text.trim()) return { ok: false, message: "No data pasted", created: 0, updated: 0 };
 
-  const parsed = parseHistoricalPaste(text);
+  const parsed = parseHistoricalPaste(text, sport);
   if (parsed.size === 0)
     return { ok: false, message: "No players parsed — expected tab-separated LineStar data", created: 0, updated: 0 };
 
@@ -3039,12 +3051,18 @@ export async function saveHistoricalSlate(
         eq(dkSlates.slateDate, date),
         eq(dkSlates.contestType, effectiveType),
         eq(dkSlates.contestFormat, effectiveFormat),
+        eq(dkSlates.sport, sport),
       )
     )
     .limit(1);
 
   const abbrevCache = new Map(
-    (await db.select({ teamId: teams.teamId, abbreviation: teams.abbreviation }).from(teams))
+    (await db
+      .select({
+        teamId: sport === "mlb" ? mlbTeams.teamId : teams.teamId,
+        abbreviation: sport === "mlb" ? mlbTeams.abbreviation : teams.abbreviation,
+      })
+      .from(sport === "mlb" ? mlbTeams : teams))
       .map((t) => [t.abbreviation.toUpperCase(), t.teamId]),
   );
 
@@ -3096,6 +3114,7 @@ export async function saveHistoricalSlate(
     .values({
       slateDate: date,
       gameCount: 0,
+      sport,
       contestType:   effectiveType,
       contestFormat: effectiveFormat,
       ...(fieldSize != null && { fieldSize }),
@@ -3120,7 +3139,8 @@ export async function saveHistoricalSlate(
       .values({
         slateId, dkPlayerId, name,
         teamAbbrev: entry.teamAbbrev || "UNK",
-        teamId, salary,
+        ...(sport === "mlb" ? { mlbTeamId: teamId } : { teamId }),
+        salary,
         eligiblePositions: entry.position || "UTIL",
         linestarProj:  entry.linestarProj  || null,
         projOwnPct:    entry.projOwnPct    || null,
@@ -3143,7 +3163,7 @@ export async function saveHistoricalSlate(
   revalidatePath("/dfs");
   return {
     ok: true,
-    message: `Created historical slate for ${date} with ${created} players (synthetic IDs — ourProj will be null)`,
+    message: `Created historical ${sport.toUpperCase()} slate for ${date} with ${created} players (synthetic IDs — ourProj will be null)`,
     created,
     updated: 0,
   };
@@ -3997,11 +4017,9 @@ export async function saveLineups(
 
 export async function exportLineups(
   lineups: GeneratedLineup[],
-  entryTemplate: string,
 ): Promise<CsvExportResult> {
   try {
-    const entryRows = entryTemplate.split(/\r?\n/).filter(Boolean);
-    return { ok: true, csv: buildMultiEntryCSV(lineups, entryRows) };
+    return { ok: true, csv: buildMultiEntryCSV(lineups) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -4093,11 +4111,9 @@ export async function runMlbOptimizer(
 
 export async function exportMlbLineups(
   lineups: MlbGeneratedLineup[],
-  entryTemplate: string,
 ): Promise<CsvExportResult> {
   try {
-    const entryRows = entryTemplate.split(/\r?\n/).filter(Boolean);
-    return { ok: true, csv: buildMlbMultiEntryCSV(lineups, entryRows) };
+    return { ok: true, csv: buildMlbMultiEntryCSV(lineups) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

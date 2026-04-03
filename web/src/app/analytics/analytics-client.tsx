@@ -71,6 +71,7 @@ export default function AnalyticsClient({
     setHistoricalMsg(null);
     const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
     const res = await saveHistoricalSlate(
+      sport,
       historicalDate, historicalText,
       contestTiming,
       fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,

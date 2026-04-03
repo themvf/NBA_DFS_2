@@ -17,7 +17,7 @@ import "server-only";
  */
 
 import type { DkPlayerRow } from "@/db/queries";
-import { parseCsvLine, stringifyCsvLine } from "./csv";
+import { stringifyCsvLine } from "./csv";
 import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
 import type { NbaPreparedOptimizerRun } from "./optimizer-job-types";
 import {
@@ -1585,29 +1585,29 @@ function solveOneLineup(
  */
 export function buildMultiEntryCSV(
   lineups: GeneratedLineup[],
-  entryRows: string[]
 ): string {
   if (lineups.length === 0) return "";
-  if (entryRows.length < 2) {
-    throw new Error("Entry template must include a header row and at least one entry row.");
-  }
-  if (entryRows.length - 1 < lineups.length) {
-    throw new Error(`Entry template has ${entryRows.length - 1} entries for ${lineups.length} lineups.`);
-  }
 
-  const rows = [stringifyCsvLine(parseCsvLine(entryRows[0]))];
+  const rows = [stringifyCsvLine([
+    "Lineup",
+    ...LINEUP_SLOTS,
+    "Salary",
+    "Projection",
+    "Leverage",
+  ])];
 
   for (let i = 0; i < lineups.length; i++) {
     const lineup = lineups[i];
-    const cols = parseCsvLine(entryRows[i + 1]);
-    if (cols.length < 4 + LINEUP_SLOTS.length) {
-      throw new Error(`Entry row ${i + 2} is missing required DraftKings columns.`);
-    }
-    for (let j = 0; j < LINEUP_SLOTS.length; j++) {
-      const player = lineup.slots[LINEUP_SLOTS[j]];
-      cols[4 + j] = player ? `${player.name} (${player.dkPlayerId})` : "";
-    }
-    rows.push(stringifyCsvLine(cols));
+    rows.push(stringifyCsvLine([
+      String(i + 1),
+      ...LINEUP_SLOTS.map((slot) => {
+        const player = lineup.slots[slot];
+        return player ? `${player.name} (${player.dkPlayerId})` : "";
+      }),
+      String(lineup.totalSalary),
+      lineup.projFpts.toFixed(2),
+      lineup.leverageScore.toFixed(2),
+    ]));
   }
 
   return rows.join("\n");

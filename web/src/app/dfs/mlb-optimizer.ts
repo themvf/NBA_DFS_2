@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { DkPlayerRow } from "@/db/queries";
-import { parseCsvLine, stringifyCsvLine } from "./csv";
+import { stringifyCsvLine } from "./csv";
 import { applyMlbPendingLineupPolicy, normalizeMlbPendingLineupPolicy, type MlbPendingLineupPolicy } from "./mlb-lineup";
 import {
   normalizeMlbRuleSelections,
@@ -1220,30 +1220,29 @@ export function buildNextMlbLineup(
 
 export function buildMlbMultiEntryCSV(
   lineups: MlbGeneratedLineup[],
-  entryRows: string[],
 ): string {
   if (lineups.length === 0) return "";
-  if (entryRows.length < 2) {
-    throw new Error("Entry template must include a header row and at least one entry row.");
-  }
-  if (entryRows.length - 1 < lineups.length) {
-    throw new Error(`Entry template has ${entryRows.length - 1} entries for ${lineups.length} lineups.`);
-  }
-
   const slotOrder: MlbLineupSlot[] = ["P1", "P2", "C", "1B", "2B", "3B", "SS", "OF1", "OF2", "OF3"];
-  const rows = [stringifyCsvLine(parseCsvLine(entryRows[0]))];
+  const rows = [stringifyCsvLine([
+    "Lineup",
+    ...slotOrder,
+    "Salary",
+    "Projection",
+    "Leverage",
+  ])];
 
   for (let i = 0; i < lineups.length; i++) {
     const lineup = lineups[i];
-    const cols = parseCsvLine(entryRows[i + 1]);
-    if (cols.length < 4 + slotOrder.length) {
-      throw new Error(`Entry row ${i + 2} is missing required DraftKings columns.`);
-    }
-    for (let j = 0; j < slotOrder.length; j++) {
-      const player = lineup.slots[slotOrder[j]];
-      cols[4 + j] = player ? `${player.name} (${player.dkPlayerId})` : "";
-    }
-    rows.push(stringifyCsvLine(cols));
+    rows.push(stringifyCsvLine([
+      String(i + 1),
+      ...slotOrder.map((slot) => {
+        const player = lineup.slots[slot];
+        return player ? `${player.name} (${player.dkPlayerId})` : "";
+      }),
+      String(lineup.totalSalary),
+      lineup.projFpts.toFixed(2),
+      lineup.leverageScore.toFixed(2),
+    ]));
   }
 
   return rows.join("\n");
