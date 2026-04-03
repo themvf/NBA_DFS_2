@@ -22,6 +22,7 @@ import {
 } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import { normalizeNbaRuleSelections, validateNbaRuleSelections } from "./nba-optimizer-rules";
+import { normalizeMlbPendingLineupPolicy } from "./mlb-lineup";
 import type {
   CreateOptimizerJobRequest,
   MlbPreparedOptimizerRun,
@@ -150,6 +151,9 @@ async function loadNbaOptimizerPool(
       dp.our_leverage AS "ourLeverage",
       dp.linestar_proj AS "linestarProj",
       dp.proj_own_pct AS "projOwnPct",
+      dp.dk_in_starting_lineup AS "dkInStartingLineup",
+      dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
+      dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
       dp.is_out AS "isOut",
       dp.game_info AS "gameInfo",
       t.logo_url AS "teamLogo",
@@ -411,6 +415,7 @@ function buildDebugInfo(
           maxExposure: mlbSettings.maxExposure,
           minChanges: mode === "gpp" ? 3 : 2,
           antiCorrMax: mlbSettings.antiCorrMax,
+          pendingLineupPolicy: normalizeMlbPendingLineupPolicy(mlbSettings.pendingLineupPolicy),
         }
       : {
           minStack: nbaSettings.minStack ?? 2,
@@ -718,6 +723,7 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
         maxExposure: effectiveSettings.maxExposure,
         minChanges: effectiveSettings.minChanges,
         antiCorrMax: effectiveSettings.antiCorrMax ?? 10,
+        pendingLineupPolicy: normalizeMlbPendingLineupPolicy(effectiveSettings.pendingLineupPolicy),
       },
       relaxedConstraints: (job.relaxedConstraintsJson as string[]) ?? [],
       probeSummary: (job.probeSummaryJson as OptimizerDebugInfo["probeSummary"]) ?? [],

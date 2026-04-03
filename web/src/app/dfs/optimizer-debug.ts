@@ -55,5 +55,6 @@ export type OptimizerDebugInfo = {
     minChanges: number;
     salaryFloor?: number;
     antiCorrMax?: number;
+    pendingLineupPolicy?: "ignore" | "downgrade" | "exclude";
   };
 };

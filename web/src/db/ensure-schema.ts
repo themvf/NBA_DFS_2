@@ -19,6 +19,9 @@ const DK_PLAYER_PROP_COLUMN_DDLS = [
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS prop_stl REAL`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS prop_stl_price INTEGER`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS prop_stl_book TEXT`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS dk_in_starting_lineup BOOLEAN`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS dk_starting_lineup_order INTEGER`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS dk_team_lineup_confirmed BOOLEAN`,
 ];
 
 const PROJECTION_EXPERIMENT_DDLS = [

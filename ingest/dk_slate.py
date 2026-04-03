@@ -456,6 +456,9 @@ def run(
             "proj_floor":         p.get("proj_floor"),
             "proj_ceiling":       p.get("proj_ceiling"),
             "boom_rate":          p.get("boom_rate"),
+            "dk_in_starting_lineup":   None,
+            "dk_starting_lineup_order": None,
+            "dk_team_lineup_confirmed": None,
             "is_out":             p.get("is_out", False),
         })
         saved += 1

@@ -2,6 +2,7 @@ import "server-only";
 
 import type { DkPlayerRow } from "@/db/queries";
 import { parseCsvLine, stringifyCsvLine } from "./csv";
+import { applyMlbPendingLineupPolicy, normalizeMlbPendingLineupPolicy, type MlbPendingLineupPolicy } from "./mlb-lineup";
 import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
 import type { MlbPreparedOptimizerRun } from "./optimizer-job-types";
 
@@ -19,6 +20,9 @@ export type MlbOptimizerPlayer = Pick<
   | "ourLeverage"
   | "linestarProj"
   | "projOwnPct"
+  | "dkInStartingLineup"
+  | "dkStartingLineupOrder"
+  | "dkTeamLineupConfirmed"
   | "isOut"
   | "gameInfo"
   | "teamLogo"
@@ -44,6 +48,7 @@ export type MlbOptimizerSettings = {
   maxExposure: number;
   bringBackThreshold: number;
   antiCorrMax: number;
+  pendingLineupPolicy: MlbPendingLineupPolicy;
 };
 
 const MLB_SALARY_CAP = 50000;
@@ -687,10 +692,19 @@ export function optimizeMlbLineupsWithDebug(
   pool: MlbOptimizerPlayer[],
   settings: MlbOptimizerSettings,
 ): { lineups: MlbGeneratedLineup[]; debug: OptimizerDebugInfo } {
-  const { mode, nLineups, minStack, maxExposure, bringBackThreshold, antiCorrMax } = settings;
+  const {
+    mode,
+    nLineups,
+    minStack,
+    maxExposure,
+    bringBackThreshold,
+    antiCorrMax,
+  } = settings;
+  const pendingLineupPolicy = normalizeMlbPendingLineupPolicy(settings.pendingLineupPolicy);
   const totalStart = Date.now();
+  const candidatePool = applyMlbPendingLineupPolicy(pool, pendingLineupPolicy);
 
-  const initialSearch = prepareMlbSearchPool(pool, mode, minStack, bringBackThreshold);
+  const initialSearch = prepareMlbSearchPool(candidatePool, mode, minStack, bringBackThreshold);
   const debug: OptimizerDebugInfo = {
     sport: "mlb",
     mode,
@@ -710,6 +724,7 @@ export function optimizeMlbLineupsWithDebug(
       maxExposure,
       minChanges: mode === "gpp" ? 3 : 2,
       antiCorrMax,
+      pendingLineupPolicy,
     },
   };
 
@@ -722,7 +737,7 @@ export function optimizeMlbLineupsWithDebug(
   const freshCount = (players: MlbOptimizerPlayer[]) => new Map<number, number>(players.map((player) => [player.id, 0]));
   const timedProbe = (label: string, stack: number, bringBack: number, antiCorr: number) => {
     const start = Date.now();
-    const search = prepareMlbSearchPool(pool, mode, stack, bringBack);
+    const search = prepareMlbSearchPool(candidatePool, mode, stack, bringBack);
     const success = !!solveMlbLineup(search.pool, mode, stack, nLineups, freshCount(search.pool), [], bringBack, antiCorr);
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
@@ -757,7 +772,7 @@ export function optimizeMlbLineupsWithDebug(
   }
 
   const effectiveMinChanges = mode === "gpp" && initialSearch.eligibleCount >= 60 && !relaxed ? 3 : 2;
-  const preparedSearch = prepareMlbSearchPool(pool, mode, effectiveMinStack, effectiveBringBack);
+  const preparedSearch = prepareMlbSearchPool(candidatePool, mode, effectiveMinStack, effectiveBringBack);
   const preparedPool = preparedSearch.pool;
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
@@ -765,6 +780,7 @@ export function optimizeMlbLineupsWithDebug(
     maxExposure,
     minChanges: effectiveMinChanges,
     antiCorrMax: effectiveAntiCorr,
+    pendingLineupPolicy,
   };
   debug.heuristic = {
     prunedCandidateCount: preparedSearch.prunedCandidateCount,
@@ -863,9 +879,18 @@ export function prepareMlbOptimizerRun(
   settings: MlbOptimizerSettings,
 ): { prepared?: MlbPreparedOptimizerRun; debug: OptimizerDebugInfo } {
   const totalStart = Date.now();
-  const { mode, nLineups, minStack, maxExposure, bringBackThreshold, antiCorrMax } = settings;
+  const {
+    mode,
+    nLineups,
+    minStack,
+    maxExposure,
+    bringBackThreshold,
+    antiCorrMax,
+  } = settings;
+  const pendingLineupPolicy = normalizeMlbPendingLineupPolicy(settings.pendingLineupPolicy);
+  const candidatePool = applyMlbPendingLineupPolicy(pool, pendingLineupPolicy);
 
-  const initialSearch = prepareMlbSearchPool(pool, mode, minStack, bringBackThreshold);
+  const initialSearch = prepareMlbSearchPool(candidatePool, mode, minStack, bringBackThreshold);
   const debug: OptimizerDebugInfo = {
     sport: "mlb",
     mode,
@@ -885,6 +910,7 @@ export function prepareMlbOptimizerRun(
       maxExposure,
       minChanges: mode === "gpp" ? 3 : 2,
       antiCorrMax,
+      pendingLineupPolicy,
     },
   };
 
@@ -897,7 +923,7 @@ export function prepareMlbOptimizerRun(
   const freshCount = (players: MlbOptimizerPlayer[]) => new Map<number, number>(players.map((player) => [player.id, 0]));
   const timedProbe = (label: string, stack: number, bringBack: number, antiCorr: number) => {
     const start = Date.now();
-    const search = prepareMlbSearchPool(pool, mode, stack, bringBack);
+    const search = prepareMlbSearchPool(candidatePool, mode, stack, bringBack);
     const success = !!solveMlbLineup(search.pool, mode, stack, nLineups, freshCount(search.pool), [], bringBack, antiCorr);
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
@@ -932,13 +958,14 @@ export function prepareMlbOptimizerRun(
   }
 
   const effectiveMinChanges = mode === "gpp" && initialSearch.eligibleCount >= 60 && !relaxed ? 3 : 2;
-  const preparedSearch = prepareMlbSearchPool(pool, mode, effectiveMinStack, effectiveBringBack);
+  const preparedSearch = prepareMlbSearchPool(candidatePool, mode, effectiveMinStack, effectiveBringBack);
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
     bringBackThreshold: effectiveBringBack,
     maxExposure,
     minChanges: effectiveMinChanges,
     antiCorrMax: effectiveAntiCorr,
+    pendingLineupPolicy,
   };
   debug.heuristic = {
     prunedCandidateCount: preparedSearch.prunedCandidateCount,
@@ -963,6 +990,7 @@ export function prepareMlbOptimizerRun(
         maxExposure,
         minChanges: effectiveMinChanges,
         antiCorrMax: effectiveAntiCorr,
+        pendingLineupPolicy,
       },
       relaxedConstraints: [...debug.relaxedConstraints],
       probeSummary: [...debug.probeSummary],

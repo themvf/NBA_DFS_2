@@ -91,6 +91,10 @@ def _is_sp(eligible_positions: str) -> bool:
     return "SP" in eligible_positions.split("/")
 
 
+def _is_confirmed_lineup_order(order: int | None) -> bool:
+    return isinstance(order, int) and 1 <= order <= 9
+
+
 def _dk_pitcher_is_probable(player: dict) -> bool:
     """Return True unless DK explicitly marks an MLB pitcher as non-probable."""
     signals = [
@@ -102,6 +106,31 @@ def _dk_pitcher_is_probable(player: dict) -> bool:
     if not present:
         return True
     return any(present)
+
+
+def _infer_team_lineup_confirmed(dk_players: list[dict]) -> dict[str, bool]:
+    """Infer whether DK has posted a confirmed batting order for each MLB team."""
+    grouped: dict[str, list[dict]] = {}
+    for player in dk_players:
+        if _is_pitcher(player.get("eligible_positions", "")):
+            continue
+        team_abbrev = (player.get("team_abbrev") or "").upper()
+        if not team_abbrev:
+            continue
+        grouped.setdefault(team_abbrev, []).append(player)
+
+    confirmed_by_team: dict[str, bool] = {}
+    for team_abbrev, hitters in grouped.items():
+        ordered_hitters = sum(
+            1 for hitter in hitters
+            if _is_confirmed_lineup_order(hitter.get("starting_lineup_order"))
+        )
+        explicit_flags = sum(
+            1 for hitter in hitters
+            if hitter.get("in_starting_lineup") is not None
+        )
+        confirmed_by_team[team_abbrev] = ordered_hitters > 0 or explicit_flags >= 5
+    return confirmed_by_team
 
 
 def match_player_stats(dk_name: str, candidates: list[dict]) -> dict | None:
@@ -227,7 +256,7 @@ def build_player_pool_mlb(
     # the opposing team_id at projection time.
     sp_by_team: dict[int, dict] = {}
     for _p in dk_players:
-        if not _is_sp(_p.get("eligible_positions", "")):
+        if not _is_sp(_p.get("eligible_positions", "")) or not _dk_pitcher_is_probable(_p):
             continue
         _tid = match_mlb_team_id(_p["team_abbrev"], abbrev_cache)
         if not _tid or _tid in sp_by_team:
@@ -236,15 +265,26 @@ def build_player_pool_mlb(
         if _sp_stats:
             sp_by_team[_tid] = _sp_stats
 
+    lineup_confirmed_by_team = _infer_team_lineup_confirmed(dk_players)
+
     enriched = []
     matched_linestar = matched_team = matched_stats = 0
 
     for p in dk_players:
         result = dict(p)
 
+        team_abbrev = (p.get("team_abbrev") or "").upper()
         positions    = p.get("eligible_positions", "")
         pitcher_flag = _is_pitcher(positions)
         sp_flag      = _is_sp(positions)
+        dk_order     = p.get("starting_lineup_order")
+        lineup_confirmed = lineup_confirmed_by_team.get(team_abbrev, False)
+        confirmed_batter_out = (
+            not pitcher_flag
+            and lineup_confirmed
+            and not _is_confirmed_lineup_order(dk_order)
+            and p.get("in_starting_lineup") is not True
+        )
 
         # DK injury status
         dk_is_out = (
@@ -269,7 +309,10 @@ def build_player_pool_mlb(
             result["proj_own_pct"]  = None
             result["is_out"]        = False
 
-        result["is_out"] = dk_is_out or result.get("is_out", False)
+        result["is_out"] = dk_is_out or confirmed_batter_out or result.get("is_out", False)
+        result["dk_in_starting_lineup"] = p.get("in_starting_lineup")
+        result["dk_starting_lineup_order"] = dk_order if _is_confirmed_lineup_order(dk_order) else None
+        result["dk_team_lineup_confirmed"] = lineup_confirmed
 
         # Team resolution — mlb_team_id, not team_id
         mlb_team_id = match_mlb_team_id(p["team_abbrev"], abbrev_cache)
@@ -299,7 +342,7 @@ def build_player_pool_mlb(
         # Phase 5 projection: full MLB model
         our_proj = None
         proj_floor = proj_ceiling = boom_rate = None
-        if stats and not result.get("is_out"):
+        if stats and not result.get("is_out") and not confirmed_batter_out:
             if pitcher_flag:
                 our_proj = compute_pitcher_projection(
                     pitcher=stats,
@@ -317,6 +360,7 @@ def build_player_pool_mlb(
                     opp_sp=opp_sp,
                     park=park,
                     is_home=is_home,
+                    confirmed_order=result.get("dk_starting_lineup_order"),
                 )
                 boom_threshold = _BAT_BOOM_THRESHOLD
 
@@ -474,6 +518,9 @@ def run(
             "proj_floor":         p.get("proj_floor"),
             "proj_ceiling":       p.get("proj_ceiling"),
             "boom_rate":          p.get("boom_rate"),
+            "dk_in_starting_lineup":   p.get("dk_in_starting_lineup"),
+            "dk_starting_lineup_order": p.get("dk_starting_lineup_order"),
+            "dk_team_lineup_confirmed": p.get("dk_team_lineup_confirmed"),
             "is_out":             p.get("is_out", False),
         })
         saved += 1

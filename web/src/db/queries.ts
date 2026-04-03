@@ -49,6 +49,9 @@ export type DkPlayerRow = {
   modelProj: number | null;
   marketProj: number | null;
   blendProj: number | null;
+  dkInStartingLineup: boolean | null;
+  dkStartingLineupOrder: number | null;
+  dkTeamLineupConfirmed: boolean | null;
   isOut: boolean | null;
   actualFpts: number | null;
   actualOwnPct: number | null;
@@ -108,6 +111,9 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         NULL::REAL            AS "modelProj",
         NULL::REAL            AS "marketProj",
         NULL::REAL            AS "blendProj",
+        dp.dk_in_starting_lineup AS "dkInStartingLineup",
+        dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
+        dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
         dp.is_out             AS "isOut",
         dp.proj_floor         AS "projFloor",
         dp.proj_ceiling       AS "projCeiling",
@@ -176,6 +182,9 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       proj.model_proj_fpts AS "modelProj",
       proj.market_proj_fpts AS "marketProj",
       proj.final_proj_fpts AS "blendProj",
+      NULL::BOOLEAN AS "dkInStartingLineup",
+      NULL::INTEGER AS "dkStartingLineupOrder",
+      NULL::BOOLEAN AS "dkTeamLineupConfirmed",
       dp.is_out            AS "isOut",
       dp.proj_floor        AS "projFloor",
       dp.proj_ceiling      AS "projCeiling",

@@ -383,6 +383,9 @@ TABLES = [
         proj_floor REAL,
         proj_ceiling REAL,
         boom_rate REAL,
+        dk_in_starting_lineup BOOLEAN,
+        dk_starting_lineup_order INTEGER,
+        dk_team_lineup_confirmed BOOLEAN,
         is_out BOOLEAN DEFAULT FALSE,
         actual_fpts REAL,
         actual_own_pct REAL,
@@ -779,6 +782,31 @@ MIGRATIONS = [
             WHERE table_name = 'dk_players' AND column_name = 'mlb_team_id'
         ) THEN
             ALTER TABLE dk_players ADD COLUMN mlb_team_id INTEGER REFERENCES mlb_teams(team_id);
+        END IF;
+    END $$""",
+    # 2026-04-02: Add DK MLB lineup-confirmation columns to dk_players
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'dk_in_starting_lineup'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN dk_in_starting_lineup BOOLEAN;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'dk_starting_lineup_order'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN dk_starting_lineup_order INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'dk_team_lineup_confirmed'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN dk_team_lineup_confirmed BOOLEAN;
         END IF;
     END $$""",
 ]

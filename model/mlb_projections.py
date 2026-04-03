@@ -91,6 +91,7 @@ def compute_batter_projection(
     opp_sp: dict | None,
     park: dict | None,
     is_home: bool = False,
+    confirmed_order: int | None = None,
 ) -> float | None:
     """Compute DK MLB batter projection for a single game.
 
@@ -101,6 +102,8 @@ def compute_batter_projection(
                  (None if unknown or RP — no pitcher-quality adjustment applied).
         park:    mlb_park_factors row for the home ballpark (None = neutral).
         is_home: True if batter's team is the home team.
+        confirmed_order: DK-confirmed batting order (1-9). If lineup is not
+                 confirmed yet, pass None so no batting-order boost is applied.
 
     Returns:
         Projected DK FPTS, or None if data is insufficient.
@@ -145,8 +148,7 @@ def compute_batter_projection(
     hr_pf   = _cap(float(park.get("hr_factor")   or 1.0), 0.70, 1.50) if park else 1.0
 
     # ── Batting order PA weight ────────────────────────────────────────────────
-    order = batter.get("batting_order")
-    order_factor = _ORDER_PA_FACTOR.get(int(order), 1.0) if order else 1.0
+    order_factor = _ORDER_PA_FACTOR.get(int(confirmed_order), 1.0) if confirmed_order else 1.0
 
     # ── Pitcher quality: xFIP scales contact production ───────────────────────
     # xFIP > LEAGUE_AVG_XFIP → weaker pitcher → more offense (factor > 1.0)

@@ -54,6 +54,7 @@ export type MlbPreparedOptimizerRun = {
     maxExposure: number;
     minChanges: number;
     antiCorrMax: number;
+    pendingLineupPolicy: "ignore" | "downgrade" | "exclude";
   };
   relaxedConstraints: string[];
   probeSummary: OptimizerProbeDebug[];

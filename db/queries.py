@@ -349,9 +349,11 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             slate_id, dk_player_id, name, team_abbrev, team_id, mlb_team_id, matchup_id,
             eligible_positions, salary, game_info, avg_fpts_dk,
             linestar_proj, proj_own_pct, our_proj, our_leverage,
-            proj_floor, proj_ceiling, boom_rate, is_out
+            proj_floor, proj_ceiling, boom_rate,
+            dk_in_starting_lineup, dk_starting_lineup_order, dk_team_lineup_confirmed,
+            is_out
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (slate_id, dk_player_id) DO UPDATE SET
             name = EXCLUDED.name,
             team_abbrev = EXCLUDED.team_abbrev,
@@ -369,6 +371,9 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             proj_floor = EXCLUDED.proj_floor,
             proj_ceiling = EXCLUDED.proj_ceiling,
             boom_rate = EXCLUDED.boom_rate,
+            dk_in_starting_lineup = EXCLUDED.dk_in_starting_lineup,
+            dk_starting_lineup_order = EXCLUDED.dk_starting_lineup_order,
+            dk_team_lineup_confirmed = EXCLUDED.dk_team_lineup_confirmed,
             is_out = EXCLUDED.is_out
         """,
         (
@@ -390,6 +395,9 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             player.get("proj_floor"),
             player.get("proj_ceiling"),
             player.get("boom_rate"),
+            player.get("dk_in_starting_lineup"),
+            player.get("dk_starting_lineup_order"),
+            player.get("dk_team_lineup_confirmed"),
             player.get("is_out", False),
         ),
     )

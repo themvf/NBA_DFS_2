@@ -6,6 +6,7 @@ import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { CreateOptimizerJobResponse, OptimizerJobStatusResponse, PersistedOptimizerJobLineup } from "./optimizer-job-types";
+import { getMlbLineupStatus, isMlbRowUnavailable, type MlbPendingLineupPolicy } from "./mlb-lineup";
 import {
   normalizeNbaRuleSelections,
   validateNbaRuleSelections,
@@ -234,6 +235,25 @@ function isMlbPitcherPlayer(player: DkPlayerRow): boolean {
   return player.eligiblePositions.includes("SP") || player.eligiblePositions.includes("RP");
 }
 
+function getMlbLineupBadge(player: DkPlayerRow): { label: string; className: string } {
+  const status = getMlbLineupStatus(player);
+  switch (status) {
+    case "pitcher":
+      return player.isOut
+        ? { label: "Out", className: "border-red-200 bg-red-50 text-red-700" }
+        : { label: "Starter", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+    case "confirmed_in":
+      return player.dkStartingLineupOrder != null
+        ? { label: `L${player.dkStartingLineupOrder}`, className: "border-blue-200 bg-blue-50 text-blue-700" }
+        : { label: "IN", className: "border-blue-200 bg-blue-50 text-blue-700" };
+    case "confirmed_out":
+      return { label: "Out", className: "border-red-200 bg-red-50 text-red-700" };
+    case "pending":
+    default:
+      return { label: "Pending", className: "border-amber-200 bg-amber-50 text-amber-700" };
+  }
+}
+
 function getPlayerPropTokens(player: DkPlayerRow, sport: Sport): PlayerPropToken[] {
   const tokens: PlayerPropToken[] = [];
   const fields = sport === "mlb"
@@ -393,6 +413,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [minStack, setMinStack] = useState(() => sport === "nba" ? 2 : 1);
   const [maxExposure, setMaxExposure] = useState(0.6);
   const [mlbBringBackThreshold, setMlbBringBackThreshold] = useState(3);
+  const [pendingLineupPolicy, setPendingLineupPolicy] = useState<MlbPendingLineupPolicy>("downgrade");
   const [bringBackEnabled, setBringBackEnabled] = useState(false);
   const [bringBackSize, setBringBackSize] = useState(1);
   const [minSalaryFilter, setMinSalaryFilter] = useState("");
@@ -676,6 +697,27 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     return players.filter((p) => selectedGames.has(parseGameKey(p.gameInfo)));
   }, [players, selectedGames]);
 
+  const mlbLineupSummary = useMemo(() => {
+    if (sport !== "mlb") {
+      return { confirmedIn: 0, pending: 0, confirmedOut: 0, unavailable: 0 };
+    }
+
+    let confirmedIn = 0;
+    let pending = 0;
+    let confirmedOut = 0;
+    let unavailable = 0;
+    for (const player of filteredPlayers) {
+      if (isMlbRowUnavailable(player)) unavailable++;
+      if (isMlbPitcherPlayer(player)) continue;
+      const status = getMlbLineupStatus(player);
+      if (status === "confirmed_in") confirmedIn++;
+      else if (status === "confirmed_out") confirmedOut++;
+      else if (status === "pending") pending++;
+    }
+
+    return { confirmedIn, pending, confirmedOut, unavailable };
+  }, [filteredPlayers, sport]);
+
   const sortedPlayers = useMemo(() => {
     return [...filteredPlayers].sort((a, b) => {
       let av: number, bv: number;
@@ -884,7 +926,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       const settings = sport === "mlb"
         ? {
             mode, nLineups, minStack, maxExposure,
-            bringBackThreshold: mlbBringBackThreshold, antiCorrMax,
+            bringBackThreshold: mlbBringBackThreshold, antiCorrMax, pendingLineupPolicy,
           } satisfies MlbOptimizerSettings
         : {
             mode, nLineups, minStack, teamStackCount, maxExposure, bringBackEnabled, bringBackSize,
@@ -1684,6 +1726,20 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               </select>
             </div>
           )}
+          {sport === "mlb" && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Pending Lineups</label>
+              <select
+                value={pendingLineupPolicy}
+                onChange={(e) => setPendingLineupPolicy(e.target.value as MlbPendingLineupPolicy)}
+                className="rounded border px-2 py-1 text-sm"
+              >
+                <option value="downgrade">Downgrade</option>
+                <option value="ignore">Ignore</option>
+                <option value="exclude">Exclude</option>
+              </select>
+            </div>
+          )}
           <div>
             <label className="text-xs text-gray-500 block mb-1">Min Salary</label>
             <input
@@ -1744,6 +1800,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                     <>
                       <p><strong>Effective stack:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
                       <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackThreshold ?? 0}</p>
+                      <p><strong>Pending hitters:</strong> {optimizeDebug.effectiveSettings.pendingLineupPolicy ?? "downgrade"}</p>
                     </>
                   )}
                   <p><strong>Effective diversity:</strong> {optimizeDebug.effectiveSettings.minChanges}</p>
@@ -1937,12 +1994,25 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           <div className="px-4 py-3 border-b">
             <h2 className="text-sm font-semibold">
               Player Pool — {filteredPlayers.length} players
-              {filteredPlayers.filter((p) => p.isOut).length > 0 && (
+              {(sport === "mlb" ? mlbLineupSummary.unavailable : filteredPlayers.filter((p) => p.isOut).length) > 0 && (
                 <span className="ml-2 text-xs text-red-500">
-                  ({filteredPlayers.filter((p) => p.isOut).length} OUT)
+                  ({sport === "mlb" ? mlbLineupSummary.unavailable : filteredPlayers.filter((p) => p.isOut).length} OUT)
                 </span>
               )}
             </h2>
+            {sport === "mlb" && (
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
+                <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
+                  {mlbLineupSummary.confirmedIn} confirmed hitters
+                </span>
+                <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-700">
+                  {mlbLineupSummary.pending} pending
+                </span>
+                <span className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-red-700">
+                  {mlbLineupSummary.confirmedOut} out of lineup
+                </span>
+              </div>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1951,6 +2021,9 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Pos</th>
                   <SortHeader col="name" label="Player" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Team</th>
+                  {sport === "mlb" && (
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lineup</th>
+                  )}
                   {sport === "mlb" && (
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Odds</th>
                   )}
@@ -1984,6 +2057,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   const propTokens = getPlayerPropTokens(p, sport);
                   const odds = getPlayerOddsContext(p);
                   const pos = displayPos(p.eligiblePositions, sport);
+                  const mlbLineupBadge = sport === "mlb" ? getMlbLineupBadge(p) : null;
+                  const rowUnavailable = sport === "mlb" ? isMlbRowUnavailable(p) : !!p.isOut;
                   const isLocked = lockedPlayerSet.has(p.id);
                   const isBlocked = blockedPlayerSet.has(p.id);
                   const isTeamBlocked = p.teamId != null && blockedTeamSet.has(p.teamId);
@@ -1992,7 +2067,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                     <tr
                       key={p.id}
                       className={`hover:bg-gray-50 ${
-                        p.isOut ? "opacity-40 line-through" : ""
+                        rowUnavailable ? "opacity-40 line-through" : ""
                       } ${
                         isLocked ? "bg-blue-50" : isBlocked || isTeamBlocked ? "bg-red-50" : ""
                       }`}
@@ -2016,6 +2091,15 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{p.teamAbbrev}</td>
+                      {sport === "mlb" && (
+                        <td className="px-3 py-1.5 text-xs">
+                          {mlbLineupBadge && (
+                            <span className={`inline-flex rounded border px-1.5 py-0.5 text-[10px] font-medium ${mlbLineupBadge.className}`}>
+                              {mlbLineupBadge.label}
+                            </span>
+                          )}
+                        </td>
+                      )}
                       {sport === "mlb" && (
                         <td className="px-3 py-1.5 text-[11px] text-gray-500">
                           {(odds.teamTotal != null || odds.vegasTotal != null || odds.moneyline != null) ? (

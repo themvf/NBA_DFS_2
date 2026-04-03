@@ -18,6 +18,7 @@ import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
+import { applyMlbPendingLineupPolicy, inferMlbTeamLineupConfirmed, isPositiveMlbLineupOrder } from "./mlb-lineup";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
 import type { Sport } from "@/db/queries";
@@ -3284,6 +3285,7 @@ function computeMlbBatterProj(
   oppSp: Record<string, unknown> | null,
   park: Record<string, unknown> | null,
   isHome: boolean,
+  confirmedOrder: number | null,
 ): number | null {
   if (((b.games as number) || 0) < 3) return null;
   const sPg = (b.singlesPg as number) || 0, dPg = (b.doublesPg as number) || 0;
@@ -3300,7 +3302,7 @@ function computeMlbBatterProj(
   const envFactor   = mlbCap(implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.5, 2.0);
   const runsPf      = mlbCap((park?.runsFactor as number) || 1.0, 0.7, 1.3);
   const hrPf        = mlbCap((park?.hrFactor  as number) || 1.0, 0.7, 1.5);
-  const orderFactor = MLB_ORDER_PA_FACTOR[(b.battingOrder as number)] || 1.0;
+  const orderFactor = confirmedOrder != null ? (MLB_ORDER_PA_FACTOR[confirmedOrder] || 1.0) : 1.0;
   let xfipFactor = 1.0;
   if (oppSp) {
     const spXfip = (oppSp.xfip as number) || (oppSp.era as number) || MLB_LEAGUE_AVG_XFIP;
@@ -3465,6 +3467,7 @@ async function enrichAndSaveMlb(
     if (d) { slateDate = d; break; }
   }
   if (!slateDate) slateDate = new Date().toISOString().slice(0, 10);
+  await ensureDkPlayerPropColumns();
   const mlbSeason = inferMlbSeason(slateDate);
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 
@@ -3526,11 +3529,12 @@ async function enrichAndSaveMlb(
   }
   const teamStatsMap = new Map(teamStatRows.map((r) => [r.teamId, r]));
   const parkMap      = new Map(parkRows.map((r) => [r.teamId, r]));
+  const lineupConfirmedByTeam = inferMlbTeamLineupConfirmed(dkPlayers_);
 
   // SP pre-pass: one SP per team
   const spByTeam = new Map<number, typeof pitcherRows[0]>();
   for (const p of dkPlayers_) {
-    if (!isPitcherPos(p.eligiblePositions)) continue;
+    if (!isPitcherPos(p.eligiblePositions) || !isLikelyActiveMlbPitcher(p)) continue;
     const canon = MLB_DK_OVERRIDES[p.teamAbbrev] ?? p.teamAbbrev;
     const tid = abbrevToId.get(canon);
     if (!tid || spByTeam.has(tid)) continue;
@@ -3551,6 +3555,13 @@ async function enrichAndSaveMlb(
     const mlbTeamId = abbrevToId.get(canon) ?? null;
     const matchup   = mlbTeamId ? matchupByTeam.get(mlbTeamId) ?? null : null;
     const matchupId = matchup?.id ?? null;
+    const dkTeamLineupConfirmed = lineupConfirmedByTeam.get((p.teamAbbrev ?? "").toUpperCase()) ?? false;
+    const dkStartingLineupOrder = isPositiveMlbLineupOrder(p.startingLineupOrder) ? p.startingLineupOrder : null;
+    const confirmedBatterOut =
+      !isPitcherPos(p.eligiblePositions)
+      && dkTeamLineupConfirmed
+      && dkStartingLineupOrder == null
+      && p.inStartingLineup !== true;
 
     const ls = findLinestarMatch(p.name, p.salary, lsMap);
     if (ls) lsMatched++;
@@ -3594,7 +3605,10 @@ async function enrichAndSaveMlb(
           const oppSp     = oppTeamId ? spByTeam.get(oppTeamId) ?? null : null;
           ourProj = sanitizeProjection(computeMlbBatterProj(
             best as unknown as Record<string, unknown>, matchup as unknown as Record<string, unknown>,
-            oppSp as unknown as Record<string, unknown> | null, park as unknown as Record<string, unknown> | null, isHome,
+            oppSp as unknown as Record<string, unknown> | null,
+            park as unknown as Record<string, unknown> | null,
+            isHome,
+            dkTeamLineupConfirmed ? dkStartingLineupOrder : null,
           ));
           if (ourProj != null) projComputed++;
         }
@@ -3605,7 +3619,7 @@ async function enrichAndSaveMlb(
       p.isDisabled
       || ["O", "OUT"].includes(p.dkStatus.toUpperCase())
       || !isLikelyActiveMlbPitcher(p);
-    const isOut   = dkIsOut;
+    const isOut   = dkIsOut || confirmedBatterOut;
     const projForLev = isOut ? 0 : (ourProj ?? linestarProj ?? 0);
     if (projForLev > 0 && projOwnPct != null) {
       const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
@@ -3618,6 +3632,9 @@ async function enrichAndSaveMlb(
       eligiblePositions: p.eligiblePositions, salary: p.salary,
       gameInfo: p.gameInfo, avgFptsDk: sanitizeProjection(p.avgFptsDk),
       linestarProj, projOwnPct,
+      dkInStartingLineup: p.inStartingLineup,
+      dkStartingLineupOrder,
+      dkTeamLineupConfirmed,
       ourProj, ourLeverage, ourOwnPct: null as number | null, isOut,
     });
   }
@@ -3655,6 +3672,9 @@ async function enrichAndSaveMlb(
         linestarProj: sql`EXCLUDED.linestar_proj`, projOwnPct: sql`EXCLUDED.proj_own_pct`,
         ourProj: sql`EXCLUDED.our_proj`, ourLeverage: sql`EXCLUDED.our_leverage`,
         ourOwnPct: sql`EXCLUDED.our_own_pct`,
+        dkInStartingLineup: sql`EXCLUDED.dk_in_starting_lineup`,
+        dkStartingLineupOrder: sql`EXCLUDED.dk_starting_lineup_order`,
+        dkTeamLineupConfirmed: sql`EXCLUDED.dk_team_lineup_confirmed`,
         isOut: sql`EXCLUDED.is_out`, avgFptsDk: sql`EXCLUDED.avg_fpts_dk`,
         eligiblePositions: sql`EXCLUDED.eligible_positions`, gameInfo: sql`EXCLUDED.game_info`,
       },
@@ -3740,12 +3760,14 @@ export async function refreshPlayerStatus(slateId: number): Promise<{
   ok: boolean; message: string; updated: number;
 }> {
   try {
+    await ensureDkPlayerPropColumns();
     // Get the draft group ID saved when the slate was loaded
     const slateRows = await db
-      .select({ dkDraftGroupId: dkSlates.dkDraftGroupId })
+      .select({ dkDraftGroupId: dkSlates.dkDraftGroupId, sport: dkSlates.sport })
       .from(dkSlates)
       .where(eq(dkSlates.id, slateId));
     const dgId = slateRows[0]?.dkDraftGroupId;
+    const sport = slateRows[0]?.sport ?? "nba";
     if (!dgId) {
       return {
         ok: false,
@@ -3754,43 +3776,73 @@ export async function refreshPlayerStatus(slateId: number): Promise<{
       };
     }
 
-    // Fetch live draftables
-    const url  = `https://api.draftkings.com/draftgroups/v1/draftgroups/${dgId}/draftables`;
-    const resp = await fetch(url, { headers: DK_HEADERS, next: { revalidate: 0 } });
-    if (!resp.ok) throw new Error(`DK API ${resp.status}`);
-    const { draftables } = await resp.json() as { draftables: Record<string, unknown>[] };
-
-    // Build map: draftableId → isOut.
-    // DK uses "O", "Out", and "OUT" (case varies) for scratches; normalise.
-    const liveStatus = new Map<number, boolean>();
-    for (const d of draftables) {
-      const draftableId = d.draftableId as number;
-      const s = ((d.status as string) ?? "").toUpperCase();
-      const pos = (d.position as string) ?? "";
-      const playerGameAttrs = buildPlayerGameAttrMap(d.playerGameAttributes);
-      const starterSignals = [
-        parseDkBoolean(playerGameAttrs.get(DK_PGA_STARTING_PITCHER)),
-        parseDkBoolean(playerGameAttrs.get(DK_PGA_LIKELY_PITCHER)),
-        parseDkBoolean(playerGameAttrs.get(DK_PGA_PROBABLE_STARTER)),
-      ].filter((v): v is boolean => v != null);
-      const pitcherIsLikelyActive = !pos.includes("P") || starterSignals.length === 0 || starterSignals.some(Boolean);
-      const isOut = !!(d.isDisabled as boolean) || s === "O" || s === "OUT" || !pitcherIsLikelyActive;
-      liveStatus.set(draftableId, isOut);
+    const livePlayers = await fetchDkPlayersFromApi(dgId);
+    const lineupConfirmedByTeam = sport === "mlb" ? inferMlbTeamLineupConfirmed(livePlayers) : new Map<string, boolean>();
+    const liveStatus = new Map<number, {
+      isOut: boolean;
+      dkInStartingLineup: boolean | null;
+      dkStartingLineupOrder: number | null;
+      dkTeamLineupConfirmed: boolean | null;
+    }>();
+    for (const player of livePlayers) {
+      const dkTeamLineupConfirmed = sport === "mlb"
+        ? (lineupConfirmedByTeam.get((player.teamAbbrev ?? "").toUpperCase()) ?? false)
+        : null;
+      const dkStartingLineupOrder = sport === "mlb" && isPositiveMlbLineupOrder(player.startingLineupOrder)
+        ? player.startingLineupOrder
+        : null;
+      const confirmedBatterOut = sport === "mlb"
+        && !isPitcherPos(player.eligiblePositions)
+        && dkTeamLineupConfirmed === true
+        && dkStartingLineupOrder == null
+        && player.inStartingLineup !== true;
+      const isOut =
+        player.isDisabled
+        || ["O", "OUT"].includes(player.dkStatus.toUpperCase())
+        || !isLikelyActiveMlbPitcher(player)
+        || confirmedBatterOut;
+      liveStatus.set(player.dkId, {
+        isOut,
+        dkInStartingLineup: sport === "mlb" ? player.inStartingLineup : null,
+        dkStartingLineupOrder,
+        dkTeamLineupConfirmed,
+      });
     }
 
     // Compare against stored players
     const stored = await db
-      .select({ id: dkPlayers.id, dkPlayerId: dkPlayers.dkPlayerId, isOut: dkPlayers.isOut })
+      .select({
+        id: dkPlayers.id,
+        dkPlayerId: dkPlayers.dkPlayerId,
+        isOut: dkPlayers.isOut,
+        dkInStartingLineup: dkPlayers.dkInStartingLineup,
+        dkStartingLineupOrder: dkPlayers.dkStartingLineupOrder,
+        dkTeamLineupConfirmed: dkPlayers.dkTeamLineupConfirmed,
+      })
       .from(dkPlayers)
       .where(eq(dkPlayers.slateId, slateId));
 
     let updated = 0;
     for (const p of stored) {
       const live = liveStatus.get(p.dkPlayerId);
-      // Player absent from API = DK removed them (scratch confirmed)
-      const newIsOut = live === undefined ? true : live;
-      if (newIsOut !== (p.isOut ?? false)) {
-        await db.update(dkPlayers).set({ isOut: newIsOut }).where(eq(dkPlayers.id, p.id));
+      const next = live ?? {
+        isOut: true,
+        dkInStartingLineup: null,
+        dkStartingLineupOrder: null,
+        dkTeamLineupConfirmed: sport === "mlb" ? false : null,
+      };
+      if (
+        next.isOut !== (p.isOut ?? false)
+        || next.dkInStartingLineup !== (p.dkInStartingLineup ?? null)
+        || next.dkStartingLineupOrder !== (p.dkStartingLineupOrder ?? null)
+        || next.dkTeamLineupConfirmed !== (p.dkTeamLineupConfirmed ?? null)
+      ) {
+        await db.update(dkPlayers).set({
+          isOut: next.isOut,
+          dkInStartingLineup: next.dkInStartingLineup,
+          dkStartingLineupOrder: next.dkStartingLineupOrder,
+          dkTeamLineupConfirmed: next.dkTeamLineupConfirmed,
+        }).where(eq(dkPlayers.id, p.id));
         updated++;
       }
     }
@@ -3961,6 +4013,7 @@ export async function runMlbOptimizer(
   gameFilter: number[],
   settings: MlbOptimizerSettings,
 ): Promise<OptimizerRunResult<MlbGeneratedLineup>> {
+  await ensureDkPlayerPropColumns();
   const rows = await db.execute<MlbOptimizerPlayer>(sql`
     SELECT
       dp.id, dp.dk_player_id AS "dkPlayerId", dp.name, dp.team_abbrev AS "teamAbbrev",
@@ -3968,6 +4021,9 @@ export async function runMlbOptimizer(
       dp.eligible_positions AS "eligiblePositions", dp.salary,
       dp.our_proj AS "ourProj", dp.our_leverage AS "ourLeverage",
       dp.linestar_proj AS "linestarProj", dp.proj_own_pct AS "projOwnPct",
+      dp.dk_in_starting_lineup AS "dkInStartingLineup",
+      dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
+      dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
       dp.is_out AS "isOut", dp.game_info AS "gameInfo",
       mt.logo_url AS "teamLogo", mt.name AS "teamName",
       mm.home_team_id AS "homeTeamId"
@@ -3986,11 +4042,11 @@ export async function runMlbOptimizer(
       projOwnPct: sanitizeOwnershipPct(p.projOwnPct),
     }))
     .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
-
+  const policyAdjustedPool = applyMlbPendingLineupPolicy(pool, settings.pendingLineupPolicy);
   try {
     const { lineups, debug } = optimizeMlbLineupsWithDebug(pool, settings);
     if (lineups.length === 0) {
-      const eligible = pool.filter(
+      const eligible = policyAdjustedPool.filter(
         (p) => !p.isOut && p.ourProj != null && p.ourProj > 0 && p.salary > 0,
       );
       const pitchers = eligible.filter((p) =>
