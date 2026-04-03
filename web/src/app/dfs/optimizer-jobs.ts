@@ -22,6 +22,7 @@ import {
 } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import { normalizeNbaRuleSelections, validateNbaRuleSelections } from "./nba-optimizer-rules";
+import { normalizeMlbRuleSelections, validateMlbRuleSelections } from "./mlb-optimizer-rules";
 import { normalizeMlbPendingLineupPolicy } from "./mlb-lineup";
 import type {
   CreateOptimizerJobRequest,
@@ -198,6 +199,9 @@ async function loadMlbOptimizerPool(
       dp.our_leverage AS "ourLeverage",
       dp.linestar_proj AS "linestarProj",
       dp.proj_own_pct AS "projOwnPct",
+      dp.dk_in_starting_lineup AS "dkInStartingLineup",
+      dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
+      dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
       dp.is_out AS "isOut",
       dp.game_info AS "gameInfo",
       mt.logo_url AS "teamLogo",
@@ -553,6 +557,11 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
     if (!validation.ok) {
       throw new Error(validation.error);
     }
+  } else {
+    const validation = validateMlbRuleSelections(poolSnapshot as MlbOptimizerPlayer[], input.settings as MlbOptimizerSettings);
+    if (!validation.ok) {
+      throw new Error(validation.error);
+    }
   }
 
   const snapshot: OptimizerJobSnapshot = {
@@ -717,6 +726,7 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
       maxExposureCount: Math.ceil(job.requestedLineups * (settings as MlbOptimizerSettings).maxExposure),
       eligibleCount: job.eligibleCount ?? pool.length,
       pool: pool as MlbOptimizerPlayer[],
+      ruleSelections: normalizeMlbRuleSelections(settings as MlbOptimizerSettings),
       effectiveSettings: {
         minStack: effectiveSettings.minStack,
         bringBackThreshold: effectiveSettings.bringBackThreshold ?? 0,

@@ -3,6 +3,13 @@ import "server-only";
 import type { DkPlayerRow } from "@/db/queries";
 import { parseCsvLine, stringifyCsvLine } from "./csv";
 import { applyMlbPendingLineupPolicy, normalizeMlbPendingLineupPolicy, type MlbPendingLineupPolicy } from "./mlb-lineup";
+import {
+  normalizeMlbRuleSelections,
+  validateMlbRuleSelections,
+  type MlbRuleSettings,
+  type NormalizedMlbRuleSelections,
+  type MlbTeamStackRule,
+} from "./mlb-optimizer-rules";
 import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
 import type { MlbPreparedOptimizerRun } from "./optimizer-job-types";
 
@@ -41,7 +48,7 @@ export type MlbGeneratedLineup = {
   leverageScore: number;
 };
 
-export type MlbOptimizerSettings = {
+export type MlbOptimizerSettings = MlbRuleSettings & {
   mode: "cash" | "gpp";
   nLineups: number;
   minStack: number;
@@ -95,6 +102,21 @@ function finiteOrNull(value: number | null | undefined): number | null {
 
 function isPitcher(pos: string): boolean {
   return pos.includes("SP") || pos.includes("RP");
+}
+
+function filterEligibleMlbPool(
+  pool: MlbOptimizerPlayer[],
+  ruleSelections: NormalizedMlbRuleSelections,
+): MlbOptimizerPlayer[] {
+  const blockedPlayers = new Set(ruleSelections.playerBlocks);
+  const blockedTeams = new Set(ruleSelections.blockedTeamIds);
+
+  return pool.filter((player) => {
+    if (player.isOut) return false;
+    if (blockedPlayers.has(player.id)) return false;
+    if (player.teamId != null && blockedTeams.has(player.teamId)) return false;
+    return getMlbProjection(player) > 0 && player.salary > 0;
+  });
 }
 
 function getMlbProjection(player: MlbOptimizerPlayer): number {
@@ -211,12 +233,14 @@ function pruneMlbBatterPool(
   mode: "cash" | "gpp",
   minStack: number,
   bringBackThreshold: number,
+  lockedIds: Set<number>,
+  requiredTeamStacks: MlbTeamStackRule[],
 ): MlbOptimizerPlayer[] {
   if (batters.length <= 70) {
     return sortMlbPlayersForSearch(batters, mode);
   }
 
-  const keepIds = new Set<number>();
+  const keepIds = new Set<number>(lockedIds);
   const sorted = sortMlbPlayersForSearch(batters, mode);
   addTopMlbPlayers(keepIds, sorted, MLB_GLOBAL_BATTER_KEEP_COUNT);
   addCheapestMlbPlayers(keepIds, batters, MLB_CHEAP_BATTER_KEEP_COUNT);
@@ -246,6 +270,16 @@ function pruneMlbBatterPool(
     );
   }
 
+  for (const rule of requiredTeamStacks) {
+    const teamPlayers = byTeam.get(rule.teamId);
+    if (!teamPlayers) continue;
+    addTopMlbPlayers(
+      keepIds,
+      sortMlbPlayersForSearch(teamPlayers, mode),
+      Math.max(MLB_TEAM_BATTER_KEEP_COUNT, rule.stackSize + Math.max(0, bringBackThreshold - 1) + 3),
+    );
+  }
+
   return sortMlbPlayersForSearch(
     batters.filter((player) => keepIds.has(player.id)),
     mode,
@@ -271,8 +305,13 @@ function enumerateMlbStackTemplates(
   mode: "cash" | "gpp",
   minStack: number,
   bringBackThreshold: number,
+  requiredTeamStacks: MlbTeamStackRule[],
 ): MlbStackTemplate[] {
+  const effectiveRules = requiredTeamStacks.filter((rule) => rule.teamId != null);
   if (minStack <= 0) {
+    if (effectiveRules.length > 0) {
+      return [];
+    }
     return [{ id: "no-stack", minCountsByTeam: new Map(), score: 0 }];
   }
 
@@ -286,20 +325,25 @@ function enumerateMlbStackTemplates(
 
   const opponentByTeamId = buildMlbOpponentByTeamId(batters);
   const templates: MlbStackTemplate[] = [];
-  for (const [teamId, teamPlayers] of byTeam) {
+  const templateSeeds = effectiveRules.length > 0
+    ? effectiveRules.map((rule) => ({ teamId: rule.teamId, stackSize: Math.max(minStack, rule.stackSize) }))
+    : Array.from(byTeam.keys()).map((teamId) => ({ teamId, stackSize: minStack }));
+
+  for (const { teamId, stackSize } of templateSeeds) {
+    const teamPlayers = byTeam.get(teamId) ?? [];
     const sorted = sortMlbPlayersForSearch(teamPlayers, mode);
-    if (sorted.length < minStack) continue;
-    const minCountsByTeam = new Map<number, number>([[teamId, minStack]]);
-    if (bringBackThreshold > 0 && minStack >= bringBackThreshold) {
+    if (sorted.length < stackSize) continue;
+    const minCountsByTeam = new Map<number, number>([[teamId, stackSize]]);
+    if (bringBackThreshold > 0 && stackSize >= bringBackThreshold) {
       const opponentTeamId = opponentByTeamId.get(teamId);
       if (opponentTeamId == null) continue;
       minCountsByTeam.set(opponentTeamId, 1);
     }
     const score = sorted
-      .slice(0, minStack)
+      .slice(0, stackSize)
       .reduce((sum, player) => sum + getMlbSearchScore(player, mode) + (getMlbProjection(player) * 0.01), 0);
     templates.push({
-      id: `stack-${teamId}`,
+      id: `stack-${teamId}-${stackSize}`,
       minCountsByTeam,
       score,
     });
@@ -318,29 +362,45 @@ function calculateMlbSharedCount(players: MlbOptimizerPlayer[], previousLineup: 
   return shared;
 }
 
-function assignMlbPositions(
+function assignMlbPlayersToSlots(
   players: MlbOptimizerPlayer[],
-): Record<MlbLineupSlot, MlbOptimizerPlayer> | null {
-  const assignment: Partial<Record<MlbLineupSlot, MlbOptimizerPlayer>> = {};
-  const used = new Set<number>();
+  slots: readonly MlbLineupSlot[],
+): Partial<Record<MlbLineupSlot, MlbOptimizerPlayer>> | null {
+  if (players.length > slots.length) return null;
+  const slotOptions = players
+    .map((player) => ({
+      player,
+      slots: slots.filter((slot) => canFillMlbSlot(slot, player.eligiblePositions)),
+    }))
+    .sort((a, b) => a.slots.length - b.slots.length || a.player.id - b.player.id);
 
-  const solve = (slotIndex: number): boolean => {
-    if (slotIndex === MLB_ALL_SLOTS.length) return true;
-    const slot = MLB_ALL_SLOTS[slotIndex];
-    for (const player of players) {
-      if (used.has(player.id)) continue;
-      if (!canFillMlbSlot(slot, player.eligiblePositions)) continue;
+  if (slotOptions.some((entry) => entry.slots.length === 0)) return null;
+
+  const assignment: Partial<Record<MlbLineupSlot, MlbOptimizerPlayer>> = {};
+  const usedSlots = new Set<MlbLineupSlot>();
+
+  const visit = (index: number): boolean => {
+    if (index >= slotOptions.length) return true;
+    const { player, slots: candidateSlots } = slotOptions[index];
+    for (const slot of candidateSlots) {
+      if (usedSlots.has(slot)) continue;
+      usedSlots.add(slot);
       assignment[slot] = player;
-      used.add(player.id);
-      if (solve(slotIndex + 1)) return true;
-      used.delete(player.id);
+      if (visit(index + 1)) return true;
+      usedSlots.delete(slot);
       delete assignment[slot];
     }
     return false;
   };
 
-  if (!solve(0)) return null;
-  return assignment as Record<MlbLineupSlot, MlbOptimizerPlayer>;
+  return visit(0) ? assignment : null;
+}
+
+function assignMlbPositions(
+  players: MlbOptimizerPlayer[],
+): Record<MlbLineupSlot, MlbOptimizerPlayer> | null {
+  const assignment = assignMlbPlayersToSlots(players, MLB_ALL_SLOTS);
+  return assignment ? assignment as Record<MlbLineupSlot, MlbOptimizerPlayer> : null;
 }
 
 function validateMlbLineupExact(
@@ -404,11 +464,34 @@ function solveMlbLineup(
   bringBackThreshold = 4,
   antiCorrMax = 1,
   minChanges = 3,
+  ruleSelections: NormalizedMlbRuleSelections = normalizeMlbRuleSelections({}),
 ): MlbGeneratedLineup | null {
   const eligible = pool
     .filter((player) => (exposureCount.get(player.id) ?? 0) < maxExposureCount)
     .filter((player) => !player.isOut && getMlbProjection(player) > 0 && player.salary > 0);
   if (eligible.length < MLB_ROSTER_SIZE) return null;
+
+  const lockedIds = new Set(ruleSelections.playerLocks);
+  const lockedPlayers = eligible.filter((player) => lockedIds.has(player.id));
+  if (lockedPlayers.length !== lockedIds.size) return null;
+
+  const lockedPitchers = lockedPlayers.filter((player) => isPitcher(player.eligiblePositions));
+  const lockedBatters = lockedPlayers.filter((player) => !isPitcher(player.eligiblePositions));
+  if (lockedPitchers.length > 2 || lockedBatters.length > MLB_BATTER_SLOTS.length) return null;
+
+  const lockedBatterAssignments = assignMlbPlayersToSlots(lockedBatters, MLB_BATTER_SLOTS);
+  if (lockedBatters.length > 0 && !lockedBatterAssignments) return null;
+  const lockedBatterSlotAssignments = lockedBatterAssignments ?? {};
+  const lockedBatterIds = new Set<number>(lockedBatters.map((player) => player.id));
+  const lockedBatterSalary = lockedBatters.reduce((sum, player) => sum + player.salary, 0);
+  const lockedBatterScore = lockedBatters.reduce((sum, player) => sum + getMlbSearchScore(player, mode), 0);
+  const lockedBatterProjection = lockedBatters.reduce((sum, player) => sum + getMlbProjection(player), 0);
+  const lockedBatterLeverage = lockedBatters.reduce((sum, player) => sum + getMlbLeverage(player), 0);
+  const lockedBatterTeamCounts = new Map<number, number>();
+  for (const player of lockedBatters) {
+    if (player.teamId == null) continue;
+    lockedBatterTeamCounts.set(player.teamId, (lockedBatterTeamCounts.get(player.teamId) ?? 0) + 1);
+  }
 
   const pitchers = sortMlbPlayersForSearch(
     eligible.filter((player) => isPitcher(player.eligiblePositions)),
@@ -419,12 +502,22 @@ function solveMlbLineup(
     mode,
     minStack,
     bringBackThreshold,
+    lockedBatterIds,
+    ruleSelections.requiredTeamStacks,
   );
   if (pitchers.length < 2 || batters.length < MLB_BATTER_SLOTS.length) return null;
 
   const opponentByTeamId = buildMlbOpponentByTeamId(eligible);
-  const pitcherPairs = enumeratePitcherPairs(pitchers, mode);
-  const templates = enumerateMlbStackTemplates(batters, mode, minStack, bringBackThreshold);
+  const pitcherPairs = enumeratePitcherPairs(pitchers, mode).filter(({ players }) =>
+    lockedPitchers.every((lockedPitcher) => players.some((player) => player.id === lockedPitcher.id)),
+  );
+  const templates = enumerateMlbStackTemplates(
+    batters,
+    mode,
+    minStack,
+    bringBackThreshold,
+    ruleSelections.requiredTeamStacks,
+  );
   if (pitcherPairs.length === 0 || templates.length === 0) return null;
 
   function minSalaryForRemaining(selectedIds: Set<number>, remainingSlots: readonly MlbLineupSlot[]): number {
@@ -467,6 +560,7 @@ function solveMlbLineup(
     const pitcherIds = new Set<number>(pitcherPair.map((player) => player.id));
     const pitcherSalary = pitcherPair[0].salary + pitcherPair[1].salary;
     if (pitcherSalary >= MLB_SALARY_CAP) return null;
+    if (lockedPitchers.some((player) => !pitcherIds.has(player.id))) return null;
 
     const maxBattersByTeam = new Map<number, number>();
     for (const pitcher of pitcherPair) {
@@ -483,8 +577,13 @@ function solveMlbLineup(
       if (maxAllowed != null && minCount > maxAllowed) return null;
     }
 
+    for (const [teamId, count] of lockedBatterTeamCounts) {
+      if (count > (maxBattersByTeam.get(teamId) ?? MLB_BATTER_SLOTS.length)) return null;
+    }
+
+    const remainingBatterSlots = MLB_BATTER_SLOTS.filter((slot) => !lockedBatterSlotAssignments[slot]);
     const slotCandidates = new Map<MlbLineupSlot, MlbOptimizerPlayer[]>();
-    for (const slot of MLB_BATTER_SLOTS) {
+    for (const slot of remainingBatterSlots) {
       const candidates = sortMlbPlayersForSearch(
         batters.filter((player) => !pitcherIds.has(player.id) && canFillMlbSlot(slot, player.eligiblePositions)),
         mode,
@@ -493,7 +592,7 @@ function solveMlbLineup(
       slotCandidates.set(slot, candidates);
     }
 
-    const orderedSlots = [...MLB_BATTER_SLOTS].sort((a, b) => {
+    const orderedSlots = [...remainingBatterSlots].sort((a, b) => {
       const diff = (slotCandidates.get(a)?.length ?? 0) - (slotCandidates.get(b)?.length ?? 0);
       return diff !== 0 ? diff : MLB_BATTER_SLOTS.indexOf(a) - MLB_BATTER_SLOTS.indexOf(b);
     });
@@ -526,13 +625,13 @@ function solveMlbLineup(
     };
 
     let states: BatterSearchState[] = [{
-      slotAssignment: {},
-      selectedIds: new Set<number>(),
-      teamCounts: new Map<number, number>(),
-      salary: pitcherSalary,
-      score: pitcherPair.reduce((sum, player) => sum + getMlbSearchScore(player, mode), 0),
-      projection: pitcherPair.reduce((sum, player) => sum + getMlbProjection(player), 0),
-      leverage: pitcherPair.reduce((sum, player) => sum + getMlbLeverage(player), 0),
+      slotAssignment: { ...lockedBatterSlotAssignments },
+      selectedIds: new Set<number>(lockedBatterIds),
+      teamCounts: new Map<number, number>(lockedBatterTeamCounts),
+      salary: pitcherSalary + lockedBatterSalary,
+      score: pitcherPair.reduce((sum, player) => sum + getMlbSearchScore(player, mode), 0) + lockedBatterScore,
+      projection: pitcherPair.reduce((sum, player) => sum + getMlbProjection(player), 0) + lockedBatterProjection,
+      leverage: pitcherPair.reduce((sum, player) => sum + getMlbLeverage(player), 0) + lockedBatterLeverage,
     }];
 
     for (let depth = 0; depth < orderedSlots.length; depth++) {
@@ -636,6 +735,7 @@ function prepareMlbSearchPool(
   mode: "cash" | "gpp",
   minStack: number,
   bringBackThreshold: number,
+  ruleSelections: NormalizedMlbRuleSelections,
 ): {
   pool: MlbOptimizerPlayer[];
   eligibleCount: number;
@@ -644,7 +744,7 @@ function prepareMlbSearchPool(
   pitcherCount: number;
   batterCount: number;
 } {
-  const eligible = pool.filter((player) => !player.isOut && getMlbProjection(player) > 0 && player.salary > 0);
+  const eligible = filterEligibleMlbPool(pool, ruleSelections);
   const pitchers = sortMlbPlayersForSearch(
     eligible.filter((player) => isPitcher(player.eligiblePositions)),
     mode,
@@ -654,13 +754,21 @@ function prepareMlbSearchPool(
     mode,
     minStack,
     bringBackThreshold,
+    new Set<number>(ruleSelections.playerLocks),
+    ruleSelections.requiredTeamStacks,
   );
 
   return {
     pool: [...pitchers, ...batters],
     eligibleCount: eligible.length,
     prunedCandidateCount: pitchers.length + batters.length,
-    templateCount: enumerateMlbStackTemplates(batters, mode, minStack, bringBackThreshold).length,
+    templateCount: enumerateMlbStackTemplates(
+      batters,
+      mode,
+      minStack,
+      bringBackThreshold,
+      ruleSelections.requiredTeamStacks,
+    ).length,
     pitcherCount: pitchers.length,
     batterCount: batters.length,
   };
@@ -703,8 +811,10 @@ export function optimizeMlbLineupsWithDebug(
   const pendingLineupPolicy = normalizeMlbPendingLineupPolicy(settings.pendingLineupPolicy);
   const totalStart = Date.now();
   const candidatePool = applyMlbPendingLineupPolicy(pool, pendingLineupPolicy);
+  const ruleValidation = validateMlbRuleSelections(candidatePool, settings);
+  const ruleSelections = ruleValidation.normalized;
 
-  const initialSearch = prepareMlbSearchPool(candidatePool, mode, minStack, bringBackThreshold);
+  const initialSearch = prepareMlbSearchPool(candidatePool, mode, minStack, bringBackThreshold, ruleSelections);
   const debug: OptimizerDebugInfo = {
     sport: "mlb",
     mode,
@@ -728,6 +838,12 @@ export function optimizeMlbLineupsWithDebug(
     },
   };
 
+  if (!ruleValidation.ok) {
+    debug.terminationReason = "probe_infeasible";
+    debug.totalMs = Date.now() - totalStart;
+    return { lineups: [], debug };
+  }
+
   if (initialSearch.eligibleCount < MLB_ROSTER_SIZE) {
     debug.terminationReason = "insufficient_pool";
     debug.totalMs = Date.now() - totalStart;
@@ -737,8 +853,19 @@ export function optimizeMlbLineupsWithDebug(
   const freshCount = (players: MlbOptimizerPlayer[]) => new Map<number, number>(players.map((player) => [player.id, 0]));
   const timedProbe = (label: string, stack: number, bringBack: number, antiCorr: number) => {
     const start = Date.now();
-    const search = prepareMlbSearchPool(candidatePool, mode, stack, bringBack);
-    const success = !!solveMlbLineup(search.pool, mode, stack, nLineups, freshCount(search.pool), [], bringBack, antiCorr);
+    const search = prepareMlbSearchPool(candidatePool, mode, stack, bringBack, ruleSelections);
+    const success = !!solveMlbLineup(
+      search.pool,
+      mode,
+      stack,
+      nLineups,
+      freshCount(search.pool),
+      [],
+      bringBack,
+      antiCorr,
+      undefined,
+      ruleSelections,
+    );
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
     debug.probeSummary.push({ label, success, durationMs });
@@ -772,7 +899,7 @@ export function optimizeMlbLineupsWithDebug(
   }
 
   const effectiveMinChanges = mode === "gpp" && initialSearch.eligibleCount >= 60 && !relaxed ? 3 : 2;
-  const preparedSearch = prepareMlbSearchPool(candidatePool, mode, effectiveMinStack, effectiveBringBack);
+  const preparedSearch = prepareMlbSearchPool(candidatePool, mode, effectiveMinStack, effectiveBringBack, ruleSelections);
   const preparedPool = preparedSearch.pool;
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
@@ -815,6 +942,7 @@ export function optimizeMlbLineupsWithDebug(
         bringBack,
         antiCorr,
         minChanges,
+        ruleSelections,
       );
       const durationMs = Date.now() - start;
       const failureReason = lineup
@@ -877,7 +1005,7 @@ export function optimizeMlbLineupsWithDebug(
 export function prepareMlbOptimizerRun(
   pool: MlbOptimizerPlayer[],
   settings: MlbOptimizerSettings,
-): { prepared?: MlbPreparedOptimizerRun; debug: OptimizerDebugInfo } {
+): { prepared?: MlbPreparedOptimizerRun; debug: OptimizerDebugInfo; error?: string } {
   const totalStart = Date.now();
   const {
     mode,
@@ -889,8 +1017,10 @@ export function prepareMlbOptimizerRun(
   } = settings;
   const pendingLineupPolicy = normalizeMlbPendingLineupPolicy(settings.pendingLineupPolicy);
   const candidatePool = applyMlbPendingLineupPolicy(pool, pendingLineupPolicy);
+  const ruleValidation = validateMlbRuleSelections(candidatePool, settings);
+  const ruleSelections = ruleValidation.normalized;
 
-  const initialSearch = prepareMlbSearchPool(candidatePool, mode, minStack, bringBackThreshold);
+  const initialSearch = prepareMlbSearchPool(candidatePool, mode, minStack, bringBackThreshold, ruleSelections);
   const debug: OptimizerDebugInfo = {
     sport: "mlb",
     mode,
@@ -914,6 +1044,12 @@ export function prepareMlbOptimizerRun(
     },
   };
 
+  if (!ruleValidation.ok) {
+    debug.terminationReason = "probe_infeasible";
+    debug.totalMs = Date.now() - totalStart;
+    return { debug, error: ruleValidation.error };
+  }
+
   if (initialSearch.eligibleCount < MLB_ROSTER_SIZE) {
     debug.terminationReason = "insufficient_pool";
     debug.totalMs = Date.now() - totalStart;
@@ -923,8 +1059,19 @@ export function prepareMlbOptimizerRun(
   const freshCount = (players: MlbOptimizerPlayer[]) => new Map<number, number>(players.map((player) => [player.id, 0]));
   const timedProbe = (label: string, stack: number, bringBack: number, antiCorr: number) => {
     const start = Date.now();
-    const search = prepareMlbSearchPool(candidatePool, mode, stack, bringBack);
-    const success = !!solveMlbLineup(search.pool, mode, stack, nLineups, freshCount(search.pool), [], bringBack, antiCorr);
+    const search = prepareMlbSearchPool(candidatePool, mode, stack, bringBack, ruleSelections);
+    const success = !!solveMlbLineup(
+      search.pool,
+      mode,
+      stack,
+      nLineups,
+      freshCount(search.pool),
+      [],
+      bringBack,
+      antiCorr,
+      undefined,
+      ruleSelections,
+    );
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
     debug.probeSummary.push({ label, success, durationMs });
@@ -958,7 +1105,7 @@ export function prepareMlbOptimizerRun(
   }
 
   const effectiveMinChanges = mode === "gpp" && initialSearch.eligibleCount >= 60 && !relaxed ? 3 : 2;
-  const preparedSearch = prepareMlbSearchPool(candidatePool, mode, effectiveMinStack, effectiveBringBack);
+  const preparedSearch = prepareMlbSearchPool(candidatePool, mode, effectiveMinStack, effectiveBringBack, ruleSelections);
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
     bringBackThreshold: effectiveBringBack,
@@ -984,6 +1131,7 @@ export function prepareMlbOptimizerRun(
       maxExposureCount: debug.maxExposureCount,
       eligibleCount: initialSearch.eligibleCount,
       pool: preparedSearch.pool,
+      ruleSelections,
       effectiveSettings: {
         minStack: effectiveMinStack,
         bringBackThreshold: effectiveBringBack,
@@ -1017,6 +1165,7 @@ export function buildNextMlbLineup(
     prepared.mode,
     prepared.effectiveSettings.minStack,
     prepared.effectiveSettings.bringBackThreshold,
+    prepared.ruleSelections,
   );
   const attempts: OptimizerLineupAttemptDebug[] = [];
   const runAttempt = (
@@ -1037,6 +1186,7 @@ export function buildNextMlbLineup(
       bringBack,
       antiCorr,
       minChanges,
+      prepared.ruleSelections,
     );
     attempts.push({
       stage,

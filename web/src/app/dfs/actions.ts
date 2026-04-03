@@ -19,6 +19,7 @@ import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOpt
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import { applyMlbPendingLineupPolicy, inferMlbTeamLineupConfirmed, isPositiveMlbLineupOrder } from "./mlb-lineup";
+import { validateMlbRuleSelections } from "./mlb-optimizer-rules";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
 import type { Sport } from "@/db/queries";
@@ -4043,6 +4044,10 @@ export async function runMlbOptimizer(
     }))
     .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
   const policyAdjustedPool = applyMlbPendingLineupPolicy(pool, settings.pendingLineupPolicy);
+  const ruleValidation = validateMlbRuleSelections(policyAdjustedPool, settings);
+  if (!ruleValidation.ok) {
+    return { ok: false, error: ruleValidation.error };
+  }
   try {
     const { lineups, debug } = optimizeMlbLineupsWithDebug(pool, settings);
     if (lineups.length === 0) {

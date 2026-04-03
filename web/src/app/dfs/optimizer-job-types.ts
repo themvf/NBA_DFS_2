@@ -3,6 +3,7 @@ import type { OptimizerLineupAttemptDebug, OptimizerProbeDebug, OptimizerDebugIn
 import type { OptimizerPlayer, OptimizerSettings, LineupSlot } from "./optimizer";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbLineupSlot } from "./mlb-optimizer";
 import type { NormalizedNbaRuleSelections } from "./nba-optimizer-rules";
+import type { NormalizedMlbRuleSelections } from "./mlb-optimizer-rules";
 
 export type OptimizerJobStatus = "queued" | "running" | "completed" | "failed";
 
@@ -48,6 +49,7 @@ export type MlbPreparedOptimizerRun = {
   maxExposureCount: number;
   eligibleCount: number;
   pool: MlbOptimizerPlayer[];
+  ruleSelections: NormalizedMlbRuleSelections;
   effectiveSettings: {
     minStack: number;
     bringBackThreshold: number;

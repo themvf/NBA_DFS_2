@@ -12,6 +12,11 @@ import {
   validateNbaRuleSelections,
   type NbaTeamStackRule,
 } from "./nba-optimizer-rules";
+import {
+  normalizeMlbRuleSelections,
+  validateMlbRuleSelections,
+  type MlbTeamStackRule,
+} from "./mlb-optimizer-rules";
 import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections, auditNbaPropCoverage, auditMlbPropCoverage } from "./actions";
 
 type Props = {
@@ -24,11 +29,12 @@ type Props = {
 };
 
 type SortCol = "name" | "salary" | "avgFptsDk" | "linestarProj" | "ourProj" | "delta" | "projOwnPct" | "ourOwnPct" | "ourLeverage" | "value";
-type NbaRuleState = {
+type TeamStackRule = NbaTeamStackRule | MlbTeamStackRule;
+type RuleState = {
   playerLocks: number[];
   playerBlocks: number[];
   blockedTeamIds: number[];
-  requiredTeamStacks: NbaTeamStackRule[];
+  requiredTeamStacks: TeamStackRule[];
 };
 
 type NbaPropCoverageAuditResult = {
@@ -133,10 +139,11 @@ function fmtDuration(ms: number): string {
 }
 
 const OPTIMIZER_CLIENT_TOKEN_KEY = "dfsOptimizerClientToken";
-const NBA_RULE_STORAGE_PREFIX = "dfsOptimizerNbaRules";
+const RULE_STORAGE_PREFIX = "dfsOptimizerRules";
+const LEGACY_NBA_RULE_STORAGE_PREFIX = "dfsOptimizerNbaRules";
 const NBA_SLOT_NAMES = ["PG","SG","SF","PF","C","G","F","UTIL"] as const;
 const MLB_SLOT_NAMES = ["P1","P2","C","1B","2B","3B","SS","OF1","OF2","OF3"] as const;
-const EMPTY_NBA_RULE_STATE: NbaRuleState = {
+const EMPTY_RULE_STATE: RuleState = {
   playerLocks: [],
   playerBlocks: [],
   blockedTeamIds: [],
@@ -155,25 +162,38 @@ function optimizerJobStorageKey(sport: Sport, slateId: number): string {
   return `dfsOptimizerJob:${sport}:${slateId}`;
 }
 
-function optimizerNbaRuleStorageKey(slateId: number): string {
-  return `${NBA_RULE_STORAGE_PREFIX}:${slateId}`;
+function optimizerRuleStorageKey(sport: Sport, slateId: number): string {
+  return `${RULE_STORAGE_PREFIX}:${sport}:${slateId}`;
 }
 
-function readStoredNbaRuleState(slateId: number): NbaRuleState {
-  const raw = window.localStorage.getItem(optimizerNbaRuleStorageKey(slateId));
-  if (!raw) return EMPTY_NBA_RULE_STATE;
-  try {
-    const parsed = JSON.parse(raw) as Partial<NbaRuleState>;
-    const normalized = normalizeNbaRuleSelections({
-      playerLocks: Array.isArray(parsed.playerLocks) ? parsed.playerLocks : [],
-      playerBlocks: Array.isArray(parsed.playerBlocks) ? parsed.playerBlocks : [],
-      blockedTeamIds: Array.isArray(parsed.blockedTeamIds) ? parsed.blockedTeamIds : [],
-      requiredTeamStacks: Array.isArray(parsed.requiredTeamStacks) ? parsed.requiredTeamStacks : [],
-    });
-    return normalized;
-  } catch {
-    return EMPTY_NBA_RULE_STATE;
+function legacyNbaRuleStorageKey(slateId: number): string {
+  return `${LEGACY_NBA_RULE_STORAGE_PREFIX}:${slateId}`;
+}
+
+function readStoredRuleState(sport: Sport, slateId: number): RuleState {
+  const keys = sport === "nba"
+    ? [optimizerRuleStorageKey(sport, slateId), legacyNbaRuleStorageKey(slateId)]
+    : [optimizerRuleStorageKey(sport, slateId)];
+
+  for (const key of keys) {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as Partial<RuleState>;
+      const baseState = {
+        playerLocks: Array.isArray(parsed.playerLocks) ? parsed.playerLocks : [],
+        playerBlocks: Array.isArray(parsed.playerBlocks) ? parsed.playerBlocks : [],
+        blockedTeamIds: Array.isArray(parsed.blockedTeamIds) ? parsed.blockedTeamIds : [],
+        requiredTeamStacks: Array.isArray(parsed.requiredTeamStacks) ? parsed.requiredTeamStacks : [],
+      };
+      return sport === "mlb"
+        ? normalizeMlbRuleSelections(baseState)
+        : normalizeNbaRuleSelections(baseState);
+    } catch {
+      continue;
+    }
   }
+  return EMPTY_RULE_STATE;
 }
 
 // Position badge color — sport-aware
@@ -423,7 +443,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [lockedPlayerIds, setLockedPlayerIds] = useState<number[]>([]);
   const [blockedPlayerIds, setBlockedPlayerIds] = useState<number[]>([]);
   const [blockedTeamIds, setBlockedTeamIds] = useState<number[]>([]);
-  const [requiredTeamStacks, setRequiredTeamStacks] = useState<NbaTeamStackRule[]>([]);
+  const [requiredTeamStacks, setRequiredTeamStacks] = useState<TeamStackRule[]>([]);
 
   // ── Lineups ───────────────────────────────────────────────
   const [lineups,    setLineups]    = useState<GeneratedLineup[]    | null>(null);
@@ -512,6 +532,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     [players],
   );
   const currentSlateId = players[0]?.slateId ?? null;
+  const supportsRuleControls = sport === "nba" || sport === "mlb";
   const lockedPlayerSet = useMemo(() => new Set(lockedPlayerIds), [lockedPlayerIds]);
   const blockedPlayerSet = useMemo(() => new Set(blockedPlayerIds), [blockedPlayerIds]);
   const blockedTeamSet = useMemo(() => new Set(blockedTeamIds), [blockedTeamIds]);
@@ -573,7 +594,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   }, []);
 
   useEffect(() => {
-    if (sport !== "nba" || !currentSlateId) {
+    if (!supportsRuleControls || !currentSlateId) {
       setLockedPlayerIds([]);
       setBlockedPlayerIds([]);
       setBlockedTeamIds([]);
@@ -581,26 +602,26 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       return;
     }
 
-    const stored = readStoredNbaRuleState(currentSlateId);
+    const stored = readStoredRuleState(sport, currentSlateId);
     setLockedPlayerIds(stored.playerLocks);
     setBlockedPlayerIds(stored.playerBlocks);
     setBlockedTeamIds(stored.blockedTeamIds);
     setRequiredTeamStacks(stored.requiredTeamStacks);
-  }, [currentSlateId, sport]);
+  }, [currentSlateId, sport, supportsRuleControls]);
 
   useEffect(() => {
-    if (sport !== "nba" || !currentSlateId) return;
-    const nextState: NbaRuleState = {
+    if (!supportsRuleControls || !currentSlateId) return;
+    const nextState: RuleState = {
       playerLocks: lockedPlayerIds,
       playerBlocks: blockedPlayerIds,
       blockedTeamIds,
       requiredTeamStacks,
     };
     window.localStorage.setItem(
-      optimizerNbaRuleStorageKey(currentSlateId),
+      optimizerRuleStorageKey(sport, currentSlateId),
       JSON.stringify(nextState),
     );
-  }, [blockedPlayerIds, blockedTeamIds, currentSlateId, lockedPlayerIds, requiredTeamStacks, sport]);
+  }, [blockedPlayerIds, blockedTeamIds, currentSlateId, lockedPlayerIds, requiredTeamStacks, sport, supportsRuleControls]);
 
   useEffect(() => {
     if (!optimizerClientToken || !currentSlateId) return;
@@ -753,9 +774,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   }, [visiblePlayers, sortCol, sortDir]);
 
   const filteredTeams = useMemo(() => {
-    if (sport !== "nba") return [];
     const byId = new Map<number, { teamId: number; teamAbbrev: string; teamName: string | null; teamLogo: string | null }>();
-    for (const player of filteredPlayers) {
+    for (const player of visiblePlayers) {
       if (player.teamId == null || byId.has(player.teamId)) continue;
       byId.set(player.teamId, {
         teamId: player.teamId,
@@ -765,18 +785,17 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       });
     }
     return Array.from(byId.values()).sort((a, b) => a.teamAbbrev.localeCompare(b.teamAbbrev));
-  }, [filteredPlayers, sport]);
+  }, [sport, visiblePlayers]);
 
   const teamOddsById = useMemo(() => {
     const byId = new Map<number, { vegasTotal: number | null; teamTotal: number | null; moneyline: number | null }>();
-    if (sport !== "nba") return byId;
 
-    for (const player of filteredPlayers) {
+    for (const player of visiblePlayers) {
       if (player.teamId == null || byId.has(player.teamId)) continue;
-      const isHome = player.homeTeamId != null && player.teamId === player.homeTeamId;
-      const moneyline = isHome ? player.homeMl : player.awayMl;
-      const explicitTeamTotal = isHome ? player.homeImplied : player.awayImplied;
-      const derivedTeamTotal = player.vegasTotal != null
+      const isHome = player.homeTeamId != null ? player.teamId === player.homeTeamId : null;
+      const moneyline = isHome == null ? null : (isHome ? player.homeMl : player.awayMl);
+      const explicitTeamTotal = isHome == null ? null : (isHome ? player.homeImplied : player.awayImplied);
+      const derivedTeamTotal = isHome != null && player.vegasTotal != null
         ? computeTeamImpliedTotal(player.vegasTotal, player.homeMl, player.awayMl, isHome)
         : null;
       byId.set(player.teamId, {
@@ -787,7 +806,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     }
 
     return byId;
-  }, [filteredPlayers, sport]);
+  }, [sport, visiblePlayers]);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => d === "desc" ? "asc" : "desc");
@@ -795,7 +814,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   }
 
   function togglePlayerLock(player: DkPlayerRow) {
-    if (sport !== "nba") return;
     setBlockedPlayerIds((current) => current.filter((id) => id !== player.id));
     setLockedPlayerIds((current) =>
       current.includes(player.id)
@@ -805,7 +823,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   }
 
   function togglePlayerBlock(player: DkPlayerRow) {
-    if (sport !== "nba") return;
     setLockedPlayerIds((current) => current.filter((id) => id !== player.id));
     setBlockedPlayerIds((current) =>
       current.includes(player.id)
@@ -815,7 +832,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   }
 
   function toggleTeamBlock(teamId: number) {
-    if (sport !== "nba") return;
     setRequiredTeamStacks((current) => current.filter((rule) => rule.teamId !== teamId));
     setBlockedTeamIds((current) =>
       current.includes(teamId)
@@ -825,13 +841,12 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   }
 
   function updateTeamStackRule(teamId: number, value: string) {
-    if (sport !== "nba") return;
     const stackSize = Number(value);
     setBlockedTeamIds((current) => current.filter((id) => id !== teamId));
     setRequiredTeamStacks((current) => {
       const remaining = current.filter((rule) => rule.teamId !== teamId);
       if (![2, 3, 4, 5].includes(stackSize)) return remaining;
-      return [...remaining, { teamId, stackSize: stackSize as 2 | 3 | 4 | 5 }]
+      return [...remaining, { teamId, stackSize: stackSize as TeamStackRule["stackSize"] }]
         .sort((a, b) => a.teamId - b.teamId);
     });
   }
@@ -940,6 +955,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         ? {
             mode, nLineups, minStack, maxExposure,
             bringBackThreshold: mlbBringBackThreshold, antiCorrMax, pendingLineupPolicy,
+            playerLocks: lockedPlayerIds,
+            playerBlocks: blockedPlayerIds,
+            blockedTeamIds,
+            requiredTeamStacks,
           } satisfies MlbOptimizerSettings
         : {
             mode, nLineups, minStack, teamStackCount, maxExposure, bringBackEnabled, bringBackSize,
@@ -951,8 +970,10 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             requiredTeamStacks,
           } satisfies OptimizerSettings;
 
-      if (sport === "nba") {
-        const validation = validateNbaRuleSelections(filteredPlayers, settings);
+      if (sport === "nba" || sport === "mlb") {
+        const validation = sport === "mlb"
+          ? validateMlbRuleSelections(filteredPlayers, settings)
+          : validateNbaRuleSelections(filteredPlayers, settings);
         if (!validation.ok) {
           window.alert(validation.error);
           setOptimizeError(validation.error);
@@ -1899,16 +1920,28 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         )}
       </div>
 
-      {sport === "nba" && filteredPlayers.length > 0 && (
+      {supportsRuleControls && filteredPlayers.length > 0 && (
         <div className="rounded-lg border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold">NBA Rule Controls</h2>
+              <h2 className="text-sm font-semibold">{sport.toUpperCase()} Rule Controls</h2>
               <p className="text-xs text-gray-500">
-                Locks persist per slate. Every lineup must satisfy one selected team stack when team stack rules are set.
+                Locks persist per slate. Blocked teams remove every player from that team, and team stack rules require at least one lineup stack on each selected team.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setHideOutInactivePlayers((current) => !current)}
+                disabled={unavailablePlayerCount === 0}
+                className={`rounded border px-3 py-1 text-xs font-medium ${
+                  hideOutInactivePlayers
+                    ? "border-blue-300 bg-blue-50 text-blue-700"
+                    : "text-gray-700 hover:bg-gray-50"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {hideOutInactivePlayers ? "Show Out/Inactive" : "Hide Out/Inactive"}
+              </button>
               <button
                 onClick={clearLocks}
                 disabled={lockedPlayerIds.length === 0}
@@ -1942,6 +1975,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             </span>
           </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {filteredTeams.length === 0 && (
+              <div className="rounded border border-dashed p-4 text-sm text-gray-500 md:col-span-2 xl:col-span-4">
+                No active teams are visible with the current filter.
+              </div>
+            )}
             {filteredTeams.map((team) => {
               const isBlocked = blockedTeamSet.has(team.teamId);
               const stackSize = requiredTeamStackMap.get(team.teamId);
@@ -2006,27 +2044,27 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="flex items-start justify-between gap-3 px-4 py-3 border-b">
             <div>
-            <h2 className="text-sm font-semibold">
-              Player Pool — {filteredPlayers.length} players
-              {(sport === "mlb" ? mlbLineupSummary.unavailable : filteredPlayers.filter((p) => p.isOut).length) > 0 && (
-                <span className="ml-2 text-xs text-red-500">
-                  ({sport === "mlb" ? mlbLineupSummary.unavailable : filteredPlayers.filter((p) => p.isOut).length} OUT)
-                </span>
+              <h2 className="text-sm font-semibold">
+                Player Pool — {hideOutInactivePlayers ? `${sortedPlayers.length} of ${filteredPlayers.length}` : filteredPlayers.length} players
+                {unavailablePlayerCount > 0 && (
+                  <span className="ml-2 text-xs text-red-500">
+                    ({unavailablePlayerCount} OUT)
+                  </span>
+                )}
+              </h2>
+              {sport === "mlb" && (
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
+                  <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
+                    {mlbLineupSummary.confirmedIn} confirmed hitters
+                  </span>
+                  <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-700">
+                    {mlbLineupSummary.pending} pending
+                  </span>
+                  <span className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-red-700">
+                    {mlbLineupSummary.confirmedOut} out of lineup
+                  </span>
+                </div>
               )}
-            </h2>
-            {sport === "mlb" && (
-              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
-                <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
-                  {mlbLineupSummary.confirmedIn} confirmed hitters
-                </span>
-                <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-700">
-                  {mlbLineupSummary.pending} pending
-                </span>
-                <span className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-red-700">
-                  {mlbLineupSummary.confirmedOut} out of lineup
-                </span>
-              </div>
-            )}
             </div>
             <button
               type="button"
@@ -2055,7 +2093,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Odds</th>
                   )}
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Props</th>
-                  {sport === "nba" && (
+                  {supportsRuleControls && (
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Rules</th>
                   )}
                   <SortHeader col="salary" label="Salary" />
@@ -2078,7 +2116,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
               <tbody className="divide-y divide-gray-100">
                 {sortedPlayers.length === 0 && (
                   <tr>
-                    <td colSpan={sport === "mlb" ? 15 : 16} className="px-3 py-6 text-center text-sm text-gray-500">
+                    <td colSpan={16} className="px-3 py-6 text-center text-sm text-gray-500">
                       No active players are visible with the current filter.
                     </td>
                   </tr>
@@ -2116,7 +2154,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                           <img src={p.teamLogo} alt="" className="inline-block mr-1.5 h-4 w-4 align-middle" />
                         )}
                         {p.name}
-                        {sport === "nba" && (
+                        {supportsRuleControls && (
                           <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
                             {isLocked && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">LOCK</span>}
                             {(isBlocked || isTeamBlocked) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">BLOCK</span>}
@@ -2177,7 +2215,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
-                      {sport === "nba" && (
+                      {supportsRuleControls && (
                         <td className="px-3 py-1.5 text-xs">
                           <div className="flex flex-wrap gap-1">
                             <button
