@@ -69,17 +69,22 @@ export default function AnalyticsClient({
     if (!historicalText.trim()) { setHistoricalMsg({ ok: false, text: "Paste LineStar data first" }); return; }
     setIsSaving(true);
     setHistoricalMsg(null);
-    const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
-    const res = await saveHistoricalSlate(
-      sport,
-      historicalDate, historicalText,
-      contestTiming,
-      fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
-      contestFormat,
-    );
-    setIsSaving(false);
-    setHistoricalMsg({ ok: res.ok, text: res.message });
-    if (res.ok) setHistoricalText("");
+    try {
+      const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
+      const res = await saveHistoricalSlate(
+        sport,
+        historicalDate, historicalText,
+        contestTiming,
+        fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
+        contestFormat,
+      );
+      setHistoricalMsg({ ok: res.ok, text: res.message });
+      if (res.ok) setHistoricalText("");
+    } catch (error) {
+      setHistoricalMsg({ ok: false, text: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (

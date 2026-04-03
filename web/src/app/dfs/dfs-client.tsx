@@ -1135,17 +1135,22 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     }
     setIsSavingHistoricalSlate(true);
     setHistoricalSlateMsg(null);
-    const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
-    const res = await saveHistoricalSlate(
-      sport,
-      historicalSlateDate,
-      historicalPasteText,
-      contestTiming,
-      fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
-      contestFormat,
-    );
-    setIsSavingHistoricalSlate(false);
-    setHistoricalSlateMsg({ ok: res.ok, text: res.message });
+    try {
+      const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
+      const res = await saveHistoricalSlate(
+        sport,
+        historicalSlateDate,
+        historicalPasteText,
+        contestTiming,
+        fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
+        contestFormat,
+      );
+      setHistoricalSlateMsg({ ok: res.ok, text: res.message });
+    } catch (error) {
+      setHistoricalSlateMsg({ ok: false, text: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setIsSavingHistoricalSlate(false);
+    }
   }
 
   async function handleCheckCookie() {

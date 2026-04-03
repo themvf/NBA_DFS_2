@@ -3100,6 +3100,7 @@ export async function saveHistoricalSlate(
     }
 
     revalidatePath("/dfs");
+    revalidatePath("/analytics");
     return {
       ok: true,
       message: `Updated ${updated}/${pool.rows.length} players with actual results for ${date}`,
@@ -3120,7 +3121,7 @@ export async function saveHistoricalSlate(
       ...(fieldSize != null && { fieldSize }),
     })
     .onConflictDoUpdate({
-      target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat],
+      target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat, dkSlates.sport],
       set: { ...(fieldSize != null && { fieldSize }) },
     })
     .returning({ id: dkSlates.id });
@@ -3161,6 +3162,7 @@ export async function saveHistoricalSlate(
   }
 
   revalidatePath("/dfs");
+  revalidatePath("/analytics");
   return {
     ok: true,
     message: `Created historical ${sport.toUpperCase()} slate for ${date} with ${created} players (synthetic IDs — ourProj will be null)`,
