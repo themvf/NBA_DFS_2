@@ -579,6 +579,8 @@ export async function getMlbTeamStats(season = "2025"): Promise<MlbTeamStatsRow[
 export type CrossSlateAccuracyRow = {
   slateDate: string;
   n: number;
+  nOur: number;
+  nLinestar: number;
   ourMAE: number | null;
   ourBias: number | null;
   lsMAE: number | null;
@@ -590,7 +592,12 @@ export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<Cross
   const result = await db.execute<CrossSlateAccuracyRow>(sql`
     SELECT
       ds.slate_date                                                            AS "slateDate",
-      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "n",
+      GREATEST(
+        COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL),
+        COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL)
+      )::int AS "n",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "nOur",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL)::int AS "nLinestar",
       AVG(ABS(dp.our_proj - dp.actual_fpts))
         FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourMAE",
       AVG(dp.our_proj - dp.actual_fpts)
@@ -613,9 +620,12 @@ export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<Cross
 
 export type PositionAccuracyRow = {
   position: string;
-  n: number;
-  mae: number | null;
-  bias: number | null;
+  ourN: number;
+  ourMae: number | null;
+  ourBias: number | null;
+  lsN: number;
+  lsMae: number | null;
+  lsBias: number | null;
 };
 
 export async function getPositionAccuracy(sport: Sport = "nba"): Promise<PositionAccuracyRow[]> {
@@ -645,16 +655,26 @@ export async function getPositionAccuracy(sport: Sport = "nba"): Promise<Positio
   const result = await db.execute<PositionAccuracyRow>(sql`
     SELECT
       ${posCase} AS "position",
-      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "n",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "ourN",
       AVG(ABS(dp.our_proj - dp.actual_fpts))
-        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "mae",
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourMae",
       AVG(dp.our_proj - dp.actual_fpts)
-        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "bias"
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourBias",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL)::int AS "lsN",
+      AVG(ABS(dp.linestar_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsMae",
+      AVG(dp.linestar_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsBias"
     FROM dk_players dp
     JOIN dk_slates ds ON ds.id = dp.slate_id
     WHERE ds.sport = ${sport}
     GROUP BY 1
-    ORDER BY mae DESC NULLS LAST
+    ORDER BY COALESCE(
+      AVG(ABS(dp.our_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL),
+      AVG(ABS(dp.linestar_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL)
+    ) DESC NULLS LAST
   `);
   return result.rows;
 }
@@ -662,9 +682,12 @@ export async function getPositionAccuracy(sport: Sport = "nba"): Promise<Positio
 export type SalaryTierAccuracyRow = {
   salaryTier: string;
   tierMin: number | null;
-  n: number;
-  mae: number | null;
-  bias: number | null;
+  ourN: number;
+  ourMae: number | null;
+  ourBias: number | null;
+  lsN: number;
+  lsMae: number | null;
+  lsBias: number | null;
 };
 
 export async function getSalaryTierAccuracy(sport: Sport = "nba"): Promise<SalaryTierAccuracyRow[]> {
@@ -679,11 +702,16 @@ export async function getSalaryTierAccuracy(sport: Sport = "nba"): Promise<Salar
         ELSE '$9k+'
       END AS "salaryTier",
       MIN(dp.salary) AS "tierMin",
-      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "n",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "ourN",
       AVG(ABS(dp.our_proj - dp.actual_fpts))
-        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "mae",
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourMae",
       AVG(dp.our_proj - dp.actual_fpts)
-        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "bias"
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourBias",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL)::int AS "lsN",
+      AVG(ABS(dp.linestar_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsMae",
+      AVG(dp.linestar_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsBias"
     FROM dk_players dp
     JOIN dk_slates ds ON ds.id = dp.slate_id
     WHERE ds.sport = ${sport}
