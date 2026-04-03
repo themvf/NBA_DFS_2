@@ -91,8 +91,8 @@ export default function AnalyticsClient({
         </p>
       </div>
 
-      {/* Save Historical Slate — NBA only (uses LineStar NBA data) */}
-      {sport === "nba" && <div className="rounded-lg border bg-card p-4 space-y-3">
+      {/* Save Historical Slate */}
+      <div className="rounded-lg border bg-card p-4 space-y-3">
         <div>
           <h2 className="text-sm font-semibold">Save Historical Slate</h2>
           <p className="text-xs text-gray-400 mt-0.5">
@@ -159,7 +159,9 @@ export default function AnalyticsClient({
           value={historicalText}
           onChange={(e) => setHistoricalText(e.target.value)}
           rows={5}
-          placeholder={"Pos\tTeam\tPlayer\tSalary\tprojOwn%\tactualOwn%\tDiff\tProj\tScored\nC\t\tNikola Jokic\t$12500\t35.1%\t38.2%\t+3.1%\t54.2\t61.5"}
+          placeholder={sport === "mlb"
+            ? "OF\tPHI\tBryce Harper\t$5000\t18.2%\t22.1%\t+3.9%\t9.6\t14.0"
+            : "C\t\tNikola Jokic\t$12500\t35.1%\t38.2%\t+3.1%\t54.2\t61.5"}
           className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
         />
         <div className="flex items-center gap-3">
@@ -176,14 +178,11 @@ export default function AnalyticsClient({
             </span>
           )}
         </div>
-      </div>}
+      </div>
 
       {!hasData && (
         <div className="rounded-lg border bg-card p-6 text-center text-sm text-gray-400">
-          {sport === "nba"
-            ? <>No accuracy data yet — save a historical slate above, or upload a DK results CSV from the <a href="/dfs?sport=nba" className="underline">DFS page</a>.</>
-            : <>No {sport.toUpperCase()} accuracy data yet — upload a DK results CSV from the <a href={`/dfs?sport=${sport}`} className="underline">DFS page</a>.</>
-          }
+          <>No {sport.toUpperCase()} accuracy data yet — save a historical slate above, or upload a DK results CSV from the <a href={`/dfs?sport=${sport}`} className="underline">DFS page</a>.</>
         </div>
       )}
 
