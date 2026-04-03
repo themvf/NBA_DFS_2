@@ -3110,23 +3110,50 @@ export async function saveHistoricalSlate(
   }
 
   // ── Mode 2: no slate → create dk_slate + dk_players with synthetic IDs ─────
-  const [newSlate] = await db
-    .insert(dkSlates)
-    .values({
-      slateDate: date,
-      gameCount: 0,
-      sport,
-      contestType:   effectiveType,
-      contestFormat: effectiveFormat,
-      ...(fieldSize != null && { fieldSize }),
-    })
-    .onConflictDoUpdate({
-      target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat, dkSlates.sport],
-      set: { ...(fieldSize != null && { fieldSize }) },
-    })
-    .returning({ id: dkSlates.id });
+  const slateValues = {
+    slateDate: date,
+    gameCount: 0,
+    sport,
+    contestType: effectiveType,
+    contestFormat: effectiveFormat,
+    ...(fieldSize != null && { fieldSize }),
+  };
 
-  const slateId = newSlate.id;
+  const insertedSlateRows = fieldSize != null
+    ? await db
+      .insert(dkSlates)
+      .values(slateValues)
+      .onConflictDoUpdate({
+        target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat, dkSlates.sport],
+        set: { fieldSize },
+      })
+      .returning({ id: dkSlates.id })
+    : await db
+      .insert(dkSlates)
+      .values(slateValues)
+      .onConflictDoNothing({
+        target: [dkSlates.slateDate, dkSlates.contestType, dkSlates.contestFormat, dkSlates.sport],
+      })
+      .returning({ id: dkSlates.id });
+
+  const slateId = insertedSlateRows[0]?.id ?? (
+    await db
+      .select({ id: dkSlates.id })
+      .from(dkSlates)
+      .where(
+        and(
+          eq(dkSlates.slateDate, date),
+          eq(dkSlates.contestType, effectiveType),
+          eq(dkSlates.contestFormat, effectiveFormat),
+          eq(dkSlates.sport, sport),
+        )
+      )
+      .limit(1)
+  )[0]?.id;
+
+  if (!slateId) {
+    throw new Error(`Failed to create or resolve historical ${sport.toUpperCase()} slate for ${date}`);
+  }
   let created = 0;
 
   for (const [key, entry] of parsed) {
