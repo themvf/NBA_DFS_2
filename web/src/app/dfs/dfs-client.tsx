@@ -414,6 +414,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [maxExposure, setMaxExposure] = useState(0.6);
   const [mlbBringBackThreshold, setMlbBringBackThreshold] = useState(3);
   const [pendingLineupPolicy, setPendingLineupPolicy] = useState<MlbPendingLineupPolicy>("downgrade");
+  const [hideOutInactivePlayers, setHideOutInactivePlayers] = useState(false);
   const [bringBackEnabled, setBringBackEnabled] = useState(false);
   const [bringBackSize, setBringBackSize] = useState(1);
   const [minSalaryFilter, setMinSalaryFilter] = useState("");
@@ -718,8 +719,20 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     return { confirmedIn, pending, confirmedOut, unavailable };
   }, [filteredPlayers, sport]);
 
+  const unavailablePlayerCount = useMemo(() => {
+    if (sport === "mlb") return mlbLineupSummary.unavailable;
+    return filteredPlayers.filter((player) => player.isOut).length;
+  }, [filteredPlayers, mlbLineupSummary.unavailable, sport]);
+
+  const visiblePlayers = useMemo(() => {
+    if (!hideOutInactivePlayers) return filteredPlayers;
+    return filteredPlayers.filter((player) =>
+      sport === "mlb" ? !isMlbRowUnavailable(player) : !player.isOut,
+    );
+  }, [filteredPlayers, hideOutInactivePlayers, sport]);
+
   const sortedPlayers = useMemo(() => {
-    return [...filteredPlayers].sort((a, b) => {
+    return [...visiblePlayers].sort((a, b) => {
       let av: number, bv: number;
       switch (sortCol) {
         case "salary":      av = a.salary;          bv = b.salary;          break;
@@ -737,7 +750,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       }
       return sortDir === "desc" ? bv - av : av - bv;
     });
-  }, [filteredPlayers, sortCol, sortDir]);
+  }, [visiblePlayers, sortCol, sortDir]);
 
   const filteredTeams = useMemo(() => {
     if (sport !== "nba") return [];
@@ -1991,7 +2004,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       {/* Player Pool Table */}
       {filteredPlayers.length > 0 && (
         <div className="rounded-lg border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b">
+          <div className="flex items-start justify-between gap-3 px-4 py-3 border-b">
+            <div>
             <h2 className="text-sm font-semibold">
               Player Pool — {filteredPlayers.length} players
               {(sport === "mlb" ? mlbLineupSummary.unavailable : filteredPlayers.filter((p) => p.isOut).length) > 0 && (
@@ -2013,6 +2027,19 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                 </span>
               </div>
             )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setHideOutInactivePlayers((current) => !current)}
+              disabled={unavailablePlayerCount === 0}
+              className={`rounded border px-3 py-1.5 text-xs font-medium ${
+                hideOutInactivePlayers
+                  ? "border-blue-300 bg-blue-50 text-blue-700"
+                  : "border-gray-300 text-gray-700 hover:bg-gray-50"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {hideOutInactivePlayers ? "Show Out/Inactive" : "Hide Out/Inactive"}
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -2049,6 +2076,13 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
+                {sortedPlayers.length === 0 && (
+                  <tr>
+                    <td colSpan={sport === "mlb" ? 15 : 16} className="px-3 py-6 text-center text-sm text-gray-500">
+                      No active players are visible with the current filter.
+                    </td>
+                  </tr>
+                )}
                 {sortedPlayers.slice(0, 200).map((p) => {
                   const blendProj = p.blendProj ?? p.ourProj;
                   const delta = blendProj != null && p.linestarProj != null
