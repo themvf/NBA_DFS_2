@@ -348,12 +348,12 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
         INSERT INTO dk_players (
             slate_id, dk_player_id, name, team_abbrev, team_id, mlb_team_id, matchup_id,
             eligible_positions, salary, game_info, avg_fpts_dk,
-            linestar_proj, proj_own_pct, our_proj, our_leverage,
+            linestar_proj, proj_own_pct, our_proj, our_own_pct, our_leverage,
             proj_floor, proj_ceiling, boom_rate,
             dk_in_starting_lineup, dk_starting_lineup_order, dk_team_lineup_confirmed,
             is_out
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (slate_id, dk_player_id) DO UPDATE SET
             name = EXCLUDED.name,
             team_abbrev = EXCLUDED.team_abbrev,
@@ -367,6 +367,7 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             linestar_proj = EXCLUDED.linestar_proj,
             proj_own_pct = EXCLUDED.proj_own_pct,
             our_proj = EXCLUDED.our_proj,
+            our_own_pct = EXCLUDED.our_own_pct,
             our_leverage = EXCLUDED.our_leverage,
             proj_floor = EXCLUDED.proj_floor,
             proj_ceiling = EXCLUDED.proj_ceiling,
@@ -391,6 +392,7 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             player.get("linestar_proj"),
             player.get("proj_own_pct"),
             player.get("our_proj"),
+            player.get("our_own_pct"),
             player.get("our_leverage"),
             player.get("proj_floor"),
             player.get("proj_ceiling"),

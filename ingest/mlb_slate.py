@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import re
 from datetime import datetime
@@ -44,7 +45,6 @@ from ingest.dk_slate import (
     parse_linestar_csv,
 )
 from model.dfs_projections import (
-    compute_baseline_ownership,
     compute_leverage,
     compute_monte_carlo,
 )
@@ -68,6 +68,9 @@ MLB_DK_ABBREV_OVERRIDES: dict[str, str] = {
 _SP_BOOM_THRESHOLD  = 40.0   # starter:  40+ FPTS is tournament-winning
 _RP_BOOM_THRESHOLD  = 15.0   # reliever: rarely exceeds this range
 _BAT_BOOM_THRESHOLD = 25.0   # batter:   25+ FPTS in one game
+_MLB_PITCHER_OWNERSHIP_BUDGET = 200.0
+_MLB_HITTER_OWNERSHIP_BUDGET = 800.0
+_MLB_PITCHER_SOFTMAX_K = 2.0
 
 
 # ── Team + player resolution ─────────────────────────────────────────────────
@@ -131,6 +134,158 @@ def _infer_team_lineup_confirmed(dk_players: list[dict]) -> dict[str, bool]:
         )
         confirmed_by_team[team_abbrev] = ordered_hitters > 0 or explicit_flags >= 5
     return confirmed_by_team
+
+
+def _sanitize_projection(value) -> float | None:
+    finite = _safe_float(value)
+    if finite is None:
+        return None
+    return max(0.0, finite)
+
+
+def _sanitize_ownership_pct(value) -> float | None:
+    finite = _safe_float(value)
+    if finite is None:
+        return None
+    return max(0.0, min(100.0, finite))
+
+
+def _sanitize_leverage(value) -> float | None:
+    return _safe_float(value)
+
+
+def _normalize_ownership_scores(scores: list[tuple[int, float]], budget: float) -> dict[int, float]:
+    valid = [(idx, score) for idx, score in scores if math.isfinite(score) and score > 0]
+    total = sum(score for _, score in valid)
+    if not math.isfinite(total) or total <= 0:
+        return {}
+    result: dict[int, float] = {}
+    for idx, score in valid:
+        own_pct = round((score / total) * budget, 1)
+        sanitized = _sanitize_ownership_pct(own_pct)
+        if sanitized is not None:
+            result[idx] = sanitized
+    return result
+
+
+def _get_mlb_proxy_projection(player: dict) -> float | None:
+    our_proj = player.get("our_proj")
+    linestar_proj = player.get("linestar_proj")
+    return _sanitize_projection(our_proj if our_proj is not None else linestar_proj)
+
+
+def _get_mlb_reference_projection(player: dict) -> float | None:
+    avg_fpts = player.get("avg_fpts_dk")
+    if avg_fpts is not None:
+        return _sanitize_projection(avg_fpts)
+    our_proj = player.get("our_proj")
+    if our_proj is not None:
+        return _sanitize_projection(our_proj)
+    return _sanitize_projection(player.get("linestar_proj"))
+
+
+def _compute_mlb_baseline_ownership_score(ref_proj: float, pool_avg: float) -> float:
+    return max(1.0, min(50.0, (ref_proj / pool_avg) * 15.0))
+
+
+def _apply_mlb_ownership_models(players: list[dict]) -> int:
+    indexed = list(enumerate(players))
+    active_pitchers = [
+        (idx, player)
+        for idx, player in indexed
+        if not player.get("is_out") and _is_pitcher(player.get("eligible_positions", "")) and (player.get("salary") or 0) > 0
+    ]
+    active_hitters = [
+        (idx, player)
+        for idx, player in indexed
+        if not player.get("is_out") and not _is_pitcher(player.get("eligible_positions", "")) and (player.get("salary") or 0) > 0
+    ]
+
+    hitter_fallback_refs = [
+        ref
+        for _, player in active_hitters
+        if _sanitize_ownership_pct(player.get("proj_own_pct")) is None
+        for ref in [_get_mlb_reference_projection(player)]
+        if ref is not None and ref > 0
+    ]
+    hitter_pool_avg = (
+        sum(hitter_fallback_refs) / len(hitter_fallback_refs)
+        if hitter_fallback_refs else 0.0
+    )
+
+    pitcher_field_scores: list[tuple[int, float]] = []
+    for idx, player in active_pitchers:
+        proxy_proj = _get_mlb_proxy_projection(player)
+        ls_own = _sanitize_ownership_pct(player.get("proj_own_pct")) or 0.0
+        if proxy_proj is not None and proxy_proj > 0:
+            value_score = proxy_proj / (player["salary"] / 1000.0)
+            score = math.exp(value_score * _MLB_PITCHER_SOFTMAX_K) * (1.0 + ls_own / 100.0)
+            if math.isfinite(score) and score > 0:
+                pitcher_field_scores.append((idx, score))
+        elif ls_own > 0:
+            pitcher_field_scores.append((idx, ls_own))
+
+    hitter_field_scores: list[tuple[int, float]] = []
+    for idx, player in active_hitters:
+        ls_own = _sanitize_ownership_pct(player.get("proj_own_pct"))
+        if ls_own is not None and ls_own > 0:
+            hitter_field_scores.append((idx, ls_own))
+            continue
+        ref_proj = _get_mlb_reference_projection(player)
+        if ref_proj is None or ref_proj <= 0 or hitter_pool_avg <= 0:
+            continue
+        hitter_field_scores.append((idx, _compute_mlb_baseline_ownership_score(ref_proj, hitter_pool_avg)))
+
+    our_pitcher_scores: list[tuple[int, float]] = []
+    for idx, player in active_pitchers:
+        proxy_proj = _get_mlb_proxy_projection(player)
+        if proxy_proj is None or proxy_proj <= 0:
+            continue
+        score = proxy_proj / math.sqrt(player["salary"] / 1000.0)
+        if math.isfinite(score) and score > 0:
+            our_pitcher_scores.append((idx, score))
+
+    our_hitter_scores: list[tuple[int, float]] = []
+    for idx, player in active_hitters:
+        proxy_proj = _get_mlb_proxy_projection(player)
+        if proxy_proj is None or proxy_proj <= 0:
+            continue
+        score = proxy_proj / math.sqrt(player["salary"] / 1000.0)
+        if math.isfinite(score) and score > 0:
+            our_hitter_scores.append((idx, score))
+
+    field_pitcher_map = _normalize_ownership_scores(pitcher_field_scores, _MLB_PITCHER_OWNERSHIP_BUDGET)
+    field_hitter_map = _normalize_ownership_scores(hitter_field_scores, _MLB_HITTER_OWNERSHIP_BUDGET)
+    our_pitcher_map = _normalize_ownership_scores(our_pitcher_scores, _MLB_PITCHER_OWNERSHIP_BUDGET)
+    our_hitter_map = _normalize_ownership_scores(our_hitter_scores, _MLB_HITTER_OWNERSHIP_BUDGET)
+
+    baseline_applied = 0
+    for idx, player in indexed:
+        if player.get("is_out"):
+            player["proj_own_pct"] = 0.0
+            player["our_own_pct"] = 0.0
+            player["our_leverage"] = None
+            continue
+
+        pitcher_flag = _is_pitcher(player.get("eligible_positions", ""))
+        proj_own_pct = field_pitcher_map.get(idx, 0.0) if pitcher_flag else field_hitter_map.get(idx, 0.0)
+        our_own_pct = our_pitcher_map.get(idx, 0.0) if pitcher_flag else our_hitter_map.get(idx, 0.0)
+        if not pitcher_flag and _sanitize_ownership_pct(player.get("proj_own_pct")) is None and proj_own_pct > 0:
+            baseline_applied += 1
+
+        player["proj_own_pct"] = _sanitize_ownership_pct(proj_own_pct)
+        player["our_own_pct"] = _sanitize_ownership_pct(our_own_pct)
+
+        proj_for_leverage = _get_mlb_proxy_projection(player)
+        if proj_for_leverage is not None and proj_for_leverage > 0 and player.get("proj_own_pct") is not None:
+            field_proj = _sanitize_projection(player.get("avg_fpts_dk") or player.get("linestar_proj"))
+            player["our_leverage"] = _sanitize_leverage(
+                compute_leverage(proj_for_leverage, player["proj_own_pct"], field_proj=field_proj)
+            )
+        else:
+            player["our_leverage"] = None
+
+    return baseline_applied
 
 
 _MLB_MAX_CURRENT_SEASON_WEIGHT = 0.90
@@ -810,49 +965,12 @@ def build_player_pool_mlb(
         result["proj_floor"]   = proj_floor
         result["proj_ceiling"] = proj_ceiling
         result["boom_rate"]    = boom_rate
-
-        # Leverage
-        is_out = result.get("is_out", False)
-        proj_for_leverage = 0 if is_out else (our_proj or result.get("linestar_proj"))
-        our_leverage = None
-        if proj_for_leverage and result.get("proj_own_pct") is not None:
-            field_proj = p.get("avg_fpts_dk") or result.get("linestar_proj")
-            our_leverage = compute_leverage(
-                proj_for_leverage,
-                result["proj_own_pct"],
-                field_proj=field_proj,
-            )
-        result["our_leverage"] = our_leverage
+        result["our_own_pct"] = None
+        result["our_leverage"] = None
 
         enriched.append(result)
 
-    # Baseline ownership for players missing LineStar data
-    ref_projs = [
-        v
-        for p in enriched
-        if p.get("proj_own_pct") is None
-        for v in [(p.get("avg_fpts_dk") or p.get("our_proj") or 0)]
-        if v > 0
-    ]
-    pool_avg = sum(ref_projs) / len(ref_projs) if ref_projs else 0.0
-
-    baseline_applied = 0
-    for p in enriched:
-        if p.get("proj_own_pct") is not None:
-            continue
-        ref = p.get("avg_fpts_dk") or p.get("our_proj") or 0
-        if not ref or pool_avg <= 0:
-            continue
-        p["proj_own_pct"] = compute_baseline_ownership(ref, pool_avg)
-        proj_for_lev = 0 if p.get("is_out") else (p.get("our_proj") or p.get("linestar_proj"))
-        if proj_for_lev:
-            field_proj = p.get("avg_fpts_dk") or p.get("linestar_proj")
-            p["our_leverage"] = compute_leverage(
-                proj_for_lev,
-                p["proj_own_pct"],
-                field_proj=field_proj,
-            )
-        baseline_applied += 1
+    baseline_applied = _apply_mlb_ownership_models(enriched)
 
     n = len(dk_players)
     print(f"  {n} DK MLB players processed")
@@ -964,6 +1082,7 @@ def run(
             "linestar_proj":      p.get("linestar_proj"),
             "proj_own_pct":       p.get("proj_own_pct"),
             "our_proj":           p.get("our_proj"),
+            "our_own_pct":        p.get("our_own_pct"),
             "our_leverage":       p.get("our_leverage"),
             "proj_floor":         p.get("proj_floor"),
             "proj_ceiling":       p.get("proj_ceiling"),

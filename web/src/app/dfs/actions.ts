@@ -970,6 +970,134 @@ function computePoolOwnership(
 
 // ── NBA Stats API (stats.nba.com) backfill ─────────────────────
 
+const MLB_PITCHER_OWNERSHIP_BUDGET = 200;
+const MLB_HITTER_OWNERSHIP_BUDGET = 800;
+const MLB_PITCHER_SOFTMAX_K = 2.0;
+
+type MlbOwnershipPlayerLike = {
+  eligiblePositions: string;
+  salary: number;
+  isOut: boolean | null;
+  ourProj: number | null;
+  linestarProj?: number | null;
+  projOwnPct?: number | null;
+  avgFptsDk?: number | null;
+  ourOwnPct?: number | null;
+  ourLeverage?: number | null;
+};
+
+function normalizeOwnershipScores(
+  scores: Array<{ idx: number; score: number }>,
+  budget: number,
+): Map<number, number> {
+  const valid = scores.filter(({ score }) => Number.isFinite(score) && score > 0);
+  const total = valid.reduce((sum, entry) => sum + entry.score, 0);
+  if (!Number.isFinite(total) || total <= 0) return new Map();
+
+  const result = new Map<number, number>();
+  for (const { idx, score } of valid) {
+    const ownPct = Math.round((score / total) * budget * 10) / 10;
+    const sanitized = sanitizeOwnershipPct(ownPct);
+    if (sanitized != null) result.set(idx, sanitized);
+  }
+  return result;
+}
+
+function getMlbProxyProjection(player: Pick<MlbOwnershipPlayerLike, "ourProj" | "linestarProj">): number | null {
+  return sanitizeProjection(player.ourProj ?? player.linestarProj ?? null);
+}
+
+function getMlbReferenceProjection(player: Pick<MlbOwnershipPlayerLike, "avgFptsDk" | "ourProj" | "linestarProj">): number | null {
+  return sanitizeProjection(player.avgFptsDk ?? player.ourProj ?? player.linestarProj ?? null);
+}
+
+function computeMlbBaselineOwnershipScore(refProj: number, poolAvg: number): number {
+  return Math.max(1, Math.min(50, (refProj / poolAvg) * 15));
+}
+
+function applyMlbOwnershipModels<T extends MlbOwnershipPlayerLike>(players: T[]): void {
+  const activePitchers = players
+    .map((player, idx) => ({ player, idx }))
+    .filter(({ player }) => !player.isOut && isPitcherPos(player.eligiblePositions) && player.salary > 0);
+  const activeHitters = players
+    .map((player, idx) => ({ player, idx }))
+    .filter(({ player }) => !player.isOut && !isPitcherPos(player.eligiblePositions) && player.salary > 0);
+
+  const hitterFallbackRefs = activeHitters
+    .filter(({ player }) => sanitizeOwnershipPct(player.projOwnPct ?? null) == null)
+    .map(({ player }) => getMlbReferenceProjection(player) ?? 0)
+    .filter((value) => value > 0);
+  const hitterPoolAvg = hitterFallbackRefs.length > 0
+    ? hitterFallbackRefs.reduce((sum, value) => sum + value, 0) / hitterFallbackRefs.length
+    : 0;
+
+  const pitcherFieldScores = activePitchers.flatMap(({ player, idx }) => {
+    const proxyProj = getMlbProxyProjection(player);
+    const lsOwn = sanitizeOwnershipPct(player.projOwnPct ?? null) ?? 0;
+    if (proxyProj != null && proxyProj > 0) {
+      const valueScore = proxyProj / (player.salary / 1000);
+      const score = Math.exp(valueScore * MLB_PITCHER_SOFTMAX_K) * (1 + lsOwn / 100);
+      return Number.isFinite(score) && score > 0 ? [{ idx, score }] : [];
+    }
+    return lsOwn > 0 ? [{ idx, score: lsOwn }] : [];
+  });
+
+  const hitterFieldScores = activeHitters.flatMap(({ player, idx }) => {
+    const lsOwn = sanitizeOwnershipPct(player.projOwnPct ?? null);
+    if (lsOwn != null && lsOwn > 0) return [{ idx, score: lsOwn }];
+    const refProj = getMlbReferenceProjection(player);
+    if (refProj == null || refProj <= 0 || hitterPoolAvg <= 0) return [];
+    return [{ idx, score: computeMlbBaselineOwnershipScore(refProj, hitterPoolAvg) }];
+  });
+
+  const ourPitcherScores = activePitchers.flatMap(({ player, idx }) => {
+    const proxyProj = getMlbProxyProjection(player);
+    if (proxyProj == null || proxyProj <= 0) return [];
+    const score = proxyProj / Math.sqrt(player.salary / 1000);
+    return Number.isFinite(score) && score > 0 ? [{ idx, score }] : [];
+  });
+
+  const ourHitterScores = activeHitters.flatMap(({ player, idx }) => {
+    const proxyProj = getMlbProxyProjection(player);
+    if (proxyProj == null || proxyProj <= 0) return [];
+    const score = proxyProj / Math.sqrt(player.salary / 1000);
+    return Number.isFinite(score) && score > 0 ? [{ idx, score }] : [];
+  });
+
+  const fieldPitcherMap = normalizeOwnershipScores(pitcherFieldScores, MLB_PITCHER_OWNERSHIP_BUDGET);
+  const fieldHitterMap = normalizeOwnershipScores(hitterFieldScores, MLB_HITTER_OWNERSHIP_BUDGET);
+  const ourPitcherMap = normalizeOwnershipScores(ourPitcherScores, MLB_PITCHER_OWNERSHIP_BUDGET);
+  const ourHitterMap = normalizeOwnershipScores(ourHitterScores, MLB_HITTER_OWNERSHIP_BUDGET);
+
+  for (let i = 0; i < players.length; i++) {
+    const player = players[i];
+    if (player.isOut) {
+      player.projOwnPct = 0;
+      player.ourOwnPct = 0;
+      player.ourLeverage = null;
+      continue;
+    }
+
+    const projOwnPct = isPitcherPos(player.eligiblePositions)
+      ? fieldPitcherMap.get(i) ?? 0
+      : fieldHitterMap.get(i) ?? 0;
+    const ourOwnPct = isPitcherPos(player.eligiblePositions)
+      ? ourPitcherMap.get(i) ?? 0
+      : ourHitterMap.get(i) ?? 0;
+
+    player.projOwnPct = sanitizeOwnershipPct(projOwnPct);
+    player.ourOwnPct = sanitizeOwnershipPct(ourOwnPct);
+
+    const projForLev = getMlbProxyProjection(player);
+    if (projForLev != null && projForLev > 0 && player.projOwnPct != null) {
+      const fieldProj = sanitizeProjection(player.avgFptsDk ?? player.linestarProj ?? null);
+      player.ourLeverage = sanitizeLeverage(computeLeverage(projForLev, player.projOwnPct, fieldProj));
+    } else {
+      player.ourLeverage = null;
+    }
+  }
+}
+
 const NBA_STATS_HEADERS: Record<string, string> = {
   Referer: "https://stats.nba.com/",
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -2842,22 +2970,28 @@ async function _applyLinestarMap(
   const slateId = slateRows[0].id;
 
   const pool = await db.execute<{
-    id: number; name: string; salary: number; teamId: number | null;
-    avgFptsDk: number | null; ourProj: number | null; isOut: boolean | null;
+    id: number; name: string; salary: number; teamId: number | null; mlbTeamId: number | null;
+    eligiblePositions: string;
+    avgFptsDk: number | null; linestarProj: number | null; projOwnPct: number | null;
+    ourProj: number | null; isOut: boolean | null;
   }>(sql`
-    SELECT id, name, salary, team_id AS "teamId",
-           avg_fpts_dk AS "avgFptsDk", our_proj AS "ourProj", is_out AS "isOut"
+    SELECT id, name, salary, team_id AS "teamId", mlb_team_id AS "mlbTeamId",
+           eligible_positions AS "eligiblePositions",
+           avg_fpts_dk AS "avgFptsDk", linestar_proj AS "linestarProj", proj_own_pct AS "projOwnPct",
+           our_proj AS "ourProj", is_out AS "isOut"
     FROM dk_players WHERE slate_id = ${slateId}
   `);
 
   // Load player stats for ceiling bonus (spg/bpg)
-  const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
-  const playersByTeam = new Map<number, typeof playerStatRows>();
-  for (const ps of playerStatRows) {
-    if (ps.teamId == null) continue;
-    const arr = playersByTeam.get(ps.teamId) ?? [];
-    arr.push(ps);
-    playersByTeam.set(ps.teamId, arr);
+  const playersByTeam = new Map<number, Array<{ name: string; spg: number | null; bpg: number | null }>>();
+  if (sport === "nba") {
+    const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+    for (const ps of playerStatRows) {
+      if (ps.teamId == null) continue;
+      const arr = playersByTeam.get(ps.teamId) ?? [];
+      arr.push(ps);
+      playersByTeam.set(ps.teamId, arr);
+    }
   }
 
   let matched = 0;
@@ -2869,7 +3003,7 @@ async function _applyLinestarMap(
     const projOwnPct = sanitizeOwnershipPct(ls.projOwnPct);
     const ourProj = sanitizeProjection(p.ourProj);
     let ourLeverage: number | null = null;
-    if (ourProj != null && !p.isOut && projOwnPct != null) {
+    if (sport === "nba" && ourProj != null && !p.isOut && projOwnPct != null) {
       const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
       // Look up spg/bpg for ceiling bonus
       let spg = 0, bpg = 0;
@@ -2890,19 +3024,67 @@ async function _applyLinestarMap(
       .where(eq(dkPlayers.id, p.id));
   }
 
-  // Recompute our ownership model after LineStar update
-  const ownMap = computePoolOwnership(
-    pool.rows.map((p) => ({
-      ourProj: sanitizeProjection(p.ourProj),
-      salary: p.salary,
-      isOut: p.isOut ?? false,
-    })),
-  );
-  for (const [idx, ownPct] of ownMap) {
-    const p = pool.rows[idx];
-    await db.update(dkPlayers)
-      .set({ ourOwnPct: sanitizeOwnershipPct(ownPct) })
-      .where(eq(dkPlayers.id, p.id));
+  if (sport === "mlb") {
+    const refreshed = await db.execute<{
+      id: number;
+      eligiblePositions: string;
+      salary: number;
+      isOut: boolean | null;
+      avgFptsDk: number | null;
+      linestarProj: number | null;
+      projOwnPct: number | null;
+      ourProj: number | null;
+      ourOwnPct: number | null;
+      ourLeverage: number | null;
+    }>(sql`
+      SELECT id,
+             eligible_positions AS "eligiblePositions",
+             salary,
+             is_out AS "isOut",
+             avg_fpts_dk AS "avgFptsDk",
+             linestar_proj AS "linestarProj",
+             proj_own_pct AS "projOwnPct",
+             our_proj AS "ourProj",
+             our_own_pct AS "ourOwnPct",
+             our_leverage AS "ourLeverage"
+      FROM dk_players
+      WHERE slate_id = ${slateId}
+    `);
+    const enriched = refreshed.rows.map((player) => ({
+      ...player,
+      isOut: player.isOut ?? false,
+      avgFptsDk: sanitizeProjection(player.avgFptsDk),
+      linestarProj: sanitizeProjection(player.linestarProj),
+      projOwnPct: sanitizeOwnershipPct(player.projOwnPct),
+      ourProj: sanitizeProjection(player.ourProj),
+      ourOwnPct: sanitizeOwnershipPct(player.ourOwnPct),
+      ourLeverage: sanitizeLeverage(player.ourLeverage),
+    }));
+    applyMlbOwnershipModels(enriched);
+    for (const player of enriched) {
+      await db.update(dkPlayers)
+        .set({
+          projOwnPct: player.projOwnPct,
+          ourOwnPct: player.ourOwnPct,
+          ourLeverage: player.ourLeverage,
+        })
+        .where(eq(dkPlayers.id, player.id));
+    }
+  } else {
+    // Recompute our ownership model after LineStar update
+    const ownMap = computePoolOwnership(
+      pool.rows.map((p) => ({
+        ourProj: sanitizeProjection(p.ourProj),
+        salary: p.salary,
+        isOut: p.isOut ?? false,
+      })),
+    );
+    for (const [idx, ownPct] of ownMap) {
+      const p = pool.rows[idx];
+      await db.update(dkPlayers)
+        .set({ ourOwnPct: sanitizeOwnershipPct(ownPct) })
+        .where(eq(dkPlayers.id, p.id));
+    }
   }
 
   revalidatePath("/dfs");
@@ -4073,7 +4255,6 @@ async function enrichAndSaveMlb(
     const park   = matchup ? parkMap.get(matchup.homeTeamId ?? 0) ?? null : null;
 
     let ourProj: number | null  = null;
-    let ourLeverage: number | null = null;
     const pitcherFlag = isPitcherPos(p.eligiblePositions);
 
     if (pitcherFlag) {
@@ -4134,11 +4315,6 @@ async function enrichAndSaveMlb(
       || ["O", "OUT"].includes(p.dkStatus.toUpperCase())
       || !isLikelyActiveMlbPitcher(p);
     const isOut   = dkIsOut || confirmedBatterOut;
-    const projForLev = isOut ? 0 : (ourProj ?? linestarProj ?? 0);
-    if (projForLev > 0 && projOwnPct != null) {
-      const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
-      ourLeverage = sanitizeLeverage(computeLeverage(projForLev, projOwnPct, fieldProj));
-    }
 
     insertValues.push({
       slateId, dkPlayerId: p.dkId, name: p.name,
@@ -4149,32 +4325,11 @@ async function enrichAndSaveMlb(
       dkInStartingLineup: p.inStartingLineup,
       dkStartingLineupOrder,
       dkTeamLineupConfirmed,
-      ourProj, ourLeverage, ourOwnPct: null as number | null, isOut,
+      ourProj, ourLeverage: null as number | null, ourOwnPct: null as number | null, isOut,
     });
   }
 
-  // Baseline ownership for players without LineStar
-  const refProjs = insertValues.filter((p) => p.projOwnPct == null).map((p) => (p.avgFptsDk as number) ?? (p.ourProj as number) ?? 0).filter((v) => v > 0);
-  const poolAvg = refProjs.length > 0 ? refProjs.reduce((a, b) => a + b) / refProjs.length : 0;
-  if (poolAvg > 0) {
-    for (const p of insertValues) {
-      if (p.projOwnPct != null) continue;
-      const ref = (p.avgFptsDk as number) ?? (p.ourProj as number) ?? 0;
-      if (!ref) continue;
-      p.projOwnPct = sanitizeOwnershipPct(Math.round(Math.max(1, Math.min(50, (ref / poolAvg) * 15)) * 100) / 100);
-      if (p.ourProj && !p.isOut) {
-        const fieldProj = (p.avgFptsDk as number) ?? null;
-        p.ourLeverage = sanitizeLeverage(
-          computeLeverage(p.ourProj as number, (p.projOwnPct as number) ?? 0, fieldProj),
-        );
-      }
-    }
-  }
-
-  const ownMap = computePoolOwnership(insertValues as Array<{ ourProj: number | null; salary: number; isOut: boolean }>);
-  for (const [idx, ownPct] of ownMap) {
-    (insertValues[idx] as Record<string, unknown>).ourOwnPct = sanitizeOwnershipPct(ownPct);
-  }
+  applyMlbOwnershipModels(insertValues as Array<MlbOwnershipPlayerLike>);
 
   for (let i = 0; i < insertValues.length; i += 50) {
     const batch = insertValues.slice(i, i + 50);
