@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 import time
 from typing import Callable, TypeVar
 
@@ -40,6 +41,7 @@ SLEEP_SECONDS = 1.0
 _MAX_RETRIES = 3
 _RETRY_BASE = 10.0
 DEFAULT_SEASON_TYPE = "Regular Season"
+NBA_API_TIMEOUT_SECONDS = 90
 
 T = TypeVar("T")
 
@@ -189,7 +191,7 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
             season=season,
             per_mode_detailed="PerGame",
             measure_type_detailed_defense="Advanced",
-            timeout=60,
+            timeout=NBA_API_TIMEOUT_SECONDS,
         )
         return endpoint.get_data_frames()[0]
 
@@ -238,7 +240,7 @@ def fetch_player_game_logs(
             season_nullable=season,
             season_type_nullable=season_type,
             player_id_nullable=None,
-            timeout=60,
+            timeout=NBA_API_TIMEOUT_SECONDS,
         )
         return endpoint.get_data_frames()[0]
 
@@ -315,7 +317,7 @@ def fetch_team_game_logs(
             season_nullable=season,
             season_type_nullable=season_type,
             league_id_nullable="00",
-            timeout=60,
+            timeout=NBA_API_TIMEOUT_SECONDS,
         )
         return endpoint.get_data_frames()[0]
 
@@ -513,6 +515,61 @@ def fetch_player_rolling_stats(
     return updated
 
 
+def _run_refresh_stage(label: str, fn: Callable[[], int]) -> tuple[bool, int | None]:
+    try:
+        count = fn()
+        logger.info("%s completed (%s)", label, count)
+        return True, count
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("%s failed: %s", label, exc)
+        print(f"{label}: FAILED ({type(exc).__name__}: {exc})")
+        return False, None
+
+
+def run_refresh(db: DatabaseManager, season: str, season_type: str, n_games: int) -> int:
+    stages: list[tuple[str, bool, int | None]] = []
+
+    ok, count = _run_refresh_stage("team_stats", lambda: fetch_team_stats(db, season))
+    stages.append(("team_stats", ok, count))
+
+    ok, count = _run_refresh_stage(
+        "team_game_logs",
+        lambda: fetch_team_game_logs(db, season, season_type=season_type),
+    )
+    stages.append(("team_game_logs", ok, count))
+
+    ok, count = _run_refresh_stage(
+        "player_game_logs",
+        lambda: fetch_player_game_logs(db, season, season_type=season_type),
+    )
+    stages.append(("player_game_logs", ok, count))
+
+    ok, count = _run_refresh_stage(
+        "player_rolling_stats",
+        lambda: fetch_player_rolling_stats(db, season, season_type=season_type, n_games=n_games),
+    )
+    stages.append(("player_rolling_stats", ok, count))
+
+    succeeded = [name for name, ok, _ in stages if ok]
+    failed = [name for name, ok, _ in stages if not ok]
+    print(
+        "NBA refresh summary: "
+        + ", ".join(
+            f"{name}={'ok' if ok else 'failed'}{f' ({count})' if count is not None else ''}"
+            for name, ok, count in stages
+        )
+    )
+
+    usable_outputs = {"team_stats", "player_rolling_stats"}
+    if any(name in usable_outputs for name in succeeded):
+        if failed:
+            logger.warning("NBA refresh partially succeeded; failed stages: %s", ", ".join(failed))
+        return 0
+
+    logger.error("NBA refresh produced no usable outputs. Failed stages: %s", ", ".join(failed) or "all")
+    return 1
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Fetch NBA stats from stats.nba.com")
@@ -525,7 +582,4 @@ if __name__ == "__main__":
     db = DatabaseManager(config.database_url)
     season = args.season or config.nba_api.season
 
-    fetch_team_stats(db, season)
-    fetch_team_game_logs(db, season, season_type=args.season_type)
-    fetch_player_game_logs(db, season, season_type=args.season_type)
-    fetch_player_rolling_stats(db, season, season_type=args.season_type, n_games=args.games)
+    sys.exit(run_refresh(db, season, args.season_type, args.games))
