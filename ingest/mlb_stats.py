@@ -69,9 +69,11 @@ _FG_TEAM_MAP: dict[str, str] = {
     "TBR": "TB",
 }
 
-# Minimum sample filters to reduce noise from brief call-ups / bullpen arms
-_MIN_PA  = 30    # batters: ~10 PA/week × 3 weeks
-_MIN_IP  = 5.0   # pitchers: at least 1 start or ~5 relief appearances
+# Keep early-season rows so projection blending can shrink them instead of
+# dropping coverage entirely. The model will still lean on the prior season
+# until current-season samples earn weight.
+_MIN_PA  = 1
+_MIN_IP  = 1.0
 
 
 # ── Public fetch functions ────────────────────────────────────────────────────
@@ -373,7 +375,7 @@ def fetch_batter_splits(db: DatabaseManager, season: str) -> int:
     }
     _FG_PARAMS_BASE = {
         "pos": "all", "stats": "bat", "lg": "all",
-        "qual": "20", "type": "8",
+        "qual": "1", "type": "8",
         "season": str(year), "season1": str(year),
         "ind": "0", "team": "0", "rost": "0", "age": "0",
         "filter": "", "players": "0",

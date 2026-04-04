@@ -12,7 +12,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables } from "@/db/ensure-schema";
-import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors } from "@/db/schema";
+import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
@@ -397,7 +397,7 @@ function parseLinestarCsv(content: string): Map<string, LinestarEntry> {
 function normalizeName(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[.']/g, "")
+    .replace(/[.,']/g, "")
     .replace(/\b(jr|sr|ii|iii|iv)\b/g, "")
     .replace(/[-]/g, "")
     .replace(/\s+/g, " ")
@@ -411,7 +411,7 @@ function normalizeName(name: string): string {
 function canonicalizeName(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[.']/g, "")
+    .replace(/[.,']/g, "")
     .replace(/\b(jr|sr|ii|iii|iv)\b/g, "")
     .replace(/[-]/g, " ")
     .replace(/\s+/g, " ")
@@ -3236,6 +3236,31 @@ const MLB_ORDER_PA_FACTOR: Record<number, number> = {
 
 function mlbCap(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 
+const MLB_MAX_CURRENT_SEASON_WEIGHT = 0.9;
+const MLB_BATTER_PRIOR_SEASON_PIVOT = 80;
+const MLB_BATTER_TEAM_CHANGE_PIVOT = 40;
+const MLB_PITCHER_PRIOR_SEASON_PIVOT = 15;
+const MLB_PITCHER_TEAM_CHANGE_PIVOT = 8;
+const MLB_TEAM_PRIOR_SEASON_PIVOT = 20;
+const MLB_BATTER_TEAM_CHANGE_MIN_WEIGHT = 0.35;
+const MLB_PITCHER_TEAM_CHANGE_MIN_WEIGHT = 0.4;
+const MLB_CONTEXT_WEIGHT_BONUS = 0.05;
+const MLB_TEAM_CHANGE_CONTEXT_WEIGHT_BONUS = 0.15;
+
+type MlbSeasonContext = {
+  primarySeason: string;
+  priorSeason: string | null;
+};
+
+type MlbStatsSummary = {
+  season: string;
+  batters: number;
+  pitchers: number;
+  teams: number;
+  latestFetchedAt: Date | null;
+  ready: boolean;
+};
+
 function inferMlbSeason(targetDate?: string | null): string {
   if (targetDate) {
     const year = Number(targetDate.slice(0, 4));
@@ -3244,9 +3269,21 @@ function inferMlbSeason(targetDate?: string | null): string {
   return String(new Date().getUTCFullYear());
 }
 
-async function validateMlbStatsReadiness(
-  season: string,
-): Promise<{ ok: boolean; message?: string }> {
+function inferPriorMlbSeason(season: string): string | null {
+  const year = Number(season);
+  if (!Number.isFinite(year) || year <= 2000) return null;
+  return String(year - 1);
+}
+
+function inferMlbSeasonContext(targetDate?: string | null): MlbSeasonContext {
+  const primarySeason = inferMlbSeason(targetDate);
+  return {
+    primarySeason,
+    priorSeason: inferPriorMlbSeason(primarySeason),
+  };
+}
+
+async function loadMlbStatsSummary(season: string): Promise<MlbStatsSummary> {
   const [batterSummary] = await db
     .select({
       count: sql<number>`COUNT(*)`,
@@ -3269,41 +3306,419 @@ async function validateMlbStatsReadiness(
     .from(mlbTeamStatsTable)
     .where(eq(mlbTeamStatsTable.season, season));
 
-  const counts = {
-    batters: Number(batterSummary?.count ?? 0),
-    pitchers: Number(pitcherSummary?.count ?? 0),
-    teams: Number(teamSummary?.count ?? 0),
-  };
-  if (counts.batters === 0 || counts.pitchers === 0 || counts.teams === 0) {
-    return {
-      ok: false,
-      message: `MLB stats for season ${season} are missing or incomplete (batters=${counts.batters}, pitchers=${counts.pitchers}, teams=${counts.teams}). Run the refresh_mlb_stats workflow first.`,
-    };
-  }
-
   const latestFetchedAt = [batterSummary?.latest, pitcherSummary?.latest, teamSummary?.latest]
     .map((value) => (value instanceof Date ? value : value ? new Date(value) : null))
     .filter((value): value is Date => value instanceof Date && Number.isFinite(value.getTime()))
     .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
-  if (!latestFetchedAt) {
+  const batters = Number(batterSummary?.count ?? 0);
+  const pitchers = Number(pitcherSummary?.count ?? 0);
+  const teams = Number(teamSummary?.count ?? 0);
+  return {
+    season,
+    batters,
+    pitchers,
+    teams,
+    latestFetchedAt,
+    ready: batters > 0 && pitchers > 0 && teams > 0,
+  };
+}
+
+async function validateMlbStatsReadiness(
+  season: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const primary = await loadMlbStatsSummary(season);
+  const priorSeason = inferPriorMlbSeason(season);
+  const prior = priorSeason ? await loadMlbStatsSummary(priorSeason) : null;
+
+  if (!primary.ready && !(prior?.ready)) {
     return {
       ok: false,
-      message: `MLB stats freshness could not be determined for season ${season}. Run the refresh_mlb_stats workflow first.`,
+      message: `MLB stats are missing or incomplete for ${season}${priorSeason ? ` and ${priorSeason}` : ""}. Current counts: batters=${primary.batters}, pitchers=${primary.pitchers}, teams=${primary.teams}. Run the refresh_mlb_stats workflow first.`,
     };
   }
 
-  const staleMs = MLB_STATS_STALE_HOURS * 60 * 60 * 1000;
-  const ageMs = Date.now() - latestFetchedAt.getTime();
-  if (ageMs > staleMs) {
-    const ageHours = Math.round(ageMs / (60 * 60 * 1000));
-    return {
-      ok: false,
-      message: `MLB stats for season ${season} are stale (${ageHours}h old). Run the refresh_mlb_stats workflow before loading the slate.`,
-    };
+  if (primary.ready && primary.latestFetchedAt) {
+    const staleMs = MLB_STATS_STALE_HOURS * 60 * 60 * 1000;
+    const ageMs = Date.now() - primary.latestFetchedAt.getTime();
+    if (ageMs > staleMs && !(prior?.ready)) {
+      const ageHours = Math.round(ageMs / (60 * 60 * 1000));
+      return {
+        ok: false,
+        message: `MLB stats for season ${season} are stale (${ageHours}h old). Run the refresh_mlb_stats workflow before loading the slate.`,
+      };
+    }
   }
 
+  if (!primary.ready && prior?.ready) {
+    return {
+      ok: true,
+      message: `Season ${season} stats are sparse, so MLB projections will blend against ${priorSeason}.`,
+    };
+  }
   return { ok: true };
+}
+
+type MlbMatchMeta<Row extends { name: string; teamId: number | null }> = {
+  row: Row;
+  canonicalName: string;
+  normalizedName: string;
+  firstInitial: string;
+  lastToken: string;
+  sampleScore: number;
+};
+
+type MlbMatchedSeasonRow<Row extends { name: string; teamId: number | null }> = {
+  current: Row | null;
+  prior: Row | null;
+  matchType: "current_only" | "blended" | "prior_only" | "unmatched";
+  teamChanged: boolean;
+  currentWeight: number;
+  contextWeight: number;
+};
+
+type MlbCoverageCounter = {
+  currentOnly: number;
+  blended: number;
+  priorOnly: number;
+  unmatched: number;
+  teamChangeAccelerated: number;
+};
+
+function createMlbCoverageCounter(): MlbCoverageCounter {
+  return {
+    currentOnly: 0,
+    blended: 0,
+    priorOnly: 0,
+    unmatched: 0,
+    teamChangeAccelerated: 0,
+  };
+}
+
+function noteMlbCoverage(counter: MlbCoverageCounter, match: MlbMatchedSeasonRow<{ name: string; teamId: number | null }>) {
+  if (match.matchType === "current_only") counter.currentOnly += 1;
+  else if (match.matchType === "blended") counter.blended += 1;
+  else if (match.matchType === "prior_only") counter.priorOnly += 1;
+  else counter.unmatched += 1;
+  if (match.teamChanged && match.currentWeight > 0) counter.teamChangeAccelerated += 1;
+}
+
+function buildMlbMatchMeta<Row extends { name: string; teamId: number | null }>(
+  rows: Row[],
+  getSampleScore: (row: Row) => number,
+): Array<MlbMatchMeta<Row>> {
+  return rows.map((row) => {
+    const canonicalName = canonicalizeName(row.name);
+    const tokens = canonicalName.split(" ").filter(Boolean);
+    return {
+      row,
+      canonicalName,
+      normalizedName: normalizeName(row.name),
+      firstInitial: tokens[0]?.[0] ?? "",
+      lastToken: tokens[tokens.length - 1] ?? "",
+      sampleScore: getSampleScore(row),
+    };
+  });
+}
+
+function preferMlbMetaCandidate<Row extends { name: string; teamId: number | null }>(
+  best: MlbMatchMeta<Row> | null,
+  candidate: MlbMatchMeta<Row>,
+): MlbMatchMeta<Row> {
+  if (!best) return candidate;
+  if (candidate.sampleScore !== best.sampleScore) {
+    return candidate.sampleScore > best.sampleScore ? candidate : best;
+  }
+  return candidate.canonicalName.length < best.canonicalName.length ? candidate : best;
+}
+
+function findBestMlbStatRow<Row extends { name: string; teamId: number | null }>(
+  dkName: string,
+  dkTeamId: number | null,
+  rows: Array<MlbMatchMeta<Row>>,
+): Row | null {
+  if (rows.length === 0) return null;
+
+  const canonicalName = canonicalizeName(dkName);
+  const normalizedName = normalizeName(dkName);
+
+  const exactTeamCanonical = rows
+    .filter((row) => dkTeamId != null && row.row.teamId === dkTeamId && row.canonicalName === canonicalName)
+    .reduce<MlbMatchMeta<Row> | null>(preferMlbMetaCandidate, null);
+  if (exactTeamCanonical) return exactTeamCanonical.row;
+
+  const exactTeamNormalized = rows
+    .filter((row) => dkTeamId != null && row.row.teamId === dkTeamId && row.normalizedName === normalizedName)
+    .reduce<MlbMatchMeta<Row> | null>(preferMlbMetaCandidate, null);
+  if (exactTeamNormalized) return exactTeamNormalized.row;
+
+  const exactCanonical = rows
+    .filter((row) => row.canonicalName === canonicalName)
+    .reduce<MlbMatchMeta<Row> | null>(preferMlbMetaCandidate, null);
+  if (exactCanonical) return exactCanonical.row;
+
+  const exactNormalized = rows
+    .filter((row) => row.normalizedName === normalizedName)
+    .reduce<MlbMatchMeta<Row> | null>(preferMlbMetaCandidate, null);
+  if (exactNormalized) return exactNormalized.row;
+
+  const tokens = canonicalName.split(" ").filter(Boolean);
+  const firstInitial = tokens[0]?.[0] ?? "";
+  const lastToken = tokens[tokens.length - 1] ?? "";
+  if (!firstInitial || !lastToken) return null;
+
+  let best: MlbMatchMeta<Row> | null = null;
+  let bestDist = 4;
+  for (const candidate of rows) {
+    if (candidate.firstInitial !== firstInitial || candidate.lastToken !== lastToken) continue;
+    const dist = levenshtein(canonicalName, candidate.canonicalName);
+    if (dist > 3) continue;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = candidate;
+      continue;
+    }
+    if (dist === bestDist) {
+      if (dkTeamId != null) {
+        const bestTeamMatch = best?.row.teamId === dkTeamId;
+        const candidateTeamMatch = candidate.row.teamId === dkTeamId;
+        if (candidateTeamMatch !== bestTeamMatch) {
+          if (candidateTeamMatch) best = candidate;
+          continue;
+        }
+      }
+      best = preferMlbMetaCandidate(best, candidate);
+    }
+  }
+  return best?.row ?? null;
+}
+
+function mlbBlendNullableNumber(
+  currentValue: number | null | undefined,
+  priorValue: number | null | undefined,
+  currentWeight: number,
+): number | null {
+  const current = finiteOrNull(currentValue);
+  const prior = finiteOrNull(priorValue);
+  if (current == null && prior == null) return null;
+  if (current == null) return prior;
+  if (prior == null) return current;
+  return current * currentWeight + prior * (1 - currentWeight);
+}
+
+function mlbBlendNullableInteger(
+  currentValue: number | null | undefined,
+  priorValue: number | null | undefined,
+  currentWeight: number,
+): number | null {
+  const blended = mlbBlendNullableNumber(currentValue, priorValue, currentWeight);
+  return blended == null ? null : Math.round(blended);
+}
+
+function mlbPickPreferredScalar<T>(
+  currentValue: T | null | undefined,
+  priorValue: T | null | undefined,
+): T | null {
+  return (currentValue ?? priorValue ?? null) as T | null;
+}
+
+function getMlbBatterSample(row: MlbBatterStats | null): number {
+  if (!row) return 0;
+  return Math.max(0, (row.paPg ?? 0) * (row.games ?? 0));
+}
+
+function getMlbPitcherSample(row: MlbPitcherStats | null): number {
+  if (!row) return 0;
+  return Math.max(0, (row.ipPg ?? 0) * (row.games ?? 0));
+}
+
+function mlbCurrentSeasonWeight(
+  currentSample: number,
+  priorPivot: number,
+  teamChangePivot: number,
+  teamChanged: boolean,
+  teamChangeMinWeight: number,
+): number {
+  if (currentSample <= 0) return 0;
+  const pivot = teamChanged ? teamChangePivot : priorPivot;
+  let weight = currentSample / (currentSample + pivot);
+  if (teamChanged) weight = Math.max(weight, teamChangeMinWeight);
+  return mlbCap(weight, 0, MLB_MAX_CURRENT_SEASON_WEIGHT);
+}
+
+function mlbContextWeight(currentWeight: number, teamChanged: boolean): number {
+  if (currentWeight <= 0) return 0;
+  return mlbCap(
+    currentWeight + (teamChanged ? MLB_TEAM_CHANGE_CONTEXT_WEIGHT_BONUS : MLB_CONTEXT_WEIGHT_BONUS),
+    0,
+    0.95,
+  );
+}
+
+function matchMlbStatsAcrossSeasons<Row extends { name: string; teamId: number | null }>(
+  dkName: string,
+  dkTeamId: number | null,
+  currentRows: Array<MlbMatchMeta<Row>>,
+  priorRows: Array<MlbMatchMeta<Row>>,
+  getCurrentSample: (row: Row | null) => number,
+  priorPivot: number,
+  teamChangePivot: number,
+  teamChangeMinWeight: number,
+): MlbMatchedSeasonRow<Row> {
+  const current = findBestMlbStatRow(dkName, dkTeamId, currentRows);
+  const prior = findBestMlbStatRow(dkName, dkTeamId, priorRows);
+  const teamChanged = Boolean(
+    current
+    && prior
+    && current.teamId != null
+    && prior.teamId != null
+    && current.teamId !== prior.teamId,
+  );
+  const currentWeight = mlbCurrentSeasonWeight(
+    getCurrentSample(current),
+    priorPivot,
+    teamChangePivot,
+    teamChanged,
+    teamChangeMinWeight,
+  );
+  const contextWeight = mlbContextWeight(currentWeight, teamChanged);
+  return {
+    current,
+    prior,
+    matchType: current && prior ? "blended" : current ? "current_only" : prior ? "prior_only" : "unmatched",
+    teamChanged,
+    currentWeight,
+    contextWeight,
+  };
+}
+
+function blendMlbBatterStats(
+  match: MlbMatchedSeasonRow<MlbBatterStats>,
+  dkTeamId: number | null,
+): MlbBatterStats | null {
+  const current = match.current;
+  const prior = match.prior;
+  if (!current && !prior) return null;
+  const currentWeight = match.currentWeight;
+  const contextWeight = match.contextWeight;
+  return {
+    ...(current ?? prior!),
+    playerId: current?.playerId ?? prior!.playerId,
+    season: current?.season ?? prior!.season,
+    teamId: dkTeamId ?? current?.teamId ?? prior!.teamId ?? null,
+    name: current?.name ?? prior!.name,
+    battingOrder: mlbBlendNullableInteger(current?.battingOrder, prior?.battingOrder, contextWeight),
+    games: mlbPickPreferredScalar(current?.games != null && prior?.games != null ? current.games + prior.games : current?.games ?? prior?.games, null),
+    paPg: mlbBlendNullableNumber(current?.paPg, prior?.paPg, contextWeight),
+    avg: mlbBlendNullableNumber(current?.avg, prior?.avg, currentWeight),
+    obp: mlbBlendNullableNumber(current?.obp, prior?.obp, currentWeight),
+    slg: mlbBlendNullableNumber(current?.slg, prior?.slg, currentWeight),
+    iso: mlbBlendNullableNumber(current?.iso, prior?.iso, currentWeight),
+    babip: mlbBlendNullableNumber(current?.babip, prior?.babip, currentWeight),
+    wrcPlus: mlbBlendNullableNumber(current?.wrcPlus, prior?.wrcPlus, currentWeight),
+    kPct: mlbBlendNullableNumber(current?.kPct, prior?.kPct, currentWeight),
+    bbPct: mlbBlendNullableNumber(current?.bbPct, prior?.bbPct, currentWeight),
+    hrPg: mlbBlendNullableNumber(current?.hrPg, prior?.hrPg, currentWeight),
+    singlesPg: mlbBlendNullableNumber(current?.singlesPg, prior?.singlesPg, currentWeight),
+    doublesPg: mlbBlendNullableNumber(current?.doublesPg, prior?.doublesPg, currentWeight),
+    triplesPg: mlbBlendNullableNumber(current?.triplesPg, prior?.triplesPg, currentWeight),
+    rbiPg: mlbBlendNullableNumber(current?.rbiPg, prior?.rbiPg, contextWeight),
+    runsPg: mlbBlendNullableNumber(current?.runsPg, prior?.runsPg, contextWeight),
+    sbPg: mlbBlendNullableNumber(current?.sbPg, prior?.sbPg, currentWeight),
+    hbpPg: mlbBlendNullableNumber(current?.hbpPg, prior?.hbpPg, currentWeight),
+    wrcPlusVsL: mlbBlendNullableNumber(current?.wrcPlusVsL, prior?.wrcPlusVsL, currentWeight),
+    wrcPlusVsR: mlbBlendNullableNumber(current?.wrcPlusVsR, prior?.wrcPlusVsR, currentWeight),
+    avgFptsPg: mlbBlendNullableNumber(current?.avgFptsPg, prior?.avgFptsPg, contextWeight),
+    fptsStd: mlbBlendNullableNumber(current?.fptsStd, prior?.fptsStd, contextWeight),
+    fetchedAt: current?.fetchedAt ?? prior!.fetchedAt,
+  };
+}
+
+function blendMlbPitcherStats(
+  match: MlbMatchedSeasonRow<MlbPitcherStats>,
+  dkTeamId: number | null,
+): MlbPitcherStats | null {
+  const current = match.current;
+  const prior = match.prior;
+  if (!current && !prior) return null;
+  const currentWeight = match.currentWeight;
+  const contextWeight = match.contextWeight;
+  return {
+    ...(current ?? prior!),
+    playerId: current?.playerId ?? prior!.playerId,
+    season: current?.season ?? prior!.season,
+    teamId: dkTeamId ?? current?.teamId ?? prior!.teamId ?? null,
+    name: current?.name ?? prior!.name,
+    hand: mlbPickPreferredScalar(current?.hand, prior?.hand),
+    games: mlbPickPreferredScalar(current?.games != null && prior?.games != null ? current.games + prior.games : current?.games ?? prior?.games, null),
+    ipPg: mlbBlendNullableNumber(current?.ipPg, prior?.ipPg, contextWeight),
+    era: mlbBlendNullableNumber(current?.era, prior?.era, currentWeight),
+    fip: mlbBlendNullableNumber(current?.fip, prior?.fip, currentWeight),
+    xfip: mlbBlendNullableNumber(current?.xfip, prior?.xfip, currentWeight),
+    kPer9: mlbBlendNullableNumber(current?.kPer9, prior?.kPer9, currentWeight),
+    bbPer9: mlbBlendNullableNumber(current?.bbPer9, prior?.bbPer9, currentWeight),
+    hrPer9: mlbBlendNullableNumber(current?.hrPer9, prior?.hrPer9, currentWeight),
+    kPct: mlbBlendNullableNumber(current?.kPct, prior?.kPct, currentWeight),
+    bbPct: mlbBlendNullableNumber(current?.bbPct, prior?.bbPct, currentWeight),
+    hrFbPct: mlbBlendNullableNumber(current?.hrFbPct, prior?.hrFbPct, currentWeight),
+    whip: mlbBlendNullableNumber(current?.whip, prior?.whip, currentWeight),
+    avgFptsPg: mlbBlendNullableNumber(current?.avgFptsPg, prior?.avgFptsPg, contextWeight),
+    fptsStd: mlbBlendNullableNumber(current?.fptsStd, prior?.fptsStd, contextWeight),
+    winPct: mlbBlendNullableNumber(current?.winPct, prior?.winPct, contextWeight),
+    qsPct: mlbBlendNullableNumber(current?.qsPct, prior?.qsPct, contextWeight),
+    fetchedAt: current?.fetchedAt ?? prior!.fetchedAt,
+  };
+}
+
+function buildMlbTeamSampleMap(
+  batterRows: MlbBatterStats[],
+  pitcherRows: MlbPitcherStats[],
+): Map<number, number> {
+  const samples = new Map<number, number>();
+  for (const row of batterRows) {
+    if (row.teamId == null) continue;
+    samples.set(row.teamId, Math.max(samples.get(row.teamId) ?? 0, row.games ?? 0));
+  }
+  for (const row of pitcherRows) {
+    if (row.teamId == null) continue;
+    samples.set(row.teamId, Math.max(samples.get(row.teamId) ?? 0, row.games ?? 0));
+  }
+  return samples;
+}
+
+function blendMlbTeamStats(
+  current: MlbTeamStats | null,
+  prior: MlbTeamStats | null,
+  currentSampleGames: number,
+): MlbTeamStats | null {
+  if (!current && !prior) return null;
+  const currentWeight = mlbCap(
+    currentSampleGames > 0 ? currentSampleGames / (currentSampleGames + MLB_TEAM_PRIOR_SEASON_PIVOT) : 0,
+    0,
+    MLB_MAX_CURRENT_SEASON_WEIGHT,
+  );
+  return {
+    ...(current ?? prior!),
+    teamId: current?.teamId ?? prior!.teamId,
+    season: current?.season ?? prior!.season,
+    teamWrcPlus: mlbBlendNullableNumber(current?.teamWrcPlus, prior?.teamWrcPlus, currentWeight),
+    teamKPct: mlbBlendNullableNumber(current?.teamKPct, prior?.teamKPct, currentWeight),
+    teamBbPct: mlbBlendNullableNumber(current?.teamBbPct, prior?.teamBbPct, currentWeight),
+    teamIso: mlbBlendNullableNumber(current?.teamIso, prior?.teamIso, currentWeight),
+    teamOps: mlbBlendNullableNumber(current?.teamOps, prior?.teamOps, currentWeight),
+    bullpenEra: mlbBlendNullableNumber(current?.bullpenEra, prior?.bullpenEra, currentWeight),
+    bullpenFip: mlbBlendNullableNumber(current?.bullpenFip, prior?.bullpenFip, currentWeight),
+    staffKPct: mlbBlendNullableNumber(current?.staffKPct, prior?.staffKPct, currentWeight),
+    staffBbPct: mlbBlendNullableNumber(current?.staffBbPct, prior?.staffBbPct, currentWeight),
+    fetchedAt: current?.fetchedAt ?? prior!.fetchedAt,
+  };
+}
+
+function pickMlbParkFactor(
+  current: MlbParkFactors | null,
+  prior: MlbParkFactors | null,
+): MlbParkFactors | null {
+  return current ?? prior ?? null;
 }
 
 function mlbWinProb(matchup: Record<string, unknown>, isHome: boolean): number {
@@ -3518,7 +3933,7 @@ async function enrichAndSaveMlb(
   }
   if (!slateDate) slateDate = new Date().toISOString().slice(0, 10);
   await ensureDkPlayerPropColumns();
-  const mlbSeason = inferMlbSeason(slateDate);
+  const { primarySeason: mlbSeason, priorSeason: priorMlbSeason } = inferMlbSeasonContext(slateDate);
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 
   const slateVals: Record<string, unknown> = { slateDate, gameCount, sport: "mlb" };
@@ -3558,46 +3973,82 @@ async function enrichAndSaveMlb(
     if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
   }
 
-  // Load stats tables once
-  const batterRows  = await db.select().from(mlbBatterStats).where(eq(mlbBatterStats.season, mlbSeason));
-  const pitcherRows = await db.select().from(mlbPitcherStats).where(eq(mlbPitcherStats.season, mlbSeason));
-  const teamStatRows = await db.select().from(mlbTeamStatsTable).where(eq(mlbTeamStatsTable.season, mlbSeason));
-  const parkRows    = await db.select().from(mlbParkFactors).where(eq(mlbParkFactors.season, mlbSeason));
+  const [
+    currentBatterRows,
+    currentPitcherRows,
+    currentTeamStatRows,
+    currentParkRows,
+    priorBatterRows,
+    priorPitcherRows,
+    priorTeamStatRows,
+    priorParkRows,
+  ] = await Promise.all([
+    db.select().from(mlbBatterStats).where(eq(mlbBatterStats.season, mlbSeason)),
+    db.select().from(mlbPitcherStats).where(eq(mlbPitcherStats.season, mlbSeason)),
+    db.select().from(mlbTeamStatsTable).where(eq(mlbTeamStatsTable.season, mlbSeason)),
+    db.select().from(mlbParkFactors).where(eq(mlbParkFactors.season, mlbSeason)),
+    priorMlbSeason ? db.select().from(mlbBatterStats).where(eq(mlbBatterStats.season, priorMlbSeason)) : Promise.resolve([] as MlbBatterStats[]),
+    priorMlbSeason ? db.select().from(mlbPitcherStats).where(eq(mlbPitcherStats.season, priorMlbSeason)) : Promise.resolve([] as MlbPitcherStats[]),
+    priorMlbSeason ? db.select().from(mlbTeamStatsTable).where(eq(mlbTeamStatsTable.season, priorMlbSeason)) : Promise.resolve([] as MlbTeamStats[]),
+    priorMlbSeason ? db.select().from(mlbParkFactors).where(eq(mlbParkFactors.season, priorMlbSeason)) : Promise.resolve([] as MlbParkFactors[]),
+  ]);
 
-  // Index stats by team
-  const battersByTeam  = new Map<number, typeof batterRows>();
-  const pitchersByTeam = new Map<number, typeof pitcherRows>();
-  for (const b of batterRows) {
-    if (b.teamId == null) continue;
-    const arr = battersByTeam.get(b.teamId) ?? [];
-    arr.push(b); battersByTeam.set(b.teamId, arr);
+  const currentBatterMeta = buildMlbMatchMeta(currentBatterRows, getMlbBatterSample);
+  const priorBatterMeta = buildMlbMatchMeta(priorBatterRows, getMlbBatterSample);
+  const currentPitcherMeta = buildMlbMatchMeta(currentPitcherRows, getMlbPitcherSample);
+  const priorPitcherMeta = buildMlbMatchMeta(priorPitcherRows, getMlbPitcherSample);
+
+  const currentTeamStatsMap = new Map(currentTeamStatRows.map((row) => [row.teamId, row]));
+  const priorTeamStatsMap = new Map(priorTeamStatRows.map((row) => [row.teamId, row]));
+  const currentParkMap = new Map(currentParkRows.map((row) => [row.teamId, row]));
+  const priorParkMap = new Map(priorParkRows.map((row) => [row.teamId, row]));
+  const currentTeamSamples = buildMlbTeamSampleMap(currentBatterRows, currentPitcherRows);
+  const teamStatsMap = new Map<number, MlbTeamStats>();
+  for (const teamId of new Set<number>([
+    ...currentTeamStatsMap.keys(),
+    ...priorTeamStatsMap.keys(),
+  ])) {
+    const blended = blendMlbTeamStats(
+      currentTeamStatsMap.get(teamId) ?? null,
+      priorTeamStatsMap.get(teamId) ?? null,
+      currentTeamSamples.get(teamId) ?? 0,
+    );
+    if (blended) teamStatsMap.set(teamId, blended);
   }
-  for (const p of pitcherRows) {
-    if (p.teamId == null) continue;
-    const arr = pitchersByTeam.get(p.teamId) ?? [];
-    arr.push(p); pitchersByTeam.set(p.teamId, arr);
+  const parkMap = new Map<number, MlbParkFactors>();
+  for (const teamId of new Set<number>([
+    ...currentParkMap.keys(),
+    ...priorParkMap.keys(),
+  ])) {
+    const picked = pickMlbParkFactor(currentParkMap.get(teamId) ?? null, priorParkMap.get(teamId) ?? null);
+    if (picked) parkMap.set(teamId, picked);
   }
-  const teamStatsMap = new Map(teamStatRows.map((r) => [r.teamId, r]));
-  const parkMap      = new Map(parkRows.map((r) => [r.teamId, r]));
   const lineupConfirmedByTeam = inferMlbTeamLineupConfirmed(dkPlayers_);
 
   // SP pre-pass: one SP per team
-  const spByTeam = new Map<number, typeof pitcherRows[0]>();
+  const spByTeam = new Map<number, MlbPitcherStats>();
   for (const p of dkPlayers_) {
     if (!isPitcherPos(p.eligiblePositions) || !isLikelyActiveMlbPitcher(p)) continue;
     const canon = MLB_DK_OVERRIDES[p.teamAbbrev] ?? p.teamAbbrev;
     const tid = abbrevToId.get(canon);
     if (!tid || spByTeam.has(tid)) continue;
-    const candidates = pitchersByTeam.get(tid) ?? [];
-    let best: typeof pitcherRows[0] | null = null, bestDist = 4;
-    for (const ps of candidates) {
-      const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
-      if (d < bestDist) { bestDist = d; best = ps; }
-    }
-    if (best) spByTeam.set(tid, best);
+    const match = matchMlbStatsAcrossSeasons(
+      p.name,
+      tid,
+      currentPitcherMeta,
+      priorPitcherMeta,
+      getMlbPitcherSample,
+      MLB_PITCHER_PRIOR_SEASON_PIVOT,
+      MLB_PITCHER_TEAM_CHANGE_PIVOT,
+      MLB_PITCHER_TEAM_CHANGE_MIN_WEIGHT,
+    );
+    const blended = blendMlbPitcherStats(match, tid);
+    if (blended) spByTeam.set(tid, blended);
   }
 
   let lsMatched = 0, projComputed = 0;
+  const batterCoverage = createMlbCoverageCounter();
+  const pitcherCoverage = createMlbCoverageCounter();
   const insertValues: Array<Record<string, unknown>> = [];
 
   for (const p of dkPlayers_) {
@@ -3623,45 +4074,58 @@ async function enrichAndSaveMlb(
 
     let ourProj: number | null  = null;
     let ourLeverage: number | null = null;
+    const pitcherFlag = isPitcherPos(p.eligiblePositions);
 
-    if (mlbTeamId && matchup) {
-      if (isPitcherPos(p.eligiblePositions)) {
-        // Pitcher projection
-        const candidates = pitchersByTeam.get(mlbTeamId) ?? [];
-        let best: typeof pitcherRows[0] | null = null, bestDist = 4;
-        for (const ps of candidates) {
-          const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
-          if (d < bestDist) { bestDist = d; best = ps; }
-        }
-        if (best) {
-          const oppTeamId = isHome ? matchup.awayTeamId : matchup.homeTeamId;
-          const oppTeam   = oppTeamId ? teamStatsMap.get(oppTeamId) ?? null : null;
-          ourProj = sanitizeProjection(computeMlbPitcherProj(
-            best as unknown as Record<string, unknown>, matchup as unknown as Record<string, unknown>,
-            oppTeam as unknown as Record<string, unknown> | null, park as unknown as Record<string, unknown> | null, isHome,
-          ));
-          if (ourProj != null) projComputed++;
-        }
-      } else {
-        // Batter projection
-        const candidates = battersByTeam.get(mlbTeamId) ?? [];
-        let best: typeof batterRows[0] | null = null, bestDist = 4;
-        for (const b of candidates) {
-          const d = levenshtein(p.name.toLowerCase(), b.name.toLowerCase());
-          if (d < bestDist) { bestDist = d; best = b; }
-        }
-        if (best) {
-          const oppTeamId = isHome ? matchup.awayTeamId : matchup.homeTeamId;
-          const oppSp     = oppTeamId ? spByTeam.get(oppTeamId) ?? null : null;
-          ourProj = sanitizeProjection(computeMlbBatterProj(
-            best as unknown as Record<string, unknown>, matchup as unknown as Record<string, unknown>,
-            oppSp as unknown as Record<string, unknown> | null,
-            park as unknown as Record<string, unknown> | null,
-            isHome,
-            dkTeamLineupConfirmed ? dkStartingLineupOrder : null,
-          ));
-          if (ourProj != null) projComputed++;
-        }
+    if (pitcherFlag) {
+      const pitcherMatch = matchMlbStatsAcrossSeasons(
+        p.name,
+        mlbTeamId,
+        currentPitcherMeta,
+        priorPitcherMeta,
+        getMlbPitcherSample,
+        MLB_PITCHER_PRIOR_SEASON_PIVOT,
+        MLB_PITCHER_TEAM_CHANGE_PIVOT,
+        MLB_PITCHER_TEAM_CHANGE_MIN_WEIGHT,
+      );
+      noteMlbCoverage(pitcherCoverage, pitcherMatch);
+      const blendedPitcher = blendMlbPitcherStats(pitcherMatch, mlbTeamId);
+      if (blendedPitcher && mlbTeamId && matchup) {
+        const oppTeamId = isHome ? matchup.awayTeamId : matchup.homeTeamId;
+        const oppTeam   = oppTeamId ? teamStatsMap.get(oppTeamId) ?? null : null;
+        ourProj = sanitizeProjection(computeMlbPitcherProj(
+          blendedPitcher as unknown as Record<string, unknown>,
+          matchup as unknown as Record<string, unknown>,
+          oppTeam as unknown as Record<string, unknown> | null,
+          park as unknown as Record<string, unknown> | null,
+          isHome,
+        ));
+        if (ourProj != null) projComputed++;
+      }
+    } else {
+      const batterMatch = matchMlbStatsAcrossSeasons(
+        p.name,
+        mlbTeamId,
+        currentBatterMeta,
+        priorBatterMeta,
+        getMlbBatterSample,
+        MLB_BATTER_PRIOR_SEASON_PIVOT,
+        MLB_BATTER_TEAM_CHANGE_PIVOT,
+        MLB_BATTER_TEAM_CHANGE_MIN_WEIGHT,
+      );
+      noteMlbCoverage(batterCoverage, batterMatch);
+      const blendedBatter = blendMlbBatterStats(batterMatch, mlbTeamId);
+      if (blendedBatter && mlbTeamId && matchup) {
+        const oppTeamId = isHome ? matchup.awayTeamId : matchup.homeTeamId;
+        const oppSp     = oppTeamId ? spByTeam.get(oppTeamId) ?? null : null;
+        ourProj = sanitizeProjection(computeMlbBatterProj(
+          blendedBatter as unknown as Record<string, unknown>,
+          matchup as unknown as Record<string, unknown>,
+          oppSp as unknown as Record<string, unknown> | null,
+          park as unknown as Record<string, unknown> | null,
+          isHome,
+          dkTeamLineupConfirmed ? dkStartingLineupOrder : null,
+        ));
+        if (ourProj != null) projComputed++;
       }
     }
 
@@ -3735,7 +4199,7 @@ async function enrichAndSaveMlb(
   const matchRate = lsMap.size > 0 ? Math.round((lsMatched / dkPlayers_.length) * 100) : null;
   return {
     ok: true,
-    message: `Saved ${insertValues.length} MLB players (${projComputed} with our proj)${matchRate != null ? `, LineStar ${matchRate}% matched` : ""}`,
+    message: `Saved ${insertValues.length} MLB players (${projComputed} with our proj, H ${batterCoverage.currentOnly}/${batterCoverage.blended}/${batterCoverage.priorOnly}, P ${pitcherCoverage.currentOnly}/${pitcherCoverage.blended}/${pitcherCoverage.priorOnly}, movers ${batterCoverage.teamChangeAccelerated + pitcherCoverage.teamChangeAccelerated})${matchRate != null ? `, LineStar ${matchRate}% matched` : ""}`,
     playerCount: insertValues.length,
     matchRate: matchRate ?? undefined,
   };
@@ -3792,7 +4256,8 @@ export async function loadMlbSlateFromContestId(
     }
     const lsMap = await tryFetchLinestarMapMlb(dgId);
     const result = await enrichAndSaveMlb(players, lsMap, cashLine, dgId, contestType, fieldSize, contestFormat);
-    return { ...result, message: `[MLB API] ${result.message}` };
+    const readinessNote = statsReady.message ? `${statsReady.message} ` : "";
+    return { ...result, message: `[MLB API] ${readinessNote}${result.message}`.trim() };
   } catch (e) {
     return { ok: false, message: String(e) };
   }
