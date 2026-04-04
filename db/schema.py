@@ -731,19 +731,20 @@ MIGRATIONS = [
             ALTER TABLE dk_players ADD COLUMN boom_rate REAL;
         END IF;
     END $$""",
-    # 2026-03-28: Replace UNIQUE(slate_date) with UNIQUE(slate_date, contest_type, contest_format)
-    # so GPP and Cash slates for the same date can coexist as separate rows.
+    # 2026-03-28: Retire the legacy dk_slates unique constraints that predate
+    # sport-aware slate identity. Do not recreate the non-sport-aware
+    # (slate_date, contest_type, contest_format) key here; later migrations add
+    # the correct sport-aware unique constraint.
     """DO $$ BEGIN
         IF EXISTS (
             SELECT 1 FROM pg_constraint WHERE conname = 'dk_slates_slate_date_key'
         ) THEN
             ALTER TABLE dk_slates DROP CONSTRAINT dk_slates_slate_date_key;
         END IF;
-        IF NOT EXISTS (
+        IF EXISTS (
             SELECT 1 FROM pg_constraint WHERE conname = 'dk_slates_date_type_format_key'
         ) THEN
-            ALTER TABLE dk_slates ADD CONSTRAINT dk_slates_date_type_format_key
-            UNIQUE (slate_date, contest_type, contest_format);
+            ALTER TABLE dk_slates DROP CONSTRAINT dk_slates_date_type_format_key;
         END IF;
     END $$""",
 
