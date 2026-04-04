@@ -3970,6 +3970,48 @@ function computeMlbBatterProj(
   return fpts > 0 ? Math.round(fpts * 100) / 100 : null;
 }
 
+function computeMlbBatterHrSignal(
+  b: Record<string, unknown>,
+  matchup: Record<string, unknown>,
+  oppSp: Record<string, unknown> | null,
+  park: Record<string, unknown> | null,
+  isHome: boolean,
+  confirmedOrder: number | null,
+): { expectedHr: number; hrProb1Plus: number } | null {
+  if (((b.games as number) || 0) < 3) return null;
+  const hrPg = (b.hrPg as number) || 0;
+  if (hrPg < 0) return null;
+
+  const implied = isHome
+    ? ((matchup.homeImplied as number) || ((matchup.vegasTotal as number) || 9) / 2)
+    : ((matchup.awayImplied as number) || ((matchup.vegasTotal as number) || 9) / 2);
+  const envFactor = mlbCap(implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.5, 2.0);
+  const hrPf = mlbCap((park?.hrFactor as number) || 1.0, 0.7, 1.5);
+  const orderFactor = confirmedOrder != null ? (MLB_ORDER_PA_FACTOR[confirmedOrder] || 1.0) : 1.0;
+
+  let xfipFactor = 1.0;
+  if (oppSp) {
+    const spXfip = (oppSp.xfip as number) || (oppSp.era as number) || MLB_LEAGUE_AVG_XFIP;
+    xfipFactor = mlbCap(spXfip / MLB_LEAGUE_AVG_XFIP, 0.6, 1.8);
+  }
+
+  let matchupFactor = 1.0;
+  const wrcBase = b.wrcPlus as number | null;
+  if (oppSp && (oppSp.hand as string) && wrcBase && wrcBase > 0) {
+    const hand = ((oppSp.hand as string) || "").toUpperCase();
+    const wrcVs = hand === "L" ? (b.wrcPlusVsL as number | null) : (b.wrcPlusVsR as number | null);
+    if (wrcVs) matchupFactor = mlbCap(wrcVs / wrcBase, 0.5, 1.75);
+  }
+
+  const hrFactorAdj = mlbCap(envFactor * hrPf * xfipFactor * orderFactor * matchupFactor, 0.3, 3.0);
+  const expectedHr = Math.max(0, hrPg * hrFactorAdj);
+  const hrProb1Plus = 1 - Math.exp(-expectedHr);
+  return {
+    expectedHr: Math.round(expectedHr * 1000) / 1000,
+    hrProb1Plus: Math.round(Math.min(0.9999, Math.max(0, hrProb1Plus)) * 10000) / 10000,
+  };
+}
+
 function computeMlbPitcherProj(
   p: Record<string, unknown>,
   matchup: Record<string, unknown>,
@@ -4255,6 +4297,8 @@ async function enrichAndSaveMlb(
     const park   = matchup ? parkMap.get(matchup.homeTeamId ?? 0) ?? null : null;
 
     let ourProj: number | null  = null;
+    let expectedHr: number | null = null;
+    let hrProb1Plus: number | null = null;
     const pitcherFlag = isPitcherPos(p.eligiblePositions);
 
     if (pitcherFlag) {
@@ -4306,6 +4350,16 @@ async function enrichAndSaveMlb(
           isHome,
           dkTeamLineupConfirmed ? dkStartingLineupOrder : null,
         ));
+        const hrSignal = computeMlbBatterHrSignal(
+          blendedBatter as unknown as Record<string, unknown>,
+          matchup as unknown as Record<string, unknown>,
+          oppSp as unknown as Record<string, unknown> | null,
+          park as unknown as Record<string, unknown> | null,
+          isHome,
+          dkTeamLineupConfirmed ? dkStartingLineupOrder : null,
+        );
+        expectedHr = hrSignal?.expectedHr ?? null;
+        hrProb1Plus = hrSignal?.hrProb1Plus ?? null;
         if (ourProj != null) projComputed++;
       }
     }
@@ -4325,6 +4379,8 @@ async function enrichAndSaveMlb(
       dkInStartingLineup: p.inStartingLineup,
       dkStartingLineupOrder,
       dkTeamLineupConfirmed,
+      expectedHr,
+      hrProb1Plus,
       ourProj, ourLeverage: null as number | null, ourOwnPct: null as number | null, isOut,
     });
   }
@@ -4339,7 +4395,10 @@ async function enrichAndSaveMlb(
         salary: sql`EXCLUDED.salary`, mlbTeamId: sql`EXCLUDED.mlb_team_id`,
         matchupId: sql`EXCLUDED.matchup_id`,
         linestarProj: sql`EXCLUDED.linestar_proj`, projOwnPct: sql`EXCLUDED.proj_own_pct`,
-        ourProj: sql`EXCLUDED.our_proj`, ourLeverage: sql`EXCLUDED.our_leverage`,
+        ourProj: sql`EXCLUDED.our_proj`,
+        expectedHr: sql`EXCLUDED.expected_hr`,
+        hrProb1Plus: sql`EXCLUDED.hr_prob_1plus`,
+        ourLeverage: sql`EXCLUDED.our_leverage`,
         ourOwnPct: sql`EXCLUDED.our_own_pct`,
         dkInStartingLineup: sql`EXCLUDED.dk_in_starting_lineup`,
         dkStartingLineupOrder: sql`EXCLUDED.dk_starting_lineup_order`,

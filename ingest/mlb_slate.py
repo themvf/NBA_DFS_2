@@ -48,7 +48,11 @@ from model.dfs_projections import (
     compute_leverage,
     compute_monte_carlo,
 )
-from model.mlb_projections import compute_batter_projection, compute_pitcher_projection
+from model.mlb_projections import (
+    compute_batter_hr_signal,
+    compute_batter_projection,
+    compute_pitcher_projection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -930,6 +934,8 @@ def build_player_pool_mlb(
 
         # Phase 5 projection: full MLB model
         our_proj = None
+        expected_hr = None
+        hr_prob_1plus = None
         proj_floor = proj_ceiling = boom_rate = None
         if stats and not result.get("is_out") and not confirmed_batter_out:
             if pitcher_flag:
@@ -951,6 +957,16 @@ def build_player_pool_mlb(
                     is_home=is_home,
                     confirmed_order=result.get("dk_starting_lineup_order"),
                 )
+                hr_signal = compute_batter_hr_signal(
+                    batter=stats,
+                    matchup=matchup or {},
+                    opp_sp=opp_sp,
+                    park=park,
+                    is_home=is_home,
+                    confirmed_order=result.get("dk_starting_lineup_order"),
+                )
+                if hr_signal:
+                    expected_hr, hr_prob_1plus = hr_signal
                 boom_threshold = _BAT_BOOM_THRESHOLD
 
             fpts_std = stats.get("fpts_std")
@@ -962,6 +978,8 @@ def build_player_pool_mlb(
                 matched_stats += 1
 
         result["our_proj"]     = our_proj
+        result["expected_hr"] = expected_hr
+        result["hr_prob_1plus"] = hr_prob_1plus
         result["proj_floor"]   = proj_floor
         result["proj_ceiling"] = proj_ceiling
         result["boom_rate"]    = boom_rate
@@ -1082,6 +1100,8 @@ def run(
             "linestar_proj":      p.get("linestar_proj"),
             "proj_own_pct":       p.get("proj_own_pct"),
             "our_proj":           p.get("our_proj"),
+            "expected_hr":        p.get("expected_hr"),
+            "hr_prob_1plus":      p.get("hr_prob_1plus"),
             "our_own_pct":        p.get("our_own_pct"),
             "our_leverage":       p.get("our_leverage"),
             "proj_floor":         p.get("proj_floor"),

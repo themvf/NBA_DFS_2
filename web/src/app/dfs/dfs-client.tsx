@@ -275,6 +275,8 @@ const MLB_PLAYER_POOL_FILTER_OPTIONS: Array<{ value: MlbPlayerPoolFilter; label:
   { value: "of", label: "OF" },
   { value: "hitters", label: "Hitters" },
 ];
+const MLB_HR_BADGE_THRESHOLD = 0.25;
+const MLB_HR_STRONG_BADGE_THRESHOLD = 0.35;
 
 function getMlbLineupBadge(player: DkPlayerRow): { label: string; className: string } {
   const status = getMlbLineupStatus(player);
@@ -293,6 +295,22 @@ function getMlbLineupBadge(player: DkPlayerRow): { label: string; className: str
     default:
       return { label: "Pending", className: "border-amber-200 bg-amber-50 text-amber-700" };
   }
+}
+
+function getMlbHrBadge(player: DkPlayerRow): { label: string; className: string; title: string } | null {
+  if (isMlbPitcherPlayer(player) || player.isOut || player.hrProb1Plus == null) return null;
+  if (player.hrProb1Plus < MLB_HR_BADGE_THRESHOLD) return null;
+
+  const pct = Math.round(player.hrProb1Plus * 100);
+  const expectedHr = player.expectedHr != null ? player.expectedHr.toFixed(2) : "—";
+  const strong = player.hrProb1Plus >= MLB_HR_STRONG_BADGE_THRESHOLD;
+  return {
+    label: `HR ${pct}%`,
+    className: strong
+      ? "bg-rose-100 text-rose-700"
+      : "bg-orange-100 text-orange-700",
+    title: `1+ HR ${pct}% | Expected HR ${expectedHr}`,
+  };
 }
 
 function getPlayerPropTokens(player: DkPlayerRow, sport: Sport): PlayerPropToken[] {
@@ -2183,6 +2201,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   const odds = getPlayerOddsContext(p);
                   const pos = displayPos(p.eligiblePositions, sport);
                   const mlbLineupBadge = sport === "mlb" ? getMlbLineupBadge(p) : null;
+                  const mlbHrBadge = sport === "mlb" ? getMlbHrBadge(p) : null;
                   const rowUnavailable = sport === "mlb" ? isMlbRowUnavailable(p) : !!p.isOut;
                   const isLocked = lockedPlayerSet.has(p.id);
                   const isBlocked = blockedPlayerSet.has(p.id);
@@ -2212,6 +2231,22 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                             {isLocked && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">LOCK</span>}
                             {(isBlocked || isTeamBlocked) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">BLOCK</span>}
                             {stackSize != null && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">STACK {stackSize}</span>}
+                            {mlbHrBadge && (
+                              <span
+                                title={mlbHrBadge.title}
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbHrBadge.className}`}
+                              >
+                                {mlbHrBadge.label}
+                              </span>
+                            )}
+                          </span>
+                        )}
+                        {!supportsRuleControls && mlbHrBadge && (
+                          <span
+                            title={mlbHrBadge.title}
+                            className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbHrBadge.className}`}
+                          >
+                            {mlbHrBadge.label}
                           </span>
                         )}
                       </td>

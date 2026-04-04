@@ -375,6 +375,8 @@ export const dkPlayers = pgTable(
     linestarProj: real("linestar_proj"),
     projOwnPct: real("proj_own_pct"),
     ourProj: real("our_proj"),
+    expectedHr: real("expected_hr"),
+    hrProb1Plus: real("hr_prob_1plus"),
     ourLeverage: real("our_leverage"),
     ourOwnPct: real("our_own_pct"),
     propPts: real("prop_pts"),

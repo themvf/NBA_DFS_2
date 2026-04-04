@@ -26,6 +26,8 @@ export type DkPlayerRow = {
   linestarProj: number | null;
   projOwnPct: number | null;
   ourProj: number | null;
+  expectedHr: number | null;
+  hrProb1Plus: number | null;
   ourOwnPct: number | null;
   ourLeverage: number | null;
   projFloor: number | null;
@@ -91,6 +93,8 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         dp.linestar_proj      AS "linestarProj",
         dp.proj_own_pct       AS "projOwnPct",
         dp.our_proj           AS "ourProj",
+        dp.expected_hr        AS "expectedHr",
+        dp.hr_prob_1plus      AS "hrProb1Plus",
         dp.our_own_pct        AS "ourOwnPct",
         dp.our_leverage       AS "ourLeverage",
         dp.prop_pts           AS "propPts",
@@ -162,6 +166,8 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       dp.linestar_proj     AS "linestarProj",
       dp.proj_own_pct      AS "projOwnPct",
       dp.our_proj          AS "ourProj",
+      NULL::REAL           AS "expectedHr",
+      NULL::REAL           AS "hrProb1Plus",
       dp.our_own_pct       AS "ourOwnPct",
       dp.our_leverage      AS "ourLeverage",
       dp.prop_pts          AS "propPts",

@@ -28,6 +28,8 @@ League average constants calibrated to 2024-25 MLB:
 
 from __future__ import annotations
 
+import math
+
 # ── League average constants ──────────────────────────────────────────────────
 
 MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5    # runs per team per game
@@ -197,6 +199,63 @@ def compute_batter_projection(
         sb      = sb_pg      * sb_factor,
     )
     return round(fpts, 2) if fpts > 0 else None
+
+
+def compute_batter_hr_signal(
+    batter: dict,
+    matchup: dict,
+    opp_sp: dict | None,
+    park: dict | None,
+    is_home: bool = False,
+    confirmed_order: int | None = None,
+) -> tuple[float, float] | None:
+    """Return expected HR and probability of 1+ HR for a slate context.
+
+    The model reuses the same batter-facing adjustments as the FPTS projection:
+    implied team total, HR-specific park factor, opposing SP quality, handedness
+    split, and confirmed batting-order PA boost.
+    """
+    if (batter.get("games") or 0) < 3:
+        return None
+
+    hr_pg = float(batter.get("hr_pg") or 0.0)
+    if hr_pg < 0:
+        return None
+
+    if is_home:
+        team_implied = float(matchup.get("home_implied") or
+                             (matchup.get("vegas_total") or 9.0) / 2.0)
+    else:
+        team_implied = float(matchup.get("away_implied") or
+                             (matchup.get("vegas_total") or 9.0) / 2.0)
+
+    env_factor = _cap(team_implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.50, 2.00)
+    hr_pf = _cap(float(park.get("hr_factor") or 1.0), 0.70, 1.50) if park else 1.0
+    order_factor = _ORDER_PA_FACTOR.get(int(confirmed_order), 1.0) if confirmed_order else 1.0
+
+    if opp_sp:
+        sp_qual = float(opp_sp.get("xfip") or opp_sp.get("era") or MLB_LEAGUE_AVG_XFIP)
+        xfip_factor = _cap(sp_qual / MLB_LEAGUE_AVG_XFIP, 0.60, 1.80)
+    else:
+        xfip_factor = 1.0
+
+    matchup_factor = 1.0
+    if (opp_sp and opp_sp.get("hand")
+            and batter.get("wrc_plus") and batter["wrc_plus"] > 0):
+        hand = str(opp_sp["hand"]).upper()
+        wrc_vs = (batter.get("wrc_plus_vs_l") if hand == "L"
+                  else batter.get("wrc_plus_vs_r"))
+        if wrc_vs:
+            matchup_factor = _cap(float(wrc_vs) / float(batter["wrc_plus"]), 0.50, 1.75)
+
+    hr_factor_adj = _cap(
+        env_factor * hr_pf * xfip_factor * order_factor * matchup_factor,
+        0.30,
+        3.00,
+    )
+    expected_hr = max(0.0, hr_pg * hr_factor_adj)
+    hr_prob_1plus = 1.0 - math.exp(-expected_hr)
+    return round(expected_hr, 3), round(_cap(hr_prob_1plus, 0.0, 0.9999), 4)
 
 
 # ── Pitcher projection ────────────────────────────────────────────────────────

@@ -363,6 +363,8 @@ TABLES = [
         linestar_proj REAL,
         proj_own_pct REAL,
         our_proj REAL,
+        expected_hr REAL,
+        hr_prob_1plus REAL,
         our_leverage REAL,
         our_own_pct REAL,
         prop_pts REAL,
@@ -808,6 +810,23 @@ MIGRATIONS = [
             WHERE table_name = 'dk_players' AND column_name = 'dk_team_lineup_confirmed'
         ) THEN
             ALTER TABLE dk_players ADD COLUMN dk_team_lineup_confirmed BOOLEAN;
+        END IF;
+    END $$""",
+    # 2026-04-04: Add MLB HR signal columns to dk_players
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'expected_hr'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN expected_hr REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'hr_prob_1plus'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN hr_prob_1plus REAL;
         END IF;
     END $$""",
 ]
