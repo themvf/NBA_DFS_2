@@ -17,7 +17,7 @@ import {
   validateMlbRuleSelections,
   type MlbTeamStackRule,
 } from "./mlb-optimizer-rules";
-import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveHistoricalSlate, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections, auditNbaPropCoverage, auditMlbPropCoverage } from "./actions";
+import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, saveLineups, exportLineups, exportMlbLineups, uploadResults, refreshPlayerStatus, checkLinestarCookie, uploadLinestarCsv, applyLinestarPaste, fetchPlayerProps, clearSlate, recomputeProjections, auditNbaPropCoverage, auditMlbPropCoverage } from "./actions";
 
 type Props = {
   players: DkPlayerRow[];
@@ -30,6 +30,7 @@ type Props = {
 
 type SortCol = "name" | "salary" | "avgFptsDk" | "linestarProj" | "ourProj" | "delta" | "projOwnPct" | "ourOwnPct" | "ourLeverage" | "value";
 type TeamStackRule = NbaTeamStackRule | MlbTeamStackRule;
+type MlbPlayerPoolFilter = "all" | "p" | "c" | "1b" | "2b" | "3b" | "ss" | "of" | "hitters";
 type RuleState = {
   playerLocks: number[];
   playerBlocks: number[];
@@ -255,6 +256,26 @@ function isMlbPitcherPlayer(player: DkPlayerRow): boolean {
   return player.eligiblePositions.includes("SP") || player.eligiblePositions.includes("RP");
 }
 
+function matchesMlbPlayerPoolFilter(player: DkPlayerRow, filter: MlbPlayerPoolFilter): boolean {
+  if (filter === "all") return true;
+  const positions = player.eligiblePositions.split("/");
+  if (filter === "p") return positions.includes("SP") || positions.includes("RP");
+  if (filter === "hitters") return !isMlbPitcherPlayer(player);
+  return positions.includes(filter.toUpperCase());
+}
+
+const MLB_PLAYER_POOL_FILTER_OPTIONS: Array<{ value: MlbPlayerPoolFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "p", label: "P" },
+  { value: "c", label: "C" },
+  { value: "1b", label: "1B" },
+  { value: "2b", label: "2B" },
+  { value: "3b", label: "3B" },
+  { value: "ss", label: "SS" },
+  { value: "of", label: "OF" },
+  { value: "hitters", label: "Hitters" },
+];
+
 function getMlbLineupBadge(player: DkPlayerRow): { label: string; className: string } {
   const status = getMlbLineupStatus(player);
   switch (status) {
@@ -434,7 +455,8 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [maxExposure, setMaxExposure] = useState(0.6);
   const [mlbBringBackThreshold, setMlbBringBackThreshold] = useState(3);
   const [pendingLineupPolicy, setPendingLineupPolicy] = useState<MlbPendingLineupPolicy>("downgrade");
-  const [hideOutInactivePlayers, setHideOutInactivePlayers] = useState(false);
+  const [hideOutInactivePlayers, setHideOutInactivePlayers] = useState(true);
+  const [mlbPlayerPoolFilter, setMlbPlayerPoolFilter] = useState<MlbPlayerPoolFilter>("all");
   const [bringBackEnabled, setBringBackEnabled] = useState(false);
   const [bringBackSize, setBringBackSize] = useState(1);
   const [minSalaryFilter, setMinSalaryFilter] = useState("");
@@ -521,10 +543,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const [lsUploadMsg, setLsUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isUploadingLs, setIsUploadingLs] = useState(false);
   const [lsPasteText, setLsPasteText] = useState("");
-  const [historicalSlateDate, setHistoricalSlateDate] = useState("");
-  const [historicalPasteText, setHistoricalPasteText] = useState("");
-  const [historicalSlateMsg, setHistoricalSlateMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [isSavingHistoricalSlate, setIsSavingHistoricalSlate] = useState(false);
 
   // ── LineStar cookie status ────────────────────────────────
   const [cookieStatus, setCookieStatus] = useState<{ ok: boolean; message: string } | null>(null);
@@ -722,6 +740,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     return players.filter((p) => selectedGames.has(parseGameKey(p.gameInfo)));
   }, [players, selectedGames]);
 
+  const playerPoolSourcePlayers = useMemo(() => {
+    if (sport !== "mlb") return filteredPlayers;
+    return filteredPlayers.filter((player) => matchesMlbPlayerPoolFilter(player, mlbPlayerPoolFilter));
+  }, [filteredPlayers, mlbPlayerPoolFilter, sport]);
+
   const mlbLineupSummary = useMemo(() => {
     if (sport !== "mlb") {
       return { confirmedIn: 0, pending: 0, confirmedOut: 0, unavailable: 0 };
@@ -731,7 +754,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     let pending = 0;
     let confirmedOut = 0;
     let unavailable = 0;
-    for (const player of filteredPlayers) {
+    for (const player of playerPoolSourcePlayers) {
       if (isMlbRowUnavailable(player)) unavailable++;
       if (isMlbPitcherPlayer(player)) continue;
       const status = getMlbLineupStatus(player);
@@ -741,19 +764,26 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     }
 
     return { confirmedIn, pending, confirmedOut, unavailable };
-  }, [filteredPlayers, sport]);
+  }, [playerPoolSourcePlayers, sport]);
 
   const unavailablePlayerCount = useMemo(() => {
     if (sport === "mlb") return mlbLineupSummary.unavailable;
     return filteredPlayers.filter((player) => player.isOut).length;
   }, [filteredPlayers, mlbLineupSummary.unavailable, sport]);
 
-  const visiblePlayers = useMemo(() => {
+  const teamVisiblePlayers = useMemo(() => {
     if (!hideOutInactivePlayers) return filteredPlayers;
     return filteredPlayers.filter((player) =>
       sport === "mlb" ? !isMlbRowUnavailable(player) : !player.isOut,
     );
   }, [filteredPlayers, hideOutInactivePlayers, sport]);
+
+  const visiblePlayers = useMemo(() => {
+    if (!hideOutInactivePlayers) return playerPoolSourcePlayers;
+    return playerPoolSourcePlayers.filter((player) =>
+      sport === "mlb" ? !isMlbRowUnavailable(player) : !player.isOut,
+    );
+  }, [hideOutInactivePlayers, playerPoolSourcePlayers, sport]);
 
   const sortedPlayers = useMemo(() => {
     return [...visiblePlayers].sort((a, b) => {
@@ -778,7 +808,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
   const filteredTeams = useMemo(() => {
     const byId = new Map<number, { teamId: number; teamAbbrev: string; teamName: string | null; teamLogo: string | null }>();
-    for (const player of visiblePlayers) {
+    for (const player of teamVisiblePlayers) {
       if (player.teamId == null || byId.has(player.teamId)) continue;
       byId.set(player.teamId, {
         teamId: player.teamId,
@@ -788,12 +818,12 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
       });
     }
     return Array.from(byId.values()).sort((a, b) => a.teamAbbrev.localeCompare(b.teamAbbrev));
-  }, [sport, visiblePlayers]);
+  }, [sport, teamVisiblePlayers]);
 
   const teamOddsById = useMemo(() => {
     const byId = new Map<number, { vegasTotal: number | null; teamTotal: number | null; moneyline: number | null }>();
 
-    for (const player of visiblePlayers) {
+    for (const player of teamVisiblePlayers) {
       if (player.teamId == null || byId.has(player.teamId)) continue;
       const isHome = player.homeTeamId != null ? player.teamId === player.homeTeamId : null;
       const moneyline = isHome == null ? null : (isHome ? player.homeMl : player.awayMl);
@@ -809,7 +839,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     }
 
     return byId;
-  }, [sport, visiblePlayers]);
+  }, [sport, teamVisiblePlayers]);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => d === "desc" ? "asc" : "desc");
@@ -1124,35 +1154,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
     setLsUploadMsg({ ok: res.ok, text: res.message });
   }
 
-  async function handleSaveHistoricalSlate() {
-    if (!historicalSlateDate) {
-      setHistoricalSlateMsg({ ok: false, text: "Choose a slate date first." });
-      return;
-    }
-    if (!historicalPasteText.trim()) {
-      setHistoricalSlateMsg({ ok: false, text: "Paste historical LineStar data first." });
-      return;
-    }
-    setIsSavingHistoricalSlate(true);
-    setHistoricalSlateMsg(null);
-    try {
-      const fieldSize = fieldSizeInput ? parseInt(fieldSizeInput, 10) : undefined;
-      const res = await saveHistoricalSlate(
-        sport,
-        historicalSlateDate,
-        historicalPasteText,
-        contestTiming,
-        fieldSize && !isNaN(fieldSize) ? fieldSize : undefined,
-        contestFormat,
-      );
-      setHistoricalSlateMsg({ ok: res.ok, text: res.message });
-    } catch (error) {
-      setHistoricalSlateMsg({ ok: false, text: error instanceof Error ? error.message : String(error) });
-    } finally {
-      setIsSavingHistoricalSlate(false);
-    }
-  }
-
   async function handleCheckCookie() {
     setIsCheckingCookie(true);
     setCookieStatus(null);
@@ -1446,49 +1447,6 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
             </div>
           )}
         </div>
-
-        {sport === "mlb" && (
-          <div className="mt-3 pt-3 border-t space-y-2">
-            <div>
-              <h3 className="text-xs font-medium text-gray-600">Historical Slate</h3>
-              <p className="text-xs text-gray-500">
-                Paste a LineStar historical results table to create or update an MLB slate with actual ownership and fantasy points.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Slate Date</label>
-                <input
-                  type="date"
-                  value={historicalSlateDate}
-                  onChange={(e) => setHistoricalSlateDate(e.target.value)}
-                  className="rounded border px-3 py-1.5 text-sm"
-                />
-              </div>
-            </div>
-            <textarea
-              value={historicalPasteText}
-              onChange={(e) => setHistoricalPasteText(e.target.value)}
-              rows={4}
-              placeholder={"OF\tPHI\tBryce Harper\t$5000\t18.2%\t22.1%\t...\t9.6\t14.0"}
-              className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
-            />
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleSaveHistoricalSlate}
-                disabled={isSavingHistoricalSlate || !historicalSlateDate || !historicalPasteText.trim()}
-                className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                {isSavingHistoricalSlate ? "Saving…" : "Save Historical Slate"}
-              </button>
-              {historicalSlateMsg && (
-                <span className={`text-sm ${historicalSlateMsg.ok ? "text-green-700" : "text-red-600"}`}>
-                  {historicalSlateMsg.text}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Fetch Projections — run after LineStar to compute leverage scores */}
         {sport === "nba" && players.length > 0 && (
@@ -2120,7 +2078,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
           <div className="flex items-start justify-between gap-3 px-4 py-3 border-b">
             <div>
               <h2 className="text-sm font-semibold">
-                Player Pool — {hideOutInactivePlayers ? `${sortedPlayers.length} of ${filteredPlayers.length}` : filteredPlayers.length} players
+                Player Pool - {hideOutInactivePlayers ? `${sortedPlayers.length} of ${playerPoolSourcePlayers.length}` : playerPoolSourcePlayers.length} players
                 {unavailablePlayerCount > 0 && (
                   <span className="ml-2 text-xs text-red-500">
                     ({unavailablePlayerCount} OUT)
@@ -2141,18 +2099,38 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setHideOutInactivePlayers((current) => !current)}
-              disabled={unavailablePlayerCount === 0}
-              className={`rounded border px-3 py-1.5 text-xs font-medium ${
-                hideOutInactivePlayers
-                  ? "border-blue-300 bg-blue-50 text-blue-700"
-                  : "border-gray-300 text-gray-700 hover:bg-gray-50"
-              } disabled:cursor-not-allowed disabled:opacity-50`}
-            >
-              {hideOutInactivePlayers ? "Show Out/Inactive" : "Hide Out/Inactive"}
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              {sport === "mlb" && (
+                <div className="flex flex-wrap justify-end gap-1">
+                  {MLB_PLAYER_POOL_FILTER_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setMlbPlayerPoolFilter(option.value)}
+                      className={`rounded border px-2 py-1 text-[11px] font-medium ${
+                        mlbPlayerPoolFilter === option.value
+                          ? "border-slate-300 bg-slate-700 text-white"
+                          : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setHideOutInactivePlayers((current) => !current)}
+                disabled={unavailablePlayerCount === 0}
+                className={`rounded border px-3 py-1.5 text-xs font-medium ${
+                  hideOutInactivePlayers
+                    ? "border-blue-300 bg-blue-50 text-blue-700"
+                    : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {hideOutInactivePlayers ? "Show Out/Inactive" : "Hide Out/Inactive"}
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
