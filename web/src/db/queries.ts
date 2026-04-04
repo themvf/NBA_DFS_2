@@ -48,6 +48,9 @@ export type DkPlayerRow = {
   propStl: number | null;
   propStlPrice: number | null;
   propStlBook: string | null;
+  modelPoints: number | null;
+  marketPoints: number | null;
+  blendPoints: number | null;
   modelProj: number | null;
   marketProj: number | null;
   blendProj: number | null;
@@ -112,6 +115,9 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         dp.prop_stl           AS "propStl",
         dp.prop_stl_price     AS "propStlPrice",
         dp.prop_stl_book      AS "propStlBook",
+        NULL::REAL            AS "modelPoints",
+        NULL::REAL            AS "marketPoints",
+        NULL::REAL            AS "blendPoints",
         NULL::REAL            AS "modelProj",
         NULL::REAL            AS "marketProj",
         NULL::REAL            AS "blendProj",
@@ -185,6 +191,9 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       dp.prop_stl          AS "propStl",
       dp.prop_stl_price    AS "propStlPrice",
       dp.prop_stl_book     AS "propStlBook",
+      proj.model_points    AS "modelPoints",
+      proj.market_points   AS "marketPoints",
+      proj.blend_points    AS "blendPoints",
       proj.model_proj_fpts AS "modelProj",
       proj.market_proj_fpts AS "marketProj",
       proj.final_proj_fpts AS "blendProj",
@@ -215,6 +224,25 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
     LEFT JOIN LATERAL (
       SELECT
+        CASE
+          WHEN pps.model_stats_json ? 'pts' THEN (pps.model_stats_json->>'pts')::REAL
+          ELSE NULL
+        END AS model_points,
+        CASE
+          WHEN pps.market_stats_json ? 'pts' THEN (pps.market_stats_json->>'pts')::REAL
+          ELSE NULL
+        END AS market_points,
+        CASE
+          WHEN COALESCE(pps.model_weight, 0) + COALESCE(pps.market_weight, 0) <= 0 THEN
+            COALESCE(
+              CASE WHEN pps.market_stats_json ? 'pts' THEN (pps.market_stats_json->>'pts')::REAL ELSE NULL END,
+              CASE WHEN pps.model_stats_json ? 'pts' THEN (pps.model_stats_json->>'pts')::REAL ELSE NULL END
+            )
+          ELSE ROUND((
+            COALESCE(CASE WHEN pps.model_stats_json ? 'pts' THEN (pps.model_stats_json->>'pts')::REAL ELSE NULL END, 0) * COALESCE(pps.model_weight, 0)
+            + COALESCE(CASE WHEN pps.market_stats_json ? 'pts' THEN (pps.market_stats_json->>'pts')::REAL ELSE NULL END, 0) * COALESCE(pps.market_weight, 0)
+          ) / NULLIF(COALESCE(pps.model_weight, 0) + COALESCE(pps.market_weight, 0), 0), 2)::REAL
+        END AS blend_points,
         pps.model_proj_fpts,
         pps.market_proj_fpts,
         pps.final_proj_fpts

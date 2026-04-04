@@ -313,6 +313,27 @@ function getMlbHrBadge(player: DkPlayerRow): { label: string; className: string;
   };
 }
 
+function getNbaProjectedPoints(player: DkPlayerRow): number | null {
+  return player.blendPoints ?? player.marketPoints ?? player.modelPoints ?? null;
+}
+
+function getNbaPointsBadge(
+  player: DkPlayerRow,
+  rank: number | undefined,
+): { label: string; className: string; title: string } | null {
+  if (rank == null || rank > 5 || player.isOut) return null;
+  const projectedPoints = getNbaProjectedPoints(player);
+  if (projectedPoints == null) return null;
+
+  return {
+    label: `PTS #${rank}`,
+    className: rank === 1
+      ? "bg-amber-100 text-amber-700"
+      : "bg-violet-100 text-violet-700",
+    title: `Projected points ${projectedPoints.toFixed(1)}`,
+  };
+}
+
 function getPlayerPropTokens(player: DkPlayerRow, sport: Sport): PlayerPropToken[] {
   const tokens: PlayerPropToken[] = [];
   const fields = sport === "mlb"
@@ -858,6 +879,20 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
 
     return byId;
   }, [sport, teamVisiblePlayers]);
+
+  const nbaTopScorerRanks = useMemo(() => {
+    if (sport !== "nba") return new Map<number, number>();
+
+    const ranked = [...players]
+      .filter((player) => !player.isOut && getNbaProjectedPoints(player) != null)
+      .sort((a, b) => {
+        const diff = (getNbaProjectedPoints(b) ?? -Infinity) - (getNbaProjectedPoints(a) ?? -Infinity);
+        return diff !== 0 ? diff : a.name.localeCompare(b.name);
+      })
+      .slice(0, 5);
+
+    return new Map(ranked.map((player, idx) => [player.id, idx + 1]));
+  }, [players, sport]);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => d === "desc" ? "asc" : "desc");
@@ -2202,6 +2237,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   const pos = displayPos(p.eligiblePositions, sport);
                   const mlbLineupBadge = sport === "mlb" ? getMlbLineupBadge(p) : null;
                   const mlbHrBadge = sport === "mlb" ? getMlbHrBadge(p) : null;
+                  const nbaPointsBadge = sport === "nba" ? getNbaPointsBadge(p, nbaTopScorerRanks.get(p.id)) : null;
                   const rowUnavailable = sport === "mlb" ? isMlbRowUnavailable(p) : !!p.isOut;
                   const isLocked = lockedPlayerSet.has(p.id);
                   const isBlocked = blockedPlayerSet.has(p.id);
@@ -2231,6 +2267,14 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                             {isLocked && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">LOCK</span>}
                             {(isBlocked || isTeamBlocked) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">BLOCK</span>}
                             {stackSize != null && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">STACK {stackSize}</span>}
+                            {nbaPointsBadge && (
+                              <span
+                                title={nbaPointsBadge.title}
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${nbaPointsBadge.className}`}
+                              >
+                                {nbaPointsBadge.label}
+                              </span>
+                            )}
                             {mlbHrBadge && (
                               <span
                                 title={mlbHrBadge.title}
@@ -2241,13 +2285,25 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                             )}
                           </span>
                         )}
-                        {!supportsRuleControls && mlbHrBadge && (
-                          <span
-                            title={mlbHrBadge.title}
-                            className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbHrBadge.className}`}
-                          >
-                            {mlbHrBadge.label}
-                          </span>
+                        {!supportsRuleControls && (
+                          <>
+                            {nbaPointsBadge && (
+                              <span
+                                title={nbaPointsBadge.title}
+                                className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${nbaPointsBadge.className}`}
+                              >
+                                {nbaPointsBadge.label}
+                              </span>
+                            )}
+                            {mlbHrBadge && (
+                              <span
+                                title={mlbHrBadge.title}
+                                className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbHrBadge.className}`}
+                              >
+                                {mlbHrBadge.label}
+                              </span>
+                            )}
+                          </>
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{p.teamAbbrev}</td>
