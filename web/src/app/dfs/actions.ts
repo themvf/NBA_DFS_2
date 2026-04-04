@@ -11,8 +11,8 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables } from "@/db/ensure-schema";
-import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
+import { ensureDkPlayerPropColumns, ensureOddsHistoryTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
+import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
@@ -262,6 +262,202 @@ function pickPreferredMlbPropLine(stat: MlbProjectionPropStat, candidates: PropB
   })[0] ?? null;
 }
 
+function roundHalf(value: number): number {
+  return Math.round(value * 2) / 2;
+}
+
+type GameOddsHistoryInput = {
+  sport: "nba" | "mlb";
+  matchupId: number;
+  eventId?: string | null;
+  gameDate: string;
+  homeTeamId?: number | null;
+  awayTeamId?: number | null;
+  homeTeamName?: string | null;
+  awayTeamName?: string | null;
+  bookmakerCount: number;
+  homeMl?: number | null;
+  awayMl?: number | null;
+  homeSpread?: number | null;
+  vegasTotal?: number | null;
+  homeWinProb?: number | null;
+  homeImplied?: number | null;
+  awayImplied?: number | null;
+};
+
+type PlayerPropHistoryInput = {
+  sport: "nba" | "mlb";
+  slateId: number | null;
+  dkPlayerId: number;
+  playerName: string;
+  teamId?: number | null;
+  eventId?: string | null;
+  marketKey: string;
+  line?: number | null;
+  price?: number | null;
+  bookmakerKey?: string | null;
+  bookmakerTitle?: string | null;
+  bookCount: number;
+};
+
+async function recordGameOddsHistory(rows: GameOddsHistoryInput[]): Promise<void> {
+  if (rows.length === 0) return;
+  await ensureOddsHistoryTables();
+  const captureKey = new Date().toISOString();
+  await db.insert(gameOddsHistory).values(
+    rows.map((row) => ({
+      sport: row.sport,
+      matchupId: row.matchupId,
+      eventId: row.eventId ?? null,
+      gameDate: row.gameDate,
+      homeTeamId: row.homeTeamId ?? null,
+      awayTeamId: row.awayTeamId ?? null,
+      homeTeamName: row.homeTeamName ?? null,
+      awayTeamName: row.awayTeamName ?? null,
+      bookmakerCount: row.bookmakerCount,
+      homeMl: row.homeMl ?? null,
+      awayMl: row.awayMl ?? null,
+      homeSpread: row.homeSpread ?? null,
+      vegasTotal: row.vegasTotal ?? null,
+      homeWinProb: row.homeWinProb ?? null,
+      homeImplied: row.homeImplied ?? null,
+      awayImplied: row.awayImplied ?? null,
+      captureKey,
+    })),
+  ).onConflictDoNothing();
+}
+
+async function recordPlayerPropHistory(rows: PlayerPropHistoryInput[]): Promise<void> {
+  if (rows.length === 0) return;
+  await ensureOddsHistoryTables();
+  const captureKey = new Date().toISOString();
+  await db.insert(playerPropHistory).values(
+    rows.map((row) => ({
+      sport: row.sport,
+      slateId: row.slateId,
+      dkPlayerId: row.dkPlayerId,
+      playerName: row.playerName,
+      teamId: row.teamId ?? null,
+      eventId: row.eventId ?? null,
+      marketKey: row.marketKey,
+      line: row.line ?? null,
+      price: row.price ?? null,
+      bookmakerKey: row.bookmakerKey ?? null,
+      bookmakerTitle: row.bookmakerTitle ?? null,
+      bookCount: row.bookCount,
+      captureKey,
+    })),
+  ).onConflictDoNothing();
+}
+
+type NbaPlayerOddsMovement = {
+  propDeltas: Partial<Record<NbaProjectionPropStat, number>>;
+  marketFptsDelta: number;
+};
+
+type NbaMatchupOddsMovement = {
+  vegasTotalDelta: number;
+  homeSpreadDelta: number | null;
+};
+
+type NbaOddsMovementContext = {
+  playerByDkId: Map<number, NbaPlayerOddsMovement>;
+  matchupById: Map<number, NbaMatchupOddsMovement>;
+};
+
+const NBA_PROP_HISTORY_MARKETS: Record<NbaProjectionPropStat, string> = {
+  pts: "player_points",
+  reb: "player_rebounds",
+  ast: "player_assists",
+  blk: "player_blocks",
+  stl: "player_steals",
+};
+
+async function buildNbaOddsMovementContext(slateId: number, slateDate: string): Promise<NbaOddsMovementContext> {
+  await ensureOddsHistoryTables();
+
+  const [propRows, gameRows] = await Promise.all([
+    db.select({
+      dkPlayerId: playerPropHistory.dkPlayerId,
+      marketKey: playerPropHistory.marketKey,
+      line: playerPropHistory.line,
+      capturedAt: playerPropHistory.capturedAt,
+      id: playerPropHistory.id,
+    })
+      .from(playerPropHistory)
+      .where(and(eq(playerPropHistory.sport, "nba"), eq(playerPropHistory.slateId, slateId))),
+    db.select({
+      matchupId: gameOddsHistory.matchupId,
+      vegasTotal: gameOddsHistory.vegasTotal,
+      homeSpread: gameOddsHistory.homeSpread,
+      capturedAt: gameOddsHistory.capturedAt,
+      id: gameOddsHistory.id,
+    })
+      .from(gameOddsHistory)
+      .where(and(eq(gameOddsHistory.sport, "nba"), eq(gameOddsHistory.gameDate, slateDate))),
+  ]);
+
+  const playerByDkId = new Map<number, NbaPlayerOddsMovement>();
+  const propRowsByKey = new Map<string, typeof propRows>();
+  for (const row of propRows) {
+    const key = `${row.dkPlayerId}|${row.marketKey}`;
+    const bucket = propRowsByKey.get(key) ?? [];
+    bucket.push(row);
+    propRowsByKey.set(key, bucket);
+  }
+  for (const [key, rows] of propRowsByKey) {
+    rows.sort((a, b) => {
+      const timeDiff = (a.capturedAt?.getTime() ?? 0) - (b.capturedAt?.getTime() ?? 0);
+      if (timeDiff !== 0) return timeDiff;
+      return a.id - b.id;
+    });
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    if (first?.line == null || last?.line == null || rows.length < 2) continue;
+    const delta = Math.round((last.line - first.line) * 100) / 100;
+    if (!delta) continue;
+
+    const [dkPlayerIdRaw, marketKey] = key.split("|");
+    const dkPlayerId = Number(dkPlayerIdRaw);
+    const stat = Object.entries(NBA_PROP_HISTORY_MARKETS).find(([, value]) => value === marketKey)?.[0] as NbaProjectionPropStat | undefined;
+    if (!stat) continue;
+
+    const entry = playerByDkId.get(dkPlayerId) ?? { propDeltas: {}, marketFptsDelta: 0 };
+    entry.propDeltas[stat] = delta;
+    const dkWeight = stat === "pts" ? 1 : stat === "reb" ? 1.25 : stat === "ast" ? 1.5 : 2;
+    entry.marketFptsDelta = Math.round((entry.marketFptsDelta + delta * dkWeight) * 100) / 100;
+    playerByDkId.set(dkPlayerId, entry);
+  }
+
+  const matchupById = new Map<number, NbaMatchupOddsMovement>();
+  const gameRowsByMatchup = new Map<number, typeof gameRows>();
+  for (const row of gameRows) {
+    const bucket = gameRowsByMatchup.get(row.matchupId) ?? [];
+    bucket.push(row);
+    gameRowsByMatchup.set(row.matchupId, bucket);
+  }
+  for (const [matchupId, rows] of gameRowsByMatchup) {
+    rows.sort((a, b) => {
+      const timeDiff = (a.capturedAt?.getTime() ?? 0) - (b.capturedAt?.getTime() ?? 0);
+      if (timeDiff !== 0) return timeDiff;
+      return a.id - b.id;
+    });
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    if (!first || !last || rows.length < 2) continue;
+    const vegasTotalDelta = first.vegasTotal != null && last.vegasTotal != null
+      ? Math.round((last.vegasTotal - first.vegasTotal) * 100) / 100
+      : 0;
+    const homeSpreadDelta = first.homeSpread != null && last.homeSpread != null
+      ? Math.round((last.homeSpread - first.homeSpread) * 100) / 100
+      : null;
+    if (!vegasTotalDelta && !homeSpreadDelta) continue;
+    matchupById.set(matchupId, { vegasTotalDelta, homeSpreadDelta });
+  }
+
+  return { playerByDkId, matchupById };
+}
+
 function extractOverOutcomePlayerName(
   outcome: { name?: string | null; description?: string | null; point?: number | null },
 ): string | null {
@@ -429,6 +625,7 @@ function canonicalizeTeamName(name: string): string {
 
 type PropMatchCandidate = {
   id: number;
+  dkPlayerId: number;
   name: string;
   teamId: number | null;
   canonicalName: string;
@@ -437,11 +634,12 @@ type PropMatchCandidate = {
   lastToken: string;
 };
 
-function buildPropMatchCandidate(player: { id: number; name: string; teamId: number | null }): PropMatchCandidate {
+function buildPropMatchCandidate(player: { id: number; dkPlayerId: number; name: string; teamId: number | null }): PropMatchCandidate {
   const canonicalName = canonicalizeName(player.name);
   const tokens = canonicalName.split(" ").filter(Boolean);
   return {
     id: player.id,
+    dkPlayerId: player.dkPlayerId,
     name: player.name,
     teamId: player.teamId,
     canonicalName,
@@ -731,6 +929,12 @@ function buildNbaProjectionBlend(
     propBlk?: number | null;
     propStl?: number | null;
   } = {},
+  movement: {
+    propDeltas?: Partial<Record<NbaProjectionPropStat, number>>;
+    marketFptsDelta?: number;
+    vegasTotalDelta?: number;
+    homeSpreadDelta?: number | null;
+  } = {},
 ): NbaProjectionBlend {
   const modelStats = computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, {});
   const marketStats = computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, props);
@@ -752,8 +956,11 @@ function buildNbaProjectionBlend(
 
   const marketGap = modelProj != null && marketProj != null ? Math.abs(modelProj - marketProj) : 0;
   const lsGap = modelProj != null && lsProj != null ? Math.abs(modelProj - lsProj) : 0;
+  const marketFptsDelta = Math.abs(movement.marketFptsDelta ?? 0);
+  const totalDelta = Math.abs(movement.vegasTotalDelta ?? 0);
   if (marketGap >= 6) flags.push("high_market_disagreement");
   if (lsGap >= 6) flags.push("high_ls_disagreement");
+  if (marketFptsDelta >= 1.5 || totalDelta >= 1.5) flags.push("line_movement");
 
   if (avgMinutes < 18 && lsProj != null && lsGap >= 6) {
     modelConfidence = clamp01(modelConfidence - 0.12);
@@ -762,6 +969,11 @@ function buildNbaProjectionBlend(
   if (marketGap >= 6 && marketConfidence > 0) {
     modelConfidence = clamp01(modelConfidence - 0.08);
     marketConfidence = clamp01(marketConfidence + 0.05);
+  }
+  if (marketProj != null && marketConfidence > 0 && (marketFptsDelta > 0 || totalDelta > 0)) {
+    const movementBoost = Math.min(0.2, marketFptsDelta * 0.04 + totalDelta * 0.03);
+    marketConfidence = clamp01(marketConfidence + movementBoost);
+    lsConfidence = clamp01(lsConfidence - movementBoost * 0.75);
   }
 
   let baseWeights = { model: 0, market: 0, ls: 0 };
@@ -772,6 +984,11 @@ function buildNbaProjectionBlend(
   } else {
     baseWeights = { model: modelProj != null ? 0.75 : 0, market: 0, ls: lsProj != null ? 0.25 : 0 };
     if (lsProj == null) baseWeights.model = modelProj != null ? 1 : 0;
+  }
+  if (marketProj != null && (marketFptsDelta > 0 || totalDelta > 0)) {
+    const movementShift = Math.min(0.15, marketFptsDelta * 0.03 + totalDelta * 0.025);
+    baseWeights.market += movementShift;
+    baseWeights.ls = Math.max(0, baseWeights.ls - movementShift);
   }
 
   const effectiveWeights = normalizeBlendWeights({
@@ -942,16 +1159,16 @@ function computeLeverage(
  *  Model: score = ourProj / sqrt(salary/$1K)  → normalize to 800% (8 lineup slots).
  *  Returns a Map of array-index → ownership percentage. */
 function computePoolOwnership(
-  players: Array<{ ourProj: number | null; salary: number; isOut: boolean }>,
+  players: Array<{ projection: number | null; salary: number; isOut: boolean }>,
 ): Map<number, number> {
   const TOTAL_OWN = 800; // 8 roster slots × 100%
 
   const scores: { idx: number; score: number }[] = [];
   for (let i = 0; i < players.length; i++) {
     const p = players[i];
-    const ourProj = sanitizeProjection(p.ourProj);
-    if (p.isOut || ourProj == null || ourProj <= 0 || p.salary <= 0) continue;
-    const score = ourProj / Math.sqrt(p.salary / 1000);
+    const projection = sanitizeProjection(p.projection);
+    if (p.isOut || projection == null || projection <= 0 || p.salary <= 0) continue;
+    const score = projection / Math.sqrt(p.salary / 1000);
     if (!Number.isFinite(score) || score <= 0) continue;
     scores.push({ idx: i, score });
   }
@@ -971,6 +1188,8 @@ function computePoolOwnership(
 // ── NBA Stats API (stats.nba.com) backfill ─────────────────────
 
 type NbaOwnershipModelPlayerLike = {
+  dkPlayerId?: number;
+  matchupId?: number | null;
   salary: number;
   avgFptsDk: number | null;
   linestarProj: number | null;
@@ -986,14 +1205,34 @@ type NbaOwnershipModelPlayerLike = {
   _bpg?: number;
 };
 
+function normalizeOwnershipVector(values: Array<number | null>, totalOwnership = 800): Array<number | null> {
+  const activeValues = values.filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
+  const total = activeValues.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return values.map((value) => (value == null ? null : 0));
+  return values.map((value) => {
+    if (value == null || !Number.isFinite(value) || value <= 0) return value == null ? null : 0;
+    return sanitizeOwnershipPct(Math.round((value / total) * totalOwnership * 10) / 10);
+  });
+}
+
 function computeNbaLiveProjection(blend: NbaProjectionBlend): number | null {
   return sanitizeProjection(blend.finalProj ?? blend.marketProj ?? blend.lsProj ?? blend.modelProj ?? null);
 }
 
-function applyNbaOwnershipModels(players: NbaOwnershipModelPlayerLike[]): void {
+function applyNbaOwnershipModels(
+  players: NbaOwnershipModelPlayerLike[],
+  movementContext?: NbaOddsMovementContext,
+): void {
   const ownMap = computePoolOwnership(
     players.map((player) => ({
-      ourProj: player.ourProj,
+      projection: player.ourProj,
+      salary: player.salary,
+      isOut: player.isOut,
+    })),
+  );
+  const liveModelOwnMap = computePoolOwnership(
+    players.map((player) => ({
+      projection: player.liveProj,
       salary: player.salary,
       isOut: player.isOut,
     })),
@@ -1003,8 +1242,25 @@ function applyNbaOwnershipModels(players: NbaOwnershipModelPlayerLike[]): void {
     players[i].ourOwnPct = sanitizeOwnershipPct(ownMap.get(i) ?? null);
   }
 
-  for (const player of players) {
-    const fieldOwnPct = sanitizeOwnershipPct(
+  const liveFieldRaw = players.map((player, index) => {
+    if (player.isOut) return 0;
+    const lsOwnPct = sanitizeOwnershipPct(player.projOwnPct ?? null);
+    const liveModelOwnPct = sanitizeOwnershipPct(liveModelOwnMap.get(index) ?? null);
+    const movement = player.dkPlayerId != null ? movementContext?.playerByDkId.get(player.dkPlayerId) : undefined;
+    const matchupMovement = player.matchupId != null ? movementContext?.matchupById.get(player.matchupId) : undefined;
+    const movementMagnitude = Math.abs(movement?.marketFptsDelta ?? 0) + Math.abs(matchupMovement?.vegasTotalDelta ?? 0) * 0.6;
+    const shift = Math.min(0.4, movementMagnitude * 0.05);
+
+    if (lsOwnPct != null && liveModelOwnPct != null) {
+      return lsOwnPct * (1 - shift) + liveModelOwnPct * shift;
+    }
+    return lsOwnPct ?? liveModelOwnPct ?? sanitizeOwnershipPct(player.ourOwnPct ?? null) ?? null;
+  });
+  const normalizedLiveField = normalizeOwnershipVector(liveFieldRaw);
+
+  for (let i = 0; i < players.length; i++) {
+    const player = players[i];
+    const fieldOwnPct = normalizedLiveField[i] ?? sanitizeOwnershipPct(
       player.isOut ? 0 : (player.projOwnPct ?? player.ourOwnPct ?? null),
     );
     const fieldProj = sanitizeProjection(player.avgFptsDk ?? player.linestarProj ?? null);
@@ -1363,8 +1619,9 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
 
     // Step 2: Get slate players for matching
     const slatePlayers = await db
-      .select({ id: dkPlayers.id, name: dkPlayers.name, teamId: dkPlayers.teamId })
+      .select({ id: dkPlayers.id, dkPlayerId: dkPlayers.dkPlayerId, name: dkPlayers.name, teamId: dkPlayers.teamId })
       .from(dkPlayers).where(eq(dkPlayers.slateId, slate.id));
+    const slatePlayerById = new Map(slatePlayers.map((player) => [player.id, player]));
     const slatePlayerCandidates = slatePlayers.map(buildPropMatchCandidate);
     const playersByTeamId = new Map<number, PropMatchCandidate[]>();
     for (const player of slatePlayerCandidates) {
@@ -1501,6 +1758,30 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
           })
           .where(eq(dkPlayers.id, u.id));
       }
+      await recordPlayerPropHistory(
+        updates.flatMap((u) => {
+          const slatePlayer = slatePlayerById.get(u.id);
+          if (!slatePlayer) return [];
+          return (["pts", "reb", "ast", "blk", "stl"] as const).flatMap((stat) => {
+            const selected = u[stat];
+            if (!selected) return [];
+            return [{
+              sport: "nba" as const,
+              slateId: slate.id,
+              dkPlayerId: slatePlayer.dkPlayerId,
+              playerName: slatePlayer.name,
+              teamId: slatePlayer.teamId,
+              eventId: null,
+              marketKey: NBA_PROP_HISTORY_MARKETS[stat],
+              line: selected.point,
+              price: selected.price,
+              bookmakerKey: selected.bookmakerKey,
+              bookmakerTitle: selected.bookmakerTitle,
+              bookCount: propAccum.get(u.id)?.[stat]?.length ?? 0,
+            }];
+          });
+        }),
+      );
 
       // Recompute ourProj using props for all matched players
       const updatedIds = new Set(updates.map((u) => u.id));
@@ -1548,9 +1829,12 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
         arr.push(ps);
         playersByTeam.set(ps.teamId, arr);
       }
+      const oddsMovementContext = await buildNbaOddsMovementContext(slate.id, targetDate);
 
       const enriched: Array<{
         id: number;
+        dkPlayerId: number;
+        matchupId: number | null;
         salary: number;
         avgFptsDk: number | null;
         linestarProj: number | null;
@@ -1589,6 +1873,8 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
 
         if (updatedIds.has(p.id) && bestPlayer && teamStat && matchup && oppStat) {
           const isHome = matchup.homeTeamId === p.teamId;
+          const playerMovement = oddsMovementContext.playerByDkId.get(p.dkPlayerId);
+          const matchupMovement = p.matchupId != null ? oddsMovementContext.matchupById.get(p.matchupId) : undefined;
           const projectionBlend = buildNbaProjectionBlend(
             bestPlayer,
             teamStat.pace  ?? LEAGUE_AVG_PACE,
@@ -1597,6 +1883,12 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
             matchup.vegasTotal, matchup.homeMl, matchup.awayMl, isHome,
             p.linestarProj,
             { propPts: p.propPts, propReb: p.propReb, propAst: p.propAst, propBlk: p.propBlk, propStl: p.propStl },
+            {
+              propDeltas: playerMovement?.propDeltas,
+              marketFptsDelta: playerMovement?.marketFptsDelta,
+              vegasTotalDelta: matchupMovement?.vegasTotalDelta,
+              homeSpreadDelta: matchupMovement?.homeSpreadDelta,
+            },
           );
           ourProj = sanitizeProjection(projectionBlend.modelProj);
           liveProj = computeNbaLiveProjection(projectionBlend);
@@ -1613,6 +1905,8 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
 
         enriched.push({
           id: p.id,
+          dkPlayerId: p.dkPlayerId,
+          matchupId: p.matchupId,
           salary: p.salary,
           avgFptsDk: sanitizeProjection(p.avgFptsDk),
           linestarProj: sanitizeProjection(p.linestarProj),
@@ -1629,7 +1923,7 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
         });
       }
 
-      applyNbaOwnershipModels(enriched);
+      applyNbaOwnershipModels(enriched, oddsMovementContext);
 
       for (let i = 0; i < enriched.length; i += 50) {
         const batch = enriched.slice(i, i + 50);
@@ -1712,6 +2006,7 @@ async function fetchMlbPlayerProps(): Promise<{ ok: boolean; message: string }> 
       })
       .from(dkPlayers)
       .where(eq(dkPlayers.slateId, slate.id));
+    const slatePlayerById = new Map(slatePlayers.map((player) => [player.id, player]));
     const slatePlayerCandidates = slatePlayers.map(buildPropMatchCandidate);
     const playersByTeamId = new Map<number, PropMatchCandidate[]>();
     for (const player of slatePlayerCandidates) {
@@ -1874,6 +2169,26 @@ async function fetchMlbPlayerProps(): Promise<{ ok: boolean; message: string }> 
       }
       propMatched++;
     }
+    await recordPlayerPropHistory(
+      Array.from(propData.entries()).flatMap(([playerId, props]) => {
+        const slatePlayer = slatePlayerById.get(playerId);
+        if (!slatePlayer) return [];
+        return (Object.entries(props) as Array<[MlbProjectionPropStat, SelectedPropLine]>).map(([stat, selected]) => ({
+          sport: "mlb" as const,
+          slateId: slate.id,
+          dkPlayerId: slatePlayer.dkPlayerId,
+          playerName: slatePlayer.name,
+          teamId: slatePlayer.teamId,
+          eventId: null,
+          marketKey: Object.entries(MLB_PROP_MARKET_TO_STAT).find(([, value]) => value === stat)?.[0] ?? stat,
+          line: selected.point,
+          price: selected.price,
+          bookmakerKey: selected.bookmakerKey,
+          bookmakerTitle: selected.bookmakerTitle,
+          bookCount: propAccum.get(playerId)?.[stat]?.length ?? 0,
+        }));
+      }),
+    );
 
     revalidatePath("/dfs");
     return {
@@ -1912,7 +2227,7 @@ export async function auditNbaPropCoverage(gameKeys: string[]): Promise<NbaPropC
 
     const selectedGameSet = new Set(gameKeys.filter(Boolean));
     const slatePlayers = await db
-      .select({ id: dkPlayers.id, name: dkPlayers.name, gameInfo: dkPlayers.gameInfo, teamId: dkPlayers.teamId })
+      .select({ id: dkPlayers.id, dkPlayerId: dkPlayers.dkPlayerId, name: dkPlayers.name, gameInfo: dkPlayers.gameInfo, teamId: dkPlayers.teamId })
       .from(dkPlayers)
       .where(eq(dkPlayers.slateId, slate.id));
     const selectedPlayers = slatePlayers.filter((player) =>
@@ -2132,7 +2447,7 @@ export async function auditMlbPropCoverage(gameKeys: string[]): Promise<MlbPropC
 
     const selectedGameSet = new Set(gameKeys.filter(Boolean));
     const slatePlayers = await db
-      .select({ id: dkPlayers.id, name: dkPlayers.name, gameInfo: dkPlayers.gameInfo, teamId: dkPlayers.mlbTeamId })
+      .select({ id: dkPlayers.id, dkPlayerId: dkPlayers.dkPlayerId, name: dkPlayers.name, gameInfo: dkPlayers.gameInfo, teamId: dkPlayers.mlbTeamId })
       .from(dkPlayers)
       .where(eq(dkPlayers.slateId, slate.id));
     const selectedPlayers = slatePlayers.filter((player) =>
@@ -2552,6 +2867,7 @@ async function ensureMatchupsForSlate(
   dkPlayers_: Array<{ gameInfo: string | null }>,
   abbrevToId: Map<string, number>,
 ): Promise<string[]> {
+  await ensureOddsHistoryTables();
   const debug: string[] = [];
   const resolve = (abbrev: string): number | null => {
     const canonical = DK_OVERRIDES[abbrev] ?? abbrev;
@@ -2600,7 +2916,7 @@ async function ensureMatchupsForSlate(
       const oddsUrl = new URL("https://api.the-odds-api.com/v4/sports/basketball_nba/odds/");
       oddsUrl.searchParams.set("apiKey", oddsKey);
       oddsUrl.searchParams.set("regions", "us");
-      oddsUrl.searchParams.set("markets", "h2h,totals");
+      oddsUrl.searchParams.set("markets", "h2h,spreads,totals");
       oddsUrl.searchParams.set("oddsFormat", "american");
       const oddsResp = await fetch(oddsUrl.toString(), { next: { revalidate: 0 } });
       debug.push(`Odds API status: ${oddsResp.status} ${oddsResp.statusText}`);
@@ -2612,20 +2928,21 @@ async function ensureMatchupsForSlate(
         debug.push(`Odds API games returned: ${oddsGames.length} — ${oddsGames.map((g) => `${g.away_team} @ ${g.home_team}`).join(", ") || "none"}`);
 
         // Build home-name → matchup lookup
-        const matchupRows = await db.execute<{ id: number; homeName: string }>(sql`
-          SELECT m.id, t.name AS "homeName"
+        const matchupRows = await db.execute<{ id: number; homeName: string; homeTeamId: number | null; awayTeamId: number | null }>(sql`
+          SELECT m.id, t.name AS "homeName", m.home_team_id AS "homeTeamId", m.away_team_id AS "awayTeamId"
           FROM nba_matchups m
           JOIN teams t ON t.team_id = m.home_team_id
           WHERE m.game_date = ${slateDate}
         `);
-        const byHome = new Map(matchupRows.rows.map((r) => [r.homeName, r.id]));
+        const byHome = new Map(matchupRows.rows.map((r) => [r.homeName, r]));
         debug.push(`nba_matchups home names for ${slateDate}: ${[...byHome.keys()].join(", ") || "none"}`);
 
         let oddsUpdated = 0;
+        const historyRows: GameOddsHistoryInput[] = [];
         for (const og of oddsGames) {
-          const mid = byHome.get(og.home_team);
-          if (!mid) { debug.push(`no matchup found for "${og.home_team}"`); continue; }
-          const homePrices: number[] = [], awayPrices: number[] = [], totalPoints: number[] = [];
+          const matchup = byHome.get(og.home_team);
+          if (!matchup) { debug.push(`no matchup found for "${og.home_team}"`); continue; }
+          const homePrices: number[] = [], awayPrices: number[] = [], totalPoints: number[] = [], homeSpreads: number[] = [];
           for (const bm of og.bookmakers ?? []) {
             for (const market of bm.markets ?? []) {
               if (market.key === "h2h") {
@@ -2633,6 +2950,9 @@ async function ensureMatchupsForSlate(
                 const ao = market.outcomes.find((o) => o.name === og.away_team);
                 if (ho) homePrices.push(ho.price);
                 if (ao) awayPrices.push(ao.price);
+              } else if (market.key === "spreads") {
+                const homeOutcome = market.outcomes.find((o) => o.name === og.home_team);
+                if (homeOutcome?.point != null) homeSpreads.push(homeOutcome.point);
               } else if (market.key === "totals") {
                 const over = market.outcomes.find((o) => o.name === "Over");
                 if (over?.point != null) totalPoints.push(over.point);
@@ -2641,16 +2961,35 @@ async function ensureMatchupsForSlate(
           }
           const homeMl = homePrices.length ? Math.round(homePrices.reduce((a, b) => a + b, 0) / homePrices.length) : null;
           const awayMl = awayPrices.length ? Math.round(awayPrices.reduce((a, b) => a + b, 0) / awayPrices.length) : null;
-          const vegasTotal = totalPoints.length ? Math.round(totalPoints.reduce((a, b) => a + b, 0) / totalPoints.length * 2) / 2 : null;
-          if (homeMl || awayMl || vegasTotal) {
+          const homeSpread = homeSpreads.length ? roundHalf(homeSpreads.reduce((a, b) => a + b, 0) / homeSpreads.length) : null;
+          const vegasTotal = totalPoints.length ? roundHalf(totalPoints.reduce((a, b) => a + b, 0) / totalPoints.length) : null;
+          const homeWinProb = homeMl != null && awayMl != null ? mlToProb(homeMl) / (mlToProb(homeMl) + mlToProb(awayMl)) : null;
+          if (homeMl || awayMl || vegasTotal || homeSpread) {
             await db.execute(sql`
               UPDATE nba_matchups
-              SET home_ml = ${homeMl}, away_ml = ${awayMl}, vegas_total = ${vegasTotal}
-              WHERE id = ${mid}
+              SET home_ml = ${homeMl}, away_ml = ${awayMl}, home_spread = ${homeSpread}, vegas_total = ${vegasTotal}, vegas_prob_home = ${homeWinProb}
+              WHERE id = ${matchup.id}
             `);
+            historyRows.push({
+              sport: "nba",
+              matchupId: matchup.id,
+              eventId: null,
+              gameDate: slateDate,
+              homeTeamId: matchup.homeTeamId,
+              awayTeamId: matchup.awayTeamId,
+              homeTeamName: og.home_team,
+              awayTeamName: og.away_team,
+              bookmakerCount: og.bookmakers?.length ?? 0,
+              homeMl,
+              awayMl,
+              homeSpread,
+              vegasTotal,
+              homeWinProb,
+            });
             oddsUpdated++;
           }
         }
+        await recordGameOddsHistory(historyRows);
         debug.push(`odds updated: ${oddsUpdated} matchups`);
       } else {
         const body = await oddsResp.text().catch(() => "");
@@ -2741,6 +3080,7 @@ async function enrichAndSave(
     arr.push(ps);
     playersByTeam.set(ps.teamId, arr);
   }
+  const oddsMovementContext = await buildNbaOddsMovementContext(slateId, slateDate);
 
   let lsMatched = 0;
   let projComputed = 0;
@@ -2800,6 +3140,8 @@ async function enrichAndSave(
 
       if (bestPlayer) {
         const isHome = matchup.homeTeamId === teamId;
+        const playerMovement = oddsMovementContext.playerByDkId.get(p.dkId);
+        const matchupMovement = matchupId != null ? oddsMovementContext.matchupById.get(matchupId) : undefined;
         projectionBlend = buildNbaProjectionBlend(
           bestPlayer,
           teamStat?.pace    ?? LEAGUE_AVG_PACE,
@@ -2810,6 +3152,13 @@ async function enrichAndSave(
           matchup.awayMl,
           isHome,
           linestarProj,
+          {},
+          {
+            propDeltas: playerMovement?.propDeltas,
+            marketFptsDelta: playerMovement?.marketFptsDelta,
+            vegasTotalDelta: matchupMovement?.vegasTotalDelta,
+            homeSpreadDelta: matchupMovement?.homeSpreadDelta,
+          },
         );
         ourProj = sanitizeProjection(projectionBlend.modelProj);
         liveProj = computeNbaLiveProjection(projectionBlend);
@@ -2851,7 +3200,7 @@ async function enrichAndSave(
   }
 
   // Compute internal ownership plus LS-first live ownership/leverage for the slate.
-  applyNbaOwnershipModels(insertValues as NbaOwnershipModelPlayerLike[]);
+  applyNbaOwnershipModels(insertValues as NbaOwnershipModelPlayerLike[], oddsMovementContext);
 
   for (let i = 0; i < insertValues.length; i += 50) {
     const batch = insertValues.slice(i, i + 50).map(({ _spg, _bpg, ...rest }) => rest);
@@ -3012,21 +3361,22 @@ async function _applyLinestarMap(
   sport: Sport,
 ): Promise<{ ok: boolean; message: string; matched: number; total: number }> {
   const slateRows = await db
-    .select({ id: dkSlates.id })
+    .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
     .from(dkSlates)
     .where(eq(dkSlates.sport, sport))
     .orderBy(desc(dkSlates.slateDate), desc(dkSlates.gameCount), desc(dkSlates.id))
     .limit(1);
   if (!slateRows[0]) return { ok: false, message: `No ${sport.toUpperCase()} slate loaded yet`, matched: 0, total: 0 };
-  const slateId = slateRows[0].id;
+  const slate = slateRows[0];
+  const slateId = slate.id;
 
   const pool = await db.execute<{
-    id: number; name: string; salary: number; teamId: number | null; mlbTeamId: number | null;
+    id: number; dkPlayerId: number; matchupId: number | null; name: string; salary: number; teamId: number | null; mlbTeamId: number | null;
     eligiblePositions: string;
     avgFptsDk: number | null; linestarProj: number | null; projOwnPct: number | null;
     ourProj: number | null; liveProj: number | null; isOut: boolean | null;
   }>(sql`
-    SELECT id, name, salary, team_id AS "teamId", mlb_team_id AS "mlbTeamId",
+    SELECT id, dk_player_id AS "dkPlayerId", matchup_id AS "matchupId", name, salary, team_id AS "teamId", mlb_team_id AS "mlbTeamId",
            eligible_positions AS "eligiblePositions",
            avg_fpts_dk AS "avgFptsDk", linestar_proj AS "linestarProj", proj_own_pct AS "projOwnPct",
            our_proj AS "ourProj", live_proj AS "liveProj", is_out AS "isOut"
@@ -3044,6 +3394,9 @@ async function _applyLinestarMap(
       playersByTeam.set(ps.teamId, arr);
     }
   }
+  const oddsMovementContext = sport === "nba"
+    ? await buildNbaOddsMovementContext(slate.id, slate.slateDate)
+    : undefined;
 
   let matched = 0;
   for (const p of pool.rows) {
@@ -3116,7 +3469,7 @@ async function _applyLinestarMap(
       });
     }
 
-    const enriched = pool.rows.map((player) => {
+      const enriched = pool.rows.map((player) => {
       let spgForLev = 0;
       let bpgForLev = 0;
       if (player.teamId) {
@@ -3134,6 +3487,8 @@ async function _applyLinestarMap(
       const lsUpdate = updatedLinestarById.get(player.id);
       return {
         id: player.id,
+        dkPlayerId: player.dkPlayerId,
+        matchupId: player.matchupId,
         salary: player.salary,
         avgFptsDk: sanitizeProjection(player.avgFptsDk),
         linestarProj: lsUpdate?.linestarProj ?? sanitizeProjection(player.linestarProj),
@@ -3149,7 +3504,7 @@ async function _applyLinestarMap(
         _bpg: bpgForLev,
       };
     });
-    applyNbaOwnershipModels(enriched);
+    applyNbaOwnershipModels(enriched, oddsMovementContext);
     for (const player of enriched) {
       await db.update(dkPlayers)
         .set({
@@ -4124,6 +4479,7 @@ async function ensureMatchupsForMlbSlate(
   dkPlayers_: DkApiPlayer[],
   abbrevToId: Map<string, number>,
 ): Promise<void> {
+  await ensureOddsHistoryTables();
   const existing = await db.select({ id: mlbMatchups.id })
     .from(mlbMatchups)
     .where(eq(mlbMatchups.gameDate, slateDate));
@@ -4164,16 +4520,17 @@ async function ensureMatchupsForMlbSlate(
           home_team: string; away_team: string;
           bookmakers: Array<{ markets: Array<{ key: string; outcomes: Array<{ name: string; price: number; point?: number }> }> }>;
         }>;
-        const matchupRows = await db.execute<{ id: number; homeName: string }>(sql`
-          SELECT mm.id, mt.name AS "homeName"
+        const matchupRows = await db.execute<{ id: number; homeName: string; homeTeamId: number | null; awayTeamId: number | null }>(sql`
+          SELECT mm.id, mt.name AS "homeName", mm.home_team_id AS "homeTeamId", mm.away_team_id AS "awayTeamId"
           FROM mlb_matchups mm
           JOIN mlb_teams mt ON mt.team_id = mm.home_team_id
           WHERE mm.game_date = ${slateDate}
         `);
-        const byHome = new Map(matchupRows.rows.map((r) => [r.homeName, r.id]));
+        const byHome = new Map(matchupRows.rows.map((r) => [r.homeName, r]));
+        const historyRows: GameOddsHistoryInput[] = [];
         for (const og of oddsGames) {
-          const mid = byHome.get(og.home_team);
-          if (!mid) continue;
+          const matchup = byHome.get(og.home_team);
+          if (!matchup) continue;
           const hPs: number[] = [], aPs: number[] = [], tots: number[] = [];
           for (const bm of og.bookmakers ?? []) {
             for (const market of bm.markets ?? []) {
@@ -4207,10 +4564,27 @@ async function ensureMatchupsForMlbSlate(
               UPDATE mlb_matchups
               SET home_ml = ${homeMl}, away_ml = ${awayMl}, vegas_total = ${vegasTotal},
                   home_implied = ${homeImplied}, away_implied = ${awayImplied}
-              WHERE id = ${mid}
+              WHERE id = ${matchup.id}
             `);
+            historyRows.push({
+              sport: "mlb",
+              matchupId: matchup.id,
+              eventId: null,
+              gameDate: slateDate,
+              homeTeamId: matchup.homeTeamId,
+              awayTeamId: matchup.awayTeamId,
+              homeTeamName: og.home_team,
+              awayTeamName: og.away_team,
+              bookmakerCount: og.bookmakers?.length ?? 0,
+              homeMl,
+              awayMl,
+              vegasTotal,
+              homeImplied,
+              awayImplied,
+            });
           }
         }
+        await recordGameOddsHistory(historyRows);
       }
     } catch { /* best-effort */ }
   }
@@ -5145,6 +5519,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       arr.push(ps);
       playersByTeam.set(ps.teamId, arr);
     }
+    const oddsMovementContext = await buildNbaOddsMovementContext(slate.id, slate.slateDate);
 
     let projComputed = 0;
     const enriched: Array<{
@@ -5212,6 +5587,8 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
 
         if (bestPlayer) {
           const isHome = matchup.homeTeamId === resolvedTeamId;
+          const playerMovement = oddsMovementContext.playerByDkId.get(p.dkPlayerId);
+          const matchupMovement = oddsMovementContext.matchupById.get(matchup.id);
           projectionBlend = buildNbaProjectionBlend(
             bestPlayer,
             teamStat?.pace   ?? LEAGUE_AVG_PACE,
@@ -5228,6 +5605,12 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
               propAst: p.propAst,
               propBlk: p.propBlk,
               propStl: p.propStl,
+            },
+            {
+              propDeltas: playerMovement?.propDeltas,
+              marketFptsDelta: playerMovement?.marketFptsDelta,
+              vegasTotalDelta: matchupMovement?.vegasTotalDelta,
+              homeSpreadDelta: matchupMovement?.homeSpreadDelta,
             },
           );
           ourProj = sanitizeProjection(projectionBlend.modelProj);
@@ -5270,7 +5653,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       });
     }
 
-    applyNbaOwnershipModels(enriched);
+    applyNbaOwnershipModels(enriched, oddsMovementContext);
 
     // Batch upsert — refresh model/live projection and ownership fields together
     for (let i = 0; i < enriched.length; i += 50) {

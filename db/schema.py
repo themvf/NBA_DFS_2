@@ -163,6 +163,7 @@ TABLES = [
         vegas_total DOUBLE PRECISION,
         home_ml INTEGER,
         away_ml INTEGER,
+        home_spread DOUBLE PRECISION,
         vegas_prob_home DOUBLE PRECISION,
         fetched_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(game_date, home_team_id, away_team_id)
@@ -418,6 +419,52 @@ TABLES = [
 
     # â”€â”€ Durable optimizer jobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     """
+    CREATE TABLE IF NOT EXISTS game_odds_history (
+        id SERIAL PRIMARY KEY,
+        sport TEXT NOT NULL,
+        matchup_id INTEGER NOT NULL,
+        event_id TEXT,
+        game_date DATE NOT NULL,
+        home_team_id INTEGER,
+        away_team_id INTEGER,
+        home_team_name TEXT,
+        away_team_name TEXT,
+        bookmaker_count INTEGER NOT NULL DEFAULT 0,
+        home_ml INTEGER,
+        away_ml INTEGER,
+        home_spread DOUBLE PRECISION,
+        vegas_total DOUBLE PRECISION,
+        vegas_prob_home DOUBLE PRECISION,
+        home_implied DOUBLE PRECISION,
+        away_implied DOUBLE PRECISION,
+        capture_key TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(sport, matchup_id, capture_key)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS player_prop_history (
+        id SERIAL PRIMARY KEY,
+        sport TEXT NOT NULL,
+        slate_id INTEGER REFERENCES dk_slates(id) ON DELETE CASCADE,
+        dk_player_id BIGINT NOT NULL,
+        player_name TEXT NOT NULL,
+        team_id INTEGER,
+        event_id TEXT,
+        market_key TEXT NOT NULL,
+        line DOUBLE PRECISION,
+        price INTEGER,
+        bookmaker_key TEXT,
+        bookmaker_title TEXT,
+        book_count INTEGER NOT NULL DEFAULT 0,
+        capture_key TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(sport, slate_id, dk_player_id, market_key, capture_key)
+    )
+    """,
+
+    """
     CREATE TABLE IF NOT EXISTS projection_runs (
         id SERIAL PRIMARY KEY,
         sport TEXT NOT NULL,
@@ -511,6 +558,14 @@ TABLES = [
 MIGRATIONS = [
     # 2026-03-28: Relax game_id NOT NULL → nullable so TS web can insert without it
     "ALTER TABLE nba_matchups ALTER COLUMN game_id DROP NOT NULL",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_matchups' AND column_name = 'home_spread'
+        ) THEN
+            ALTER TABLE nba_matchups ADD COLUMN home_spread DOUBLE PRECISION;
+        END IF;
+    END $$""",
     # 2026-03-28: Add composite unique on (game_date, home, away) to match Drizzle schema
     """DO $$ BEGIN
         IF NOT EXISTS (
@@ -871,6 +926,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_dk_players_slate ON dk_players(slate_id, our_leverage DESC NULLS LAST)",
     "CREATE INDEX IF NOT EXISTS idx_dk_players_team ON dk_players(team_id, slate_id)",
     "CREATE INDEX IF NOT EXISTS idx_dk_lineups_slate ON dk_lineups(slate_id, strategy)",
+    "CREATE INDEX IF NOT EXISTS idx_game_odds_history_lookup ON game_odds_history(sport, game_date, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_game_odds_history_matchup ON game_odds_history(sport, matchup_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_player_prop_history_lookup ON player_prop_history(sport, slate_id, market_key, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_player_prop_history_player ON player_prop_history(sport, dk_player_id, market_key, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_projection_runs_slate ON projection_runs(slate_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_projection_runs_model ON projection_runs(model_version, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_projection_snapshots_run ON projection_player_snapshots(run_id, dk_player_id)",

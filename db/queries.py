@@ -293,28 +293,104 @@ def upsert_nba_matchup(
     vegas_total: float | None = None,
     home_ml: int | None = None,
     away_ml: int | None = None,
+    home_spread: float | None = None,
     vegas_prob_home: float | None = None,
 ) -> int:
     row = db.execute_one(
         """
         INSERT INTO nba_matchups (
             game_date, game_id, home_team_id, away_team_id,
-            vegas_total, home_ml, away_ml, vegas_prob_home
+            vegas_total, home_ml, away_ml, home_spread, vegas_prob_home
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
             game_id = COALESCE(EXCLUDED.game_id, nba_matchups.game_id),
             vegas_total = EXCLUDED.vegas_total,
             home_ml = EXCLUDED.home_ml,
             away_ml = EXCLUDED.away_ml,
+            home_spread = EXCLUDED.home_spread,
             vegas_prob_home = EXCLUDED.vegas_prob_home,
             fetched_at = NOW()
         RETURNING id
         """,
         (game_date, game_id, home_team_id, away_team_id,
-         vegas_total, home_ml, away_ml, vegas_prob_home),
+         vegas_total, home_ml, away_ml, home_spread, vegas_prob_home),
     )
     return row["id"] if row else 0
+
+
+def insert_game_odds_history_rows(db: DatabaseManager, rows: list[dict]) -> int:
+    tuples = [
+        (
+            row["sport"],
+            row["matchup_id"],
+            row.get("event_id"),
+            row["game_date"],
+            row.get("home_team_id"),
+            row.get("away_team_id"),
+            row.get("home_team_name"),
+            row.get("away_team_name"),
+            row.get("bookmaker_count", 0),
+            row.get("home_ml"),
+            row.get("away_ml"),
+            row.get("home_spread"),
+            row.get("vegas_total"),
+            row.get("vegas_prob_home"),
+            row.get("home_implied"),
+            row.get("away_implied"),
+            row["capture_key"],
+            row.get("captured_at"),
+        )
+        for row in rows
+    ]
+
+    return _execute_values_batch(
+        db,
+        """
+        INSERT INTO game_odds_history (
+            sport, matchup_id, event_id, game_date, home_team_id, away_team_id,
+            home_team_name, away_team_name, bookmaker_count, home_ml, away_ml,
+            home_spread, vegas_total, vegas_prob_home, home_implied, away_implied,
+            capture_key, captured_at
+        ) VALUES %s
+        ON CONFLICT (sport, matchup_id, capture_key) DO NOTHING
+        """,
+        tuples,
+    )
+
+
+def insert_player_prop_history_rows(db: DatabaseManager, rows: list[dict]) -> int:
+    tuples = [
+        (
+            row["sport"],
+            row.get("slate_id"),
+            row["dk_player_id"],
+            row["player_name"],
+            row.get("team_id"),
+            row.get("event_id"),
+            row["market_key"],
+            row.get("line"),
+            row.get("price"),
+            row.get("bookmaker_key"),
+            row.get("bookmaker_title"),
+            row.get("book_count", 0),
+            row["capture_key"],
+            row.get("captured_at"),
+        )
+        for row in rows
+    ]
+
+    return _execute_values_batch(
+        db,
+        """
+        INSERT INTO player_prop_history (
+            sport, slate_id, dk_player_id, player_name, team_id, event_id, market_key,
+            line, price, bookmaker_key, bookmaker_title, book_count, capture_key, captured_at
+        ) VALUES %s
+        ON CONFLICT (sport, slate_id, dk_player_id, market_key, capture_key) DO NOTHING
+        """,
+        tuples,
+    )
 
 
 # ── DK slate / player upserts ─────────────────────────────────────────────────

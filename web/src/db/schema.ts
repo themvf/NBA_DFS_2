@@ -165,6 +165,7 @@ export const nbaMatchups = pgTable(
     awayTeamId: integer("away_team_id").references(() => teams.teamId),
     homeMl: integer("home_ml"),
     awayMl: integer("away_ml"),
+    homeSpread: doublePrecision("home_spread"),
     vegasTotal: doublePrecision("vegas_total"),
     homeWinProb: doublePrecision("vegas_prob_home"),
     fetchedAt: timestamp("fetched_at").defaultNow(),
@@ -431,6 +432,62 @@ export const dkLineups = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => [unique("dk_lineups_slate_strategy_num_key").on(t.slateId, t.strategy, t.lineupNum)]
+);
+
+export const gameOddsHistory = pgTable(
+  "game_odds_history",
+  {
+    id: serial("id").primaryKey(),
+    sport: text("sport").notNull(),
+    matchupId: integer("matchup_id").notNull(),
+    eventId: text("event_id"),
+    gameDate: date("game_date").notNull(),
+    homeTeamId: integer("home_team_id"),
+    awayTeamId: integer("away_team_id"),
+    homeTeamName: text("home_team_name"),
+    awayTeamName: text("away_team_name"),
+    bookmakerCount: integer("bookmaker_count").notNull().default(0),
+    homeMl: integer("home_ml"),
+    awayMl: integer("away_ml"),
+    homeSpread: doublePrecision("home_spread"),
+    vegasTotal: doublePrecision("vegas_total"),
+    homeWinProb: doublePrecision("vegas_prob_home"),
+    homeImplied: doublePrecision("home_implied"),
+    awayImplied: doublePrecision("away_implied"),
+    captureKey: text("capture_key").notNull(),
+    capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  },
+  (t) => [
+    unique("game_odds_history_capture_key").on(t.sport, t.matchupId, t.captureKey),
+    index("idx_game_odds_history_lookup").on(t.sport, t.gameDate, t.capturedAt),
+    index("idx_game_odds_history_matchup").on(t.sport, t.matchupId, t.capturedAt),
+  ]
+);
+
+export const playerPropHistory = pgTable(
+  "player_prop_history",
+  {
+    id: serial("id").primaryKey(),
+    sport: text("sport").notNull(),
+    slateId: integer("slate_id").references(() => dkSlates.id),
+    dkPlayerId: bigint("dk_player_id", { mode: "number" }).notNull(),
+    playerName: text("player_name").notNull(),
+    teamId: integer("team_id"),
+    eventId: text("event_id"),
+    marketKey: text("market_key").notNull(),
+    line: doublePrecision("line"),
+    price: integer("price"),
+    bookmakerKey: text("bookmaker_key"),
+    bookmakerTitle: text("bookmaker_title"),
+    bookCount: integer("book_count").notNull().default(0),
+    captureKey: text("capture_key").notNull(),
+    capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  },
+  (t) => [
+    unique("player_prop_history_capture_key").on(t.sport, t.slateId, t.dkPlayerId, t.marketKey, t.captureKey),
+    index("idx_player_prop_history_lookup").on(t.sport, t.slateId, t.marketKey, t.capturedAt),
+    index("idx_player_prop_history_player").on(t.sport, t.dkPlayerId, t.marketKey, t.capturedAt),
+  ]
 );
 
 export const projectionRuns = pgTable(

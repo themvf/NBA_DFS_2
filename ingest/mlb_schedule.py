@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import date
+from datetime import date, datetime, timezone
 
 import requests
 
 from config import load_config
 from db.database import DatabaseManager
-from db.queries import build_mlb_team_abbrev_cache, upsert_mlb_matchup
+from db.queries import build_mlb_team_abbrev_cache, insert_game_odds_history_rows, upsert_mlb_matchup
 from ingest.mlb_teams import MLB_ID_TO_ABBREV
 from model.dfs_projections import compute_team_implied_total
 
@@ -162,11 +162,14 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         (target_date,),
     )
     matchup_by_home: dict[str, dict] = {r["home_name"]: r for r in rows}
+    captured_at = datetime.now(timezone.utc).replace(microsecond=0)
+    capture_key = captured_at.isoformat()
 
     # The Athletics changed name — try both variants
     _OAK_ALIASES = {"Oakland Athletics", "Athletics", "Sacramento Athletics"}
 
     updated = 0
+    history_rows: list[dict] = []
     for g in games:
         home_name = g.get("home_team", "")
         matchup = matchup_by_home.get(home_name)
@@ -187,7 +190,8 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         home_prices: list[int] = []
         away_prices: list[int] = []
         total_points: list[float] = []
-        for bm in g.get("bookmakers") or []:
+        bookmakers = g.get("bookmakers") or []
+        for bm in bookmakers:
             for market in bm.get("markets", []):
                 if market["key"] == "h2h":
                     for o in market.get("outcomes", []):
@@ -232,8 +236,29 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             (vegas_total, home_ml, away_ml, vegas_prob_home,
              home_implied, away_implied, matchup["id"]),
         )
+        history_rows.append(
+            {
+                "sport": "mlb",
+                "matchup_id": matchup["id"],
+                "event_id": g.get("id"),
+                "game_date": target_date,
+                "home_team_name": home_name,
+                "away_team_name": away_name,
+                "bookmaker_count": len(bookmakers),
+                "home_ml": home_ml,
+                "away_ml": away_ml,
+                "vegas_total": vegas_total,
+                "vegas_prob_home": vegas_prob_home,
+                "home_implied": home_implied,
+                "away_implied": away_implied,
+                "capture_key": capture_key,
+                "captured_at": captured_at,
+            }
+        )
         updated += 1
 
+    if history_rows:
+        insert_game_odds_history_rows(db, history_rows)
     print(f"Odds: {updated} matchups updated with Vegas lines for {target_date}")
     return updated
 
