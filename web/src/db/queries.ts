@@ -26,10 +26,13 @@ export type DkPlayerRow = {
   linestarProj: number | null;
   projOwnPct: number | null;
   ourProj: number | null;
+  liveProj: number | null;
   expectedHr: number | null;
   hrProb1Plus: number | null;
   ourOwnPct: number | null;
   ourLeverage: number | null;
+  liveOwnPct: number | null;
+  liveLeverage: number | null;
   projFloor: number | null;
   projCeiling: number | null;
   boomRate: number | null;
@@ -96,10 +99,13 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         dp.linestar_proj      AS "linestarProj",
         dp.proj_own_pct       AS "projOwnPct",
         dp.our_proj           AS "ourProj",
+        NULL::REAL            AS "liveProj",
         dp.expected_hr        AS "expectedHr",
         dp.hr_prob_1plus      AS "hrProb1Plus",
         dp.our_own_pct        AS "ourOwnPct",
         dp.our_leverage       AS "ourLeverage",
+        NULL::REAL            AS "liveOwnPct",
+        NULL::REAL            AS "liveLeverage",
         dp.prop_pts           AS "propPts",
         dp.prop_pts_price     AS "propPtsPrice",
         dp.prop_pts_book      AS "propPtsBook",
@@ -171,11 +177,14 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       dp.avg_fpts_dk       AS "avgFptsDk",
       dp.linestar_proj     AS "linestarProj",
       dp.proj_own_pct      AS "projOwnPct",
-      dp.our_proj          AS "ourProj",
+      COALESCE(proj.model_proj_fpts, dp.our_proj) AS "ourProj",
+      COALESCE(dp.live_proj, proj.final_proj_fpts, dp.our_proj, dp.linestar_proj) AS "liveProj",
       NULL::REAL           AS "expectedHr",
       NULL::REAL           AS "hrProb1Plus",
       dp.our_own_pct       AS "ourOwnPct",
       dp.our_leverage      AS "ourLeverage",
+      COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "liveOwnPct",
+      COALESCE(dp.live_leverage, dp.our_leverage) AS "liveLeverage",
       dp.prop_pts          AS "propPts",
       dp.prop_pts_price    AS "propPtsPrice",
       dp.prop_pts_book     AS "propPtsBook",
@@ -259,7 +268,8 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       SELECT id FROM dk_slates WHERE sport = 'nba'
       ORDER BY slate_date DESC, id DESC LIMIT 1
     )
-    ORDER BY dp.our_leverage DESC NULLS LAST, dp.our_proj DESC NULLS LAST
+    ORDER BY COALESCE(dp.live_leverage, dp.our_leverage) DESC NULLS LAST,
+             COALESCE(dp.live_proj, proj.final_proj_fpts, dp.our_proj) DESC NULLS LAST
   `);
   return result.rows;
 }

@@ -28,7 +28,18 @@ type Props = {
   sport: Sport;
 };
 
-type SortCol = "name" | "salary" | "avgFptsDk" | "linestarProj" | "ourProj" | "delta" | "projOwnPct" | "ourOwnPct" | "ourLeverage" | "value";
+type SortCol =
+  | "name"
+  | "salary"
+  | "avgFptsDk"
+  | "linestarProj"
+  | "ourProj"
+  | "delta"
+  | "projOwnPct"
+  | "ourOwnPct"
+  | "liveOwnPct"
+  | "ourLeverage"
+  | "value";
 type TeamStackRule = NbaTeamStackRule | MlbTeamStackRule;
 type MlbPlayerPoolFilter = "all" | "p" | "c" | "1b" | "2b" | "3b" | "ss" | "of" | "hitters";
 type RuleState = {
@@ -827,18 +838,26 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
   const sortedPlayers = useMemo(() => {
     return [...visiblePlayers].sort((a, b) => {
       let av: number, bv: number;
+      const nbaProjA = a.liveProj ?? a.blendProj ?? a.ourProj ?? -99;
+      const nbaProjB = b.liveProj ?? b.blendProj ?? b.ourProj ?? -99;
+      const nbaLevA = a.liveLeverage ?? a.ourLeverage ?? -99;
+      const nbaLevB = b.liveLeverage ?? b.ourLeverage ?? -99;
       switch (sortCol) {
         case "salary":      av = a.salary;          bv = b.salary;          break;
         case "avgFptsDk":   av = a.avgFptsDk ?? -99; bv = b.avgFptsDk ?? -99; break;
         case "linestarProj":av = a.linestarProj ?? -99; bv = b.linestarProj ?? -99; break;
-        case "ourProj":     av = a.ourProj ?? -99;  bv = b.ourProj ?? -99;  break;
-        case "delta":       av = (a.ourProj ?? 0) - (a.linestarProj ?? 0);
-                            bv = (b.ourProj ?? 0) - (b.linestarProj ?? 0); break;
+        case "ourProj":     av = sport === "nba" ? nbaProjA : (a.ourProj ?? -99);
+                            bv = sport === "nba" ? nbaProjB : (b.ourProj ?? -99); break;
+        case "delta":       av = (sport === "nba" ? nbaProjA : (a.ourProj ?? 0)) - (a.linestarProj ?? 0);
+                            bv = (sport === "nba" ? nbaProjB : (b.ourProj ?? 0)) - (b.linestarProj ?? 0); break;
         case "projOwnPct":  av = a.projOwnPct ?? -99; bv = b.projOwnPct ?? -99; break;
         case "ourOwnPct":   av = a.ourOwnPct ?? -99; bv = b.ourOwnPct ?? -99; break;
-        case "ourLeverage": av = a.ourLeverage ?? -99; bv = b.ourLeverage ?? -99; break;
-        case "value":       av = (a.ourProj ?? 0) / (a.salary / 1000);
-                            bv = (b.ourProj ?? 0) / (b.salary / 1000);    break;
+        case "liveOwnPct":  av = sport === "nba" ? (a.liveOwnPct ?? a.projOwnPct ?? a.ourOwnPct ?? -99) : (a.ourOwnPct ?? -99);
+                            bv = sport === "nba" ? (b.liveOwnPct ?? b.projOwnPct ?? b.ourOwnPct ?? -99) : (b.ourOwnPct ?? -99); break;
+        case "ourLeverage": av = sport === "nba" ? nbaLevA : (a.ourLeverage ?? -99);
+                            bv = sport === "nba" ? nbaLevB : (b.ourLeverage ?? -99); break;
+        case "value":       av = (sport === "nba" ? nbaProjA : (a.ourProj ?? 0)) / (a.salary / 1000);
+                            bv = (sport === "nba" ? nbaProjB : (b.ourProj ?? 0)) / (b.salary / 1000);    break;
         default:            return a.name.localeCompare(b.name);
       }
       return sortDir === "desc" ? bv - av : av - bv;
@@ -2207,31 +2226,41 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <SortHeader col="linestarProj" label="LS Proj" />
                   {sport === "nba" && (
                     <>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Model</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Our Proj</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Market</th>
                     </>
                   )}
-                  <SortHeader col="ourProj" label={sport === "nba" ? "Blend Proj" : "Our Proj"} />
-                  <SortHeader col="delta" label={sport === "nba" ? "Blend Δ" : "Delta"} />
+                  <SortHeader col="ourProj" label={sport === "nba" ? "Live Proj" : "Our Proj"} />
+                  <SortHeader col="delta" label={sport === "nba" ? "Live Δ" : "Delta"} />
                   <SortHeader col="projOwnPct" label="LS Own%" />
                   <SortHeader col="ourOwnPct" label="Our Own%" />
-                  <SortHeader col="ourLeverage" label="Leverage" />
+                  {sport === "nba" && <SortHeader col="liveOwnPct" label="Live Own%" />}
+                  <SortHeader col="ourLeverage" label={sport === "nba" ? "Live Lev" : "Leverage"} />
                   <SortHeader col="value" label="Value" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {sortedPlayers.length === 0 && (
                   <tr>
-                    <td colSpan={16} className="px-3 py-6 text-center text-sm text-gray-500">
+                    <td colSpan={18} className="px-3 py-6 text-center text-sm text-gray-500">
                       No active players are visible with the current filter.
                     </td>
                   </tr>
                 )}
                 {sortedPlayers.slice(0, 200).map((p) => {
-                  const blendProj = p.blendProj ?? p.ourProj;
-                  const delta = blendProj != null && p.linestarProj != null
-                    ? blendProj - p.linestarProj : null;
-                  const value = blendProj != null ? blendProj / (p.salary / 1000) : null;
+                  const ourProjDisplay = sport === "nba" ? (p.modelProj ?? p.ourProj) : p.ourProj;
+                  const liveProjDisplay = sport === "nba"
+                    ? (p.liveProj ?? p.blendProj ?? p.ourProj)
+                    : p.ourProj;
+                  const liveOwnDisplay = sport === "nba"
+                    ? (p.liveOwnPct ?? p.projOwnPct ?? p.ourOwnPct)
+                    : p.ourOwnPct;
+                  const leverageDisplay = sport === "nba"
+                    ? (p.liveLeverage ?? p.ourLeverage)
+                    : p.ourLeverage;
+                  const delta = liveProjDisplay != null && p.linestarProj != null
+                    ? liveProjDisplay - p.linestarProj : null;
+                  const value = liveProjDisplay != null ? liveProjDisplay / (p.salary / 1000) : null;
                   const propTokens = getPlayerPropTokens(p, sport);
                   const odds = getPlayerOddsContext(p);
                   const pos = displayPos(p.eligiblePositions, sport);
@@ -2391,11 +2420,11 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                       <td className="px-3 py-1.5 text-xs">{fmt1(p.linestarProj)}</td>
                       {sport === "nba" && (
                         <>
-                          <td className="px-3 py-1.5 text-xs">{fmt1(p.modelProj)}</td>
+                          <td className="px-3 py-1.5 text-xs">{fmt1(ourProjDisplay)}</td>
                           <td className="px-3 py-1.5 text-xs">{fmt1(p.marketProj)}</td>
                         </>
                       )}
-                      <td className="px-3 py-1.5 text-xs font-medium">{fmt1(blendProj)}</td>
+                      <td className="px-3 py-1.5 text-xs font-medium">{fmt1(liveProjDisplay)}</td>
                       <td className={`px-3 py-1.5 text-xs font-medium ${
                         delta == null ? "text-gray-400" : delta >= 2 ? "text-green-600" : delta <= -2 ? "text-red-500" : ""
                       }`}>
@@ -2403,10 +2432,13 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                       </td>
                       <td className="px-3 py-1.5 text-xs">{p.projOwnPct != null ? p.projOwnPct.toFixed(1) + "%" : "—"}</td>
                       <td className="px-3 py-1.5 text-xs">{p.ourOwnPct != null ? p.ourOwnPct.toFixed(1) + "%" : "—"}</td>
+                      {sport === "nba" && (
+                        <td className="px-3 py-1.5 text-xs">{liveOwnDisplay != null ? liveOwnDisplay.toFixed(1) + "%" : "—"}</td>
+                      )}
                       <td className={`px-3 py-1.5 text-xs font-medium ${
-                        p.ourLeverage == null ? "" :
-                        p.ourLeverage > 0 ? "text-green-700" : "text-red-400"
-                      }`}>{fmt1(p.ourLeverage)}</td>
+                        leverageDisplay == null ? "" :
+                        leverageDisplay > 0 ? "text-green-700" : "text-red-400"
+                      }`}>{fmt1(leverageDisplay)}</td>
                       <td className="px-3 py-1.5 text-xs text-gray-500">{value != null ? value.toFixed(2) : "—"}</td>
                     </tr>
                   );

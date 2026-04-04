@@ -363,10 +363,13 @@ TABLES = [
         linestar_proj REAL,
         proj_own_pct REAL,
         our_proj REAL,
+        live_proj REAL,
         expected_hr REAL,
         hr_prob_1plus REAL,
         our_leverage REAL,
         our_own_pct REAL,
+        live_leverage REAL,
+        live_own_pct REAL,
         prop_pts REAL,
         prop_pts_price INTEGER,
         prop_pts_book TEXT,
@@ -516,6 +519,31 @@ MIGRATIONS = [
             ALTER TABLE nba_matchups
             ADD CONSTRAINT nba_matchups_date_teams_key
             UNIQUE (game_date, home_team_id, away_team_id);
+        END IF;
+    END $$""",
+    # 2026-04-04: Add live optimizer fields to dk_players for NBA
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'live_proj'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN live_proj REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'live_leverage'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN live_leverage REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'live_own_pct'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN live_own_pct REAL;
         END IF;
     END $$""",
     # 2026-03-28: Add nba_id to teams if missing (matches Drizzle schema)

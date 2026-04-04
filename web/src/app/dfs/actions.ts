@@ -970,6 +970,57 @@ function computePoolOwnership(
 
 // ── NBA Stats API (stats.nba.com) backfill ─────────────────────
 
+type NbaOwnershipModelPlayerLike = {
+  salary: number;
+  avgFptsDk: number | null;
+  linestarProj: number | null;
+  projOwnPct: number | null;
+  ourProj: number | null;
+  liveProj: number | null;
+  ourOwnPct: number | null;
+  ourLeverage: number | null;
+  liveOwnPct: number | null;
+  liveLeverage: number | null;
+  isOut: boolean;
+  _spg?: number;
+  _bpg?: number;
+};
+
+function computeNbaLiveProjection(blend: NbaProjectionBlend): number | null {
+  return sanitizeProjection(blend.finalProj ?? blend.marketProj ?? blend.lsProj ?? blend.modelProj ?? null);
+}
+
+function applyNbaOwnershipModels(players: NbaOwnershipModelPlayerLike[]): void {
+  const ownMap = computePoolOwnership(
+    players.map((player) => ({
+      ourProj: player.ourProj,
+      salary: player.salary,
+      isOut: player.isOut,
+    })),
+  );
+
+  for (let i = 0; i < players.length; i++) {
+    players[i].ourOwnPct = sanitizeOwnershipPct(ownMap.get(i) ?? null);
+  }
+
+  for (const player of players) {
+    const fieldOwnPct = sanitizeOwnershipPct(
+      player.isOut ? 0 : (player.projOwnPct ?? player.ourOwnPct ?? null),
+    );
+    const fieldProj = sanitizeProjection(player.avgFptsDk ?? player.linestarProj ?? null);
+    const spg = player._spg ?? 0;
+    const bpg = player._bpg ?? 0;
+
+    player.liveOwnPct = fieldOwnPct;
+    player.ourLeverage = !player.isOut && player.ourProj != null && fieldOwnPct != null
+      ? sanitizeLeverage(computeLeverage(player.ourProj, fieldOwnPct, fieldProj, spg, bpg))
+      : null;
+    player.liveLeverage = !player.isOut && player.liveProj != null && fieldOwnPct != null
+      ? sanitizeLeverage(computeLeverage(player.liveProj, fieldOwnPct, fieldProj, spg, bpg))
+      : null;
+  }
+}
+
 const MLB_PITCHER_OWNERSHIP_BUDGET = 200;
 const MLB_HITTER_OWNERSHIP_BUDGET = 800;
 const MLB_PITCHER_SOFTMAX_K = 2.0;
@@ -1466,14 +1517,14 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
         id: number; slateId: number; dkPlayerId: number; name: string; salary: number;
         teamId: number | null; matchupId: number | null;
         avgFptsDk: number | null; projOwnPct: number | null; linestarProj: number | null;
-        isOut: boolean | null; ourProj: number | null;
+        isOut: boolean | null; ourProj: number | null; liveProj: number | null;
         propPts: number | null; propReb: number | null; propAst: number | null;
         propBlk: number | null; propStl: number | null;
       }>(sql`
         SELECT id, slate_id AS "slateId", dk_player_id AS "dkPlayerId", name, salary,
                team_id AS "teamId", matchup_id AS "matchupId",
                avg_fpts_dk AS "avgFptsDk", proj_own_pct AS "projOwnPct", linestar_proj AS "linestarProj",
-               is_out AS "isOut", our_proj AS "ourProj",
+               is_out AS "isOut", our_proj AS "ourProj", live_proj AS "liveProj",
                prop_pts AS "propPts", prop_reb AS "propReb", prop_ast AS "propAst",
                prop_blk AS "propBlk", prop_stl AS "propStl"
         FROM dk_players WHERE slate_id = ${slate.id}
@@ -1498,73 +1549,102 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
         playersByTeam.set(ps.teamId, arr);
       }
 
-      const updatedProjs = new Map<number, number>();
+      const enriched: Array<{
+        id: number;
+        salary: number;
+        avgFptsDk: number | null;
+        linestarProj: number | null;
+        projOwnPct: number | null;
+        ourProj: number | null;
+        liveProj: number | null;
+        ourOwnPct: number | null;
+        ourLeverage: number | null;
+        liveOwnPct: number | null;
+        liveLeverage: number | null;
+        isOut: boolean;
+        _spg: number;
+        _bpg: number;
+      }> = [];
       for (const p of pool.rows) {
-        if (!updatedIds.has(p.id)) continue;
-        if (!p.teamId) continue;
-        const teamStat = statsByTeam.get(p.teamId);
-        const matchup  = matchupByTeam.get(p.teamId);
-        if (!teamStat || !matchup) continue;
+        let ourProj = sanitizeProjection(p.ourProj);
+        let liveProj = sanitizeProjection(p.liveProj ?? p.ourProj ?? p.linestarProj);
+        let spgForLev = 0;
+        let bpgForLev = 0;
 
-        const oppId   = matchup.homeTeamId === p.teamId ? matchup.awayTeamId : matchup.homeTeamId;
+        const teamStat = p.teamId ? statsByTeam.get(p.teamId) : null;
+        const matchup = p.teamId ? matchupByTeam.get(p.teamId) ?? null : null;
+        const oppId = matchup && p.teamId ? (matchup.homeTeamId === p.teamId ? matchup.awayTeamId : matchup.homeTeamId) : null;
         const oppStat = oppId ? statsByTeam.get(oppId) : null;
-        if (!oppStat) continue;
-
-        const candidates = playersByTeam.get(p.teamId) ?? [];
+        const candidates = p.teamId ? (playersByTeam.get(p.teamId) ?? []) : [];
         let bestPlayer: typeof playerStatRows[0] | null = null;
         let bestDist = 4;
         for (const ps of candidates) {
           const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
           if (d < bestDist) { bestDist = d; bestPlayer = ps; }
         }
-        if (!bestPlayer) continue;
+        if (bestPlayer) {
+          spgForLev = bestPlayer.spg ?? 0;
+          bpgForLev = bestPlayer.bpg ?? 0;
+        }
 
-        const isHome = matchup.homeTeamId === p.teamId;
-        const projectionBlend = buildNbaProjectionBlend(
-          bestPlayer,
-          teamStat.pace  ?? LEAGUE_AVG_PACE,
-          oppStat.pace   ?? LEAGUE_AVG_PACE,
-          oppStat.defRtg ?? LEAGUE_AVG_DEF_RTG,
-          matchup.vegasTotal, matchup.homeMl, matchup.awayMl, isHome,
-          p.linestarProj,
-          { propPts: p.propPts, propReb: p.propReb, propAst: p.propAst, propBlk: p.propBlk, propStl: p.propStl },
-        );
-        const ourProj = projectionBlend.finalProj;
-        if (ourProj == null) continue;
+        if (updatedIds.has(p.id) && bestPlayer && teamStat && matchup && oppStat) {
+          const isHome = matchup.homeTeamId === p.teamId;
+          const projectionBlend = buildNbaProjectionBlend(
+            bestPlayer,
+            teamStat.pace  ?? LEAGUE_AVG_PACE,
+            oppStat.pace   ?? LEAGUE_AVG_PACE,
+            oppStat.defRtg ?? LEAGUE_AVG_DEF_RTG,
+            matchup.vegasTotal, matchup.homeMl, matchup.awayMl, isHome,
+            p.linestarProj,
+            { propPts: p.propPts, propReb: p.propReb, propAst: p.propAst, propBlk: p.propBlk, propStl: p.propStl },
+          );
+          ourProj = sanitizeProjection(projectionBlend.modelProj);
+          liveProj = computeNbaLiveProjection(projectionBlend);
+          projectionSnapshots.push({
+            slateId: p.slateId,
+            dkPlayerId: p.dkPlayerId,
+            name: p.name,
+            teamId: p.teamId,
+            salary: p.salary,
+            isOut: p.isOut ?? false,
+            blend: projectionBlend,
+          });
+        }
 
-        const fieldProj = sanitizeProjection(p.avgFptsDk ?? null);
-        const projOwnPct = sanitizeOwnershipPct(p.projOwnPct ?? 15) ?? 15;
-        const ourLeverage = sanitizeLeverage(
-          computeLeverage(ourProj, projOwnPct, fieldProj, bestPlayer.spg ?? 0, bestPlayer.bpg ?? 0),
-        );
-
-        await db.update(dkPlayers)
-          .set({ ourProj, ourLeverage })
-          .where(eq(dkPlayers.id, p.id));
-        updatedProjs.set(p.id, ourProj);
-        projectionSnapshots.push({
-          slateId: p.slateId,
-          dkPlayerId: p.dkPlayerId,
-          name: p.name,
-          teamId: p.teamId,
+        enriched.push({
+          id: p.id,
           salary: p.salary,
+          avgFptsDk: sanitizeProjection(p.avgFptsDk),
+          linestarProj: sanitizeProjection(p.linestarProj),
+          projOwnPct: sanitizeOwnershipPct(p.projOwnPct),
+          ourProj,
+          liveProj,
+          ourOwnPct: null,
+          ourLeverage: null,
+          liveOwnPct: null,
+          liveLeverage: null,
           isOut: p.isOut ?? false,
-          blend: projectionBlend,
+          _spg: spgForLev,
+          _bpg: bpgForLev,
         });
       }
 
-      // Recompute ownership model after projection updates
-      const ownMap = computePoolOwnership(
-        pool.rows.map((p) => ({
-          ourProj: sanitizeProjection(updatedProjs.get(p.id) ?? p.ourProj),
-          salary: p.salary,
-          isOut: p.isOut ?? false,
-        })),
-      );
-      for (const [idx, ownPct] of ownMap) {
-        await db.update(dkPlayers)
-          .set({ ourOwnPct: sanitizeOwnershipPct(ownPct) })
-          .where(eq(dkPlayers.id, pool.rows[idx].id));
+      applyNbaOwnershipModels(enriched);
+
+      for (let i = 0; i < enriched.length; i += 50) {
+        const batch = enriched.slice(i, i + 50);
+        for (const player of batch) {
+          await db.update(dkPlayers)
+            .set({
+              ourProj: player.ourProj,
+              liveProj: player.liveProj,
+              ourOwnPct: player.ourOwnPct,
+              liveOwnPct: player.liveOwnPct,
+              ourLeverage: player.ourLeverage,
+              liveLeverage: player.liveLeverage,
+            })
+            .where(eq(dkPlayers.id, player.id));
+        }
       }
 
       const projectionRunId = await createProjectionRun(slate.id, "fetch_props", {
@@ -2687,7 +2767,7 @@ async function enrichAndSave(
     const projOwnPct = sanitizeOwnershipPct(ls?.projOwnPct ?? null);
 
     let ourProj: number | null = null;
-    let ourLeverage: number | null = null;
+    let liveProj: number | null = linestarProj;
     let spgForLev = 0, bpgForLev = 0;
     let projectionBlend: NbaProjectionBlend = {
       modelProj: null,
@@ -2731,7 +2811,8 @@ async function enrichAndSave(
           isHome,
           linestarProj,
         );
-        ourProj = projectionBlend.finalProj;
+        ourProj = sanitizeProjection(projectionBlend.modelProj);
+        liveProj = computeNbaLiveProjection(projectionBlend);
         spgForLev = bestPlayer.spg ?? 0;
         bpgForLev = bestPlayer.bpg ?? 0;
         if (ourProj != null) projComputed++;
@@ -2743,23 +2824,19 @@ async function enrichAndSave(
     const dkIsOut = p.isDisabled || ["O", "OUT"].includes(p.dkStatus.toUpperCase());
     const isOut   = dkIsOut;
 
-    const projForLev = isOut ? 0 : (ourProj ?? linestarProj ?? 0);
-    if (projForLev > 0 && projOwnPct != null) {
-      // field_proj: DK's own projection is the primary ownership driver in the field;
-      // LineStar is a reasonable fallback when avg_fpts_dk is unavailable.
-      const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
-      ourLeverage = sanitizeLeverage(
-        computeLeverage(projForLev, projOwnPct, fieldProj, spgForLev, bpgForLev),
-      );
-    }
-
     insertValues.push({
       slateId, dkPlayerId: p.dkId, name: p.name,
       teamAbbrev: p.teamAbbrev, teamId, matchupId,
       eligiblePositions: p.eligiblePositions, salary: p.salary,
       gameInfo: p.gameInfo, avgFptsDk: sanitizeProjection(p.avgFptsDk),
       linestarProj, projOwnPct,
-      ourProj, ourLeverage, ourOwnPct: null as number | null, isOut,
+      ourProj,
+      liveProj,
+      ourLeverage: null as number | null,
+      ourOwnPct: null as number | null,
+      liveLeverage: null as number | null,
+      liveOwnPct: null as number | null,
+      isOut,
       _spg: spgForLev, _bpg: bpgForLev,  // transient: ceiling bonus for leverage recalc
     });
     projectionSnapshots.push({
@@ -2773,38 +2850,8 @@ async function enrichAndSave(
     });
   }
 
-  // ── Baseline ownership when LineStar unavailable ────────────
-  // Players without proj_own_pct get a proportional estimate from avg_fpts_dk
-  // or our_proj, anchored at 15% average. This ensures leverage is always
-  // computed so GPP mode works even without a LineStar cookie.
-  const refProjs = insertValues
-    .filter((p) => p.projOwnPct == null)
-    .map((p) => p.avgFptsDk ?? p.ourProj ?? 0)
-    .filter((v) => v > 0);
-  const poolAvg = refProjs.length > 0 ? refProjs.reduce((a, b) => a + b, 0) / refProjs.length : 0;
-
-  if (poolAvg > 0) {
-    for (const p of insertValues) {
-      if (p.projOwnPct != null) continue;
-      const ref = p.avgFptsDk ?? p.ourProj ?? 0;
-      if (!ref) continue;
-      const baseOwn = Math.max(1, Math.min(50, (ref / poolAvg) * 15));
-      p.projOwnPct = sanitizeOwnershipPct(Math.round(baseOwn * 100) / 100);
-      // Re-compute leverage now that we have an ownership estimate
-      if (p.ourProj && !p.isOut) {
-        const fieldProj = p.avgFptsDk ?? null;
-        p.ourLeverage = sanitizeLeverage(
-          computeLeverage(p.ourProj, p.projOwnPct ?? 0, fieldProj, p._spg, p._bpg),
-        );
-      }
-    }
-  }
-
-  // ── Our ownership model ─────────────────────────────────────
-  const ownMap = computePoolOwnership(insertValues);
-  for (const [idx, ownPct] of ownMap) {
-    (insertValues[idx] as Record<string, unknown>).ourOwnPct = sanitizeOwnershipPct(ownPct);
-  }
+  // Compute internal ownership plus LS-first live ownership/leverage for the slate.
+  applyNbaOwnershipModels(insertValues as NbaOwnershipModelPlayerLike[]);
 
   for (let i = 0; i < insertValues.length; i += 50) {
     const batch = insertValues.slice(i, i + 50).map(({ _spg, _bpg, ...rest }) => rest);
@@ -2814,8 +2861,12 @@ async function enrichAndSave(
         salary: sql`EXCLUDED.salary`, teamId: sql`EXCLUDED.team_id`,
         matchupId: sql`EXCLUDED.matchup_id`,
         linestarProj: sql`EXCLUDED.linestar_proj`, projOwnPct: sql`EXCLUDED.proj_own_pct`,
-        ourProj: sql`EXCLUDED.our_proj`, ourLeverage: sql`EXCLUDED.our_leverage`,
+        ourProj: sql`EXCLUDED.our_proj`,
+        liveProj: sql`EXCLUDED.live_proj`,
+        ourLeverage: sql`EXCLUDED.our_leverage`,
         ourOwnPct: sql`EXCLUDED.our_own_pct`,
+        liveLeverage: sql`EXCLUDED.live_leverage`,
+        liveOwnPct: sql`EXCLUDED.live_own_pct`,
         isOut: sql`EXCLUDED.is_out`, avgFptsDk: sql`EXCLUDED.avg_fpts_dk`,
         eligiblePositions: sql`EXCLUDED.eligible_positions`, gameInfo: sql`EXCLUDED.game_info`,
       },
@@ -2973,12 +3024,12 @@ async function _applyLinestarMap(
     id: number; name: string; salary: number; teamId: number | null; mlbTeamId: number | null;
     eligiblePositions: string;
     avgFptsDk: number | null; linestarProj: number | null; projOwnPct: number | null;
-    ourProj: number | null; isOut: boolean | null;
+    ourProj: number | null; liveProj: number | null; isOut: boolean | null;
   }>(sql`
     SELECT id, name, salary, team_id AS "teamId", mlb_team_id AS "mlbTeamId",
            eligible_positions AS "eligiblePositions",
            avg_fpts_dk AS "avgFptsDk", linestar_proj AS "linestarProj", proj_own_pct AS "projOwnPct",
-           our_proj AS "ourProj", is_out AS "isOut"
+           our_proj AS "ourProj", live_proj AS "liveProj", is_out AS "isOut"
     FROM dk_players WHERE slate_id = ${slateId}
   `);
 
@@ -3001,26 +3052,10 @@ async function _applyLinestarMap(
     matched++;
     const linestarProj = sanitizeProjection(ls.linestarProj);
     const projOwnPct = sanitizeOwnershipPct(ls.projOwnPct);
-    const ourProj = sanitizeProjection(p.ourProj);
-    let ourLeverage: number | null = null;
-    if (sport === "nba" && ourProj != null && !p.isOut && projOwnPct != null) {
-      const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
-      // Look up spg/bpg for ceiling bonus
-      let spg = 0, bpg = 0;
-      if (p.teamId) {
-        const candidates = playersByTeam.get(p.teamId) ?? [];
-        let bestDist = 4;
-        for (const ps of candidates) {
-          const d = levenshtein(p.name.toLowerCase(), ps.name.toLowerCase());
-          if (d < bestDist) { bestDist = d; spg = ps.spg ?? 0; bpg = ps.bpg ?? 0; }
-        }
-      }
-      ourLeverage = sanitizeLeverage(computeLeverage(ourProj, projOwnPct, fieldProj, spg, bpg));
-    }
     // Do NOT touch isOut — DK API status is the authoritative source.
     // LineStar proj=0 does not mean the player is scratched.
     await db.update(dkPlayers)
-      .set({ linestarProj, projOwnPct, ourLeverage })
+      .set({ linestarProj, projOwnPct })
       .where(eq(dkPlayers.id, p.id));
   }
 
@@ -3071,19 +3106,59 @@ async function _applyLinestarMap(
         .where(eq(dkPlayers.id, player.id));
     }
   } else {
-    // Recompute our ownership model after LineStar update
-    const ownMap = computePoolOwnership(
-      pool.rows.map((p) => ({
-        ourProj: sanitizeProjection(p.ourProj),
-        salary: p.salary,
-        isOut: p.isOut ?? false,
-      })),
-    );
-    for (const [idx, ownPct] of ownMap) {
-      const p = pool.rows[idx];
+    const updatedLinestarById = new Map<number, { linestarProj: number | null; projOwnPct: number | null }>();
+    for (const player of pool.rows) {
+      const ls = findLinestarMatch(player.name, player.salary, lsMap);
+      if (!ls) continue;
+      updatedLinestarById.set(player.id, {
+        linestarProj: sanitizeProjection(ls.linestarProj),
+        projOwnPct: sanitizeOwnershipPct(ls.projOwnPct),
+      });
+    }
+
+    const enriched = pool.rows.map((player) => {
+      let spgForLev = 0;
+      let bpgForLev = 0;
+      if (player.teamId) {
+        const candidates = playersByTeam.get(player.teamId) ?? [];
+        let bestDist = 4;
+        for (const ps of candidates) {
+          const d = levenshtein(player.name.toLowerCase(), ps.name.toLowerCase());
+          if (d < bestDist) {
+            bestDist = d;
+            spgForLev = ps.spg ?? 0;
+            bpgForLev = ps.bpg ?? 0;
+          }
+        }
+      }
+      const lsUpdate = updatedLinestarById.get(player.id);
+      return {
+        id: player.id,
+        salary: player.salary,
+        avgFptsDk: sanitizeProjection(player.avgFptsDk),
+        linestarProj: lsUpdate?.linestarProj ?? sanitizeProjection(player.linestarProj),
+        projOwnPct: lsUpdate?.projOwnPct ?? sanitizeOwnershipPct(player.projOwnPct),
+        ourProj: sanitizeProjection(player.ourProj),
+        liveProj: sanitizeProjection(player.liveProj ?? player.ourProj ?? player.linestarProj),
+        ourOwnPct: null,
+        ourLeverage: null,
+        liveOwnPct: null,
+        liveLeverage: null,
+        isOut: player.isOut ?? false,
+        _spg: spgForLev,
+        _bpg: bpgForLev,
+      };
+    });
+    applyNbaOwnershipModels(enriched);
+    for (const player of enriched) {
       await db.update(dkPlayers)
-        .set({ ourOwnPct: sanitizeOwnershipPct(ownPct) })
-        .where(eq(dkPlayers.id, p.id));
+        .set({
+          ourOwnPct: player.ourOwnPct,
+          liveOwnPct: player.liveOwnPct,
+          ourLeverage: player.ourLeverage,
+          liveLeverage: player.liveLeverage,
+        })
+        .where(eq(dkPlayers.id, player.id));
     }
   }
 
@@ -4599,8 +4674,10 @@ export async function runOptimizer(
       dp.id, dp.dk_player_id AS "dkPlayerId", dp.name, dp.team_abbrev AS "teamAbbrev",
       dp.team_id AS "teamId", dp.matchup_id AS "matchupId",
       dp.eligible_positions AS "eligiblePositions", dp.salary,
-      dp.our_proj AS "ourProj", dp.our_leverage AS "ourLeverage",
-      dp.linestar_proj AS "linestarProj", dp.proj_own_pct AS "projOwnPct",
+      COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS "ourProj",
+      COALESCE(dp.live_leverage, dp.our_leverage) AS "ourLeverage",
+      dp.linestar_proj AS "linestarProj",
+      COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projOwnPct",
       dp.is_out AS "isOut", dp.game_info AS "gameInfo",
       t.logo_url AS "teamLogo", t.name AS "teamName",
       m.home_team_id AS "homeTeamId"
@@ -5075,7 +5152,9 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       teamId: number | null; mlbTeamId: number | null; matchupId: number | null;
       eligiblePositions: string; salary: number; gameInfo: string | null;
       avgFptsDk: number | null; linestarProj: number | null; projOwnPct: number | null;
-      isOut: boolean; ourProj: number | null; ourLeverage: number | null; ourOwnPct: number | null;
+      isOut: boolean; ourProj: number | null; liveProj: number | null;
+      ourLeverage: number | null; ourOwnPct: number | null;
+      liveLeverage: number | null; liveOwnPct: number | null;
       _spg: number; _bpg: number;
     }> = [];
     const projectionSnapshots: Array<{
@@ -5091,6 +5170,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
 
     for (const p of currentPlayers) {
       let ourProj: number | null = null;
+      let liveProj: number | null = sanitizeProjection(p.liveProj ?? p.linestarProj ?? null);
       let spgForLev = 0, bpgForLev = 0;
       let projectionBlend: NbaProjectionBlend = {
         modelProj: null,
@@ -5150,7 +5230,8 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
               propStl: p.propStl,
             },
           );
-          ourProj = projectionBlend.finalProj;
+          ourProj = sanitizeProjection(projectionBlend.modelProj);
+          liveProj = computeNbaLiveProjection(projectionBlend);
           spgForLev = bestPlayer.spg ?? 0;
           bpgForLev = bestPlayer.bpg ?? 0;
           if (ourProj != null) projComputed++;
@@ -5158,16 +5239,8 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       }
 
       const isOut = p.isOut ?? false;
-      let ourLeverage: number | null = null;
       const linestarProj = sanitizeProjection(p.linestarProj ?? null);
       const projOwnPct = sanitizeOwnershipPct(p.projOwnPct ?? null);
-      const projForLev = isOut ? 0 : (ourProj ?? linestarProj ?? 0);
-      if (projForLev > 0 && projOwnPct != null) {
-        const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
-        ourLeverage = sanitizeLeverage(
-          computeLeverage(projForLev, projOwnPct, fieldProj, spgForLev, bpgForLev),
-        );
-      }
 
       enriched.push({
         slateId: p.slateId, dkPlayerId: p.dkPlayerId, name: p.name,
@@ -5177,7 +5250,12 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
         avgFptsDk: sanitizeProjection(p.avgFptsDk ?? null),
         linestarProj,
         projOwnPct, isOut,
-        ourProj, ourLeverage, ourOwnPct: null,
+        ourProj,
+        liveProj,
+        ourLeverage: null,
+        ourOwnPct: null,
+        liveLeverage: null,
+        liveOwnPct: null,
         _spg: spgForLev, _bpg: bpgForLev,
       });
       projectionSnapshots.push({
@@ -5192,21 +5270,20 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       });
     }
 
-    // Pool ownership runs after all projections are computed
-    const ownMap = computePoolOwnership(enriched);
-    for (const [idx, ownPct] of ownMap) {
-      enriched[idx].ourOwnPct = sanitizeOwnershipPct(ownPct);
-    }
+    applyNbaOwnershipModels(enriched);
 
-    // Batch upsert — only ourProj, ourLeverage, ourOwnPct are overwritten
+    // Batch upsert — refresh model/live projection and ownership fields together
     for (let i = 0; i < enriched.length; i += 50) {
       const batch = enriched.slice(i, i + 50).map(({ _spg, _bpg, ...rest }) => rest);
       await db.insert(dkPlayers).values(batch).onConflictDoUpdate({
         target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
         set: {
-          ourProj:     sql`EXCLUDED.our_proj`,
+          ourProj: sql`EXCLUDED.our_proj`,
+          liveProj: sql`EXCLUDED.live_proj`,
           ourLeverage: sql`EXCLUDED.our_leverage`,
-          ourOwnPct:   sql`EXCLUDED.our_own_pct`,
+          ourOwnPct: sql`EXCLUDED.our_own_pct`,
+          liveLeverage: sql`EXCLUDED.live_leverage`,
+          liveOwnPct: sql`EXCLUDED.live_own_pct`,
         },
       });
     }
