@@ -1,3 +1,5 @@
+export const MLB_MAX_HITTERS_PER_TEAM = 5;
+
 export type MlbTeamStackSize = 2 | 3 | 4 | 5;
 
 export type MlbTeamStackRule = {
@@ -206,6 +208,22 @@ export function validateMlbRuleSelections(
       ok: false,
       normalized,
       error: `You locked ${lockedBatters.length} hitters, but an MLB lineup only has 8 hitter slots.`,
+    };
+  }
+
+  const lockedBatterCountsByTeam = new Map<number, number>();
+  for (const player of lockedBatters) {
+    if (player.teamId == null) continue;
+    lockedBatterCountsByTeam.set(player.teamId, (lockedBatterCountsByTeam.get(player.teamId) ?? 0) + 1);
+  }
+  const overTeamLimitLocks = Array.from(lockedBatterCountsByTeam.entries())
+    .filter(([, count]) => count > MLB_MAX_HITTERS_PER_TEAM)
+    .map(([teamId, count]) => `${teamName(teamId, teamAbbrevById)} (${count})`);
+  if (overTeamLimitLocks.length > 0) {
+    return {
+      ok: false,
+      normalized,
+      error: `DraftKings allows at most ${MLB_MAX_HITTERS_PER_TEAM} hitters from one MLB team. These locks exceed that limit: ${nameList(overTeamLimitLocks)}.`,
     };
   }
 

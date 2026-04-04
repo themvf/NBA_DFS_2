@@ -4,6 +4,7 @@ import type { DkPlayerRow } from "@/db/queries";
 import { stringifyCsvLine } from "./csv";
 import { applyMlbPendingLineupPolicy, normalizeMlbPendingLineupPolicy, type MlbPendingLineupPolicy } from "./mlb-lineup";
 import {
+  MLB_MAX_HITTERS_PER_TEAM,
   normalizeMlbRuleSelections,
   validateMlbRuleSelections,
   type MlbRuleSettings,
@@ -423,6 +424,9 @@ function validateMlbLineupExact(
     if (isPitcher(player.eligiblePositions) || player.teamId == null) continue;
     batterTeamCounts.set(player.teamId, (batterTeamCounts.get(player.teamId) ?? 0) + 1);
   }
+  if (Array.from(batterTeamCounts.values()).some((count) => count > MLB_MAX_HITTERS_PER_TEAM)) {
+    return { ok: false };
+  }
   if (minStack > 0 && !Array.from(batterTeamCounts.values()).some((count) => count >= minStack)) {
     return { ok: false };
   }
@@ -569,7 +573,11 @@ function solveMlbLineup(
       if (opponentTeamId == null) continue;
       maxBattersByTeam.set(
         opponentTeamId,
-        Math.min(maxBattersByTeam.get(opponentTeamId) ?? antiCorrMax, antiCorrMax),
+        Math.min(
+          maxBattersByTeam.get(opponentTeamId) ?? MLB_MAX_HITTERS_PER_TEAM,
+          antiCorrMax,
+          MLB_MAX_HITTERS_PER_TEAM,
+        ),
       );
     }
     for (const [teamId, minCount] of template.minCountsByTeam) {
@@ -578,7 +586,7 @@ function solveMlbLineup(
     }
 
     for (const [teamId, count] of lockedBatterTeamCounts) {
-      if (count > (maxBattersByTeam.get(teamId) ?? MLB_BATTER_SLOTS.length)) return null;
+      if (count > (maxBattersByTeam.get(teamId) ?? MLB_MAX_HITTERS_PER_TEAM)) return null;
     }
 
     const remainingBatterSlots = MLB_BATTER_SLOTS.filter((slot) => !lockedBatterSlotAssignments[slot]);
@@ -646,7 +654,7 @@ function solveMlbLineup(
           const teamCounts = new Map(state.teamCounts);
           if (player.teamId != null) {
             const nextCount = (teamCounts.get(player.teamId) ?? 0) + 1;
-            if (nextCount > (maxBattersByTeam.get(player.teamId) ?? MLB_BATTER_SLOTS.length)) {
+            if (nextCount > (maxBattersByTeam.get(player.teamId) ?? MLB_MAX_HITTERS_PER_TEAM)) {
               continue;
             }
             teamCounts.set(player.teamId, nextCount);
@@ -1233,6 +1241,19 @@ export function buildMlbMultiEntryCSV(
 
   for (let i = 0; i < lineups.length; i++) {
     const lineup = lineups[i];
+    const batterTeamCounts = new Map<string, number>();
+    for (const player of lineup.players) {
+      if (isPitcher(player.eligiblePositions)) continue;
+      const teamKey = player.teamAbbrev || (player.teamId != null ? String(player.teamId) : "");
+      if (!teamKey) continue;
+      const nextCount = (batterTeamCounts.get(teamKey) ?? 0) + 1;
+      if (nextCount > MLB_MAX_HITTERS_PER_TEAM) {
+        throw new Error(
+          `Lineup ${i + 1} has ${nextCount} hitters from ${teamKey}. DraftKings allows at most ${MLB_MAX_HITTERS_PER_TEAM}. Regenerate the MLB lineups before exporting.`,
+        );
+      }
+      batterTeamCounts.set(teamKey, nextCount);
+    }
     rows.push(stringifyCsvLine([
       String(i + 1),
       ...slotOrder.map((slot) => {
