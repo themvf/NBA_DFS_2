@@ -250,7 +250,7 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
           ELSE ROUND((
             COALESCE(CASE WHEN pps.model_stats_json ? 'pts' THEN (pps.model_stats_json->>'pts')::REAL ELSE NULL END, 0) * COALESCE(pps.model_weight, 0)
             + COALESCE(CASE WHEN pps.market_stats_json ? 'pts' THEN (pps.market_stats_json->>'pts')::REAL ELSE NULL END, 0) * COALESCE(pps.market_weight, 0)
-          )::NUMERIC / NULLIF(COALESCE(pps.model_weight, 0) + COALESCE(pps.market_weight, 0), 0), 2)::REAL
+          )::NUMERIC / NULLIF(COALESCE(pps.model_weight, 0) + COALESCE(pps.market_weight, 0), 0)::NUMERIC, 2)::REAL
         END AS blend_points,
         pps.model_proj_fpts,
         pps.market_proj_fpts,
