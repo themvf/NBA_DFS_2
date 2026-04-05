@@ -5282,17 +5282,44 @@ export async function exportMlbLineups(
 
 type ResultPlayer = { name: string; actualFpts: number; actualOwnPct?: number };
 
+/** Split a CSV line respecting double-quoted fields. */
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let cur = "";
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQuote = !inQuote;
+    } else if (ch === "," && !inQuote) {
+      cells.push(cur.trim());
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
 function parseStandingsCsv(content: string): ResultPlayer[] {
   // DK contest standings: positional columns
-  // Row cols: 0=Rank, 1=EntryId, ..., 7=Player, 8=Roster Position, 9=%Drafted, 10=FPTS
+  // Common format: Rank,EntryId,EntryName,TimeRemaining,Points,Lineup,TeamName,Player,Roster Position,%Drafted,FPTS
+  // Col indices:   0     1       2         3             4      5      6         7      8               9        10
   const lines = content.split(/\r?\n/).filter(Boolean).slice(1); // skip header
   const seen = new Map<string, ResultPlayer>();
   for (const line of lines) {
-    const cells = line.split(",");
-    if (cells.length < 11) continue;
-    const name    = cells[7]?.trim() ?? "";
-    const ownStr  = (cells[9]?.trim() ?? "").replace("%", "");
-    const fptsStr = cells[10]?.trim() ?? "";
+    const cells = splitCsvLine(line);
+    if (cells.length < 10) continue;
+    // Try col 7 first (format with TeamName col); fall back to col 6 (format without TeamName)
+    const hasFptsAt10 = cells.length >= 11 && !isNaN(parseFloat(cells[10] ?? ""));
+    const playerCol  = hasFptsAt10 ? 7 : 6;
+    const ownCol     = hasFptsAt10 ? 9 : 8;
+    const fptsCol    = hasFptsAt10 ? 10 : 9;
+    const name    = cells[playerCol] ?? "";
+    const ownStr  = (cells[ownCol] ?? "").replace("%", "");
+    const fptsStr = cells[fptsCol] ?? "";
     if (!name) continue;
     const actualFpts    = parseFloat(fptsStr);
     const actualOwnPct  = parseFloat(ownStr);
@@ -5337,6 +5364,7 @@ export async function uploadResults(formData: FormData): Promise<{
   total?: number;
   matchRate?: number;
 }> {
+  try {
   const file = formData.get("resultsFile") as File | null;
   if (!file) return { ok: false, message: "Results CSV required" };
 
@@ -5413,7 +5441,7 @@ export async function uploadResults(formData: FormData): Promise<{
     }
   }
 
-  await syncProjectionSnapshotActualsForSlate(slate.id);
+  try { await syncProjectionSnapshotActualsForSlate(slate.id); } catch { /* non-fatal */ }
   let analysisNote = "";
   if (slate.sport === "nba") {
     try {
@@ -5435,6 +5463,9 @@ export async function uploadResults(formData: FormData): Promise<{
     total: resultPlayers.length,
     matchRate,
   };
+  } catch (err) {
+    return { ok: false, message: `Upload failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 // ── Clear Slate ───────────────────────────────────────────────
