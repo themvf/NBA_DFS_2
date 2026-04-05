@@ -7,10 +7,13 @@ let ensureProjectionExperimentTablesPromise: Promise<void> | null = null;
 let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 
-// Columns added to dk_slates after the initial table creation.
+// Columns added to dk_slates / dk_players after the initial table creation.
 // ALTER TABLE ... ADD COLUMN IF NOT EXISTS is idempotent — safe to run every deploy.
 const DK_SLATE_COLUMN_DDLS = [
   `ALTER TABLE dk_slates ADD COLUMN IF NOT EXISTS cash_line DOUBLE PRECISION`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS proj_floor REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS proj_ceiling REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS boom_rate REAL`,
 ];
 
 const DK_PLAYER_PROP_COLUMN_DDLS = [
