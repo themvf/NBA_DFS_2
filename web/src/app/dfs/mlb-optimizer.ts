@@ -573,6 +573,15 @@ function solveMlbLineup(
   );
   if (pitchers.length < 2 || batters.length < MLB_BATTER_SLOTS.length) return null;
 
+  // Bring-back quality floor: bring-back candidates must project at or above
+  // the 40th percentile of the pruned batter pool.  minCount === 1 in the
+  // template exclusively identifies bring-back slots (primary stacks are 2–5).
+  const bringBackMinProj = (() => {
+    if (bringBackThreshold <= 0) return 0;
+    const projs = batters.map(getMlbProjection).filter((p) => p > 0).sort((a, b) => a - b);
+    return projs.length > 0 ? projs[Math.floor(projs.length * 0.4)] : 0;
+  })();
+
   const opponentByTeamId = buildMlbOpponentByTeamId(eligible);
   const pitcherPairs = enumeratePitcherPairs(pitchers, mode).filter(({ players }) =>
     lockedPitchers.every((lockedPitcher) => players.some((player) => player.id === lockedPitcher.id)),
@@ -683,7 +692,12 @@ function solveMlbLineup(
 
       for (const [teamId, minCount] of template.minCountsByTeam) {
         if ((state.teamCounts.get(teamId) ?? 0) >= minCount) continue;
-        for (const player of base.filter((candidate) => candidate.teamId === teamId).slice(0, 5)) {
+        const isBringBack = minCount === 1;
+        const teamCandidates = base.filter((candidate) =>
+          candidate.teamId === teamId &&
+          (!isBringBack || getMlbProjection(candidate) >= bringBackMinProj),
+        );
+        for (const player of teamCandidates.slice(0, 5)) {
           push(player);
         }
       }
