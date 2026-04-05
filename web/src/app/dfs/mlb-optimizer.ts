@@ -35,9 +35,12 @@ export type MlbOptimizerPlayer = Pick<
   | "gameInfo"
   | "teamLogo"
   | "teamName"
-> & {
-  homeTeamId: number | null;
-};
+  | "homeTeamId"
+  | "awayTeamId"
+  | "vegasTotal"
+  | "homeImplied"
+  | "awayImplied"
+>;
 
 export type MlbLineupSlot = "P1" | "P2" | "C" | "1B" | "2B" | "3B" | "SS" | "OF1" | "OF2" | "OF3";
 
@@ -47,6 +50,7 @@ export type MlbGeneratedLineup = {
   totalSalary: number;
   projFpts: number;
   leverageScore: number;
+  templateId?: string;
 };
 
 export type MlbOptimizerSettings = MlbRuleSettings & {
@@ -69,6 +73,11 @@ const MLB_BATTER_BRANCH_LIMIT = 12;
 const MLB_GLOBAL_BATTER_KEEP_COUNT = 48;
 const MLB_TEAM_BATTER_KEEP_COUNT = 10;
 const MLB_CHEAP_BATTER_KEEP_COUNT = 10;
+const MLB_GPP_LEVERAGE_WEIGHT = 0.6;
+const MLB_CASH_LEVERAGE_WEIGHT = 0.1;
+const MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5;
+const MLB_TEMPLATE_USAGE_PENALTY = 1.25;
+const MLB_TEMPLATE_ROTATION_PENALTY = 0.6;
 const MLB_BATTER_SLOTS: readonly MlbLineupSlot[] = ["C", "1B", "2B", "3B", "SS", "OF1", "OF2", "OF3"];
 const MLB_ALL_SLOTS: readonly MlbLineupSlot[] = ["P1", "P2", ...MLB_BATTER_SLOTS];
 
@@ -81,6 +90,7 @@ type MlbStackTemplate = {
   id: string;
   minCountsByTeam: Map<number, number>;
   score: number;
+  baseRank: number;
 };
 
 type MlbValidationResult =
@@ -129,11 +139,56 @@ function getMlbLeverage(player: MlbOptimizerPlayer): number {
 }
 
 function getMlbSearchScore(player: MlbOptimizerPlayer, mode: "cash" | "gpp"): number {
-  if (mode === "gpp") {
-    const leverage = finiteOrNull(player.ourLeverage);
-    if (leverage != null && leverage > 0) return leverage;
+  const projection = getMlbProjection(player);
+  const leverage = getMlbLeverage(player);
+  return projection + leverage * (mode === "gpp" ? MLB_GPP_LEVERAGE_WEIGHT : MLB_CASH_LEVERAGE_WEIGHT);
+}
+
+function getMlbTeamImpliedRuns(player: MlbOptimizerPlayer): number | null {
+  if (player.teamId != null) {
+    if (player.homeTeamId != null && player.teamId === player.homeTeamId) {
+      return finiteOrNull(player.homeImplied)
+        ?? (finiteOrNull(player.vegasTotal) != null ? player.vegasTotal! / 2 : null);
+    }
+    if (player.awayTeamId != null && player.teamId === player.awayTeamId) {
+      return finiteOrNull(player.awayImplied)
+        ?? (finiteOrNull(player.vegasTotal) != null ? player.vegasTotal! / 2 : null);
+    }
   }
-  return getMlbProjection(player);
+  const vegasTotal = finiteOrNull(player.vegasTotal);
+  return vegasTotal != null ? vegasTotal / 2 : null;
+}
+
+function getMlbStackEnvironmentFactor(player: MlbOptimizerPlayer | null | undefined): number {
+  if (!player) return 1;
+  const impliedRuns = getMlbTeamImpliedRuns(player);
+  if (impliedRuns == null || impliedRuns <= 0) return 1;
+  const ratio = Math.max(0.7, Math.min(1.4, impliedRuns / MLB_LEAGUE_AVG_TEAM_TOTAL));
+  return Math.sqrt(ratio);
+}
+
+function orderMlbStackTemplates(
+  templates: readonly MlbStackTemplate[],
+  templateUsageCount: Map<string, number>,
+  lineupIteration: number,
+): MlbStackTemplate[] {
+  const rotationWindow = Math.min(4, templates.length);
+  const rotationOffset = rotationWindow > 1 ? lineupIteration % rotationWindow : 0;
+
+  return [...templates].sort((a, b) => {
+    const usagePenaltyA = (templateUsageCount.get(a.id) ?? 0) * MLB_TEMPLATE_USAGE_PENALTY;
+    const usagePenaltyB = (templateUsageCount.get(b.id) ?? 0) * MLB_TEMPLATE_USAGE_PENALTY;
+    const rotationPenaltyA = a.baseRank < rotationWindow
+      ? ((a.baseRank - rotationOffset + rotationWindow) % rotationWindow) * MLB_TEMPLATE_ROTATION_PENALTY
+      : 0;
+    const rotationPenaltyB = b.baseRank < rotationWindow
+      ? ((b.baseRank - rotationOffset + rotationWindow) % rotationWindow) * MLB_TEMPLATE_ROTATION_PENALTY
+      : 0;
+    const adjustedA = a.score - usagePenaltyA - rotationPenaltyA;
+    const adjustedB = b.score - usagePenaltyB - rotationPenaltyB;
+    const diff = adjustedB - adjustedA;
+    return Math.abs(diff) > 1e-9 ? diff : a.baseRank - b.baseRank || a.id.localeCompare(b.id);
+  });
 }
 
 function compareMlbPlayers(a: MlbOptimizerPlayer, b: MlbOptimizerPlayer, mode: "cash" | "gpp"): number {
@@ -313,7 +368,7 @@ function enumerateMlbStackTemplates(
     if (effectiveRules.length > 0) {
       return [];
     }
-    return [{ id: "no-stack", minCountsByTeam: new Map(), score: 0 }];
+    return [{ id: "no-stack", minCountsByTeam: new Map(), score: 0, baseRank: 0 }];
   }
 
   const byTeam = new Map<number, MlbOptimizerPlayer[]>();
@@ -342,17 +397,23 @@ function enumerateMlbStackTemplates(
     }
     const score = sorted
       .slice(0, stackSize)
-      .reduce((sum, player) => sum + getMlbSearchScore(player, mode) + (getMlbProjection(player) * 0.01), 0);
+      .reduce((sum, player) => sum + getMlbSearchScore(player, mode) + (getMlbProjection(player) * 0.01), 0)
+      * getMlbStackEnvironmentFactor(sorted[0] ?? null);
     templates.push({
       id: `stack-${teamId}-${stackSize}`,
       minCountsByTeam,
       score,
+      baseRank: 0,
     });
   }
 
   return templates
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
-    .slice(0, MLB_TEMPLATE_LIMIT);
+    .slice(0, MLB_TEMPLATE_LIMIT)
+    .map((template, index) => ({
+      ...template,
+      baseRank: index,
+    }));
 }
 
 function calculateMlbSharedCount(players: MlbOptimizerPlayer[], previousLineup: Set<number>): number {
@@ -469,6 +530,7 @@ function solveMlbLineup(
   antiCorrMax = 1,
   minChanges = 3,
   ruleSelections: NormalizedMlbRuleSelections = normalizeMlbRuleSelections({}),
+  templateUsageCount: Map<string, number> = new Map(),
 ): MlbGeneratedLineup | null {
   const eligible = pool
     .filter((player) => (exposureCount.get(player.id) ?? 0) < maxExposureCount)
@@ -515,12 +577,16 @@ function solveMlbLineup(
   const pitcherPairs = enumeratePitcherPairs(pitchers, mode).filter(({ players }) =>
     lockedPitchers.every((lockedPitcher) => players.some((player) => player.id === lockedPitcher.id)),
   );
-  const templates = enumerateMlbStackTemplates(
-    batters,
-    mode,
-    minStack,
-    bringBackThreshold,
-    ruleSelections.requiredTeamStacks,
+  const templates = orderMlbStackTemplates(
+    enumerateMlbStackTemplates(
+      batters,
+      mode,
+      minStack,
+      bringBackThreshold,
+      ruleSelections.requiredTeamStacks,
+    ),
+    templateUsageCount,
+    previousLineupSets.length,
   );
   if (pitcherPairs.length === 0 || templates.length === 0) return null;
 
@@ -722,6 +788,7 @@ function solveMlbLineup(
         totalSalary: state.salary,
         projFpts: state.projection,
         leverageScore: state.leverage,
+        templateId: template.id,
       };
     }
 
@@ -731,7 +798,10 @@ function solveMlbLineup(
   for (const pitcherPair of pitcherPairs) {
     for (const template of templates) {
       const lineup = buildLineupForTemplate(pitcherPair.players, template);
-      if (lineup) return lineup;
+      if (lineup) {
+        templateUsageCount.set(template.id, (templateUsageCount.get(template.id) ?? 0) + 1);
+        return lineup;
+      }
     }
   }
 
@@ -927,6 +997,7 @@ export function optimizeMlbLineupsWithDebug(
 
   const maxExp = Math.ceil(nLineups * maxExposure);
   const exposureCount = new Map<number, number>(preparedPool.map((player) => [player.id, 0]));
+  const templateUsageCount = new Map<string, number>();
   const lineups: MlbGeneratedLineup[] = [];
   const previousLineupSets: Set<number>[] = [];
 
@@ -951,6 +1022,7 @@ export function optimizeMlbLineupsWithDebug(
         antiCorr,
         minChanges,
         ruleSelections,
+        templateUsageCount,
       );
       const durationMs = Date.now() - start;
       const failureReason = lineup
