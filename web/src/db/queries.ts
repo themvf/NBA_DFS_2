@@ -439,9 +439,9 @@ export async function getDkStrategySummary(sport: Sport = "nba"): Promise<Strate
       AVG(dl.actual_fpts) AS "avgActualFpts",
       COUNT(*) FILTER (WHERE dl.actual_fpts >= COALESCE(ds.cash_line, 300))::int AS "totalCashed",
       ROUND(
-        100.0 * COUNT(*) FILTER (WHERE dl.actual_fpts >= COALESCE(ds.cash_line, 300)) / COUNT(*),
+        (100.0 * COUNT(*) FILTER (WHERE dl.actual_fpts >= COALESCE(ds.cash_line, 300)) / COUNT(*))::NUMERIC,
         1
-      ) AS "cashRate",
+      )::FLOAT AS "cashRate",
       MAX(dl.actual_fpts) AS "bestSingleLineup",
       AVG(dl.leverage) AS "avgLeverage"
     FROM dk_lineups dl

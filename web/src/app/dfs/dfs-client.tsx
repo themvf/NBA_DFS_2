@@ -2640,7 +2640,7 @@ export default function DfsClient({ players, slateDate, accuracy, comparison, st
                   <td className="py-1 text-right">{row.nSlates}</td>
                   <td className="py-1 text-right">{row.totalLineups}</td>
                   <td className="py-1 text-right font-medium">{fmt1(row.avgActualFpts)}</td>
-                  <td className="py-1 text-right">{row.cashRate != null ? row.cashRate.toFixed(1) + "%" : "—"}</td>
+                  <td className="py-1 text-right">{row.cashRate != null ? Number(row.cashRate).toFixed(1) + "%" : "—"}</td>
                   <td className="py-1 text-right text-green-600 font-medium">{fmt1(row.bestSingleLineup)}</td>
                 </tr>
               ))}
