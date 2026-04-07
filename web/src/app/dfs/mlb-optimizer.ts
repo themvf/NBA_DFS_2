@@ -531,6 +531,8 @@ function solveMlbLineup(
   minChanges = 3,
   ruleSelections: NormalizedMlbRuleSelections = normalizeMlbRuleSelections({}),
   templateUsageCount: Map<string, number> = new Map(),
+  baseTemplates: MlbStackTemplate[] | null = null,
+  lineupIndex = 0,
 ): MlbGeneratedLineup | null {
   const eligible = pool
     .filter((player) => (exposureCount.get(player.id) ?? 0) < maxExposureCount)
@@ -587,7 +589,7 @@ function solveMlbLineup(
     lockedPitchers.every((lockedPitcher) => players.some((player) => player.id === lockedPitcher.id)),
   );
   const templates = orderMlbStackTemplates(
-    enumerateMlbStackTemplates(
+    baseTemplates ?? enumerateMlbStackTemplates(
       batters,
       mode,
       minStack,
@@ -599,7 +601,22 @@ function solveMlbLineup(
   );
   if (pitcherPairs.length === 0 || templates.length === 0) return null;
 
+  // Taper beam width for later lineups — early lineups need full width for quality;
+  // later lineups are diversity-constrained so extra states rarely survive anyway.
+  const beamWidth = lineupIndex < 3 ? MLB_BATTER_BEAM_WIDTH
+    : lineupIndex < 8 ? Math.ceil(MLB_BATTER_BEAM_WIDTH * 0.67)
+    : Math.ceil(MLB_BATTER_BEAM_WIDTH * 0.5);
+
   // minSalaryForRemaining is defined inside buildLineupForTemplate to use pre-sorted per-slot arrays.
+
+  // Pre-group batters by team once — used by canMeetTeamMinimums instead of scanning all batters.
+  const battersByTeam = new Map<number, MlbOptimizerPlayer[]>();
+  for (const batter of batters) {
+    if (batter.teamId == null) continue;
+    const group = battersByTeam.get(batter.teamId) ?? [];
+    group.push(batter);
+    battersByTeam.set(batter.teamId, group);
+  }
 
   function canMeetTeamMinimums(
     selectedIds: Set<number>,
@@ -612,10 +629,11 @@ function solveMlbLineup(
       if (current >= minCount) continue;
       const needed = minCount - current;
       let available = 0;
-      for (const player of batters) {
-        if (player.teamId !== teamId || selectedIds.has(player.id)) continue;
+      for (const player of battersByTeam.get(teamId) ?? []) {
+        if (selectedIds.has(player.id)) continue;
         if (remainingSlots.some((slot) => canFillMlbSlot(slot, player.eligiblePositions))) {
           available++;
+          if (available >= needed) break;
         }
       }
       if (available < needed) return false;
@@ -796,7 +814,7 @@ function solveMlbLineup(
         if (Math.abs(scoreDiff) > 1e-9) return scoreDiff;
         return a.salary - b.salary;
       });
-      states = nextStates.slice(0, MLB_BATTER_BEAM_WIDTH).map(({ estimate: _estimate, ...state }) => state);
+      states = nextStates.slice(0, beamWidth).map(({ estimate: _estimate, ...state }) => state);
     }
 
     for (const state of states) {
@@ -1033,6 +1051,16 @@ export function optimizeMlbLineupsWithDebug(
   const lineups: MlbGeneratedLineup[] = [];
   const previousLineupSets: Set<number>[] = [];
 
+  // Compute base templates once for the entire run — batter pool doesn't change lineup-to-lineup.
+  const preparedBatters = preparedPool.filter((p) => !isPitcher(p.eligiblePositions));
+  const sharedBaseTemplates = enumerateMlbStackTemplates(
+    preparedBatters,
+    mode,
+    effectiveMinStack,
+    effectiveBringBack,
+    ruleSelections.requiredTeamStacks,
+  );
+
   for (let i = 0; i < nLineups; i++) {
     const attempts: OptimizerLineupAttemptDebug[] = [];
     const runAttempt = (
@@ -1055,6 +1083,8 @@ export function optimizeMlbLineupsWithDebug(
         minChanges,
         ruleSelections,
         templateUsageCount,
+        sharedBaseTemplates,
+        i,
       );
       const durationMs = Date.now() - start;
       const failureReason = lineup
