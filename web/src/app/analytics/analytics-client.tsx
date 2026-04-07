@@ -17,6 +17,7 @@ import type {
   PositionAccuracyRow,
   SalaryTierAccuracyRow,
   LeverageCalibrationRow,
+  OwnershipVsTeamTotalRow,
   Sport,
 } from "@/db/queries";
 import { saveHistoricalSlate } from "@/app/dfs/actions";
@@ -42,6 +43,7 @@ type Props = {
   posAccuracy: PositionAccuracyRow[];
   salaryTier: SalaryTierAccuracyRow[];
   leverageCalib: LeverageCalibrationRow[];
+  ownVsTotal: OwnershipVsTeamTotalRow[];
   sport: Sport;
 };
 
@@ -50,6 +52,7 @@ export default function AnalyticsClient({
   posAccuracy,
   salaryTier,
   leverageCalib,
+  ownVsTotal,
   sport,
 }: Props) {
   const hasData = crossSlate.length > 0;
@@ -400,6 +403,73 @@ export default function AnalyticsClient({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {ownVsTotal.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold mb-1">Ownership vs Team Implied Total</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Do players on high-total teams draw more ownership? Implied totals are derived from moneylines + O/U.
+            Projected ownership = our model. Actual ownership = post-contest DK results.
+          </p>
+          <ResponsiveContainer width="100%" height={240}>
+            <ComposedChart data={ownVsTotal} margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="impliedBucket" tick={{ fontSize: 11 }} />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v: number) => `${v.toFixed(1)}%`}
+                label={{ value: "Avg Own %", angle: -90, position: "insideLeft", fontSize: 11 }}
+              />
+              <Tooltip
+                formatter={(value, name) =>
+                  [typeof value === "number" ? `${value.toFixed(2)}%` : "—", name]
+                }
+              />
+              <Legend />
+              <Bar dataKey="avgProjOwn" name="Proj Own %" fill="#6366f1" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="avgActualOwn" name="Actual Own %" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 border-b">
+                  <th className="py-1 text-left">Implied Total Bucket</th>
+                  <th className="py-1 text-right">Players (proj)</th>
+                  <th className="py-1 text-right">Players (actual)</th>
+                  <th className="py-1 text-right">Avg Proj Own %</th>
+                  <th className="py-1 text-right">Avg Actual Own %</th>
+                  <th className="py-1 text-right">Delta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ownVsTotal.map((row) => {
+                  const delta =
+                    row.avgActualOwn != null && row.avgProjOwn != null
+                      ? row.avgActualOwn - row.avgProjOwn
+                      : null;
+                  return (
+                    <tr key={row.impliedBucket} className="border-b border-gray-50">
+                      <td className="py-1 font-medium">{row.impliedBucket}</td>
+                      <td className="py-1 text-right">{row.nProj}</td>
+                      <td className="py-1 text-right">{row.nActual}</td>
+                      <td className="py-1 text-right">
+                        {row.avgProjOwn != null ? `${row.avgProjOwn.toFixed(2)}%` : "—"}
+                      </td>
+                      <td className="py-1 text-right">
+                        {row.avgActualOwn != null ? `${row.avgActualOwn.toFixed(2)}%` : "—"}
+                      </td>
+                      <td className={`py-1 text-right ${delta == null ? "" : delta > 0 ? "text-red-600" : "text-blue-600"}`}>
+                        {delta != null ? `${delta > 0 ? "+" : ""}${delta.toFixed(2)}%` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

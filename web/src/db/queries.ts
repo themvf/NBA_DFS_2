@@ -801,4 +801,76 @@ export async function getLeverageCalibration(sport: Sport = "nba"): Promise<Leve
   return result.rows;
 }
 
+// ── Ownership vs Team Total correlation ──────────────────────
+
+export type OwnershipVsTeamTotalRow = {
+  impliedBucket: string;
+  bucketMin: number | null;
+  nProj: number;
+  nActual: number;
+  avgProjOwn: number | null;
+  avgActualOwn: number | null;
+};
+
+export async function getOwnershipVsTeamTotal(sport: Sport = "nba"): Promise<OwnershipVsTeamTotalRow[]> {
+  if (sport !== "nba") return [];
+
+  const result = await db.execute<OwnershipVsTeamTotalRow>(sql`
+    WITH player_implied AS (
+      SELECT
+        dp.proj_own_pct,
+        dp.actual_own_pct,
+        CASE
+          WHEN dp.team_id = mm.home_team_id
+               AND mm.home_ml IS NOT NULL AND mm.away_ml IS NOT NULL AND mm.vegas_total IS NOT NULL THEN
+            mm.vegas_total * (
+              CASE WHEN mm.home_ml > 0 THEN 100.0/(mm.home_ml+100)
+                   ELSE ABS(mm.home_ml::FLOAT)/(ABS(mm.home_ml::FLOAT)+100.0) END
+              / NULLIF(
+                  CASE WHEN mm.home_ml > 0 THEN 100.0/(mm.home_ml+100)
+                       ELSE ABS(mm.home_ml::FLOAT)/(ABS(mm.home_ml::FLOAT)+100.0) END
+                + CASE WHEN mm.away_ml > 0 THEN 100.0/(mm.away_ml+100)
+                       ELSE ABS(mm.away_ml::FLOAT)/(ABS(mm.away_ml::FLOAT)+100.0) END
+              , 0.0)
+            )
+          WHEN dp.team_id = mm.away_team_id
+               AND mm.home_ml IS NOT NULL AND mm.away_ml IS NOT NULL AND mm.vegas_total IS NOT NULL THEN
+            mm.vegas_total * (
+              CASE WHEN mm.away_ml > 0 THEN 100.0/(mm.away_ml+100)
+                   ELSE ABS(mm.away_ml::FLOAT)/(ABS(mm.away_ml::FLOAT)+100.0) END
+              / NULLIF(
+                  CASE WHEN mm.home_ml > 0 THEN 100.0/(mm.home_ml+100)
+                       ELSE ABS(mm.home_ml::FLOAT)/(ABS(mm.home_ml::FLOAT)+100.0) END
+                + CASE WHEN mm.away_ml > 0 THEN 100.0/(mm.away_ml+100)
+                       ELSE ABS(mm.away_ml::FLOAT)/(ABS(mm.away_ml::FLOAT)+100.0) END
+              , 0.0)
+            )
+          ELSE NULL
+        END AS team_implied
+      FROM dk_players dp
+      JOIN dk_slates ds ON ds.id = dp.slate_id
+      JOIN nba_matchups mm ON mm.id = dp.matchup_id
+      WHERE ds.sport = 'nba'
+    )
+    SELECT
+      CASE
+        WHEN team_implied < 108 THEN 'Under 108'
+        WHEN team_implied < 112 THEN '108–112'
+        WHEN team_implied < 116 THEN '112–116'
+        WHEN team_implied < 120 THEN '116–120'
+        ELSE '120+'
+      END                                                                  AS "impliedBucket",
+      MIN(team_implied)::FLOAT                                             AS "bucketMin",
+      COUNT(*) FILTER (WHERE proj_own_pct IS NOT NULL)::int                AS "nProj",
+      COUNT(*) FILTER (WHERE actual_own_pct IS NOT NULL)::int              AS "nActual",
+      AVG(proj_own_pct) FILTER (WHERE proj_own_pct IS NOT NULL)            AS "avgProjOwn",
+      AVG(actual_own_pct) FILTER (WHERE actual_own_pct IS NOT NULL)        AS "avgActualOwn"
+    FROM player_implied
+    WHERE team_implied IS NOT NULL
+    GROUP BY 1
+    ORDER BY MIN(team_implied) ASC NULLS LAST
+  `);
+  return result.rows;
+}
+
 export { CURRENT_SEASON };
