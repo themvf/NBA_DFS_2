@@ -599,16 +599,7 @@ function solveMlbLineup(
   );
   if (pitcherPairs.length === 0 || templates.length === 0) return null;
 
-  function minSalaryForRemaining(selectedIds: Set<number>, remainingSlots: readonly MlbLineupSlot[]): number {
-    const unused = batters.filter((player) => !selectedIds.has(player.id));
-    const total = remainingSlots
-      .map((slot) =>
-        unused
-          .filter((player) => canFillMlbSlot(slot, player.eligiblePositions))
-          .sort((a, b) => a.salary - b.salary || compareMlbPlayers(a, b, mode))[0]?.salary ?? Infinity)
-      .reduce((sum, salary) => sum + salary, 0);
-    return Number.isFinite(total) ? total : Infinity;
-  }
+  // minSalaryForRemaining is defined inside buildLineupForTemplate to use pre-sorted per-slot arrays.
 
   function canMeetTeamMinimums(
     selectedIds: Set<number>,
@@ -680,6 +671,28 @@ function solveMlbLineup(
       return diff !== 0 ? diff : MLB_BATTER_SLOTS.indexOf(a) - MLB_BATTER_SLOTS.indexOf(b);
     });
 
+    // Pre-sort each slot's candidates by salary once — used by minSalaryForRemaining
+    // and the cheap-batter branch in branchCandidates, avoiding repeated inner-loop sorts.
+    const slotCandidatesBySalary = new Map<MlbLineupSlot, MlbOptimizerPlayer[]>();
+    for (const slot of remainingBatterSlots) {
+      slotCandidatesBySalary.set(
+        slot,
+        (slotCandidates.get(slot) ?? [])
+          .slice()
+          .sort((a, b) => a.salary - b.salary || compareMlbPlayers(a, b, mode)),
+      );
+    }
+
+    function minSalaryForRemaining(selectedIds: Set<number>, remainingSlots: readonly MlbLineupSlot[]): number {
+      let total = 0;
+      for (const slot of remainingSlots) {
+        const cheapest = (slotCandidatesBySalary.get(slot) ?? []).find((p) => !selectedIds.has(p.id));
+        if (!cheapest) return Infinity;
+        total += cheapest.salary;
+      }
+      return total;
+    }
+
     const branchCandidates = (slot: MlbLineupSlot, state: BatterSearchState): MlbOptimizerPlayer[] => {
       const base = (slotCandidates.get(slot) ?? []).filter((player) => !state.selectedIds.has(player.id));
       const chosen = new Set<number>();
@@ -704,8 +717,8 @@ function solveMlbLineup(
       for (const player of base.slice(0, MLB_BATTER_BRANCH_LIMIT)) {
         push(player);
       }
-      for (const player of [...base]
-        .sort((a, b) => a.salary - b.salary || compareMlbPlayers(a, b, mode))
+      for (const player of (slotCandidatesBySalary.get(slot) ?? [])
+        .filter((p) => !state.selectedIds.has(p.id))
         .slice(0, Math.max(4, Math.floor(MLB_BATTER_BRANCH_LIMIT / 3)))) {
         push(player);
       }
@@ -759,12 +772,17 @@ function solveMlbLineup(
             projection: state.projection + getMlbProjection(player),
             leverage: state.leverage + getMlbLeverage(player),
           };
-          const unused = sortMlbPlayersForSearch(
-            batters.filter((candidate) => !selectedIds.has(candidate.id)),
-            mode,
-          );
-          const estimate = nextState.score
-            + unused.slice(0, remainingSlots.length).reduce((sum, candidate) => sum + getMlbSearchScore(candidate, mode), 0);
+          // batters is pre-sorted by score; iterate once instead of filter+sort per state.
+          let estimateBonus = 0;
+          let slotsNeeded = remainingSlots.length;
+          for (const candidate of batters) {
+            if (slotsNeeded <= 0) break;
+            if (!selectedIds.has(candidate.id)) {
+              estimateBonus += getMlbSearchScore(candidate, mode);
+              slotsNeeded--;
+            }
+          }
+          const estimate = nextState.score + estimateBonus;
           nextStates.push({ ...nextState, estimate });
         }
       }
