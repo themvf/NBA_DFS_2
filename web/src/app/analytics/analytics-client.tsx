@@ -407,62 +407,97 @@ export default function AnalyticsClient({
       )}
 
       {ownVsTotal.length > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-semibold mb-1">Ownership vs Team Implied Total</h2>
-          <p className="text-xs text-gray-500 mb-4">
-            Do players on high-total teams draw more ownership? Implied totals are derived from moneylines + O/U.
-            Projected ownership = our model. Actual ownership = post-contest DK results.
-          </p>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart data={ownVsTotal} margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="impliedBucket" tick={{ fontSize: 11 }} />
-              <YAxis
-                tick={{ fontSize: 11 }}
-                tickFormatter={(v: number) => `${v.toFixed(1)}%`}
-                label={{ value: "Avg Own %", angle: -90, position: "insideLeft", fontSize: 11 }}
-              />
-              <Tooltip
-                formatter={(value, name) =>
-                  [typeof value === "number" ? `${value.toFixed(2)}%` : "—", name]
-                }
-              />
-              <Legend />
-              <Bar dataKey="avgProjOwn" name="Proj Own %" fill="#6366f1" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="avgActualOwn" name="Actual Own %" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-            </ComposedChart>
-          </ResponsiveContainer>
-          <div className="mt-4 overflow-x-auto">
+        <div className="rounded-lg border bg-card p-4 space-y-6">
+          <div>
+            <h2 className="text-sm font-semibold mb-1">Ownership &amp; FPTS vs Team Implied Total</h2>
+            <p className="text-xs text-gray-500">
+              Do players on high-total teams earn their ownership premium? If ownership rises faster than actual FPTS,
+              the market is over-pricing game environment — a systematic GPP fade opportunity.
+              Implied totals derived from moneylines + O/U.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs text-gray-400 mb-2 font-medium">Ownership by Implied Total</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <ComposedChart data={ownVsTotal} margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="impliedBucket" tick={{ fontSize: 11 }} />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v: number) => `${v.toFixed(1)}%`}
+                  label={{ value: "Avg Own %", angle: -90, position: "insideLeft", fontSize: 11 }}
+                />
+                <Tooltip formatter={(value, name) => [typeof value === "number" ? `${value.toFixed(2)}%` : "—", name]} />
+                <Legend />
+                <Bar dataKey="avgProjOwn" name="Proj Own %" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="avgActualOwn" name="Actual Own %" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div>
+            <p className="text-xs text-gray-400 mb-2 font-medium">FPTS by Implied Total</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <ComposedChart data={ownVsTotal} margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="impliedBucket" tick={{ fontSize: 11 }} />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v: number) => v.toFixed(1)}
+                  label={{ value: "Avg FPTS", angle: -90, position: "insideLeft", fontSize: 11 }}
+                />
+                <Tooltip formatter={(value, name) => [typeof value === "number" ? value.toFixed(2) : "—", name]} />
+                <Legend />
+                <Bar dataKey="avgProjFpts" name="Proj FPTS" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="avgActualFpts" name="Actual FPTS" fill="#10b981" radius={[4, 4, 0, 0]} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-gray-400 border-b">
-                  <th className="py-1 text-left">Implied Total Bucket</th>
-                  <th className="py-1 text-right">Players (proj)</th>
-                  <th className="py-1 text-right">Players (actual)</th>
-                  <th className="py-1 text-right">Avg Proj Own %</th>
-                  <th className="py-1 text-right">Avg Actual Own %</th>
-                  <th className="py-1 text-right">Delta</th>
+                  <th className="py-1 text-left">Implied Total</th>
+                  <th className="py-1 text-right">n (own)</th>
+                  <th className="py-1 text-right">n (fpts)</th>
+                  <th className="py-1 text-right">Proj Own</th>
+                  <th className="py-1 text-right">Actual Own</th>
+                  <th className="py-1 text-right">Own Δ</th>
+                  <th className="py-1 text-right">Proj FPTS</th>
+                  <th className="py-1 text-right">Actual FPTS</th>
+                  <th className="py-1 text-right">FPTS Δ</th>
                 </tr>
               </thead>
               <tbody>
                 {ownVsTotal.map((row) => {
-                  const delta =
+                  const ownDelta =
                     row.avgActualOwn != null && row.avgProjOwn != null
                       ? row.avgActualOwn - row.avgProjOwn
+                      : null;
+                  const fptsDelta =
+                    row.avgActualFpts != null && row.avgProjFpts != null
+                      ? row.avgActualFpts - row.avgProjFpts
                       : null;
                   return (
                     <tr key={row.impliedBucket} className="border-b border-gray-50">
                       <td className="py-1 font-medium">{row.impliedBucket}</td>
-                      <td className="py-1 text-right">{row.nProj}</td>
                       <td className="py-1 text-right">{row.nActual}</td>
+                      <td className="py-1 text-right">{row.nFpts}</td>
                       <td className="py-1 text-right">
                         {row.avgProjOwn != null ? `${row.avgProjOwn.toFixed(2)}%` : "—"}
                       </td>
                       <td className="py-1 text-right">
                         {row.avgActualOwn != null ? `${row.avgActualOwn.toFixed(2)}%` : "—"}
                       </td>
-                      <td className={`py-1 text-right ${delta == null ? "" : delta > 0 ? "text-red-600" : "text-blue-600"}`}>
-                        {delta != null ? `${delta > 0 ? "+" : ""}${delta.toFixed(2)}%` : "—"}
+                      <td className={`py-1 text-right ${ownDelta == null ? "" : ownDelta > 0 ? "text-red-600" : "text-blue-600"}`}>
+                        {ownDelta != null ? `${ownDelta > 0 ? "+" : ""}${ownDelta.toFixed(2)}%` : "—"}
+                      </td>
+                      <td className="py-1 text-right">{fmt1(row.avgProjFpts)}</td>
+                      <td className="py-1 text-right">{fmt1(row.avgActualFpts)}</td>
+                      <td className={`py-1 text-right ${fptsDelta == null ? "" : fptsDelta > 0 ? "text-green-700" : "text-red-600"}`}>
+                        {fptsDelta != null ? `${fptsDelta > 0 ? "+" : ""}${fptsDelta.toFixed(2)}` : "—"}
                       </td>
                     </tr>
                   );
