@@ -14,6 +14,8 @@ import {
 } from "./optimizer";
 import {
   buildNextMlbLineup,
+  computeHrBonusMap,
+  isPitcher,
   prepareMlbOptimizerRun,
   type MlbGeneratedLineup,
   type MlbLineupSlot,
@@ -206,7 +208,12 @@ async function loadMlbOptimizerPool(
       dp.game_info AS "gameInfo",
       mt.logo_url AS "teamLogo",
       mt.name AS "teamName",
-      mm.home_team_id AS "homeTeamId"
+      mm.home_team_id AS "homeTeamId",
+      mm.away_team_id AS "awayTeamId",
+      mm.vegas_total AS "vegasTotal",
+      mm.home_implied AS "homeImplied",
+      mm.away_implied AS "awayImplied",
+      dp.hr_prob_1plus AS "hrProb1Plus"
     FROM dk_players dp
     LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
     LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
@@ -719,14 +726,21 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
   }
 
   if (job.sport === "mlb") {
+    const mlbSettings = settings as MlbOptimizerSettings;
+    const mlbPool = pool as MlbOptimizerPlayer[];
+    const batters = mlbPool.filter((p) => !isPitcher(p.eligiblePositions));
+    const hrBonusMap = mlbSettings.hrCorrelation
+      ? computeHrBonusMap(batters, mlbSettings.hrCorrelationThreshold)
+      : new Map<number, number>();
+    const hrBonusRecord: Record<number, number> = Object.fromEntries(hrBonusMap);
     return {
       sport: "mlb",
       mode: settings.mode,
       requestedLineups: job.requestedLineups,
-      maxExposureCount: Math.ceil(job.requestedLineups * (settings as MlbOptimizerSettings).maxExposure),
+      maxExposureCount: Math.ceil(job.requestedLineups * mlbSettings.maxExposure),
       eligibleCount: job.eligibleCount ?? pool.length,
-      pool: pool as MlbOptimizerPlayer[],
-      ruleSelections: normalizeMlbRuleSelections(settings as MlbOptimizerSettings),
+      pool: mlbPool,
+      ruleSelections: normalizeMlbRuleSelections(mlbSettings),
       effectiveSettings: {
         minStack: effectiveSettings.minStack,
         bringBackThreshold: effectiveSettings.bringBackThreshold ?? 0,
@@ -735,6 +749,7 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
         antiCorrMax: effectiveSettings.antiCorrMax ?? 10,
         pendingLineupPolicy: normalizeMlbPendingLineupPolicy(effectiveSettings.pendingLineupPolicy),
       },
+      hrBonusRecord,
       relaxedConstraints: (job.relaxedConstraintsJson as string[]) ?? [],
       probeSummary: (job.probeSummaryJson as OptimizerDebugInfo["probeSummary"]) ?? [],
     };

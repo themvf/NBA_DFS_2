@@ -40,6 +40,7 @@ export type MlbOptimizerPlayer = Pick<
   | "vegasTotal"
   | "homeImplied"
   | "awayImplied"
+  | "hrProb1Plus"
 >;
 
 export type MlbLineupSlot = "P1" | "P2" | "C" | "1B" | "2B" | "3B" | "SS" | "OF1" | "OF2" | "OF3";
@@ -61,6 +62,8 @@ export type MlbOptimizerSettings = MlbRuleSettings & {
   bringBackThreshold: number;
   antiCorrMax: number;
   pendingLineupPolicy: MlbPendingLineupPolicy;
+  hrCorrelation: boolean;
+  hrCorrelationThreshold: number;
 };
 
 const MLB_SALARY_CAP = 50000;
@@ -111,7 +114,7 @@ function finiteOrNull(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
 }
 
-function isPitcher(pos: string): boolean {
+export function isPitcher(pos: string): boolean {
   return pos.includes("SP") || pos.includes("RP");
 }
 
@@ -165,6 +168,36 @@ function getMlbStackEnvironmentFactor(player: MlbOptimizerPlayer | null | undefi
   if (impliedRuns == null || impliedRuns <= 0) return 1;
   const ratio = Math.max(0.7, Math.min(1.4, impliedRuns / MLB_LEAGUE_AVG_TEAM_TOTAL));
   return Math.sqrt(ratio);
+}
+
+// HR correlation bonus: for each batter above hrThreshold with a confirmed batting order,
+// bonus the batter immediately preceding them (+5) and two spots back (+2).
+// Rationale: if batter #3 hits a HR, batter #2 (on base) likely scores — high RBI correlation.
+export function computeHrBonusMap(
+  batters: MlbOptimizerPlayer[],
+  threshold: number,
+): Map<number, number> {
+  const bonuses = new Map<number, number>();
+  const byTeamOrder = new Map<string, MlbOptimizerPlayer>();
+  for (const batter of batters) {
+    if (batter.dkStartingLineupOrder != null && batter.teamId != null) {
+      byTeamOrder.set(`${batter.teamId}:${batter.dkStartingLineupOrder}`, batter);
+    }
+  }
+  for (const batter of batters) {
+    const hrProb = batter.hrProb1Plus ?? 0;
+    if (hrProb < threshold) continue;
+    const order = batter.dkStartingLineupOrder;
+    const teamId = batter.teamId;
+    if (order == null || teamId == null) continue;
+    const prevOrder = order === 1 ? 9 : order - 1;
+    const prev2Order = prevOrder === 1 ? 9 : prevOrder - 1;
+    const preceding1 = byTeamOrder.get(`${teamId}:${prevOrder}`);
+    const preceding2 = byTeamOrder.get(`${teamId}:${prev2Order}`);
+    if (preceding1) bonuses.set(preceding1.id, (bonuses.get(preceding1.id) ?? 0) + 5.0);
+    if (preceding2) bonuses.set(preceding2.id, (bonuses.get(preceding2.id) ?? 0) + 2.0);
+  }
+  return bonuses;
 }
 
 function orderMlbStackTemplates(
@@ -533,6 +566,7 @@ function solveMlbLineup(
   templateUsageCount: Map<string, number> = new Map(),
   baseTemplates: MlbStackTemplate[] | null = null,
   lineupIndex = 0,
+  hrBonusById: Map<number, number> = new Map(),
 ): MlbGeneratedLineup | null {
   const eligible = pool
     .filter((player) => (exposureCount.get(player.id) ?? 0) < maxExposureCount)
@@ -552,7 +586,13 @@ function solveMlbLineup(
   const lockedBatterSlotAssignments = lockedBatterAssignments ?? {};
   const lockedBatterIds = new Set<number>(lockedBatters.map((player) => player.id));
   const lockedBatterSalary = lockedBatters.reduce((sum, player) => sum + player.salary, 0);
-  const lockedBatterScore = lockedBatters.reduce((sum, player) => sum + getMlbSearchScore(player, mode), 0);
+
+  // Batter score includes HR correlation bonus for preceding batters.
+  // Pitchers are scored with getMlbSearchScore directly (no batting-order bonus).
+  const getScoreForBatter = (player: MlbOptimizerPlayer) =>
+    getMlbSearchScore(player, mode) + (hrBonusById.get(player.id) ?? 0);
+
+  const lockedBatterScore = lockedBatters.reduce((sum, player) => sum + getScoreForBatter(player), 0);
   const lockedBatterProjection = lockedBatters.reduce((sum, player) => sum + getMlbProjection(player), 0);
   const lockedBatterLeverage = lockedBatters.reduce((sum, player) => sum + getMlbLeverage(player), 0);
   const lockedBatterTeamCounts = new Map<number, number>();
@@ -676,10 +716,12 @@ function solveMlbLineup(
     const remainingBatterSlots = MLB_BATTER_SLOTS.filter((slot) => !lockedBatterSlotAssignments[slot]);
     const slotCandidates = new Map<MlbLineupSlot, MlbOptimizerPlayer[]>();
     for (const slot of remainingBatterSlots) {
-      const candidates = sortMlbPlayersForSearch(
-        batters.filter((player) => !pitcherIds.has(player.id) && canFillMlbSlot(slot, player.eligiblePositions)),
-        mode,
-      );
+      const candidates = batters
+        .filter((player) => !pitcherIds.has(player.id) && canFillMlbSlot(slot, player.eligiblePositions))
+        .sort((a, b) => {
+          const diff = getScoreForBatter(b) - getScoreForBatter(a);
+          return Math.abs(diff) > 1e-9 ? diff : compareMlbPlayers(a, b, mode);
+        });
       if (candidates.length === 0) return null;
       slotCandidates.set(slot, candidates);
     }
@@ -786,7 +828,7 @@ function solveMlbLineup(
             selectedIds,
             teamCounts,
             salary,
-            score: state.score + getMlbSearchScore(player, mode),
+            score: state.score + getScoreForBatter(player),
             projection: state.projection + getMlbProjection(player),
             leverage: state.leverage + getMlbLeverage(player),
           };
@@ -796,7 +838,7 @@ function solveMlbLineup(
           for (const candidate of batters) {
             if (slotsNeeded <= 0) break;
             if (!selectedIds.has(candidate.id)) {
-              estimateBonus += getMlbSearchScore(candidate, mode);
+              estimateBonus += getScoreForBatter(candidate);
               slotsNeeded--;
             }
           }
@@ -935,6 +977,8 @@ export function optimizeMlbLineupsWithDebug(
     maxExposure,
     bringBackThreshold,
     antiCorrMax,
+    hrCorrelation,
+    hrCorrelationThreshold,
   } = settings;
   const pendingLineupPolicy = normalizeMlbPendingLineupPolicy(settings.pendingLineupPolicy);
   const totalStart = Date.now();
@@ -1051,8 +1095,14 @@ export function optimizeMlbLineupsWithDebug(
   const lineups: MlbGeneratedLineup[] = [];
   const previousLineupSets: Set<number>[] = [];
 
-  // Compute base templates once for the entire run — batter pool doesn't change lineup-to-lineup.
+  // Compute HR correlation bonus map once for the run — preceding batters of high-HR players
+  // get a score bonus so the beam search prefers to co-include them.
   const preparedBatters = preparedPool.filter((p) => !isPitcher(p.eligiblePositions));
+  const hrBonusById: Map<number, number> = hrCorrelation
+    ? computeHrBonusMap(preparedBatters, hrCorrelationThreshold)
+    : new Map();
+
+  // Compute base templates once for the entire run — batter pool doesn't change lineup-to-lineup.
   const sharedBaseTemplates = enumerateMlbStackTemplates(
     preparedBatters,
     mode,
@@ -1085,6 +1135,7 @@ export function optimizeMlbLineupsWithDebug(
         templateUsageCount,
         sharedBaseTemplates,
         i,
+        hrBonusById,
       );
       const durationMs = Date.now() - start;
       const failureReason = lineup
@@ -1156,6 +1207,8 @@ export function prepareMlbOptimizerRun(
     maxExposure,
     bringBackThreshold,
     antiCorrMax,
+    hrCorrelation,
+    hrCorrelationThreshold,
   } = settings;
   const pendingLineupPolicy = normalizeMlbPendingLineupPolicy(settings.pendingLineupPolicy);
   const candidatePool = applyMlbPendingLineupPolicy(pool, pendingLineupPolicy);
@@ -1265,6 +1318,12 @@ export function prepareMlbOptimizerRun(
   };
   debug.totalMs = Date.now() - totalStart;
 
+  const preparedBattersForBonus = preparedSearch.pool.filter((p) => !isPitcher(p.eligiblePositions));
+  const hrBonusMap = hrCorrelation
+    ? computeHrBonusMap(preparedBattersForBonus, hrCorrelationThreshold)
+    : new Map<number, number>();
+  const hrBonusRecord: Record<number, number> = Object.fromEntries(hrBonusMap);
+
   return {
     prepared: {
       sport: "mlb",
@@ -1282,6 +1341,7 @@ export function prepareMlbOptimizerRun(
         antiCorrMax: effectiveAntiCorr,
         pendingLineupPolicy,
       },
+      hrBonusRecord,
       relaxedConstraints: [...debug.relaxedConstraints],
       probeSummary: [...debug.probeSummary],
     },
@@ -1301,6 +1361,11 @@ export function buildNextMlbLineup(
       exposureCount.set(playerId, (exposureCount.get(playerId) ?? 0) + 1);
     }
   }
+
+  // Reconstruct the HR bonus Map from the serialized record (Maps aren't JSON-serializable).
+  const hrBonusById = new Map<number, number>(
+    Object.entries(prepared.hrBonusRecord ?? {}).map(([k, v]) => [Number(k), v]),
+  );
 
   const preparedSearch = prepareMlbSearchPool(
     prepared.pool,
@@ -1329,6 +1394,10 @@ export function buildNextMlbLineup(
       antiCorr,
       minChanges,
       prepared.ruleSelections,
+      undefined,
+      undefined,
+      priorLineupPlayerIds.length,
+      hrBonusById,
     );
     attempts.push({
       stage,

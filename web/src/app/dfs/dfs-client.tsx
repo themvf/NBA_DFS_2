@@ -1271,6 +1271,8 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   const [optimizeStartedAt, setOptimizeStartedAt] = useState<number | null>(null);
   const [optimizeElapsedMs, setOptimizeElapsedMs] = useState(0);
   const [antiCorrMax, setAntiCorrMax] = useState(1); // MLB: max batters facing your own SP
+  const [hrCorrelation, setHrCorrelation] = useState(false);
+  const [hrCorrelationThreshold, setHrCorrelationThreshold] = useState(0.12);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [lastRequestedLineupCount, setLastRequestedLineupCount] = useState<number | null>(null);
 
@@ -1865,6 +1867,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
         ? {
             mode, nLineups, minStack, maxExposure,
             bringBackThreshold: mlbBringBackThreshold, antiCorrMax, pendingLineupPolicy,
+            hrCorrelation, hrCorrelationThreshold,
             playerLocks: lockedPlayerIds,
             playerBlocks: blockedPlayerIds,
             blockedTeamIds,
@@ -2660,6 +2663,46 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                 <option value="ignore">Ignore</option>
                 <option value="exclude">Exclude</option>
               </select>
+            </div>
+          )}
+          {sport === "mlb" && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                HR Correlation{" "}
+                <span
+                  className="text-gray-400 font-normal cursor-help"
+                  title="Bonus preceding batters (order - 1, order - 2) of high-HR-probability hitters. If batter #3 has a high HR chance, batter #2 (likely on base) gets +5 score and batter #1 gets +2."
+                >(?)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={hrCorrelation ? "on" : "off"}
+                  onChange={(e) => setHrCorrelation(e.target.value === "on")}
+                  className="rounded border px-2 py-1 text-sm"
+                >
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+                {hrCorrelation && (
+                  <input
+                    type="number"
+                    min={0.05}
+                    max={0.40}
+                    step={0.01}
+                    value={hrCorrelationThreshold}
+                    onChange={(e) => {
+                      const next = Number.parseFloat(e.target.value);
+                      if (!Number.isFinite(next)) {
+                        setHrCorrelationThreshold(0.12);
+                        return;
+                      }
+                      setHrCorrelationThreshold(Math.min(0.4, Math.max(0.05, next)));
+                    }}
+                    title="Minimum HR probability (e.g. 0.12 = 12%) to trigger the correlation bonus"
+                    className="w-20 rounded border px-2 py-1 text-sm"
+                  />
+                )}
+              </div>
             </div>
           )}
           <div>

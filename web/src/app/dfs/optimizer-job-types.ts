@@ -58,6 +58,8 @@ export type MlbPreparedOptimizerRun = {
     antiCorrMax: number;
     pendingLineupPolicy: "ignore" | "downgrade" | "exclude";
   };
+  /** HR correlation bonus by player id — serializable as plain object for job persistence. */
+  hrBonusRecord: Record<number, number>;
   relaxedConstraints: string[];
   probeSummary: OptimizerProbeDebug[];
 };
