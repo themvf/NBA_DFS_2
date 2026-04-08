@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useTransition, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { DkPlayerRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
@@ -37,7 +37,9 @@ type SortCol =
   | "liveOwnPct"
   | "ourLeverage"
   | "value";
+type SortDir = "asc" | "desc";
 type TeamStackRule = NbaTeamStackRule | MlbTeamStackRule;
+type StackSize = TeamStackRule["stackSize"];
 type MlbPlayerPoolFilter = "all" | "p" | "c" | "1b" | "2b" | "3b" | "ss" | "of" | "hitters";
 type RuleState = {
   playerLocks: number[];
@@ -99,6 +101,90 @@ type MlbPropCoverageAuditResult = {
     bookmakerTitle: string;
     count: number;
   }>;
+};
+
+type FilteredTeam = {
+  teamId: number;
+  teamAbbrev: string;
+  teamName: string | null;
+  teamLogo: string | null;
+};
+
+type TeamOddsSummary = {
+  vegasTotal: number | null;
+  teamTotal: number | null;
+  moneyline: number | null;
+};
+
+type MlbLineupSummary = {
+  confirmedIn: number;
+  pending: number;
+  confirmedOut: number;
+};
+
+type AnyGeneratedLineup = GeneratedLineup | MlbGeneratedLineup;
+
+type SortHeaderProps = {
+  col: SortCol;
+  label: string;
+  sortCol?: SortCol;
+  sortDir?: SortDir;
+  onToggleSort?: (col: SortCol) => void;
+};
+
+type RuleControlsSectionProps = {
+  sport: Sport;
+  filteredTeams: FilteredTeam[];
+  blockedTeamSet: Set<number>;
+  requiredTeamStackMap: Map<number, StackSize>;
+  teamOddsById: Map<number, TeamOddsSummary>;
+  hideOutInactivePlayers: boolean;
+  unavailablePlayerCount: number;
+  lockedCount: number;
+  blockedCount: number;
+  requiredTeamStackCount: number;
+  onToggleHideOutInactive: () => void;
+  onClearLocks: () => void;
+  onClearBlocks: () => void;
+  onClearTeamRules: () => void;
+  onToggleTeamBlock: (teamId: number) => void;
+  onUpdateTeamStackRule: (teamId: number, value: string) => void;
+};
+
+type PlayerPoolTableProps = {
+  sport: Sport;
+  visiblePlayers: DkPlayerRow[];
+  playerPoolSourceCount: number;
+  unavailablePlayerCount: number;
+  hideOutInactivePlayers: boolean;
+  mlbLineupSummary: MlbLineupSummary;
+  mlbPlayerPoolFilter: MlbPlayerPoolFilter;
+  onChangeMlbPlayerPoolFilter: (filter: MlbPlayerPoolFilter) => void;
+  onToggleHideOutInactive: () => void;
+  supportsRuleControls: boolean;
+  sortCol: SortCol;
+  sortDir: SortDir;
+  onToggleSort: (col: SortCol) => void;
+  lockedPlayerSet: Set<number>;
+  blockedPlayerSet: Set<number>;
+  blockedTeamSet: Set<number>;
+  requiredTeamStackMap: Map<number, StackSize>;
+  nbaTopScorerRanks: Map<number, number>;
+  onTogglePlayerLock: (player: DkPlayerRow) => void;
+  onTogglePlayerBlock: (player: DkPlayerRow) => void;
+};
+
+type GeneratedLineupsSectionProps = {
+  sport: Sport;
+  activeLineups: AnyGeneratedLineup[];
+  lastRequestedLineupCount: number | null;
+  strategy: string;
+  onStrategyChange: (value: string) => void;
+  onSave: () => void;
+  saveMsg: string | null;
+  onExport: () => void;
+  isExporting: boolean;
+  exportError: string | null;
 };
 
 function parseGameKey(gameInfo: string | null): string {
@@ -460,6 +546,577 @@ function buildMlbLineupsFromPersisted(
   });
 }
 
+const SortHeader = memo(function SortHeader({ col, label, sortCol, sortDir, onToggleSort }: SortHeaderProps) {
+  const active = sortCol === col;
+  return (
+    <th
+      className={`px-3 py-2 text-left text-xs font-medium cursor-pointer select-none whitespace-nowrap ${
+        active ? "text-blue-600" : "text-gray-500 hover:text-gray-700"
+      }`}
+      onClick={() => onToggleSort?.(col)}
+    >
+      {label}
+      {active ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
+    </th>
+  );
+});
+
+const RuleControlsSection = memo(function RuleControlsSection({
+  sport,
+  filteredTeams,
+  blockedTeamSet,
+  requiredTeamStackMap,
+  teamOddsById,
+  hideOutInactivePlayers,
+  unavailablePlayerCount,
+  lockedCount,
+  blockedCount,
+  requiredTeamStackCount,
+  onToggleHideOutInactive,
+  onClearLocks,
+  onClearBlocks,
+  onClearTeamRules,
+  onToggleTeamBlock,
+  onUpdateTeamStackRule,
+}: RuleControlsSectionProps) {
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">{sport.toUpperCase()} Rule Controls</h2>
+          <p className="text-xs text-gray-500">
+            Locks persist per slate. Blocked teams remove every player from that team, and team stack rules require at least one lineup stack on each selected team.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onToggleHideOutInactive}
+            disabled={unavailablePlayerCount === 0}
+            className={`rounded border px-3 py-1 text-xs font-medium ${
+              hideOutInactivePlayers
+                ? "border-blue-300 bg-blue-50 text-blue-700"
+                : "text-gray-700 hover:bg-gray-50"
+            } disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            {hideOutInactivePlayers ? "Show Out/Inactive" : "Hide Out/Inactive"}
+          </button>
+          <button
+            onClick={onClearLocks}
+            disabled={lockedCount === 0}
+            className="rounded border px-3 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+          >
+            Clear Locks
+          </button>
+          <button
+            onClick={onClearBlocks}
+            disabled={blockedCount === 0}
+            className="rounded border px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            Clear Blocks
+          </button>
+          <button
+            onClick={onClearTeamRules}
+            disabled={requiredTeamStackCount === 0}
+            className="rounded border px-3 py-1 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+          >
+            Clear Team Rules
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">{lockedCount} locked</span>
+        <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-700">{blockedCount} blocked rules</span>
+        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">{requiredTeamStackCount} team stacks</span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {filteredTeams.length === 0 && (
+          <div className="rounded border border-dashed p-4 text-sm text-gray-500 md:col-span-2 xl:col-span-4">
+            No active teams are visible with the current filter.
+          </div>
+        )}
+        {filteredTeams.map((team) => {
+          const isBlocked = blockedTeamSet.has(team.teamId);
+          const stackSize = requiredTeamStackMap.get(team.teamId);
+          const odds = teamOddsById.get(team.teamId);
+          return (
+            <div
+              key={team.teamId}
+              className={`rounded border p-3 ${
+                isBlocked
+                  ? "border-red-200 bg-red-50"
+                  : stackSize
+                    ? "border-emerald-200 bg-emerald-50"
+                    : "bg-white"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {team.teamLogo && <img src={team.teamLogo} alt="" className="h-5 w-5" />}
+                <div>
+                  <p className="text-sm font-medium">{team.teamAbbrev}</p>
+                  <p className="text-[11px] text-gray-500">{team.teamName ?? team.teamAbbrev}</p>
+                </div>
+              </div>
+              {(odds?.teamTotal != null || odds?.vegasTotal != null || odds?.moneyline != null) && (
+                <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-gray-600">
+                  {odds?.teamTotal != null && (
+                    <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
+                      TT {odds.teamTotal.toFixed(1)}
+                    </span>
+                  )}
+                  {odds?.vegasTotal != null && (
+                    <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
+                      O/U {odds.vegasTotal.toFixed(1)}
+                    </span>
+                  )}
+                  {odds?.moneyline != null && (
+                    <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
+                      ML {fmtAmericanOdds(odds.moneyline)}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => onToggleTeamBlock(team.teamId)}
+                  className={`rounded border px-2 py-1 text-xs ${
+                    isBlocked ? "border-red-300 bg-red-100 text-red-700" : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {isBlocked ? "Blocked" : "Block Team"}
+                </button>
+                <select
+                  value={stackSize ?? ""}
+                  onChange={(e) => onUpdateTeamStackRule(team.teamId, e.target.value)}
+                  disabled={isBlocked}
+                  className="rounded border px-2 py-1 text-xs disabled:opacity-50"
+                >
+                  <option value="">No Stack</option>
+                  <option value="2">Stack 2</option>
+                  <option value="3">Stack 3</option>
+                  <option value="4">Stack 4</option>
+                  <option value="5">Stack 5</option>
+                </select>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+const PlayerPoolTable = memo(function PlayerPoolTable({
+  sport,
+  visiblePlayers,
+  playerPoolSourceCount,
+  unavailablePlayerCount,
+  hideOutInactivePlayers,
+  mlbLineupSummary,
+  mlbPlayerPoolFilter,
+  onChangeMlbPlayerPoolFilter,
+  onToggleHideOutInactive,
+  supportsRuleControls,
+  sortCol,
+  sortDir,
+  onToggleSort,
+  lockedPlayerSet,
+  blockedPlayerSet,
+  blockedTeamSet,
+  requiredTeamStackMap,
+  nbaTopScorerRanks,
+  onTogglePlayerLock,
+  onTogglePlayerBlock,
+}: PlayerPoolTableProps) {
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="flex items-start justify-between gap-3 px-4 py-3 border-b">
+        <div>
+          <h2 className="text-sm font-semibold">
+            Player Pool - {hideOutInactivePlayers ? `${visiblePlayers.length} of ${playerPoolSourceCount}` : playerPoolSourceCount} players
+            {unavailablePlayerCount > 0 && (
+              <span className="ml-2 text-xs text-red-500">({unavailablePlayerCount} OUT)</span>
+            )}
+          </h2>
+          {sport === "mlb" && (
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
+              <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
+                {mlbLineupSummary.confirmedIn} confirmed hitters
+              </span>
+              <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-700">
+                {mlbLineupSummary.pending} pending
+              </span>
+              <span className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-red-700">
+                {mlbLineupSummary.confirmedOut} out of lineup
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          {sport === "mlb" && (
+            <div className="flex flex-wrap justify-end gap-1">
+              {MLB_PLAYER_POOL_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onChangeMlbPlayerPoolFilter(option.value)}
+                  className={`rounded border px-2 py-1 text-[11px] font-medium ${
+                    mlbPlayerPoolFilter === option.value
+                      ? "border-slate-300 bg-slate-700 text-white"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onToggleHideOutInactive}
+            disabled={unavailablePlayerCount === 0}
+            className={`rounded border px-3 py-1.5 text-xs font-medium ${
+              hideOutInactivePlayers
+                ? "border-blue-300 bg-blue-50 text-blue-700"
+                : "border-gray-300 text-gray-700 hover:bg-gray-50"
+            } disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            {hideOutInactivePlayers ? "Show Out/Inactive" : "Hide Out/Inactive"}
+          </button>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="border-b bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Pos</th>
+              <SortHeader col="name" label="Player" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Team</th>
+              {sport === "mlb" && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lineup</th>}
+              {sport === "mlb" && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Odds</th>}
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Props</th>
+              {supportsRuleControls && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Rules</th>}
+              <SortHeader col="salary" label="Salary" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+              <SortHeader col="avgFptsDk" label="DK Proj" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+              <SortHeader col="linestarProj" label="LS Proj" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+              {sport === "nba" && (
+                <>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Our Proj</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Market</th>
+                </>
+              )}
+              <SortHeader
+                col="ourProj"
+                label={sport === "nba" ? "Live Proj" : "Our Proj"}
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onToggleSort={onToggleSort}
+              />
+              <SortHeader
+                col="delta"
+                label={sport === "nba" ? "Live Δ" : "Delta"}
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onToggleSort={onToggleSort}
+              />
+              <SortHeader col="projOwnPct" label="LS Own%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+              <SortHeader col="ourOwnPct" label="Our Own%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+              {sport === "nba" && <SortHeader col="liveOwnPct" label="Live Own%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />}
+              <SortHeader
+                col="ourLeverage"
+                label={sport === "nba" ? "Live Lev" : "Leverage"}
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onToggleSort={onToggleSort}
+              />
+              <SortHeader col="value" label="Value" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {visiblePlayers.length === 0 && (
+              <tr>
+                <td colSpan={18} className="px-3 py-6 text-center text-sm text-gray-500">
+                  No active players are visible with the current filter.
+                </td>
+              </tr>
+            )}
+            {visiblePlayers.map((p) => {
+              const ourProjDisplay = sport === "nba" ? (p.modelProj ?? p.ourProj) : p.ourProj;
+              const liveProjDisplay = sport === "nba"
+                ? (p.liveProj ?? p.blendProj ?? p.ourProj)
+                : p.ourProj;
+              const liveOwnDisplay = sport === "nba"
+                ? (p.liveOwnPct ?? p.projOwnPct ?? p.ourOwnPct)
+                : p.ourOwnPct;
+              const leverageDisplay = sport === "nba"
+                ? (p.liveLeverage ?? p.ourLeverage)
+                : p.ourLeverage;
+              const delta = liveProjDisplay != null && p.linestarProj != null ? liveProjDisplay - p.linestarProj : null;
+              const value = liveProjDisplay != null ? liveProjDisplay / (p.salary / 1000) : null;
+              const propTokens = getPlayerPropTokens(p, sport);
+              const odds = getPlayerOddsContext(p);
+              const pos = displayPos(p.eligiblePositions, sport);
+              const mlbLineupBadge = sport === "mlb" ? getMlbLineupBadge(p) : null;
+              const mlbHrBadge = sport === "mlb" ? getMlbHrBadge(p) : null;
+              const nbaPointsBadge = sport === "nba" ? getNbaPointsBadge(p, nbaTopScorerRanks.get(p.id)) : null;
+              const rowUnavailable = sport === "mlb" ? isMlbRowUnavailable(p) : !!p.isOut;
+              const isLocked = lockedPlayerSet.has(p.id);
+              const isBlocked = blockedPlayerSet.has(p.id);
+              const isTeamBlocked = p.teamId != null && blockedTeamSet.has(p.teamId);
+              const stackSize = p.teamId != null ? requiredTeamStackMap.get(p.teamId) : undefined;
+              return (
+                <tr
+                  key={p.id}
+                  className={`hover:bg-gray-50 ${
+                    rowUnavailable ? "opacity-40 line-through" : ""
+                  } ${
+                    isLocked ? "bg-blue-50" : isBlocked || isTeamBlocked ? "bg-red-50" : ""
+                  }`}
+                >
+                  <td className="px-3 py-1.5">
+                    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${posBadgeColor(p.eligiblePositions, sport)}`}>
+                      {pos}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5 font-medium">
+                    {p.teamLogo && <img src={p.teamLogo} alt="" className="inline-block mr-1.5 h-4 w-4 align-middle" />}
+                    {p.name}
+                    {supportsRuleControls && (
+                      <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+                        {isLocked && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">LOCK</span>}
+                        {(isBlocked || isTeamBlocked) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">BLOCK</span>}
+                        {stackSize != null && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">STACK {stackSize}</span>}
+                        {nbaPointsBadge && (
+                          <span title={nbaPointsBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${nbaPointsBadge.className}`}>
+                            {nbaPointsBadge.label}
+                          </span>
+                        )}
+                        {mlbHrBadge && (
+                          <span title={mlbHrBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbHrBadge.className}`}>
+                            {mlbHrBadge.label}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {!supportsRuleControls && (
+                      <>
+                        {nbaPointsBadge && (
+                          <span title={nbaPointsBadge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${nbaPointsBadge.className}`}>
+                            {nbaPointsBadge.label}
+                          </span>
+                        )}
+                        {mlbHrBadge && (
+                          <span title={mlbHrBadge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbHrBadge.className}`}>
+                            {mlbHrBadge.label}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-xs text-gray-500">{p.teamAbbrev}</td>
+                  {sport === "mlb" && (
+                    <td className="px-3 py-1.5 text-xs">
+                      {mlbLineupBadge && (
+                        <span className={`inline-flex rounded border px-1.5 py-0.5 text-[10px] font-medium ${mlbLineupBadge.className}`}>
+                          {mlbLineupBadge.label}
+                        </span>
+                      )}
+                    </td>
+                  )}
+                  {sport === "mlb" && (
+                    <td className="px-3 py-1.5 text-[11px] text-gray-500">
+                      {(odds.teamTotal != null || odds.vegasTotal != null || odds.moneyline != null) ? (
+                        <div className="flex max-w-[200px] flex-wrap gap-1">
+                          {odds.teamTotal != null && (
+                            <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
+                              TT {odds.teamTotal.toFixed(1)}
+                            </span>
+                          )}
+                          {odds.vegasTotal != null && (
+                            <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
+                              O/U {odds.vegasTotal.toFixed(1)}
+                            </span>
+                          )}
+                          {odds.moneyline != null && (
+                            <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
+                              ML {fmtAmericanOdds(odds.moneyline)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                  )}
+                  <td className="px-3 py-1.5 text-[11px] text-gray-500">
+                    {propTokens.length > 0 ? (
+                      <div className="flex max-w-[280px] flex-wrap gap-1">
+                        {propTokens.map((prop) => (
+                          <span
+                            key={`${p.id}-${prop.stat}`}
+                            className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
+                          >
+                            {prop.stat} {prop.line.toFixed(1)}
+                            {prop.price != null ? ` (${fmtAmericanOdds(prop.price)})` : ""}
+                            {prop.book ? ` ${shortBookName(prop.book)}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                  {supportsRuleControls && (
+                    <td className="px-3 py-1.5 text-xs">
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          onClick={() => onTogglePlayerLock(p)}
+                          disabled={isTeamBlocked && !isLocked}
+                          className={`rounded border px-2 py-0.5 ${
+                            isLocked
+                              ? "border-blue-300 bg-blue-100 text-blue-700"
+                              : "text-gray-600 hover:bg-gray-50"
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          {isLocked ? "Locked" : "Lock"}
+                        </button>
+                        <button
+                          onClick={() => onTogglePlayerBlock(p)}
+                          className={`rounded border px-2 py-0.5 ${
+                            isBlocked
+                              ? "border-red-300 bg-red-100 text-red-700"
+                              : "text-gray-600 hover:bg-gray-50"
+                          }`}
+                        >
+                          {isBlocked ? "Blocked" : "Block"}
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                  <td className="px-3 py-1.5 font-mono text-xs">{fmtSalary(p.salary)}</td>
+                  <td className="px-3 py-1.5 text-xs text-gray-500">{fmt1(p.avgFptsDk)}</td>
+                  <td className="px-3 py-1.5 text-xs">{fmt1(p.linestarProj)}</td>
+                  {sport === "nba" && (
+                    <>
+                      <td className="px-3 py-1.5 text-xs">{fmt1(ourProjDisplay)}</td>
+                      <td className="px-3 py-1.5 text-xs">{fmt1(p.marketProj)}</td>
+                    </>
+                  )}
+                  <td className="px-3 py-1.5 text-xs font-medium">{fmt1(liveProjDisplay)}</td>
+                  <td className={`px-3 py-1.5 text-xs font-medium ${
+                    delta == null ? "text-gray-400" : delta >= 2 ? "text-green-600" : delta <= -2 ? "text-red-500" : ""
+                  }`}>
+                    {delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}` : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 text-xs">{p.projOwnPct != null ? `${p.projOwnPct.toFixed(1)}%` : "—"}</td>
+                  <td className="px-3 py-1.5 text-xs">{p.ourOwnPct != null ? `${p.ourOwnPct.toFixed(1)}%` : "—"}</td>
+                  {sport === "nba" && (
+                    <td className="px-3 py-1.5 text-xs">{liveOwnDisplay != null ? `${liveOwnDisplay.toFixed(1)}%` : "—"}</td>
+                  )}
+                  <td className={`px-3 py-1.5 text-xs font-medium ${
+                    leverageDisplay == null ? "" : leverageDisplay > 0 ? "text-green-700" : "text-red-400"
+                  }`}>
+                    {fmt1(leverageDisplay)}
+                  </td>
+                  <td className="px-3 py-1.5 text-xs text-gray-500">{value != null ? value.toFixed(2) : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+});
+
+const GeneratedLineupsSection = memo(function GeneratedLineupsSection({
+  sport,
+  activeLineups,
+  lastRequestedLineupCount,
+  strategy,
+  onStrategyChange,
+  onSave,
+  saveMsg,
+  onExport,
+  isExporting,
+  exportError,
+}: GeneratedLineupsSectionProps) {
+  const slotNames = sport === "nba" ? NBA_SLOT_NAMES : MLB_SLOT_NAMES;
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold">
+          {activeLineups.length}
+          {lastRequestedLineupCount != null ? ` / ${lastRequestedLineupCount}` : ""}
+          {" "}Lineups Generated
+        </h2>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">Strategy name</label>
+            <input
+              value={strategy}
+              onChange={(e) => onStrategyChange(e.target.value)}
+              className="w-28 rounded border px-2 py-1 text-xs"
+            />
+          </div>
+          <button
+            onClick={onSave}
+            className="rounded border border-blue-600 px-3 py-1 text-xs text-blue-600 hover:bg-blue-50"
+          >
+            Save Lineups
+          </button>
+        </div>
+      </div>
+      {saveMsg && <p className="mb-2 text-xs text-green-600">{saveMsg}</p>}
+
+      <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+        {activeLineups.map((lineup, i) => {
+          const slots = lineup.slots as Record<string, { name: string; teamLogo: string | null; ourProj: number | null }>;
+          return (
+            <div key={i} className="rounded border p-2 text-xs">
+              <div className="flex items-center gap-4 mb-1 text-gray-500">
+                <span className="font-medium text-gray-800">#{i + 1}</span>
+                <span>Proj: <strong className="text-gray-800">{lineup.projFpts.toFixed(1)}</strong></span>
+                <span>Sal: <strong className="text-gray-800">${lineup.totalSalary.toLocaleString()}</strong></span>
+                <span>Lev: <strong className="text-gray-800">{lineup.leverageScore.toFixed(1)}</strong></span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {slotNames.map((slot) => {
+                  const player = slots[slot];
+                  return player ? (
+                    <span key={slot} className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5">
+                      <span className="text-gray-400">{slot.replace(/\d$/, "")}</span>
+                      {player.teamLogo && <img src={player.teamLogo} alt="" className="h-3 w-3" />}
+                      <span className="font-medium">{player.name}</span>
+                      <span className="text-gray-400">{fmt1(player.ourProj)}</span>
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 pt-4 border-t">
+        <h3 className="text-xs font-semibold mb-2">Multi-Entry Export</h3>
+        <p className="text-xs text-gray-500 mb-2">
+          Exports the generated lineups directly as CSV with one row per lineup.
+        </p>
+        <button
+          onClick={onExport}
+          disabled={isExporting}
+          className="mt-2 rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isExporting ? "Exporting…" : "Export CSV"}
+        </button>
+        {exportError && <p className="mt-2 text-xs text-red-600">{exportError}</p>}
+      </div>
+    </div>
+  );
+});
+
 export default function DfsClient({ players, slateDate, sport }: Props) {
   const [isPending, startTransition] = useTransition();
 
@@ -492,7 +1149,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
 
   // ── Sort ──────────────────────────────────────────────────
   const [sortCol, setSortCol] = useState<SortCol>("ourLeverage");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // ── Optimizer settings ────────────────────────────────────
   const [mode, setMode] = useState<"cash" | "gpp">("gpp");
@@ -504,6 +1161,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   const [pendingLineupPolicy, setPendingLineupPolicy] = useState<MlbPendingLineupPolicy>("downgrade");
   const [hideOutInactivePlayers, setHideOutInactivePlayers] = useState(true);
   const [mlbPlayerPoolFilter, setMlbPlayerPoolFilter] = useState<MlbPlayerPoolFilter>("all");
+  const [showHeavyPanels, setShowHeavyPanels] = useState(false);
   const [bringBackEnabled, setBringBackEnabled] = useState(false);
   const [bringBackSize, setBringBackSize] = useState(1);
   const [minSalaryFilter, setMinSalaryFilter] = useState("");
@@ -907,39 +1565,63 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     return new Map(ranked.map((player, idx) => [player.id, idx + 1]));
   }, [players, sport]);
 
-  function toggleSort(col: SortCol) {
-    if (sortCol === col) setSortDir((d) => d === "desc" ? "asc" : "desc");
-    else { setSortCol(col); setSortDir("desc"); }
-  }
+  const visiblePlayerRows = useMemo(() => sortedPlayers.slice(0, 200), [sortedPlayers]);
+  const activeLineups = useMemo(
+    () => ((sport === "nba" ? lineups : mlbLineups) ?? []) as AnyGeneratedLineup[],
+    [lineups, mlbLineups, sport],
+  );
+  const toggleHideOutInactivePlayers = useCallback(() => {
+    setHideOutInactivePlayers((current) => !current);
+  }, []);
+  const handleMlbPlayerPoolFilterChange = useCallback((filter: MlbPlayerPoolFilter) => {
+    setMlbPlayerPoolFilter(filter);
+  }, []);
+  const handleStrategyChange = useCallback((value: string) => {
+    setStrategy(value);
+  }, []);
 
-  function togglePlayerLock(player: DkPlayerRow) {
+  useEffect(() => {
+    setShowHeavyPanels(false);
+    const frameId = window.requestAnimationFrame(() => setShowHeavyPanels(true));
+    return () => window.cancelAnimationFrame(frameId);
+  }, [players, sport]);
+
+  const toggleSort = useCallback((col: SortCol) => {
+    if (sortCol === col) setSortDir((d) => d === "desc" ? "asc" : "desc");
+    else {
+      setSortCol(col);
+      setSortDir("desc");
+    }
+  }, [sortCol]);
+
+  const togglePlayerLock = useCallback((player: DkPlayerRow) => {
     setBlockedPlayerIds((current) => current.filter((id) => id !== player.id));
     setLockedPlayerIds((current) =>
       current.includes(player.id)
         ? current.filter((id) => id !== player.id)
         : [...current, player.id],
     );
-  }
+  }, []);
 
-  function togglePlayerBlock(player: DkPlayerRow) {
+  const togglePlayerBlock = useCallback((player: DkPlayerRow) => {
     setLockedPlayerIds((current) => current.filter((id) => id !== player.id));
     setBlockedPlayerIds((current) =>
       current.includes(player.id)
         ? current.filter((id) => id !== player.id)
         : [...current, player.id],
     );
-  }
+  }, []);
 
-  function toggleTeamBlock(teamId: number) {
+  const toggleTeamBlock = useCallback((teamId: number) => {
     setRequiredTeamStacks((current) => current.filter((rule) => rule.teamId !== teamId));
     setBlockedTeamIds((current) =>
       current.includes(teamId)
         ? current.filter((id) => id !== teamId)
         : [...current, teamId],
     );
-  }
+  }, []);
 
-  function updateTeamStackRule(teamId: number, value: string) {
+  const updateTeamStackRule = useCallback((teamId: number, value: string) => {
     const stackSize = Number(value);
     setBlockedTeamIds((current) => current.filter((id) => id !== teamId));
     setRequiredTeamStacks((current) => {
@@ -948,22 +1630,22 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
       return [...remaining, { teamId, stackSize: stackSize as TeamStackRule["stackSize"] }]
         .sort((a, b) => a.teamId - b.teamId);
     });
-  }
+  }, []);
 
-  function clearLocks() {
+  const clearLocks = useCallback(() => {
     setLockedPlayerIds([]);
-  }
+  }, []);
 
-  function clearBlocks() {
+  const clearBlocks = useCallback(() => {
     setBlockedPlayerIds([]);
     setBlockedTeamIds([]);
-  }
+  }, []);
 
-  function clearTeamRules() {
+  const clearTeamRules = useCallback(() => {
     setRequiredTeamStacks([]);
-  }
+  }, []);
 
-  function SortHeader({ col, label }: { col: SortCol; label: string }) {
+  function _LocalSortHeader({ col, label }: { col: SortCol; label: string }) {
     const active = sortCol === col;
     return (
       <th
@@ -1106,15 +1788,15 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     }
   }
 
-  async function handleSave() {
+  const handleSave = useCallback(async () => {
     const activeLineups = sport === "nba" ? lineups : mlbLineups;
     if (!activeLineups || !players[0]?.slateId) return;
     setSaveMsg(null);
     const res = await saveLineups(players[0].slateId, activeLineups, strategy);
     setSaveMsg(res.ok ? `Saved ${res.saved} lineups as "${strategy}"` : "Save failed");
-  }
+  }, [lineups, mlbLineups, players, sport, strategy]);
 
-  async function handleExport() {
+  const handleExport = useCallback(async () => {
     const activeLineups = sport === "nba" ? lineups : mlbLineups;
     if (!activeLineups) return;
     setExportError(null);
@@ -1135,7 +1817,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     a.download = `dk_${sport}_lineups_${slateDate ?? "export"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }
+  }, [lineups, mlbLineups, slateDate, sport]);
 
   async function handleRefreshStatus() {
     if (!players[0]?.slateId) { setRefreshMsg({ ok: false, text: "No slate loaded" }); return; }
@@ -2008,126 +2690,77 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
       </div>
 
       {supportsRuleControls && filteredPlayers.length > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold">{sport.toUpperCase()} Rule Controls</h2>
-              <p className="text-xs text-gray-500">
-                Locks persist per slate. Blocked teams remove every player from that team, and team stack rules require at least one lineup stack on each selected team.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setHideOutInactivePlayers((current) => !current)}
-                disabled={unavailablePlayerCount === 0}
-                className={`rounded border px-3 py-1 text-xs font-medium ${
-                  hideOutInactivePlayers
-                    ? "border-blue-300 bg-blue-50 text-blue-700"
-                    : "text-gray-700 hover:bg-gray-50"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                {hideOutInactivePlayers ? "Show Out/Inactive" : "Hide Out/Inactive"}
-              </button>
-              <button
-                onClick={clearLocks}
-                disabled={lockedPlayerIds.length === 0}
-                className="rounded border px-3 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50"
-              >
-                Clear Locks
-              </button>
-              <button
-                onClick={clearBlocks}
-                disabled={blockedPlayerIds.length === 0 && blockedTeamIds.length === 0}
-                className="rounded border px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                Clear Blocks
-              </button>
-              <button
-                onClick={clearTeamRules}
-                disabled={requiredTeamStacks.length === 0}
-                className="rounded border px-3 py-1 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
-              >
-                Clear Team Rules
-              </button>
+        showHeavyPanels ? (
+          <RuleControlsSection
+            sport={sport}
+            filteredTeams={filteredTeams}
+            blockedTeamSet={blockedTeamSet}
+            requiredTeamStackMap={requiredTeamStackMap}
+            teamOddsById={teamOddsById}
+            hideOutInactivePlayers={hideOutInactivePlayers}
+            unavailablePlayerCount={unavailablePlayerCount}
+            lockedCount={lockedPlayerIds.length}
+            blockedCount={blockedPlayerIds.length + blockedTeamIds.length}
+            requiredTeamStackCount={requiredTeamStacks.length}
+            onToggleHideOutInactive={toggleHideOutInactivePlayers}
+            onClearLocks={clearLocks}
+            onClearBlocks={clearBlocks}
+            onClearTeamRules={clearTeamRules}
+            onToggleTeamBlock={toggleTeamBlock}
+            onUpdateTeamStackRule={updateTeamStackRule}
+          />
+        ) : (
+          <div className="rounded-lg border bg-card p-4">
+            <div className="h-4 w-40 animate-pulse rounded bg-gray-100" />
+            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div key={idx} className="h-24 animate-pulse rounded border bg-gray-50" />
+              ))}
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">{lockedPlayerIds.length} locked</span>
-            <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-700">
-              {blockedPlayerIds.length + blockedTeamIds.length} blocked rules
-            </span>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
-              {requiredTeamStacks.length} team stacks
-            </span>
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-            {filteredTeams.length === 0 && (
-              <div className="rounded border border-dashed p-4 text-sm text-gray-500 md:col-span-2 xl:col-span-4">
-                No active teams are visible with the current filter.
-              </div>
-            )}
-            {filteredTeams.map((team) => {
-              const isBlocked = blockedTeamSet.has(team.teamId);
-              const stackSize = requiredTeamStackMap.get(team.teamId);
-              const odds = teamOddsById.get(team.teamId);
-              return (
-                <div key={team.teamId} className={`rounded border p-3 ${isBlocked ? "border-red-200 bg-red-50" : stackSize ? "border-emerald-200 bg-emerald-50" : "bg-white"}`}>
-                  <div className="flex items-center gap-2">
-                    {team.teamLogo && <img src={team.teamLogo} alt="" className="h-5 w-5" />}
-                    <div>
-                      <p className="text-sm font-medium">{team.teamAbbrev}</p>
-                      <p className="text-[11px] text-gray-500">{team.teamName ?? team.teamAbbrev}</p>
-                    </div>
-                  </div>
-                  {(odds?.teamTotal != null || odds?.vegasTotal != null || odds?.moneyline != null) && (
-                    <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-gray-600">
-                      {odds?.teamTotal != null && (
-                        <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
-                          TT {odds.teamTotal.toFixed(1)}
-                        </span>
-                      )}
-                      {odds?.vegasTotal != null && (
-                        <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
-                          O/U {odds.vegasTotal.toFixed(1)}
-                        </span>
-                      )}
-                      {odds?.moneyline != null && (
-                        <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5">
-                          ML {fmtAmericanOdds(odds.moneyline)}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      onClick={() => toggleTeamBlock(team.teamId)}
-                      className={`rounded border px-2 py-1 text-xs ${isBlocked ? "border-red-300 bg-red-100 text-red-700" : "text-gray-600 hover:bg-gray-50"}`}
-                    >
-                      {isBlocked ? "Blocked" : "Block Team"}
-                    </button>
-                    <select
-                      value={stackSize ?? ""}
-                      onChange={(e) => updateTeamStackRule(team.teamId, e.target.value)}
-                      disabled={isBlocked}
-                      className="rounded border px-2 py-1 text-xs disabled:opacity-50"
-                    >
-                      <option value="">No Stack</option>
-                      <option value="2">Stack 2</option>
-                      <option value="3">Stack 3</option>
-                      <option value="4">Stack 4</option>
-                      <option value="5">Stack 5</option>
-                    </select>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        )
       )}
 
       {/* Player Pool Table */}
       {filteredPlayers.length > 0 && (
+        showHeavyPanels ? (
+          <PlayerPoolTable
+            sport={sport}
+            visiblePlayers={visiblePlayerRows}
+            playerPoolSourceCount={playerPoolSourcePlayers.length}
+            unavailablePlayerCount={unavailablePlayerCount}
+            hideOutInactivePlayers={hideOutInactivePlayers}
+            mlbLineupSummary={mlbLineupSummary}
+            mlbPlayerPoolFilter={mlbPlayerPoolFilter}
+            onChangeMlbPlayerPoolFilter={handleMlbPlayerPoolFilterChange}
+            onToggleHideOutInactive={toggleHideOutInactivePlayers}
+            supportsRuleControls={supportsRuleControls}
+            sortCol={sortCol}
+            sortDir={sortDir}
+            onToggleSort={toggleSort}
+            lockedPlayerSet={lockedPlayerSet}
+            blockedPlayerSet={blockedPlayerSet}
+            blockedTeamSet={blockedTeamSet}
+            requiredTeamStackMap={requiredTeamStackMap}
+            nbaTopScorerRanks={nbaTopScorerRanks}
+            onTogglePlayerLock={togglePlayerLock}
+            onTogglePlayerBlock={togglePlayerBlock}
+          />
+        ) : (
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <div className="border-b px-4 py-3">
+              <div className="h-4 w-48 animate-pulse rounded bg-gray-100" />
+            </div>
+            <div className="space-y-3 p-4">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={idx} className="h-10 animate-pulse rounded bg-gray-50" />
+              ))}
+            </div>
+          </div>
+        )
+      )}
+      {/* Legacy inline player table retained temporarily for safe rollback. */}
+      {false && filteredPlayers.length > 0 && (
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="flex items-start justify-between gap-3 px-4 py-3 border-b">
             <div>
@@ -2432,7 +3065,22 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
       )}
 
       {/* Generated Lineups */}
-      {((sport === "nba" ? lineups : mlbLineups) ?? []).length > 0 && (() => {
+      {activeLineups.length > 0 && (
+        <GeneratedLineupsSection
+          sport={sport}
+          activeLineups={activeLineups}
+          lastRequestedLineupCount={lastRequestedLineupCount}
+          strategy={strategy}
+          onStrategyChange={handleStrategyChange}
+          onSave={handleSave}
+          saveMsg={saveMsg}
+          onExport={handleExport}
+          isExporting={isExporting}
+          exportError={exportError}
+        />
+      )}
+      {/* Legacy inline lineups block retained temporarily for safe rollback. */}
+      {false && (((sport === "nba" ? lineups : mlbLineups) ?? []).length > 0) && (() => {
         const activeLineups = (sport === "nba" ? lineups : mlbLineups)!;
         const slotNames = sport === "nba"
           ? ["PG","SG","SF","PF","C","G","F","UTIL"]
