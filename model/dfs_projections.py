@@ -26,9 +26,9 @@ from __future__ import annotations
 import random
 
 LEAGUE_AVG_PACE       = 100.0   # NBA possessions per 48 min
-LEAGUE_AVG_DEF_RTG    = 112.0   # NBA defensive rating league average
-LEAGUE_AVG_TOTAL      = 228.0   # NBA Vegas game total approximate average
-LEAGUE_AVG_TEAM_TOTAL = 114.0   # Per-team share of LEAGUE_AVG_TOTAL
+LEAGUE_AVG_DEF_RTG    = 114.5   # NBA defensive rating league average (2025-26 actual: 114.57)
+LEAGUE_AVG_TOTAL      = 230.0   # NBA Vegas game total approximate average (2025-26 actual: 229.88)
+LEAGUE_AVG_TEAM_TOTAL = 115.0   # Per-team share of LEAGUE_AVG_TOTAL (2025-26 actual: 114.94)
 LEAGUE_AVG_USAGE      = 20.0    # NBA league average usage rate %
 
 

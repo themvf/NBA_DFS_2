@@ -111,10 +111,10 @@ PTS × 1.0 | REB × 1.25 | AST × 1.5 | STL × 2.0 | BLK × 2.0 | TOV × −0.5
 
 ### League Average Constants (2025-26)
 ```
-LEAGUE_AVG_PACE       = 100.0
-LEAGUE_AVG_DEF_RTG    = 112.0
-LEAGUE_AVG_TOTAL      = 228.0
-LEAGUE_AVG_TEAM_TOTAL = 114.0
+LEAGUE_AVG_PACE       = 100.0   # actual: 100.18 (58 games)
+LEAGUE_AVG_DEF_RTG    = 114.5   # actual: 114.57 (was 112.0 — stale, caused systematic over-projection)
+LEAGUE_AVG_TOTAL      = 230.0   # actual: 229.88 (was 228.0)
+LEAGUE_AVG_TEAM_TOTAL = 115.0   # actual: 114.94 (was 114.0)
 LEAGUE_AVG_USAGE      = 20.0
 ```
 
