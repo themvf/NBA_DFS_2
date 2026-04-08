@@ -866,13 +866,13 @@ export async function getOwnershipVsTeamTotal(sport: Sport = "nba"): Promise<Own
         ELSE '120+'
       END                                                                  AS "impliedBucket",
       MIN(team_implied)::FLOAT                                             AS "bucketMin",
-      COUNT(*) FILTER (WHERE proj_own_pct IS NOT NULL)::int                AS "nProj",
-      COUNT(*) FILTER (WHERE actual_own_pct IS NOT NULL)::int              AS "nActual",
-      COUNT(*) FILTER (WHERE actual_fpts IS NOT NULL)::int                 AS "nFpts",
-      AVG(proj_own_pct) FILTER (WHERE proj_own_pct IS NOT NULL)            AS "avgProjOwn",
-      AVG(actual_own_pct) FILTER (WHERE actual_own_pct IS NOT NULL)        AS "avgActualOwn",
-      AVG(our_proj) FILTER (WHERE our_proj IS NOT NULL)                    AS "avgProjFpts",
-      AVG(actual_fpts) FILTER (WHERE actual_fpts IS NOT NULL)              AS "avgActualFpts"
+      COUNT(*) FILTER (WHERE proj_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL)::int AS "nProj",
+      COUNT(*) FILTER (WHERE actual_own_pct IS NOT NULL AND proj_own_pct IS NOT NULL)::int AS "nActual",
+      COUNT(*) FILTER (WHERE our_proj IS NOT NULL AND actual_fpts IS NOT NULL)::int        AS "nFpts",
+      AVG(proj_own_pct)  FILTER (WHERE proj_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL)  AS "avgProjOwn",
+      AVG(actual_own_pct) FILTER (WHERE actual_own_pct IS NOT NULL AND proj_own_pct IS NOT NULL) AS "avgActualOwn",
+      AVG(our_proj)    FILTER (WHERE our_proj IS NOT NULL AND actual_fpts IS NOT NULL)    AS "avgProjFpts",
+      AVG(actual_fpts) FILTER (WHERE our_proj IS NOT NULL AND actual_fpts IS NOT NULL)    AS "avgActualFpts"
     FROM player_implied
     WHERE team_implied IS NOT NULL
     GROUP BY 1
