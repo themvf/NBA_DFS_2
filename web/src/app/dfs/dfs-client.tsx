@@ -546,6 +546,30 @@ function buildMlbLineupsFromPersisted(
   });
 }
 
+function getPersistedLineupSignature(lineups: PersistedOptimizerJobLineup[]): string {
+  if (lineups.length === 0) return "0";
+  const last = lineups[lineups.length - 1];
+  return `${lineups.length}:${last?.lineupNumber ?? 0}:${last?.totalSalary ?? 0}:${last?.projFpts ?? 0}`;
+}
+
+function getOptimizerDebugSignature(
+  debug: OptimizerDebugInfo | null,
+  status: OptimizerJobStatusResponse["job"]["status"],
+): string {
+  if (!debug) return `none:${status}`;
+  if (status === "queued" || status === "running") {
+    return `${status}:${debug.builtLineups}:${debug.lineupSummaries.length}`;
+  }
+  return [
+    status,
+    debug.builtLineups,
+    debug.totalMs,
+    debug.lineupSummaries.length,
+    debug.probeSummary.length,
+    debug.terminationReason ?? "",
+  ].join(":");
+}
+
 const SortHeader = memo(function SortHeader({ col, label, sortCol, sortDir, onToggleSort }: SortHeaderProps) {
   const active = sortCol === col;
   return (
@@ -1190,6 +1214,15 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   // ── Export ────────────────────────────────────────────────
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const optimizerRenderStateRef = useRef<{
+    metaKey: string;
+    lineupSignature: string;
+    debugSignature: string;
+  }>({
+    metaKey: "",
+    lineupSignature: "",
+    debugSignature: "",
+  });
 
   // ── Results upload (disabled) ─────────────────────────────
 
@@ -1288,33 +1321,72 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     : [];
 
   function applyOptimizerJobResult(result: OptimizerJobStatusResponse) {
+    const startedAt = result.job.startedAt ?? result.job.createdAt;
+    const startedAtMs = startedAt ? Date.parse(startedAt) : null;
+    const isActiveJob = result.job.status === "queued" || result.job.status === "running";
+    const lineupSignature = getPersistedLineupSignature(result.lineups);
+    const debugSignature = getOptimizerDebugSignature(result.debug ?? null, result.job.status);
+    const metaKey = [
+      result.job.id,
+      result.job.status,
+      result.job.requestedLineups,
+      result.job.warning ?? "",
+      result.job.error ?? "",
+      startedAt ?? "",
+      result.job.finishedAt ?? "",
+    ].join("|");
+
+    const previous = optimizerRenderStateRef.current;
+    const shouldUpdateMeta = previous.metaKey !== metaKey;
+    const shouldUpdateLineups = previous.lineupSignature !== lineupSignature;
+    const shouldUpdateDebug = previous.debugSignature !== debugSignature;
+
     setOptimizerJobId(result.job.id);
     window.localStorage.setItem(
       optimizerJobStorageKey(result.job.sport, result.job.slateId),
       String(result.job.id),
     );
-    setLastRequestedLineupCount(result.job.requestedLineups);
-    setOptimizeDebug(result.debug ?? null);
-    setOptimizeWarning(result.job.warning ?? null);
-    setOptimizeError(result.job.error ?? null);
 
-    const startedAt = result.job.startedAt ?? result.job.createdAt;
-    setOptimizeStartedAt(startedAt ? Date.parse(startedAt) : null);
+    if (shouldUpdateMeta) {
+      setLastRequestedLineupCount(result.job.requestedLineups);
+      setOptimizeWarning(result.job.warning ?? null);
+      setOptimizeError(result.job.error ?? null);
+      setOptimizeStartedAt(startedAtMs);
+    }
+    setIsOptimizing(isActiveJob);
 
-    if (sport === "mlb") {
-      setMlbLineups(buildMlbLineupsFromPersisted(result.lineups, playersById));
-      setLineups(null);
-    } else {
-      setLineups(buildNbaLineupsFromPersisted(result.lineups, playersById));
-      setMlbLineups(null);
+    if (shouldUpdateDebug || shouldUpdateLineups) {
+      startTransition(() => {
+        if (shouldUpdateDebug) {
+          setOptimizeDebug(result.debug ?? null);
+        }
+
+        if (shouldUpdateLineups) {
+          if (sport === "mlb") {
+            setMlbLineups(buildMlbLineupsFromPersisted(result.lineups, playersById));
+            setLineups(null);
+          } else {
+            setLineups(buildNbaLineupsFromPersisted(result.lineups, playersById));
+            setMlbLineups(null);
+          }
+        }
+      });
     }
 
-    setIsOptimizing(result.job.status === "queued" || result.job.status === "running");
+    optimizerRenderStateRef.current = {
+      metaKey,
+      lineupSignature,
+      debugSignature,
+    };
   }
 
   useEffect(() => {
     setOptimizerClientToken(getOrCreateOptimizerClientToken());
   }, []);
+
+  useEffect(() => {
+    optimizerRenderStateRef.current.lineupSignature = "";
+  }, [playersById]);
 
   useEffect(() => {
     if (!supportsRuleControls || !currentSlateId) {
@@ -1710,6 +1782,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   async function handleOptimize() {
     if (!players[0]?.slateId) { setOptimizeError("No slate loaded"); return; }
     if (!optimizerClientToken) { setOptimizeError("Optimizer client token unavailable."); return; }
+    optimizerRenderStateRef.current = { metaKey: "", lineupSignature: "", debugSignature: "" };
     setIsOptimizing(true);
     setOptimizeStartedAt(Date.now());
     setOptimizeElapsedMs(0);
