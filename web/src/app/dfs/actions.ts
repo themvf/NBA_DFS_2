@@ -3652,10 +3652,15 @@ export async function saveHistoricalSlate(
   if (parsed.size === 0)
     return { ok: false, message: "No players parsed — expected tab-separated LineStar data", created: 0, updated: 0 };
 
-  // Find existing slate matching this date + contest type + format (all three must match)
+  // Find existing slate to update results into.
+  // Priority 1: exact match on date + contestType + contestFormat (user selected the right slate).
+  // Priority 2: any loaded slate for the same date that has our_proj populated (contest type
+  //   label mismatch between the load and the historical save is common — e.g. loaded as "late"
+  //   but historical pasted as "main"). Prefer the slate with the most our_proj coverage.
   const effectiveType   = contestType   ?? "main";
   const effectiveFormat = contestFormat ?? "gpp";
-  const existingSlate = await db
+
+  const exactMatch = await db
     .select({ id: dkSlates.id })
     .from(dkSlates)
     .where(
@@ -3667,6 +3672,25 @@ export async function saveHistoricalSlate(
       )
     )
     .limit(1);
+
+  // If no exact match, fall back to the loaded slate with the most our_proj coverage for this date.
+  const existingSlate: { id: number }[] = exactMatch[0]
+    ? exactMatch
+    : (await db.execute<{ id: number }>(sql`
+        SELECT ds.id
+        FROM dk_slates ds
+        WHERE ds.slate_date = ${date}
+          AND ds.sport = ${sport}
+          AND EXISTS (
+            SELECT 1 FROM dk_players dp
+            WHERE dp.slate_id = ds.id AND dp.our_proj IS NOT NULL
+          )
+        ORDER BY (
+          SELECT COUNT(*) FROM dk_players dp
+          WHERE dp.slate_id = ds.id AND dp.our_proj IS NOT NULL
+        ) DESC
+        LIMIT 1
+      `)).rows;
 
   const abbrevCache = new Map(
     (await db
