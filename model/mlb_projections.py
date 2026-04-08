@@ -37,13 +37,24 @@ MLB_LEAGUE_AVG_XFIP       = 4.20   # starter xFIP league average
 MLB_LEAGUE_AVG_K_PCT      = 0.225  # team K rate (22.5% of PA)
 
 # PA weight by batting order slot.
-# Slots 1-2 accumulate ~8% more plate appearances than the 5-6 average.
-# Slots 7-9 see ~7% fewer PA.  Based on empirical MLB PA-per-slot distributions.
+# Recalibrated from 2026 season data (n≈30/slot).  The original 1/2 grouping
+# under-captured the #2/#3 RBI-opportunity premium and over-boosted #1 hitters
+# (who lead off with no runners on base, suppressing RBI/R despite more PAs).
+# Key findings:
+#   #1: +1.45 over-projection → reduce from 1.08 to 1.03
+#   #2: -1.60 under-projection → boost from 1.08 to 1.13
+#   #3: -1.32 under-projection → boost from 1.05 to 1.10
+#   #7: -2.39 under-projection → boost from 0.93 to 0.97
 _ORDER_PA_FACTOR: dict[int, float] = {
-    1: 1.08, 2: 1.08,
-    3: 1.05, 4: 1.05,
-    5: 1.00, 6: 1.00,
-    7: 0.93, 8: 0.93, 9: 0.93,
+    1: 1.03,  # more PAs but fewest RBI chances (leads off, base empty)
+    2: 1.13,  # highest combined PA + RBI opportunity (behind high-OBP #1/#3)
+    3: 1.10,  # 2nd-highest actual FPTS; lineup protection keeps pitchers honest
+    4: 1.05,  # cleanup; slightly lower PA count than 2/3
+    5: 1.00,  # baseline
+    6: 0.98,
+    7: 0.97,  # historically undervalued by field; actual FPTS exceeds projection
+    8: 0.92,
+    9: 0.90,
 }
 
 

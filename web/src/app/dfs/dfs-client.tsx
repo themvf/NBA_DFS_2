@@ -396,6 +396,27 @@ function getMlbLineupBadge(player: DkPlayerRow): { label: string; className: str
   }
 }
 
+// Batting order value/fade signals derived from 2026 season data:
+//   #1 over-owned  (+8.4% own, only 6.4 FPTS) → Fade badge
+//   #2/#3 under-owned relative to production   → no badge (captured in leverage)
+//   #7 under-owned relative to production (-2.4 bias, 5.4% own) → Value badge
+function getMlbOrderBadge(player: DkPlayerRow): { label: string; className: string; title: string } | null {
+  if (isMlbPitcherPlayer(player) || player.isOut) return null;
+  const order = player.dkStartingLineupOrder;
+  if (order == null) return null;
+  if (order === 1) return {
+    label: "Fade",
+    className: "bg-orange-100 text-orange-700",
+    title: "Leadoff hitters are systematically over-owned by the field relative to production",
+  };
+  if (order === 7) return {
+    label: "Value",
+    className: "bg-violet-100 text-violet-700",
+    title: "#7 hitters produce above their ownership level — GPP value spot",
+  };
+  return null;
+}
+
 function getMlbHrBadge(player: DkPlayerRow): { label: string; className: string; title: string } | null {
   if (isMlbPitcherPlayer(player) || player.isOut || player.hrProb1Plus == null) return null;
   if (player.hrProb1Plus < MLB_HR_BADGE_THRESHOLD) return null;
@@ -913,6 +934,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
               const pos = displayPos(p.eligiblePositions, sport);
               const mlbLineupBadge = sport === "mlb" ? getMlbLineupBadge(p) : null;
               const mlbHrBadge = sport === "mlb" ? getMlbHrBadge(p) : null;
+              const mlbOrderBadge = sport === "mlb" ? getMlbOrderBadge(p) : null;
               const nbaPointsBadge = sport === "nba" ? getNbaPointsBadge(p, nbaTopScorerRanks.get(p.id)) : null;
               const rowUnavailable = sport === "mlb" ? isMlbRowUnavailable(p) : !!p.isOut;
               const isLocked = lockedPlayerSet.has(p.id);
@@ -951,6 +973,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                             {mlbHrBadge.label}
                           </span>
                         )}
+                        {mlbOrderBadge && (
+                          <span title={mlbOrderBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbOrderBadge.className}`}>
+                            {mlbOrderBadge.label}
+                          </span>
+                        )}
                       </span>
                     )}
                     {!supportsRuleControls && (
@@ -963,6 +990,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                         {mlbHrBadge && (
                           <span title={mlbHrBadge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbHrBadge.className}`}>
                             {mlbHrBadge.label}
+                          </span>
+                        )}
+                        {mlbOrderBadge && (
+                          <span title={mlbOrderBadge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbOrderBadge.className}`}>
+                            {mlbOrderBadge.label}
                           </span>
                         )}
                       </>
@@ -2968,6 +3000,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                   const pos = displayPos(p.eligiblePositions, sport);
                   const mlbLineupBadge = sport === "mlb" ? getMlbLineupBadge(p) : null;
                   const mlbHrBadge = sport === "mlb" ? getMlbHrBadge(p) : null;
+                  const mlbOrderBadge = sport === "mlb" ? getMlbOrderBadge(p) : null;
                   const nbaPointsBadge = sport === "nba" ? getNbaPointsBadge(p, nbaTopScorerRanks.get(p.id)) : null;
                   const rowUnavailable = sport === "mlb" ? isMlbRowUnavailable(p) : !!p.isOut;
                   const isLocked = lockedPlayerSet.has(p.id);
@@ -3014,6 +3047,14 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                                 {mlbHrBadge.label}
                               </span>
                             )}
+                            {mlbOrderBadge && (
+                              <span
+                                title={mlbOrderBadge.title}
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbOrderBadge.className}`}
+                              >
+                                {mlbOrderBadge.label}
+                              </span>
+                            )}
                           </span>
                         )}
                         {!supportsRuleControls && (
@@ -3032,6 +3073,14 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                                 className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbHrBadge.className}`}
                               >
                                 {mlbHrBadge.label}
+                              </span>
+                            )}
+                            {mlbOrderBadge && (
+                              <span
+                                title={mlbOrderBadge.title}
+                                className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbOrderBadge.className}`}
+                              >
+                                {mlbOrderBadge.label}
                               </span>
                             )}
                           </>

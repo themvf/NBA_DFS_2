@@ -283,8 +283,15 @@ def _apply_mlb_ownership_models(players: list[dict]) -> int:
         proj_for_leverage = _get_mlb_proxy_projection(player)
         if proj_for_leverage is not None and proj_for_leverage > 0 and player.get("proj_own_pct") is not None:
             field_proj = _sanitize_projection(player.get("avg_fpts_dk") or player.get("linestar_proj"))
+            # Batting order #1 hitters are systematically over-owned by the field
+            # (~+3% vs proj_own_pct based on 2026 season data). Inflate the ownership
+            # used in leverage to penalise them correctly in GPP mode.
+            batting_order = player.get("dk_starting_lineup_order")
+            own_for_leverage = (player["proj_own_pct"] + 3.0
+                                if batting_order == 1
+                                else player["proj_own_pct"])
             player["our_leverage"] = _sanitize_leverage(
-                compute_leverage(proj_for_leverage, player["proj_own_pct"], field_proj=field_proj)
+                compute_leverage(proj_for_leverage, own_for_leverage, field_proj=field_proj)
             )
         else:
             player["our_leverage"] = None

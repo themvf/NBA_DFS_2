@@ -655,6 +655,7 @@ export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<Cross
     FROM dk_players dp
     JOIN dk_slates ds ON ds.id = dp.slate_id
     WHERE ds.sport = ${sport}
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
     GROUP BY ds.slate_date
     HAVING COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL) > 0
     ORDER BY ds.slate_date ASC
@@ -712,6 +713,7 @@ export async function getPositionAccuracy(sport: Sport = "nba"): Promise<Positio
     FROM dk_players dp
     JOIN dk_slates ds ON ds.id = dp.slate_id
     WHERE ds.sport = ${sport}
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
     GROUP BY 1
     ORDER BY COALESCE(
       AVG(ABS(dp.our_proj - dp.actual_fpts))
@@ -759,6 +761,7 @@ export async function getSalaryTierAccuracy(sport: Sport = "nba"): Promise<Salar
     FROM dk_players dp
     JOIN dk_slates ds ON ds.id = dp.slate_id
     WHERE ds.sport = ${sport}
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
     GROUP BY 1
     ORDER BY MIN(dp.salary) ASC NULLS LAST
   `);
@@ -794,6 +797,7 @@ export async function getLeverageCalibration(sport: Sport = "nba"): Promise<Leve
       WHERE dp.our_leverage IS NOT NULL
         AND dp.actual_fpts IS NOT NULL
         AND ds.sport = ${sport}
+        AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
     ) sub
     GROUP BY sub.quartile
     ORDER BY sub.quartile
