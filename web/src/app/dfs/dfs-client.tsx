@@ -187,6 +187,11 @@ type GeneratedLineupsSectionProps = {
   exportError: string | null;
 };
 
+type TimedSpinnerMessageProps = {
+  active: boolean;
+  text: string;
+};
+
 function parseGameKey(gameInfo: string | null): string {
   if (!gameInfo) return "Unknown";
   return gameInfo.split(" ")[0] ?? "Unknown";
@@ -582,6 +587,32 @@ const SortHeader = memo(function SortHeader({ col, label, sortCol, sortDir, onTo
       {label}
       {active ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
     </th>
+  );
+});
+
+const TimedSpinnerMessage = memo(function TimedSpinnerMessage({ active, text }: TimedSpinnerMessageProps) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!active) {
+      setElapsedSeconds(0);
+      return;
+    }
+    setElapsedSeconds(0);
+    const startedAt = Date.now();
+    const id = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [active]);
+
+  if (!active) return null;
+
+  return (
+    <div className="flex items-center gap-2 text-sm text-emerald-700">
+      <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+      <span>{text} ({elapsedSeconds}s)</span>
+    </div>
   );
 });
 
@@ -1242,7 +1273,6 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   const [isClearingSlate, setIsClearingSlate] = useState(false);
 
   // ── Props elapsed timer ───────────────────────────────────
-  const [propsElapsed, setPropsElapsed] = useState(0);
 
   // ── Recompute projections ─────────────────────────────────
   const [projMsg, setProjMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -1256,12 +1286,6 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   }, [clearSlateConfirm]);
 
   // Elapsed-time counter for Fetch Player Props
-  useEffect(() => {
-    if (!isFetchingProps) { setPropsElapsed(0); return; }
-    const id = setInterval(() => setPropsElapsed((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [isFetchingProps]);
-
   useEffect(() => {
     if (!isOptimizing || optimizeStartedAt == null) {
       setOptimizeElapsedMs(0);
@@ -2302,12 +2326,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                 Pulls pts/reb/ast/blk/stl lines from The Odds API · audit checks coverage by book
               </span>
             </div>
-            {isFetchingProps && (
-              <div className="flex items-center gap-2 text-sm text-emerald-700">
-                <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-                <span>Fetching props… ({propsElapsed}s)</span>
-              </div>
-            )}
+            <TimedSpinnerMessage active={isFetchingProps} text="Fetching props…" />
             {propsMsg && (
               <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {propsMsg.text}
@@ -2383,12 +2402,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                 Pulls H/TB/R/RBI/HR/K/OUTS/ER lines from The Odds API · audit checks coverage by book
               </span>
             </div>
-            {isFetchingProps && (
-              <div className="flex items-center gap-2 text-sm text-emerald-700">
-                <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-                <span>Fetching props… ({propsElapsed}s)</span>
-              </div>
-            )}
+            <TimedSpinnerMessage active={isFetchingProps} text="Fetching props…" />
             {propsMsg && (
               <span className={`text-sm ${propsMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {propsMsg.text}
