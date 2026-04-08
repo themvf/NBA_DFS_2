@@ -43,12 +43,13 @@ DK API         ──→  avgFptsDk (field projection baseline for leverage)
 
 **Stage 1 — Environment factors**
 ```
-paceFactor  = avg(teamPace, oppPace) / LEAGUE_AVG_PACE
-totalFactor = teamImpliedTotal(vegasTotal, homeMl, awayMl, isHome) / LEAGUE_AVG_TEAM_TOTAL
-combinedEnv = paceFactor × 0.4 + totalFactor × 0.6
-defFactor   = oppDefRtg / LEAGUE_AVG_DEF_RTG
-usageFactor = clamp(playerUsage / LEAGUE_AVG_USAGE, 0.5, 2.0)
-adjustedEnv = 1 + (combinedEnv − 1) × usageFactor
+paceFactor    = avg(teamPace, oppPace) / LEAGUE_AVG_PACE
+totalFactor   = teamImpliedTotal(vegasTotal, homeMl, awayMl, isHome) / LEAGUE_AVG_TEAM_TOTAL
+combinedEnv   = paceFactor × 0.4 + totalFactor × 0.6
+defFactor     = oppDefRtg / LEAGUE_AVG_DEF_RTG
+oppOffFactor  = oppOffRtg / LEAGUE_AVG_OFF_RTG   ← opponent shot volume proxy
+usageFactor   = clamp(playerUsage / LEAGUE_AVG_USAGE, 0.5, 2.0)
+adjustedEnv   = 1 + (combinedEnv − 1) × usageFactor
 ```
 
 **Stage 2 — Per-stat projections**
@@ -56,12 +57,12 @@ Props (pts/reb/ast) are used directly when available — they already bake in ma
 pace, and injury context. Rolling-average formula is the fallback.
 ```
 pts = propPts  ?? (ppg  × defFactor)
-reb = propReb  ?? (rpg  × adjustedEnv)
+reb = propReb  ?? (rpg  × adjustedEnv × oppOffFactor^0.4)   ← more opp FGA = more misses to rebound
 ast = propAst  ?? (apg  × defFactor × (1 + (combinedEnv−1) × 0.5))
-stl = spg  × adjustedEnv            ← always formula (props rarely available)
-blk = bpg  × adjustedEnv
+stl = spg  × adjustedEnv × (1/oppOffFactor)^0.5   ← better opp offense = fewer turnovers = fewer steals
+blk = bpg  × adjustedEnv × oppOffFactor^0.3        ← more opp shots = more block chances
 tov = tovpg × adjustedEnv
-3pm = threefgmPg                     ← no adjustment (shot selection, not pace)
+3pm = threefgmPg                                    ← no adjustment (shot selection, not pace)
 dd  = ddRate × adjustedEnv
 ```
 
@@ -113,6 +114,7 @@ PTS × 1.0 | REB × 1.25 | AST × 1.5 | STL × 2.0 | BLK × 2.0 | TOV × −0.5
 ```
 LEAGUE_AVG_PACE       = 100.0   # actual: 100.18 (58 games)
 LEAGUE_AVG_DEF_RTG    = 114.5   # actual: 114.57 (was 112.0 — stale, caused systematic over-projection)
+LEAGUE_AVG_OFF_RTG    = 114.5   # actual: 114.62; used for reb/stl/blk opponent adjustment
 LEAGUE_AVG_TOTAL      = 230.0   # actual: 229.88 (was 228.0)
 LEAGUE_AVG_TEAM_TOTAL = 115.0   # actual: 114.94 (was 114.0)
 LEAGUE_AVG_USAGE      = 20.0

@@ -27,6 +27,7 @@ import random
 
 LEAGUE_AVG_PACE       = 100.0   # NBA possessions per 48 min
 LEAGUE_AVG_DEF_RTG    = 114.5   # NBA defensive rating league average (2025-26 actual: 114.57)
+LEAGUE_AVG_OFF_RTG    = 114.5   # NBA offensive rating league average (2025-26 actual: 114.62)
 LEAGUE_AVG_TOTAL      = 230.0   # NBA Vegas game total approximate average (2025-26 actual: 229.88)
 LEAGUE_AVG_TEAM_TOTAL = 115.0   # Per-team share of LEAGUE_AVG_TOTAL (2025-26 actual: 114.94)
 LEAGUE_AVG_USAGE      = 20.0    # NBA league average usage rate %
@@ -132,6 +133,7 @@ def compute_our_projection(
     team_pace   = team.get("pace")        or LEAGUE_AVG_PACE
     opp_pace    = opponent.get("pace")    or LEAGUE_AVG_PACE
     opp_def_rtg = opponent.get("def_rtg") or LEAGUE_AVG_DEF_RTG
+    opp_off_rtg = opponent.get("off_rtg") or LEAGUE_AVG_OFF_RTG
 
     # ── Environment factors ───────────────────────────────────────────────────
 
@@ -152,6 +154,11 @@ def compute_our_projection(
     # Defensive adjustment: higher DefRtg = worse defense = more scoring allowed
     def_factor = opp_def_rtg / LEAGUE_AVG_DEF_RTG
 
+    # Opponent offensive factor: higher opp OffRtg = more shots generated per possession
+    # Used for counting stats that depend on opponent shot volume rather than scoring quality.
+    # Range 2025-26: OKC 106.3 → DEN 120.7  (±5% effect at 0.5 exponent)
+    opp_off_factor = opp_off_rtg / LEAGUE_AVG_OFF_RTG
+
     # ── Usage rate as volume multiplier ───────────────────────────────────────
     # Stars (30%+ usage) capture a larger share of extra possessions in
     # high-pace/high-implied-total games. Role players (10% usage) capture less.
@@ -166,16 +173,26 @@ def compute_our_projection(
     # Points:   primary driver is defensive quality, not pace
     proj_pts  = ppg * def_factor
 
-    # Rebounds: pace-driven (more possessions = more missed shots to rebound)
-    proj_reb  = rpg * adjusted_env
+    # Rebounds: pace-driven + opponent shot volume.
+    # Higher opp off_rtg = opponent generates more FGA = more missed shots to rebound.
+    # 0.4 exponent: DEN (120.7) gives +2.2%, OKC (106.3) gives -3.0%
+    proj_reb  = rpg * adjusted_env * (opp_off_factor ** 0.4)
 
     # Assists: defense is primary (weaker D = more scoring = more assists),
     # but pace also plays a partial role (more possessions = more assist chances)
     proj_ast  = apg * def_factor * (1.0 + (combined_env - 1.0) * 0.5)
 
-    # Steals, blocks, turnovers: all pace-driven
-    proj_stl  = spg   * adjusted_env
-    proj_blk  = bpg   * adjusted_env
+    # Steals: pace-driven + opponent ball security (inverse of off_rtg).
+    # Better offenses (higher off_rtg) turn it over less → fewer steal opportunities.
+    # 0.5 exponent: BKN (108.7 off) gives +2.7% more steals, DEN (120.7) gives -2.5%
+    proj_stl  = spg * adjusted_env * (1.0 / opp_off_factor) ** 0.5
+
+    # Blocks: pace-driven + opponent shot volume at rim.
+    # Higher opp off_rtg = more FGA generated = more block chances.
+    # 0.3 exponent (smaller than rebounds — off_rtg correlates loosely with rim attempts)
+    proj_blk  = bpg * adjusted_env * (opp_off_factor ** 0.3)
+
+    # Turnovers: pace-driven only (own team's ball-handling, not opponent-specific)
     proj_tov  = tovpg * adjusted_env
 
     # 3-pointers: attempt rate and percentage don't vary meaningfully with pace/D
