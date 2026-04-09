@@ -238,6 +238,18 @@ function fmtDuration(ms: number): string {
   return minutes > 0 ? `${minutes}:${String(seconds).padStart(2, "0")}` : `${seconds}s`;
 }
 
+function formatPendingLineupPolicy(policy: MlbPendingLineupPolicy): string {
+  switch (policy) {
+    case "ignore":
+      return "Maintain";
+    case "exclude":
+      return "Exclude";
+    case "downgrade":
+    default:
+      return "Downgrade";
+  }
+}
+
 const OPTIMIZER_CLIENT_TOKEN_KEY = "dfsOptimizerClientToken";
 const RULE_STORAGE_PREFIX = "dfsOptimizerRules";
 const LEGACY_NBA_RULE_STORAGE_PREFIX = "dfsOptimizerNbaRules";
@@ -2660,7 +2672,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                 className="rounded border px-2 py-1 text-sm"
               >
                 <option value="downgrade">Downgrade</option>
-                <option value="ignore">Ignore</option>
+                <option value="ignore">Maintain</option>
                 <option value="exclude">Exclude</option>
               </select>
             </div>
@@ -2765,7 +2777,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                     <>
                       <p><strong>Effective stack:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
                       <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackThreshold ?? 0}</p>
-                      <p><strong>Pending hitters:</strong> {optimizeDebug.effectiveSettings.pendingLineupPolicy ?? "downgrade"}</p>
+                      <p><strong>Pending hitters:</strong> {formatPendingLineupPolicy(optimizeDebug.effectiveSettings.pendingLineupPolicy ?? "downgrade")}</p>
                     </>
                   )}
                   <p><strong>Effective diversity:</strong> {optimizeDebug.effectiveSettings.minChanges}</p>
