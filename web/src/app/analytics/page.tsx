@@ -5,6 +5,7 @@ import {
   getPositionAccuracy,
   getSalaryTierAccuracy,
   getLeverageCalibration,
+  getNbaPerfectLineupAnalytics,
   getOwnershipVsTeamTotal,
 } from "@/db/queries";
 import type { Sport } from "@/db/queries";
@@ -18,12 +19,13 @@ export default async function AnalyticsPage({
   const { sport: rawSport } = await searchParams;
   const sport: Sport = rawSport === "mlb" ? "mlb" : "nba";
 
-  const [crossSlate, posAccuracy, salaryTier, leverageCalib, ownVsTotal] = await Promise.all([
+  const [crossSlate, posAccuracy, salaryTier, leverageCalib, ownVsTotal, perfectLineupAnalytics] = await Promise.all([
     getCrossSlateAccuracy(sport),
     getPositionAccuracy(sport),
     getSalaryTierAccuracy(sport),
     getLeverageCalibration(sport),
     getOwnershipVsTeamTotal(sport),
+    sport === "nba" ? getNbaPerfectLineupAnalytics() : Promise.resolve(null),
   ]);
 
   return (
@@ -33,6 +35,7 @@ export default async function AnalyticsPage({
       salaryTier={salaryTier}
       leverageCalib={leverageCalib}
       ownVsTotal={ownVsTotal}
+      perfectLineupAnalytics={perfectLineupAnalytics}
       sport={sport}
     />
   );
