@@ -1493,6 +1493,8 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   const [antiCorrMax, setAntiCorrMax] = useState(1); // MLB: max batters facing your own SP
   const [hrCorrelation, setHrCorrelation] = useState(false);
   const [hrCorrelationThreshold, setHrCorrelationThreshold] = useState(0.12);
+  const [pitcherCeilingBoost, setPitcherCeilingBoost] = useState(false);
+  const [pitcherCeilingCount, setPitcherCeilingCount] = useState(3);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [lastRequestedLineupCount, setLastRequestedLineupCount] = useState<number | null>(null);
 
@@ -2098,6 +2100,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
             mode, nLineups, minStack, maxExposure,
             bringBackThreshold: mlbBringBackThreshold, antiCorrMax, pendingLineupPolicy,
             hrCorrelation, hrCorrelationThreshold,
+            pitcherCeilingBoost, pitcherCeilingCount,
             playerLocks: lockedPlayerIds,
             playerBlocks: blockedPlayerIds,
             blockedTeamIds,
@@ -2935,6 +2938,46 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
               </div>
             </div>
           )}
+          {sport === "mlb" && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Pitcher Ceiling{" "}
+                <span
+                  className="text-gray-400 font-normal cursor-help"
+                  title="Boost the slate's highest raw-ceiling pitchers in optimizer search using K, outs, ER, opponent team total, projection, and value. This nudges exposure; it does not change pitcher projections."
+                >(?)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={pitcherCeilingBoost ? "on" : "off"}
+                  onChange={(e) => setPitcherCeilingBoost(e.target.value === "on")}
+                  className="rounded border px-2 py-1 text-sm"
+                >
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+                {pitcherCeilingBoost && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={pitcherCeilingCount}
+                    onChange={(e) => {
+                      const next = Number.parseInt(e.target.value, 10);
+                      if (!Number.isFinite(next)) {
+                        setPitcherCeilingCount(3);
+                        return;
+                      }
+                      setPitcherCeilingCount(Math.min(5, Math.max(1, next)));
+                    }}
+                    title="Number of top ceiling pitchers to boost in search"
+                    className="w-16 rounded border px-2 py-1 text-sm"
+                  />
+                )}
+              </div>
+            </div>
+          )}
           <div>
             <label className="text-xs text-gray-500 block mb-1">Min Salary</label>
             <input
@@ -2991,13 +3034,15 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                       <p><strong>Effective stack size:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
                       <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackEnabled ? `Yes (${optimizeDebug.effectiveSettings.bringBackSize ?? 1})` : "No"}</p>
                     </>
-                  ) : (
-                    <>
+                    ) : (
+                      <>
                       <p><strong>Effective stack:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
                       <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackThreshold ?? 0}</p>
                       <p><strong>Pending hitters:</strong> {formatPendingLineupPolicy(optimizeDebug.effectiveSettings.pendingLineupPolicy ?? "downgrade")}</p>
-                    </>
-                  )}
+                      <p><strong>HR correlation:</strong> {hrCorrelation ? `On (${Math.round(hrCorrelationThreshold * 100)}%)` : "Off"}</p>
+                      <p><strong>Pitcher ceiling:</strong> {pitcherCeilingBoost ? `On (top ${pitcherCeilingCount})` : "Off"}</p>
+                      </>
+                    )}
                   <p><strong>Effective diversity:</strong> {optimizeDebug.effectiveSettings.minChanges}</p>
                   {"antiCorrMax" in optimizeDebug.effectiveSettings && optimizeDebug.effectiveSettings.antiCorrMax != null && (
                     <p><strong>Effective anti-corr:</strong> {optimizeDebug.effectiveSettings.antiCorrMax}</p>

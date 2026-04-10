@@ -41,6 +41,9 @@ export type MlbOptimizerPlayer = Pick<
   | "homeImplied"
   | "awayImplied"
   | "hrProb1Plus"
+  | "propPts"
+  | "propReb"
+  | "propAst"
 >;
 
 export type MlbLineupSlot = "P1" | "P2" | "C" | "1B" | "2B" | "3B" | "SS" | "OF1" | "OF2" | "OF3";
@@ -64,6 +67,8 @@ export type MlbOptimizerSettings = MlbRuleSettings & {
   pendingLineupPolicy: MlbPendingLineupPolicy;
   hrCorrelation: boolean;
   hrCorrelationThreshold: number;
+  pitcherCeilingBoost: boolean;
+  pitcherCeilingCount: number;
 };
 
 const MLB_SALARY_CAP = 50000;
@@ -81,6 +86,7 @@ const MLB_CASH_LEVERAGE_WEIGHT = 0.1;
 const MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5;
 const MLB_TEMPLATE_USAGE_PENALTY = 1.25;
 const MLB_TEMPLATE_ROTATION_PENALTY = 0.6;
+const MLB_PITCHER_CEILING_BONUSES = [2.5, 1.75, 1.0, 0.5, 0.25] as const;
 const MLB_BATTER_SLOTS: readonly MlbLineupSlot[] = ["C", "1B", "2B", "3B", "SS", "OF1", "OF2", "OF3"];
 const MLB_ALL_SLOTS: readonly MlbLineupSlot[] = ["P1", "P2", ...MLB_BATTER_SLOTS];
 
@@ -112,6 +118,25 @@ type BatterSearchState = {
 
 function finiteOrNull(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
+}
+
+function rankMetric(
+  value: number | null | undefined,
+  values: Array<number | null | undefined>,
+  higherIsBetter = true,
+): number {
+  if (value == null) return 0.5;
+  const numeric = values.filter((entry): entry is number => entry != null && Number.isFinite(entry));
+  if (numeric.length === 0) return 0.5;
+
+  let below = 0;
+  let equal = 0;
+  for (const entry of numeric) {
+    if (entry < value) below++;
+    else if (entry === value) equal++;
+  }
+  const percentile = (below + equal * 0.5) / numeric.length;
+  return higherIsBetter ? percentile : 1 - percentile;
 }
 
 export function isPitcher(pos: string): boolean {
@@ -196,6 +221,76 @@ export function computeHrBonusMap(
     const preceding2 = byTeamOrder.get(`${teamId}:${prev2Order}`);
     if (preceding1) bonuses.set(preceding1.id, (bonuses.get(preceding1.id) ?? 0) + 5.0);
     if (preceding2) bonuses.set(preceding2.id, (bonuses.get(preceding2.id) ?? 0) + 2.0);
+  }
+  return bonuses;
+}
+
+function getPitcherOpponentTeamTotal(player: MlbOptimizerPlayer): number | null {
+  const teamId = finiteOrNull(player.teamId);
+  const homeTeamId = finiteOrNull(player.homeTeamId);
+  const awayTeamId = finiteOrNull(player.awayTeamId);
+  if (teamId == null || homeTeamId == null || awayTeamId == null) return null;
+  if (teamId === homeTeamId) {
+    return finiteOrNull(player.awayImplied)
+      ?? (finiteOrNull(player.vegasTotal) != null ? player.vegasTotal! / 2 : null);
+  }
+  if (teamId === awayTeamId) {
+    return finiteOrNull(player.homeImplied)
+      ?? (finiteOrNull(player.vegasTotal) != null ? player.vegasTotal! / 2 : null);
+  }
+  return finiteOrNull(player.vegasTotal) != null ? player.vegasTotal! / 2 : null;
+}
+
+export function computePitcherCeilingBonusMap(
+  pitchers: MlbOptimizerPlayer[],
+  topCount: number,
+): Map<number, number> {
+  const activePitchers = pitchers.filter((player) => !player.isOut);
+  const ceilingCount = Math.max(0, Math.min(topCount, activePitchers.length));
+  if (ceilingCount === 0) return new Map<number, number>();
+
+  const contexts = activePitchers.map((player) => {
+    const projection = getMlbProjection(player) || finiteOrNull(player.linestarProj);
+    const value = projection != null ? projection / Math.max(1, player.salary / 1000) : null;
+    return {
+      player,
+      projection,
+      value,
+      strikeouts: finiteOrNull(player.propPts),
+      outs: finiteOrNull(player.propReb),
+      earnedRuns: finiteOrNull(player.propAst),
+      oppTeamTotal: getPitcherOpponentTeamTotal(player),
+      score: 0,
+    };
+  });
+
+  const strikeoutValues = contexts.map((context) => context.strikeouts);
+  const outsValues = contexts.map((context) => context.outs);
+  const erValues = contexts.map((context) => context.earnedRuns);
+  const oppTotalValues = contexts.map((context) => context.oppTeamTotal);
+  const projectionValues = contexts.map((context) => context.projection);
+  const valueValues = contexts.map((context) => context.value);
+
+  for (const context of contexts) {
+    context.score =
+      rankMetric(context.strikeouts, strikeoutValues, true) * 0.34 +
+      rankMetric(context.outs, outsValues, true) * 0.22 +
+      rankMetric(context.earnedRuns, erValues, false) * 0.10 +
+      rankMetric(context.oppTeamTotal, oppTotalValues, false) * 0.14 +
+      rankMetric(context.projection, projectionValues, true) * 0.12 +
+      rankMetric(context.value, valueValues, true) * 0.08;
+  }
+
+  const sorted = [...contexts].sort((a, b) => {
+    const diff = b.score - a.score;
+    return Math.abs(diff) > 1e-9 ? diff : a.player.id - b.player.id;
+  });
+
+  const bonuses = new Map<number, number>();
+  for (let index = 0; index < ceilingCount; index++) {
+    const context = sorted[index];
+    if (!context) break;
+    bonuses.set(context.player.id, MLB_PITCHER_CEILING_BONUSES[index] ?? MLB_PITCHER_CEILING_BONUSES[MLB_PITCHER_CEILING_BONUSES.length - 1]);
   }
   return bonuses;
 }
@@ -378,12 +473,13 @@ function pruneMlbBatterPool(
 function enumeratePitcherPairs(
   pitchers: MlbOptimizerPlayer[],
   mode: "cash" | "gpp",
+  pitcherBonusById: Map<number, number> = new Map(),
 ): Array<{ players: [MlbOptimizerPlayer, MlbOptimizerPlayer]; score: number }> {
   const sorted = sortMlbPlayersForSearch(pitchers, mode).slice(0, Math.max(8, Math.min(18, pitchers.length)));
   return enumerateCombinations(sorted, 2)
     .map(([a, b]) => ({
       players: [a, b] as [MlbOptimizerPlayer, MlbOptimizerPlayer],
-      score: getMlbSearchScore(a, mode) + getMlbSearchScore(b, mode),
+      score: getMlbSearchScore(a, mode) + getMlbSearchScore(b, mode) + (pitcherBonusById.get(a.id) ?? 0) + (pitcherBonusById.get(b.id) ?? 0),
     }))
     .sort((a, b) => b.score - a.score || a.players[0].id - b.players[0].id || a.players[1].id - b.players[1].id)
     .slice(0, MLB_PITCHER_PAIR_LIMIT);
@@ -567,6 +663,7 @@ function solveMlbLineup(
   baseTemplates: MlbStackTemplate[] | null = null,
   lineupIndex = 0,
   hrBonusById: Map<number, number> = new Map(),
+  pitcherCeilingBonusById: Map<number, number> = new Map(),
 ): MlbGeneratedLineup | null {
   const eligible = pool
     .filter((player) => (exposureCount.get(player.id) ?? 0) < maxExposureCount)
@@ -591,6 +688,8 @@ function solveMlbLineup(
   // Pitchers are scored with getMlbSearchScore directly (no batting-order bonus).
   const getScoreForBatter = (player: MlbOptimizerPlayer) =>
     getMlbSearchScore(player, mode) + (hrBonusById.get(player.id) ?? 0);
+  const getScoreForPitcher = (player: MlbOptimizerPlayer) =>
+    getMlbSearchScore(player, mode) + (pitcherCeilingBonusById.get(player.id) ?? 0);
 
   const lockedBatterScore = lockedBatters.reduce((sum, player) => sum + getScoreForBatter(player), 0);
   const lockedBatterProjection = lockedBatters.reduce((sum, player) => sum + getMlbProjection(player), 0);
@@ -625,7 +724,7 @@ function solveMlbLineup(
   })();
 
   const opponentByTeamId = buildMlbOpponentByTeamId(eligible);
-  const pitcherPairs = enumeratePitcherPairs(pitchers, mode).filter(({ players }) =>
+  const pitcherPairs = enumeratePitcherPairs(pitchers, mode, pitcherCeilingBonusById).filter(({ players }) =>
     lockedPitchers.every((lockedPitcher) => players.some((player) => player.id === lockedPitcher.id)),
   );
   const templates = orderMlbStackTemplates(
@@ -790,7 +889,7 @@ function solveMlbLineup(
       selectedIds: new Set<number>(lockedBatterIds),
       teamCounts: new Map<number, number>(lockedBatterTeamCounts),
       salary: pitcherSalary + lockedBatterSalary,
-      score: pitcherPair.reduce((sum, player) => sum + getMlbSearchScore(player, mode), 0) + lockedBatterScore,
+      score: pitcherPair.reduce((sum, player) => sum + getScoreForPitcher(player), 0) + lockedBatterScore,
       projection: pitcherPair.reduce((sum, player) => sum + getMlbProjection(player), 0) + lockedBatterProjection,
       leverage: pitcherPair.reduce((sum, player) => sum + getMlbLeverage(player), 0) + lockedBatterLeverage,
     }];
@@ -979,6 +1078,8 @@ export function optimizeMlbLineupsWithDebug(
     antiCorrMax,
     hrCorrelation,
     hrCorrelationThreshold,
+    pitcherCeilingBoost,
+    pitcherCeilingCount,
   } = settings;
   const pendingLineupPolicy = normalizeMlbPendingLineupPolicy(settings.pendingLineupPolicy);
   const totalStart = Date.now();
@@ -1098,8 +1199,12 @@ export function optimizeMlbLineupsWithDebug(
   // Compute HR correlation bonus map once for the run — preceding batters of high-HR players
   // get a score bonus so the beam search prefers to co-include them.
   const preparedBatters = preparedPool.filter((p) => !isPitcher(p.eligiblePositions));
+  const preparedPitchers = preparedPool.filter((p) => isPitcher(p.eligiblePositions));
   const hrBonusById: Map<number, number> = hrCorrelation
     ? computeHrBonusMap(preparedBatters, hrCorrelationThreshold)
+    : new Map();
+  const pitcherCeilingBonusById: Map<number, number> = pitcherCeilingBoost
+    ? computePitcherCeilingBonusMap(preparedPitchers, pitcherCeilingCount)
     : new Map();
 
   // Compute base templates once for the entire run — batter pool doesn't change lineup-to-lineup.
@@ -1136,6 +1241,7 @@ export function optimizeMlbLineupsWithDebug(
         sharedBaseTemplates,
         i,
         hrBonusById,
+        pitcherCeilingBonusById,
       );
       const durationMs = Date.now() - start;
       const failureReason = lineup
@@ -1209,6 +1315,8 @@ export function prepareMlbOptimizerRun(
     antiCorrMax,
     hrCorrelation,
     hrCorrelationThreshold,
+    pitcherCeilingBoost,
+    pitcherCeilingCount,
   } = settings;
   const pendingLineupPolicy = normalizeMlbPendingLineupPolicy(settings.pendingLineupPolicy);
   const candidatePool = applyMlbPendingLineupPolicy(pool, pendingLineupPolicy);
@@ -1319,10 +1427,15 @@ export function prepareMlbOptimizerRun(
   debug.totalMs = Date.now() - totalStart;
 
   const preparedBattersForBonus = preparedSearch.pool.filter((p) => !isPitcher(p.eligiblePositions));
+  const preparedPitchersForBonus = preparedSearch.pool.filter((p) => isPitcher(p.eligiblePositions));
   const hrBonusMap = hrCorrelation
     ? computeHrBonusMap(preparedBattersForBonus, hrCorrelationThreshold)
     : new Map<number, number>();
+  const pitcherCeilingBonusMap = pitcherCeilingBoost
+    ? computePitcherCeilingBonusMap(preparedPitchersForBonus, pitcherCeilingCount)
+    : new Map<number, number>();
   const hrBonusRecord: Record<number, number> = Object.fromEntries(hrBonusMap);
+  const pitcherCeilingBonusRecord: Record<number, number> = Object.fromEntries(pitcherCeilingBonusMap);
 
   return {
     prepared: {
@@ -1342,6 +1455,7 @@ export function prepareMlbOptimizerRun(
         pendingLineupPolicy,
       },
       hrBonusRecord,
+      pitcherCeilingBonusRecord,
       relaxedConstraints: [...debug.relaxedConstraints],
       probeSummary: [...debug.probeSummary],
     },
@@ -1365,6 +1479,9 @@ export function buildNextMlbLineup(
   // Reconstruct the HR bonus Map from the serialized record (Maps aren't JSON-serializable).
   const hrBonusById = new Map<number, number>(
     Object.entries(prepared.hrBonusRecord ?? {}).map(([k, v]) => [Number(k), v]),
+  );
+  const pitcherCeilingBonusById = new Map<number, number>(
+    Object.entries(prepared.pitcherCeilingBonusRecord ?? {}).map(([k, v]) => [Number(k), v]),
   );
 
   const preparedSearch = prepareMlbSearchPool(
@@ -1398,6 +1515,7 @@ export function buildNextMlbLineup(
       undefined,
       priorLineupPlayerIds.length,
       hrBonusById,
+      pitcherCeilingBonusById,
     );
     attempts.push({
       stage,

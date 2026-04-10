@@ -14,6 +14,7 @@ import {
 } from "./optimizer";
 import {
   buildNextMlbLineup,
+  computePitcherCeilingBonusMap,
   computeHrBonusMap,
   isPitcher,
   prepareMlbOptimizerRun,
@@ -213,7 +214,10 @@ async function loadMlbOptimizerPool(
       mm.vegas_total AS "vegasTotal",
       mm.home_implied AS "homeImplied",
       mm.away_implied AS "awayImplied",
-      dp.hr_prob_1plus AS "hrProb1Plus"
+      dp.hr_prob_1plus AS "hrProb1Plus",
+      dp.prop_pts AS "propPts",
+      dp.prop_reb AS "propReb",
+      dp.prop_ast AS "propAst"
     FROM dk_players dp
     LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
     LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
@@ -729,10 +733,15 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
     const mlbSettings = settings as MlbOptimizerSettings;
     const mlbPool = pool as MlbOptimizerPlayer[];
     const batters = mlbPool.filter((p) => !isPitcher(p.eligiblePositions));
+    const pitchers = mlbPool.filter((p) => isPitcher(p.eligiblePositions));
     const hrBonusMap = mlbSettings.hrCorrelation
       ? computeHrBonusMap(batters, mlbSettings.hrCorrelationThreshold)
       : new Map<number, number>();
+    const pitcherCeilingBonusMap = mlbSettings.pitcherCeilingBoost
+      ? computePitcherCeilingBonusMap(pitchers, mlbSettings.pitcherCeilingCount)
+      : new Map<number, number>();
     const hrBonusRecord: Record<number, number> = Object.fromEntries(hrBonusMap);
+    const pitcherCeilingBonusRecord: Record<number, number> = Object.fromEntries(pitcherCeilingBonusMap);
     return {
       sport: "mlb",
       mode: settings.mode,
@@ -750,6 +759,7 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
         pendingLineupPolicy: normalizeMlbPendingLineupPolicy(effectiveSettings.pendingLineupPolicy),
       },
       hrBonusRecord,
+      pitcherCeilingBonusRecord,
       relaxedConstraints: (job.relaxedConstraintsJson as string[]) ?? [],
       probeSummary: (job.probeSummaryJson as OptimizerDebugInfo["probeSummary"]) ?? [],
     };

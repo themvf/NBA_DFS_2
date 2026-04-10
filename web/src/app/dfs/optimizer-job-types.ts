@@ -60,6 +60,8 @@ export type MlbPreparedOptimizerRun = {
   };
   /** HR correlation bonus by player id — serializable as plain object for job persistence. */
   hrBonusRecord: Record<number, number>;
+  /** Pitcher ceiling boost by player id — serializable for job persistence. */
+  pitcherCeilingBonusRecord: Record<number, number>;
   relaxedConstraints: string[];
   probeSummary: OptimizerProbeDebug[];
 };
