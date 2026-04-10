@@ -122,6 +122,12 @@ type MlbPitcherDecisionBadge = {
   title: string;
 };
 
+type MlbPitcherCeilingBadge = {
+  label: string;
+  className: string;
+  title: string;
+};
+
 type MlbLineupSummary = {
   confirmedIn: number;
   pending: number;
@@ -177,6 +183,7 @@ type PlayerPoolTableProps = {
   requiredTeamStackMap: Map<number, StackSize>;
   nbaTopScorerRanks: Map<number, number>;
   mlbPitcherDecisionBadges: Map<number, MlbPitcherDecisionBadge>;
+  mlbPitcherCeilingBadges: Map<number, MlbPitcherCeilingBadge>;
   onTogglePlayerLock: (player: DkPlayerRow) => void;
   onTogglePlayerBlock: (player: DkPlayerRow) => void;
 };
@@ -636,6 +643,73 @@ function getMlbPitcherDecisionBadges(players: DkPlayerRow[]): Map<number, MlbPit
   return result;
 }
 
+function getMlbPitcherCeilingBadges(players: DkPlayerRow[]): Map<number, MlbPitcherCeilingBadge> {
+  const activePitchers = players.filter((player) => isMlbPitcherPlayer(player) && !isMlbRowUnavailable(player));
+  if (activePitchers.length === 0) return new Map<number, MlbPitcherCeilingBadge>();
+
+  const contexts = activePitchers.map((player) => {
+    const odds = getPlayerOddsContext(player);
+    const projection = player.ourProj ?? player.linestarProj ?? null;
+    const value = projection != null ? projection / Math.max(1, player.salary / 1000) : null;
+    return {
+      player,
+      odds,
+      projection,
+      value,
+      strikeouts: player.propPts ?? null,
+      outs: player.propReb ?? null,
+      earnedRuns: player.propAst ?? null,
+      winProb: odds.moneyline != null ? mlToProb(odds.moneyline) : null,
+      score: 0,
+    };
+  });
+
+  const strikeoutValues = contexts.map((context) => context.strikeouts);
+  const outsValues = contexts.map((context) => context.outs);
+  const erValues = contexts.map((context) => context.earnedRuns);
+  const teamTotalValues = contexts.map((context) => context.odds.teamTotal);
+  const winProbValues = contexts.map((context) => context.winProb);
+  const projectionValues = contexts.map((context) => context.projection);
+  const valueValues = contexts.map((context) => context.value);
+
+  for (const context of contexts) {
+    context.score =
+      rankMetric(context.strikeouts, strikeoutValues, true) * 0.34 +
+      rankMetric(context.outs, outsValues, true) * 0.22 +
+      rankMetric(context.earnedRuns, erValues, false) * 0.10 +
+      rankMetric(context.odds.teamTotal, teamTotalValues, false) * 0.10 +
+      rankMetric(context.winProb, winProbValues, true) * 0.10 +
+      rankMetric(context.projection, projectionValues, true) * 0.09 +
+      rankMetric(context.value, valueValues, true) * 0.05;
+  }
+
+  const sorted = [...contexts].sort((a, b) => {
+    const diff = b.score - a.score;
+    return diff !== 0 ? diff : a.player.name.localeCompare(b.player.name);
+  });
+
+  const result = new Map<number, MlbPitcherCeilingBadge>();
+  for (const [index, context] of sorted.slice(0, 3).entries()) {
+    const ceilingPct = Math.round(context.score * 100);
+    result.set(context.player.id, {
+      label: `CEIL #${index + 1}`,
+      className: index === 0 ? "bg-fuchsia-100 text-fuchsia-700" : "bg-violet-100 text-violet-700",
+      title: [
+        `Ceiling score ${ceilingPct}`,
+        `K ${context.strikeouts != null ? context.strikeouts.toFixed(1) : "—"}`,
+        `Outs ${context.outs != null ? context.outs.toFixed(1) : "—"}`,
+        `ER ${context.earnedRuns != null ? context.earnedRuns.toFixed(1) : "—"}`,
+        `Opp TT ${context.odds.teamTotal != null ? context.odds.teamTotal.toFixed(1) : "—"}`,
+        `ML ${fmtAmericanOdds(context.odds.moneyline)}`,
+        `Proj ${context.projection != null ? context.projection.toFixed(1) : "—"}`,
+        `Value ${context.value != null ? context.value.toFixed(2) : "—"}`,
+      ].join(" | "),
+    });
+  }
+
+  return result;
+}
+
 function buildNbaLineupsFromPersisted(
   persisted: PersistedOptimizerJobLineup[],
   playersById: Map<number, DkPlayerRow>,
@@ -924,6 +998,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
   requiredTeamStackMap,
   nbaTopScorerRanks,
   mlbPitcherDecisionBadges,
+  mlbPitcherCeilingBadges,
   onTogglePlayerLock,
   onTogglePlayerBlock,
 }: PlayerPoolTableProps) {
@@ -1057,6 +1132,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
               const pos = displayPos(p.eligiblePositions, sport);
               const mlbLineupBadge = sport === "mlb" ? getMlbLineupBadge(p) : null;
               const mlbPitcherDecisionBadge = sport === "mlb" ? mlbPitcherDecisionBadges.get(p.id) : null;
+              const mlbPitcherCeilingBadge = sport === "mlb" ? mlbPitcherCeilingBadges.get(p.id) : null;
               const mlbHrBadge = sport === "mlb" ? getMlbHrBadge(p) : null;
               const mlbOrderBadge = sport === "mlb" ? getMlbOrderBadge(p) : null;
               const nbaPointsBadge = sport === "nba" ? getNbaPointsBadge(p, nbaTopScorerRanks.get(p.id)) : null;
@@ -1087,6 +1163,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                         {isLocked && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">LOCK</span>}
                         {(isBlocked || isTeamBlocked) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">BLOCK</span>}
                         {stackSize != null && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">STACK {stackSize}</span>}
+                        {mlbPitcherCeilingBadge && (
+                          <span title={mlbPitcherCeilingBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbPitcherCeilingBadge.className}`}>
+                            {mlbPitcherCeilingBadge.label}
+                          </span>
+                        )}
                         {mlbPitcherDecisionBadge && (
                           <span title={mlbPitcherDecisionBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbPitcherDecisionBadge.className}`}>
                             {mlbPitcherDecisionBadge.label}
@@ -1111,6 +1192,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                     )}
                     {!supportsRuleControls && (
                       <>
+                        {mlbPitcherCeilingBadge && (
+                          <span title={mlbPitcherCeilingBadge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbPitcherCeilingBadge.className}`}>
+                            {mlbPitcherCeilingBadge.label}
+                          </span>
+                        )}
                         {mlbPitcherDecisionBadge && (
                           <span title={mlbPitcherDecisionBadge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${mlbPitcherDecisionBadge.className}`}>
                             {mlbPitcherDecisionBadge.label}
@@ -1832,6 +1918,11 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   const mlbPitcherDecisionBadges = useMemo(() => {
     if (sport !== "mlb") return new Map<number, MlbPitcherDecisionBadge>();
     return getMlbPitcherDecisionBadges(filteredPlayers);
+  }, [filteredPlayers, sport]);
+
+  const mlbPitcherCeilingBadges = useMemo(() => {
+    if (sport !== "mlb") return new Map<number, MlbPitcherCeilingBadge>();
+    return getMlbPitcherCeilingBadges(filteredPlayers);
   }, [filteredPlayers, sport]);
 
   const visiblePlayerRows = useMemo(() => sortedPlayers.slice(0, 200), [sortedPlayers]);
@@ -3045,6 +3136,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
             requiredTeamStackMap={requiredTeamStackMap}
             nbaTopScorerRanks={nbaTopScorerRanks}
             mlbPitcherDecisionBadges={mlbPitcherDecisionBadges}
+            mlbPitcherCeilingBadges={mlbPitcherCeilingBadges}
             onTogglePlayerLock={togglePlayerLock}
             onTogglePlayerBlock={togglePlayerBlock}
           />
