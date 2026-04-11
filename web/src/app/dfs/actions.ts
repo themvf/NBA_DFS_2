@@ -5611,6 +5611,11 @@ export async function runOptimizer(
   gameFilter: number[],
   settings: OptimizerSettings,
 ): Promise<OptimizerRunResult<GeneratedLineup>> {
+  const refreshResult = await refreshPlayerStatus(slateId);
+  if (!refreshResult.ok) {
+    return { ok: false, error: `Status refresh failed before optimize: ${refreshResult.message}` };
+  }
+
   const rows = await db.execute<OptimizerPlayer & { slateId: number }>(sql`
     SELECT
       dp.id, dp.dk_player_id AS "dkPlayerId", dp.name, dp.team_abbrev AS "teamAbbrev",

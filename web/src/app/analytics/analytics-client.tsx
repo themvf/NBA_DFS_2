@@ -515,10 +515,10 @@ export default function AnalyticsClient({
 
       {leverageCalib.length > 0 && (
         <div className="rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-semibold mb-1">Leverage Model Calibration</h2>
+          <h2 className="text-sm font-semibold mb-1">Optimizer Leverage Calibration</h2>
           <p className="text-xs text-gray-500 mb-3">
-            Q4 = highest leverage. Positive avg beat = high-leverage players outperformed, which means the leverage
-            model is working as intended.
+            Q4 = highest leverage. This now audits the optimizer-facing leverage/projection fields, not just the legacy
+            internal model. Positive avg beat means high-leverage players outperformed.
           </p>
           <table className="w-full text-xs">
             <thead>

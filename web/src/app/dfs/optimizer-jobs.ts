@@ -42,6 +42,7 @@ import type {
 } from "./optimizer-job-types";
 
 const STALE_JOB_THRESHOLD_MS = 3 * 60_000;
+const NBA_OPTIMIZER_REFRESH_ERROR_PREFIX = "NBA status refresh failed before optimize:";
 
 let ensureOptimizerJobTablesPromise: Promise<void> | null = null;
 
@@ -557,6 +558,14 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
   const existing = await getActiveOptimizerJobStatus(input.clientToken, input.sport, input.slateId);
   if (existing) {
     return { jobId: existing.job.id, existing: true };
+  }
+
+  if (input.sport === "nba") {
+    const { refreshPlayerStatus } = await import("./actions");
+    const refreshResult = await refreshPlayerStatus(input.slateId);
+    if (!refreshResult.ok) {
+      throw new Error(`${NBA_OPTIMIZER_REFRESH_ERROR_PREFIX} ${refreshResult.message}`);
+    }
   }
 
   const poolSnapshot = await loadOptimizerPool(input.sport, input.slateId, input.selectedMatchupIds);

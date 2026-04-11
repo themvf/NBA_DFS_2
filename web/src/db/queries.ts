@@ -795,20 +795,23 @@ export async function getLeverageCalibration(sport: Sport = "nba"): Promise<Leve
   const result = await db.execute<LeverageCalibrationRow>(sql`
     SELECT
       sub.quartile               AS "leverageQuartile",
-      AVG(sub.our_leverage)      AS "avgLeverage",
-      AVG(sub.our_proj)          AS "avgProj",
+      AVG(sub.optimizer_leverage)      AS "avgLeverage",
+      AVG(sub.optimizer_proj)          AS "avgProj",
       AVG(sub.actual_fpts)       AS "avgActual",
-      AVG(sub.actual_fpts - sub.our_proj) AS "avgBeat",
+      AVG(sub.actual_fpts - sub.optimizer_proj) AS "avgBeat",
       COUNT(*)::int              AS "n"
     FROM (
       SELECT
-        NTILE(4) OVER (ORDER BY dp.our_leverage ASC NULLS LAST) AS quartile,
-        dp.our_leverage,
-        dp.our_proj,
+        NTILE(4) OVER (
+          ORDER BY COALESCE(dp.live_leverage, dp.our_leverage) ASC NULLS LAST
+        ) AS quartile,
+        COALESCE(dp.live_leverage, dp.our_leverage) AS optimizer_leverage,
+        COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS optimizer_proj,
         dp.actual_fpts
       FROM dk_players dp
       JOIN dk_slates ds ON ds.id = dp.slate_id
-      WHERE dp.our_leverage IS NOT NULL
+      WHERE COALESCE(dp.live_leverage, dp.our_leverage) IS NOT NULL
+        AND COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) IS NOT NULL
         AND dp.actual_fpts IS NOT NULL
         AND ds.sport = ${sport}
         AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)

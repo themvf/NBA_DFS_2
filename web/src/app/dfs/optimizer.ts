@@ -225,12 +225,19 @@ function getPlayerLeverage(p: OptimizerPlayer): number {
   return finiteOrNull(p.ourLeverage) ?? 0;
 }
 
+// GPP leverage weight — how much leverage adds on top of projection in search score.
+// Projection is the primary signal; leverage is a differentiator.
+// Calibrated to live_leverage quartile data (Q4 avg_lev ≈ +6.0, avg_proj ≈ 25.0):
+// at weight=0.6, a Q4 player scores ~3.6 pts above a neutral player at the same projection,
+// which is enough to prefer the contrarian play without overriding a 5+ FPTS projection gap.
+const NBA_GPP_LEVERAGE_WEIGHT = 0.6;
+const NBA_CASH_LEVERAGE_WEIGHT = 0.1;
+
 function getPlayerScore(p: OptimizerPlayer, mode: "cash" | "gpp"): number {
-  if (mode === "gpp") {
-    const leverage = finiteOrNull(p.ourLeverage);
-    if (leverage != null) return leverage;
-  }
-  return getPlayerProjection(p) ?? 0;
+  const projection = getPlayerProjection(p) ?? 0;
+  const leverage = finiteOrNull(p.ourLeverage) ?? 0;
+  const weight = mode === "gpp" ? NBA_GPP_LEVERAGE_WEIGHT : NBA_CASH_LEVERAGE_WEIGHT;
+  return projection + leverage * weight;
 }
 
 function getSearchScore(
