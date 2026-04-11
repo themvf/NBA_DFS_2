@@ -19,6 +19,8 @@ import type {
   SalaryTierAccuracyRow,
   LeverageCalibrationRow,
   OwnershipVsTeamTotalRow,
+  MlbBattingOrderCalibrationRow,
+  ProjectionSourceRow,
   Sport,
 } from "@/db/queries";
 import { saveHistoricalSlate } from "@/app/dfs/actions";
@@ -45,6 +47,8 @@ type Props = {
   salaryTier: SalaryTierAccuracyRow[];
   leverageCalib: LeverageCalibrationRow[];
   ownVsTotal: OwnershipVsTeamTotalRow[];
+  battingOrderCalib: MlbBattingOrderCalibrationRow[];
+  projSourceBreakdown: ProjectionSourceRow[];
   sport: Sport;
 };
 
@@ -54,6 +58,8 @@ export default function AnalyticsClient({
   salaryTier,
   leverageCalib,
   ownVsTotal,
+  battingOrderCalib,
+  projSourceBreakdown,
   sport,
 }: Props) {
   const router = useRouter();
@@ -567,6 +573,103 @@ export default function AnalyticsClient({
             }
             return null;
           })()}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Projection Source Breakdown                                          */}
+      {/* ------------------------------------------------------------------ */}
+      {projSourceBreakdown.length > 0 && (
+        <div className="rounded-lg border bg-card p-6 text-sm space-y-3">
+          <h2 className="font-semibold">Projection Source Breakdown (last 20 slates)</h2>
+          <p className="text-xs text-gray-500">
+            MAE and bias per slate for Live (v2), Our (v1), and LineStar projections.
+            Excludes DNPs. Bias: positive = over-projected.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500 text-right">
+                  <th className="py-1 text-left">Date</th>
+                  <th className="py-1">n(L)</th>
+                  <th className="py-1">Live MAE</th>
+                  <th className="py-1">Live Bias</th>
+                  <th className="py-1">n(O)</th>
+                  <th className="py-1">Our MAE</th>
+                  <th className="py-1">Our Bias</th>
+                  <th className="py-1">n(LS)</th>
+                  <th className="py-1">LS MAE</th>
+                  <th className="py-1">LS Bias</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projSourceBreakdown.map((row) => (
+                  <tr key={`${row.slateDate}-${row.sport}`} className="border-b border-gray-50">
+                    <td className="py-1 text-left font-medium">{row.slateDate}</td>
+                    <td className="py-1 text-right text-gray-400">{row.nLive}</td>
+                    <td className="py-1 text-right">{fmt2(row.liveMae)}</td>
+                    <td className="py-1 text-right"><BiasChip bias={row.liveBias} /></td>
+                    <td className="py-1 text-right text-gray-400">{row.nOur}</td>
+                    <td className="py-1 text-right">{fmt2(row.ourMae)}</td>
+                    <td className="py-1 text-right"><BiasChip bias={row.ourBias} /></td>
+                    <td className="py-1 text-right text-gray-400">{row.nLs}</td>
+                    <td className="py-1 text-right">{fmt2(row.lsMae)}</td>
+                    <td className="py-1 text-right"><BiasChip bias={row.lsBias} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* MLB Batting Order Calibration                                        */}
+      {/* ------------------------------------------------------------------ */}
+      {sport === "mlb" && battingOrderCalib.length > 0 && (
+        <div className="rounded-lg border bg-card p-6 text-sm space-y-3">
+          <h2 className="font-semibold">MLB Batting Order Calibration</h2>
+          <p className="text-xs text-gray-500">
+            Avg projected vs actual FPTS and ownership by batting order slot.
+            Positive delta = under-projected (model was low). Excludes SP/RP.
+          </p>
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b text-gray-500 text-right">
+                <th className="py-1 text-left">Order</th>
+                <th className="py-1">n</th>
+                <th className="py-1">Avg Proj</th>
+                <th className="py-1">Avg Actual</th>
+                <th className="py-1">Delta</th>
+                <th className="py-1">Proj Own%</th>
+                <th className="py-1">Actual Own%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {battingOrderCalib.map((row) => {
+                const delta = row.avgDelta;
+                const deltaColor =
+                  delta == null ? "" : delta > 0.5 ? "text-green-700 font-semibold" : delta < -0.5 ? "text-red-600" : "";
+                return (
+                  <tr key={row.orderSlot} className="border-b border-gray-50">
+                    <td className="py-1 text-left font-medium">#{row.orderSlot}</td>
+                    <td className="py-1 text-right text-gray-400">{row.n}</td>
+                    <td className="py-1 text-right">{fmt1(row.avgProj)}</td>
+                    <td className="py-1 text-right">{fmt1(row.avgActual)}</td>
+                    <td className={`py-1 text-right ${deltaColor}`}>
+                      {delta != null ? `${delta > 0 ? "+" : ""}${delta.toFixed(2)}` : "—"}
+                    </td>
+                    <td className="py-1 text-right">
+                      {row.avgProjOwn != null ? `${(row.avgProjOwn * 100).toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="py-1 text-right">
+                      {row.avgActualOwn != null ? `${(row.avgActualOwn * 100).toFixed(1)}%` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

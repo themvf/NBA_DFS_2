@@ -2012,6 +2012,37 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     return getMlbPitcherCeilingBadges(filteredPlayers);
   }, [filteredPlayers, sport]);
 
+  const mlbBlowupCandidates = useMemo(() => {
+    if (sport !== "mlb") return [];
+    const MLB_AVG_TEAM_TOTAL = 4.5;
+    return filteredPlayers
+      .filter((p) => {
+        if (p.isOut) return false;
+        const pos = p.eligiblePositions ?? "";
+        return !pos.includes("SP") && !pos.includes("RP");
+      })
+      .map((p) => {
+        const isHome = p.teamId != null && p.homeTeamId != null
+          ? p.teamId === p.homeTeamId
+          : null;
+        const teamTotal = isHome == null
+          ? null
+          : (isHome ? p.homeImplied : p.awayImplied)
+            ?? (p.vegasTotal != null
+              ? computeTeamImpliedTotal(p.vegasTotal, p.homeMl, p.awayMl, isHome)
+              : null);
+        const proj = p.liveProj ?? p.blendProj ?? p.ourProj ?? null;
+        const ceiling = p.projCeiling ?? (proj != null ? proj * 1.25 : null);
+        const value = proj != null ? proj / (p.salary / 1000) : null;
+        if (teamTotal == null || ceiling == null || value == null) return null;
+        const blowupScore = (teamTotal / MLB_AVG_TEAM_TOTAL) * ceiling * value / 10;
+        return { player: p, blowupScore, teamTotal, proj, ceiling, value };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.blowupScore - a.blowupScore)
+      .slice(0, 12);
+  }, [filteredPlayers, sport]);
+
   const visiblePlayerRows = useMemo(() => sortedPlayers.slice(0, 200), [sortedPlayers]);
   const activeLineups = useMemo(
     () => ((sport === "nba" ? lineups : mlbLineups) ?? []) as AnyGeneratedLineup[],
@@ -3284,6 +3315,49 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
             </div>
           </div>
         )
+      )}
+
+      {/* MLB Blowup Candidates */}
+      {sport === "mlb" && mlbBlowupCandidates.length > 0 && (
+        <div className="rounded-lg border bg-card p-4 text-sm">
+          <h2 className="font-semibold mb-2">
+            GPP Blowup Candidates
+            <span
+              className="ml-1.5 text-xs text-gray-400 font-normal cursor-help"
+              title="Low-salary batters with high ceiling relative to their team's implied run total. Score = (teamTotal / 4.5) × ceiling × (proj / salary×$1k) ÷ 10. Excludes SP/RP."
+            >(?)</span>
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500 text-right">
+                  <th className="py-1 text-left">Player</th>
+                  <th className="py-1 text-left pl-2">Pos</th>
+                  <th className="py-1">Salary</th>
+                  <th className="py-1">Proj</th>
+                  <th className="py-1">Ceiling</th>
+                  <th className="py-1">Value</th>
+                  <th className="py-1">Team Tot</th>
+                  <th className="py-1">Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mlbBlowupCandidates.map(({ player, blowupScore, teamTotal, proj, ceiling, value }) => (
+                  <tr key={player.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-1 font-medium">{player.name}</td>
+                    <td className="py-1 pl-2 text-gray-500">{player.eligiblePositions}</td>
+                    <td className="py-1 text-right">${(player.salary / 1000).toFixed(1)}k</td>
+                    <td className="py-1 text-right">{proj?.toFixed(1) ?? "—"}</td>
+                    <td className="py-1 text-right text-blue-700">{ceiling?.toFixed(1) ?? "—"}</td>
+                    <td className="py-1 text-right">{value?.toFixed(2) ?? "—"}</td>
+                    <td className="py-1 text-right">{teamTotal?.toFixed(1) ?? "—"}</td>
+                    <td className="py-1 text-right font-semibold text-green-700">{blowupScore.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* Player Pool Table */}

@@ -1736,3 +1736,138 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
 }
 
 export { CURRENT_SEASON };
+
+// ---------------------------------------------------------------------------
+// MLB Batting Order Calibration
+// ---------------------------------------------------------------------------
+
+export type MlbBattingOrderCalibrationRow = {
+  orderSlot: number;
+  n: number;
+  avgProj: number | null;
+  avgActual: number | null;
+  avgDelta: number | null;
+  avgProjOwn: number | null;
+  avgActualOwn: number | null;
+};
+
+export async function getMlbBattingOrderCalibration(): Promise<
+  MlbBattingOrderCalibrationRow[]
+> {
+  const rows = await db.execute(sql`
+    SELECT
+      dp.dk_starting_lineup_order                                             AS "orderSlot",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL) AS "n",
+      AVG(dp.live_proj)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL) AS "avgProj",
+      AVG(dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL) AS "avgActual",
+      AVG(dp.actual_fpts - dp.live_proj)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL) AS "avgDelta",
+      AVG(dp.proj_own_pct)
+        FILTER (WHERE dp.proj_own_pct IS NOT NULL)                             AS "avgProjOwn",
+      AVG(dp.actual_own_pct)
+        FILTER (WHERE dp.actual_own_pct IS NOT NULL)                           AS "avgActualOwn"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = 'mlb'
+      AND dp.dk_starting_lineup_order BETWEEN 1 AND 9
+      AND dp.eligible_positions NOT LIKE '%SP%'
+      AND dp.eligible_positions NOT LIKE '%RP%'
+    GROUP BY dp.dk_starting_lineup_order
+    ORDER BY dp.dk_starting_lineup_order ASC
+  `);
+  return (rows.rows as MlbBattingOrderCalibrationRow[]).map((r) => ({
+    orderSlot: Number(r.orderSlot),
+    n: Number(r.n),
+    avgProj: r.avgProj != null ? Number(r.avgProj) : null,
+    avgActual: r.avgActual != null ? Number(r.avgActual) : null,
+    avgDelta: r.avgDelta != null ? Number(r.avgDelta) : null,
+    avgProjOwn: r.avgProjOwn != null ? Number(r.avgProjOwn) : null,
+    avgActualOwn: r.avgActualOwn != null ? Number(r.avgActualOwn) : null,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Projection Source Breakdown (live vs our vs LineStar, per slate)
+// ---------------------------------------------------------------------------
+
+export type ProjectionSourceRow = {
+  slateDate: string;
+  sport: string;
+  nLive: number;
+  nOur: number;
+  nLs: number;
+  liveMae: number | null;
+  liveBias: number | null;
+  ourMae: number | null;
+  ourBias: number | null;
+  lsMae: number | null;
+  lsBias: number | null;
+};
+
+export async function getProjectionSourceBreakdown(
+  sport: Sport,
+): Promise<ProjectionSourceRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      ds.slate_date                                                                AS "slateDate",
+      ds.sport                                                                     AS "sport",
+      COUNT(*) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "nLive",
+      COUNT(*) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "nOur",
+      COUNT(*) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "nLs",
+      AVG(ABS(dp.live_proj - dp.actual_fpts)) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "liveMae",
+      AVG(dp.live_proj - dp.actual_fpts) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "liveBias",
+      AVG(ABS(dp.our_proj - dp.actual_fpts)) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "ourMae",
+      AVG(dp.our_proj - dp.actual_fpts) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "ourBias",
+      AVG(ABS(dp.linestar_proj - dp.actual_fpts)) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "lsMae",
+      AVG(dp.linestar_proj - dp.actual_fpts) FILTER (
+        WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL
+          AND dp.is_out IS NOT TRUE
+      )                                                                            AS "lsBias"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
+    GROUP BY ds.slate_date, ds.sport
+    HAVING COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL) > 0
+    ORDER BY ds.slate_date DESC
+    LIMIT 20
+  `);
+  return (rows.rows as ProjectionSourceRow[]).map((r) => ({
+    slateDate: String(r.slateDate),
+    sport: String(r.sport),
+    nLive: Number(r.nLive),
+    nOur: Number(r.nOur),
+    nLs: Number(r.nLs),
+    liveMae: r.liveMae != null ? Number(r.liveMae) : null,
+    liveBias: r.liveBias != null ? Number(r.liveBias) : null,
+    ourMae: r.ourMae != null ? Number(r.ourMae) : null,
+    ourBias: r.ourBias != null ? Number(r.ourBias) : null,
+    lsMae: r.lsMae != null ? Number(r.lsMae) : null,
+    lsBias: r.lsBias != null ? Number(r.lsBias) : null,
+  }));
+}
