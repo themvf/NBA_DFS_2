@@ -56,6 +56,9 @@ export type OptimizerPlayer = Pick<
   | "ourLeverage"
   | "linestarProj"
   | "projOwnPct"
+  | "projCeiling"
+  | "boomRate"
+  | "propPts"
   | "isOut"
   | "gameInfo"
   | "teamLogo"
@@ -95,6 +98,8 @@ export type OptimizerSettings = {
   /** Per-player salary filters - exclude players outside this range from the eligible pool. */
   minSalaryFilter?: number | null;
   maxSalaryFilter?: number | null;
+  ceilingBoost?: boolean;
+  ceilingCount?: number;
   playerLocks?: number[];
   playerBlocks?: number[];
   blockedTeamIds?: number[];
@@ -116,6 +121,7 @@ const TEMPLATE_CANDIDATE_LIMIT = 80;
 const MAX_REPAIR_ATTEMPTS = 8;
 const SLOT_BRANCH_LIMIT = 24;
 const BEAM_WIDTH = 160;
+const NBA_CEILING_BONUSES = [2.5, 1.75, 1.0, 0.5, 0.25] as const;
 
 type NbaHeuristicFailureReason =
   | "exposure_exhausted"
@@ -305,6 +311,78 @@ function sortPlayersForSearch(
   scoreAdjustments?: Map<number, number>,
 ): OptimizerPlayer[] {
   return [...players].sort((a, b) => comparePlayersForSearch(a, b, mode, scoreAdjustments));
+}
+
+function rankMetric(
+  value: number | null | undefined,
+  values: Array<number | null | undefined>,
+  higherIsBetter = true,
+): number {
+  if (value == null) return 0.5;
+  const numeric = values.filter((entry): entry is number => entry != null && Number.isFinite(entry));
+  if (numeric.length === 0) return 0.5;
+
+  let below = 0;
+  let equal = 0;
+  for (const entry of numeric) {
+    if (entry < value) below++;
+    else if (entry === value) equal++;
+  }
+  const percentile = (below + equal * 0.5) / numeric.length;
+  return higherIsBetter ? percentile : 1 - percentile;
+}
+
+export function computeNbaCeilingBonusMap(
+  players: OptimizerPlayer[],
+  topCount: number,
+): Map<number, number> {
+  const activePlayers = players.filter((player) => !player.isOut && (getPlayerProjection(player) ?? 0) > 0);
+  const ceilingCount = Math.max(0, Math.min(topCount, activePlayers.length));
+  if (ceilingCount === 0) return new Map<number, number>();
+
+  const contexts = activePlayers.map((player) => {
+    const projection = getPlayerProjection(player);
+    const ceiling = finiteOrNull(player.projCeiling)
+      ?? (projection != null ? projection * 1.18 : null);
+    const boomRate = finiteOrNull(player.boomRate);
+    const pointsProp = finiteOrNull(player.propPts);
+    const value = projection != null ? projection / Math.max(1, player.salary / 1000) : null;
+    return {
+      player,
+      projection,
+      ceiling,
+      boomRate,
+      pointsProp,
+      value,
+      score: 0,
+    };
+  });
+
+  const ceilingValues = contexts.map((context) => context.ceiling);
+  const boomValues = contexts.map((context) => context.boomRate);
+  const pointsPropValues = contexts.map((context) => context.pointsProp);
+  const projectionValues = contexts.map((context) => context.projection);
+  const valueValues = contexts.map((context) => context.value);
+
+  for (const context of contexts) {
+    context.score =
+      rankMetric(context.ceiling, ceilingValues, true) * 0.46 +
+      rankMetric(context.boomRate, boomValues, true) * 0.24 +
+      rankMetric(context.pointsProp, pointsPropValues, true) * 0.12 +
+      rankMetric(context.projection, projectionValues, true) * 0.10 +
+      rankMetric(context.value, valueValues, true) * 0.08;
+  }
+
+  const sorted = [...contexts].sort((a, b) => {
+    const diff = b.score - a.score;
+    return diff !== 0 ? diff : a.player.name.localeCompare(b.player.name);
+  });
+
+  const result = new Map<number, number>();
+  for (const [index, context] of sorted.slice(0, ceilingCount).entries()) {
+    result.set(context.player.id, NBA_CEILING_BONUSES[index] ?? 0.25);
+  }
+  return result;
 }
 
 function buildOpponentByTeamId(pool: OptimizerPlayer[]): Map<number, number> {
@@ -1017,6 +1095,16 @@ function buildRecentScoreAdjustments(
   );
 }
 
+function mergeScoreAdjustments(...maps: Array<Map<number, number>>): Map<number, number> {
+  const merged = new Map<number, number>();
+  for (const map of maps) {
+    for (const [playerId, adjustment] of map) {
+      merged.set(playerId, (merged.get(playerId) ?? 0) + adjustment);
+    }
+  }
+  return merged;
+}
+
 function solveOneLineupDetailed(
   pool: OptimizerPlayer[],
   mode: "cash" | "gpp",
@@ -1029,6 +1117,7 @@ function solveOneLineupDetailed(
   minChanges = mode === "gpp" ? 3 : 2,
   salaryFloor = SALARY_FLOOR,
   ruleSelections: NormalizedNbaRuleSelections = normalizeNbaRuleSelections({}),
+  staticScoreAdjustments: Map<number, number> = new Map<number, number>(),
 ): DetailedSolveResult {
   const lockedPlayers = new Set(ruleSelections.playerLocks);
   const availablePool = pool.filter((player) =>
@@ -1036,7 +1125,10 @@ function solveOneLineupDetailed(
   );
   const prunedPool = pruneNbaCandidatePool(availablePool, mode, minStack, bringBackSize, ruleSelections);
   const meta = createAttemptMeta(prunedPool.length);
-  const scoreAdjustments = buildRecentScoreAdjustments(previousLineupSets, mode);
+  const scoreAdjustments = mergeScoreAdjustments(
+    buildRecentScoreAdjustments(previousLineupSets, mode),
+    staticScoreAdjustments,
+  );
 
   if (availablePool.length < ROSTER_SIZE || prunedPool.length < ROSTER_SIZE) {
     meta.failureReason = "exposure_exhausted";
@@ -1144,6 +1236,11 @@ export function optimizeLineupsWithDebug(
   const ruleValidation = validateNbaRuleSelections(pool, settings);
   const ruleSelections = ruleValidation.normalized;
   const eligible = filterEligibleNbaPool(pool, settings, ruleSelections);
+  const ceilingBoost = settings.ceilingBoost === true;
+  const ceilingCount = Math.max(1, Math.min(5, Math.floor(settings.ceilingCount ?? 3)));
+  const ceilingBonusMap = ceilingBoost
+    ? computeNbaCeilingBonusMap(eligible, ceilingCount)
+    : new Map<number, number>();
 
   const debug: OptimizerDebugInfo = {
     sport: "nba",
@@ -1163,6 +1260,8 @@ export function optimizeLineupsWithDebug(
       teamStackCount,
       bringBackEnabled,
       bringBackSize,
+      ceilingBoost,
+      ceilingCount,
       maxExposure,
       minChanges: mode === "gpp" ? 3 : 2,
       salaryFloor: SALARY_FLOOR,
@@ -1205,6 +1304,7 @@ export function optimizeLineupsWithDebug(
       undefined,
       salaryFloor,
       ruleSelections,
+      ceilingBonusMap,
     );
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
@@ -1249,6 +1349,8 @@ export function optimizeLineupsWithDebug(
     bringBackEnabled: effectiveBringBackSize > 0,
     bringBackSize: effectiveBringBackSize,
     maxExposure,
+    ceilingBoost,
+    ceilingCount,
     minChanges: effectiveMinChanges,
     salaryFloor: effectiveSalaryFloor,
   };
@@ -1288,6 +1390,7 @@ export function optimizeLineupsWithDebug(
         minChanges,
         salaryFloor,
         ruleSelections,
+        ceilingBonusMap,
       );
       mergeHeuristicMeta(debug.heuristic!, result.meta);
       attempts.push({
@@ -1351,6 +1454,11 @@ export function prepareNbaOptimizerRun(
   const ruleValidation = validateNbaRuleSelections(pool, settings);
   const ruleSelections = ruleValidation.normalized;
   const eligible = filterEligibleNbaPool(pool, settings, ruleSelections);
+  const ceilingBoost = settings.ceilingBoost === true;
+  const ceilingCount = Math.max(1, Math.min(5, Math.floor(settings.ceilingCount ?? 3)));
+  const ceilingBonusMap = ceilingBoost
+    ? computeNbaCeilingBonusMap(eligible, ceilingCount)
+    : new Map<number, number>();
 
   const debug: OptimizerDebugInfo = {
     sport: "nba",
@@ -1370,6 +1478,8 @@ export function prepareNbaOptimizerRun(
       teamStackCount,
       bringBackEnabled,
       bringBackSize,
+      ceilingBoost,
+      ceilingCount,
       maxExposure,
       minChanges: mode === "gpp" ? 3 : 2,
       salaryFloor: SALARY_FLOOR,
@@ -1409,6 +1519,7 @@ export function prepareNbaOptimizerRun(
       undefined,
       salaryFloor,
       ruleSelections,
+      ceilingBonusMap,
     );
     const durationMs = Date.now() - start;
     debug.probeMs += durationMs;
@@ -1451,6 +1562,8 @@ export function prepareNbaOptimizerRun(
     bringBackEnabled: effectiveBringBackSize > 0,
     bringBackSize: effectiveBringBackSize,
     maxExposure,
+    ceilingBoost,
+    ceilingCount,
     minChanges: effectiveMinChanges,
     salaryFloor: effectiveSalaryFloor,
   };
@@ -1477,10 +1590,13 @@ export function prepareNbaOptimizerRun(
         teamStackCount: effectiveTeamStackCount,
         bringBackEnabled: effectiveBringBackSize > 0,
         bringBackSize: effectiveBringBackSize,
+        ceilingBoost,
+        ceilingCount,
         maxExposure,
         minChanges: effectiveMinChanges,
         salaryFloor: effectiveSalaryFloor,
       },
+      ceilingBonusRecord: Object.fromEntries(ceilingBonusMap),
       relaxedConstraints: [...debug.relaxedConstraints],
       probeSummary: [...debug.probeSummary],
     },
@@ -1494,6 +1610,9 @@ export function buildNextNbaLineup(
 ): NextNbaLineupResult {
   const exposureCount = new Map<number, number>(prepared.pool.map((p) => [p.id, 0]));
   const previousLineupSets = priorLineupPlayerIds.map((ids) => new Set(ids));
+  const ceilingBonusMap = new Map<number, number>(
+    Object.entries(prepared.ceilingBonusRecord).map(([playerId, bonus]) => [Number(playerId), bonus]),
+  );
 
   for (const lineup of priorLineupPlayerIds) {
     for (const playerId of lineup) {
@@ -1519,10 +1638,11 @@ export function buildNextNbaLineup(
         prepared.maxExposureCount,
       exposureCount,
       previousLineupSets,
-      bringBackSizeForAttempt,
-      minChanges,
+        bringBackSizeForAttempt,
+        minChanges,
         salaryFloor,
         prepared.ruleSelections,
+        ceilingBonusMap,
       );
       attempts.push({
         stage,
@@ -1569,6 +1689,7 @@ function solveOneLineup(
   minChanges = mode === "gpp" ? 3 : 2,
   salaryFloor = SALARY_FLOOR,
   ruleSelections: NormalizedNbaRuleSelections = normalizeNbaRuleSelections({}),
+  staticScoreAdjustments: Map<number, number> = new Map<number, number>(),
 ): GeneratedLineup | null {
   return solveOneLineupDetailed(
     pool,
@@ -1582,6 +1703,7 @@ function solveOneLineup(
     minChanges,
     salaryFloor,
     ruleSelections,
+    staticScoreAdjustments,
   ).lineup;
 }
 

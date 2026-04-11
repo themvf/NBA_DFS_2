@@ -6,6 +6,7 @@ import { optimizerJobLineups, optimizerJobs } from "@/db/schema";
 import type { Sport } from "@/db/queries";
 import {
   buildNextNbaLineup,
+  computeNbaCeilingBonusMap,
   prepareNbaOptimizerRun,
   type GeneratedLineup,
   type LineupSlot,
@@ -166,6 +167,9 @@ async function loadNbaOptimizerPool(
       COALESCE(dp.live_leverage, dp.our_leverage) AS "ourLeverage",
       dp.linestar_proj AS "linestarProj",
       COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projOwnPct",
+      dp.proj_ceiling AS "projCeiling",
+      dp.boom_rate AS "boomRate",
+      dp.prop_pts AS "propPts",
       dp.dk_in_starting_lineup AS "dkInStartingLineup",
       dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
       dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
@@ -817,10 +821,20 @@ function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
       bringBackSize:
         effectiveSettings.bringBackSize
         ?? (((effectiveSettings.bringBackEnabled ?? ((effectiveSettings.bringBackThreshold ?? 0) > 0)) ? 1 : 0)),
+      ceilingBoost: effectiveSettings.ceilingBoost ?? false,
+      ceilingCount: effectiveSettings.ceilingCount ?? 3,
       maxExposure: effectiveSettings.maxExposure,
       minChanges: effectiveSettings.minChanges,
       salaryFloor: effectiveSettings.salaryFloor ?? 49000,
     },
+    ceilingBonusRecord: Object.fromEntries(
+      (effectiveSettings.ceilingBoost ?? false)
+        ? computeNbaCeilingBonusMap(
+            pool as OptimizerPlayer[],
+            effectiveSettings.ceilingCount ?? 3,
+          )
+        : new Map<number, number>(),
+    ),
     relaxedConstraints: (job.relaxedConstraintsJson as string[]) ?? [],
     probeSummary: (job.probeSummaryJson as OptimizerDebugInfo["probeSummary"]) ?? [],
   };

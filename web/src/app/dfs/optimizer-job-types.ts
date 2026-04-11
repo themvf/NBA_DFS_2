@@ -34,10 +34,14 @@ export type NbaPreparedOptimizerRun = {
     teamStackCount: number;
     bringBackEnabled: boolean;
     bringBackSize: number;
+    ceilingBoost: boolean;
+    ceilingCount: number;
     maxExposure: number;
     minChanges: number;
     salaryFloor: number;
   };
+  /** NBA ceiling boost by player id — serializable for job persistence. */
+  ceilingBonusRecord: Record<number, number>;
   relaxedConstraints: string[];
   probeSummary: OptimizerProbeDebug[];
 };

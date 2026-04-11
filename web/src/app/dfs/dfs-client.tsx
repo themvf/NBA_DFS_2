@@ -128,6 +128,12 @@ type MlbPitcherCeilingBadge = {
   title: string;
 };
 
+type NbaCeilingBadge = {
+  label: string;
+  className: string;
+  title: string;
+};
+
 type MlbLineupSummary = {
   confirmedIn: number;
   pending: number;
@@ -182,6 +188,7 @@ type PlayerPoolTableProps = {
   blockedTeamSet: Set<number>;
   requiredTeamStackMap: Map<number, StackSize>;
   nbaTopScorerRanks: Map<number, number>;
+  nbaCeilingBadges: Map<number, NbaCeilingBadge>;
   mlbPitcherDecisionBadges: Map<number, MlbPitcherDecisionBadge>;
   mlbPitcherCeilingBadges: Map<number, MlbPitcherCeilingBadge>;
   onTogglePlayerLock: (player: DkPlayerRow) => void;
@@ -538,6 +545,65 @@ function getPlayerOddsContext(player: DkPlayerRow): {
     vegasTotal: player.vegasTotal ?? null,
     moneyline,
   };
+}
+
+function getNbaCeilingBadges(players: DkPlayerRow[]): Map<number, NbaCeilingBadge> {
+  const activePlayers = players.filter((player) => !player.isOut);
+  if (activePlayers.length === 0) return new Map<number, NbaCeilingBadge>();
+
+  const contexts = activePlayers.map((player) => {
+    const liveProjection = player.liveProj ?? player.blendProj ?? player.ourProj ?? player.linestarProj ?? null;
+    const value = liveProjection != null ? liveProjection / Math.max(1, player.salary / 1000) : null;
+    const projCeiling = player.projCeiling ?? (liveProjection != null ? liveProjection * 1.18 : null);
+    return {
+      player,
+      projCeiling,
+      boomRate: player.boomRate ?? null,
+      propPts: player.propPts ?? null,
+      liveProjection,
+      value,
+      score: 0,
+    };
+  });
+
+  const ceilingValues = contexts.map((context) => context.projCeiling);
+  const boomValues = contexts.map((context) => context.boomRate);
+  const propPtsValues = contexts.map((context) => context.propPts);
+  const projectionValues = contexts.map((context) => context.liveProjection);
+  const valueValues = contexts.map((context) => context.value);
+
+  for (const context of contexts) {
+    context.score =
+      rankMetric(context.projCeiling, ceilingValues, true) * 0.46 +
+      rankMetric(context.boomRate, boomValues, true) * 0.24 +
+      rankMetric(context.propPts, propPtsValues, true) * 0.12 +
+      rankMetric(context.liveProjection, projectionValues, true) * 0.10 +
+      rankMetric(context.value, valueValues, true) * 0.08;
+  }
+
+  const sorted = [...contexts].sort((a, b) => {
+    const diff = b.score - a.score;
+    return diff !== 0 ? diff : a.player.name.localeCompare(b.player.name);
+  });
+
+  const result = new Map<number, NbaCeilingBadge>();
+  for (const [index, context] of sorted.slice(0, 3).entries()) {
+    const scorePct = Math.round(context.score * 100);
+    result.set(context.player.id, {
+      label: `CEIL #${index + 1}`,
+      className: index === 0 ? "bg-fuchsia-100 text-fuchsia-700" : "bg-violet-100 text-violet-700",
+      title: [
+        `Ceiling score ${scorePct}`,
+        `Ceiling ${context.projCeiling != null ? context.projCeiling.toFixed(1) : "—"}`,
+        `Boom ${context.boomRate != null ? `${(context.boomRate * 100).toFixed(0)}%` : "—"}`,
+        `PTS prop ${context.propPts != null ? context.propPts.toFixed(1) : "—"}`,
+        `Live proj ${context.liveProjection != null ? context.liveProjection.toFixed(1) : "—"}`,
+        `Value ${context.value != null ? context.value.toFixed(2) : "—"}`,
+      ].join(" | "),
+    });
+  }
+
+  return result;
 }
 
 function rankMetric(
@@ -997,6 +1063,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
   blockedTeamSet,
   requiredTeamStackMap,
   nbaTopScorerRanks,
+  nbaCeilingBadges,
   mlbPitcherDecisionBadges,
   mlbPitcherCeilingBadges,
   onTogglePlayerLock,
@@ -1136,6 +1203,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
               const mlbHrBadge = sport === "mlb" ? getMlbHrBadge(p) : null;
               const mlbOrderBadge = sport === "mlb" ? getMlbOrderBadge(p) : null;
               const nbaPointsBadge = sport === "nba" ? getNbaPointsBadge(p, nbaTopScorerRanks.get(p.id)) : null;
+              const nbaCeilingBadge = sport === "nba" ? nbaCeilingBadges.get(p.id) : null;
               const rowUnavailable = sport === "mlb" ? isMlbRowUnavailable(p) : !!p.isOut;
               const isLocked = lockedPlayerSet.has(p.id);
               const isBlocked = blockedPlayerSet.has(p.id);
@@ -1178,6 +1246,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                             {nbaPointsBadge.label}
                           </span>
                         )}
+                        {nbaCeilingBadge && (
+                          <span title={nbaCeilingBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${nbaCeilingBadge.className}`}>
+                            {nbaCeilingBadge.label}
+                          </span>
+                        )}
                         {mlbHrBadge && (
                           <span title={mlbHrBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbHrBadge.className}`}>
                             {mlbHrBadge.label}
@@ -1205,6 +1278,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                         {nbaPointsBadge && (
                           <span title={nbaPointsBadge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${nbaPointsBadge.className}`}>
                             {nbaPointsBadge.label}
+                          </span>
+                        )}
+                        {nbaCeilingBadge && (
+                          <span title={nbaCeilingBadge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${nbaCeilingBadge.className}`}>
+                            {nbaCeilingBadge.label}
                           </span>
                         )}
                         {mlbHrBadge && (
@@ -1495,6 +1573,8 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   const [hrCorrelationThreshold, setHrCorrelationThreshold] = useState(0.12);
   const [pitcherCeilingBoost, setPitcherCeilingBoost] = useState(false);
   const [pitcherCeilingCount, setPitcherCeilingCount] = useState(3);
+  const [nbaCeilingBoost, setNbaCeilingBoost] = useState(false);
+  const [nbaCeilingCount, setNbaCeilingCount] = useState(3);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [lastRequestedLineupCount, setLastRequestedLineupCount] = useState<number | null>(null);
 
@@ -1917,6 +1997,11 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     return new Map(ranked.map((player, idx) => [player.id, idx + 1]));
   }, [players, sport]);
 
+  const nbaCeilingBadges = useMemo(() => {
+    if (sport !== "nba") return new Map<number, NbaCeilingBadge>();
+    return getNbaCeilingBadges(players);
+  }, [players, sport]);
+
   const mlbPitcherDecisionBadges = useMemo(() => {
     if (sport !== "mlb") return new Map<number, MlbPitcherDecisionBadge>();
     return getMlbPitcherDecisionBadges(filteredPlayers);
@@ -2108,6 +2193,8 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
           } satisfies MlbOptimizerSettings
         : {
             mode, nLineups, minStack, teamStackCount, maxExposure, bringBackEnabled, bringBackSize,
+            ceilingBoost: nbaCeilingBoost,
+            ceilingCount: nbaCeilingCount,
             minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter, 10) : null,
             maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter, 10) : null,
             playerLocks: lockedPlayerIds,
@@ -2978,6 +3065,46 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
               </div>
             </div>
           )}
+          {sport === "nba" && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Ceiling Boost{" "}
+                <span
+                  className="text-gray-400 font-normal cursor-help"
+                  title="Boost the slate's top raw-ceiling NBA players in optimizer search using ceiling, boom rate, points prop, live projection, and value. This nudges exposure; it does not change projections."
+                >(?)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={nbaCeilingBoost ? "on" : "off"}
+                  onChange={(e) => setNbaCeilingBoost(e.target.value === "on")}
+                  className="rounded border px-2 py-1 text-sm"
+                >
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+                {nbaCeilingBoost && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={nbaCeilingCount}
+                    onChange={(e) => {
+                      const next = Number.parseInt(e.target.value, 10);
+                      if (!Number.isFinite(next)) {
+                        setNbaCeilingCount(3);
+                        return;
+                      }
+                      setNbaCeilingCount(Math.min(5, Math.max(1, next)));
+                    }}
+                    title="Number of top ceiling players to boost in search"
+                    className="w-16 rounded border px-2 py-1 text-sm"
+                  />
+                )}
+              </div>
+            </div>
+          )}
           <div>
             <label className="text-xs text-gray-500 block mb-1">Min Salary</label>
             <input
@@ -3033,6 +3160,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
                       <p><strong>Effective team stacks:</strong> {optimizeDebug.effectiveSettings.teamStackCount ?? 1}</p>
                       <p><strong>Effective stack size:</strong> {optimizeDebug.effectiveSettings.minStack}</p>
                       <p><strong>Effective bring-back:</strong> {optimizeDebug.effectiveSettings.bringBackEnabled ? `Yes (${optimizeDebug.effectiveSettings.bringBackSize ?? 1})` : "No"}</p>
+                      <p><strong>Ceiling boost:</strong> {optimizeDebug.effectiveSettings.ceilingBoost ? `On (top ${optimizeDebug.effectiveSettings.ceilingCount ?? 3})` : "Off"}</p>
                     </>
                     ) : (
                       <>
@@ -3180,6 +3308,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
             blockedTeamSet={blockedTeamSet}
             requiredTeamStackMap={requiredTeamStackMap}
             nbaTopScorerRanks={nbaTopScorerRanks}
+            nbaCeilingBadges={nbaCeilingBadges}
             mlbPitcherDecisionBadges={mlbPitcherDecisionBadges}
             mlbPitcherCeilingBadges={mlbPitcherCeilingBadges}
             onTogglePlayerLock={togglePlayerLock}

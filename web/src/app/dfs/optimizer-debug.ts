@@ -51,6 +51,8 @@ export type OptimizerDebugInfo = {
     bringBackEnabled?: boolean;
     bringBackSize?: number;
     bringBackThreshold?: number;
+    ceilingBoost?: boolean;
+    ceilingCount?: number;
     maxExposure: number;
     minChanges: number;
     salaryFloor?: number;

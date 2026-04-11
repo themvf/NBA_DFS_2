@@ -5633,6 +5633,9 @@ export async function runOptimizer(
       COALESCE(dp.live_leverage, dp.our_leverage) AS "ourLeverage",
       dp.linestar_proj AS "linestarProj",
       COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projOwnPct",
+      dp.proj_ceiling AS "projCeiling",
+      dp.boom_rate AS "boomRate",
+      dp.prop_pts AS "propPts",
       dp.is_out AS "isOut", dp.game_info AS "gameInfo",
       t.logo_url AS "teamLogo", t.name AS "teamName",
       m.home_team_id AS "homeTeamId"
