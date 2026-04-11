@@ -592,6 +592,8 @@ function parseLinestarCsv(content: string): Map<string, LinestarEntry> {
  */
 function normalizeName(name: string): string {
   return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[.,']/g, "")
     .replace(/\b(jr|sr|ii|iii|iv)\b/g, "")
@@ -606,6 +608,8 @@ function normalizeName(name: string): string {
 
 function canonicalizeName(name: string): string {
   return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[.,']/g, "")
     .replace(/\b(jr|sr|ii|iii|iv)\b/g, "")
@@ -621,6 +625,192 @@ function canonicalizeTeamName(name: string): string {
     .replace(/[-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function looksLikeTeamAbbrev(value: string): boolean {
+  return /^[A-Z]{2,4}$/.test(value.trim().toUpperCase());
+}
+
+type HistoricalTeamCandidate = {
+  teamId: number;
+  teamAbbrev: string;
+  canonicalName: string;
+  normalizedName: string;
+  firstInitial: string;
+  lastToken: string;
+  sourceRank: number;
+};
+
+type HistoricalTeamResolution = {
+  teamId: number | null;
+  teamAbbrev: string;
+};
+
+type NbaHistoricalTeamResolver = {
+  abbrevToId: Map<string, number>;
+  byCanonicalName: Map<string, HistoricalTeamCandidate[]>;
+  byNormalizedName: Map<string, HistoricalTeamCandidate[]>;
+  candidates: HistoricalTeamCandidate[];
+};
+
+function buildHistoricalTeamCandidate(
+  name: string,
+  teamId: number | null,
+  teamAbbrev: string | null,
+  sourceRank: number,
+): HistoricalTeamCandidate | null {
+  if (!teamId || !teamAbbrev) return null;
+  const canonicalTeamAbbrev = (DK_OVERRIDES[teamAbbrev.toUpperCase()] ?? teamAbbrev.toUpperCase()).trim();
+  if (!canonicalTeamAbbrev) return null;
+  const canonicalName = canonicalizeName(name);
+  const normalizedName = normalizeName(name);
+  const tokens = canonicalName.split(" ").filter(Boolean);
+  if (!canonicalName || !normalizedName || tokens.length === 0) return null;
+  return {
+    teamId,
+    teamAbbrev: canonicalTeamAbbrev,
+    canonicalName,
+    normalizedName,
+    firstInitial: tokens[0]?.[0] ?? "",
+    lastToken: tokens[tokens.length - 1] ?? "",
+    sourceRank,
+  };
+}
+
+function chooseHistoricalTeamCandidate(candidates: HistoricalTeamCandidate[] | undefined): HistoricalTeamCandidate | null {
+  if (!candidates || candidates.length === 0) return null;
+  const byTeam = new Map<string, HistoricalTeamCandidate>();
+  for (const candidate of candidates) {
+    const existing = byTeam.get(candidate.teamAbbrev);
+    if (!existing || candidate.sourceRank < existing.sourceRank) {
+      byTeam.set(candidate.teamAbbrev, candidate);
+    }
+  }
+  const unique = Array.from(byTeam.values()).sort((a, b) => a.sourceRank - b.sourceRank || a.teamAbbrev.localeCompare(b.teamAbbrev));
+  return unique.length === 1 ? unique[0] : null;
+}
+
+async function buildNbaHistoricalTeamResolver(abbrevToId: Map<string, number>): Promise<NbaHistoricalTeamResolver> {
+  const statRows = await db.execute<{ name: string; teamId: number | null; teamAbbrev: string | null }>(sql`
+    SELECT DISTINCT ON (lower(nps.name))
+      nps.name AS "name",
+      nps.team_id AS "teamId",
+      t.abbreviation AS "teamAbbrev"
+    FROM nba_player_stats nps
+    LEFT JOIN teams t ON t.team_id = nps.team_id
+    WHERE nps.team_id IS NOT NULL
+    ORDER BY lower(nps.name), nps.season DESC, nps.id DESC
+  `);
+
+  const recentSlateRows = await db.execute<{ name: string; teamId: number | null; teamAbbrev: string | null }>(sql`
+    SELECT DISTINCT ON (lower(dp.name))
+      dp.name AS "name",
+      dp.team_id AS "teamId",
+      dp.team_abbrev AS "teamAbbrev"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = 'nba'
+      AND dp.team_id IS NOT NULL
+      AND dp.team_abbrev IS NOT NULL
+      AND dp.team_abbrev <> 'UNK'
+    ORDER BY lower(dp.name), ds.slate_date DESC, dp.id DESC
+  `);
+
+  const candidates: HistoricalTeamCandidate[] = [];
+  const pushCandidate = (name: string, teamId: number | null, teamAbbrev: string | null, sourceRank: number) => {
+    const candidate = buildHistoricalTeamCandidate(name, teamId, teamAbbrev, sourceRank);
+    if (candidate) candidates.push(candidate);
+  };
+
+  for (const row of recentSlateRows.rows) pushCandidate(row.name, row.teamId, row.teamAbbrev, 0);
+  for (const row of statRows.rows) pushCandidate(row.name, row.teamId, row.teamAbbrev, 1);
+
+  const byCanonicalName = new Map<string, HistoricalTeamCandidate[]>();
+  const byNormalizedName = new Map<string, HistoricalTeamCandidate[]>();
+  for (const candidate of candidates) {
+    const canonicalGroup = byCanonicalName.get(candidate.canonicalName) ?? [];
+    canonicalGroup.push(candidate);
+    byCanonicalName.set(candidate.canonicalName, canonicalGroup);
+
+    const normalizedGroup = byNormalizedName.get(candidate.normalizedName) ?? [];
+    normalizedGroup.push(candidate);
+    byNormalizedName.set(candidate.normalizedName, normalizedGroup);
+  }
+
+  return {
+    abbrevToId,
+    byCanonicalName,
+    byNormalizedName,
+    candidates,
+  };
+}
+
+function resolveHistoricalNbaTeam(
+  resolver: NbaHistoricalTeamResolver,
+  playerName: string,
+  rawTeamAbbrev: string,
+): HistoricalTeamResolution {
+  const cleanAbbrev = rawTeamAbbrev.toUpperCase().replace(/[^A-Z]/g, "");
+  if (cleanAbbrev) {
+    const canonicalAbbrev = DK_OVERRIDES[cleanAbbrev] ?? cleanAbbrev;
+    const exactTeamId = resolver.abbrevToId.get(canonicalAbbrev);
+    if (exactTeamId) {
+      return { teamId: exactTeamId, teamAbbrev: canonicalAbbrev };
+    }
+  }
+
+  const canonicalName = canonicalizeName(playerName);
+  const normalizedName = normalizeName(playerName);
+  const exactCanonical = chooseHistoricalTeamCandidate(resolver.byCanonicalName.get(canonicalName));
+  if (exactCanonical) {
+    return { teamId: exactCanonical.teamId, teamAbbrev: exactCanonical.teamAbbrev };
+  }
+
+  const exactNormalized = chooseHistoricalTeamCandidate(resolver.byNormalizedName.get(normalizedName));
+  if (exactNormalized) {
+    return { teamId: exactNormalized.teamId, teamAbbrev: exactNormalized.teamAbbrev };
+  }
+
+  const tokens = canonicalName.split(" ").filter(Boolean);
+  const firstInitial = tokens[0]?.[0] ?? "";
+  const lastToken = tokens[tokens.length - 1] ?? "";
+  if (firstInitial && lastToken) {
+    let best: HistoricalTeamCandidate | null = null;
+    let bestDist = 3;
+    let tied = false;
+    for (const candidate of resolver.candidates) {
+      if (candidate.firstInitial !== firstInitial || candidate.lastToken !== lastToken) continue;
+      const dist = levenshtein(canonicalName, candidate.canonicalName);
+      if (dist < bestDist) {
+        best = candidate;
+        bestDist = dist;
+        tied = false;
+      } else if (best && dist === bestDist && candidate.teamAbbrev !== best.teamAbbrev) {
+        tied = true;
+      }
+    }
+    if (best && !tied) {
+      return { teamId: best.teamId, teamAbbrev: best.teamAbbrev };
+    }
+  }
+
+  return { teamId: null, teamAbbrev: cleanAbbrev || "UNK" };
+}
+
+async function refreshHistoricalSlateGameCount(slateId: number, sport: Sport): Promise<void> {
+  if (sport === "mlb") return;
+  const result = await db.execute<{ teamCount: number }>(sql`
+    SELECT COUNT(DISTINCT dp.team_id) AS "teamCount"
+    FROM dk_players dp
+    WHERE dp.slate_id = ${slateId}
+      AND dp.team_id IS NOT NULL
+  `);
+  const teamCount = Number(result.rows[0]?.teamCount ?? 0);
+  if (teamCount >= 2) {
+    await db.update(dkSlates)
+      .set({ gameCount: Math.max(1, Math.round(teamCount / 2)) })
+      .where(eq(dkSlates.id, slateId));
+  }
 }
 
 type PropMatchCandidate = {
@@ -3823,10 +4013,19 @@ function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, H
 
     let playerName = cells[salaryIdx - 1];
     let teamAbbrev = "";
-    if (/^[A-Z]{2,4}$/.test(playerName) && salaryIdx >= 2) {
+    for (let idx = salaryIdx - 1; idx >= 1; idx--) {
+      if (looksLikeTeamAbbrev(cells[idx] ?? "")) {
+        teamAbbrev = cells[idx] ?? "";
+        if (idx > 0) {
+          playerName = cells[idx - 1] ?? playerName;
+        }
+        break;
+      }
+    }
+    if (!teamAbbrev && looksLikeTeamAbbrev(playerName) && salaryIdx >= 2) {
       teamAbbrev = playerName;
       playerName = cells[salaryIdx - 2];
-    } else if (salaryIdx >= 2) {
+    } else if (!teamAbbrev && salaryIdx >= 2) {
       teamAbbrev = cells[salaryIdx - 2] ?? "";
     }
     if (!playerName || playerName.toLowerCase() === "player") continue;
@@ -3947,13 +4146,20 @@ export async function saveHistoricalSlate(
       .from(sport === "mlb" ? mlbTeams : teams))
       .map((t) => [t.abbreviation.toUpperCase(), t.teamId]),
   );
+  const nbaHistoricalResolver = sport === "nba"
+    ? await buildNbaHistoricalTeamResolver(abbrevCache as Map<string, number>)
+    : null;
 
   // ── Mode 1: slate exists → update actual results on existing rows ──────────
   if (existingSlate[0]) {
     const slateId = existingSlate[0].id;
     const pool = await db.execute<{
-      id: number; name: string; salary: number;
-    }>(sql`SELECT id, name, salary FROM dk_players WHERE slate_id = ${slateId}`);
+      id: number; name: string; salary: number; teamAbbrev: string | null; teamId: number | null;
+    }>(sql`
+      SELECT id, name, salary, team_abbrev AS "teamAbbrev", team_id AS "teamId"
+      FROM dk_players
+      WHERE slate_id = ${slateId}
+    `);
 
     let updated = 0;
     for (const p of pool.rows) {
@@ -3970,16 +4176,28 @@ export async function saveHistoricalSlate(
       }
       if (!match) continue;
 
+      const repairedTeam = sport === "nba" && nbaHistoricalResolver
+        ? resolveHistoricalNbaTeam(nbaHistoricalResolver, p.name, match.teamAbbrev)
+        : null;
+
       await db.update(dkPlayers)
         .set({
           actualFpts:   match.actualFpts,
           actualOwnPct: match.actualOwnPct || null,
           linestarProj: match.linestarProj || null,
           projOwnPct:   match.projOwnPct   || null,
+          ...(sport === "nba" && repairedTeam && (!p.teamId || !p.teamAbbrev || p.teamAbbrev === "UNK")
+            ? {
+              teamId: repairedTeam.teamId,
+              teamAbbrev: repairedTeam.teamAbbrev,
+            }
+            : {}),
         })
         .where(eq(dkPlayers.id, p.id));
       updated++;
     }
+
+    await refreshHistoricalSlateGameCount(slateId, sport);
 
     revalidatePath("/dfs");
     revalidatePath("/analytics");
@@ -4042,13 +4260,19 @@ export async function saveHistoricalSlate(
     const [playerName, salStr] = key.split("|");
     const salary    = parseInt(salStr, 10);
     const dkPlayerId = syntheticDkId(playerName, salary);
-    const teamId    = abbrevCache.get(entry.teamAbbrev) ?? null;
+    const repairedTeam = sport === "nba" && nbaHistoricalResolver
+      ? resolveHistoricalNbaTeam(nbaHistoricalResolver, playerName, entry.teamAbbrev)
+      : {
+        teamId: abbrevCache.get(entry.teamAbbrev) ?? null,
+        teamAbbrev: entry.teamAbbrev || "UNK",
+      };
+    const teamId    = repairedTeam.teamId;
     const name      = playerName.replace(/\b\w/g, (c) => c.toUpperCase()); // restore title case
 
     await db.insert(dkPlayers)
       .values({
         slateId, dkPlayerId, name,
-        teamAbbrev: entry.teamAbbrev || "UNK",
+        teamAbbrev: repairedTeam.teamAbbrev || "UNK",
         ...(sport === "mlb" ? { mlbTeamId: teamId } : { teamId }),
         salary,
         eligiblePositions: entry.position || "UTIL",
@@ -4061,6 +4285,8 @@ export async function saveHistoricalSlate(
       .onConflictDoUpdate({
         target: [dkPlayers.slateId, dkPlayers.dkPlayerId],
         set: {
+          teamAbbrev:    sql`COALESCE(NULLIF(EXCLUDED.team_abbrev, 'UNK'), dk_players.team_abbrev)`,
+          teamId:        sport === "nba" ? sql`COALESCE(EXCLUDED.team_id, dk_players.team_id)` : sql`dk_players.team_id`,
           linestarProj:  sql`EXCLUDED.linestar_proj`,
           projOwnPct:    sql`EXCLUDED.proj_own_pct`,
           actualOwnPct:  sql`EXCLUDED.actual_own_pct`,
@@ -4070,6 +4296,8 @@ export async function saveHistoricalSlate(
     created++;
   }
 
+  await refreshHistoricalSlateGameCount(slateId, sport);
+
   revalidatePath("/dfs");
   revalidatePath("/analytics");
   return {
@@ -4077,6 +4305,76 @@ export async function saveHistoricalSlate(
     message: `Created historical ${sport.toUpperCase()} slate for ${date} with ${created} players (synthetic IDs — ourProj will be null)`,
     created,
     updated: 0,
+  };
+}
+
+export async function repairHistoricalNbaTeamMappings(): Promise<{
+  ok: boolean;
+  updatedRows: number;
+  unresolvedRows: number;
+  updatedSlates: number;
+}> {
+  const abbrevCache = new Map(
+    (await db
+      .select({ teamId: teams.teamId, abbreviation: teams.abbreviation })
+      .from(teams))
+      .map((t) => [t.abbreviation.toUpperCase(), t.teamId]),
+  );
+  const resolver = await buildNbaHistoricalTeamResolver(abbrevCache);
+  const rows = await db.execute<{
+    id: number;
+    slateId: number;
+    name: string;
+    teamAbbrev: string | null;
+  }>(sql`
+    SELECT
+      dp.id,
+      dp.slate_id AS "slateId",
+      dp.name,
+      dp.team_abbrev AS "teamAbbrev"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = 'nba'
+      AND dp.actual_fpts IS NOT NULL
+      AND (dp.team_id IS NULL OR dp.team_abbrev IS NULL OR dp.team_abbrev = 'UNK')
+    ORDER BY ds.slate_date ASC, dp.id ASC
+  `);
+
+  let updatedRows = 0;
+  let unresolvedRows = 0;
+  const touchedSlates = new Set<number>();
+
+  for (const row of rows.rows) {
+    const repairedTeam = resolveHistoricalNbaTeam(resolver, row.name, row.teamAbbrev ?? "");
+    if (!repairedTeam.teamId || !repairedTeam.teamAbbrev || repairedTeam.teamAbbrev === "UNK") {
+      unresolvedRows++;
+      continue;
+    }
+    await db.update(dkPlayers)
+      .set({
+        teamId: repairedTeam.teamId,
+        teamAbbrev: repairedTeam.teamAbbrev,
+      })
+      .where(eq(dkPlayers.id, row.id));
+    updatedRows++;
+    touchedSlates.add(row.slateId);
+  }
+
+  for (const slateId of touchedSlates) {
+    await refreshHistoricalSlateGameCount(slateId, "nba");
+  }
+
+  try {
+    revalidatePath("/dfs");
+    revalidatePath("/analytics");
+  } catch {
+    // Allow one-off script execution outside a Next request context.
+  }
+  return {
+    ok: true,
+    updatedRows,
+    unresolvedRows,
+    updatedSlates: touchedSlates.size,
   };
 }
 
