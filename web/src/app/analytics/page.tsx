@@ -1,15 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
-import {
-  getCrossSlateAccuracy,
-  getPositionAccuracy,
-  getSalaryTierAccuracy,
-  getLeverageCalibration,
-  getOwnershipVsTeamTotal,
-} from "@/db/queries";
 import type { Sport } from "@/db/queries";
-import AnalyticsClient from "./analytics-client";
+import AnalyticsContent from "./analytics-content";
 import PerfectLineupPanel from "./perfect-lineup-panel";
 
 export default async function AnalyticsPage({
@@ -20,24 +13,25 @@ export default async function AnalyticsPage({
   const { sport: rawSport } = await searchParams;
   const sport: Sport = rawSport === "mlb" ? "mlb" : "nba";
 
-  const [crossSlate, posAccuracy, salaryTier, leverageCalib, ownVsTotal] = await Promise.all([
-    getCrossSlateAccuracy(sport),
-    getPositionAccuracy(sport),
-    getSalaryTierAccuracy(sport),
-    getLeverageCalibration(sport),
-    getOwnershipVsTeamTotal(sport),
-  ]);
-
   return (
     <>
-      <AnalyticsClient
-        crossSlate={crossSlate}
-        posAccuracy={posAccuracy}
-        salaryTier={salaryTier}
-        leverageCalib={leverageCalib}
-        ownVsTotal={ownVsTotal}
-        sport={sport}
-      />
+      <Suspense
+        fallback={
+          <div className="space-y-8 p-6 max-w-5xl mx-auto">
+            <div>
+              <h1 className="text-xl font-bold">Model Calibration Analytics</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Loading {sport.toUpperCase()} analytics…
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-6 text-sm text-gray-400">
+              Loading accuracy trends, position breakdowns, and leverage calibration…
+            </div>
+          </div>
+        }
+      >
+        <AnalyticsContent sport={sport} />
+      </Suspense>
       {sport === "nba" && (
         <Suspense
           fallback={
