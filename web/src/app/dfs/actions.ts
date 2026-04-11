@@ -20,6 +20,7 @@ import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./opti
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import { applyMlbPendingLineupPolicy, inferMlbTeamLineupConfirmed, isPositiveMlbLineupOrder } from "./mlb-lineup";
 import { validateMlbRuleSelections } from "./mlb-optimizer-rules";
+import { applyMlbHitterProjectionCalibration, loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
 import type { Sport } from "@/db/queries";
@@ -5238,6 +5239,7 @@ async function enrichAndSaveMlb(
   const priorBatterMeta = buildMlbMatchMeta(priorBatterRows, getMlbBatterSample);
   const currentPitcherMeta = buildMlbMatchMeta(currentPitcherRows, getMlbPitcherSample);
   const priorPitcherMeta = buildMlbMatchMeta(priorPitcherRows, getMlbPitcherSample);
+  const hitterProjectionCalibration = await loadMlbHitterProjectionCalibration();
 
   const currentTeamStatsMap = new Map(currentTeamStatRows.map((row) => [row.teamId, row]));
   const priorTeamStatsMap = new Map(priorTeamStatRows.map((row) => [row.teamId, row]));
@@ -5367,6 +5369,12 @@ async function enrichAndSaveMlb(
           isHome,
           dkTeamLineupConfirmed ? dkStartingLineupOrder : null,
         ));
+        ourProj = applyMlbHitterProjectionCalibration(
+          ourProj,
+          dkTeamLineupConfirmed ? dkStartingLineupOrder : null,
+          dkTeamLineupConfirmed,
+          hitterProjectionCalibration,
+        );
         const hrSignal = computeMlbBatterHrSignal(
           blendedBatter as unknown as Record<string, unknown>,
           matchup as unknown as Record<string, unknown>,
@@ -5769,14 +5777,15 @@ export async function runMlbOptimizer(
   if (!refreshResult.ok) {
     return { ok: false, error: `MLB status refresh failed before optimize: ${refreshResult.message}` };
   }
+  const hitterProjectionCalibration = await loadMlbHitterProjectionCalibration();
 
-  const rows = await db.execute<MlbOptimizerPlayer>(sql`
+  const rows = await db.execute<MlbOptimizerPlayer & { avgFptsDk: number | null }>(sql`
     SELECT
       dp.id, dp.dk_player_id AS "dkPlayerId", dp.name, dp.team_abbrev AS "teamAbbrev",
       dp.mlb_team_id AS "teamId", dp.matchup_id AS "matchupId",
       dp.eligible_positions AS "eligiblePositions", dp.salary,
       dp.our_proj AS "ourProj", dp.our_leverage AS "ourLeverage",
-      dp.linestar_proj AS "linestarProj", dp.proj_own_pct AS "projOwnPct",
+      dp.linestar_proj AS "linestarProj", dp.proj_own_pct AS "projOwnPct", dp.avg_fpts_dk AS "avgFptsDk",
       dp.dk_in_starting_lineup AS "dkInStartingLineup",
       dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
       dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
@@ -5790,13 +5799,29 @@ export async function runMlbOptimizer(
   `);
 
   const pool: MlbOptimizerPlayer[] = rows.rows
-    .map((p) => ({
-      ...p,
-      ourProj: sanitizeProjection(p.ourProj ?? p.linestarProj ?? null),
-      ourLeverage: sanitizeLeverage(p.ourLeverage),
-      linestarProj: sanitizeProjection(p.linestarProj),
-      projOwnPct: sanitizeOwnershipPct(p.projOwnPct),
-    }))
+    .map((p) => {
+      const linestarProj = sanitizeProjection(p.linestarProj);
+      const projOwnPct = sanitizeOwnershipPct(p.projOwnPct);
+      const calibratedProj = isPitcherPos(p.eligiblePositions)
+        ? sanitizeProjection(p.ourProj ?? linestarProj ?? null)
+        : applyMlbHitterProjectionCalibration(
+            sanitizeProjection(p.ourProj ?? linestarProj ?? null),
+            p.dkTeamLineupConfirmed ? p.dkStartingLineupOrder ?? null : null,
+            p.dkTeamLineupConfirmed ?? null,
+            hitterProjectionCalibration,
+          );
+      const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
+      const calibratedLeverage = !p.isOut && calibratedProj != null && projOwnPct != null
+        ? sanitizeLeverage(computeLeverage(calibratedProj, projOwnPct, fieldProj))
+        : sanitizeLeverage(p.ourLeverage);
+      return {
+        ...p,
+        ourProj: calibratedProj,
+        ourLeverage: calibratedLeverage,
+        linestarProj,
+        projOwnPct,
+      };
+    })
     .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
   const policyAdjustedPool = applyMlbPendingLineupPolicy(pool, settings.pendingLineupPolicy);
   const ruleValidation = validateMlbRuleSelections(policyAdjustedPool, settings);

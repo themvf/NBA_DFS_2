@@ -23,6 +23,7 @@ import {
   type MlbOptimizerPlayer,
   type MlbOptimizerSettings,
 } from "./mlb-optimizer";
+import { applyMlbHitterProjectionCalibration, loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import { normalizeNbaRuleSelections, validateNbaRuleSelections } from "./nba-optimizer-rules";
 import { normalizeMlbRuleSelections, validateMlbRuleSelections } from "./mlb-optimizer-rules";
@@ -61,6 +62,16 @@ function sanitizeOwnershipPct(value: number | null | undefined): number | null {
 
 function sanitizeLeverage(value: number | null | undefined): number | null {
   return finiteOrNull(value);
+}
+
+function computePoolLeverage(
+  ourProj: number,
+  projOwnPct: number,
+  fieldProj: number | null = null,
+): number {
+  const edge = fieldProj != null ? ourProj - fieldProj : ourProj;
+  const ownFraction = Math.max(0, Math.min(1, projOwnPct / 100));
+  return Math.round(edge * Math.pow(1 - ownFraction, 0.7) * 1000) / 1000;
 }
 
 async function runEnsureStatements() {
@@ -135,7 +146,7 @@ export async function ensureOptimizerJobTables() {
 }
 
 type NbaPoolRow = OptimizerPlayer;
-type MlbPoolRow = MlbOptimizerPlayer;
+type MlbPoolRow = MlbOptimizerPlayer & { avgFptsDk: number | null };
 
 async function loadNbaOptimizerPool(
   slateId: number,
@@ -188,6 +199,7 @@ async function loadMlbOptimizerPool(
   slateId: number,
   selectedMatchupIds: number[],
 ): Promise<MlbOptimizerPlayer[]> {
+  const hitterProjectionCalibration = await loadMlbHitterProjectionCalibration();
   const rows = await db.execute<MlbPoolRow>(sql`
     SELECT
       dp.id,
@@ -202,6 +214,7 @@ async function loadMlbOptimizerPool(
       dp.our_leverage AS "ourLeverage",
       dp.linestar_proj AS "linestarProj",
       dp.proj_own_pct AS "projOwnPct",
+      dp.avg_fpts_dk AS "avgFptsDk",
       dp.dk_in_starting_lineup AS "dkInStartingLineup",
       dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
       dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
@@ -226,13 +239,29 @@ async function loadMlbOptimizerPool(
   `);
 
   return rows.rows
-    .map((player) => ({
-      ...player,
-      ourProj: sanitizeProjection(player.ourProj ?? player.linestarProj ?? null),
-      ourLeverage: sanitizeLeverage(player.ourLeverage),
-      linestarProj: sanitizeProjection(player.linestarProj),
-      projOwnPct: sanitizeOwnershipPct(player.projOwnPct),
-    }))
+    .map((player) => {
+      const linestarProj = sanitizeProjection(player.linestarProj);
+      const projOwnPct = sanitizeOwnershipPct(player.projOwnPct);
+      const calibratedProj = isPitcher(player.eligiblePositions)
+        ? sanitizeProjection(player.ourProj ?? linestarProj ?? null)
+        : applyMlbHitterProjectionCalibration(
+            sanitizeProjection(player.ourProj ?? linestarProj ?? null),
+            player.dkTeamLineupConfirmed ? player.dkStartingLineupOrder ?? null : null,
+            player.dkTeamLineupConfirmed ?? null,
+            hitterProjectionCalibration,
+          );
+      const fieldProj = sanitizeProjection(player.avgFptsDk ?? linestarProj ?? null);
+      const calibratedLeverage = !player.isOut && calibratedProj != null && projOwnPct != null
+        ? sanitizeLeverage(computePoolLeverage(calibratedProj, projOwnPct, fieldProj))
+        : sanitizeLeverage(player.ourLeverage);
+      return {
+        ...player,
+        ourProj: calibratedProj,
+        ourLeverage: calibratedLeverage,
+        linestarProj,
+        projOwnPct,
+      };
+    })
     .filter((player) =>
       selectedMatchupIds.length === 0
       || (player.matchupId != null && selectedMatchupIds.includes(player.matchupId))
