@@ -42,7 +42,6 @@ import type {
 } from "./optimizer-job-types";
 
 const STALE_JOB_THRESHOLD_MS = 3 * 60_000;
-const NBA_OPTIMIZER_REFRESH_ERROR_PREFIX = "NBA status refresh failed before optimize:";
 
 let ensureOptimizerJobTablesPromise: Promise<void> | null = null;
 
@@ -560,11 +559,11 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
     return { jobId: existing.job.id, existing: true };
   }
 
-  if (input.sport === "nba") {
+  if (input.sport === "nba" || input.sport === "mlb") {
     const { refreshPlayerStatus } = await import("./actions");
     const refreshResult = await refreshPlayerStatus(input.slateId);
     if (!refreshResult.ok) {
-      throw new Error(`${NBA_OPTIMIZER_REFRESH_ERROR_PREFIX} ${refreshResult.message}`);
+      throw new Error(`${input.sport.toUpperCase()} status refresh failed before optimize: ${refreshResult.message}`);
     }
   }
 

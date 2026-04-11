@@ -5765,6 +5765,11 @@ export async function runMlbOptimizer(
   settings: MlbOptimizerSettings,
 ): Promise<OptimizerRunResult<MlbGeneratedLineup>> {
   await ensureDkPlayerPropColumns();
+  const refreshResult = await refreshPlayerStatus(slateId);
+  if (!refreshResult.ok) {
+    return { ok: false, error: `MLB status refresh failed before optimize: ${refreshResult.message}` };
+  }
+
   const rows = await db.execute<MlbOptimizerPlayer>(sql`
     SELECT
       dp.id, dp.dk_player_id AS "dkPlayerId", dp.name, dp.team_abbrev AS "teamAbbrev",
