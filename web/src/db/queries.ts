@@ -960,7 +960,70 @@ export type NbaPerfectLineupAnalytics = {
   opponentAllow: NbaPerfectLineupOpponentAllowRow[];
 };
 
+type MlbPerfectLineupSourceRow = {
+  slateId: number;
+  slateDate: string;
+  storedGameCount: number | null;
+  playerRowId: number;
+  teamId: number | null;
+  teamAbbrev: string;
+  teamName: string | null;
+  eligiblePositions: string;
+  salary: number;
+  actualFpts: number;
+  homeTeamId: number | null;
+  awayTeamId: number | null;
+};
+
+export type MlbPerfectLineupSummaryRow = {
+  slateSizeBucket: string;
+  slateCount: number;
+  avgSalary: number;
+  avgPoints: number;
+  anyTwoStackRate: number;
+  anyThreeStackRate: number;
+  anyFourStackRate: number;
+  anyFiveStackRate: number;
+  multiTeamStackRate: number;
+};
+
+export type MlbPerfectLineupShapeRow = {
+  slateSizeBucket: string;
+  shape: string;
+  slateCount: number;
+  rate: number;
+};
+
+export type MlbPerfectLineupTeamRateRow = {
+  teamAbbrev: string;
+  teamName: string | null;
+  slateAppearances: number;
+  perfectAppearances: number;
+  avgPerfectHitters: number;
+  shrunkAvgPerfectHitters: number;
+};
+
+export type MlbPerfectLineupOpponentAllowRow = {
+  defenseAbbrev: string;
+  defenseName: string | null;
+  position: string;
+  slateAppearances: number;
+  perfectAppearances: number;
+  avgAllowed: number;
+  shrunkAvgAllowed: number;
+};
+
+export type MlbPerfectLineupAnalytics = {
+  slateCount: number;
+  opponentContextSlateCount: number;
+  summary: MlbPerfectLineupSummaryRow[];
+  shapes: MlbPerfectLineupShapeRow[];
+  teamRates: MlbPerfectLineupTeamRateRow[];
+  opponentAllow: MlbPerfectLineupOpponentAllowRow[];
+};
+
 const NBA_ANALYTICS_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"] as const;
+const MLB_ANALYTICS_SLOTS = ["P1", "P2", "C", "1B", "2B", "3B", "SS", "OF1", "OF2", "OF3"] as const;
 const PERFECT_LINEUP_TEAM_SHRINK = 10;
 const PERFECT_LINEUP_DEFENSE_SHRINK = 10;
 
@@ -992,6 +1055,44 @@ function getNbaPrimaryPosition(eligiblePositions: string): string {
   return "UTIL";
 }
 
+function isMlbPitcherEligible(eligiblePositions: string): boolean {
+  return eligiblePositions.includes("SP") || eligiblePositions.includes("RP") || eligiblePositions === "P" || eligiblePositions.includes("/P");
+}
+
+function canFillMlbAnalyticsSlot(slot: typeof MLB_ANALYTICS_SLOTS[number], eligiblePositions: string): boolean {
+  switch (slot) {
+    case "P1":
+    case "P2":
+      return isMlbPitcherEligible(eligiblePositions);
+    case "C":
+      return eligiblePositions.includes("C");
+    case "1B":
+      return eligiblePositions.includes("1B");
+    case "2B":
+      return eligiblePositions.includes("2B");
+    case "3B":
+      return eligiblePositions.includes("3B");
+    case "SS":
+      return eligiblePositions.includes("SS");
+    case "OF1":
+    case "OF2":
+    case "OF3":
+      return eligiblePositions.includes("OF");
+  }
+}
+
+function getMlbPrimaryPosition(eligiblePositions: string): string {
+  if (isMlbPitcherEligible(eligiblePositions)) return "P";
+  for (const position of ["C", "1B", "2B", "3B", "SS", "OF"] as const) {
+    if (eligiblePositions.includes(position)) return position;
+  }
+  return "UTIL";
+}
+
+function isMlbHitterRow(row: { eligiblePositions: string }): boolean {
+  return !isMlbPitcherEligible(row.eligiblePositions);
+}
+
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -1003,12 +1104,24 @@ function getNbaSlateSizeBucket(gameCount: number): string {
   return "8+ games";
 }
 
-function inferGameCountFromRows(rows: NbaPerfectLineupSourceRow[]): number {
+function getMlbSlateSizeBucket(gameCount: number): string {
+  if (gameCount <= 3) return "1-3 games";
+  if (gameCount <= 7) return "4-7 games";
+  if (gameCount <= 11) return "8-11 games";
+  return "12+ games";
+}
+
+function getSlateSizeBucketOrder(bucket: string): number {
+  const match = bucket.match(/^\d+/);
+  return match ? parseInt(match[0], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+function inferGameCountFromRows(rows: Array<{ teamAbbrev: string }>): number {
   const distinctTeams = new Set(rows.map((row) => row.teamAbbrev).filter(Boolean)).size;
   return Math.max(1, Math.round(distinctTeams / 2));
 }
 
-function getOpponentTeamId(row: NbaPerfectLineupSourceRow): number | null {
+function getOpponentTeamId<T extends { teamId: number | null; homeTeamId: number | null; awayTeamId: number | null }>(row: T): number | null {
   if (row.teamId == null || row.homeTeamId == null || row.awayTeamId == null) return null;
   if (row.teamId === row.homeTeamId) return row.awayTeamId;
   if (row.teamId === row.awayTeamId) return row.homeTeamId;
@@ -1056,6 +1169,57 @@ function solveNbaPerfectLineup(players: NbaPerfectLineupSourceRow[]): NbaPerfect
   if (!result?.feasible) return [];
 
   const selectedById = new Map<number, NbaPerfectLineupSourceRow>();
+  for (const [key, value] of Object.entries(result)) {
+    if (!key.startsWith("p_") || typeof value !== "number" || value < 0.5) continue;
+    const player = variableToPlayer.get(key);
+    if (!player) continue;
+    selectedById.set(player.playerRowId, player);
+  }
+
+  return Array.from(selectedById.values());
+}
+
+function solveMlbPerfectLineup(players: MlbPerfectLineupSourceRow[]): MlbPerfectLineupSourceRow[] {
+  if (players.length < MLB_ANALYTICS_SLOTS.length) return [];
+
+  const constraints: SolverModel["constraints"] = {
+    salary: { max: 50000 },
+  };
+  for (const slot of MLB_ANALYTICS_SLOTS) {
+    constraints[`slot_${slot}`] = { equal: 1 };
+  }
+
+  const variables: SolverModel["variables"] = {};
+  const binaries: SolverModel["binaries"] = {};
+  const variableToPlayer = new Map<string, MlbPerfectLineupSourceRow>();
+
+  for (const player of players) {
+    constraints[`player_${player.playerRowId}`] = { max: 1 };
+    for (const slot of MLB_ANALYTICS_SLOTS) {
+      if (!canFillMlbAnalyticsSlot(slot, player.eligiblePositions)) continue;
+      const key = `p_${player.playerRowId}_${slot}`;
+      variables[key] = {
+        objective: player.actualFpts,
+        salary: player.salary,
+        [`slot_${slot}`]: 1,
+        [`player_${player.playerRowId}`]: 1,
+      };
+      binaries[key] = 1;
+      variableToPlayer.set(key, player);
+    }
+  }
+
+  const result = solver.Solve({
+    optimize: "objective",
+    opType: "max",
+    constraints,
+    variables,
+    binaries,
+  });
+
+  if (!result?.feasible) return [];
+
+  const selectedById = new Map<number, MlbPerfectLineupSourceRow>();
   for (const [key, value] of Object.entries(result)) {
     if (!key.startsWith("p_") || typeof value !== "number" || value < 0.5) continue;
     const player = variableToPlayer.get(key);
@@ -1229,7 +1393,7 @@ export async function getNbaPerfectLineupAnalytics(): Promise<NbaPerfectLineupAn
       anyFourStackRate: round2((stats.anyFour / stats.slateCount) * 100),
       multiTeamStackRate: round2((stats.multiTeam / stats.slateCount) * 100),
     }))
-    .sort((a, b) => a.slateSizeBucket.localeCompare(b.slateSizeBucket));
+    .sort((a, b) => getSlateSizeBucketOrder(a.slateSizeBucket) - getSlateSizeBucketOrder(b.slateSizeBucket));
 
   const bucketSlateCounts = new Map(summary.map((row) => [row.slateSizeBucket, row.slateCount]));
   const shapes = Array.from(shapeCounts.entries())
@@ -1244,7 +1408,7 @@ export async function getNbaPerfectLineupAnalytics(): Promise<NbaPerfectLineupAn
       };
     })
     .sort((a, b) =>
-      a.slateSizeBucket.localeCompare(b.slateSizeBucket)
+      getSlateSizeBucketOrder(a.slateSizeBucket) - getSlateSizeBucketOrder(b.slateSizeBucket)
       || b.slateCount - a.slateCount
       || a.shape.localeCompare(b.shape)
     );
@@ -1274,6 +1438,266 @@ export async function getNbaPerfectLineupAnalytics(): Promise<NbaPerfectLineupAn
   const opponentAllow = Array.from(defenseOpportunities.entries())
     .flatMap(([defenseKey, meta]) =>
       ["PG", "SG", "SF", "PF", "C"].map((position) => {
+        const perfectAppearances = defenseAllowCounts.get(`${defenseKey}:${position}`) ?? 0;
+        const avgAllowed = perfectAppearances / meta.slateAppearances;
+        const baseline = globalPositionRates.get(position) ?? 0;
+        const shrunkAvgAllowed = (perfectAppearances + PERFECT_LINEUP_DEFENSE_SHRINK * baseline)
+          / (meta.slateAppearances + PERFECT_LINEUP_DEFENSE_SHRINK);
+        return {
+          defenseAbbrev: meta.defenseAbbrev,
+          defenseName: meta.defenseName,
+          position,
+          slateAppearances: meta.slateAppearances,
+          perfectAppearances,
+          avgAllowed: round2(avgAllowed),
+          shrunkAvgAllowed: round2(shrunkAvgAllowed),
+        };
+      }),
+    )
+    .filter((row) => row.slateAppearances > 0)
+    .sort((a, b) =>
+      b.shrunkAvgAllowed - a.shrunkAvgAllowed
+      || b.perfectAppearances - a.perfectAppearances
+      || a.defenseAbbrev.localeCompare(b.defenseAbbrev)
+      || a.position.localeCompare(b.position)
+    );
+
+  return {
+    slateCount,
+    opponentContextSlateCount,
+    summary,
+    shapes,
+    teamRates,
+    opponentAllow,
+  };
+}
+
+export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAnalytics | null> {
+  const rows = await db.execute<MlbPerfectLineupSourceRow>(sql`
+    SELECT
+      ds.id                 AS "slateId",
+      ds.slate_date         AS "slateDate",
+      ds.game_count         AS "storedGameCount",
+      dp.id                 AS "playerRowId",
+      dp.mlb_team_id        AS "teamId",
+      dp.team_abbrev        AS "teamAbbrev",
+      mt.name               AS "teamName",
+      dp.eligible_positions AS "eligiblePositions",
+      dp.salary             AS "salary",
+      dp.actual_fpts        AS "actualFpts",
+      mm.home_team_id       AS "homeTeamId",
+      mm.away_team_id       AS "awayTeamId"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
+    LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+    WHERE ds.sport = 'mlb'
+      AND dp.actual_fpts IS NOT NULL
+    ORDER BY ds.slate_date ASC, ds.id ASC, dp.id ASC
+  `);
+
+  if (rows.rows.length === 0) return null;
+
+  const rowsBySlate = new Map<number, MlbPerfectLineupSourceRow[]>();
+  for (const row of rows.rows) {
+    const slateRows = rowsBySlate.get(row.slateId) ?? [];
+    slateRows.push(row);
+    rowsBySlate.set(row.slateId, slateRows);
+  }
+
+  const summaryStats = new Map<string, {
+    slateCount: number;
+    totalSalary: number;
+    totalPoints: number;
+    anyTwo: number;
+    anyThree: number;
+    anyFour: number;
+    anyFive: number;
+    multiTeam: number;
+  }>();
+  const shapeCounts = new Map<string, number>();
+  const teamOpportunities = new Map<string, { teamAbbrev: string; teamName: string | null; slateAppearances: number }>();
+  const teamPerfectCounts = new Map<string, number>();
+  const defenseOpportunities = new Map<string, { defenseAbbrev: string; defenseName: string | null; slateAppearances: number }>();
+  const defenseAllowCounts = new Map<string, number>();
+
+  let slateCount = 0;
+  let opponentContextSlateCount = 0;
+  let totalPerfectHitters = 0;
+  const totalPerfectSlotsByPosition = new Map<string, number>();
+
+  for (const slateRows of rowsBySlate.values()) {
+    const filteredRows = slateRows.filter((row) => Number.isFinite(row.actualFpts));
+    if (filteredRows.length < MLB_ANALYTICS_SLOTS.length) continue;
+
+    const perfectLineup = solveMlbPerfectLineup(filteredRows);
+    if (perfectLineup.length !== MLB_ANALYTICS_SLOTS.length) continue;
+
+    const perfectHitters = perfectLineup.filter(isMlbHitterRow);
+    if (perfectHitters.length === 0) continue;
+    const mappedPerfectHitters = perfectHitters.filter((row) => row.teamId != null && row.teamAbbrev && row.teamAbbrev !== "UNK");
+    if (mappedPerfectHitters.length !== perfectHitters.length) continue;
+
+    slateCount++;
+    totalPerfectHitters += mappedPerfectHitters.length;
+
+    const storedGameCount = filteredRows[0]?.storedGameCount ?? null;
+    const gameCount = storedGameCount && storedGameCount > 0 ? storedGameCount : inferGameCountFromRows(filteredRows);
+    const bucket = getMlbSlateSizeBucket(gameCount);
+    const teamCounts = new Map<string, number>();
+    const distinctSlateTeams = new Map<string, { teamAbbrev: string; teamName: string | null }>();
+    const distinctDefenseTeams = new Map<string, { defenseAbbrev: string; defenseName: string | null }>();
+
+    for (const row of filteredRows.filter((candidate) => isMlbHitterRow(candidate) && candidate.teamId != null && candidate.teamAbbrev && candidate.teamAbbrev !== "UNK")) {
+      const teamKey = row.teamAbbrev;
+      if (!distinctSlateTeams.has(teamKey)) {
+        distinctSlateTeams.set(teamKey, { teamAbbrev: row.teamAbbrev, teamName: row.teamName ?? null });
+      }
+      const opponentTeamId = getOpponentTeamId(row);
+      if (opponentTeamId == null) continue;
+      const opponentRow = filteredRows.find((candidate) =>
+        candidate.teamId === opponentTeamId
+        && isMlbHitterRow(candidate)
+        && candidate.teamAbbrev
+        && candidate.teamAbbrev !== "UNK"
+      );
+      if (!opponentRow?.teamAbbrev) continue;
+      const defenseKey = opponentRow.teamAbbrev;
+      if (!distinctDefenseTeams.has(defenseKey)) {
+        distinctDefenseTeams.set(defenseKey, { defenseAbbrev: opponentRow.teamAbbrev, defenseName: opponentRow.teamName ?? null });
+      }
+    }
+
+    for (const [teamKey, teamMeta] of distinctSlateTeams) {
+      const current = teamOpportunities.get(teamKey) ?? { ...teamMeta, slateAppearances: 0 };
+      current.slateAppearances += 1;
+      teamOpportunities.set(teamKey, current);
+    }
+
+    for (const [defenseKey, defenseMeta] of distinctDefenseTeams) {
+      const current = defenseOpportunities.get(defenseKey) ?? { ...defenseMeta, slateAppearances: 0 };
+      current.slateAppearances += 1;
+      defenseOpportunities.set(defenseKey, current);
+    }
+
+    let hasOpponentContext = false;
+    for (const player of mappedPerfectHitters) {
+      const teamKey = player.teamAbbrev;
+      teamCounts.set(teamKey, (teamCounts.get(teamKey) ?? 0) + 1);
+      teamPerfectCounts.set(teamKey, (teamPerfectCounts.get(teamKey) ?? 0) + 1);
+
+      const position = getMlbPrimaryPosition(player.eligiblePositions);
+      totalPerfectSlotsByPosition.set(position, (totalPerfectSlotsByPosition.get(position) ?? 0) + 1);
+
+      const opponentTeamId = getOpponentTeamId(player);
+      if (opponentTeamId == null) continue;
+      const opponentRow = filteredRows.find((candidate) =>
+        candidate.teamId === opponentTeamId
+        && isMlbHitterRow(candidate)
+        && candidate.teamAbbrev
+        && candidate.teamAbbrev !== "UNK"
+      );
+      if (!opponentRow?.teamAbbrev) continue;
+      hasOpponentContext = true;
+      const defenseKey = `${opponentRow.teamAbbrev}:${position}`;
+      defenseAllowCounts.set(defenseKey, (defenseAllowCounts.get(defenseKey) ?? 0) + 1);
+    }
+
+    if (hasOpponentContext) opponentContextSlateCount++;
+
+    const counts = Array.from(teamCounts.values()).sort((a, b) => b - a);
+    const stackedCounts = counts.filter((count) => count >= 2);
+    const shape = stackedCounts.length > 0 ? stackedCounts.join("-") : "No Stack";
+    const summary = summaryStats.get(bucket) ?? {
+      slateCount: 0,
+      totalSalary: 0,
+      totalPoints: 0,
+      anyTwo: 0,
+      anyThree: 0,
+      anyFour: 0,
+      anyFive: 0,
+      multiTeam: 0,
+    };
+    summary.slateCount += 1;
+    summary.totalSalary += perfectLineup.reduce((sum, player) => sum + player.salary, 0);
+    summary.totalPoints += perfectLineup.reduce((sum, player) => sum + player.actualFpts, 0);
+    if (stackedCounts.some((count) => count >= 2)) summary.anyTwo += 1;
+    if (stackedCounts.some((count) => count >= 3)) summary.anyThree += 1;
+    if (stackedCounts.some((count) => count >= 4)) summary.anyFour += 1;
+    if (stackedCounts.some((count) => count >= 5)) summary.anyFive += 1;
+    if (stackedCounts.filter((count) => count >= 2).length >= 2) summary.multiTeam += 1;
+    summaryStats.set(bucket, summary);
+
+    const shapeKey = `${bucket}::${shape}`;
+    shapeCounts.set(shapeKey, (shapeCounts.get(shapeKey) ?? 0) + 1);
+  }
+
+  if (slateCount === 0) return null;
+
+  const globalTeamRate = totalPerfectHitters / Math.max(1, Array.from(teamOpportunities.values()).reduce((sum, row) => sum + row.slateAppearances, 0));
+  const globalPositionRates = new Map<string, number>();
+  const totalDefenseOpportunities = Math.max(1, Array.from(defenseOpportunities.values()).reduce((sum, row) => sum + row.slateAppearances, 0));
+  for (const [position, count] of totalPerfectSlotsByPosition) {
+    globalPositionRates.set(position, count / totalDefenseOpportunities);
+  }
+
+  const summary = Array.from(summaryStats.entries())
+    .map(([bucket, stats]) => ({
+      slateSizeBucket: bucket,
+      slateCount: stats.slateCount,
+      avgSalary: round2(stats.totalSalary / stats.slateCount),
+      avgPoints: round2(stats.totalPoints / stats.slateCount),
+      anyTwoStackRate: round2((stats.anyTwo / stats.slateCount) * 100),
+      anyThreeStackRate: round2((stats.anyThree / stats.slateCount) * 100),
+      anyFourStackRate: round2((stats.anyFour / stats.slateCount) * 100),
+      anyFiveStackRate: round2((stats.anyFive / stats.slateCount) * 100),
+      multiTeamStackRate: round2((stats.multiTeam / stats.slateCount) * 100),
+    }))
+    .sort((a, b) => getSlateSizeBucketOrder(a.slateSizeBucket) - getSlateSizeBucketOrder(b.slateSizeBucket));
+
+  const bucketSlateCounts = new Map(summary.map((row) => [row.slateSizeBucket, row.slateCount]));
+  const shapes = Array.from(shapeCounts.entries())
+    .map(([key, count]) => {
+      const [bucket, shape] = key.split("::");
+      const bucketCount = bucketSlateCounts.get(bucket) ?? 1;
+      return {
+        slateSizeBucket: bucket,
+        shape,
+        slateCount: count,
+        rate: round2((count / bucketCount) * 100),
+      };
+    })
+    .sort((a, b) =>
+      getSlateSizeBucketOrder(a.slateSizeBucket) - getSlateSizeBucketOrder(b.slateSizeBucket)
+      || b.slateCount - a.slateCount
+      || a.shape.localeCompare(b.shape)
+    );
+
+  const teamRates = Array.from(teamOpportunities.entries())
+    .map(([teamKey, meta]) => {
+      const perfectAppearances = teamPerfectCounts.get(teamKey) ?? 0;
+      const avgPerfectHitters = perfectAppearances / meta.slateAppearances;
+      const shrunkAvgPerfectHitters = (perfectAppearances + PERFECT_LINEUP_TEAM_SHRINK * globalTeamRate)
+        / (meta.slateAppearances + PERFECT_LINEUP_TEAM_SHRINK);
+      return {
+        teamAbbrev: meta.teamAbbrev,
+        teamName: meta.teamName,
+        slateAppearances: meta.slateAppearances,
+        perfectAppearances,
+        avgPerfectHitters: round2(avgPerfectHitters),
+        shrunkAvgPerfectHitters: round2(shrunkAvgPerfectHitters),
+      };
+    })
+    .filter((row) => row.slateAppearances > 0)
+    .sort((a, b) =>
+      b.shrunkAvgPerfectHitters - a.shrunkAvgPerfectHitters
+      || b.perfectAppearances - a.perfectAppearances
+      || a.teamAbbrev.localeCompare(b.teamAbbrev)
+    );
+
+  const opponentAllow = Array.from(defenseOpportunities.entries())
+    .flatMap(([defenseKey, meta]) =>
+      ["C", "1B", "2B", "3B", "SS", "OF"].map((position) => {
         const perfectAppearances = defenseAllowCounts.get(`${defenseKey}:${position}`) ?? 0;
         const avgAllowed = perfectAppearances / meta.slateAppearances;
         const baseline = globalPositionRates.get(position) ?? 0;

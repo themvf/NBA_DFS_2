@@ -32,18 +32,18 @@ export default async function AnalyticsPage({
       >
         <AnalyticsContent sport={sport} />
       </Suspense>
-      {sport === "nba" && (
-        <Suspense
-          fallback={
-            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4">
-              <h2 className="text-sm font-semibold mb-1">Perfect Lineup Structure</h2>
-              <p className="text-xs text-gray-400">Loading NBA perfect-lineup analytics…</p>
-            </div>
-          }
-        >
-          <PerfectLineupPanel />
-        </Suspense>
-      )}
+      <Suspense
+        fallback={
+          <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4">
+            <h2 className="text-sm font-semibold mb-1">Perfect Lineup Structure</h2>
+            <p className="text-xs text-gray-400">
+              Loading {sport.toUpperCase()} perfect-lineup analytics…
+            </p>
+          </div>
+        }
+      >
+        <PerfectLineupPanel sport={sport} />
+      </Suspense>
     </>
   );
 }
