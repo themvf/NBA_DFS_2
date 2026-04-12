@@ -179,13 +179,16 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         vegas_total = round(sum(total_points) / len(total_points) * 2) / 2 if total_points else None
         vegas_prob_home = _ml_to_prob(home_ml, away_ml) if home_ml and away_ml else None
 
+        home_implied, away_implied = _compute_implied_totals(vegas_total, home_ml, away_ml)
         db.execute(
             """
             UPDATE nba_matchups
-            SET vegas_total = %s, home_ml = %s, away_ml = %s, home_spread = %s, vegas_prob_home = %s
+            SET vegas_total = %s, home_ml = %s, away_ml = %s, home_spread = %s,
+                vegas_prob_home = %s, home_implied = %s, away_implied = %s
             WHERE id = %s
             """,
-            (vegas_total, home_ml, away_ml, home_spread, vegas_prob_home, matchup["id"]),
+            (vegas_total, home_ml, away_ml, home_spread, vegas_prob_home,
+             home_implied, away_implied, matchup["id"]),
         )
         history_rows.append(
             {
@@ -395,6 +398,115 @@ def fetch_player_props(db: DatabaseManager, api_key: str, game_date: str | None 
     return updated
 
 
+def _compute_implied_totals(
+    vegas_total: float | None,
+    home_ml: int | None,
+    away_ml: int | None,
+) -> tuple[float | None, float | None]:
+    """Derive per-team implied point totals from moneylines + O/U.
+
+    Uses vig-removed win probability to split the total, matching the
+    TypeScript computeTeamImpliedTotal() in dfs-client.tsx.
+    """
+    if vegas_total is None:
+        return None, None
+    if home_ml is None or away_ml is None:
+        return round(vegas_total / 2, 1), round(vegas_total / 2, 1)
+
+    def ml_to_raw(ml: int) -> float:
+        if ml > 0:
+            return 100 / (ml + 100)
+        return abs(ml) / (abs(ml) + 100)
+
+    home_raw = ml_to_raw(home_ml)
+    away_raw = ml_to_raw(away_ml)
+    vig = home_raw + away_raw
+    home_prob_clean = home_raw / vig if vig > 0 else 0.5
+    implied_spread = max(-15.0, min(15.0, (home_prob_clean - 0.5) / 0.025))
+    home_implied = round(vegas_total / 2 + implied_spread / 2, 1)
+    away_implied = round(vegas_total - home_implied, 1)
+    return home_implied, away_implied
+
+
+def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
+    """Fetch final scores for completed NBA games and write to nba_matchups.
+
+    Uses ScoreboardV2 line_score data.  Only writes when GAME_STATUS_ID == 3
+    (Final).  Safe to call for dates in the past — skips games already scored.
+    Returns number of matchups updated.
+    """
+    from nba_api.stats.endpoints import ScoreboardV2
+    from ingest.nba_stats import _call_with_retry
+
+    target_date = game_date or date.today().isoformat()
+    logger.info("Fetching final scores for %s ...", target_date)
+    time.sleep(SLEEP_SECONDS)
+
+    def _fetch():
+        return ScoreboardV2(game_date=target_date, timeout=60)
+
+    try:
+        scoreboard = _call_with_retry(_fetch, "ScoreboardV2-scores")
+    except Exception as exc:
+        logger.warning("Could not fetch scores for %s: %s", target_date, exc)
+        return 0
+
+    game_header = scoreboard.game_header.get_data_frame()
+    line_score  = scoreboard.line_score.get_data_frame()
+
+    if game_header.empty or line_score.empty:
+        return 0
+
+    # Only process final games
+    final_games = game_header[game_header["GAME_STATUS_ID"] == 3]
+    if final_games.empty:
+        logger.info("No final games found for %s", target_date)
+        return 0
+
+    # Build score lookup: game_id → {home_team_id: score, away_team_id: score}
+    abbrev_cache = build_team_abbrev_cache(db)
+    from ingest.nba_teams import NBA_ID_TO_ABBREV
+
+    updated = 0
+    for _, hdr in final_games.iterrows():
+        game_id     = str(hdr["GAME_ID"])
+        home_nba_id = int(hdr["HOME_TEAM_ID"])
+        away_nba_id = int(hdr["VISITOR_TEAM_ID"])
+
+        # Get PTS from line_score for home and away
+        home_row = line_score[
+            (line_score["GAME_ID"] == game_id) &
+            (line_score["TEAM_ID"] == home_nba_id)
+        ]
+        away_row = line_score[
+            (line_score["GAME_ID"] == game_id) &
+            (line_score["TEAM_ID"] == away_nba_id)
+        ]
+        if home_row.empty or away_row.empty:
+            continue
+
+        home_pts = home_row.iloc[0]["PTS"]
+        away_pts = away_row.iloc[0]["PTS"]
+        if home_pts is None or away_pts is None:
+            continue
+
+        result = db.execute_one(
+            """
+            UPDATE nba_matchups
+            SET home_score = %s, away_score = %s
+            WHERE game_id = %s
+              AND (home_score IS NULL OR away_score IS NULL)
+            RETURNING id
+            """,
+            (int(home_pts), int(away_pts), game_id),
+        )
+        if result:
+            updated += 1
+
+    logger.info("Scores: %d matchups updated for %s", updated, target_date)
+    return updated
+
+
 def _levenshtein(a: str, b: str) -> int:
     """Levenshtein edit distance for fuzzy player name matching."""
     m, n = len(a), len(b)
@@ -432,4 +544,5 @@ if __name__ == "__main__":
 
     fetch_schedule(db, args.date)
     fetch_odds(db, config.odds_api.api_key, args.date)
+    fetch_scores(db, args.date)
     fetch_player_props(db, config.odds_api.api_key, args.date)

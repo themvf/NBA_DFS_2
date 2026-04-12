@@ -1871,3 +1871,232 @@ export async function getProjectionSourceBreakdown(
     lsBias: r.lsBias != null ? Number(r.lsBias) : null,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Vegas Analysis
+// ---------------------------------------------------------------------------
+
+export type VegasMatchupRow = {
+  matchupId: number;
+  gameDate: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeAbbrev: string;
+  awayAbbrev: string;
+  vegasTotal: number | null;
+  homeMl: number | null;
+  awayMl: number | null;
+  homeSpread: number | null;
+  homeWinProb: number | null;
+  homeImplied: number | null;
+  awayImplied: number | null;
+  homeScore: number | null;
+  awayScore: number | null;
+};
+
+export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
+  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  const rows = await db.execute(sql`
+    SELECT
+      nm.id            AS "matchupId",
+      nm.game_date     AS "gameDate",
+      t_home.name      AS "homeTeam",
+      t_away.name      AS "awayTeam",
+      t_home.abbreviation AS "homeAbbrev",
+      t_away.abbreviation AS "awayAbbrev",
+      nm.vegas_total   AS "vegasTotal",
+      nm.home_ml       AS "homeMl",
+      nm.away_ml       AS "awayMl",
+      nm.home_spread   AS "homeSpread",
+      nm.vegas_prob_home AS "homeWinProb",
+      nm.home_implied  AS "homeImplied",
+      nm.away_implied  AS "awayImplied",
+      nm.home_score    AS "homeScore",
+      nm.away_score    AS "awayScore"
+    FROM nba_matchups nm
+    LEFT JOIN teams t_home ON t_home.team_id = nm.home_team_id
+    LEFT JOIN teams t_away ON t_away.team_id = nm.away_team_id
+    WHERE nm.game_date = ${targetDate}
+    ORDER BY nm.vegas_total DESC NULLS LAST
+  `);
+  return (rows.rows as VegasMatchupRow[]).map((r) => ({
+    matchupId: Number(r.matchupId),
+    gameDate: String(r.gameDate),
+    homeTeam: String(r.homeTeam ?? ""),
+    awayTeam: String(r.awayTeam ?? ""),
+    homeAbbrev: String(r.homeAbbrev ?? ""),
+    awayAbbrev: String(r.awayAbbrev ?? ""),
+    vegasTotal: r.vegasTotal != null ? Number(r.vegasTotal) : null,
+    homeMl: r.homeMl != null ? Number(r.homeMl) : null,
+    awayMl: r.awayMl != null ? Number(r.awayMl) : null,
+    homeSpread: r.homeSpread != null ? Number(r.homeSpread) : null,
+    homeWinProb: r.homeWinProb != null ? Number(r.homeWinProb) : null,
+    homeImplied: r.homeImplied != null ? Number(r.homeImplied) : null,
+    awayImplied: r.awayImplied != null ? Number(r.awayImplied) : null,
+    homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+    awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+  }));
+}
+
+export type OuHitRateRow = {
+  totalTier: string;
+  tierMin: number | null;
+  n: number;
+  overCount: number;
+  underCount: number;
+  pushCount: number;
+  overRate: number | null;
+  avgTotal: number | null;
+  avgActual: number | null;
+};
+
+export async function getOuHitRate(): Promise<OuHitRateRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      CASE
+        WHEN nm.vegas_total < 215 THEN 'Under 215'
+        WHEN nm.vegas_total < 220 THEN '215–220'
+        WHEN nm.vegas_total < 225 THEN '220–225'
+        WHEN nm.vegas_total < 230 THEN '225–230'
+        WHEN nm.vegas_total < 235 THEN '230–235'
+        WHEN nm.vegas_total < 240 THEN '235–240'
+        ELSE '240+'
+      END                                                                 AS "totalTier",
+      MIN(nm.vegas_total)                                                 AS "tierMin",
+      COUNT(*)                                                            AS "n",
+      COUNT(*) FILTER (WHERE nm.home_score + nm.away_score > nm.vegas_total) AS "overCount",
+      COUNT(*) FILTER (WHERE nm.home_score + nm.away_score < nm.vegas_total) AS "underCount",
+      COUNT(*) FILTER (WHERE nm.home_score + nm.away_score = nm.vegas_total) AS "pushCount",
+      AVG(nm.vegas_total)                                                 AS "avgTotal",
+      AVG((nm.home_score + nm.away_score)::DOUBLE PRECISION)             AS "avgActual"
+    FROM nba_matchups nm
+    WHERE nm.vegas_total IS NOT NULL
+      AND nm.home_score IS NOT NULL
+      AND nm.away_score IS NOT NULL
+    GROUP BY 1
+    ORDER BY MIN(nm.vegas_total) ASC NULLS LAST
+  `);
+  return (rows.rows as OuHitRateRow[]).map((r) => {
+    const n = Number(r.n);
+    const overCount = Number(r.overCount);
+    return {
+      totalTier: String(r.totalTier),
+      tierMin: r.tierMin != null ? Number(r.tierMin) : null,
+      n,
+      overCount,
+      underCount: Number(r.underCount),
+      pushCount: Number(r.pushCount),
+      overRate: n > 0 ? overCount / n : null,
+      avgTotal: r.avgTotal != null ? Number(r.avgTotal) : null,
+      avgActual: r.avgActual != null ? Number(r.avgActual) : null,
+    };
+  });
+}
+
+export type TeamTotalAccuracyRow = {
+  teamAbbrev: string;
+  teamName: string;
+  n: number;
+  avgImplied: number | null;
+  avgActual: number | null;
+  mae: number | null;
+  bias: number | null;
+};
+
+export async function getTeamTotalAccuracy(): Promise<TeamTotalAccuracyRow[]> {
+  const rows = await db.execute(sql`
+    WITH team_games AS (
+      -- Home perspective
+      SELECT
+        nm.home_team_id                              AS team_id,
+        nm.home_implied                              AS implied_total,
+        nm.home_score::DOUBLE PRECISION              AS actual_score
+      FROM nba_matchups nm
+      WHERE nm.home_implied IS NOT NULL AND nm.home_score IS NOT NULL
+      UNION ALL
+      -- Away perspective
+      SELECT
+        nm.away_team_id                              AS team_id,
+        nm.away_implied                              AS implied_total,
+        nm.away_score::DOUBLE PRECISION              AS actual_score
+      FROM nba_matchups nm
+      WHERE nm.away_implied IS NOT NULL AND nm.away_score IS NOT NULL
+    )
+    SELECT
+      t.abbreviation                                 AS "teamAbbrev",
+      t.name                                         AS "teamName",
+      COUNT(*)                                       AS "n",
+      AVG(tg.implied_total)                          AS "avgImplied",
+      AVG(tg.actual_score)                           AS "avgActual",
+      AVG(ABS(tg.implied_total - tg.actual_score))   AS "mae",
+      AVG(tg.implied_total - tg.actual_score)        AS "bias"
+    FROM team_games tg
+    JOIN teams t ON t.team_id = tg.team_id
+    GROUP BY t.abbreviation, t.name
+    HAVING COUNT(*) >= 3
+    ORDER BY AVG(ABS(tg.implied_total - tg.actual_score)) DESC NULLS LAST
+  `);
+  return (rows.rows as TeamTotalAccuracyRow[]).map((r) => ({
+    teamAbbrev: String(r.teamAbbrev),
+    teamName: String(r.teamName),
+    n: Number(r.n),
+    avgImplied: r.avgImplied != null ? Number(r.avgImplied) : null,
+    avgActual: r.avgActual != null ? Number(r.avgActual) : null,
+    mae: r.mae != null ? Number(r.mae) : null,
+    bias: r.bias != null ? Number(r.bias) : null,
+  }));
+}
+
+export type SpreadCoverageRow = {
+  spreadTier: string;
+  tierMin: number | null;
+  n: number;
+  coverCount: number;
+  coverRate: number | null;
+  avgSpread: number | null;
+  avgMargin: number | null;
+};
+
+export async function getSpreadCoverage(): Promise<SpreadCoverageRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      CASE
+        WHEN ABS(nm.home_spread) <= 1.5  THEN 'Pick / ±1.5'
+        WHEN ABS(nm.home_spread) <= 3.5  THEN '2–3.5'
+        WHEN ABS(nm.home_spread) <= 6.5  THEN '4–6.5'
+        WHEN ABS(nm.home_spread) <= 9.5  THEN '7–9.5'
+        WHEN ABS(nm.home_spread) <= 13.5 THEN '10–13.5'
+        ELSE '14+'
+      END                                                         AS "spreadTier",
+      MIN(ABS(nm.home_spread))                                    AS "tierMin",
+      COUNT(*)                                                     AS "n",
+      -- Favorite covered = actual margin > spread (in favor of favorite)
+      COUNT(*) FILTER (WHERE
+        (nm.home_spread < 0 AND (nm.home_score - nm.away_score) > ABS(nm.home_spread))
+        OR
+        (nm.home_spread > 0 AND (nm.away_score - nm.home_score) > ABS(nm.home_spread))
+      )                                                            AS "coverCount",
+      AVG(ABS(nm.home_spread))                                    AS "avgSpread",
+      AVG(ABS(nm.home_score - nm.away_score)::DOUBLE PRECISION)  AS "avgMargin"
+    FROM nba_matchups nm
+    WHERE nm.home_spread IS NOT NULL
+      AND nm.home_score IS NOT NULL
+      AND nm.away_score IS NOT NULL
+      AND nm.home_spread <> 0
+    GROUP BY 1
+    ORDER BY MIN(ABS(nm.home_spread)) ASC NULLS LAST
+  `);
+  return (rows.rows as SpreadCoverageRow[]).map((r) => {
+    const n = Number(r.n);
+    const coverCount = Number(r.coverCount);
+    return {
+      spreadTier: String(r.spreadTier),
+      tierMin: r.tierMin != null ? Number(r.tierMin) : null,
+      n,
+      coverCount,
+      coverRate: n > 0 ? coverCount / n : null,
+      avgSpread: r.avgSpread != null ? Number(r.avgSpread) : null,
+      avgMargin: r.avgMargin != null ? Number(r.avgMargin) : null,
+    };
+  });
+}

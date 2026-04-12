@@ -295,14 +295,19 @@ def upsert_nba_matchup(
     away_ml: int | None = None,
     home_spread: float | None = None,
     vegas_prob_home: float | None = None,
+    home_implied: float | None = None,
+    away_implied: float | None = None,
+    home_score: int | None = None,
+    away_score: int | None = None,
 ) -> int:
     row = db.execute_one(
         """
         INSERT INTO nba_matchups (
             game_date, game_id, home_team_id, away_team_id,
-            vegas_total, home_ml, away_ml, home_spread, vegas_prob_home
+            vegas_total, home_ml, away_ml, home_spread, vegas_prob_home,
+            home_implied, away_implied, home_score, away_score
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
             game_id = COALESCE(EXCLUDED.game_id, nba_matchups.game_id),
             vegas_total = EXCLUDED.vegas_total,
@@ -310,11 +315,16 @@ def upsert_nba_matchup(
             away_ml = EXCLUDED.away_ml,
             home_spread = EXCLUDED.home_spread,
             vegas_prob_home = EXCLUDED.vegas_prob_home,
+            home_implied = COALESCE(EXCLUDED.home_implied, nba_matchups.home_implied),
+            away_implied = COALESCE(EXCLUDED.away_implied, nba_matchups.away_implied),
+            home_score = COALESCE(EXCLUDED.home_score, nba_matchups.home_score),
+            away_score = COALESCE(EXCLUDED.away_score, nba_matchups.away_score),
             fetched_at = NOW()
         RETURNING id
         """,
         (game_date, game_id, home_team_id, away_team_id,
-         vegas_total, home_ml, away_ml, home_spread, vegas_prob_home),
+         vegas_total, home_ml, away_ml, home_spread, vegas_prob_home,
+         home_implied, away_implied, home_score, away_score),
     )
     return row["id"] if row else 0
 

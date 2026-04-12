@@ -556,6 +556,39 @@ TABLES = [
 ]
 
 MIGRATIONS = [
+    # 2026-04-11: Add final scores + implied totals to nba_matchups for Vegas analysis
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_matchups' AND column_name = 'home_score'
+        ) THEN
+            ALTER TABLE nba_matchups ADD COLUMN home_score INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_matchups' AND column_name = 'away_score'
+        ) THEN
+            ALTER TABLE nba_matchups ADD COLUMN away_score INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_matchups' AND column_name = 'home_implied'
+        ) THEN
+            ALTER TABLE nba_matchups ADD COLUMN home_implied DOUBLE PRECISION;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_matchups' AND column_name = 'away_implied'
+        ) THEN
+            ALTER TABLE nba_matchups ADD COLUMN away_implied DOUBLE PRECISION;
+        END IF;
+    END $$""",
     # 2026-03-28: Relax game_id NOT NULL → nullable so TS web can insert without it
     "ALTER TABLE nba_matchups ALTER COLUMN game_id DROP NOT NULL",
     """DO $$ BEGIN

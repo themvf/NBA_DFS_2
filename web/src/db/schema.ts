@@ -168,6 +168,10 @@ export const nbaMatchups = pgTable(
     homeSpread: doublePrecision("home_spread"),
     vegasTotal: doublePrecision("vegas_total"),
     homeWinProb: doublePrecision("vegas_prob_home"),
+    homeImplied: doublePrecision("home_implied"),
+    awayImplied: doublePrecision("away_implied"),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
     fetchedAt: timestamp("fetched_at").defaultNow(),
   },
   (t) => [

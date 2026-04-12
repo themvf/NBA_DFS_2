@@ -22,6 +22,7 @@ const SPORTS: { sport: Sport; label: string; icon: string }[] = [
 const PAGE_LINKS = [
   { href: "/dfs",       label: "DFS" },
   { href: "/analytics", label: "Analytics" },
+  { href: "/vegas",     label: "Vegas" },
   { href: "/stats",     label: "Team Stats" },
   { href: "/schedule",  label: "Schedule" },
 ];
