@@ -105,6 +105,6 @@ if __name__ == "__main__":
 
     config = load_config()
     db = DatabaseManager(config.database_url)
-    db.apply_migrations()
+    db._ensure_schema()
     n = backfill_scores(db, season=args.season)
     print(f"Done — {n} matchups updated with final scores")
