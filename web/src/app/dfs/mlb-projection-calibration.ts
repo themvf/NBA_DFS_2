@@ -4,16 +4,13 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
+import type { MlbHitterProjectionCalibration } from "./mlb-projection-utils";
+
+export type { MlbHitterProjectionCalibration };
 
 type CalibrationEntry = {
   factor: number;
   n: number;
-};
-
-export type MlbHitterProjectionCalibration = {
-  overall: CalibrationEntry;
-  pending: CalibrationEntry;
-  byOrder: Map<number, CalibrationEntry>;
 };
 
 let mlbHitterProjectionCalibrationCache:
@@ -129,18 +126,3 @@ export async function loadMlbHitterProjectionCalibration(): Promise<MlbHitterPro
   return calibration;
 }
 
-export function applyMlbHitterProjectionCalibration(
-  rawProjection: number | null | undefined,
-  confirmedOrder: number | null | undefined,
-  teamLineupConfirmed: boolean | null | undefined,
-  calibration: MlbHitterProjectionCalibration,
-): number | null {
-  const sanitized = sanitizeProjection(rawProjection);
-  if (sanitized == null) return null;
-
-  const entry = teamLineupConfirmed === true && confirmedOrder != null
-    ? calibration.byOrder.get(confirmedOrder) ?? calibration.overall
-    : calibration.pending;
-
-  return sanitizeProjection(Math.round(sanitized * entry.factor * 100) / 100);
-}

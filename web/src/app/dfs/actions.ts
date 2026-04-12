@@ -20,7 +20,8 @@ import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./opti
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import { applyMlbPendingLineupPolicy, inferMlbTeamLineupConfirmed, isPositiveMlbLineupOrder } from "./mlb-lineup";
 import { validateMlbRuleSelections } from "./mlb-optimizer-rules";
-import { applyMlbHitterProjectionCalibration, loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
+import { loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
+import { applyMlbHitterProjectionCalibration } from "./mlb-projection-utils";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
 import type { Sport } from "@/db/queries";

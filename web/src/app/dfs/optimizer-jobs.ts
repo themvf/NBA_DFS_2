@@ -24,7 +24,8 @@ import {
   type MlbOptimizerPlayer,
   type MlbOptimizerSettings,
 } from "./mlb-optimizer";
-import { applyMlbHitterProjectionCalibration, loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
+import { loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
+import { applyMlbHitterProjectionCalibration } from "./mlb-projection-utils";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import { normalizeNbaRuleSelections, validateNbaRuleSelections } from "./nba-optimizer-rules";
 import { normalizeMlbRuleSelections, validateMlbRuleSelections } from "./mlb-optimizer-rules";
