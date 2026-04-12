@@ -6,16 +6,15 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { MlbHitterProjectionCalibration } from "./mlb-projection-utils";
 
-export type { MlbHitterProjectionCalibration };
-
 type CalibrationEntry = {
   factor: number;
   n: number;
 };
 
-let mlbHitterProjectionCalibrationCache:
-  | { loadedAtMs: number; calibration: MlbHitterProjectionCalibration }
-  | null = null;
+let mlbHitterProjectionCalibrationCache: {
+  loadedAtMs: number;
+  calibration: MlbHitterProjectionCalibration;
+} | null = null;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
