@@ -2406,6 +2406,158 @@ export async function getVegasSummaryStats(sport: Sport = "nba"): Promise<VegasS
   }
 }
 
+// ── Team Vegas Insights ──────────────────────────────────────
+
+export type TeamVegasInsightRow = {
+  teamAbbrev: string;
+  teamName: string;
+  n: number;            // games with scores
+  nImplied: number;     // games with implied totals
+  avgImplied: number | null;
+  avgActual: number | null;
+  mae: number | null;
+  bias: number | null;  // positive = Vegas underestimates (team scores more than expected)
+  overImpliedRate: number | null;  // how often team beats their implied total
+  avgGameTotal: number | null;
+  gameOverRate: number | null;     // how often games go over when this team plays
+  atsN: number;
+  atsCoverRate: number | null;
+};
+
+export async function getTeamVegasInsights(sport: Sport = "nba"): Promise<TeamVegasInsightRow[]> {
+  if (sport === "mlb") {
+    const rows = await db.execute(sql`
+      WITH team_appearances AS (
+        SELECT
+          m.home_team_id                                                           AS team_id,
+          m.home_implied                                                           AS implied,
+          m.home_score::DOUBLE PRECISION                                           AS actual,
+          m.vegas_total,
+          (m.home_score + m.away_score)                                            AS actual_total,
+          CASE WHEN m.home_spread IS NOT NULL
+            THEN (m.home_score - m.away_score)::DOUBLE PRECISION > -m.home_spread
+          END                                                                      AS covered
+        FROM mlb_matchups m
+        WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+        UNION ALL
+        SELECT
+          m.away_team_id,
+          m.away_implied,
+          m.away_score::DOUBLE PRECISION,
+          m.vegas_total,
+          (m.home_score + m.away_score),
+          CASE WHEN m.home_spread IS NOT NULL
+            THEN (m.away_score - m.home_score)::DOUBLE PRECISION > m.home_spread
+          END
+        FROM mlb_matchups m
+        WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+      )
+      SELECT
+        t.abbreviation                                                             AS "teamAbbrev",
+        t.name                                                                     AS "teamName",
+        COUNT(*)::int                                                              AS "n",
+        COUNT(*) FILTER (WHERE ta.implied IS NOT NULL)::int                        AS "nImplied",
+        AVG(ta.implied)                                                            AS "avgImplied",
+        AVG(ta.actual)                                                             AS "avgActual",
+        AVG(ABS(ta.implied - ta.actual)) FILTER (WHERE ta.implied IS NOT NULL)    AS "mae",
+        AVG(ta.implied - ta.actual)      FILTER (WHERE ta.implied IS NOT NULL)    AS "bias",
+        AVG(CASE WHEN ta.actual > ta.implied THEN 1.0 ELSE 0.0 END)
+          FILTER (WHERE ta.implied IS NOT NULL)                                    AS "overImpliedRate",
+        AVG(ta.vegas_total)              FILTER (WHERE ta.vegas_total IS NOT NULL) AS "avgGameTotal",
+        AVG(CASE WHEN ta.actual_total > ta.vegas_total THEN 1.0 ELSE 0.0 END)
+          FILTER (WHERE ta.vegas_total IS NOT NULL)                                AS "gameOverRate",
+        COUNT(*) FILTER (WHERE ta.covered IS NOT NULL)::int                        AS "atsN",
+        AVG(CASE WHEN ta.covered THEN 1.0 ELSE 0.0 END)
+          FILTER (WHERE ta.covered IS NOT NULL)                                    AS "atsCoverRate"
+      FROM team_appearances ta
+      JOIN mlb_teams t ON t.team_id = ta.team_id
+      GROUP BY t.abbreviation, t.name
+      HAVING COUNT(*) >= 5
+      ORDER BY AVG(ta.implied - ta.actual) FILTER (WHERE ta.implied IS NOT NULL) DESC NULLS LAST
+    `);
+    return (rows.rows as TeamVegasInsightRow[]).map((r) => ({
+      teamAbbrev:      String(r.teamAbbrev),
+      teamName:        String(r.teamName),
+      n:               Number(r.n),
+      nImplied:        Number(r.nImplied),
+      avgImplied:      r.avgImplied      != null ? Number(r.avgImplied)      : null,
+      avgActual:       r.avgActual       != null ? Number(r.avgActual)       : null,
+      mae:             r.mae             != null ? Number(r.mae)             : null,
+      bias:            r.bias            != null ? Number(r.bias)            : null,
+      overImpliedRate: r.overImpliedRate != null ? Number(r.overImpliedRate) : null,
+      avgGameTotal:    r.avgGameTotal    != null ? Number(r.avgGameTotal)    : null,
+      gameOverRate:    r.gameOverRate    != null ? Number(r.gameOverRate)    : null,
+      atsN:            Number(r.atsN),
+      atsCoverRate:    r.atsCoverRate    != null ? Number(r.atsCoverRate)    : null,
+    }));
+  } else {
+    const rows = await db.execute(sql`
+      WITH team_appearances AS (
+        SELECT
+          nm.home_team_id                                                          AS team_id,
+          nm.home_implied                                                          AS implied,
+          nm.home_score::DOUBLE PRECISION                                          AS actual,
+          nm.vegas_total,
+          (nm.home_score + nm.away_score)                                          AS actual_total,
+          CASE WHEN nm.home_spread IS NOT NULL
+            THEN (nm.home_score - nm.away_score)::DOUBLE PRECISION > -nm.home_spread
+          END                                                                      AS covered
+        FROM nba_matchups nm
+        WHERE nm.home_score IS NOT NULL AND nm.away_score IS NOT NULL
+        UNION ALL
+        SELECT
+          nm.away_team_id,
+          nm.away_implied,
+          nm.away_score::DOUBLE PRECISION,
+          nm.vegas_total,
+          (nm.home_score + nm.away_score),
+          CASE WHEN nm.home_spread IS NOT NULL
+            THEN (nm.away_score - nm.home_score)::DOUBLE PRECISION > nm.home_spread
+          END
+        FROM nba_matchups nm
+        WHERE nm.home_score IS NOT NULL AND nm.away_score IS NOT NULL
+      )
+      SELECT
+        t.abbreviation                                                             AS "teamAbbrev",
+        t.name                                                                     AS "teamName",
+        COUNT(*)::int                                                              AS "n",
+        COUNT(*) FILTER (WHERE ta.implied IS NOT NULL)::int                        AS "nImplied",
+        AVG(ta.implied)                                                            AS "avgImplied",
+        AVG(ta.actual)                                                             AS "avgActual",
+        AVG(ABS(ta.implied - ta.actual)) FILTER (WHERE ta.implied IS NOT NULL)    AS "mae",
+        AVG(ta.implied - ta.actual)      FILTER (WHERE ta.implied IS NOT NULL)    AS "bias",
+        AVG(CASE WHEN ta.actual > ta.implied THEN 1.0 ELSE 0.0 END)
+          FILTER (WHERE ta.implied IS NOT NULL)                                    AS "overImpliedRate",
+        AVG(ta.vegas_total)              FILTER (WHERE ta.vegas_total IS NOT NULL) AS "avgGameTotal",
+        AVG(CASE WHEN ta.actual_total > ta.vegas_total THEN 1.0 ELSE 0.0 END)
+          FILTER (WHERE ta.vegas_total IS NOT NULL)                                AS "gameOverRate",
+        COUNT(*) FILTER (WHERE ta.covered IS NOT NULL)::int                        AS "atsN",
+        AVG(CASE WHEN ta.covered THEN 1.0 ELSE 0.0 END)
+          FILTER (WHERE ta.covered IS NOT NULL)                                    AS "atsCoverRate"
+      FROM team_appearances ta
+      JOIN teams t ON t.team_id = ta.team_id
+      GROUP BY t.abbreviation, t.name
+      HAVING COUNT(*) >= 5
+      ORDER BY AVG(ta.implied - ta.actual) FILTER (WHERE ta.implied IS NOT NULL) DESC NULLS LAST
+    `);
+    return (rows.rows as TeamVegasInsightRow[]).map((r) => ({
+      teamAbbrev:      String(r.teamAbbrev),
+      teamName:        String(r.teamName),
+      n:               Number(r.n),
+      nImplied:        Number(r.nImplied),
+      avgImplied:      r.avgImplied      != null ? Number(r.avgImplied)      : null,
+      avgActual:       r.avgActual       != null ? Number(r.avgActual)       : null,
+      mae:             r.mae             != null ? Number(r.mae)             : null,
+      bias:            r.bias            != null ? Number(r.bias)            : null,
+      overImpliedRate: r.overImpliedRate != null ? Number(r.overImpliedRate) : null,
+      avgGameTotal:    r.avgGameTotal    != null ? Number(r.avgGameTotal)    : null,
+      gameOverRate:    r.gameOverRate    != null ? Number(r.gameOverRate)    : null,
+      atsN:            Number(r.atsN),
+      atsCoverRate:    r.atsCoverRate    != null ? Number(r.atsCoverRate)    : null,
+    }));
+  }
+}
+
 // ── Biggest Misses ───────────────────────────────────────────
 
 export type BiggestMissRow = {

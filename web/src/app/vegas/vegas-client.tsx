@@ -9,6 +9,7 @@ import type {
   SpreadCoverageRow,
   VegasSummaryStatsRow,
   BiggestMissRow,
+  TeamVegasInsightRow,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
@@ -42,6 +43,7 @@ type Props = {
   spreadCoverage: SpreadCoverageRow[];
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
+  teamInsights: TeamVegasInsightRow[];
   queryDate: string;
   sport: Sport;
 };
@@ -53,6 +55,7 @@ export default function VegasClient({
   spreadCoverage,
   vegasSummary,
   biggestMisses,
+  teamInsights,
   queryDate,
   sport,
 }: Props) {
@@ -425,6 +428,69 @@ export default function VegasClient({
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Team Vegas Insights ──────────────────────────────── */}
+      {teamInsights.length > 0 && (
+        <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
+          <div>
+            <h2 className="font-semibold">Team Vegas Insights</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Sorted by scoring bias — teams Vegas most underestimates (top) to most overestimates (bottom).
+              Bias = implied − actual: negative means team scores more than expected.
+              Over Imp% = how often the team beats their own implied total.
+              ATS% = against the spread cover rate.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500">
+                  <th className="py-1 text-left">Team</th>
+                  <th className="py-1 text-right">G</th>
+                  <th className="py-1 text-right">Avg Imp</th>
+                  <th className="py-1 text-right">Avg Actual</th>
+                  <th className="py-1 text-right">MAE</th>
+                  <th className="py-1 text-right">Bias</th>
+                  <th className="py-1 text-right">Over Imp%</th>
+                  <th className="py-1 text-right">Game O%</th>
+                  <th className="py-1 text-right">ATS%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamInsights.map((row) => {
+                  // bias: positive means Vegas underestimates (team scores more than implied)
+                  const biasColor = row.bias == null ? "" : row.bias > 1 ? "text-green-700 font-semibold" : row.bias < -1 ? "text-red-600 font-semibold" : "";
+                  const overImpColor = row.overImpliedRate == null ? "" : row.overImpliedRate > 0.53 ? "text-green-700" : row.overImpliedRate < 0.47 ? "text-red-600" : "";
+                  const gameOColor = row.gameOverRate == null ? "" : row.gameOverRate > 0.53 ? "text-green-700" : row.gameOverRate < 0.47 ? "text-red-600" : "";
+                  const atsColor = row.atsCoverRate == null ? "" : row.atsCoverRate > 0.53 ? "text-green-700" : row.atsCoverRate < 0.47 ? "text-red-600" : "";
+                  return (
+                    <tr key={row.teamAbbrev} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-1.5 font-medium">{row.teamAbbrev}</td>
+                      <td className="py-1.5 text-right text-gray-400">{row.n}</td>
+                      <td className="py-1.5 text-right">{row.avgImplied != null ? row.avgImplied.toFixed(1) : "—"}</td>
+                      <td className="py-1.5 text-right">{row.avgActual != null ? row.avgActual.toFixed(1) : "—"}</td>
+                      <td className="py-1.5 text-right">{row.mae != null ? row.mae.toFixed(1) : "—"}</td>
+                      <td className={`py-1.5 text-right ${biasColor}`}>
+                        {row.bias != null ? `${row.bias > 0 ? "−" : "+"}${Math.abs(row.bias).toFixed(1)}` : "—"}
+                      </td>
+                      <td className={`py-1.5 text-right ${overImpColor}`}>
+                        {row.overImpliedRate != null ? `${(row.overImpliedRate * 100).toFixed(0)}%` : "—"}
+                      </td>
+                      <td className={`py-1.5 text-right ${gameOColor}`}>
+                        {row.gameOverRate != null ? `${(row.gameOverRate * 100).toFixed(0)}%` : "—"}
+                      </td>
+                      <td className={`py-1.5 text-right ${atsColor}`}>
+                        {row.atsCoverRate != null ? `${(row.atsCoverRate * 100).toFixed(0)}%` : "—"}
+                        {row.atsN > 0 && <span className="ml-1 text-gray-400">({row.atsN})</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
