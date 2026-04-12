@@ -181,13 +181,25 @@ Gaps identified:
 
 ---
 
-### Phase 1 — `/analytics` Route (Cross-Slate Calibration)
+### Phase 1 — `/analytics` Route (Cross-Slate Calibration) ✅ Done
 
 **Goal:** Surface model calibration trends across all historical slates in the web UI.
 
 **New file:** `web/src/app/analytics/page.tsx` (Server Component)
 **New file:** `web/src/app/analytics/analytics-client.tsx` (Client Component)
-**Modified:** `web/src/db/queries.ts` — add 4 new query functions
+**New file:** `web/src/app/analytics/analytics-content.tsx` (async data-fetching wrapper)
+**Modified:** `web/src/db/queries.ts` — 6 query functions added
+
+**Implemented sections in `/analytics`:**
+1. Accuracy Trend — line chart, MAE over time (our model vs LineStar), ownership correlation
+2. Position Breakdown — MAE + bias per position, sorted worst→best
+3. Salary Tier — MAE + bias per $1k salary bucket
+4. Leverage Calibration — Q1→Q4 avg_proj vs avg_actual vs avg_beat
+5. Ownership vs Team Total — ownership sensitivity by team implied run total (MLB) / point total (NBA)
+6. **Projection Source Breakdown** — per-slate MAE/bias comparison for live (v2), our (v1), LineStar — last 20 slates, excludes DNPs (`getProjectionSourceBreakdown(sport)`)
+7. **MLB Batting Order Calibration** — avg proj vs actual vs delta vs ownership by batting slot #1–9, excludes SP/RP (`getMlbBattingOrderCalibration()`)
+
+Both #6 and #7 were added 2026-04-11.
 
 #### Queries to add in `queries.ts`:
 
@@ -351,12 +363,12 @@ When loading a slate, the user can optionally input the cash line for the contes
 
 ### Implementation Order
 
-| Priority | Phase | Impact | Effort |
-|----------|-------|--------|--------|
-| 1 | Phase 2 — LineStar soft dependency | Prevents daily slate failures | Low |
-| 2 | Phase 3 — Results web upload | Removes manual step after every slate | Medium |
-| 3 | Phase 1 — `/analytics` route | Core model calibration visibility | High |
-| 4 | Phase 4 — Cash line calibration | Accuracy of strategy leaderboard | Low |
+| Priority | Phase | Impact | Effort | Status |
+|----------|-------|--------|--------|--------|
+| 1 | Phase 2 — LineStar soft dependency | Prevents daily slate failures | Low | Planned |
+| 2 | Phase 3 — Results web upload | Removes manual step after every slate | Medium | Planned |
+| 3 | Phase 1 — `/analytics` route | Core model calibration visibility | High | ✅ Done |
+| 4 | Phase 4 — Cash line calibration | Accuracy of strategy leaderboard | Low | Planned |
 
 ---
 
@@ -563,6 +575,14 @@ max_team_batters: int = 6        # cap to prevent 8-man stacks
 bring_back: bool = True          # require 1+ from opposing team
 no_sp_stack: bool = True         # block pitcher-opponent batter combos
 ```
+
+**MLB optimizer features implemented (as of 2026-04-11):**
+
+- **HR Correlation stacking** (`hrCorrelation`, `hrCorrelationThreshold` in `MlbOptimizerSettings`): When a batter's `hr_prob_1plus` exceeds the threshold (default 0.12), the preceding batter (order − 1) gets +5 score and the batter two spots ahead (order − 2) gets +2. Wraps around: batter #1's predecessor is #9. Computed via `computeHrBonusMap()` in `mlb-optimizer.ts`. Bonus map is JSON-serialized as `Record<number, number>` in `MlbPreparedOptimizerRun` for incremental job persistence.
+
+- **Pitcher Ceiling Boost** (`pitcherCeilingBoost`, `pitcherCeilingCount`): The top-N pitchers by ceiling score (K rate, outs, ER, opponent team total, projection, value) receive a search bonus during pitcher pair enumeration. Computed via `getMlbPitcherCeilingBadges()` and passed to `enumeratePitcherPairs()`.
+
+- **GPP Blowup Candidates panel** (`dfs-client.tsx`): Client-side computed signal for low-salary batters with high GPP upside. Score = `(teamTotal / 4.5) × ceiling × value / 10`. Displayed above the player pool table for MLB slates. Excludes SP/RP and OUT players.
 
 ### Issues to Anticipate
 
