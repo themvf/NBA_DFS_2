@@ -8,6 +8,7 @@ import type {
   TeamTotalAccuracyRow,
   SpreadCoverageRow,
   VegasSummaryStatsRow,
+  BiggestMissRow,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
@@ -40,6 +41,7 @@ type Props = {
   teamTotalAccuracy: TeamTotalAccuracyRow[];
   spreadCoverage: SpreadCoverageRow[];
   vegasSummary: VegasSummaryStatsRow | null;
+  biggestMisses: BiggestMissRow[];
   queryDate: string;
   sport: Sport;
 };
@@ -50,6 +52,7 @@ export default function VegasClient({
   teamTotalAccuracy,
   spreadCoverage,
   vegasSummary,
+  biggestMisses,
   queryDate,
   sport,
 }: Props) {
@@ -422,6 +425,61 @@ export default function VegasClient({
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Biggest Misses ────────────────────────────────────── */}
+      {biggestMisses.length > 0 && (
+        <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
+          <div>
+            <h2 className="font-semibold">
+              Biggest {sport === "mlb" ? "Run Total" : "Game Total"} Misses — Top 20
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Games where {sport === "mlb" ? "run" : "point"} total deviated most from the Vegas line.
+              Positive miss = over, negative = under.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500">
+                  <th className="py-1 text-left">Date</th>
+                  <th className="py-1 text-left">Matchup</th>
+                  <th className="py-1 text-right">Line</th>
+                  <th className="py-1 text-right">Actual</th>
+                  <th className="py-1 text-right">Miss</th>
+                  <th className="py-1 text-right">Spread</th>
+                  <th className="py-1 text-right">Home Win%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {biggestMisses.map((row, i) => {
+                  const isOver = row.miss > 0;
+                  const missColor = isOver ? "text-green-700 font-semibold" : "text-red-600 font-semibold";
+                  const spreadStr = row.homeSpread == null ? "—"
+                    : row.homeSpread > 0 ? `+${row.homeSpread}` : String(row.homeSpread);
+                  return (
+                    <tr key={i} className="border-b border-gray-50">
+                      <td className="py-1.5 text-gray-500">{row.gameDate}</td>
+                      <td className="py-1.5 font-medium">
+                        {row.awayAbbrev} @ {row.homeAbbrev}
+                      </td>
+                      <td className="py-1.5 text-right">{row.vegasTotal.toFixed(1)}</td>
+                      <td className="py-1.5 text-right">{row.actualTotal}</td>
+                      <td className={`py-1.5 text-right ${missColor}`}>
+                        {isOver ? "+" : ""}{row.miss.toFixed(1)}
+                      </td>
+                      <td className="py-1.5 text-right">{spreadStr}</td>
+                      <td className="py-1.5 text-right">
+                        {row.vegasProbHome != null ? `${(row.vegasProbHome * 100).toFixed(0)}%` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

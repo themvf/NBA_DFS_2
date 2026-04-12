@@ -2405,3 +2405,95 @@ export async function getVegasSummaryStats(sport: Sport = "nba"): Promise<VegasS
     };
   }
 }
+
+// ── Biggest Misses ───────────────────────────────────────────
+
+export type BiggestMissRow = {
+  gameDate: string;
+  homeAbbrev: string;
+  awayAbbrev: string;
+  homeName: string;
+  awayName: string;
+  vegasTotal: number;
+  actualTotal: number;
+  miss: number;         // actual − vegas (positive = over, negative = under)
+  absMiss: number;
+  homeSpread: number | null;
+  vegasProbHome: number | null;
+};
+
+export async function getBiggestMisses(sport: Sport = "nba", limit = 20): Promise<BiggestMissRow[]> {
+  if (sport === "mlb") {
+    const rows = await db.execute(sql`
+      SELECT
+        m.game_date::text                                                              AS "gameDate",
+        ht.abbreviation                                                                AS "homeAbbrev",
+        at.abbreviation                                                                AS "awayAbbrev",
+        ht.name                                                                        AS "homeName",
+        at.name                                                                        AS "awayName",
+        m.vegas_total                                                                  AS "vegasTotal",
+        (m.home_score + m.away_score)                                                  AS "actualTotal",
+        (m.home_score + m.away_score)::DOUBLE PRECISION - m.vegas_total               AS "miss",
+        ABS((m.home_score + m.away_score)::DOUBLE PRECISION - m.vegas_total)          AS "absMiss",
+        m.home_spread                                                                  AS "homeSpread",
+        m.vegas_prob_home                                                              AS "vegasProbHome"
+      FROM mlb_matchups m
+      JOIN mlb_teams ht ON ht.team_id = m.home_team_id
+      JOIN mlb_teams at ON at.team_id = m.away_team_id
+      WHERE m.vegas_total IS NOT NULL
+        AND m.home_score  IS NOT NULL
+        AND m.away_score  IS NOT NULL
+      ORDER BY ABS((m.home_score + m.away_score)::DOUBLE PRECISION - m.vegas_total) DESC
+      LIMIT ${limit}
+    `);
+    return (rows.rows as BiggestMissRow[]).map((r) => ({
+      gameDate:      String(r.gameDate),
+      homeAbbrev:    String(r.homeAbbrev),
+      awayAbbrev:    String(r.awayAbbrev),
+      homeName:      String(r.homeName),
+      awayName:      String(r.awayName),
+      vegasTotal:    Number(r.vegasTotal),
+      actualTotal:   Number(r.actualTotal),
+      miss:          Number(r.miss),
+      absMiss:       Number(r.absMiss),
+      homeSpread:    r.homeSpread    != null ? Number(r.homeSpread)    : null,
+      vegasProbHome: r.vegasProbHome != null ? Number(r.vegasProbHome) : null,
+    }));
+  } else {
+    const rows = await db.execute(sql`
+      SELECT
+        nm.game_date::text                                                             AS "gameDate",
+        ht.abbreviation                                                                AS "homeAbbrev",
+        at.abbreviation                                                                AS "awayAbbrev",
+        ht.name                                                                        AS "homeName",
+        at.name                                                                        AS "awayName",
+        nm.vegas_total                                                                 AS "vegasTotal",
+        (nm.home_score + nm.away_score)                                                AS "actualTotal",
+        (nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.vegas_total            AS "miss",
+        ABS((nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.vegas_total)       AS "absMiss",
+        nm.home_spread                                                                 AS "homeSpread",
+        nm.vegas_prob_home                                                             AS "vegasProbHome"
+      FROM nba_matchups nm
+      JOIN teams ht ON ht.team_id = nm.home_team_id
+      JOIN teams at ON at.team_id = nm.away_team_id
+      WHERE nm.vegas_total IS NOT NULL
+        AND nm.home_score  IS NOT NULL
+        AND nm.away_score  IS NOT NULL
+      ORDER BY ABS((nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.vegas_total) DESC
+      LIMIT ${limit}
+    `);
+    return (rows.rows as BiggestMissRow[]).map((r) => ({
+      gameDate:      String(r.gameDate),
+      homeAbbrev:    String(r.homeAbbrev),
+      awayAbbrev:    String(r.awayAbbrev),
+      homeName:      String(r.homeName),
+      awayName:      String(r.awayName),
+      vegasTotal:    Number(r.vegasTotal),
+      actualTotal:   Number(r.actualTotal),
+      miss:          Number(r.miss),
+      absMiss:       Number(r.absMiss),
+      homeSpread:    r.homeSpread    != null ? Number(r.homeSpread)    : null,
+      vegasProbHome: r.vegasProbHome != null ? Number(r.vegasProbHome) : null,
+    }));
+  }
+}
