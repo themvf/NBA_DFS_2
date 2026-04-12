@@ -5791,12 +5791,15 @@ export async function runMlbOptimizer(
       dp.eligible_positions AS "eligiblePositions", dp.salary,
       dp.our_proj AS "ourProj", dp.our_leverage AS "ourLeverage",
       dp.linestar_proj AS "linestarProj", dp.proj_own_pct AS "projOwnPct", dp.avg_fpts_dk AS "avgFptsDk",
+      dp.proj_ceiling AS "projCeiling", dp.boom_rate AS "boomRate",
       dp.dk_in_starting_lineup AS "dkInStartingLineup",
       dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
       dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
       dp.is_out AS "isOut", dp.game_info AS "gameInfo",
       mt.logo_url AS "teamLogo", mt.name AS "teamName",
-      mm.home_team_id AS "homeTeamId"
+      mm.home_team_id AS "homeTeamId", mm.away_team_id AS "awayTeamId",
+      mm.vegas_total AS "vegasTotal", mm.home_implied AS "homeImplied", mm.away_implied AS "awayImplied",
+      dp.hr_prob_1plus AS "hrProb1Plus", dp.prop_pts AS "propPts", dp.prop_reb AS "propReb", dp.prop_ast AS "propAst"
     FROM dk_players dp
     LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
     LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id

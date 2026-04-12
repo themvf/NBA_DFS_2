@@ -28,6 +28,8 @@ export type MlbOptimizerPlayer = Pick<
   | "ourLeverage"
   | "linestarProj"
   | "projOwnPct"
+  | "projCeiling"
+  | "boomRate"
   | "dkInStartingLineup"
   | "dkStartingLineupOrder"
   | "dkTeamLineupConfirmed"
@@ -83,6 +85,22 @@ const MLB_TEAM_BATTER_KEEP_COUNT = 10;
 const MLB_CHEAP_BATTER_KEEP_COUNT = 10;
 const MLB_GPP_LEVERAGE_WEIGHT = 0.6;
 const MLB_CASH_LEVERAGE_WEIGHT = 0.1;
+const MLB_GPP_HITTER_CEILING_EDGE_WEIGHT = 0.16;
+const MLB_GPP_PITCHER_CEILING_EDGE_WEIGHT = 0.18;
+const MLB_GPP_HITTER_BOOM_WEIGHT = 5.5;
+const MLB_GPP_PITCHER_BOOM_WEIGHT = 4.25;
+const MLB_GPP_HR_WEIGHT = 2.75;
+const MLB_GPP_STRIKEOUT_PROP_WEIGHT = 0.16;
+const MLB_GPP_CHALK_PENALTY_START = 10.0;
+const MLB_GPP_CHALK_PENALTY_WEIGHT = 0.045;
+const MLB_GPP_LINEUP_OWNERSHIP_TARGET = 115.0;
+const MLB_GPP_LINEUP_OWNERSHIP_WEIGHT = 0.055;
+const MLB_GPP_HIGH_OWNED_HITTER_THRESHOLD = 18.0;
+const MLB_GPP_HIGH_OWNED_PITCHER_THRESHOLD = 24.0;
+const MLB_GPP_HIGH_OWNED_PLAYER_ALLOWANCE = 3;
+const MLB_GPP_HIGH_OWNED_PLAYER_PENALTY = 0.85;
+const MLB_GPP_STACK_OWNERSHIP_THRESHOLD = 42.0;
+const MLB_GPP_STACK_OWNERSHIP_WEIGHT = 0.05;
 const MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5;
 const MLB_TEMPLATE_USAGE_PENALTY = 1.25;
 const MLB_TEMPLATE_ROTATION_PENALTY = 0.6;
@@ -110,10 +128,13 @@ type BatterSearchState = {
   slotAssignment: Partial<Record<MlbLineupSlot, MlbOptimizerPlayer>>;
   selectedIds: Set<number>;
   teamCounts: Map<number, number>;
+  hitterTeamOwnership: Map<number, number>;
   salary: number;
   score: number;
   projection: number;
   leverage: number;
+  ownership: number;
+  highOwnedCount: number;
 };
 
 function finiteOrNull(value: number | null | undefined): number | null {
@@ -166,10 +187,79 @@ function getMlbLeverage(player: MlbOptimizerPlayer): number {
   return finiteOrNull(player.ourLeverage) ?? 0;
 }
 
+function getMlbProjectedOwnership(player: MlbOptimizerPlayer): number {
+  return Math.max(0, finiteOrNull(player.projOwnPct) ?? 0);
+}
+
+function isHighOwnedMlbPlayer(player: MlbOptimizerPlayer): boolean {
+  const threshold = isPitcher(player.eligiblePositions)
+    ? MLB_GPP_HIGH_OWNED_PITCHER_THRESHOLD
+    : MLB_GPP_HIGH_OWNED_HITTER_THRESHOLD;
+  return getMlbProjectedOwnership(player) >= threshold;
+}
+
+function getMaxMlbTeamOwnership(teamOwnership: Map<number, number>): number {
+  let maxOwnership = 0;
+  for (const ownership of teamOwnership.values()) {
+    if (ownership > maxOwnership) maxOwnership = ownership;
+  }
+  return maxOwnership;
+}
+
+function getMlbLineupDuplicationPenalty(
+  totalOwnership: number,
+  highOwnedCount: number,
+  hitterTeamOwnership: Map<number, number>,
+  mode: "cash" | "gpp",
+): number {
+  if (mode !== "gpp") return 0;
+
+  const totalOwnershipPenalty = Math.max(0, totalOwnership - MLB_GPP_LINEUP_OWNERSHIP_TARGET) * MLB_GPP_LINEUP_OWNERSHIP_WEIGHT;
+  const highOwnedPenalty = Math.max(0, highOwnedCount - MLB_GPP_HIGH_OWNED_PLAYER_ALLOWANCE) * MLB_GPP_HIGH_OWNED_PLAYER_PENALTY;
+  const stackOwnershipPenalty = Math.max(0, getMaxMlbTeamOwnership(hitterTeamOwnership) - MLB_GPP_STACK_OWNERSHIP_THRESHOLD) * MLB_GPP_STACK_OWNERSHIP_WEIGHT;
+
+  return totalOwnershipPenalty + highOwnedPenalty + stackOwnershipPenalty;
+}
+
+function getMlbGppBonus(player: MlbOptimizerPlayer): number {
+  const projection = getMlbProjection(player);
+  if (projection <= 0) return 0;
+
+  const projectedOwnership = Math.max(0, finiteOrNull(player.projOwnPct) ?? 0);
+  const chalkPenalty = Math.max(0, projectedOwnership - MLB_GPP_CHALK_PENALTY_START) * MLB_GPP_CHALK_PENALTY_WEIGHT;
+  const boomRate = Math.max(0, finiteOrNull(player.boomRate) ?? 0);
+
+  if (isPitcher(player.eligiblePositions)) {
+    const ceiling = finiteOrNull(player.projCeiling) ?? (projection * 1.55);
+    const ceilingEdge = Math.max(0, ceiling - projection);
+    const strikeoutProp = Math.max(0, (finiteOrNull(player.propPts) ?? 0) - 5);
+    return (ceilingEdge * MLB_GPP_PITCHER_CEILING_EDGE_WEIGHT)
+      + (boomRate * MLB_GPP_PITCHER_BOOM_WEIGHT)
+      + (strikeoutProp * MLB_GPP_STRIKEOUT_PROP_WEIGHT)
+      - chalkPenalty;
+  }
+
+  const ceiling = finiteOrNull(player.projCeiling) ?? (projection * 1.7);
+  const ceilingEdge = Math.max(0, ceiling - projection);
+  const hrProb = Math.max(0, finiteOrNull(player.hrProb1Plus) ?? 0);
+  const impliedRuns = getMlbTeamImpliedRuns(player);
+  const runEnvironmentBoost = impliedRuns != null
+    ? Math.max(0, impliedRuns - MLB_LEAGUE_AVG_TEAM_TOTAL) * 0.22
+    : 0;
+
+  return (ceilingEdge * MLB_GPP_HITTER_CEILING_EDGE_WEIGHT)
+    + (boomRate * MLB_GPP_HITTER_BOOM_WEIGHT)
+    + (hrProb * MLB_GPP_HR_WEIGHT)
+    + runEnvironmentBoost
+    - chalkPenalty;
+}
+
 function getMlbSearchScore(player: MlbOptimizerPlayer, mode: "cash" | "gpp"): number {
   const projection = getMlbProjection(player);
   const leverage = getMlbLeverage(player);
-  return projection + leverage * (mode === "gpp" ? MLB_GPP_LEVERAGE_WEIGHT : MLB_CASH_LEVERAGE_WEIGHT);
+  return projection
+    + leverage * (mode === "gpp" ? MLB_GPP_LEVERAGE_WEIGHT : MLB_CASH_LEVERAGE_WEIGHT)
+    + (mode === "gpp" ? getMlbGppBonus(player) : 0);
 }
 
 function getMlbTeamImpliedRuns(player: MlbOptimizerPlayer): number | null {
@@ -477,10 +567,24 @@ function enumeratePitcherPairs(
 ): Array<{ players: [MlbOptimizerPlayer, MlbOptimizerPlayer]; score: number }> {
   const sorted = sortMlbPlayersForSearch(pitchers, mode).slice(0, Math.max(8, Math.min(18, pitchers.length)));
   return enumerateCombinations(sorted, 2)
-    .map(([a, b]) => ({
-      players: [a, b] as [MlbOptimizerPlayer, MlbOptimizerPlayer],
-      score: getMlbSearchScore(a, mode) + getMlbSearchScore(b, mode) + (pitcherBonusById.get(a.id) ?? 0) + (pitcherBonusById.get(b.id) ?? 0),
-    }))
+    .map(([a, b]) => {
+      const players = [a, b] as [MlbOptimizerPlayer, MlbOptimizerPlayer];
+      const hitterTeamOwnership = new Map<number, number>();
+      return {
+        players,
+        score:
+          getMlbSearchScore(a, mode)
+          + getMlbSearchScore(b, mode)
+          + (pitcherBonusById.get(a.id) ?? 0)
+          + (pitcherBonusById.get(b.id) ?? 0)
+          - getMlbLineupDuplicationPenalty(
+            players.reduce((sum, player) => sum + getMlbProjectedOwnership(player), 0),
+            players.filter((player) => isHighOwnedMlbPlayer(player)).length,
+            hitterTeamOwnership,
+            mode,
+          ),
+      };
+    })
     .sort((a, b) => b.score - a.score || a.players[0].id - b.players[0].id || a.players[1].id - b.players[1].id)
     .slice(0, MLB_PITCHER_PAIR_LIMIT);
 }
@@ -526,12 +630,24 @@ function enumerateMlbStackTemplates(
     }
     const score = sorted
       .slice(0, stackSize)
-      .reduce((sum, player) => sum + getMlbSearchScore(player, mode) + (getMlbProjection(player) * 0.01), 0)
-      * getMlbStackEnvironmentFactor(sorted[0] ?? null);
+      .reduce((sum, player) => sum + getMlbSearchScore(player, mode) + (getMlbProjection(player) * 0.01), 0);
+    const selectedStackPlayers = sorted.slice(0, stackSize);
+    const hitterTeamOwnership = new Map<number, number>();
+    hitterTeamOwnership.set(
+      teamId,
+      selectedStackPlayers.reduce((sum, player) => sum + getMlbProjectedOwnership(player), 0),
+    );
     templates.push({
       id: `stack-${teamId}-${stackSize}`,
       minCountsByTeam,
-      score,
+      score:
+        (score * getMlbStackEnvironmentFactor(sorted[0] ?? null))
+        - getMlbLineupDuplicationPenalty(
+          selectedStackPlayers.reduce((sum, player) => sum + getMlbProjectedOwnership(player), 0),
+          selectedStackPlayers.filter((player) => isHighOwnedMlbPlayer(player)).length,
+          hitterTeamOwnership,
+          mode,
+        ),
       baseRank: 0,
     });
   }
@@ -695,9 +811,14 @@ function solveMlbLineup(
   const lockedBatterProjection = lockedBatters.reduce((sum, player) => sum + getMlbProjection(player), 0);
   const lockedBatterLeverage = lockedBatters.reduce((sum, player) => sum + getMlbLeverage(player), 0);
   const lockedBatterTeamCounts = new Map<number, number>();
+  const lockedBatterTeamOwnership = new Map<number, number>();
   for (const player of lockedBatters) {
     if (player.teamId == null) continue;
     lockedBatterTeamCounts.set(player.teamId, (lockedBatterTeamCounts.get(player.teamId) ?? 0) + 1);
+    lockedBatterTeamOwnership.set(
+      player.teamId,
+      (lockedBatterTeamOwnership.get(player.teamId) ?? 0) + getMlbProjectedOwnership(player),
+    );
   }
 
   const pitchers = sortMlbPlayersForSearch(
@@ -788,6 +909,9 @@ function solveMlbLineup(
     const pitcherSalary = pitcherPair[0].salary + pitcherPair[1].salary;
     if (pitcherSalary >= MLB_SALARY_CAP) return null;
     if (lockedPitchers.some((player) => !pitcherIds.has(player.id))) return null;
+
+    const pitcherPairOwnership = pitcherPair.reduce((sum, player) => sum + getMlbProjectedOwnership(player), 0);
+    const pitcherPairHighOwnedCount = pitcherPair.filter((player) => isHighOwnedMlbPlayer(player)).length;
 
     const maxBattersByTeam = new Map<number, number>();
     for (const pitcher of pitcherPair) {
@@ -888,10 +1012,13 @@ function solveMlbLineup(
       slotAssignment: { ...lockedBatterSlotAssignments },
       selectedIds: new Set<number>(lockedBatterIds),
       teamCounts: new Map<number, number>(lockedBatterTeamCounts),
+      hitterTeamOwnership: new Map<number, number>(lockedBatterTeamOwnership),
       salary: pitcherSalary + lockedBatterSalary,
       score: pitcherPair.reduce((sum, player) => sum + getScoreForPitcher(player), 0) + lockedBatterScore,
       projection: pitcherPair.reduce((sum, player) => sum + getMlbProjection(player), 0) + lockedBatterProjection,
       leverage: pitcherPair.reduce((sum, player) => sum + getMlbLeverage(player), 0) + lockedBatterLeverage,
+      ownership: pitcherPairOwnership + lockedBatters.reduce((sum, player) => sum + getMlbProjectedOwnership(player), 0),
+      highOwnedCount: pitcherPairHighOwnedCount + lockedBatters.filter((player) => isHighOwnedMlbPlayer(player)).length,
     }];
 
     for (let depth = 0; depth < orderedSlots.length; depth++) {
@@ -904,12 +1031,17 @@ function solveMlbLineup(
           const selectedIds = new Set(state.selectedIds);
           selectedIds.add(player.id);
           const teamCounts = new Map(state.teamCounts);
+          const hitterTeamOwnership = new Map(state.hitterTeamOwnership);
           if (player.teamId != null) {
             const nextCount = (teamCounts.get(player.teamId) ?? 0) + 1;
             if (nextCount > (maxBattersByTeam.get(player.teamId) ?? MLB_MAX_HITTERS_PER_TEAM)) {
               continue;
             }
             teamCounts.set(player.teamId, nextCount);
+            hitterTeamOwnership.set(
+              player.teamId,
+              (hitterTeamOwnership.get(player.teamId) ?? 0) + getMlbProjectedOwnership(player),
+            );
           }
 
           const salary = state.salary + player.salary;
@@ -926,10 +1058,13 @@ function solveMlbLineup(
             },
             selectedIds,
             teamCounts,
+            hitterTeamOwnership,
             salary,
             score: state.score + getScoreForBatter(player),
             projection: state.projection + getMlbProjection(player),
             leverage: state.leverage + getMlbLeverage(player),
+            ownership: state.ownership + getMlbProjectedOwnership(player),
+            highOwnedCount: state.highOwnedCount + (isHighOwnedMlbPlayer(player) ? 1 : 0),
           };
           // batters is pre-sorted by score; iterate once instead of filter+sort per state.
           let estimateBonus = 0;
@@ -941,7 +1076,12 @@ function solveMlbLineup(
               slotsNeeded--;
             }
           }
-          const estimate = nextState.score + estimateBonus;
+          const estimate = nextState.score + estimateBonus - getMlbLineupDuplicationPenalty(
+            nextState.ownership,
+            nextState.highOwnedCount,
+            nextState.hitterTeamOwnership,
+            mode,
+          );
           nextStates.push({ ...nextState, estimate });
         }
       }
@@ -958,6 +1098,8 @@ function solveMlbLineup(
       states = nextStates.slice(0, beamWidth).map(({ estimate: _estimate, ...state }) => state);
     }
 
+    let bestLineup: MlbGeneratedLineup | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
     for (const state of states) {
       if (!canMeetTeamMinimums(state.selectedIds, state.teamCounts, [], template.minCountsByTeam)) continue;
       const players = [
@@ -973,7 +1115,15 @@ function solveMlbLineup(
         minChanges,
       );
       if (!validation.ok) continue;
-      return {
+      const penalizedScore = state.score - getMlbLineupDuplicationPenalty(
+        state.ownership,
+        state.highOwnedCount,
+        state.hitterTeamOwnership,
+        mode,
+      );
+      if (penalizedScore <= bestScore) continue;
+      bestScore = penalizedScore;
+      bestLineup = {
         players,
         slots: validation.slots,
         totalSalary: state.salary,
@@ -983,7 +1133,7 @@ function solveMlbLineup(
       };
     }
 
-    return null;
+    return bestLineup;
   }
 
   for (const pitcherPair of pitcherPairs) {

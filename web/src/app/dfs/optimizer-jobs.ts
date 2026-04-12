@@ -224,6 +224,8 @@ async function loadMlbOptimizerPool(
       dp.linestar_proj AS "linestarProj",
       dp.proj_own_pct AS "projOwnPct",
       dp.avg_fpts_dk AS "avgFptsDk",
+      dp.proj_ceiling AS "projCeiling",
+      dp.boom_rate AS "boomRate",
       dp.dk_in_starting_lineup AS "dkInStartingLineup",
       dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
       dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",

@@ -238,12 +238,69 @@ function getPlayerLeverage(p: OptimizerPlayer): number {
 // which is enough to prefer the contrarian play without overriding a 5+ FPTS projection gap.
 const NBA_GPP_LEVERAGE_WEIGHT = 0.6;
 const NBA_CASH_LEVERAGE_WEIGHT = 0.1;
+const NBA_GPP_CEILING_EDGE_WEIGHT = 0.18;
+const NBA_GPP_BOOM_WEIGHT = 5.0;
+const NBA_GPP_CHALK_PENALTY_START = 18.0;
+const NBA_GPP_CHALK_PENALTY_WEIGHT = 0.035;
+const NBA_GPP_LINEUP_OWNERSHIP_TARGET = 125.0;
+const NBA_GPP_LINEUP_OWNERSHIP_WEIGHT = 0.045;
+const NBA_GPP_HIGH_OWNED_PLAYER_THRESHOLD = 20.0;
+const NBA_GPP_HIGH_OWNED_PLAYER_ALLOWANCE = 3;
+const NBA_GPP_HIGH_OWNED_PLAYER_PENALTY = 0.9;
+const NBA_GPP_STACK_OWNERSHIP_THRESHOLD = 48.0;
+const NBA_GPP_STACK_OWNERSHIP_WEIGHT = 0.03;
+
+function getNbaGppBonus(p: OptimizerPlayer): number {
+  const projection = getPlayerProjection(p) ?? 0;
+  if (projection <= 0) return 0;
+
+  const ceiling = finiteOrNull(p.projCeiling) ?? (projection * 1.18);
+  const ceilingEdge = Math.max(0, ceiling - projection);
+  const boomRate = Math.max(0, finiteOrNull(p.boomRate) ?? 0);
+  const projectedOwnership = Math.max(0, finiteOrNull(p.projOwnPct) ?? 0);
+  const chalkPenalty = Math.max(0, projectedOwnership - NBA_GPP_CHALK_PENALTY_START) * NBA_GPP_CHALK_PENALTY_WEIGHT;
+
+  return (ceilingEdge * NBA_GPP_CEILING_EDGE_WEIGHT)
+    + (boomRate * NBA_GPP_BOOM_WEIGHT)
+    - chalkPenalty;
+}
+
+function getProjectedOwnership(p: OptimizerPlayer): number {
+  return Math.max(0, finiteOrNull(p.projOwnPct) ?? 0);
+}
+
+function isHighOwnedNbaPlayer(p: OptimizerPlayer): boolean {
+  return getProjectedOwnership(p) >= NBA_GPP_HIGH_OWNED_PLAYER_THRESHOLD;
+}
+
+function getMaxTeamOwnership(teamOwnership: Map<number, number>): number {
+  let maxOwnership = 0;
+  for (const ownership of teamOwnership.values()) {
+    if (ownership > maxOwnership) maxOwnership = ownership;
+  }
+  return maxOwnership;
+}
+
+function getNbaLineupDuplicationPenalty(
+  totalOwnership: number,
+  highOwnedCount: number,
+  teamOwnership: Map<number, number>,
+  mode: "cash" | "gpp",
+): number {
+  if (mode !== "gpp") return 0;
+
+  const totalOwnershipPenalty = Math.max(0, totalOwnership - NBA_GPP_LINEUP_OWNERSHIP_TARGET) * NBA_GPP_LINEUP_OWNERSHIP_WEIGHT;
+  const highOwnedPenalty = Math.max(0, highOwnedCount - NBA_GPP_HIGH_OWNED_PLAYER_ALLOWANCE) * NBA_GPP_HIGH_OWNED_PLAYER_PENALTY;
+  const stackOwnershipPenalty = Math.max(0, getMaxTeamOwnership(teamOwnership) - NBA_GPP_STACK_OWNERSHIP_THRESHOLD) * NBA_GPP_STACK_OWNERSHIP_WEIGHT;
+
+  return totalOwnershipPenalty + highOwnedPenalty + stackOwnershipPenalty;
+}
 
 function getPlayerScore(p: OptimizerPlayer, mode: "cash" | "gpp"): number {
   const projection = getPlayerProjection(p) ?? 0;
   const leverage = finiteOrNull(p.ourLeverage) ?? 0;
   const weight = mode === "gpp" ? NBA_GPP_LEVERAGE_WEIGHT : NBA_CASH_LEVERAGE_WEIGHT;
-  return projection + leverage * weight;
+  return projection + leverage * weight + (mode === "gpp" ? getNbaGppBonus(p) : 0);
 }
 
 function getSearchScore(
@@ -528,9 +585,23 @@ function sumTopTeamScores(
   mode: "cash" | "gpp",
   scoreAdjustments?: Map<number, number>,
 ): number {
-  return players
-    .slice(0, count)
+  const selected = players.slice(0, count);
+  const baseScore = selected
     .reduce((total, player) => total + getSearchScore(player, mode, scoreAdjustments) + ((getPlayerProjection(player) ?? 0) * 0.01), 0);
+  if (mode !== "gpp") return baseScore;
+
+  const teamOwnership = new Map<number, number>();
+  for (const player of selected) {
+    if (player.teamId == null) continue;
+    teamOwnership.set(player.teamId, (teamOwnership.get(player.teamId) ?? 0) + getProjectedOwnership(player));
+  }
+
+  return baseScore - getNbaLineupDuplicationPenalty(
+    selected.reduce((sum, player) => sum + getProjectedOwnership(player), 0),
+    selected.filter((player) => isHighOwnedNbaPlayer(player)).length,
+    teamOwnership,
+    mode,
+  );
 }
 
 function enumerateTeamCombinations(teamIds: number[], size: number): number[][] {
@@ -807,10 +878,13 @@ function solveReducedLineup(
     slotAssignment: Partial<Record<LineupSlot, OptimizerPlayer>>;
     selectedIds: Set<number>;
     teamCounts: Map<number, number>;
+    teamOwnership: Map<number, number>;
     salary: number;
     score: number;
     projection: number;
     leverage: number;
+    ownership: number;
+    highOwnedCount: number;
   };
 
   function canMeetTeamMinimums(
@@ -873,8 +947,15 @@ function solveReducedLineup(
     for (const [teamId, minCount] of minCountsByTeam) {
       teamShortfall += Math.max(0, minCount - (state.teamCounts.get(teamId) ?? 0));
     }
+    const duplicationPenalty = getNbaLineupDuplicationPenalty(
+      state.ownership,
+      state.highOwnedCount,
+      state.teamOwnership,
+      mode,
+    );
     return state.score
       + scoreUpperBound(state.selectedIds, remainingCount)
+      - duplicationPenalty
       - (missingLocks * 1000)
       - (teamShortfall * 250);
   }
@@ -918,10 +999,13 @@ function solveReducedLineup(
     slotAssignment: {},
     selectedIds: new Set<number>(),
     teamCounts: new Map<number, number>(),
+    teamOwnership: new Map<number, number>(),
     salary: 0,
     score: 0,
     projection: 0,
     leverage: 0,
+    ownership: 0,
+    highOwnedCount: 0,
   }];
 
   for (let depth = 0; depth < orderedSlots.length; depth++) {
@@ -937,8 +1021,10 @@ function solveReducedLineup(
         const selectedIds = new Set(state.selectedIds);
         selectedIds.add(player.id);
         const teamCounts = new Map(state.teamCounts);
+        const teamOwnership = new Map(state.teamOwnership);
         if (player.teamId != null) {
           teamCounts.set(player.teamId, (teamCounts.get(player.teamId) ?? 0) + 1);
+          teamOwnership.set(player.teamId, (teamOwnership.get(player.teamId) ?? 0) + getProjectedOwnership(player));
         }
 
         const salary = state.salary + player.salary;
@@ -957,10 +1043,13 @@ function solveReducedLineup(
           },
           selectedIds,
           teamCounts,
+          teamOwnership,
           salary,
           score: state.score + getSearchScore(player, mode, scoreAdjustments),
           projection: state.projection + (getPlayerProjection(player) ?? 0),
           leverage: state.leverage + getPlayerLeverage(player),
+          ownership: state.ownership + getProjectedOwnership(player),
+          highOwnedCount: state.highOwnedCount + (isHighOwnedNbaPlayer(player) ? 1 : 0),
         };
         nextStates.push({
           ...nextState,
@@ -982,13 +1071,21 @@ function solveReducedLineup(
   }
 
   let bestState: SearchState | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
   for (const state of states) {
     if (state.salary < salaryFloor) continue;
     if (Array.from(lockedPlayers).some((playerId) => !state.selectedIds.has(playerId))) continue;
     if (!canMeetTeamMinimums(state.selectedIds, state.teamCounts, [])) continue;
     if (!canPlaceLockedPlayers(state.selectedIds, [])) continue;
-    if (!bestState || state.score > bestState.score) {
+    const penalizedScore = state.score - getNbaLineupDuplicationPenalty(
+      state.ownership,
+      state.highOwnedCount,
+      state.teamOwnership,
+      mode,
+    );
+    if (!bestState || penalizedScore > bestScore) {
       bestState = state;
+      bestScore = penalizedScore;
     }
   }
 
