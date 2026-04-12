@@ -20,6 +20,7 @@ import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./opti
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import { applyMlbPendingLineupPolicy, inferMlbTeamLineupConfirmed, isPositiveMlbLineupOrder } from "./mlb-lineup";
 import { validateMlbRuleSelections } from "./mlb-optimizer-rules";
+import { updateOptimizerJobLineupActualsForSlate } from "./optimizer-jobs";
 import { loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
 import { applyMlbHitterProjectionCalibration } from "./mlb-projection-utils";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
@@ -6038,15 +6039,22 @@ export async function uploadResults(formData: FormData): Promise<{
     if (ids.length === 0) continue;
 
     const [row] = await db
-      .select({ total: sql<number | null>`SUM(${dkPlayers.actualFpts})` })
+      .select({
+        total: sql<number | null>`SUM(${dkPlayers.actualFpts})`,
+        actualCount: sql<number>`COUNT(*) FILTER (WHERE ${dkPlayers.actualFpts} IS NOT NULL)::int`,
+      })
       .from(dkPlayers)
-      .where(and(inArray(dkPlayers.id, ids), sql`${dkPlayers.actualFpts} IS NOT NULL`));
+      .where(inArray(dkPlayers.id, ids));
 
-    if (row?.total != null) {
+    if (row && row.actualCount === ids.length && row.total != null) {
       await db.update(dkLineups).set({ actualFpts: row.total }).where(eq(dkLineups.id, lineup.id));
       lineupsUpdated++;
+    } else {
+      await db.update(dkLineups).set({ actualFpts: null }).where(eq(dkLineups.id, lineup.id));
     }
   }
+
+  const optimizerLineupActuals = await updateOptimizerJobLineupActualsForSlate(slate.id);
 
   try { await syncProjectionSnapshotActualsForSlate(slate.id); } catch { /* non-fatal */ }
   let analysisNote = "";
@@ -6062,7 +6070,7 @@ export async function uploadResults(formData: FormData): Promise<{
   revalidatePath("/dfs");
 
   const matchRate = Math.round((updated / resultPlayers.length) * 100);
-  const lineupNote = `${lineupRows.length > 0 ? `, ${lineupsUpdated}/${lineupRows.length} lineup actuals updated` : ""}${analysisNote}`;
+  const lineupNote = `${lineupRows.length > 0 ? `, ${lineupsUpdated}/${lineupRows.length} lineup actuals updated` : ""}${optimizerLineupActuals.total > 0 ? `, ${optimizerLineupActuals.updated}/${optimizerLineupActuals.total} optimizer lineup actuals updated` : ""}${analysisNote}`;
   return {
     ok: true,
     message: `${updated}/${resultPlayers.length} players matched (${matchRate}%)${lineupNote} — slate ${slate.slateDate}`,

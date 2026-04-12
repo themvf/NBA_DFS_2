@@ -124,6 +124,10 @@ async function runEnsureStatements() {
     )
   `));
   await db.execute(sql.raw(`
+    ALTER TABLE optimizer_job_lineups
+    ADD COLUMN IF NOT EXISTS actual_fpts DOUBLE PRECISION
+  `));
+  await db.execute(sql.raw(`
     CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_lookup
     ON optimizer_jobs(client_token, sport, slate_id, status)
   `));
@@ -436,6 +440,7 @@ function buildPersistedLineup(lineup: JobLineupRecord): PersistedOptimizerJobLin
     totalSalary: lineup.totalSalary,
     projFpts: lineup.projFpts,
     leverageScore: lineup.leverage,
+    actualFpts: lineup.actualFpts ?? null,
     durationMs: lineup.durationMs,
     winningStage: lineup.winningStage ?? undefined,
     attempts: (lineup.attemptsJson as PersistedOptimizerJobLineup["attempts"]) ?? [],
@@ -548,6 +553,55 @@ export async function getOptimizerJobStatus(jobId: number): Promise<OptimizerJob
   };
 }
 
+export async function updateOptimizerJobLineupActualsForSlate(
+  slateId: number,
+): Promise<{ total: number; updated: number }> {
+  await ensureOptimizerJobTables();
+
+  await db.execute(sql`
+    WITH lineup_totals AS (
+      SELECT
+        ojl.id AS lineup_id,
+        COUNT(pid.player_id_text)::int AS player_count,
+        COUNT(dp.actual_fpts)::int AS actual_count,
+        SUM(dp.actual_fpts) AS total_fpts
+      FROM optimizer_job_lineups ojl
+      INNER JOIN optimizer_jobs oj
+        ON oj.id = ojl.job_id
+      LEFT JOIN LATERAL jsonb_array_elements_text(ojl.player_ids_json) AS pid(player_id_text)
+        ON TRUE
+      LEFT JOIN dk_players dp
+        ON dp.id = pid.player_id_text::INTEGER
+       AND dp.slate_id = oj.slate_id
+      WHERE oj.slate_id = ${slateId}
+      GROUP BY ojl.id
+    )
+    UPDATE optimizer_job_lineups ojl
+    SET actual_fpts = CASE
+      WHEN lt.player_count > 0 AND lt.actual_count = lt.player_count THEN lt.total_fpts
+      ELSE NULL
+    END
+    FROM lineup_totals lt
+    WHERE ojl.id = lt.lineup_id
+  `);
+
+  const counts = await db.execute<{ total: number; updated: number }>(sql`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE ojl.actual_fpts IS NOT NULL)::int AS updated
+    FROM optimizer_job_lineups ojl
+    INNER JOIN optimizer_jobs oj
+      ON oj.id = ojl.job_id
+    WHERE oj.slate_id = ${slateId}
+  `);
+
+  const row = counts.rows[0];
+  return {
+    total: row?.total ?? 0,
+    updated: row?.updated ?? 0,
+  };
+}
+
 async function readActiveJob(
   clientToken: string,
   sport: Sport,
@@ -583,6 +637,192 @@ export async function getActiveOptimizerJobStatus(
   }
 
   return getOptimizerJobStatus(job.id);
+}
+
+type OptimizerFeatureMetrics = {
+  nJobs: number;
+  nSlates: number;
+  totalLineups: number;
+  avgProjFpts: number | null;
+  avgActualFpts: number | null;
+  avgBeat: number | null;
+  avgLeverage: number | null;
+  cashRate: number | null;
+  bestSingleLineup: number | null;
+};
+
+export type MlbHrCorrelationImpactRow = OptimizerFeatureMetrics & {
+  hrCorrelation: boolean;
+  hrCorrelationThreshold: number | null;
+};
+
+export type MlbPitcherCeilingImpactRow = OptimizerFeatureMetrics & {
+  pitcherCeilingBoost: boolean;
+  pitcherCeilingCount: number | null;
+};
+
+export type MlbAntiCorrelationImpactRow = OptimizerFeatureMetrics & {
+  effectiveAntiCorrMax: number;
+};
+
+export type MlbOptimizerFeatureCombinationRow = OptimizerFeatureMetrics & {
+  hrCorrelation: boolean;
+  hrCorrelationThreshold: number | null;
+  pitcherCeilingBoost: boolean;
+  pitcherCeilingCount: number | null;
+  effectiveAntiCorrMax: number;
+};
+
+export type MlbOptimizerFeatureImpactSummary = {
+  hrCorrelation: MlbHrCorrelationImpactRow[];
+  pitcherCeiling: MlbPitcherCeilingImpactRow[];
+  antiCorrelation: MlbAntiCorrelationImpactRow[];
+  combinations: MlbOptimizerFeatureCombinationRow[];
+};
+
+export async function getMlbOptimizerFeatureImpactSummary(): Promise<MlbOptimizerFeatureImpactSummary> {
+  await ensureOptimizerJobTables();
+
+  const baseCte = `
+    WITH lineup_actuals AS (
+      SELECT
+        ojl.id AS lineup_id,
+        oj.id AS job_id,
+        oj.slate_id,
+        COALESCE((oj.settings_json ->> 'hrCorrelation')::boolean, false) AS hr_correlation,
+        CASE
+          WHEN COALESCE((oj.settings_json ->> 'hrCorrelation')::boolean, false)
+          THEN (oj.settings_json ->> 'hrCorrelationThreshold')::double precision
+          ELSE NULL::double precision
+        END AS hr_correlation_threshold,
+        COALESCE((oj.settings_json ->> 'pitcherCeilingBoost')::boolean, false) AS pitcher_ceiling_boost,
+        CASE
+          WHEN COALESCE((oj.settings_json ->> 'pitcherCeilingBoost')::boolean, false)
+          THEN (oj.settings_json ->> 'pitcherCeilingCount')::integer
+          ELSE NULL::integer
+        END AS pitcher_ceiling_count,
+        COALESCE(
+          (oj.effective_settings_json ->> 'antiCorrMax')::integer,
+          (oj.settings_json ->> 'antiCorrMax')::integer,
+          10
+        ) AS effective_anti_corr_max,
+        ojl.proj_fpts,
+        ojl.actual_fpts AS stored_actual_fpts,
+        ojl.leverage,
+        ds.cash_line,
+        COUNT(pid.player_id_text)::int AS player_count,
+        COUNT(dp.actual_fpts)::int AS actual_count,
+        SUM(dp.actual_fpts) AS derived_actual_fpts
+      FROM optimizer_job_lineups ojl
+      INNER JOIN optimizer_jobs oj
+        ON oj.id = ojl.job_id
+      INNER JOIN dk_slates ds
+        ON ds.id = oj.slate_id
+      LEFT JOIN LATERAL jsonb_array_elements_text(ojl.player_ids_json) AS pid(player_id_text)
+        ON TRUE
+      LEFT JOIN dk_players dp
+        ON dp.id = pid.player_id_text::INTEGER
+       AND dp.slate_id = oj.slate_id
+      WHERE oj.sport = 'mlb'
+      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+    ),
+    base AS (
+      SELECT
+        job_id,
+        slate_id,
+        hr_correlation,
+        hr_correlation_threshold,
+        pitcher_ceiling_boost,
+        pitcher_ceiling_count,
+        effective_anti_corr_max,
+        proj_fpts,
+        COALESCE(
+          stored_actual_fpts,
+          CASE
+            WHEN player_count > 0 AND actual_count = player_count THEN derived_actual_fpts
+            ELSE NULL::double precision
+          END
+        ) AS actual_fpts,
+        leverage,
+        cash_line
+      FROM lineup_actuals
+      WHERE COALESCE(
+        stored_actual_fpts,
+        CASE
+          WHEN player_count > 0 AND actual_count = player_count THEN derived_actual_fpts
+          ELSE NULL::double precision
+        END
+      ) IS NOT NULL
+    )
+  `;
+
+  const sharedMetrics = `
+      COUNT(DISTINCT job_id)::int AS "nJobs",
+      COUNT(DISTINCT slate_id)::int AS "nSlates",
+      COUNT(*)::int AS "totalLineups",
+      AVG(proj_fpts) AS "avgProjFpts",
+      AVG(actual_fpts) AS "avgActualFpts",
+      AVG(actual_fpts - proj_fpts) AS "avgBeat",
+      AVG(leverage) AS "avgLeverage",
+      ROUND(
+        (100.0 * COUNT(*) FILTER (WHERE actual_fpts >= COALESCE(cash_line, 300)) / NULLIF(COUNT(*), 0))::numeric,
+        1
+      )::double precision AS "cashRate",
+      MAX(actual_fpts) AS "bestSingleLineup"
+  `;
+
+  const hrCorrelation = await db.execute<MlbHrCorrelationImpactRow>(sql.raw(`
+    ${baseCte}
+    SELECT
+      hr_correlation AS "hrCorrelation",
+      hr_correlation_threshold AS "hrCorrelationThreshold",
+      ${sharedMetrics}
+    FROM base
+    GROUP BY 1, 2
+    ORDER BY 1 DESC, 2 NULLS FIRST
+  `));
+
+  const pitcherCeiling = await db.execute<MlbPitcherCeilingImpactRow>(sql.raw(`
+    ${baseCte}
+    SELECT
+      pitcher_ceiling_boost AS "pitcherCeilingBoost",
+      pitcher_ceiling_count AS "pitcherCeilingCount",
+      ${sharedMetrics}
+    FROM base
+    GROUP BY 1, 2
+    ORDER BY 1 DESC, 2 NULLS FIRST
+  `));
+
+  const antiCorrelation = await db.execute<MlbAntiCorrelationImpactRow>(sql.raw(`
+    ${baseCte}
+    SELECT
+      effective_anti_corr_max AS "effectiveAntiCorrMax",
+      ${sharedMetrics}
+    FROM base
+    GROUP BY 1
+    ORDER BY 1 ASC
+  `));
+
+  const combinations = await db.execute<MlbOptimizerFeatureCombinationRow>(sql.raw(`
+    ${baseCte}
+    SELECT
+      hr_correlation AS "hrCorrelation",
+      hr_correlation_threshold AS "hrCorrelationThreshold",
+      pitcher_ceiling_boost AS "pitcherCeilingBoost",
+      pitcher_ceiling_count AS "pitcherCeilingCount",
+      effective_anti_corr_max AS "effectiveAntiCorrMax",
+      ${sharedMetrics}
+    FROM base
+    GROUP BY 1, 2, 3, 4, 5
+    ORDER BY 1 DESC, 3 DESC, 5 ASC, 2 NULLS FIRST, 4 NULLS FIRST
+  `));
+
+  return {
+    hrCorrelation: hrCorrelation.rows,
+    pitcherCeiling: pitcherCeiling.rows,
+    antiCorrelation: antiCorrelation.rows,
+    combinations: combinations.rows,
+  };
 }
 
 export async function createOptimizerJob(input: CreateOptimizerJobRequest): Promise<{ jobId: number; existing: boolean }> {

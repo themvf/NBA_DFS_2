@@ -546,6 +546,7 @@ TABLES = [
         total_salary INTEGER NOT NULL,
         proj_fpts DOUBLE PRECISION NOT NULL,
         leverage DOUBLE PRECISION NOT NULL,
+        actual_fpts DOUBLE PRECISION,
         duration_ms INTEGER NOT NULL,
         winning_stage TEXT,
         attempts_json JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -556,6 +557,16 @@ TABLES = [
 ]
 
 MIGRATIONS = [
+    # 2026-04-12: Persist actual results for durable optimizer lineup tracking
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'optimizer_job_lineups' AND column_name = 'actual_fpts'
+        ) THEN
+            ALTER TABLE optimizer_job_lineups ADD COLUMN actual_fpts DOUBLE PRECISION;
+        END IF;
+    END $$""",
+
     # 2026-04-11: Add final scores + implied totals to nba_matchups for Vegas analysis
     """DO $$ BEGIN
         IF NOT EXISTS (
@@ -597,6 +608,31 @@ MIGRATIONS = [
             WHERE table_name = 'nba_matchups' AND column_name = 'home_spread'
         ) THEN
             ALTER TABLE nba_matchups ADD COLUMN home_spread DOUBLE PRECISION;
+        END IF;
+    END $$""",
+    # 2026-04-12: Add scores + run line to mlb_matchups for Vegas analysis
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'mlb_matchups' AND column_name = 'home_score'
+        ) THEN
+            ALTER TABLE mlb_matchups ADD COLUMN home_score INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'mlb_matchups' AND column_name = 'away_score'
+        ) THEN
+            ALTER TABLE mlb_matchups ADD COLUMN away_score INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'mlb_matchups' AND column_name = 'home_spread'
+        ) THEN
+            ALTER TABLE mlb_matchups ADD COLUMN home_spread DOUBLE PRECISION;
         END IF;
     END $$""",
     # 2026-03-28: Add composite unique on (game_date, home, away) to match Drizzle schema

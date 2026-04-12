@@ -3,16 +3,25 @@ import {
   getOuHitRate,
   getTeamTotalAccuracy,
   getSpreadCoverage,
+  getMlbVegasMatchups,
+  getMlbOuHitRate,
+  getMlbTeamTotalAccuracy,
+  getMlbRunLineCoverage,
+  getVegasSummaryStats,
 } from "@/db/queries";
+import type { Sport } from "@/db/queries";
 import VegasClient from "./vegas-client";
 
-export default async function VegasContent({ date }: { date?: string }) {
-  const [matchups, ouHitRate, teamTotalAccuracy, spreadCoverage] = await Promise.all([
-    getVegasMatchups(date),
-    getOuHitRate(),
-    getTeamTotalAccuracy(),
-    getSpreadCoverage(),
+export default async function VegasContent({ date, sport = "nba" }: { date?: string; sport?: Sport }) {
+  const [sportData, vegasSummary] = await Promise.all([
+    Promise.all(
+      sport === "mlb"
+        ? [getMlbVegasMatchups(date), getMlbOuHitRate(), getMlbTeamTotalAccuracy(), getMlbRunLineCoverage()]
+        : [getVegasMatchups(date), getOuHitRate(), getTeamTotalAccuracy(), getSpreadCoverage()],
+    ),
+    getVegasSummaryStats(sport),
   ]);
+  const [matchups, ouHitRate, teamTotalAccuracy, spreadCoverage] = sportData;
 
   return (
     <VegasClient
@@ -20,7 +29,9 @@ export default async function VegasContent({ date }: { date?: string }) {
       ouHitRate={ouHitRate}
       teamTotalAccuracy={teamTotalAccuracy}
       spreadCoverage={spreadCoverage}
+      vegasSummary={vegasSummary}
       queryDate={date ?? new Date().toISOString().slice(0, 10)}
+      sport={sport}
     />
   );
 }

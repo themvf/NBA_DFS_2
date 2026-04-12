@@ -83,6 +83,7 @@ export type PersistedOptimizerJobLineup = {
   totalSalary: number;
   projFpts: number;
   leverageScore: number;
+  actualFpts: number | null;
   durationMs: number;
   winningStage?: string;
   attempts: OptimizerLineupAttemptDebug[];

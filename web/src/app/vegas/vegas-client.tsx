@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type {
   VegasMatchupRow,
   OuHitRateRow,
   TeamTotalAccuracyRow,
   SpreadCoverageRow,
+  VegasSummaryStatsRow,
 } from "@/db/queries";
+import { fetchVegasOdds } from "./actions";
+import type { Sport } from "@/db/queries";
 
 const fmt1 = (v: number | null | undefined) =>
   v == null ? "—" : v.toFixed(1);
@@ -36,7 +39,9 @@ type Props = {
   ouHitRate: OuHitRateRow[];
   teamTotalAccuracy: TeamTotalAccuracyRow[];
   spreadCoverage: SpreadCoverageRow[];
+  vegasSummary: VegasSummaryStatsRow | null;
   queryDate: string;
+  sport: Sport;
 };
 
 export default function VegasClient({
@@ -44,10 +49,23 @@ export default function VegasClient({
   ouHitRate,
   teamTotalAccuracy,
   spreadCoverage,
+  vegasSummary,
   queryDate,
+  sport,
 }: Props) {
   const router = useRouter();
   const [dateInput, setDateInput] = useState(queryDate);
+  const [isPending, startTransition] = useTransition();
+  const [fetchMsg, setFetchMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handleFetchLines = () => {
+    setFetchMsg(null);
+    startTransition(async () => {
+      const result = await fetchVegasOdds(queryDate, sport);
+      setFetchMsg({ ok: result.ok, text: result.message });
+      if (result.ok) router.refresh();
+    });
+  };
 
   const hasScores = ouHitRate.length > 0 || teamTotalAccuracy.length > 0;
 
@@ -67,9 +85,11 @@ export default function VegasClient({
       {/* Header */}
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <h1 className="text-xl font-bold">Vegas Analysis — NBA</h1>
+          <h1 className="text-xl font-bold">Vegas Analysis — {sport.toUpperCase()}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Matchup lines and historical O/U + spread calibration
+            {sport === "mlb"
+              ? "Matchup lines and historical O/U + run line calibration"
+              : "Matchup lines and historical O/U + spread calibration"}
           </p>
         </div>
         <div className="flex items-center gap-2 ml-auto">
@@ -80,8 +100,93 @@ export default function VegasClient({
             onChange={(e) => handleDateChange(e.target.value)}
             className="rounded border px-2 py-1 text-sm"
           />
+          <button
+            onClick={handleFetchLines}
+            disabled={isPending}
+            className="rounded border px-3 py-1 text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isPending ? "Fetching…" : matchups.length === 0 ? "Fetch Lines" : "Refresh Lines"}
+          </button>
         </div>
       </div>
+
+      {/* ── Fetch feedback ───────────────────────────────────── */}
+      {fetchMsg && (
+        <div
+          className={`rounded border px-3 py-2 text-sm ${
+            fetchMsg.ok
+              ? "border-green-200 bg-green-50 text-green-800"
+              : "border-red-200 bg-red-50 text-red-800"
+          }`}
+        >
+          {fetchMsg.text}
+        </div>
+      )}
+
+      {/* ── Vegas MAE Summary ────────────────────────────────── */}
+      {vegasSummary != null && vegasSummary.n > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold mb-3">
+            Season Vegas Accuracy — {sport.toUpperCase()}
+            <span className="ml-2 text-xs font-normal text-gray-400">
+              {vegasSummary.n} games with lines + scores
+            </span>
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="rounded border p-3 text-center">
+              <div className="text-xs text-gray-500 mb-1">Game Total MAE</div>
+              <div className="text-xl font-bold">
+                {vegasSummary.gameTotalMae != null ? vegasSummary.gameTotalMae.toFixed(2) : "—"}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {vegasSummary.gameTotalBias != null
+                  ? `bias ${vegasSummary.gameTotalBias > 0 ? "+" : ""}${vegasSummary.gameTotalBias.toFixed(2)}`
+                  : ""}
+              </div>
+            </div>
+            <div className="rounded border p-3 text-center">
+              <div className="text-xs text-gray-500 mb-1">Team Total MAE</div>
+              <div className="text-xl font-bold">
+                {vegasSummary.teamTotalMae != null ? vegasSummary.teamTotalMae.toFixed(2) : "—"}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {vegasSummary.teamTotalBias != null
+                  ? `bias ${vegasSummary.teamTotalBias > 0 ? "+" : ""}${vegasSummary.teamTotalBias.toFixed(2)}`
+                  : ""}
+              </div>
+            </div>
+            <div className="rounded border p-3 text-center">
+              <div className="text-xs text-gray-500 mb-1">Over Rate</div>
+              <div className={`text-xl font-bold ${vegasSummary.ouOverRate != null && vegasSummary.ouOverRate > 0.52 ? "text-green-700" : vegasSummary.ouOverRate != null && vegasSummary.ouOverRate < 0.48 ? "text-blue-600" : ""}`}>
+                {vegasSummary.ouOverRate != null ? `${(vegasSummary.ouOverRate * 100).toFixed(1)}%` : "—"}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {vegasSummary.ouOverRate != null
+                  ? vegasSummary.ouOverRate > 0.52 ? "overs dominate" : vegasSummary.ouOverRate < 0.48 ? "unders dominate" : "balanced"
+                  : ""}
+              </div>
+            </div>
+            <div className="rounded border p-3 text-center">
+              <div className="text-xs text-gray-500 mb-1">Game Bias</div>
+              <div className={`text-xl font-bold ${vegasSummary.gameTotalBias != null && vegasSummary.gameTotalBias > 0 ? "text-red-600" : "text-blue-600"}`}>
+                {vegasSummary.gameTotalBias != null
+                  ? `${vegasSummary.gameTotalBias > 0 ? "+" : ""}${vegasSummary.gameTotalBias.toFixed(2)}`
+                  : "—"}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {vegasSummary.gameTotalBias != null
+                  ? vegasSummary.gameTotalBias > 0 ? "actuals beat lines" : "lines beat actuals"
+                  : ""}
+              </div>
+            </div>
+            <div className="rounded border p-3 text-center">
+              <div className="text-xs text-gray-500 mb-1">Games Tracked</div>
+              <div className="text-xl font-bold">{vegasSummary.n}</div>
+              <div className="text-xs text-gray-400 mt-0.5">w/ lines + scores</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Today's Matchups ─────────────────────────────────── */}
       <div className="rounded-lg border bg-card p-4 text-sm">
@@ -236,9 +341,11 @@ export default function VegasClient({
       {/* ── Spread Coverage ───────────────────────────────────── */}
       {spreadCoverage.length > 0 && (
         <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
-          <h2 className="font-semibold">Spread Coverage by Tier</h2>
+          <h2 className="font-semibold">{sport === "mlb" ? "Run Line Coverage" : "Spread Coverage by Tier"}</h2>
           <p className="text-xs text-gray-500">
-            Did the favorite cover? Margin = avg actual point differential.
+            {sport === "mlb"
+              ? "Did the favorite cover the run line (±1.5)? Margin = avg actual run differential."
+              : "Did the favorite cover? Margin = avg actual point differential."}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
@@ -282,7 +389,7 @@ export default function VegasClient({
         <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
           <h2 className="font-semibold">Team Implied Total Accuracy</h2>
           <p className="text-xs text-gray-500">
-            Implied total (derived from moneylines + O/U) vs actual team score.
+            Implied {sport === "mlb" ? "run total" : "total"} (derived from moneylines + O/U) vs actual team score.
             Bias: positive = market over-projected this team. Sorted by worst MAE.
           </p>
           <div className="overflow-x-auto">

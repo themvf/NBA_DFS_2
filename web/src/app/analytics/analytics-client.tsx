@@ -280,6 +280,17 @@ export default function AnalyticsClient({
                 connectNulls={false}
               />
               <Line
+                yAxisId="mae"
+                type="monotone"
+                dataKey="vegasTeamTotalMAE"
+                name="Vegas Team MAE"
+                stroke="#f97316"
+                strokeWidth={1.5}
+                strokeDasharray="6 3"
+                dot={{ r: 3 }}
+                connectNulls={false}
+              />
+              <Line
                 yAxisId="corr"
                 type="monotone"
                 dataKey="ownCorr"
@@ -303,6 +314,8 @@ export default function AnalyticsClient({
                   <th className="py-1 text-right">LS MAE</th>
                   <th className="py-1 text-right">LS Bias</th>
                   <th className="py-1 text-right">Own Corr</th>
+                  <th className="py-1 text-right text-orange-600">Vegas Team</th>
+                  <th className="py-1 text-right text-orange-600">Vegas Game</th>
                 </tr>
               </thead>
               <tbody>
@@ -316,6 +329,8 @@ export default function AnalyticsClient({
                     <td className="py-1 text-right">{fmt1(row.lsMAE)}</td>
                     <td className="py-1 text-right"><BiasChip bias={row.lsBias} /></td>
                     <td className="py-1 text-right">{fmt2(row.ownCorr)}</td>
+                    <td className="py-1 text-right text-orange-600">{fmt2(row.vegasTeamTotalMAE)}</td>
+                    <td className="py-1 text-right text-orange-600">{fmt2(row.vegasGameTotalMAE)}</td>
                   </tr>
                 ))}
               </tbody>

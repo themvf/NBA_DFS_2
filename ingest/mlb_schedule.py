@@ -138,7 +138,7 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             params={
                 "apiKey": api_key,
                 "regions": "us",
-                "markets": "h2h,totals",
+                "markets": "h2h,totals,spreads",
                 "oddsFormat": "american",
                 "dateFormat": "iso",
             },
@@ -162,6 +162,8 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         (target_date,),
     )
     matchup_by_home: dict[str, dict] = {r["home_name"]: r for r in rows}
+    # Ensure h2h + totals + spreads (run line) are all fetched
+    markets_to_fetch = "h2h,totals,spreads"
     captured_at = datetime.now(timezone.utc).replace(microsecond=0)
     capture_key = captured_at.isoformat()
 
@@ -190,6 +192,7 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         home_prices: list[int] = []
         away_prices: list[int] = []
         total_points: list[float] = []
+        home_spreads: list[float] = []
         bookmakers = g.get("bookmakers") or []
         for bm in bookmakers:
             for market in bm.get("markets", []):
@@ -206,10 +209,18 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                     )
                     if over and over.get("point") is not None:
                         total_points.append(float(over["point"]))
+                elif market["key"] == "spreads":
+                    home_outcome = next(
+                        (o for o in market.get("outcomes", []) if o["name"] == home_name),
+                        None,
+                    )
+                    if home_outcome and home_outcome.get("point") is not None:
+                        home_spreads.append(float(home_outcome["point"]))
 
         home_ml    = round(sum(home_prices) / len(home_prices)) if home_prices else None
         away_ml    = round(sum(away_prices) / len(away_prices)) if away_prices else None
         vegas_total = round(sum(total_points) / len(total_points) * 2) / 2 if total_points else None
+        home_spread = round(sum(home_spreads) / len(home_spreads) * 2) / 2 if home_spreads else None
         vegas_prob_home = _ml_to_prob(home_ml, away_ml) if home_ml and away_ml else None
 
         # Team-specific implied run totals from moneylines
@@ -228,12 +239,13 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             SET vegas_total     = %s,
                 home_ml         = %s,
                 away_ml         = %s,
+                home_spread     = %s,
                 vegas_prob_home = %s,
                 home_implied    = %s,
                 away_implied    = %s
             WHERE id = %s
             """,
-            (vegas_total, home_ml, away_ml, vegas_prob_home,
+            (vegas_total, home_ml, away_ml, home_spread, vegas_prob_home,
              home_implied, away_implied, matchup["id"]),
         )
         history_rows.append(
@@ -247,6 +259,7 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                 "bookmaker_count": len(bookmakers),
                 "home_ml": home_ml,
                 "away_ml": away_ml,
+                "home_spread": home_spread,
                 "vegas_total": vegas_total,
                 "vegas_prob_home": vegas_prob_home,
                 "home_implied": home_implied,
@@ -260,6 +273,68 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
     if history_rows:
         insert_game_odds_history_rows(db, history_rows)
     print(f"Odds: {updated} matchups updated with Vegas lines for {target_date}")
+    return updated
+
+
+def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
+    """Fetch final scores for completed MLB games and write to mlb_matchups.
+
+    Uses the MLB Stats API schedule endpoint with linescore hydration.
+    Only writes when game status is 'Final'.  Safe to call for past dates.
+    Returns number of matchups updated.
+    """
+    target_date = game_date or date.today().isoformat()
+    logger.info("Fetching MLB scores for %s ...", target_date)
+
+    try:
+        resp = requests.get(
+            f"{MLB_API_BASE}/schedule",
+            params={
+                "sportId": 1,
+                "date": target_date,
+                "hydrate": "linescore",
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException as e:
+        logger.warning("MLB Stats API scores request failed: %s", e)
+        return 0
+
+    dates = data.get("dates", [])
+    if not dates:
+        return 0
+
+    updated = 0
+    for game in dates[0].get("games", []):
+        status = game.get("status", {}).get("abstractGameState", "")
+        if status != "Final":
+            continue
+
+        game_id = str(game.get("gamePk", ""))
+        linescore = game.get("linescore", {})
+        teams_ls = linescore.get("teams", {})
+        home_runs = teams_ls.get("home", {}).get("runs")
+        away_runs = teams_ls.get("away", {}).get("runs")
+
+        if home_runs is None or away_runs is None:
+            continue
+
+        result = db.execute_one(
+            """
+            UPDATE mlb_matchups
+            SET home_score = %s, away_score = %s
+            WHERE game_id = %s
+              AND (home_score IS NULL OR away_score IS NULL)
+            RETURNING id
+            """,
+            (int(home_runs), int(away_runs), game_id),
+        )
+        if result:
+            updated += 1
+
+    logger.info("MLB Scores: %d matchups updated for %s", updated, target_date)
     return updated
 
 
@@ -287,3 +362,4 @@ if __name__ == "__main__":
 
     fetch_schedule(db, args.date)
     fetch_odds(db, config.odds_api.api_key, args.date)
+    fetch_scores(db, args.date)

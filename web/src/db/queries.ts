@@ -644,10 +644,37 @@ export type CrossSlateAccuracyRow = {
   lsMAE: number | null;
   lsBias: number | null;
   ownCorr: number | null;
+  vegasTeamTotalMAE: number | null;
+  vegasGameTotalMAE: number | null;
 };
 
 export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<CrossSlateAccuracyRow[]> {
+  const matchupCte = sport === "mlb"
+    ? sql`
+      WITH matchup_stats AS (
+        SELECT
+          m.game_date,
+          AVG(ABS((m.home_score + m.away_score)::DOUBLE PRECISION - m.vegas_total))                   AS game_total_mae,
+          AVG((ABS(m.home_implied - m.home_score::DOUBLE PRECISION) + ABS(m.away_implied - m.away_score::DOUBLE PRECISION)) / 2.0) AS team_total_mae
+        FROM mlb_matchups m
+        WHERE m.vegas_total IS NOT NULL AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+          AND m.home_implied IS NOT NULL AND m.away_implied IS NOT NULL
+        GROUP BY m.game_date
+      )`
+    : sql`
+      WITH matchup_stats AS (
+        SELECT
+          nm.game_date,
+          AVG(ABS((nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.vegas_total))                   AS game_total_mae,
+          AVG((ABS(nm.home_implied - nm.home_score::DOUBLE PRECISION) + ABS(nm.away_implied - nm.away_score::DOUBLE PRECISION)) / 2.0) AS team_total_mae
+        FROM nba_matchups nm
+        WHERE nm.vegas_total IS NOT NULL AND nm.home_score IS NOT NULL AND nm.away_score IS NOT NULL
+          AND nm.home_implied IS NOT NULL AND nm.away_implied IS NOT NULL
+        GROUP BY nm.game_date
+      )`;
+
   const result = await db.execute<CrossSlateAccuracyRow>(sql`
+    ${matchupCte}
     SELECT
       ds.slate_date                                                            AS "slateDate",
       GREATEST(
@@ -665,9 +692,12 @@ export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<Cross
       AVG(dp.linestar_proj - dp.actual_fpts)
         FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsBias",
       CORR(dp.proj_own_pct, dp.actual_own_pct)
-        FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) AS "ownCorr"
+        FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) AS "ownCorr",
+      MAX(ms.game_total_mae)                                                  AS "vegasGameTotalMAE",
+      MAX(ms.team_total_mae)                                                  AS "vegasTeamTotalMAE"
     FROM dk_players dp
     JOIN dk_slates ds ON ds.id = dp.slate_id
+    LEFT JOIN matchup_stats ms ON ms.game_date = ds.slate_date
     WHERE ds.sport = ${sport}
       AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
     GROUP BY ds.slate_date
@@ -1948,6 +1978,7 @@ export type OuHitRateRow = {
   overRate: number | null;
   avgTotal: number | null;
   avgActual: number | null;
+  gameTotalMae: number | null;
 };
 
 export async function getOuHitRate(): Promise<OuHitRateRow[]> {
@@ -1968,7 +1999,8 @@ export async function getOuHitRate(): Promise<OuHitRateRow[]> {
       COUNT(*) FILTER (WHERE nm.home_score + nm.away_score < nm.vegas_total) AS "underCount",
       COUNT(*) FILTER (WHERE nm.home_score + nm.away_score = nm.vegas_total) AS "pushCount",
       AVG(nm.vegas_total)                                                 AS "avgTotal",
-      AVG((nm.home_score + nm.away_score)::DOUBLE PRECISION)             AS "avgActual"
+      AVG((nm.home_score + nm.away_score)::DOUBLE PRECISION)             AS "avgActual",
+      AVG(ABS((nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.vegas_total)) AS "gameTotalMae"
     FROM nba_matchups nm
     WHERE nm.vegas_total IS NOT NULL
       AND nm.home_score IS NOT NULL
@@ -1989,6 +2021,7 @@ export async function getOuHitRate(): Promise<OuHitRateRow[]> {
       overRate: n > 0 ? overCount / n : null,
       avgTotal: r.avgTotal != null ? Number(r.avgTotal) : null,
       avgActual: r.avgActual != null ? Number(r.avgActual) : null,
+      gameTotalMae: r.gameTotalMae != null ? Number(r.gameTotalMae) : null,
     };
   });
 }
@@ -2099,4 +2132,276 @@ export async function getSpreadCoverage(): Promise<SpreadCoverageRow[]> {
       avgMargin: r.avgMargin != null ? Number(r.avgMargin) : null,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// MLB Vegas Analysis
+// ---------------------------------------------------------------------------
+
+export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
+  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  const rows = await db.execute(sql`
+    SELECT
+      m.id             AS "matchupId",
+      m.game_date      AS "gameDate",
+      ht.name          AS "homeTeam",
+      at.name          AS "awayTeam",
+      ht.abbreviation  AS "homeAbbrev",
+      at.abbreviation  AS "awayAbbrev",
+      m.vegas_total    AS "vegasTotal",
+      m.home_ml        AS "homeMl",
+      m.away_ml        AS "awayMl",
+      m.home_spread    AS "homeSpread",
+      m.vegas_prob_home AS "homeWinProb",
+      m.home_implied   AS "homeImplied",
+      m.away_implied   AS "awayImplied",
+      m.home_score     AS "homeScore",
+      m.away_score     AS "awayScore"
+    FROM mlb_matchups m
+    LEFT JOIN mlb_teams ht ON ht.team_id = m.home_team_id
+    LEFT JOIN mlb_teams at ON at.team_id = m.away_team_id
+    WHERE m.game_date = ${targetDate}
+    ORDER BY m.vegas_total DESC NULLS LAST
+  `);
+  return (rows.rows as VegasMatchupRow[]).map((r) => ({
+    matchupId: Number(r.matchupId),
+    gameDate: String(r.gameDate),
+    homeTeam: String(r.homeTeam ?? ""),
+    awayTeam: String(r.awayTeam ?? ""),
+    homeAbbrev: String(r.homeAbbrev ?? ""),
+    awayAbbrev: String(r.awayAbbrev ?? ""),
+    vegasTotal: r.vegasTotal != null ? Number(r.vegasTotal) : null,
+    homeMl: r.homeMl != null ? Number(r.homeMl) : null,
+    awayMl: r.awayMl != null ? Number(r.awayMl) : null,
+    homeSpread: r.homeSpread != null ? Number(r.homeSpread) : null,
+    homeWinProb: r.homeWinProb != null ? Number(r.homeWinProb) : null,
+    homeImplied: r.homeImplied != null ? Number(r.homeImplied) : null,
+    awayImplied: r.awayImplied != null ? Number(r.awayImplied) : null,
+    homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+    awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+  }));
+}
+
+export async function getMlbOuHitRate(): Promise<OuHitRateRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      CASE
+        WHEN m.vegas_total < 7.5  THEN 'Under 7.5'
+        WHEN m.vegas_total < 8.0  THEN '7.5'
+        WHEN m.vegas_total < 8.5  THEN '8.0'
+        WHEN m.vegas_total < 9.0  THEN '8.5'
+        WHEN m.vegas_total < 9.5  THEN '9.0'
+        WHEN m.vegas_total < 10.0 THEN '9.5'
+        WHEN m.vegas_total < 10.5 THEN '10.0'
+        ELSE '10.5+'
+      END                                                                   AS "totalTier",
+      MIN(m.vegas_total)                                                    AS "tierMin",
+      COUNT(*)                                                              AS "n",
+      COUNT(*) FILTER (WHERE m.home_score + m.away_score > m.vegas_total)  AS "overCount",
+      COUNT(*) FILTER (WHERE m.home_score + m.away_score < m.vegas_total)  AS "underCount",
+      COUNT(*) FILTER (WHERE m.home_score + m.away_score = m.vegas_total)  AS "pushCount",
+      AVG(m.vegas_total)                                                    AS "avgTotal",
+      AVG((m.home_score + m.away_score)::DOUBLE PRECISION)                 AS "avgActual",
+      AVG(ABS((m.home_score + m.away_score)::DOUBLE PRECISION - m.vegas_total)) AS "gameTotalMae"
+    FROM mlb_matchups m
+    WHERE m.vegas_total IS NOT NULL
+      AND m.home_score IS NOT NULL
+      AND m.away_score IS NOT NULL
+    GROUP BY 1
+    ORDER BY MIN(m.vegas_total) ASC NULLS LAST
+  `);
+  return (rows.rows as OuHitRateRow[]).map((r) => {
+    const n = Number(r.n);
+    const overCount = Number(r.overCount);
+    return {
+      totalTier: String(r.totalTier),
+      tierMin: r.tierMin != null ? Number(r.tierMin) : null,
+      n,
+      overCount,
+      underCount: Number(r.underCount),
+      pushCount: Number(r.pushCount),
+      overRate: n > 0 ? overCount / n : null,
+      avgTotal: r.avgTotal != null ? Number(r.avgTotal) : null,
+      avgActual: r.avgActual != null ? Number(r.avgActual) : null,
+      gameTotalMae: r.gameTotalMae != null ? Number(r.gameTotalMae) : null,
+    };
+  });
+}
+
+export async function getMlbTeamTotalAccuracy(): Promise<TeamTotalAccuracyRow[]> {
+  const rows = await db.execute(sql`
+    WITH team_games AS (
+      SELECT
+        m.home_team_id                             AS team_id,
+        m.home_implied                             AS implied_total,
+        m.home_score::DOUBLE PRECISION             AS actual_score
+      FROM mlb_matchups m
+      WHERE m.home_implied IS NOT NULL AND m.home_score IS NOT NULL
+      UNION ALL
+      SELECT
+        m.away_team_id                             AS team_id,
+        m.away_implied                             AS implied_total,
+        m.away_score::DOUBLE PRECISION             AS actual_score
+      FROM mlb_matchups m
+      WHERE m.away_implied IS NOT NULL AND m.away_score IS NOT NULL
+    )
+    SELECT
+      t.abbreviation                               AS "teamAbbrev",
+      t.name                                       AS "teamName",
+      COUNT(*)                                     AS "n",
+      AVG(tg.implied_total)                        AS "avgImplied",
+      AVG(tg.actual_score)                         AS "avgActual",
+      AVG(ABS(tg.implied_total - tg.actual_score)) AS "mae",
+      AVG(tg.implied_total - tg.actual_score)      AS "bias"
+    FROM team_games tg
+    JOIN mlb_teams t ON t.team_id = tg.team_id
+    GROUP BY t.abbreviation, t.name
+    HAVING COUNT(*) >= 3
+    ORDER BY AVG(ABS(tg.implied_total - tg.actual_score)) DESC NULLS LAST
+  `);
+  return (rows.rows as TeamTotalAccuracyRow[]).map((r) => ({
+    teamAbbrev: String(r.teamAbbrev),
+    teamName: String(r.teamName),
+    n: Number(r.n),
+    avgImplied: r.avgImplied != null ? Number(r.avgImplied) : null,
+    avgActual: r.avgActual != null ? Number(r.avgActual) : null,
+    mae: r.mae != null ? Number(r.mae) : null,
+    bias: r.bias != null ? Number(r.bias) : null,
+  }));
+}
+
+export async function getMlbRunLineCoverage(): Promise<SpreadCoverageRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      CASE
+        WHEN ABS(m.home_spread) < 1.0 THEN 'Pick'
+        WHEN ABS(m.home_spread) < 2.0 THEN '±1.5 (Run Line)'
+        ELSE '2.0+'
+      END                                                           AS "spreadTier",
+      MIN(ABS(m.home_spread))                                       AS "tierMin",
+      COUNT(*)                                                       AS "n",
+      COUNT(*) FILTER (WHERE
+        (m.home_spread < 0 AND (m.home_score - m.away_score) > ABS(m.home_spread))
+        OR
+        (m.home_spread > 0 AND (m.away_score - m.home_score) > ABS(m.home_spread))
+      )                                                              AS "coverCount",
+      AVG(ABS(m.home_spread))                                       AS "avgSpread",
+      AVG(ABS(m.home_score - m.away_score)::DOUBLE PRECISION)      AS "avgMargin"
+    FROM mlb_matchups m
+    WHERE m.home_spread IS NOT NULL
+      AND m.home_score  IS NOT NULL
+      AND m.away_score  IS NOT NULL
+      AND m.home_spread <> 0
+    GROUP BY 1
+    ORDER BY MIN(ABS(m.home_spread)) ASC NULLS LAST
+  `);
+  return (rows.rows as SpreadCoverageRow[]).map((r) => {
+    const n = Number(r.n);
+    const coverCount = Number(r.coverCount);
+    return {
+      spreadTier: String(r.spreadTier),
+      tierMin: r.tierMin != null ? Number(r.tierMin) : null,
+      n,
+      coverCount,
+      coverRate: n > 0 ? coverCount / n : null,
+      avgSpread: r.avgSpread != null ? Number(r.avgSpread) : null,
+      avgMargin: r.avgMargin != null ? Number(r.avgMargin) : null,
+    };
+  });
+}
+
+// ── Vegas Summary Stats ──────────────────────────────────────
+
+export type VegasSummaryStatsRow = {
+  n: number;
+  gameTotalMae: number | null;
+  gameTotalBias: number | null;
+  ouOverRate: number | null;
+  teamTotalMae: number | null;
+  teamTotalBias: number | null;
+};
+
+export async function getVegasSummaryStats(sport: Sport = "nba"): Promise<VegasSummaryStatsRow> {
+  const empty: VegasSummaryStatsRow = {
+    n: 0,
+    gameTotalMae: null,
+    gameTotalBias: null,
+    ouOverRate: null,
+    teamTotalMae: null,
+    teamTotalBias: null,
+  };
+
+  if (sport === "mlb") {
+    const [gameRows, teamRows] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          COUNT(*)                                                                          AS "n",
+          AVG(ABS((m.home_score + m.away_score)::DOUBLE PRECISION - m.vegas_total))        AS "gameTotalMae",
+          AVG((m.home_score + m.away_score)::DOUBLE PRECISION - m.vegas_total)             AS "gameTotalBias",
+          AVG(CASE WHEN m.home_score + m.away_score > m.vegas_total THEN 1.0 ELSE 0.0 END) AS "ouOverRate"
+        FROM mlb_matchups m
+        WHERE m.vegas_total IS NOT NULL AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+      `),
+      db.execute(sql`
+        WITH tg AS (
+          SELECT m.home_implied AS implied, m.home_score::DOUBLE PRECISION AS actual
+          FROM mlb_matchups m WHERE m.home_implied IS NOT NULL AND m.home_score IS NOT NULL
+          UNION ALL
+          SELECT m.away_implied, m.away_score::DOUBLE PRECISION
+          FROM mlb_matchups m WHERE m.away_implied IS NOT NULL AND m.away_score IS NOT NULL
+        )
+        SELECT
+          AVG(ABS(tg.implied - tg.actual)) AS "teamTotalMae",
+          AVG(tg.implied - tg.actual)      AS "teamTotalBias"
+        FROM tg
+      `),
+    ]);
+    const g = gameRows.rows[0] as Record<string, unknown>;
+    const t = teamRows.rows[0] as Record<string, unknown>;
+    if (!g) return empty;
+    return {
+      n: g.n != null ? Number(g.n) : 0,
+      gameTotalMae: g.gameTotalMae != null ? Number(g.gameTotalMae) : null,
+      gameTotalBias: g.gameTotalBias != null ? Number(g.gameTotalBias) : null,
+      ouOverRate: g.ouOverRate != null ? Number(g.ouOverRate) : null,
+      teamTotalMae: t?.teamTotalMae != null ? Number(t.teamTotalMae) : null,
+      teamTotalBias: t?.teamTotalBias != null ? Number(t.teamTotalBias) : null,
+    };
+  } else {
+    const [gameRows, teamRows] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          COUNT(*)                                                                           AS "n",
+          AVG(ABS((nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.vegas_total))      AS "gameTotalMae",
+          AVG((nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.vegas_total)           AS "gameTotalBias",
+          AVG(CASE WHEN nm.home_score + nm.away_score > nm.vegas_total THEN 1.0 ELSE 0.0 END) AS "ouOverRate"
+        FROM nba_matchups nm
+        WHERE nm.vegas_total IS NOT NULL AND nm.home_score IS NOT NULL AND nm.away_score IS NOT NULL
+      `),
+      db.execute(sql`
+        WITH tg AS (
+          SELECT nm.home_implied AS implied, nm.home_score::DOUBLE PRECISION AS actual
+          FROM nba_matchups nm WHERE nm.home_implied IS NOT NULL AND nm.home_score IS NOT NULL
+          UNION ALL
+          SELECT nm.away_implied, nm.away_score::DOUBLE PRECISION
+          FROM nba_matchups nm WHERE nm.away_implied IS NOT NULL AND nm.away_score IS NOT NULL
+        )
+        SELECT
+          AVG(ABS(tg.implied - tg.actual)) AS "teamTotalMae",
+          AVG(tg.implied - tg.actual)      AS "teamTotalBias"
+        FROM tg
+      `),
+    ]);
+    const g = gameRows.rows[0] as Record<string, unknown>;
+    const t = teamRows.rows[0] as Record<string, unknown>;
+    if (!g) return empty;
+    return {
+      n: g.n != null ? Number(g.n) : 0,
+      gameTotalMae: g.gameTotalMae != null ? Number(g.gameTotalMae) : null,
+      gameTotalBias: g.gameTotalBias != null ? Number(g.gameTotalBias) : null,
+      ouOverRate: g.ouOverRate != null ? Number(g.ouOverRate) : null,
+      teamTotalMae: t?.teamTotalMae != null ? Number(t.teamTotalMae) : null,
+      teamTotalBias: t?.teamTotalBias != null ? Number(t.teamTotalBias) : null,
+    };
+  }
 }

@@ -72,6 +72,9 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
 
     matchup_ids = []
     for _, row in game_header.iterrows():
+        if row["HOME_TEAM_ID"] is None or row["VISITOR_TEAM_ID"] is None:
+            logger.debug("Skipping row with null team IDs: %s", row.get("GAME_ID"))
+            continue
         nba_game_id  = str(row["GAME_ID"])
         home_nba_id  = int(row["HOME_TEAM_ID"])
         away_nba_id  = int(row["VISITOR_TEAM_ID"])

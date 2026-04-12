@@ -17,6 +17,7 @@ After updating actuals, prints:
   - FPTS accuracy (MAE + bias for our_proj vs linestar_proj vs actual)
   - Ownership accuracy (MAE, bias, correlation)
   - Strategy comparison (avg proj vs avg actual per lineup strategy)
+  - Optimizer feature comparison for MLB durable jobs (if present)
   - Value misses (high FPTS + low proj ownership that we missed entirely)
 """
 
@@ -220,6 +221,8 @@ def run(results_path: str, slate_date: str | None = None) -> None:
         print(f"  Corr: {own_stats['corr']:.3f}  (1.0 = perfect rank-order)")
 
     update_lineup_actuals(db, slate_id)
+    update_optimizer_job_lineup_actuals(db, slate_id)
+    print_optimizer_feature_comparison(db)
     print_value_misses(db, slate_id)
 
 
@@ -293,16 +296,22 @@ def update_lineup_actuals(db, slate_id: int) -> None:
             continue
         placeholders = ",".join(["%s"] * len(ids))
         result = db.execute_one(
-            f"SELECT SUM(actual_fpts) AS total FROM dk_players "
-            f"WHERE id IN ({placeholders}) AND actual_fpts IS NOT NULL",
+            f"SELECT SUM(actual_fpts) AS total, "
+            f"COUNT(*) FILTER (WHERE actual_fpts IS NOT NULL) AS actual_count "
+            f"FROM dk_players WHERE id IN ({placeholders})",
             ids,
         )
-        if result and result["total"] is not None:
+        if result and result["total"] is not None and result["actual_count"] == len(ids):
             db.execute(
                 "UPDATE dk_lineups SET actual_fpts = %s WHERE id = %s",
                 (result["total"], lineup["id"]),
             )
             updated += 1
+        else:
+            db.execute(
+                "UPDATE dk_lineups SET actual_fpts = NULL WHERE id = %s",
+                (lineup["id"],),
+            )
 
     print(f"Lineup actuals updated: {updated}/{len(lineups)}")
 
@@ -322,6 +331,117 @@ def update_lineup_actuals(db, slate_id: int) -> None:
         for row in comparison:
             avg_actual = f"{row['avg_actual']:.1f}" if row["avg_actual"] else "pending"
             print(f"  {row['strategy']:<12}  {row['n']:>4}  {row['avg_proj']:>8.1f}  {avg_actual:>10}")
+
+
+def update_optimizer_job_lineup_actuals(db, slate_id: int) -> None:
+    """Update durable optimizer job lineups with summed actual FPTS for a slate."""
+    db.execute(
+        """
+        WITH lineup_totals AS (
+            SELECT
+                ojl.id AS lineup_id,
+                COUNT(pid.player_id_text)::int AS player_count,
+                COUNT(dp.actual_fpts)::int AS actual_count,
+                SUM(dp.actual_fpts) AS total_fpts
+            FROM optimizer_job_lineups ojl
+            JOIN optimizer_jobs oj
+              ON oj.id = ojl.job_id
+            LEFT JOIN LATERAL jsonb_array_elements_text(ojl.player_ids_json) AS pid(player_id_text)
+              ON TRUE
+            LEFT JOIN dk_players dp
+              ON dp.id = pid.player_id_text::INTEGER
+             AND dp.slate_id = oj.slate_id
+            WHERE oj.slate_id = %s
+            GROUP BY ojl.id
+        )
+        UPDATE optimizer_job_lineups ojl
+        SET actual_fpts = CASE
+            WHEN lt.player_count > 0 AND lt.actual_count = lt.player_count THEN lt.total_fpts
+            ELSE NULL
+        END
+        FROM lineup_totals lt
+        WHERE ojl.id = lt.lineup_id
+        """,
+        (slate_id,),
+    )
+
+    counts = db.execute_one(
+        """
+        SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE ojl.actual_fpts IS NOT NULL)::int AS updated
+        FROM optimizer_job_lineups ojl
+        JOIN optimizer_jobs oj
+          ON oj.id = ojl.job_id
+        WHERE oj.slate_id = %s
+        """,
+        (slate_id,),
+    )
+    if counts and counts["total"]:
+        print(f"Optimizer lineup actuals updated: {counts['updated']}/{counts['total']}")
+
+
+def print_optimizer_feature_comparison(db) -> None:
+    """Summarize MLB optimizer lineup results by feature toggle settings."""
+    rows = db.execute(
+        """
+        WITH base AS (
+            SELECT
+                COALESCE((oj.settings_json ->> 'hrCorrelation')::boolean, false) AS hr_correlation,
+                CASE
+                    WHEN COALESCE((oj.settings_json ->> 'hrCorrelation')::boolean, false)
+                    THEN (oj.settings_json ->> 'hrCorrelationThreshold')::double precision
+                    ELSE NULL::double precision
+                END AS hr_threshold,
+                COALESCE((oj.settings_json ->> 'pitcherCeilingBoost')::boolean, false) AS pitcher_ceiling_boost,
+                CASE
+                    WHEN COALESCE((oj.settings_json ->> 'pitcherCeilingBoost')::boolean, false)
+                    THEN (oj.settings_json ->> 'pitcherCeilingCount')::integer
+                    ELSE NULL::integer
+                END AS pitcher_ceiling_count,
+                COALESCE(
+                    (oj.effective_settings_json ->> 'antiCorrMax')::integer,
+                    (oj.settings_json ->> 'antiCorrMax')::integer,
+                    10
+                ) AS effective_anti_corr_max,
+                ojl.proj_fpts,
+                ojl.actual_fpts
+            FROM optimizer_job_lineups ojl
+            JOIN optimizer_jobs oj
+              ON oj.id = ojl.job_id
+            WHERE oj.sport = 'mlb'
+              AND ojl.actual_fpts IS NOT NULL
+        )
+        SELECT
+            hr_correlation,
+            hr_threshold,
+            pitcher_ceiling_boost,
+            pitcher_ceiling_count,
+            effective_anti_corr_max,
+            COUNT(*)::int AS n,
+            AVG(proj_fpts) AS avg_proj,
+            AVG(actual_fpts) AS avg_actual,
+            AVG(actual_fpts - proj_fpts) AS avg_beat
+        FROM base
+        GROUP BY 1, 2, 3, 4, 5
+        ORDER BY hr_correlation DESC, pitcher_ceiling_boost DESC, effective_anti_corr_max ASC, hr_threshold NULLS FIRST
+        """
+    )
+    if not rows:
+        return
+
+    print("\n-- MLB Optimizer Feature Comparison --")
+    print(f"  {'HR Corr':<8} {'HR Thr':>6}  {'PitchCeil':<10} {'TopN':>4}  {'Anti':>4}  {'N':>4}  {'AvgProj':>8}  {'AvgActual':>10}  {'AvgBeat':>8}")
+    print("  " + "-" * 82)
+    for row in rows:
+        hr_thr = f"{row['hr_threshold']:.2f}" if row["hr_threshold"] is not None else "  --"
+        pitch_n = f"{row['pitcher_ceiling_count']:>4}" if row["pitcher_ceiling_count"] is not None else "  --"
+        print(
+            f"  {('on' if row['hr_correlation'] else 'off'):<8} {hr_thr:>6}  "
+            f"{('on' if row['pitcher_ceiling_boost'] else 'off'):<10} {pitch_n}  "
+            f"{row['effective_anti_corr_max']:>4}  {row['n']:>4}  "
+            f"{row['avg_proj']:>8.1f}  {row['avg_actual']:>10.1f}  {row['avg_beat']:>8.2f}"
+        )
 
 
 if __name__ == "__main__":
