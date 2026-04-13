@@ -1,3 +1,5 @@
+import type { OptimizerMode } from "./optimizer-mode";
+
 export type OptimizerProbeDebug = {
   label: string;
   success: boolean;
@@ -26,7 +28,7 @@ export type OptimizerLineupDebug = {
 
 export type OptimizerDebugInfo = {
   sport: "nba" | "mlb";
-  mode: "cash" | "gpp";
+  mode: OptimizerMode;
   eligibleCount: number;
   requestedLineups: number;
   builtLineups: number;

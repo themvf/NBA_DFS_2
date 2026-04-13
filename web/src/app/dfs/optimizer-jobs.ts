@@ -469,7 +469,7 @@ function buildDebugInfo(
           minStack: mlbSettings.minStack,
           bringBackThreshold: mlbSettings.bringBackThreshold,
           maxExposure: mlbSettings.maxExposure,
-          minChanges: mode === "gpp" ? 3 : 2,
+          minChanges: mode === "gpp2" ? 4 : mode === "gpp" ? 3 : 2,
           antiCorrMax: mlbSettings.antiCorrMax,
           pendingLineupPolicy: normalizeMlbPendingLineupPolicy(mlbSettings.pendingLineupPolicy),
         }
@@ -482,7 +482,7 @@ function buildDebugInfo(
               ? (nbaSettings.bringBackSize ?? 1)
               : 0,
           maxExposure: nbaSettings.maxExposure,
-          minChanges: mode === "gpp" ? 3 : 2,
+          minChanges: mode === "gpp2" ? 4 : mode === "gpp" ? 3 : 2,
         };
 
   return {

@@ -6,6 +6,7 @@ import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { CreateOptimizerJobResponse, OptimizerJobStatusResponse, PersistedOptimizerJobLineup } from "./optimizer-job-types";
+import type { OptimizerMode } from "./optimizer-mode";
 import { getMlbLineupStatus, isMlbRowUnavailable, type MlbPendingLineupPolicy } from "./mlb-lineup";
 import {
   normalizeNbaRuleSelections,
@@ -1537,7 +1538,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // ── Optimizer settings ────────────────────────────────────
-  const [mode, setMode] = useState<"cash" | "gpp">("gpp");
+  const [mode, setMode] = useState<OptimizerMode>("gpp");
   const [nLineups, setNLineups] = useState(20);
   const [teamStackCount, setTeamStackCount] = useState(1);
   const [minStack, setMinStack] = useState(() => sport === "nba" ? 2 : 1);
@@ -2890,12 +2891,18 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
             <label className="text-xs text-gray-500 block mb-1">Mode</label>
             <select
               value={mode}
-              onChange={(e) => setMode(e.target.value as "cash" | "gpp")}
+              onChange={(e) => setMode(e.target.value as OptimizerMode)}
               className="rounded border px-2 py-1 text-sm"
             >
-              <option value="gpp">GPP (leverage)</option>
+              <option value="gpp">GPP (balanced)</option>
+              <option value="gpp2">GPP2 (large field)</option>
               <option value="cash">Cash (proj)</option>
             </select>
+            {mode === "gpp2" && (
+              <p className="mt-1 max-w-44 text-[11px] leading-4 text-muted-foreground">
+                Built for top-heavy, large-field contests around 10k+ entries.
+              </p>
+            )}
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Lineups</label>

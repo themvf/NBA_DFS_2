@@ -20,6 +20,7 @@ import type { DkPlayerRow } from "@/db/queries";
 import { stringifyCsvLine } from "./csv";
 import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
 import type { NbaPreparedOptimizerRun } from "./optimizer-job-types";
+import { isLargeFieldTournamentMode, isTournamentMode, type OptimizerMode } from "./optimizer-mode";
 import {
   normalizeNbaRuleSelections,
   validateNbaRuleSelections,
@@ -79,7 +80,7 @@ export type GeneratedLineup = {
 };
 
 export type OptimizerSettings = {
-  mode: "cash" | "gpp";
+  mode: OptimizerMode;
   nLineups: number;
   /** Minimum players in each counted team stack. */
   minStack: number;
@@ -236,32 +237,95 @@ function getPlayerLeverage(p: OptimizerPlayer): number {
 // Calibrated to live_leverage quartile data (Q4 avg_lev ≈ +6.0, avg_proj ≈ 25.0):
 // at weight=0.6, a Q4 player scores ~3.6 pts above a neutral player at the same projection,
 // which is enough to prefer the contrarian play without overriding a 5+ FPTS projection gap.
-const NBA_GPP_LEVERAGE_WEIGHT = 0.6;
 const NBA_CASH_LEVERAGE_WEIGHT = 0.1;
-const NBA_GPP_CEILING_EDGE_WEIGHT = 0.18;
-const NBA_GPP_BOOM_WEIGHT = 5.0;
-const NBA_GPP_CHALK_PENALTY_START = 18.0;
-const NBA_GPP_CHALK_PENALTY_WEIGHT = 0.035;
-const NBA_GPP_LINEUP_OWNERSHIP_TARGET = 125.0;
-const NBA_GPP_LINEUP_OWNERSHIP_WEIGHT = 0.045;
-const NBA_GPP_HIGH_OWNED_PLAYER_THRESHOLD = 20.0;
-const NBA_GPP_HIGH_OWNED_PLAYER_ALLOWANCE = 3;
-const NBA_GPP_HIGH_OWNED_PLAYER_PENALTY = 0.9;
-const NBA_GPP_STACK_OWNERSHIP_THRESHOLD = 48.0;
-const NBA_GPP_STACK_OWNERSHIP_WEIGHT = 0.03;
+type NbaTournamentProfile = {
+  leverageWeight: number;
+  ceilingEdgeWeight: number;
+  boomWeight: number;
+  chalkPenaltyStart: number;
+  chalkPenaltyWeight: number;
+  lineupOwnershipTarget: number;
+  lineupOwnershipWeight: number;
+  highOwnedThreshold: number;
+  highOwnedAllowance: number;
+  highOwnedPenalty: number;
+  stackOwnershipThreshold: number;
+  stackOwnershipWeight: number;
+  recentLineupPenaltyWeight: number;
+  extraLeverageKeepCount: number;
+  extraUpsideKeepCount: number;
+};
 
-function getNbaGppBonus(p: OptimizerPlayer): number {
+const NBA_GPP_PROFILE: NbaTournamentProfile = {
+  leverageWeight: 0.6,
+  ceilingEdgeWeight: 0.18,
+  boomWeight: 5.0,
+  chalkPenaltyStart: 18.0,
+  chalkPenaltyWeight: 0.035,
+  lineupOwnershipTarget: 125.0,
+  lineupOwnershipWeight: 0.045,
+  highOwnedThreshold: 20.0,
+  highOwnedAllowance: 3,
+  highOwnedPenalty: 0.9,
+  stackOwnershipThreshold: 48.0,
+  stackOwnershipWeight: 0.03,
+  recentLineupPenaltyWeight: 2.5,
+  extraLeverageKeepCount: 21,
+  extraUpsideKeepCount: 16,
+};
+
+const NBA_GPP2_PROFILE: NbaTournamentProfile = {
+  leverageWeight: 0.78,
+  ceilingEdgeWeight: 0.24,
+  boomWeight: 6.4,
+  chalkPenaltyStart: 14.0,
+  chalkPenaltyWeight: 0.055,
+  lineupOwnershipTarget: 112.0,
+  lineupOwnershipWeight: 0.07,
+  highOwnedThreshold: 18.0,
+  highOwnedAllowance: 2,
+  highOwnedPenalty: 1.15,
+  stackOwnershipThreshold: 40.0,
+  stackOwnershipWeight: 0.05,
+  recentLineupPenaltyWeight: 3.5,
+  extraLeverageKeepCount: 28,
+  extraUpsideKeepCount: 22,
+};
+
+function getNbaTournamentProfile(mode: OptimizerMode): NbaTournamentProfile {
+  return isLargeFieldTournamentMode(mode) ? NBA_GPP2_PROFILE : NBA_GPP_PROFILE;
+}
+
+function getNbaDefaultMinChanges(mode: OptimizerMode, eligibleCount: number, relaxed: boolean): number {
+  if (!isTournamentMode(mode)) return 2;
+  if (isLargeFieldTournamentMode(mode)) {
+    return eligibleCount >= 60 && !relaxed ? 4 : 3;
+  }
+  return eligibleCount >= 55 && !relaxed ? 3 : 2;
+}
+
+function getNbaUpsideCandidateScore(player: OptimizerPlayer): number {
+  const projection = getPlayerProjection(player) ?? 0;
+  const ceiling = finiteOrNull(player.projCeiling) ?? (projection * 1.18);
+  const ceilingEdge = Math.max(0, ceiling - projection);
+  const boomRate = Math.max(0, finiteOrNull(player.boomRate) ?? 0);
+  const pointsProp = Math.max(0, finiteOrNull(player.propPts) ?? 0);
+  return ceilingEdge + (boomRate * 18) + (pointsProp * 0.08);
+}
+
+function getNbaGppBonus(p: OptimizerPlayer, mode: OptimizerMode): number {
   const projection = getPlayerProjection(p) ?? 0;
   if (projection <= 0) return 0;
+  const profile = getNbaTournamentProfile(mode);
 
   const ceiling = finiteOrNull(p.projCeiling) ?? (projection * 1.18);
   const ceilingEdge = Math.max(0, ceiling - projection);
   const boomRate = Math.max(0, finiteOrNull(p.boomRate) ?? 0);
   const projectedOwnership = Math.max(0, finiteOrNull(p.projOwnPct) ?? 0);
-  const chalkPenalty = Math.max(0, projectedOwnership - NBA_GPP_CHALK_PENALTY_START) * NBA_GPP_CHALK_PENALTY_WEIGHT;
+  const chalkPenalty = Math.max(0, projectedOwnership - profile.chalkPenaltyStart) * profile.chalkPenaltyWeight;
 
-  return (ceilingEdge * NBA_GPP_CEILING_EDGE_WEIGHT)
-    + (boomRate * NBA_GPP_BOOM_WEIGHT)
+  return (ceilingEdge * profile.ceilingEdgeWeight)
+    + (boomRate * profile.boomWeight)
     - chalkPenalty;
 }
 
@@ -269,8 +333,8 @@ function getProjectedOwnership(p: OptimizerPlayer): number {
   return Math.max(0, finiteOrNull(p.projOwnPct) ?? 0);
 }
 
-function isHighOwnedNbaPlayer(p: OptimizerPlayer): boolean {
-  return getProjectedOwnership(p) >= NBA_GPP_HIGH_OWNED_PLAYER_THRESHOLD;
+function isHighOwnedNbaPlayer(p: OptimizerPlayer, mode: OptimizerMode): boolean {
+  return getProjectedOwnership(p) >= getNbaTournamentProfile(mode).highOwnedThreshold;
 }
 
 function getMaxTeamOwnership(teamOwnership: Map<number, number>): number {
@@ -285,27 +349,28 @@ function getNbaLineupDuplicationPenalty(
   totalOwnership: number,
   highOwnedCount: number,
   teamOwnership: Map<number, number>,
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
 ): number {
-  if (mode !== "gpp") return 0;
+  if (!isTournamentMode(mode)) return 0;
+  const profile = getNbaTournamentProfile(mode);
 
-  const totalOwnershipPenalty = Math.max(0, totalOwnership - NBA_GPP_LINEUP_OWNERSHIP_TARGET) * NBA_GPP_LINEUP_OWNERSHIP_WEIGHT;
-  const highOwnedPenalty = Math.max(0, highOwnedCount - NBA_GPP_HIGH_OWNED_PLAYER_ALLOWANCE) * NBA_GPP_HIGH_OWNED_PLAYER_PENALTY;
-  const stackOwnershipPenalty = Math.max(0, getMaxTeamOwnership(teamOwnership) - NBA_GPP_STACK_OWNERSHIP_THRESHOLD) * NBA_GPP_STACK_OWNERSHIP_WEIGHT;
+  const totalOwnershipPenalty = Math.max(0, totalOwnership - profile.lineupOwnershipTarget) * profile.lineupOwnershipWeight;
+  const highOwnedPenalty = Math.max(0, highOwnedCount - profile.highOwnedAllowance) * profile.highOwnedPenalty;
+  const stackOwnershipPenalty = Math.max(0, getMaxTeamOwnership(teamOwnership) - profile.stackOwnershipThreshold) * profile.stackOwnershipWeight;
 
   return totalOwnershipPenalty + highOwnedPenalty + stackOwnershipPenalty;
 }
 
-function getPlayerScore(p: OptimizerPlayer, mode: "cash" | "gpp"): number {
+function getPlayerScore(p: OptimizerPlayer, mode: OptimizerMode): number {
   const projection = getPlayerProjection(p) ?? 0;
   const leverage = finiteOrNull(p.ourLeverage) ?? 0;
-  const weight = mode === "gpp" ? NBA_GPP_LEVERAGE_WEIGHT : NBA_CASH_LEVERAGE_WEIGHT;
-  return projection + leverage * weight + (mode === "gpp" ? getNbaGppBonus(p) : 0);
+  const weight = isTournamentMode(mode) ? getNbaTournamentProfile(mode).leverageWeight : NBA_CASH_LEVERAGE_WEIGHT;
+  return projection + leverage * weight + (isTournamentMode(mode) ? getNbaGppBonus(p, mode) : 0);
 }
 
 function getSearchScore(
   p: OptimizerPlayer,
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   scoreAdjustments?: Map<number, number>,
 ): number {
   return getPlayerScore(p, mode) + (scoreAdjustments?.get(p.id) ?? 0);
@@ -348,7 +413,7 @@ function filterEligibleNbaPool(
 function comparePlayersForSearch(
   a: OptimizerPlayer,
   b: OptimizerPlayer,
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   scoreAdjustments?: Map<number, number>,
 ): number {
   const scoreDiff = getSearchScore(b, mode, scoreAdjustments) - getSearchScore(a, mode, scoreAdjustments);
@@ -364,7 +429,7 @@ function comparePlayersForSearch(
 
 function sortPlayersForSearch(
   players: OptimizerPlayer[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   scoreAdjustments?: Map<number, number>,
 ): OptimizerPlayer[] {
   return [...players].sort((a, b) => comparePlayersForSearch(a, b, mode, scoreAdjustments));
@@ -463,7 +528,7 @@ function buildOpponentByTeamId(pool: OptimizerPlayer[]): Map<number, number> {
 
 function buildTeamPlayersMap(
   pool: OptimizerPlayer[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   scoreAdjustments?: Map<number, number>,
 ): Map<number, OptimizerPlayer[]> {
   const byTeam = new Map<number, OptimizerPlayer[]>();
@@ -512,7 +577,7 @@ function getStackThreshold(
 
 function pruneNbaCandidatePool(
   pool: OptimizerPlayer[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   minStack: number,
   bringBackSize: number,
   ruleSelections: NormalizedNbaRuleSelections,
@@ -537,11 +602,17 @@ function pruneNbaCandidatePool(
     ),
     GLOBAL_KEEP_COUNT,
   );
-  if (mode === "gpp") {
+  if (isTournamentMode(mode)) {
+    const tournamentProfile = getNbaTournamentProfile(mode);
     addTopPlayers(
       keepIds,
       [...pool].sort((a, b) => getPlayerLeverage(b) - getPlayerLeverage(a) || comparePlayersForSearch(a, b, mode)),
-      Math.max(18, Math.floor(GLOBAL_KEEP_COUNT / 2)),
+      tournamentProfile.extraLeverageKeepCount,
+    );
+    addTopPlayers(
+      keepIds,
+      [...pool].sort((a, b) => getNbaUpsideCandidateScore(b) - getNbaUpsideCandidateScore(a) || comparePlayersForSearch(a, b, mode)),
+      tournamentProfile.extraUpsideKeepCount,
     );
   }
   addCheapestPlayers(keepIds, pool, CHEAP_KEEP_COUNT);
@@ -582,13 +653,13 @@ function pruneNbaCandidatePool(
 function sumTopTeamScores(
   players: OptimizerPlayer[],
   count: number,
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   scoreAdjustments?: Map<number, number>,
 ): number {
   const selected = players.slice(0, count);
   const baseScore = selected
     .reduce((total, player) => total + getSearchScore(player, mode, scoreAdjustments) + ((getPlayerProjection(player) ?? 0) * 0.01), 0);
-  if (mode !== "gpp") return baseScore;
+  if (!isTournamentMode(mode)) return baseScore;
 
   const teamOwnership = new Map<number, number>();
   for (const player of selected) {
@@ -598,7 +669,7 @@ function sumTopTeamScores(
 
   return baseScore - getNbaLineupDuplicationPenalty(
     selected.reduce((sum, player) => sum + getProjectedOwnership(player), 0),
-    selected.filter((player) => isHighOwnedNbaPlayer(player)).length,
+    selected.filter((player) => isHighOwnedNbaPlayer(player, mode)).length,
     teamOwnership,
     mode,
   );
@@ -627,7 +698,7 @@ function enumerateTeamCombinations(teamIds: number[], size: number): number[][] 
 
 function enumerateStackTemplates(
   pool: OptimizerPlayer[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   minStack: number,
   teamStackCount: number,
   bringBackSize: number,
@@ -709,7 +780,7 @@ function enumerateStackTemplates(
 function buildTemplatePool(
   prunedPool: OptimizerPlayer[],
   template: NbaStackTemplate,
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   lockedPlayers: Set<number>,
   scoreAdjustments?: Map<number, number>,
 ): OptimizerPlayer[] {
@@ -851,7 +922,7 @@ function validateLineupExact(
 
 function solveReducedLineup(
   pool: OptimizerPlayer[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   minCountsByTeam: Map<number, number>,
   lockedPlayers: Set<number>,
   salaryFloor: number,
@@ -1049,7 +1120,7 @@ function solveReducedLineup(
           projection: state.projection + (getPlayerProjection(player) ?? 0),
           leverage: state.leverage + getPlayerLeverage(player),
           ownership: state.ownership + getProjectedOwnership(player),
-          highOwnedCount: state.highOwnedCount + (isHighOwnedNbaPlayer(player) ? 1 : 0),
+          highOwnedCount: state.highOwnedCount + (isHighOwnedNbaPlayer(player, mode) ? 1 : 0),
         };
         nextStates.push({
           ...nextState,
@@ -1110,7 +1181,7 @@ function solveReducedLineup(
 function attemptRepairForDiversity(
   lineup: GeneratedLineup,
   pool: OptimizerPlayer[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   minStack: number,
   teamStackCount: number,
   previousLineupSets: Set<number>[],
@@ -1177,7 +1248,7 @@ function attemptRepairForDiversity(
 
 function buildRecentScoreAdjustments(
   previousLineupSets: Set<number>[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
 ): Map<number, number> {
   const recentCounts = new Map<number, number>();
   for (const lineup of previousLineupSets.slice(-DIV_WINDOW)) {
@@ -1186,7 +1257,7 @@ function buildRecentScoreAdjustments(
     }
   }
 
-  const weight = mode === "gpp" ? 2.5 : 1.5;
+  const weight = isTournamentMode(mode) ? getNbaTournamentProfile(mode).recentLineupPenaltyWeight : 1.5;
   return new Map(
     Array.from(recentCounts.entries()).map(([playerId, count]) => [playerId, -(count * weight)]),
   );
@@ -1204,14 +1275,14 @@ function mergeScoreAdjustments(...maps: Array<Map<number, number>>): Map<number,
 
 function solveOneLineupDetailed(
   pool: OptimizerPlayer[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   minStack: number,
   teamStackCount: number,
   maxExposureCount: number,
   exposureCount: Map<number, number>,
   previousLineupSets: Set<number>[],
   bringBackSize = 0,
-  minChanges = mode === "gpp" ? 3 : 2,
+  minChanges = getNbaDefaultMinChanges(mode, pool.length, false),
   salaryFloor = SALARY_FLOOR,
   ruleSelections: NormalizedNbaRuleSelections = normalizeNbaRuleSelections({}),
   staticScoreAdjustments: Map<number, number> = new Map<number, number>(),
@@ -1360,7 +1431,7 @@ export function optimizeLineupsWithDebug(
       ceilingBoost,
       ceilingCount,
       maxExposure,
-      minChanges: mode === "gpp" ? 3 : 2,
+      minChanges: getNbaDefaultMinChanges(mode, eligible.length, false),
       salaryFloor: SALARY_FLOOR,
     },
   };
@@ -1438,7 +1509,7 @@ export function optimizeLineupsWithDebug(
   // Adaptive diversity: small or thin pools can't sustain 3-player diff between
   // every pair of lineups - drop to 2 when eligible < 55 or constraints were relaxed.
   const relaxed = effectiveSalaryFloor === 0;
-  const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
+  const effectiveMinChanges = getNbaDefaultMinChanges(mode, eligible.length, relaxed);
   const prunedPool = pruneNbaCandidatePool(eligible, mode, effectiveMinStack, effectiveBringBackSize, ruleSelections);
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
@@ -1578,7 +1649,7 @@ export function prepareNbaOptimizerRun(
       ceilingBoost,
       ceilingCount,
       maxExposure,
-      minChanges: mode === "gpp" ? 3 : 2,
+      minChanges: getNbaDefaultMinChanges(mode, eligible.length, false),
       salaryFloor: SALARY_FLOOR,
     },
   };
@@ -1651,7 +1722,7 @@ export function prepareNbaOptimizerRun(
   }
 
   const relaxed = effectiveSalaryFloor === 0;
-  const effectiveMinChanges = mode === "gpp" && eligible.length >= 55 && !relaxed ? 3 : 2;
+  const effectiveMinChanges = getNbaDefaultMinChanges(mode, eligible.length, relaxed);
   const prunedPool = pruneNbaCandidatePool(eligible, mode, effectiveMinStack, effectiveBringBackSize, ruleSelections);
   debug.effectiveSettings = {
     minStack: effectiveMinStack,
@@ -1776,14 +1847,14 @@ export function buildNextNbaLineup(
 
 function solveOneLineup(
   pool: OptimizerPlayer[],
-  mode: "cash" | "gpp",
+  mode: OptimizerMode,
   minStack: number,
   teamStackCount: number,
   maxExposureCount: number,
   exposureCount: Map<number, number>,
   previousLineupSets: Set<number>[],
   bringBackSize = 0,
-  minChanges = mode === "gpp" ? 3 : 2,
+  minChanges = getNbaDefaultMinChanges(mode, pool.length, false),
   salaryFloor = SALARY_FLOOR,
   ruleSelections: NormalizedNbaRuleSelections = normalizeNbaRuleSelections({}),
   staticScoreAdjustments: Map<number, number> = new Map<number, number>(),

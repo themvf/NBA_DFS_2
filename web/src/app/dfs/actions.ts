@@ -18,6 +18,7 @@ import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
+import { isTournamentMode } from "./optimizer-mode";
 import { applyMlbPendingLineupPolicy, inferMlbTeamLineupConfirmed, isPositiveMlbLineupOrder } from "./mlb-lineup";
 import { validateMlbRuleSelections } from "./mlb-optimizer-rules";
 import { updateOptimizerJobLineupActualsForSlate } from "./optimizer-jobs";
@@ -5668,7 +5669,7 @@ export async function runOptimizer(
       const forwards = eligible.filter((p) => p.eligiblePositions.includes("SF") || p.eligiblePositions.includes("PF")).length;
       const centers  = eligible.filter((p) => p.eligiblePositions.includes("C")).length;
       const withMatchup = eligible.filter((p) => p.matchupId != null).length;
-      const withLeverage = settings.mode === "gpp"
+      const withLeverage = isTournamentMode(settings.mode)
         ? eligible.filter((p) => p.ourLeverage != null).length
         : eligible.length;
       const hint = eligible.length < 15
@@ -5681,7 +5682,7 @@ export async function runOptimizer(
               ? " No centers in pool."
               : withMatchup < 8
                 ? " Most players missing matchup data — reload slate via Contest ID."
-                : withLeverage === 0 && settings.mode === "gpp"
+                : withLeverage === 0 && isTournamentMode(settings.mode)
                   ? " No leverage scores — paste LineStar data then re-run Fetch Projections, or switch to Cash mode."
                   : " Try reducing lineup count or switching to Cash mode.";
       const diagLines = probeOptimizerAll(pool, settings);

@@ -4,6 +4,7 @@ import type { OptimizerPlayer, OptimizerSettings, LineupSlot } from "./optimizer
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbLineupSlot } from "./mlb-optimizer";
 import type { NormalizedNbaRuleSelections } from "./nba-optimizer-rules";
 import type { NormalizedMlbRuleSelections } from "./mlb-optimizer-rules";
+import type { OptimizerMode } from "./optimizer-mode";
 
 export type OptimizerJobStatus = "queued" | "running" | "completed" | "failed";
 
@@ -18,12 +19,12 @@ export type OptimizerJobSnapshot = {
   slateId: number;
   selectedMatchupIds: number[];
   requestedLineups: number;
-  mode: "cash" | "gpp";
+  mode: OptimizerMode;
 };
 
 export type NbaPreparedOptimizerRun = {
   sport: "nba";
-  mode: "cash" | "gpp";
+  mode: OptimizerMode;
   requestedLineups: number;
   maxExposureCount: number;
   eligibleCount: number;
@@ -48,7 +49,7 @@ export type NbaPreparedOptimizerRun = {
 
 export type MlbPreparedOptimizerRun = {
   sport: "mlb";
-  mode: "cash" | "gpp";
+  mode: OptimizerMode;
   requestedLineups: number;
   maxExposureCount: number;
   eligibleCount: number;
