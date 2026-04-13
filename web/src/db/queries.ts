@@ -92,16 +92,74 @@ export type DkPlayerRow = {
   sport: string | null;
 };
 
-export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]> {
+export type DfsPagePlayerRow = Pick<
+  DkPlayerRow,
+  | "id"
+  | "slateId"
+  | "name"
+  | "teamAbbrev"
+  | "teamId"
+  | "matchupId"
+  | "eligiblePositions"
+  | "salary"
+  | "gameInfo"
+  | "avgFptsDk"
+  | "linestarProj"
+  | "projOwnPct"
+  | "ourProj"
+  | "liveProj"
+  | "expectedHr"
+  | "hrProb1Plus"
+  | "ourOwnPct"
+  | "ourLeverage"
+  | "liveOwnPct"
+  | "liveLeverage"
+  | "projCeiling"
+  | "boomRate"
+  | "propPts"
+  | "propPtsPrice"
+  | "propPtsBook"
+  | "propReb"
+  | "propRebPrice"
+  | "propRebBook"
+  | "propAst"
+  | "propAstPrice"
+  | "propAstBook"
+  | "propBlk"
+  | "propBlkPrice"
+  | "propBlkBook"
+  | "propStl"
+  | "propStlPrice"
+  | "propStlBook"
+  | "modelPoints"
+  | "marketPoints"
+  | "blendPoints"
+  | "modelProj"
+  | "marketProj"
+  | "blendProj"
+  | "dkInStartingLineup"
+  | "dkStartingLineupOrder"
+  | "dkTeamLineupConfirmed"
+  | "isOut"
+  | "teamName"
+  | "teamLogo"
+  | "vegasTotal"
+  | "homeMl"
+  | "awayMl"
+  | "homeTeamId"
+  | "homeImplied"
+  | "awayImplied"
+>;
+
+export async function getDfsPagePlayers(sport: Sport = "nba"): Promise<DfsPagePlayerRow[]> {
   await ensureDkPlayerPropColumns();
   await ensureProjectionExperimentTables();
 
   if (sport === "mlb") {
-    const result = await db.execute<DkPlayerRow>(sql`
+    const result = await db.execute<DfsPagePlayerRow>(sql`
       SELECT
         dp.id,
         dp.slate_id           AS "slateId",
-        dp.dk_player_id       AS "dkPlayerId",
         dp.name,
         dp.team_abbrev        AS "teamAbbrev",
         dp.mlb_team_id        AS "teamId",
@@ -120,6 +178,8 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         dp.our_leverage       AS "ourLeverage",
         NULL::REAL            AS "liveOwnPct",
         NULL::REAL            AS "liveLeverage",
+        dp.proj_ceiling       AS "projCeiling",
+        dp.boom_rate          AS "boomRate",
         dp.prop_pts           AS "propPts",
         dp.prop_pts_price     AS "propPtsPrice",
         dp.prop_pts_book      AS "propPtsBook",
@@ -145,23 +205,14 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
         dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
         dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
         dp.is_out             AS "isOut",
-        dp.proj_floor         AS "projFloor",
-        dp.proj_ceiling       AS "projCeiling",
-        dp.boom_rate          AS "boomRate",
-        dp.actual_fpts        AS "actualFpts",
-        dp.actual_own_pct     AS "actualOwnPct",
         mt.name               AS "teamName",
         mt.logo_url           AS "teamLogo",
         mm.vegas_total        AS "vegasTotal",
-        mm.vegas_prob_home    AS "homeWinProb",
         mm.home_ml            AS "homeMl",
         mm.away_ml            AS "awayMl",
         mm.home_team_id       AS "homeTeamId",
-        mm.away_team_id       AS "awayTeamId",
         mm.home_implied       AS "homeImplied",
-        mm.away_implied       AS "awayImplied",
-        ds.slate_date         AS "slateDate",
-        ds.sport              AS "sport"
+        mm.away_implied       AS "awayImplied"
       FROM dk_players dp
       INNER JOIN dk_slates ds ON ds.id = dp.slate_id
       LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
@@ -176,11 +227,10 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
   }
 
   // NBA (default)
-  const result = await db.execute<DkPlayerRow>(sql`
+  const result = await db.execute<DfsPagePlayerRow>(sql`
     SELECT
       dp.id,
       dp.slate_id          AS "slateId",
-      dp.dk_player_id      AS "dkPlayerId",
       dp.name,
       dp.team_abbrev       AS "teamAbbrev",
       dp.team_id           AS "teamId",
@@ -199,6 +249,8 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       dp.our_leverage      AS "ourLeverage",
       COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "liveOwnPct",
       COALESCE(dp.live_leverage, dp.our_leverage) AS "liveLeverage",
+      dp.proj_ceiling      AS "projCeiling",
+      dp.boom_rate         AS "boomRate",
       dp.prop_pts          AS "propPts",
       dp.prop_pts_price    AS "propPtsPrice",
       dp.prop_pts_book     AS "propPtsBook",
@@ -224,23 +276,14 @@ export async function getDkPlayers(sport: Sport = "nba"): Promise<DkPlayerRow[]>
       NULL::INTEGER AS "dkStartingLineupOrder",
       NULL::BOOLEAN AS "dkTeamLineupConfirmed",
       dp.is_out            AS "isOut",
-      dp.proj_floor        AS "projFloor",
-      dp.proj_ceiling      AS "projCeiling",
-      dp.boom_rate         AS "boomRate",
-      dp.actual_fpts       AS "actualFpts",
-      dp.actual_own_pct    AS "actualOwnPct",
       t.name               AS "teamName",
       t.logo_url           AS "teamLogo",
       m.vegas_total        AS "vegasTotal",
-      m.vegas_prob_home    AS "homeWinProb",
       m.home_ml            AS "homeMl",
       m.away_ml            AS "awayMl",
       m.home_team_id       AS "homeTeamId",
-      m.away_team_id       AS "awayTeamId",
       NULL::DOUBLE PRECISION AS "homeImplied",
-      NULL::DOUBLE PRECISION AS "awayImplied",
-      ds.slate_date        AS "slateDate",
-      ds.sport             AS "sport"
+      NULL::DOUBLE PRECISION AS "awayImplied"
     FROM dk_players dp
     INNER JOIN dk_slates ds ON ds.id = dp.slate_id
     LEFT JOIN teams t ON t.team_id = dp.team_id

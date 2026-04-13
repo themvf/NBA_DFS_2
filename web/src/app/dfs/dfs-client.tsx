@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { DkPlayerRow, Sport } from "@/db/queries";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import type { UIEvent } from "react";
+import type { DfsPagePlayerRow as DkPlayerRow, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
@@ -209,6 +210,13 @@ type GeneratedLineupsSectionProps = {
   exportError: string | null;
 };
 
+type OptimizerStatusPanelProps = {
+  isOptimizing: boolean;
+  optimizeStartedAt: number | null;
+  builtLineupCount: number;
+  lastRequestedLineupCount: number | null;
+};
+
 type TimedSpinnerMessageProps = {
   active: boolean;
   text: string;
@@ -283,6 +291,8 @@ const EMPTY_RULE_STATE: RuleState = {
   blockedTeamIds: [],
   requiredTeamStacks: [],
 };
+const PLAYER_POOL_VIEWPORT_HEIGHT_PX = 720;
+const PLAYER_POOL_OVERSCAN_ROWS = 8;
 
 function getOrCreateOptimizerClientToken(): string {
   const existing = window.localStorage.getItem(OPTIMIZER_CLIENT_TOKEN_KEY);
@@ -900,6 +910,46 @@ const TimedSpinnerMessage = memo(function TimedSpinnerMessage({ active, text }: 
   );
 });
 
+const OptimizerStatusPanel = memo(function OptimizerStatusPanel({
+  isOptimizing,
+  optimizeStartedAt,
+  builtLineupCount,
+  lastRequestedLineupCount,
+}: OptimizerStatusPanelProps) {
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    if (!isOptimizing || optimizeStartedAt == null) {
+      setElapsedMs(0);
+      return;
+    }
+    setElapsedMs(Date.now() - optimizeStartedAt);
+    const id = window.setInterval(() => {
+      setElapsedMs(Date.now() - optimizeStartedAt);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [isOptimizing, optimizeStartedAt]);
+
+  const optimizeStatusText = !isOptimizing
+    ? null
+    : lastRequestedLineupCount != null && builtLineupCount > 0
+      ? `Built ${builtLineupCount} of ${lastRequestedLineupCount} lineups so far.`
+      : elapsedMs >= 60_000
+        ? "Still solving. This is longer than expected and usually means the slate is highly constrained."
+        : elapsedMs >= 20_000
+          ? "Long solve in progress. Exposure, stacking, and diversity constraints can make the solver much slower."
+          : "Optimizer job is queued or running on the server.";
+
+  if (!isOptimizing) return null;
+
+  return (
+    <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+      <p className="font-medium">Optimizer running: {fmtDuration(elapsedMs)}</p>
+      {optimizeStatusText && <p className="mt-1 text-xs text-blue-800">{optimizeStatusText}</p>}
+    </div>
+  );
+});
+
 const RuleControlsSection = memo(function RuleControlsSection({
   sport,
   filteredTeams,
@@ -1070,6 +1120,33 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
   onTogglePlayerLock,
   onTogglePlayerBlock,
 }: PlayerPoolTableProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const rowEstimate = sport === "mlb" ? 74 : 52;
+  const visibleCount = Math.ceil(PLAYER_POOL_VIEWPORT_HEIGHT_PX / rowEstimate) + PLAYER_POOL_OVERSCAN_ROWS * 2;
+  const startIndex = Math.max(0, Math.floor(scrollTop / rowEstimate) - PLAYER_POOL_OVERSCAN_ROWS);
+  const endIndex = Math.min(visiblePlayers.length, startIndex + visibleCount);
+  const windowedPlayers = useMemo(
+    () => visiblePlayers.slice(startIndex, endIndex),
+    [endIndex, startIndex, visiblePlayers],
+  );
+  const topSpacerHeight = startIndex * rowEstimate;
+  const bottomSpacerHeight = Math.max(0, (visiblePlayers.length - endIndex) * rowEstimate);
+  const columnCount = sport === "mlb"
+    ? (supportsRuleControls ? 16 : 15)
+    : (supportsRuleControls ? 17 : 16);
+
+  useEffect(() => {
+    setScrollTop(0);
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [sortCol, sortDir, sport, visiblePlayers]);
+
+  const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    setScrollTop(event.currentTarget.scrollTop);
+  }, []);
+
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="flex items-start justify-between gap-3 px-4 py-3 border-b">
@@ -1127,9 +1204,14 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
           </button>
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <div
+        ref={scrollContainerRef}
+        className="overflow-auto"
+        style={{ maxHeight: `${PLAYER_POOL_VIEWPORT_HEIGHT_PX}px` }}
+        onScroll={handleScroll}
+      >
         <table className="w-full text-sm">
-          <thead className="border-b bg-gray-50">
+          <thead className="sticky top-0 z-10 border-b bg-gray-50">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Pos</th>
               <SortHeader col="name" label="Player" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
@@ -1177,12 +1259,17 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
           <tbody className="divide-y divide-gray-100">
             {visiblePlayers.length === 0 && (
               <tr>
-                <td colSpan={18} className="px-3 py-6 text-center text-sm text-gray-500">
+                <td colSpan={columnCount} className="px-3 py-6 text-center text-sm text-gray-500">
                   No active players are visible with the current filter.
                 </td>
               </tr>
             )}
-            {visiblePlayers.map((p) => {
+            {topSpacerHeight > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={columnCount} style={{ height: `${topSpacerHeight}px`, padding: 0, border: 0 }} />
+              </tr>
+            )}
+            {windowedPlayers.map((p) => {
               const ourProjDisplay = sport === "nba" ? (p.modelProj ?? p.ourProj) : p.ourProj;
               const liveProjDisplay = sport === "nba"
                 ? (p.liveProj ?? p.blendProj ?? p.ourProj)
@@ -1408,6 +1495,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                 </tr>
               );
             })}
+            {bottomSpacerHeight > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={columnCount} style={{ height: `${bottomSpacerHeight}px`, padding: 0, border: 0 }} />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -1568,7 +1660,6 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
   const [optimizeWarning, setOptimizeWarning] = useState<string | null>(null);
   const [optimizeDebug, setOptimizeDebug] = useState<OptimizerDebugInfo | null>(null);
   const [optimizeStartedAt, setOptimizeStartedAt] = useState<number | null>(null);
-  const [optimizeElapsedMs, setOptimizeElapsedMs] = useState(0);
   const [antiCorrMax, setAntiCorrMax] = useState(1); // MLB: max batters facing your own SP
   const [hrCorrelation, setHrCorrelation] = useState(false);
   const [hrCorrelationThreshold, setHrCorrelationThreshold] = useState(0.12);
@@ -1622,17 +1713,6 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     return () => clearTimeout(id);
   }, [clearSlateConfirm]);
 
-  // Elapsed-time counter for Fetch Player Props
-  useEffect(() => {
-    if (!isOptimizing || optimizeStartedAt == null) {
-      setOptimizeElapsedMs(0);
-      return;
-    }
-    setOptimizeElapsedMs(Date.now() - optimizeStartedAt);
-    const id = setInterval(() => setOptimizeElapsedMs(Date.now() - optimizeStartedAt), 1000);
-    return () => clearInterval(id);
-  }, [isOptimizing, optimizeStartedAt]);
-
   // ── LineStar input: CSV file or paste ────────────────────
   const [lsMode, setLsMode] = useState<"csv" | "paste">("paste");
   const lsUploadRef = useRef<HTMLInputElement>(null);
@@ -1657,24 +1737,11 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     () => new Map(requiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize])),
     [requiredTeamStacks],
   );
-
-  const optimizeStatusText = !isOptimizing
-    ? null
-    : lastRequestedLineupCount != null && ((sport === "nba" ? lineups : mlbLineups)?.length ?? 0) > 0
-      ? `Built ${((sport === "nba" ? lineups : mlbLineups)?.length ?? 0)} of ${lastRequestedLineupCount} lineups so far.`
-      : optimizeElapsedMs >= 60_000
-        ? "Still solving. This is longer than expected and usually means the slate is highly constrained."
-        : optimizeElapsedMs >= 20_000
-          ? "Long solve in progress. Exposure, stacking, and diversity constraints can make the solver much slower."
-          : "Optimizer job is queued or running on the server."
-
   const slowestLineup = optimizeDebug?.lineupSummaries.reduce<OptimizerDebugInfo["lineupSummaries"][number] | null>(
     (best, current) => !best || current.durationMs > best.durationMs ? current : best,
     null,
   ) ?? null;
-  const debugTotalMs = optimizeDebug
-    ? (isOptimizing ? Math.max(optimizeDebug.totalMs, optimizeElapsedMs) : optimizeDebug.totalMs)
-    : 0;
+  const debugTotalMs = optimizeDebug?.totalMs ?? 0;
   const heuristicRejectSummary = optimizeDebug?.heuristic
     ? Object.entries(optimizeDebug.heuristic.rejectedByReason)
         .filter(([, count]) => count > 0)
@@ -1846,6 +1913,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
 
       applyOptimizerJobResult(data);
       if (data.job.status === "queued" || data.job.status === "running") {
+        const nextPollDelayMs = document.visibilityState === "visible" ? 2500 : 10_000;
         timeoutId = setTimeout(() => {
           poll().catch((error) => {
             if (!cancelled) {
@@ -1853,7 +1921,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
               setIsOptimizing(false);
             }
           });
-        }, 2500);
+        }, nextPollDelayMs);
       }
     };
 
@@ -1919,9 +1987,11 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
       sport === "mlb" ? !isMlbRowUnavailable(player) : !player.isOut,
     );
   }, [hideOutInactivePlayers, playerPoolSourcePlayers, sport]);
+  const deferredVisiblePlayers = useDeferredValue(visiblePlayers);
+  const deferredTeamVisiblePlayers = useDeferredValue(teamVisiblePlayers);
 
   const sortedPlayers = useMemo(() => {
-    return [...visiblePlayers].sort((a, b) => {
+    return [...deferredVisiblePlayers].sort((a, b) => {
       let av: number, bv: number;
       const nbaProjA = a.liveProj ?? a.blendProj ?? a.ourProj ?? -99;
       const nbaProjB = b.liveProj ?? b.blendProj ?? b.ourProj ?? -99;
@@ -1947,11 +2017,11 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
       }
       return sortDir === "desc" ? bv - av : av - bv;
     });
-  }, [visiblePlayers, sortCol, sortDir]);
+  }, [deferredVisiblePlayers, sortCol, sortDir]);
 
   const filteredTeams = useMemo(() => {
     const byId = new Map<number, { teamId: number; teamAbbrev: string; teamName: string | null; teamLogo: string | null }>();
-    for (const player of teamVisiblePlayers) {
+    for (const player of deferredTeamVisiblePlayers) {
       if (player.teamId == null || byId.has(player.teamId)) continue;
       byId.set(player.teamId, {
         teamId: player.teamId,
@@ -1961,12 +2031,12 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
       });
     }
     return Array.from(byId.values()).sort((a, b) => a.teamAbbrev.localeCompare(b.teamAbbrev));
-  }, [sport, teamVisiblePlayers]);
+  }, [deferredTeamVisiblePlayers]);
 
   const teamOddsById = useMemo(() => {
     const byId = new Map<number, { vegasTotal: number | null; teamTotal: number | null; moneyline: number | null }>();
 
-    for (const player of teamVisiblePlayers) {
+    for (const player of deferredTeamVisiblePlayers) {
       if (player.teamId == null || byId.has(player.teamId)) continue;
       const isHome = player.homeTeamId != null ? player.teamId === player.homeTeamId : null;
       const moneyline = isHome == null ? null : (isHome ? player.homeMl : player.awayMl);
@@ -1982,7 +2052,7 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     }
 
     return byId;
-  }, [sport, teamVisiblePlayers]);
+  }, [deferredTeamVisiblePlayers]);
 
   const nbaTopScorerRanks = useMemo(() => {
     if (sport !== "nba") return new Map<number, number>();
@@ -2192,7 +2262,6 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
     optimizerRenderStateRef.current = { metaKey: "", lineupSignature: "", debugSignature: "" };
     setIsOptimizing(true);
     setOptimizeStartedAt(Date.now());
-    setOptimizeElapsedMs(0);
     setOptimizeError(null);
     setOptimizeWarning(null);
     setOptimizeDebug(null);
@@ -3171,13 +3240,13 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
             {isOptimizing ? "Optimizing…" : "Optimize"}
           </button>
         </div>
-        {isOptimizing && (
-          <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-            <p className="font-medium">Optimizer running: {fmtDuration(optimizeElapsedMs)}</p>
-            {optimizeStatusText && <p className="mt-1 text-xs text-blue-800">{optimizeStatusText}</p>}
-          </div>
-        )}
         {optimizeError && <p className="mt-2 text-sm text-red-600 whitespace-pre-wrap">{optimizeError}</p>}
+        <OptimizerStatusPanel
+          isOptimizing={isOptimizing}
+          optimizeStartedAt={optimizeStartedAt}
+          builtLineupCount={activeLineups.length}
+          lastRequestedLineupCount={lastRequestedLineupCount}
+        />
         {optimizeWarning && <p className="mt-2 text-sm text-amber-700">{optimizeWarning}</p>}
         {optimizeDebug && (
           <details className="mt-2 rounded border bg-gray-50 p-3">

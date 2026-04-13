@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60; // allow full 60s for server actions (Vercel Hobby limit)
 
 import { Suspense } from "react";
-import { getDkPlayers, getLatestSlateInfo } from "@/db/queries";
+import { getDfsPagePlayers, getLatestSlateInfo } from "@/db/queries";
 import type { Sport } from "@/db/queries";
 import DfsClient from "./dfs-client";
 import DfsSecondaryPanels from "./dfs-secondary-panels";
@@ -33,7 +33,7 @@ export default async function DfsPage({
   const sport: Sport = rawSport === "mlb" ? "mlb" : "nba";
 
   const [players, slateInfo] = await Promise.all([
-    getDkPlayers(sport),
+    getDfsPagePlayers(sport),
     getLatestSlateInfo(sport),
   ]);
 
