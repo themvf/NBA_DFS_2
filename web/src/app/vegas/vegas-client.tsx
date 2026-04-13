@@ -32,8 +32,19 @@ function clamp(v: number, lo: number, hi: number) {
 }
 
 /** Map a game total to the historical O/U tier key (must match DB CASE labels). */
-function getOuTierKey(total: number | null): string | null {
+function getOuTierKey(total: number | null, sport: Sport): string | null {
   if (total == null) return null;
+  if (sport === "mlb") {
+    if (total < 7.5) return "Under 7.5";
+    if (total < 8.0) return "7.5";
+    if (total < 8.5) return "8.0";
+    if (total < 9.0) return "8.5";
+    if (total < 9.5) return "9.0";
+    if (total < 10.0) return "9.5";
+    if (total < 10.5) return "10.0";
+    return "10.5+";
+  }
+  // NBA
   if (total < 215) return "Under 215";
   if (total < 220) return "215\u2013220";
   if (total < 225) return "220\u2013225";
@@ -43,10 +54,16 @@ function getOuTierKey(total: number | null): string | null {
   return "240+";
 }
 
-/** Map an ABS(home_spread) to the historical spread tier key. */
-function getSpreadTierKey(spread: number | null): string | null {
+/** Map an ABS(home_spread) to the historical spread/run-line tier key. */
+function getSpreadTierKey(spread: number | null, sport: Sport): string | null {
   if (spread == null) return null;
   const abs = Math.abs(spread);
+  if (sport === "mlb") {
+    if (abs < 1.0) return "Pick";
+    if (abs < 2.0) return "\u00b11.5 (Run Line)";
+    return "2.0+";
+  }
+  // NBA
   if (abs <= 1.5) return "Pick / \u00b11.5";
   if (abs <= 3.5) return "2\u20133.5";
   if (abs <= 6.5) return "4\u20136.5";
@@ -64,8 +81,9 @@ function computeOuScore(
   m: VegasMatchupRow,
   ouHitRate: OuHitRateRow[],
   teamInsights: TeamVegasInsightRow[],
+  sport: Sport,
 ): number | null {
-  const tierRow = ouHitRate.find((r) => r.totalTier === getOuTierKey(m.vegasTotal));
+  const tierRow = ouHitRate.find((r) => r.totalTier === getOuTierKey(m.vegasTotal, sport));
   const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
   const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
 
@@ -89,8 +107,9 @@ function computeSpreadScore(
   m: VegasMatchupRow,
   spreadCoverage: SpreadCoverageRow[],
   teamInsights: TeamVegasInsightRow[],
+  sport: Sport,
 ): number | null {
-  const tierRow = spreadCoverage.find((r) => r.spreadTier === getSpreadTierKey(m.homeSpread));
+  const tierRow = spreadCoverage.find((r) => r.spreadTier === getSpreadTierKey(m.homeSpread, sport));
   const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
   const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
 
@@ -414,13 +433,16 @@ export default function VegasClient({
       </div>
 
       {/* ── Betting Intelligence ─────────────────────────────── */}
-      {matchups.length > 0 && hasScores && sport === "nba" && (
+      {matchups.length > 0 && hasScores && (
         <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
           <div>
             <h2 className="font-semibold">Betting Intelligence</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Scores derived from historical O/U tiers, spread tiers, team implied accuracy, and ATS cover rates.
-              O/U = lean over probability. Spread = home-covers probability. ML = adjusted home-win probability.
+              Scores derived from historical O/U tiers,{" "}
+              {sport === "mlb" ? "run line" : "spread"} tiers, team implied accuracy, and ATS cover rates.
+              O/U = lean over probability.{" "}
+              {sport === "mlb" ? "Run line" : "Spread"} = home-covers probability.
+              ML = adjusted home-win probability.
               Scores near 50% are neutral; above 57% or below 43% suggest a meaningful lean.
             </p>
           </div>
@@ -431,15 +453,15 @@ export default function VegasClient({
                   <th className="py-1 text-left">Matchup</th>
                   <th className="py-1 text-right">Total</th>
                   <th className="py-1 text-right">O/U Score</th>
-                  <th className="py-1 text-right">Spread</th>
-                  <th className="py-1 text-right">Spread Score</th>
+                  <th className="py-1 text-right">{sport === "mlb" ? "Run Line" : "Spread"}</th>
+                  <th className="py-1 text-right">{sport === "mlb" ? "RL Score" : "Spread Score"}</th>
                   <th className="py-1 text-right">ML Score</th>
                 </tr>
               </thead>
               <tbody>
                 {matchups.map((m) => {
-                  const ouScore = computeOuScore(m, ouHitRate, teamInsights);
-                  const spreadScore = computeSpreadScore(m, spreadCoverage, teamInsights);
+                  const ouScore = computeOuScore(m, ouHitRate, teamInsights, sport);
+                  const spreadScore = computeSpreadScore(m, spreadCoverage, teamInsights, sport);
                   const mlScore = computeMlScore(m, teamInsights);
 
                   // O/U label: show direction of lean
