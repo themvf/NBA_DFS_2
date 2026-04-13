@@ -25,6 +25,148 @@ const fmtMl = (ml: number | null) => {
   return ml > 0 ? `+${ml}` : String(ml);
 };
 
+// ── Betting intelligence helpers ────────────────────────────────────────────
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/** Map a game total to the historical O/U tier key (must match DB CASE labels). */
+function getOuTierKey(total: number | null): string | null {
+  if (total == null) return null;
+  if (total < 215) return "Under 215";
+  if (total < 220) return "215\u2013220";
+  if (total < 225) return "220\u2013225";
+  if (total < 230) return "225\u2013230";
+  if (total < 235) return "230\u2013235";
+  if (total < 240) return "235\u2013240";
+  return "240+";
+}
+
+/** Map an ABS(home_spread) to the historical spread tier key. */
+function getSpreadTierKey(spread: number | null): string | null {
+  if (spread == null) return null;
+  const abs = Math.abs(spread);
+  if (abs <= 1.5) return "Pick / \u00b11.5";
+  if (abs <= 3.5) return "2\u20133.5";
+  if (abs <= 6.5) return "4\u20136.5";
+  if (abs <= 9.5) return "7\u20139.5";
+  if (abs <= 13.5) return "10\u201313.5";
+  return "14+";
+}
+
+/**
+ * O/U score = weighted average of:
+ *   40% tier over-rate | 30% home team game over-rate | 30% away team game over-rate
+ * Returns null when no signal is available.
+ */
+function computeOuScore(
+  m: VegasMatchupRow,
+  ouHitRate: OuHitRateRow[],
+  teamInsights: TeamVegasInsightRow[],
+): number | null {
+  const tierRow = ouHitRate.find((r) => r.totalTier === getOuTierKey(m.vegasTotal));
+  const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
+  const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
+
+  const signals: [number, number][] = []; // [value, weight]
+  if (tierRow?.overRate != null) signals.push([tierRow.overRate, 0.40]);
+  if (home?.gameOverRate != null) signals.push([home.gameOverRate, 0.30]);
+  if (away?.gameOverRate != null) signals.push([away.gameOverRate, 0.30]);
+
+  if (signals.length === 0) return null;
+  const totalW = signals.reduce((s, [, w]) => s + w, 0);
+  return signals.reduce((s, [v, w]) => s + v * w, 0) / totalW;
+}
+
+/**
+ * Spread score = probability the HOME team covers.
+ *   40% historical tier cover rate (adjusted for home fav/dog)
+ *   35% home team ATS cover rate
+ *   25% (1 − away team ATS cover rate)
+ */
+function computeSpreadScore(
+  m: VegasMatchupRow,
+  spreadCoverage: SpreadCoverageRow[],
+  teamInsights: TeamVegasInsightRow[],
+): number | null {
+  const tierRow = spreadCoverage.find((r) => r.spreadTier === getSpreadTierKey(m.homeSpread));
+  const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
+  const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
+
+  // tierCoverRate = "favorite covers"; flip if home is the dog
+  let baseCoverRate: number | null = null;
+  if (tierRow?.coverRate != null && m.homeSpread != null) {
+    baseCoverRate =
+      m.homeSpread < 0
+        ? tierRow.coverRate         // home is fav → use as-is
+        : Math.abs(m.homeSpread) < 0.5
+        ? 0.5                       // pick 'em
+        : 1 - tierRow.coverRate;    // home is dog → flip
+  }
+
+  const signals: [number, number][] = [];
+  if (baseCoverRate != null) signals.push([baseCoverRate, 0.40]);
+  if (home?.atsCoverRate != null) signals.push([home.atsCoverRate, 0.35]);
+  if (away?.atsCoverRate != null) signals.push([1 - away.atsCoverRate, 0.25]);
+
+  if (signals.length === 0) return null;
+  const totalW = signals.reduce((s, [, w]) => s + w, 0);
+  return signals.reduce((s, [v, w]) => s + v * w, 0) / totalW;
+}
+
+/**
+ * ML score = Vegas home-win probability adjusted by team scoring bias
+ * and over-implied rate (small adjustments, Vegas stays dominant).
+ * Max shift: ±9%.
+ */
+function computeMlScore(
+  m: VegasMatchupRow,
+  teamInsights: TeamVegasInsightRow[],
+): number | null {
+  if (m.homeWinProb == null) return null;
+  const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
+  const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
+
+  // Bias: positive = Vegas underestimates; home advantage when home bias > away bias
+  const homeBias = home?.bias ?? 0;
+  const awayBias = away?.bias ?? 0;
+  const biasAdj = clamp((homeBias - awayBias) / 30, -0.05, 0.05);
+
+  // Over-implied rate: teams that consistently beat their implied are undervalued
+  const homeOvr = home?.overImpliedRate ?? 0.5;
+  const awayOvr = away?.overImpliedRate ?? 0.5;
+  const ovrAdj = clamp(((homeOvr - 0.5) - (awayOvr - 0.5)) * 0.15, -0.04, 0.04);
+
+  return clamp(m.homeWinProb + biasAdj + ovrAdj, 0.05, 0.95);
+}
+
+/** Color-coded badge showing a probability score. */
+function ScoreBadge({ score, label }: { score: number | null; label?: string }) {
+  if (score == null) return <span className="text-gray-300 text-xs">—</span>;
+  const pct = score * 100;
+  const cls =
+    pct > 57
+      ? "bg-green-100 text-green-800 border-green-200"
+      : pct > 52
+      ? "bg-green-50 text-green-700 border-green-100"
+      : pct < 43
+      ? "bg-red-100 text-red-800 border-red-200"
+      : pct < 48
+      ? "bg-orange-50 text-orange-700 border-orange-100"
+      : "bg-gray-50 text-gray-500 border-gray-200";
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-xs font-medium ${cls}`}
+    >
+      {label && <span className="opacity-75">{label}&nbsp;</span>}
+      {pct.toFixed(0)}%
+    </span>
+  );
+}
+
+// ── end helpers ─────────────────────────────────────────────────────────────
+
 function BiasChip({ bias }: { bias: number | null }) {
   if (bias == null) return <span className="text-gray-400">—</span>;
   const pos = bias > 0;
@@ -270,6 +412,98 @@ export default function VegasClient({
           </div>
         )}
       </div>
+
+      {/* ── Betting Intelligence ─────────────────────────────── */}
+      {matchups.length > 0 && hasScores && sport === "nba" && (
+        <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
+          <div>
+            <h2 className="font-semibold">Betting Intelligence</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Scores derived from historical O/U tiers, spread tiers, team implied accuracy, and ATS cover rates.
+              O/U = lean over probability. Spread = home-covers probability. ML = adjusted home-win probability.
+              Scores near 50% are neutral; above 57% or below 43% suggest a meaningful lean.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500">
+                  <th className="py-1 text-left">Matchup</th>
+                  <th className="py-1 text-right">Total</th>
+                  <th className="py-1 text-right">O/U Score</th>
+                  <th className="py-1 text-right">Spread</th>
+                  <th className="py-1 text-right">Spread Score</th>
+                  <th className="py-1 text-right">ML Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matchups.map((m) => {
+                  const ouScore = computeOuScore(m, ouHitRate, teamInsights);
+                  const spreadScore = computeSpreadScore(m, spreadCoverage, teamInsights);
+                  const mlScore = computeMlScore(m, teamInsights);
+
+                  // O/U label: show direction of lean
+                  const ouLabel =
+                    ouScore != null ? (ouScore >= 0.5 ? "O" : "U") : undefined;
+
+                  // Spread label: home fav vs dog
+                  const spreadLabel =
+                    spreadScore != null
+                      ? spreadScore >= 0.5
+                        ? m.homeAbbrev
+                        : m.awayAbbrev
+                      : undefined;
+
+                  // ML label
+                  const mlLabel =
+                    mlScore != null
+                      ? mlScore >= 0.5
+                        ? m.homeAbbrev
+                        : m.awayAbbrev
+                      : undefined;
+                  // Flip spread score display for away lean (show away-covers %)
+                  const spreadDisplay = spreadScore != null && spreadScore < 0.5
+                    ? 1 - spreadScore
+                    : spreadScore;
+                  const mlDisplay = mlScore != null && mlScore < 0.5
+                    ? 1 - mlScore
+                    : mlScore;
+
+                  const homeSpreadStr =
+                    m.homeSpread == null
+                      ? "—"
+                      : m.homeSpread > 0
+                      ? `+${m.homeSpread}`
+                      : String(m.homeSpread);
+
+                  return (
+                    <tr key={m.matchupId} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-1.5 font-medium">
+                        {m.awayAbbrev} @ {m.homeAbbrev}
+                      </td>
+                      <td className="py-1.5 text-right text-gray-500">{fmt1(m.vegasTotal)}</td>
+                      <td className="py-1.5 text-right">
+                        <ScoreBadge score={ouScore} label={ouLabel} />
+                      </td>
+                      <td className="py-1.5 text-right text-gray-500">{homeSpreadStr}</td>
+                      <td className="py-1.5 text-right">
+                        <ScoreBadge score={spreadDisplay} label={spreadLabel} />
+                      </td>
+                      <td className="py-1.5 text-right">
+                        <ScoreBadge score={mlDisplay} label={mlLabel} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-400">
+            Scores are statistical summaries of historical patterns — not betting recommendations.
+            Sample sizes vary; interpret with caution on low-game-count tiers.
+          </p>
+        </div>
+      )}
 
       {!hasScores && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
