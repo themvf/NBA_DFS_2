@@ -431,6 +431,112 @@ def _compute_implied_totals(
     return home_implied, away_implied
 
 
+def fetch_player_stats(db: DatabaseManager, game_date: str | None = None) -> int:
+    """Fetch per-player stat lines for completed NBA games on game_date.
+
+    Calls LeagueGameLog to get pts/reb/ast/stl/blk/tov/3pm for each player
+    who appeared in games on game_date.  Matches to dk_players for the
+    corresponding NBA slate and writes actual_pts/reb/ast/stl/blk/tov/3pm.
+
+    Safe to call multiple times — always overwrites with the latest values.
+    Returns number of dk_players rows updated.
+    """
+    from nba_api.stats.endpoints import LeagueGameLog
+    from ingest.nba_stats import _call_with_retry
+
+    target_date = game_date or date.today().isoformat()
+
+    # Find the NBA slate for this date
+    slate = db.execute_one(
+        "SELECT id FROM dk_slates WHERE slate_date = %s AND sport = 'nba'",
+        (target_date,),
+    )
+    if not slate:
+        logger.info("No NBA slate for %s — skipping player stat fetch", target_date)
+        return 0
+
+    pool = db.execute(
+        "SELECT id, name, team_abbrev FROM dk_players WHERE slate_id = %s",
+        (slate["id"],),
+    )
+    if not pool:
+        logger.info("No dk_players for NBA slate on %s", target_date)
+        return 0
+
+    pool_by_name = {p["name"].lower(): p for p in pool}
+
+    logger.info("Fetching LeagueGameLog player stats for %s ...", target_date)
+    time.sleep(SLEEP_SECONDS)
+
+    def _fetch():
+        return LeagueGameLog(
+            date_from_nullable=target_date,
+            date_to_nullable=target_date,
+            player_or_team_abbreviation="P",
+            timeout=60,
+        )
+
+    try:
+        log = _call_with_retry(_fetch, "LeagueGameLog-stats")
+        game_log_df = log.get_data_frames()[0]
+    except Exception as exc:
+        logger.warning("LeagueGameLog failed for %s: %s", target_date, exc)
+        return 0
+
+    if game_log_df.empty:
+        logger.info("No player game log data for %s", target_date)
+        return 0
+
+    # Aggregate by player name (a player traded mid-season may have two rows)
+    stats_by_name: dict[str, dict] = {}
+    for _, row in game_log_df.iterrows():
+        pname = str(row.get("PLAYER_NAME", "")).lower()
+        if not pname or pname in stats_by_name:
+            continue
+        stats_by_name[pname] = {
+            "pts":  float(row.get("PTS",  0) or 0),
+            "reb":  float(row.get("REB",  0) or 0),
+            "ast":  float(row.get("AST",  0) or 0),
+            "stl":  float(row.get("STL",  0) or 0),
+            "blk":  float(row.get("BLK",  0) or 0),
+            "tov":  float(row.get("TOV",  0) or 0),
+            "fg3m": float(row.get("FG3M", 0) or 0),
+        }
+
+    updated = 0
+    for api_name, stats in stats_by_name.items():
+        row = pool_by_name.get(api_name)
+        if not row:
+            # Try fuzzy match (Levenshtein ≤ 3)
+            best_dist, best_row = 4, None
+            for dk_name, dk_row in pool_by_name.items():
+                d = _levenshtein(api_name, dk_name)
+                if d < best_dist:
+                    best_dist, best_row = d, dk_row
+            row = best_row
+
+        if not row:
+            continue
+
+        db.execute(
+            """
+            UPDATE dk_players
+            SET actual_pts = %s, actual_reb = %s, actual_ast = %s,
+                actual_stl = %s, actual_blk = %s, actual_tov = %s, actual_3pm = %s
+            WHERE id = %s
+            """,
+            (
+                stats["pts"], stats["reb"], stats["ast"],
+                stats["stl"], stats["blk"], stats["tov"], stats["fg3m"],
+                row["id"],
+            ),
+        )
+        updated += 1
+
+    print(f"Player stats: {updated}/{len(pool)} dk_players updated for {target_date}")
+    return updated
+
+
 def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
     """Fetch final scores for completed NBA games and write to nba_matchups.
 
@@ -549,3 +655,11 @@ if __name__ == "__main__":
     fetch_odds(db, config.odds_api.api_key, args.date)
     fetch_scores(db, args.date)
     fetch_player_props(db, config.odds_api.api_key, args.date)
+    fetch_player_stats(db, args.date)
+
+    # Write game-total model predictions for upcoming games
+    try:
+        from model.game_predictions import predict_and_write
+        predict_and_write(db, game_date=args.date)
+    except Exception as exc:
+        logger.warning("Game predictions skipped: %s", exc)

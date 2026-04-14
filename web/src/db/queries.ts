@@ -2692,3 +2692,110 @@ export async function getBiggestMisses(sport: Sport = "nba", limit = 20): Promis
     }));
   }
 }
+
+// ── Stat-level accuracy ──────────────────────────────────────────────────────
+
+export type StatLevelAccuracyRow = {
+  stat: string;          // "pts" | "reb" | "ast"
+  propCol: string;       // column used as projection ("prop_pts", etc.)
+  n: number;             // games where both prop and actual are present
+  mae: number | null;
+  bias: number | null;   // positive = we projected more than actual
+  nFormula: number;      // games where no prop — formula only (actual available but no prop)
+};
+
+export async function getStatLevelAccuracy(sport: Sport = "nba"): Promise<StatLevelAccuracyRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      'pts'  AS stat,
+      COUNT(*) FILTER (WHERE prop_pts IS NOT NULL AND actual_pts IS NOT NULL)           AS n,
+      AVG(ABS(prop_pts - actual_pts))
+        FILTER (WHERE prop_pts IS NOT NULL AND actual_pts IS NOT NULL)                  AS mae,
+      AVG(prop_pts - actual_pts)
+        FILTER (WHERE prop_pts IS NOT NULL AND actual_pts IS NOT NULL)                  AS bias,
+      COUNT(*) FILTER (WHERE prop_pts IS NULL AND actual_pts IS NOT NULL)               AS n_formula
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
+    UNION ALL
+    SELECT
+      'reb'  AS stat,
+      COUNT(*) FILTER (WHERE prop_reb IS NOT NULL AND actual_reb IS NOT NULL)           AS n,
+      AVG(ABS(prop_reb - actual_reb))
+        FILTER (WHERE prop_reb IS NOT NULL AND actual_reb IS NOT NULL)                  AS mae,
+      AVG(prop_reb - actual_reb)
+        FILTER (WHERE prop_reb IS NOT NULL AND actual_reb IS NOT NULL)                  AS bias,
+      COUNT(*) FILTER (WHERE prop_reb IS NULL AND actual_reb IS NOT NULL)               AS n_formula
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
+    UNION ALL
+    SELECT
+      'ast'  AS stat,
+      COUNT(*) FILTER (WHERE prop_ast IS NOT NULL AND actual_ast IS NOT NULL)           AS n,
+      AVG(ABS(prop_ast - actual_ast))
+        FILTER (WHERE prop_ast IS NOT NULL AND actual_ast IS NOT NULL)                  AS mae,
+      AVG(prop_ast - actual_ast)
+        FILTER (WHERE prop_ast IS NOT NULL AND actual_ast IS NOT NULL)                  AS bias,
+      COUNT(*) FILTER (WHERE prop_ast IS NULL AND actual_ast IS NOT NULL)               AS n_formula
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
+  `);
+  return (rows.rows as StatLevelAccuracyRow[]).map((r) => ({
+    stat:     String(r.stat),
+    propCol:  `prop_${r.stat}`,
+    n:        Number(r.n),
+    mae:      r.mae  != null ? Number(r.mae)  : null,
+    bias:     r.bias != null ? Number(r.bias) : null,
+    nFormula: Number(r.nFormula),
+  }));
+}
+
+// ── Game-total model accuracy over time ──────────────────────────────────────
+
+export type GameTotalModelRow = {
+  gameDate: string;
+  homeAbbrev: string;
+  awayAbbrev: string;
+  vegasTotal: number;
+  ourPred: number;
+  actualTotal: number | null;
+  vegasMiss: number | null;   // actual - vegas (positive = over)
+  ourMiss: number | null;     // actual - our pred
+};
+
+export async function getGameTotalModelAccuracy(): Promise<GameTotalModelRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      nm.game_date::text                                          AS "gameDate",
+      ht.abbreviation                                             AS "homeAbbrev",
+      at.abbreviation                                             AS "awayAbbrev",
+      nm.vegas_total                                              AS "vegasTotal",
+      nm.our_game_total_pred                                      AS "ourPred",
+      CASE WHEN nm.home_score IS NOT NULL AND nm.away_score IS NOT NULL
+           THEN (nm.home_score + nm.away_score)::DOUBLE PRECISION
+           ELSE NULL END                                          AS "actualTotal",
+      CASE WHEN nm.home_score IS NOT NULL AND nm.away_score IS NOT NULL
+           THEN (nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.vegas_total
+           ELSE NULL END                                          AS "vegasMiss",
+      CASE WHEN nm.home_score IS NOT NULL AND nm.away_score IS NOT NULL
+           THEN (nm.home_score + nm.away_score)::DOUBLE PRECISION - nm.our_game_total_pred
+           ELSE NULL END                                          AS "ourMiss"
+    FROM nba_matchups nm
+    JOIN teams ht ON ht.team_id = nm.home_team_id
+    JOIN teams at ON at.team_id = nm.away_team_id
+    WHERE nm.our_game_total_pred IS NOT NULL
+    ORDER BY nm.game_date DESC
+  `);
+  return (rows.rows as GameTotalModelRow[]).map((r) => ({
+    gameDate:    String(r.gameDate),
+    homeAbbrev:  String(r.homeAbbrev),
+    awayAbbrev:  String(r.awayAbbrev),
+    vegasTotal:  Number(r.vegasTotal),
+    ourPred:     Number(r.ourPred),
+    actualTotal: r.actualTotal != null ? Number(r.actualTotal) : null,
+    vegasMiss:   r.vegasMiss   != null ? Number(r.vegasMiss)   : null,
+    ourMiss:     r.ourMiss     != null ? Number(r.ourMiss)     : null,
+  }));
+}

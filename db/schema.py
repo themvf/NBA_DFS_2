@@ -981,6 +981,74 @@ MIGRATIONS = [
             ALTER TABLE dk_players ADD COLUMN hr_prob_1plus REAL;
         END IF;
     END $$""",
+
+    # 2026-04-13: Game-total model prediction column on nba_matchups
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nba_matchups' AND column_name = 'our_game_total_pred'
+        ) THEN
+            ALTER TABLE nba_matchups ADD COLUMN our_game_total_pred DOUBLE PRECISION;
+        END IF;
+    END $$""",
+
+    # 2026-04-13: Actual per-stat lines on dk_players for DFS model calibration
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'actual_pts'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN actual_pts REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'actual_reb'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN actual_reb REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'actual_ast'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN actual_ast REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'actual_stl'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN actual_stl REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'actual_blk'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN actual_blk REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'actual_tov'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN actual_tov REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'actual_3pm'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN actual_3pm REAL;
+        END IF;
+    END $$""",
 ]
 
 INDEXES = [

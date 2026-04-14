@@ -225,6 +225,13 @@ def run(results_path: str, slate_date: str | None = None) -> None:
     print_optimizer_feature_comparison(db)
     print_value_misses(db, slate_id)
 
+    # Fetch per-stat actual lines (pts/reb/ast/stl/blk/tov/3pm) from NBA Stats API
+    try:
+        from ingest.nba_schedule import fetch_player_stats
+        fetch_player_stats(db, slate["slate_date"])
+    except Exception as exc:
+        print(f"Player stat fetch skipped: {exc}")
+
 
 def print_value_misses(db, slate_id: int, fpts_threshold: float = 30.0, own_threshold: float = 15.0) -> None:
     """Report high-scoring low-owned players we missed entirely.

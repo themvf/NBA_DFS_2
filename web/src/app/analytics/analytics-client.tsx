@@ -21,6 +21,8 @@ import type {
   OwnershipVsTeamTotalRow,
   MlbBattingOrderCalibrationRow,
   ProjectionSourceRow,
+  StatLevelAccuracyRow,
+  GameTotalModelRow,
   Sport,
 } from "@/db/queries";
 import { saveHistoricalSlate } from "@/app/dfs/actions";
@@ -49,6 +51,8 @@ type Props = {
   ownVsTotal: OwnershipVsTeamTotalRow[];
   battingOrderCalib: MlbBattingOrderCalibrationRow[];
   projSourceBreakdown: ProjectionSourceRow[];
+  statLevelAccuracy: StatLevelAccuracyRow[];
+  gameTotalModel: GameTotalModelRow[];
   sport: Sport;
 };
 
@@ -60,6 +64,8 @@ export default function AnalyticsClient({
   ownVsTotal,
   battingOrderCalib,
   projSourceBreakdown,
+  statLevelAccuracy,
+  gameTotalModel,
   sport,
 }: Props) {
   const router = useRouter();
@@ -685,6 +691,125 @@ export default function AnalyticsClient({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── Prop Line Accuracy (stat-level) ──────────────────── */}
+      {statLevelAccuracy.length > 0 && statLevelAccuracy.some((r) => r.n > 0) && (
+        <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
+          <div>
+            <h2 className="font-semibold">Prop Line Accuracy</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              How accurate are the market prop lines (pts/reb/ast) vs actual stats?
+              Bias &gt; 0 = props overestimate. Formula column = games where no prop was available.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500 text-right">
+                  <th className="py-1 text-left">Stat</th>
+                  <th className="py-1">Prop Games</th>
+                  <th className="py-1">MAE</th>
+                  <th className="py-1">Bias</th>
+                  <th className="py-1">Formula Games</th>
+                </tr>
+              </thead>
+              <tbody>
+                {statLevelAccuracy.map((row) => (
+                  <tr key={row.stat} className="border-b border-gray-50">
+                    <td className="py-1.5 font-semibold uppercase">{row.stat}</td>
+                    <td className="py-1.5 text-right text-gray-400">{row.n}</td>
+                    <td className="py-1.5 text-right font-medium">{fmt2(row.mae)}</td>
+                    <td className="py-1.5 text-right">
+                      <BiasChip bias={row.bias} />
+                    </td>
+                    <td className="py-1.5 text-right text-gray-400">{row.nFormula}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Game Total Model vs Vegas ─────────────────────────── */}
+      {gameTotalModel.length > 0 && (
+        <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
+          <div>
+            <h2 className="font-semibold">Game Total Model — Our Prediction vs Vegas</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Our Ridge model prediction stored before game time vs the Vegas line and actual total.
+              Miss = actual − prediction (positive = went over). Populated by{" "}
+              <code className="font-mono bg-gray-100 px-1 rounded">python -m ingest.nba_schedule</code>.
+            </p>
+          </div>
+          {(() => {
+            const completed = gameTotalModel.filter((r) => r.actualTotal != null);
+            const vegasMae = completed.length > 0
+              ? completed.reduce((s, r) => s + Math.abs(r.vegasMiss!), 0) / completed.length
+              : null;
+            const ourMae = completed.length > 0
+              ? completed.reduce((s, r) => s + Math.abs(r.ourMiss!), 0) / completed.length
+              : null;
+            return completed.length > 0 ? (
+              <div className="flex gap-6 text-xs mb-1">
+                <span>
+                  <span className="text-gray-500">Vegas MAE: </span>
+                  <span className="font-semibold">{vegasMae?.toFixed(2)}</span>
+                </span>
+                <span>
+                  <span className="text-gray-500">Our MAE: </span>
+                  <span className="font-semibold">{ourMae?.toFixed(2)}</span>
+                </span>
+                <span>
+                  <span className="text-gray-500">Improvement: </span>
+                  <span className={`font-semibold ${ourMae != null && vegasMae != null && ourMae < vegasMae ? "text-green-700" : "text-red-600"}`}>
+                    {vegasMae != null && ourMae != null
+                      ? `${(vegasMae - ourMae) > 0 ? "+" : ""}${(vegasMae - ourMae).toFixed(2)}`
+                      : "—"}
+                  </span>
+                </span>
+                <span className="text-gray-400">({completed.length} completed games)</span>
+              </div>
+            ) : null;
+          })()}
+          <div className="overflow-x-auto max-h-72 overflow-y-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead className="sticky top-0 bg-white">
+                <tr className="border-b text-gray-500">
+                  <th className="py-1 text-left">Date</th>
+                  <th className="py-1 text-left">Matchup</th>
+                  <th className="py-1 text-right">Vegas</th>
+                  <th className="py-1 text-right">Our Pred</th>
+                  <th className="py-1 text-right">Actual</th>
+                  <th className="py-1 text-right">Vegas Miss</th>
+                  <th className="py-1 text-right">Our Miss</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gameTotalModel.map((row, i) => {
+                  const vmColor = row.vegasMiss == null ? "" : Math.abs(row.vegasMiss) > 15 ? "text-red-600 font-semibold" : "";
+                  const omColor = row.ourMiss == null ? "" : Math.abs(row.ourMiss) > 15 ? "text-orange-600 font-semibold" : "";
+                  return (
+                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-1.5 text-gray-500">{row.gameDate}</td>
+                      <td className="py-1.5 font-medium">{row.awayAbbrev} @ {row.homeAbbrev}</td>
+                      <td className="py-1.5 text-right">{row.vegasTotal.toFixed(1)}</td>
+                      <td className="py-1.5 text-right text-blue-700">{row.ourPred.toFixed(1)}</td>
+                      <td className="py-1.5 text-right">{row.actualTotal?.toFixed(0) ?? "—"}</td>
+                      <td className={`py-1.5 text-right ${vmColor}`}>
+                        {row.vegasMiss != null ? `${row.vegasMiss > 0 ? "+" : ""}${row.vegasMiss.toFixed(1)}` : "—"}
+                      </td>
+                      <td className={`py-1.5 text-right ${omColor}`}>
+                        {row.ourMiss != null ? `${row.ourMiss > 0 ? "+" : ""}${row.ourMiss.toFixed(1)}` : "pending"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

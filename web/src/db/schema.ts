@@ -172,6 +172,7 @@ export const nbaMatchups = pgTable(
     awayImplied: doublePrecision("away_implied"),
     homeScore: integer("home_score"),
     awayScore: integer("away_score"),
+    ourGameTotalPred: doublePrecision("our_game_total_pred"),
     fetchedAt: timestamp("fetched_at").defaultNow(),
   },
   (t) => [
@@ -414,6 +415,13 @@ export const dkPlayers = pgTable(
     isOut: boolean("is_out").default(false),
     actualFpts: real("actual_fpts"),
     actualOwnPct: real("actual_own_pct"),
+    actualPts: real("actual_pts"),
+    actualReb: real("actual_reb"),
+    actualAst: real("actual_ast"),
+    actualStl: real("actual_stl"),
+    actualBlk: real("actual_blk"),
+    actualTov: real("actual_tov"),
+    actual3pm: real("actual_3pm"),
   },
   (t) => [
     unique("dk_players_slate_player_key").on(t.slateId, t.dkPlayerId),

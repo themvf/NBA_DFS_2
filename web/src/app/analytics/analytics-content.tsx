@@ -6,12 +6,18 @@ import {
   getOwnershipVsTeamTotal,
   getMlbBattingOrderCalibration,
   getProjectionSourceBreakdown,
+  getStatLevelAccuracy,
+  getGameTotalModelAccuracy,
 } from "@/db/queries";
 import type { Sport } from "@/db/queries";
 import AnalyticsClient from "./analytics-client";
 
 export default async function AnalyticsContent({ sport }: { sport: Sport }) {
-  const [crossSlate, posAccuracy, salaryTier, leverageCalib, ownVsTotal, battingOrderCalib, projSourceBreakdown] = await Promise.all([
+  const [
+    crossSlate, posAccuracy, salaryTier, leverageCalib,
+    ownVsTotal, battingOrderCalib, projSourceBreakdown,
+    statLevelAccuracy, gameTotalModel,
+  ] = await Promise.all([
     getCrossSlateAccuracy(sport),
     getPositionAccuracy(sport),
     getSalaryTierAccuracy(sport),
@@ -19,6 +25,8 @@ export default async function AnalyticsContent({ sport }: { sport: Sport }) {
     getOwnershipVsTeamTotal(sport),
     sport === "mlb" ? getMlbBattingOrderCalibration() : Promise.resolve([]),
     getProjectionSourceBreakdown(sport),
+    getStatLevelAccuracy(sport),
+    sport === "nba" ? getGameTotalModelAccuracy() : Promise.resolve([]),
   ]);
 
   return (
@@ -30,6 +38,8 @@ export default async function AnalyticsContent({ sport }: { sport: Sport }) {
       ownVsTotal={ownVsTotal}
       battingOrderCalib={battingOrderCalib}
       projSourceBreakdown={projSourceBreakdown}
+      statLevelAccuracy={statLevelAccuracy}
+      gameTotalModel={gameTotalModel}
       sport={sport}
     />
   );
