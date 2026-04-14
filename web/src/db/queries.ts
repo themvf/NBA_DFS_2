@@ -96,6 +96,7 @@ export type DfsPagePlayerRow = Pick<
   DkPlayerRow,
   | "id"
   | "slateId"
+  | "dkPlayerId"
   | "name"
   | "teamAbbrev"
   | "teamId"
@@ -160,6 +161,7 @@ export async function getDfsPagePlayers(sport: Sport = "nba"): Promise<DfsPagePl
       SELECT
         dp.id,
         dp.slate_id           AS "slateId",
+        dp.dk_player_id       AS "dkPlayerId",
         dp.name,
         dp.team_abbrev        AS "teamAbbrev",
         dp.mlb_team_id        AS "teamId",
@@ -231,6 +233,7 @@ export async function getDfsPagePlayers(sport: Sport = "nba"): Promise<DfsPagePl
     SELECT
       dp.id,
       dp.slate_id          AS "slateId",
+      dp.dk_player_id      AS "dkPlayerId",
       dp.name,
       dp.team_abbrev       AS "teamAbbrev",
       dp.team_id           AS "teamId",
