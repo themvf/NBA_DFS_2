@@ -3992,12 +3992,62 @@ export async function applyLinestarPaste(text: string, sport: Sport = "nba"): Pr
 
 type HistoricalEntry = {
   position: string;
-  linestarProj: number;
-  projOwnPct: number;
-  actualOwnPct: number;
+  linestarProj: number | null;
+  projOwnPct: number | null;
+  actualOwnPct: number | null;
   actualFpts: number | null;
   teamAbbrev: string;
 };
+
+type HistoricalHeaderHints = {
+  salaryIdx: number;
+  projOwnIdx: number | null;
+  actualOwnIdx: number | null;
+  projIdx: number | null;
+  actualIdx: number | null;
+};
+
+function normalizeHistoricalHeaderCell(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[%_]/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseHistoricalNumericCell(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const cleaned = value.replace(/[$,%]/g, "").replace(/,/g, "").trim();
+  if (!cleaned) return null;
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function detectHistoricalHeaderHints(cells: string[]): HistoricalHeaderHints | null {
+  const normalized = cells.map(normalizeHistoricalHeaderCell);
+  const salaryIdx = normalized.findIndex((cell) => cell === "salary" || cell.includes("salary"));
+  if (salaryIdx < 0) return null;
+
+  const findAfterSalary = (matcher: (cell: string) => boolean): number | null => {
+    const idx = normalized.findIndex((cell, i) => i > salaryIdx && matcher(cell));
+    return idx >= 0 ? idx : null;
+  };
+
+  return {
+    salaryIdx,
+    projOwnIdx: findAfterSalary((cell) => cell.includes("proj") && cell.includes("own")),
+    actualOwnIdx: findAfterSalary((cell) => cell.includes("actual") && cell.includes("own")),
+    projIdx: findAfterSalary((cell) =>
+      (cell === "proj" || cell.includes("projection") || cell.includes("projected"))
+      && !cell.includes("own"),
+    ),
+    actualIdx: findAfterSalary((cell) =>
+      (cell.includes("actual") || cell.includes("scored") || cell.includes("score") || cell.includes("fpts"))
+      && !cell.includes("own"),
+    ),
+  };
+}
 
 /**
  * Parse LineStar historical paste. Same column anchor as the live parser
@@ -4009,10 +4059,13 @@ type HistoricalEntry = {
 function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, HistoricalEntry> {
   const lines = text.split(/\r?\n/).filter(Boolean);
   const map = new Map<string, HistoricalEntry>();
+  const headerCells = lines[0]?.split("\t").map((c) => c.trim()) ?? [];
+  const headerHints = detectHistoricalHeaderHints(headerCells);
+  const dataLines = headerHints ? lines.slice(1) : lines;
 
-  for (const line of lines) {
+  for (const line of dataLines) {
     const cells = line.split("\t").map((c) => c.trim());
-    const salaryIdx = cells.findIndex((c) => /^\$\d{4,5}$/.test(c));
+    const salaryIdx = headerHints?.salaryIdx ?? cells.findIndex((c) => /^\$[\d,]{4,7}$/.test(c));
     if (salaryIdx < 1) continue;
 
     let playerName = cells[salaryIdx - 1];
@@ -4052,13 +4105,46 @@ function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, H
       return /^(PG|SG|SF|PF|C)(\/(?:PG|SG|SF|PF|C))*$/.test(posRaw) ? posRaw : "UTIL";
     })();
 
-    const projOwnPct   = parseFloat((cells[salaryIdx + 1] ?? "").replace("%", "")) || 0;
-    const actualOwnPct = parseFloat((cells[salaryIdx + 2] ?? "").replace("%", "")) || 0;
-    const linestarProj = parseFloat(cells[salaryIdx + 4] ?? "") || 0;
-    // actualFpts is in col +5 for historical data (labelled "Scored" or "Actual")
-    const rawActual    = cells[salaryIdx + 5] ?? "";
-    const actualFpts   = rawActual !== "" && !isNaN(parseFloat(rawActual))
-      ? parseFloat(rawActual) : null;
+    const percentCells = cells
+      .map((raw, idx) => ({ idx, raw, value: raw.includes("%") ? parseHistoricalNumericCell(raw) : null }))
+      .filter((entry) => entry.idx > salaryIdx && entry.value != null) as Array<{ idx: number; raw: string; value: number }>;
+    const numericNonPercentCells = cells
+      .map((raw, idx) => ({ idx, raw, value: raw.includes("%") ? null : parseHistoricalNumericCell(raw) }))
+      .filter((entry) => entry.idx > salaryIdx && entry.value != null) as Array<{ idx: number; raw: string; value: number }>;
+
+    const projOwnPct = headerHints?.projOwnIdx != null
+      ? parseHistoricalNumericCell(cells[headerHints.projOwnIdx] ?? "")
+      : (percentCells[0]?.value ?? null);
+    const actualOwnPct = headerHints?.actualOwnIdx != null
+      ? parseHistoricalNumericCell(cells[headerHints.actualOwnIdx] ?? "")
+      : (percentCells[1]?.value ?? null);
+
+    let actualFpts = headerHints?.actualIdx != null
+      ? parseHistoricalNumericCell(cells[headerHints.actualIdx] ?? "")
+      : null;
+    let linestarProj = headerHints?.projIdx != null
+      ? parseHistoricalNumericCell(cells[headerHints.projIdx] ?? "")
+      : null;
+
+    if (actualFpts == null && numericNonPercentCells.length >= 2) {
+      actualFpts = numericNonPercentCells[numericNonPercentCells.length - 1]?.value ?? null;
+    }
+
+    if (linestarProj == null) {
+      if (numericNonPercentCells.length >= 2) {
+        linestarProj = numericNonPercentCells[numericNonPercentCells.length - 2]?.value ?? null;
+      } else if (numericNonPercentCells.length === 1) {
+        linestarProj = numericNonPercentCells[0]?.value ?? null;
+      }
+    }
+
+    if (linestarProj == null) {
+      linestarProj = parseHistoricalNumericCell(cells[salaryIdx + 4] ?? "");
+    }
+
+    if (actualFpts == null && numericNonPercentCells.length === 0) {
+      actualFpts = parseHistoricalNumericCell(cells[salaryIdx + 5] ?? "");
+    }
 
     map.set(`${playerName.toLowerCase()}|${salary}`, {
       position, linestarProj, projOwnPct, actualOwnPct, actualFpts,
@@ -4100,6 +4186,15 @@ export async function saveHistoricalSlate(
   const parsed = parseHistoricalPaste(text, sport);
   if (parsed.size === 0)
     return { ok: false, message: "No players parsed — expected tab-separated LineStar data", created: 0, updated: 0 };
+  const parsedActualCount = Array.from(parsed.values()).filter((entry) => entry.actualFpts != null).length;
+  if (parsedActualCount === 0) {
+    return {
+      ok: false,
+      message: "No historical actual FPTS found in the paste. Use the LineStar historical/results view, not the live projections table.",
+      created: 0,
+      updated: 0,
+    };
+  }
 
   // Find existing slate to update results into.
   // Priority 1: exact match on date + contestType + contestFormat (user selected the right slate).
@@ -4183,20 +4278,28 @@ export async function saveHistoricalSlate(
       const repairedTeam = sport === "nba" && nbaHistoricalResolver
         ? resolveHistoricalNbaTeam(nbaHistoricalResolver, p.name, match.teamAbbrev)
         : null;
+      const updatePayload: Partial<typeof dkPlayers.$inferInsert> = {
+        linestarProj: match.linestarProj ?? null,
+        projOwnPct:   match.projOwnPct ?? null,
+        ...(sport === "nba" && repairedTeam && (!p.teamId || !p.teamAbbrev || p.teamAbbrev === "UNK")
+          ? {
+            teamId: repairedTeam.teamId,
+            teamAbbrev: repairedTeam.teamAbbrev,
+          }
+          : {}),
+      };
+      if (match.actualFpts != null) updatePayload.actualFpts = match.actualFpts;
+      if (match.actualOwnPct != null) updatePayload.actualOwnPct = match.actualOwnPct;
+      if (sport === "mlb") {
+        const mlbTeamId = abbrevCache.get(match.teamAbbrev) ?? null;
+        if (!p.teamId && mlbTeamId) {
+          updatePayload.mlbTeamId = mlbTeamId;
+          updatePayload.teamAbbrev = match.teamAbbrev;
+        }
+      }
 
       await db.update(dkPlayers)
-        .set({
-          actualFpts:   match.actualFpts,
-          actualOwnPct: match.actualOwnPct || null,
-          linestarProj: match.linestarProj || null,
-          projOwnPct:   match.projOwnPct   || null,
-          ...(sport === "nba" && repairedTeam && (!p.teamId || !p.teamAbbrev || p.teamAbbrev === "UNK")
-            ? {
-              teamId: repairedTeam.teamId,
-              teamAbbrev: repairedTeam.teamAbbrev,
-            }
-            : {}),
-        })
+        .set(updatePayload)
         .where(eq(dkPlayers.id, p.id));
       updated++;
     }
@@ -4280,9 +4383,9 @@ export async function saveHistoricalSlate(
         ...(sport === "mlb" ? { mlbTeamId: teamId } : { teamId }),
         salary,
         eligiblePositions: entry.position || "UTIL",
-        linestarProj:  entry.linestarProj  || null,
-        projOwnPct:    entry.projOwnPct    || null,
-        actualOwnPct:  entry.actualOwnPct  || null,
+        linestarProj:  entry.linestarProj ?? null,
+        projOwnPct:    entry.projOwnPct ?? null,
+        actualOwnPct:  entry.actualOwnPct ?? null,
         actualFpts:    entry.actualFpts,
         isOut: false,
       })
@@ -4291,6 +4394,7 @@ export async function saveHistoricalSlate(
         set: {
           teamAbbrev:    sql`COALESCE(NULLIF(EXCLUDED.team_abbrev, 'UNK'), dk_players.team_abbrev)`,
           teamId:        sport === "nba" ? sql`COALESCE(EXCLUDED.team_id, dk_players.team_id)` : sql`dk_players.team_id`,
+          mlbTeamId:     sport === "mlb" ? sql`COALESCE(EXCLUDED.mlb_team_id, dk_players.mlb_team_id)` : sql`dk_players.mlb_team_id`,
           linestarProj:  sql`EXCLUDED.linestar_proj`,
           projOwnPct:    sql`EXCLUDED.proj_own_pct`,
           actualOwnPct:  sql`EXCLUDED.actual_own_pct`,
@@ -6340,5 +6444,148 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
     return { ok: true, message: `Projections updated: ${projComputed}/${currentPlayers.length} players${debugSuffix}` };
   } catch (e) {
     return { ok: false, message: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+// ── Fetch post-game player stat lines ────────────────────────────────────────
+// Uses ESPN's unofficial public API — no key required, works from Vercel.
+// Populates actual_pts/reb/ast/stl/blk/tov/3pm for an NBA slate.
+
+export async function fetchPlayerStatsAction(
+  slateDate: string,
+): Promise<{ ok: boolean; message: string; updated?: number }> {
+  "use server";
+  try {
+    // 1. Get slate + player pool
+    const [slate] = await db
+      .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
+      .from(dkSlates)
+      .where(and(eq(dkSlates.slateDate, slateDate), eq(dkSlates.sport, "nba")))
+      .limit(1);
+
+    if (!slate) return { ok: false, message: `No NBA slate found for ${slateDate}` };
+
+    const pool = await db
+      .select({ id: dkPlayers.id, name: dkPlayers.name })
+      .from(dkPlayers)
+      .where(eq(dkPlayers.slateId, slate.id));
+
+    if (pool.length === 0) return { ok: false, message: "No players in slate" };
+
+    const poolByName = new Map(pool.map((p) => [p.name.toLowerCase(), p]));
+
+    // 2. Get ESPN event IDs for the date (format: YYYYMMDD)
+    const espnDate = slateDate.replace(/-/g, "");
+    const scoreboardRes = await fetch(
+      `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${espnDate}`,
+      { next: { revalidate: 0 } },
+    );
+    if (!scoreboardRes.ok) {
+      return { ok: false, message: `ESPN scoreboard request failed: ${scoreboardRes.status}` };
+    }
+    const scoreboard = await scoreboardRes.json();
+    const events: { id: string }[] = scoreboard?.events ?? [];
+    if (events.length === 0) {
+      return { ok: false, message: `No ESPN events found for ${slateDate}` };
+    }
+
+    // 3. For each event fetch box score and collect player stats
+    const statsByName = new Map<
+      string,
+      { pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; fg3m: number }
+    >();
+
+    for (const event of events) {
+      const summaryRes = await fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${event.id}`,
+        { next: { revalidate: 0 } },
+      );
+      if (!summaryRes.ok) continue;
+      const summary = await summaryRes.json();
+
+      const boxTeams: { statistics?: { athletes?: { athlete?: { displayName?: string }; stats?: string[]; didNotPlay?: boolean }[]; labels?: string[] }[] }[] =
+        summary?.boxscore?.players ?? [];
+
+      for (const teamBox of boxTeams) {
+        for (const statGroup of teamBox.statistics ?? []) {
+          const labels: string[] = statGroup.labels ?? [];
+          const idxPts  = labels.indexOf("PTS");
+          const idxReb  = labels.indexOf("REB");
+          const idxAst  = labels.indexOf("AST");
+          const idxStl  = labels.indexOf("STL");
+          const idxBlk  = labels.indexOf("BLK");
+          const idxTo   = labels.indexOf("TO");
+          const idx3pt  = labels.indexOf("3PT"); // format "made-att"
+
+          for (const athlete of statGroup.athletes ?? []) {
+            if (athlete.didNotPlay) continue;
+            const name = athlete.athlete?.displayName?.toLowerCase();
+            if (!name) continue;
+            const s = athlete.stats ?? [];
+
+            const parse = (i: number) => (i >= 0 ? parseFloat(s[i] ?? "0") || 0 : 0);
+            const parse3pt = (i: number) => {
+              if (i < 0 || !s[i]) return 0;
+              return parseInt(s[i].split("-")[0] ?? "0", 10) || 0;
+            };
+
+            statsByName.set(name, {
+              pts:  parse(idxPts),
+              reb:  parse(idxReb),
+              ast:  parse(idxAst),
+              stl:  parse(idxStl),
+              blk:  parse(idxBlk),
+              tov:  parse(idxTo),
+              fg3m: parse3pt(idx3pt),
+            });
+          }
+        }
+      }
+    }
+
+    if (statsByName.size === 0) {
+      return { ok: false, message: "No player stats in ESPN box scores (game may not be final yet)" };
+    }
+
+    // 4. Match to dk_players and write
+    let updated = 0;
+    for (const [apiName, stats] of statsByName) {
+      let match = poolByName.get(apiName);
+      if (!match) {
+        // Levenshtein ≤ 2 fuzzy fallback
+        let bestDist = 3;
+        for (const [dkName, dkRow] of poolByName) {
+          const d = levenshtein(apiName, dkName);
+          if (d < bestDist) { bestDist = d; match = dkRow; }
+        }
+      }
+      if (!match) continue;
+
+      await db
+        .update(dkPlayers)
+        .set({
+          actualPts: stats.pts,
+          actualReb: stats.reb,
+          actualAst: stats.ast,
+          actualStl: stats.stl,
+          actualBlk: stats.blk,
+          actualTov: stats.tov,
+          actual3pm: stats.fg3m,
+        })
+        .where(eq(dkPlayers.id, match.id));
+      updated++;
+    }
+
+    revalidatePath("/analytics");
+    return {
+      ok: true,
+      message: `Player stats updated: ${updated}/${pool.length} players for ${slateDate}`,
+      updated,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      message: `Stat fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 }

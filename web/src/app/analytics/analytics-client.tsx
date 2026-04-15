@@ -25,7 +25,7 @@ import type {
   GameTotalModelRow,
   Sport,
 } from "@/db/queries";
-import { saveHistoricalSlate } from "@/app/dfs/actions";
+import { saveHistoricalSlate, uploadResults, fetchPlayerStatsAction } from "@/app/dfs/actions";
 
 const fmt1 = (v: number | null | undefined) =>
   v == null ? "—" : v.toFixed(1);
@@ -80,6 +80,49 @@ export default function AnalyticsClient({
   const [contestFormat, setContestFormat] = useState<"gpp" | "cash">("gpp");
   const [fieldSizeInput, setFieldSizeInput] = useState("");
 
+  // Upload Results state
+  const resultsFileRef = { current: null as HTMLInputElement | null };
+  const [resultsMsg, setResultsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isUploadingResults, setIsUploadingResults] = useState(false);
+
+  // Fetch Player Stats state
+  const [statsDate, setStatsDate] = useState(new Date().toISOString().slice(0, 10));
+  const [statsMsg, setStatsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isFetchingStats, setIsFetchingStats] = useState(false);
+
+  async function handleUploadResults(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingResults(true);
+    setResultsMsg(null);
+    const fd = new FormData();
+    fd.append("resultsFile", file);
+    try {
+      const res = await uploadResults(fd);
+      setResultsMsg({ ok: res.ok, text: res.message });
+      if (res.ok) router.refresh();
+    } catch (err) {
+      setResultsMsg({ ok: false, text: String(err) });
+    } finally {
+      setIsUploadingResults(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleFetchPlayerStats() {
+    setIsFetchingStats(true);
+    setStatsMsg(null);
+    try {
+      const res = await fetchPlayerStatsAction(statsDate);
+      setStatsMsg({ ok: res.ok, text: res.message });
+      if (res.ok) router.refresh();
+    } catch (err) {
+      setStatsMsg({ ok: false, text: String(err) });
+    } finally {
+      setIsFetchingStats(false);
+    }
+  }
+
   async function handleSaveHistorical() {
     if (!historicalDate) {
       setHistoricalMsg({ ok: false, text: "Pick a date first" });
@@ -129,6 +172,78 @@ export default function AnalyticsClient({
             Some slates have broader LineStar coverage than `our_proj`. The tables below show both so MLB hitter
             results do not disappear when model coverage is sparse.
           </p>
+        )}
+      </div>
+
+      {/* ── Results Ingestion ────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        {/* Upload DK Results CSV */}
+        <div className="rounded-lg border bg-card p-4 space-y-2">
+          <div>
+            <h2 className="text-sm font-semibold">Upload DK Results</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Upload a DK results or contest-standings CSV after a slate to record{" "}
+              <code className="font-mono text-xs bg-gray-100 px-0.5 rounded">actual_fpts</code> and{" "}
+              <code className="font-mono text-xs bg-gray-100 px-0.5 rounded">actual_own_pct</code>.
+              Targets the most recent {sport.toUpperCase()} slate.
+            </p>
+          </div>
+          <label
+            className={`flex items-center justify-center gap-2 rounded border px-3 py-2 text-sm cursor-pointer
+              ${isUploadingResults
+                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                : "bg-blue-600 text-white hover:bg-blue-700 border-blue-700"}`}
+          >
+            {isUploadingResults ? "Uploading…" : "Choose Results CSV"}
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
+              disabled={isUploadingResults}
+              onChange={handleUploadResults}
+              ref={(el) => { resultsFileRef.current = el; }}
+            />
+          </label>
+          {resultsMsg && (
+            <p className={`text-xs rounded px-2 py-1 ${resultsMsg.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
+              {resultsMsg.text}
+            </p>
+          )}
+        </div>
+
+        {/* Fetch Player Stats (ESPN) */}
+        {sport === "nba" && (
+          <div className="rounded-lg border bg-card p-4 space-y-2">
+            <div>
+              <h2 className="text-sm font-semibold">Fetch Player Stats</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Pull per-game stat lines (pts/reb/ast/stl/blk/tov/3pm) from ESPN
+                box scores for a completed game date. Populates the new stat columns
+                for prop accuracy calibration.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={statsDate}
+                onChange={(e) => setStatsDate(e.target.value)}
+                className="rounded border px-2 py-1 text-xs"
+              />
+              <button
+                onClick={handleFetchPlayerStats}
+                disabled={isFetchingStats}
+                className="rounded border px-3 py-1.5 text-sm bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {isFetchingStats ? "Fetching…" : "Fetch Stats"}
+              </button>
+            </div>
+            {statsMsg && (
+              <p className={`text-xs rounded px-2 py-1 ${statsMsg.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
+                {statsMsg.text}
+              </p>
+            )}
+          </div>
         )}
       </div>
 
