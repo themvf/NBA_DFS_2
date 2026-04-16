@@ -18,15 +18,15 @@ export default async function AnalyticsPage({
     <>
       <Suspense
         fallback={
-          <div className="space-y-8 p-6 max-w-5xl mx-auto">
+          <div className="mx-auto max-w-5xl space-y-8 p-6 text-slate-900">
             <div>
               <h1 className="text-xl font-bold">Model Calibration Analytics</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Loading {sport.toUpperCase()} analytics…
+              <p className="mt-1 text-sm text-slate-700">
+                Loading {sport.toUpperCase()} analytics...
               </p>
             </div>
-            <div className="rounded-lg border bg-card p-6 text-sm text-gray-400">
-              Loading accuracy trends, position breakdowns, and leverage calibration…
+            <div className="rounded-lg border bg-card p-6 text-sm text-slate-700">
+              Loading accuracy trends, position breakdowns, and leverage calibration...
             </div>
           </div>
         }
@@ -36,10 +36,10 @@ export default async function AnalyticsPage({
       {sport === "mlb" ? (
         <Suspense
           fallback={
-            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4">
+            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
               <h2 className="mb-1 text-sm font-semibold">MLB Pitcher Lineup Signals</h2>
-              <p className="text-xs text-gray-400">
-                Loading MLB pitcher cohort report…
+              <p className="text-xs text-slate-700">
+                Loading MLB pitcher cohort report...
               </p>
             </div>
           }
@@ -49,10 +49,10 @@ export default async function AnalyticsPage({
       ) : null}
       <Suspense
         fallback={
-          <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4">
-            <h2 className="text-sm font-semibold mb-1">Perfect Lineup Structure</h2>
-            <p className="text-xs text-gray-400">
-              Loading {sport.toUpperCase()} perfect-lineup analytics…
+          <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
+            <h2 className="mb-1 text-sm font-semibold">Perfect Lineup Structure</h2>
+            <p className="text-xs text-slate-700">
+              Loading {sport.toUpperCase()} perfect-lineup analytics...
             </p>
           </div>
         }

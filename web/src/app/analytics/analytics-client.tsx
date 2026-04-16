@@ -161,7 +161,7 @@ export default function AnalyticsClient({
   }
 
   return (
-    <div className="space-y-8 p-6 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-5xl space-y-8 p-6 text-slate-900 [&_.text-gray-100]:text-slate-900 [&_.text-gray-300]:text-slate-700 [&_.text-gray-400]:text-slate-600 [&_.text-gray-500]:text-slate-700">
       <div>
         <h1 className="text-xl font-bold">Model Calibration Analytics</h1>
         <p className="text-sm text-gray-500 mt-1">

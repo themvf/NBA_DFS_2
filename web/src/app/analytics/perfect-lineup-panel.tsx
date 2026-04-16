@@ -257,7 +257,7 @@ export default async function PerfectLineupPanel({ sport }: { sport: Sport }) {
   if (!analytics) return null;
 
   return (
-    <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 space-y-6">
+    <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 space-y-6 text-slate-900 [&_.text-gray-100]:text-slate-900 [&_.text-gray-300]:text-slate-700 [&_.text-gray-400]:text-slate-600 [&_.text-gray-500]:text-slate-700">
       <div>
         <h2 className="text-sm font-semibold mb-1">Perfect Lineup Structure</h2>
         <p className="text-xs text-gray-500">
