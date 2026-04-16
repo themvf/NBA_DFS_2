@@ -1,7 +1,7 @@
 import {
-  getMlbPerfectLineupAnalytics,
-  getNbaPerfectLineupAnalytics,
-} from "@/db/queries";
+  getCachedMlbPerfectLineupAnalytics,
+  getCachedNbaPerfectLineupAnalytics,
+} from "@/db/analytics-cache";
 import type {
   MlbPerfectLineupAnalytics,
   NbaPerfectLineupAnalytics,
@@ -251,8 +251,8 @@ function MlbPerfectLineupTables({ analytics }: { analytics: MlbPerfectLineupAnal
 
 export default async function PerfectLineupPanel({ sport }: { sport: Sport }) {
   const analytics = sport === "mlb"
-    ? await getMlbPerfectLineupAnalytics()
-    : await getNbaPerfectLineupAnalytics();
+    ? await getCachedMlbPerfectLineupAnalytics()
+    : await getCachedNbaPerfectLineupAnalytics();
 
   if (!analytics) return null;
 

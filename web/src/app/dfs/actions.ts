@@ -9,7 +9,8 @@
  * exportLineups   — build lineup CSV string
  */
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { ANALYTICS_CACHE_TAG } from "@/db/analytics-cache";
 import { db } from "@/db";
 import { ensureDkPlayerPropColumns, ensureOddsHistoryTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
@@ -6176,6 +6177,7 @@ export async function uploadResults(formData: FormData): Promise<{
   }
 
   revalidatePath("/dfs");
+  revalidateTag(ANALYTICS_CACHE_TAG, {}); // bust cached analytics so next /analytics load is fresh
 
   const matchRate = Math.round((updated / resultPlayers.length) * 100);
   const lineupNote = `${lineupRows.length > 0 ? `, ${lineupsUpdated}/${lineupRows.length} lineup actuals updated` : ""}${optimizerLineupActuals.total > 0 ? `, ${optimizerLineupActuals.updated}/${optimizerLineupActuals.total} optimizer lineup actuals updated` : ""}${analysisNote}`;
