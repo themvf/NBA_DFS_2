@@ -250,9 +250,14 @@ function MlbPerfectLineupTables({ analytics }: { analytics: MlbPerfectLineupAnal
 }
 
 export default async function PerfectLineupPanel({ sport }: { sport: Sport }) {
-  const analytics = sport === "mlb"
-    ? await getCachedMlbPerfectLineupAnalytics()
-    : await getCachedNbaPerfectLineupAnalytics();
+  let analytics;
+  try {
+    analytics = sport === "mlb"
+      ? await getCachedMlbPerfectLineupAnalytics()
+      : await getCachedNbaPerfectLineupAnalytics();
+  } catch {
+    return null;
+  }
 
   if (!analytics) return null;
 

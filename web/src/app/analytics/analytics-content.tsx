@@ -12,10 +12,14 @@ import {
 import type { Sport } from "@/db/queries";
 import AnalyticsClient from "./analytics-client";
 
-/** Resolve a promise to its value, or null on any error. */
-async function safe<T>(p: Promise<T>): Promise<T | null> {
+/**
+ * Run fn(), returning null on any error (including synchronous throws).
+ * Using a lambda wrapper — not safe(fn()) — so that synchronous throws
+ * inside fn() are caught before they escape this async boundary.
+ */
+async function safeRun<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
-    return await p;
+    return await fn();
   } catch {
     return null;
   }
@@ -33,18 +37,18 @@ export default async function AnalyticsContent({ sport }: { sport: Sport }) {
     statLevelAccuracy,
     gameTotalModel,
   ] = await Promise.all([
-    safe(getCachedCrossSlateAccuracy(sport)),
-    safe(getCachedPositionAccuracy(sport)),
-    safe(getCachedSalaryTierAccuracy(sport)),
-    safe(getCachedLeverageCalibration(sport)),
-    safe(getCachedOwnershipVsTeamTotal(sport)),
+    safeRun(() => getCachedCrossSlateAccuracy(sport)),
+    safeRun(() => getCachedPositionAccuracy(sport)),
+    safeRun(() => getCachedSalaryTierAccuracy(sport)),
+    safeRun(() => getCachedLeverageCalibration(sport)),
+    safeRun(() => getCachedOwnershipVsTeamTotal(sport)),
     sport === "mlb"
-      ? safe(getCachedMlbBattingOrderCalibration())
+      ? safeRun(() => getCachedMlbBattingOrderCalibration())
       : Promise.resolve([]),
-    safe(getCachedProjectionSourceBreakdown(sport)),
-    safe(getCachedStatLevelAccuracy(sport)),
+    safeRun(() => getCachedProjectionSourceBreakdown(sport)),
+    safeRun(() => getCachedStatLevelAccuracy(sport)),
     sport === "nba"
-      ? safe(getCachedGameTotalModelAccuracy())
+      ? safeRun(() => getCachedGameTotalModelAccuracy())
       : Promise.resolve([]),
   ]);
 
