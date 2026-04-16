@@ -6,6 +6,7 @@ let ensureDkPlayerPropColumnsPromise: Promise<void> | null = null;
 let ensureProjectionExperimentTablesPromise: Promise<void> | null = null;
 let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
+let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
 
 // Columns added to dk_slates / dk_players after the initial table creation.
 // ALTER TABLE ... ADD COLUMN IF NOT EXISTS is idempotent — safe to run every deploy.
@@ -199,4 +200,33 @@ export async function ensureOddsHistoryTables(): Promise<void> {
     });
   }
   await ensureOddsHistoryTablesPromise;
+}
+
+// Columns added for per-stat projection tracking and game-total model (commit 28950da).
+// Added here so Vercel picks them up on first request without a manual schema.py run.
+const ANALYTICS_COLUMN_DDLS = [
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_pts REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_reb REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_ast REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_stl REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_blk REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_tov REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_3pm REAL`,
+  `ALTER TABLE nba_matchups ADD COLUMN IF NOT EXISTS our_game_total_pred DOUBLE PRECISION`,
+  `ALTER TABLE nba_matchups ADD COLUMN IF NOT EXISTS home_score INTEGER`,
+  `ALTER TABLE nba_matchups ADD COLUMN IF NOT EXISTS away_score INTEGER`,
+];
+
+export async function ensureAnalyticsColumns(): Promise<void> {
+  if (!ensureAnalyticsColumnsPromise) {
+    ensureAnalyticsColumnsPromise = (async () => {
+      for (const ddl of ANALYTICS_COLUMN_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureAnalyticsColumnsPromise = null;
+      throw error;
+    });
+  }
+  await ensureAnalyticsColumnsPromise;
 }

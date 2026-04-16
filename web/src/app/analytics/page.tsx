@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import type { Sport } from "@/db/queries";
 import AnalyticsContent from "./analytics-content";
+import MlbPitcherLineupPanel from "./mlb-pitcher-lineup-panel";
 import PerfectLineupPanel from "./perfect-lineup-panel";
 
 export default async function AnalyticsPage({
@@ -32,6 +33,20 @@ export default async function AnalyticsPage({
       >
         <AnalyticsContent sport={sport} />
       </Suspense>
+      {sport === "mlb" ? (
+        <Suspense
+          fallback={
+            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4">
+              <h2 className="mb-1 text-sm font-semibold">MLB Pitcher Lineup Signals</h2>
+              <p className="text-xs text-gray-400">
+                Loading MLB pitcher cohort report…
+              </p>
+            </div>
+          }
+        >
+          <MlbPitcherLineupPanel />
+        </Suspense>
+      ) : null}
       <Suspense
         fallback={
           <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4">

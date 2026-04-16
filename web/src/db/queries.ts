@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables } from "./ensure-schema";
+import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -2708,6 +2708,7 @@ export type StatLevelAccuracyRow = {
 };
 
 export async function getStatLevelAccuracy(sport: Sport = "nba"): Promise<StatLevelAccuracyRow[]> {
+  await ensureAnalyticsColumns();
   const rows = await db.execute(sql`
     SELECT
       'pts'  AS stat,
@@ -2751,7 +2752,7 @@ export async function getStatLevelAccuracy(sport: Sport = "nba"): Promise<StatLe
     n:        Number(r.n),
     mae:      r.mae  != null ? Number(r.mae)  : null,
     bias:     r.bias != null ? Number(r.bias) : null,
-    nFormula: Number(r.nFormula),
+    nFormula: Number((r as Record<string, unknown>)["n_formula"]),
   }));
 }
 
@@ -2769,6 +2770,7 @@ export type GameTotalModelRow = {
 };
 
 export async function getGameTotalModelAccuracy(): Promise<GameTotalModelRow[]> {
+  await ensureAnalyticsColumns();
   const rows = await db.execute(sql`
     SELECT
       nm.game_date::text                                          AS "gameDate",
@@ -2801,4 +2803,618 @@ export async function getGameTotalModelAccuracy(): Promise<GameTotalModelRow[]> 
     vegasMiss:   r.vegasMiss   != null ? Number(r.vegasMiss)   : null,
     ourMiss:     r.ourMiss     != null ? Number(r.ourMiss)     : null,
   }));
+}
+
+// MLB pitcher lineup report ─────────────────────────────────────────────────
+
+const MLB_PITCHER_SMASH_THRESHOLD = 20;
+const MLB_PITCHER_ELITE_THRESHOLD = 25;
+const MLB_PITCHER_UNDEROWNED_THRESHOLD = 5;
+const MLB_PITCHER_MIN_SAMPLE = 8;
+const MLB_PITCHER_PIVOT_MAX_OWN = 12;
+
+type MlbPitcherHistoricalRow = {
+  slateId: number;
+  slateDate: string;
+  name: string;
+  teamAbbrev: string;
+  salary: number | null;
+  projection: number | null;
+  linestarProj: number | null;
+  ourProj: number | null;
+  projectedOwnPct: number | null;
+  ourOwnPct: number | null;
+  actualFpts: number | null;
+  actualOwnPct: number | null;
+  oppImplied: number | null;
+  teamMl: number | null;
+  isHome: boolean | null;
+  projectionBucket: string;
+  valueBucket: string;
+  projectedOwnBucket: string;
+  oppImpliedBucket: string;
+  moneylineBucket: string;
+  salaryBucket: string;
+  projectedValueX: number | null;
+};
+
+type MlbPitcherTargetSlateRow = {
+  id: number;
+  slateDate: string;
+  contestType: string;
+  contestFormat: string;
+  activeSpCount: number;
+  pendingActualRows: number;
+};
+
+type MlbPitcherBucketKey =
+  | "projectionBucket"
+  | "valueBucket"
+  | "projectedOwnBucket"
+  | "oppImpliedBucket"
+  | "moneylineBucket"
+  | "salaryBucket";
+
+const MLB_PITCHER_BUCKET_ORDER: Record<MlbPitcherBucketKey, string[]> = {
+  projectionBucket: ["<10", "10-13.9", "14-17.9", "18-21.9", "22+", "unknown"],
+  valueBucket: ["<1.4x", "1.4-1.79x", "1.8-2.19x", "2.2x+", "unknown"],
+  projectedOwnBucket: ["<5", "5-9.9", "10-14.9", "15-19.9", "20+", "unknown"],
+  oppImpliedBucket: ["<3.2", "3.2-3.79", "3.8-4.49", "4.5+", "unknown"],
+  moneylineBucket: ["fav160+", "fav120-159", "pickem", "dog110+", "unknown"],
+  salaryBucket: ["<7k", "7k-7.9k", "8k-8.9k", "9k+", "unknown"],
+};
+
+export type MlbPitcherLineupBucketRow = {
+  bucket: string;
+  rows: number;
+  avgActualFpts: number | null;
+  avgProjection: number | null;
+  avgProjectedOwnPct: number | null;
+  avgSalary: number | null;
+  hit20Rate: number;
+  hit25Rate: number;
+  underownedHit20Rate: number;
+  underownedHit25Rate: number;
+};
+
+export type MlbPitcherLineupCandidate = {
+  name: string;
+  teamAbbrev: string;
+  salary: number | null;
+  projection: number | null;
+  linestarProj: number | null;
+  ourProj: number | null;
+  projectedOwnPct: number | null;
+  ourOwnPct: number | null;
+  projectedValueX: number | null;
+  oppImplied: number | null;
+  teamMl: number | null;
+  isHome: boolean | null;
+  projectionBucket: string;
+  valueBucket: string;
+  projectedOwnBucket: string;
+  oppImpliedBucket: string;
+  moneylineBucket: string;
+  projectionScore: number | null;
+  ceilingScore: number | null;
+  contrarianScore: number | null;
+  lineupScore: number | null;
+  notes: string[];
+  actualFpts: number | null;
+  actualOwnPct: number | null;
+};
+
+export type MlbPitcherLineupSummary = {
+  rows: number;
+  slates: number;
+  avgActualFpts: number | null;
+  avgProjection: number | null;
+  avgProjectedOwnPct: number | null;
+  hit20Rate: number;
+  hit25Rate: number;
+  underownedHit20Rate: number;
+  contextCoverage: {
+    oppImpliedKnownRows: number;
+    moneylineKnownRows: number;
+  };
+};
+
+export type MlbPitcherCurrentSlateSummary = {
+  id: number;
+  slateDate: string;
+  contestType: string;
+  contestFormat: string;
+  activeSpCount: number;
+  pendingActualRows: number;
+};
+
+export type MlbPitcherLineupReport = {
+  historical: {
+    sample: MlbPitcherLineupSummary;
+    findings: string[];
+    buckets: {
+      projection: MlbPitcherLineupBucketRow[];
+      value: MlbPitcherLineupBucketRow[];
+      projectedOwn: MlbPitcherLineupBucketRow[];
+      oppImplied: MlbPitcherLineupBucketRow[];
+      moneyline: MlbPitcherLineupBucketRow[];
+    };
+    topUnderownedSmashes: Array<{
+      slateDate: string;
+      name: string;
+      teamAbbrev: string;
+      salary: number | null;
+      projection: number | null;
+      projectedOwnPct: number | null;
+      actualFpts: number | null;
+      actualOwnPct: number | null;
+      oppImplied: number | null;
+      teamMl: number | null;
+      projectedValueX: number | null;
+    }>;
+  };
+  currentSlate: {
+    slate: MlbPitcherCurrentSlateSummary;
+    pitchers: MlbPitcherLineupCandidate[];
+    contrarianPitchers: MlbPitcherLineupCandidate[];
+  } | null;
+};
+
+function mlbPitcherToNumber(value: unknown): number | null {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function mlbPitcherAvg(rows: MlbPitcherHistoricalRow[], key: keyof MlbPitcherHistoricalRow): number | null {
+  const values = rows
+    .map((row) => mlbPitcherToNumber(row[key]))
+    .filter((value): value is number => value != null);
+  if (!values.length) return null;
+  return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2));
+}
+
+function mlbPitcherPct(count: number, total: number): number {
+  if (!total) return 0;
+  return Number(((count / total) * 100).toFixed(2));
+}
+
+function mlbPitcherWeightedMean(values: Array<[number | null, number]>): number | null {
+  let total = 0;
+  let totalWeight = 0;
+  for (const [value, weight] of values) {
+    if (value == null || weight <= 0) continue;
+    total += value * weight;
+    totalWeight += weight;
+  }
+  if (totalWeight <= 0) return null;
+  return Number((total / totalWeight).toFixed(2));
+}
+
+function getMlbPitcherProjectionBucket(projection: number | null): string {
+  if (projection == null || projection <= 0) return "unknown";
+  if (projection < 10) return "<10";
+  if (projection < 14) return "10-13.9";
+  if (projection < 18) return "14-17.9";
+  if (projection < 22) return "18-21.9";
+  return "22+";
+}
+
+function getMlbPitcherValueBucket(projection: number | null, salary: number | null): string {
+  if (projection == null || projection <= 0 || salary == null || salary <= 0) return "unknown";
+  const value = projection / (salary / 1000);
+  if (value < 1.4) return "<1.4x";
+  if (value < 1.8) return "1.4-1.79x";
+  if (value < 2.2) return "1.8-2.19x";
+  return "2.2x+";
+}
+
+function getMlbPitcherProjectedOwnBucket(projectedOwnPct: number | null): string {
+  if (projectedOwnPct == null) return "unknown";
+  if (projectedOwnPct < 5) return "<5";
+  if (projectedOwnPct < 10) return "5-9.9";
+  if (projectedOwnPct < 15) return "10-14.9";
+  if (projectedOwnPct < 20) return "15-19.9";
+  return "20+";
+}
+
+function getMlbPitcherOppImpliedBucket(oppImplied: number | null): string {
+  if (oppImplied == null) return "unknown";
+  if (oppImplied < 3.2) return "<3.2";
+  if (oppImplied < 3.8) return "3.2-3.79";
+  if (oppImplied < 4.5) return "3.8-4.49";
+  return "4.5+";
+}
+
+function getMlbPitcherMoneylineBucket(teamMl: number | null): string {
+  if (teamMl == null) return "unknown";
+  if (teamMl <= -160) return "fav160+";
+  if (teamMl <= -120) return "fav120-159";
+  if (teamMl < 110) return "pickem";
+  return "dog110+";
+}
+
+function getMlbPitcherSalaryBucket(salary: number | null): string {
+  if (salary == null) return "unknown";
+  if (salary < 7000) return "<7k";
+  if (salary < 8000) return "7k-7.9k";
+  if (salary < 9000) return "8k-8.9k";
+  return "9k+";
+}
+
+function normalizeMlbPitcherRow(row: Record<string, unknown>): MlbPitcherHistoricalRow {
+  const projection = mlbPitcherToNumber(row.projection);
+  const salary = mlbPitcherToNumber(row.salary);
+  const projectedValueX = projection != null && salary != null && salary > 0
+    ? Number((projection / (salary / 1000)).toFixed(2))
+    : null;
+  const projectedOwnPct = mlbPitcherToNumber(row.projectedOwnPct);
+  const oppImplied = mlbPitcherToNumber(row.oppImplied);
+  const teamMl = mlbPitcherToNumber(row.teamMl);
+
+  return {
+    slateId: Number(row.slateId),
+    slateDate: String(row.slateDate),
+    name: String(row.name),
+    teamAbbrev: String(row.teamAbbrev),
+    salary,
+    projection,
+    linestarProj: mlbPitcherToNumber(row.linestarProj),
+    ourProj: mlbPitcherToNumber(row.ourProj),
+    projectedOwnPct,
+    ourOwnPct: mlbPitcherToNumber(row.ourOwnPct),
+    actualFpts: mlbPitcherToNumber(row.actualFpts),
+    actualOwnPct: mlbPitcherToNumber(row.actualOwnPct),
+    oppImplied,
+    teamMl,
+    isHome: row.isHome == null ? null : Boolean(row.isHome),
+    projectionBucket: getMlbPitcherProjectionBucket(projection),
+    valueBucket: getMlbPitcherValueBucket(projection, salary),
+    projectedOwnBucket: getMlbPitcherProjectedOwnBucket(projectedOwnPct),
+    oppImpliedBucket: getMlbPitcherOppImpliedBucket(oppImplied),
+    moneylineBucket: getMlbPitcherMoneylineBucket(teamMl),
+    salaryBucket: getMlbPitcherSalaryBucket(salary),
+    projectedValueX,
+  };
+}
+
+function summarizeMlbPitcherBuckets(
+  rows: MlbPitcherHistoricalRow[],
+  bucketKey: MlbPitcherBucketKey,
+): MlbPitcherLineupBucketRow[] {
+  const grouped = new Map<string, MlbPitcherHistoricalRow[]>();
+  for (const row of rows) {
+    const bucket = row[bucketKey] ?? "unknown";
+    grouped.set(bucket, [...(grouped.get(bucket) ?? []), row]);
+  }
+
+  const summary = Array.from(grouped.entries()).map(([bucket, bucketRows]) => {
+    const rowCount = bucketRows.length;
+    const hit20 = bucketRows.filter((row) => (row.actualFpts ?? 0) >= MLB_PITCHER_SMASH_THRESHOLD).length;
+    const hit25 = bucketRows.filter((row) => (row.actualFpts ?? 0) >= MLB_PITCHER_ELITE_THRESHOLD).length;
+    const underowned20 = bucketRows.filter(
+      (row) => (row.actualFpts ?? 0) >= MLB_PITCHER_SMASH_THRESHOLD
+        && (row.actualOwnPct ?? 999) < MLB_PITCHER_UNDEROWNED_THRESHOLD,
+    ).length;
+    const underowned25 = bucketRows.filter(
+      (row) => (row.actualFpts ?? 0) >= MLB_PITCHER_ELITE_THRESHOLD
+        && (row.actualOwnPct ?? 999) < MLB_PITCHER_UNDEROWNED_THRESHOLD,
+    ).length;
+
+    return {
+      bucket,
+      rows: rowCount,
+      avgActualFpts: mlbPitcherAvg(bucketRows, "actualFpts"),
+      avgProjection: mlbPitcherAvg(bucketRows, "projection"),
+      avgProjectedOwnPct: mlbPitcherAvg(bucketRows, "projectedOwnPct"),
+      avgSalary: mlbPitcherAvg(bucketRows, "salary"),
+      hit20Rate: mlbPitcherPct(hit20, rowCount),
+      hit25Rate: mlbPitcherPct(hit25, rowCount),
+      underownedHit20Rate: mlbPitcherPct(underowned20, rowCount),
+      underownedHit25Rate: mlbPitcherPct(underowned25, rowCount),
+    };
+  });
+
+  const order = MLB_PITCHER_BUCKET_ORDER[bucketKey];
+  const orderMap = new Map(order.map((value, index) => [value, index]));
+  summary.sort((a, b) => (orderMap.get(a.bucket) ?? 999) - (orderMap.get(b.bucket) ?? 999));
+  return summary;
+}
+
+function buildMlbPitcherBucketLookup(
+  bucketRows: Record<MlbPitcherBucketKey, MlbPitcherLineupBucketRow[]>,
+): Record<MlbPitcherBucketKey, Record<string, MlbPitcherLineupBucketRow>> {
+  return {
+    projectionBucket: Object.fromEntries(bucketRows.projectionBucket.map((row) => [row.bucket, row])),
+    valueBucket: Object.fromEntries(bucketRows.valueBucket.map((row) => [row.bucket, row])),
+    projectedOwnBucket: Object.fromEntries(bucketRows.projectedOwnBucket.map((row) => [row.bucket, row])),
+    oppImpliedBucket: Object.fromEntries(bucketRows.oppImpliedBucket.map((row) => [row.bucket, row])),
+    moneylineBucket: Object.fromEntries(bucketRows.moneylineBucket.map((row) => [row.bucket, row])),
+    salaryBucket: Object.fromEntries(bucketRows.salaryBucket.map((row) => [row.bucket, row])),
+  };
+}
+
+function buildMlbPitcherFindings(
+  bucketRows: Record<MlbPitcherBucketKey, MlbPitcherLineupBucketRow[]>,
+): string[] {
+  const topBucket = (
+    rows: MlbPitcherLineupBucketRow[],
+    metric: keyof Pick<MlbPitcherLineupBucketRow, "hit20Rate" | "hit25Rate" | "underownedHit20Rate">,
+  ) => rows
+    .filter((row) => row.rows >= MLB_PITCHER_MIN_SAMPLE)
+    .sort((a, b) => (b[metric] - a[metric]) || (b.rows - a.rows))[0];
+
+  const findings: string[] = [];
+  const projection = topBucket(bucketRows.projectionBucket, "hit20Rate");
+  if (projection) findings.push(`Projection bucket ${projection.bucket} has the best 20+ DK rate at ${projection.hit20Rate}%.`);
+  const value = topBucket(bucketRows.valueBucket, "hit25Rate");
+  if (value) findings.push(`Value bucket ${value.bucket} leads elite 25+ DK outcomes at ${value.hit25Rate}%.`);
+  const projectedOwn = topBucket(bucketRows.projectedOwnBucket, "underownedHit20Rate");
+  if (projectedOwn) findings.push(`Projected-own bucket ${projectedOwn.bucket} is the best contrarian lane at ${projectedOwn.underownedHit20Rate}% under-owned 20+ games.`);
+  const moneyline = topBucket(bucketRows.moneylineBucket, "hit20Rate");
+  if (moneyline) findings.push(`Moneyline bucket ${moneyline.bucket} has the strongest known-context 20+ DK rate at ${moneyline.hit20Rate}%.`);
+  const opp = topBucket(bucketRows.oppImpliedBucket, "underownedHit20Rate");
+  if (opp) findings.push(`Opponent-implied bucket ${opp.bucket} best supports contrarian ceiling at ${opp.underownedHit20Rate}% under-owned 20+ games.`);
+  return findings;
+}
+
+function buildMlbPitcherCandidate(
+  row: MlbPitcherHistoricalRow,
+  bucketLookup: Record<MlbPitcherBucketKey, Record<string, MlbPitcherLineupBucketRow>>,
+): MlbPitcherLineupCandidate {
+  const projectionSummary = bucketLookup.projectionBucket[row.projectionBucket];
+  const valueSummary = bucketLookup.valueBucket[row.valueBucket];
+  const ownSummary = bucketLookup.projectedOwnBucket[row.projectedOwnBucket];
+  const oppSummary = bucketLookup.oppImpliedBucket[row.oppImpliedBucket];
+  const moneylineSummary = bucketLookup.moneylineBucket[row.moneylineBucket];
+
+  const usable = (summary?: MlbPitcherLineupBucketRow | null) => Boolean(summary && summary.rows >= MLB_PITCHER_MIN_SAMPLE);
+  const projectionScore = mlbPitcherWeightedMean([
+    [usable(projectionSummary) ? projectionSummary.hit20Rate : null, 0.55],
+    [usable(valueSummary) ? valueSummary.hit20Rate : null, 0.45],
+  ]);
+  const ceilingScore = mlbPitcherWeightedMean([
+    [usable(projectionSummary) ? projectionSummary.hit25Rate : null, 0.55],
+    [usable(valueSummary) ? valueSummary.hit25Rate : null, 0.45],
+  ]);
+  const contrarianScore = mlbPitcherWeightedMean([
+    [usable(ownSummary) ? ownSummary.underownedHit20Rate : null, 0.45],
+    [usable(valueSummary) ? valueSummary.underownedHit20Rate : null, 0.20],
+    [usable(oppSummary) ? oppSummary.underownedHit20Rate : null, 0.20],
+    [usable(moneylineSummary) ? moneylineSummary.underownedHit20Rate : null, 0.15],
+  ]);
+  const lineupScore = mlbPitcherWeightedMean([
+    [projectionScore, 0.45],
+    [ceilingScore, 0.35],
+    [contrarianScore, 0.20],
+  ]);
+
+  const notes: string[] = [];
+  if (usable(projectionSummary)) notes.push(`Projection ${row.projectionBucket}: ${projectionSummary.hit20Rate}% hit 20+ (${projectionSummary.rows} rows)`);
+  if (usable(valueSummary)) notes.push(`Value ${row.valueBucket}: ${valueSummary.hit25Rate}% hit 25+ (${valueSummary.rows} rows)`);
+  if (usable(ownSummary)) notes.push(`Projected own ${row.projectedOwnBucket}: ${ownSummary.underownedHit20Rate}% under-owned 20+ (${ownSummary.rows} rows)`);
+  if (usable(oppSummary) && row.oppImpliedBucket !== "unknown") notes.push(`Opp implied ${row.oppImpliedBucket}: ${oppSummary.underownedHit20Rate}% under-owned 20+ (${oppSummary.rows} rows)`);
+  if (usable(moneylineSummary) && row.moneylineBucket !== "unknown") notes.push(`Moneyline ${row.moneylineBucket}: ${moneylineSummary.hit20Rate}% hit 20+ (${moneylineSummary.rows} rows)`);
+
+  return {
+    name: row.name,
+    teamAbbrev: row.teamAbbrev,
+    salary: row.salary,
+    projection: row.projection,
+    linestarProj: row.linestarProj,
+    ourProj: row.ourProj,
+    projectedOwnPct: row.projectedOwnPct,
+    ourOwnPct: row.ourOwnPct,
+    projectedValueX: row.projectedValueX,
+    oppImplied: row.oppImplied,
+    teamMl: row.teamMl,
+    isHome: row.isHome,
+    projectionBucket: row.projectionBucket,
+    valueBucket: row.valueBucket,
+    projectedOwnBucket: row.projectedOwnBucket,
+    oppImpliedBucket: row.oppImpliedBucket,
+    moneylineBucket: row.moneylineBucket,
+    projectionScore,
+    ceilingScore,
+    contrarianScore,
+    lineupScore,
+    notes,
+    actualFpts: row.actualFpts,
+    actualOwnPct: row.actualOwnPct,
+  };
+}
+
+export async function getMlbPitcherLineupReport(): Promise<MlbPitcherLineupReport | null> {
+  const targetResult = await db.execute<MlbPitcherTargetSlateRow>(sql`
+    SELECT
+      ds.id AS "id",
+      ds.slate_date::text AS "slateDate",
+      ds.contest_type AS "contestType",
+      ds.contest_format AS "contestFormat",
+      COUNT(*) FILTER (
+        WHERE COALESCE(dp.is_out, false) = false
+          AND dp.eligible_positions LIKE '%SP%'
+      )::int AS "activeSpCount",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NULL)::int AS "pendingActualRows"
+    FROM dk_slates ds
+    JOIN dk_players dp ON dp.slate_id = ds.id
+    WHERE ds.sport = 'mlb'
+      AND ds.contest_type = 'main'
+      AND ds.contest_format = 'gpp'
+    GROUP BY ds.id, ds.slate_date, ds.contest_type, ds.contest_format
+    HAVING COUNT(*) FILTER (
+      WHERE COALESCE(dp.is_out, false) = false
+        AND dp.eligible_positions LIKE '%SP%'
+    ) > 0
+    ORDER BY
+      CASE WHEN COUNT(*) FILTER (WHERE dp.actual_fpts IS NULL) > 0 THEN 0 ELSE 1 END,
+      ds.slate_date DESC,
+      ds.id DESC
+    LIMIT 1
+  `);
+  const targetSlate = (targetResult.rows as MlbPitcherTargetSlateRow[])[0] ?? null;
+
+  const historicalResult = await db.execute(sql`
+    SELECT
+      ds.id AS "slateId",
+      ds.slate_date::text AS "slateDate",
+      dp.name,
+      dp.team_abbrev AS "teamAbbrev",
+      dp.salary,
+      COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS "projection",
+      dp.linestar_proj AS "linestarProj",
+      dp.our_proj AS "ourProj",
+      COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projectedOwnPct",
+      dp.our_own_pct AS "ourOwnPct",
+      dp.actual_fpts AS "actualFpts",
+      dp.actual_own_pct AS "actualOwnPct",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN mm.away_implied
+        WHEN dp.mlb_team_id = mm.away_team_id THEN mm.home_implied
+        ELSE NULL
+      END AS "oppImplied",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN mm.home_ml
+        WHEN dp.mlb_team_id = mm.away_team_id THEN mm.away_ml
+        ELSE NULL
+      END AS "teamMl",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN TRUE
+        WHEN dp.mlb_team_id = mm.away_team_id THEN FALSE
+        ELSE NULL
+      END AS "isHome"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+    WHERE ds.sport = 'mlb'
+      AND ds.contest_type = 'main'
+      AND ds.contest_format = 'gpp'
+      AND dp.actual_fpts IS NOT NULL
+      AND dp.actual_own_pct IS NOT NULL
+      AND COALESCE(dp.is_out, false) = false
+      AND dp.eligible_positions LIKE '%SP%'
+      ${targetSlate ? sql`AND ds.id <> ${targetSlate.id}` : sql``}
+  `);
+  const historicalRows = (historicalResult.rows as Record<string, unknown>[]).map(normalizeMlbPitcherRow);
+  if (!historicalRows.length) return null;
+
+  const bucketRows: Record<MlbPitcherBucketKey, MlbPitcherLineupBucketRow[]> = {
+    projectionBucket: summarizeMlbPitcherBuckets(historicalRows, "projectionBucket"),
+    valueBucket: summarizeMlbPitcherBuckets(historicalRows, "valueBucket"),
+    projectedOwnBucket: summarizeMlbPitcherBuckets(historicalRows, "projectedOwnBucket"),
+    oppImpliedBucket: summarizeMlbPitcherBuckets(historicalRows, "oppImpliedBucket"),
+    moneylineBucket: summarizeMlbPitcherBuckets(historicalRows, "moneylineBucket"),
+    salaryBucket: summarizeMlbPitcherBuckets(historicalRows, "salaryBucket"),
+  };
+  const bucketLookup = buildMlbPitcherBucketLookup(bucketRows);
+
+  const sample: MlbPitcherLineupSummary = {
+    rows: historicalRows.length,
+    slates: new Set(historicalRows.map((row) => row.slateId)).size,
+    avgActualFpts: mlbPitcherAvg(historicalRows, "actualFpts"),
+    avgProjection: mlbPitcherAvg(historicalRows, "projection"),
+    avgProjectedOwnPct: mlbPitcherAvg(historicalRows, "projectedOwnPct"),
+    hit20Rate: mlbPitcherPct(historicalRows.filter((row) => (row.actualFpts ?? 0) >= MLB_PITCHER_SMASH_THRESHOLD).length, historicalRows.length),
+    hit25Rate: mlbPitcherPct(historicalRows.filter((row) => (row.actualFpts ?? 0) >= MLB_PITCHER_ELITE_THRESHOLD).length, historicalRows.length),
+    underownedHit20Rate: mlbPitcherPct(
+      historicalRows.filter(
+        (row) => (row.actualFpts ?? 0) >= MLB_PITCHER_SMASH_THRESHOLD
+          && (row.actualOwnPct ?? 999) < MLB_PITCHER_UNDEROWNED_THRESHOLD,
+      ).length,
+      historicalRows.length,
+    ),
+    contextCoverage: {
+      oppImpliedKnownRows: historicalRows.filter((row) => row.oppImplied != null).length,
+      moneylineKnownRows: historicalRows.filter((row) => row.teamMl != null).length,
+    },
+  };
+
+  const topUnderownedSmashes = historicalRows
+    .filter((row) => (row.actualFpts ?? 0) >= MLB_PITCHER_SMASH_THRESHOLD && (row.actualOwnPct ?? 999) < MLB_PITCHER_UNDEROWNED_THRESHOLD)
+    .sort((a, b) => (b.actualFpts ?? -999) - (a.actualFpts ?? -999))
+    .slice(0, 12)
+    .map((row) => ({
+      slateDate: row.slateDate,
+      name: row.name,
+      teamAbbrev: row.teamAbbrev,
+      salary: row.salary,
+      projection: row.projection,
+      projectedOwnPct: row.projectedOwnPct,
+      actualFpts: row.actualFpts,
+      actualOwnPct: row.actualOwnPct,
+      oppImplied: row.oppImplied,
+      teamMl: row.teamMl,
+      projectedValueX: row.projectedValueX,
+    }));
+
+  let currentSlate: MlbPitcherLineupReport["currentSlate"] = null;
+  if (targetSlate) {
+    const currentResult = await db.execute(sql`
+      SELECT
+        ds.id AS "slateId",
+        ds.slate_date::text AS "slateDate",
+        dp.name,
+        dp.team_abbrev AS "teamAbbrev",
+        dp.salary,
+        COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS "projection",
+        dp.linestar_proj AS "linestarProj",
+        dp.our_proj AS "ourProj",
+        COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projectedOwnPct",
+        dp.our_own_pct AS "ourOwnPct",
+        dp.actual_fpts AS "actualFpts",
+        dp.actual_own_pct AS "actualOwnPct",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN mm.away_implied
+          WHEN dp.mlb_team_id = mm.away_team_id THEN mm.home_implied
+          ELSE NULL
+        END AS "oppImplied",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN mm.home_ml
+          WHEN dp.mlb_team_id = mm.away_team_id THEN mm.away_ml
+          ELSE NULL
+        END AS "teamMl",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN TRUE
+          WHEN dp.mlb_team_id = mm.away_team_id THEN FALSE
+          ELSE NULL
+        END AS "isHome"
+      FROM dk_players dp
+      JOIN dk_slates ds ON ds.id = dp.slate_id
+      LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+      WHERE ds.id = ${targetSlate.id}
+        AND COALESCE(dp.is_out, false) = false
+        AND dp.eligible_positions LIKE '%SP%'
+      ORDER BY COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) DESC NULLS LAST, dp.salary DESC
+    `);
+
+    const currentRows = (currentResult.rows as Record<string, unknown>[]).map(normalizeMlbPitcherRow);
+    const candidates = currentRows
+      .map((row) => buildMlbPitcherCandidate(row, bucketLookup))
+      .sort((a, b) => ((b.lineupScore ?? -999) - (a.lineupScore ?? -999)) || ((b.projection ?? -999) - (a.projection ?? -999)));
+    const contrarianPitchers = candidates
+      .filter((row) => row.projectedOwnPct == null || row.projectedOwnPct <= MLB_PITCHER_PIVOT_MAX_OWN)
+      .sort((a, b) => ((b.contrarianScore ?? -999) - (a.contrarianScore ?? -999)) || ((b.ceilingScore ?? -999) - (a.ceilingScore ?? -999)) || ((b.projection ?? -999) - (a.projection ?? -999)));
+
+    currentSlate = {
+      slate: targetSlate,
+      pitchers: candidates.slice(0, 10),
+      contrarianPitchers: contrarianPitchers.slice(0, 10),
+    };
+  }
+
+  return {
+    historical: {
+      sample,
+      findings: buildMlbPitcherFindings(bucketRows),
+      buckets: {
+        projection: bucketRows.projectionBucket,
+        value: bucketRows.valueBucket,
+        projectedOwn: bucketRows.projectedOwnBucket,
+        oppImplied: bucketRows.oppImpliedBucket,
+        moneyline: bucketRows.moneylineBucket,
+      },
+      topUnderownedSmashes,
+    },
+    currentSlate,
+  };
 }
