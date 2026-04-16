@@ -1,81 +1,8 @@
-import {
-  getMlbPitcherLineupReport,
-} from "@/db/queries";
-import type {
-  MlbPitcherLineupBucketRow,
-  MlbPitcherLineupCandidate,
-} from "@/db/queries";
+import { getMlbPitcherLineupReport } from "@/db/queries";
+import type { MlbPitcherLineupBucketRow } from "@/db/queries";
 
-const fmt1 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(1));
 const fmt2 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
 const fmtPct = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(1)}%`);
-const fmtSalary = (v: number | null | undefined) => (v == null ? "—" : `$${v.toLocaleString()}`);
-const fmtMoneyline = (v: number | null | undefined) => {
-  if (v == null) return "—";
-  return v > 0 ? `+${v}` : `${v}`;
-};
-
-function CandidateTable({
-  title,
-  subtitle,
-  rows,
-  scoreLabel,
-  scoreKey,
-}: {
-  title: string;
-  subtitle: string;
-  rows: MlbPitcherLineupCandidate[];
-  scoreLabel: string;
-  scoreKey: "lineupScore" | "contrarianScore";
-}) {
-  return (
-    <div>
-      <div className="mb-2">
-        <p className="text-xs font-medium text-gray-300">{title}</p>
-        <p className="text-[11px] text-gray-500">{subtitle}</p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b text-gray-400">
-              <th className="py-1 text-left">Pitcher</th>
-              <th className="py-1 text-right">Salary</th>
-              <th className="py-1 text-right">Proj</th>
-              <th className="py-1 text-right">Own</th>
-              <th className="py-1 text-right">Value</th>
-              <th className="py-1 text-right">Opp TT</th>
-              <th className="py-1 text-right">ML</th>
-              <th className="py-1 text-right">{scoreLabel}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${title}-${row.name}-${row.teamAbbrev}`} className="border-b border-gray-50/60 align-top">
-                <td className="py-2">
-                  <div className="font-medium text-gray-100">{row.name}</div>
-                  <div className="text-[11px] text-gray-500">
-                    {row.teamAbbrev ?? "—"}
-                    {" · "}
-                    {row.projectionBucket}
-                    {" · "}
-                    {row.valueBucket}
-                  </div>
-                </td>
-                <td className="py-2 text-right">{fmtSalary(row.salary)}</td>
-                <td className="py-2 text-right">{fmt2(row.projection)}</td>
-                <td className="py-2 text-right">{fmtPct(row.projectedOwnPct)}</td>
-                <td className="py-2 text-right">{fmt2(row.projectedValueX)}x</td>
-                <td className="py-2 text-right">{fmt2(row.oppImplied)}</td>
-                <td className="py-2 text-right">{fmtMoneyline(row.teamMl)}</td>
-                <td className="py-2 text-right font-medium text-gray-100">{fmt1(row[scoreKey])}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 function BucketTable({
   title,
@@ -134,8 +61,7 @@ export default async function MlbPitcherLineupPanel() {
       <div>
         <h2 className="mb-1 text-sm font-semibold">MLB Pitcher Lineup Signals</h2>
         <p className="text-xs text-gray-500">
-          Historical SP cohorts are used to score current slate pitchers for lineup utility and lower-owned pivot strength.
-          The current scoring leans on projection, value, and under-owned hit rates rather than raw ownership alone.
+          Historical SP cohorts only. Player-specific pitcher badges now live on the MLB DFS page so this panel stays focused on the underlying signal.
         </p>
         <p className="mt-2 text-xs text-gray-400">
           Historical sample: {report.historical.sample.rows} active SP rows across {report.historical.sample.slates} main GPP slates
@@ -166,43 +92,20 @@ export default async function MlbPitcherLineupPanel() {
         </div>
       ) : null}
 
-      {report.currentSlate ? (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <CandidateTable
-            title={`Top Lineup Candidates (${report.currentSlate.slate.slateDate})`}
-            subtitle="Higher lineup scores reflect stronger historical projection and ceiling buckets."
-            rows={report.currentSlate.pitchers}
-            scoreLabel="Lineup"
-            scoreKey="lineupScore"
-          />
-          <CandidateTable
-            title="Contrarian Pivots"
-            subtitle="Lower-owned SPs sorted by under-owned hit-rate context and ceiling support."
-            rows={report.currentSlate.contrarianPitchers}
-            scoreLabel="Pivot"
-            scoreKey="contrarianScore"
-          />
-        </div>
-      ) : (
-        <div className="rounded-md border border-gray-200/10 bg-black/10 p-3 text-xs text-gray-400">
-          No current MLB main slate with active SPs was available for ranking. Historical cohort tables are still shown below.
-        </div>
-      )}
-
       <div className="grid gap-6 xl:grid-cols-3">
         <BucketTable
           title="Projection Buckets"
-          subtitle="Best primary filter for identifying viable SPs before ownership decisions."
+          subtitle="Primary viability filter. Stronger buckets are where similar pitchers most often reached 20+ DK points."
           rows={report.historical.buckets.projection}
         />
         <BucketTable
           title="Value Buckets"
-          subtitle="Projection per $1k. Useful for finding usable SP2s and salary-efficient pivots."
+          subtitle="Projection per $1k. Useful for understanding which SP2 salary lanes have actually converted."
           rows={report.historical.buckets.value}
         />
         <BucketTable
           title="Projected Ownership Buckets"
-          subtitle="Shows where under-owned smashes have actually concentrated."
+          subtitle="Contrarian context. This shows where under-owned pitcher smash games have concentrated historically."
           rows={report.historical.buckets.projectedOwn}
         />
       </div>
@@ -210,60 +113,14 @@ export default async function MlbPitcherLineupPanel() {
       <div className="grid gap-6 xl:grid-cols-2">
         <BucketTable
           title="Opponent Implied Total Buckets"
-          subtitle="Context table for how much opposing run environment matters for SP ceiling."
+          subtitle="Run-environment context for pitcher ceiling. Lower opponent totals generally support cleaner paths to 20+."
           rows={report.historical.buckets.oppImplied}
         />
         <BucketTable
           title="Moneyline Buckets"
-          subtitle="Win equity context. Useful as a tiebreaker, not a standalone filter."
+          subtitle="Win-equity tiebreaker. Useful context, but not as predictive as projection and value."
           rows={report.historical.buckets.moneyline}
         />
-      </div>
-
-      <div>
-        <div className="mb-2">
-          <p className="text-xs font-medium text-gray-300">Top Historical Under-Owned Smashes</p>
-          <p className="text-[11px] text-gray-500">
-            Historical SP games with 20+ DK points and sub-5% actual ownership.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b text-gray-400">
-                <th className="py-1 text-left">Date</th>
-                <th className="py-1 text-left">Pitcher</th>
-                <th className="py-1 text-right">Salary</th>
-                <th className="py-1 text-right">Proj</th>
-                <th className="py-1 text-right">Proj Own</th>
-                <th className="py-1 text-right">Actual Own</th>
-                <th className="py-1 text-right">Actual</th>
-                <th className="py-1 text-right">Opp TT</th>
-                <th className="py-1 text-right">ML</th>
-                <th className="py-1 text-right">Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.historical.topUnderownedSmashes.map((row) => (
-                <tr key={`${row.slateDate}-${row.name}-${row.teamAbbrev}`} className="border-b border-gray-50/60">
-                  <td className="py-1">{row.slateDate}</td>
-                  <td className="py-1">
-                    <span className="font-medium text-gray-100">{row.name}</span>
-                    <span className="text-gray-500"> {row.teamAbbrev ? `· ${row.teamAbbrev}` : ""}</span>
-                  </td>
-                  <td className="py-1 text-right">{fmtSalary(row.salary)}</td>
-                  <td className="py-1 text-right">{fmt2(row.projection)}</td>
-                  <td className="py-1 text-right">{fmtPct(row.projectedOwnPct)}</td>
-                  <td className="py-1 text-right">{fmtPct(row.actualOwnPct)}</td>
-                  <td className="py-1 text-right font-medium text-gray-100">{fmt2(row.actualFpts)}</td>
-                  <td className="py-1 text-right">{fmt2(row.oppImplied)}</td>
-                  <td className="py-1 text-right">{fmtMoneyline(row.teamMl)}</td>
-                  <td className="py-1 text-right">{fmt2(row.projectedValueX)}x</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );

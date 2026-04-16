@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { UIEvent } from "react";
-import type { DfsPagePlayerRow as DkPlayerRow, Sport } from "@/db/queries";
+import type { DfsPagePlayerRow as DkPlayerRow, MlbPitcherSlateSignal, Sport } from "@/db/queries";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
@@ -24,6 +24,7 @@ import { processDkSlate, loadSlateFromContestId, loadMlbSlateFromContestId, save
 type Props = {
   players: DkPlayerRow[];
   slateDate: string | null;
+  mlbPitcherSignals: MlbPitcherSlateSignal[];
   sport: Sport;
 };
 
@@ -1170,6 +1171,17 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
               </span>
             </div>
           )}
+          {sport === "mlb" && (
+            <p className="mt-2 text-[11px] text-gray-600">
+              Pitcher badges: <span className="font-semibold text-emerald-700">SP1</span> = strongest overall fit,
+              {" "}
+              <span className="font-semibold text-sky-700">SP2</span> = strong secondary fit,
+              {" "}
+              <span className="font-semibold text-amber-700">PIVOT</span> = best lower-owned lane,
+              {" "}
+              <span className="font-semibold text-fuchsia-700">CEIL</span> = top ceiling score.
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2">
           {sport === "mlb" && (
@@ -1595,7 +1607,7 @@ const GeneratedLineupsSection = memo(function GeneratedLineupsSection({
   );
 });
 
-export default function DfsClient({ players, slateDate, sport }: Props) {
+export default function DfsClient({ players, slateDate, mlbPitcherSignals, sport }: Props) {
   const [isPending, startTransition] = useTransition();
 
   // ── Load state ────────────────────────────────────────────
@@ -2075,13 +2087,19 @@ export default function DfsClient({ players, slateDate, sport }: Props) {
 
   const mlbPitcherDecisionBadges = useMemo(() => {
     if (sport !== "mlb") return new Map<number, MlbPitcherDecisionBadge>();
-    return getMlbPitcherDecisionBadges(filteredPlayers);
-  }, [filteredPlayers, sport]);
+    if (mlbPitcherSignals.length === 0) return getMlbPitcherDecisionBadges(filteredPlayers);
+    return new Map(
+      mlbPitcherSignals.flatMap((signal) => signal.decisionBadge ? [[signal.playerId, signal.decisionBadge]] : []),
+    );
+  }, [filteredPlayers, mlbPitcherSignals, sport]);
 
   const mlbPitcherCeilingBadges = useMemo(() => {
     if (sport !== "mlb") return new Map<number, MlbPitcherCeilingBadge>();
-    return getMlbPitcherCeilingBadges(filteredPlayers);
-  }, [filteredPlayers, sport]);
+    if (mlbPitcherSignals.length === 0) return getMlbPitcherCeilingBadges(filteredPlayers);
+    return new Map(
+      mlbPitcherSignals.flatMap((signal) => signal.ceilingBadge ? [[signal.playerId, signal.ceilingBadge]] : []),
+    );
+  }, [filteredPlayers, mlbPitcherSignals, sport]);
 
   const mlbBlowupCandidates = useMemo(() => {
     if (sport !== "mlb") return [];

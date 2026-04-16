@@ -2,8 +2,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60; // allow full 60s for server actions (Vercel Hobby limit)
 
 import { Suspense } from "react";
-import { getDfsPagePlayers, getLatestSlateInfo } from "@/db/queries";
-import type { Sport } from "@/db/queries";
+import { getDfsPagePlayers, getLatestMlbPitcherSignals, getLatestSlateInfo } from "@/db/queries";
+import type { MlbPitcherSlateSignal, Sport } from "@/db/queries";
 import DfsClient from "./dfs-client";
 import DfsSecondaryPanels from "./dfs-secondary-panels";
 
@@ -32,9 +32,12 @@ export default async function DfsPage({
   const { sport: rawSport } = await searchParams;
   const sport: Sport = rawSport === "mlb" ? "mlb" : "nba";
 
-  const [players, slateInfo] = await Promise.all([
+  const [players, slateInfo, mlbPitcherSignals] = await Promise.all([
     getDfsPagePlayers(sport),
     getLatestSlateInfo(sport),
+    sport === "mlb"
+      ? getLatestMlbPitcherSignals()
+      : Promise.resolve([] as MlbPitcherSlateSignal[]),
   ]);
 
   return (
@@ -42,6 +45,7 @@ export default async function DfsPage({
       <DfsClient
         players={players}
         slateDate={slateInfo?.slateDate ?? null}
+        mlbPitcherSignals={mlbPitcherSignals}
         sport={sport}
       />
       <Suspense fallback={<DfsSecondaryPanelsFallback />}>

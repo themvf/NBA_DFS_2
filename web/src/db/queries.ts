@@ -2814,6 +2814,7 @@ const MLB_PITCHER_MIN_SAMPLE = 8;
 const MLB_PITCHER_PIVOT_MAX_OWN = 12;
 
 type MlbPitcherHistoricalRow = {
+  playerId: number | null;
   slateId: number;
   slateDate: string;
   name: string;
@@ -2878,6 +2879,7 @@ export type MlbPitcherLineupBucketRow = {
 };
 
 export type MlbPitcherLineupCandidate = {
+  playerId: number | null;
   name: string;
   teamAbbrev: string;
   salary: number | null;
@@ -2957,6 +2959,23 @@ export type MlbPitcherLineupReport = {
     slate: MlbPitcherCurrentSlateSummary;
     pitchers: MlbPitcherLineupCandidate[];
     contrarianPitchers: MlbPitcherLineupCandidate[];
+  } | null;
+};
+
+export type MlbPitcherSlateSignal = {
+  playerId: number;
+  lineupScore: number | null;
+  ceilingScore: number | null;
+  contrarianScore: number | null;
+  decisionBadge: {
+    label: string;
+    className: string;
+    title: string;
+  } | null;
+  ceilingBadge: {
+    label: string;
+    className: string;
+    title: string;
   } | null;
 };
 
@@ -3053,6 +3072,7 @@ function normalizeMlbPitcherRow(row: Record<string, unknown>): MlbPitcherHistori
   const teamMl = mlbPitcherToNumber(row.teamMl);
 
   return {
+    playerId: mlbPitcherToNumber(row.playerId),
     slateId: Number(row.slateId),
     slateDate: String(row.slateDate),
     name: String(row.name),
@@ -3197,6 +3217,7 @@ function buildMlbPitcherCandidate(
   if (usable(moneylineSummary) && row.moneylineBucket !== "unknown") notes.push(`Moneyline ${row.moneylineBucket}: ${moneylineSummary.hit20Rate}% hit 20+ (${moneylineSummary.rows} rows)`);
 
   return {
+    playerId: row.playerId,
     name: row.name,
     teamAbbrev: row.teamAbbrev,
     salary: row.salary,
@@ -3222,6 +3243,245 @@ function buildMlbPitcherCandidate(
     actualFpts: row.actualFpts,
     actualOwnPct: row.actualOwnPct,
   };
+}
+
+function formatMlbPitcherSignalMetric(value: number | null, suffix = ""): string {
+  if (value == null) return "—";
+  return `${value.toFixed(1)}${suffix}`;
+}
+
+function buildMlbPitcherSignalTitle(
+  label: string,
+  summary: string,
+  candidate: MlbPitcherLineupCandidate,
+): string {
+  const parts = [
+    `${label}: ${summary}`,
+    `Lineup ${formatMlbPitcherSignalMetric(candidate.lineupScore)}`,
+    `Ceiling ${formatMlbPitcherSignalMetric(candidate.ceilingScore)}`,
+    `Pivot ${formatMlbPitcherSignalMetric(candidate.contrarianScore)}`,
+    `Proj ${formatMlbPitcherSignalMetric(candidate.projection)}`,
+    `Own ${formatMlbPitcherSignalMetric(candidate.projectedOwnPct, "%")}`,
+    `Value ${formatMlbPitcherSignalMetric(candidate.projectedValueX, "x")}`,
+    `Buckets ${candidate.projectionBucket} / ${candidate.valueBucket} / ${candidate.projectedOwnBucket}`,
+  ];
+  if (candidate.notes.length) parts.push(candidate.notes.slice(0, 3).join("; "));
+  return parts.join(" | ");
+}
+
+function buildMlbPitcherSlateSignals(
+  candidates: MlbPitcherLineupCandidate[],
+): MlbPitcherSlateSignal[] {
+  const decisionBadges = new Map<number, MlbPitcherSlateSignal["decisionBadge"]>();
+  const ceilingBadges = new Map<number, MlbPitcherSlateSignal["ceilingBadge"]>();
+
+  const lineupCandidates = candidates
+    .filter((candidate) => candidate.playerId != null && candidate.lineupScore != null)
+    .sort((a, b) => ((b.lineupScore ?? -999) - (a.lineupScore ?? -999)) || ((b.projection ?? -999) - (a.projection ?? -999)));
+
+  const sp1 = lineupCandidates[0];
+  if (sp1?.playerId != null) {
+    decisionBadges.set(sp1.playerId, {
+      label: "SP1",
+      className: "bg-emerald-100 text-emerald-700",
+      title: buildMlbPitcherSignalTitle(
+        "SP1",
+        "Best overall historical lineup fit on this slate.",
+        sp1,
+      ),
+    });
+  }
+
+  for (const candidate of lineupCandidates.slice(1, 3)) {
+    if (candidate.playerId == null || decisionBadges.has(candidate.playerId)) continue;
+    decisionBadges.set(candidate.playerId, {
+      label: "SP2",
+      className: "bg-sky-100 text-sky-700",
+      title: buildMlbPitcherSignalTitle(
+        "SP2",
+        "Strong secondary pitcher profile for lineup construction.",
+        candidate,
+      ),
+    });
+  }
+
+  const pivotCandidates = candidates
+    .filter(
+      (candidate) => candidate.playerId != null
+        && candidate.contrarianScore != null
+        && (candidate.projectedOwnPct == null || candidate.projectedOwnPct <= MLB_PITCHER_PIVOT_MAX_OWN),
+    )
+    .sort((a, b) => ((b.contrarianScore ?? -999) - (a.contrarianScore ?? -999)) || ((b.ceilingScore ?? -999) - (a.ceilingScore ?? -999)));
+
+  for (const candidate of pivotCandidates.slice(0, 2)) {
+    if (candidate.playerId == null || decisionBadges.has(candidate.playerId)) continue;
+    decisionBadges.set(candidate.playerId, {
+      label: "PIVOT",
+      className: "bg-amber-100 text-amber-700",
+      title: buildMlbPitcherSignalTitle(
+        "PIVOT",
+        "Best lower-owned contrarian lane from the historical pitcher cohorts.",
+        candidate,
+      ),
+    });
+  }
+
+  const ceilingCandidates = candidates
+    .filter((candidate) => candidate.playerId != null && candidate.ceilingScore != null)
+    .sort((a, b) => ((b.ceilingScore ?? -999) - (a.ceilingScore ?? -999)) || ((b.projection ?? -999) - (a.projection ?? -999)));
+
+  for (const [index, candidate] of ceilingCandidates.slice(0, 3).entries()) {
+    if (candidate.playerId == null) continue;
+    ceilingBadges.set(candidate.playerId, {
+      label: `CEIL #${index + 1}`,
+      className: index === 0 ? "bg-fuchsia-100 text-fuchsia-700" : "bg-violet-100 text-violet-700",
+      title: buildMlbPitcherSignalTitle(
+        `CEIL #${index + 1}`,
+        "Top historical ceiling score on this slate.",
+        candidate,
+      ),
+    });
+  }
+
+  return candidates.flatMap((candidate) => {
+    if (candidate.playerId == null) return [];
+    return [{
+      playerId: candidate.playerId,
+      lineupScore: candidate.lineupScore,
+      ceilingScore: candidate.ceilingScore,
+      contrarianScore: candidate.contrarianScore,
+      decisionBadge: decisionBadges.get(candidate.playerId) ?? null,
+      ceilingBadge: ceilingBadges.get(candidate.playerId) ?? null,
+    }];
+  });
+}
+
+export async function getLatestMlbPitcherSignals(): Promise<MlbPitcherSlateSignal[]> {
+  const targetResult = await db.execute<MlbPitcherTargetSlateRow>(sql`
+    SELECT
+      ds.id AS "id",
+      ds.slate_date::text AS "slateDate",
+      ds.contest_type AS "contestType",
+      ds.contest_format AS "contestFormat",
+      COUNT(*) FILTER (
+        WHERE COALESCE(dp.is_out, false) = false
+          AND dp.eligible_positions LIKE '%SP%'
+      )::int AS "activeSpCount",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NULL)::int AS "pendingActualRows"
+    FROM dk_slates ds
+    JOIN dk_players dp ON dp.slate_id = ds.id
+    WHERE ds.sport = 'mlb'
+    GROUP BY ds.id, ds.slate_date, ds.contest_type, ds.contest_format
+    HAVING COUNT(*) FILTER (
+      WHERE COALESCE(dp.is_out, false) = false
+        AND dp.eligible_positions LIKE '%SP%'
+    ) > 0
+    ORDER BY ds.slate_date DESC, ds.id DESC
+    LIMIT 1
+  `);
+  const targetSlate = (targetResult.rows as MlbPitcherTargetSlateRow[])[0] ?? null;
+  if (!targetSlate) return [];
+
+  const historicalResult = await db.execute(sql`
+    SELECT
+      dp.id AS "playerId",
+      ds.id AS "slateId",
+      ds.slate_date::text AS "slateDate",
+      dp.name,
+      dp.team_abbrev AS "teamAbbrev",
+      dp.salary,
+      COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS "projection",
+      dp.linestar_proj AS "linestarProj",
+      dp.our_proj AS "ourProj",
+      COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projectedOwnPct",
+      dp.our_own_pct AS "ourOwnPct",
+      dp.actual_fpts AS "actualFpts",
+      dp.actual_own_pct AS "actualOwnPct",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN mm.away_implied
+        WHEN dp.mlb_team_id = mm.away_team_id THEN mm.home_implied
+        ELSE NULL
+      END AS "oppImplied",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN mm.home_ml
+        WHEN dp.mlb_team_id = mm.away_team_id THEN mm.away_ml
+        ELSE NULL
+      END AS "teamMl",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN TRUE
+        WHEN dp.mlb_team_id = mm.away_team_id THEN FALSE
+        ELSE NULL
+      END AS "isHome"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+    WHERE ds.sport = 'mlb'
+      AND ds.contest_type = ${targetSlate.contestType}
+      AND ds.contest_format = ${targetSlate.contestFormat}
+      AND ds.id <> ${targetSlate.id}
+      AND dp.actual_fpts IS NOT NULL
+      AND dp.actual_own_pct IS NOT NULL
+      AND COALESCE(dp.is_out, false) = false
+      AND dp.eligible_positions LIKE '%SP%'
+  `);
+  const historicalRows = (historicalResult.rows as Record<string, unknown>[]).map(normalizeMlbPitcherRow);
+  if (!historicalRows.length) return [];
+
+  const bucketRows: Record<MlbPitcherBucketKey, MlbPitcherLineupBucketRow[]> = {
+    projectionBucket: summarizeMlbPitcherBuckets(historicalRows, "projectionBucket"),
+    valueBucket: summarizeMlbPitcherBuckets(historicalRows, "valueBucket"),
+    projectedOwnBucket: summarizeMlbPitcherBuckets(historicalRows, "projectedOwnBucket"),
+    oppImpliedBucket: summarizeMlbPitcherBuckets(historicalRows, "oppImpliedBucket"),
+    moneylineBucket: summarizeMlbPitcherBuckets(historicalRows, "moneylineBucket"),
+    salaryBucket: summarizeMlbPitcherBuckets(historicalRows, "salaryBucket"),
+  };
+  const bucketLookup = buildMlbPitcherBucketLookup(bucketRows);
+
+  const currentResult = await db.execute(sql`
+    SELECT
+      dp.id AS "playerId",
+      ds.id AS "slateId",
+      ds.slate_date::text AS "slateDate",
+      dp.name,
+      dp.team_abbrev AS "teamAbbrev",
+      dp.salary,
+      COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS "projection",
+      dp.linestar_proj AS "linestarProj",
+      dp.our_proj AS "ourProj",
+      COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projectedOwnPct",
+      dp.our_own_pct AS "ourOwnPct",
+      dp.actual_fpts AS "actualFpts",
+      dp.actual_own_pct AS "actualOwnPct",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN mm.away_implied
+        WHEN dp.mlb_team_id = mm.away_team_id THEN mm.home_implied
+        ELSE NULL
+      END AS "oppImplied",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN mm.home_ml
+        WHEN dp.mlb_team_id = mm.away_team_id THEN mm.away_ml
+        ELSE NULL
+      END AS "teamMl",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN TRUE
+        WHEN dp.mlb_team_id = mm.away_team_id THEN FALSE
+        ELSE NULL
+      END AS "isHome"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+    WHERE ds.id = ${targetSlate.id}
+      AND COALESCE(dp.is_out, false) = false
+      AND dp.eligible_positions LIKE '%SP%'
+    ORDER BY COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) DESC NULLS LAST, dp.salary DESC
+  `);
+
+  const currentRows = (currentResult.rows as Record<string, unknown>[]).map(normalizeMlbPitcherRow);
+  const candidates = currentRows
+    .map((row) => buildMlbPitcherCandidate(row, bucketLookup))
+    .sort((a, b) => ((b.lineupScore ?? -999) - (a.lineupScore ?? -999)) || ((b.projection ?? -999) - (a.projection ?? -999)));
+
+  return buildMlbPitcherSlateSignals(candidates);
 }
 
 export async function getMlbPitcherLineupReport(): Promise<MlbPitcherLineupReport | null> {
@@ -3256,6 +3516,7 @@ export async function getMlbPitcherLineupReport(): Promise<MlbPitcherLineupRepor
 
   const historicalResult = await db.execute(sql`
     SELECT
+      dp.id AS "playerId",
       ds.id AS "slateId",
       ds.slate_date::text AS "slateDate",
       dp.name,
@@ -3351,6 +3612,7 @@ export async function getMlbPitcherLineupReport(): Promise<MlbPitcherLineupRepor
   if (targetSlate) {
     const currentResult = await db.execute(sql`
       SELECT
+        dp.id AS "playerId",
         ds.id AS "slateId",
         ds.slate_date::text AS "slateDate",
         dp.name,
