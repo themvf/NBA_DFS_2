@@ -358,6 +358,92 @@ export async function getLatestSlateInfo(sport: Sport = "nba"): Promise<{
   return rows[0] ?? null;
 }
 
+// ── MLB Game Environment Cards ───────────────────────────────
+
+export type MlbGameEnvironmentCard = {
+  matchupId: number;
+  gameId: string | null;
+  gameDate: string;
+  homeTeamId: number | null;
+  homeAbbrev: string | null;
+  homeName: string | null;
+  homeLogo: string | null;
+  awayTeamId: number | null;
+  awayAbbrev: string | null;
+  awayName: string | null;
+  awayLogo: string | null;
+  vegasTotal: number | null;
+  homeImplied: number | null;
+  awayImplied: number | null;
+  homeMl: number | null;
+  awayMl: number | null;
+  ballpark: string | null;
+  weatherTemp: number | null;
+  windSpeed: number | null;
+  windDirection: string | null;
+  homeSpName: string | null;
+  homeSpHand: string | null;
+  homeSpKPer9: number | null;
+  homeSpXfip: number | null;
+  homeSpEra: number | null;
+  awaySpName: string | null;
+  awaySpHand: string | null;
+  awaySpKPer9: number | null;
+  awaySpXfip: number | null;
+  awaySpEra: number | null;
+};
+
+export async function getMlbGameEnvironmentCards(slateDate: string | null): Promise<MlbGameEnvironmentCard[]> {
+  if (!slateDate) return [];
+  const result = await db.execute<MlbGameEnvironmentCard>(sql`
+    WITH latest_pitcher AS (
+      SELECT DISTINCT ON (player_id)
+        player_id, name, hand, k_per_9, xfip, era
+      FROM mlb_pitcher_stats
+      ORDER BY player_id, season DESC
+    )
+    SELECT
+      mm.id                 AS "matchupId",
+      mm.game_id            AS "gameId",
+      mm.game_date::text    AS "gameDate",
+      mm.home_team_id       AS "homeTeamId",
+      home.abbreviation     AS "homeAbbrev",
+      home.name             AS "homeName",
+      home.logo_url         AS "homeLogo",
+      mm.away_team_id       AS "awayTeamId",
+      away.abbreviation     AS "awayAbbrev",
+      away.name             AS "awayName",
+      away.logo_url         AS "awayLogo",
+      mm.vegas_total        AS "vegasTotal",
+      mm.home_implied       AS "homeImplied",
+      mm.away_implied       AS "awayImplied",
+      mm.home_ml            AS "homeMl",
+      mm.away_ml            AS "awayMl",
+      mm.ballpark           AS "ballpark",
+      mm.weather_temp       AS "weatherTemp",
+      mm.wind_speed         AS "windSpeed",
+      mm.wind_direction     AS "windDirection",
+      hsp.name              AS "homeSpName",
+      hsp.hand              AS "homeSpHand",
+      hsp.k_per_9           AS "homeSpKPer9",
+      hsp.xfip              AS "homeSpXfip",
+      hsp.era               AS "homeSpEra",
+      asp.name              AS "awaySpName",
+      asp.hand              AS "awaySpHand",
+      asp.k_per_9           AS "awaySpKPer9",
+      asp.xfip              AS "awaySpXfip",
+      asp.era               AS "awaySpEra"
+    FROM mlb_matchups mm
+    LEFT JOIN mlb_teams home ON home.team_id = mm.home_team_id
+    LEFT JOIN mlb_teams away ON away.team_id = mm.away_team_id
+    LEFT JOIN latest_pitcher hsp ON hsp.player_id = mm.home_sp_id
+    LEFT JOIN latest_pitcher asp ON asp.player_id = mm.away_sp_id
+    WHERE mm.game_date = ${slateDate}::date
+    ORDER BY mm.vegas_total DESC NULLS LAST, mm.id ASC
+  `);
+  return result.rows;
+}
+
 // ── DFS Accuracy ─────────────────────────────────────────────
 
 export type DfsAccuracyMetrics = {

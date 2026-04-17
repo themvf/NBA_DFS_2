@@ -2,7 +2,8 @@
 
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { UIEvent } from "react";
-import type { DfsPagePlayerRow as DkPlayerRow, MlbPitcherSlateSignal, Sport } from "@/db/queries";
+import type { DfsPagePlayerRow as DkPlayerRow, MlbGameEnvironmentCard, MlbPitcherSlateSignal, Sport } from "@/db/queries";
+import MlbGameCardStrip from "./mlb-game-card-strip";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
@@ -25,6 +26,7 @@ type Props = {
   players: DkPlayerRow[];
   slateDate: string | null;
   mlbPitcherSignals: MlbPitcherSlateSignal[];
+  mlbGameCards?: MlbGameEnvironmentCard[];
   sport: Sport;
 };
 
@@ -1607,7 +1609,7 @@ const GeneratedLineupsSection = memo(function GeneratedLineupsSection({
   );
 });
 
-export default function DfsClient({ players, slateDate, mlbPitcherSignals, sport }: Props) {
+export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGameCards, sport }: Props) {
   const [isPending, startTransition] = useTransition();
 
   // ── Load state ────────────────────────────────────────────
@@ -2937,6 +2939,23 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, sport
         )}
 
       </div>
+
+      {/* MLB Game Environment Cards */}
+      {sport === "mlb" && mlbGameCards && mlbGameCards.length > 0 && (
+        <MlbGameCardStrip
+          cards={mlbGameCards}
+          players={players}
+          signals={mlbPitcherSignals}
+          selectedGames={selectedGames}
+          onToggleGame={(gameKey) => {
+            const next = new Set(selectedGames);
+            if (next.has(gameKey)) next.delete(gameKey); else next.add(gameKey);
+            setSelectedGames(next);
+          }}
+          onSelectAll={() => setSelectedGames(new Set(allGames))}
+          onSelectNone={() => setSelectedGames(new Set())}
+        />
+      )}
 
       {/* Game Filter */}
       {allGames.length > 0 && (
