@@ -33,6 +33,7 @@ type SortCol =
   | "salary"
   | "avgFptsDk"
   | "linestarProj"
+  | "linestarOwnPct"
   | "ourProj"
   | "delta"
   | "projOwnPct"
@@ -1134,8 +1135,8 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
   const topSpacerHeight = startIndex * rowEstimate;
   const bottomSpacerHeight = Math.max(0, (visiblePlayers.length - endIndex) * rowEstimate);
   const columnCount = sport === "mlb"
-    ? (supportsRuleControls ? 16 : 15)
-    : (supportsRuleControls ? 17 : 16);
+    ? (supportsRuleControls ? 17 : 16)
+    : (supportsRuleControls ? 18 : 17);
 
   useEffect(() => {
     setScrollTop(0);
@@ -1255,7 +1256,8 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                 sortDir={sortDir}
                 onToggleSort={onToggleSort}
               />
-              <SortHeader col="projOwnPct" label="LS Own%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+              <SortHeader col="linestarOwnPct" label="LS Own%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
+              <SortHeader col="projOwnPct" label="Field Own%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
               <SortHeader col="ourOwnPct" label="Our Own%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
               {sport === "nba" && <SortHeader col="liveOwnPct" label="Live Own%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />}
               <SortHeader
@@ -1493,6 +1495,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                   }`}>
                     {delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}` : "—"}
                   </td>
+                  <td className="px-3 py-1.5 text-xs">{(p.linestarOwnPct ?? p.projOwnPct) != null ? `${(p.linestarOwnPct ?? p.projOwnPct)!.toFixed(1)}%` : "—"}</td>
                   <td className="px-3 py-1.5 text-xs">{p.projOwnPct != null ? `${p.projOwnPct.toFixed(1)}%` : "—"}</td>
                   <td className="px-3 py-1.5 text-xs">{p.ourOwnPct != null ? `${p.ourOwnPct.toFixed(1)}%` : "—"}</td>
                   {sport === "nba" && (
@@ -2017,6 +2020,7 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, sport
                             bv = sport === "nba" ? nbaProjB : (b.ourProj ?? -99); break;
         case "delta":       av = (sport === "nba" ? nbaProjA : (a.ourProj ?? 0)) - (a.linestarProj ?? 0);
                             bv = (sport === "nba" ? nbaProjB : (b.ourProj ?? 0)) - (b.linestarProj ?? 0); break;
+        case "linestarOwnPct": av = a.linestarOwnPct ?? a.projOwnPct ?? -99; bv = b.linestarOwnPct ?? b.projOwnPct ?? -99; break;
         case "projOwnPct":  av = a.projOwnPct ?? -99; bv = b.projOwnPct ?? -99; break;
         case "ourOwnPct":   av = a.ourOwnPct ?? -99; bv = b.ourOwnPct ?? -99; break;
         case "liveOwnPct":  av = sport === "nba" ? (a.liveOwnPct ?? a.projOwnPct ?? a.ourOwnPct ?? -99) : (a.ourOwnPct ?? -99);
@@ -3583,7 +3587,8 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, sport
                   )}
                   <SortHeader col="ourProj" label={sport === "nba" ? "Live Proj" : "Our Proj"} />
                   <SortHeader col="delta" label={sport === "nba" ? "Live Δ" : "Delta"} />
-                  <SortHeader col="projOwnPct" label="LS Own%" />
+                  <SortHeader col="linestarOwnPct" label="LS Own%" />
+                  <SortHeader col="projOwnPct" label="Field Own%" />
                   <SortHeader col="ourOwnPct" label="Our Own%" />
                   {sport === "nba" && <SortHeader col="liveOwnPct" label="Live Own%" />}
                   <SortHeader col="ourLeverage" label={sport === "nba" ? "Live Lev" : "Leverage"} />
@@ -3798,6 +3803,7 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, sport
                       }`}>
                         {delta != null ? (delta >= 0 ? "+" : "") + delta.toFixed(1) : "—"}
                       </td>
+                      <td className="px-3 py-1.5 text-xs">{(p.linestarOwnPct ?? p.projOwnPct) != null ? (p.linestarOwnPct ?? p.projOwnPct)!.toFixed(1) + "%" : "—"}</td>
                       <td className="px-3 py-1.5 text-xs">{p.projOwnPct != null ? p.projOwnPct.toFixed(1) + "%" : "—"}</td>
                       <td className="px-3 py-1.5 text-xs">{p.ourOwnPct != null ? p.ourOwnPct.toFixed(1) + "%" : "—"}</td>
                       {sport === "nba" && (

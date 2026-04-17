@@ -382,6 +382,7 @@ export const dkPlayers = pgTable(
     gameInfo: text("game_info"),
     avgFptsDk: real("avg_fpts_dk"),
     linestarProj: real("linestar_proj"),
+    linestarOwnPct: real("linestar_own_pct"),
     projOwnPct: real("proj_own_pct"),
     ourProj: real("our_proj"),
     liveProj: real("live_proj"),
@@ -560,6 +561,61 @@ export const projectionPlayerSnapshots = pgTable(
     index("idx_projection_snapshots_run").on(t.runId, t.dkPlayerId),
     index("idx_projection_snapshots_slate").on(t.slateId, t.dkPlayerId),
     unique("projection_snapshots_run_player_key").on(t.runId, t.dkPlayerId),
+  ]
+);
+
+export const ownershipRuns = pgTable(
+  "ownership_runs",
+  {
+    id: serial("id").primaryKey(),
+    sport: text("sport").notNull(),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    ownershipVersion: text("ownership_version").notNull(),
+    source: text("source").notNull(),
+    configJson: jsonb("config_json").notNull().default({}),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_ownership_runs_slate").on(t.slateId, t.createdAt),
+    index("idx_ownership_runs_model").on(t.ownershipVersion, t.createdAt),
+  ]
+);
+
+export const ownershipPlayerSnapshots = pgTable(
+  "ownership_player_snapshots",
+  {
+    id: serial("id").primaryKey(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => ownershipRuns.id),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    dkPlayerId: bigint("dk_player_id", { mode: "number" }).notNull(),
+    name: text("name").notNull(),
+    teamId: integer("team_id"),
+    salary: integer("salary").notNull(),
+    eligiblePositions: text("eligible_positions"),
+    isOut: boolean("is_out").default(false),
+    linestarProjFpts: real("linestar_proj_fpts"),
+    ourProjFpts: real("our_proj_fpts"),
+    liveProjFpts: real("live_proj_fpts"),
+    linestarOwnPct: real("linestar_own_pct"),
+    fieldOwnPct: real("field_own_pct"),
+    ourOwnPct: real("our_own_pct"),
+    liveOwnPct: real("live_own_pct"),
+    actualOwnPct: real("actual_own_pct"),
+    lineupOrder: integer("lineup_order"),
+    lineupConfirmed: boolean("lineup_confirmed"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_ownership_snapshots_run").on(t.runId, t.dkPlayerId),
+    index("idx_ownership_snapshots_slate").on(t.slateId, t.dkPlayerId),
+    unique("ownership_snapshots_run_player_key").on(t.runId, t.dkPlayerId),
   ]
 );
 

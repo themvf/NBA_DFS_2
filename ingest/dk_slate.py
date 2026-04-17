@@ -100,6 +100,7 @@ def parse_linestar_csv(content: str) -> dict[tuple, dict]:
         is_out = proj == 0.0
         lookup[(player_name.lower(), salary)] = {
             "linestar_proj": proj,
+            "linestar_own_pct": proj_own,
             "proj_own_pct":  proj_own,
             "is_out":        is_out,
         }
@@ -243,6 +244,7 @@ def build_player_pool(
             matched_linestar += 1
         else:
             result["linestar_proj"] = None
+            result["linestar_own_pct"] = None
             result["proj_own_pct"]  = None
             result["is_out"]        = False
 
@@ -450,6 +452,7 @@ def run(
             "game_info":          p.get("game_info"),
             "avg_fpts_dk":        p.get("avg_fpts_dk"),
             "linestar_proj":      p.get("linestar_proj"),
+            "linestar_own_pct":   p.get("linestar_own_pct"),
             "proj_own_pct":       p.get("proj_own_pct"),
             "our_proj":           p.get("our_proj"),
             "our_leverage":       p.get("our_leverage"),

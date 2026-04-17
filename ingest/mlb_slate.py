@@ -53,6 +53,7 @@ from model.mlb_projections import (
     compute_batter_projection,
     compute_pitcher_projection,
 )
+from model.mlb_ownership_model import predict_pool_ownership
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,7 @@ def _apply_mlb_ownership_models(players: list[dict]) -> int:
     hitter_fallback_refs = [
         ref
         for _, player in active_hitters
-        if _sanitize_ownership_pct(player.get("proj_own_pct")) is None
+        if _sanitize_ownership_pct(player.get("linestar_own_pct")) is None
         for ref in [_get_mlb_reference_projection(player)]
         if ref is not None and ref > 0
     ]
@@ -220,7 +221,7 @@ def _apply_mlb_ownership_models(players: list[dict]) -> int:
     pitcher_field_scores: list[tuple[int, float]] = []
     for idx, player in active_pitchers:
         proxy_proj = _get_mlb_proxy_projection(player)
-        ls_own = _sanitize_ownership_pct(player.get("proj_own_pct")) or 0.0
+        ls_own = _sanitize_ownership_pct(player.get("linestar_own_pct")) or 0.0
         if proxy_proj is not None and proxy_proj > 0:
             value_score = proxy_proj / (player["salary"] / 1000.0)
             score = math.exp(value_score * _MLB_PITCHER_SOFTMAX_K) * (1.0 + ls_own / 100.0)
@@ -231,7 +232,7 @@ def _apply_mlb_ownership_models(players: list[dict]) -> int:
 
     hitter_field_scores: list[tuple[int, float]] = []
     for idx, player in active_hitters:
-        ls_own = _sanitize_ownership_pct(player.get("proj_own_pct"))
+        ls_own = _sanitize_ownership_pct(player.get("linestar_own_pct"))
         if ls_own is not None and ls_own > 0:
             hitter_field_scores.append((idx, ls_own))
             continue
@@ -280,6 +281,22 @@ def _apply_mlb_ownership_models(players: list[dict]) -> int:
         player["proj_own_pct"] = _sanitize_ownership_pct(proj_own_pct)
         player["our_own_pct"] = _sanitize_ownership_pct(our_own_pct)
 
+    model_field_map = predict_pool_ownership(players, projection_mode="field")
+    model_our_map = predict_pool_ownership(players, projection_mode="our")
+    model_applied = 0
+
+    for idx, player in indexed:
+        if player.get("is_out"):
+            continue
+        if idx in model_field_map:
+            player["proj_own_pct"] = _sanitize_ownership_pct(model_field_map[idx])
+            model_applied += 1
+        if idx in model_our_map:
+            player["our_own_pct"] = _sanitize_ownership_pct(model_our_map[idx])
+
+    for idx, player in indexed:
+        if player.get("is_out"):
+            continue
         proj_for_leverage = _get_mlb_proxy_projection(player)
         if proj_for_leverage is not None and proj_for_leverage > 0 and player.get("proj_own_pct") is not None:
             field_proj = _sanitize_projection(player.get("avg_fpts_dk") or player.get("linestar_proj"))
@@ -296,7 +313,7 @@ def _apply_mlb_ownership_models(players: list[dict]) -> int:
         else:
             player["our_leverage"] = None
 
-    return baseline_applied
+    return model_applied or baseline_applied
 
 
 _MLB_MAX_CURRENT_SEASON_WEIGHT = 0.90
@@ -885,6 +902,7 @@ def build_player_pool_mlb(
             matched_linestar += 1
         else:
             result["linestar_proj"] = None
+            result["linestar_own_pct"] = None
             result["proj_own_pct"]  = None
             result["is_out"]        = False
 
@@ -909,6 +927,11 @@ def build_player_pool_mlb(
         opp_team_id = None
         if matchup:
             opp_team_id = matchup["away_team_id"] if is_home else matchup["home_team_id"]
+        result["team_implied"] = matchup["home_implied"] if matchup and is_home else (matchup["away_implied"] if matchup else None)
+        result["opp_implied"] = matchup["away_implied"] if matchup and is_home else (matchup["home_implied"] if matchup else None)
+        result["team_ml"] = matchup["home_ml"] if matchup and is_home else (matchup["away_ml"] if matchup else None)
+        result["vegas_total"] = matchup.get("vegas_total") if matchup else None
+        result["is_home"] = is_home if matchup else None
         opp_team = team_stats_by_team.get(opp_team_id) if opp_team_id else None
 
         stats = None
@@ -995,7 +1018,7 @@ def build_player_pool_mlb(
 
         enriched.append(result)
 
-    baseline_applied = _apply_mlb_ownership_models(enriched)
+    ownership_rows = _apply_mlb_ownership_models(enriched)
 
     n = len(dk_players)
     print(f"  {n} DK MLB players processed")
@@ -1018,8 +1041,8 @@ def build_player_pool_mlb(
         "  Team changers: "
         f"{batter_coverage['team_change_accelerated'] + pitcher_coverage['team_change_accelerated']}"
     )
-    if baseline_applied:
-        print(f"  Baseline own%:  {baseline_applied} players (no LineStar data)")
+    if ownership_rows:
+        print(f"  Ownership v1:  {ownership_rows} active players scored")
     return enriched
 
 
@@ -1105,6 +1128,7 @@ def run(
             "game_info":          p.get("game_info"),
             "avg_fpts_dk":        p.get("avg_fpts_dk"),
             "linestar_proj":      p.get("linestar_proj"),
+            "linestar_own_pct":   p.get("linestar_own_pct"),
             "proj_own_pct":       p.get("proj_own_pct"),
             "our_proj":           p.get("our_proj"),
             "expected_hr":        p.get("expected_hr"),

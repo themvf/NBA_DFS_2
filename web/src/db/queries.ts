@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns } from "./ensure-schema";
+import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -38,6 +38,7 @@ export type DkPlayerRow = {
   gameInfo: string | null;
   avgFptsDk: number | null;
   linestarProj: number | null;
+  linestarOwnPct?: number | null;
   projOwnPct: number | null;
   ourProj: number | null;
   liveProj: number | null;
@@ -106,6 +107,7 @@ export type DfsPagePlayerRow = Pick<
   | "gameInfo"
   | "avgFptsDk"
   | "linestarProj"
+  | "linestarOwnPct"
   | "projOwnPct"
   | "ourProj"
   | "liveProj"
@@ -171,6 +173,7 @@ export async function getDfsPagePlayers(sport: Sport = "nba"): Promise<DfsPagePl
         dp.game_info          AS "gameInfo",
         dp.avg_fpts_dk        AS "avgFptsDk",
         dp.linestar_proj      AS "linestarProj",
+        dp.linestar_own_pct   AS "linestarOwnPct",
         dp.proj_own_pct       AS "projOwnPct",
         dp.our_proj           AS "ourProj",
         NULL::REAL            AS "liveProj",
@@ -243,6 +246,7 @@ export async function getDfsPagePlayers(sport: Sport = "nba"): Promise<DfsPagePl
       dp.game_info         AS "gameInfo",
       dp.avg_fpts_dk       AS "avgFptsDk",
       dp.linestar_proj     AS "linestarProj",
+      dp.linestar_own_pct  AS "linestarOwnPct",
       dp.proj_own_pct      AS "projOwnPct",
       COALESCE(proj.model_proj_fpts, dp.our_proj) AS "ourProj",
       COALESCE(dp.live_proj, proj.final_proj_fpts, dp.our_proj, dp.linestar_proj) AS "liveProj",
@@ -976,6 +980,474 @@ export async function getOwnershipVsTeamTotal(sport: Sport = "nba"): Promise<Own
     ORDER BY MIN(team_implied) ASC NULLS LAST
   `);
   return result.rows;
+}
+
+export type OwnershipModelSourceAccuracyRow = {
+  label: string;
+  rows: number;
+  mae: number | null;
+  bias: number | null;
+  corr: number | null;
+};
+
+export type OwnershipModelSegmentAccuracyRow = {
+  segment: string;
+  rows: number;
+  linestarMae: number | null;
+  fieldMae: number | null;
+  maeDelta: number | null;
+  linestarCorr: number | null;
+  fieldCorr: number | null;
+};
+
+export type OwnershipModelBucketRow = {
+  bucket: string;
+  bucketMin: number | null;
+  rows: number;
+  avgLinestarOwnPct: number | null;
+  avgFieldOwnPct: number | null;
+  avgActualOwnPct: number | null;
+  linestarBias: number | null;
+  fieldBias: number | null;
+};
+
+export type OwnershipModelSlateAccuracyRow = {
+  slateId: number;
+  slateDate: string;
+  ownershipVersion: string;
+  source: string;
+  capturedAt: string | null;
+  rows: number;
+  linestarMae: number | null;
+  fieldMae: number | null;
+  maeGain: number | null;
+  linestarCorr: number | null;
+  fieldCorr: number | null;
+  linestarBias: number | null;
+  fieldBias: number | null;
+};
+
+export type OwnershipModelVersionAccuracyRow = {
+  ownershipVersion: string;
+  source: string;
+  slates: number;
+  rows: number;
+  linestarMae: number | null;
+  fieldMae: number | null;
+  maeGain: number | null;
+  linestarCorr: number | null;
+  fieldCorr: number | null;
+};
+
+export type OwnershipModelMissRow = {
+  slateId: number;
+  slateDate: string;
+  name: string;
+  eligiblePositions: string | null;
+  salary: number;
+  lineupOrder: number | null;
+  linestarOwnPct: number | null;
+  fieldOwnPct: number | null;
+  actualOwnPct: number | null;
+  linestarAbsError: number | null;
+  fieldAbsError: number | null;
+  errorGain: number | null;
+};
+
+export type MlbOwnershipModelReport = {
+  sample: {
+    slates: number;
+    rows: number;
+    latestVersion: string | null;
+    latestSource: string | null;
+    latestCapturedAt: string | null;
+  };
+  findings: string[];
+  sources: OwnershipModelSourceAccuracyRow[];
+  segments: OwnershipModelSegmentAccuracyRow[];
+  buckets: OwnershipModelBucketRow[];
+  recentSlates: OwnershipModelSlateAccuracyRow[];
+  versions: OwnershipModelVersionAccuracyRow[];
+  latestSlateMisses: OwnershipModelMissRow[];
+};
+
+function fmtOwnershipDelta(value: number | null | undefined): string {
+  if (value == null) return "0.00";
+  return Math.abs(value).toFixed(2);
+}
+
+function buildMlbOwnershipModelFindings(
+  sources: OwnershipModelSourceAccuracyRow[],
+  segments: OwnershipModelSegmentAccuracyRow[],
+  buckets: OwnershipModelBucketRow[],
+): string[] {
+  const findings: string[] = [];
+  const field = sources.find((row) => row.label === "Field Model");
+  const linestar = sources.find((row) => row.label === "LineStar");
+  if (field && linestar && field.mae != null && linestar.mae != null) {
+    const delta = linestar.mae - field.mae;
+    if (delta > 0) {
+      findings.push(`Field model is beating LineStar by ${delta.toFixed(2)} ownership points of MAE on tracked MLB slates.`);
+    } else {
+      findings.push(`Field model is trailing LineStar by ${Math.abs(delta).toFixed(2)} ownership points of MAE on tracked MLB slates.`);
+    }
+  }
+
+  const bestSegment = segments
+    .filter((row) => row.maeDelta != null && row.maeDelta > 0)
+    .sort((a, b) => (b.maeDelta ?? -999) - (a.maeDelta ?? -999))[0];
+  if (bestSegment?.maeDelta != null) {
+    findings.push(`${bestSegment.segment} is the strongest improvement lane, cutting MAE by ${bestSegment.maeDelta.toFixed(2)} vs LineStar.`);
+  }
+
+  const worstOver = buckets
+    .filter((row) => row.fieldBias != null)
+    .sort((a, b) => (b.fieldBias ?? -999) - (a.fieldBias ?? -999))[0];
+  if (worstOver?.fieldBias != null && worstOver.fieldBias > 0.35) {
+    findings.push(`Field model still over-projects the ${worstOver.bucket} lane by ${fmtOwnershipDelta(worstOver.fieldBias)} points on average.`);
+  }
+
+  const worstUnder = buckets
+    .filter((row) => row.fieldBias != null)
+    .sort((a, b) => (a.fieldBias ?? 999) - (b.fieldBias ?? 999))[0];
+  if (worstUnder?.fieldBias != null && worstUnder.fieldBias < -0.35) {
+    findings.push(`Field model still under-projects the ${worstUnder.bucket} lane by ${fmtOwnershipDelta(worstUnder.fieldBias)} points on average.`);
+  }
+
+  return findings.slice(0, 4);
+}
+
+export async function getMlbOwnershipModelReport(): Promise<MlbOwnershipModelReport | null> {
+  await ensureOwnershipExperimentTables();
+
+  const latestRunsCte = sql`
+    WITH latest_runs AS (
+      SELECT DISTINCT ON (r.slate_id)
+        r.id,
+        r.slate_id,
+        r.ownership_version,
+        r.source,
+        r.created_at
+      FROM ownership_runs r
+      JOIN dk_slates ds ON ds.id = r.slate_id
+      WHERE r.sport = 'mlb'
+        AND ds.sport = 'mlb'
+      ORDER BY r.slate_id, r.created_at DESC, r.id DESC
+    ),
+    sample AS (
+      SELECT
+        ops.*,
+        lr.ownership_version,
+        lr.source,
+        lr.created_at
+      FROM ownership_player_snapshots ops
+      JOIN latest_runs lr ON lr.id = ops.run_id
+      WHERE COALESCE(ops.is_out, false) = false
+        AND ops.actual_own_pct IS NOT NULL
+    )
+  `;
+
+  const [summaryResult, sourceResult, segmentResult, bucketResult, recentSlateResult, versionResult, latestSlateMissResult] = await Promise.all([
+    db.execute<{
+      slates: number;
+      rows: number;
+      latestVersion: string | null;
+      latestSource: string | null;
+      latestCapturedAt: string | null;
+    }>(sql`
+      ${latestRunsCte}
+      SELECT
+        COUNT(DISTINCT sample.slate_id)::int AS "slates",
+        COUNT(*)::int AS "rows",
+        (
+          SELECT lr.ownership_version
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestVersion",
+        (
+          SELECT lr.source
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestSource",
+        (
+          SELECT lr.created_at::text
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestCapturedAt"
+      FROM sample
+    `),
+    db.execute<OwnershipModelSourceAccuracyRow>(sql`
+      ${latestRunsCte}
+      SELECT *
+      FROM (
+        SELECT
+          'Field Model'::text AS "label",
+          COUNT(*) FILTER (WHERE sample.field_own_pct IS NOT NULL)::int AS "rows",
+          AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+            FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "mae",
+          AVG(sample.field_own_pct - sample.actual_own_pct)
+            FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "bias",
+          CORR(sample.field_own_pct, sample.actual_own_pct)
+            FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "corr"
+        FROM sample
+        UNION ALL
+        SELECT
+          'LineStar'::text AS "label",
+          COUNT(*) FILTER (WHERE sample.linestar_own_pct IS NOT NULL)::int AS "rows",
+          AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+            FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "mae",
+          AVG(sample.linestar_own_pct - sample.actual_own_pct)
+            FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "bias",
+          CORR(sample.linestar_own_pct, sample.actual_own_pct)
+            FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "corr"
+        FROM sample
+        UNION ALL
+        SELECT
+          'Our Own'::text AS "label",
+          COUNT(*) FILTER (WHERE sample.our_own_pct IS NOT NULL)::int AS "rows",
+          AVG(ABS(sample.our_own_pct - sample.actual_own_pct))
+            FILTER (WHERE sample.our_own_pct IS NOT NULL) AS "mae",
+          AVG(sample.our_own_pct - sample.actual_own_pct)
+            FILTER (WHERE sample.our_own_pct IS NOT NULL) AS "bias",
+          CORR(sample.our_own_pct, sample.actual_own_pct)
+            FILTER (WHERE sample.our_own_pct IS NOT NULL) AS "corr"
+        FROM sample
+      ) model_rows
+      ORDER BY CASE "label"
+        WHEN 'Field Model' THEN 1
+        WHEN 'LineStar' THEN 2
+        ELSE 3
+      END
+    `),
+    db.execute<OwnershipModelSegmentAccuracyRow>(sql`
+      ${latestRunsCte}
+      SELECT
+        CASE
+          WHEN sample.eligible_positions LIKE '%SP%' THEN 'SP'
+          WHEN sample.lineup_order BETWEEN 1 AND 4 THEN 'Hitters 1-4'
+          WHEN sample.lineup_order BETWEEN 5 AND 9 THEN 'Hitters 5-9'
+          ELSE 'Hitters Unknown'
+        END AS "segment",
+        COUNT(*)::int AS "rows",
+        AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarMae",
+        AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldMae",
+        AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL)
+          - AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "maeDelta",
+        CORR(sample.linestar_own_pct, sample.actual_own_pct)
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarCorr",
+        CORR(sample.field_own_pct, sample.actual_own_pct)
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldCorr"
+      FROM sample
+      GROUP BY 1
+      ORDER BY CASE "segment"
+        WHEN 'SP' THEN 1
+        WHEN 'Hitters 1-4' THEN 2
+        WHEN 'Hitters 5-9' THEN 3
+        ELSE 4
+      END
+    `),
+    db.execute<OwnershipModelBucketRow>(sql`
+      ${latestRunsCte}
+      SELECT
+        CASE
+          WHEN COALESCE(sample.field_own_pct, sample.linestar_own_pct) < 1 THEN '<1%'
+          WHEN COALESCE(sample.field_own_pct, sample.linestar_own_pct) < 3 THEN '1-3%'
+          WHEN COALESCE(sample.field_own_pct, sample.linestar_own_pct) < 6 THEN '3-6%'
+          WHEN COALESCE(sample.field_own_pct, sample.linestar_own_pct) < 10 THEN '6-10%'
+          WHEN COALESCE(sample.field_own_pct, sample.linestar_own_pct) < 15 THEN '10-15%'
+          ELSE '15%+'
+        END AS "bucket",
+        MIN(COALESCE(sample.field_own_pct, sample.linestar_own_pct)) AS "bucketMin",
+        COUNT(*)::int AS "rows",
+        AVG(sample.linestar_own_pct) AS "avgLinestarOwnPct",
+        AVG(sample.field_own_pct) AS "avgFieldOwnPct",
+        AVG(sample.actual_own_pct) AS "avgActualOwnPct",
+        AVG(sample.linestar_own_pct - sample.actual_own_pct)
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarBias",
+        AVG(sample.field_own_pct - sample.actual_own_pct)
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldBias"
+      FROM sample
+      GROUP BY 1
+      ORDER BY MIN(COALESCE(sample.field_own_pct, sample.linestar_own_pct)) ASC NULLS LAST
+    `),
+    db.execute<OwnershipModelSlateAccuracyRow>(sql`
+      ${latestRunsCte}
+      SELECT
+        sample.slate_id::int AS "slateId",
+        ds.slate_date::text AS "slateDate",
+        MIN(sample.ownership_version) AS "ownershipVersion",
+        MIN(sample.source) AS "source",
+        MIN(sample.created_at)::text AS "capturedAt",
+        COUNT(*)::int AS "rows",
+        AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarMae",
+        AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldMae",
+        AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL)
+          - AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "maeGain",
+        CORR(sample.linestar_own_pct, sample.actual_own_pct)
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarCorr",
+        CORR(sample.field_own_pct, sample.actual_own_pct)
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldCorr",
+        AVG(sample.linestar_own_pct - sample.actual_own_pct)
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarBias",
+        AVG(sample.field_own_pct - sample.actual_own_pct)
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldBias"
+      FROM sample
+      JOIN dk_slates ds ON ds.id = sample.slate_id
+      GROUP BY sample.slate_id, ds.slate_date
+      ORDER BY ds.slate_date DESC, sample.slate_id DESC
+      LIMIT 10
+    `),
+    db.execute<OwnershipModelVersionAccuracyRow>(sql`
+      ${latestRunsCte}
+      SELECT
+        sample.ownership_version AS "ownershipVersion",
+        sample.source AS "source",
+        COUNT(DISTINCT sample.slate_id)::int AS "slates",
+        COUNT(*)::int AS "rows",
+        AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarMae",
+        AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldMae",
+        AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL)
+          - AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "maeGain",
+        CORR(sample.linestar_own_pct, sample.actual_own_pct)
+          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarCorr",
+        CORR(sample.field_own_pct, sample.actual_own_pct)
+          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldCorr"
+      FROM sample
+      GROUP BY sample.ownership_version, sample.source
+      ORDER BY COUNT(DISTINCT sample.slate_id) DESC, sample.ownership_version DESC, sample.source ASC
+    `),
+    db.execute<OwnershipModelMissRow>(sql`
+      ${latestRunsCte},
+      latest_completed_slate AS (
+        SELECT sample.slate_id
+        FROM sample
+        GROUP BY sample.slate_id
+        ORDER BY MAX(sample.created_at) DESC, sample.slate_id DESC
+        LIMIT 1
+      )
+      SELECT
+        sample.slate_id::int AS "slateId",
+        ds.slate_date::text AS "slateDate",
+        sample.name AS "name",
+        sample.eligible_positions AS "eligiblePositions",
+        sample.salary::int AS "salary",
+        sample.lineup_order::int AS "lineupOrder",
+        sample.linestar_own_pct AS "linestarOwnPct",
+        sample.field_own_pct AS "fieldOwnPct",
+        sample.actual_own_pct AS "actualOwnPct",
+        ABS(sample.linestar_own_pct - sample.actual_own_pct) AS "linestarAbsError",
+        ABS(sample.field_own_pct - sample.actual_own_pct) AS "fieldAbsError",
+        ABS(sample.linestar_own_pct - sample.actual_own_pct)
+          - ABS(sample.field_own_pct - sample.actual_own_pct) AS "errorGain"
+      FROM sample
+      JOIN latest_completed_slate lcs ON lcs.slate_id = sample.slate_id
+      JOIN dk_slates ds ON ds.id = sample.slate_id
+      ORDER BY ABS(sample.field_own_pct - sample.actual_own_pct) DESC NULLS LAST, sample.salary DESC, sample.name ASC
+      LIMIT 12
+    `),
+  ]);
+
+  const summary = summaryResult.rows[0];
+  if (!summary || summary.rows === 0) return null;
+
+  const sources = sourceResult.rows.map((row) => ({
+    label: row.label,
+    rows: Number(row.rows ?? 0),
+    mae: row.mae == null ? null : Number(row.mae),
+    bias: row.bias == null ? null : Number(row.bias),
+    corr: row.corr == null ? null : Number(row.corr),
+  }));
+  const segments = segmentResult.rows.map((row) => ({
+    segment: row.segment,
+    rows: Number(row.rows ?? 0),
+    linestarMae: row.linestarMae == null ? null : Number(row.linestarMae),
+    fieldMae: row.fieldMae == null ? null : Number(row.fieldMae),
+    maeDelta: row.maeDelta == null ? null : Number(row.maeDelta),
+    linestarCorr: row.linestarCorr == null ? null : Number(row.linestarCorr),
+    fieldCorr: row.fieldCorr == null ? null : Number(row.fieldCorr),
+  }));
+  const buckets = bucketResult.rows.map((row) => ({
+    bucket: row.bucket,
+    bucketMin: row.bucketMin == null ? null : Number(row.bucketMin),
+    rows: Number(row.rows ?? 0),
+    avgLinestarOwnPct: row.avgLinestarOwnPct == null ? null : Number(row.avgLinestarOwnPct),
+    avgFieldOwnPct: row.avgFieldOwnPct == null ? null : Number(row.avgFieldOwnPct),
+    avgActualOwnPct: row.avgActualOwnPct == null ? null : Number(row.avgActualOwnPct),
+    linestarBias: row.linestarBias == null ? null : Number(row.linestarBias),
+    fieldBias: row.fieldBias == null ? null : Number(row.fieldBias),
+  }));
+  const recentSlates = recentSlateResult.rows.map((row) => ({
+    slateId: Number(row.slateId),
+    slateDate: row.slateDate,
+    ownershipVersion: row.ownershipVersion,
+    source: row.source,
+    capturedAt: row.capturedAt ?? null,
+    rows: Number(row.rows ?? 0),
+    linestarMae: row.linestarMae == null ? null : Number(row.linestarMae),
+    fieldMae: row.fieldMae == null ? null : Number(row.fieldMae),
+    maeGain: row.maeGain == null ? null : Number(row.maeGain),
+    linestarCorr: row.linestarCorr == null ? null : Number(row.linestarCorr),
+    fieldCorr: row.fieldCorr == null ? null : Number(row.fieldCorr),
+    linestarBias: row.linestarBias == null ? null : Number(row.linestarBias),
+    fieldBias: row.fieldBias == null ? null : Number(row.fieldBias),
+  }));
+  const versions = versionResult.rows.map((row) => ({
+    ownershipVersion: row.ownershipVersion,
+    source: row.source,
+    slates: Number(row.slates ?? 0),
+    rows: Number(row.rows ?? 0),
+    linestarMae: row.linestarMae == null ? null : Number(row.linestarMae),
+    fieldMae: row.fieldMae == null ? null : Number(row.fieldMae),
+    maeGain: row.maeGain == null ? null : Number(row.maeGain),
+    linestarCorr: row.linestarCorr == null ? null : Number(row.linestarCorr),
+    fieldCorr: row.fieldCorr == null ? null : Number(row.fieldCorr),
+  }));
+  const latestSlateMisses = latestSlateMissResult.rows.map((row) => ({
+    slateId: Number(row.slateId),
+    slateDate: row.slateDate,
+    name: row.name,
+    eligiblePositions: row.eligiblePositions ?? null,
+    salary: Number(row.salary ?? 0),
+    lineupOrder: row.lineupOrder == null ? null : Number(row.lineupOrder),
+    linestarOwnPct: row.linestarOwnPct == null ? null : Number(row.linestarOwnPct),
+    fieldOwnPct: row.fieldOwnPct == null ? null : Number(row.fieldOwnPct),
+    actualOwnPct: row.actualOwnPct == null ? null : Number(row.actualOwnPct),
+    linestarAbsError: row.linestarAbsError == null ? null : Number(row.linestarAbsError),
+    fieldAbsError: row.fieldAbsError == null ? null : Number(row.fieldAbsError),
+    errorGain: row.errorGain == null ? null : Number(row.errorGain),
+  }));
+
+  return {
+    sample: {
+      slates: Number(summary.slates ?? 0),
+      rows: Number(summary.rows ?? 0),
+      latestVersion: summary.latestVersion ?? null,
+      latestSource: summary.latestSource ?? null,
+      latestCapturedAt: summary.latestCapturedAt ?? null,
+    },
+    findings: buildMlbOwnershipModelFindings(sources, segments, buckets),
+    sources,
+    segments,
+    buckets,
+    recentSlates,
+    versions,
+    latestSlateMisses,
+  };
 }
 
 type NbaPerfectLineupSourceRow = {

@@ -362,6 +362,7 @@ TABLES = [
         game_info TEXT,
         avg_fpts_dk REAL,
         linestar_proj REAL,
+        linestar_own_pct REAL,
         proj_own_pct REAL,
         our_proj REAL,
         live_proj REAL,
@@ -501,6 +502,45 @@ TABLES = [
         model_stats_json JSONB,
         market_stats_json JSONB,
         actual_fpts REAL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(run_id, dk_player_id)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS ownership_runs (
+        id SERIAL PRIMARY KEY,
+        sport TEXT NOT NULL,
+        slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+        ownership_version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS ownership_player_snapshots (
+        id SERIAL PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES ownership_runs(id) ON DELETE CASCADE,
+        slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+        dk_player_id BIGINT NOT NULL,
+        name TEXT NOT NULL,
+        team_id INTEGER,
+        salary INTEGER NOT NULL,
+        eligible_positions TEXT,
+        is_out BOOLEAN DEFAULT FALSE,
+        linestar_proj_fpts REAL,
+        our_proj_fpts REAL,
+        live_proj_fpts REAL,
+        linestar_own_pct REAL,
+        field_own_pct REAL,
+        our_own_pct REAL,
+        live_own_pct REAL,
+        actual_own_pct REAL,
+        lineup_order INTEGER,
+        lineup_confirmed BOOLEAN,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(run_id, dk_player_id)
     )
@@ -668,6 +708,14 @@ MIGRATIONS = [
             WHERE table_name = 'dk_players' AND column_name = 'live_own_pct'
         ) THEN
             ALTER TABLE dk_players ADD COLUMN live_own_pct REAL;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'linestar_own_pct'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN linestar_own_pct REAL;
         END IF;
     END $$""",
     # 2026-03-28: Add nba_id to teams if missing (matches Drizzle schema)
@@ -1071,6 +1119,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_projection_runs_model ON projection_runs(model_version, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_projection_snapshots_run ON projection_player_snapshots(run_id, dk_player_id)",
     "CREATE INDEX IF NOT EXISTS idx_projection_snapshots_slate ON projection_player_snapshots(slate_id, dk_player_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ownership_runs_slate ON ownership_runs(slate_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_ownership_runs_model ON ownership_runs(ownership_version, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_ownership_snapshots_run ON ownership_player_snapshots(run_id, dk_player_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ownership_snapshots_slate ON ownership_player_snapshots(slate_id, dk_player_id)",
     # MLB indexes
     "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_team ON mlb_batter_stats(team_id, season)",

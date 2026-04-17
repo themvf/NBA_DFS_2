@@ -4,6 +4,7 @@ import { db } from ".";
 
 let ensureDkPlayerPropColumnsPromise: Promise<void> | null = null;
 let ensureProjectionExperimentTablesPromise: Promise<void> | null = null;
+let ensureOwnershipExperimentTablesPromise: Promise<void> | null = null;
 let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
@@ -38,6 +39,7 @@ const DK_PLAYER_PROP_COLUMN_DDLS = [
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS live_proj REAL`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS live_leverage REAL`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS live_own_pct REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS linestar_own_pct REAL`,
 ];
 
 const PROJECTION_EXPERIMENT_DDLS = [
@@ -81,6 +83,46 @@ const PROJECTION_EXPERIMENT_DDLS = [
   `CREATE INDEX IF NOT EXISTS idx_projection_runs_model ON projection_runs(model_version, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_projection_snapshots_run ON projection_player_snapshots(run_id, dk_player_id)`,
   `CREATE INDEX IF NOT EXISTS idx_projection_snapshots_slate ON projection_player_snapshots(slate_id, dk_player_id)`,
+];
+
+const OWNERSHIP_EXPERIMENT_DDLS = [
+  `CREATE TABLE IF NOT EXISTS ownership_runs (
+      id SERIAL PRIMARY KEY,
+      sport TEXT NOT NULL,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      ownership_version TEXT NOT NULL,
+      source TEXT NOT NULL,
+      config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+  `CREATE TABLE IF NOT EXISTS ownership_player_snapshots (
+      id SERIAL PRIMARY KEY,
+      run_id INTEGER NOT NULL REFERENCES ownership_runs(id) ON DELETE CASCADE,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      dk_player_id BIGINT NOT NULL,
+      name TEXT NOT NULL,
+      team_id INTEGER,
+      salary INTEGER NOT NULL,
+      eligible_positions TEXT,
+      is_out BOOLEAN DEFAULT FALSE,
+      linestar_proj_fpts REAL,
+      our_proj_fpts REAL,
+      live_proj_fpts REAL,
+      linestar_own_pct REAL,
+      field_own_pct REAL,
+      our_own_pct REAL,
+      live_own_pct REAL,
+      actual_own_pct REAL,
+      lineup_order INTEGER,
+      lineup_confirmed BOOLEAN,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(run_id, dk_player_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_ownership_runs_slate ON ownership_runs(slate_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ownership_runs_model ON ownership_runs(ownership_version, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ownership_snapshots_run ON ownership_player_snapshots(run_id, dk_player_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_ownership_snapshots_slate ON ownership_player_snapshots(slate_id, dk_player_id)`,
 ];
 
 const ODDS_SIGNAL_DDLS = [
@@ -172,6 +214,20 @@ export async function ensureProjectionExperimentTables(): Promise<void> {
     });
   }
   await ensureProjectionExperimentTablesPromise;
+}
+
+export async function ensureOwnershipExperimentTables(): Promise<void> {
+  if (!ensureOwnershipExperimentTablesPromise) {
+    ensureOwnershipExperimentTablesPromise = (async () => {
+      for (const ddl of OWNERSHIP_EXPERIMENT_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureOwnershipExperimentTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureOwnershipExperimentTablesPromise;
 }
 
 export async function ensureOddsSignalTables(): Promise<void> {

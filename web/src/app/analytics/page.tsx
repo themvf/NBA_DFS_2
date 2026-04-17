@@ -4,6 +4,7 @@ export const maxDuration = 60;
 import { Suspense } from "react";
 import type { Sport } from "@/db/queries";
 import AnalyticsContent from "./analytics-content";
+import MlbOwnershipModelPanel from "./mlb-ownership-model-panel";
 import MlbPitcherLineupPanel from "./mlb-pitcher-lineup-panel";
 import PerfectLineupPanel from "./perfect-lineup-panel";
 
@@ -34,6 +35,20 @@ export default async function AnalyticsPage({
       >
         <AnalyticsContent sport={sport} />
       </Suspense>
+      {sport === "mlb" ? (
+        <Suspense
+          fallback={
+            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
+              <h2 className="mb-1 text-sm font-semibold">MLB Ownership Model Tracking</h2>
+              <p className="text-xs text-slate-700">
+                Loading ownership tracking report...
+              </p>
+            </div>
+          }
+        >
+          <MlbOwnershipModelPanel />
+        </Suspense>
+      ) : null}
       {sport === "mlb" ? (
         <Suspense
           fallback={
