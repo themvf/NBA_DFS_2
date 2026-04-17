@@ -31,6 +31,42 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+/**
+ * Bayesian shrinkage of a rate toward a prior.
+ *   adjusted = (k + α × prior) / (n + α)
+ * where k = rate × n. `alpha` is the effective prior sample size.
+ * A rate of 5/6 (83%) with α=20, prior=0.5 → (5 + 10) / (6 + 20) = 0.577 — pulls
+ * a small-sample fluke back toward the mean.
+ */
+function shrinkRate(
+  rate: number | null | undefined,
+  n: number | null | undefined,
+  prior: number,
+  alpha: number
+): number | null {
+  if (rate == null) return null;
+  const N = n ?? 0;
+  if (N <= 0) return prior;
+  return (rate * N + alpha * prior) / (N + alpha);
+}
+
+/** MLB league-average xFIP (2025) — used to center the SP-quality factor. */
+const MLB_LEAGUE_AVG_XFIP = 4.2;
+
+/** Per-factor contribution to a blended probability score. */
+export type ScoreSignal = { label: string; value: number; weight: number };
+
+/**
+ * Blend a list of weighted signals into a single probability.
+ * Renormalizes weights so missing signals don't bias the blend.
+ */
+function blendSignals(signals: ScoreSignal[]): number | null {
+  if (signals.length === 0) return null;
+  const totalW = signals.reduce((s, r) => s + r.weight, 0);
+  if (totalW <= 0) return null;
+  return signals.reduce((s, r) => s + r.value * r.weight, 0) / totalW;
+}
+
 /** Map a game total to the historical O/U tier key (must match DB CASE labels). */
 function getOuTierKey(total: number | null, sport: Sport): string | null {
   if (total == null) return null;
@@ -73,95 +109,144 @@ function getSpreadTierKey(spread: number | null, sport: Sport): string | null {
 }
 
 /**
- * O/U score = weighted average of:
- *   40% tier over-rate | 30% home team game over-rate | 30% away team game over-rate
- * Returns null when no signal is available.
+ * O/U score = probability OVER hits. Blended from:
+ *   MLB only:
+ *     25% SP-quality factor (avg SP xFIP vs league) — lower xFIP → UNDER lean
+ *     30% historical tier over-rate (shrunk toward 0.5, α=50)
+ *     15% home team game over-rate (shrunk, α=20)
+ *     15% away team game over-rate (shrunk, α=20)
+ *   NBA (no SP factor):
+ *     40% tier / 30% home / 30% away (shrunk same way)
+ * Weights renormalize when a signal is missing. Returns null when no signal exists.
  */
 function computeOuScore(
   m: VegasMatchupRow,
   ouHitRate: OuHitRateRow[],
   teamInsights: TeamVegasInsightRow[],
   sport: Sport,
-): number | null {
+): { score: number; signals: ScoreSignal[] } | null {
   const tierRow = ouHitRate.find((r) => r.totalTier === getOuTierKey(m.vegasTotal, sport));
   const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
   const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
 
-  const signals: [number, number][] = []; // [value, weight]
-  if (tierRow?.overRate != null) signals.push([tierRow.overRate, 0.40]);
-  if (home?.gameOverRate != null) signals.push([home.gameOverRate, 0.30]);
-  if (away?.gameOverRate != null) signals.push([away.gameOverRate, 0.30]);
+  const signals: ScoreSignal[] = [];
 
-  if (signals.length === 0) return null;
-  const totalW = signals.reduce((s, [, w]) => s + w, 0);
-  return signals.reduce((s, [v, w]) => s + v * w, 0) / totalW;
+  // SP-quality factor — MLB only, when both SPs are known
+  if (sport === "mlb" && m.homeSpXfip != null && m.awaySpXfip != null) {
+    const avgXfip = (m.homeSpXfip + m.awaySpXfip) / 2;
+    // Map xFIP vs league average to a probability centered at 0.5.
+    // xFIP 1 run above average → 0.65 (over lean); 1 run below → 0.35 (under lean).
+    // Slope calibrated so a 0.5-run gap shifts score by ~7.5 pp.
+    const xfipEdge = (avgXfip - MLB_LEAGUE_AVG_XFIP) / MLB_LEAGUE_AVG_XFIP;
+    const spValue = clamp(0.5 + xfipEdge * 1.5, 0.3, 0.7);
+    signals.push({ label: "SP quality", value: spValue, weight: 0.25 });
+  }
+
+  const tierShrunk = shrinkRate(tierRow?.overRate, tierRow?.n, 0.5, 50);
+  if (tierShrunk != null) {
+    signals.push({ label: "Total tier", value: tierShrunk, weight: sport === "mlb" ? 0.30 : 0.40 });
+  }
+
+  const homeShrunk = shrinkRate(home?.gameOverRate, home?.n, 0.5, 20);
+  if (homeShrunk != null) {
+    signals.push({ label: `${m.homeAbbrev} history`, value: homeShrunk, weight: sport === "mlb" ? 0.15 : 0.30 });
+  }
+
+  const awayShrunk = shrinkRate(away?.gameOverRate, away?.n, 0.5, 20);
+  if (awayShrunk != null) {
+    signals.push({ label: `${m.awayAbbrev} history`, value: awayShrunk, weight: sport === "mlb" ? 0.15 : 0.30 });
+  }
+
+  const score = blendSignals(signals);
+  return score != null ? { score, signals } : null;
 }
 
 /**
  * Spread score = probability the HOME team covers.
- *   40% historical tier cover rate (adjusted for home fav/dog)
- *   35% home team ATS cover rate
- *   25% (1 − away team ATS cover rate)
+ *   40% historical tier cover rate (flipped if home is the dog; shrunk, α=50)
+ *   35% home team ATS cover rate (shrunk, α=20)
+ *   25% (1 − away team ATS cover rate) (shrunk, α=20)
+ * Note: for MLB run lines (±1.5) ATS cover rate is noisy — the shrinkage pulls
+ * small-sample team rates toward 0.5 so they don't swing the score.
  */
 function computeSpreadScore(
   m: VegasMatchupRow,
   spreadCoverage: SpreadCoverageRow[],
   teamInsights: TeamVegasInsightRow[],
   sport: Sport,
-): number | null {
+): { score: number; signals: ScoreSignal[] } | null {
   const tierRow = spreadCoverage.find((r) => r.spreadTier === getSpreadTierKey(m.homeSpread, sport));
   const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
   const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
 
-  // tierCoverRate = "favorite covers"; flip if home is the dog
-  let baseCoverRate: number | null = null;
-  if (tierRow?.coverRate != null && m.homeSpread != null) {
-    baseCoverRate =
+  const signals: ScoreSignal[] = [];
+
+  // tierCoverRate = "favorite covers"; flip if home is the dog; shrink toward 0.5
+  const tierShrunk = shrinkRate(tierRow?.coverRate, tierRow?.n, 0.5, 50);
+  if (tierShrunk != null && m.homeSpread != null) {
+    const baseCoverRate =
       m.homeSpread < 0
-        ? tierRow.coverRate         // home is fav → use as-is
+        ? tierShrunk
         : Math.abs(m.homeSpread) < 0.5
-        ? 0.5                       // pick 'em
-        : 1 - tierRow.coverRate;    // home is dog → flip
+        ? 0.5
+        : 1 - tierShrunk;
+    signals.push({ label: "Tier cover rate", value: baseCoverRate, weight: 0.40 });
   }
 
-  const signals: [number, number][] = [];
-  if (baseCoverRate != null) signals.push([baseCoverRate, 0.40]);
-  if (home?.atsCoverRate != null) signals.push([home.atsCoverRate, 0.35]);
-  if (away?.atsCoverRate != null) signals.push([1 - away.atsCoverRate, 0.25]);
+  const homeShrunk = shrinkRate(home?.atsCoverRate, home?.atsN, 0.5, 20);
+  if (homeShrunk != null) {
+    signals.push({ label: `${m.homeAbbrev} ATS`, value: homeShrunk, weight: 0.35 });
+  }
 
-  if (signals.length === 0) return null;
-  const totalW = signals.reduce((s, [, w]) => s + w, 0);
-  return signals.reduce((s, [v, w]) => s + v * w, 0) / totalW;
+  const awayShrunk = shrinkRate(away?.atsCoverRate, away?.atsN, 0.5, 20);
+  if (awayShrunk != null) {
+    signals.push({ label: `${m.awayAbbrev} ATS (inverted)`, value: 1 - awayShrunk, weight: 0.25 });
+  }
+
+  const score = blendSignals(signals);
+  return score != null ? { score, signals } : null;
 }
 
 /**
- * ML score = Vegas home-win probability adjusted by team scoring bias
- * and over-implied rate (small adjustments, Vegas stays dominant).
- * Max shift: ±9%.
+ * ML score = Vegas home-win probability adjusted by the net team scoring bias.
+ * Previously added a redundant `ovrAdj` that was strongly correlated with `biasAdj`
+ * (both derive from "actual vs implied"), double-counting the same signal — dropped.
+ *
+ * The bias divisor is sport-aware: NBA team-total bias is ±4–5 pts (÷30 → meaningful),
+ * MLB bias is ±0.3 runs (÷3 → meaningful). Max shift capped at ±5%.
  */
 function computeMlScore(
   m: VegasMatchupRow,
   teamInsights: TeamVegasInsightRow[],
-): number | null {
+  sport: Sport,
+): { score: number; signals: ScoreSignal[] } | null {
   if (m.homeWinProb == null) return null;
   const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
   const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
 
-  // Bias: positive = Vegas underestimates; home advantage when home bias > away bias
+  const biasDivisor = sport === "mlb" ? 3 : 30;
   const homeBias = home?.bias ?? 0;
   const awayBias = away?.bias ?? 0;
-  const biasAdj = clamp((homeBias - awayBias) / 30, -0.05, 0.05);
+  const biasAdj = clamp((homeBias - awayBias) / biasDivisor, -0.05, 0.05);
 
-  // Over-implied rate: teams that consistently beat their implied are undervalued
-  const homeOvr = home?.overImpliedRate ?? 0.5;
-  const awayOvr = away?.overImpliedRate ?? 0.5;
-  const ovrAdj = clamp(((homeOvr - 0.5) - (awayOvr - 0.5)) * 0.15, -0.04, 0.04);
-
-  return clamp(m.homeWinProb + biasAdj + ovrAdj, 0.05, 0.95);
+  const score = clamp(m.homeWinProb + biasAdj, 0.05, 0.95);
+  const signals: ScoreSignal[] = [
+    { label: "Vegas home win%", value: m.homeWinProb, weight: 1 },
+    { label: `Net bias adj (÷${biasDivisor})`, value: biasAdj, weight: 0 },
+  ];
+  return { score, signals };
 }
 
-/** Color-coded badge showing a probability score. */
-function ScoreBadge({ score, label }: { score: number | null; label?: string }) {
+/** Color-coded badge showing a probability score, with per-signal breakdown on hover. */
+function ScoreBadge({
+  score,
+  label,
+  signals,
+}: {
+  score: number | null;
+  label?: string;
+  signals?: ScoreSignal[];
+}) {
   if (score == null) return <span className="text-gray-300 text-xs">—</span>;
   const pct = score * 100;
   const cls =
@@ -174,9 +259,19 @@ function ScoreBadge({ score, label }: { score: number | null; label?: string }) 
       : pct < 48
       ? "bg-orange-50 text-orange-700 border-orange-100"
       : "bg-gray-50 text-gray-500 border-gray-200";
+  const tooltip = signals && signals.length
+    ? signals
+        .map((s) => {
+          const pctStr = (s.value * 100).toFixed(0) + "%";
+          const wStr = s.weight > 0 ? ` · w=${(s.weight * 100).toFixed(0)}%` : "";
+          return `${s.label}: ${pctStr}${wStr}`;
+        })
+        .join("\n")
+    : undefined;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-xs font-medium ${cls}`}
+      className={`inline-flex cursor-help items-center gap-0.5 rounded border px-1.5 py-0.5 text-xs font-medium ${cls}`}
+      title={tooltip}
     >
       {label && <span className="opacity-75">{label}&nbsp;</span>}
       {pct.toFixed(0)}%
@@ -399,6 +494,21 @@ export default function VegasClient({
                     <tr key={m.matchupId} className="border-b border-gray-50">
                       <td className="py-1.5 font-medium">
                         {m.awayAbbrev} @ {m.homeAbbrev}
+                        {sport === "mlb" && (m.awaySpName || m.homeSpName) && (
+                          <div className="text-[10px] font-normal text-gray-500 mt-0.5">
+                            {m.awaySpName
+                              ? `${m.awaySpName}${m.awaySpHand ? ` (${m.awaySpHand})` : ""}${
+                                  m.awaySpXfip != null ? ` · xFIP ${m.awaySpXfip.toFixed(2)}` : ""
+                                }`
+                              : "—"}
+                            {" vs "}
+                            {m.homeSpName
+                              ? `${m.homeSpName}${m.homeSpHand ? ` (${m.homeSpHand})` : ""}${
+                                  m.homeSpXfip != null ? ` · xFIP ${m.homeSpXfip.toFixed(2)}` : ""
+                                }`
+                              : "—"}
+                          </div>
+                        )}
                       </td>
                       <td className="py-1.5 text-right">{fmt1(m.vegasTotal)}</td>
                       <td className="py-1.5 text-right">{homeSpreadStr}</td>
@@ -460,36 +570,34 @@ export default function VegasClient({
               </thead>
               <tbody>
                 {matchups.map((m) => {
-                  const ouScore = computeOuScore(m, ouHitRate, teamInsights, sport);
-                  const spreadScore = computeSpreadScore(m, spreadCoverage, teamInsights, sport);
-                  const mlScore = computeMlScore(m, teamInsights);
+                  const ou = computeOuScore(m, ouHitRate, teamInsights, sport);
+                  const spread = computeSpreadScore(m, spreadCoverage, teamInsights, sport);
+                  const ml = computeMlScore(m, teamInsights, sport);
 
-                  // O/U label: show direction of lean
+                  const ouScore = ou?.score ?? null;
+                  const spreadScore = spread?.score ?? null;
+                  const mlScore = ml?.score ?? null;
+
                   const ouLabel =
                     ouScore != null ? (ouScore >= 0.5 ? "O" : "U") : undefined;
-
-                  // Spread label: home fav vs dog
                   const spreadLabel =
                     spreadScore != null
                       ? spreadScore >= 0.5
                         ? m.homeAbbrev
                         : m.awayAbbrev
                       : undefined;
-
-                  // ML label
                   const mlLabel =
                     mlScore != null
                       ? mlScore >= 0.5
                         ? m.homeAbbrev
                         : m.awayAbbrev
                       : undefined;
-                  // Flip spread score display for away lean (show away-covers %)
-                  const spreadDisplay = spreadScore != null && spreadScore < 0.5
-                    ? 1 - spreadScore
-                    : spreadScore;
-                  const mlDisplay = mlScore != null && mlScore < 0.5
-                    ? 1 - mlScore
-                    : mlScore;
+
+                  // Flip display for away lean (show away-covers / away-win %)
+                  const spreadDisplay =
+                    spreadScore != null && spreadScore < 0.5 ? 1 - spreadScore : spreadScore;
+                  const mlDisplay =
+                    mlScore != null && mlScore < 0.5 ? 1 - mlScore : mlScore;
 
                   const homeSpreadStr =
                     m.homeSpread == null
@@ -502,17 +610,36 @@ export default function VegasClient({
                     <tr key={m.matchupId} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-1.5 font-medium">
                         {m.awayAbbrev} @ {m.homeAbbrev}
+                        {sport === "mlb" && (m.awaySpName || m.homeSpName) && (
+                          <div className="text-[10px] font-normal text-gray-500 mt-0.5">
+                            {m.awaySpName
+                              ? `${m.awaySpName}${m.awaySpHand ? ` (${m.awaySpHand})` : ""}${
+                                  m.awaySpXfip != null ? ` · xFIP ${m.awaySpXfip.toFixed(2)}` : ""
+                                }`
+                              : "—"}
+                            {" vs "}
+                            {m.homeSpName
+                              ? `${m.homeSpName}${m.homeSpHand ? ` (${m.homeSpHand})` : ""}${
+                                  m.homeSpXfip != null ? ` · xFIP ${m.homeSpXfip.toFixed(2)}` : ""
+                                }`
+                              : "—"}
+                          </div>
+                        )}
                       </td>
                       <td className="py-1.5 text-right text-gray-500">{fmt1(m.vegasTotal)}</td>
                       <td className="py-1.5 text-right">
-                        <ScoreBadge score={ouScore} label={ouLabel} />
+                        <ScoreBadge score={ouScore} label={ouLabel} signals={ou?.signals} />
                       </td>
                       <td className="py-1.5 text-right text-gray-500">{homeSpreadStr}</td>
                       <td className="py-1.5 text-right">
-                        <ScoreBadge score={spreadDisplay} label={spreadLabel} />
+                        <ScoreBadge
+                          score={spreadDisplay}
+                          label={spreadLabel}
+                          signals={spread?.signals}
+                        />
                       </td>
                       <td className="py-1.5 text-right">
-                        <ScoreBadge score={mlDisplay} label={mlLabel} />
+                        <ScoreBadge score={mlDisplay} label={mlLabel} signals={ml?.signals} />
                       </td>
                     </tr>
                   );
