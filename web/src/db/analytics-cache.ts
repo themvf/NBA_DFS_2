@@ -29,7 +29,7 @@ import {
   getSalaryTierAccuracy,
   getStatLevelAccuracy,
 } from "./queries";
-import type { Sport } from "./queries";
+import type { OwnershipDetailSort, Sport } from "./queries";
 
 export const ANALYTICS_CACHE_TAG = "analytics";
 const REVALIDATE = 3600; // 1 hour
@@ -89,7 +89,7 @@ export const getCachedMlbBattingOrderCalibration = unstable_cache(
 );
 
 export const getCachedMlbOwnershipModelReport = unstable_cache(
-  () => getMlbOwnershipModelReport(),
+  (selectedSlateId: number | null, sortBy: OwnershipDetailSort) => getMlbOwnershipModelReport(selectedSlateId, sortBy),
   ["analytics-mlb-ownership-model"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );

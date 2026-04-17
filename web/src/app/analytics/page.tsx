@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 import { Suspense } from "react";
-import type { Sport } from "@/db/queries";
+import type { OwnershipDetailSort, Sport } from "@/db/queries";
 import AnalyticsContent from "./analytics-content";
 import MlbOwnershipModelPanel from "./mlb-ownership-model-panel";
 import MlbPitcherLineupPanel from "./mlb-pitcher-lineup-panel";
@@ -11,10 +11,17 @@ import PerfectLineupPanel from "./perfect-lineup-panel";
 export default async function AnalyticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sport?: string }>;
+  searchParams: Promise<{ sport?: string; ownershipSlate?: string; ownershipSort?: string }>;
 }) {
-  const { sport: rawSport } = await searchParams;
+  const { sport: rawSport, ownershipSlate: rawOwnershipSlate, ownershipSort: rawOwnershipSort } = await searchParams;
   const sport: Sport = rawSport === "mlb" ? "mlb" : "nba";
+  const ownershipSlateId = rawOwnershipSlate && /^\d+$/.test(rawOwnershipSlate) ? Number(rawOwnershipSlate) : null;
+  const ownershipSort: OwnershipDetailSort = rawOwnershipSort === "gain"
+    || rawOwnershipSort === "actual"
+    || rawOwnershipSort === "field-own"
+    || rawOwnershipSort === "field-error"
+    ? rawOwnershipSort
+    : "field-error";
 
   return (
     <>
@@ -46,7 +53,7 @@ export default async function AnalyticsPage({
             </div>
           }
         >
-          <MlbOwnershipModelPanel />
+          <MlbOwnershipModelPanel selectedSlateId={ownershipSlateId} sortBy={ownershipSort} />
         </Suspense>
       ) : null}
       {sport === "mlb" ? (

@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { getCachedMlbOwnershipModelReport } from "@/db/analytics-cache";
+import type { OwnershipDetailSort } from "@/db/queries";
 
 const fmt2 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
 const fmtPct = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(2)}%`);
@@ -11,8 +13,43 @@ function deltaClass(value: number | null | undefined) {
   return "text-slate-600";
 }
 
-export default async function MlbOwnershipModelPanel() {
-  const report = await getCachedMlbOwnershipModelReport();
+function sortLabel(sortBy: OwnershipDetailSort): string {
+  switch (sortBy) {
+    case "gain":
+      return "Gain";
+    case "actual":
+      return "Actual Own";
+    case "field-own":
+      return "Field Own";
+    case "field-error":
+    default:
+      return "Field Error";
+  }
+}
+
+function sortHref(sortBy: OwnershipDetailSort, selectedSlateId: number | null) {
+  const params = new URLSearchParams({ sport: "mlb", ownershipSort: sortBy });
+  if (selectedSlateId != null) params.set("ownershipSlate", String(selectedSlateId));
+  return `/analytics?${params.toString()}`;
+}
+
+function slateHref(slateId: number, sortBy: OwnershipDetailSort) {
+  const params = new URLSearchParams({
+    sport: "mlb",
+    ownershipSlate: String(slateId),
+    ownershipSort: sortBy,
+  });
+  return `/analytics?${params.toString()}`;
+}
+
+export default async function MlbOwnershipModelPanel({
+  selectedSlateId,
+  sortBy,
+}: {
+  selectedSlateId: number | null;
+  sortBy: OwnershipDetailSort;
+}) {
+  const report = await getCachedMlbOwnershipModelReport(selectedSlateId, sortBy);
 
   if (!report) {
     return (
@@ -166,23 +203,31 @@ export default async function MlbOwnershipModelPanel() {
                 </tr>
               </thead>
               <tbody>
-                {report.recentSlates.map((row) => (
-                  <tr key={`${row.slateId}-${row.ownershipVersion}-${row.source}`} className="border-b border-slate-100">
-                    <td className="py-1">
-                      <div className="font-medium">{row.slateDate}</div>
-                      <div className="text-[11px] text-slate-500">{fmtDt(row.capturedAt)}</div>
-                    </td>
-                    <td className="py-1">
-                      <div className="font-medium">{row.ownershipVersion}</div>
-                      <div className="text-[11px] text-slate-500">{row.source}</div>
-                    </td>
-                    <td className="py-1 text-right">{row.rows}</td>
-                    <td className="py-1 text-right">{fmt2(row.linestarMae)}</td>
-                    <td className="py-1 text-right">{fmt2(row.fieldMae)}</td>
-                    <td className={`py-1 text-right ${deltaClass(row.maeGain)}`}>{fmt2(row.maeGain)}</td>
-                    <td className="py-1 text-right">{fmt2(row.fieldCorr)}</td>
-                  </tr>
-                ))}
+                {report.recentSlates.map((row) => {
+                  const active = report.selectedSlate?.slateId === row.slateId;
+                  return (
+                    <tr key={`${row.slateId}-${row.ownershipVersion}-${row.source}`} className="border-b border-slate-100">
+                      <td className="py-1">
+                        <Link
+                          href={slateHref(row.slateId, sortBy)}
+                          className={`font-medium underline-offset-2 hover:underline ${active ? "text-slate-900" : "text-sky-700"}`}
+                        >
+                          {row.slateDate}
+                        </Link>
+                        <div className="text-[11px] text-slate-500">{fmtDt(row.capturedAt)}</div>
+                      </td>
+                      <td className="py-1">
+                        <div className="font-medium">{row.ownershipVersion}</div>
+                        <div className="text-[11px] text-slate-500">{row.source}</div>
+                      </td>
+                      <td className="py-1 text-right">{row.rows}</td>
+                      <td className="py-1 text-right">{fmt2(row.linestarMae)}</td>
+                      <td className="py-1 text-right">{fmt2(row.fieldMae)}</td>
+                      <td className={`py-1 text-right ${deltaClass(row.maeGain)}`}>{fmt2(row.maeGain)}</td>
+                      <td className="py-1 text-right">{fmt2(row.fieldCorr)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -256,6 +301,66 @@ export default async function MlbOwnershipModelPanel() {
                     <td className="py-1 text-right">{fmtPct(row.fieldOwnPct)}</td>
                     <td className="py-1 text-right">{fmtPct(row.actualOwnPct)}</td>
                     <td className="py-1 text-right">{fmtPct(row.fieldAbsError)}</td>
+                    <td className={`py-1 text-right ${deltaClass(row.errorGain)}`}>{fmtPct(row.errorGain)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {report.selectedSlate && report.selectedSlateRows.length > 0 ? (
+        <div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium text-slate-700">
+              Slate Detail: {report.selectedSlate.slateDate}
+            </p>
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {(["field-error", "gain", "actual", "field-own"] as OwnershipDetailSort[]).map((option) => (
+                <Link
+                  key={option}
+                  href={sortHref(option, report.selectedSlate?.slateId ?? null)}
+                  className={`rounded-full border px-2 py-1 ${
+                    option === sortBy
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-300 bg-white text-slate-700 hover:border-slate-500"
+                  }`}
+                >
+                  Sort: {sortLabel(option)}
+                </Link>
+              ))}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-slate-600">
+                  <th className="py-1 text-left">Player</th>
+                  <th className="py-1 text-right">Salary</th>
+                  <th className="py-1 text-right">Order</th>
+                  <th className="py-1 text-right">LS Own</th>
+                  <th className="py-1 text-right">LS Err</th>
+                  <th className="py-1 text-right">Field Own</th>
+                  <th className="py-1 text-right">Field Err</th>
+                  <th className="py-1 text-right">Actual Own</th>
+                  <th className="py-1 text-right">Gain</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.selectedSlateRows.map((row) => (
+                  <tr key={`${row.slateId}-${row.name}-${row.salary}-${row.lineupOrder ?? 0}`} className="border-b border-slate-100">
+                    <td className="py-1">
+                      <div className="font-medium">{row.name}</div>
+                      <div className="text-[11px] text-slate-500">{row.eligiblePositions ?? "—"}</div>
+                    </td>
+                    <td className="py-1 text-right">${row.salary.toLocaleString()}</td>
+                    <td className="py-1 text-right">{row.lineupOrder ?? "—"}</td>
+                    <td className="py-1 text-right">{fmtPct(row.linestarOwnPct)}</td>
+                    <td className="py-1 text-right">{fmtPct(row.linestarAbsError)}</td>
+                    <td className="py-1 text-right">{fmtPct(row.fieldOwnPct)}</td>
+                    <td className="py-1 text-right">{fmtPct(row.fieldAbsError)}</td>
+                    <td className="py-1 text-right">{fmtPct(row.actualOwnPct)}</td>
                     <td className={`py-1 text-right ${deltaClass(row.errorGain)}`}>{fmtPct(row.errorGain)}</td>
                   </tr>
                 ))}

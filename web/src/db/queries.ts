@@ -1054,6 +1054,8 @@ export type OwnershipModelMissRow = {
   errorGain: number | null;
 };
 
+export type OwnershipDetailSort = "field-error" | "gain" | "actual" | "field-own";
+
 export type MlbOwnershipModelReport = {
   sample: {
     slates: number;
@@ -1069,6 +1071,11 @@ export type MlbOwnershipModelReport = {
   recentSlates: OwnershipModelSlateAccuracyRow[];
   versions: OwnershipModelVersionAccuracyRow[];
   latestSlateMisses: OwnershipModelMissRow[];
+  selectedSlate: {
+    slateId: number;
+    slateDate: string;
+  } | null;
+  selectedSlateRows: OwnershipModelMissRow[];
 };
 
 function fmtOwnershipDelta(value: number | null | undefined): string {
@@ -1117,7 +1124,10 @@ function buildMlbOwnershipModelFindings(
   return findings.slice(0, 4);
 }
 
-export async function getMlbOwnershipModelReport(): Promise<MlbOwnershipModelReport | null> {
+export async function getMlbOwnershipModelReport(
+  selectedSlateId: number | null = null,
+  sortBy: OwnershipDetailSort = "field-error",
+): Promise<MlbOwnershipModelReport | null> {
   await ensureOwnershipExperimentTables();
 
   const latestRunsCte = sql`
@@ -1147,7 +1157,7 @@ export async function getMlbOwnershipModelReport(): Promise<MlbOwnershipModelRep
     )
   `;
 
-  const [summaryResult, sourceResult, segmentResult, bucketResult, recentSlateResult, versionResult, latestSlateMissResult] = await Promise.all([
+  const [summaryResult, sourceResult, segmentResult, bucketResult, recentSlateResult, versionResult, latestSlateMissResult, selectedSlateRowsResult] = await Promise.all([
     db.execute<{
       slates: number;
       rows: number;
@@ -1360,6 +1370,40 @@ export async function getMlbOwnershipModelReport(): Promise<MlbOwnershipModelRep
       ORDER BY ABS(sample.field_own_pct - sample.actual_own_pct) DESC NULLS LAST, sample.salary DESC, sample.name ASC
       LIMIT 12
     `),
+    db.execute<OwnershipModelMissRow>(sql`
+      ${latestRunsCte},
+      target_slate AS (
+        SELECT CASE
+          WHEN ${selectedSlateId}::INTEGER IS NOT NULL
+            AND EXISTS (SELECT 1 FROM sample WHERE slate_id = ${selectedSlateId}::INTEGER)
+            THEN ${selectedSlateId}::INTEGER
+          ELSE (
+            SELECT sample.slate_id
+            FROM sample
+            GROUP BY sample.slate_id
+            ORDER BY MAX(sample.created_at) DESC, sample.slate_id DESC
+            LIMIT 1
+          )
+        END AS slate_id
+      )
+      SELECT
+        sample.slate_id::int AS "slateId",
+        ds.slate_date::text AS "slateDate",
+        sample.name AS "name",
+        sample.eligible_positions AS "eligiblePositions",
+        sample.salary::int AS "salary",
+        sample.lineup_order::int AS "lineupOrder",
+        sample.linestar_own_pct AS "linestarOwnPct",
+        sample.field_own_pct AS "fieldOwnPct",
+        sample.actual_own_pct AS "actualOwnPct",
+        ABS(sample.linestar_own_pct - sample.actual_own_pct) AS "linestarAbsError",
+        ABS(sample.field_own_pct - sample.actual_own_pct) AS "fieldAbsError",
+        ABS(sample.linestar_own_pct - sample.actual_own_pct)
+          - ABS(sample.field_own_pct - sample.actual_own_pct) AS "errorGain"
+      FROM sample
+      JOIN target_slate ts ON ts.slate_id = sample.slate_id
+      JOIN dk_slates ds ON ds.id = sample.slate_id
+    `),
   ]);
 
   const summary = summaryResult.rows[0];
@@ -1431,6 +1475,60 @@ export async function getMlbOwnershipModelReport(): Promise<MlbOwnershipModelRep
     fieldAbsError: row.fieldAbsError == null ? null : Number(row.fieldAbsError),
     errorGain: row.errorGain == null ? null : Number(row.errorGain),
   }));
+  const selectedSlateRows = selectedSlateRowsResult.rows.map((row) => ({
+    slateId: Number(row.slateId),
+    slateDate: row.slateDate,
+    name: row.name,
+    eligiblePositions: row.eligiblePositions ?? null,
+    salary: Number(row.salary ?? 0),
+    lineupOrder: row.lineupOrder == null ? null : Number(row.lineupOrder),
+    linestarOwnPct: row.linestarOwnPct == null ? null : Number(row.linestarOwnPct),
+    fieldOwnPct: row.fieldOwnPct == null ? null : Number(row.fieldOwnPct),
+    actualOwnPct: row.actualOwnPct == null ? null : Number(row.actualOwnPct),
+    linestarAbsError: row.linestarAbsError == null ? null : Number(row.linestarAbsError),
+    fieldAbsError: row.fieldAbsError == null ? null : Number(row.fieldAbsError),
+    errorGain: row.errorGain == null ? null : Number(row.errorGain),
+  }));
+
+  const compareNullLastDesc = (a: number | null, b: number | null) => {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return b - a;
+  };
+
+  selectedSlateRows.sort((a, b) => {
+    switch (sortBy) {
+      case "gain":
+        return compareNullLastDesc(a.errorGain, b.errorGain)
+          || compareNullLastDesc(a.fieldAbsError, b.fieldAbsError)
+          || (b.salary - a.salary)
+          || a.name.localeCompare(b.name);
+      case "actual":
+        return compareNullLastDesc(a.actualOwnPct, b.actualOwnPct)
+          || compareNullLastDesc(a.fieldAbsError, b.fieldAbsError)
+          || (b.salary - a.salary)
+          || a.name.localeCompare(b.name);
+      case "field-own":
+        return compareNullLastDesc(a.fieldOwnPct, b.fieldOwnPct)
+          || compareNullLastDesc(a.fieldAbsError, b.fieldAbsError)
+          || (b.salary - a.salary)
+          || a.name.localeCompare(b.name);
+      case "field-error":
+      default:
+        return compareNullLastDesc(a.fieldAbsError, b.fieldAbsError)
+          || compareNullLastDesc(a.errorGain, b.errorGain)
+          || (b.salary - a.salary)
+          || a.name.localeCompare(b.name);
+    }
+  });
+
+  const selectedSlate = selectedSlateRows.length > 0
+    ? {
+        slateId: selectedSlateRows[0].slateId,
+        slateDate: selectedSlateRows[0].slateDate,
+      }
+    : null;
 
   return {
     sample: {
@@ -1447,6 +1545,8 @@ export async function getMlbOwnershipModelReport(): Promise<MlbOwnershipModelRep
     recentSlates,
     versions,
     latestSlateMisses,
+    selectedSlate,
+    selectedSlateRows,
   };
 }
 
