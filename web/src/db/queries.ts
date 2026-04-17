@@ -1550,6 +1550,363 @@ export async function getMlbOwnershipModelReport(
   };
 }
 
+const MLB_PITCHER_ALLOW_MIN_STARTS = 2;
+const MLB_PITCHER_ALLOW_SHRINK = 4;
+const MLB_PARK_ENV_MIN_GAMES = 3;
+const MLB_PARK_ENV_SHRINK = 6;
+
+export type MlbPitcherAllowedRow = {
+  pitcherId: number;
+  pitcherName: string;
+  hand: string | null;
+  xfip: number | null;
+  whip: number | null;
+  kPer9: number | null;
+  starts: number;
+  hitterRows: number;
+  avgTeamFptsAllowed: number | null;
+  avgHitterFptsAllowed: number | null;
+  avgTopHitterFptsAllowed: number | null;
+  avg15PlusHitters: number | null;
+  avg20PlusHitters: number | null;
+  shrunkAvgTeamFptsAllowed: number | null;
+};
+
+export type MlbParkEnvironmentRow = {
+  parkTeamId: number;
+  parkName: string;
+  homeTeamAbbrev: string;
+  games: number;
+  teamGames: number;
+  runsFactor: number | null;
+  hrFactor: number | null;
+  avgTeamHitterFpts: number | null;
+  avgHitterFpts: number | null;
+  avg15PlusHitters: number | null;
+  avg20PlusHitters: number | null;
+  avgCombinedRuns: number | null;
+  avgSpFpts: number | null;
+  shrunkAvgTeamHitterFpts: number | null;
+};
+
+export type MlbRunEnvironmentReport = {
+  sample: {
+    pitcherStarts: number;
+    pitcherHitterRows: number;
+    parkGames: number;
+    parkTeamGames: number;
+  };
+  findings: string[];
+  pitcherAllow: MlbPitcherAllowedRow[];
+  parkEnvironment: MlbParkEnvironmentRow[];
+};
+
+function buildMlbRunEnvironmentFindings(
+  pitcherAllow: MlbPitcherAllowedRow[],
+  parkEnvironment: MlbParkEnvironmentRow[],
+): string[] {
+  const findings: string[] = [];
+  const topPitcher = pitcherAllow[0];
+  if (topPitcher?.shrunkAvgTeamFptsAllowed != null) {
+    findings.push(`${topPitcher.pitcherName} has been the softest tracked SP context, allowing ${topPitcher.shrunkAvgTeamFptsAllowed.toFixed(2)} opposing hitter DK points per team start over ${topPitcher.starts} starts.`);
+  }
+
+  const topPark = parkEnvironment[0];
+  if (topPark?.shrunkAvgTeamHitterFpts != null) {
+    findings.push(`${topPark.parkName} has been the strongest hitter environment, averaging ${topPark.shrunkAvgTeamHitterFpts.toFixed(2)} hitter DK points per offense with park factors ${topPark.runsFactor?.toFixed(2) ?? "—"} runs / ${topPark.hrFactor?.toFixed(2) ?? "—"} HR.`);
+  }
+
+  const toughestParkForSp = parkEnvironment
+    .filter((row) => row.avgSpFpts != null)
+    .sort((a, b) => (a.avgSpFpts ?? 999) - (b.avgSpFpts ?? 999))[0];
+  if (toughestParkForSp?.avgSpFpts != null) {
+    findings.push(`${toughestParkForSp.parkName} has been the worst SP scoring environment so far, with starters averaging only ${toughestParkForSp.avgSpFpts.toFixed(2)} DK points there.`);
+  }
+
+  return findings.slice(0, 4);
+}
+
+export async function getMlbRunEnvironmentReport(): Promise<MlbRunEnvironmentReport | null> {
+  const [pitcherAllowResult, parkEnvironmentResult] = await Promise.all([
+    db.execute<{
+      pitcherId: number;
+      pitcherName: string | null;
+      hand: string | null;
+      xfip: number | null;
+      whip: number | null;
+      kPer9: number | null;
+      starts: number;
+      hitterRows: number;
+      avgTeamFptsAllowed: number | null;
+      avgHitterFptsAllowed: number | null;
+      avgTopHitterFptsAllowed: number | null;
+      avg15PlusHitters: number | null;
+      avg20PlusHitters: number | null;
+    }>(sql`
+      WITH latest_pitchers AS (
+        SELECT DISTINCT ON (ps.player_id)
+          ps.player_id,
+          ps.name,
+          ps.hand,
+          ps.xfip,
+          ps.whip,
+          ps.k_per_9
+        FROM mlb_pitcher_stats ps
+        ORDER BY ps.player_id, ps.season DESC, ps.fetched_at DESC, ps.id DESC
+      ),
+      hitter_context AS (
+        SELECT
+          ds.id AS slate_id,
+          ds.slate_date,
+          mm.id AS matchup_id,
+          CASE
+            WHEN dp.mlb_team_id = mm.home_team_id THEN mm.away_sp_id
+            WHEN dp.mlb_team_id = mm.away_team_id THEN mm.home_sp_id
+            ELSE NULL
+          END AS pitcher_id,
+          dp.actual_fpts
+        FROM dk_players dp
+        JOIN dk_slates ds ON ds.id = dp.slate_id
+        JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+        WHERE ds.sport = 'mlb'
+          AND COALESCE(ds.contest_type, 'main') = 'main'
+          AND COALESCE(ds.contest_format, 'gpp') = 'gpp'
+          AND dp.actual_fpts IS NOT NULL
+          AND COALESCE(dp.is_out, false) = false
+          AND dp.eligible_positions NOT LIKE '%SP%'
+          AND dp.eligible_positions NOT LIKE '%RP%'
+      ),
+      pitcher_starts AS (
+        SELECT
+          pitcher_id,
+          matchup_id,
+          COUNT(*)::int AS hitter_rows,
+          AVG(actual_fpts) AS avg_hitter_fpts,
+          SUM(actual_fpts) AS team_hitter_fpts,
+          MAX(actual_fpts) AS top_hitter_fpts,
+          COUNT(*) FILTER (WHERE actual_fpts >= 15)::int AS hitters15,
+          COUNT(*) FILTER (WHERE actual_fpts >= 20)::int AS hitters20
+        FROM hitter_context
+        WHERE pitcher_id IS NOT NULL
+        GROUP BY pitcher_id, matchup_id
+      )
+      SELECT
+        ps.pitcher_id::int AS "pitcherId",
+        lp.name AS "pitcherName",
+        lp.hand AS "hand",
+        lp.xfip AS "xfip",
+        lp.whip AS "whip",
+        lp.k_per_9 AS "kPer9",
+        COUNT(*)::int AS "starts",
+        SUM(ps.hitter_rows)::int AS "hitterRows",
+        AVG(ps.team_hitter_fpts) AS "avgTeamFptsAllowed",
+        AVG(ps.avg_hitter_fpts) AS "avgHitterFptsAllowed",
+        AVG(ps.top_hitter_fpts) AS "avgTopHitterFptsAllowed",
+        AVG(ps.hitters15::DOUBLE PRECISION) AS "avg15PlusHitters",
+        AVG(ps.hitters20::DOUBLE PRECISION) AS "avg20PlusHitters"
+      FROM pitcher_starts ps
+      LEFT JOIN latest_pitchers lp ON lp.player_id = ps.pitcher_id
+      GROUP BY ps.pitcher_id, lp.name, lp.hand, lp.xfip, lp.whip, lp.k_per_9
+      HAVING COUNT(*) >= ${MLB_PITCHER_ALLOW_MIN_STARTS}
+    `),
+    db.execute<{
+      parkTeamId: number;
+      parkName: string | null;
+      homeTeamAbbrev: string | null;
+      games: number;
+      teamGames: number;
+      runsFactor: number | null;
+      hrFactor: number | null;
+      avgTeamHitterFpts: number | null;
+      avgHitterFpts: number | null;
+      avg15PlusHitters: number | null;
+      avg20PlusHitters: number | null;
+      avgCombinedRuns: number | null;
+      avgSpFpts: number | null;
+    }>(sql`
+      WITH latest_parks AS (
+        SELECT DISTINCT ON (pf.team_id)
+          pf.team_id,
+          pf.runs_factor,
+          pf.hr_factor
+        FROM mlb_park_factors pf
+        ORDER BY pf.team_id, pf.season DESC, pf.id DESC
+      ),
+      hitter_context AS (
+        SELECT
+          mm.id AS matchup_id,
+          mm.home_team_id AS park_team_id,
+          COALESCE(mm.ballpark, mt.ballpark, mt.name) AS park_name,
+          mt.abbreviation AS home_team_abbrev,
+          dp.mlb_team_id AS offense_team_id,
+          dp.actual_fpts,
+          (mm.home_score + mm.away_score)::DOUBLE PRECISION AS combined_runs
+        FROM dk_players dp
+        JOIN dk_slates ds ON ds.id = dp.slate_id
+        JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+        LEFT JOIN mlb_teams mt ON mt.team_id = mm.home_team_id
+        WHERE ds.sport = 'mlb'
+          AND COALESCE(ds.contest_type, 'main') = 'main'
+          AND COALESCE(ds.contest_format, 'gpp') = 'gpp'
+          AND dp.actual_fpts IS NOT NULL
+          AND COALESCE(dp.is_out, false) = false
+          AND dp.eligible_positions NOT LIKE '%SP%'
+          AND dp.eligible_positions NOT LIKE '%RP%'
+      ),
+      park_team_games AS (
+        SELECT
+          park_team_id,
+          park_name,
+          home_team_abbrev,
+          matchup_id,
+          offense_team_id,
+          MAX(combined_runs) AS combined_runs,
+          SUM(actual_fpts) AS team_hitter_fpts,
+          AVG(actual_fpts) AS avg_hitter_fpts,
+          COUNT(*) FILTER (WHERE actual_fpts >= 15)::int AS hitters15,
+          COUNT(*) FILTER (WHERE actual_fpts >= 20)::int AS hitters20
+        FROM hitter_context
+        GROUP BY park_team_id, park_name, home_team_abbrev, matchup_id, offense_team_id
+      ),
+      park_sp_games AS (
+        SELECT
+          mm.id AS matchup_id,
+          mm.home_team_id AS park_team_id,
+          AVG(dp.actual_fpts) AS avg_sp_fpts
+        FROM dk_players dp
+        JOIN dk_slates ds ON ds.id = dp.slate_id
+        JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+        WHERE ds.sport = 'mlb'
+          AND COALESCE(ds.contest_type, 'main') = 'main'
+          AND COALESCE(ds.contest_format, 'gpp') = 'gpp'
+          AND dp.actual_fpts IS NOT NULL
+          AND COALESCE(dp.is_out, false) = false
+          AND dp.eligible_positions LIKE '%SP%'
+        GROUP BY mm.id, mm.home_team_id
+      )
+      SELECT
+        ptg.park_team_id::int AS "parkTeamId",
+        ptg.park_name AS "parkName",
+        ptg.home_team_abbrev AS "homeTeamAbbrev",
+        COUNT(DISTINCT ptg.matchup_id)::int AS "games",
+        COUNT(*)::int AS "teamGames",
+        lp.runs_factor AS "runsFactor",
+        lp.hr_factor AS "hrFactor",
+        AVG(ptg.team_hitter_fpts) AS "avgTeamHitterFpts",
+        AVG(ptg.avg_hitter_fpts) AS "avgHitterFpts",
+        AVG(ptg.hitters15::DOUBLE PRECISION) AS "avg15PlusHitters",
+        AVG(ptg.hitters20::DOUBLE PRECISION) AS "avg20PlusHitters",
+        AVG(ptg.combined_runs) AS "avgCombinedRuns",
+        AVG(psg.avg_sp_fpts) AS "avgSpFpts"
+      FROM park_team_games ptg
+      LEFT JOIN latest_parks lp ON lp.team_id = ptg.park_team_id
+      LEFT JOIN park_sp_games psg
+        ON psg.matchup_id = ptg.matchup_id
+       AND psg.park_team_id = ptg.park_team_id
+      GROUP BY ptg.park_team_id, ptg.park_name, ptg.home_team_abbrev, lp.runs_factor, lp.hr_factor
+      HAVING COUNT(DISTINCT ptg.matchup_id) >= ${MLB_PARK_ENV_MIN_GAMES}
+    `),
+  ]);
+
+  const pitcherAllow: MlbPitcherAllowedRow[] = (pitcherAllowResult.rows as Record<string, unknown>[]).map((row) => ({
+    pitcherId: Number(row.pitcherId),
+    pitcherName: String(row.pitcherName ?? `Pitcher ${row.pitcherId}`),
+    hand: row.hand == null ? null : String(row.hand),
+    xfip: row.xfip == null ? null : Number(row.xfip),
+    whip: row.whip == null ? null : Number(row.whip),
+    kPer9: row.kPer9 == null ? null : Number(row.kPer9),
+    starts: Number(row.starts ?? 0),
+    hitterRows: Number(row.hitterRows ?? 0),
+    avgTeamFptsAllowed: row.avgTeamFptsAllowed == null ? null : Number(row.avgTeamFptsAllowed),
+    avgHitterFptsAllowed: row.avgHitterFptsAllowed == null ? null : Number(row.avgHitterFptsAllowed),
+    avgTopHitterFptsAllowed: row.avgTopHitterFptsAllowed == null ? null : Number(row.avgTopHitterFptsAllowed),
+    avg15PlusHitters: row.avg15PlusHitters == null ? null : Number(row.avg15PlusHitters),
+    avg20PlusHitters: row.avg20PlusHitters == null ? null : Number(row.avg20PlusHitters),
+    shrunkAvgTeamFptsAllowed: null as number | null,
+  }));
+
+  const parkEnvironment: MlbParkEnvironmentRow[] = (parkEnvironmentResult.rows as Record<string, unknown>[]).map((row) => ({
+    parkTeamId: Number(row.parkTeamId),
+    parkName: String(row.parkName ?? "Unknown Park"),
+    homeTeamAbbrev: String(row.homeTeamAbbrev ?? ""),
+    games: Number(row.games ?? 0),
+    teamGames: Number(row.teamGames ?? 0),
+    runsFactor: row.runsFactor == null ? null : Number(row.runsFactor),
+    hrFactor: row.hrFactor == null ? null : Number(row.hrFactor),
+    avgTeamHitterFpts: row.avgTeamHitterFpts == null ? null : Number(row.avgTeamHitterFpts),
+    avgHitterFpts: row.avgHitterFpts == null ? null : Number(row.avgHitterFpts),
+    avg15PlusHitters: row.avg15PlusHitters == null ? null : Number(row.avg15PlusHitters),
+    avg20PlusHitters: row.avg20PlusHitters == null ? null : Number(row.avg20PlusHitters),
+    avgCombinedRuns: row.avgCombinedRuns == null ? null : Number(row.avgCombinedRuns),
+    avgSpFpts: row.avgSpFpts == null ? null : Number(row.avgSpFpts),
+    shrunkAvgTeamHitterFpts: null as number | null,
+  }));
+
+  if (pitcherAllow.length === 0 && parkEnvironment.length === 0) return null;
+
+  const pitcherStarts = pitcherAllow.reduce((sum, row) => sum + row.starts, 0);
+  const pitcherHitterRows = pitcherAllow.reduce((sum, row) => sum + row.hitterRows, 0);
+  const pitcherBaseline = pitcherStarts > 0
+    ? pitcherAllow.reduce((sum, row) => sum + (row.avgTeamFptsAllowed ?? 0) * row.starts, 0) / pitcherStarts
+    : 0;
+  for (const row of pitcherAllow) {
+    row.shrunkAvgTeamFptsAllowed = row.avgTeamFptsAllowed == null
+      ? null
+      : round2(((row.avgTeamFptsAllowed * row.starts) + (MLB_PITCHER_ALLOW_SHRINK * pitcherBaseline)) / (row.starts + MLB_PITCHER_ALLOW_SHRINK));
+    row.avgTeamFptsAllowed = row.avgTeamFptsAllowed == null ? null : round2(row.avgTeamFptsAllowed);
+    row.avgHitterFptsAllowed = row.avgHitterFptsAllowed == null ? null : round2(row.avgHitterFptsAllowed);
+    row.avgTopHitterFptsAllowed = row.avgTopHitterFptsAllowed == null ? null : round2(row.avgTopHitterFptsAllowed);
+    row.avg15PlusHitters = row.avg15PlusHitters == null ? null : round2(row.avg15PlusHitters);
+    row.avg20PlusHitters = row.avg20PlusHitters == null ? null : round2(row.avg20PlusHitters);
+    row.xfip = row.xfip == null ? null : round2(row.xfip);
+    row.whip = row.whip == null ? null : round2(row.whip);
+    row.kPer9 = row.kPer9 == null ? null : round2(row.kPer9);
+  }
+  pitcherAllow.sort((a, b) =>
+    (b.shrunkAvgTeamFptsAllowed ?? -999) - (a.shrunkAvgTeamFptsAllowed ?? -999)
+    || (b.avgTopHitterFptsAllowed ?? -999) - (a.avgTopHitterFptsAllowed ?? -999)
+    || b.starts - a.starts
+    || a.pitcherName.localeCompare(b.pitcherName)
+  );
+
+  const parkGames = parkEnvironment.reduce((sum, row) => sum + row.games, 0);
+  const parkTeamGames = parkEnvironment.reduce((sum, row) => sum + row.teamGames, 0);
+  const parkBaseline = parkTeamGames > 0
+    ? parkEnvironment.reduce((sum, row) => sum + (row.avgTeamHitterFpts ?? 0) * row.teamGames, 0) / parkTeamGames
+    : 0;
+  for (const row of parkEnvironment) {
+    row.shrunkAvgTeamHitterFpts = row.avgTeamHitterFpts == null
+      ? null
+      : round2(((row.avgTeamHitterFpts * row.teamGames) + (MLB_PARK_ENV_SHRINK * parkBaseline)) / (row.teamGames + MLB_PARK_ENV_SHRINK));
+    row.avgTeamHitterFpts = row.avgTeamHitterFpts == null ? null : round2(row.avgTeamHitterFpts);
+    row.avgHitterFpts = row.avgHitterFpts == null ? null : round2(row.avgHitterFpts);
+    row.avg15PlusHitters = row.avg15PlusHitters == null ? null : round2(row.avg15PlusHitters);
+    row.avg20PlusHitters = row.avg20PlusHitters == null ? null : round2(row.avg20PlusHitters);
+    row.avgCombinedRuns = row.avgCombinedRuns == null ? null : round2(row.avgCombinedRuns);
+    row.avgSpFpts = row.avgSpFpts == null ? null : round2(row.avgSpFpts);
+    row.runsFactor = row.runsFactor == null ? null : round2(row.runsFactor);
+    row.hrFactor = row.hrFactor == null ? null : round2(row.hrFactor);
+  }
+  parkEnvironment.sort((a, b) =>
+    (b.shrunkAvgTeamHitterFpts ?? -999) - (a.shrunkAvgTeamHitterFpts ?? -999)
+    || (b.avgCombinedRuns ?? -999) - (a.avgCombinedRuns ?? -999)
+    || b.games - a.games
+    || a.parkName.localeCompare(b.parkName)
+  );
+
+  return {
+    sample: {
+      pitcherStarts,
+      pitcherHitterRows,
+      parkGames,
+      parkTeamGames,
+    },
+    findings: buildMlbRunEnvironmentFindings(pitcherAllow, parkEnvironment),
+    pitcherAllow: pitcherAllow.slice(0, 12),
+    parkEnvironment: parkEnvironment.slice(0, 12),
+  };
+}
+
 type NbaPerfectLineupSourceRow = {
   slateId: number;
   slateDate: string;

@@ -6,6 +6,7 @@ import type { OwnershipDetailSort, Sport } from "@/db/queries";
 import AnalyticsContent from "./analytics-content";
 import MlbOwnershipModelPanel from "./mlb-ownership-model-panel";
 import MlbPitcherLineupPanel from "./mlb-pitcher-lineup-panel";
+import MlbRunEnvironmentPanel from "./mlb-run-environment-panel";
 import PerfectLineupPanel from "./perfect-lineup-panel";
 
 export default async function AnalyticsPage({
@@ -54,6 +55,20 @@ export default async function AnalyticsPage({
           }
         >
           <MlbOwnershipModelPanel selectedSlateId={ownershipSlateId} sortBy={ownershipSort} />
+        </Suspense>
+      ) : null}
+      {sport === "mlb" ? (
+        <Suspense
+          fallback={
+            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
+              <h2 className="mb-1 text-sm font-semibold">MLB Pitcher And Park Environment</h2>
+              <p className="text-xs text-slate-700">
+                Loading pitcher and park environment report...
+              </p>
+            </div>
+          }
+        >
+          <MlbRunEnvironmentPanel />
         </Suspense>
       ) : null}
       {sport === "mlb" ? (

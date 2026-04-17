@@ -20,6 +20,7 @@ import {
   getGameTotalModelAccuracy,
   getLeverageCalibration,
   getMlbBattingOrderCalibration,
+  getMlbRunEnvironmentReport,
   getMlbOwnershipModelReport,
   getMlbPerfectLineupAnalytics,
   getNbaPerfectLineupAnalytics,
@@ -91,6 +92,12 @@ export const getCachedMlbBattingOrderCalibration = unstable_cache(
 export const getCachedMlbOwnershipModelReport = unstable_cache(
   (selectedSlateId: number | null, sortBy: OwnershipDetailSort) => getMlbOwnershipModelReport(selectedSlateId, sortBy),
   ["analytics-mlb-ownership-model"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbRunEnvironmentReport = unstable_cache(
+  () => getMlbRunEnvironmentReport(),
+  ["analytics-mlb-run-environment"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 
