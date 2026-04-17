@@ -2084,12 +2084,33 @@ export type MlbPerfectLineupSummaryRow = {
   slateSizeBucket: string;
   slateCount: number;
   avgSalary: number;
+  avgLeftOnTable: number;
   avgPoints: number;
   anyTwoStackRate: number;
   anyThreeStackRate: number;
   anyFourStackRate: number;
   anyFiveStackRate: number;
   multiTeamStackRate: number;
+};
+
+export type MlbPerfectLineupSalaryBucketRow = {
+  salaryLeftBucket: string;
+  slateCount: number;
+  rate: number;
+  avgSalary: number;
+  avgLeftOnTable: number;
+  avgPoints: number;
+};
+
+export type MlbPerfectLineupSlateSalaryRow = {
+  slateId: number;
+  slateDate: string;
+  slateSizeBucket: string;
+  perfectSalary: number;
+  salaryLeft: number;
+  perfectPoints: number;
+  hitterShape: string;
+  stackCount: number;
 };
 
 export type MlbPerfectLineupShapeRow = {
@@ -2122,6 +2143,8 @@ export type MlbPerfectLineupAnalytics = {
   slateCount: number;
   opponentContextSlateCount: number;
   summary: MlbPerfectLineupSummaryRow[];
+  salaryLeftDistribution: MlbPerfectLineupSalaryBucketRow[];
+  slateSalaries: MlbPerfectLineupSlateSalaryRow[];
   shapes: MlbPerfectLineupShapeRow[];
   teamRates: MlbPerfectLineupTeamRateRow[];
   opponentAllow: MlbPerfectLineupOpponentAllowRow[];
@@ -2129,6 +2152,7 @@ export type MlbPerfectLineupAnalytics = {
 
 const NBA_ANALYTICS_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"] as const;
 const MLB_ANALYTICS_SLOTS = ["P1", "P2", "C", "1B", "2B", "3B", "SS", "OF1", "OF2", "OF3"] as const;
+const PERFECT_LINEUP_SALARY_CAP = 50000;
 const PERFECT_LINEUP_TEAM_SHRINK = 10;
 const PERFECT_LINEUP_DEFENSE_SHRINK = 10;
 
@@ -2214,6 +2238,31 @@ function getMlbSlateSizeBucket(gameCount: number): string {
   if (gameCount <= 7) return "4-7 games";
   if (gameCount <= 11) return "8-11 games";
   return "12+ games";
+}
+
+function getMlbSalaryLeftBucket(salaryLeft: number): string {
+  if (salaryLeft <= 0) return "$0 left";
+  if (salaryLeft <= 200) return "$1-$200 left";
+  if (salaryLeft <= 500) return "$201-$500 left";
+  if (salaryLeft <= 1000) return "$501-$1k left";
+  return "$1k+ left";
+}
+
+function getMlbSalaryLeftBucketOrder(bucket: string): number {
+  switch (bucket) {
+    case "$0 left":
+      return 1;
+    case "$1-$200 left":
+      return 2;
+    case "$201-$500 left":
+      return 3;
+    case "$501-$1k left":
+      return 4;
+    case "$1k+ left":
+      return 5;
+    default:
+      return Number.MAX_SAFE_INTEGER;
+  }
 }
 
 function getSlateSizeBucketOrder(bucket: string): number {
@@ -2613,6 +2662,7 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
   const summaryStats = new Map<string, {
     slateCount: number;
     totalSalary: number;
+    totalLeftOnTable: number;
     totalPoints: number;
     anyTwo: number;
     anyThree: number;
@@ -2620,6 +2670,13 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
     anyFive: number;
     multiTeam: number;
   }>();
+  const salaryLeftStats = new Map<string, {
+    slateCount: number;
+    totalSalary: number;
+    totalLeftOnTable: number;
+    totalPoints: number;
+  }>();
+  const slateSalaries: MlbPerfectLineupSlateSalaryRow[] = [];
   const shapeCounts = new Map<string, number>();
   const teamOpportunities = new Map<string, { teamAbbrev: string; teamName: string | null; slateAppearances: number }>();
   const teamPerfectCounts = new Map<string, number>();
@@ -2713,9 +2770,13 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
     const counts = Array.from(teamCounts.values()).sort((a, b) => b - a);
     const stackedCounts = counts.filter((count) => count >= 2);
     const shape = stackedCounts.length > 0 ? stackedCounts.join("-") : "No Stack";
+    const perfectSalary = perfectLineup.reduce((sum, player) => sum + player.salary, 0);
+    const perfectPoints = perfectLineup.reduce((sum, player) => sum + player.actualFpts, 0);
+    const salaryLeft = Math.max(0, PERFECT_LINEUP_SALARY_CAP - perfectSalary);
     const summary = summaryStats.get(bucket) ?? {
       slateCount: 0,
       totalSalary: 0,
+      totalLeftOnTable: 0,
       totalPoints: 0,
       anyTwo: 0,
       anyThree: 0,
@@ -2724,8 +2785,9 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
       multiTeam: 0,
     };
     summary.slateCount += 1;
-    summary.totalSalary += perfectLineup.reduce((sum, player) => sum + player.salary, 0);
-    summary.totalPoints += perfectLineup.reduce((sum, player) => sum + player.actualFpts, 0);
+    summary.totalSalary += perfectSalary;
+    summary.totalLeftOnTable += salaryLeft;
+    summary.totalPoints += perfectPoints;
     if (stackedCounts.some((count) => count >= 2)) summary.anyTwo += 1;
     if (stackedCounts.some((count) => count >= 3)) summary.anyThree += 1;
     if (stackedCounts.some((count) => count >= 4)) summary.anyFour += 1;
@@ -2735,6 +2797,30 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
 
     const shapeKey = `${bucket}::${shape}`;
     shapeCounts.set(shapeKey, (shapeCounts.get(shapeKey) ?? 0) + 1);
+
+    const salaryLeftBucket = getMlbSalaryLeftBucket(salaryLeft);
+    const salaryBucket = salaryLeftStats.get(salaryLeftBucket) ?? {
+      slateCount: 0,
+      totalSalary: 0,
+      totalLeftOnTable: 0,
+      totalPoints: 0,
+    };
+    salaryBucket.slateCount += 1;
+    salaryBucket.totalSalary += perfectSalary;
+    salaryBucket.totalLeftOnTable += salaryLeft;
+    salaryBucket.totalPoints += perfectPoints;
+    salaryLeftStats.set(salaryLeftBucket, salaryBucket);
+
+    slateSalaries.push({
+      slateId: filteredRows[0].slateId,
+      slateDate: filteredRows[0].slateDate,
+      slateSizeBucket: bucket,
+      perfectSalary,
+      salaryLeft,
+      perfectPoints: round2(perfectPoints),
+      hitterShape: shape,
+      stackCount: stackedCounts.length,
+    });
   }
 
   if (slateCount === 0) return null;
@@ -2751,6 +2837,7 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
       slateSizeBucket: bucket,
       slateCount: stats.slateCount,
       avgSalary: round2(stats.totalSalary / stats.slateCount),
+      avgLeftOnTable: round2(stats.totalLeftOnTable / stats.slateCount),
       avgPoints: round2(stats.totalPoints / stats.slateCount),
       anyTwoStackRate: round2((stats.anyTwo / stats.slateCount) * 100),
       anyThreeStackRate: round2((stats.anyThree / stats.slateCount) * 100),
@@ -2759,6 +2846,22 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
       multiTeamStackRate: round2((stats.multiTeam / stats.slateCount) * 100),
     }))
     .sort((a, b) => getSlateSizeBucketOrder(a.slateSizeBucket) - getSlateSizeBucketOrder(b.slateSizeBucket));
+
+  const salaryLeftDistribution = Array.from(salaryLeftStats.entries())
+    .map(([salaryLeftBucket, stats]) => ({
+      salaryLeftBucket,
+      slateCount: stats.slateCount,
+      rate: round2((stats.slateCount / slateCount) * 100),
+      avgSalary: round2(stats.totalSalary / stats.slateCount),
+      avgLeftOnTable: round2(stats.totalLeftOnTable / stats.slateCount),
+      avgPoints: round2(stats.totalPoints / stats.slateCount),
+    }))
+    .sort((a, b) => getMlbSalaryLeftBucketOrder(a.salaryLeftBucket) - getMlbSalaryLeftBucketOrder(b.salaryLeftBucket));
+
+  slateSalaries.sort((a, b) =>
+    b.slateDate.localeCompare(a.slateDate)
+    || b.slateId - a.slateId
+  );
 
   const bucketSlateCounts = new Map(summary.map((row) => [row.slateSizeBucket, row.slateCount]));
   const shapes = Array.from(shapeCounts.entries())
@@ -2831,6 +2934,8 @@ export async function getMlbPerfectLineupAnalytics(): Promise<MlbPerfectLineupAn
     slateCount,
     opponentContextSlateCount,
     summary,
+    salaryLeftDistribution,
+    slateSalaries,
     shapes,
     teamRates,
     opponentAllow,

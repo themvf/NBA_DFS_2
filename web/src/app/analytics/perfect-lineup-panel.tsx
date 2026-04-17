@@ -166,6 +166,64 @@ function MlbPerfectLineupTables({ analytics }: { analytics: MlbPerfectLineupAnal
         </table>
       </div>
 
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div>
+          <p className="text-xs text-gray-400 mb-2 font-medium">Salary Left On Table</p>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-400 border-b">
+                <th className="py-1 text-left">Bucket</th>
+                <th className="py-1 text-right">Slates</th>
+                <th className="py-1 text-right">Rate</th>
+                <th className="py-1 text-right">Avg Salary</th>
+                <th className="py-1 text-right">Avg Left</th>
+                <th className="py-1 text-right">Avg Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analytics.salaryLeftDistribution.map((row) => (
+                <tr key={row.salaryLeftBucket} className="border-b border-gray-50">
+                  <td className="py-1 font-medium">{row.salaryLeftBucket}</td>
+                  <td className="py-1 text-right">{row.slateCount}</td>
+                  <td className="py-1 text-right">{fmt1(row.rate)}%</td>
+                  <td className="py-1 text-right">${row.avgSalary.toLocaleString()}</td>
+                  <td className="py-1 text-right">${row.avgLeftOnTable.toLocaleString()}</td>
+                  <td className="py-1 text-right">{fmt2(row.avgPoints)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <p className="text-xs text-gray-400 mb-2 font-medium">Recent Perfect Lineup Salary Usage</p>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-400 border-b">
+                <th className="py-1 text-left">Slate</th>
+                <th className="py-1 text-left">Bucket</th>
+                <th className="py-1 text-right">Salary</th>
+                <th className="py-1 text-right">Left</th>
+                <th className="py-1 text-right">Points</th>
+                <th className="py-1 text-right">Shape</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analytics.slateSalaries.slice(0, 20).map((row) => (
+                <tr key={row.slateId} className="border-b border-gray-50">
+                  <td className="py-1 font-medium">{row.slateDate}</td>
+                  <td className="py-1">{row.slateSizeBucket}</td>
+                  <td className="py-1 text-right">${row.perfectSalary.toLocaleString()}</td>
+                  <td className="py-1 text-right">${row.salaryLeft.toLocaleString()}</td>
+                  <td className="py-1 text-right">{fmt2(row.perfectPoints)}</td>
+                  <td className="py-1 text-right">{row.hitterShape}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div>
         <p className="text-xs text-gray-400 mb-2 font-medium">Most Common Perfect Hitter Shapes</p>
         <table className="w-full text-xs">
