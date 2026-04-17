@@ -1235,7 +1235,7 @@ export async function getMlbOwnershipModelReport(
         ops.*,
         lr.ownership_version,
         lr.source,
-        lr.created_at
+        lr.created_at AS run_created_at
       FROM ownership_player_snapshots ops
       JOIN latest_runs lr ON lr.id = ops.run_id
       WHERE COALESCE(ops.is_out, false) = false
@@ -1321,33 +1321,44 @@ export async function getMlbOwnershipModelReport(
     db.execute<OwnershipModelSegmentAccuracyRow>(sql`
       ${latestRunsCte}
       SELECT
-        CASE
-          WHEN sample.eligible_positions LIKE '%SP%' THEN 'SP'
-          WHEN sample.lineup_order BETWEEN 1 AND 4 THEN 'Hitters 1-4'
-          WHEN sample.lineup_order BETWEEN 5 AND 9 THEN 'Hitters 5-9'
-          ELSE 'Hitters Unknown'
-        END AS "segment",
-        COUNT(*)::int AS "rows",
-        AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
-          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarMae",
-        AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
-          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldMae",
-        AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
-          FILTER (WHERE sample.linestar_own_pct IS NOT NULL)
-          - AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
-          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "maeDelta",
-        CORR(sample.linestar_own_pct, sample.actual_own_pct)
-          FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarCorr",
-        CORR(sample.field_own_pct, sample.actual_own_pct)
-          FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldCorr"
-      FROM sample
-      GROUP BY 1
-      ORDER BY CASE "segment"
-        WHEN 'SP' THEN 1
-        WHEN 'Hitters 1-4' THEN 2
-        WHEN 'Hitters 5-9' THEN 3
-        ELSE 4
-      END
+        segment_rows."segment",
+        segment_rows."rows",
+        segment_rows."linestarMae",
+        segment_rows."fieldMae",
+        segment_rows."maeDelta",
+        segment_rows."linestarCorr",
+        segment_rows."fieldCorr"
+      FROM (
+        SELECT
+          CASE
+            WHEN sample.eligible_positions LIKE '%SP%' THEN 'SP'
+            WHEN sample.lineup_order BETWEEN 1 AND 4 THEN 'Hitters 1-4'
+            WHEN sample.lineup_order BETWEEN 5 AND 9 THEN 'Hitters 5-9'
+            ELSE 'Hitters Unknown'
+          END AS "segment",
+          CASE
+            WHEN sample.eligible_positions LIKE '%SP%' THEN 1
+            WHEN sample.lineup_order BETWEEN 1 AND 4 THEN 2
+            WHEN sample.lineup_order BETWEEN 5 AND 9 THEN 3
+            ELSE 4
+          END AS "segmentSort",
+          COUNT(*)::int AS "rows",
+          AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+            FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarMae",
+          AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+            FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldMae",
+          AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
+            FILTER (WHERE sample.linestar_own_pct IS NOT NULL)
+            - AVG(ABS(sample.field_own_pct - sample.actual_own_pct))
+            FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "maeDelta",
+          CORR(sample.linestar_own_pct, sample.actual_own_pct)
+            FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarCorr",
+          CORR(sample.field_own_pct, sample.actual_own_pct)
+            FILTER (WHERE sample.field_own_pct IS NOT NULL) AS "fieldCorr"
+        FROM sample
+        GROUP BY 1, 2
+      ) segment_rows
+      ORDER BY segment_rows."segmentSort"
     `),
     db.execute<OwnershipModelBucketRow>(sql`
       ${latestRunsCte}
@@ -1380,7 +1391,7 @@ export async function getMlbOwnershipModelReport(
         ds.slate_date::text AS "slateDate",
         MIN(sample.ownership_version) AS "ownershipVersion",
         MIN(sample.source) AS "source",
-        MIN(sample.created_at)::text AS "capturedAt",
+        MIN(sample.run_created_at)::text AS "capturedAt",
         COUNT(*)::int AS "rows",
         AVG(ABS(sample.linestar_own_pct - sample.actual_own_pct))
           FILTER (WHERE sample.linestar_own_pct IS NOT NULL) AS "linestarMae",
@@ -1433,7 +1444,7 @@ export async function getMlbOwnershipModelReport(
         SELECT sample.slate_id
         FROM sample
         GROUP BY sample.slate_id
-        ORDER BY MAX(sample.created_at) DESC, sample.slate_id DESC
+        ORDER BY MAX(sample.run_created_at) DESC, sample.slate_id DESC
         LIMIT 1
       )
       SELECT
@@ -1467,7 +1478,7 @@ export async function getMlbOwnershipModelReport(
             SELECT sample.slate_id
             FROM sample
             GROUP BY sample.slate_id
-            ORDER BY MAX(sample.created_at) DESC, sample.slate_id DESC
+            ORDER BY MAX(sample.run_created_at) DESC, sample.slate_id DESC
             LIMIT 1
           )
         END AS slate_id
