@@ -7,6 +7,7 @@ import type {
   OuHitRateRow,
   TeamTotalAccuracyRow,
   SpreadCoverageRow,
+  MlbVegasCoverageStatus,
   VegasSummaryStatsRow,
   BiggestMissRow,
   TeamVegasInsightRow,
@@ -26,6 +27,8 @@ const fmtMl = (ml: number | null) => {
 };
 
 // ── Betting intelligence helpers ────────────────────────────────────────────
+
+const fmtDate = (value: string | null | undefined) => value ?? "â€”";
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -297,6 +300,7 @@ type Props = {
   ouHitRate: OuHitRateRow[];
   teamTotalAccuracy: TeamTotalAccuracyRow[];
   spreadCoverage: SpreadCoverageRow[];
+  mlbCoverageStatus: MlbVegasCoverageStatus | null;
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
   teamInsights: TeamVegasInsightRow[];
@@ -309,6 +313,7 @@ export default function VegasClient({
   ouHitRate,
   teamTotalAccuracy,
   spreadCoverage,
+  mlbCoverageStatus,
   vegasSummary,
   biggestMisses,
   teamInsights,
@@ -341,6 +346,11 @@ export default function VegasClient({
   const totalOvers = ouHitRate.reduce((s, r) => s + r.overCount, 0);
   const totalUnders = ouHitRate.reduce((s, r) => s + r.underCount, 0);
   const overallOverRate = totalN > 0 ? totalOvers / totalN : null;
+  const missingScoreDates = mlbCoverageStatus?.missingScoreDates ?? [];
+  const missingOddsDates = mlbCoverageStatus?.missingOddsDates ?? [];
+  const coverageLooksComplete = sport === "mlb"
+    && mlbCoverageStatus?.historicalEndDate != null
+    && mlbCoverageStatus.recommendedBackfillStart == null;
 
   return (
     <div className="space-y-8 p-6 max-w-5xl mx-auto">
@@ -373,6 +383,83 @@ export default function VegasClient({
       </div>
 
       {/* ── Fetch feedback ───────────────────────────────────── */}
+      {sport === "mlb" && mlbCoverageStatus && (
+        <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="font-semibold">MLB Backfill Coverage</h2>
+            <span className={`text-xs ${coverageLooksComplete ? "text-emerald-700" : "text-amber-700"}`}>
+              {coverageLooksComplete
+                ? `Historical MLB dates are complete through ${fmtDate(mlbCoverageStatus.historicalEndDate)}.`
+                : `Backfill is only needed from ${fmtDate(mlbCoverageStatus.recommendedBackfillStart)} through ${fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}.`}
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded border border-slate-200 bg-slate-50 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">Schedule In DB</div>
+              <div className="mt-1 text-sm font-medium text-slate-900">
+                {fmtDate(mlbCoverageStatus.availableStartDate)} to {fmtDate(mlbCoverageStatus.availableEndDate)}
+              </div>
+              <div className="mt-1 text-xs text-slate-600">
+                {mlbCoverageStatus.dateCount} dates | {mlbCoverageStatus.gameCount} games
+              </div>
+            </div>
+            <div className="rounded border border-slate-200 bg-slate-50 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">Scores</div>
+              <div className="mt-1 text-sm font-medium text-slate-900">
+                Complete through {fmtDate(mlbCoverageStatus.latestScoreCompleteDate)}
+              </div>
+              <div className="mt-1 text-xs text-slate-600">
+                First missing score date: {fmtDate(mlbCoverageStatus.firstMissingScoreDate)}
+              </div>
+            </div>
+            <div className="rounded border border-slate-200 bg-slate-50 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">Odds</div>
+              <div className="mt-1 text-sm font-medium text-slate-900">
+                Complete through {fmtDate(mlbCoverageStatus.latestOddsCompleteDate)}
+              </div>
+              <div className="mt-1 text-xs text-slate-600">
+                First missing odds date: {fmtDate(mlbCoverageStatus.firstMissingOddsDate)}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+            <div className="font-medium text-slate-900">
+              Suggested workflow window: {fmtDate(mlbCoverageStatus.recommendedBackfillStart)} to {fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}
+            </div>
+            <div className="mt-1">
+              Scores lane: {fmtDate(mlbCoverageStatus.firstMissingScoreDate)} to {fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}
+              {" | "}
+              Odds lane: {fmtDate(mlbCoverageStatus.firstMissingOddsDate)} to {fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}
+            </div>
+            <div className="mt-1">
+              Yesterday check ({fmtDate(mlbCoverageStatus.yesterdayDate)}):{" "}
+              {mlbCoverageStatus.yesterdayHadGames
+                ? `scores ${mlbCoverageStatus.yesterdayScoresComplete ? "complete" : "missing"}, odds ${mlbCoverageStatus.yesterdayOddsComplete ? "complete" : "missing"}`
+                : "no MLB games"}
+            </div>
+          </div>
+
+          {(missingScoreDates.length > 0 || missingOddsDates.length > 0) && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded border border-slate-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Missing Score Dates</div>
+                <div className="mt-1 text-xs text-slate-700">
+                  {missingScoreDates.length > 0 ? missingScoreDates.join(", ") : "None through yesterday"}
+                </div>
+              </div>
+              <div className="rounded border border-slate-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Missing Odds Dates</div>
+                <div className="mt-1 text-xs text-slate-700">
+                  {missingOddsDates.length > 0 ? missingOddsDates.join(", ") : "None through yesterday"}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {fetchMsg && (
         <div
           className={`rounded border px-3 py-2 text-sm ${

@@ -3903,6 +3903,154 @@ export async function getMlbRunLineCoverage(): Promise<SpreadCoverageRow[]> {
 
 // ── Vegas Summary Stats ──────────────────────────────────────
 
+export type MlbVegasCoverageStatus = {
+  availableStartDate: string | null;
+  availableEndDate: string | null;
+  historicalEndDate: string | null;
+  dateCount: number;
+  gameCount: number;
+  latestScoreCompleteDate: string | null;
+  latestOddsCompleteDate: string | null;
+  firstMissingScoreDate: string | null;
+  firstMissingOddsDate: string | null;
+  recommendedBackfillStart: string | null;
+  recommendedBackfillEnd: string | null;
+  missingScoreDates: string[];
+  missingOddsDates: string[];
+  yesterdayDate: string;
+  yesterdayHadGames: boolean;
+  yesterdayScoresComplete: boolean | null;
+  yesterdayOddsComplete: boolean | null;
+};
+
+function formatEtDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatus | null> {
+  const todayEt = formatEtDate(new Date());
+  const seasonStart = `${todayEt.slice(0, 4)}-01-01`;
+  const yesterdayEt = formatEtDate(new Date(new Date(`${todayEt}T12:00:00Z`).getTime() - 24 * 60 * 60 * 1000));
+
+  const [summaryResult, missingResult] = await Promise.all([
+    db.execute<{
+      availableStartDate: string | null;
+      availableEndDate: string | null;
+      historicalEndDate: string | null;
+      dateCount: number;
+      gameCount: number;
+      latestScoreCompleteDate: string | null;
+      latestOddsCompleteDate: string | null;
+      firstMissingScoreDate: string | null;
+      firstMissingOddsDate: string | null;
+      yesterdayGames: number;
+      yesterdayScoresComplete: number | null;
+      yesterdayOddsComplete: number | null;
+    }>(sql`
+      WITH daily AS (
+        SELECT
+          m.game_date::text AS game_date,
+          COUNT(*)::int AS games,
+          COUNT(*) FILTER (WHERE m.home_score IS NULL OR m.away_score IS NULL)::int AS missing_scores,
+          COUNT(*) FILTER (WHERE m.vegas_total IS NULL OR m.home_ml IS NULL OR m.away_ml IS NULL)::int AS missing_odds
+        FROM mlb_matchups m
+        WHERE m.game_date >= ${seasonStart}
+        GROUP BY m.game_date
+      )
+      SELECT
+        MIN(daily.game_date) AS "availableStartDate",
+        MAX(daily.game_date) AS "availableEndDate",
+        MAX(daily.game_date) FILTER (WHERE daily.game_date <= ${yesterdayEt}) AS "historicalEndDate",
+        COUNT(*)::int AS "dateCount",
+        COALESCE(SUM(daily.games), 0)::int AS "gameCount",
+        MAX(daily.game_date) FILTER (WHERE daily.game_date <= ${yesterdayEt} AND daily.missing_scores = 0) AS "latestScoreCompleteDate",
+        MAX(daily.game_date) FILTER (WHERE daily.game_date <= ${yesterdayEt} AND daily.missing_odds = 0) AS "latestOddsCompleteDate",
+        MIN(daily.game_date) FILTER (WHERE daily.game_date <= ${yesterdayEt} AND daily.missing_scores > 0) AS "firstMissingScoreDate",
+        MIN(daily.game_date) FILTER (WHERE daily.game_date <= ${yesterdayEt} AND daily.missing_odds > 0) AS "firstMissingOddsDate",
+        COALESCE(SUM(CASE WHEN daily.game_date = ${yesterdayEt} THEN daily.games ELSE 0 END), 0)::int AS "yesterdayGames",
+        MAX(
+          CASE
+            WHEN daily.game_date = ${yesterdayEt} AND daily.missing_scores = 0 THEN 1
+            WHEN daily.game_date = ${yesterdayEt} THEN 0
+            ELSE NULL
+          END
+        ) AS "yesterdayScoresComplete",
+        MAX(
+          CASE
+            WHEN daily.game_date = ${yesterdayEt} AND daily.missing_odds = 0 THEN 1
+            WHEN daily.game_date = ${yesterdayEt} THEN 0
+            ELSE NULL
+          END
+        ) AS "yesterdayOddsComplete"
+      FROM daily
+    `),
+    db.execute<{
+      missingScoreDates: string[] | null;
+      missingOddsDates: string[] | null;
+    }>(sql`
+      WITH daily AS (
+        SELECT
+          m.game_date::text AS game_date,
+          COUNT(*) FILTER (WHERE m.home_score IS NULL OR m.away_score IS NULL)::int AS missing_scores,
+          COUNT(*) FILTER (WHERE m.vegas_total IS NULL OR m.home_ml IS NULL OR m.away_ml IS NULL)::int AS missing_odds
+        FROM mlb_matchups m
+        WHERE m.game_date >= ${seasonStart}
+        GROUP BY m.game_date
+      )
+      SELECT
+        ARRAY(
+          SELECT d.game_date
+          FROM daily d
+          WHERE d.game_date <= ${yesterdayEt}
+            AND d.missing_scores > 0
+          ORDER BY d.game_date ASC
+          LIMIT 12
+        ) AS "missingScoreDates",
+        ARRAY(
+          SELECT d.game_date
+          FROM daily d
+          WHERE d.game_date <= ${yesterdayEt}
+            AND d.missing_odds > 0
+          ORDER BY d.game_date ASC
+          LIMIT 12
+        ) AS "missingOddsDates"
+    `),
+  ]);
+
+  const summary = summaryResult.rows[0];
+  const missing = missingResult.rows[0];
+  if (!summary || Number(summary.dateCount ?? 0) === 0) return null;
+
+  const firstMissingDates = [summary.firstMissingScoreDate, summary.firstMissingOddsDate]
+    .filter((value): value is string => Boolean(value))
+    .sort();
+
+  return {
+    availableStartDate: summary.availableStartDate ?? null,
+    availableEndDate: summary.availableEndDate ?? null,
+    historicalEndDate: summary.historicalEndDate ?? null,
+    dateCount: Number(summary.dateCount ?? 0),
+    gameCount: Number(summary.gameCount ?? 0),
+    latestScoreCompleteDate: summary.latestScoreCompleteDate ?? null,
+    latestOddsCompleteDate: summary.latestOddsCompleteDate ?? null,
+    firstMissingScoreDate: summary.firstMissingScoreDate ?? null,
+    firstMissingOddsDate: summary.firstMissingOddsDate ?? null,
+    recommendedBackfillStart: firstMissingDates[0] ?? null,
+    recommendedBackfillEnd: summary.historicalEndDate ?? null,
+    missingScoreDates: missing?.missingScoreDates ?? [],
+    missingOddsDates: missing?.missingOddsDates ?? [],
+    yesterdayDate: yesterdayEt,
+    yesterdayHadGames: Number(summary.yesterdayGames ?? 0) > 0,
+    yesterdayScoresComplete: summary.yesterdayScoresComplete == null ? null : Number(summary.yesterdayScoresComplete) === 1,
+    yesterdayOddsComplete: summary.yesterdayOddsComplete == null ? null : Number(summary.yesterdayOddsComplete) === 1,
+  };
+}
+
 export type VegasSummaryStatsRow = {
   n: number;
   gameTotalMae: number | null;
