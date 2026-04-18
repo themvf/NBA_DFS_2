@@ -2138,6 +2138,29 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
       .slice(0, 12);
   }, [filteredPlayers, sport]);
 
+  const mlbHrTargets = useMemo(() => {
+    if (sport !== "mlb") return [];
+
+    return filteredPlayers
+      .filter((player) => getMlbHrBadge(player) != null)
+      .map((player) => {
+        const badge = getMlbHrBadge(player)!;
+        const odds = getPlayerOddsContext(player);
+        return {
+          player,
+          badge,
+          hrPct: player.hrProb1Plus != null ? Math.round(player.hrProb1Plus * 100) : null,
+          expectedHr: player.expectedHr ?? null,
+          teamTotal: odds.teamTotal,
+        };
+      })
+      .sort((a, b) =>
+        (b.player.hrProb1Plus ?? -1) - (a.player.hrProb1Plus ?? -1)
+        || (b.expectedHr ?? -1) - (a.expectedHr ?? -1)
+        || a.player.name.localeCompare(b.player.name)
+      );
+  }, [filteredPlayers, sport]);
+
   const visiblePlayerRows = useMemo(() => sortedPlayers.slice(0, 200), [sortedPlayers]);
   const activeLineups = useMemo(
     () => ((sport === "nba" ? lineups : mlbLineups) ?? []) as AnyGeneratedLineup[],
@@ -3469,6 +3492,60 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
                     <td className="py-1 text-right">{value?.toFixed(2) ?? "—"}</td>
                     <td className="py-1 text-right">{teamTotal?.toFixed(1) ?? "—"}</td>
                     <td className="py-1 text-right font-semibold text-green-700">{blowupScore.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {sport === "mlb" && mlbHrTargets.length > 0 && (
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold">
+              HR Targets
+              <span
+                className="ml-1.5 text-xs font-normal text-gray-400"
+                title="Only hitters meeting the same 1+ HR threshold used for the inline HR badge in the player pool."
+              >
+                (Badge List)
+              </span>
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Hitters currently qualifying for the DFS page HR badge, sorted by 1+ HR probability.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500 text-right">
+                  <th className="py-1 text-left">Player</th>
+                  <th className="py-1 text-left pl-2">Pos</th>
+                  <th className="py-1 text-left pl-2">Team</th>
+                  <th className="py-1">Order</th>
+                  <th className="py-1">Salary</th>
+                  <th className="py-1">1+ HR</th>
+                  <th className="py-1">Exp HR</th>
+                  <th className="py-1">Team Tot</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mlbHrTargets.map(({ player, badge, hrPct, expectedHr, teamTotal }) => (
+                  <tr key={player.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-1 font-medium">
+                      {player.name}
+                      <span title={badge.title} className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium align-middle ${badge.className}`}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="py-1 pl-2 text-gray-500">{displayPos(player.eligiblePositions, sport)}</td>
+                    <td className="py-1 pl-2 text-gray-500">{player.teamAbbrev}</td>
+                    <td className="py-1 text-right">{player.dkStartingLineupOrder ?? "—"}</td>
+                    <td className="py-1 text-right">{fmtSalary(player.salary)}</td>
+                    <td className="py-1 text-right font-semibold text-rose-700">{hrPct != null ? `${hrPct}%` : "—"}</td>
+                    <td className="py-1 text-right">{expectedHr != null ? expectedHr.toFixed(2) : "—"}</td>
+                    <td className="py-1 text-right">{teamTotal != null ? teamTotal.toFixed(1) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
