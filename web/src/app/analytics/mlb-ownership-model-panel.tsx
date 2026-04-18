@@ -62,6 +62,14 @@ export default async function MlbOwnershipModelPanel({
     );
   }
 
+  const findings = report.findings ?? [];
+  const sources = report.sources ?? [];
+  const segments = report.segments ?? [];
+  const buckets = report.buckets ?? [];
+  const recentSlates = report.recentSlates ?? [];
+  const versions = report.versions ?? [];
+  const latestSlateMisses = report.latestSlateMisses ?? [];
+  const selectedSlateRows = report.selectedSlateRows ?? [];
   const capturedAt = report.sample.latestCapturedAt
     ? new Date(report.sample.latestCapturedAt).toLocaleString()
     : null;
@@ -83,11 +91,11 @@ export default async function MlbOwnershipModelPanel({
         </p>
       </div>
 
-      {report.findings.length > 0 ? (
+      {findings.length > 0 ? (
         <div>
           <p className="mb-2 text-xs font-medium text-slate-700">What The Tracking Is Saying</p>
           <div className="grid gap-2 md:grid-cols-2">
-            {report.findings.map((finding) => (
+            {findings.map((finding) => (
               <div key={finding} className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                 {finding}
               </div>
@@ -110,7 +118,7 @@ export default async function MlbOwnershipModelPanel({
               </tr>
             </thead>
             <tbody>
-              {report.sources.map((row) => (
+              {sources.map((row) => (
                 <tr key={row.label} className="border-b border-slate-100">
                   <td className="py-1 font-medium">{row.label}</td>
                   <td className="py-1 text-right">{row.rows}</td>
@@ -140,7 +148,7 @@ export default async function MlbOwnershipModelPanel({
                 </tr>
               </thead>
               <tbody>
-                {report.segments.map((row) => (
+                {segments.map((row) => (
                   <tr key={row.segment} className="border-b border-slate-100">
                     <td className="py-1 font-medium">{row.segment}</td>
                     <td className="py-1 text-right">{row.rows}</td>
@@ -170,7 +178,7 @@ export default async function MlbOwnershipModelPanel({
                 </tr>
               </thead>
               <tbody>
-                {report.buckets.map((row) => (
+                {buckets.map((row) => (
                   <tr key={row.bucket} className="border-b border-slate-100">
                     <td className="py-1 font-medium">{row.bucket}</td>
                     <td className="py-1 text-right">{row.rows}</td>
@@ -203,7 +211,7 @@ export default async function MlbOwnershipModelPanel({
                 </tr>
               </thead>
               <tbody>
-                {report.recentSlates.map((row) => {
+                {recentSlates.map((row) => {
                   const active = report.selectedSlate?.slateId === row.slateId;
                   return (
                     <tr key={`${row.slateId}-${row.ownershipVersion}-${row.source}`} className="border-b border-slate-100">
@@ -249,7 +257,7 @@ export default async function MlbOwnershipModelPanel({
                 </tr>
               </thead>
               <tbody>
-                {report.versions.map((row) => (
+                {versions.map((row) => (
                   <tr key={`${row.ownershipVersion}-${row.source}`} className="border-b border-slate-100">
                     <td className="py-1">
                       <div className="font-medium">{row.ownershipVersion}</div>
@@ -269,10 +277,10 @@ export default async function MlbOwnershipModelPanel({
         </div>
       </div>
 
-      {report.latestSlateMisses.length > 0 ? (
+      {latestSlateMisses.length > 0 ? (
         <div>
           <p className="mb-2 text-xs font-medium text-slate-700">
-            Biggest Misses On Latest Completed Tracked Slate ({report.latestSlateMisses[0].slateDate})
+            Biggest Misses On Latest Completed Tracked Slate ({latestSlateMisses[0].slateDate})
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -289,7 +297,7 @@ export default async function MlbOwnershipModelPanel({
                 </tr>
               </thead>
               <tbody>
-                {report.latestSlateMisses.map((row) => (
+                {latestSlateMisses.map((row) => (
                   <tr key={`${row.slateId}-${row.name}-${row.salary}`} className="border-b border-slate-100">
                     <td className="py-1">
                       <div className="font-medium">{row.name}</div>
@@ -310,7 +318,7 @@ export default async function MlbOwnershipModelPanel({
         </div>
       ) : null}
 
-      {report.selectedSlate && report.selectedSlateRows.length > 0 ? (
+      {report.selectedSlate && selectedSlateRows.length > 0 ? (
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-medium text-slate-700">
@@ -348,7 +356,7 @@ export default async function MlbOwnershipModelPanel({
                 </tr>
               </thead>
               <tbody>
-                {report.selectedSlateRows.map((row) => (
+                {selectedSlateRows.map((row) => (
                   <tr key={`${row.slateId}-${row.name}-${row.salary}-${row.lineupOrder ?? 0}`} className="border-b border-slate-100">
                     <td className="py-1">
                       <div className="font-medium">{row.name}</div>

@@ -130,6 +130,9 @@ function NbaPerfectLineupTables({ analytics }: { analytics: NbaPerfectLineupAnal
 }
 
 function MlbPerfectLineupTables({ analytics }: { analytics: MlbPerfectLineupAnalytics }) {
+  const salaryLeftDistribution = analytics.salaryLeftDistribution ?? [];
+  const slateSalaries = analytics.slateSalaries ?? [];
+
   return (
     <>
       <div>
@@ -181,7 +184,7 @@ function MlbPerfectLineupTables({ analytics }: { analytics: MlbPerfectLineupAnal
               </tr>
             </thead>
             <tbody>
-              {analytics.salaryLeftDistribution.map((row) => (
+              {salaryLeftDistribution.map((row) => (
                 <tr key={row.salaryLeftBucket} className="border-b border-gray-50">
                   <td className="py-1 font-medium">{row.salaryLeftBucket}</td>
                   <td className="py-1 text-right">{row.slateCount}</td>
@@ -209,7 +212,7 @@ function MlbPerfectLineupTables({ analytics }: { analytics: MlbPerfectLineupAnal
               </tr>
             </thead>
             <tbody>
-              {analytics.slateSalaries.slice(0, 20).map((row) => (
+              {slateSalaries.slice(0, 20).map((row) => (
                 <tr key={row.slateId} className="border-b border-gray-50">
                   <td className="py-1 font-medium">{row.slateDate}</td>
                   <td className="py-1">{row.slateSizeBucket}</td>

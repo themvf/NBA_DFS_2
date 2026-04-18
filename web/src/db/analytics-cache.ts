@@ -91,7 +91,7 @@ export const getCachedMlbBattingOrderCalibration = unstable_cache(
 
 export const getCachedMlbOwnershipModelReport = unstable_cache(
   (selectedSlateId: number | null, sortBy: OwnershipDetailSort) => getMlbOwnershipModelReport(selectedSlateId, sortBy),
-  ["analytics-mlb-ownership-model"],
+  ["analytics-mlb-ownership-model-v2"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 
@@ -139,6 +139,6 @@ export const getCachedNbaPerfectLineupAnalytics = unstable_cache(
 
 export const getCachedMlbPerfectLineupAnalytics = unstable_cache(
   () => getMlbPerfectLineupAnalytics(),
-  ["analytics-perfect-lineup-mlb"],
+  ["analytics-perfect-lineup-mlb-v2"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
