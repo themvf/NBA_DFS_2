@@ -86,7 +86,7 @@ export const getCachedOwnershipVsTeamTotal = unstable_cache(
 // ---------------------------------------------------------------------------
 export const getCachedMlbBattingOrderCalibration = unstable_cache(
   () => getMlbBattingOrderCalibration(),
-  ["analytics-mlb-batting-order"],
+  ["analytics-mlb-batting-order-v2"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 

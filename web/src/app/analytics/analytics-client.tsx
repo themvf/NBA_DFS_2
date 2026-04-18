@@ -796,10 +796,10 @@ export default function AnalyticsClient({
                       {delta != null ? `${delta > 0 ? "+" : ""}${delta.toFixed(2)}` : "—"}
                     </td>
                     <td className="py-1 text-right">
-                      {row.avgProjOwn != null ? `${(row.avgProjOwn * 100).toFixed(1)}%` : "—"}
+                      {row.avgProjOwn != null ? `${row.avgProjOwn.toFixed(1)}%` : "—"}
                     </td>
                     <td className="py-1 text-right">
-                      {row.avgActualOwn != null ? `${(row.avgActualOwn * 100).toFixed(1)}%` : "—"}
+                      {row.avgActualOwn != null ? `${row.avgActualOwn.toFixed(1)}%` : "—"}
                     </td>
                   </tr>
                 );

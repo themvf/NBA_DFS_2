@@ -2995,27 +2995,39 @@ export async function getMlbBattingOrderCalibration(): Promise<
   MlbBattingOrderCalibrationRow[]
 > {
   const rows = await db.execute(sql`
+    WITH hitter_sample AS (
+      SELECT
+        dp.dk_starting_lineup_order AS order_slot,
+        COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS blended_proj,
+        dp.actual_fpts,
+        dp.proj_own_pct,
+        dp.actual_own_pct
+      FROM dk_players dp
+      JOIN dk_slates ds ON ds.id = dp.slate_id
+      WHERE ds.sport = 'mlb'
+        AND COALESCE(ds.contest_type, 'main') = 'main'
+        AND COALESCE(ds.contest_format, 'gpp') = 'gpp'
+        AND COALESCE(dp.is_out, false) = false
+        AND dp.dk_starting_lineup_order BETWEEN 1 AND 9
+        AND dp.eligible_positions NOT LIKE '%SP%'
+        AND dp.eligible_positions NOT LIKE '%RP%'
+    )
     SELECT
-      dp.dk_starting_lineup_order                                             AS "orderSlot",
-      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL) AS "n",
-      AVG(dp.live_proj)
-        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL) AS "avgProj",
-      AVG(dp.actual_fpts)
-        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL) AS "avgActual",
-      AVG(dp.actual_fpts - dp.live_proj)
-        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.live_proj IS NOT NULL) AS "avgDelta",
-      AVG(dp.proj_own_pct)
-        FILTER (WHERE dp.proj_own_pct IS NOT NULL)                             AS "avgProjOwn",
-      AVG(dp.actual_own_pct)
-        FILTER (WHERE dp.actual_own_pct IS NOT NULL)                           AS "avgActualOwn"
-    FROM dk_players dp
-    JOIN dk_slates ds ON ds.id = dp.slate_id
-    WHERE ds.sport = 'mlb'
-      AND dp.dk_starting_lineup_order BETWEEN 1 AND 9
-      AND dp.eligible_positions NOT LIKE '%SP%'
-      AND dp.eligible_positions NOT LIKE '%RP%'
-    GROUP BY dp.dk_starting_lineup_order
-    ORDER BY dp.dk_starting_lineup_order ASC
+      hs.order_slot AS "orderSlot",
+      COUNT(*) FILTER (WHERE hs.actual_fpts IS NOT NULL AND hs.blended_proj IS NOT NULL) AS "n",
+      AVG(hs.blended_proj)
+        FILTER (WHERE hs.actual_fpts IS NOT NULL AND hs.blended_proj IS NOT NULL) AS "avgProj",
+      AVG(hs.actual_fpts)
+        FILTER (WHERE hs.actual_fpts IS NOT NULL AND hs.blended_proj IS NOT NULL) AS "avgActual",
+      AVG(hs.actual_fpts - hs.blended_proj)
+        FILTER (WHERE hs.actual_fpts IS NOT NULL AND hs.blended_proj IS NOT NULL) AS "avgDelta",
+      AVG(hs.proj_own_pct)
+        FILTER (WHERE hs.proj_own_pct IS NOT NULL) AS "avgProjOwn",
+      AVG(hs.actual_own_pct)
+        FILTER (WHERE hs.actual_own_pct IS NOT NULL) AS "avgActualOwn"
+    FROM hitter_sample hs
+    GROUP BY hs.order_slot
+    ORDER BY hs.order_slot ASC
   `);
   return (rows.rows as MlbBattingOrderCalibrationRow[]).map((r) => ({
     orderSlot: Number(r.orderSlot),
