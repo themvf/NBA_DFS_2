@@ -5,6 +5,7 @@ import { db } from ".";
 let ensureDkPlayerPropColumnsPromise: Promise<void> | null = null;
 let ensureProjectionExperimentTablesPromise: Promise<void> | null = null;
 let ensureOwnershipExperimentTablesPromise: Promise<void> | null = null;
+let ensureMlbBlowupTrackingTablesPromise: Promise<void> | null = null;
 let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
@@ -125,6 +126,44 @@ const OWNERSHIP_EXPERIMENT_DDLS = [
   `CREATE INDEX IF NOT EXISTS idx_ownership_snapshots_slate ON ownership_player_snapshots(slate_id, dk_player_id)`,
 ];
 
+const MLB_BLOWUP_TRACKING_DDLS = [
+  `CREATE TABLE IF NOT EXISTS mlb_blowup_runs (
+      id SERIAL PRIMARY KEY,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      analysis_version TEXT NOT NULL,
+      source TEXT NOT NULL,
+      config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+  `CREATE TABLE IF NOT EXISTS mlb_blowup_player_snapshots (
+      id SERIAL PRIMARY KEY,
+      run_id INTEGER NOT NULL REFERENCES mlb_blowup_runs(id) ON DELETE CASCADE,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      dk_player_id BIGINT NOT NULL,
+      name TEXT NOT NULL,
+      team_id INTEGER,
+      team_abbrev TEXT,
+      salary INTEGER NOT NULL,
+      eligible_positions TEXT,
+      lineup_order INTEGER,
+      team_total REAL,
+      projected_fpts REAL,
+      projected_ceiling REAL,
+      projected_value REAL,
+      blowup_score REAL,
+      candidate_rank INTEGER,
+      actual_fpts REAL,
+      actual_own_pct REAL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(run_id, dk_player_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_mlb_blowup_runs_slate ON mlb_blowup_runs(slate_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_mlb_blowup_runs_model ON mlb_blowup_runs(analysis_version, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_mlb_blowup_snapshots_run ON mlb_blowup_player_snapshots(run_id, dk_player_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_mlb_blowup_snapshots_slate ON mlb_blowup_player_snapshots(slate_id, candidate_rank)`,
+];
+
 const ODDS_SIGNAL_DDLS = [
   `CREATE TABLE IF NOT EXISTS odds_signal_runs (
       id SERIAL PRIMARY KEY,
@@ -228,6 +267,20 @@ export async function ensureOwnershipExperimentTables(): Promise<void> {
     });
   }
   await ensureOwnershipExperimentTablesPromise;
+}
+
+export async function ensureMlbBlowupTrackingTables(): Promise<void> {
+  if (!ensureMlbBlowupTrackingTablesPromise) {
+    ensureMlbBlowupTrackingTablesPromise = (async () => {
+      for (const ddl of MLB_BLOWUP_TRACKING_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureMlbBlowupTrackingTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureMlbBlowupTrackingTablesPromise;
 }
 
 export async function ensureOddsSignalTables(): Promise<void> {

@@ -12,12 +12,13 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { ANALYTICS_CACHE_TAG } from "@/db/analytics-cache";
 import { db } from "@/db";
-import { ensureDkPlayerPropColumns, ensureOddsHistoryTables, ensureOwnershipExperimentTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
-import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, ownershipRuns, ownershipPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
+import { ensureDkPlayerPropColumns, ensureMlbBlowupTrackingTables, ensureOddsHistoryTables, ensureOwnershipExperimentTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
+import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, ownershipRuns, ownershipPlayerSnapshots, mlbBlowupRuns, mlbBlowupPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
+import { buildMlbBlowupCandidates, MLB_BLOWUP_CANDIDATE_VERSION } from "./mlb-blowup";
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import { isTournamentMode } from "./optimizer-mode";
 import { applyMlbPendingLineupPolicy, inferMlbTeamLineupConfirmed, isPositiveMlbLineupOrder } from "./mlb-lineup";
@@ -1661,6 +1662,100 @@ async function syncOwnershipSnapshotActualsForSlate(slateId: number): Promise<vo
     WHERE ops.slate_id = dp.slate_id
       AND ops.dk_player_id = dp.dk_player_id
       AND ops.slate_id = ${slateId}
+  `);
+}
+
+async function createMlbBlowupRun(
+  slateId: number,
+  source: string,
+  analysisVersion: string,
+  configJson: Record<string, unknown>,
+  notes?: string,
+): Promise<number> {
+  await ensureMlbBlowupTrackingTables();
+  const [run] = await db.insert(mlbBlowupRuns).values({
+    slateId,
+    analysisVersion,
+    source,
+    configJson,
+    notes: notes ?? null,
+  }).returning({ id: mlbBlowupRuns.id });
+  return run.id;
+}
+
+async function recordMlbBlowupSnapshots(
+  runId: number,
+  snapshots: Array<{
+    slateId: number;
+    dkPlayerId: number;
+    name: string;
+    teamId: number | null;
+    teamAbbrev: string | null;
+    salary: number;
+    eligiblePositions: string | null;
+    lineupOrder?: number | null;
+    teamTotal?: number | null;
+    projectedFpts?: number | null;
+    projectedCeiling?: number | null;
+    projectedValue?: number | null;
+    blowupScore?: number | null;
+    candidateRank: number;
+    actualFpts?: number | null;
+    actualOwnPct?: number | null;
+  }>,
+): Promise<void> {
+  if (snapshots.length === 0) return;
+  await ensureMlbBlowupTrackingTables();
+
+  for (let i = 0; i < snapshots.length; i += 100) {
+    const batch = snapshots.slice(i, i + 100).map((snapshot) => ({
+      runId,
+      slateId: snapshot.slateId,
+      dkPlayerId: snapshot.dkPlayerId,
+      name: snapshot.name,
+      teamId: snapshot.teamId,
+      teamAbbrev: snapshot.teamAbbrev ?? null,
+      salary: snapshot.salary,
+      eligiblePositions: snapshot.eligiblePositions ?? null,
+      lineupOrder: snapshot.lineupOrder ?? null,
+      teamTotal: snapshot.teamTotal ?? null,
+      projectedFpts: snapshot.projectedFpts ?? null,
+      projectedCeiling: snapshot.projectedCeiling ?? null,
+      projectedValue: snapshot.projectedValue ?? null,
+      blowupScore: snapshot.blowupScore ?? null,
+      candidateRank: snapshot.candidateRank,
+      actualFpts: snapshot.actualFpts ?? null,
+      actualOwnPct: snapshot.actualOwnPct ?? null,
+    }));
+
+    await db.insert(mlbBlowupPlayerSnapshots).values(batch).onConflictDoUpdate({
+      target: [mlbBlowupPlayerSnapshots.runId, mlbBlowupPlayerSnapshots.dkPlayerId],
+      set: {
+        teamTotal: sql`EXCLUDED.team_total`,
+        projectedFpts: sql`EXCLUDED.projected_fpts`,
+        projectedCeiling: sql`EXCLUDED.projected_ceiling`,
+        projectedValue: sql`EXCLUDED.projected_value`,
+        blowupScore: sql`EXCLUDED.blowup_score`,
+        candidateRank: sql`EXCLUDED.candidate_rank`,
+        lineupOrder: sql`EXCLUDED.lineup_order`,
+        actualFpts: sql`EXCLUDED.actual_fpts`,
+        actualOwnPct: sql`EXCLUDED.actual_own_pct`,
+      },
+    });
+  }
+}
+
+async function syncMlbBlowupSnapshotActualsForSlate(slateId: number): Promise<void> {
+  await ensureMlbBlowupTrackingTables();
+  await db.execute(sql`
+    UPDATE mlb_blowup_player_snapshots bps
+    SET
+      actual_fpts = dp.actual_fpts,
+      actual_own_pct = dp.actual_own_pct
+    FROM dk_players dp
+    WHERE bps.slate_id = dp.slate_id
+      AND bps.dk_player_id = dp.dk_player_id
+      AND bps.slate_id = ${slateId}
   `);
 }
 
@@ -4487,9 +4582,13 @@ export async function saveHistoricalSlate(
 
     await refreshHistoricalSlateGameCount(slateId, sport);
     try { await syncOwnershipSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
+    if (sport === "mlb") {
+      try { await syncMlbBlowupSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
+    }
 
     revalidatePath("/dfs");
     revalidatePath("/analytics");
+    revalidateTag(ANALYTICS_CACHE_TAG, {});
     return {
       ok: true,
       message: `Updated ${updated}/${pool.rows.length} players with actual results for ${date}`,
@@ -4590,9 +4689,13 @@ export async function saveHistoricalSlate(
 
   await refreshHistoricalSlateGameCount(slateId, sport);
   try { await syncOwnershipSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
+  if (sport === "mlb") {
+    try { await syncMlbBlowupSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
+  }
 
   revalidatePath("/dfs");
   revalidatePath("/analytics");
+  revalidateTag(ANALYTICS_CACHE_TAG, {});
   return {
     ok: true,
     message: `Created historical ${sport.toUpperCase()} slate for ${date} with ${created} players (synthetic IDs — ourProj will be null)`,
@@ -5730,6 +5833,43 @@ async function enrichAndSaveMlb(
     lineupConfirmed: (player.dkTeamLineupConfirmed as boolean | null | undefined) ?? null,
   }));
 
+  const blowupCandidates = buildMlbBlowupCandidates(
+    insertValues.map((player) => ({
+      dkPlayerId: Number(player.dkPlayerId),
+      name: String(player.name),
+      teamId: (player.mlbTeamId as number | null) ?? null,
+      teamAbbrev: (player.teamAbbrev as string | null) ?? null,
+      eligiblePositions: (player.eligiblePositions as string | null) ?? null,
+      salary: Number(player.salary ?? 0),
+      isOut: Boolean(player.isOut),
+      ourProj: sanitizeProjection((player.ourProj as number | null | undefined) ?? null),
+      liveProj: null,
+      blendProj: null,
+      projCeiling: sanitizeProjection((player.projCeiling as number | null | undefined) ?? null),
+      teamTotal: finiteOrNull((player.teamImplied as number | null | undefined) ?? null),
+      lineupOrder: (player.dkStartingLineupOrder as number | null | undefined) ?? null,
+    })),
+    12,
+  );
+  const blowupSnapshots = blowupCandidates.map((candidate, index) => ({
+    slateId,
+    dkPlayerId: candidate.player.dkPlayerId,
+    name: candidate.player.name,
+    teamId: candidate.player.teamId,
+    teamAbbrev: candidate.player.teamAbbrev,
+    salary: candidate.player.salary,
+    eligiblePositions: candidate.player.eligiblePositions,
+    lineupOrder: candidate.player.lineupOrder,
+    teamTotal: Math.round(candidate.teamTotal * 100) / 100,
+    projectedFpts: Math.round(candidate.proj * 100) / 100,
+    projectedCeiling: Math.round(candidate.ceiling * 100) / 100,
+    projectedValue: Math.round(candidate.value * 100) / 100,
+    blowupScore: Math.round(candidate.blowupScore * 100) / 100,
+    candidateRank: index + 1,
+    actualFpts: null,
+    actualOwnPct: null,
+  }));
+
   const dbInsertValues = insertValues.map(({ teamImplied, oppImplied, teamMl, vegasTotal, isHome, ...row }) => row);
 
   for (let i = 0; i < dbInsertValues.length; i += 50) {
@@ -5761,6 +5901,13 @@ async function enrichAndSaveMlb(
     matchedLinestar: lsMatched,
   });
   await recordOwnershipSnapshots(ownershipRunId, ownershipSnapshots);
+  const blowupRunId = await createMlbBlowupRun(slateId, "load_slate", MLB_BLOWUP_CANDIDATE_VERSION, {
+    version: MLB_BLOWUP_CANDIDATE_VERSION,
+    source: "load_slate",
+    playerCount: insertValues.length,
+    candidateCount: blowupSnapshots.length,
+  });
+  await recordMlbBlowupSnapshots(blowupRunId, blowupSnapshots);
 
   revalidatePath("/dfs");
   const matchRate = lsMap.size > 0 ? Math.round((lsMatched / dkPlayers_.length) * 100) : null;
@@ -6387,6 +6534,9 @@ export async function uploadResults(formData: FormData): Promise<{
 
   try { await syncProjectionSnapshotActualsForSlate(slate.id); } catch { /* non-fatal */ }
   try { await syncOwnershipSnapshotActualsForSlate(slate.id); } catch { /* non-fatal */ }
+  if (slate.sport === "mlb") {
+    try { await syncMlbBlowupSnapshotActualsForSlate(slate.id); } catch { /* non-fatal */ }
+  }
   let analysisNote = "";
   if (slate.sport === "nba") {
     try {

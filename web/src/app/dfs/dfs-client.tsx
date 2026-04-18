@@ -9,6 +9,7 @@ import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { CreateOptimizerJobResponse, OptimizerJobStatusResponse, PersistedOptimizerJobLineup } from "./optimizer-job-types";
 import type { OptimizerMode } from "./optimizer-mode";
+import { buildMlbBlowupCandidates } from "./mlb-blowup";
 import { getMlbLineupStatus, isMlbRowUnavailable, type MlbPendingLineupPolicy } from "./mlb-lineup";
 import {
   normalizeNbaRuleSelections,
@@ -2109,33 +2110,7 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
 
   const mlbBlowupCandidates = useMemo(() => {
     if (sport !== "mlb") return [];
-    const MLB_AVG_TEAM_TOTAL = 4.5;
-    return filteredPlayers
-      .filter((p) => {
-        if (p.isOut) return false;
-        const pos = p.eligiblePositions ?? "";
-        return !pos.includes("SP") && !pos.includes("RP");
-      })
-      .map((p) => {
-        const isHome = p.teamId != null && p.homeTeamId != null
-          ? p.teamId === p.homeTeamId
-          : null;
-        const teamTotal = isHome == null
-          ? null
-          : (isHome ? p.homeImplied : p.awayImplied)
-            ?? (p.vegasTotal != null
-              ? computeTeamImpliedTotal(p.vegasTotal, p.homeMl, p.awayMl, isHome)
-              : null);
-        const proj = p.liveProj ?? p.blendProj ?? p.ourProj ?? null;
-        const ceiling = p.projCeiling ?? (proj != null ? proj * 1.25 : null);
-        const value = proj != null ? proj / (p.salary / 1000) : null;
-        if (teamTotal == null || ceiling == null || value == null) return null;
-        const blowupScore = (teamTotal / MLB_AVG_TEAM_TOTAL) * ceiling * value / 10;
-        return { player: p, blowupScore, teamTotal, proj, ceiling, value };
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null)
-      .sort((a, b) => b.blowupScore - a.blowupScore)
-      .slice(0, 12);
+    return buildMlbBlowupCandidates(filteredPlayers, 12);
   }, [filteredPlayers, sport]);
 
   const mlbHrTargets = useMemo(() => {

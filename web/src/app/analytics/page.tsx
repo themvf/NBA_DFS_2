@@ -4,6 +4,7 @@ export const maxDuration = 60;
 import { Suspense } from "react";
 import type { OwnershipDetailSort, Sport } from "@/db/queries";
 import AnalyticsContent from "./analytics-content";
+import MlbBlowupCandidatePanel from "./mlb-blowup-candidate-panel";
 import MlbOwnershipModelPanel from "./mlb-ownership-model-panel";
 import MlbPitcherLineupPanel from "./mlb-pitcher-lineup-panel";
 import MlbRunEnvironmentPanel from "./mlb-run-environment-panel";
@@ -55,6 +56,20 @@ export default async function AnalyticsPage({
           }
         >
           <MlbOwnershipModelPanel selectedSlateId={ownershipSlateId} sortBy={ownershipSort} />
+        </Suspense>
+      ) : null}
+      {sport === "mlb" ? (
+        <Suspense
+          fallback={
+            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
+              <h2 className="mb-1 text-sm font-semibold">MLB Blowup Candidate Tracking</h2>
+              <p className="text-xs text-slate-700">
+                Loading blowup candidate report...
+              </p>
+            </div>
+          }
+        >
+          <MlbBlowupCandidatePanel />
         </Suspense>
       ) : null}
       {sport === "mlb" ? (

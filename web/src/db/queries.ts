@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables } from "./ensure-schema";
+import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -1658,6 +1658,321 @@ export async function getMlbOwnershipModelReport(
     latestSlateMisses,
     selectedSlate,
     selectedSlateRows,
+  };
+}
+
+export type MlbBlowupRankSummaryRow = {
+  candidateRank: number;
+  rows: number;
+  avgScore: number | null;
+  avgProj: number | null;
+  avgCeiling: number | null;
+  avgActual: number | null;
+  avgActualOwn: number | null;
+  avgBeat: number | null;
+  hit15Rate: number | null;
+  hit20Rate: number | null;
+  hit25Rate: number | null;
+};
+
+export type MlbBlowupRecentSlateRow = {
+  slateId: number;
+  slateDate: string;
+  analysisVersion: string;
+  source: string;
+  capturedAt: string | null;
+  rows: number;
+  avgActual: number | null;
+  avgActualOwn: number | null;
+  hits15: number;
+  hits20: number;
+  hits25: number;
+  bestActual: number | null;
+  bestPlayer: string | null;
+};
+
+export type MlbBlowupSlateDetailRow = {
+  slateId: number;
+  slateDate: string;
+  candidateRank: number;
+  name: string;
+  teamAbbrev: string | null;
+  eligiblePositions: string | null;
+  lineupOrder: number | null;
+  salary: number;
+  teamTotal: number | null;
+  projectedFpts: number | null;
+  projectedCeiling: number | null;
+  projectedValue: number | null;
+  blowupScore: number | null;
+  actualFpts: number | null;
+  actualOwnPct: number | null;
+};
+
+export type MlbBlowupCandidateReport = {
+  sample: {
+    slates: number;
+    rows: number;
+    latestVersion: string | null;
+    latestSource: string | null;
+    latestCapturedAt: string | null;
+  };
+  findings: string[];
+  rankSummary: MlbBlowupRankSummaryRow[];
+  recentSlates: MlbBlowupRecentSlateRow[];
+  latestSlate: {
+    slateId: number;
+    slateDate: string;
+  } | null;
+  latestSlateRows: MlbBlowupSlateDetailRow[];
+};
+
+function buildMlbBlowupFindings(
+  rankSummary: MlbBlowupRankSummaryRow[],
+  recentSlates: MlbBlowupRecentSlateRow[],
+): string[] {
+  const findings: string[] = [];
+
+  const topThree = rankSummary.filter((row) => row.candidateRank <= 3);
+  const backHalf = rankSummary.filter((row) => row.candidateRank >= 10);
+  if (topThree.length > 0 && backHalf.length > 0) {
+    const topThreeHit20 = topThree.reduce((sum, row) => sum + (row.hit20Rate ?? 0), 0) / topThree.length;
+    const backHalfHit20 = backHalf.reduce((sum, row) => sum + (row.hit20Rate ?? 0), 0) / backHalf.length;
+    findings.push(`Top-3 blowup ranks are hitting 20+ DK points at ${topThreeHit20.toFixed(1)}% versus ${backHalfHit20.toFixed(1)}% for ranks 10-12.`);
+  }
+
+  const bestRank = [...rankSummary]
+    .filter((row) => row.hit25Rate != null)
+    .sort((a, b) => (b.hit25Rate ?? -999) - (a.hit25Rate ?? -999))[0];
+  if (bestRank?.hit25Rate != null) {
+    findings.push(`Rank #${bestRank.candidateRank} has been the strongest slate-winning lane so far, reaching 25+ DK points ${bestRank.hit25Rate.toFixed(1)}% of the time.`);
+  }
+
+  const recent = recentSlates.slice(0, 8);
+  if (recent.length > 0) {
+    const avgHits20 = recent.reduce((sum, row) => sum + row.hits20, 0) / recent.length;
+    findings.push(`Recent MLB slates are producing ${avgHits20.toFixed(1)} 20+ DK games on average from the tracked top-12 blowup list.`);
+  }
+
+  const ownershipSignal = rankSummary
+    .filter((row) => row.hit20Rate != null && row.avgActualOwn != null)
+    .sort((a, b) => (b.hit20Rate ?? -999) - (a.hit20Rate ?? -999))[0];
+  if (ownershipSignal?.avgActualOwn != null) {
+    findings.push(`The best-performing blowup rank is still coming in at only ${ownershipSignal.avgActualOwn.toFixed(2)}% actual ownership on average.`);
+  }
+
+  return findings.slice(0, 4);
+}
+
+export async function getMlbBlowupCandidateReport(): Promise<MlbBlowupCandidateReport | null> {
+  await ensureMlbBlowupTrackingTables();
+
+  const latestRunsCte = sql`
+    WITH latest_runs AS (
+      SELECT DISTINCT ON (r.slate_id)
+        r.id,
+        r.slate_id,
+        r.analysis_version,
+        r.source,
+        r.created_at
+      FROM mlb_blowup_runs r
+      JOIN dk_slates ds ON ds.id = r.slate_id
+      WHERE ds.sport = 'mlb'
+      ORDER BY r.slate_id, r.created_at DESC, r.id DESC
+    ),
+    sample AS (
+      SELECT
+        s.*,
+        lr.analysis_version,
+        lr.source,
+        lr.created_at AS run_created_at,
+        ds.slate_date::text AS slate_date
+      FROM mlb_blowup_player_snapshots s
+      JOIN latest_runs lr ON lr.id = s.run_id
+      JOIN dk_slates ds ON ds.id = s.slate_id
+      WHERE s.actual_fpts IS NOT NULL
+    )
+  `;
+
+  const [summaryResult, rankResult, recentSlateResult, latestSlateRowsResult] = await Promise.all([
+    db.execute<{
+      slates: number;
+      rows: number;
+      latestVersion: string | null;
+      latestSource: string | null;
+      latestCapturedAt: string | null;
+    }>(sql`
+      ${latestRunsCte}
+      SELECT
+        COUNT(DISTINCT sample.slate_id)::int AS "slates",
+        COUNT(*)::int AS "rows",
+        (
+          SELECT lr.analysis_version
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestVersion",
+        (
+          SELECT lr.source
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestSource",
+        (
+          SELECT lr.created_at::text
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestCapturedAt"
+      FROM sample
+    `),
+    db.execute<MlbBlowupRankSummaryRow>(sql`
+      ${latestRunsCte}
+      SELECT
+        sample.candidate_rank AS "candidateRank",
+        COUNT(*)::int AS "rows",
+        AVG(sample.blowup_score) AS "avgScore",
+        AVG(sample.projected_fpts) AS "avgProj",
+        AVG(sample.projected_ceiling) AS "avgCeiling",
+        AVG(sample.actual_fpts) AS "avgActual",
+        AVG(sample.actual_own_pct) AS "avgActualOwn",
+        AVG(sample.actual_fpts - sample.projected_fpts) AS "avgBeat",
+        AVG(CASE WHEN sample.actual_fpts >= 15 THEN 1 ELSE 0 END) * 100 AS "hit15Rate",
+        AVG(CASE WHEN sample.actual_fpts >= 20 THEN 1 ELSE 0 END) * 100 AS "hit20Rate",
+        AVG(CASE WHEN sample.actual_fpts >= 25 THEN 1 ELSE 0 END) * 100 AS "hit25Rate"
+      FROM sample
+      GROUP BY sample.candidate_rank
+      ORDER BY sample.candidate_rank ASC
+    `),
+    db.execute<MlbBlowupRecentSlateRow>(sql`
+      ${latestRunsCte}
+      SELECT
+        sample.slate_id AS "slateId",
+        sample.slate_date AS "slateDate",
+        sample.analysis_version AS "analysisVersion",
+        sample.source AS "source",
+        sample.run_created_at::text AS "capturedAt",
+        COUNT(*)::int AS "rows",
+        AVG(sample.actual_fpts) AS "avgActual",
+        AVG(sample.actual_own_pct) AS "avgActualOwn",
+        COUNT(*) FILTER (WHERE sample.actual_fpts >= 15)::int AS "hits15",
+        COUNT(*) FILTER (WHERE sample.actual_fpts >= 20)::int AS "hits20",
+        COUNT(*) FILTER (WHERE sample.actual_fpts >= 25)::int AS "hits25",
+        MAX(sample.actual_fpts) AS "bestActual",
+        (
+          SELECT s2.name
+          FROM sample s2
+          WHERE s2.slate_id = sample.slate_id
+          ORDER BY s2.actual_fpts DESC NULLS LAST, s2.candidate_rank ASC
+          LIMIT 1
+        ) AS "bestPlayer"
+      FROM sample
+      GROUP BY sample.slate_id, sample.slate_date, sample.analysis_version, sample.source, sample.run_created_at
+      ORDER BY sample.slate_date DESC, sample.slate_id DESC
+      LIMIT 15
+    `),
+    db.execute<MlbBlowupSlateDetailRow>(sql`
+      ${latestRunsCte}
+      , latest_completed_slate AS (
+        SELECT sample.slate_id, sample.slate_date
+        FROM sample
+        GROUP BY sample.slate_id, sample.slate_date
+        ORDER BY sample.slate_date DESC, sample.slate_id DESC
+        LIMIT 1
+      )
+      SELECT
+        sample.slate_id AS "slateId",
+        sample.slate_date AS "slateDate",
+        sample.candidate_rank AS "candidateRank",
+        sample.name AS "name",
+        sample.team_abbrev AS "teamAbbrev",
+        sample.eligible_positions AS "eligiblePositions",
+        sample.lineup_order AS "lineupOrder",
+        sample.salary AS "salary",
+        sample.team_total AS "teamTotal",
+        sample.projected_fpts AS "projectedFpts",
+        sample.projected_ceiling AS "projectedCeiling",
+        sample.projected_value AS "projectedValue",
+        sample.blowup_score AS "blowupScore",
+        sample.actual_fpts AS "actualFpts",
+        sample.actual_own_pct AS "actualOwnPct"
+      FROM sample
+      JOIN latest_completed_slate lcs ON lcs.slate_id = sample.slate_id
+      ORDER BY sample.candidate_rank ASC, sample.blowup_score DESC NULLS LAST, sample.name ASC
+    `),
+  ]);
+
+  const summary = summaryResult.rows[0];
+  if (!summary || Number(summary.rows ?? 0) === 0) return null;
+
+  const rankSummary = rankResult.rows.map((row) => ({
+    candidateRank: Number(row.candidateRank),
+    rows: Number(row.rows),
+    avgScore: row.avgScore == null ? null : Number(row.avgScore),
+    avgProj: row.avgProj == null ? null : Number(row.avgProj),
+    avgCeiling: row.avgCeiling == null ? null : Number(row.avgCeiling),
+    avgActual: row.avgActual == null ? null : Number(row.avgActual),
+    avgActualOwn: row.avgActualOwn == null ? null : Number(row.avgActualOwn),
+    avgBeat: row.avgBeat == null ? null : Number(row.avgBeat),
+    hit15Rate: row.hit15Rate == null ? null : Number(row.hit15Rate),
+    hit20Rate: row.hit20Rate == null ? null : Number(row.hit20Rate),
+    hit25Rate: row.hit25Rate == null ? null : Number(row.hit25Rate),
+  }));
+
+  const recentSlates = recentSlateResult.rows.map((row) => ({
+    slateId: Number(row.slateId),
+    slateDate: row.slateDate,
+    analysisVersion: row.analysisVersion,
+    source: row.source,
+    capturedAt: row.capturedAt ?? null,
+    rows: Number(row.rows),
+    avgActual: row.avgActual == null ? null : Number(row.avgActual),
+    avgActualOwn: row.avgActualOwn == null ? null : Number(row.avgActualOwn),
+    hits15: Number(row.hits15),
+    hits20: Number(row.hits20),
+    hits25: Number(row.hits25),
+    bestActual: row.bestActual == null ? null : Number(row.bestActual),
+    bestPlayer: row.bestPlayer ?? null,
+  }));
+
+  const latestSlateRows = latestSlateRowsResult.rows.map((row) => ({
+    slateId: Number(row.slateId),
+    slateDate: row.slateDate,
+    candidateRank: Number(row.candidateRank),
+    name: row.name,
+    teamAbbrev: row.teamAbbrev ?? null,
+    eligiblePositions: row.eligiblePositions ?? null,
+    lineupOrder: row.lineupOrder == null ? null : Number(row.lineupOrder),
+    salary: Number(row.salary ?? 0),
+    teamTotal: row.teamTotal == null ? null : Number(row.teamTotal),
+    projectedFpts: row.projectedFpts == null ? null : Number(row.projectedFpts),
+    projectedCeiling: row.projectedCeiling == null ? null : Number(row.projectedCeiling),
+    projectedValue: row.projectedValue == null ? null : Number(row.projectedValue),
+    blowupScore: row.blowupScore == null ? null : Number(row.blowupScore),
+    actualFpts: row.actualFpts == null ? null : Number(row.actualFpts),
+    actualOwnPct: row.actualOwnPct == null ? null : Number(row.actualOwnPct),
+  }));
+
+  const latestSlate = latestSlateRows.length > 0
+    ? {
+        slateId: latestSlateRows[0].slateId,
+        slateDate: latestSlateRows[0].slateDate,
+      }
+    : null;
+
+  return {
+    sample: {
+      slates: Number(summary.slates ?? 0),
+      rows: Number(summary.rows ?? 0),
+      latestVersion: summary.latestVersion ?? null,
+      latestSource: summary.latestSource ?? null,
+      latestCapturedAt: summary.latestCapturedAt ?? null,
+    },
+    findings: buildMlbBlowupFindings(rankSummary, recentSlates),
+    rankSummary,
+    recentSlates,
+    latestSlate,
+    latestSlateRows,
   };
 }
 

@@ -621,6 +621,59 @@ export const ownershipPlayerSnapshots = pgTable(
   ]
 );
 
+export const mlbBlowupRuns = pgTable(
+  "mlb_blowup_runs",
+  {
+    id: serial("id").primaryKey(),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    analysisVersion: text("analysis_version").notNull(),
+    source: text("source").notNull(),
+    configJson: jsonb("config_json").notNull().default({}),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_mlb_blowup_runs_slate").on(t.slateId, t.createdAt),
+    index("idx_mlb_blowup_runs_model").on(t.analysisVersion, t.createdAt),
+  ]
+);
+
+export const mlbBlowupPlayerSnapshots = pgTable(
+  "mlb_blowup_player_snapshots",
+  {
+    id: serial("id").primaryKey(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => mlbBlowupRuns.id),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    dkPlayerId: bigint("dk_player_id", { mode: "number" }).notNull(),
+    name: text("name").notNull(),
+    teamId: integer("team_id"),
+    teamAbbrev: text("team_abbrev"),
+    salary: integer("salary").notNull(),
+    eligiblePositions: text("eligible_positions"),
+    lineupOrder: integer("lineup_order"),
+    teamTotal: real("team_total"),
+    projectedFpts: real("projected_fpts"),
+    projectedCeiling: real("projected_ceiling"),
+    projectedValue: real("projected_value"),
+    blowupScore: real("blowup_score"),
+    candidateRank: integer("candidate_rank"),
+    actualFpts: real("actual_fpts"),
+    actualOwnPct: real("actual_own_pct"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_mlb_blowup_snapshots_run").on(t.runId, t.dkPlayerId),
+    index("idx_mlb_blowup_snapshots_slate").on(t.slateId, t.candidateRank),
+    unique("mlb_blowup_snapshots_run_player_key").on(t.runId, t.dkPlayerId),
+  ]
+);
+
 export const oddsSignalRuns = pgTable(
   "odds_signal_runs",
   {
