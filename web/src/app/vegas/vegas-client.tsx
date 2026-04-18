@@ -656,15 +656,36 @@ export default function VegasClient({
 
       {!hasScores && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <strong>No historical score data yet.</strong> Run{" "}
-          <code className="font-mono bg-amber-100 px-1 rounded">
-            python -m ingest.backfill_scores
-          </code>{" "}
-          once to populate final scores, then re-run{" "}
-          <code className="font-mono bg-amber-100 px-1 rounded">
-            python -m ingest.nba_schedule
-          </code>{" "}
-          after each game day to keep scores current.
+          <strong>No historical score data yet.</strong>{" "}
+          {sport === "mlb" ? (
+            <>
+              Run{" "}
+              <code className="font-mono bg-amber-100 px-1 rounded">
+                python -m ingest.backfill_mlb_schedule --start YYYY-MM-DD --end YYYY-MM-DD
+              </code>{" "}
+              once to populate historical MLB schedule and scores, then keep it current with{" "}
+              <code className="font-mono bg-amber-100 px-1 rounded">
+                python -m ingest.mlb_schedule --date YYYY-MM-DD
+              </code>{" "}
+              or the daily GitHub Action workflow{" "}
+              <code className="font-mono bg-amber-100 px-1 rounded">
+                Backfill MLB History
+              </code>
+              .
+            </>
+          ) : (
+            <>
+              Run{" "}
+              <code className="font-mono bg-amber-100 px-1 rounded">
+                python -m ingest.backfill_scores
+              </code>{" "}
+              once to populate final scores, then re-run{" "}
+              <code className="font-mono bg-amber-100 px-1 rounded">
+                python -m ingest.nba_schedule
+              </code>{" "}
+              after each game day to keep scores current.
+            </>
+          )}
         </div>
       )}
 

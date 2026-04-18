@@ -1,0 +1,94 @@
+name: Backfill MLB History
+
+on:
+  schedule:
+    # 9:20 AM ET daily (13:20 UTC during DST) to refresh recent MLB schedule,
+    # final scores, and any still-missing historical odds.
+    - cron: "20 13 * * *"
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date YYYY-MM-DD (optional; overrides days_back)"
+        required: false
+        type: string
+      end_date:
+        description: "End date YYYY-MM-DD (default: current America/New_York date)"
+        required: false
+        type: string
+      days_back:
+        description: "Rolling window when start_date is blank"
+        required: false
+        default: "14"
+        type: string
+      include_odds:
+        description: "Also backfill missing historical odds for the selected range"
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: backfill-mlb-history
+  cancel-in-progress: false
+
+jobs:
+  backfill-mlb-history:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve MLB backfill window
+        shell: bash
+        run: |
+          END_DATE="${{ inputs.end_date }}"
+          if [ -z "$END_DATE" ]; then
+            END_DATE="$(TZ=America/New_York date +%F)"
+          fi
+
+          START_DATE="${{ inputs.start_date }}"
+          DAYS_BACK="${{ inputs.days_back }}"
+          if [ -z "$DAYS_BACK" ]; then
+            DAYS_BACK="14"
+          fi
+
+          if [ -z "$START_DATE" ]; then
+            START_DATE="$(TZ=America/New_York date -d "$END_DATE - $((DAYS_BACK - 1)) days" +%F)"
+          fi
+
+          echo "MLB_BACKFILL_START=$START_DATE" >> "$GITHUB_ENV"
+          echo "MLB_BACKFILL_END=$END_DATE" >> "$GITHUB_ENV"
+          echo "MLB_BACKFILL_DAYS=$DAYS_BACK" >> "$GITHUB_ENV"
+          echo "Using range $START_DATE to $END_DATE"
+
+      - name: Backfill MLB schedule and scores
+        run: |
+          python -m ingest.backfill_mlb_schedule \
+            --start "$MLB_BACKFILL_START" \
+            --end "$MLB_BACKFILL_END"
+
+      - name: Backfill missing MLB odds
+        if: ${{ inputs.include_odds != false }}
+        shell: bash
+        run: |
+          if [ -z "$ODDS_API_KEY" ]; then
+            echo "ODDS_API_KEY not set; skipping MLB historical odds backfill."
+            exit 0
+          fi
+
+          python -m ingest.backfill_mlb_odds \
+            --start "$MLB_BACKFILL_START" \
+            --end "$MLB_BACKFILL_END" \
+            --missing-only
