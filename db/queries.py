@@ -794,12 +794,12 @@ def upsert_mlb_matchup(
             home_sp_name   = COALESCE(EXCLUDED.home_sp_name, mlb_matchups.home_sp_name),
             away_sp_id     = COALESCE(EXCLUDED.away_sp_id, mlb_matchups.away_sp_id),
             away_sp_name   = COALESCE(EXCLUDED.away_sp_name, mlb_matchups.away_sp_name),
-            vegas_total    = EXCLUDED.vegas_total,
-            home_ml        = EXCLUDED.home_ml,
-            away_ml        = EXCLUDED.away_ml,
-            vegas_prob_home = EXCLUDED.vegas_prob_home,
-            home_implied   = EXCLUDED.home_implied,
-            away_implied   = EXCLUDED.away_implied,
+            vegas_total    = COALESCE(EXCLUDED.vegas_total, mlb_matchups.vegas_total),
+            home_ml        = COALESCE(EXCLUDED.home_ml, mlb_matchups.home_ml),
+            away_ml        = COALESCE(EXCLUDED.away_ml, mlb_matchups.away_ml),
+            vegas_prob_home = COALESCE(EXCLUDED.vegas_prob_home, mlb_matchups.vegas_prob_home),
+            home_implied   = COALESCE(EXCLUDED.home_implied, mlb_matchups.home_implied),
+            away_implied   = COALESCE(EXCLUDED.away_implied, mlb_matchups.away_implied),
             ballpark       = COALESCE(EXCLUDED.ballpark, mlb_matchups.ballpark),
             fetched_at     = NOW()
         RETURNING id

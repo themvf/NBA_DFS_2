@@ -30,6 +30,7 @@ from model.dfs_projections import compute_team_implied_total
 logger = logging.getLogger(__name__)
 
 MLB_API_BASE = "https://statsapi.mlb.com/api/v1"
+NON_PLAYED_STATES = {"Cancelled", "Postponed"}
 
 
 def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[int]:
@@ -68,8 +69,14 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
     abbrev_cache = build_mlb_team_abbrev_cache(db)
 
     matchup_ids: list[int] = []
-    skipped = 0
+    skipped_non_played = 0
+    skipped_unknown_team = 0
     for game in dates[0].get("games", []):
+        detailed_state = game.get("status", {}).get("detailedState", "")
+        if detailed_state in NON_PLAYED_STATES:
+            skipped_non_played += 1
+            continue
+
         game_id    = str(game.get("gamePk", ""))
         home_info  = game.get("teams", {}).get("home", {})
         away_info  = game.get("teams", {}).get("away", {})
@@ -88,7 +95,7 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
                 "Unknown team IDs for game %s: home_mlb_id=%s (%s) away_mlb_id=%s (%s)",
                 game_id, home_mlb_id, home_abbrev, away_mlb_id, away_abbrev,
             )
-            skipped += 1
+            skipped_unknown_team += 1
             continue
 
         # Probable starters — store MLB player_id; NULL if not yet announced
@@ -114,8 +121,13 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
             matchup_ids.append(mid)
 
     msg = f"Schedule: {len(matchup_ids)} games upserted for {target_date}"
-    if skipped:
-        msg += f" ({skipped} skipped — unknown team IDs)"
+    skipped_parts = []
+    if skipped_non_played:
+        skipped_parts.append(f"{skipped_non_played} non-played")
+    if skipped_unknown_team:
+        skipped_parts.append(f"{skipped_unknown_team} unknown team IDs")
+    if skipped_parts:
+        msg += f" ({', '.join(skipped_parts)} skipped)"
     print(msg)
     return matchup_ids
 
@@ -312,8 +324,8 @@ def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
 
     updated = 0
     for game in dates[0].get("games", []):
-        status = game.get("status", {}).get("abstractGameState", "")
-        if status != "Final":
+        detailed_state = game.get("status", {}).get("detailedState", "")
+        if detailed_state != "Final":
             continue
 
         game_id = str(game.get("gamePk", ""))

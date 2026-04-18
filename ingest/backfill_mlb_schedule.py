@@ -48,12 +48,15 @@ def _dates_already_complete(db: DatabaseManager, start: str, end: str) -> set[st
     return {r["game_date"] for r in rows}
 
 
-def _dates_with_matchups(db: DatabaseManager, start: str, end: str) -> set[str]:
+def _dates_with_complete_schedule(db: DatabaseManager, start: str, end: str) -> set[str]:
     rows = db.execute(
         """
         SELECT DISTINCT game_date::text AS game_date
         FROM mlb_matchups
         WHERE game_date BETWEEN %s AND %s
+        GROUP BY game_date
+        HAVING COUNT(*) > 0
+           AND COUNT(*) FILTER (WHERE game_id IS NULL OR game_id = '') = 0
         """,
         (start, end),
     )
@@ -63,12 +66,12 @@ def _dates_with_matchups(db: DatabaseManager, start: str, end: str) -> set[str]:
 def backfill(db: DatabaseManager, start: str, end: str, dry_run: bool = False) -> None:
     all_dates = _all_dates(start, end)
     complete = _dates_already_complete(db, start, end)
-    has_matchups = _dates_with_matchups(db, start, end)
+    has_complete_schedule = _dates_with_complete_schedule(db, start, end)
 
-    need_schedule = [d for d in all_dates if d not in has_matchups]
+    need_schedule = [d for d in all_dates if d not in has_complete_schedule]
     need_scores = [
         d for d in all_dates
-        if d in has_matchups and d not in complete
+        if d in has_complete_schedule and d not in complete
         and date.fromisoformat(d) < date.today()
     ]
 
