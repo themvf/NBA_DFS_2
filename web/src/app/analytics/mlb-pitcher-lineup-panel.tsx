@@ -1,4 +1,4 @@
-import { getMlbPitcherLineupReport } from "@/db/queries";
+import { getCachedMlbPitcherLineupReport } from "@/db/analytics-cache";
 import type { MlbPitcherLineupBucketRow } from "@/db/queries";
 
 const fmt2 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
@@ -52,7 +52,12 @@ function BucketTable({
 }
 
 export default async function MlbPitcherLineupPanel() {
-  const report = await getMlbPitcherLineupReport();
+  let report;
+  try {
+    report = await getCachedMlbPitcherLineupReport();
+  } catch {
+    return null;
+  }
 
   if (!report) return null;
 

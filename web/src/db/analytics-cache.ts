@@ -22,6 +22,7 @@ import {
   getMlbBattingOrderCalibration,
   getMlbRunEnvironmentReport,
   getMlbOwnershipModelReport,
+  getMlbPitcherLineupReport,
   getMlbPerfectLineupAnalytics,
   getNbaPerfectLineupAnalytics,
   getOwnershipVsTeamTotal,
@@ -98,6 +99,12 @@ export const getCachedMlbOwnershipModelReport = unstable_cache(
 export const getCachedMlbRunEnvironmentReport = unstable_cache(
   () => getMlbRunEnvironmentReport(),
   ["analytics-mlb-run-environment"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbPitcherLineupReport = unstable_cache(
+  () => getMlbPitcherLineupReport(),
+  ["analytics-mlb-pitcher-lineup"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 

@@ -49,7 +49,12 @@ export default async function MlbOwnershipModelPanel({
   selectedSlateId: number | null;
   sortBy: OwnershipDetailSort;
 }) {
-  const report = await getCachedMlbOwnershipModelReport(selectedSlateId, sortBy);
+  let report;
+  try {
+    report = await getCachedMlbOwnershipModelReport(selectedSlateId, sortBy);
+  } catch {
+    return null;
+  }
 
   if (!report) {
     return (
