@@ -271,6 +271,8 @@ const ANALYTICS_COLUMN_DDLS = [
   `ALTER TABLE nba_matchups ADD COLUMN IF NOT EXISTS our_game_total_pred DOUBLE PRECISION`,
   `ALTER TABLE nba_matchups ADD COLUMN IF NOT EXISTS home_score INTEGER`,
   `ALTER TABLE nba_matchups ADD COLUMN IF NOT EXISTS away_score INTEGER`,
+  `ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS home_sp_name TEXT`,
+  `ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS away_sp_name TEXT`,
 ];
 
 export async function ensureAnalyticsColumns(): Promise<void> {

@@ -399,12 +399,24 @@ export type MlbGameEnvironmentCard = {
 
 export async function getMlbGameEnvironmentCards(slateDate: string | null): Promise<MlbGameEnvironmentCard[]> {
   if (!slateDate) return [];
+  await ensureAnalyticsColumns();
   const result = await db.execute<MlbGameEnvironmentCard>(sql`
     WITH latest_pitcher AS (
       SELECT DISTINCT ON (player_id)
         player_id, name, hand, k_per_9, xfip, era
       FROM mlb_pitcher_stats
-      ORDER BY player_id, season DESC
+      ORDER BY player_id, season DESC, fetched_at DESC, id DESC
+    ),
+    latest_pitcher_by_name AS (
+      SELECT DISTINCT ON (LOWER(name))
+        LOWER(name) AS name_key,
+        name,
+        hand,
+        k_per_9,
+        xfip,
+        era
+      FROM mlb_pitcher_stats
+      ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
     )
     SELECT
       mm.id                 AS "matchupId",
@@ -427,21 +439,23 @@ export async function getMlbGameEnvironmentCards(slateDate: string | null): Prom
       mm.weather_temp       AS "weatherTemp",
       mm.wind_speed         AS "windSpeed",
       mm.wind_direction     AS "windDirection",
-      hsp.name              AS "homeSpName",
-      hsp.hand              AS "homeSpHand",
-      hsp.k_per_9           AS "homeSpKPer9",
-      hsp.xfip              AS "homeSpXfip",
-      hsp.era               AS "homeSpEra",
-      asp.name              AS "awaySpName",
-      asp.hand              AS "awaySpHand",
-      asp.k_per_9           AS "awaySpKPer9",
-      asp.xfip              AS "awaySpXfip",
-      asp.era               AS "awaySpEra"
+      COALESCE(mm.home_sp_name, hsp_id.name, hsp_name.name) AS "homeSpName",
+      COALESCE(hsp_id.hand, hsp_name.hand) AS "homeSpHand",
+      COALESCE(hsp_id.k_per_9, hsp_name.k_per_9) AS "homeSpKPer9",
+      COALESCE(hsp_id.xfip, hsp_name.xfip) AS "homeSpXfip",
+      COALESCE(hsp_id.era, hsp_name.era) AS "homeSpEra",
+      COALESCE(mm.away_sp_name, asp_id.name, asp_name.name) AS "awaySpName",
+      COALESCE(asp_id.hand, asp_name.hand) AS "awaySpHand",
+      COALESCE(asp_id.k_per_9, asp_name.k_per_9) AS "awaySpKPer9",
+      COALESCE(asp_id.xfip, asp_name.xfip) AS "awaySpXfip",
+      COALESCE(asp_id.era, asp_name.era) AS "awaySpEra"
     FROM mlb_matchups mm
     LEFT JOIN mlb_teams home ON home.team_id = mm.home_team_id
     LEFT JOIN mlb_teams away ON away.team_id = mm.away_team_id
-    LEFT JOIN latest_pitcher hsp ON hsp.player_id = mm.home_sp_id
-    LEFT JOIN latest_pitcher asp ON asp.player_id = mm.away_sp_id
+    LEFT JOIN latest_pitcher hsp_id ON hsp_id.player_id = mm.home_sp_id
+    LEFT JOIN latest_pitcher asp_id ON asp_id.player_id = mm.away_sp_id
+    LEFT JOIN latest_pitcher_by_name hsp_name ON hsp_name.name_key = LOWER(mm.home_sp_name)
+    LEFT JOIN latest_pitcher_by_name asp_name ON asp_name.name_key = LOWER(mm.away_sp_name)
     WHERE mm.game_date = ${slateDate}::date
     ORDER BY mm.vegas_total DESC NULLS LAST, mm.id ASC
   `);
@@ -1724,6 +1738,7 @@ function buildMlbRunEnvironmentFindings(
 }
 
 export async function getMlbRunEnvironmentReport(): Promise<MlbRunEnvironmentReport | null> {
+  await ensureAnalyticsColumns();
   const [pitcherAllowResult, parkEnvironmentResult] = await Promise.all([
     db.execute<{
       pitcherId: number;
@@ -1751,6 +1766,17 @@ export async function getMlbRunEnvironmentReport(): Promise<MlbRunEnvironmentRep
         FROM mlb_pitcher_stats ps
         ORDER BY ps.player_id, ps.season DESC, ps.fetched_at DESC, ps.id DESC
       ),
+      latest_pitchers_by_name AS (
+        SELECT DISTINCT ON (LOWER(ps.name))
+          LOWER(ps.name) AS name_key,
+          ps.name,
+          ps.hand,
+          ps.xfip,
+          ps.whip,
+          ps.k_per_9
+        FROM mlb_pitcher_stats ps
+        ORDER BY LOWER(ps.name), ps.season DESC, ps.fetched_at DESC, ps.id DESC
+      ),
       hitter_context AS (
         SELECT
           ds.id AS slate_id,
@@ -1761,6 +1787,11 @@ export async function getMlbRunEnvironmentReport(): Promise<MlbRunEnvironmentRep
             WHEN dp.mlb_team_id = mm.away_team_id THEN mm.home_sp_id
             ELSE NULL
           END AS pitcher_id,
+          CASE
+            WHEN dp.mlb_team_id = mm.home_team_id THEN mm.away_sp_name
+            WHEN dp.mlb_team_id = mm.away_team_id THEN mm.home_sp_name
+            ELSE NULL
+          END AS pitcher_name,
           dp.actual_fpts
         FROM dk_players dp
         JOIN dk_slates ds ON ds.id = dp.slate_id
@@ -1776,6 +1807,7 @@ export async function getMlbRunEnvironmentReport(): Promise<MlbRunEnvironmentRep
       pitcher_starts AS (
         SELECT
           pitcher_id,
+          pitcher_name,
           matchup_id,
           COUNT(*)::int AS hitter_rows,
           AVG(actual_fpts) AS avg_hitter_fpts,
@@ -1785,15 +1817,15 @@ export async function getMlbRunEnvironmentReport(): Promise<MlbRunEnvironmentRep
           COUNT(*) FILTER (WHERE actual_fpts >= 20)::int AS hitters20
         FROM hitter_context
         WHERE pitcher_id IS NOT NULL
-        GROUP BY pitcher_id, matchup_id
+        GROUP BY pitcher_id, pitcher_name, matchup_id
       )
       SELECT
         ps.pitcher_id::int AS "pitcherId",
-        lp.name AS "pitcherName",
-        lp.hand AS "hand",
-        lp.xfip AS "xfip",
-        lp.whip AS "whip",
-        lp.k_per_9 AS "kPer9",
+        COALESCE(MAX(ps.pitcher_name), lp.name, lpn.name) AS "pitcherName",
+        COALESCE(lp.hand, lpn.hand) AS "hand",
+        COALESCE(lp.xfip, lpn.xfip) AS "xfip",
+        COALESCE(lp.whip, lpn.whip) AS "whip",
+        COALESCE(lp.k_per_9, lpn.k_per_9) AS "kPer9",
         COUNT(*)::int AS "starts",
         SUM(ps.hitter_rows)::int AS "hitterRows",
         AVG(ps.team_hitter_fpts) AS "avgTeamFptsAllowed",
@@ -1803,7 +1835,8 @@ export async function getMlbRunEnvironmentReport(): Promise<MlbRunEnvironmentRep
         AVG(ps.hitters20::DOUBLE PRECISION) AS "avg20PlusHitters"
       FROM pitcher_starts ps
       LEFT JOIN latest_pitchers lp ON lp.player_id = ps.pitcher_id
-      GROUP BY ps.pitcher_id, lp.name, lp.hand, lp.xfip, lp.whip, lp.k_per_9
+      LEFT JOIN latest_pitchers_by_name lpn ON lpn.name_key = LOWER(ps.pitcher_name)
+      GROUP BY ps.pitcher_id, lp.name, lp.hand, lp.xfip, lp.whip, lp.k_per_9, lpn.name, lpn.hand, lpn.xfip, lpn.whip, lpn.k_per_9
       HAVING COUNT(*) >= ${MLB_PITCHER_ALLOW_MIN_STARTS}
     `),
     db.execute<{
@@ -3334,12 +3367,23 @@ export async function getSpreadCoverage(): Promise<SpreadCoverageRow[]> {
 
 export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
   const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  await ensureAnalyticsColumns();
   const rows = await db.execute(sql`
     WITH latest_pitcher AS (
       SELECT DISTINCT ON (player_id)
         player_id, name, hand, k_per_9, xfip
       FROM mlb_pitcher_stats
-      ORDER BY player_id, season DESC
+      ORDER BY player_id, season DESC, fetched_at DESC, id DESC
+    ),
+    latest_pitcher_by_name AS (
+      SELECT DISTINCT ON (LOWER(name))
+        LOWER(name) AS name_key,
+        name,
+        hand,
+        k_per_9,
+        xfip
+      FROM mlb_pitcher_stats
+      ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
     )
     SELECT
       m.id             AS "matchupId",
@@ -3357,19 +3401,21 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
       m.away_implied   AS "awayImplied",
       m.home_score     AS "homeScore",
       m.away_score     AS "awayScore",
-      hsp.name         AS "homeSpName",
-      hsp.hand         AS "homeSpHand",
-      hsp.xfip         AS "homeSpXfip",
-      hsp.k_per_9      AS "homeSpKPer9",
-      asp.name         AS "awaySpName",
-      asp.hand         AS "awaySpHand",
-      asp.xfip         AS "awaySpXfip",
-      asp.k_per_9      AS "awaySpKPer9"
+      COALESCE(m.home_sp_name, hsp_id.name, hsp_name.name) AS "homeSpName",
+      COALESCE(hsp_id.hand, hsp_name.hand) AS "homeSpHand",
+      COALESCE(hsp_id.xfip, hsp_name.xfip) AS "homeSpXfip",
+      COALESCE(hsp_id.k_per_9, hsp_name.k_per_9) AS "homeSpKPer9",
+      COALESCE(m.away_sp_name, asp_id.name, asp_name.name) AS "awaySpName",
+      COALESCE(asp_id.hand, asp_name.hand) AS "awaySpHand",
+      COALESCE(asp_id.xfip, asp_name.xfip) AS "awaySpXfip",
+      COALESCE(asp_id.k_per_9, asp_name.k_per_9) AS "awaySpKPer9"
     FROM mlb_matchups m
     LEFT JOIN mlb_teams ht ON ht.team_id = m.home_team_id
     LEFT JOIN mlb_teams at ON at.team_id = m.away_team_id
-    LEFT JOIN latest_pitcher hsp ON hsp.player_id = m.home_sp_id
-    LEFT JOIN latest_pitcher asp ON asp.player_id = m.away_sp_id
+    LEFT JOIN latest_pitcher hsp_id ON hsp_id.player_id = m.home_sp_id
+    LEFT JOIN latest_pitcher asp_id ON asp_id.player_id = m.away_sp_id
+    LEFT JOIN latest_pitcher_by_name hsp_name ON hsp_name.name_key = LOWER(m.home_sp_name)
+    LEFT JOIN latest_pitcher_by_name asp_name ON asp_name.name_key = LOWER(m.away_sp_name)
     WHERE m.game_date = ${targetDate}
     ORDER BY m.vegas_total DESC NULLS LAST
   `);

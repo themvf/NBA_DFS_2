@@ -211,7 +211,9 @@ TABLES = [
         home_team_id INTEGER REFERENCES mlb_teams(team_id),
         away_team_id INTEGER REFERENCES mlb_teams(team_id),
         home_sp_id INTEGER,
+        home_sp_name TEXT,
         away_sp_id INTEGER,
+        away_sp_name TEXT,
         vegas_total DOUBLE PRECISION,
         home_ml INTEGER,
         away_ml INTEGER,
@@ -657,6 +659,22 @@ MIGRATIONS = [
             WHERE table_name = 'mlb_matchups' AND column_name = 'home_score'
         ) THEN
             ALTER TABLE mlb_matchups ADD COLUMN home_score INTEGER;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'mlb_matchups' AND column_name = 'home_sp_name'
+        ) THEN
+            ALTER TABLE mlb_matchups ADD COLUMN home_sp_name TEXT;
+        END IF;
+    END $$""",
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'mlb_matchups' AND column_name = 'away_sp_name'
+        ) THEN
+            ALTER TABLE mlb_matchups ADD COLUMN away_sp_name TEXT;
         END IF;
     END $$""",
     """DO $$ BEGIN

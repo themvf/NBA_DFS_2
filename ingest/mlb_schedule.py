@@ -35,9 +35,9 @@ MLB_API_BASE = "https://statsapi.mlb.com/api/v1"
 def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[int]:
     """Fetch games for game_date (YYYY-MM-DD), upsert into mlb_matchups.
 
-    Includes probable starting pitchers when posted by MLB.  home_sp_id and
-    away_sp_id store the MLB player_id (matches mlb_pitcher_stats.player_id
-    once Phase 3 stats are loaded).
+    Includes probable starting pitchers when posted by MLB. home_sp_id /
+    away_sp_id store MLB Stats API player ids, and home_sp_name / away_sp_name
+    store the probable starter names directly for later analytics joins.
 
     Returns list of mlb_matchup IDs upserted.
     """
@@ -93,7 +93,9 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
 
         # Probable starters — store MLB player_id; NULL if not yet announced
         home_sp_id = home_info.get("probablePitcher", {}).get("id")
+        home_sp_name = home_info.get("probablePitcher", {}).get("fullName")
         away_sp_id = away_info.get("probablePitcher", {}).get("id")
+        away_sp_name = away_info.get("probablePitcher", {}).get("fullName")
         ballpark   = game.get("venue", {}).get("name")
 
         mid = upsert_mlb_matchup(
@@ -103,7 +105,9 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
             home_team_id=home_team_id,
             away_team_id=away_team_id,
             home_sp_id=home_sp_id,
+            home_sp_name=home_sp_name,
             away_sp_id=away_sp_id,
+            away_sp_name=away_sp_name,
             ballpark=ballpark,
         )
         if mid:

@@ -768,7 +768,9 @@ def upsert_mlb_matchup(
     home_team_id: int | None,
     away_team_id: int | None,
     home_sp_id: int | None = None,
+    home_sp_name: str | None = None,
     away_sp_id: int | None = None,
+    away_sp_name: str | None = None,
     vegas_total: float | None = None,
     home_ml: int | None = None,
     away_ml: int | None = None,
@@ -781,15 +783,17 @@ def upsert_mlb_matchup(
         """
         INSERT INTO mlb_matchups (
             game_date, game_id, home_team_id, away_team_id,
-            home_sp_id, away_sp_id,
+            home_sp_id, home_sp_name, away_sp_id, away_sp_name,
             vegas_total, home_ml, away_ml, vegas_prob_home,
             home_implied, away_implied, ballpark
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
             game_id        = COALESCE(EXCLUDED.game_id, mlb_matchups.game_id),
             home_sp_id     = COALESCE(EXCLUDED.home_sp_id, mlb_matchups.home_sp_id),
+            home_sp_name   = COALESCE(EXCLUDED.home_sp_name, mlb_matchups.home_sp_name),
             away_sp_id     = COALESCE(EXCLUDED.away_sp_id, mlb_matchups.away_sp_id),
+            away_sp_name   = COALESCE(EXCLUDED.away_sp_name, mlb_matchups.away_sp_name),
             vegas_total    = EXCLUDED.vegas_total,
             home_ml        = EXCLUDED.home_ml,
             away_ml        = EXCLUDED.away_ml,
@@ -802,7 +806,7 @@ def upsert_mlb_matchup(
         """,
         (
             game_date, game_id, home_team_id, away_team_id,
-            home_sp_id, away_sp_id,
+            home_sp_id, home_sp_name, away_sp_id, away_sp_name,
             vegas_total, home_ml, away_ml, vegas_prob_home,
             home_implied, away_implied, ballpark,
         ),
