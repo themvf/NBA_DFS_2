@@ -1978,6 +1978,9 @@ export async function getMlbBlowupCandidateReport(): Promise<MlbBlowupCandidateR
 
 const MLB_POSTMORTEM_RECENT_SLATES = 5;
 const MLB_POSTMORTEM_PRIOR_SLATES = 5;
+const MLB_POSTMORTEM_MAX_SLATES = 30;
+const MLB_POSTMORTEM_FALLBACK_WARNING_PCT = 30;
+const MLB_POSTMORTEM_INDEPENDENCE_WARNING_MAE = 1;
 
 export type MlbPostmortemProjectionRow = {
   windowLabel: string;
@@ -1996,6 +1999,35 @@ export type MlbPostmortemProjectionRow = {
   finalGainVsLineStar: number | null;
 };
 
+export type MlbPostmortemProjectionSourceRow = {
+  windowLabel: string;
+  windowSort: number;
+  projectionSource: string;
+  rows: number;
+  pctRows: number | null;
+  mae: number | null;
+  bias: number | null;
+};
+
+export type MlbPostmortemIndependenceRow = {
+  windowLabel: string;
+  windowSort: number;
+  rows: number;
+  finalRows: number;
+  fallbackRows: number;
+  fallbackPct: number | null;
+  finalMae: number | null;
+  rawOurMae: number | null;
+  ourSourceMae: number | null;
+  nonLineStarMae: number | null;
+  fallbackMae: number | null;
+  nonFallbackMae: number | null;
+  linestarMae: number | null;
+  blendUplift: number | null;
+  fallbackDelta: number | null;
+  warning: string | null;
+};
+
 export type MlbPostmortemOwnershipRow = {
   windowLabel: string;
   windowSort: number;
@@ -2012,6 +2044,40 @@ export type MlbPostmortemOwnershipRow = {
   fieldGainVsLineStar: number | null;
 };
 
+export type MlbPostmortemOwnershipChalkRow = {
+  windowLabel: string;
+  windowSort: number;
+  threshold: number;
+  rows: number;
+  actualChalkRows: number;
+  projectedChalkRows: number;
+  capturedRows: number;
+  captureRate: number | null;
+  falseLowRows: number;
+  falseChalkRows: number;
+};
+
+export type MlbPostmortemOwnershipRankingRow = {
+  windowLabel: string;
+  windowSort: number;
+  topN: number;
+  rows: number;
+  actualTopRows: number;
+  capturedRows: number;
+  overlapPct: number | null;
+  spearman: number | null;
+};
+
+export type MlbPostmortemLeverageErrorRow = {
+  windowLabel: string;
+  windowSort: number;
+  rows: number;
+  highImpactRows: number;
+  leverageErrorRows: number;
+  leverageErrorRate: number | null;
+  avgAbsError: number | null;
+};
+
 export type MlbPostmortemSignalRow = {
   signal: string;
   rows: number;
@@ -2023,6 +2089,10 @@ export type MlbPostmortemSignalRow = {
   hit15Rate: number | null;
   hit20Rate: number | null;
   hit25Rate: number | null;
+  baseline20Rate: number | null;
+  lift20Rate: number | null;
+  baseline25Rate: number | null;
+  lift25Rate: number | null;
 };
 
 export type MlbPostmortemRecentSlateRow = {
@@ -2070,6 +2140,35 @@ export type MlbPostmortemOwnershipMissRow = {
   fieldGainVsLineStar: number | null;
 };
 
+export type MlbPostmortemPitcherExploitRow = {
+  slateId: number;
+  slateDate: string;
+  name: string;
+  teamAbbrev: string | null;
+  salary: number;
+  projection: number | null;
+  linestarProjection: number | null;
+  marketGap: number | null;
+  fieldOwnPct: number | null;
+  actualOwnPct: number | null;
+  actualFpts: number | null;
+  valueMultiple: number | null;
+  opponentImplied: number | null;
+  moneyline: number | null;
+  score: number | null;
+};
+
+export type MlbPostmortemDecisionCaptureRow = {
+  windowLabel: string;
+  windowSort: number;
+  outcomeBucket: string;
+  outcomeRows: number;
+  highProjectionCaptureRate: number | null;
+  ceilingCaptureRate: number | null;
+  leverageCaptureRate: number | null;
+  avgActualOwn: number | null;
+};
+
 export type MlbPostmortemReport = {
   sample: {
     recentSlateCount: number;
@@ -2084,9 +2183,17 @@ export type MlbPostmortemReport = {
     ownershipRows: number;
   };
   findings: string[];
+  warnings: string[];
   projectionSummary: MlbPostmortemProjectionRow[];
+  projectionIndependence: MlbPostmortemIndependenceRow[];
+  projectionSources: MlbPostmortemProjectionSourceRow[];
   ownershipSummary: MlbPostmortemOwnershipRow[];
+  ownershipChalk: MlbPostmortemOwnershipChalkRow[];
+  ownershipRanking: MlbPostmortemOwnershipRankingRow[];
+  leverageErrors: MlbPostmortemLeverageErrorRow[];
   signalFollowThrough: MlbPostmortemSignalRow[];
+  pitcherExploitWatch: MlbPostmortemPitcherExploitRow[];
+  decisionCapture: MlbPostmortemDecisionCaptureRow[];
   recentSlates: MlbPostmortemRecentSlateRow[];
   projectionMisses: MlbPostmortemProjectionMissRow[];
   ownershipMisses: MlbPostmortemOwnershipMissRow[];
@@ -2100,6 +2207,7 @@ function mlbPostmortemNumber(value: unknown): number | null {
 
 function buildMlbPostmortemFindings(
   projectionSummary: MlbPostmortemProjectionRow[],
+  projectionIndependence: MlbPostmortemIndependenceRow[],
   ownershipSummary: MlbPostmortemOwnershipRow[],
   signalFollowThrough: MlbPostmortemSignalRow[],
 ): string[] {
@@ -2113,6 +2221,19 @@ function buildMlbPostmortemFindings(
       gain >= 0
         ? `Recent blended projections are beating LineStar by ${gain.toFixed(2)} DK points of MAE.`
         : `Recent blended projections are trailing LineStar by ${Math.abs(gain).toFixed(2)} DK points of MAE.`,
+    );
+  }
+
+  const recentIndependence = projectionIndependence.find((row) => row.windowSort === 1);
+  if (recentIndependence?.fallbackPct != null) {
+    findings.push(`LineStar fallback dependency is ${recentIndependence.fallbackPct.toFixed(1)}% in the recent completed-slate window.`);
+  }
+
+  if (recentIndependence?.blendUplift != null) {
+    findings.push(
+      recentIndependence.blendUplift >= 0
+        ? `The final projection layer improves raw our_proj by ${recentIndependence.blendUplift.toFixed(2)} DK points of MAE.`
+        : `The final projection layer is ${Math.abs(recentIndependence.blendUplift).toFixed(2)} DK points worse than raw our_proj.`,
     );
   }
 
@@ -2145,7 +2266,7 @@ function buildMlbPostmortemFindings(
     findings.push(`Tracked blowup candidates reached 20+ DK points ${blowupSignal.hit20Rate.toFixed(1)}% of the time.`);
   }
 
-  return findings.slice(0, 5);
+  return findings.slice(0, 6);
 }
 
 export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | null> {
@@ -2166,28 +2287,32 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
         HAVING COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL) > 0
       ) slate_rows
     ),
+    analysis_windows AS (
+      SELECT *
+      FROM (
+        VALUES
+          ('Recent 5'::text, 1::int, 1::int, ${MLB_POSTMORTEM_RECENT_SLATES}::int),
+          ('Prior 5'::text, 2::int, ${MLB_POSTMORTEM_RECENT_SLATES + 1}::int, ${MLB_POSTMORTEM_RECENT_SLATES + MLB_POSTMORTEM_PRIOR_SLATES}::int),
+          ('Rolling 10'::text, 3::int, 1::int, 10::int),
+          ('Rolling 30'::text, 4::int, 1::int, ${MLB_POSTMORTEM_MAX_SLATES}::int)
+      ) AS windows(window_label, window_sort, start_rank, end_rank)
+    ),
     windowed_slates AS (
       SELECT
         cs.slate_id,
         cs.slate_date,
         cs.slate_rank,
-        CASE
-          WHEN cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES} THEN 'Recent 5'
-          WHEN cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES + MLB_POSTMORTEM_PRIOR_SLATES} THEN 'Prior 5'
-          ELSE NULL
-        END AS window_label,
-        CASE
-          WHEN cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES} THEN 1
-          WHEN cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES + MLB_POSTMORTEM_PRIOR_SLATES} THEN 2
-          ELSE NULL
-        END AS window_sort
+        aw.window_label,
+        aw.window_sort
       FROM completed_slates cs
-      WHERE cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES + MLB_POSTMORTEM_PRIOR_SLATES}
+      JOIN analysis_windows aw ON cs.slate_rank BETWEEN aw.start_rank AND aw.end_rank
     ),
     player_sample AS (
       SELECT
         ws.*,
         dp.dk_player_id,
+        dp.matchup_id,
+        dp.mlb_team_id,
         dp.name,
         dp.team_abbrev,
         dp.eligible_positions,
@@ -2199,8 +2324,16 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
         dp.our_proj,
         dp.linestar_proj,
         COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS final_proj,
+        CASE
+          WHEN dp.live_proj IS NOT NULL THEN 'live'
+          WHEN dp.our_proj IS NOT NULL THEN 'our'
+          WHEN dp.linestar_proj IS NOT NULL THEN 'linestar'
+          ELSE 'unknown'
+        END AS projection_source,
         COALESCE(dp.live_own_pct, dp.our_own_pct) AS field_own_pct,
         COALESCE(dp.linestar_own_pct, dp.proj_own_pct) AS linestar_own_pct,
+        dp.proj_ceiling,
+        dp.boom_rate,
         dp.hr_prob_1plus,
         CASE WHEN dp.eligible_positions LIKE '%SP%' OR dp.eligible_positions LIKE '%RP%' THEN true ELSE false END AS is_pitcher
       FROM windowed_slates ws
@@ -2233,8 +2366,8 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
         MAX(slate_date) FILTER (WHERE window_sort = 1)::text AS "recentEndDate",
         MIN(slate_date) FILTER (WHERE window_sort = 2)::text AS "priorStartDate",
         MAX(slate_date) FILTER (WHERE window_sort = 2)::text AS "priorEndDate",
-        COUNT(*)::int AS "playerRows",
-        COUNT(*) FILTER (WHERE actual_own_pct IS NOT NULL)::int AS "ownershipRows"
+        COUNT(*) FILTER (WHERE window_sort IN (1, 2))::int AS "playerRows",
+        COUNT(*) FILTER (WHERE window_sort IN (1, 2) AND actual_own_pct IS NOT NULL)::int AS "ownershipRows"
       FROM player_sample
     `);
 
@@ -2269,6 +2402,75 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
       ORDER BY grouped.window_sort ASC, CASE grouped.player_group WHEN 'All Active' THEN 1 WHEN 'Hitters' THEN 2 ELSE 3 END
     `);
 
+  const projectionIndependenceResult = await db.execute<MlbPostmortemIndependenceRow>(sql`
+      ${completedSlatesCte}
+      SELECT
+        window_label AS "windowLabel",
+        window_sort::int AS "windowSort",
+        COUNT(*)::int AS "rows",
+        COUNT(*) FILTER (WHERE final_proj IS NOT NULL)::int AS "finalRows",
+        COUNT(*) FILTER (WHERE projection_source = 'linestar' AND final_proj IS NOT NULL)::int AS "fallbackRows",
+        COUNT(*) FILTER (WHERE projection_source = 'linestar' AND final_proj IS NOT NULL) * 100.0
+          / NULLIF(COUNT(*) FILTER (WHERE final_proj IS NOT NULL), 0) AS "fallbackPct",
+        AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE final_proj IS NOT NULL) AS "finalMae",
+        AVG(ABS(our_proj - actual_fpts)) FILTER (WHERE our_proj IS NOT NULL) AS "rawOurMae",
+        AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE projection_source = 'our' AND final_proj IS NOT NULL) AS "ourSourceMae",
+        AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE projection_source <> 'linestar' AND final_proj IS NOT NULL) AS "nonLineStarMae",
+        AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE projection_source = 'linestar' AND final_proj IS NOT NULL) AS "fallbackMae",
+        AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE projection_source <> 'linestar' AND final_proj IS NOT NULL) AS "nonFallbackMae",
+        AVG(ABS(linestar_proj - actual_fpts)) FILTER (WHERE linestar_proj IS NOT NULL) AS "linestarMae",
+        AVG(ABS(our_proj - actual_fpts)) FILTER (WHERE our_proj IS NOT NULL)
+          - AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE final_proj IS NOT NULL) AS "blendUplift",
+        AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE projection_source = 'linestar' AND final_proj IS NOT NULL)
+          - AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE projection_source <> 'linestar' AND final_proj IS NOT NULL) AS "fallbackDelta",
+        CASE
+          WHEN COUNT(*) FILTER (WHERE projection_source = 'linestar' AND final_proj IS NOT NULL) * 100.0
+            / NULLIF(COUNT(*) FILTER (WHERE final_proj IS NOT NULL), 0) > ${MLB_POSTMORTEM_FALLBACK_WARNING_PCT}
+            THEN 'fallback_dependency'
+          WHEN AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE projection_source <> 'linestar' AND final_proj IS NOT NULL)
+            - AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE final_proj IS NOT NULL) > ${MLB_POSTMORTEM_INDEPENDENCE_WARNING_MAE}
+            THEN 'independent_mae_gap'
+          ELSE NULL
+        END AS "warning"
+      FROM player_sample
+      GROUP BY window_label, window_sort
+      ORDER BY window_sort ASC
+    `);
+
+  const projectionSourceResult = await db.execute<MlbPostmortemProjectionSourceRow>(sql`
+      ${completedSlatesCte},
+      source_counts AS (
+        SELECT
+          window_label,
+          window_sort,
+          projection_source,
+          COUNT(*)::int AS rows,
+          AVG(ABS(final_proj - actual_fpts)) FILTER (WHERE final_proj IS NOT NULL) AS mae,
+          AVG(final_proj - actual_fpts) FILTER (WHERE final_proj IS NOT NULL) AS bias
+        FROM player_sample
+        WHERE final_proj IS NOT NULL
+        GROUP BY window_label, window_sort, projection_source
+      ),
+      source_totals AS (
+        SELECT window_label, window_sort, SUM(rows)::int AS total_rows
+        FROM source_counts
+        GROUP BY window_label, window_sort
+      )
+      SELECT
+        sc.window_label AS "windowLabel",
+        sc.window_sort::int AS "windowSort",
+        sc.projection_source AS "projectionSource",
+        sc.rows::int AS "rows",
+        sc.rows * 100.0 / NULLIF(st.total_rows, 0) AS "pctRows",
+        sc.mae AS "mae",
+        sc.bias AS "bias"
+      FROM source_counts sc
+      JOIN source_totals st
+        ON st.window_label = sc.window_label
+       AND st.window_sort = sc.window_sort
+      ORDER BY sc.window_sort ASC, sc.rows DESC
+    `);
+
   const ownershipResult = await db.execute<MlbPostmortemOwnershipRow>(sql`
       ${completedSlatesCte}
       SELECT
@@ -2291,46 +2493,138 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
       ORDER BY window_sort ASC
     `);
 
+  const ownershipChalkResult = await db.execute<MlbPostmortemOwnershipChalkRow>(sql`
+      ${completedSlatesCte},
+      thresholds AS (
+        SELECT * FROM (VALUES (20::int), (30::int), (40::int)) AS t(threshold)
+      )
+      SELECT
+        ps.window_label AS "windowLabel",
+        ps.window_sort::int AS "windowSort",
+        t.threshold::int AS "threshold",
+        COUNT(*) FILTER (WHERE ps.field_own_pct IS NOT NULL AND ps.actual_own_pct IS NOT NULL)::int AS "rows",
+        COUNT(*) FILTER (WHERE ps.actual_own_pct >= t.threshold)::int AS "actualChalkRows",
+        COUNT(*) FILTER (WHERE ps.field_own_pct >= t.threshold AND ps.actual_own_pct IS NOT NULL)::int AS "projectedChalkRows",
+        COUNT(*) FILTER (WHERE ps.field_own_pct >= t.threshold AND ps.actual_own_pct >= t.threshold)::int AS "capturedRows",
+        COUNT(*) FILTER (WHERE ps.field_own_pct >= t.threshold AND ps.actual_own_pct >= t.threshold) * 100.0
+          / NULLIF(COUNT(*) FILTER (WHERE ps.actual_own_pct >= t.threshold), 0) AS "captureRate",
+        COUNT(*) FILTER (WHERE COALESCE(ps.field_own_pct, 0) < t.threshold AND ps.actual_own_pct >= t.threshold)::int AS "falseLowRows",
+        COUNT(*) FILTER (WHERE ps.field_own_pct >= t.threshold AND COALESCE(ps.actual_own_pct, 0) < t.threshold)::int AS "falseChalkRows"
+      FROM player_sample ps
+      CROSS JOIN thresholds t
+      WHERE ps.actual_own_pct IS NOT NULL
+      GROUP BY ps.window_label, ps.window_sort, t.threshold
+      ORDER BY ps.window_sort ASC, t.threshold ASC
+    `);
+
+  const ownershipRankingResult = await db.execute<MlbPostmortemOwnershipRankingRow>(sql`
+      ${completedSlatesCte},
+      ranked AS (
+        SELECT
+          ps.*,
+          ROW_NUMBER() OVER (PARTITION BY ps.window_sort, ps.slate_id ORDER BY ps.actual_own_pct DESC NULLS LAST, ps.salary DESC, ps.name ASC) AS actual_rank,
+          ROW_NUMBER() OVER (PARTITION BY ps.window_sort, ps.slate_id ORDER BY ps.field_own_pct DESC NULLS LAST, ps.salary DESC, ps.name ASC) AS field_rank
+        FROM player_sample ps
+        WHERE ps.actual_own_pct IS NOT NULL
+          AND ps.field_own_pct IS NOT NULL
+      ),
+      top_ns AS (
+        SELECT * FROM (VALUES (5::int), (10::int)) AS t(top_n)
+      )
+      SELECT
+        r.window_label AS "windowLabel",
+        r.window_sort::int AS "windowSort",
+        t.top_n::int AS "topN",
+        COUNT(*)::int AS "rows",
+        COUNT(*) FILTER (WHERE r.actual_rank <= t.top_n)::int AS "actualTopRows",
+        COUNT(*) FILTER (WHERE r.actual_rank <= t.top_n AND r.field_rank <= t.top_n)::int AS "capturedRows",
+        COUNT(*) FILTER (WHERE r.actual_rank <= t.top_n AND r.field_rank <= t.top_n) * 100.0
+          / NULLIF(COUNT(*) FILTER (WHERE r.actual_rank <= t.top_n), 0) AS "overlapPct",
+        CORR(r.actual_rank::float, r.field_rank::float) FILTER (WHERE r.actual_rank <= t.top_n OR r.field_rank <= t.top_n) AS "spearman"
+      FROM ranked r
+      CROSS JOIN top_ns t
+      GROUP BY r.window_label, r.window_sort, t.top_n
+      ORDER BY r.window_sort ASC, t.top_n ASC
+    `);
+
+  const leverageErrorResult = await db.execute<MlbPostmortemLeverageErrorRow>(sql`
+      ${completedSlatesCte},
+      ranked AS (
+        SELECT
+          ps.*,
+          NTILE(4) OVER (PARTITION BY ps.window_sort, ps.slate_id ORDER BY ps.final_proj DESC NULLS LAST, ps.salary DESC, ps.name ASC) AS projection_quartile
+        FROM player_sample ps
+        WHERE ps.actual_own_pct IS NOT NULL
+          AND ps.field_own_pct IS NOT NULL
+      )
+      SELECT
+        window_label AS "windowLabel",
+        window_sort::int AS "windowSort",
+        COUNT(*)::int AS "rows",
+        COUNT(*) FILTER (WHERE projection_quartile = 1 OR salary >= 7000 OR is_pitcher)::int AS "highImpactRows",
+        COUNT(*) FILTER (
+          WHERE (projection_quartile = 1 OR salary >= 7000 OR is_pitcher)
+            AND ABS(field_own_pct - actual_own_pct) >= 10
+        )::int AS "leverageErrorRows",
+        COUNT(*) FILTER (
+          WHERE (projection_quartile = 1 OR salary >= 7000 OR is_pitcher)
+            AND ABS(field_own_pct - actual_own_pct) >= 10
+        ) * 100.0 / NULLIF(COUNT(*) FILTER (WHERE projection_quartile = 1 OR salary >= 7000 OR is_pitcher), 0) AS "leverageErrorRate",
+        AVG(ABS(field_own_pct - actual_own_pct)) FILTER (WHERE projection_quartile = 1 OR salary >= 7000 OR is_pitcher) AS "avgAbsError"
+      FROM ranked
+      GROUP BY window_label, window_sort
+      ORDER BY window_sort ASC
+    `);
+
   const signalResult = await db.execute<MlbPostmortemSignalRow>(sql`
       ${completedSlatesCte},
+      recent_sample AS (
+        SELECT *
+        FROM player_sample
+        WHERE window_sort = 1
+      ),
       signals AS (
         SELECT
           'HR Badge 25%+'::text AS signal,
+          'hitter'::text AS baseline_group,
           ps.slate_id,
           ps.final_proj AS projection,
           ps.actual_fpts,
           ps.actual_own_pct
-        FROM player_sample ps
+        FROM recent_sample ps
         WHERE ps.is_pitcher = false
           AND ps.hr_prob_1plus >= 0.25
         UNION ALL
         SELECT
           'Strong HR Badge 35%+'::text AS signal,
+          'hitter'::text AS baseline_group,
           ps.slate_id,
           ps.final_proj AS projection,
           ps.actual_fpts,
           ps.actual_own_pct
-        FROM player_sample ps
+        FROM recent_sample ps
         WHERE ps.is_pitcher = false
           AND ps.hr_prob_1plus >= 0.35
         UNION ALL
         SELECT
           'Pitcher 18+ Projection'::text AS signal,
+          'pitcher'::text AS baseline_group,
           ps.slate_id,
           ps.final_proj AS projection,
           ps.actual_fpts,
           ps.actual_own_pct
-        FROM player_sample ps
+        FROM recent_sample ps
         WHERE ps.is_pitcher = true
           AND ps.final_proj >= 18
         UNION ALL
         SELECT
           'Pitcher 2.5x+ Value'::text AS signal,
+          'pitcher'::text AS baseline_group,
           ps.slate_id,
           ps.final_proj AS projection,
           ps.actual_fpts,
           ps.actual_own_pct
-        FROM player_sample ps
+        FROM recent_sample ps
         WHERE ps.is_pitcher = true
           AND ps.final_proj IS NOT NULL
           AND ps.salary > 0
@@ -2338,28 +2632,49 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
         UNION ALL
         SELECT
           'Blowup Top 12'::text AS signal,
+          'hitter'::text AS baseline_group,
           s.slate_id,
           s.projected_fpts AS projection,
           s.actual_fpts,
           s.actual_own_pct
         FROM mlb_blowup_player_snapshots s
-        JOIN windowed_slates ws ON ws.slate_id = s.slate_id
+        JOIN windowed_slates ws ON ws.slate_id = s.slate_id AND ws.window_sort = 1
         WHERE s.actual_fpts IS NOT NULL
+      ),
+      baselines AS (
+        SELECT
+          'hitter'::text AS baseline_group,
+          AVG(CASE WHEN actual_fpts >= 20 THEN 1 ELSE 0 END) * 100 AS hit20_rate,
+          AVG(CASE WHEN actual_fpts >= 25 THEN 1 ELSE 0 END) * 100 AS hit25_rate
+        FROM recent_sample
+        WHERE is_pitcher = false
+        UNION ALL
+        SELECT
+          'pitcher'::text AS baseline_group,
+          AVG(CASE WHEN actual_fpts >= 20 THEN 1 ELSE 0 END) * 100 AS hit20_rate,
+          AVG(CASE WHEN actual_fpts >= 25 THEN 1 ELSE 0 END) * 100 AS hit25_rate
+        FROM recent_sample
+        WHERE is_pitcher = true
       )
       SELECT
-        signal AS "signal",
+        s.signal AS "signal",
         COUNT(*)::int AS "rows",
-        COUNT(DISTINCT slate_id)::int AS "slates",
-        AVG(projection) AS "avgProjection",
-        AVG(actual_fpts) AS "avgActual",
-        AVG(actual_own_pct) AS "avgActualOwn",
-        AVG(actual_fpts - projection) FILTER (WHERE projection IS NOT NULL) AS "avgBeat",
-        AVG(CASE WHEN actual_fpts >= 15 THEN 1 ELSE 0 END) * 100 AS "hit15Rate",
-        AVG(CASE WHEN actual_fpts >= 20 THEN 1 ELSE 0 END) * 100 AS "hit20Rate",
-        AVG(CASE WHEN actual_fpts >= 25 THEN 1 ELSE 0 END) * 100 AS "hit25Rate"
-      FROM signals
-      GROUP BY signal
-      ORDER BY CASE signal
+        COUNT(DISTINCT s.slate_id)::int AS "slates",
+        AVG(s.projection) AS "avgProjection",
+        AVG(s.actual_fpts) AS "avgActual",
+        AVG(s.actual_own_pct) AS "avgActualOwn",
+        AVG(s.actual_fpts - s.projection) FILTER (WHERE s.projection IS NOT NULL) AS "avgBeat",
+        AVG(CASE WHEN s.actual_fpts >= 15 THEN 1 ELSE 0 END) * 100 AS "hit15Rate",
+        AVG(CASE WHEN s.actual_fpts >= 20 THEN 1 ELSE 0 END) * 100 AS "hit20Rate",
+        AVG(CASE WHEN s.actual_fpts >= 25 THEN 1 ELSE 0 END) * 100 AS "hit25Rate",
+        MAX(b.hit20_rate) AS "baseline20Rate",
+        AVG(CASE WHEN s.actual_fpts >= 20 THEN 1 ELSE 0 END) * 100 - MAX(b.hit20_rate) AS "lift20Rate",
+        MAX(b.hit25_rate) AS "baseline25Rate",
+        AVG(CASE WHEN s.actual_fpts >= 25 THEN 1 ELSE 0 END) * 100 - MAX(b.hit25_rate) AS "lift25Rate"
+      FROM signals s
+      LEFT JOIN baselines b ON b.baseline_group = s.baseline_group
+      GROUP BY s.signal
+      ORDER BY CASE s.signal
         WHEN 'HR Badge 25%+' THEN 1
         WHEN 'Strong HR Badge 35%+' THEN 2
         WHEN 'Blowup Top 12' THEN 3
@@ -2383,6 +2698,7 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
           COUNT(*) FILTER (WHERE ps.is_pitcher = false AND ps.hr_prob_1plus >= 0.25)::int AS hr_badge_rows,
           AVG(ps.actual_fpts) FILTER (WHERE ps.is_pitcher = false AND ps.hr_prob_1plus >= 0.25) AS hr_badge_avg_actual
         FROM player_sample ps
+        WHERE ps.window_sort IN (1, 2)
         GROUP BY ps.slate_id, ps.slate_date
       ),
       blowup_by_slate AS (
@@ -2390,7 +2706,7 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
           s.slate_id,
           COUNT(*) FILTER (WHERE s.actual_fpts >= 20)::int AS blowup_hit20
         FROM mlb_blowup_player_snapshots s
-        JOIN windowed_slates ws ON ws.slate_id = s.slate_id
+        JOIN windowed_slates ws ON ws.slate_id = s.slate_id AND ws.window_sort IN (1, 2)
         WHERE s.actual_fpts IS NOT NULL
         GROUP BY s.slate_id
       )
@@ -2428,6 +2744,7 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
         ps.actual_fpts - ps.final_proj AS "miss"
       FROM player_sample ps
       WHERE ps.slate_rank = 1
+        AND ps.window_sort = 1
         AND ps.final_proj IS NOT NULL
       ORDER BY ABS(ps.actual_fpts - ps.final_proj) DESC NULLS LAST, ps.salary DESC, ps.name ASC
       LIMIT 12
@@ -2451,10 +2768,127 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
         ABS(ps.linestar_own_pct - ps.actual_own_pct) - ABS(ps.field_own_pct - ps.actual_own_pct) AS "fieldGainVsLineStar"
       FROM player_sample ps
       WHERE ps.slate_rank = 1
+        AND ps.window_sort = 1
         AND ps.actual_own_pct IS NOT NULL
         AND (ps.field_own_pct IS NOT NULL OR ps.linestar_own_pct IS NOT NULL)
       ORDER BY ABS(COALESCE(ps.field_own_pct, ps.linestar_own_pct) - ps.actual_own_pct) DESC NULLS LAST, ps.salary DESC, ps.name ASC
       LIMIT 12
+    `);
+
+  const pitcherExploitResult = await db.execute<MlbPostmortemPitcherExploitRow>(sql`
+      ${completedSlatesCte},
+      pitcher_context AS (
+        SELECT
+          ps.*,
+          CASE
+            WHEN ps.mlb_team_id = mm.home_team_id THEN mm.away_implied
+            WHEN ps.mlb_team_id = mm.away_team_id THEN mm.home_implied
+            ELSE NULL
+          END AS opponent_implied,
+          CASE
+            WHEN ps.mlb_team_id = mm.home_team_id THEN mm.home_ml
+            WHEN ps.mlb_team_id = mm.away_team_id THEN mm.away_ml
+            ELSE NULL
+          END AS moneyline
+        FROM player_sample ps
+        LEFT JOIN mlb_matchups mm ON mm.id = ps.matchup_id
+        WHERE ps.window_sort = 1
+          AND ps.is_pitcher = true
+          AND ps.final_proj IS NOT NULL
+          AND ps.salary > 0
+      ),
+      scored AS (
+        SELECT
+          pc.*,
+          pc.final_proj / (pc.salary / 1000.0) AS value_multiple,
+          pc.linestar_proj - pc.final_proj AS market_gap,
+          (
+            (pc.final_proj / NULLIF(pc.salary / 1000.0, 0)) * 2.0
+            + GREATEST(0, 18 - COALESCE(pc.field_own_pct, 18)) * 0.25
+            + CASE WHEN pc.opponent_implied IS NOT NULL THEN GREATEST(0, 4.5 - pc.opponent_implied) * 2.0 ELSE 0 END
+            + CASE WHEN pc.moneyline IS NOT NULL AND pc.moneyline <= -120 THEN 1.5 ELSE 0 END
+            + CASE WHEN pc.projection_source <> 'linestar' THEN 1.0 ELSE 0 END
+          ) AS exploit_score
+        FROM pitcher_context pc
+      )
+      SELECT
+        slate_id::int AS "slateId",
+        slate_date::text AS "slateDate",
+        name AS "name",
+        team_abbrev AS "teamAbbrev",
+        salary::int AS "salary",
+        final_proj AS "projection",
+        linestar_proj AS "linestarProjection",
+        market_gap AS "marketGap",
+        field_own_pct AS "fieldOwnPct",
+        actual_own_pct AS "actualOwnPct",
+        actual_fpts AS "actualFpts",
+        value_multiple AS "valueMultiple",
+        opponent_implied AS "opponentImplied",
+        moneyline::int AS "moneyline",
+        exploit_score AS "score"
+      FROM scored
+      WHERE final_proj >= 14
+        AND COALESCE(field_own_pct, 0) <= 18
+        AND (
+          opponent_implied IS NULL
+          OR opponent_implied <= 4.5
+          OR moneyline <= -120
+        )
+      ORDER BY exploit_score DESC, final_proj DESC, salary DESC
+      LIMIT 12
+    `);
+
+  const decisionCaptureResult = await db.execute<MlbPostmortemDecisionCaptureRow>(sql`
+      ${completedSlatesCte},
+      ranked AS (
+        SELECT
+          ps.*,
+          COUNT(*) OVER (PARTITION BY ps.window_sort, ps.slate_id) AS slate_rows,
+          ROW_NUMBER() OVER (PARTITION BY ps.window_sort, ps.slate_id ORDER BY ps.actual_fpts DESC NULLS LAST, ps.salary DESC, ps.name ASC) AS actual_rank,
+          ROW_NUMBER() OVER (PARTITION BY ps.window_sort, ps.slate_id ORDER BY ps.final_proj DESC NULLS LAST, ps.salary DESC, ps.name ASC) AS projection_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY ps.window_sort, ps.slate_id
+            ORDER BY COALESCE(ps.proj_ceiling, ps.final_proj) DESC NULLS LAST, ps.hr_prob_1plus DESC NULLS LAST, ps.salary DESC, ps.name ASC
+          ) AS ceiling_rank,
+          NTILE(4) OVER (PARTITION BY ps.window_sort, ps.slate_id ORDER BY ps.final_proj DESC NULLS LAST, ps.salary DESC, ps.name ASC) AS projection_quartile
+        FROM player_sample ps
+        WHERE ps.final_proj IS NOT NULL
+      ),
+      buckets AS (
+        SELECT * FROM (
+          VALUES
+            ('Top 1%'::text, 1::int),
+            ('Top 5%'::text, 5::int),
+            ('Top 10%'::text, 10::int)
+        ) AS b(bucket, pct)
+      )
+      SELECT
+        r.window_label AS "windowLabel",
+        r.window_sort::int AS "windowSort",
+        b.bucket AS "outcomeBucket",
+        COUNT(*) FILTER (WHERE r.actual_rank <= GREATEST(1, CEIL(r.slate_rows * b.pct / 100.0)))::int AS "outcomeRows",
+        COUNT(*) FILTER (
+          WHERE r.actual_rank <= GREATEST(1, CEIL(r.slate_rows * b.pct / 100.0))
+            AND r.projection_rank <= GREATEST(1, CEIL(r.slate_rows * 0.10))
+        ) * 100.0 / NULLIF(COUNT(*) FILTER (WHERE r.actual_rank <= GREATEST(1, CEIL(r.slate_rows * b.pct / 100.0))), 0) AS "highProjectionCaptureRate",
+        COUNT(*) FILTER (
+          WHERE r.actual_rank <= GREATEST(1, CEIL(r.slate_rows * b.pct / 100.0))
+            AND (
+              r.ceiling_rank <= GREATEST(1, CEIL(r.slate_rows * 0.10))
+              OR (r.is_pitcher = false AND r.hr_prob_1plus >= 0.25)
+            )
+        ) * 100.0 / NULLIF(COUNT(*) FILTER (WHERE r.actual_rank <= GREATEST(1, CEIL(r.slate_rows * b.pct / 100.0))), 0) AS "ceilingCaptureRate",
+        COUNT(*) FILTER (
+          WHERE r.actual_rank <= GREATEST(1, CEIL(r.slate_rows * b.pct / 100.0))
+            AND COALESCE(r.field_own_pct, 100) <= 10
+            AND r.projection_quartile = 1
+        ) * 100.0 / NULLIF(COUNT(*) FILTER (WHERE r.actual_rank <= GREATEST(1, CEIL(r.slate_rows * b.pct / 100.0))), 0) AS "leverageCaptureRate",
+        AVG(r.actual_own_pct) FILTER (WHERE r.actual_rank <= GREATEST(1, CEIL(r.slate_rows * b.pct / 100.0))) AS "avgActualOwn"
+      FROM ranked r
+      CROSS JOIN buckets b
+      GROUP BY r.window_label, r.window_sort, b.bucket, b.pct
+      ORDER BY r.window_sort ASC, b.pct ASC
     `);
 
   const summary = summaryResult.rows[0];
@@ -2477,6 +2911,35 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
     finalGainVsLineStar: mlbPostmortemNumber(row.finalGainVsLineStar),
   }));
 
+  const projectionIndependence = projectionIndependenceResult.rows.map((row) => ({
+    windowLabel: row.windowLabel,
+    windowSort: Number(row.windowSort),
+    rows: Number(row.rows ?? 0),
+    finalRows: Number(row.finalRows ?? 0),
+    fallbackRows: Number(row.fallbackRows ?? 0),
+    fallbackPct: mlbPostmortemNumber(row.fallbackPct),
+    finalMae: mlbPostmortemNumber(row.finalMae),
+    rawOurMae: mlbPostmortemNumber(row.rawOurMae),
+    ourSourceMae: mlbPostmortemNumber(row.ourSourceMae),
+    nonLineStarMae: mlbPostmortemNumber(row.nonLineStarMae),
+    fallbackMae: mlbPostmortemNumber(row.fallbackMae),
+    nonFallbackMae: mlbPostmortemNumber(row.nonFallbackMae),
+    linestarMae: mlbPostmortemNumber(row.linestarMae),
+    blendUplift: mlbPostmortemNumber(row.blendUplift),
+    fallbackDelta: mlbPostmortemNumber(row.fallbackDelta),
+    warning: row.warning ?? null,
+  }));
+
+  const projectionSources = projectionSourceResult.rows.map((row) => ({
+    windowLabel: row.windowLabel,
+    windowSort: Number(row.windowSort),
+    projectionSource: row.projectionSource,
+    rows: Number(row.rows ?? 0),
+    pctRows: mlbPostmortemNumber(row.pctRows),
+    mae: mlbPostmortemNumber(row.mae),
+    bias: mlbPostmortemNumber(row.bias),
+  }));
+
   const ownershipSummary = ownershipResult.rows.map((row) => ({
     windowLabel: row.windowLabel,
     windowSort: Number(row.windowSort),
@@ -2493,6 +2956,40 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
     fieldGainVsLineStar: mlbPostmortemNumber(row.fieldGainVsLineStar),
   }));
 
+  const ownershipChalk = ownershipChalkResult.rows.map((row) => ({
+    windowLabel: row.windowLabel,
+    windowSort: Number(row.windowSort),
+    threshold: Number(row.threshold),
+    rows: Number(row.rows ?? 0),
+    actualChalkRows: Number(row.actualChalkRows ?? 0),
+    projectedChalkRows: Number(row.projectedChalkRows ?? 0),
+    capturedRows: Number(row.capturedRows ?? 0),
+    captureRate: mlbPostmortemNumber(row.captureRate),
+    falseLowRows: Number(row.falseLowRows ?? 0),
+    falseChalkRows: Number(row.falseChalkRows ?? 0),
+  }));
+
+  const ownershipRanking = ownershipRankingResult.rows.map((row) => ({
+    windowLabel: row.windowLabel,
+    windowSort: Number(row.windowSort),
+    topN: Number(row.topN),
+    rows: Number(row.rows ?? 0),
+    actualTopRows: Number(row.actualTopRows ?? 0),
+    capturedRows: Number(row.capturedRows ?? 0),
+    overlapPct: mlbPostmortemNumber(row.overlapPct),
+    spearman: mlbPostmortemNumber(row.spearman),
+  }));
+
+  const leverageErrors = leverageErrorResult.rows.map((row) => ({
+    windowLabel: row.windowLabel,
+    windowSort: Number(row.windowSort),
+    rows: Number(row.rows ?? 0),
+    highImpactRows: Number(row.highImpactRows ?? 0),
+    leverageErrorRows: Number(row.leverageErrorRows ?? 0),
+    leverageErrorRate: mlbPostmortemNumber(row.leverageErrorRate),
+    avgAbsError: mlbPostmortemNumber(row.avgAbsError),
+  }));
+
   const signalFollowThrough = signalResult.rows.map((row) => ({
     signal: row.signal,
     rows: Number(row.rows ?? 0),
@@ -2504,7 +3001,20 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
     hit15Rate: mlbPostmortemNumber(row.hit15Rate),
     hit20Rate: mlbPostmortemNumber(row.hit20Rate),
     hit25Rate: mlbPostmortemNumber(row.hit25Rate),
+    baseline20Rate: mlbPostmortemNumber(row.baseline20Rate),
+    lift20Rate: mlbPostmortemNumber(row.lift20Rate),
+    baseline25Rate: mlbPostmortemNumber(row.baseline25Rate),
+    lift25Rate: mlbPostmortemNumber(row.lift25Rate),
   }));
+
+  const warnings = projectionIndependence
+    .filter((row) => row.warning != null)
+    .map((row) => {
+      if (row.warning === "fallback_dependency") {
+        return `${row.windowLabel}: model independence compromised because LineStar fallback is ${row.fallbackPct?.toFixed(1) ?? "-"}%.`;
+      }
+      return `${row.windowLabel}: non-LineStar MAE is materially worse than final MAE.`;
+    });
 
   return {
     sample: {
@@ -2519,10 +3029,43 @@ export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | nu
       playerRows: Number(summary.playerRows ?? 0),
       ownershipRows: Number(summary.ownershipRows ?? 0),
     },
-    findings: buildMlbPostmortemFindings(projectionSummary, ownershipSummary, signalFollowThrough),
+    findings: buildMlbPostmortemFindings(projectionSummary, projectionIndependence, ownershipSummary, signalFollowThrough),
+    warnings,
     projectionSummary,
+    projectionIndependence,
+    projectionSources,
     ownershipSummary,
+    ownershipChalk,
+    ownershipRanking,
+    leverageErrors,
     signalFollowThrough,
+    pitcherExploitWatch: pitcherExploitResult.rows.map((row) => ({
+      slateId: Number(row.slateId),
+      slateDate: row.slateDate,
+      name: row.name,
+      teamAbbrev: row.teamAbbrev ?? null,
+      salary: Number(row.salary ?? 0),
+      projection: mlbPostmortemNumber(row.projection),
+      linestarProjection: mlbPostmortemNumber(row.linestarProjection),
+      marketGap: mlbPostmortemNumber(row.marketGap),
+      fieldOwnPct: mlbPostmortemNumber(row.fieldOwnPct),
+      actualOwnPct: mlbPostmortemNumber(row.actualOwnPct),
+      actualFpts: mlbPostmortemNumber(row.actualFpts),
+      valueMultiple: mlbPostmortemNumber(row.valueMultiple),
+      opponentImplied: mlbPostmortemNumber(row.opponentImplied),
+      moneyline: row.moneyline == null ? null : Number(row.moneyline),
+      score: mlbPostmortemNumber(row.score),
+    })),
+    decisionCapture: decisionCaptureResult.rows.map((row) => ({
+      windowLabel: row.windowLabel,
+      windowSort: Number(row.windowSort),
+      outcomeBucket: row.outcomeBucket,
+      outcomeRows: Number(row.outcomeRows ?? 0),
+      highProjectionCaptureRate: mlbPostmortemNumber(row.highProjectionCaptureRate),
+      ceilingCaptureRate: mlbPostmortemNumber(row.ceilingCaptureRate),
+      leverageCaptureRate: mlbPostmortemNumber(row.leverageCaptureRate),
+      avgActualOwn: mlbPostmortemNumber(row.avgActualOwn),
+    })),
     recentSlates: recentSlateResult.rows.map((row) => ({
       slateId: Number(row.slateId),
       slateDate: row.slateDate,

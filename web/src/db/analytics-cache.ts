@@ -118,7 +118,7 @@ export const getCachedMlbBlowupCandidateReport = unstable_cache(
 
 export const getCachedMlbPostmortemReport = unstable_cache(
   () => getMlbPostmortemReport(),
-  ["analytics-mlb-postmortem-v1"],
+  ["analytics-mlb-postmortem-v2"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 
