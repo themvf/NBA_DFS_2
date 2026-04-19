@@ -526,6 +526,33 @@ function buildOpponentByTeamId(pool: OptimizerPlayer[]): Map<number, number> {
   return opponentByTeamId;
 }
 
+function getPlayerGameKey(player: OptimizerPlayer): string | null {
+  if (player.matchupId != null) return `matchup:${player.matchupId}`;
+  const slateGameKey = player.gameInfo?.split(" ")[0]?.trim();
+  return slateGameKey ? `game:${slateGameKey}` : null;
+}
+
+function buildGameKeyByTeamId(pool: OptimizerPlayer[]): Map<number, string> {
+  const gameKeyByTeamId = new Map<number, string>();
+  for (const player of pool) {
+    if (player.teamId == null || gameKeyByTeamId.has(player.teamId)) continue;
+    const gameKey = getPlayerGameKey(player);
+    if (gameKey) gameKeyByTeamId.set(player.teamId, gameKey);
+  }
+  return gameKeyByTeamId;
+}
+
+function getTeamStackGameKey(teamId: number, gameKeyByTeamId: Map<number, string>): string {
+  return gameKeyByTeamId.get(teamId) ?? `team:${teamId}`;
+}
+
+function countDistinctStackGames(
+  teamIds: readonly number[],
+  gameKeyByTeamId: Map<number, string>,
+): number {
+  return new Set(teamIds.map((teamId) => getTeamStackGameKey(teamId, gameKeyByTeamId))).size;
+}
+
 function buildTeamPlayersMap(
   pool: OptimizerPlayer[],
   mode: OptimizerMode,
@@ -711,6 +738,7 @@ function enumerateStackTemplates(
     availableTeamCounts.set(teamId, teamPlayers.length);
   }
   const opponentByTeamId = buildOpponentByTeamId(pool);
+  const gameKeyByTeamId = buildGameKeyByTeamId(pool);
   const requiredStackSizeByTeam = new Map(
     ruleSelections.requiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize] as const),
   );
@@ -727,9 +755,15 @@ function enumerateStackTemplates(
   if (countableTeamIds.length < teamStackCount) {
     return [];
   }
+  if (countDistinctStackGames(countableTeamIds, gameKeyByTeamId) < teamStackCount) {
+    return [];
+  }
 
   const templates: NbaStackTemplate[] = [];
   for (const combination of enumerateTeamCombinations(countableTeamIds, teamStackCount)) {
+    if (countDistinctStackGames(combination, gameKeyByTeamId) < teamStackCount) {
+      continue;
+    }
     if (requiredTeamIds.size > 0 && !combination.some((teamId) => requiredTeamIds.has(teamId))) {
       continue;
     }
@@ -887,6 +921,7 @@ function validateLineupExact(
   }
 
   const opponentByTeamId = buildOpponentByTeamId(players);
+  const gameKeyByTeamId = buildGameKeyByTeamId(players);
   const requiredStackSizeByTeam = new Map(
     ruleSelections.requiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize] as const),
   );
@@ -901,6 +936,9 @@ function validateLineupExact(
 
   if (countableTeamIds.length < teamStackCount) {
     return { ok: false, reason: "stack_count_insufficient" };
+  }
+  if (countDistinctStackGames(countableTeamIds, gameKeyByTeamId) < teamStackCount) {
+    return { ok: false, reason: "stack_game_count_insufficient" };
   }
   if (
     ruleSelections.requiredTeamStacks.length > 0
@@ -1480,9 +1518,9 @@ export function optimizeLineupsWithDebug(
     return success;
   };
 
-  let effectiveMinStack = minStack;
-  let effectiveTeamStackCount = teamStackCount;
-  let effectiveBringBackSize = bringBackSize;
+  const effectiveMinStack = minStack;
+  const effectiveTeamStackCount = teamStackCount;
+  const effectiveBringBackSize = bringBackSize;
   let effectiveSalaryFloor = SALARY_FLOOR;
   if (!timedProbe(
     `teamStacks=${effectiveTeamStackCount},stackSize=${effectiveMinStack},bringBack=${effectiveBringBackSize},floor=${effectiveSalaryFloor}`,
@@ -1695,9 +1733,9 @@ export function prepareNbaOptimizerRun(
     return success;
   };
 
-  let effectiveMinStack = minStack;
-  let effectiveTeamStackCount = teamStackCount;
-  let effectiveBringBackSize = bringBackSize;
+  const effectiveMinStack = minStack;
+  const effectiveTeamStackCount = teamStackCount;
+  const effectiveBringBackSize = bringBackSize;
   let effectiveSalaryFloor = SALARY_FLOOR;
   if (!timedProbe(
     `teamStacks=${effectiveTeamStackCount},stackSize=${effectiveMinStack},bringBack=${effectiveBringBackSize},floor=${effectiveSalaryFloor}`,

@@ -56,6 +56,35 @@ function runDoubleStackBringBack() {
   });
 }
 
+function runDoubleStackSpansMultipleGames() {
+  const pool = createSyntheticNbaPool({ gameCount: 4, valuePlayersPerTeam: 3 }).map((player) => (
+    player.matchupId === 1
+      ? {
+          ...player,
+          ourProj: (player.ourProj ?? 0) + 18,
+          ourLeverage: (player.ourLeverage ?? 0) + 4,
+          projCeiling: (player.projCeiling ?? 0) + 18,
+        }
+      : player
+  ));
+  const settings: OptimizerSettings = {
+    mode: "gpp",
+    nLineups: 3,
+    minStack: 2,
+    teamStackCount: 2,
+    maxExposure: 1,
+    bringBackEnabled: false,
+    bringBackSize: 1,
+  };
+
+  const { lineups, debug } = optimizeLineupsWithDebug(pool, settings);
+  assert(lineups.length === settings.nLineups, `expected ${settings.nLineups} lineups, got ${lineups.length}`);
+  assert(debug.terminationReason === "completed", `unexpected termination: ${debug.terminationReason}`);
+  assertValidLineups(lineups, pool, settings, {
+    salaryFloor: debug.effectiveSettings.salaryFloor ?? 49_000,
+  });
+}
+
 function runLockBlockTeamRules() {
   const pool = createSyntheticNbaPool({ gameCount: 8, valuePlayersPerTeam: 3 });
   const lockedPlayerId = findPlayerId(pool, "T01", "Primary PG");
@@ -111,6 +140,7 @@ function runExposureExhaustion() {
 const testCases: TestCase[] = [
   { name: "single-stack-with-bringback", run: runSingleStackBringBack },
   { name: "double-stack-with-bringback", run: runDoubleStackBringBack },
+  { name: "double-stack-spans-multiple-games", run: runDoubleStackSpansMultipleGames },
   { name: "locks-blocks-required-team-stack", run: runLockBlockTeamRules },
   { name: "partial-generation-under-exposure", run: runExposureExhaustion },
 ];

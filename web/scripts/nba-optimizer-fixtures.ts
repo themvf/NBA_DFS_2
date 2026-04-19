@@ -159,6 +159,29 @@ function buildOpponentMap(pool: OptimizerPlayer[]): Map<number, number> {
   return opponentByTeam;
 }
 
+function getPlayerGameKey(player: OptimizerPlayer): string | null {
+  if (player.matchupId != null) return `matchup:${player.matchupId}`;
+  const slateGameKey = player.gameInfo?.split(" ")[0]?.trim();
+  return slateGameKey ? `game:${slateGameKey}` : null;
+}
+
+function buildGameKeyByTeam(pool: OptimizerPlayer[]): Map<number, string> {
+  const gameKeyByTeam = new Map<number, string>();
+  for (const player of pool) {
+    if (player.teamId == null || gameKeyByTeam.has(player.teamId)) continue;
+    const gameKey = getPlayerGameKey(player);
+    if (gameKey) gameKeyByTeam.set(player.teamId, gameKey);
+  }
+  return gameKeyByTeam;
+}
+
+function countDistinctStackGames(
+  teamIds: readonly number[],
+  gameKeyByTeam: Map<number, string>,
+): number {
+  return new Set(teamIds.map((teamId) => gameKeyByTeam.get(teamId) ?? `team:${teamId}`)).size;
+}
+
 function countableTeamIds(
   lineup: GeneratedLineup,
   settings: OptimizerSettings,
@@ -187,6 +210,7 @@ export function assertValidLineups(
   options?: { salaryFloor?: number },
 ): void {
   const opponentByTeam = buildOpponentMap(pool);
+  const gameKeyByTeam = buildGameKeyByTeam(pool);
   const exposureCap = Math.ceil(settings.nLineups * settings.maxExposure);
   const salaryFloor = options?.salaryFloor ?? 49_000;
   const exposureCounts = new Map<number, number>();
@@ -230,6 +254,10 @@ export function assertValidLineups(
     const requiredStackCount = settings.teamStackCount ?? 1;
     if (countableTeams.length < requiredStackCount) {
       throw new Error(`${label}: expected ${requiredStackCount} stack teams, found ${countableTeams.length}`);
+    }
+    const distinctStackGames = countDistinctStackGames(countableTeams, gameKeyByTeam);
+    if (distinctStackGames < requiredStackCount) {
+      throw new Error(`${label}: expected stacks across ${requiredStackCount} games, found ${distinctStackGames}`);
     }
 
     const requiredStacks = settings.requiredTeamStacks ?? [];
