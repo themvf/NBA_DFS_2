@@ -3,6 +3,8 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { UIEvent } from "react";
 import type { DfsPagePlayerRow as DkPlayerRow, MlbGameEnvironmentCard, MlbPitcherSlateSignal, Sport } from "@/db/queries";
+import { DK_SLATE_TIMING_OPTIONS } from "@/lib/dk-slate-timing";
+import type { DkSlateTiming } from "@/lib/dk-slate-timing";
 import MlbGameCardStrip from "./mlb-game-card-strip";
 import type { GeneratedLineup, OptimizerSettings } from "./optimizer";
 import type { MlbGeneratedLineup, MlbOptimizerSettings } from "./mlb-optimizer";
@@ -1625,7 +1627,7 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
   const [loadMode, setLoadMode] = useState<"api" | "csv">("api");
 
   // ── Contest metadata ──────────────────────────────────────
-  const [contestTiming, setContestTiming] = useState<"early" | "main" | "late">("main");
+  const [contestTiming, setContestTiming] = useState<DkSlateTiming>("main");
   const [fieldSizeInput, setFieldSizeInput] = useState("");
   const [contestFormat, setContestFormat] = useState<"gpp" | "cash">("gpp");
 
@@ -2532,15 +2534,15 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
           <div>
             <label className="text-xs text-gray-500 block mb-1">Timing</label>
             <div className="flex rounded border text-xs overflow-hidden">
-              {(["early", "main", "late"] as const).map((t, i) => (
+              {DK_SLATE_TIMING_OPTIONS.map((option, i) => (
                 <button
-                  key={t}
-                  onClick={() => setContestTiming(t)}
-                  className={`px-3 py-1 capitalize ${i > 0 ? "border-l" : ""} ${
-                    contestTiming === t ? "bg-slate-700 text-white" : "text-gray-500 hover:bg-gray-50"
+                  key={option.value}
+                  onClick={() => setContestTiming(option.value)}
+                  className={`px-3 py-1 ${i > 0 ? "border-l" : ""} ${
+                    contestTiming === option.value ? "bg-slate-700 text-white" : "text-gray-500 hover:bg-gray-50"
                   }`}
                 >
-                  {t}
+                  {option.label}
                 </button>
               ))}
             </div>

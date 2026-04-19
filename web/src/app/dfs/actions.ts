@@ -15,6 +15,7 @@ import { db } from "@/db";
 import { ensureDkPlayerPropColumns, ensureMlbBlowupTrackingTables, ensureOddsHistoryTables, ensureOwnershipExperimentTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, ownershipRuns, ownershipPlayerSnapshots, mlbBlowupRuns, mlbBlowupPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
+import { normalizeDkSlateTiming } from "@/lib/dk-slate-timing";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
@@ -3475,7 +3476,7 @@ export async function processDkSlate(formData: FormData): Promise<{
   const dkFile        = formData.get("dkFile") as File | null;
   const lsFile        = formData.get("lsFile") as File | null;
   const cashLineStr   = formData.get("cashLine") as string | null;
-  const contestType   = (formData.get("contestType") as string | null) || undefined;
+  const contestType   = normalizeDkSlateTiming(formData.get("contestType") as string | null);
   const fieldSizeStr  = formData.get("fieldSize") as string | null;
   const contestFormat = (formData.get("contestFormat") as string | null) || undefined;
   if (!dkFile) return { ok: false, message: "DK CSV required" };
@@ -3660,6 +3661,7 @@ async function enrichAndSave(
   fieldSize?: number,
   contestFormat?: string,
 ): Promise<{ ok: boolean; message: string; playerCount?: number; matchRate?: number }> {
+  const normalizedContestType = normalizeDkSlateTiming(contestType);
   let slateDate = "";
   for (const p of dkPlayers_) {
     const d = parseSlateDate(p.gameInfo);
@@ -3676,7 +3678,7 @@ async function enrichAndSave(
   } = { slateDate, gameCount, sport: "nba" };
   if (cashLine != null) slateValues.cashLine = cashLine;
   if (draftGroupId != null) slateValues.dkDraftGroupId = draftGroupId;
-  if (contestType) slateValues.contestType = contestType;
+  if (normalizedContestType) slateValues.contestType = normalizedContestType;
   if (fieldSize != null) slateValues.fieldSize = fieldSize;
   if (contestFormat) slateValues.contestFormat = contestFormat;
 
@@ -3684,7 +3686,7 @@ async function enrichAndSave(
   if (cashLine != null) conflictSet.cashLine = cashLine;
   // COALESCE: don't overwrite an existing draft group ID with null (CSV re-load)
   if (draftGroupId != null) conflictSet.dkDraftGroupId = draftGroupId;
-  if (contestType) conflictSet.contestType = contestType;
+  if (normalizedContestType) conflictSet.contestType = normalizedContestType;
   if (fieldSize != null) conflictSet.fieldSize = fieldSize;
   if (contestFormat) conflictSet.contestFormat = contestFormat;
 
@@ -4477,7 +4479,7 @@ export async function saveHistoricalSlate(
   // Priority 2: any loaded slate for the same date that has our_proj populated (contest type
   //   label mismatch between the load and the historical save is common — e.g. loaded as "late"
   //   but historical pasted as "main"). Prefer the slate with the most our_proj coverage.
-  const effectiveType   = contestType   ?? "main";
+  const effectiveType   = normalizeDkSlateTiming(contestType) ?? "main";
   const effectiveFormat = contestFormat ?? "gpp";
 
   const exactMatch = await db
@@ -5563,6 +5565,7 @@ async function enrichAndSaveMlb(
   fieldSize?: number,
   contestFormat?: string,
 ): Promise<{ ok: boolean; message: string; playerCount?: number; matchRate?: number }> {
+  const normalizedContestType = normalizeDkSlateTiming(contestType);
   let slateDate = "";
   for (const p of dkPlayers_) {
     const d = parseSlateDate(p.gameInfo);
@@ -5576,14 +5579,14 @@ async function enrichAndSaveMlb(
   const slateVals: Record<string, unknown> = { slateDate, gameCount, sport: "mlb" };
   if (cashLine != null)     slateVals.cashLine     = cashLine;
   if (draftGroupId != null) slateVals.dkDraftGroupId = draftGroupId;
-  if (contestType)          slateVals.contestType  = contestType;
+  if (normalizedContestType) slateVals.contestType = normalizedContestType;
   if (fieldSize != null)    slateVals.fieldSize    = fieldSize;
   if (contestFormat)        slateVals.contestFormat = contestFormat;
 
   const conflictVals: Record<string, unknown> = { gameCount };
   if (cashLine != null)     conflictVals.cashLine     = cashLine;
   if (draftGroupId != null) conflictVals.dkDraftGroupId = draftGroupId;
-  if (contestType)          conflictVals.contestType  = contestType;
+  if (normalizedContestType) conflictVals.contestType = normalizedContestType;
   if (fieldSize != null)    conflictVals.fieldSize    = fieldSize;
   if (contestFormat)        conflictVals.contestFormat = contestFormat;
 

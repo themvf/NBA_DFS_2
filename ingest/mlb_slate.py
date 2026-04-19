@@ -1158,7 +1158,7 @@ if __name__ == "__main__":
     parser.add_argument("--linestar",        help="Path to LineStar CSV")
     parser.add_argument("--date",            help="Slate date YYYY-MM-DD (overrides CSV)")
     parser.add_argument("--season",          default=None, help="Season year (defaults to current year)")
-    parser.add_argument("--contest-type",    default="main", choices=["main", "showdown"])
+    parser.add_argument("--contest-type",    default="main", choices=["turbo", "early", "main", "night", "showdown"])
     parser.add_argument("--contest-format",  default="gpp",  choices=["gpp", "cash"])
     args = parser.parse_args()
 
