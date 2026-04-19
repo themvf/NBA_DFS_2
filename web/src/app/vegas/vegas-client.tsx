@@ -28,7 +28,7 @@ const fmtMl = (ml: number | null) => {
 
 // ── Betting intelligence helpers ────────────────────────────────────────────
 
-const fmtDate = (value: string | null | undefined) => value ?? "â€”";
+const fmtDate = (value: string | null | undefined) => value ?? "None";
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -348,9 +348,14 @@ export default function VegasClient({
   const overallOverRate = totalN > 0 ? totalOvers / totalN : null;
   const missingScoreDates = mlbCoverageStatus?.missingScoreDates ?? [];
   const missingOddsDates = mlbCoverageStatus?.missingOddsDates ?? [];
+  const unattemptedOddsDates = mlbCoverageStatus?.unattemptedMissingOddsDates ?? [];
+  const providerPartialOddsDates = mlbCoverageStatus?.providerPartialOddsDates ?? [];
+  const hasActionableBackfill = sport === "mlb" && mlbCoverageStatus?.recommendedBackfillStart != null;
+  const hasProviderPartialOdds = providerPartialOddsDates.length > 0;
   const coverageLooksComplete = sport === "mlb"
     && mlbCoverageStatus?.historicalEndDate != null
-    && mlbCoverageStatus.recommendedBackfillStart == null;
+    && !hasActionableBackfill
+    && !hasProviderPartialOdds;
 
   return (
     <div className="space-y-8 p-6 max-w-5xl mx-auto">
@@ -388,9 +393,11 @@ export default function VegasClient({
           <div className="flex flex-wrap items-baseline gap-3">
             <h2 className="font-semibold">MLB Backfill Coverage</h2>
             <span className={`text-xs ${coverageLooksComplete ? "text-emerald-700" : "text-amber-700"}`}>
-              {coverageLooksComplete
-                ? `Historical MLB dates are complete through ${fmtDate(mlbCoverageStatus.historicalEndDate)}.`
-                : `Backfill is only needed from ${fmtDate(mlbCoverageStatus.recommendedBackfillStart)} through ${fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}.`}
+              {hasActionableBackfill
+                ? `Backfill is needed from ${fmtDate(mlbCoverageStatus.recommendedBackfillStart)} through ${fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}.`
+                : hasProviderPartialOdds
+                  ? `Backfill is current through ${fmtDate(mlbCoverageStatus.historicalEndDate)}; some odds markets remain partial from provider coverage.`
+                  : `Historical MLB dates are complete through ${fmtDate(mlbCoverageStatus.historicalEndDate)}.`}
             </span>
           </div>
 
@@ -410,28 +417,36 @@ export default function VegasClient({
                 Complete through {fmtDate(mlbCoverageStatus.latestScoreCompleteDate)}
               </div>
               <div className="mt-1 text-xs text-slate-600">
-                First missing score date: {fmtDate(mlbCoverageStatus.firstMissingScoreDate)}
+                {mlbCoverageStatus.firstMissingScoreDate
+                  ? `First missing score date: ${fmtDate(mlbCoverageStatus.firstMissingScoreDate)}`
+                  : "No missing score dates through yesterday"}
               </div>
             </div>
             <div className="rounded border border-slate-200 bg-slate-50 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">Odds</div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">Full Odds</div>
               <div className="mt-1 text-sm font-medium text-slate-900">
                 Complete through {fmtDate(mlbCoverageStatus.latestOddsCompleteDate)}
               </div>
               <div className="mt-1 text-xs text-slate-600">
-                First missing odds date: {fmtDate(mlbCoverageStatus.firstMissingOddsDate)}
+                Attempted through {fmtDate(mlbCoverageStatus.oddsBackfillAttemptedThroughDate)}
               </div>
             </div>
           </div>
 
           <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
             <div className="font-medium text-slate-900">
-              Suggested workflow window: {fmtDate(mlbCoverageStatus.recommendedBackfillStart)} to {fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}
+              {hasActionableBackfill
+                ? `Suggested workflow window: ${fmtDate(mlbCoverageStatus.recommendedBackfillStart)} to ${fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}`
+                : `Scheduled backfill is caught up through ${fmtDate(mlbCoverageStatus.historicalEndDate)}`}
             </div>
             <div className="mt-1">
-              Scores lane: {fmtDate(mlbCoverageStatus.firstMissingScoreDate)} to {fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}
+              Scores lane: {hasActionableBackfill && mlbCoverageStatus.firstMissingScoreDate
+                ? `${fmtDate(mlbCoverageStatus.firstMissingScoreDate)} to ${fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}`
+                : "caught up"}
               {" | "}
-              Odds lane: {fmtDate(mlbCoverageStatus.firstMissingOddsDate)} to {fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}
+              Odds lane: {hasActionableBackfill && mlbCoverageStatus.firstUnattemptedOddsDate
+                ? `${fmtDate(mlbCoverageStatus.firstUnattemptedOddsDate)} to ${fmtDate(mlbCoverageStatus.recommendedBackfillEnd)}`
+                : "no unattempted dates"}
             </div>
             <div className="mt-1">
               Yesterday check ({fmtDate(mlbCoverageStatus.yesterdayDate)}):{" "}
@@ -441,8 +456,8 @@ export default function VegasClient({
             </div>
           </div>
 
-          {(missingScoreDates.length > 0 || missingOddsDates.length > 0) && (
-            <div className="grid gap-3 md:grid-cols-2">
+          {(missingScoreDates.length > 0 || unattemptedOddsDates.length > 0 || providerPartialOddsDates.length > 0 || missingOddsDates.length > 0) && (
+            <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded border border-slate-200 bg-white p-3">
                 <div className="text-[11px] uppercase tracking-wide text-slate-500">Missing Score Dates</div>
                 <div className="mt-1 text-xs text-slate-700">
@@ -450,10 +465,26 @@ export default function VegasClient({
                 </div>
               </div>
               <div className="rounded border border-slate-200 bg-white p-3">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">Missing Odds Dates</div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Unattempted Odds Dates</div>
                 <div className="mt-1 text-xs text-slate-700">
-                  {missingOddsDates.length > 0 ? missingOddsDates.join(", ") : "None through yesterday"}
+                  {unattemptedOddsDates.length > 0 ? unattemptedOddsDates.join(", ") : "None through yesterday"}
                 </div>
+              </div>
+              <div className="rounded border border-slate-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Provider Partial Odds Dates</div>
+                <div className="mt-1 text-xs text-slate-700">
+                  {providerPartialOddsDates.length > 0 ? providerPartialOddsDates.join(", ") : "None through yesterday"}
+                </div>
+                {providerPartialOddsDates.length > 0 && (
+                  <div className="mt-2 text-[11px] leading-snug text-slate-500">
+                    Backfill ran for these dates, but the provider returned incomplete total or moneyline markets.
+                  </div>
+                )}
+                {missingOddsDates.length > providerPartialOddsDates.length + unattemptedOddsDates.length && (
+                  <div className="mt-2 text-[11px] leading-snug text-slate-500">
+                    Additional partial odds dates are hidden by the display limit.
+                  </div>
+                )}
               </div>
             </div>
           )}

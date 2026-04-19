@@ -3913,10 +3913,14 @@ export type MlbVegasCoverageStatus = {
   latestOddsCompleteDate: string | null;
   firstMissingScoreDate: string | null;
   firstMissingOddsDate: string | null;
+  firstUnattemptedOddsDate: string | null;
+  oddsBackfillAttemptedThroughDate: string | null;
   recommendedBackfillStart: string | null;
   recommendedBackfillEnd: string | null;
   missingScoreDates: string[];
   missingOddsDates: string[];
+  unattemptedMissingOddsDates: string[];
+  providerPartialOddsDates: string[];
   yesterdayDate: string;
   yesterdayHadGames: boolean;
   yesterdayScoresComplete: boolean | null;
@@ -3948,6 +3952,8 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
       latestOddsCompleteDate: string | null;
       firstMissingScoreDate: string | null;
       firstMissingOddsDate: string | null;
+      firstUnattemptedOddsDate: string | null;
+      oddsBackfillAttemptedThroughDate: string | null;
       yesterdayGames: number;
       yesterdayScoresComplete: number | null;
       yesterdayOddsComplete: number | null;
@@ -3961,6 +3967,15 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
         FROM mlb_matchups m
         WHERE m.game_date >= ${seasonStart}
         GROUP BY m.game_date
+      ),
+      odds_history AS (
+        SELECT
+          h.game_date::text AS game_date,
+          COUNT(*) FILTER (WHERE h.capture_key LIKE '%_backfill')::int AS backfill_rows
+        FROM game_odds_history h
+        WHERE h.sport = 'mlb'
+          AND h.game_date >= ${seasonStart}
+        GROUP BY h.game_date
       )
       SELECT
         MIN(daily.game_date) AS "availableStartDate",
@@ -3972,6 +3987,15 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
         MAX(daily.game_date) FILTER (WHERE daily.game_date <= ${yesterdayEt} AND daily.missing_odds = 0) AS "latestOddsCompleteDate",
         MIN(daily.game_date) FILTER (WHERE daily.game_date <= ${yesterdayEt} AND daily.missing_scores > 0) AS "firstMissingScoreDate",
         MIN(daily.game_date) FILTER (WHERE daily.game_date <= ${yesterdayEt} AND daily.missing_odds > 0) AS "firstMissingOddsDate",
+        MIN(daily.game_date) FILTER (
+          WHERE daily.game_date <= ${yesterdayEt}
+            AND daily.missing_odds > 0
+            AND COALESCE(odds_history.backfill_rows, 0) = 0
+        ) AS "firstUnattemptedOddsDate",
+        MAX(daily.game_date) FILTER (
+          WHERE daily.game_date <= ${yesterdayEt}
+            AND COALESCE(odds_history.backfill_rows, 0) > 0
+        ) AS "oddsBackfillAttemptedThroughDate",
         COALESCE(SUM(CASE WHEN daily.game_date = ${yesterdayEt} THEN daily.games ELSE 0 END), 0)::int AS "yesterdayGames",
         MAX(
           CASE
@@ -3988,10 +4012,13 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
           END
         ) AS "yesterdayOddsComplete"
       FROM daily
+      LEFT JOIN odds_history ON odds_history.game_date = daily.game_date
     `),
     db.execute<{
       missingScoreDates: string[] | null;
       missingOddsDates: string[] | null;
+      unattemptedMissingOddsDates: string[] | null;
+      providerPartialOddsDates: string[] | null;
     }>(sql`
       WITH daily AS (
         SELECT
@@ -4001,6 +4028,15 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
         FROM mlb_matchups m
         WHERE m.game_date >= ${seasonStart}
         GROUP BY m.game_date
+      ),
+      odds_history AS (
+        SELECT
+          h.game_date::text AS game_date,
+          COUNT(*) FILTER (WHERE h.capture_key LIKE '%_backfill')::int AS backfill_rows
+        FROM game_odds_history h
+        WHERE h.sport = 'mlb'
+          AND h.game_date >= ${seasonStart}
+        GROUP BY h.game_date
       )
       SELECT
         ARRAY(
@@ -4018,7 +4054,27 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
             AND d.missing_odds > 0
           ORDER BY d.game_date ASC
           LIMIT 12
-        ) AS "missingOddsDates"
+        ) AS "missingOddsDates",
+        ARRAY(
+          SELECT d.game_date
+          FROM daily d
+          LEFT JOIN odds_history h ON h.game_date = d.game_date
+          WHERE d.game_date <= ${yesterdayEt}
+            AND d.missing_odds > 0
+            AND COALESCE(h.backfill_rows, 0) = 0
+          ORDER BY d.game_date ASC
+          LIMIT 12
+        ) AS "unattemptedMissingOddsDates",
+        ARRAY(
+          SELECT d.game_date
+          FROM daily d
+          LEFT JOIN odds_history h ON h.game_date = d.game_date
+          WHERE d.game_date <= ${yesterdayEt}
+            AND d.missing_odds > 0
+            AND COALESCE(h.backfill_rows, 0) > 0
+          ORDER BY d.game_date ASC
+          LIMIT 12
+        ) AS "providerPartialOddsDates"
     `),
   ]);
 
@@ -4026,7 +4082,7 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
   const missing = missingResult.rows[0];
   if (!summary || Number(summary.dateCount ?? 0) === 0) return null;
 
-  const firstMissingDates = [summary.firstMissingScoreDate, summary.firstMissingOddsDate]
+  const firstMissingDates = [summary.firstMissingScoreDate, summary.firstUnattemptedOddsDate]
     .filter((value): value is string => Boolean(value))
     .sort();
 
@@ -4040,10 +4096,14 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
     latestOddsCompleteDate: summary.latestOddsCompleteDate ?? null,
     firstMissingScoreDate: summary.firstMissingScoreDate ?? null,
     firstMissingOddsDate: summary.firstMissingOddsDate ?? null,
+    firstUnattemptedOddsDate: summary.firstUnattemptedOddsDate ?? null,
+    oddsBackfillAttemptedThroughDate: summary.oddsBackfillAttemptedThroughDate ?? null,
     recommendedBackfillStart: firstMissingDates[0] ?? null,
-    recommendedBackfillEnd: summary.historicalEndDate ?? null,
+    recommendedBackfillEnd: firstMissingDates.length > 0 ? summary.historicalEndDate ?? null : null,
     missingScoreDates: missing?.missingScoreDates ?? [],
     missingOddsDates: missing?.missingOddsDates ?? [],
+    unattemptedMissingOddsDates: missing?.unattemptedMissingOddsDates ?? [],
+    providerPartialOddsDates: missing?.providerPartialOddsDates ?? [],
     yesterdayDate: yesterdayEt,
     yesterdayHadGames: Number(summary.yesterdayGames ?? 0) > 0,
     yesterdayScoresComplete: summary.yesterdayScoresComplete == null ? null : Number(summary.yesterdayScoresComplete) === 1,
