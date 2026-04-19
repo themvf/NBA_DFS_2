@@ -21,6 +21,7 @@ import type {
   OwnershipVsTeamTotalRow,
   MlbBattingOrderCalibrationRow,
   ProjectionSourceRow,
+  SlateTypePerformanceRow,
   StatLevelAccuracyRow,
   GameTotalModelRow,
   Sport,
@@ -33,6 +34,9 @@ const fmt1 = (v: number | null | undefined) =>
   v == null ? "—" : v.toFixed(1);
 const fmt2 = (v: number | null | undefined) =>
   v == null ? "—" : v.toFixed(2);
+
+const fmtPct = (v: number | null | undefined) =>
+  v == null ? "â€”" : `${v.toFixed(2)}%`;
 
 function BiasChip({ bias }: { bias: number | null }) {
   if (bias == null) return <span className="text-gray-400">—</span>;
@@ -49,6 +53,7 @@ type Props = {
   crossSlate: CrossSlateAccuracyRow[];
   posAccuracy: PositionAccuracyRow[];
   salaryTier: SalaryTierAccuracyRow[];
+  slateTypePerformance: SlateTypePerformanceRow[];
   leverageCalib: LeverageCalibrationRow[];
   ownVsTotal: OwnershipVsTeamTotalRow[];
   battingOrderCalib: MlbBattingOrderCalibrationRow[];
@@ -58,10 +63,187 @@ type Props = {
   sport: Sport;
 };
 
+function BestBadge({ rank }: { rank: number | null }) {
+  if (rank !== 1) return null;
+  return (
+    <span className="ml-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+      Best
+    </span>
+  );
+}
+
+function MetricCell({
+  mae,
+  bias,
+  corr,
+  rows,
+  rank,
+  format = "number",
+}: {
+  mae: number | null;
+  bias: number | null;
+  corr?: number | null;
+  rows: number;
+  rank: number | null;
+  format?: "number" | "pct";
+}) {
+  return (
+    <td className="py-1 text-right">
+      <div className={rank === 1 ? "font-semibold text-emerald-800" : ""}>
+        {format === "pct" && mae != null ? fmtPct(mae) : fmt2(mae)}
+        <BestBadge rank={rank} />
+      </div>
+      <div className="text-[11px] text-gray-500">
+        n={rows}
+        {" | "}
+        bias <BiasChip bias={bias} />
+        {corr != null ? <> | corr {fmt2(corr)}</> : null}
+      </div>
+    </td>
+  );
+}
+
+function SlateTypePerformancePanel({
+  rows,
+  sport,
+}: {
+  rows: SlateTypePerformanceRow[];
+  sport: Sport;
+}) {
+  if (rows.length === 0 || rows.every((row) => row.actualRows === 0)) return null;
+
+  const highlights = [
+    {
+      title: "Our best projection slate",
+      row: rows.find((row) => row.ourFinalProjRank === 1),
+      value: (row: SlateTypePerformanceRow) => `${fmt2(row.ourFinalProjMae)} MAE`,
+    },
+    {
+      title: "LineStar best projection slate",
+      row: rows.find((row) => row.linestarProjRank === 1),
+      value: (row: SlateTypePerformanceRow) => `${fmt2(row.linestarProjMae)} MAE`,
+    },
+    {
+      title: "Our best ownership slate",
+      row: rows.find((row) => row.ourOwnRank === 1),
+      value: (row: SlateTypePerformanceRow) => `${fmt2(row.ourOwnMae)} MAE`,
+    },
+    {
+      title: "LineStar best ownership slate",
+      row: rows.find((row) => row.linestarOwnRank === 1),
+      value: (row: SlateTypePerformanceRow) => `${fmt2(row.linestarOwnMae)} MAE`,
+    },
+  ];
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <h2 className="text-sm font-semibold mb-1">Slate Type Performance</h2>
+      <p className="text-xs text-gray-500 mb-3">
+        Independent source rankings by DraftKings timing. A Best badge means that source performs best on that slate
+        type versus its own other slate types, not necessarily versus the other source. Requires 3 slates and 100 rows.
+      </p>
+
+      <div className="mb-4 grid gap-2 md:grid-cols-4">
+        {highlights.map((highlight) => (
+          <div key={highlight.title} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">{highlight.title}</p>
+            {highlight.row ? (
+              <>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {sport.toUpperCase()} {highlight.row.label}
+                </p>
+                <p className="text-xs text-slate-600">{highlight.value(highlight.row)}</p>
+              </>
+            ) : (
+              <p className="mt-1 text-xs text-slate-600">No reliable sample yet</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-400 border-b">
+              <th className="py-1 text-left">Slate</th>
+              <th className="py-1 text-right">Sample</th>
+              <th className="py-1 text-right">Our Proj</th>
+              <th className="py-1 text-right">Raw Our</th>
+              <th className="py-1 text-right">LS Proj</th>
+              <th className="py-1 text-right">Our Own</th>
+              <th className="py-1 text-right">LS Own</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.contestType} className="border-b border-gray-50 align-top">
+                <td className="py-1 font-medium">
+                  <div>{row.label}</div>
+                  {row.sampleWarning ? (
+                    <div className="text-[11px] text-amber-700">{row.sampleWarning}</div>
+                  ) : null}
+                </td>
+                <td className="py-1 text-right">
+                  <div>{row.slates} slates</div>
+                  <div className="text-[11px] text-gray-500">{row.actualRows} rows</div>
+                  <div className="text-[11px] text-gray-500">
+                    {row.firstSlateDate && row.lastSlateDate
+                      ? `${row.firstSlateDate.slice(5)} to ${row.lastSlateDate.slice(5)}`
+                      : "-"}
+                  </div>
+                </td>
+                <MetricCell
+                  mae={row.ourFinalProjMae}
+                  bias={row.ourFinalProjBias}
+                  rows={row.ourFinalProjRows}
+                  rank={row.ourFinalProjRank}
+                />
+                <MetricCell
+                  mae={row.ourProjMae}
+                  bias={row.ourProjBias}
+                  rows={row.ourProjRows}
+                  rank={row.ourProjRank}
+                />
+                <MetricCell
+                  mae={row.linestarProjMae}
+                  bias={row.linestarProjBias}
+                  rows={row.linestarProjRows}
+                  rank={row.linestarProjRank}
+                />
+                <MetricCell
+                  mae={row.ourOwnMae}
+                  bias={row.ourOwnBias}
+                  corr={row.ourOwnCorr}
+                  rows={row.ourOwnRows}
+                  rank={row.ourOwnRank}
+                  format="pct"
+                />
+                <MetricCell
+                  mae={row.linestarOwnMae}
+                  bias={row.linestarOwnBias}
+                  corr={row.linestarOwnCorr}
+                  rows={row.linestarOwnRows}
+                  rank={row.linestarOwnRank}
+                  format="pct"
+                />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-gray-500">
+        Our Proj uses live projections when present, then raw `our_proj`. Raw Our is shown separately to expose model
+        quality before live overrides.
+      </p>
+    </div>
+  );
+}
+
 export default function AnalyticsClient({
   crossSlate,
   posAccuracy,
   salaryTier,
+  slateTypePerformance,
   leverageCalib,
   ownVsTotal,
   battingOrderCalib,
@@ -346,6 +528,10 @@ export default function AnalyticsClient({
             from the <a href={`/dfs?sport=${sport}`} className="underline">DFS page</a>.
           </>
         </div>
+      )}
+
+      {slateTypePerformance.length > 0 && (
+        <SlateTypePerformancePanel rows={slateTypePerformance} sport={sport} />
       )}
 
       {hasData && (
@@ -768,9 +954,67 @@ export default function AnalyticsClient({
         <div className="rounded-lg border bg-card p-6 text-sm space-y-3">
           <h2 className="font-semibold">MLB Batting Order Calibration</h2>
           <p className="text-xs text-gray-500">
-            Avg projected vs actual FPTS and ownership by batting order slot.
-            Positive delta = under-projected (model was low). Excludes SP/RP.
+            Avg projected vs actual FPTS by batting slot. The orange delta line (right
+            axis) shows the model error — positive means the model was too low on that
+            slot, negative means it over-projected. Green bars outrunning blue is the
+            right picture.
           </p>
+          <ResponsiveContainer width="100%" height={240}>
+            <ComposedChart
+              data={battingOrderCalib}
+              margin={{ top: 4, right: 40, bottom: 16, left: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis
+                dataKey="orderSlot"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v: number) => `#${v}`}
+                label={{ value: "Batting Slot", position: "insideBottom", offset: -8, fontSize: 11 }}
+              />
+              <YAxis
+                yAxisId="fpts"
+                tick={{ fontSize: 11 }}
+                label={{ value: "FPTS", angle: -90, position: "insideLeft", fontSize: 11 }}
+              />
+              <YAxis
+                yAxisId="delta"
+                orientation="right"
+                tick={{ fontSize: 11 }}
+                label={{ value: "Delta", angle: 90, position: "insideRight", fontSize: 11 }}
+              />
+              <Tooltip
+                formatter={(v) => [typeof v === "number" ? v.toFixed(2) : "—"]}
+                labelFormatter={(v) => `Slot #${v}`}
+              />
+              <Legend verticalAlign="top" />
+              <Bar
+                yAxisId="fpts"
+                dataKey="avgProj"
+                name="Avg Proj"
+                fill="#6366f1"
+                barSize={22}
+                radius={[3, 3, 0, 0]}
+              />
+              <Bar
+                yAxisId="fpts"
+                dataKey="avgActual"
+                name="Avg Actual"
+                fill="#10b981"
+                barSize={22}
+                radius={[3, 3, 0, 0]}
+              />
+              <Line
+                yAxisId="delta"
+                type="monotone"
+                dataKey="avgDelta"
+                name="Delta (Actual−Proj)"
+                stroke="#f97316"
+                strokeWidth={2}
+                dot={{ r: 4, fill: "#f97316" }}
+                connectNulls={false}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="border-b text-gray-500 text-right">
