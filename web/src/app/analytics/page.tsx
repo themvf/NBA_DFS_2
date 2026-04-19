@@ -7,6 +7,7 @@ import AnalyticsContent from "./analytics-content";
 import MlbBlowupCandidatePanel from "./mlb-blowup-candidate-panel";
 import MlbOwnershipModelPanel from "./mlb-ownership-model-panel";
 import MlbPitcherLineupPanel from "./mlb-pitcher-lineup-panel";
+import MlbPostmortemPanel from "./mlb-postmortem-panel";
 import MlbRunEnvironmentPanel from "./mlb-run-environment-panel";
 import PerfectLineupPanel from "./perfect-lineup-panel";
 
@@ -37,6 +38,7 @@ export default async function AnalyticsPage({
   const calibration = await safeSection(() => AnalyticsContent({ sport }));
 
   if (sport === "mlb") {
+    const postmortem = await safeSection(() => MlbPostmortemPanel());
     const ownership = await safeSection(() => MlbOwnershipModelPanel({ selectedSlateId: ownershipSlateId, sortBy: ownershipSort }));
     const blowup = await safeSection(() => MlbBlowupCandidatePanel());
     const runEnvironment = await safeSection(() => MlbRunEnvironmentPanel());
@@ -46,6 +48,7 @@ export default async function AnalyticsPage({
     return (
       <>
         {calibration}
+        {postmortem}
         {ownership}
         {blowup}
         {runEnvironment}

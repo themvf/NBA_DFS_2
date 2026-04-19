@@ -1976,6 +1976,598 @@ export async function getMlbBlowupCandidateReport(): Promise<MlbBlowupCandidateR
   };
 }
 
+const MLB_POSTMORTEM_RECENT_SLATES = 5;
+const MLB_POSTMORTEM_PRIOR_SLATES = 5;
+
+export type MlbPostmortemProjectionRow = {
+  windowLabel: string;
+  windowSort: number;
+  playerGroup: string;
+  rows: number;
+  slates: number;
+  finalMae: number | null;
+  finalBias: number | null;
+  liveMae: number | null;
+  liveBias: number | null;
+  ourMae: number | null;
+  ourBias: number | null;
+  linestarMae: number | null;
+  linestarBias: number | null;
+  finalGainVsLineStar: number | null;
+};
+
+export type MlbPostmortemOwnershipRow = {
+  windowLabel: string;
+  windowSort: number;
+  rows: number;
+  slates: number;
+  fieldRows: number;
+  linestarRows: number;
+  fieldMae: number | null;
+  fieldBias: number | null;
+  fieldCorr: number | null;
+  linestarMae: number | null;
+  linestarBias: number | null;
+  linestarCorr: number | null;
+  fieldGainVsLineStar: number | null;
+};
+
+export type MlbPostmortemSignalRow = {
+  signal: string;
+  rows: number;
+  slates: number;
+  avgProjection: number | null;
+  avgActual: number | null;
+  avgActualOwn: number | null;
+  avgBeat: number | null;
+  hit15Rate: number | null;
+  hit20Rate: number | null;
+  hit25Rate: number | null;
+};
+
+export type MlbPostmortemRecentSlateRow = {
+  slateId: number;
+  slateDate: string;
+  playerRows: number;
+  finalMae: number | null;
+  finalBias: number | null;
+  linestarMae: number | null;
+  fieldOwnMae: number | null;
+  linestarOwnMae: number | null;
+  hrBadgeRows: number;
+  hrBadgeAvgActual: number | null;
+  blowupHit20: number | null;
+};
+
+export type MlbPostmortemProjectionMissRow = {
+  slateId: number;
+  slateDate: string;
+  name: string;
+  teamAbbrev: string | null;
+  eligiblePositions: string | null;
+  salary: number;
+  lineupOrder: number | null;
+  projection: number | null;
+  linestarProjection: number | null;
+  actualFpts: number | null;
+  actualOwnPct: number | null;
+  miss: number | null;
+};
+
+export type MlbPostmortemOwnershipMissRow = {
+  slateId: number;
+  slateDate: string;
+  name: string;
+  teamAbbrev: string | null;
+  eligiblePositions: string | null;
+  salary: number;
+  lineupOrder: number | null;
+  fieldOwnPct: number | null;
+  linestarOwnPct: number | null;
+  actualOwnPct: number | null;
+  fieldAbsError: number | null;
+  linestarAbsError: number | null;
+  fieldGainVsLineStar: number | null;
+};
+
+export type MlbPostmortemReport = {
+  sample: {
+    recentSlateCount: number;
+    priorSlateCount: number;
+    latestSlateId: number | null;
+    latestSlateDate: string | null;
+    recentStartDate: string | null;
+    recentEndDate: string | null;
+    priorStartDate: string | null;
+    priorEndDate: string | null;
+    playerRows: number;
+    ownershipRows: number;
+  };
+  findings: string[];
+  projectionSummary: MlbPostmortemProjectionRow[];
+  ownershipSummary: MlbPostmortemOwnershipRow[];
+  signalFollowThrough: MlbPostmortemSignalRow[];
+  recentSlates: MlbPostmortemRecentSlateRow[];
+  projectionMisses: MlbPostmortemProjectionMissRow[];
+  ownershipMisses: MlbPostmortemOwnershipMissRow[];
+};
+
+function mlbPostmortemNumber(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildMlbPostmortemFindings(
+  projectionSummary: MlbPostmortemProjectionRow[],
+  ownershipSummary: MlbPostmortemOwnershipRow[],
+  signalFollowThrough: MlbPostmortemSignalRow[],
+): string[] {
+  const findings: string[] = [];
+  const recentAll = projectionSummary.find((row) => row.windowSort === 1 && row.playerGroup === "All Active");
+  const priorAll = projectionSummary.find((row) => row.windowSort === 2 && row.playerGroup === "All Active");
+
+  if (recentAll?.finalMae != null && recentAll.linestarMae != null) {
+    const gain = recentAll.linestarMae - recentAll.finalMae;
+    findings.push(
+      gain >= 0
+        ? `Recent blended projections are beating LineStar by ${gain.toFixed(2)} DK points of MAE.`
+        : `Recent blended projections are trailing LineStar by ${Math.abs(gain).toFixed(2)} DK points of MAE.`,
+    );
+  }
+
+  if (recentAll?.finalMae != null && priorAll?.finalMae != null) {
+    const delta = priorAll.finalMae - recentAll.finalMae;
+    findings.push(
+      delta >= 0
+        ? `Projection MAE improved by ${delta.toFixed(2)} DK points versus the prior completed-slate window.`
+        : `Projection MAE worsened by ${Math.abs(delta).toFixed(2)} DK points versus the prior completed-slate window.`,
+    );
+  }
+
+  const recentOwn = ownershipSummary.find((row) => row.windowSort === 1);
+  if (recentOwn?.fieldMae != null && recentOwn.linestarMae != null) {
+    const gain = recentOwn.linestarMae - recentOwn.fieldMae;
+    findings.push(
+      gain >= 0
+        ? `Recent field ownership is beating LineStar by ${gain.toFixed(2)} ownership points of MAE.`
+        : `Recent field ownership is trailing LineStar by ${Math.abs(gain).toFixed(2)} ownership points of MAE.`,
+    );
+  }
+
+  const hrSignal = signalFollowThrough.find((row) => row.signal === "HR Badge 25%+");
+  if (hrSignal?.hit20Rate != null && hrSignal.rows > 0) {
+    findings.push(`HR-badge hitters reached 20+ DK points ${hrSignal.hit20Rate.toFixed(1)}% of the time in the postmortem sample.`);
+  }
+
+  const blowupSignal = signalFollowThrough.find((row) => row.signal === "Blowup Top 12");
+  if (blowupSignal?.hit20Rate != null && blowupSignal.rows > 0) {
+    findings.push(`Tracked blowup candidates reached 20+ DK points ${blowupSignal.hit20Rate.toFixed(1)}% of the time.`);
+  }
+
+  return findings.slice(0, 5);
+}
+
+export async function getMlbPostmortemReport(): Promise<MlbPostmortemReport | null> {
+  await ensureMlbBlowupTrackingTables();
+
+  const completedSlatesCte = sql`
+    WITH completed_slates AS (
+      SELECT
+        slate_rows.slate_id,
+        slate_rows.slate_date,
+        ROW_NUMBER() OVER (ORDER BY slate_rows.slate_date DESC, slate_rows.slate_id DESC) AS slate_rank
+      FROM (
+        SELECT ds.id AS slate_id, ds.slate_date
+        FROM dk_slates ds
+        JOIN dk_players dp ON dp.slate_id = ds.id
+        WHERE ds.sport = 'mlb'
+        GROUP BY ds.id, ds.slate_date
+        HAVING COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL) > 0
+      ) slate_rows
+    ),
+    windowed_slates AS (
+      SELECT
+        cs.slate_id,
+        cs.slate_date,
+        cs.slate_rank,
+        CASE
+          WHEN cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES} THEN 'Recent 5'
+          WHEN cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES + MLB_POSTMORTEM_PRIOR_SLATES} THEN 'Prior 5'
+          ELSE NULL
+        END AS window_label,
+        CASE
+          WHEN cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES} THEN 1
+          WHEN cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES + MLB_POSTMORTEM_PRIOR_SLATES} THEN 2
+          ELSE NULL
+        END AS window_sort
+      FROM completed_slates cs
+      WHERE cs.slate_rank <= ${MLB_POSTMORTEM_RECENT_SLATES + MLB_POSTMORTEM_PRIOR_SLATES}
+    ),
+    player_sample AS (
+      SELECT
+        ws.*,
+        dp.dk_player_id,
+        dp.name,
+        dp.team_abbrev,
+        dp.eligible_positions,
+        dp.salary,
+        dp.dk_starting_lineup_order AS lineup_order,
+        dp.actual_fpts,
+        dp.actual_own_pct,
+        dp.live_proj,
+        dp.our_proj,
+        dp.linestar_proj,
+        COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS final_proj,
+        COALESCE(dp.live_own_pct, dp.our_own_pct) AS field_own_pct,
+        COALESCE(dp.linestar_own_pct, dp.proj_own_pct) AS linestar_own_pct,
+        dp.hr_prob_1plus,
+        CASE WHEN dp.eligible_positions LIKE '%SP%' OR dp.eligible_positions LIKE '%RP%' THEN true ELSE false END AS is_pitcher
+      FROM windowed_slates ws
+      JOIN dk_players dp ON dp.slate_id = ws.slate_id
+      WHERE COALESCE(dp.is_out, false) = false
+        AND dp.actual_fpts IS NOT NULL
+        AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+    )
+  `;
+
+  const summaryResult = await db.execute<{
+      recentSlateCount: number;
+      priorSlateCount: number;
+      latestSlateId: number | null;
+      latestSlateDate: string | null;
+      recentStartDate: string | null;
+      recentEndDate: string | null;
+      priorStartDate: string | null;
+      priorEndDate: string | null;
+      playerRows: number;
+      ownershipRows: number;
+    }>(sql`
+      ${completedSlatesCte}
+      SELECT
+        COUNT(DISTINCT slate_id) FILTER (WHERE window_sort = 1)::int AS "recentSlateCount",
+        COUNT(DISTINCT slate_id) FILTER (WHERE window_sort = 2)::int AS "priorSlateCount",
+        MAX(slate_id) FILTER (WHERE slate_rank = 1)::int AS "latestSlateId",
+        MAX(slate_date) FILTER (WHERE slate_rank = 1)::text AS "latestSlateDate",
+        MIN(slate_date) FILTER (WHERE window_sort = 1)::text AS "recentStartDate",
+        MAX(slate_date) FILTER (WHERE window_sort = 1)::text AS "recentEndDate",
+        MIN(slate_date) FILTER (WHERE window_sort = 2)::text AS "priorStartDate",
+        MAX(slate_date) FILTER (WHERE window_sort = 2)::text AS "priorEndDate",
+        COUNT(*)::int AS "playerRows",
+        COUNT(*) FILTER (WHERE actual_own_pct IS NOT NULL)::int AS "ownershipRows"
+      FROM player_sample
+    `);
+
+  const projectionResult = await db.execute<MlbPostmortemProjectionRow>(sql`
+      ${completedSlatesCte}
+      SELECT
+        grouped.window_label AS "windowLabel",
+        grouped.window_sort::int AS "windowSort",
+        grouped.player_group AS "playerGroup",
+        COUNT(*)::int AS "rows",
+        COUNT(DISTINCT grouped.slate_id)::int AS "slates",
+        AVG(ABS(grouped.final_proj - grouped.actual_fpts)) FILTER (WHERE grouped.final_proj IS NOT NULL) AS "finalMae",
+        AVG(grouped.final_proj - grouped.actual_fpts) FILTER (WHERE grouped.final_proj IS NOT NULL) AS "finalBias",
+        AVG(ABS(grouped.live_proj - grouped.actual_fpts)) FILTER (WHERE grouped.live_proj IS NOT NULL) AS "liveMae",
+        AVG(grouped.live_proj - grouped.actual_fpts) FILTER (WHERE grouped.live_proj IS NOT NULL) AS "liveBias",
+        AVG(ABS(grouped.our_proj - grouped.actual_fpts)) FILTER (WHERE grouped.our_proj IS NOT NULL) AS "ourMae",
+        AVG(grouped.our_proj - grouped.actual_fpts) FILTER (WHERE grouped.our_proj IS NOT NULL) AS "ourBias",
+        AVG(ABS(grouped.linestar_proj - grouped.actual_fpts)) FILTER (WHERE grouped.linestar_proj IS NOT NULL) AS "linestarMae",
+        AVG(grouped.linestar_proj - grouped.actual_fpts) FILTER (WHERE grouped.linestar_proj IS NOT NULL) AS "linestarBias",
+        AVG(ABS(grouped.linestar_proj - grouped.actual_fpts)) FILTER (WHERE grouped.linestar_proj IS NOT NULL)
+          - AVG(ABS(grouped.final_proj - grouped.actual_fpts)) FILTER (WHERE grouped.final_proj IS NOT NULL) AS "finalGainVsLineStar"
+      FROM (
+        SELECT ps.*, g.player_group
+        FROM player_sample ps
+        CROSS JOIN LATERAL (
+          VALUES
+            ('All Active'::text),
+            (CASE WHEN ps.is_pitcher THEN 'Pitchers' ELSE 'Hitters' END)
+        ) AS g(player_group)
+      ) grouped
+      GROUP BY grouped.window_label, grouped.window_sort, grouped.player_group
+      ORDER BY grouped.window_sort ASC, CASE grouped.player_group WHEN 'All Active' THEN 1 WHEN 'Hitters' THEN 2 ELSE 3 END
+    `);
+
+  const ownershipResult = await db.execute<MlbPostmortemOwnershipRow>(sql`
+      ${completedSlatesCte}
+      SELECT
+        window_label AS "windowLabel",
+        window_sort::int AS "windowSort",
+        COUNT(*) FILTER (WHERE actual_own_pct IS NOT NULL)::int AS "rows",
+        COUNT(DISTINCT slate_id) FILTER (WHERE actual_own_pct IS NOT NULL)::int AS "slates",
+        COUNT(*) FILTER (WHERE field_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL)::int AS "fieldRows",
+        COUNT(*) FILTER (WHERE linestar_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL)::int AS "linestarRows",
+        AVG(ABS(field_own_pct - actual_own_pct)) FILTER (WHERE field_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL) AS "fieldMae",
+        AVG(field_own_pct - actual_own_pct) FILTER (WHERE field_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL) AS "fieldBias",
+        CORR(field_own_pct, actual_own_pct) FILTER (WHERE field_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL) AS "fieldCorr",
+        AVG(ABS(linestar_own_pct - actual_own_pct)) FILTER (WHERE linestar_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL) AS "linestarMae",
+        AVG(linestar_own_pct - actual_own_pct) FILTER (WHERE linestar_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL) AS "linestarBias",
+        CORR(linestar_own_pct, actual_own_pct) FILTER (WHERE linestar_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL) AS "linestarCorr",
+        AVG(ABS(linestar_own_pct - actual_own_pct)) FILTER (WHERE linestar_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL)
+          - AVG(ABS(field_own_pct - actual_own_pct)) FILTER (WHERE field_own_pct IS NOT NULL AND actual_own_pct IS NOT NULL) AS "fieldGainVsLineStar"
+      FROM player_sample
+      GROUP BY window_label, window_sort
+      ORDER BY window_sort ASC
+    `);
+
+  const signalResult = await db.execute<MlbPostmortemSignalRow>(sql`
+      ${completedSlatesCte},
+      signals AS (
+        SELECT
+          'HR Badge 25%+'::text AS signal,
+          ps.slate_id,
+          ps.final_proj AS projection,
+          ps.actual_fpts,
+          ps.actual_own_pct
+        FROM player_sample ps
+        WHERE ps.is_pitcher = false
+          AND ps.hr_prob_1plus >= 0.25
+        UNION ALL
+        SELECT
+          'Strong HR Badge 35%+'::text AS signal,
+          ps.slate_id,
+          ps.final_proj AS projection,
+          ps.actual_fpts,
+          ps.actual_own_pct
+        FROM player_sample ps
+        WHERE ps.is_pitcher = false
+          AND ps.hr_prob_1plus >= 0.35
+        UNION ALL
+        SELECT
+          'Pitcher 18+ Projection'::text AS signal,
+          ps.slate_id,
+          ps.final_proj AS projection,
+          ps.actual_fpts,
+          ps.actual_own_pct
+        FROM player_sample ps
+        WHERE ps.is_pitcher = true
+          AND ps.final_proj >= 18
+        UNION ALL
+        SELECT
+          'Pitcher 2.5x+ Value'::text AS signal,
+          ps.slate_id,
+          ps.final_proj AS projection,
+          ps.actual_fpts,
+          ps.actual_own_pct
+        FROM player_sample ps
+        WHERE ps.is_pitcher = true
+          AND ps.final_proj IS NOT NULL
+          AND ps.salary > 0
+          AND ps.final_proj / (ps.salary / 1000.0) >= 2.5
+        UNION ALL
+        SELECT
+          'Blowup Top 12'::text AS signal,
+          s.slate_id,
+          s.projected_fpts AS projection,
+          s.actual_fpts,
+          s.actual_own_pct
+        FROM mlb_blowup_player_snapshots s
+        JOIN windowed_slates ws ON ws.slate_id = s.slate_id
+        WHERE s.actual_fpts IS NOT NULL
+      )
+      SELECT
+        signal AS "signal",
+        COUNT(*)::int AS "rows",
+        COUNT(DISTINCT slate_id)::int AS "slates",
+        AVG(projection) AS "avgProjection",
+        AVG(actual_fpts) AS "avgActual",
+        AVG(actual_own_pct) AS "avgActualOwn",
+        AVG(actual_fpts - projection) FILTER (WHERE projection IS NOT NULL) AS "avgBeat",
+        AVG(CASE WHEN actual_fpts >= 15 THEN 1 ELSE 0 END) * 100 AS "hit15Rate",
+        AVG(CASE WHEN actual_fpts >= 20 THEN 1 ELSE 0 END) * 100 AS "hit20Rate",
+        AVG(CASE WHEN actual_fpts >= 25 THEN 1 ELSE 0 END) * 100 AS "hit25Rate"
+      FROM signals
+      GROUP BY signal
+      ORDER BY CASE signal
+        WHEN 'HR Badge 25%+' THEN 1
+        WHEN 'Strong HR Badge 35%+' THEN 2
+        WHEN 'Blowup Top 12' THEN 3
+        WHEN 'Pitcher 18+ Projection' THEN 4
+        ELSE 5
+      END
+    `);
+
+  const recentSlateResult = await db.execute<MlbPostmortemRecentSlateRow>(sql`
+      ${completedSlatesCte},
+      projection_by_slate AS (
+        SELECT
+          ps.slate_id,
+          ps.slate_date,
+          COUNT(*)::int AS player_rows,
+          AVG(ABS(ps.final_proj - ps.actual_fpts)) FILTER (WHERE ps.final_proj IS NOT NULL) AS final_mae,
+          AVG(ps.final_proj - ps.actual_fpts) FILTER (WHERE ps.final_proj IS NOT NULL) AS final_bias,
+          AVG(ABS(ps.linestar_proj - ps.actual_fpts)) FILTER (WHERE ps.linestar_proj IS NOT NULL) AS linestar_mae,
+          AVG(ABS(ps.field_own_pct - ps.actual_own_pct)) FILTER (WHERE ps.field_own_pct IS NOT NULL AND ps.actual_own_pct IS NOT NULL) AS field_own_mae,
+          AVG(ABS(ps.linestar_own_pct - ps.actual_own_pct)) FILTER (WHERE ps.linestar_own_pct IS NOT NULL AND ps.actual_own_pct IS NOT NULL) AS linestar_own_mae,
+          COUNT(*) FILTER (WHERE ps.is_pitcher = false AND ps.hr_prob_1plus >= 0.25)::int AS hr_badge_rows,
+          AVG(ps.actual_fpts) FILTER (WHERE ps.is_pitcher = false AND ps.hr_prob_1plus >= 0.25) AS hr_badge_avg_actual
+        FROM player_sample ps
+        GROUP BY ps.slate_id, ps.slate_date
+      ),
+      blowup_by_slate AS (
+        SELECT
+          s.slate_id,
+          COUNT(*) FILTER (WHERE s.actual_fpts >= 20)::int AS blowup_hit20
+        FROM mlb_blowup_player_snapshots s
+        JOIN windowed_slates ws ON ws.slate_id = s.slate_id
+        WHERE s.actual_fpts IS NOT NULL
+        GROUP BY s.slate_id
+      )
+      SELECT
+        pbs.slate_id::int AS "slateId",
+        pbs.slate_date::text AS "slateDate",
+        pbs.player_rows AS "playerRows",
+        pbs.final_mae AS "finalMae",
+        pbs.final_bias AS "finalBias",
+        pbs.linestar_mae AS "linestarMae",
+        pbs.field_own_mae AS "fieldOwnMae",
+        pbs.linestar_own_mae AS "linestarOwnMae",
+        pbs.hr_badge_rows AS "hrBadgeRows",
+        pbs.hr_badge_avg_actual AS "hrBadgeAvgActual",
+        bbs.blowup_hit20 AS "blowupHit20"
+      FROM projection_by_slate pbs
+      LEFT JOIN blowup_by_slate bbs ON bbs.slate_id = pbs.slate_id
+      ORDER BY pbs.slate_date DESC, pbs.slate_id DESC
+    `);
+
+  const projectionMissResult = await db.execute<MlbPostmortemProjectionMissRow>(sql`
+      ${completedSlatesCte}
+      SELECT
+        ps.slate_id::int AS "slateId",
+        ps.slate_date::text AS "slateDate",
+        ps.name AS "name",
+        ps.team_abbrev AS "teamAbbrev",
+        ps.eligible_positions AS "eligiblePositions",
+        ps.salary::int AS "salary",
+        ps.lineup_order::int AS "lineupOrder",
+        ps.final_proj AS "projection",
+        ps.linestar_proj AS "linestarProjection",
+        ps.actual_fpts AS "actualFpts",
+        ps.actual_own_pct AS "actualOwnPct",
+        ps.actual_fpts - ps.final_proj AS "miss"
+      FROM player_sample ps
+      WHERE ps.slate_rank = 1
+        AND ps.final_proj IS NOT NULL
+      ORDER BY ABS(ps.actual_fpts - ps.final_proj) DESC NULLS LAST, ps.salary DESC, ps.name ASC
+      LIMIT 12
+    `);
+
+  const ownershipMissResult = await db.execute<MlbPostmortemOwnershipMissRow>(sql`
+      ${completedSlatesCte}
+      SELECT
+        ps.slate_id::int AS "slateId",
+        ps.slate_date::text AS "slateDate",
+        ps.name AS "name",
+        ps.team_abbrev AS "teamAbbrev",
+        ps.eligible_positions AS "eligiblePositions",
+        ps.salary::int AS "salary",
+        ps.lineup_order::int AS "lineupOrder",
+        ps.field_own_pct AS "fieldOwnPct",
+        ps.linestar_own_pct AS "linestarOwnPct",
+        ps.actual_own_pct AS "actualOwnPct",
+        ABS(ps.field_own_pct - ps.actual_own_pct) AS "fieldAbsError",
+        ABS(ps.linestar_own_pct - ps.actual_own_pct) AS "linestarAbsError",
+        ABS(ps.linestar_own_pct - ps.actual_own_pct) - ABS(ps.field_own_pct - ps.actual_own_pct) AS "fieldGainVsLineStar"
+      FROM player_sample ps
+      WHERE ps.slate_rank = 1
+        AND ps.actual_own_pct IS NOT NULL
+        AND (ps.field_own_pct IS NOT NULL OR ps.linestar_own_pct IS NOT NULL)
+      ORDER BY ABS(COALESCE(ps.field_own_pct, ps.linestar_own_pct) - ps.actual_own_pct) DESC NULLS LAST, ps.salary DESC, ps.name ASC
+      LIMIT 12
+    `);
+
+  const summary = summaryResult.rows[0];
+  if (!summary || Number(summary.playerRows ?? 0) === 0) return null;
+
+  const projectionSummary = projectionResult.rows.map((row) => ({
+    windowLabel: row.windowLabel,
+    windowSort: Number(row.windowSort),
+    playerGroup: row.playerGroup,
+    rows: Number(row.rows ?? 0),
+    slates: Number(row.slates ?? 0),
+    finalMae: mlbPostmortemNumber(row.finalMae),
+    finalBias: mlbPostmortemNumber(row.finalBias),
+    liveMae: mlbPostmortemNumber(row.liveMae),
+    liveBias: mlbPostmortemNumber(row.liveBias),
+    ourMae: mlbPostmortemNumber(row.ourMae),
+    ourBias: mlbPostmortemNumber(row.ourBias),
+    linestarMae: mlbPostmortemNumber(row.linestarMae),
+    linestarBias: mlbPostmortemNumber(row.linestarBias),
+    finalGainVsLineStar: mlbPostmortemNumber(row.finalGainVsLineStar),
+  }));
+
+  const ownershipSummary = ownershipResult.rows.map((row) => ({
+    windowLabel: row.windowLabel,
+    windowSort: Number(row.windowSort),
+    rows: Number(row.rows ?? 0),
+    slates: Number(row.slates ?? 0),
+    fieldRows: Number(row.fieldRows ?? 0),
+    linestarRows: Number(row.linestarRows ?? 0),
+    fieldMae: mlbPostmortemNumber(row.fieldMae),
+    fieldBias: mlbPostmortemNumber(row.fieldBias),
+    fieldCorr: mlbPostmortemNumber(row.fieldCorr),
+    linestarMae: mlbPostmortemNumber(row.linestarMae),
+    linestarBias: mlbPostmortemNumber(row.linestarBias),
+    linestarCorr: mlbPostmortemNumber(row.linestarCorr),
+    fieldGainVsLineStar: mlbPostmortemNumber(row.fieldGainVsLineStar),
+  }));
+
+  const signalFollowThrough = signalResult.rows.map((row) => ({
+    signal: row.signal,
+    rows: Number(row.rows ?? 0),
+    slates: Number(row.slates ?? 0),
+    avgProjection: mlbPostmortemNumber(row.avgProjection),
+    avgActual: mlbPostmortemNumber(row.avgActual),
+    avgActualOwn: mlbPostmortemNumber(row.avgActualOwn),
+    avgBeat: mlbPostmortemNumber(row.avgBeat),
+    hit15Rate: mlbPostmortemNumber(row.hit15Rate),
+    hit20Rate: mlbPostmortemNumber(row.hit20Rate),
+    hit25Rate: mlbPostmortemNumber(row.hit25Rate),
+  }));
+
+  return {
+    sample: {
+      recentSlateCount: Number(summary.recentSlateCount ?? 0),
+      priorSlateCount: Number(summary.priorSlateCount ?? 0),
+      latestSlateId: summary.latestSlateId == null ? null : Number(summary.latestSlateId),
+      latestSlateDate: summary.latestSlateDate ?? null,
+      recentStartDate: summary.recentStartDate ?? null,
+      recentEndDate: summary.recentEndDate ?? null,
+      priorStartDate: summary.priorStartDate ?? null,
+      priorEndDate: summary.priorEndDate ?? null,
+      playerRows: Number(summary.playerRows ?? 0),
+      ownershipRows: Number(summary.ownershipRows ?? 0),
+    },
+    findings: buildMlbPostmortemFindings(projectionSummary, ownershipSummary, signalFollowThrough),
+    projectionSummary,
+    ownershipSummary,
+    signalFollowThrough,
+    recentSlates: recentSlateResult.rows.map((row) => ({
+      slateId: Number(row.slateId),
+      slateDate: row.slateDate,
+      playerRows: Number(row.playerRows ?? 0),
+      finalMae: mlbPostmortemNumber(row.finalMae),
+      finalBias: mlbPostmortemNumber(row.finalBias),
+      linestarMae: mlbPostmortemNumber(row.linestarMae),
+      fieldOwnMae: mlbPostmortemNumber(row.fieldOwnMae),
+      linestarOwnMae: mlbPostmortemNumber(row.linestarOwnMae),
+      hrBadgeRows: Number(row.hrBadgeRows ?? 0),
+      hrBadgeAvgActual: mlbPostmortemNumber(row.hrBadgeAvgActual),
+      blowupHit20: row.blowupHit20 == null ? null : Number(row.blowupHit20),
+    })),
+    projectionMisses: projectionMissResult.rows.map((row) => ({
+      slateId: Number(row.slateId),
+      slateDate: row.slateDate,
+      name: row.name,
+      teamAbbrev: row.teamAbbrev ?? null,
+      eligiblePositions: row.eligiblePositions ?? null,
+      salary: Number(row.salary ?? 0),
+      lineupOrder: row.lineupOrder == null ? null : Number(row.lineupOrder),
+      projection: mlbPostmortemNumber(row.projection),
+      linestarProjection: mlbPostmortemNumber(row.linestarProjection),
+      actualFpts: mlbPostmortemNumber(row.actualFpts),
+      actualOwnPct: mlbPostmortemNumber(row.actualOwnPct),
+      miss: mlbPostmortemNumber(row.miss),
+    })),
+    ownershipMisses: ownershipMissResult.rows.map((row) => ({
+      slateId: Number(row.slateId),
+      slateDate: row.slateDate,
+      name: row.name,
+      teamAbbrev: row.teamAbbrev ?? null,
+      eligiblePositions: row.eligiblePositions ?? null,
+      salary: Number(row.salary ?? 0),
+      lineupOrder: row.lineupOrder == null ? null : Number(row.lineupOrder),
+      fieldOwnPct: mlbPostmortemNumber(row.fieldOwnPct),
+      linestarOwnPct: mlbPostmortemNumber(row.linestarOwnPct),
+      actualOwnPct: mlbPostmortemNumber(row.actualOwnPct),
+      fieldAbsError: mlbPostmortemNumber(row.fieldAbsError),
+      linestarAbsError: mlbPostmortemNumber(row.linestarAbsError),
+      fieldGainVsLineStar: mlbPostmortemNumber(row.fieldGainVsLineStar),
+    })),
+  };
+}
+
 const MLB_PITCHER_ALLOW_MIN_STARTS = 2;
 const MLB_PITCHER_ALLOW_SHRINK = 4;
 const MLB_PARK_ENV_MIN_GAMES = 3;

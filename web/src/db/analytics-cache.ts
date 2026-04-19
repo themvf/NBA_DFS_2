@@ -21,6 +21,7 @@ import {
   getLeverageCalibration,
   getMlbBattingOrderCalibration,
   getMlbBlowupCandidateReport,
+  getMlbPostmortemReport,
   getMlbRunEnvironmentReport,
   getMlbOwnershipModelReport,
   getMlbPitcherLineupReport,
@@ -112,6 +113,12 @@ export const getCachedMlbPitcherLineupReport = unstable_cache(
 export const getCachedMlbBlowupCandidateReport = unstable_cache(
   () => getMlbBlowupCandidateReport(),
   ["analytics-mlb-blowup-candidates"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbPostmortemReport = unstable_cache(
+  () => getMlbPostmortemReport(),
+  ["analytics-mlb-postmortem-v1"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 
