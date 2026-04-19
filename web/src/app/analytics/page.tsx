@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-import { Suspense } from "react";
+import type { ReactNode } from "react";
 import type { OwnershipDetailSort, Sport } from "@/db/queries";
 import AnalyticsContent from "./analytics-content";
 import MlbBlowupCandidatePanel from "./mlb-blowup-candidate-panel";
@@ -9,6 +9,15 @@ import MlbOwnershipModelPanel from "./mlb-ownership-model-panel";
 import MlbPitcherLineupPanel from "./mlb-pitcher-lineup-panel";
 import MlbRunEnvironmentPanel from "./mlb-run-environment-panel";
 import PerfectLineupPanel from "./perfect-lineup-panel";
+
+async function safeSection(render: () => Promise<ReactNode>): Promise<ReactNode | null> {
+  try {
+    return await render();
+  } catch (error) {
+    console.error("Analytics section failed", error);
+    return null;
+  }
+}
 
 export default async function AnalyticsPage({
   searchParams,
@@ -25,93 +34,33 @@ export default async function AnalyticsPage({
     ? rawOwnershipSort
     : "field-error";
 
+  const calibration = await safeSection(() => AnalyticsContent({ sport }));
+
+  if (sport === "mlb") {
+    const ownership = await safeSection(() => MlbOwnershipModelPanel({ selectedSlateId: ownershipSlateId, sortBy: ownershipSort }));
+    const blowup = await safeSection(() => MlbBlowupCandidatePanel());
+    const runEnvironment = await safeSection(() => MlbRunEnvironmentPanel());
+    const pitcherLineup = await safeSection(() => MlbPitcherLineupPanel());
+    const perfectLineup = await safeSection(() => PerfectLineupPanel({ sport }));
+
+    return (
+      <>
+        {calibration}
+        {ownership}
+        {blowup}
+        {runEnvironment}
+        {pitcherLineup}
+        {perfectLineup}
+      </>
+    );
+  }
+
+  const perfectLineup = await safeSection(() => PerfectLineupPanel({ sport }));
+
   return (
     <>
-      <Suspense
-        fallback={
-          <div className="mx-auto max-w-5xl space-y-8 p-6 text-slate-900">
-            <div>
-              <h1 className="text-xl font-bold">Model Calibration Analytics</h1>
-              <p className="mt-1 text-sm text-slate-700">
-                Loading {sport.toUpperCase()} analytics...
-              </p>
-            </div>
-            <div className="rounded-lg border bg-card p-6 text-sm text-slate-700">
-              Loading accuracy trends, position breakdowns, and leverage calibration...
-            </div>
-          </div>
-        }
-      >
-        <AnalyticsContent sport={sport} />
-      </Suspense>
-      {sport === "mlb" ? (
-        <Suspense
-          fallback={
-            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
-              <h2 className="mb-1 text-sm font-semibold">MLB Ownership Model Tracking</h2>
-              <p className="text-xs text-slate-700">
-                Loading ownership tracking report...
-              </p>
-            </div>
-          }
-        >
-          <MlbOwnershipModelPanel selectedSlateId={ownershipSlateId} sortBy={ownershipSort} />
-        </Suspense>
-      ) : null}
-      {sport === "mlb" ? (
-        <Suspense
-          fallback={
-            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
-              <h2 className="mb-1 text-sm font-semibold">MLB Blowup Candidate Tracking</h2>
-              <p className="text-xs text-slate-700">
-                Loading blowup candidate report...
-              </p>
-            </div>
-          }
-        >
-          <MlbBlowupCandidatePanel />
-        </Suspense>
-      ) : null}
-      {sport === "mlb" ? (
-        <Suspense
-          fallback={
-            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
-              <h2 className="mb-1 text-sm font-semibold">MLB Pitcher And Park Environment</h2>
-              <p className="text-xs text-slate-700">
-                Loading pitcher and park environment report...
-              </p>
-            </div>
-          }
-        >
-          <MlbRunEnvironmentPanel />
-        </Suspense>
-      ) : null}
-      {sport === "mlb" ? (
-        <Suspense
-          fallback={
-            <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
-              <h2 className="mb-1 text-sm font-semibold">MLB Pitcher Lineup Signals</h2>
-              <p className="text-xs text-slate-700">
-                Loading MLB pitcher cohort report...
-              </p>
-            </div>
-          }
-        >
-          <MlbPitcherLineupPanel />
-        </Suspense>
-      ) : null}
-      <Suspense
-        fallback={
-          <div className="mx-auto mt-8 max-w-5xl rounded-lg border bg-card p-4 text-slate-900">
-            <h2 className="mb-1 text-sm font-semibold">Perfect Lineup Structure</h2>
-            <p className="text-xs text-slate-700">
-              Loading {sport.toUpperCase()} perfect-lineup analytics...
-            </p>
-          </div>
-        }
-      >
-        <PerfectLineupPanel sport={sport} />
-      </Suspense>
+      {calibration}
+      {perfectLineup}
     </>
   );
 }

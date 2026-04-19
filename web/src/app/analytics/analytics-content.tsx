@@ -26,31 +26,19 @@ async function safeRun<T>(fn: () => Promise<T>): Promise<T | null> {
 }
 
 export default async function AnalyticsContent({ sport }: { sport: Sport }) {
-  const [
-    crossSlate,
-    posAccuracy,
-    salaryTier,
-    leverageCalib,
-    ownVsTotal,
-    battingOrderCalib,
-    projSourceBreakdown,
-    statLevelAccuracy,
-    gameTotalModel,
-  ] = await Promise.all([
-    safeRun(() => getCachedCrossSlateAccuracy(sport)),
-    safeRun(() => getCachedPositionAccuracy(sport)),
-    safeRun(() => getCachedSalaryTierAccuracy(sport)),
-    safeRun(() => getCachedLeverageCalibration(sport)),
-    safeRun(() => getCachedOwnershipVsTeamTotal(sport)),
-    sport === "mlb"
-      ? safeRun(() => getCachedMlbBattingOrderCalibration())
-      : Promise.resolve([]),
-    safeRun(() => getCachedProjectionSourceBreakdown(sport)),
-    safeRun(() => getCachedStatLevelAccuracy(sport)),
-    sport === "nba"
-      ? safeRun(() => getCachedGameTotalModelAccuracy())
-      : Promise.resolve([]),
-  ]);
+  const crossSlate = await safeRun(() => getCachedCrossSlateAccuracy(sport));
+  const posAccuracy = await safeRun(() => getCachedPositionAccuracy(sport));
+  const salaryTier = await safeRun(() => getCachedSalaryTierAccuracy(sport));
+  const leverageCalib = await safeRun(() => getCachedLeverageCalibration(sport));
+  const ownVsTotal = await safeRun(() => getCachedOwnershipVsTeamTotal(sport));
+  const battingOrderCalib = sport === "mlb"
+    ? await safeRun(() => getCachedMlbBattingOrderCalibration())
+    : [];
+  const projSourceBreakdown = await safeRun(() => getCachedProjectionSourceBreakdown(sport));
+  const statLevelAccuracy = await safeRun(() => getCachedStatLevelAccuracy(sport));
+  const gameTotalModel = sport === "nba"
+    ? await safeRun(() => getCachedGameTotalModelAccuracy())
+    : [];
 
   return (
     <AnalyticsClient
