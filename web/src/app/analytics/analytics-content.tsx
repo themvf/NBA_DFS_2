@@ -7,6 +7,7 @@ import {
   getCachedPositionAccuracy,
   getCachedProjectionSourceBreakdown,
   getCachedSalaryTierAccuracy,
+  getCachedSlateTypePerformance,
   getCachedStatLevelAccuracy,
 } from "@/db/analytics-cache";
 import type { Sport } from "@/db/queries";
@@ -29,6 +30,7 @@ export default async function AnalyticsContent({ sport }: { sport: Sport }) {
   const crossSlate = await safeRun(() => getCachedCrossSlateAccuracy(sport));
   const posAccuracy = await safeRun(() => getCachedPositionAccuracy(sport));
   const salaryTier = await safeRun(() => getCachedSalaryTierAccuracy(sport));
+  const slateTypePerformance = await safeRun(() => getCachedSlateTypePerformance(sport));
   const leverageCalib = await safeRun(() => getCachedLeverageCalibration(sport));
   const ownVsTotal = await safeRun(() => getCachedOwnershipVsTeamTotal(sport));
   const battingOrderCalib = sport === "mlb"
@@ -45,6 +47,7 @@ export default async function AnalyticsContent({ sport }: { sport: Sport }) {
       crossSlate={crossSlate ?? []}
       posAccuracy={posAccuracy ?? []}
       salaryTier={salaryTier ?? []}
+      slateTypePerformance={slateTypePerformance ?? []}
       leverageCalib={leverageCalib ?? []}
       ownVsTotal={ownVsTotal ?? []}
       battingOrderCalib={battingOrderCalib ?? []}

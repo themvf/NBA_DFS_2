@@ -857,6 +857,205 @@ export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<Cross
   return result.rows;
 }
 
+export type SlateTypePerformanceRow = {
+  contestType: string;
+  label: string;
+  slates: number;
+  firstSlateDate: string | null;
+  lastSlateDate: string | null;
+  actualRows: number;
+  ourProjRows: number;
+  ourProjMae: number | null;
+  ourProjBias: number | null;
+  ourProjRank: number | null;
+  ourFinalProjRows: number;
+  ourFinalProjMae: number | null;
+  ourFinalProjBias: number | null;
+  ourFinalProjRank: number | null;
+  linestarProjRows: number;
+  linestarProjMae: number | null;
+  linestarProjBias: number | null;
+  linestarProjRank: number | null;
+  ourOwnRows: number;
+  ourOwnMae: number | null;
+  ourOwnBias: number | null;
+  ourOwnCorr: number | null;
+  ourOwnRank: number | null;
+  linestarOwnRows: number;
+  linestarOwnMae: number | null;
+  linestarOwnBias: number | null;
+  linestarOwnCorr: number | null;
+  linestarOwnRank: number | null;
+  sampleWarning: string | null;
+};
+
+const SLATE_TYPE_MIN_SLATES = 3;
+const SLATE_TYPE_MIN_ROWS = 100;
+
+function rankSlateTypeMetric<T extends Record<string, unknown>>(
+  rows: T[],
+  valueKey: keyof T,
+  rowsKey: keyof T,
+  rankKey: keyof T,
+) {
+  const candidates = rows
+    .filter((row) =>
+      Number(row.slates ?? 0) >= SLATE_TYPE_MIN_SLATES
+      && Number(row[rowsKey] ?? 0) >= SLATE_TYPE_MIN_ROWS
+      && row[valueKey] != null
+    )
+    .sort((a, b) => Number(a[valueKey]) - Number(b[valueKey]));
+
+  candidates.forEach((row, index) => {
+    (row as Record<string, unknown>)[String(rankKey)] = index + 1;
+  });
+}
+
+export async function getSlateTypePerformance(sport: Sport = "nba"): Promise<SlateTypePerformanceRow[]> {
+  const result = await db.execute<Omit<
+    SlateTypePerformanceRow,
+    "label"
+    | "ourProjRank"
+    | "ourFinalProjRank"
+    | "linestarProjRank"
+    | "ourOwnRank"
+    | "linestarOwnRank"
+    | "sampleWarning"
+  >>(sql`
+    WITH slate_types AS (
+      SELECT *
+      FROM (
+        VALUES
+          ('turbo'::text, 1::int),
+          ('early'::text, 2::int),
+          ('main'::text, 3::int),
+          ('night'::text, 4::int)
+      ) AS slate_types(contest_type, sort_order)
+    ),
+    player_sample AS (
+      SELECT
+        CASE
+          WHEN COALESCE(ds.contest_type, 'main') = 'late' THEN 'night'
+          ELSE COALESCE(ds.contest_type, 'main')
+        END AS contest_type,
+        ds.id AS slate_id,
+        ds.slate_date,
+        dp.eligible_positions,
+        dp.actual_fpts,
+        dp.actual_own_pct,
+        dp.our_proj,
+        COALESCE(dp.live_proj, dp.our_proj) AS our_final_proj,
+        dp.linestar_proj,
+        COALESCE(dp.live_own_pct, dp.our_own_pct) AS our_own_pct,
+        COALESCE(dp.linestar_own_pct, dp.proj_own_pct) AS linestar_own_pct
+      FROM dk_players dp
+      JOIN dk_slates ds ON ds.id = dp.slate_id
+      WHERE ds.sport = ${sport}
+        AND COALESCE(dp.is_out, false) = false
+        AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+    ),
+    grouped AS (
+      SELECT
+        st.contest_type AS "contestType",
+        st.sort_order,
+        COUNT(DISTINCT ps.slate_id) FILTER (WHERE ps.actual_fpts IS NOT NULL)::int AS "slates",
+        MIN(ps.slate_date) FILTER (WHERE ps.actual_fpts IS NOT NULL)::text AS "firstSlateDate",
+        MAX(ps.slate_date) FILTER (WHERE ps.actual_fpts IS NOT NULL)::text AS "lastSlateDate",
+        COUNT(*) FILTER (WHERE ps.actual_fpts IS NOT NULL)::int AS "actualRows",
+        COUNT(*) FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.our_proj IS NOT NULL)::int AS "ourProjRows",
+        AVG(ABS(ps.our_proj - ps.actual_fpts))
+          FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.our_proj IS NOT NULL) AS "ourProjMae",
+        AVG(ps.our_proj - ps.actual_fpts)
+          FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.our_proj IS NOT NULL) AS "ourProjBias",
+        COUNT(*) FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.our_final_proj IS NOT NULL)::int AS "ourFinalProjRows",
+        AVG(ABS(ps.our_final_proj - ps.actual_fpts))
+          FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.our_final_proj IS NOT NULL) AS "ourFinalProjMae",
+        AVG(ps.our_final_proj - ps.actual_fpts)
+          FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.our_final_proj IS NOT NULL) AS "ourFinalProjBias",
+        COUNT(*) FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.linestar_proj IS NOT NULL)::int AS "linestarProjRows",
+        AVG(ABS(ps.linestar_proj - ps.actual_fpts))
+          FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.linestar_proj IS NOT NULL) AS "linestarProjMae",
+        AVG(ps.linestar_proj - ps.actual_fpts)
+          FILTER (WHERE ps.actual_fpts IS NOT NULL AND ps.linestar_proj IS NOT NULL) AS "linestarProjBias",
+        COUNT(*) FILTER (WHERE ps.actual_own_pct IS NOT NULL AND ps.our_own_pct IS NOT NULL)::int AS "ourOwnRows",
+        AVG(ABS(ps.our_own_pct - ps.actual_own_pct))
+          FILTER (WHERE ps.actual_own_pct IS NOT NULL AND ps.our_own_pct IS NOT NULL) AS "ourOwnMae",
+        AVG(ps.our_own_pct - ps.actual_own_pct)
+          FILTER (WHERE ps.actual_own_pct IS NOT NULL AND ps.our_own_pct IS NOT NULL) AS "ourOwnBias",
+        CORR(ps.our_own_pct, ps.actual_own_pct)
+          FILTER (WHERE ps.actual_own_pct IS NOT NULL AND ps.our_own_pct IS NOT NULL) AS "ourOwnCorr",
+        COUNT(*) FILTER (WHERE ps.actual_own_pct IS NOT NULL AND ps.linestar_own_pct IS NOT NULL)::int AS "linestarOwnRows",
+        AVG(ABS(ps.linestar_own_pct - ps.actual_own_pct))
+          FILTER (WHERE ps.actual_own_pct IS NOT NULL AND ps.linestar_own_pct IS NOT NULL) AS "linestarOwnMae",
+        AVG(ps.linestar_own_pct - ps.actual_own_pct)
+          FILTER (WHERE ps.actual_own_pct IS NOT NULL AND ps.linestar_own_pct IS NOT NULL) AS "linestarOwnBias",
+        CORR(ps.linestar_own_pct, ps.actual_own_pct)
+          FILTER (WHERE ps.actual_own_pct IS NOT NULL AND ps.linestar_own_pct IS NOT NULL) AS "linestarOwnCorr"
+      FROM slate_types st
+      LEFT JOIN player_sample ps ON ps.contest_type = st.contest_type
+      GROUP BY st.contest_type, st.sort_order
+    )
+    SELECT *
+    FROM grouped
+    ORDER BY sort_order ASC
+  `);
+
+  const labels: Record<string, string> = {
+    turbo: "Turbo",
+    early: "Early",
+    main: "Main",
+    night: "Night",
+  };
+
+  const rows: SlateTypePerformanceRow[] = result.rows.map((row) => {
+    const slates = Number(row.slates ?? 0);
+    const actualRows = Number(row.actualRows ?? 0);
+    return {
+      contestType: String(row.contestType),
+      label: labels[String(row.contestType)] ?? String(row.contestType),
+      slates,
+      firstSlateDate: row.firstSlateDate ? String(row.firstSlateDate) : null,
+      lastSlateDate: row.lastSlateDate ? String(row.lastSlateDate) : null,
+      actualRows,
+      ourProjRows: Number(row.ourProjRows ?? 0),
+      ourProjMae: row.ourProjMae != null ? Number(row.ourProjMae) : null,
+      ourProjBias: row.ourProjBias != null ? Number(row.ourProjBias) : null,
+      ourProjRank: null,
+      ourFinalProjRows: Number(row.ourFinalProjRows ?? 0),
+      ourFinalProjMae: row.ourFinalProjMae != null ? Number(row.ourFinalProjMae) : null,
+      ourFinalProjBias: row.ourFinalProjBias != null ? Number(row.ourFinalProjBias) : null,
+      ourFinalProjRank: null,
+      linestarProjRows: Number(row.linestarProjRows ?? 0),
+      linestarProjMae: row.linestarProjMae != null ? Number(row.linestarProjMae) : null,
+      linestarProjBias: row.linestarProjBias != null ? Number(row.linestarProjBias) : null,
+      linestarProjRank: null,
+      ourOwnRows: Number(row.ourOwnRows ?? 0),
+      ourOwnMae: row.ourOwnMae != null ? Number(row.ourOwnMae) : null,
+      ourOwnBias: row.ourOwnBias != null ? Number(row.ourOwnBias) : null,
+      ourOwnCorr: row.ourOwnCorr != null ? Number(row.ourOwnCorr) : null,
+      ourOwnRank: null,
+      linestarOwnRows: Number(row.linestarOwnRows ?? 0),
+      linestarOwnMae: row.linestarOwnMae != null ? Number(row.linestarOwnMae) : null,
+      linestarOwnBias: row.linestarOwnBias != null ? Number(row.linestarOwnBias) : null,
+      linestarOwnCorr: row.linestarOwnCorr != null ? Number(row.linestarOwnCorr) : null,
+      linestarOwnRank: null,
+      sampleWarning: slates === 0 || actualRows === 0
+        ? "No completed sample"
+        : slates < SLATE_TYPE_MIN_SLATES || actualRows < SLATE_TYPE_MIN_ROWS
+          ? "Low sample"
+          : null,
+    };
+  });
+
+  rankSlateTypeMetric(rows, "ourProjMae", "ourProjRows", "ourProjRank");
+  rankSlateTypeMetric(rows, "ourFinalProjMae", "ourFinalProjRows", "ourFinalProjRank");
+  rankSlateTypeMetric(rows, "linestarProjMae", "linestarProjRows", "linestarProjRank");
+  rankSlateTypeMetric(rows, "ourOwnMae", "ourOwnRows", "ourOwnRank");
+  rankSlateTypeMetric(rows, "linestarOwnMae", "linestarOwnRows", "linestarOwnRank");
+
+  return rows;
+}
+
 export type PositionAccuracyRow = {
   position: string;
   ourN: number;

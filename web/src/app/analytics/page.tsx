@@ -5,10 +5,12 @@ import type { ReactNode } from "react";
 import type { OwnershipDetailSort, Sport } from "@/db/queries";
 import AnalyticsContent from "./analytics-content";
 import MlbBlowupCandidatePanel from "./mlb-blowup-candidate-panel";
+import MlbHealthCard from "./mlb-health-card";
 import MlbOwnershipModelPanel from "./mlb-ownership-model-panel";
 import MlbPitcherLineupPanel from "./mlb-pitcher-lineup-panel";
 import MlbPostmortemPanel from "./mlb-postmortem-panel";
 import MlbRunEnvironmentPanel from "./mlb-run-environment-panel";
+import MlbSignalCard from "./mlb-signal-card";
 import PerfectLineupPanel from "./perfect-lineup-panel";
 
 async function safeSection(render: () => Promise<ReactNode>): Promise<ReactNode | null> {
@@ -38,6 +40,8 @@ export default async function AnalyticsPage({
   const calibration = await safeSection(() => AnalyticsContent({ sport }));
 
   if (sport === "mlb") {
+    const healthCard = await safeSection(() => MlbHealthCard());
+    const signalCard = await safeSection(() => MlbSignalCard());
     const postmortem = await safeSection(() => MlbPostmortemPanel());
     const ownership = await safeSection(() => MlbOwnershipModelPanel({ selectedSlateId: ownershipSlateId, sortBy: ownershipSort }));
     const blowup = await safeSection(() => MlbBlowupCandidatePanel());
@@ -48,6 +52,8 @@ export default async function AnalyticsPage({
     return (
       <>
         {calibration}
+        {healthCard}
+        {signalCard}
         {postmortem}
         {ownership}
         {blowup}

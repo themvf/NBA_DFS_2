@@ -31,6 +31,7 @@ import {
   getPositionAccuracy,
   getProjectionSourceBreakdown,
   getSalaryTierAccuracy,
+  getSlateTypePerformance,
   getStatLevelAccuracy,
 } from "./queries";
 import type { OwnershipDetailSort, Sport } from "./queries";
@@ -44,6 +45,12 @@ const REVALIDATE = 3600; // 1 hour
 export const getCachedCrossSlateAccuracy = unstable_cache(
   (sport: Sport) => getCrossSlateAccuracy(sport),
   ["analytics-cross-slate"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedSlateTypePerformance = unstable_cache(
+  (sport: Sport) => getSlateTypePerformance(sport),
+  ["analytics-slate-type-performance"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 
