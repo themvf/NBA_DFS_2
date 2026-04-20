@@ -5980,6 +5980,35 @@ export async function loadMlbSlateFromContestId(
   }
 }
 
+export async function loadMlbSlateFromDraftGroupId(
+  draftGroupId: number | string,
+  cashLine?: number,
+  contestType?: string,
+  fieldSize?: number,
+  contestFormat?: string,
+): Promise<{ ok: boolean; message: string; playerCount?: number }> {
+  try {
+    const dgId = parsePositiveInt(draftGroupId);
+    if (!dgId) return { ok: false, message: "Enter a valid DK draft group ID" };
+    const players = await fetchDkPlayersFromApi(dgId);
+    if (players.length === 0) return { ok: false, message: "No players returned from DK API" };
+    const slateDate = players.map((player) => parseSlateDate(player.gameInfo)).find((value): value is string => !!value)
+      ?? new Date().toISOString().slice(0, 10);
+    const mlbSeason = inferMlbSeason(slateDate);
+    const statsReady = await validateMlbStatsReadiness(mlbSeason);
+    if (!statsReady.ok) {
+      return { ok: false, message: statsReady.message ?? `MLB stats are not ready for season ${mlbSeason}` };
+    }
+    const lsMap = await tryFetchLinestarMapMlb(dgId);
+    const result = await enrichAndSaveMlb(players, lsMap, cashLine, dgId, contestType, fieldSize, contestFormat);
+    const readinessNote = statsReady.message ? `${statsReady.message} ` : "";
+    revalidatePath("/homerun");
+    return { ...result, message: `[MLB API] ${readinessNote}${result.message}`.trim() };
+  } catch (e) {
+    return { ok: false, message: String(e) };
+  }
+}
+
 /**
  * Re-fetch the DK draftables API for the current slate and update is_out for
  * every player whose injury status has changed since the slate was loaded.

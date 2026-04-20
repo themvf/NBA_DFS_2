@@ -509,7 +509,7 @@ export type MlbHomerunBoard = {
   slateDate: string | null;
   requestedDate: string | null;
   requestedDkId: number | null;
-  dkIdKind: "draftGroup" | "contest" | null;
+  dkIdKind: "draftGroup" | "contest" | "entry" | null;
   dkIdError: string | null;
   contestType: string | null;
   gameCount: number | null;
@@ -547,6 +547,55 @@ async function resolveDraftGroupIdFromContestId(contestId: number): Promise<numb
   }
 }
 
+function parseDkLobbyDate(value: unknown): string | null {
+  const raw = String(value ?? "");
+  const match = raw.match(/\/Date\((\d+)\)\//);
+  const millis = match ? Number(match[1]) : Number(raw);
+  if (!Number.isFinite(millis)) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(millis));
+}
+
+async function resolveMlbHomeRunDraftGroupFromLobby(date: string | null): Promise<number | null> {
+  try {
+    const resp = await fetch("https://www.draftkings.com/lobby/getcontests?sport=MLB", {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+      },
+      cache: "no-store",
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json() as { Contests?: Array<Record<string, unknown>> };
+    const contests = Array.isArray(data.Contests) ? data.Contests : [];
+    const homeRunContests = contests
+      .filter((contest) => {
+        const name = String(contest.n ?? contest.name ?? "").toLowerCase();
+        const gameType = String(contest.gameType ?? "").toLowerCase();
+        const gameTypeId = Number(contest.gameTypeId ?? 0);
+        return (
+          gameTypeId === 346
+          || gameType.includes("single stat - home runs")
+          || (name.includes("single stat") && name.includes("home runs"))
+        );
+      })
+      .filter((contest) => !date || parseDkLobbyDate(contest.sd) === date)
+      .sort((a, b) => Number(b.po ?? 0) - Number(a.po ?? 0));
+
+    for (const contest of homeRunContests) {
+      const draftGroupId = cleanPositiveInt(contest.dg ?? contest.draftGroupId);
+      if (draftGroupId != null && draftGroupId <= POSTGRES_INT_MAX) return draftGroupId;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string | null = {}): Promise<MlbHomerunBoard> {
   await ensureDkPlayerPropColumns();
 
@@ -554,13 +603,23 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
   const requestedDkId = cleanPositiveInt(normalizedParams.dkId);
   const date = normalizedParams.date ?? null;
   const requestedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-  const dkIdKind = requestedDkId == null ? null : requestedDkId > POSTGRES_INT_MAX ? "contest" : "draftGroup";
-  const resolvedDkDraftGroupId =
-    requestedDkId == null ? null
-      : requestedDkId <= POSTGRES_INT_MAX ? requestedDkId
-        : await resolveDraftGroupIdFromContestId(requestedDkId);
+  let dkIdKind: MlbHomerunBoard["dkIdKind"] = null;
+  let resolvedDkDraftGroupId: number | null = null;
+  if (requestedDkId != null) {
+    const contestDraftGroupId = await resolveDraftGroupIdFromContestId(requestedDkId);
+    if (contestDraftGroupId != null) {
+      dkIdKind = "contest";
+      resolvedDkDraftGroupId = contestDraftGroupId;
+    } else if (requestedDkId <= POSTGRES_INT_MAX) {
+      dkIdKind = "draftGroup";
+      resolvedDkDraftGroupId = requestedDkId;
+    } else {
+      dkIdKind = "entry";
+      resolvedDkDraftGroupId = await resolveMlbHomeRunDraftGroupFromLobby(requestedDate);
+    }
+  }
   const dkIdError = requestedDkId != null && resolvedDkDraftGroupId == null
-    ? `DraftKings contest ID ${requestedDkId} could not be resolved to a draft group.`
+    ? `DraftKings entry ID ${requestedDkId} could not be resolved to a Home Runs draft group for this date.`
     : null;
 
   if (requestedDkId != null && resolvedDkDraftGroupId == null) {

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { loadMlbSlateFromDraftGroupId } from "@/app/dfs/actions";
 import { getMlbHomerunBoard, type MlbHomerunCandidate } from "@/db/queries";
 
 export const metadata: Metadata = {
@@ -215,7 +216,16 @@ export default async function HomerunPage({
     redirect(`/homerun?${nextParams.toString()}`);
   }
 
-  const board = await getMlbHomerunBoard({ date, dkId });
+  let board = await getMlbHomerunBoard({ date, dkId });
+  let loadError: string | null = null;
+  if (dkId != null && board.candidates.length === 0 && board.dkDraftGroupId != null && board.dkIdError == null) {
+    const loadResult = await loadMlbSlateFromDraftGroupId(board.dkDraftGroupId, undefined, "homerun", undefined, "gpp");
+    if (loadResult.ok) {
+      board = await getMlbHomerunBoard({ date, dkId });
+    } else {
+      loadError = loadResult.message;
+    }
+  }
   const podium = board.candidates.slice(0, 3);
 
   return (
@@ -226,6 +236,7 @@ export default async function HomerunPage({
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">Top 15 by 1+ HR chance</h1>
           <p className="mt-1 text-sm text-slate-500">
             {board.slateDate ? `Slate ${board.slateDate}` : "No MLB slate found"}
+            {board.requestedDkId != null && board.dkIdKind === "entry" ? ` | DK entry ${board.requestedDkId}` : ""}
             {board.requestedDkId != null && board.dkIdKind === "contest" ? ` | DK contest ${board.requestedDkId}` : ""}
             {board.dkDraftGroupId != null ? ` | DK draft group ${board.dkDraftGroupId}` : ""}
             {board.contestType ? ` | ${board.contestType}` : ""}
@@ -270,7 +281,7 @@ export default async function HomerunPage({
         </div>
       ) : (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          {board.dkIdError ?? "No MLB hitters with home run probabilities were found for this slate."}
+          {loadError ?? board.dkIdError ?? "No MLB hitters with home run probabilities were found for this slate."}
         </div>
       )}
 
