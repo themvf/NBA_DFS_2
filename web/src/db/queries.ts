@@ -462,6 +462,282 @@ export async function getMlbGameEnvironmentCards(slateDate: string | null): Prom
   return result.rows;
 }
 
+export type MlbHomerunCandidate = {
+  id: number;
+  dkPlayerId: number;
+  slateId: number;
+  slateDate: string;
+  contestType: string | null;
+  gameCount: number | null;
+  name: string;
+  teamAbbrev: string;
+  teamName: string | null;
+  teamLogo: string | null;
+  opponentAbbrev: string | null;
+  eligiblePositions: string;
+  salary: number;
+  gameInfo: string | null;
+  battingOrder: number | null;
+  lineupConfirmed: boolean | null;
+  isHome: boolean | null;
+  expectedHr: number | null;
+  hrProb1Plus: number | null;
+  hitterHrPg: number | null;
+  hitterIso: number | null;
+  hitterSlug: number | null;
+  hitterPaPg: number | null;
+  hitterWrcPlus: number | null;
+  hitterSplitWrcPlus: number | null;
+  teamTotal: number | null;
+  vegasTotal: number | null;
+  ballpark: string | null;
+  parkHrFactor: number | null;
+  weatherTemp: number | null;
+  windSpeed: number | null;
+  windDirection: string | null;
+  opposingPitcherName: string | null;
+  opposingPitcherHand: string | null;
+  opposingPitcherHrPer9: number | null;
+  opposingPitcherHrFbPct: number | null;
+  opposingPitcherXfip: number | null;
+  opposingPitcherEra: number | null;
+};
+
+export type MlbHomerunBoard = {
+  slateId: number | null;
+  dkDraftGroupId: number | null;
+  slateDate: string | null;
+  requestedDate: string | null;
+  requestedDkId: number | null;
+  contestType: string | null;
+  gameCount: number | null;
+  totalQualified: number;
+  candidates: MlbHomerunCandidate[];
+};
+
+export type MlbHomerunBoardParams = {
+  date?: string | null;
+  dkId?: number | string | null;
+};
+
+function cleanPositiveInt(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string | null = {}): Promise<MlbHomerunBoard> {
+  await ensureDkPlayerPropColumns();
+
+  const normalizedParams = typeof params === "string" || params == null ? { date: params } : params;
+  const requestedDkId = cleanPositiveInt(normalizedParams.dkId);
+  const date = normalizedParams.date ?? null;
+  const requestedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  const result = await db.execute<MlbHomerunCandidate & { dkDraftGroupId: number | null; totalQualified: number }>(sql`
+    WITH selected_slate AS (
+      SELECT id, dk_draft_group_id, slate_date, contest_type, game_count
+      FROM dk_slates
+      WHERE sport = 'mlb'
+        AND (${requestedDkId}::int IS NULL OR dk_draft_group_id = ${requestedDkId}::int)
+        AND (${requestedDkId}::int IS NOT NULL OR ${requestedDate}::text IS NULL OR slate_date = ${requestedDate}::date)
+        AND (
+          ${requestedDate}::text IS NOT NULL
+          OR ${requestedDkId}::int IS NOT NULL
+          OR EXISTS (
+            SELECT 1
+            FROM dk_players slate_player
+            WHERE slate_player.slate_id = dk_slates.id
+              AND slate_player.hr_prob_1plus IS NOT NULL
+              AND COALESCE(slate_player.is_out, FALSE) = FALSE
+              AND NOT (
+                slate_player.eligible_positions ILIKE '%SP%'
+                OR slate_player.eligible_positions ILIKE '%RP%'
+            )
+          )
+        )
+      ORDER BY
+        CASE WHEN contest_type ILIKE '%homerun%' OR contest_type ILIKE '%home run%' THEN 0 ELSE 1 END,
+        slate_date DESC,
+        id DESC
+      LIMIT 1
+    ),
+    latest_batter_by_name AS (
+      SELECT DISTINCT ON (LOWER(name))
+        LOWER(name) AS name_key,
+        pa_pg,
+        hr_pg,
+        iso,
+        slg,
+        wrc_plus,
+        wrc_plus_vs_l,
+        wrc_plus_vs_r
+      FROM mlb_batter_stats
+      ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
+    ),
+    latest_pitcher AS (
+      SELECT DISTINCT ON (player_id)
+        player_id, name, hand, hr_per_9, hr_fb_pct, xfip, era
+      FROM mlb_pitcher_stats
+      ORDER BY player_id, season DESC, fetched_at DESC, id DESC
+    ),
+    latest_pitcher_by_name AS (
+      SELECT DISTINCT ON (LOWER(name))
+        LOWER(name) AS name_key,
+        name,
+        hand,
+        hr_per_9,
+        hr_fb_pct,
+        xfip,
+        era
+      FROM mlb_pitcher_stats
+      ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
+    ),
+    latest_park AS (
+      SELECT DISTINCT ON (team_id)
+        team_id,
+        hr_factor
+      FROM mlb_park_factors
+      ORDER BY team_id, season DESC, id DESC
+    ),
+    candidates AS (
+      SELECT
+        dp.id,
+        dp.dk_player_id AS "dkPlayerId",
+        dp.slate_id AS "slateId",
+        ss.dk_draft_group_id AS "dkDraftGroupId",
+        ss.slate_date::text AS "slateDate",
+        ss.contest_type AS "contestType",
+        ss.game_count AS "gameCount",
+        dp.name,
+        dp.team_abbrev AS "teamAbbrev",
+        team.name AS "teamName",
+        team.logo_url AS "teamLogo",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN away.abbreviation
+          WHEN dp.mlb_team_id = mm.away_team_id THEN home.abbreviation
+          ELSE NULL
+        END AS "opponentAbbrev",
+        dp.eligible_positions AS "eligiblePositions",
+        dp.salary,
+        dp.game_info AS "gameInfo",
+        dp.dk_starting_lineup_order AS "battingOrder",
+        dp.dk_team_lineup_confirmed AS "lineupConfirmed",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN TRUE
+          WHEN dp.mlb_team_id = mm.away_team_id THEN FALSE
+          ELSE NULL
+        END AS "isHome",
+        dp.expected_hr AS "expectedHr",
+        dp.hr_prob_1plus AS "hrProb1Plus",
+        batter.hr_pg AS "hitterHrPg",
+        batter.iso AS "hitterIso",
+        batter.slg AS "hitterSlug",
+        batter.pa_pg AS "hitterPaPg",
+        batter.wrc_plus AS "hitterWrcPlus",
+        CASE
+          WHEN (
+            CASE
+              WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hand, asp_name.hand)
+              WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hand, hsp_name.hand)
+              ELSE NULL
+            END
+          ) = 'L' THEN batter.wrc_plus_vs_l
+          WHEN (
+            CASE
+              WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hand, asp_name.hand)
+              WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hand, hsp_name.hand)
+              ELSE NULL
+            END
+          ) = 'R' THEN batter.wrc_plus_vs_r
+          ELSE NULL
+        END AS "hitterSplitWrcPlus",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN mm.home_implied
+          WHEN dp.mlb_team_id = mm.away_team_id THEN mm.away_implied
+          ELSE NULL
+        END AS "teamTotal",
+        mm.vegas_total AS "vegasTotal",
+        mm.ballpark AS "ballpark",
+        park.hr_factor AS "parkHrFactor",
+        mm.weather_temp AS "weatherTemp",
+        mm.wind_speed AS "windSpeed",
+        mm.wind_direction AS "windDirection",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(mm.away_sp_name, asp_id.name, asp_name.name)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(mm.home_sp_name, hsp_id.name, hsp_name.name)
+          ELSE NULL
+        END AS "opposingPitcherName",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hand, asp_name.hand)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hand, hsp_name.hand)
+          ELSE NULL
+        END AS "opposingPitcherHand",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hr_per_9, asp_name.hr_per_9)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hr_per_9, hsp_name.hr_per_9)
+          ELSE NULL
+        END AS "opposingPitcherHrPer9",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hr_fb_pct, asp_name.hr_fb_pct)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hr_fb_pct, hsp_name.hr_fb_pct)
+          ELSE NULL
+        END AS "opposingPitcherHrFbPct",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.xfip, asp_name.xfip)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.xfip, hsp_name.xfip)
+          ELSE NULL
+        END AS "opposingPitcherXfip",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.era, asp_name.era)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.era, hsp_name.era)
+          ELSE NULL
+        END AS "opposingPitcherEra"
+      FROM selected_slate ss
+      INNER JOIN dk_players dp ON dp.slate_id = ss.id
+      LEFT JOIN mlb_teams team ON team.team_id = dp.mlb_team_id
+      LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+      LEFT JOIN mlb_teams home ON home.team_id = mm.home_team_id
+      LEFT JOIN mlb_teams away ON away.team_id = mm.away_team_id
+      LEFT JOIN latest_batter_by_name batter ON batter.name_key = LOWER(dp.name)
+      LEFT JOIN latest_pitcher hsp_id ON hsp_id.player_id = mm.home_sp_id
+      LEFT JOIN latest_pitcher asp_id ON asp_id.player_id = mm.away_sp_id
+      LEFT JOIN latest_pitcher_by_name hsp_name ON hsp_name.name_key = LOWER(mm.home_sp_name)
+      LEFT JOIN latest_pitcher_by_name asp_name ON asp_name.name_key = LOWER(mm.away_sp_name)
+      LEFT JOIN latest_park park ON park.team_id = mm.home_team_id
+      WHERE COALESCE(dp.is_out, FALSE) = FALSE
+        AND dp.hr_prob_1plus IS NOT NULL
+        AND NOT (dp.eligible_positions ILIKE '%SP%' OR dp.eligible_positions ILIKE '%RP%')
+    ),
+    ranked AS (
+      SELECT
+        candidates.*,
+        COUNT(*) OVER () AS "totalQualified"
+      FROM candidates
+      ORDER BY "hrProb1Plus" DESC NULLS LAST, "expectedHr" DESC NULLS LAST, name ASC
+      LIMIT 15
+    )
+    SELECT * FROM ranked
+  `);
+
+  const first = result.rows[0];
+  return {
+    slateId: first?.slateId ?? null,
+    dkDraftGroupId: first?.dkDraftGroupId ?? requestedDkId,
+    slateDate: first?.slateDate ?? requestedDate,
+    requestedDate,
+    requestedDkId,
+    contestType: first?.contestType ?? null,
+    gameCount: first?.gameCount ?? null,
+    totalQualified: first?.totalQualified ?? 0,
+    candidates: result.rows.map((row) => {
+      const candidate = { ...row };
+      delete (candidate as Partial<typeof row>).dkDraftGroupId;
+      delete (candidate as Partial<typeof row>).totalQualified;
+      return candidate as MlbHomerunCandidate;
+    }),
+  };
+}
+
 // ── DFS Accuracy ─────────────────────────────────────────────
 
 export type DfsAccuracyMetrics = {
