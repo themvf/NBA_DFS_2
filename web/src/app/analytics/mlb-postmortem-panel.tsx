@@ -1,4 +1,5 @@
 import { getCachedMlbPostmortemReport } from "@/db/analytics-cache";
+import MlbPostmortemCharts from "./mlb-postmortem-charts";
 import type {
   MlbPostmortemDecisionCaptureRow,
   MlbPostmortemIndependenceRow,
@@ -650,6 +651,13 @@ export default async function MlbPostmortemPanel() {
           </div>
         </div>
       ) : null}
+
+      <MlbPostmortemCharts
+        recentSlates={report.recentSlates}
+        projectionSummary={report.projectionSummary}
+        ownershipSummary={report.ownershipSummary}
+        decisionCapture={report.decisionCapture}
+      />
 
       <div className="grid gap-6 xl:grid-cols-2">
         <ProjectionIndependenceTable rows={report.projectionIndependence} />
