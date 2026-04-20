@@ -37,17 +37,29 @@ export default async function AnalyticsPage({
     ? rawOwnershipSort
     : "field-error";
 
-  const calibration = await safeSection(() => AnalyticsContent({ sport }));
-
+  // Run all sections in parallel — page.tsx has no inter-section dependencies.
   if (sport === "mlb") {
-    const healthCard = await safeSection(() => MlbHealthCard());
-    const signalCard = await safeSection(() => MlbSignalCard());
-    const postmortem = await safeSection(() => MlbPostmortemPanel());
-    const ownership = await safeSection(() => MlbOwnershipModelPanel({ selectedSlateId: ownershipSlateId, sortBy: ownershipSort }));
-    const blowup = await safeSection(() => MlbBlowupCandidatePanel());
-    const runEnvironment = await safeSection(() => MlbRunEnvironmentPanel());
-    const pitcherLineup = await safeSection(() => MlbPitcherLineupPanel());
-    const perfectLineup = await safeSection(() => PerfectLineupPanel({ sport }));
+    const [
+      calibration,
+      healthCard,
+      signalCard,
+      postmortem,
+      ownership,
+      blowup,
+      runEnvironment,
+      pitcherLineup,
+      perfectLineup,
+    ] = await Promise.all([
+      safeSection(() => AnalyticsContent({ sport })),
+      safeSection(() => MlbHealthCard()),
+      safeSection(() => MlbSignalCard()),
+      safeSection(() => MlbPostmortemPanel()),
+      safeSection(() => MlbOwnershipModelPanel({ selectedSlateId: ownershipSlateId, sortBy: ownershipSort })),
+      safeSection(() => MlbBlowupCandidatePanel()),
+      safeSection(() => MlbRunEnvironmentPanel()),
+      safeSection(() => MlbPitcherLineupPanel()),
+      safeSection(() => PerfectLineupPanel({ sport })),
+    ]);
 
     return (
       <>
@@ -64,7 +76,10 @@ export default async function AnalyticsPage({
     );
   }
 
-  const perfectLineup = await safeSection(() => PerfectLineupPanel({ sport }));
+  const [calibration, perfectLineup] = await Promise.all([
+    safeSection(() => AnalyticsContent({ sport })),
+    safeSection(() => PerfectLineupPanel({ sport })),
+  ]);
 
   return (
     <>

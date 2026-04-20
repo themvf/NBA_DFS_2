@@ -27,20 +27,32 @@ async function safeRun<T>(fn: () => Promise<T>): Promise<T | null> {
 }
 
 export default async function AnalyticsContent({ sport }: { sport: Sport }) {
-  const crossSlate = await safeRun(() => getCachedCrossSlateAccuracy(sport));
-  const posAccuracy = await safeRun(() => getCachedPositionAccuracy(sport));
-  const salaryTier = await safeRun(() => getCachedSalaryTierAccuracy(sport));
-  const slateTypePerformance = await safeRun(() => getCachedSlateTypePerformance(sport));
-  const leverageCalib = await safeRun(() => getCachedLeverageCalibration(sport));
-  const ownVsTotal = await safeRun(() => getCachedOwnershipVsTeamTotal(sport));
-  const battingOrderCalib = sport === "mlb"
-    ? await safeRun(() => getCachedMlbBattingOrderCalibration())
-    : [];
-  const projSourceBreakdown = await safeRun(() => getCachedProjectionSourceBreakdown(sport));
-  const statLevelAccuracy = await safeRun(() => getCachedStatLevelAccuracy(sport));
-  const gameTotalModel = sport === "nba"
-    ? await safeRun(() => getCachedGameTotalModelAccuracy())
-    : [];
+  // Run all independent queries in parallel — reduces total DB time from
+  // sum(query latencies) to max(query latency), preventing function timeouts
+  // on cache miss when Neon wakes from suspend.
+  const [
+    crossSlate,
+    posAccuracy,
+    salaryTier,
+    slateTypePerformance,
+    leverageCalib,
+    ownVsTotal,
+    battingOrderCalib,
+    projSourceBreakdown,
+    statLevelAccuracy,
+    gameTotalModel,
+  ] = await Promise.all([
+    safeRun(() => getCachedCrossSlateAccuracy(sport)),
+    safeRun(() => getCachedPositionAccuracy(sport)),
+    safeRun(() => getCachedSalaryTierAccuracy(sport)),
+    safeRun(() => getCachedSlateTypePerformance(sport)),
+    safeRun(() => getCachedLeverageCalibration(sport)),
+    safeRun(() => getCachedOwnershipVsTeamTotal(sport)),
+    sport === "mlb" ? safeRun(() => getCachedMlbBattingOrderCalibration()) : Promise.resolve(null),
+    safeRun(() => getCachedProjectionSourceBreakdown(sport)),
+    safeRun(() => getCachedStatLevelAccuracy(sport)),
+    sport === "nba" ? safeRun(() => getCachedGameTotalModelAccuracy()) : Promise.resolve(null),
+  ]);
 
   return (
     <AnalyticsClient

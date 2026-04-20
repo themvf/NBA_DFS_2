@@ -330,9 +330,11 @@ const ANALYTICS_COLUMN_DDLS = [
 
 export async function ensureAnalyticsColumns(): Promise<void> {
   if (!ensureAnalyticsColumnsPromise) {
-    ensureAnalyticsColumnsPromise = Promise.all(
-      ANALYTICS_COLUMN_DDLS.map((ddl) => db.execute(sql.raw(ddl)))
-    ).then(() => undefined).catch((error) => {
+    ensureAnalyticsColumnsPromise = (async () => {
+      for (const ddl of ANALYTICS_COLUMN_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
       ensureAnalyticsColumnsPromise = null;
       throw error;
     });
