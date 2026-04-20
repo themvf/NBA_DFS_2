@@ -236,8 +236,7 @@ export default async function HomerunPage({
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">Top 15 by 1+ HR chance</h1>
           <p className="mt-1 text-sm text-slate-500">
             {board.slateDate ? `Slate ${board.slateDate}` : "No MLB slate found"}
-            {board.requestedDkId != null && board.dkIdKind === "entry" ? ` | DK entry ${board.requestedDkId}` : ""}
-            {board.requestedDkId != null && board.dkIdKind === "contest" ? ` | DK contest ${board.requestedDkId}` : ""}
+            {board.requestedDkId != null ? ` | DK ID ${board.requestedDkId}` : ""}
             {board.dkDraftGroupId != null ? ` | DK draft group ${board.dkDraftGroupId}` : ""}
             {board.contestType ? ` | ${board.contestType}` : ""}
             {board.gameCount != null ? ` | ${board.gameCount} games` : ""}

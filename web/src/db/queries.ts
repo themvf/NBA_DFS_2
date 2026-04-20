@@ -619,7 +619,7 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
     }
   }
   const dkIdError = requestedDkId != null && resolvedDkDraftGroupId == null
-    ? `DraftKings entry ID ${requestedDkId} could not be resolved to a Home Runs draft group for this date.`
+    ? `DraftKings ID ${requestedDkId} could not be resolved to a Home Runs draft group for this date.`
     : null;
 
   if (requestedDkId != null && resolvedDkDraftGroupId == null) {
