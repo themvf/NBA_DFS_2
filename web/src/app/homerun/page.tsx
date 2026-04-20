@@ -30,7 +30,7 @@ function cleanDkId(value: string | string[] | undefined): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
   if (!raw) return null;
   const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function confidence(candidate: MlbHomerunCandidate): { label: string; className: string } {
@@ -226,7 +226,8 @@ export default async function HomerunPage({
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">Top 15 by 1+ HR chance</h1>
           <p className="mt-1 text-sm text-slate-500">
             {board.slateDate ? `Slate ${board.slateDate}` : "No MLB slate found"}
-            {board.dkDraftGroupId != null ? ` | DK ${board.dkDraftGroupId}` : ""}
+            {board.requestedDkId != null && board.dkIdKind === "contest" ? ` | DK contest ${board.requestedDkId}` : ""}
+            {board.dkDraftGroupId != null ? ` | DK draft group ${board.dkDraftGroupId}` : ""}
             {board.contestType ? ` | ${board.contestType}` : ""}
             {board.gameCount != null ? ` | ${board.gameCount} games` : ""}
             {board.totalQualified > 0 ? ` | ${board.totalQualified} qualified hitters` : ""}
@@ -241,9 +242,9 @@ export default async function HomerunPage({
               name="dkId"
               min="1"
               inputMode="numeric"
-              placeholder={board.dkDraftGroupId != null ? String(board.dkDraftGroupId) : "Draft group"}
+              placeholder={board.dkDraftGroupId != null ? String(board.dkDraftGroupId) : "Contest or draft group"}
               defaultValue={board.requestedDkId ?? ""}
-              className="h-9 w-32 rounded border px-2 text-sm"
+              className="h-9 w-40 rounded border px-2 text-sm"
             />
           </label>
           <label className="block">
@@ -269,7 +270,7 @@ export default async function HomerunPage({
         </div>
       ) : (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          No MLB hitters with home run probabilities were found for this slate.
+          {board.dkIdError ?? "No MLB hitters with home run probabilities were found for this slate."}
         </div>
       )}
 

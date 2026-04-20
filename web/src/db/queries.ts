@@ -509,6 +509,8 @@ export type MlbHomerunBoard = {
   slateDate: string | null;
   requestedDate: string | null;
   requestedDkId: number | null;
+  dkIdKind: "draftGroup" | "contest" | null;
+  dkIdError: string | null;
   contestType: string | null;
   gameCount: number | null;
   totalQualified: number;
@@ -520,10 +522,29 @@ export type MlbHomerunBoardParams = {
   dkId?: number | string | null;
 };
 
-function cleanPositiveInt(value: number | string | null | undefined): number | null {
+const POSTGRES_INT_MAX = 2147483647;
+
+function cleanPositiveInt(value: unknown): number | null {
   if (value == null || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function resolveDraftGroupIdFromContestId(contestId: number): Promise<number | null> {
+  try {
+    const resp = await fetch(`https://api.draftkings.com/contests/v1/contests/${contestId}`, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+      },
+      cache: "no-store",
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json() as { contestDetail?: { draftGroupId?: unknown } };
+    return cleanPositiveInt(data.contestDetail?.draftGroupId);
+  } catch {
+    return null;
+  }
 }
 
 export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string | null = {}): Promise<MlbHomerunBoard> {
@@ -533,16 +554,41 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
   const requestedDkId = cleanPositiveInt(normalizedParams.dkId);
   const date = normalizedParams.date ?? null;
   const requestedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  const dkIdKind = requestedDkId == null ? null : requestedDkId > POSTGRES_INT_MAX ? "contest" : "draftGroup";
+  const resolvedDkDraftGroupId =
+    requestedDkId == null ? null
+      : requestedDkId <= POSTGRES_INT_MAX ? requestedDkId
+        : await resolveDraftGroupIdFromContestId(requestedDkId);
+  const dkIdError = requestedDkId != null && resolvedDkDraftGroupId == null
+    ? `DraftKings contest ID ${requestedDkId} could not be resolved to a draft group.`
+    : null;
+
+  if (requestedDkId != null && resolvedDkDraftGroupId == null) {
+    return {
+      slateId: null,
+      dkDraftGroupId: null,
+      slateDate: requestedDate,
+      requestedDate,
+      requestedDkId,
+      dkIdKind,
+      dkIdError,
+      contestType: null,
+      gameCount: null,
+      totalQualified: 0,
+      candidates: [],
+    };
+  }
+
   const result = await db.execute<MlbHomerunCandidate & { dkDraftGroupId: number | null; totalQualified: number }>(sql`
     WITH selected_slate AS (
       SELECT id, dk_draft_group_id, slate_date, contest_type, game_count
       FROM dk_slates
       WHERE sport = 'mlb'
-        AND (${requestedDkId}::int IS NULL OR dk_draft_group_id = ${requestedDkId}::int)
-        AND (${requestedDkId}::int IS NOT NULL OR ${requestedDate}::text IS NULL OR slate_date = ${requestedDate}::date)
+        AND (${resolvedDkDraftGroupId}::int IS NULL OR dk_draft_group_id = ${resolvedDkDraftGroupId}::int)
+        AND (${resolvedDkDraftGroupId}::int IS NOT NULL OR ${requestedDate}::text IS NULL OR slate_date = ${requestedDate}::date)
         AND (
           ${requestedDate}::text IS NOT NULL
-          OR ${requestedDkId}::int IS NOT NULL
+          OR ${resolvedDkDraftGroupId}::int IS NOT NULL
           OR EXISTS (
             SELECT 1
             FROM dk_players slate_player
@@ -722,10 +768,12 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
   const first = result.rows[0];
   return {
     slateId: first?.slateId ?? null,
-    dkDraftGroupId: first?.dkDraftGroupId ?? requestedDkId,
+    dkDraftGroupId: first?.dkDraftGroupId ?? resolvedDkDraftGroupId,
     slateDate: first?.slateDate ?? requestedDate,
     requestedDate,
     requestedDkId,
+    dkIdKind,
+    dkIdError,
     contestType: first?.contestType ?? null,
     gameCount: first?.gameCount ?? null,
     totalQualified: first?.totalQualified ?? 0,
