@@ -87,6 +87,12 @@ const MLB_CHEAP_BATTER_KEEP_COUNT = 10;
 const MLB_CASH_LEVERAGE_WEIGHT = 0.1;
 const MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5;
 const MLB_PITCHER_CEILING_BONUSES = [2.5, 1.75, 1.0, 0.5, 0.25] as const;
+const MLB_GPP2_ORDER_BASE_BONUS: Partial<Record<number, number>> = {
+  2: 1.1,
+  3: 1.15,
+  5: 0.85,
+  7: 0.75,
+};
 const MLB_BATTER_SLOTS: readonly MlbLineupSlot[] = ["C", "1B", "2B", "3B", "SS", "OF1", "OF2", "OF3"];
 const MLB_ALL_SLOTS: readonly MlbLineupSlot[] = ["P1", "P2", ...MLB_BATTER_SLOTS];
 
@@ -196,6 +202,10 @@ type BatterSearchState = {
 
 function finiteOrNull(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function rankMetric(
@@ -327,11 +337,13 @@ function getMlbGppBonus(player: MlbOptimizerPlayer, mode: OptimizerMode): number
   const runEnvironmentBoost = impliedRuns != null
     ? Math.max(0, impliedRuns - MLB_LEAGUE_AVG_TEAM_TOTAL) * 0.22
     : 0;
+  const orderCeilingBonus = computeMlbGpp2HitterOrderBonus(player, mode);
 
   return (ceilingEdge * profile.hitterCeilingEdgeWeight)
     + (boomRate * profile.hitterBoomWeight)
     + (hrProb * profile.hrWeight)
     + runEnvironmentBoost
+    + orderCeilingBonus
     - chalkPenalty;
 }
 
@@ -364,6 +376,93 @@ function getMlbStackEnvironmentFactor(player: MlbOptimizerPlayer | null | undefi
   if (impliedRuns == null || impliedRuns <= 0) return 1;
   const ratio = Math.max(0.7, Math.min(1.4, impliedRuns / MLB_LEAGUE_AVG_TEAM_TOTAL));
   return Math.sqrt(ratio);
+}
+
+export function computeMlbGpp2HitterOrderBonus(
+  player: MlbOptimizerPlayer,
+  mode: OptimizerMode,
+): number {
+  if (!isLargeFieldTournamentMode(mode) || isPitcher(player.eligiblePositions)) return 0;
+
+  const order = finiteOrNull(player.dkStartingLineupOrder);
+  if (order == null || !Number.isInteger(order)) return 0;
+  const base = MLB_GPP2_ORDER_BASE_BONUS[order];
+  if (base == null) return 0;
+
+  const projection = getMlbProjection(player);
+  if (projection <= 0) return 0;
+
+  const impliedRuns = getMlbTeamImpliedRuns(player);
+  const teamEnvironmentMultiplier = impliedRuns == null
+    ? 1
+    : clamp(1 + ((impliedRuns - MLB_LEAGUE_AVG_TEAM_TOTAL) * 0.14), 0.85, 1.2);
+  const value = projection / Math.max(1, player.salary / 1000);
+  const valueMultiplier = clamp(1 + ((value - 2.0) * 0.2), 0.85, 1.15);
+  const projectionMultiplier = clamp((projection - 3.5) / 5.0, 0.35, 1);
+  const projectedOwnership = getMlbProjectedOwnership(player);
+  const ownershipMultiplier = order === 2 || order === 3
+    ? projectedOwnership <= 10
+      ? 1.15
+      : projectedOwnership <= 16
+        ? 1
+        : projectedOwnership <= 24
+          ? 0.7
+          : 0.35
+    : projectedOwnership <= 6
+      ? 1.25
+      : projectedOwnership <= 12
+        ? 1.05
+        : projectedOwnership <= 18
+          ? 0.7
+          : 0.35;
+
+  return Math.round(
+    base
+    * projectionMultiplier
+    * teamEnvironmentMultiplier
+    * valueMultiplier
+    * ownershipMultiplier
+    * 1000,
+  ) / 1000;
+}
+
+function getMlbGpp2StackShapeBonus(
+  selectedStackPlayers: MlbOptimizerPlayer[],
+  mode: OptimizerMode,
+): number {
+  if (!isLargeFieldTournamentMode(mode) || selectedStackPlayers.length < 2) return 0;
+
+  const orders = new Set(
+    selectedStackPlayers
+      .map((player) => finiteOrNull(player.dkStartingLineupOrder))
+      .filter((order): order is number => order != null && Number.isInteger(order)),
+  );
+  if (orders.size === 0) return 0;
+
+  let bonus = 0;
+  if (orders.has(2) && orders.has(3)) {
+    bonus += 0.8;
+    if (orders.has(1) || orders.has(4) || orders.has(5)) {
+      bonus += 0.45;
+    }
+  }
+  if (orders.has(7) && (orders.has(5) || orders.has(6) || orders.has(8))) {
+    const averageOwnership = selectedStackPlayers.reduce(
+      (sum, player) => sum + getMlbProjectedOwnership(player),
+      0,
+    ) / selectedStackPlayers.length;
+    if (averageOwnership <= 10) {
+      bonus += 0.25;
+    }
+  }
+  if (
+    (orders.has(8) && orders.has(9) && (orders.has(1) || orders.has(2)))
+    || (orders.has(9) && orders.has(1) && orders.has(2))
+  ) {
+    bonus += 0.35;
+  }
+
+  return bonus;
 }
 
 // HR correlation bonus: for each batter above hrThreshold with a confirmed batting order,
@@ -739,6 +838,7 @@ function enumerateMlbStackTemplates(
       minCountsByTeam,
       score:
         (score * getMlbStackEnvironmentFactor(sorted[0] ?? null))
+        + getMlbGpp2StackShapeBonus(selectedStackPlayers, mode)
         - getMlbLineupDuplicationPenalty(
           selectedStackPlayers.reduce((sum, player) => sum + getMlbProjectedOwnership(player), 0),
           selectedStackPlayers.filter((player) => isHighOwnedMlbPlayer(player, mode)).length,
@@ -1193,7 +1293,7 @@ function solveMlbLineup(
         if (Math.abs(scoreDiff) > 1e-9) return scoreDiff;
         return a.salary - b.salary;
       });
-      states = nextStates.slice(0, beamWidth).map(({ estimate: _estimate, ...state }) => state);
+      states = nextStates.slice(0, beamWidth);
     }
 
     let bestLineup: MlbGeneratedLineup | null = null;
