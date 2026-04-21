@@ -497,6 +497,8 @@ export type MlbHomerunCandidate = {
   windDirection: string | null;
   opposingPitcherName: string | null;
   opposingPitcherHand: string | null;
+  opposingPitcherGames: number | null;
+  opposingPitcherIpPg: number | null;
   opposingPitcherHrPer9: number | null;
   opposingPitcherHrFbPct: number | null;
   opposingPitcherXfip: number | null;
@@ -742,7 +744,7 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
     ),
     latest_pitcher AS (
       SELECT DISTINCT ON (player_id)
-        player_id, name, hand, hr_per_9, hr_fb_pct, xfip, era
+        player_id, name, hand, games, ip_pg, hr_per_9, hr_fb_pct, xfip, era
       FROM mlb_pitcher_stats
       ORDER BY player_id, season DESC, fetched_at DESC, id DESC
     ),
@@ -751,6 +753,8 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
         LOWER(name) AS name_key,
         name,
         hand,
+        games,
+        ip_pg,
         hr_per_9,
         hr_fb_pct,
         xfip,
@@ -839,23 +843,33 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
           ELSE NULL
         END AS "opposingPitcherHand",
         CASE
-          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hr_per_9, asp_name.hr_per_9)
-          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hr_per_9, hsp_name.hr_per_9)
+          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.games, asp_name.games)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.games, hsp_name.games)
+          ELSE NULL
+        END AS "opposingPitcherGames",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.ip_pg, asp_name.ip_pg), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.ip_pg, hsp_name.ip_pg), 0)
+          ELSE NULL
+        END AS "opposingPitcherIpPg",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.hr_per_9, asp_name.hr_per_9), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.hr_per_9, hsp_name.hr_per_9), 0)
           ELSE NULL
         END AS "opposingPitcherHrPer9",
         CASE
-          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hr_fb_pct, asp_name.hr_fb_pct)
-          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hr_fb_pct, hsp_name.hr_fb_pct)
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.hr_fb_pct, asp_name.hr_fb_pct), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.hr_fb_pct, hsp_name.hr_fb_pct), 0)
           ELSE NULL
         END AS "opposingPitcherHrFbPct",
         CASE
-          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.xfip, asp_name.xfip)
-          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.xfip, hsp_name.xfip)
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.xfip, asp_name.xfip), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.xfip, hsp_name.xfip), 0)
           ELSE NULL
         END AS "opposingPitcherXfip",
         CASE
-          WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.era, asp_name.era)
-          WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.era, hsp_name.era)
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.era, asp_name.era), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.era, hsp_name.era), 0)
           ELSE NULL
         END AS "opposingPitcherEra",
         hrp.line AS "marketHrLine",

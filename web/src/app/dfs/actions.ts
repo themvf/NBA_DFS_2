@@ -2067,23 +2067,23 @@ export async function snapshotMlbHomerunSlateFromStoredRows(
         ELSE NULL
       END AS "opposingPitcherHand",
       CASE
-        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hr_per_9, asp_name.hr_per_9)
-        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hr_per_9, hsp_name.hr_per_9)
+        WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.hr_per_9, asp_name.hr_per_9), 0)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.hr_per_9, hsp_name.hr_per_9), 0)
         ELSE NULL
       END AS "opposingPitcherHrPer9",
       CASE
-        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hr_fb_pct, asp_name.hr_fb_pct)
-        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hr_fb_pct, hsp_name.hr_fb_pct)
+        WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.hr_fb_pct, asp_name.hr_fb_pct), 0)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.hr_fb_pct, hsp_name.hr_fb_pct), 0)
         ELSE NULL
       END AS "opposingPitcherHrFbPct",
       CASE
-        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.xfip, asp_name.xfip)
-        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.xfip, hsp_name.xfip)
+        WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.xfip, asp_name.xfip), 0)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.xfip, hsp_name.xfip), 0)
         ELSE NULL
       END AS "opposingPitcherXfip",
       CASE
-        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.era, asp_name.era)
-        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.era, hsp_name.era)
+        WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.era, asp_name.era), 0)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.era, hsp_name.era), 0)
         ELSE NULL
       END AS "opposingPitcherEra",
       dp.actual_hr AS "actualHr",

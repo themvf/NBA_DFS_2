@@ -129,7 +129,7 @@ function confidence(candidate: MlbHomerunCandidate): { label: string; className:
     candidate.hitterHrPg != null,
     candidate.parkHrFactor != null,
     candidate.opposingPitcherName != null,
-    candidate.opposingPitcherHrPer9 != null || candidate.opposingPitcherXfip != null,
+    hasPitcherStat(candidate),
     candidate.teamTotal != null,
     candidate.weatherTemp != null || candidate.windSpeed != null,
   ].filter(Boolean).length;
@@ -139,14 +139,41 @@ function confidence(candidate: MlbHomerunCandidate): { label: string; className:
   return { label: "Thin", className: "border-amber-200 bg-amber-50 text-amber-700" };
 }
 
+function hasPitcherStat(candidate: MlbHomerunCandidate): boolean {
+  return candidate.opposingPitcherHrPer9 != null
+    || candidate.opposingPitcherXfip != null
+    || candidate.opposingPitcherEra != null
+    || candidate.opposingPitcherHrFbPct != null;
+}
+
+function pitcherMetricLine(candidate: MlbHomerunCandidate): string {
+  const metrics = [
+    candidate.opposingPitcherHand,
+    candidate.opposingPitcherHrPer9 != null ? `${candidate.opposingPitcherHrPer9.toFixed(2)} HR/9` : null,
+    candidate.opposingPitcherXfip != null ? `xFIP ${candidate.opposingPitcherXfip.toFixed(2)}` : null,
+    candidate.opposingPitcherEra != null && candidate.opposingPitcherXfip == null ? `ERA ${candidate.opposingPitcherEra.toFixed(2)}` : null,
+  ].filter(Boolean);
+  return metrics.length > 0 ? metrics.join(" | ") : "Pitcher stats -";
+}
+
+function pitcherSampleLabel(candidate: MlbHomerunCandidate): string {
+  const games = candidate.opposingPitcherGames != null && candidate.opposingPitcherGames > 0
+    ? `${candidate.opposingPitcherGames} G`
+    : null;
+  const ipPg = candidate.opposingPitcherIpPg != null && candidate.opposingPitcherIpPg > 0
+    ? `${candidate.opposingPitcherIpPg.toFixed(1)} IP/G`
+    : null;
+  return [games, ipPg].filter(Boolean).join(" | ") || "Pitcher sample -";
+}
+
 function pitcherRisk(candidate: MlbHomerunCandidate): { label: string; className: string } {
   const hrPer9 = candidate.opposingPitcherHrPer9;
   const xfip = candidate.opposingPitcherXfip;
   if (hrPer9 == null && xfip == null) return { label: "Pitcher ?", className: "border-slate-200 bg-slate-50 text-slate-600" };
-  if ((hrPer9 ?? 0) >= 1.35 || (xfip ?? 0) >= 4.7) {
+  if ((hrPer9 != null && hrPer9 >= 1.35) || (xfip != null && xfip >= 4.7)) {
     return { label: "Pitcher HR+", className: "border-rose-200 bg-rose-50 text-rose-700" };
   }
-  if ((hrPer9 ?? 0) <= 0.85 && (xfip ?? 99) <= 3.8) {
+  if (hrPer9 != null && xfip != null && hrPer9 <= 0.85 && xfip <= 3.8) {
     return { label: "Pitcher HR-", className: "border-blue-200 bg-blue-50 text-blue-700" };
   }
   return { label: "Pitcher Mid", className: "border-slate-200 bg-slate-50 text-slate-700" };
@@ -355,8 +382,8 @@ function pitcherHrRiskLevel(candidate: MlbHomerunCandidate): "high" | "mid" | "l
   const hrPer9 = candidate.opposingPitcherHrPer9;
   const xfip = candidate.opposingPitcherXfip;
   if (hrPer9 == null && xfip == null) return "unknown";
-  if ((hrPer9 ?? 0) >= 1.35 || (xfip ?? 0) >= 4.7) return "high";
-  if ((hrPer9 ?? 99) <= 0.85 && (xfip ?? 99) <= 3.8) return "low";
+  if ((hrPer9 != null && hrPer9 >= 1.35) || (xfip != null && xfip >= 4.7)) return "high";
+  if (hrPer9 != null && xfip != null && hrPer9 <= 0.85 && xfip <= 3.8) return "low";
   return "mid";
 }
 
@@ -381,8 +408,8 @@ function scatterTooltip(point: HomerunScatterPoint): string {
     `Model ${fmtWholePct(point.model)} | Market ${point.market == null ? "No HR odds" : fmtWholePct(point.market)} | Edge ${fmtSignedPct(point.edge)}`,
     point.market == null ? "No HR market found; edge cannot be calculated." : null,
     `Park ${c.ballpark ?? "-"}${c.parkHrFactor != null ? ` (${c.parkHrFactor.toFixed(2)}x HR)` : ""}`,
-    c.opposingPitcherName ? `Pitcher ${c.opposingPitcherName}${c.opposingPitcherHand ? ` (${c.opposingPitcherHand})` : ""}` : "Pitcher not announced; model may move when starter posts.",
-    `Pitcher HR/9 ${fmtNum(c.opposingPitcherHrPer9, 2)} | xFIP ${fmtNum(c.opposingPitcherXfip, 2)}`,
+    c.opposingPitcherName ? `Pitcher ${c.opposingPitcherName}` : "Pitcher not announced; model may move when starter posts.",
+    `${pitcherMetricLine(c)} | ${pitcherSampleLabel(c)}`,
     `Order ${c.battingOrder ?? "-"} | Book ${c.marketHrBook ?? "-"} | Odds ${fmtAmericanOdds(c.marketHrPrice)}`,
   ].filter(Boolean).join("\n");
 }
@@ -748,6 +775,12 @@ function CandidateCard({ candidate, rank }: { candidate: MlbHomerunCandidate; ra
         <FactorChip {...pitch} />
         <FactorChip label={conf.label} className={conf.className} />
       </div>
+
+      <div className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
+        <div className="font-medium text-slate-900">{candidate.opposingPitcherName ?? "Pitcher TBA"}</div>
+        <div>{pitcherMetricLine(candidate)}</div>
+        <div>{pitcherSampleLabel(candidate)}</div>
+      </div>
     </article>
   );
 }
@@ -791,10 +824,8 @@ function CandidateRow({ candidate, rank }: { candidate: MlbHomerunCandidate; ran
       </td>
       <td className="py-3 pr-3 text-right text-xs text-slate-700">
         <div>{candidate.opposingPitcherName ?? "-"}</div>
-        <div>
-          {candidate.opposingPitcherHand ? `${candidate.opposingPitcherHand} | ` : ""}
-          {candidate.opposingPitcherHrPer9 != null ? `${candidate.opposingPitcherHrPer9.toFixed(2)} HR/9` : "HR/9 -"}
-        </div>
+        <div>{pitcherMetricLine(candidate)}</div>
+        <div className="text-slate-500">{pitcherSampleLabel(candidate)}</div>
       </td>
       <td className="py-3 pr-3 text-right text-xs text-slate-700">
         <div>{candidate.ballpark ?? "-"}</div>
