@@ -323,6 +323,49 @@ function scatterPointColor(edge: number | null | undefined): string {
   return "#64748b";
 }
 
+function scatterParkStroke(candidate: MlbHomerunCandidate): string {
+  const factor = candidate.parkHrFactor;
+  if (factor == null) return "#ffffff";
+  if (factor >= 1.06) return "#fb7185";
+  if (factor <= 0.94) return "#2563eb";
+  return "#ffffff";
+}
+
+function scatterParkStrokeWidth(candidate: MlbHomerunCandidate, isTopTable: boolean): number {
+  const factor = candidate.parkHrFactor;
+  if (factor == null) return isTopTable ? 1.5 : 1;
+  return factor >= 1.06 || factor <= 0.94 ? 2.75 : isTopTable ? 1.5 : 1;
+}
+
+function pitcherHrRiskLevel(candidate: MlbHomerunCandidate): "high" | "mid" | "low" | "unknown" {
+  const hrPer9 = candidate.opposingPitcherHrPer9;
+  const xfip = candidate.opposingPitcherXfip;
+  if (hrPer9 == null && xfip == null) return "unknown";
+  if ((hrPer9 ?? 0) >= 1.35 || (xfip ?? 0) >= 4.7) return "high";
+  if ((hrPer9 ?? 99) <= 0.85 && (xfip ?? 99) <= 3.8) return "low";
+  return "mid";
+}
+
+function scatterRadius(candidate: MlbHomerunCandidate, isTopTable: boolean): number {
+  const risk = pitcherHrRiskLevel(candidate);
+  const base = isTopTable ? 5.5 : 4;
+  if (risk === "high") return base + 2;
+  if (risk === "low") return Math.max(3.25, base - 1);
+  return base;
+}
+
+function scatterTooltip(point: { candidate: MlbHomerunCandidate; market: number; model: number; edge: number | null }): string {
+  const c = point.candidate;
+  return [
+    `${c.name} (${c.teamAbbrev}${c.opponentAbbrev ? ` vs ${c.opponentAbbrev}` : ""})`,
+    `Model ${fmtWholePct(point.model)} | Market ${fmtWholePct(point.market)} | Edge ${fmtSignedPct(point.edge)}`,
+    `Park ${c.ballpark ?? "-"}${c.parkHrFactor != null ? ` (${c.parkHrFactor.toFixed(2)}x HR)` : ""}`,
+    `Pitcher ${c.opposingPitcherName ?? "-"}${c.opposingPitcherHand ? ` (${c.opposingPitcherHand})` : ""}`,
+    `Pitcher HR/9 ${fmtNum(c.opposingPitcherHrPer9, 2)} | xFIP ${fmtNum(c.opposingPitcherXfip, 2)}`,
+    `Order ${c.battingOrder ?? "-"} | Book ${c.marketHrBook ?? "-"} | Odds ${fmtAmericanOdds(c.marketHrPrice)}`,
+  ].join("\n");
+}
+
 function ScatterEdgeListItem({ candidate, rank }: { candidate: MlbHomerunCandidate; rank: number }) {
   return (
     <li className="flex items-start justify-between gap-3 border-b border-slate-100 py-2 last:border-0">
@@ -457,10 +500,19 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
             {points.length} hitters with HR odds | {positiveEdges.length} positive edges | median edge {fmtSignedPct(medianEdgeValue)}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="inline-flex items-center gap-1 text-emerald-700"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />+2 pts</span>
-          <span className="inline-flex items-center gap-1 text-sky-700"><span className="h-2.5 w-2.5 rounded-full bg-sky-600" />Positive</span>
-          <span className="inline-flex items-center gap-1 text-rose-700"><span className="h-2.5 w-2.5 rounded-full bg-rose-600" />Overpriced</span>
+        <div className="flex flex-wrap justify-start gap-x-3 gap-y-2 text-xs md:justify-end">
+          <span className="inline-flex items-center gap-1 text-emerald-700"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />+2 edge</span>
+          <span className="inline-flex items-center gap-1 text-sky-700"><span className="h-2.5 w-2.5 rounded-full bg-sky-600" />positive edge</span>
+          <span className="inline-flex items-center gap-1 text-rose-700"><span className="h-2.5 w-2.5 rounded-full bg-rose-600" />negative edge</span>
+          <span className="inline-flex items-center gap-1 text-rose-700"><span className="h-3 w-3 rounded-full border-2 border-rose-400 bg-white" />HR park</span>
+          <span className="inline-flex items-center gap-1 text-blue-700"><span className="h-3 w-3 rounded-full border-2 border-blue-600 bg-white" />cold park</span>
+          <span className="inline-flex items-center gap-1 text-slate-600">
+            <svg viewBox="0 0 32 12" className="h-3 w-8" aria-hidden="true">
+              <circle cx="6" cy="6" r="3" fill="#64748b" />
+              <circle cx="19" cy="6" r="5" fill="#64748b" />
+            </svg>
+            pitcher HR risk
+          </span>
         </div>
       </div>
 
@@ -509,15 +561,13 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
                   key={point.candidate.id}
                   cx={xScale(point.market)}
                   cy={yScale(point.model)}
-                  r={isTopTable ? 5.5 : 3.75}
+                  r={scatterRadius(point.candidate, isTopTable)}
                   fill={scatterPointColor(point.edge)}
                   opacity={isTopTable ? 0.95 : 0.72}
-                  stroke="#ffffff"
-                  strokeWidth={isTopTable ? 1.5 : 1}
+                  stroke={scatterParkStroke(point.candidate)}
+                  strokeWidth={scatterParkStrokeWidth(point.candidate, isTopTable)}
                 >
-                  <title>
-                    {`${point.candidate.name} | model ${fmtWholePct(point.model)} | market ${fmtWholePct(point.market)} | edge ${fmtSignedPct(point.edge)}`}
-                  </title>
+                  <title>{scatterTooltip(point)}</title>
                 </circle>
               );
             })}
@@ -528,7 +578,7 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-950">Largest Positive Edges</h3>
-              <p className="mt-0.5 text-xs text-slate-500">Dots above the fair line are model-favored.</p>
+              <p className="mt-0.5 text-xs text-slate-500">Dot size reflects pitcher HR risk; ring color marks park context.</p>
             </div>
             {biggestDiscount && (
               <div className="text-right text-xs text-slate-500">
