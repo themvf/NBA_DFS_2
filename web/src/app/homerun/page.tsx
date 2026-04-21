@@ -310,6 +310,191 @@ function StoryPanel({ board }: { board: MlbHomerunBoard }) {
   );
 }
 
+function scatterPointColor(edge: number | null | undefined): string {
+  if (edge == null) return "#64748b";
+  if (edge >= 2) return "#059669";
+  if (edge > 0) return "#0284c7";
+  if (edge <= -2) return "#e11d48";
+  return "#64748b";
+}
+
+function ScatterEdgeListItem({ candidate, rank }: { candidate: MlbHomerunCandidate; rank: number }) {
+  return (
+    <li className="flex items-start justify-between gap-3 border-b border-slate-100 py-2 last:border-0">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium text-slate-950">
+          {rank}. {candidate.name}
+        </div>
+        <div className="mt-0.5 text-xs text-slate-500">
+          {candidate.teamAbbrev}
+          {candidate.opponentAbbrev ? ` vs ${candidate.opponentAbbrev}` : ""}
+          {candidate.battingOrder != null ? ` | Order ${candidate.battingOrder}` : ""}
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        <div className={`text-sm font-semibold ${edgeClass(candidate.hrEdgePct)}`}>{fmtSignedPct(candidate.hrEdgePct)}</div>
+        <div className="text-xs text-slate-500">
+          {fmtPct(candidate.hrProb1Plus)} vs {fmtWholePct(candidate.marketHrImpliedPct)}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
+  const points = board.scatterCandidates
+    .filter((candidate) => candidate.hrProb1Plus != null && candidate.marketHrImpliedPct != null)
+    .map((candidate) => ({
+      candidate,
+      market: candidate.marketHrImpliedPct ?? 0,
+      model: (candidate.hrProb1Plus ?? 0) * 100,
+      edge: candidate.hrEdgePct ?? null,
+    }));
+
+  if (points.length === 0) {
+    return (
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Model vs Market</h2>
+            <p className="text-sm text-slate-500">No HR odds were found for this slate yet.</p>
+          </div>
+          <div className="text-xs text-slate-500">Waiting on `batter_home_runs` market rows</div>
+        </div>
+      </section>
+    );
+  }
+
+  const width = 760;
+  const height = 420;
+  const pad = { left: 58, right: 24, top: 30, bottom: 58 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const rawMax = Math.max(12, ...points.flatMap((point) => [point.market, point.model])) + 1;
+  const axisMax = Math.ceil(rawMax / 2) * 2;
+  const xScale = (value: number) => pad.left + (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotWidth;
+  const yScale = (value: number) => pad.top + plotHeight - (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotHeight;
+  const ticks = Array.from({ length: 5 }, (_, index) => (axisMax / 4) * index);
+  const topTableIds = new Set(board.candidates.map((candidate) => candidate.id));
+  const positiveEdges = points
+    .filter((point) => (point.edge ?? -999) > 0)
+    .sort((a, b) => (b.edge ?? -999) - (a.edge ?? -999));
+  const bestEdges = positiveEdges.slice(0, 6).map((point) => point.candidate);
+  const biggestDiscount = points
+    .filter((point) => (point.edge ?? 999) < 0)
+    .sort((a, b) => (a.edge ?? 999) - (b.edge ?? 999))[0]?.candidate ?? null;
+  const medianEdge = points
+    .map((point) => point.edge)
+    .filter((edge): edge is number => edge != null)
+    .sort((a, b) => a - b);
+  const medianEdgeValue = medianEdge.length ? medianEdge[Math.floor(medianEdge.length / 2)] : null;
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-950">Model vs Market</h2>
+          <p className="text-sm text-slate-500">
+            {points.length} hitters with HR odds | {positiveEdges.length} positive edges | median edge {fmtSignedPct(medianEdgeValue)}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <span className="inline-flex items-center gap-1 text-emerald-700"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />+2 pts</span>
+          <span className="inline-flex items-center gap-1 text-sky-700"><span className="h-2.5 w-2.5 rounded-full bg-sky-600" />Positive</span>
+          <span className="inline-flex items-center gap-1 text-rose-700"><span className="h-2.5 w-2.5 rounded-full bg-rose-600" />Overpriced</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="overflow-hidden rounded-md border border-slate-100 bg-slate-50 p-2">
+          <svg
+            role="img"
+            aria-label="Scatterplot of MLB homerun model probability versus market implied probability"
+            viewBox={`0 0 ${width} ${height}`}
+            className="h-auto w-full"
+          >
+            <rect x="0" y="0" width={width} height={height} fill="#f8fafc" />
+            <polygon
+              points={`${xScale(0)},${yScale(0)} ${xScale(0)},${yScale(axisMax)} ${xScale(axisMax)},${yScale(axisMax)}`}
+              fill="#10b981"
+              opacity="0.08"
+            />
+            {ticks.map((tick) => (
+              <g key={`grid-${tick}`}>
+                <line x1={xScale(tick)} x2={xScale(tick)} y1={pad.top} y2={pad.top + plotHeight} stroke="#e2e8f0" />
+                <line x1={pad.left} x2={pad.left + plotWidth} y1={yScale(tick)} y2={yScale(tick)} stroke="#e2e8f0" />
+                <text x={xScale(tick)} y={pad.top + plotHeight + 22} textAnchor="middle" fontSize="12" fill="#64748b">
+                  {fmtWholePct(tick, tick % 1 === 0 ? 0 : 1)}
+                </text>
+                <text x={pad.left - 10} y={yScale(tick) + 4} textAnchor="end" fontSize="12" fill="#64748b">
+                  {fmtWholePct(tick, tick % 1 === 0 ? 0 : 1)}
+                </text>
+              </g>
+            ))}
+            <line x1={pad.left} x2={pad.left + plotWidth} y1={pad.top + plotHeight} y2={pad.top} stroke="#334155" strokeDasharray="5 5" strokeWidth="1.5" />
+            <text x={pad.left + plotWidth - 8} y={pad.top + 16} textAnchor="end" fontSize="12" fill="#334155">
+              fair line
+            </text>
+            <line x1={pad.left} x2={pad.left + plotWidth} y1={pad.top + plotHeight} y2={pad.top + plotHeight} stroke="#94a3b8" />
+            <line x1={pad.left} x2={pad.left} y1={pad.top} y2={pad.top + plotHeight} stroke="#94a3b8" />
+            <text x={pad.left + plotWidth / 2} y={height - 14} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155">
+              Market implied HR probability
+            </text>
+            <text x="18" y={pad.top + plotHeight / 2} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155" transform={`rotate(-90 18 ${pad.top + plotHeight / 2})`}>
+              Model HR probability
+            </text>
+            {points.map((point) => {
+              const isTopTable = topTableIds.has(point.candidate.id);
+              return (
+                <circle
+                  key={point.candidate.id}
+                  cx={xScale(point.market)}
+                  cy={yScale(point.model)}
+                  r={isTopTable ? 5.5 : 3.75}
+                  fill={scatterPointColor(point.edge)}
+                  opacity={isTopTable ? 0.95 : 0.72}
+                  stroke="#ffffff"
+                  strokeWidth={isTopTable ? 1.5 : 1}
+                >
+                  <title>
+                    {`${point.candidate.name} | model ${fmtWholePct(point.model)} | market ${fmtWholePct(point.market)} | edge ${fmtSignedPct(point.edge)}`}
+                  </title>
+                </circle>
+              );
+            })}
+          </svg>
+        </div>
+
+        <aside className="rounded-md border border-slate-200 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-950">Largest Positive Edges</h3>
+              <p className="mt-0.5 text-xs text-slate-500">Dots above the fair line are model-favored.</p>
+            </div>
+            {biggestDiscount && (
+              <div className="text-right text-xs text-slate-500">
+                Biggest fade
+                <div className="font-semibold text-rose-700">{biggestDiscount.name}</div>
+              </div>
+            )}
+          </div>
+          {bestEdges.length > 0 ? (
+            <ol className="mt-2">
+              {bestEdges.map((candidate, index) => (
+                <ScatterEdgeListItem key={candidate.id} candidate={candidate} rank={index + 1} />
+              ))}
+            </ol>
+          ) : (
+            <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              No positive model-vs-market HR edges are visible on this slate.
+            </div>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function CandidateCard({ candidate, rank }: { candidate: MlbHomerunCandidate; rank: number }) {
   const conf = confidence(candidate);
   const pitch = pitcherRisk(candidate);
@@ -535,6 +720,8 @@ export default async function HomerunPage({
       </div>
 
       <StoryPanel board={board} />
+
+      <HomerunScatterPlot board={board} />
 
       {podium.length > 0 ? (
         <div className="grid gap-3 md:grid-cols-3">

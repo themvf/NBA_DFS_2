@@ -525,6 +525,7 @@ export type MlbHomerunBoard = {
   totalQualified: number;
   latestMarketCapturedAt: string | null;
   candidates: MlbHomerunCandidate[];
+  scatterCandidates: MlbHomerunCandidate[];
 };
 
 export type MlbHomerunBoardParams = {
@@ -694,6 +695,7 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
       totalQualified: 0,
       latestMarketCapturedAt: null,
       candidates: [],
+      scatterCandidates: [],
     };
   }
 
@@ -936,6 +938,7 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
     totalQualified: first?.totalQualified ?? 0,
     latestMarketCapturedAt,
     candidates: sortedCandidates.slice(0, 15),
+    scatterCandidates: sortedCandidates.filter((candidate) => candidate.marketHrImpliedPct != null),
   };
 }
 
