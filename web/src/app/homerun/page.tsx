@@ -323,6 +323,20 @@ function scatterPointColor(edge: number | null | undefined): string {
   return "#64748b";
 }
 
+type HomerunScatterPoint = {
+  candidate: MlbHomerunCandidate;
+  market: number | null;
+  model: number;
+  edge: number | null;
+};
+
+function scatterPointFill(point: HomerunScatterPoint): string {
+  if (point.market != null) return scatterPointColor(point.edge);
+  if (point.model >= 10) return "#334155";
+  if (point.model >= 7) return "#64748b";
+  return "#94a3b8";
+}
+
 function scatterParkStroke(candidate: MlbHomerunCandidate): string {
   const factor = candidate.parkHrFactor;
   if (factor == null) return "#ffffff";
@@ -354,16 +368,23 @@ function scatterRadius(candidate: MlbHomerunCandidate, isTopTable: boolean): num
   return base;
 }
 
-function scatterTooltip(point: { candidate: MlbHomerunCandidate; market: number; model: number; edge: number | null }): string {
+function scatterUncertaintyStroke(point: HomerunScatterPoint): string | null {
+  if (point.market == null) return "#f59e0b";
+  if (pitcherHrRiskLevel(point.candidate) === "unknown") return "#64748b";
+  return null;
+}
+
+function scatterTooltip(point: HomerunScatterPoint): string {
   const c = point.candidate;
   return [
     `${c.name} (${c.teamAbbrev}${c.opponentAbbrev ? ` vs ${c.opponentAbbrev}` : ""})`,
-    `Model ${fmtWholePct(point.model)} | Market ${fmtWholePct(point.market)} | Edge ${fmtSignedPct(point.edge)}`,
+    `Model ${fmtWholePct(point.model)} | Market ${point.market == null ? "No HR odds" : fmtWholePct(point.market)} | Edge ${fmtSignedPct(point.edge)}`,
+    point.market == null ? "No HR market found; edge cannot be calculated." : null,
     `Park ${c.ballpark ?? "-"}${c.parkHrFactor != null ? ` (${c.parkHrFactor.toFixed(2)}x HR)` : ""}`,
-    `Pitcher ${c.opposingPitcherName ?? "-"}${c.opposingPitcherHand ? ` (${c.opposingPitcherHand})` : ""}`,
+    c.opposingPitcherName ? `Pitcher ${c.opposingPitcherName}${c.opposingPitcherHand ? ` (${c.opposingPitcherHand})` : ""}` : "Pitcher not announced; model may move when starter posts.",
     `Pitcher HR/9 ${fmtNum(c.opposingPitcherHrPer9, 2)} | xFIP ${fmtNum(c.opposingPitcherXfip, 2)}`,
     `Order ${c.battingOrder ?? "-"} | Book ${c.marketHrBook ?? "-"} | Odds ${fmtAmericanOdds(c.marketHrPrice)}`,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function ScatterEdgeListItem({ candidate, rank }: { candidate: MlbHomerunCandidate; rank: number }) {
@@ -389,26 +410,52 @@ function ScatterEdgeListItem({ candidate, rank }: { candidate: MlbHomerunCandida
   );
 }
 
+function ScatterNoMarketListItem({ candidate, rank }: { candidate: MlbHomerunCandidate; rank: number }) {
+  return (
+    <li className="flex items-start justify-between gap-3 border-b border-slate-100 py-2 last:border-0">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium text-slate-950">
+          {rank}. {candidate.name}
+        </div>
+        <div className="mt-0.5 text-xs text-slate-500">
+          {candidate.teamAbbrev}
+          {candidate.opponentAbbrev ? ` vs ${candidate.opponentAbbrev}` : ""}
+          {candidate.opposingPitcherName ? ` | ${candidate.opposingPitcherName}` : " | SP ?"}
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        <div className="text-sm font-semibold text-slate-800">{fmtPct(candidate.hrProb1Plus)}</div>
+        <div className="text-xs text-amber-700">No market</div>
+      </div>
+    </li>
+  );
+}
+
 function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
   const points = board.scatterCandidates
-    .filter((candidate) => candidate.hrProb1Plus != null && candidate.marketHrImpliedPct != null)
+    .filter((candidate) => candidate.hrProb1Plus != null)
     .map((candidate) => ({
       candidate,
-      market: candidate.marketHrImpliedPct ?? 0,
+      market: candidate.marketHrImpliedPct,
       model: (candidate.hrProb1Plus ?? 0) * 100,
       edge: candidate.hrEdgePct ?? null,
     }));
 
   const width = 760;
   const height = 420;
-  const pad = { left: 58, right: 24, top: 30, bottom: 58 };
-  const plotWidth = width - pad.left - pad.right;
+  const pad = { left: 58, right: 24, top: 30, bottom: 64 };
+  const noMarketRailWidth = 72;
+  const marketAxisLeft = pad.left + noMarketRailWidth;
+  const noMarketX = pad.left + noMarketRailWidth / 2;
+  const plotWidth = width - marketAxisLeft - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
+  const marketPoints = points.filter((point) => point.market != null);
+  const noMarketPoints = points.filter((point) => point.market == null);
   const rawMax = points.length > 0
-    ? Math.max(12, ...points.flatMap((point) => [point.market, point.model])) + 1
+    ? Math.max(12, ...points.flatMap((point) => [point.market ?? 0, point.model])) + 1
     : 12;
   const axisMax = Math.ceil(rawMax / 2) * 2;
-  const xScale = (value: number) => pad.left + (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotWidth;
+  const xScale = (value: number) => marketAxisLeft + (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotWidth;
   const yScale = (value: number) => pad.top + plotHeight - (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotHeight;
   const ticks = Array.from({ length: 5 }, (_, index) => (axisMax / 4) * index);
 
@@ -436,7 +483,7 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
               {ticks.map((tick) => (
                 <g key={`empty-grid-${tick}`}>
                   <line x1={xScale(tick)} x2={xScale(tick)} y1={pad.top} y2={pad.top + plotHeight} stroke="#e2e8f0" />
-                  <line x1={pad.left} x2={pad.left + plotWidth} y1={yScale(tick)} y2={yScale(tick)} stroke="#e2e8f0" />
+                  <line x1={pad.left} x2={marketAxisLeft + plotWidth} y1={yScale(tick)} y2={yScale(tick)} stroke="#e2e8f0" />
                   <text x={xScale(tick)} y={pad.top + plotHeight + 22} textAnchor="middle" fontSize="12" fill="#64748b">
                     {fmtWholePct(tick, tick % 1 === 0 ? 0 : 1)}
                   </text>
@@ -445,10 +492,14 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
                   </text>
                 </g>
               ))}
-              <line x1={pad.left} x2={pad.left + plotWidth} y1={pad.top + plotHeight} y2={pad.top} stroke="#334155" strokeDasharray="5 5" strokeWidth="1.5" />
-              <line x1={pad.left} x2={pad.left + plotWidth} y1={pad.top + plotHeight} y2={pad.top + plotHeight} stroke="#94a3b8" />
+              <line x1={xScale(0)} x2={xScale(axisMax)} y1={yScale(0)} y2={yScale(axisMax)} stroke="#334155" strokeDasharray="5 5" strokeWidth="1.5" />
+              <line x1={pad.left} x2={marketAxisLeft + plotWidth} y1={pad.top + plotHeight} y2={pad.top + plotHeight} stroke="#94a3b8" />
               <line x1={pad.left} x2={pad.left} y1={pad.top} y2={pad.top + plotHeight} stroke="#94a3b8" />
-              <text x={pad.left + plotWidth / 2} y={height - 14} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155">
+              <line x1={marketAxisLeft - 12} x2={marketAxisLeft - 12} y1={pad.top} y2={pad.top + plotHeight} stroke="#f59e0b" strokeDasharray="4 4" opacity="0.7" />
+              <text x={noMarketX} y={pad.top + plotHeight + 22} textAnchor="middle" fontSize="12" fontWeight="600" fill="#b45309">
+                No market
+              </text>
+              <text x={marketAxisLeft + plotWidth / 2} y={height - 14} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155">
                 Market implied HR probability
               </text>
               <text x="18" y={pad.top + plotHeight / 2} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155" transform={`rotate(-90 18 ${pad.top + plotHeight / 2})`}>
@@ -478,18 +529,22 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
   }
 
   const topTableIds = new Set(board.candidates.map((candidate) => candidate.id));
-  const positiveEdges = points
+  const positiveEdges = marketPoints
     .filter((point) => (point.edge ?? -999) > 0)
     .sort((a, b) => (b.edge ?? -999) - (a.edge ?? -999));
   const bestEdges = positiveEdges.slice(0, 6).map((point) => point.candidate);
-  const biggestDiscount = points
+  const biggestDiscount = marketPoints
     .filter((point) => (point.edge ?? 999) < 0)
     .sort((a, b) => (a.edge ?? 999) - (b.edge ?? 999))[0]?.candidate ?? null;
-  const medianEdge = points
+  const medianEdge = marketPoints
     .map((point) => point.edge)
     .filter((edge): edge is number => edge != null)
     .sort((a, b) => a - b);
   const medianEdgeValue = medianEdge.length ? medianEdge[Math.floor(medianEdge.length / 2)] : null;
+  const bestNoMarket = noMarketPoints
+    .sort((a, b) => b.model - a.model)
+    .slice(0, 5)
+    .map((point) => point.candidate);
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4">
@@ -497,7 +552,7 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
         <div>
           <h2 className="text-lg font-semibold text-slate-950">Model vs Market</h2>
           <p className="text-sm text-slate-500">
-            {points.length} hitters with HR odds | {positiveEdges.length} positive edges | median edge {fmtSignedPct(medianEdgeValue)}
+            {marketPoints.length} hitters with HR odds | {noMarketPoints.length} no-market | {positiveEdges.length} positive edges | median edge {fmtSignedPct(medianEdgeValue)}
           </p>
         </div>
         <div className="flex flex-wrap justify-start gap-x-3 gap-y-2 text-xs md:justify-end">
@@ -513,6 +568,8 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
             </svg>
             pitcher HR risk
           </span>
+          <span className="inline-flex items-center gap-1 text-amber-700"><span className="h-3 w-3 rounded-full border-2 border-dashed border-amber-500 bg-slate-400" />no HR odds</span>
+          <span className="inline-flex items-center gap-1 text-slate-600"><span className="h-3 w-3 rounded-full border-2 border-dashed border-slate-500 bg-slate-400" />SP unknown</span>
         </div>
       </div>
 
@@ -525,6 +582,7 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
             className="h-auto w-full"
           >
             <rect x="0" y="0" width={width} height={height} fill="#f8fafc" />
+            <rect x={pad.left} y={pad.top} width={noMarketRailWidth - 12} height={plotHeight} fill="#f59e0b" opacity="0.05" />
             <polygon
               points={`${xScale(0)},${yScale(0)} ${xScale(0)},${yScale(axisMax)} ${xScale(axisMax)},${yScale(axisMax)}`}
               fill="#10b981"
@@ -533,7 +591,7 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
             {ticks.map((tick) => (
               <g key={`grid-${tick}`}>
                 <line x1={xScale(tick)} x2={xScale(tick)} y1={pad.top} y2={pad.top + plotHeight} stroke="#e2e8f0" />
-                <line x1={pad.left} x2={pad.left + plotWidth} y1={yScale(tick)} y2={yScale(tick)} stroke="#e2e8f0" />
+                <line x1={pad.left} x2={marketAxisLeft + plotWidth} y1={yScale(tick)} y2={yScale(tick)} stroke="#e2e8f0" />
                 <text x={xScale(tick)} y={pad.top + plotHeight + 22} textAnchor="middle" fontSize="12" fill="#64748b">
                   {fmtWholePct(tick, tick % 1 === 0 ? 0 : 1)}
                 </text>
@@ -542,13 +600,17 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
                 </text>
               </g>
             ))}
-            <line x1={pad.left} x2={pad.left + plotWidth} y1={pad.top + plotHeight} y2={pad.top} stroke="#334155" strokeDasharray="5 5" strokeWidth="1.5" />
-            <text x={pad.left + plotWidth - 8} y={pad.top + 16} textAnchor="end" fontSize="12" fill="#334155">
+            <line x1={xScale(0)} x2={xScale(axisMax)} y1={yScale(0)} y2={yScale(axisMax)} stroke="#334155" strokeDasharray="5 5" strokeWidth="1.5" />
+            <text x={xScale(axisMax) - 8} y={pad.top + 16} textAnchor="end" fontSize="12" fill="#334155">
               fair line
             </text>
-            <line x1={pad.left} x2={pad.left + plotWidth} y1={pad.top + plotHeight} y2={pad.top + plotHeight} stroke="#94a3b8" />
+            <line x1={pad.left} x2={marketAxisLeft + plotWidth} y1={pad.top + plotHeight} y2={pad.top + plotHeight} stroke="#94a3b8" />
             <line x1={pad.left} x2={pad.left} y1={pad.top} y2={pad.top + plotHeight} stroke="#94a3b8" />
-            <text x={pad.left + plotWidth / 2} y={height - 14} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155">
+            <line x1={marketAxisLeft - 12} x2={marketAxisLeft - 12} y1={pad.top} y2={pad.top + plotHeight} stroke="#f59e0b" strokeDasharray="4 4" opacity="0.7" />
+            <text x={noMarketX} y={pad.top + plotHeight + 22} textAnchor="middle" fontSize="12" fontWeight="600" fill="#b45309">
+              No market
+            </text>
+            <text x={marketAxisLeft + plotWidth / 2} y={height - 14} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155">
               Market implied HR probability
             </text>
             <text x="18" y={pad.top + plotHeight / 2} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155" transform={`rotate(-90 18 ${pad.top + plotHeight / 2})`}>
@@ -556,19 +618,37 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
             </text>
             {points.map((point) => {
               const isTopTable = topTableIds.has(point.candidate.id);
+              const x = point.market == null ? noMarketX : xScale(point.market);
+              const radius = scatterRadius(point.candidate, isTopTable);
+              const uncertaintyStroke = scatterUncertaintyStroke(point);
               return (
-                <circle
-                  key={point.candidate.id}
-                  cx={xScale(point.market)}
-                  cy={yScale(point.model)}
-                  r={scatterRadius(point.candidate, isTopTable)}
-                  fill={scatterPointColor(point.edge)}
-                  opacity={isTopTable ? 0.95 : 0.72}
-                  stroke={scatterParkStroke(point.candidate)}
-                  strokeWidth={scatterParkStrokeWidth(point.candidate, isTopTable)}
-                >
-                  <title>{scatterTooltip(point)}</title>
-                </circle>
+                <g key={point.candidate.id}>
+                  <circle
+                    cx={x}
+                    cy={yScale(point.model)}
+                    r={radius}
+                    fill={scatterPointFill(point)}
+                    opacity={isTopTable ? 0.95 : 0.72}
+                    stroke={scatterParkStroke(point.candidate)}
+                    strokeWidth={scatterParkStrokeWidth(point.candidate, isTopTable)}
+                  >
+                    <title>{scatterTooltip(point)}</title>
+                  </circle>
+                  {uncertaintyStroke && (
+                    <circle
+                      cx={x}
+                      cy={yScale(point.model)}
+                      r={radius + 3}
+                      fill="none"
+                      stroke={uncertaintyStroke}
+                      strokeDasharray="4 3"
+                      strokeWidth="1.75"
+                      opacity="0.9"
+                    >
+                      <title>{scatterTooltip(point)}</title>
+                    </circle>
+                  )}
+                </g>
               );
             })}
           </svg>
@@ -596,6 +676,16 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
           ) : (
             <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
               No positive model-vs-market HR edges are visible on this slate.
+            </div>
+          )}
+          {bestNoMarket.length > 0 && (
+            <div className="mt-4 border-t border-slate-200 pt-3">
+              <h3 className="text-sm font-semibold text-slate-950">Top No-Market Model Likes</h3>
+              <ol className="mt-2">
+                {bestNoMarket.map((candidate, index) => (
+                  <ScatterNoMarketListItem key={candidate.id} candidate={candidate} rank={index + 1} />
+                ))}
+              </ol>
             </div>
           )}
         </aside>

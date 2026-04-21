@@ -952,7 +952,7 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
     totalQualified: first?.totalQualified ?? 0,
     latestMarketCapturedAt,
     candidates: sortedCandidates.slice(0, 15),
-    scatterCandidates: sortedCandidates.filter((candidate) => candidate.marketHrImpliedPct != null),
+    scatterCandidates: sortedCandidates,
   };
 }
 
