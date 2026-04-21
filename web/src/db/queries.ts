@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables } from "./ensure-schema";
+import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -501,7 +501,15 @@ export type MlbHomerunCandidate = {
   opposingPitcherHrFbPct: number | null;
   opposingPitcherXfip: number | null;
   opposingPitcherEra: number | null;
+  marketHrLine: number | null;
+  marketHrPrice: number | null;
+  marketHrBook: string | null;
+  marketHrImpliedPct: number | null;
+  hrEdgePct: number | null;
+  marketCapturedAt: string | null;
 };
+
+export type MlbHomerunBoardView = "likely" | "edge" | "leverage" | "longshots";
 
 export type MlbHomerunBoard = {
   slateId: number | null;
@@ -511,15 +519,18 @@ export type MlbHomerunBoard = {
   requestedDkId: number | null;
   dkIdKind: "draftGroup" | "contest" | "entry" | null;
   dkIdError: string | null;
+  view: MlbHomerunBoardView;
   contestType: string | null;
   gameCount: number | null;
   totalQualified: number;
+  latestMarketCapturedAt: string | null;
   candidates: MlbHomerunCandidate[];
 };
 
 export type MlbHomerunBoardParams = {
   date?: string | null;
   dkId?: number | string | null;
+  view?: string | null;
 };
 
 const POSTGRES_INT_MAX = 2147483647;
@@ -528,6 +539,50 @@ function cleanPositiveInt(value: unknown): number | null {
   if (value == null || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeHomerunBoardView(value: unknown): MlbHomerunBoardView {
+  if (value === "edge" || value === "leverage" || value === "longshots") return value;
+  return "likely";
+}
+
+function numberOrNegativeInfinity(value: number | null | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function numberOrPositiveInfinity(value: number | null | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
+function hasMarketRank(candidate: MlbHomerunCandidate): number {
+  return candidate.marketHrImpliedPct == null ? 1 : 0;
+}
+
+function compareHomerunCandidates(a: MlbHomerunCandidate, b: MlbHomerunCandidate, view: MlbHomerunBoardView): number {
+  const byLikely =
+    numberOrNegativeInfinity(b.hrProb1Plus) - numberOrNegativeInfinity(a.hrProb1Plus)
+    || numberOrNegativeInfinity(b.expectedHr) - numberOrNegativeInfinity(a.expectedHr)
+    || a.name.localeCompare(b.name);
+
+  if (view === "likely") return byLikely;
+
+  if (view === "edge") {
+    return hasMarketRank(a) - hasMarketRank(b)
+      || numberOrNegativeInfinity(b.hrEdgePct) - numberOrNegativeInfinity(a.hrEdgePct)
+      || byLikely;
+  }
+
+  if (view === "leverage") {
+    return hasMarketRank(a) - hasMarketRank(b)
+      || numberOrNegativeInfinity(b.hrEdgePct) - numberOrNegativeInfinity(a.hrEdgePct)
+      || numberOrPositiveInfinity(a.marketHrImpliedPct) - numberOrPositiveInfinity(b.marketHrImpliedPct)
+      || byLikely;
+  }
+
+  return hasMarketRank(a) - hasMarketRank(b)
+    || numberOrPositiveInfinity(a.marketHrImpliedPct) - numberOrPositiveInfinity(b.marketHrImpliedPct)
+    || numberOrNegativeInfinity(b.hrEdgePct) - numberOrNegativeInfinity(a.hrEdgePct)
+    || byLikely;
 }
 
 async function resolveDraftGroupIdFromContestId(contestId: number): Promise<number | null> {
@@ -598,9 +653,11 @@ async function resolveMlbHomeRunDraftGroupFromLobby(date: string | null): Promis
 
 export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string | null = {}): Promise<MlbHomerunBoard> {
   await ensureDkPlayerPropColumns();
+  await ensureOddsHistoryTables();
 
   const normalizedParams = typeof params === "string" || params == null ? { date: params } : params;
   const requestedDkId = cleanPositiveInt(normalizedParams.dkId);
+  const view = normalizeHomerunBoardView(normalizedParams.view);
   const date = normalizedParams.date ?? null;
   const requestedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
   let dkIdKind: MlbHomerunBoard["dkIdKind"] = null;
@@ -631,9 +688,11 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
       requestedDkId,
       dkIdKind,
       dkIdError,
+      view,
       contestType: null,
       gameCount: null,
       totalQualified: 0,
+      latestMarketCapturedAt: null,
       candidates: [],
     };
   }
@@ -703,6 +762,24 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
         hr_factor
       FROM mlb_park_factors
       ORDER BY team_id, season DESC, id DESC
+    ),
+    latest_hr_prop AS (
+      SELECT DISTINCT ON (slate_id, dk_player_id)
+        slate_id,
+        dk_player_id,
+        line,
+        price,
+        bookmaker_title,
+        captured_at,
+        CASE
+          WHEN price > 0 THEN 100.0 / (price + 100.0) * 100.0
+          WHEN price < 0 THEN ABS(price)::double precision / (ABS(price) + 100.0) * 100.0
+          ELSE NULL
+        END AS market_implied_pct
+      FROM player_prop_history
+      WHERE sport = 'mlb'
+        AND market_key = 'batter_home_runs'
+      ORDER BY slate_id, dk_player_id, captured_at DESC, id DESC
     ),
     candidates AS (
       SELECT
@@ -796,7 +873,16 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
           WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.era, asp_name.era)
           WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.era, hsp_name.era)
           ELSE NULL
-        END AS "opposingPitcherEra"
+        END AS "opposingPitcherEra",
+        hrp.line AS "marketHrLine",
+        hrp.price AS "marketHrPrice",
+        hrp.bookmaker_title AS "marketHrBook",
+        hrp.market_implied_pct AS "marketHrImpliedPct",
+        CASE
+          WHEN hrp.market_implied_pct IS NULL THEN NULL
+          ELSE dp.hr_prob_1plus * 100.0 - hrp.market_implied_pct
+        END AS "hrEdgePct",
+        hrp.captured_at::text AS "marketCapturedAt"
       FROM selected_slate ss
       INNER JOIN dk_players dp ON dp.slate_id = ss.id
       LEFT JOIN mlb_teams team ON team.team_id = dp.mlb_team_id
@@ -809,6 +895,7 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
       LEFT JOIN latest_pitcher_by_name hsp_name ON hsp_name.name_key = LOWER(mm.home_sp_name)
       LEFT JOIN latest_pitcher_by_name asp_name ON asp_name.name_key = LOWER(mm.away_sp_name)
       LEFT JOIN latest_park park ON park.team_id = mm.home_team_id
+      LEFT JOIN latest_hr_prop hrp ON hrp.slate_id = dp.slate_id AND hrp.dk_player_id = dp.dk_player_id
       WHERE COALESCE(dp.is_out, FALSE) = FALSE
         AND dp.hr_prob_1plus IS NOT NULL
         AND NOT (dp.eligible_positions ILIKE '%SP%' OR dp.eligible_positions ILIKE '%RP%')
@@ -818,13 +905,23 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
         candidates.*,
         COUNT(*) OVER () AS "totalQualified"
       FROM candidates
-      ORDER BY "hrProb1Plus" DESC NULLS LAST, "expectedHr" DESC NULLS LAST, name ASC
-      LIMIT 15
     )
     SELECT * FROM ranked
   `);
 
   const first = result.rows[0];
+  const sortedCandidates = result.rows.map((row) => {
+    const candidate = { ...row };
+    delete (candidate as Partial<typeof row>).dkDraftGroupId;
+    delete (candidate as Partial<typeof row>).totalQualified;
+    return candidate as MlbHomerunCandidate;
+  }).sort((a, b) => compareHomerunCandidates(a, b, view));
+  const latestMarketCapturedAt = sortedCandidates
+    .map((candidate) => candidate.marketCapturedAt)
+    .filter((capturedAt): capturedAt is string => Boolean(capturedAt))
+    .sort()
+    .at(-1) ?? null;
+
   return {
     slateId: first?.slateId ?? null,
     dkDraftGroupId: first?.dkDraftGroupId ?? resolvedDkDraftGroupId,
@@ -833,15 +930,12 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
     requestedDkId,
     dkIdKind,
     dkIdError,
+    view,
     contestType: first?.contestType ?? null,
     gameCount: first?.gameCount ?? null,
     totalQualified: first?.totalQualified ?? 0,
-    candidates: result.rows.map((row) => {
-      const candidate = { ...row };
-      delete (candidate as Partial<typeof row>).dkDraftGroupId;
-      delete (candidate as Partial<typeof row>).totalQualified;
-      return candidate as MlbHomerunCandidate;
-    }),
+    latestMarketCapturedAt,
+    candidates: sortedCandidates.slice(0, 15),
   };
 }
 

@@ -79,6 +79,12 @@ jobs:
             --start "$MLB_BACKFILL_START" \
             --end "$MLB_BACKFILL_END"
 
+      - name: Backfill MLB player HR outcomes
+        run: |
+          python -m ingest.mlb_actual_homeruns \
+            --start "$MLB_BACKFILL_START" \
+            --end "$MLB_BACKFILL_END"
+
       - name: Backfill missing MLB odds
         if: ${{ inputs.include_odds != false }}
         shell: bash
