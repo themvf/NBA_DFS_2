@@ -765,24 +765,6 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
       FROM mlb_park_factors
       ORDER BY team_id, season DESC, id DESC
     ),
-    latest_hr_prop AS (
-      SELECT DISTINCT ON (slate_id, dk_player_id)
-        slate_id,
-        dk_player_id,
-        line,
-        price,
-        bookmaker_title,
-        captured_at,
-        CASE
-          WHEN price > 0 THEN 100.0 / (price + 100.0) * 100.0
-          WHEN price < 0 THEN ABS(price)::double precision / (ABS(price) + 100.0) * 100.0
-          ELSE NULL
-        END AS market_implied_pct
-      FROM player_prop_history
-      WHERE sport = 'mlb'
-        AND market_key = 'batter_home_runs'
-      ORDER BY slate_id, dk_player_id, captured_at DESC, id DESC
-    ),
     candidates AS (
       SELECT
         dp.id,
@@ -897,7 +879,39 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
       LEFT JOIN latest_pitcher_by_name hsp_name ON hsp_name.name_key = LOWER(mm.home_sp_name)
       LEFT JOIN latest_pitcher_by_name asp_name ON asp_name.name_key = LOWER(mm.away_sp_name)
       LEFT JOIN latest_park park ON park.team_id = mm.home_team_id
-      LEFT JOIN latest_hr_prop hrp ON hrp.slate_id = dp.slate_id AND hrp.dk_player_id = dp.dk_player_id
+      LEFT JOIN LATERAL (
+        SELECT
+          pph.line,
+          pph.price,
+          pph.bookmaker_title,
+          pph.captured_at,
+          CASE
+            WHEN pph.price > 0 THEN 100.0 / (pph.price + 100.0) * 100.0
+            WHEN pph.price < 0 THEN ABS(pph.price)::double precision / (ABS(pph.price) + 100.0) * 100.0
+            ELSE NULL
+          END AS market_implied_pct
+        FROM player_prop_history pph
+        JOIN dk_slates prop_slate ON prop_slate.id = pph.slate_id
+        WHERE pph.sport = 'mlb'
+          AND pph.market_key = 'batter_home_runs'
+          AND prop_slate.slate_date = ss.slate_date
+          AND (
+            pph.dk_player_id = dp.dk_player_id
+            OR (
+              LOWER(pph.player_name) = LOWER(dp.name)
+              AND (pph.team_id = dp.mlb_team_id OR pph.team_id IS NULL OR dp.mlb_team_id IS NULL)
+            )
+          )
+        ORDER BY
+          CASE
+            WHEN pph.slate_id = dp.slate_id THEN 0
+            WHEN pph.dk_player_id = dp.dk_player_id THEN 1
+            ELSE 2
+          END,
+          pph.captured_at DESC,
+          pph.id DESC
+        LIMIT 1
+      ) hrp ON TRUE
       WHERE COALESCE(dp.is_out, FALSE) = FALSE
         AND dp.hr_prob_1plus IS NOT NULL
         AND NOT (dp.eligible_positions ILIKE '%SP%' OR dp.eligible_positions ILIKE '%RP%')

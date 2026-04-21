@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 
-import { loadMlbSlateFromDraftGroupId } from "@/app/dfs/actions";
+import { fetchPlayerProps, loadMlbSlateFromDraftGroupId } from "@/app/dfs/actions";
 import { getMlbHomerunBoard, type MlbHomerunBoardView } from "@/db/queries";
 
 function cleanPositiveInt(value: FormDataEntryValue | null): number | null {
@@ -46,6 +46,11 @@ export async function loadHomerunBoardAction(formData: FormData): Promise<void> 
   const loadResult = await loadMlbSlateFromDraftGroupId(board.dkDraftGroupId, undefined, "homerun", undefined, "gpp");
   if (!loadResult.ok) {
     addLoadError(params, loadResult.message);
+  } else {
+    const propsResult = await fetchPlayerProps("mlb");
+    if (!propsResult.ok) {
+      addLoadError(params, `Slate loaded, but HR odds were not refreshed: ${propsResult.message}`);
+    }
   }
 
   redirect(`/homerun?${params.toString()}`);

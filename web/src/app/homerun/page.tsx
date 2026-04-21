@@ -356,30 +356,84 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
       edge: candidate.hrEdgePct ?? null,
     }));
 
+  const width = 760;
+  const height = 420;
+  const pad = { left: 58, right: 24, top: 30, bottom: 58 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const rawMax = points.length > 0
+    ? Math.max(12, ...points.flatMap((point) => [point.market, point.model])) + 1
+    : 12;
+  const axisMax = Math.ceil(rawMax / 2) * 2;
+  const xScale = (value: number) => pad.left + (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotWidth;
+  const yScale = (value: number) => pad.top + plotHeight - (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotHeight;
+  const ticks = Array.from({ length: 5 }, (_, index) => (axisMax / 4) * index);
+
   if (points.length === 0) {
     return (
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Model vs Market</h2>
-            <p className="text-sm text-slate-500">No HR odds were found for this slate yet.</p>
+            <p className="text-sm text-slate-500">
+              No same-date `batter_home_runs` odds rows were found for these {board.totalQualified.toLocaleString()} qualified hitters.
+            </p>
           </div>
-          <div className="text-xs text-slate-500">Waiting on `batter_home_runs` market rows</div>
+          <div className="text-xs text-slate-500">Use Load to refresh HR odds from the Odds API.</div>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="overflow-hidden rounded-md border border-slate-100 bg-slate-50 p-2">
+            <svg
+              role="img"
+              aria-label="Empty scatterplot waiting for MLB homerun market odds"
+              viewBox={`0 0 ${width} ${height}`}
+              className="h-auto w-full"
+            >
+              <rect x="0" y="0" width={width} height={height} fill="#f8fafc" />
+              {ticks.map((tick) => (
+                <g key={`empty-grid-${tick}`}>
+                  <line x1={xScale(tick)} x2={xScale(tick)} y1={pad.top} y2={pad.top + plotHeight} stroke="#e2e8f0" />
+                  <line x1={pad.left} x2={pad.left + plotWidth} y1={yScale(tick)} y2={yScale(tick)} stroke="#e2e8f0" />
+                  <text x={xScale(tick)} y={pad.top + plotHeight + 22} textAnchor="middle" fontSize="12" fill="#64748b">
+                    {fmtWholePct(tick, tick % 1 === 0 ? 0 : 1)}
+                  </text>
+                  <text x={pad.left - 10} y={yScale(tick) + 4} textAnchor="end" fontSize="12" fill="#64748b">
+                    {fmtWholePct(tick, tick % 1 === 0 ? 0 : 1)}
+                  </text>
+                </g>
+              ))}
+              <line x1={pad.left} x2={pad.left + plotWidth} y1={pad.top + plotHeight} y2={pad.top} stroke="#334155" strokeDasharray="5 5" strokeWidth="1.5" />
+              <line x1={pad.left} x2={pad.left + plotWidth} y1={pad.top + plotHeight} y2={pad.top + plotHeight} stroke="#94a3b8" />
+              <line x1={pad.left} x2={pad.left} y1={pad.top} y2={pad.top + plotHeight} stroke="#94a3b8" />
+              <text x={pad.left + plotWidth / 2} y={height - 14} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155">
+                Market implied HR probability
+              </text>
+              <text x="18" y={pad.top + plotHeight / 2} textAnchor="middle" fontSize="13" fontWeight="600" fill="#334155" transform={`rotate(-90 18 ${pad.top + plotHeight / 2})`}>
+                Model HR probability
+              </text>
+              <rect x={pad.left + 92} y={pad.top + 118} width="494" height="92" rx="8" fill="#ffffff" stroke="#cbd5e1" />
+              <text x={pad.left + 339} y={pad.top + 154} textAnchor="middle" fontSize="16" fontWeight="700" fill="#0f172a">
+                HR market odds not loaded yet
+              </text>
+              <text x={pad.left + 339} y={pad.top + 181} textAnchor="middle" fontSize="13" fill="#475569">
+                Click Load, then this chart will plot model probability against market probability.
+              </text>
+            </svg>
+          </div>
+          <aside className="rounded-md border border-slate-200 p-3">
+            <h3 className="text-sm font-semibold text-slate-950">What This Needs</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              The model has hitter probabilities, but the market side needs Odds API `batter_home_runs` rows for the same MLB date.
+            </p>
+            <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              If Load was already clicked and this remains empty, the Odds API did not return HR props for this slate yet.
+            </div>
+          </aside>
         </div>
       </section>
     );
   }
 
-  const width = 760;
-  const height = 420;
-  const pad = { left: 58, right: 24, top: 30, bottom: 58 };
-  const plotWidth = width - pad.left - pad.right;
-  const plotHeight = height - pad.top - pad.bottom;
-  const rawMax = Math.max(12, ...points.flatMap((point) => [point.market, point.model])) + 1;
-  const axisMax = Math.ceil(rawMax / 2) * 2;
-  const xScale = (value: number) => pad.left + (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotWidth;
-  const yScale = (value: number) => pad.top + plotHeight - (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotHeight;
-  const ticks = Array.from({ length: 5 }, (_, index) => (axisMax / 4) * index);
   const topTableIds = new Set(board.candidates.map((candidate) => candidate.id));
   const positiveEdges = points
     .filter((point) => (point.edge ?? -999) > 0)
