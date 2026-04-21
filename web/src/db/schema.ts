@@ -418,6 +418,7 @@ export const dkPlayers = pgTable(
     isOut: boolean("is_out").default(false),
     actualFpts: real("actual_fpts"),
     actualOwnPct: real("actual_own_pct"),
+    actualHr: integer("actual_hr"),
     actualPts: real("actual_pts"),
     actualReb: real("actual_reb"),
     actualAst: real("actual_ast"),
@@ -671,6 +672,76 @@ export const mlbBlowupPlayerSnapshots = pgTable(
     index("idx_mlb_blowup_snapshots_run").on(t.runId, t.dkPlayerId),
     index("idx_mlb_blowup_snapshots_slate").on(t.slateId, t.candidateRank),
     unique("mlb_blowup_snapshots_run_player_key").on(t.runId, t.dkPlayerId),
+  ]
+);
+
+export const mlbHomerunRuns = pgTable(
+  "mlb_homerun_runs",
+  {
+    id: serial("id").primaryKey(),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    analysisVersion: text("analysis_version").notNull(),
+    source: text("source").notNull(),
+    configJson: jsonb("config_json").notNull().default({}),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_mlb_homerun_runs_slate").on(t.slateId, t.createdAt),
+    index("idx_mlb_homerun_runs_model").on(t.analysisVersion, t.createdAt),
+  ]
+);
+
+export const mlbHomerunPlayerSnapshots = pgTable(
+  "mlb_homerun_player_snapshots",
+  {
+    id: serial("id").primaryKey(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => mlbHomerunRuns.id),
+    slateId: integer("slate_id")
+      .notNull()
+      .references(() => dkSlates.id),
+    dkPlayerId: bigint("dk_player_id", { mode: "number" }).notNull(),
+    name: text("name").notNull(),
+    teamId: integer("team_id"),
+    teamAbbrev: text("team_abbrev"),
+    salary: integer("salary").notNull(),
+    eligiblePositions: text("eligible_positions"),
+    isOut: boolean("is_out").default(false),
+    lineupOrder: integer("lineup_order"),
+    lineupConfirmed: boolean("lineup_confirmed"),
+    expectedHr: real("expected_hr"),
+    hrProb1Plus: real("hr_prob_1plus"),
+    hitterHrPg: real("hitter_hr_pg"),
+    hitterIso: real("hitter_iso"),
+    hitterSlug: real("hitter_slg"),
+    hitterPaPg: real("hitter_pa_pg"),
+    hitterWrcPlus: real("hitter_wrc_plus"),
+    hitterSplitWrcPlus: real("hitter_split_wrc_plus"),
+    teamTotal: real("team_total"),
+    vegasTotal: real("vegas_total"),
+    parkHrFactor: real("park_hr_factor"),
+    weatherTemp: real("weather_temp"),
+    windSpeed: real("wind_speed"),
+    opposingPitcherName: text("opposing_pitcher_name"),
+    opposingPitcherHand: text("opposing_pitcher_hand"),
+    opposingPitcherHrPer9: real("opposing_pitcher_hr_per_9"),
+    opposingPitcherHrFbPct: real("opposing_pitcher_hr_fb_pct"),
+    opposingPitcherXfip: real("opposing_pitcher_xfip"),
+    opposingPitcherEra: real("opposing_pitcher_era"),
+    actualHr: integer("actual_hr"),
+    hitHr1Plus: boolean("hit_hr_1plus"),
+    actualFpts: real("actual_fpts"),
+    actualOwnPct: real("actual_own_pct"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("idx_mlb_homerun_snapshots_run").on(t.runId, t.dkPlayerId),
+    index("idx_mlb_homerun_snapshots_slate").on(t.slateId, t.hrProb1Plus),
+    unique("mlb_homerun_snapshots_run_player_key").on(t.runId, t.dkPlayerId),
   ]
 );
 

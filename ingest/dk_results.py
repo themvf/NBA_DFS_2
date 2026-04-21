@@ -79,6 +79,7 @@ def parse_dk_results_csv(content: str) -> list[dict]:
     """Parse DK results CSV.
 
     Handles FPTS column name variants: FPTS / Total Points / ActualFpts.
+    If an HR / Home Runs column is present, stores it for MLB homerun calibration.
     """
     reader  = csv.DictReader(io.StringIO(content))
     players = []
@@ -96,8 +97,21 @@ def parse_dk_results_csv(content: str) -> list[dict]:
             actual_fpts = float(fpts_str) if fpts_str else None
         except ValueError:
             actual_fpts = None
-        if actual_fpts is not None:
-            players.append({"name": name, "salary": salary, "actual_fpts": actual_fpts})
+        hr_str = (
+            row.get("HR") or row.get("HRS") or row.get("Home Runs") or
+            row.get("Actual HR") or row.get("Actual Home Runs") or ""
+        ).strip()
+        try:
+            actual_hr = int(round(float(hr_str))) if hr_str else None
+        except ValueError:
+            actual_hr = None
+        if actual_fpts is not None or actual_hr is not None:
+            players.append({
+                "name": name,
+                "salary": salary,
+                "actual_fpts": actual_fpts,
+                "actual_hr": actual_hr,
+            })
     return players
 
 
@@ -150,8 +164,14 @@ def run(results_path: str, slate_date: str | None = None) -> None:
         )
         if exact:
             db.execute(
-                "UPDATE dk_players SET actual_fpts = %s, actual_own_pct = %s WHERE id = %s",
-                (result_p["actual_fpts"], own_pct, exact["id"]),
+                """
+                UPDATE dk_players
+                SET actual_fpts = COALESCE(%s, actual_fpts),
+                    actual_own_pct = %s,
+                    actual_hr = COALESCE(%s, actual_hr)
+                WHERE id = %s
+                """,
+                (result_p.get("actual_fpts"), own_pct, result_p.get("actual_hr"), exact["id"]),
             )
             updated += 1
             continue
@@ -169,8 +189,14 @@ def run(results_path: str, slate_date: str | None = None) -> None:
         if match:
             player = candidates[cand_names.index(match[0])]
             db.execute(
-                "UPDATE dk_players SET actual_fpts = %s, actual_own_pct = %s WHERE id = %s",
-                (result_p["actual_fpts"], own_pct, player["id"]),
+                """
+                UPDATE dk_players
+                SET actual_fpts = COALESCE(%s, actual_fpts),
+                    actual_own_pct = %s,
+                    actual_hr = COALESCE(%s, actual_hr)
+                WHERE id = %s
+                """,
+                (result_p.get("actual_fpts"), own_pct, result_p.get("actual_hr"), player["id"]),
             )
             updated += 1
         else:
@@ -180,6 +206,27 @@ def run(results_path: str, slate_date: str | None = None) -> None:
     print(f"Updated: {updated}/{n} ({100 * updated // n if n else 0}%)")
     if unmatched:
         print(f"Unmatched ({len(unmatched)}): {', '.join(unmatched[:10])}")
+
+    try:
+        db.execute(
+            """
+            UPDATE mlb_homerun_player_snapshots hps
+            SET actual_hr = dp.actual_hr,
+                hit_hr_1plus = CASE
+                    WHEN dp.actual_hr IS NULL THEN hps.hit_hr_1plus
+                    ELSE dp.actual_hr > 0
+                END,
+                actual_fpts = dp.actual_fpts,
+                actual_own_pct = dp.actual_own_pct
+            FROM dk_players dp
+            WHERE hps.slate_id = dp.slate_id
+              AND hps.dk_player_id = dp.dk_player_id
+              AND hps.slate_id = %s
+            """,
+            (slate_id,),
+        )
+    except Exception:
+        pass
 
     # FPTS accuracy
     stats = db.execute_one(

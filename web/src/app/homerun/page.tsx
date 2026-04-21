@@ -2,8 +2,13 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { loadMlbSlateFromDraftGroupId } from "@/app/dfs/actions";
-import { getMlbHomerunBoard, type MlbHomerunCandidate } from "@/db/queries";
+import { loadMlbSlateFromDraftGroupId, snapshotMlbHomerunSlateFromStoredRows } from "@/app/dfs/actions";
+import {
+  getMlbHomerunBoard,
+  getMlbHomerunTrackingReport,
+  type MlbHomerunCandidate,
+  type MlbHomerunTrackingReport,
+} from "@/db/queries";
 
 export const metadata: Metadata = {
   title: "MLB Homerun Board",
@@ -15,6 +20,9 @@ const fmtPct = (value: number | null | undefined, digits = 1) =>
 
 const fmtNum = (value: number | null | undefined, digits = 2) =>
   value == null ? "-" : value.toFixed(digits);
+
+const fmtWholePct = (value: number | null | undefined, digits = 1) =>
+  value == null ? "-" : `${value.toFixed(digits)}%`;
 
 const fmtSalary = (salary: number) => `$${salary.toLocaleString()}`;
 
@@ -95,6 +103,83 @@ function FactorChip({ label, className }: { label: string; className: string }) 
     <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-medium ${className}`}>
       {label}
     </span>
+  );
+}
+
+function TrackingPanel({ tracking }: { tracking: MlbHomerunTrackingReport | null }) {
+  if (!tracking) return null;
+  const summary = tracking.summary;
+  const hasActualHr = summary.actualHrRows > 0;
+
+  return (
+    <section className="border-t pt-5">
+      <div className="flex flex-col gap-1 border-b pb-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-950">Homerun Model Tracking</h2>
+          <p className="text-xs text-slate-500">
+            {summary.rows.toLocaleString()} snapshots | {summary.slates} slates | {summary.latestVersion ?? "model"}
+            {summary.latestSlateDate ? ` | latest slate ${summary.latestSlateDate}` : ""}
+          </p>
+        </div>
+        <div className="text-xs text-slate-500">
+          HR outcomes {summary.actualHrRows.toLocaleString()} known | {summary.pendingHrRows.toLocaleString()} pending
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-xs text-slate-500">Avg Prediction</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-950">{fmtWholePct(summary.avgPredictedPct)}</div>
+          <div className="mt-1 text-xs text-slate-500">All tracked hitters</div>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-xs text-slate-500">Actual HR Rate</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-950">{fmtWholePct(summary.hitRate)}</div>
+          <div className="mt-1 text-xs text-slate-500">{hasActualHr ? "Known outcomes" : "Awaiting HR results"}</div>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-xs text-slate-500">Top-15 Hit Rate</div>
+          <div className="mt-1 text-2xl font-semibold text-rose-700">{fmtWholePct(summary.top15HitRate)}</div>
+          <div className="mt-1 text-xs text-slate-500">
+            {summary.top15ActualHrRows.toLocaleString()} result rows
+          </div>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-xs text-slate-500">Brier Score</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-950">{fmtNum(summary.brierScore, 3)}</div>
+          <div className="mt-1 text-xs text-slate-500">Lower is better</div>
+        </div>
+      </div>
+
+      {tracking.buckets.length > 0 && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[620px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b bg-slate-50 text-right text-xs uppercase tracking-wide text-slate-500">
+                <th className="py-2 pl-3 pr-3 text-left">Prediction Bucket</th>
+                <th className="py-2 pr-3">Rows</th>
+                <th className="py-2 pr-3">Actual Rows</th>
+                <th className="py-2 pr-3">Avg Pred</th>
+                <th className="py-2 pr-3">Hit Rate</th>
+                <th className="py-2 pr-3">Brier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tracking.buckets.map((bucket) => (
+                <tr key={bucket.bucket} className="border-b border-slate-100 text-right">
+                  <td className="py-2 pl-3 pr-3 text-left font-medium text-slate-900">{bucket.bucket}</td>
+                  <td className="py-2 pr-3 text-slate-700">{bucket.rows.toLocaleString()}</td>
+                  <td className="py-2 pr-3 text-slate-700">{bucket.actualHrRows.toLocaleString()}</td>
+                  <td className="py-2 pr-3 text-slate-700">{fmtWholePct(bucket.avgPredictedPct)}</td>
+                  <td className="py-2 pr-3 text-slate-700">{fmtWholePct(bucket.hitRate)}</td>
+                  <td className="py-2 pr-3 text-slate-700">{fmtNum(bucket.brierScore, 3)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -227,6 +312,10 @@ export default async function HomerunPage({
     }
   }
   const podium = board.candidates.slice(0, 3);
+  if (board.slateId != null && board.candidates.length > 0) {
+    await snapshotMlbHomerunSlateFromStoredRows(board.slateId);
+  }
+  const tracking = await getMlbHomerunTrackingReport();
 
   return (
     <div className="space-y-5">
@@ -308,6 +397,8 @@ export default async function HomerunPage({
           </div>
         </div>
       )}
+
+      <TrackingPanel tracking={tracking} />
     </div>
   );
 }

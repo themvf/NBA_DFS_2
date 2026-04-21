@@ -6,6 +6,7 @@ let ensureDkPlayerPropColumnsPromise: Promise<void> | null = null;
 let ensureProjectionExperimentTablesPromise: Promise<void> | null = null;
 let ensureOwnershipExperimentTablesPromise: Promise<void> | null = null;
 let ensureMlbBlowupTrackingTablesPromise: Promise<void> | null = null;
+let ensureMlbHomerunTrackingTablesPromise: Promise<void> | null = null;
 let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
@@ -37,6 +38,7 @@ const DK_PLAYER_PROP_COLUMN_DDLS = [
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS dk_team_lineup_confirmed BOOLEAN`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS expected_hr REAL`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS hr_prob_1plus REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_hr INTEGER`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS live_proj REAL`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS live_leverage REAL`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS live_own_pct REAL`,
@@ -164,6 +166,62 @@ const MLB_BLOWUP_TRACKING_DDLS = [
   `CREATE INDEX IF NOT EXISTS idx_mlb_blowup_snapshots_slate ON mlb_blowup_player_snapshots(slate_id, candidate_rank)`,
 ];
 
+const MLB_HOMERUN_TRACKING_DDLS = [
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS actual_hr INTEGER`,
+  `CREATE TABLE IF NOT EXISTS mlb_homerun_runs (
+      id SERIAL PRIMARY KEY,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      analysis_version TEXT NOT NULL,
+      source TEXT NOT NULL,
+      config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+  `CREATE TABLE IF NOT EXISTS mlb_homerun_player_snapshots (
+      id SERIAL PRIMARY KEY,
+      run_id INTEGER NOT NULL REFERENCES mlb_homerun_runs(id) ON DELETE CASCADE,
+      slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+      dk_player_id BIGINT NOT NULL,
+      name TEXT NOT NULL,
+      team_id INTEGER,
+      team_abbrev TEXT,
+      salary INTEGER NOT NULL,
+      eligible_positions TEXT,
+      is_out BOOLEAN DEFAULT FALSE,
+      lineup_order INTEGER,
+      lineup_confirmed BOOLEAN,
+      expected_hr REAL,
+      hr_prob_1plus REAL,
+      hitter_hr_pg REAL,
+      hitter_iso REAL,
+      hitter_slg REAL,
+      hitter_pa_pg REAL,
+      hitter_wrc_plus REAL,
+      hitter_split_wrc_plus REAL,
+      team_total REAL,
+      vegas_total REAL,
+      park_hr_factor REAL,
+      weather_temp REAL,
+      wind_speed REAL,
+      opposing_pitcher_name TEXT,
+      opposing_pitcher_hand TEXT,
+      opposing_pitcher_hr_per_9 REAL,
+      opposing_pitcher_hr_fb_pct REAL,
+      opposing_pitcher_xfip REAL,
+      opposing_pitcher_era REAL,
+      actual_hr INTEGER,
+      hit_hr_1plus BOOLEAN,
+      actual_fpts REAL,
+      actual_own_pct REAL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(run_id, dk_player_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_mlb_homerun_runs_slate ON mlb_homerun_runs(slate_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_mlb_homerun_runs_model ON mlb_homerun_runs(analysis_version, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_mlb_homerun_snapshots_run ON mlb_homerun_player_snapshots(run_id, dk_player_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_mlb_homerun_snapshots_slate ON mlb_homerun_player_snapshots(slate_id, hr_prob_1plus DESC NULLS LAST)`,
+];
+
 const ODDS_SIGNAL_DDLS = [
   `CREATE TABLE IF NOT EXISTS odds_signal_runs (
       id SERIAL PRIMARY KEY,
@@ -281,6 +339,20 @@ export async function ensureMlbBlowupTrackingTables(): Promise<void> {
     });
   }
   await ensureMlbBlowupTrackingTablesPromise;
+}
+
+export async function ensureMlbHomerunTrackingTables(): Promise<void> {
+  if (!ensureMlbHomerunTrackingTablesPromise) {
+    ensureMlbHomerunTrackingTablesPromise = (async () => {
+      for (const ddl of MLB_HOMERUN_TRACKING_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureMlbHomerunTrackingTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureMlbHomerunTrackingTablesPromise;
 }
 
 export async function ensureOddsSignalTables(): Promise<void> {

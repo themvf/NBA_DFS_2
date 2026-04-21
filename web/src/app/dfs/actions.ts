@@ -12,8 +12,8 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { ANALYTICS_CACHE_TAG } from "@/db/analytics-cache";
 import { db } from "@/db";
-import { ensureDkPlayerPropColumns, ensureMlbBlowupTrackingTables, ensureOddsHistoryTables, ensureOwnershipExperimentTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
-import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, ownershipRuns, ownershipPlayerSnapshots, mlbBlowupRuns, mlbBlowupPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
+import { ensureDkPlayerPropColumns, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureOwnershipExperimentTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
+import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, ownershipRuns, ownershipPlayerSnapshots, mlbBlowupRuns, mlbBlowupPlayerSnapshots, mlbHomerunRuns, mlbHomerunPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
 import { normalizeDkSlateTiming } from "@/lib/dk-slate-timing";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
@@ -123,6 +123,7 @@ const LEAGUE_AVG_USAGE      = 20.0;
 const CURRENT_SEASON        = "2025-26";
 const NBA_PROJECTION_MODEL_VERSION = "blend_v1";
 const MLB_OWNERSHIP_MODEL_VERSION = "mlb_ownership_v1";
+const MLB_HOMERUN_MODEL_VERSION = "mlb_homerun_v1";
 const MAIN_LINE_TARGET_PROB = 110 / 210; // -110 hold-adjusted "main" line target
 const NBA_PROP_MARKET_TO_STAT: Record<string, NbaPropAuditStat> = {
   player_points: "pts",
@@ -1758,6 +1759,401 @@ async function syncMlbBlowupSnapshotActualsForSlate(slateId: number): Promise<vo
       AND bps.dk_player_id = dp.dk_player_id
       AND bps.slate_id = ${slateId}
   `);
+}
+
+type MlbHomerunSnapshotInput = {
+  slateId: number;
+  dkPlayerId: number;
+  name: string;
+  teamId: number | null;
+  teamAbbrev: string | null;
+  salary: number;
+  eligiblePositions: string | null;
+  isOut: boolean;
+  lineupOrder?: number | null;
+  lineupConfirmed?: boolean | null;
+  expectedHr?: number | null;
+  hrProb1Plus?: number | null;
+  hitterHrPg?: number | null;
+  hitterIso?: number | null;
+  hitterSlug?: number | null;
+  hitterPaPg?: number | null;
+  hitterWrcPlus?: number | null;
+  hitterSplitWrcPlus?: number | null;
+  teamTotal?: number | null;
+  vegasTotal?: number | null;
+  parkHrFactor?: number | null;
+  weatherTemp?: number | null;
+  windSpeed?: number | null;
+  opposingPitcherName?: string | null;
+  opposingPitcherHand?: string | null;
+  opposingPitcherHrPer9?: number | null;
+  opposingPitcherHrFbPct?: number | null;
+  opposingPitcherXfip?: number | null;
+  opposingPitcherEra?: number | null;
+  actualHr?: number | null;
+  actualFpts?: number | null;
+  actualOwnPct?: number | null;
+};
+
+async function createMlbHomerunRun(
+  slateId: number,
+  source: string,
+  analysisVersion: string,
+  configJson: Record<string, unknown>,
+  notes?: string,
+): Promise<number> {
+  await ensureMlbHomerunTrackingTables();
+  const [run] = await db.insert(mlbHomerunRuns).values({
+    slateId,
+    analysisVersion,
+    source,
+    configJson,
+    notes: notes ?? null,
+  }).returning({ id: mlbHomerunRuns.id });
+  return run.id;
+}
+
+async function recordMlbHomerunSnapshots(
+  runId: number,
+  snapshots: MlbHomerunSnapshotInput[],
+): Promise<void> {
+  if (snapshots.length === 0) return;
+  await ensureMlbHomerunTrackingTables();
+
+  for (let i = 0; i < snapshots.length; i += 100) {
+    const batch = snapshots.slice(i, i + 100).map((snapshot) => {
+      const actualHr = snapshot.actualHr ?? null;
+      return {
+        runId,
+        slateId: snapshot.slateId,
+        dkPlayerId: snapshot.dkPlayerId,
+        name: snapshot.name,
+        teamId: snapshot.teamId,
+        teamAbbrev: snapshot.teamAbbrev ?? null,
+        salary: snapshot.salary,
+        eligiblePositions: snapshot.eligiblePositions ?? null,
+        isOut: snapshot.isOut,
+        lineupOrder: snapshot.lineupOrder ?? null,
+        lineupConfirmed: snapshot.lineupConfirmed ?? null,
+        expectedHr: snapshot.expectedHr ?? null,
+        hrProb1Plus: snapshot.hrProb1Plus ?? null,
+        hitterHrPg: snapshot.hitterHrPg ?? null,
+        hitterIso: snapshot.hitterIso ?? null,
+        hitterSlug: snapshot.hitterSlug ?? null,
+        hitterPaPg: snapshot.hitterPaPg ?? null,
+        hitterWrcPlus: snapshot.hitterWrcPlus ?? null,
+        hitterSplitWrcPlus: snapshot.hitterSplitWrcPlus ?? null,
+        teamTotal: snapshot.teamTotal ?? null,
+        vegasTotal: snapshot.vegasTotal ?? null,
+        parkHrFactor: snapshot.parkHrFactor ?? null,
+        weatherTemp: snapshot.weatherTemp ?? null,
+        windSpeed: snapshot.windSpeed ?? null,
+        opposingPitcherName: snapshot.opposingPitcherName ?? null,
+        opposingPitcherHand: snapshot.opposingPitcherHand ?? null,
+        opposingPitcherHrPer9: snapshot.opposingPitcherHrPer9 ?? null,
+        opposingPitcherHrFbPct: snapshot.opposingPitcherHrFbPct ?? null,
+        opposingPitcherXfip: snapshot.opposingPitcherXfip ?? null,
+        opposingPitcherEra: snapshot.opposingPitcherEra ?? null,
+        actualHr,
+        hitHr1Plus: actualHr == null ? null : actualHr > 0,
+        actualFpts: snapshot.actualFpts ?? null,
+        actualOwnPct: snapshot.actualOwnPct ?? null,
+      };
+    });
+
+    await db.insert(mlbHomerunPlayerSnapshots).values(batch).onConflictDoUpdate({
+      target: [mlbHomerunPlayerSnapshots.runId, mlbHomerunPlayerSnapshots.dkPlayerId],
+      set: {
+        teamId: sql`EXCLUDED.team_id`,
+        teamAbbrev: sql`EXCLUDED.team_abbrev`,
+        salary: sql`EXCLUDED.salary`,
+        eligiblePositions: sql`EXCLUDED.eligible_positions`,
+        isOut: sql`EXCLUDED.is_out`,
+        lineupOrder: sql`EXCLUDED.lineup_order`,
+        lineupConfirmed: sql`EXCLUDED.lineup_confirmed`,
+        expectedHr: sql`EXCLUDED.expected_hr`,
+        hrProb1Plus: sql`EXCLUDED.hr_prob_1plus`,
+        hitterHrPg: sql`EXCLUDED.hitter_hr_pg`,
+        hitterIso: sql`EXCLUDED.hitter_iso`,
+        hitterSlug: sql`EXCLUDED.hitter_slg`,
+        hitterPaPg: sql`EXCLUDED.hitter_pa_pg`,
+        hitterWrcPlus: sql`EXCLUDED.hitter_wrc_plus`,
+        hitterSplitWrcPlus: sql`EXCLUDED.hitter_split_wrc_plus`,
+        teamTotal: sql`EXCLUDED.team_total`,
+        vegasTotal: sql`EXCLUDED.vegas_total`,
+        parkHrFactor: sql`EXCLUDED.park_hr_factor`,
+        weatherTemp: sql`EXCLUDED.weather_temp`,
+        windSpeed: sql`EXCLUDED.wind_speed`,
+        opposingPitcherName: sql`EXCLUDED.opposing_pitcher_name`,
+        opposingPitcherHand: sql`EXCLUDED.opposing_pitcher_hand`,
+        opposingPitcherHrPer9: sql`EXCLUDED.opposing_pitcher_hr_per_9`,
+        opposingPitcherHrFbPct: sql`EXCLUDED.opposing_pitcher_hr_fb_pct`,
+        opposingPitcherXfip: sql`EXCLUDED.opposing_pitcher_xfip`,
+        opposingPitcherEra: sql`EXCLUDED.opposing_pitcher_era`,
+        actualHr: sql`EXCLUDED.actual_hr`,
+        hitHr1Plus: sql`EXCLUDED.hit_hr_1plus`,
+        actualFpts: sql`EXCLUDED.actual_fpts`,
+        actualOwnPct: sql`EXCLUDED.actual_own_pct`,
+      },
+    });
+  }
+}
+
+async function syncMlbHomerunSnapshotActualsForSlate(slateId: number): Promise<void> {
+  await ensureMlbHomerunTrackingTables();
+  await db.execute(sql`
+    UPDATE mlb_homerun_player_snapshots hps
+    SET
+      actual_hr = dp.actual_hr,
+      hit_hr_1plus = CASE
+        WHEN dp.actual_hr IS NULL THEN hps.hit_hr_1plus
+        ELSE dp.actual_hr > 0
+      END,
+      actual_fpts = dp.actual_fpts,
+      actual_own_pct = dp.actual_own_pct
+    FROM dk_players dp
+    WHERE hps.slate_id = dp.slate_id
+      AND hps.dk_player_id = dp.dk_player_id
+      AND hps.slate_id = ${slateId}
+  `);
+}
+
+export async function snapshotMlbHomerunSlateFromStoredRows(
+  slateId: number,
+  source = "homerun_page",
+): Promise<{ ok: boolean; message: string; snapshotCount: number }> {
+  if (!Number.isSafeInteger(slateId) || slateId <= 0) {
+    return { ok: false, message: "Invalid MLB slate id", snapshotCount: 0 };
+  }
+
+  await ensureMlbHomerunTrackingTables();
+  const existing = await db.execute<{ rows: number }>(sql`
+    SELECT COUNT(*)::int AS "rows"
+    FROM mlb_homerun_player_snapshots hps
+    JOIN mlb_homerun_runs hr ON hr.id = hps.run_id
+    WHERE hr.slate_id = ${slateId}
+      AND hr.analysis_version = ${MLB_HOMERUN_MODEL_VERSION}
+  `);
+  const existingRows = Number(existing.rows[0]?.rows ?? 0);
+  if (existingRows > 0) {
+    return { ok: true, message: "Homerun slate snapshot already exists", snapshotCount: existingRows };
+  }
+
+  const result = await db.execute<{
+    slateId: number;
+    dkPlayerId: number;
+    name: string;
+    teamId: number | null;
+    teamAbbrev: string | null;
+    salary: number;
+    eligiblePositions: string | null;
+    isOut: boolean | null;
+    lineupOrder: number | null;
+    lineupConfirmed: boolean | null;
+    expectedHr: number | null;
+    hrProb1Plus: number | null;
+    hitterHrPg: number | null;
+    hitterIso: number | null;
+    hitterSlug: number | null;
+    hitterPaPg: number | null;
+    hitterWrcPlus: number | null;
+    hitterSplitWrcPlus: number | null;
+    teamTotal: number | null;
+    vegasTotal: number | null;
+    parkHrFactor: number | null;
+    weatherTemp: number | null;
+    windSpeed: number | null;
+    opposingPitcherName: string | null;
+    opposingPitcherHand: string | null;
+    opposingPitcherHrPer9: number | null;
+    opposingPitcherHrFbPct: number | null;
+    opposingPitcherXfip: number | null;
+    opposingPitcherEra: number | null;
+    actualHr: number | null;
+    actualFpts: number | null;
+    actualOwnPct: number | null;
+  }>(sql`
+    WITH latest_batter_by_name AS (
+      SELECT DISTINCT ON (LOWER(name))
+        LOWER(name) AS name_key,
+        pa_pg,
+        hr_pg,
+        iso,
+        slg,
+        wrc_plus,
+        wrc_plus_vs_l,
+        wrc_plus_vs_r
+      FROM mlb_batter_stats
+      ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
+    ),
+    latest_pitcher AS (
+      SELECT DISTINCT ON (player_id)
+        player_id, name, hand, hr_per_9, hr_fb_pct, xfip, era
+      FROM mlb_pitcher_stats
+      ORDER BY player_id, season DESC, fetched_at DESC, id DESC
+    ),
+    latest_pitcher_by_name AS (
+      SELECT DISTINCT ON (LOWER(name))
+        LOWER(name) AS name_key,
+        name,
+        hand,
+        hr_per_9,
+        hr_fb_pct,
+        xfip,
+        era
+      FROM mlb_pitcher_stats
+      ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
+    ),
+    latest_park AS (
+      SELECT DISTINCT ON (team_id)
+        team_id,
+        hr_factor
+      FROM mlb_park_factors
+      ORDER BY team_id, season DESC, id DESC
+    )
+    SELECT
+      dp.slate_id AS "slateId",
+      dp.dk_player_id AS "dkPlayerId",
+      dp.name,
+      dp.mlb_team_id AS "teamId",
+      dp.team_abbrev AS "teamAbbrev",
+      dp.salary,
+      dp.eligible_positions AS "eligiblePositions",
+      dp.is_out AS "isOut",
+      dp.dk_starting_lineup_order AS "lineupOrder",
+      dp.dk_team_lineup_confirmed AS "lineupConfirmed",
+      dp.expected_hr AS "expectedHr",
+      dp.hr_prob_1plus AS "hrProb1Plus",
+      batter.hr_pg AS "hitterHrPg",
+      batter.iso AS "hitterIso",
+      batter.slg AS "hitterSlug",
+      batter.pa_pg AS "hitterPaPg",
+      batter.wrc_plus AS "hitterWrcPlus",
+      CASE
+        WHEN (
+          CASE
+            WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hand, asp_name.hand)
+            WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hand, hsp_name.hand)
+            ELSE NULL
+          END
+        ) = 'L' THEN batter.wrc_plus_vs_l
+        WHEN (
+          CASE
+            WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hand, asp_name.hand)
+            WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hand, hsp_name.hand)
+            ELSE NULL
+          END
+        ) = 'R' THEN batter.wrc_plus_vs_r
+        ELSE NULL
+      END AS "hitterSplitWrcPlus",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN mm.home_implied
+        WHEN dp.mlb_team_id = mm.away_team_id THEN mm.away_implied
+        ELSE NULL
+      END AS "teamTotal",
+      mm.vegas_total AS "vegasTotal",
+      park.hr_factor AS "parkHrFactor",
+      mm.weather_temp AS "weatherTemp",
+      mm.wind_speed AS "windSpeed",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(mm.away_sp_name, asp_id.name, asp_name.name)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(mm.home_sp_name, hsp_id.name, hsp_name.name)
+        ELSE NULL
+      END AS "opposingPitcherName",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hand, asp_name.hand)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hand, hsp_name.hand)
+        ELSE NULL
+      END AS "opposingPitcherHand",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hr_per_9, asp_name.hr_per_9)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hr_per_9, hsp_name.hr_per_9)
+        ELSE NULL
+      END AS "opposingPitcherHrPer9",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.hr_fb_pct, asp_name.hr_fb_pct)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.hr_fb_pct, hsp_name.hr_fb_pct)
+        ELSE NULL
+      END AS "opposingPitcherHrFbPct",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.xfip, asp_name.xfip)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.xfip, hsp_name.xfip)
+        ELSE NULL
+      END AS "opposingPitcherXfip",
+      CASE
+        WHEN dp.mlb_team_id = mm.home_team_id THEN COALESCE(asp_id.era, asp_name.era)
+        WHEN dp.mlb_team_id = mm.away_team_id THEN COALESCE(hsp_id.era, hsp_name.era)
+        ELSE NULL
+      END AS "opposingPitcherEra",
+      dp.actual_hr AS "actualHr",
+      dp.actual_fpts AS "actualFpts",
+      dp.actual_own_pct AS "actualOwnPct"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
+    LEFT JOIN latest_batter_by_name batter ON batter.name_key = LOWER(dp.name)
+    LEFT JOIN latest_pitcher hsp_id ON hsp_id.player_id = mm.home_sp_id
+    LEFT JOIN latest_pitcher asp_id ON asp_id.player_id = mm.away_sp_id
+    LEFT JOIN latest_pitcher_by_name hsp_name ON hsp_name.name_key = LOWER(mm.home_sp_name)
+    LEFT JOIN latest_pitcher_by_name asp_name ON asp_name.name_key = LOWER(mm.away_sp_name)
+    LEFT JOIN latest_park park ON park.team_id = mm.home_team_id
+    WHERE ds.sport = 'mlb'
+      AND dp.slate_id = ${slateId}
+      AND dp.hr_prob_1plus IS NOT NULL
+      AND NOT (dp.eligible_positions ILIKE '%SP%' OR dp.eligible_positions ILIKE '%RP%')
+  `);
+
+  const snapshots: MlbHomerunSnapshotInput[] = result.rows.map((row) => ({
+    slateId: Number(row.slateId),
+    dkPlayerId: Number(row.dkPlayerId),
+    name: row.name,
+    teamId: row.teamId == null ? null : Number(row.teamId),
+    teamAbbrev: row.teamAbbrev ?? null,
+    salary: Number(row.salary ?? 0),
+    eligiblePositions: row.eligiblePositions ?? null,
+    isOut: Boolean(row.isOut),
+    lineupOrder: row.lineupOrder == null ? null : Number(row.lineupOrder),
+    lineupConfirmed: row.lineupConfirmed ?? null,
+    expectedHr: finiteOrNull(row.expectedHr),
+    hrProb1Plus: finiteOrNull(row.hrProb1Plus),
+    hitterHrPg: finiteOrNull(row.hitterHrPg),
+    hitterIso: finiteOrNull(row.hitterIso),
+    hitterSlug: finiteOrNull(row.hitterSlug),
+    hitterPaPg: finiteOrNull(row.hitterPaPg),
+    hitterWrcPlus: finiteOrNull(row.hitterWrcPlus),
+    hitterSplitWrcPlus: finiteOrNull(row.hitterSplitWrcPlus),
+    teamTotal: finiteOrNull(row.teamTotal),
+    vegasTotal: finiteOrNull(row.vegasTotal),
+    parkHrFactor: finiteOrNull(row.parkHrFactor),
+    weatherTemp: finiteOrNull(row.weatherTemp),
+    windSpeed: finiteOrNull(row.windSpeed),
+    opposingPitcherName: row.opposingPitcherName ?? null,
+    opposingPitcherHand: row.opposingPitcherHand ?? null,
+    opposingPitcherHrPer9: finiteOrNull(row.opposingPitcherHrPer9),
+    opposingPitcherHrFbPct: finiteOrNull(row.opposingPitcherHrFbPct),
+    opposingPitcherXfip: finiteOrNull(row.opposingPitcherXfip),
+    opposingPitcherEra: finiteOrNull(row.opposingPitcherEra),
+    actualHr: row.actualHr == null ? null : Number(row.actualHr),
+    actualFpts: finiteOrNull(row.actualFpts),
+    actualOwnPct: finiteOrNull(row.actualOwnPct),
+  }));
+
+  if (snapshots.length === 0) {
+    return { ok: false, message: "No MLB homerun probabilities found for this slate", snapshotCount: 0 };
+  }
+
+  const runId = await createMlbHomerunRun(slateId, source, MLB_HOMERUN_MODEL_VERSION, {
+    version: MLB_HOMERUN_MODEL_VERSION,
+    source,
+    snapshotCount: snapshots.length,
+    backfill: true,
+  });
+  await recordMlbHomerunSnapshots(runId, snapshots);
+  await syncMlbHomerunSnapshotActualsForSlate(slateId);
+  revalidatePath("/homerun");
+
+  return { ok: true, message: `Snapshotted ${snapshots.length} MLB homerun rows`, snapshotCount: snapshots.length };
 }
 
 function computeLeverage(
@@ -4274,6 +4670,7 @@ type HistoricalEntry = {
   projOwnPct: number | null;
   actualOwnPct: number | null;
   actualFpts: number | null;
+  actualHr: number | null;
   teamAbbrev: string;
 };
 
@@ -4283,6 +4680,7 @@ type HistoricalHeaderHints = {
   actualOwnIdx: number | null;
   projIdx: number | null;
   actualIdx: number | null;
+  actualHrIdx: number | null;
 };
 
 function normalizeHistoricalHeaderCell(value: string): string {
@@ -4300,6 +4698,12 @@ function parseHistoricalNumericCell(value: string | null | undefined): number | 
   if (!cleaned) return null;
   const parsed = Number.parseFloat(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseHistoricalIntegerCell(value: string | null | undefined): number | null {
+  const parsed = parseHistoricalNumericCell(value);
+  if (parsed == null) return null;
+  return Math.max(0, Math.round(parsed));
 }
 
 function detectHistoricalHeaderHints(cells: string[]): HistoricalHeaderHints | null {
@@ -4322,7 +4726,23 @@ function detectHistoricalHeaderHints(cells: string[]): HistoricalHeaderHints | n
     ),
     actualIdx: findAfterSalary((cell) =>
       (cell.includes("actual") || cell.includes("scored") || cell.includes("score") || cell.includes("fpts"))
-      && !cell.includes("own"),
+      && !cell.includes("own")
+      && !cell.includes("hr")
+      && !cell.includes("home run"),
+    ),
+    actualHrIdx: findAfterSalary((cell) =>
+      (
+        cell === "hr"
+        || cell === "hrs"
+        || cell === "home run"
+        || cell === "home runs"
+        || cell === "actual hr"
+        || cell === "actual hrs"
+        || cell === "actual home run"
+        || cell === "actual home runs"
+      )
+      && !cell.includes("prob")
+      && !cell.includes("proj"),
     ),
   };
 }
@@ -4383,12 +4803,13 @@ function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, H
       return /^(PG|SG|SF|PF|C)(\/(?:PG|SG|SF|PF|C))*$/.test(posRaw) ? posRaw : "UTIL";
     })();
 
+    const actualHrIdx = headerHints?.actualHrIdx ?? null;
     const percentCells = cells
       .map((raw, idx) => ({ idx, raw, value: raw.includes("%") ? parseHistoricalNumericCell(raw) : null }))
       .filter((entry) => entry.idx > salaryIdx && entry.value != null) as Array<{ idx: number; raw: string; value: number }>;
     const numericNonPercentCells = cells
       .map((raw, idx) => ({ idx, raw, value: raw.includes("%") ? null : parseHistoricalNumericCell(raw) }))
-      .filter((entry) => entry.idx > salaryIdx && entry.value != null) as Array<{ idx: number; raw: string; value: number }>;
+      .filter((entry) => entry.idx > salaryIdx && entry.idx !== actualHrIdx && entry.value != null) as Array<{ idx: number; raw: string; value: number }>;
 
     const projOwnPct = headerHints?.projOwnIdx != null
       ? parseHistoricalNumericCell(cells[headerHints.projOwnIdx] ?? "")
@@ -4402,6 +4823,9 @@ function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, H
       : null;
     let linestarProj = headerHints?.projIdx != null
       ? parseHistoricalNumericCell(cells[headerHints.projIdx] ?? "")
+      : null;
+    const actualHr = actualHrIdx != null
+      ? parseHistoricalIntegerCell(cells[actualHrIdx] ?? "")
       : null;
 
     if (actualFpts == null && numericNonPercentCells.length >= 2) {
@@ -4425,7 +4849,7 @@ function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, H
     }
 
     map.set(`${playerName.toLowerCase()}|${salary}`, {
-      position, linestarProj, projOwnPct, actualOwnPct, actualFpts,
+      position, linestarProj, projOwnPct, actualOwnPct, actualFpts, actualHr,
       teamAbbrev: teamAbbrev.toUpperCase(),
     });
   }
@@ -4461,14 +4885,19 @@ export async function saveHistoricalSlate(
   if (!date) return { ok: false, message: "Date is required", created: 0, updated: 0 };
   if (!text.trim()) return { ok: false, message: "No data pasted", created: 0, updated: 0 };
 
+  await ensureDkPlayerPropColumns();
   const parsed = parseHistoricalPaste(text, sport);
   if (parsed.size === 0)
     return { ok: false, message: "No players parsed — expected tab-separated LineStar data", created: 0, updated: 0 };
-  const parsedActualCount = Array.from(parsed.values()).filter((entry) => entry.actualFpts != null).length;
+  const parsedActualCount = Array.from(parsed.values()).filter((entry) =>
+    entry.actualFpts != null || (sport === "mlb" && entry.actualHr != null)
+  ).length;
   if (parsedActualCount === 0) {
     return {
       ok: false,
-      message: "No historical actual FPTS found in the paste. Use the LineStar historical/results view, not the live projections table.",
+      message: sport === "mlb"
+        ? "No historical actual FPTS or HR results found in the paste. Use the results view, not the live projections table."
+        : "No historical actual FPTS found in the paste. Use the LineStar historical/results view, not the live projections table.",
       created: 0,
       updated: 0,
     };
@@ -4568,6 +4997,7 @@ export async function saveHistoricalSlate(
       };
       if (match.actualFpts != null) updatePayload.actualFpts = match.actualFpts;
       if (match.actualOwnPct != null) updatePayload.actualOwnPct = match.actualOwnPct;
+      if (sport === "mlb" && match.actualHr != null) updatePayload.actualHr = match.actualHr;
       if (sport === "mlb") {
         const mlbTeamId = abbrevCache.get(match.teamAbbrev) ?? null;
         if (!p.teamId && mlbTeamId) {
@@ -4586,9 +5016,11 @@ export async function saveHistoricalSlate(
     try { await syncOwnershipSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
     if (sport === "mlb") {
       try { await syncMlbBlowupSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
+      try { await syncMlbHomerunSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
     }
 
     revalidatePath("/dfs");
+    revalidatePath("/homerun");
     revalidatePath("/analytics");
     revalidateTag(ANALYTICS_CACHE_TAG, {});
     return {
@@ -4671,6 +5103,7 @@ export async function saveHistoricalSlate(
         projOwnPct:    entry.projOwnPct ?? null,
         actualOwnPct:  entry.actualOwnPct ?? null,
         actualFpts:    entry.actualFpts,
+        actualHr:      sport === "mlb" ? entry.actualHr : null,
         isOut: false,
       })
       .onConflictDoUpdate({
@@ -4684,6 +5117,7 @@ export async function saveHistoricalSlate(
           projOwnPct:    sql`EXCLUDED.proj_own_pct`,
           actualOwnPct:  sql`EXCLUDED.actual_own_pct`,
           actualFpts:    sql`EXCLUDED.actual_fpts`,
+          actualHr:      sql`EXCLUDED.actual_hr`,
         },
       });
     created++;
@@ -4693,9 +5127,11 @@ export async function saveHistoricalSlate(
   try { await syncOwnershipSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
   if (sport === "mlb") {
     try { await syncMlbBlowupSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
+    try { await syncMlbHomerunSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
   }
 
   revalidatePath("/dfs");
+  revalidatePath("/homerun");
   revalidatePath("/analytics");
   revalidateTag(ANALYTICS_CACHE_TAG, {});
   return {
@@ -5691,6 +6127,7 @@ async function enrichAndSaveMlb(
   const batterCoverage = createMlbCoverageCounter();
   const pitcherCoverage = createMlbCoverageCounter();
   const insertValues: Array<Record<string, unknown>> = [];
+  const homerunSnapshots: MlbHomerunSnapshotInput[] = [];
 
   for (const p of dkPlayers_) {
     const canon = MLB_DK_OVERRIDES[p.teamAbbrev] ?? p.teamAbbrev;
@@ -5717,6 +6154,7 @@ async function enrichAndSaveMlb(
     let ourProj: number | null  = null;
     let expectedHr: number | null = null;
     let hrProb1Plus: number | null = null;
+    let homerunSnapshot: MlbHomerunSnapshotInput | null = null;
     const pitcherFlag = isPitcherPos(p.eligiblePositions);
 
     if (pitcherFlag) {
@@ -5784,6 +6222,43 @@ async function enrichAndSaveMlb(
         );
         expectedHr = hrSignal?.expectedHr ?? null;
         hrProb1Plus = hrSignal?.hrProb1Plus ?? null;
+        const oppHand = (oppSp?.hand ?? "").toUpperCase();
+        const teamTotal = isHome ? matchup.homeImplied : matchup.awayImplied;
+        homerunSnapshot = {
+          slateId,
+          dkPlayerId: p.dkId,
+          name: p.name,
+          teamId: mlbTeamId,
+          teamAbbrev: p.teamAbbrev,
+          salary: p.salary,
+          eligiblePositions: p.eligiblePositions,
+          isOut: false,
+          lineupOrder: dkStartingLineupOrder,
+          lineupConfirmed: dkTeamLineupConfirmed,
+          expectedHr,
+          hrProb1Plus,
+          hitterHrPg: finiteOrNull(blendedBatter.hrPg),
+          hitterIso: finiteOrNull(blendedBatter.iso),
+          hitterSlug: finiteOrNull(blendedBatter.slg),
+          hitterPaPg: finiteOrNull(blendedBatter.paPg),
+          hitterWrcPlus: finiteOrNull(blendedBatter.wrcPlus),
+          hitterSplitWrcPlus: oppHand === "L"
+            ? finiteOrNull(blendedBatter.wrcPlusVsL)
+            : oppHand === "R"
+              ? finiteOrNull(blendedBatter.wrcPlusVsR)
+              : null,
+          teamTotal: finiteOrNull(teamTotal),
+          vegasTotal: finiteOrNull(matchup.vegasTotal),
+          parkHrFactor: finiteOrNull(park?.hrFactor),
+          weatherTemp: finiteOrNull(matchup.weatherTemp),
+          windSpeed: finiteOrNull(matchup.windSpeed),
+          opposingPitcherName: oppSp?.name ?? (isHome ? matchup.awaySpName : matchup.homeSpName) ?? null,
+          opposingPitcherHand: oppSp?.hand ?? null,
+          opposingPitcherHrPer9: finiteOrNull(oppSp?.hrPer9),
+          opposingPitcherHrFbPct: finiteOrNull(oppSp?.hrFbPct),
+          opposingPitcherXfip: finiteOrNull(oppSp?.xfip),
+          opposingPitcherEra: finiteOrNull(oppSp?.era),
+        };
         if (ourProj != null) projComputed++;
       }
     }
@@ -5793,6 +6268,10 @@ async function enrichAndSaveMlb(
       || ["O", "OUT"].includes(p.dkStatus.toUpperCase())
       || !isLikelyActiveMlbPitcher(p);
     const isOut   = dkIsOut || confirmedBatterOut;
+    if (homerunSnapshot) {
+      homerunSnapshot.isOut = isOut;
+      homerunSnapshots.push(homerunSnapshot);
+    }
 
     insertValues.push({
       slateId, dkPlayerId: p.dkId, name: p.name,
@@ -5911,8 +6390,17 @@ async function enrichAndSaveMlb(
     candidateCount: blowupSnapshots.length,
   });
   await recordMlbBlowupSnapshots(blowupRunId, blowupSnapshots);
+  const homerunRunId = await createMlbHomerunRun(slateId, "load_slate", MLB_HOMERUN_MODEL_VERSION, {
+    version: MLB_HOMERUN_MODEL_VERSION,
+    source: "load_slate",
+    playerCount: insertValues.length,
+    snapshotCount: homerunSnapshots.length,
+  });
+  await recordMlbHomerunSnapshots(homerunRunId, homerunSnapshots);
+  try { await syncMlbHomerunSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
 
   revalidatePath("/dfs");
+  revalidatePath("/homerun");
   const matchRate = lsMap.size > 0 ? Math.round((lsMatched / dkPlayers_.length) * 100) : null;
   return {
     ok: true,

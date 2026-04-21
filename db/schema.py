@@ -398,6 +398,7 @@ TABLES = [
         is_out BOOLEAN DEFAULT FALSE,
         actual_fpts REAL,
         actual_own_pct REAL,
+        actual_hr INTEGER,
         UNIQUE(slate_id, dk_player_id)
     )
     """,
@@ -549,6 +550,60 @@ TABLES = [
     """,
 
     """
+    CREATE TABLE IF NOT EXISTS mlb_homerun_runs (
+        id SERIAL PRIMARY KEY,
+        slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+        analysis_version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS mlb_homerun_player_snapshots (
+        id SERIAL PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES mlb_homerun_runs(id) ON DELETE CASCADE,
+        slate_id INTEGER NOT NULL REFERENCES dk_slates(id) ON DELETE CASCADE,
+        dk_player_id BIGINT NOT NULL,
+        name TEXT NOT NULL,
+        team_id INTEGER,
+        team_abbrev TEXT,
+        salary INTEGER NOT NULL,
+        eligible_positions TEXT,
+        is_out BOOLEAN DEFAULT FALSE,
+        lineup_order INTEGER,
+        lineup_confirmed BOOLEAN,
+        expected_hr REAL,
+        hr_prob_1plus REAL,
+        hitter_hr_pg REAL,
+        hitter_iso REAL,
+        hitter_slg REAL,
+        hitter_pa_pg REAL,
+        hitter_wrc_plus REAL,
+        hitter_split_wrc_plus REAL,
+        team_total REAL,
+        vegas_total REAL,
+        park_hr_factor REAL,
+        weather_temp REAL,
+        wind_speed REAL,
+        opposing_pitcher_name TEXT,
+        opposing_pitcher_hand TEXT,
+        opposing_pitcher_hr_per_9 REAL,
+        opposing_pitcher_hr_fb_pct REAL,
+        opposing_pitcher_xfip REAL,
+        opposing_pitcher_era REAL,
+        actual_hr INTEGER,
+        hit_hr_1plus BOOLEAN,
+        actual_fpts REAL,
+        actual_own_pct REAL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(run_id, dk_player_id)
+    )
+    """,
+
+    """
     CREATE TABLE IF NOT EXISTS optimizer_jobs (
         id SERIAL PRIMARY KEY,
         sport TEXT NOT NULL,
@@ -599,6 +654,16 @@ TABLES = [
 ]
 
 MIGRATIONS = [
+    # 2026-04-20: Persist actual home run outcomes for MLB HR model tracking
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'dk_players' AND column_name = 'actual_hr'
+        ) THEN
+            ALTER TABLE dk_players ADD COLUMN actual_hr INTEGER;
+        END IF;
+    END $$""",
+
     # 2026-04-12: Persist actual results for durable optimizer lineup tracking
     """DO $$ BEGIN
         IF NOT EXISTS (
@@ -1141,6 +1206,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ownership_runs_model ON ownership_runs(ownership_version, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ownership_snapshots_run ON ownership_player_snapshots(run_id, dk_player_id)",
     "CREATE INDEX IF NOT EXISTS idx_ownership_snapshots_slate ON ownership_player_snapshots(slate_id, dk_player_id)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_homerun_runs_slate ON mlb_homerun_runs(slate_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_homerun_runs_model ON mlb_homerun_runs(analysis_version, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_homerun_snapshots_run ON mlb_homerun_player_snapshots(run_id, dk_player_id)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_homerun_snapshots_slate ON mlb_homerun_player_snapshots(slate_id, hr_prob_1plus DESC NULLS LAST)",
     # MLB indexes
     "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_team ON mlb_batter_stats(team_id, season)",

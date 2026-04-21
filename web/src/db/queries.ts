@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables } from "./ensure-schema";
+import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -846,6 +846,215 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
 }
 
 // ── DFS Accuracy ─────────────────────────────────────────────
+
+export type MlbHomerunTrackingSummary = {
+  runs: number;
+  slates: number;
+  rows: number;
+  actualHrRows: number;
+  pendingHrRows: number;
+  actualFptsRows: number;
+  actualOwnRows: number;
+  avgPredictedPct: number | null;
+  hitRate: number | null;
+  brierScore: number | null;
+  logLoss: number | null;
+  top15Rows: number;
+  top15ActualHrRows: number;
+  top15HitRate: number | null;
+  latestVersion: string | null;
+  latestSource: string | null;
+  latestCapturedAt: string | null;
+  latestSlateDate: string | null;
+};
+
+export type MlbHomerunCalibrationBucket = {
+  bucket: string;
+  rows: number;
+  actualHrRows: number;
+  avgPredictedPct: number | null;
+  hitRate: number | null;
+  brierScore: number | null;
+};
+
+export type MlbHomerunTrackingReport = {
+  summary: MlbHomerunTrackingSummary;
+  buckets: MlbHomerunCalibrationBucket[];
+};
+
+export async function getMlbHomerunTrackingReport(): Promise<MlbHomerunTrackingReport | null> {
+  await ensureMlbHomerunTrackingTables();
+
+  const latestRunsCte = sql`
+    WITH latest_runs AS (
+      SELECT DISTINCT ON (r.slate_id)
+        r.id,
+        r.slate_id,
+        r.analysis_version,
+        r.source,
+        r.created_at
+      FROM mlb_homerun_runs r
+      JOIN dk_slates ds ON ds.id = r.slate_id
+      WHERE ds.sport = 'mlb'
+      ORDER BY r.slate_id, r.created_at DESC, r.id DESC
+    ),
+    sample AS (
+      SELECT
+        s.*,
+        lr.analysis_version,
+        lr.source,
+        lr.created_at AS run_created_at,
+        ds.slate_date::text AS slate_date,
+        ROW_NUMBER() OVER (
+          PARTITION BY s.slate_id
+          ORDER BY s.hr_prob_1plus DESC NULLS LAST, s.expected_hr DESC NULLS LAST, s.name ASC
+        ) AS slate_rank
+      FROM mlb_homerun_player_snapshots s
+      JOIN latest_runs lr ON lr.id = s.run_id
+      JOIN dk_slates ds ON ds.id = s.slate_id
+      WHERE COALESCE(s.is_out, FALSE) = FALSE
+        AND s.hr_prob_1plus IS NOT NULL
+    )
+  `;
+
+  const [summaryResult, bucketResult] = await Promise.all([
+    db.execute<{
+      runs: number;
+      slates: number;
+      rows: number;
+      actualHrRows: number;
+      pendingHrRows: number;
+      actualFptsRows: number;
+      actualOwnRows: number;
+      avgPredictedPct: number | null;
+      hitRate: number | null;
+      brierScore: number | null;
+      logLoss: number | null;
+      top15Rows: number;
+      top15ActualHrRows: number;
+      top15HitRate: number | null;
+      latestVersion: string | null;
+      latestSource: string | null;
+      latestCapturedAt: string | null;
+      latestSlateDate: string | null;
+    }>(sql`
+      ${latestRunsCte}
+      SELECT
+        (SELECT COUNT(*)::int FROM latest_runs) AS "runs",
+        COUNT(DISTINCT sample.slate_id)::int AS "slates",
+        COUNT(*)::int AS "rows",
+        COUNT(*) FILTER (WHERE sample.actual_hr IS NOT NULL)::int AS "actualHrRows",
+        COUNT(*) FILTER (WHERE sample.actual_hr IS NULL)::int AS "pendingHrRows",
+        COUNT(*) FILTER (WHERE sample.actual_fpts IS NOT NULL)::int AS "actualFptsRows",
+        COUNT(*) FILTER (WHERE sample.actual_own_pct IS NOT NULL)::int AS "actualOwnRows",
+        AVG(sample.hr_prob_1plus) * 100 AS "avgPredictedPct",
+        AVG(CASE WHEN sample.hit_hr_1plus THEN 1.0 ELSE 0.0 END) FILTER (WHERE sample.actual_hr IS NOT NULL) * 100 AS "hitRate",
+        AVG(POWER(sample.hr_prob_1plus - CASE WHEN sample.hit_hr_1plus THEN 1.0 ELSE 0.0 END, 2))
+          FILTER (WHERE sample.actual_hr IS NOT NULL) AS "brierScore",
+        AVG(-(
+          CASE
+            WHEN sample.hit_hr_1plus THEN LN(GREATEST(LEAST(sample.hr_prob_1plus, 0.999999), 0.000001))
+            ELSE LN(GREATEST(LEAST(1.0 - sample.hr_prob_1plus, 0.999999), 0.000001))
+          END
+        )) FILTER (WHERE sample.actual_hr IS NOT NULL) AS "logLoss",
+        COUNT(*) FILTER (WHERE sample.slate_rank <= 15)::int AS "top15Rows",
+        COUNT(*) FILTER (WHERE sample.slate_rank <= 15 AND sample.actual_hr IS NOT NULL)::int AS "top15ActualHrRows",
+        AVG(CASE WHEN sample.hit_hr_1plus THEN 1.0 ELSE 0.0 END)
+          FILTER (WHERE sample.slate_rank <= 15 AND sample.actual_hr IS NOT NULL) * 100 AS "top15HitRate",
+        (
+          SELECT lr.analysis_version
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestVersion",
+        (
+          SELECT lr.source
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestSource",
+        (
+          SELECT lr.created_at::text
+          FROM latest_runs lr
+          ORDER BY lr.created_at DESC, lr.id DESC
+          LIMIT 1
+        ) AS "latestCapturedAt",
+        MAX(sample.slate_date) AS "latestSlateDate"
+      FROM sample
+    `),
+    db.execute<{
+      bucket: string;
+      rows: number;
+      actualHrRows: number;
+      avgPredictedPct: number | null;
+      hitRate: number | null;
+      brierScore: number | null;
+      bucketSort: number;
+    }>(sql`
+      ${latestRunsCte}
+      SELECT
+        CASE
+          WHEN sample.hr_prob_1plus < 0.05 THEN '<5%'
+          WHEN sample.hr_prob_1plus < 0.10 THEN '5-10%'
+          WHEN sample.hr_prob_1plus < 0.15 THEN '10-15%'
+          WHEN sample.hr_prob_1plus < 0.20 THEN '15-20%'
+          WHEN sample.hr_prob_1plus < 0.25 THEN '20-25%'
+          ELSE '25%+'
+        END AS "bucket",
+        CASE
+          WHEN sample.hr_prob_1plus < 0.05 THEN 1
+          WHEN sample.hr_prob_1plus < 0.10 THEN 2
+          WHEN sample.hr_prob_1plus < 0.15 THEN 3
+          WHEN sample.hr_prob_1plus < 0.20 THEN 4
+          WHEN sample.hr_prob_1plus < 0.25 THEN 5
+          ELSE 6
+        END AS "bucketSort",
+        COUNT(*)::int AS "rows",
+        COUNT(*) FILTER (WHERE sample.actual_hr IS NOT NULL)::int AS "actualHrRows",
+        AVG(sample.hr_prob_1plus) * 100 AS "avgPredictedPct",
+        AVG(CASE WHEN sample.hit_hr_1plus THEN 1.0 ELSE 0.0 END) FILTER (WHERE sample.actual_hr IS NOT NULL) * 100 AS "hitRate",
+        AVG(POWER(sample.hr_prob_1plus - CASE WHEN sample.hit_hr_1plus THEN 1.0 ELSE 0.0 END, 2))
+          FILTER (WHERE sample.actual_hr IS NOT NULL) AS "brierScore"
+      FROM sample
+      GROUP BY 1, 2
+      ORDER BY 2 ASC
+    `),
+  ]);
+
+  const summaryRow = summaryResult.rows[0];
+  if (!summaryRow || Number(summaryRow.rows ?? 0) === 0) return null;
+
+  return {
+    summary: {
+      runs: Number(summaryRow.runs ?? 0),
+      slates: Number(summaryRow.slates ?? 0),
+      rows: Number(summaryRow.rows ?? 0),
+      actualHrRows: Number(summaryRow.actualHrRows ?? 0),
+      pendingHrRows: Number(summaryRow.pendingHrRows ?? 0),
+      actualFptsRows: Number(summaryRow.actualFptsRows ?? 0),
+      actualOwnRows: Number(summaryRow.actualOwnRows ?? 0),
+      avgPredictedPct: summaryRow.avgPredictedPct == null ? null : Number(summaryRow.avgPredictedPct),
+      hitRate: summaryRow.hitRate == null ? null : Number(summaryRow.hitRate),
+      brierScore: summaryRow.brierScore == null ? null : Number(summaryRow.brierScore),
+      logLoss: summaryRow.logLoss == null ? null : Number(summaryRow.logLoss),
+      top15Rows: Number(summaryRow.top15Rows ?? 0),
+      top15ActualHrRows: Number(summaryRow.top15ActualHrRows ?? 0),
+      top15HitRate: summaryRow.top15HitRate == null ? null : Number(summaryRow.top15HitRate),
+      latestVersion: summaryRow.latestVersion ?? null,
+      latestSource: summaryRow.latestSource ?? null,
+      latestCapturedAt: summaryRow.latestCapturedAt ?? null,
+      latestSlateDate: summaryRow.latestSlateDate ?? null,
+    },
+    buckets: bucketResult.rows.map((row) => ({
+      bucket: row.bucket,
+      rows: Number(row.rows ?? 0),
+      actualHrRows: Number(row.actualHrRows ?? 0),
+      avgPredictedPct: row.avgPredictedPct == null ? null : Number(row.avgPredictedPct),
+      hitRate: row.hitRate == null ? null : Number(row.hitRate),
+      brierScore: row.brierScore == null ? null : Number(row.brierScore),
+    })),
+  };
+}
 
 export type DfsAccuracyMetrics = {
   ourMAE: number | null;
