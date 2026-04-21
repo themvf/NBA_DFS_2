@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { loadMlbSlateFromDraftGroupId, snapshotMlbHomerunSlateFromStoredRows } from "@/app/dfs/actions";
+import { loadHomerunBoardAction } from "@/app/homerun/actions";
 import {
   getMlbHomerunBoard,
   getMlbHomerunTrackingReport,
@@ -67,6 +67,11 @@ function cleanDkId(value: string | string[] | undefined): number | null {
 function cleanView(value: string | string[] | undefined): MlbHomerunBoardView {
   const raw = Array.isArray(value) ? value[0] : value;
   return raw === "edge" || raw === "leverage" || raw === "longshots" ? raw : "likely";
+}
+
+function cleanLoadError(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw ? raw.slice(0, 300) : null;
 }
 
 function edgeClass(value: number | null | undefined): string {
@@ -616,12 +621,13 @@ function CandidateRow({ candidate, rank }: { candidate: MlbHomerunCandidate; ran
 export default async function HomerunPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sport?: string; date?: string | string[]; dkId?: string | string[]; view?: string | string[] }>;
+  searchParams: Promise<{ sport?: string; date?: string | string[]; dkId?: string | string[]; view?: string | string[]; loadError?: string | string[] }>;
 }) {
   const params = await searchParams;
   const date = cleanDate(params.date);
   const dkId = cleanDkId(params.dkId);
   const view = cleanView(params.view);
+  const loadError = cleanLoadError(params.loadError);
   if (params.sport !== "mlb") {
     const nextParams = new URLSearchParams({ sport: "mlb", view });
     if (dkId != null) nextParams.set("dkId", String(dkId));
@@ -629,21 +635,9 @@ export default async function HomerunPage({
     redirect(`/homerun?${nextParams.toString()}`);
   }
 
-  let board = await getMlbHomerunBoard({ date, dkId, view });
-  let loadError: string | null = null;
-  if (dkId != null && board.candidates.length === 0 && board.dkDraftGroupId != null && board.dkIdError == null) {
-    const loadResult = await loadMlbSlateFromDraftGroupId(board.dkDraftGroupId, undefined, "homerun", undefined, "gpp");
-    if (loadResult.ok) {
-      board = await getMlbHomerunBoard({ date, dkId, view });
-    } else {
-      loadError = loadResult.message;
-    }
-  }
+  const board = await getMlbHomerunBoard({ date, dkId, view });
   const podium = board.candidates.slice(0, 3);
   const csvHref = `data:text/csv;charset=utf-8,${encodeURIComponent(buildCsv(board.candidates))}`;
-  if (board.slateId != null && board.candidates.length > 0) {
-    await snapshotMlbHomerunSlateFromStoredRows(board.slateId);
-  }
   const tracking = await getMlbHomerunTrackingReport();
 
   return (
@@ -662,7 +656,7 @@ export default async function HomerunPage({
             {board.latestMarketCapturedAt ? ` | HR odds ${fmtDateTime(board.latestMarketCapturedAt)}` : ""}
           </p>
         </div>
-        <form method="get" action="/homerun" className="flex items-end gap-2">
+        <form action={loadHomerunBoardAction} className="flex items-end gap-2">
           <input type="hidden" name="sport" value="mlb" />
           <input type="hidden" name="view" value={board.view} />
           <label className="block">
