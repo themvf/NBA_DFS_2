@@ -10,6 +10,10 @@ export type MlbBlowupPlayerLike = {
   blendProj?: number | null;
   ourProj?: number | null;
   projCeiling?: number | null;
+  expectedHr?: number | null;
+  hrProb1Plus?: number | null;
+  projOwnPct?: number | null;
+  ourOwnPct?: number | null;
   teamTotal?: number | null;
   teamId?: number | null;
   isHome?: boolean | null;
@@ -29,6 +33,8 @@ export type MlbBlowupCandidate<T extends MlbBlowupPlayerLike> = {
   proj: number;
   ceiling: number;
   value: number;
+  hrProb: number | null;
+  projectedOwnership: number | null;
 };
 
 function mlToProb(ml: number): number {
@@ -55,6 +61,10 @@ export function computeMlbTeamImpliedTotal(
 export function isMlbPitcherEligiblePositions(eligiblePositions: string | null | undefined): boolean {
   const positions = eligiblePositions ?? "";
   return positions.includes("SP") || positions.includes("RP");
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function resolveTeamTotal<T extends MlbBlowupPlayerLike>(player: T): number | null {
@@ -84,6 +94,16 @@ function resolveCeiling<T extends MlbBlowupPlayerLike>(player: T, proj: number |
   return ceiling != null && Number.isFinite(ceiling) ? Math.max(0, ceiling) : null;
 }
 
+function resolveHrProbability<T extends MlbBlowupPlayerLike>(player: T): number | null {
+  const hrProb = player.hrProb1Plus ?? null;
+  return hrProb != null && Number.isFinite(hrProb) ? clamp(hrProb, 0, 0.9999) : null;
+}
+
+function resolveProjectedOwnership<T extends MlbBlowupPlayerLike>(player: T): number | null {
+  const ownership = player.projOwnPct ?? player.ourOwnPct ?? null;
+  return ownership != null && Number.isFinite(ownership) ? Math.max(0, ownership) : null;
+}
+
 export function buildMlbBlowupCandidates<T extends MlbBlowupPlayerLike>(
   players: T[],
   limit = MLB_BLOWUP_DEFAULT_LIMIT,
@@ -95,6 +115,9 @@ export function buildMlbBlowupCandidates<T extends MlbBlowupPlayerLike>(
       const proj = resolveProjection(player);
       const ceiling = resolveCeiling(player, proj);
       const value = proj != null ? proj / (player.salary / 1000) : null;
+      const hrProb = resolveHrProbability(player);
+      const expectedHr = player.expectedHr != null && Number.isFinite(player.expectedHr) ? Math.max(0, player.expectedHr) : null;
+      const projectedOwnership = resolveProjectedOwnership(player);
       if (
         teamTotal == null || !Number.isFinite(teamTotal)
         || proj == null || !Number.isFinite(proj)
@@ -103,13 +126,29 @@ export function buildMlbBlowupCandidates<T extends MlbBlowupPlayerLike>(
       ) {
         return null;
       }
+      const hrMultiplier = 1
+        + Math.min(0.55, (hrProb ?? 0) * 1.8)
+        + Math.min(0.18, (expectedHr ?? 0) * 0.25);
+      const ownershipMultiplier = projectedOwnership == null
+        ? 1
+        : projectedOwnership <= 6
+          ? 1.18
+          : projectedOwnership <= 12
+            ? 1.08
+            : projectedOwnership <= 20
+              ? 0.95
+              : 0.82;
       return {
         player,
         teamTotal,
         proj,
         ceiling,
         value,
-        blowupScore: (teamTotal / MLB_BASELINE_TEAM_TOTAL) * ceiling * value / 10,
+        hrProb,
+        projectedOwnership,
+        blowupScore: ((teamTotal / MLB_BASELINE_TEAM_TOTAL) * ceiling * value / 10)
+          * hrMultiplier
+          * ownershipMultiplier,
       };
     })
     .filter((candidate): candidate is MlbBlowupCandidate<T> => candidate !== null)

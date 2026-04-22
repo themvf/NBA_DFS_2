@@ -31,6 +31,7 @@ export type MlbOptimizerPlayer = Pick<
   | "projOwnPct"
   | "projCeiling"
   | "boomRate"
+  | "expectedHr"
   | "dkInStartingLineup"
   | "dkStartingLineupOrder"
   | "dkTeamLineupConfirmed"
@@ -47,6 +48,9 @@ export type MlbOptimizerPlayer = Pick<
   | "propPts"
   | "propReb"
   | "propAst"
+  | "propStl"
+  | "propStlPrice"
+  | "propStlBook"
 >;
 
 export type MlbLineupSlot = "P1" | "P2" | "C" | "1B" | "2B" | "3B" | "SS" | "OF1" | "OF2" | "OF3";
@@ -103,6 +107,8 @@ type MlbTournamentProfile = {
   hitterBoomWeight: number;
   pitcherBoomWeight: number;
   hrWeight: number;
+  hrCeilingWeight: number;
+  hrEdgeWeight: number;
   strikeoutPropWeight: number;
   chalkPenaltyStart: number;
   chalkPenaltyWeight: number;
@@ -128,6 +134,8 @@ const MLB_GPP_PROFILE: MlbTournamentProfile = {
   hitterBoomWeight: 5.5,
   pitcherBoomWeight: 4.25,
   hrWeight: 2.75,
+  hrCeilingWeight: 0.22,
+  hrEdgeWeight: 0.018,
   strikeoutPropWeight: 0.16,
   chalkPenaltyStart: 10.0,
   chalkPenaltyWeight: 0.045,
@@ -153,6 +161,8 @@ const MLB_GPP2_PROFILE: MlbTournamentProfile = {
   hitterBoomWeight: 6.4,
   pitcherBoomWeight: 5.0,
   hrWeight: 3.5,
+  hrCeilingWeight: 0.48,
+  hrEdgeWeight: 0.035,
   strikeoutPropWeight: 0.2,
   chalkPenaltyStart: 8.0,
   chalkPenaltyWeight: 0.065,
@@ -258,6 +268,64 @@ function getMlbProjectedOwnership(player: MlbOptimizerPlayer): number {
   return Math.max(0, finiteOrNull(player.projOwnPct) ?? 0);
 }
 
+function getMlbHrProbability(player: MlbOptimizerPlayer): number {
+  return clamp(finiteOrNull(player.hrProb1Plus) ?? 0, 0, 0.9999);
+}
+
+function getMlbExpectedHr(player: MlbOptimizerPlayer): number {
+  return Math.max(0, finiteOrNull(player.expectedHr) ?? 0);
+}
+
+function americanOddsToProbability(price: number | null | undefined): number | null {
+  const odds = finiteOrNull(price);
+  if (odds == null || odds === 0) return null;
+  return odds > 0
+    ? 100 / (odds + 100)
+    : Math.abs(odds) / (Math.abs(odds) + 100);
+}
+
+function getMlbHrMarketProbability(player: MlbOptimizerPlayer): number | null {
+  if (isPitcher(player.eligiblePositions)) return null;
+  return americanOddsToProbability(player.propStlPrice);
+}
+
+function getMlbHrEdgePct(player: MlbOptimizerPlayer): number | null {
+  const marketProb = getMlbHrMarketProbability(player);
+  if (marketProb == null) return null;
+  return (getMlbHrProbability(player) - marketProb) * 100;
+}
+
+function getMlbHrCeilingSignal(player: MlbOptimizerPlayer): number {
+  if (isPitcher(player.eligiblePositions)) return 0;
+  const hrProb = getMlbHrProbability(player);
+  const expectedHr = getMlbExpectedHr(player);
+  if (hrProb <= 0 && expectedHr <= 0) return 0;
+
+  const projection = getMlbProjection(player);
+  const value = projection > 0 ? projection / Math.max(1, player.salary / 1000) : 0;
+  const order = finiteOrNull(player.dkStartingLineupOrder);
+  const orderMultiplier = order === 2 ? 1.16
+    : order === 3 ? 1.18
+      : order === 4 ? 1.08
+        : order === 5 ? 1.04
+          : order === 7 ? 1.03
+            : order === 1 ? 0.95
+              : 1;
+  const projectedOwnership = getMlbProjectedOwnership(player);
+  const ownershipMultiplier = projectedOwnership <= 6 ? 1.25
+    : projectedOwnership <= 12 ? 1.12
+      : projectedOwnership <= 20 ? 0.92
+        : 0.70;
+  const valueMultiplier = clamp(1 + ((value - 2.0) * 0.14), 0.85, 1.16);
+  const edgePct = getMlbHrEdgePct(player);
+  const edgeComponent = edgePct == null ? 0 : clamp(edgePct / 10, -0.45, 1.15);
+  const rawSignal = (hrProb * 8.0) + (expectedHr * 2.2) + Math.max(0, edgeComponent);
+  const negativeEdgePenalty = Math.min(0, edgeComponent) * 0.6;
+  return Math.max(0, Math.round(
+    ((rawSignal * orderMultiplier * ownershipMultiplier * valueMultiplier) + negativeEdgePenalty) * 1000,
+  ) / 1000);
+}
+
 function getMlbTournamentProfile(mode: OptimizerMode): MlbTournamentProfile {
   return isLargeFieldTournamentMode(mode) ? MLB_GPP2_PROFILE : MLB_GPP_PROFILE;
 }
@@ -274,9 +342,14 @@ function getMlbHrUpsideScore(player: MlbOptimizerPlayer): number {
   const projection = getMlbProjection(player);
   const ceiling = finiteOrNull(player.projCeiling) ?? (projection * 1.7);
   const ceilingEdge = Math.max(0, ceiling - projection);
-  const hrProb = Math.max(0, finiteOrNull(player.hrProb1Plus) ?? 0);
+  const hrProb = getMlbHrProbability(player);
+  const expectedHr = getMlbExpectedHr(player);
   const boomRate = Math.max(0, finiteOrNull(player.boomRate) ?? 0);
-  return ceilingEdge + (hrProb * 12) + (boomRate * 16);
+  return ceilingEdge
+    + (hrProb * 12)
+    + (expectedHr * 4)
+    + (boomRate * 16)
+    + (getMlbHrCeilingSignal(player) * 2);
 }
 
 function isHighOwnedMlbPlayer(player: MlbOptimizerPlayer, mode: OptimizerMode): boolean {
@@ -332,7 +405,9 @@ function getMlbGppBonus(player: MlbOptimizerPlayer, mode: OptimizerMode): number
 
   const ceiling = finiteOrNull(player.projCeiling) ?? (projection * 1.7);
   const ceilingEdge = Math.max(0, ceiling - projection);
-  const hrProb = Math.max(0, finiteOrNull(player.hrProb1Plus) ?? 0);
+  const hrProb = getMlbHrProbability(player);
+  const hrCeilingSignal = getMlbHrCeilingSignal(player);
+  const hrEdgePct = getMlbHrEdgePct(player);
   const impliedRuns = getMlbTeamImpliedRuns(player);
   const runEnvironmentBoost = impliedRuns != null
     ? Math.max(0, impliedRuns - MLB_LEAGUE_AVG_TEAM_TOTAL) * 0.22
@@ -342,6 +417,8 @@ function getMlbGppBonus(player: MlbOptimizerPlayer, mode: OptimizerMode): number
   return (ceilingEdge * profile.hitterCeilingEdgeWeight)
     + (boomRate * profile.hitterBoomWeight)
     + (hrProb * profile.hrWeight)
+    + (hrCeilingSignal * profile.hrCeilingWeight)
+    + (Math.max(0, hrEdgePct ?? 0) * profile.hrEdgeWeight)
     + runEnvironmentBoost
     + orderCeilingBonus
     - chalkPenalty;
@@ -399,6 +476,10 @@ export function computeMlbGpp2HitterOrderBonus(
   const value = projection / Math.max(1, player.salary / 1000);
   const valueMultiplier = clamp(1 + ((value - 2.0) * 0.2), 0.85, 1.15);
   const projectionMultiplier = clamp((projection - 3.5) / 5.0, 0.35, 1);
+  const hrProb = getMlbHrProbability(player);
+  const hrMultiplier = order === 2 || order === 3
+    ? clamp(0.9 + (hrProb * 2.2), 0.95, 1.35)
+    : clamp(0.95 + (hrProb * 1.5), 0.9, 1.2);
   const projectedOwnership = getMlbProjectedOwnership(player);
   const ownershipMultiplier = order === 2 || order === 3
     ? projectedOwnership <= 10
@@ -421,6 +502,7 @@ export function computeMlbGpp2HitterOrderBonus(
     * projectionMultiplier
     * teamEnvironmentMultiplier
     * valueMultiplier
+    * hrMultiplier
     * ownershipMultiplier
     * 1000,
   ) / 1000;
@@ -480,7 +562,7 @@ export function computeHrBonusMap(
     }
   }
   for (const batter of batters) {
-    const hrProb = batter.hrProb1Plus ?? 0;
+    const hrProb = getMlbHrProbability(batter);
     if (hrProb < threshold) continue;
     const order = batter.dkStartingLineupOrder;
     const teamId = batter.teamId;

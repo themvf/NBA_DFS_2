@@ -45,6 +45,7 @@ type SortCol =
   | "ourOwnPct"
   | "liveOwnPct"
   | "ourLeverage"
+  | "hrProb"
   | "value";
 type SortDir = "asc" | "desc";
 type TeamStackRule = NbaTeamStackRule | MlbTeamStackRule;
@@ -249,6 +250,22 @@ function fmtAmericanOdds(v: number | null | undefined): string {
 
 function mlToProb(ml: number): number {
   return ml >= 0 ? 100 / (ml + 100) : Math.abs(ml) / (Math.abs(ml) + 100);
+}
+
+function getPlayerHrMarketProb(player: DkPlayerRow): number | null {
+  if (player.propStlPrice == null) return null;
+  return mlToProb(player.propStlPrice);
+}
+
+function getPlayerHrEdgePct(player: DkPlayerRow): number | null {
+  const marketProb = getPlayerHrMarketProb(player);
+  if (marketProb == null || player.hrProb1Plus == null) return null;
+  return (player.hrProb1Plus - marketProb) * 100;
+}
+
+function fmtSignedPctPoint(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `${v >= 0 ? "+" : ""}${v.toFixed(1)} pts`;
 }
 
 function computeTeamImpliedTotal(
@@ -1140,7 +1157,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
   const topSpacerHeight = startIndex * rowEstimate;
   const bottomSpacerHeight = Math.max(0, (visiblePlayers.length - endIndex) * rowEstimate);
   const columnCount = sport === "mlb"
-    ? (supportsRuleControls ? 17 : 16)
+    ? (supportsRuleControls ? 18 : 17)
     : (supportsRuleControls ? 18 : 17);
 
   useEffect(() => {
@@ -1237,6 +1254,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
               {sport === "mlb" && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lineup</th>}
               {sport === "mlb" && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Odds</th>}
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Props</th>
+              {sport === "mlb" && <SortHeader col="hrProb" label="HR%" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />}
               {supportsRuleControls && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Rules</th>}
               <SortHeader col="salary" label="Salary" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
               <SortHeader col="avgFptsDk" label="DK Proj" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
@@ -1303,6 +1321,8 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
               const value = liveProjDisplay != null ? liveProjDisplay / (p.salary / 1000) : null;
               const propTokens = getPlayerPropTokens(p, sport);
               const odds = getPlayerOddsContext(p);
+              const hrMarketProb = sport === "mlb" ? getPlayerHrMarketProb(p) : null;
+              const hrEdgePct = sport === "mlb" ? getPlayerHrEdgePct(p) : null;
               const pos = displayPos(p.eligiblePositions, sport);
               const mlbLineupBadge = sport === "mlb" ? getMlbLineupBadge(p) : null;
               const mlbPitcherDecisionBadge = sport === "mlb" ? mlbPitcherDecisionBadges.get(p.id) : null;
@@ -1458,6 +1478,24 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                       <span className="text-gray-400">—</span>
                     )}
                   </td>
+                  {sport === "mlb" && (
+                    <td className="px-3 py-1.5 text-right text-[11px]">
+                      {!isMlbPitcherPlayer(p) && p.hrProb1Plus != null ? (
+                        <div className="space-y-0.5">
+                          <div className="font-semibold text-rose-700">{(p.hrProb1Plus * 100).toFixed(1)}%</div>
+                          <div className={hrEdgePct == null ? "text-gray-400" : hrEdgePct >= 0 ? "text-emerald-700" : "text-red-500"}>
+                            {fmtSignedPctPoint(hrEdgePct)}
+                          </div>
+                          <div className="text-gray-400">
+                            Exp {p.expectedHr != null ? p.expectedHr.toFixed(2) : "—"}
+                            {hrMarketProb != null ? ` | Mkt ${(hrMarketProb * 100).toFixed(1)}%` : ""}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                  )}
                   {supportsRuleControls && (
                     <td className="px-3 py-1.5 text-xs">
                       <div className="flex flex-wrap gap-1">
@@ -2032,6 +2070,8 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
                             bv = sport === "nba" ? (b.liveOwnPct ?? b.projOwnPct ?? b.ourOwnPct ?? -99) : (b.ourOwnPct ?? -99); break;
         case "ourLeverage": av = sport === "nba" ? nbaLevA : (a.ourLeverage ?? -99);
                             bv = sport === "nba" ? nbaLevB : (b.ourLeverage ?? -99); break;
+        case "hrProb":      av = sport === "mlb" && !isMlbPitcherPlayer(a) ? (a.hrProb1Plus ?? -99) : -99;
+                            bv = sport === "mlb" && !isMlbPitcherPlayer(b) ? (b.hrProb1Plus ?? -99) : -99; break;
         case "value":       av = (sport === "nba" ? nbaProjA : (a.ourProj ?? 0)) / (a.salary / 1000);
                             bv = (sport === "nba" ? nbaProjB : (b.ourProj ?? 0)) / (b.salary / 1000);    break;
         default:            return a.name.localeCompare(b.name);
@@ -2123,16 +2163,21 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
       .map((player) => {
         const badge = getMlbHrBadge(player)!;
         const odds = getPlayerOddsContext(player);
+        const marketProb = getPlayerHrMarketProb(player);
+        const edgePct = getPlayerHrEdgePct(player);
         return {
           player,
           badge,
           hrPct: player.hrProb1Plus != null ? Math.round(player.hrProb1Plus * 100) : null,
           expectedHr: player.expectedHr ?? null,
+          marketProb,
+          edgePct,
           teamTotal: odds.teamTotal,
         };
       })
       .sort((a, b) =>
         (b.player.hrProb1Plus ?? -1) - (a.player.hrProb1Plus ?? -1)
+        || ((b.edgePct ?? -999) - (a.edgePct ?? -999))
         || (b.expectedHr ?? -1) - (a.expectedHr ?? -1)
         || a.player.name.localeCompare(b.player.name)
       );
@@ -3441,7 +3486,7 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
             GPP Blowup Candidates
             <span
               className="ml-1.5 text-xs text-gray-400 font-normal cursor-help"
-              title="Low-salary batters with high ceiling relative to their team's implied run total. Score = (teamTotal / 4.5) × ceiling × (proj / salary×$1k) ÷ 10. Excludes SP/RP."
+              title="Low-salary batters with high ceiling relative to team total, HR probability, expected HR, and ownership. Excludes SP/RP."
             >(?)</span>
           </h2>
           <div className="overflow-x-auto">
@@ -3454,12 +3499,14 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
                   <th className="py-1">Proj</th>
                   <th className="py-1">Ceiling</th>
                   <th className="py-1">Value</th>
+                  <th className="py-1">HR</th>
+                  <th className="py-1">Own</th>
                   <th className="py-1">Team Tot</th>
                   <th className="py-1">Score</th>
                 </tr>
               </thead>
               <tbody>
-                {mlbBlowupCandidates.map(({ player, blowupScore, teamTotal, proj, ceiling, value }) => (
+                {mlbBlowupCandidates.map(({ player, blowupScore, teamTotal, proj, ceiling, value, hrProb, projectedOwnership }) => (
                   <tr key={player.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="py-1 font-medium">{player.name}</td>
                     <td className="py-1 pl-2 text-gray-500">{player.eligiblePositions}</td>
@@ -3467,6 +3514,8 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
                     <td className="py-1 text-right">{proj?.toFixed(1) ?? "—"}</td>
                     <td className="py-1 text-right text-blue-700">{ceiling?.toFixed(1) ?? "—"}</td>
                     <td className="py-1 text-right">{value?.toFixed(2) ?? "—"}</td>
+                    <td className="py-1 text-right text-rose-700">{hrProb != null ? `${(hrProb * 100).toFixed(1)}%` : "—"}</td>
+                    <td className="py-1 text-right">{projectedOwnership != null ? `${projectedOwnership.toFixed(1)}%` : "—"}</td>
                     <td className="py-1 text-right">{teamTotal?.toFixed(1) ?? "—"}</td>
                     <td className="py-1 text-right font-semibold text-green-700">{blowupScore.toFixed(1)}</td>
                   </tr>
@@ -3504,11 +3553,13 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
                   <th className="py-1">Salary</th>
                   <th className="py-1">1+ HR</th>
                   <th className="py-1">Exp HR</th>
+                  <th className="py-1">Market</th>
+                  <th className="py-1">Edge</th>
                   <th className="py-1">Team Tot</th>
                 </tr>
               </thead>
               <tbody>
-                {mlbHrTargets.map(({ player, badge, hrPct, expectedHr, teamTotal }) => (
+                {mlbHrTargets.map(({ player, badge, hrPct, expectedHr, marketProb, edgePct, teamTotal }) => (
                   <tr key={player.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="py-1 font-medium">
                       {player.name}
@@ -3522,6 +3573,10 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
                     <td className="py-1 text-right">{fmtSalary(player.salary)}</td>
                     <td className="py-1 text-right font-semibold text-rose-700">{hrPct != null ? `${hrPct}%` : "—"}</td>
                     <td className="py-1 text-right">{expectedHr != null ? expectedHr.toFixed(2) : "—"}</td>
+                    <td className="py-1 text-right">{marketProb != null ? `${(marketProb * 100).toFixed(1)}%` : "—"}</td>
+                    <td className={`py-1 text-right ${edgePct == null ? "text-gray-400" : edgePct >= 0 ? "text-emerald-700" : "text-red-500"}`}>
+                      {fmtSignedPctPoint(edgePct)}
+                    </td>
                     <td className="py-1 text-right">{teamTotal != null ? teamTotal.toFixed(1) : "—"}</td>
                   </tr>
                 ))}

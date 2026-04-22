@@ -24,6 +24,7 @@ const basePlayer: MlbOptimizerPlayer = {
   projOwnPct: 8,
   projCeiling: 14,
   boomRate: 0.1,
+  expectedHr: 0.13,
   dkInStartingLineup: true,
   dkStartingLineupOrder: 3,
   dkTeamLineupConfirmed: true,
@@ -40,6 +41,9 @@ const basePlayer: MlbOptimizerPlayer = {
   propPts: null,
   propReb: null,
   propAst: null,
+  propStl: 0.5,
+  propStlPrice: 650,
+  propStlBook: "TestBook",
 };
 
 const gpp2Bonus = computeMlbGpp2HitterOrderBonus(basePlayer, "gpp2");

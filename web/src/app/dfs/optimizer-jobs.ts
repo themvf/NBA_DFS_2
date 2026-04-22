@@ -66,6 +66,11 @@ function sanitizeLeverage(value: number | null | undefined): number | null {
   return finiteOrNull(value);
 }
 
+function sanitizeProbability(value: number | null | undefined): number | null {
+  const finite = finiteOrNull(value);
+  return finite == null ? null : Math.max(0, Math.min(0.9999, finite));
+}
+
 function computePoolLeverage(
   ourProj: number,
   projOwnPct: number,
@@ -226,6 +231,7 @@ async function loadMlbOptimizerPool(
       dp.avg_fpts_dk AS "avgFptsDk",
       dp.proj_ceiling AS "projCeiling",
       dp.boom_rate AS "boomRate",
+      dp.expected_hr AS "expectedHr",
       dp.dk_in_starting_lineup AS "dkInStartingLineup",
       dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
       dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
@@ -241,7 +247,10 @@ async function loadMlbOptimizerPool(
       dp.hr_prob_1plus AS "hrProb1Plus",
       dp.prop_pts AS "propPts",
       dp.prop_reb AS "propReb",
-      dp.prop_ast AS "propAst"
+      dp.prop_ast AS "propAst",
+      dp.prop_stl AS "propStl",
+      dp.prop_stl_price AS "propStlPrice",
+      dp.prop_stl_book AS "propStlBook"
     FROM dk_players dp
     LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
     LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
@@ -271,6 +280,11 @@ async function loadMlbOptimizerPool(
         ourLeverage: calibratedLeverage,
         linestarProj,
         projOwnPct,
+        expectedHr: sanitizeProjection(player.expectedHr),
+        hrProb1Plus: sanitizeProbability(player.hrProb1Plus),
+        propStl: finiteOrNull(player.propStl),
+        propStlPrice: player.propStlPrice == null ? null : Math.round(Number(player.propStlPrice)),
+        propStlBook: player.propStlBook ?? null,
       };
     })
     .filter((player) =>

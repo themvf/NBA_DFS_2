@@ -123,7 +123,7 @@ const LEAGUE_AVG_USAGE      = 20.0;
 const CURRENT_SEASON        = "2025-26";
 const NBA_PROJECTION_MODEL_VERSION = "blend_v1";
 const MLB_OWNERSHIP_MODEL_VERSION = "mlb_ownership_v1";
-const MLB_HOMERUN_MODEL_VERSION = "mlb_homerun_v2";
+const MLB_HOMERUN_MODEL_VERSION = "mlb_homerun_v3";
 const MAIN_LINE_TARGET_PROB = 110 / 210; // -110 hold-adjusted "main" line target
 const NBA_PROP_MARKET_TO_STAT: Record<string, NbaPropAuditStat> = {
   player_points: "pts",
@@ -173,6 +173,11 @@ function sanitizeProjection(value: number | null | undefined): number | null {
 function sanitizeOwnershipPct(value: number | null | undefined): number | null {
   const finite = finiteOrNull(value);
   return finite == null ? null : Math.max(0, Math.min(100, finite));
+}
+
+function sanitizeProbability(value: number | null | undefined): number | null {
+  const finite = finiteOrNull(value);
+  return finite == null ? null : Math.max(0, Math.min(0.9999, finite));
 }
 
 function sanitizeLeverage(value: number | null | undefined): number | null {
@@ -5243,12 +5248,57 @@ const MLB_DK_OVERRIDES: Record<string, string> = {
 const MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5;
 const MLB_LEAGUE_AVG_XFIP      = 4.20;
 const MLB_LEAGUE_AVG_K_PCT     = 0.225;
+const MLB_LEAGUE_AVG_ISO       = 0.165;
+const MLB_LEAGUE_AVG_HR_PER_9  = 1.10;
+const MLB_LEAGUE_AVG_HR_FB     = 0.12;
 const MLB_ORDER_PA_FACTOR: Record<number, number> = {
-  1: 1.08, 2: 1.08, 3: 1.05, 4: 1.05,
-  5: 1.00, 6: 1.00, 7: 0.93, 8: 0.93, 9: 0.93,
+  1: 1.08, 2: 1.12, 3: 1.10, 4: 1.04,
+  5: 1.00, 6: 0.96, 7: 0.93, 8: 0.90, 9: 0.88,
 };
 
 function mlbCap(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+
+function roundMlbMetric(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function computeMlbProjectionDistribution(
+  projection: number | null,
+  pitcherFlag: boolean,
+  expectedHr: number | null,
+  hrProb1Plus: number | null,
+): { projFloor: number | null; projCeiling: number | null; boomRate: number | null } {
+  if (projection == null || !Number.isFinite(projection) || projection <= 0) {
+    return { projFloor: null, projCeiling: null, boomRate: null };
+  }
+
+  if (pitcherFlag) {
+    return {
+      projFloor: roundMlbMetric(Math.max(0, projection * 0.42)),
+      projCeiling: roundMlbMetric(projection * 1.65),
+      boomRate: roundMlbMetric(mlbCap(0.04 + (projection / 85), 0.03, 0.42)),
+    };
+  }
+
+  const hrProb = mlbCap(hrProb1Plus ?? 0, 0, 0.9999);
+  const expHr = Math.max(0, expectedHr ?? 0);
+  return {
+    projFloor: roundMlbMetric(Math.max(0, projection * 0.14)),
+    projCeiling: roundMlbMetric((projection * 1.75) + (hrProb * 14) + (expHr * 4)),
+    boomRate: roundMlbMetric(mlbCap(0.035 + (projection / 220) + (hrProb * 0.62) + (expHr * 0.12), 0.02, 0.55)),
+  };
+}
+
+function positiveMlbFloat(value: unknown): number | null {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function mlbRateFraction(value: unknown): number | null {
+  const numeric = positiveMlbFloat(value);
+  if (numeric == null) return null;
+  return numeric > 1 ? numeric / 100 : numeric;
+}
 
 const MLB_MAX_CURRENT_SEASON_WEIGHT = 0.9;
 const MLB_BATTER_PRIOR_SEASON_PIVOT = 80;
@@ -5821,10 +5871,24 @@ function computeMlbBatterHrSignal(
   const hrPf = mlbCap((park?.hrFactor as number) || 1.0, 0.7, 1.5);
   const orderFactor = confirmedOrder != null ? (MLB_ORDER_PA_FACTOR[confirmedOrder] || 1.0) : 1.0;
 
+  const iso = positiveMlbFloat(b.iso);
+  const slg = positiveMlbFloat(b.slg);
+  const isoFactor = iso != null ? mlbCap(iso / MLB_LEAGUE_AVG_ISO, 0.7, 1.65) : 1.0;
+  const slgFactor = slg != null ? mlbCap(slg / 0.410, 0.8, 1.35) : 1.0;
+  const rawPowerFactor = Math.sqrt(isoFactor * slgFactor);
+  const powerFactor = 1.0 + (rawPowerFactor - 1.0) * 0.35;
+
   let xfipFactor = 1.0;
+  let pitcherHrFactor = 1.0;
   if (oppSp) {
-    const spXfip = (oppSp.xfip as number) || (oppSp.era as number) || MLB_LEAGUE_AVG_XFIP;
+    const spXfip = positiveMlbFloat(oppSp.xfip) ?? positiveMlbFloat(oppSp.era) ?? MLB_LEAGUE_AVG_XFIP;
     xfipFactor = mlbCap(spXfip / MLB_LEAGUE_AVG_XFIP, 0.6, 1.8);
+    const hrPer9 = positiveMlbFloat(oppSp.hrPer9);
+    const hrFbPct = mlbRateFraction(oppSp.hrFbPct);
+    const hr9Factor = hrPer9 != null ? mlbCap(hrPer9 / MLB_LEAGUE_AVG_HR_PER_9, 0.65, 1.75) : 1.0;
+    const hrFbFactor = hrFbPct != null ? mlbCap(hrFbPct / MLB_LEAGUE_AVG_HR_FB, 0.7, 1.6) : 1.0;
+    const rawPitcherHrFactor = Math.sqrt(hr9Factor * hrFbFactor);
+    pitcherHrFactor = 1.0 + (rawPitcherHrFactor - 1.0) * 0.45;
   }
 
   let matchupFactor = 1.0;
@@ -5835,7 +5899,11 @@ function computeMlbBatterHrSignal(
     if (wrcVs) matchupFactor = mlbCap(wrcVs / wrcBase, 0.5, 1.75);
   }
 
-  const hrFactorAdj = mlbCap(envFactor * hrPf * xfipFactor * orderFactor * matchupFactor, 0.3, 3.0);
+  const hrFactorAdj = mlbCap(
+    envFactor * hrPf * powerFactor * xfipFactor * pitcherHrFactor * orderFactor * matchupFactor,
+    0.3,
+    3.0,
+  );
   const expectedHr = Math.max(0, hrPg * hrFactorAdj);
   const hrProb1Plus = 1 - Math.exp(-expectedHr);
   return {
@@ -6273,6 +6341,13 @@ async function enrichAndSaveMlb(
       homerunSnapshots.push(homerunSnapshot);
     }
 
+    const distribution = computeMlbProjectionDistribution(
+      sanitizeProjection(ourProj ?? linestarProj ?? p.avgFptsDk ?? null),
+      pitcherFlag,
+      expectedHr,
+      hrProb1Plus,
+    );
+
     insertValues.push({
       slateId, dkPlayerId: p.dkId, name: p.name,
       teamAbbrev: p.teamAbbrev, teamId: null, mlbTeamId, matchupId,
@@ -6289,6 +6364,9 @@ async function enrichAndSaveMlb(
       isHome,
       expectedHr,
       hrProb1Plus,
+      projFloor: distribution.projFloor,
+      projCeiling: distribution.projCeiling,
+      boomRate: distribution.boomRate,
       ourProj, ourLeverage: null as number | null, ourOwnPct: null as number | null, isOut,
     });
   }
@@ -6328,6 +6406,10 @@ async function enrichAndSaveMlb(
       liveProj: null,
       blendProj: null,
       projCeiling: sanitizeProjection((player.projCeiling as number | null | undefined) ?? null),
+      expectedHr: finiteOrNull((player.expectedHr as number | null | undefined) ?? null),
+      hrProb1Plus: finiteOrNull((player.hrProb1Plus as number | null | undefined) ?? null),
+      projOwnPct: sanitizeOwnershipPct((player.projOwnPct as number | null | undefined) ?? null),
+      ourOwnPct: sanitizeOwnershipPct((player.ourOwnPct as number | null | undefined) ?? null),
       teamTotal: finiteOrNull((player.teamImplied as number | null | undefined) ?? null),
       lineupOrder: (player.dkStartingLineupOrder as number | null | undefined) ?? null,
     })),
@@ -6365,6 +6447,9 @@ async function enrichAndSaveMlb(
         ourProj: sql`EXCLUDED.our_proj`,
         expectedHr: sql`EXCLUDED.expected_hr`,
         hrProb1Plus: sql`EXCLUDED.hr_prob_1plus`,
+        projFloor: sql`EXCLUDED.proj_floor`,
+        projCeiling: sql`EXCLUDED.proj_ceiling`,
+        boomRate: sql`EXCLUDED.boom_rate`,
         ourLeverage: sql`EXCLUDED.our_leverage`,
         ourOwnPct: sql`EXCLUDED.our_own_pct`,
         dkInStartingLineup: sql`EXCLUDED.dk_in_starting_lineup`,
@@ -6785,6 +6870,7 @@ export async function runMlbOptimizer(
       dp.our_proj AS "ourProj", dp.our_leverage AS "ourLeverage",
       dp.linestar_proj AS "linestarProj", dp.proj_own_pct AS "projOwnPct", dp.avg_fpts_dk AS "avgFptsDk",
       dp.proj_ceiling AS "projCeiling", dp.boom_rate AS "boomRate",
+      dp.expected_hr AS "expectedHr",
       dp.dk_in_starting_lineup AS "dkInStartingLineup",
       dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
       dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
@@ -6792,7 +6878,8 @@ export async function runMlbOptimizer(
       mt.logo_url AS "teamLogo", mt.name AS "teamName",
       mm.home_team_id AS "homeTeamId", mm.away_team_id AS "awayTeamId",
       mm.vegas_total AS "vegasTotal", mm.home_implied AS "homeImplied", mm.away_implied AS "awayImplied",
-      dp.hr_prob_1plus AS "hrProb1Plus", dp.prop_pts AS "propPts", dp.prop_reb AS "propReb", dp.prop_ast AS "propAst"
+      dp.hr_prob_1plus AS "hrProb1Plus", dp.prop_pts AS "propPts", dp.prop_reb AS "propReb", dp.prop_ast AS "propAst",
+      dp.prop_stl AS "propStl", dp.prop_stl_price AS "propStlPrice", dp.prop_stl_book AS "propStlBook"
     FROM dk_players dp
     LEFT JOIN mlb_teams mt ON mt.team_id = dp.mlb_team_id
     LEFT JOIN mlb_matchups mm ON mm.id = dp.matchup_id
@@ -6821,6 +6908,11 @@ export async function runMlbOptimizer(
         ourLeverage: calibratedLeverage,
         linestarProj,
         projOwnPct,
+        expectedHr: sanitizeProjection(p.expectedHr),
+        hrProb1Plus: sanitizeProbability(p.hrProb1Plus),
+        propStl: finiteOrNull(p.propStl),
+        propStlPrice: p.propStlPrice == null ? null : Math.round(Number(p.propStlPrice)),
+        propStlBook: p.propStlBook ?? null,
       };
     })
     .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
