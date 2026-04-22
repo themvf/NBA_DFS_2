@@ -501,8 +501,12 @@ export type MlbHomerunCandidate = {
   opposingPitcherIpPg: number | null;
   opposingPitcherHrPer9: number | null;
   opposingPitcherHrFbPct: number | null;
+  opposingPitcherKPer9: number | null;
+  opposingPitcherBbPer9: number | null;
+  opposingPitcherFip: number | null;
   opposingPitcherXfip: number | null;
   opposingPitcherEra: number | null;
+  opposingPitcherWhip: number | null;
   marketHrLine: number | null;
   marketHrPrice: number | null;
   marketHrBook: string | null;
@@ -744,7 +748,7 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
     ),
     latest_pitcher AS (
       SELECT DISTINCT ON (player_id)
-        player_id, name, hand, games, ip_pg, hr_per_9, hr_fb_pct, xfip, era
+        player_id, name, hand, games, ip_pg, hr_per_9, hr_fb_pct, k_per_9, bb_per_9, fip, xfip, era, whip
       FROM mlb_pitcher_stats
       ORDER BY player_id, season DESC, fetched_at DESC, id DESC
     ),
@@ -757,8 +761,12 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
         ip_pg,
         hr_per_9,
         hr_fb_pct,
+        k_per_9,
+        bb_per_9,
+        fip,
         xfip,
-        era
+        era,
+        whip
       FROM mlb_pitcher_stats
       ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
     ),
@@ -863,6 +871,21 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
           ELSE NULL
         END AS "opposingPitcherHrFbPct",
         CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.k_per_9, asp_name.k_per_9), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.k_per_9, hsp_name.k_per_9), 0)
+          ELSE NULL
+        END AS "opposingPitcherKPer9",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.bb_per_9, asp_name.bb_per_9), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.bb_per_9, hsp_name.bb_per_9), 0)
+          ELSE NULL
+        END AS "opposingPitcherBbPer9",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.fip, asp_name.fip), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.fip, hsp_name.fip), 0)
+          ELSE NULL
+        END AS "opposingPitcherFip",
+        CASE
           WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.xfip, asp_name.xfip), 0)
           WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.xfip, hsp_name.xfip), 0)
           ELSE NULL
@@ -872,6 +895,11 @@ export async function getMlbHomerunBoard(params: MlbHomerunBoardParams | string 
           WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.era, hsp_name.era), 0)
           ELSE NULL
         END AS "opposingPitcherEra",
+        CASE
+          WHEN dp.mlb_team_id = mm.home_team_id THEN NULLIF(COALESCE(asp_id.whip, asp_name.whip), 0)
+          WHEN dp.mlb_team_id = mm.away_team_id THEN NULLIF(COALESCE(hsp_id.whip, hsp_name.whip), 0)
+          ELSE NULL
+        END AS "opposingPitcherWhip",
         hrp.line AS "marketHrLine",
         hrp.price AS "marketHrPrice",
         hrp.bookmaker_title AS "marketHrBook",

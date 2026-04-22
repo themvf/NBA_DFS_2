@@ -6,7 +6,7 @@ Batter model:
   1. Base: per-game rates from mlb_batter_stats (EWMA-smoothed via Phase 3)
   2. Game environment: team implied total / LEAGUE_AVG_TEAM_TOTAL
   3. Park: runs_factor (all contact), hr_factor (HR-specific)
-  4. Pitcher quality: xFIP / LEAGUE_AVG_XFIP scales hit/walk production
+  4. Pitcher quality: xFIP plus HR/9 and HR/FB scale HR environment
   5. L/R split: wrc_plus_vs_X / wrc_plus overall (ratio vs baseline)
   6. Batting order PA weight: lineup spots 1-2 get ~8% more PAs than average
 
@@ -24,6 +24,9 @@ League average constants calibrated to 2024-25 MLB:
   LEAGUE_AVG_TEAM_TOTAL = 4.5  (runs/game/team)
   LEAGUE_AVG_XFIP       = 4.20 (starter xFIP)
   LEAGUE_AVG_K_PCT      = 0.225 (22.5% team K rate)
+  LEAGUE_AVG_ISO        = 0.165 (hitter isolated power)
+  LEAGUE_AVG_HR_PER_9   = 1.10 (starter HR/9)
+  LEAGUE_AVG_HR_FB      = 0.12 (starter HR/FB)
 """
 
 from __future__ import annotations
@@ -35,6 +38,9 @@ import math
 MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5    # runs per team per game
 MLB_LEAGUE_AVG_XFIP       = 4.20   # starter xFIP league average
 MLB_LEAGUE_AVG_K_PCT      = 0.225  # team K rate (22.5% of PA)
+MLB_LEAGUE_AVG_ISO        = 0.165  # hitter ISO baseline
+MLB_LEAGUE_AVG_HR_PER_9   = 1.10   # starter HR/9 baseline
+MLB_LEAGUE_AVG_HR_FB      = 0.12   # starter HR/FB baseline
 
 # PA weight by batting order slot.
 # Recalibrated from 2026 season data (n≈30/slot).  The original 1/2 grouping
@@ -56,6 +62,21 @@ _ORDER_PA_FACTOR: dict[int, float] = {
     8: 0.92,
     9: 0.90,
 }
+
+
+def _positive_float(value) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) and parsed > 0 else None
+
+
+def _rate_fraction(value) -> float | None:
+    parsed = _positive_float(value)
+    if parsed is None:
+        return None
+    return parsed / 100.0 if parsed > 1.0 else parsed
 
 
 # ── Public DK scoring formulas ────────────────────────────────────────────────
@@ -244,11 +265,27 @@ def compute_batter_hr_signal(
     hr_pf = _cap(float(park.get("hr_factor") or 1.0), 0.70, 1.50) if park else 1.0
     order_factor = _ORDER_PA_FACTOR.get(int(confirmed_order), 1.0) if confirmed_order else 1.0
 
+    iso = _positive_float(batter.get("iso"))
+    slg = _positive_float(batter.get("slg"))
+    iso_factor = _cap(iso / MLB_LEAGUE_AVG_ISO, 0.70, 1.65) if iso else 1.0
+    slg_factor = _cap(slg / 0.410, 0.80, 1.35) if slg else 1.0
+    raw_power_factor = math.sqrt(iso_factor * slg_factor)
+    # HR/G is still the anchor. ISO/SLG act as a stabilizer, not a second full
+    # count of the same power signal.
+    power_factor = 1.0 + (raw_power_factor - 1.0) * 0.35
+
     if opp_sp:
-        sp_qual = float(opp_sp.get("xfip") or opp_sp.get("era") or MLB_LEAGUE_AVG_XFIP)
+        sp_qual = _positive_float(opp_sp.get("xfip")) or _positive_float(opp_sp.get("era")) or MLB_LEAGUE_AVG_XFIP
         xfip_factor = _cap(sp_qual / MLB_LEAGUE_AVG_XFIP, 0.60, 1.80)
+        hr_per_9 = _positive_float(opp_sp.get("hr_per_9"))
+        hr_fb_pct = _rate_fraction(opp_sp.get("hr_fb_pct"))
+        hr9_factor = _cap(hr_per_9 / MLB_LEAGUE_AVG_HR_PER_9, 0.65, 1.75) if hr_per_9 else 1.0
+        hr_fb_factor = _cap(hr_fb_pct / MLB_LEAGUE_AVG_HR_FB, 0.70, 1.60) if hr_fb_pct else 1.0
+        raw_pitcher_hr_factor = math.sqrt(hr9_factor * hr_fb_factor)
+        pitcher_hr_factor = 1.0 + (raw_pitcher_hr_factor - 1.0) * 0.45
     else:
         xfip_factor = 1.0
+        pitcher_hr_factor = 1.0
 
     matchup_factor = 1.0
     if (opp_sp and opp_sp.get("hand")
@@ -260,7 +297,7 @@ def compute_batter_hr_signal(
             matchup_factor = _cap(float(wrc_vs) / float(batter["wrc_plus"]), 0.50, 1.75)
 
     hr_factor_adj = _cap(
-        env_factor * hr_pf * xfip_factor * order_factor * matchup_factor,
+        env_factor * hr_pf * power_factor * xfip_factor * pitcher_hr_factor * order_factor * matchup_factor,
         0.30,
         3.00,
     )

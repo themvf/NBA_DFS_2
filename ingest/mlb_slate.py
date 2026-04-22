@@ -682,6 +682,7 @@ def build_player_pool_mlb(
     matchups = db.execute(
         """
         SELECT id, home_team_id, away_team_id,
+               home_sp_id, home_sp_name, away_sp_id, away_sp_name,
                vegas_total, home_ml, away_ml,
                home_implied, away_implied, ballpark
         FROM mlb_matchups
@@ -729,8 +730,9 @@ def build_player_pool_mlb(
         )
         pitcher_rows = db.execute(
             """
-            SELECT name, team_id, games, avg_fpts_pg, fpts_std,
-                   ip_pg, k_per_9, bb_per_9, era, xfip, whip,
+            SELECT player_id, name, team_id, games, avg_fpts_pg, fpts_std,
+                   ip_pg, k_per_9, bb_per_9, era, fip, xfip, hr_per_9,
+                   k_pct, bb_pct, hr_fb_pct, whip,
                    hand, win_pct, qs_pct
             FROM mlb_pitcher_stats
             WHERE season = %s
@@ -762,8 +764,9 @@ def build_player_pool_mlb(
             )
             prior_pitcher_rows = db.execute(
                 """
-                SELECT name, team_id, games, avg_fpts_pg, fpts_std,
-                       ip_pg, k_per_9, bb_per_9, era, xfip, whip,
+                SELECT player_id, name, team_id, games, avg_fpts_pg, fpts_std,
+                       ip_pg, k_per_9, bb_per_9, era, fip, xfip, hr_per_9,
+                       k_pct, bb_pct, hr_fb_pct, whip,
                        hand, win_pct, qs_pct
                 FROM mlb_pitcher_stats
                 WHERE season = %s
@@ -823,10 +826,35 @@ def build_player_pool_mlb(
     for team_id in set(current_parks) | set(prior_parks):
         park_factors[team_id] = current_parks.get(team_id) or prior_parks.get(team_id)
 
-    # SP pre-pass: identify today's starting pitchers from DK eligible_positions.
-    # Stored by the SP's own team_id so batters can look up their opp_sp via
-    # the opposing team_id at projection time.
+    # SP pre-pass: identify today's starting pitchers from mlb_matchups first.
+    # HR-only DraftKings contests often contain hitters only, so relying on DK
+    # SP rows would silently remove pitcher context from HR probabilities.
     sp_by_team: dict[int, dict] = {}
+    matchup_sp_coverage = 0
+    for matchup in matchups:
+        for team_id, pitcher_name in (
+            (matchup.get("home_team_id"), matchup.get("home_sp_name")),
+            (matchup.get("away_team_id"), matchup.get("away_sp_name")),
+        ):
+            if not team_id or not pitcher_name or team_id in sp_by_team:
+                continue
+            _sp_match = _match_player_stats_across_seasons(
+                pitcher_name,
+                team_id,
+                current_pitcher_meta,
+                prior_pitcher_meta,
+                _pitcher_sample,
+                _PITCHER_PRIOR_SEASON_PIVOT,
+                _PITCHER_TEAM_CHANGE_PIVOT,
+                _PITCHER_TEAM_CHANGE_MIN_WEIGHT,
+            )
+            _sp_stats = _blend_pitcher_stats(_sp_match, team_id)
+            if _sp_stats:
+                sp_by_team[team_id] = _sp_stats
+                matchup_sp_coverage += 1
+
+    # DK SP rows are still useful as a fallback if schedule starters are not
+    # posted but a classic DFS slate includes pitchers in the salary pool.
     for _p in dk_players:
         if not _is_sp(_p.get("eligible_positions", "")) or not _dk_pitcher_is_probable(_p):
             continue
@@ -1037,6 +1065,7 @@ def build_player_pool_mlb(
         f"{pitcher_coverage['blended']} blended | "
         f"{pitcher_coverage['prior_only']} prior"
     )
+    print(f"  Matchup SP context: {matchup_sp_coverage}/{len(matchups) * 2 if matchups else 0} starters")
     print(
         "  Team changers: "
         f"{batter_coverage['team_change_accelerated'] + pitcher_coverage['team_change_accelerated']}"

@@ -123,7 +123,7 @@ const LEAGUE_AVG_USAGE      = 20.0;
 const CURRENT_SEASON        = "2025-26";
 const NBA_PROJECTION_MODEL_VERSION = "blend_v1";
 const MLB_OWNERSHIP_MODEL_VERSION = "mlb_ownership_v1";
-const MLB_HOMERUN_MODEL_VERSION = "mlb_homerun_v1";
+const MLB_HOMERUN_MODEL_VERSION = "mlb_homerun_v2";
 const MAIN_LINE_TARGET_PROB = 110 / 210; // -110 hold-adjusted "main" line target
 const NBA_PROP_MARKET_TO_STAT: Record<string, NbaPropAuditStat> = {
   player_points: "pts",

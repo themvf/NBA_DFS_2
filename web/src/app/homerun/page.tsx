@@ -26,6 +26,12 @@ const fmtNum = (value: number | null | undefined, digits = 2) =>
 const fmtWholePct = (value: number | null | undefined, digits = 1) =>
   value == null ? "-" : `${value.toFixed(digits)}%`;
 
+const fmtRatePct = (value: number | null | undefined, digits = 1) => {
+  if (value == null) return "-";
+  const pct = value > 1 ? value : value * 100;
+  return `${pct.toFixed(digits)}%`;
+};
+
 const fmtSignedPct = (value: number | null | undefined, digits = 1) =>
   value == null ? "-" : `${value >= 0 ? "+" : ""}${value.toFixed(digits)} pts`;
 
@@ -143,17 +149,30 @@ function hasPitcherStat(candidate: MlbHomerunCandidate): boolean {
   return candidate.opposingPitcherHrPer9 != null
     || candidate.opposingPitcherXfip != null
     || candidate.opposingPitcherEra != null
-    || candidate.opposingPitcherHrFbPct != null;
+    || candidate.opposingPitcherHrFbPct != null
+    || candidate.opposingPitcherKPer9 != null
+    || candidate.opposingPitcherBbPer9 != null;
 }
 
 function pitcherMetricLine(candidate: MlbHomerunCandidate): string {
   const metrics = [
     candidate.opposingPitcherHand,
     candidate.opposingPitcherHrPer9 != null ? `${candidate.opposingPitcherHrPer9.toFixed(2)} HR/9` : null,
+    candidate.opposingPitcherHrFbPct != null ? `${fmtRatePct(candidate.opposingPitcherHrFbPct)} HR/FB` : null,
     candidate.opposingPitcherXfip != null ? `xFIP ${candidate.opposingPitcherXfip.toFixed(2)}` : null,
-    candidate.opposingPitcherEra != null && candidate.opposingPitcherXfip == null ? `ERA ${candidate.opposingPitcherEra.toFixed(2)}` : null,
+    candidate.opposingPitcherFip != null && candidate.opposingPitcherXfip == null ? `FIP ${candidate.opposingPitcherFip.toFixed(2)}` : null,
   ].filter(Boolean);
   return metrics.length > 0 ? metrics.join(" | ") : "Pitcher stats -";
+}
+
+function pitcherSkillLine(candidate: MlbHomerunCandidate): string {
+  const metrics = [
+    candidate.opposingPitcherKPer9 != null ? `${candidate.opposingPitcherKPer9.toFixed(1)} K/9` : null,
+    candidate.opposingPitcherBbPer9 != null ? `${candidate.opposingPitcherBbPer9.toFixed(1)} BB/9` : null,
+    candidate.opposingPitcherWhip != null ? `${candidate.opposingPitcherWhip.toFixed(2)} WHIP` : null,
+    candidate.opposingPitcherEra != null ? `${candidate.opposingPitcherEra.toFixed(2)} ERA` : null,
+  ].filter(Boolean);
+  return metrics.length > 0 ? metrics.join(" | ") : "Pitcher skill -";
 }
 
 function pitcherSampleLabel(candidate: MlbHomerunCandidate): string {
@@ -210,6 +229,186 @@ function FactorChip({ label, className }: { label: string; className: string }) 
     <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-medium ${className}`}>
       {label}
     </span>
+  );
+}
+
+type DriverTone = "positive" | "neutral" | "negative" | "unknown";
+
+type Driver = {
+  label: string;
+  value: string;
+  detail: string;
+  score: number | null;
+  tone: DriverTone;
+};
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function scaleScore(value: number | null | undefined, low: number, high: number): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  if (high === low) return null;
+  return clampScore(((value - low) / (high - low)) * 100);
+}
+
+function avgScore(values: Array<number | null>): number | null {
+  const finite = values.filter((value): value is number => value != null && Number.isFinite(value));
+  if (finite.length === 0) return null;
+  return finite.reduce((sum, value) => sum + value, 0) / finite.length;
+}
+
+function toneFromScore(score: number | null, higherIsBetter = true): DriverTone {
+  if (score == null) return "unknown";
+  const positive = higherIsBetter ? score >= 67 : score <= 33;
+  const negative = higherIsBetter ? score <= 34 : score >= 67;
+  if (positive) return "positive";
+  if (negative) return "negative";
+  return "neutral";
+}
+
+function driverTextClass(tone: DriverTone): string {
+  if (tone === "positive") return "text-emerald-700";
+  if (tone === "negative") return "text-rose-700";
+  if (tone === "unknown") return "text-slate-500";
+  return "text-slate-700";
+}
+
+function driverBarClass(tone: DriverTone): string {
+  if (tone === "positive") return "bg-emerald-600";
+  if (tone === "negative") return "bg-rose-500";
+  if (tone === "unknown") return "bg-slate-300";
+  return "bg-sky-600";
+}
+
+function lineupScore(candidate: MlbHomerunCandidate): number | null {
+  if (candidate.battingOrder == null) return null;
+  const orderScores: Record<number, number> = {
+    1: 82,
+    2: 98,
+    3: 100,
+    4: 92,
+    5: 78,
+    6: 66,
+    7: 58,
+    8: 52,
+    9: 48,
+  };
+  return orderScores[candidate.battingOrder] ?? null;
+}
+
+function weatherBoostScore(candidate: MlbHomerunCandidate): number | null {
+  const tempScore = candidate.weatherTemp == null ? null : scaleScore(candidate.weatherTemp, 50, 88);
+  const windScore = candidate.windSpeed == null ? null : scaleScore(candidate.windSpeed, 0, 18);
+  return avgScore([tempScore, windScore]);
+}
+
+function factorDrivers(candidate: MlbHomerunCandidate): Driver[] {
+  const powerScore = avgScore([
+    scaleScore(candidate.hitterHrPg, 0.04, 0.42),
+    scaleScore(candidate.hitterIso, 0.120, 0.340),
+    scaleScore(candidate.hitterSplitWrcPlus ?? candidate.hitterWrcPlus, 80, 160),
+  ]);
+  const pitcherScore = avgScore([
+    scaleScore(candidate.opposingPitcherHrPer9, 0.75, 1.70),
+    scaleScore(candidate.opposingPitcherHrFbPct != null && candidate.opposingPitcherHrFbPct > 1
+      ? candidate.opposingPitcherHrFbPct / 100
+      : candidate.opposingPitcherHrFbPct, 0.08, 0.17),
+    scaleScore(candidate.opposingPitcherXfip ?? candidate.opposingPitcherFip ?? candidate.opposingPitcherEra, 3.25, 5.25),
+    candidate.opposingPitcherKPer9 == null ? null : 100 - (scaleScore(candidate.opposingPitcherKPer9, 6.0, 11.5) ?? 50),
+  ]);
+  const envScore = avgScore([
+    scaleScore(candidate.parkHrFactor, 0.88, 1.20),
+    scaleScore(candidate.teamTotal, 3.2, 6.0),
+    weatherBoostScore(candidate),
+  ]);
+  const orderScore = lineupScore(candidate);
+  const marketScore = candidate.marketHrImpliedPct == null || candidate.hrEdgePct == null
+    ? null
+    : clampScore(50 + candidate.hrEdgePct * 4);
+
+  return [
+    {
+      label: "Power",
+      value: `${candidate.hitterHrPg != null ? candidate.hitterHrPg.toFixed(2) : "-"} HR/G | ${candidate.hitterIso != null ? candidate.hitterIso.toFixed(3) : "-"} ISO`,
+      detail: candidate.hitterSplitWrcPlus != null ? `Split ${candidate.hitterSplitWrcPlus.toFixed(0)} wRC+` : `wRC+ ${fmtNum(candidate.hitterWrcPlus, 0)}`,
+      score: powerScore,
+      tone: toneFromScore(powerScore),
+    },
+    {
+      label: "Pitcher",
+      value: candidate.opposingPitcherName ?? "TBA",
+      detail: hasPitcherStat(candidate) ? pitcherMetricLine(candidate) : "No starter stats loaded",
+      score: pitcherScore,
+      tone: toneFromScore(pitcherScore),
+    },
+    {
+      label: "Environment",
+      value: candidate.ballpark ?? "Park -",
+      detail: `Park ${candidate.parkHrFactor != null ? `${candidate.parkHrFactor.toFixed(2)}x` : "-"} | Total ${fmtNum(candidate.teamTotal, 1)} | ${weatherLabel(candidate)}`,
+      score: envScore,
+      tone: toneFromScore(envScore),
+    },
+    {
+      label: "Lineup",
+      value: candidate.battingOrder != null ? `Order ${candidate.battingOrder}` : "Order ?",
+      detail: candidate.lineupConfirmed ? "Confirmed lineup" : "Lineup not confirmed",
+      score: orderScore,
+      tone: toneFromScore(orderScore),
+    },
+    {
+      label: "Market",
+      value: candidate.marketHrImpliedPct == null ? "No HR odds" : `${fmtWholePct(candidate.marketHrImpliedPct)} market`,
+      detail: candidate.hrEdgePct == null ? "Dash edge until odds arrive" : `${fmtSignedPct(candidate.hrEdgePct)} model edge`,
+      score: marketScore,
+      tone: candidate.marketHrImpliedPct == null ? "unknown" : toneFromScore(marketScore),
+    },
+  ];
+}
+
+function DriverMeter({ driver }: { driver: Driver }) {
+  const width = driver.score == null ? 0 : Math.max(8, Math.round(driver.score));
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium text-slate-700">{driver.label}</div>
+        <div className={`text-xs font-semibold ${driverTextClass(driver.tone)}`}>{driver.value}</div>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-full rounded-full ${driverBarClass(driver.tone)}`} style={{ width: `${width}%` }} />
+      </div>
+      <div className="mt-0.5 truncate text-[11px] text-slate-500">{driver.detail}</div>
+    </div>
+  );
+}
+
+function FactorBreakdown({ candidate }: { candidate: MlbHomerunCandidate }) {
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Why It Ranks</div>
+      <div className="space-y-2">
+        {factorDrivers(candidate).map((driver) => (
+          <DriverMeter key={driver.label} driver={driver} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CompactDriverList({ candidate }: { candidate: MlbHomerunCandidate }) {
+  const drivers = factorDrivers(candidate)
+    .filter((driver) => driver.score != null)
+    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+    .slice(0, 3);
+  if (drivers.length === 0) return <div className="text-xs text-slate-500">Drivers pending</div>;
+  return (
+    <div className="flex max-w-64 flex-wrap justify-end gap-1.5">
+      {drivers.map((driver) => (
+        <span key={driver.label} className={`rounded border border-slate-200 px-2 py-0.5 text-[11px] font-medium ${driverTextClass(driver.tone)}`}>
+          {driver.label} {Math.round(driver.score ?? 0)}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -410,6 +609,7 @@ function scatterTooltip(point: HomerunScatterPoint): string {
     `Park ${c.ballpark ?? "-"}${c.parkHrFactor != null ? ` (${c.parkHrFactor.toFixed(2)}x HR)` : ""}`,
     c.opposingPitcherName ? `Pitcher ${c.opposingPitcherName}` : "Pitcher not announced; model may move when starter posts.",
     `${pitcherMetricLine(c)} | ${pitcherSampleLabel(c)}`,
+    pitcherSkillLine(c),
     `Order ${c.battingOrder ?? "-"} | Book ${c.marketHrBook ?? "-"} | Odds ${fmtAmericanOdds(c.marketHrPrice)}`,
   ].filter(Boolean).join("\n");
 }
@@ -779,8 +979,11 @@ function CandidateCard({ candidate, rank }: { candidate: MlbHomerunCandidate; ra
       <div className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
         <div className="font-medium text-slate-900">{candidate.opposingPitcherName ?? "Pitcher TBA"}</div>
         <div>{pitcherMetricLine(candidate)}</div>
+        <div>{pitcherSkillLine(candidate)}</div>
         <div>{pitcherSampleLabel(candidate)}</div>
       </div>
+
+      <FactorBreakdown candidate={candidate} />
     </article>
   );
 }
@@ -825,6 +1028,7 @@ function CandidateRow({ candidate, rank }: { candidate: MlbHomerunCandidate; ran
       <td className="py-3 pr-3 text-right text-xs text-slate-700">
         <div>{candidate.opposingPitcherName ?? "-"}</div>
         <div>{pitcherMetricLine(candidate)}</div>
+        <div>{pitcherSkillLine(candidate)}</div>
         <div className="text-slate-500">{pitcherSampleLabel(candidate)}</div>
       </td>
       <td className="py-3 pr-3 text-right text-xs text-slate-700">
@@ -832,11 +1036,14 @@ function CandidateRow({ candidate, rank }: { candidate: MlbHomerunCandidate; ran
         <div>{weatherLabel(candidate)}</div>
       </td>
       <td className="py-3">
-        <div className="flex max-w-56 flex-wrap justify-end gap-1.5">
+        <div className="flex max-w-64 flex-wrap justify-end gap-1.5">
           <FactorChip {...lineup} />
           <FactorChip {...park} />
           <FactorChip {...pitch} />
           <FactorChip label={conf.label} className={conf.className} />
+        </div>
+        <div className="mt-2 flex justify-end">
+          <CompactDriverList candidate={candidate} />
         </div>
       </td>
     </tr>
