@@ -17,7 +17,7 @@ function cleanDate(value: FormDataEntryValue | null): string | null {
 }
 
 function cleanView(value: FormDataEntryValue | null): MlbHomerunBoardView {
-  return value === "edge" || value === "leverage" || value === "longshots" ? value : "likely";
+  return value === "edge" || value === "leverage" || value === "longshots" || value === "features" ? value : "likely";
 }
 
 function addLoadError(params: URLSearchParams, message: string): void {

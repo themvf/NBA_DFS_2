@@ -515,7 +515,7 @@ export type MlbHomerunCandidate = {
   marketCapturedAt: string | null;
 };
 
-export type MlbHomerunBoardView = "likely" | "edge" | "leverage" | "longshots";
+export type MlbHomerunBoardView = "likely" | "edge" | "leverage" | "longshots" | "features";
 
 export type MlbHomerunBoard = {
   slateId: number | null;
@@ -549,7 +549,7 @@ function cleanPositiveInt(value: unknown): number | null {
 }
 
 function normalizeHomerunBoardView(value: unknown): MlbHomerunBoardView {
-  if (value === "edge" || value === "leverage" || value === "longshots") return value;
+  if (value === "edge" || value === "leverage" || value === "longshots" || value === "features") return value;
   return "likely";
 }
 
@@ -571,7 +571,7 @@ function compareHomerunCandidates(a: MlbHomerunCandidate, b: MlbHomerunCandidate
     || numberOrNegativeInfinity(b.expectedHr) - numberOrNegativeInfinity(a.expectedHr)
     || a.name.localeCompare(b.name);
 
-  if (view === "likely") return byLikely;
+  if (view === "likely" || view === "features") return byLikely;
 
   if (view === "edge") {
     return hasMarketRank(a) - hasMarketRank(b)

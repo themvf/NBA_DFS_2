@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { loadHomerunBoardAction } from "@/app/homerun/actions";
+import { MLB_HOMERUN_FEATURE_IMPACT, type HomerunFeatureImpactRow } from "@/app/homerun/feature-impact-data";
 import {
   getMlbHomerunBoard,
   getMlbHomerunTrackingReport,
@@ -72,7 +73,7 @@ function cleanDkId(value: string | string[] | undefined): number | null {
 
 function cleanView(value: string | string[] | undefined): MlbHomerunBoardView {
   const raw = Array.isArray(value) ? value[0] : value;
-  return raw === "edge" || raw === "leverage" || raw === "longshots" ? raw : "likely";
+  return raw === "edge" || raw === "leverage" || raw === "longshots" || raw === "features" ? raw : "likely";
 }
 
 function cleanLoadError(value: string | string[] | undefined): string | null {
@@ -494,6 +495,7 @@ const VIEW_LABELS: Record<MlbHomerunBoardView, string> = {
   edge: "Best Edge",
   leverage: "Leverage",
   longshots: "Longshots",
+  features: "Feature Impact",
 };
 
 const VIEW_TITLES: Record<MlbHomerunBoardView, string> = {
@@ -501,6 +503,7 @@ const VIEW_TITLES: Record<MlbHomerunBoardView, string> = {
   edge: "Top 15 by market edge",
   leverage: "Top 15 by leverage-adjusted edge",
   longshots: "Top 15 HR longshots",
+  features: "HR model feature impact",
 };
 
 function StoryPanel({ board }: { board: MlbHomerunBoard }) {
@@ -921,6 +924,141 @@ function HomerunScatterPlot({ board }: { board: MlbHomerunBoard }) {
   );
 }
 
+function featureDirectionClass(direction: HomerunFeatureImpactRow["direction"]): string {
+  if (direction === "higher HR probability") return "text-emerald-700";
+  if (direction === "lower HR probability") return "text-rose-700";
+  return "text-slate-500";
+}
+
+function fmtImpact(value: number): string {
+  if (Math.abs(value) < 0.000001) return "0.000000";
+  return value.toFixed(6);
+}
+
+function fmtSignedImpact(value: number): string {
+  if (Math.abs(value) < 0.000001) return "0.000000";
+  return `${value > 0 ? "+" : ""}${value.toFixed(6)}`;
+}
+
+function FeatureImpactPanel() {
+  const maxGroupImpact = Math.max(...MLB_HOMERUN_FEATURE_IMPACT.groupImpact.map((row) => row.averagePrecisionDrop));
+  const maxFeatureImpact = Math.max(
+    ...MLB_HOMERUN_FEATURE_IMPACT.features.map((row) => Math.max(0, row.treeApDrop)),
+  );
+  const positiveFeatureCount = MLB_HOMERUN_FEATURE_IMPACT.features.filter((row) => row.treeApDrop > 0).length;
+  const neutralFeatureCount = MLB_HOMERUN_FEATURE_IMPACT.features.filter((row) => row.direction === "neutral").length;
+
+  return (
+    <section className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Model</div>
+          <div className="mt-1 text-lg font-semibold text-slate-950">{MLB_HOMERUN_FEATURE_IMPACT.modelVersion}</div>
+          <div className="mt-1 text-xs text-slate-500">{MLB_HOMERUN_FEATURE_IMPACT.featureSource}</div>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Holdout Rows</div>
+          <div className="mt-1 text-lg font-semibold text-slate-950">{MLB_HOMERUN_FEATURE_IMPACT.testRows.toLocaleString()}</div>
+          <div className="mt-1 text-xs text-slate-500">{MLB_HOMERUN_FEATURE_IMPACT.testPositiveRows.toLocaleString()} HR-positive</div>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Signal Rows</div>
+          <div className="mt-1 text-lg font-semibold text-emerald-700">{positiveFeatureCount}</div>
+          <div className="mt-1 text-xs text-slate-500">Positive tree impact</div>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Neutral Rows</div>
+          <div className="mt-1 text-lg font-semibold text-slate-950">{neutralFeatureCount}</div>
+          <div className="mt-1 text-xs text-slate-500">Awaiting better source coverage</div>
+        </div>
+      </div>
+
+      <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Group Impact</h2>
+            <p className="text-xs text-slate-500">
+              Average-precision drop when each feature group is shuffled on the 2025 holdout set.
+            </p>
+          </div>
+          <div className="text-xs text-slate-500">Test starts {MLB_HOMERUN_FEATURE_IMPACT.testStart}</div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          {MLB_HOMERUN_FEATURE_IMPACT.groupImpact.map((group) => {
+            const width = maxGroupImpact > 0 ? Math.max(4, (group.averagePrecisionDrop / maxGroupImpact) * 100) : 0;
+            return (
+              <div key={group.group} className="rounded-md border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-slate-950">{group.group.replaceAll("_", " ")}</div>
+                  <div className="text-sm font-semibold text-slate-700">{fmtImpact(group.averagePrecisionDrop)}</div>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-rose-600" style={{ width: `${width}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-lg border bg-card">
+        <div className="border-b bg-slate-50 px-4 py-3">
+          <h2 className="text-lg font-semibold text-slate-950">Feature Impact Table</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Tree AP drop ranks feature usefulness; standardized logistic coefficient shows direction.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b bg-white text-right text-xs uppercase tracking-wide text-slate-500">
+                <th className="py-2 pl-4 pr-3 text-left">Rank</th>
+                <th className="py-2 pr-3 text-left">Feature</th>
+                <th className="py-2 pr-3 text-left">Group</th>
+                <th className="py-2 pr-3 text-left">Direction</th>
+                <th className="py-2 pr-3">Tree AP Drop</th>
+                <th className="py-2 pr-3">Logistic Coef</th>
+                <th className="py-2 pr-4">Median Fill</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MLB_HOMERUN_FEATURE_IMPACT.features.map((row, index) => {
+                const impactWidth = maxFeatureImpact > 0 && row.treeApDrop > 0
+                  ? Math.max(3, (row.treeApDrop / maxFeatureImpact) * 100)
+                  : 0;
+                return (
+                  <tr key={row.feature} className="border-b border-slate-100 align-middle hover:bg-slate-50">
+                    <td className="py-3 pl-4 pr-3 font-semibold text-slate-500">{index + 1}</td>
+                    <td className="py-3 pr-3 font-mono text-xs font-semibold text-slate-950">{row.feature}</td>
+                    <td className="py-3 pr-3 text-left text-xs text-slate-600">{row.group.replaceAll("_", " ")}</td>
+                    <td className={`py-3 pr-3 text-left text-xs font-semibold ${featureDirectionClass(row.direction)}`}>
+                      {row.direction}
+                    </td>
+                    <td className="py-3 pr-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full bg-rose-600" style={{ width: `${impactWidth}%` }} />
+                        </div>
+                        <span className={row.treeApDrop < 0 ? "text-slate-400" : "text-slate-700"}>
+                          {fmtImpact(row.treeApDrop)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className={`py-3 pr-3 font-mono text-xs ${row.logisticCoefficient >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                      {fmtSignedImpact(row.logisticCoefficient)}
+                    </td>
+                    <td className="py-3 pr-4 font-mono text-xs text-slate-700">{row.medianFill.toFixed(4)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  );
+}
+
 function CandidateCard({ candidate, rank }: { candidate: MlbHomerunCandidate; rank: number }) {
   const conf = confidence(candidate);
   const pitch = pitcherRisk(candidate);
@@ -1120,7 +1258,7 @@ export default async function HomerunPage({
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="inline-flex w-full rounded-md border border-slate-200 bg-white p-1 md:w-auto">
-          {(["likely", "edge", "leverage", "longshots"] as const).map((targetView) => (
+          {(["likely", "edge", "leverage", "longshots", "features"] as const).map((targetView) => (
             <a
               key={targetView}
               href={viewHref(targetView, board.slateDate ?? board.requestedDate, board.requestedDkId)}
@@ -1134,7 +1272,7 @@ export default async function HomerunPage({
             </a>
           ))}
         </div>
-        {board.candidates.length > 0 && (
+        {board.view !== "features" && board.candidates.length > 0 && (
           <a
             href={csvHref}
             download={`mlb-homerun-${board.slateDate ?? "slate"}-${board.view}.csv`}
@@ -1145,50 +1283,56 @@ export default async function HomerunPage({
         )}
       </div>
 
-      <StoryPanel board={board} />
-
-      <HomerunScatterPlot board={board} />
-
-      {podium.length > 0 ? (
-        <div className="grid gap-3 md:grid-cols-3">
-          {podium.map((candidate, index) => (
-            <CandidateCard key={candidate.id} candidate={candidate} rank={index + 1} />
-          ))}
-        </div>
+      {board.view === "features" ? (
+        <FeatureImpactPanel />
       ) : (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          {loadError ?? board.dkIdError ?? "No MLB hitters with home run probabilities were found for this slate."}
-        </div>
-      )}
+        <>
+          <StoryPanel board={board} />
 
-      {board.candidates.length > 0 && (
-        <div className="overflow-hidden rounded-lg border bg-card">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1180px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b bg-slate-50 text-right text-xs uppercase tracking-wide text-slate-500">
-                  <th className="py-2 pl-4 pr-3 text-left">Rank</th>
-                  <th className="py-2 pr-3 text-left">Player</th>
-                  <th className="py-2 pr-3">HR Chance</th>
-                  <th className="py-2 pr-3">Market</th>
-                  <th className="py-2 pr-3">Edge</th>
-                  <th className="py-2 pr-3">Power</th>
-                  <th className="py-2 pr-3">Pitcher</th>
-                  <th className="py-2 pr-3">Environment</th>
-                  <th className="py-2 pr-4">Factors</th>
-                </tr>
-              </thead>
-              <tbody>
-                {board.candidates.map((candidate, index) => (
-                  <CandidateRow key={candidate.id} candidate={candidate} rank={index + 1} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+          <HomerunScatterPlot board={board} />
 
-      <TrackingPanel tracking={tracking} />
+          {podium.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {podium.map((candidate, index) => (
+                <CandidateCard key={candidate.id} candidate={candidate} rank={index + 1} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              {loadError ?? board.dkIdError ?? "No MLB hitters with home run probabilities were found for this slate."}
+            </div>
+          )}
+
+          {board.candidates.length > 0 && (
+            <div className="overflow-hidden rounded-lg border bg-card">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1180px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-right text-xs uppercase tracking-wide text-slate-500">
+                      <th className="py-2 pl-4 pr-3 text-left">Rank</th>
+                      <th className="py-2 pr-3 text-left">Player</th>
+                      <th className="py-2 pr-3">HR Chance</th>
+                      <th className="py-2 pr-3">Market</th>
+                      <th className="py-2 pr-3">Edge</th>
+                      <th className="py-2 pr-3">Power</th>
+                      <th className="py-2 pr-3">Pitcher</th>
+                      <th className="py-2 pr-3">Environment</th>
+                      <th className="py-2 pr-4">Factors</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {board.candidates.map((candidate, index) => (
+                      <CandidateRow key={candidate.id} candidate={candidate} rank={index + 1} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <TrackingPanel tracking={tracking} />
+        </>
+      )}
     </div>
   );
 }
