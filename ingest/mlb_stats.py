@@ -28,6 +28,7 @@ DK MLB scoring (pitchers):
 Usage:
     python -m ingest.mlb_stats                    # 2025 season, 45-day window
     python -m ingest.mlb_stats --season 2025      # explicit season
+    python -m ingest.mlb_stats --season 2025 --full-season
     python -m ingest.mlb_stats --days 30          # tighter rolling window
 """
 
@@ -78,7 +79,7 @@ _MIN_IP  = 1.0
 
 # ── Public fetch functions ────────────────────────────────────────────────────
 
-def fetch_batter_stats(db: DatabaseManager, season: str, days: int = 45) -> int:
+def fetch_batter_stats(db: DatabaseManager, season: str, days: int = 45, full_season: bool = False) -> int:
     """Fetch FanGraphs batter stats and upsert to mlb_batter_stats.
 
     Tries the rolling date-range window first; falls back to full-season
@@ -90,9 +91,12 @@ def fetch_batter_stats(db: DatabaseManager, season: str, days: int = 45) -> int:
 
     start_dt = (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
     end_dt   = date.today().strftime("%Y-%m-%d")
-    logger.info("Fetching FanGraphs batter stats %s → %s ...", start_dt, end_dt)
+    logger.info(
+        "Fetching FanGraphs batter stats %s ...",
+        f"full season {season}" if full_season else f"{start_dt} to {end_dt}",
+    )
 
-    df, source = _fetch_batting(batting_stats_range, batting_stats, start_dt, end_dt, season)
+    df, source = _fetch_batting(batting_stats_range, batting_stats, start_dt, end_dt, season, full_season=full_season)
     if df is None or df.empty:
         logger.warning("No batter stats available (season=%s, days=%d)", season, days)
         return 0
@@ -185,7 +189,7 @@ def fetch_batter_stats(db: DatabaseManager, season: str, days: int = 45) -> int:
     return updated
 
 
-def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45) -> int:
+def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45, full_season: bool = False) -> int:
     """Fetch FanGraphs pitcher stats and upsert to mlb_pitcher_stats.
 
     Returns number of pitcher rows upserted.
@@ -194,9 +198,12 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45) -> int
 
     start_dt = (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
     end_dt   = date.today().strftime("%Y-%m-%d")
-    logger.info("Fetching FanGraphs pitcher stats %s → %s ...", start_dt, end_dt)
+    logger.info(
+        "Fetching FanGraphs pitcher stats %s ...",
+        f"full season {season}" if full_season else f"{start_dt} to {end_dt}",
+    )
 
-    df, source = _fetch_pitching(pitching_stats_range, pitching_stats, start_dt, end_dt, season)
+    df, source = _fetch_pitching(pitching_stats_range, pitching_stats, start_dt, end_dt, season, full_season=full_season)
     if df is None or df.empty:
         logger.warning("No pitcher stats available (season=%s, days=%d)", season, days)
         return 0
@@ -447,9 +454,16 @@ def fetch_batter_splits(db: DatabaseManager, season: str) -> int:
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _fetch_batting(
-    range_fn, season_fn, start_dt: str, end_dt: str, season: str,
+    range_fn, season_fn, start_dt: str, end_dt: str, season: str, full_season: bool = False,
 ) -> tuple[pd.DataFrame | None, str]:
     """Try rolling-window first; fall back to full-season aggregates."""
+    if full_season:
+        try:
+            return season_fn(int(season), qual=1), f"{season} full season"
+        except Exception as exc:
+            logger.warning("batting_stats(%s) failed: %s", season, exc)
+            return None, f"{season} full season"
+
     df: pd.DataFrame | None = None
     try:
         df = range_fn(start_dt, end_dt)
@@ -477,9 +491,16 @@ def _fetch_batting(
 
 
 def _fetch_pitching(
-    range_fn, season_fn, start_dt: str, end_dt: str, season: str,
+    range_fn, season_fn, start_dt: str, end_dt: str, season: str, full_season: bool = False,
 ) -> tuple[pd.DataFrame | None, str]:
     """Try rolling-window first; fall back to full-season aggregates."""
+    if full_season:
+        try:
+            return season_fn(int(season), qual=1), f"{season} full season"
+        except Exception as exc:
+            logger.warning("pitching_stats(%s) failed: %s", season, exc)
+            return None, f"{season} full season"
+
     df: pd.DataFrame | None = None
     try:
         df = range_fn(start_dt, end_dt)
@@ -598,6 +619,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch MLB stats from FanGraphs via pybaseball")
     parser.add_argument("--season", default=None, help="Season year e.g. 2025")
     parser.add_argument("--days",   type=int, default=45, help="Rolling window days (default 45)")
+    parser.add_argument("--full-season", action="store_true", help="Force FanGraphs full-season aggregates")
     args = parser.parse_args()
 
     config = load_config()
@@ -605,6 +627,6 @@ if __name__ == "__main__":
     season = args.season or config.mlb_api.season
 
     fetch_team_stats(db, season)
-    fetch_batter_stats(db, season, days=args.days)
-    fetch_pitcher_stats(db, season, days=args.days)
+    fetch_batter_stats(db, season, days=args.days, full_season=args.full_season)
+    fetch_pitcher_stats(db, season, days=args.days, full_season=args.full_season)
     fetch_batter_splits(db, season)

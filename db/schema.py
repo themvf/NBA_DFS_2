@@ -327,7 +327,65 @@ TABLES = [
     # sport: 'nba' | 'mlb' — distinguishes same-date slates across sports.
     # UNIQUE includes sport so an NBA GPP and MLB GPP on the same date
     # are stored as separate rows.
+    # The next table is intentionally separate from DFS; the dk_slates table
+    # follows immediately after it.
+    # MLB baseball-only home run training rows.
+    # This excludes DK salary/position/ownership and market odds.
     """
+    -- Baseball-only HR training rows; excludes DK salary/position/ownership and market odds.
+    CREATE TABLE IF NOT EXISTS mlb_homerun_training_games (
+        id SERIAL PRIMARY KEY,
+        season TEXT NOT NULL,
+        game_date DATE NOT NULL,
+        game_id TEXT NOT NULL,
+        hitter_mlb_id INTEGER NOT NULL,
+        hitter_name TEXT NOT NULL,
+        hitter_team_id INTEGER REFERENCES mlb_teams(team_id),
+        hitter_team_abbrev TEXT,
+        opponent_team_id INTEGER REFERENCES mlb_teams(team_id),
+        opponent_team_abbrev TEXT,
+        is_home BOOLEAN,
+        ballpark TEXT,
+        batting_order INTEGER,
+        plate_appearances INTEGER,
+        at_bats INTEGER,
+        opposing_sp_mlb_id INTEGER,
+        opposing_sp_name TEXT,
+        opposing_sp_hand TEXT,
+        hitter_games INTEGER,
+        hitter_pa_pg DOUBLE PRECISION,
+        hitter_hr_pg DOUBLE PRECISION,
+        hitter_iso DOUBLE PRECISION,
+        hitter_slg DOUBLE PRECISION,
+        hitter_wrc_plus DOUBLE PRECISION,
+        hitter_split_wrc_plus DOUBLE PRECISION,
+        pitcher_games INTEGER,
+        pitcher_ip_pg DOUBLE PRECISION,
+        pitcher_hr_per_9 DOUBLE PRECISION,
+        pitcher_hr_fb_pct DOUBLE PRECISION,
+        pitcher_xfip DOUBLE PRECISION,
+        pitcher_fip DOUBLE PRECISION,
+        pitcher_k_per_9 DOUBLE PRECISION,
+        pitcher_bb_per_9 DOUBLE PRECISION,
+        pitcher_whip DOUBLE PRECISION,
+        pitcher_era DOUBLE PRECISION,
+        park_runs_factor DOUBLE PRECISION,
+        park_hr_factor DOUBLE PRECISION,
+        weather_temp INTEGER,
+        wind_speed INTEGER,
+        wind_direction TEXT,
+        actual_hr INTEGER NOT NULL DEFAULT 0,
+        hit_hr_1plus BOOLEAN NOT NULL DEFAULT FALSE,
+        feature_source TEXT NOT NULL DEFAULT 'season_aggregate',
+        source TEXT NOT NULL DEFAULT 'mlb_statsapi_boxscore',
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(game_id, hitter_mlb_id)
+    )
+    """,
+
+    # DFS slates.
+    """
+    -- DFS slates.
     CREATE TABLE IF NOT EXISTS dk_slates (
         id SERIAL PRIMARY KEY,
         sport TEXT DEFAULT 'nba',
@@ -1217,6 +1275,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_team ON mlb_pitcher_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_player ON mlb_pitcher_stats(player_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_season ON mlb_team_stats(team_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_season_date ON mlb_homerun_training_games(season, game_date)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_hitter ON mlb_homerun_training_games(hitter_mlb_id, game_date)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_target ON mlb_homerun_training_games(season, hit_hr_1plus)",
     "CREATE INDEX IF NOT EXISTS idx_dk_players_mlb_team ON dk_players(mlb_team_id, slate_id)",
     "CREATE INDEX IF NOT EXISTS idx_dk_slates_sport_date ON dk_slates(sport, slate_date DESC)",
     "CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_lookup ON optimizer_jobs(client_token, sport, slate_id, status)",

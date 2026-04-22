@@ -812,3 +812,80 @@ def upsert_mlb_matchup(
         ),
     )
     return row["id"] if row else 0
+
+
+MLB_HOMERUN_TRAINING_COLUMNS = [
+    "season",
+    "game_date",
+    "game_id",
+    "hitter_mlb_id",
+    "hitter_name",
+    "hitter_team_id",
+    "hitter_team_abbrev",
+    "opponent_team_id",
+    "opponent_team_abbrev",
+    "is_home",
+    "ballpark",
+    "batting_order",
+    "plate_appearances",
+    "at_bats",
+    "opposing_sp_mlb_id",
+    "opposing_sp_name",
+    "opposing_sp_hand",
+    "hitter_games",
+    "hitter_pa_pg",
+    "hitter_hr_pg",
+    "hitter_iso",
+    "hitter_slg",
+    "hitter_wrc_plus",
+    "hitter_split_wrc_plus",
+    "pitcher_games",
+    "pitcher_ip_pg",
+    "pitcher_hr_per_9",
+    "pitcher_hr_fb_pct",
+    "pitcher_xfip",
+    "pitcher_fip",
+    "pitcher_k_per_9",
+    "pitcher_bb_per_9",
+    "pitcher_whip",
+    "pitcher_era",
+    "park_runs_factor",
+    "park_hr_factor",
+    "weather_temp",
+    "wind_speed",
+    "wind_direction",
+    "actual_hr",
+    "hit_hr_1plus",
+    "feature_source",
+    "source",
+]
+
+
+def upsert_mlb_homerun_training_rows(db: DatabaseManager, rows: list[dict]) -> int:
+    """Bulk upsert baseball-only HR training rows.
+
+    Rows are keyed by actual MLB game id and hitter MLBAM id. They intentionally
+    contain no DraftKings or market-odds fields.
+    """
+    if not rows:
+        return 0
+
+    values = [tuple(row.get(column) for column in MLB_HOMERUN_TRAINING_COLUMNS) for row in rows]
+    column_sql = ", ".join(MLB_HOMERUN_TRAINING_COLUMNS)
+    update_sql = ",\n            ".join(
+        f"{column} = EXCLUDED.{column}"
+        for column in MLB_HOMERUN_TRAINING_COLUMNS
+        if column not in {"season", "game_date", "game_id", "hitter_mlb_id"}
+    )
+
+    return _execute_values_batch(
+        db,
+        f"""
+        INSERT INTO mlb_homerun_training_games ({column_sql})
+        VALUES %s
+        ON CONFLICT (game_id, hitter_mlb_id) DO UPDATE SET
+            {update_sql},
+            fetched_at = NOW()
+        """,
+        values,
+    )
