@@ -49,6 +49,9 @@ from db.queries import (
     upsert_mlb_pitcher_stats,
     upsert_mlb_team_stats,
 )
+from ingest.mlb_actual_homeruns import normalize_name
+from ingest.mlb_schedule import MLB_API_BASE
+from ingest.mlb_teams import MLB_ID_TO_ABBREV
 from model.mlb_projections import dk_batter_fpts, dk_pitcher_fpts
 
 logger = logging.getLogger(__name__)
@@ -98,8 +101,12 @@ def fetch_batter_stats(db: DatabaseManager, season: str, days: int = 45, full_se
 
     df, source = _fetch_batting(batting_stats_range, batting_stats, start_dt, end_dt, season, full_season=full_season)
     if df is None or df.empty:
-        logger.warning("No batter stats available (season=%s, days=%d)", season, days)
-        return 0
+        logger.warning(
+            "No FanGraphs batter stats available (season=%s, days=%d); falling back to MLB Stats API",
+            season,
+            days,
+        )
+        return fetch_batter_stats_from_mlb_api(db, season)
 
     # Apply minimum PA filter
     df = df[df["PA"].fillna(0).astype(float) >= _MIN_PA].copy()
@@ -205,8 +212,12 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45, full_s
 
     df, source = _fetch_pitching(pitching_stats_range, pitching_stats, start_dt, end_dt, season, full_season=full_season)
     if df is None or df.empty:
-        logger.warning("No pitcher stats available (season=%s, days=%d)", season, days)
-        return 0
+        logger.warning(
+            "No FanGraphs pitcher stats available (season=%s, days=%d); falling back to MLB Stats API",
+            season,
+            days,
+        )
+        return fetch_pitcher_stats_from_mlb_api(db, season)
 
     # Compute decimal IP and apply minimum filter
     df["_ip"] = df["IP"].apply(_parse_ip)
@@ -360,6 +371,188 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
         updated += 1
 
     print(f"Team stats: {updated}/30 teams updated for {season}")
+    return updated
+
+
+def fetch_batter_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
+    """Fetch full-season hitter aggregates from MLB's official Stats API.
+
+    This is a fallback for environments where FanGraphs aggregate endpoints
+    block pybaseball. It stores MLBAM player IDs, which are valid for this
+    table because downstream HR training joins by normalized name + team.
+    """
+    logger.info("Fetching MLB Stats API batter season stats for %s ...", season)
+    rows = _fetch_mlb_api_player_stats(season, "hitting")
+    if not rows:
+        logger.warning("MLB Stats API returned no batter rows for %s", season)
+        return 0
+
+    abbrev_cache = build_mlb_team_abbrev_cache(db)
+    existing_ids = _existing_player_id_lookup(db, season, "mlb_batter_stats")
+    updated = 0
+    for row in rows:
+        stat = row.get("stat") or {}
+        player = row.get("player") or {}
+        api_player_id = _safe_int(player.get("id"))
+        name = str(player.get("fullName") or "").strip()
+        if api_player_id is None or not name:
+            continue
+
+        games = _safe_int(stat.get("gamesPlayed")) or 0
+        pa = _safe_float(stat.get("plateAppearances")) or 0.0
+        if games <= 0 or pa < _MIN_PA:
+            continue
+
+        team_id = _resolve_mlb_api_team(row.get("team"), abbrev_cache)
+        player_id = _fallback_player_id(api_player_id, name, team_id, existing_ids)
+        hits = _safe_float(stat.get("hits")) or 0.0
+        doubles = _safe_float(stat.get("doubles")) or 0.0
+        triples = _safe_float(stat.get("triples")) or 0.0
+        hr = _safe_float(stat.get("homeRuns")) or 0.0
+        singles = max(0.0, hits - doubles - triples - hr)
+
+        def _pg(key: str) -> float:
+            return (_safe_float(stat.get(key)) or 0.0) / games
+
+        singles_pg = singles / games
+        doubles_pg = doubles / games
+        triples_pg = triples / games
+        hr_pg = hr / games
+        rbi_pg = _pg("rbi")
+        runs_pg = _pg("runs")
+        bb_pg = _pg("baseOnBalls")
+        sb_pg = _pg("stolenBases")
+        hbp_pg = _pg("hitByPitch")
+        pa_pg = pa / games
+
+        avg = _safe_float(stat.get("avg"))
+        slg = _safe_float(stat.get("slg"))
+        iso = round(slg - avg, 3) if avg is not None and slg is not None else None
+        k_pct = _rate(stat.get("strikeOuts"), pa)
+        bb_pct = _rate(stat.get("baseOnBalls"), pa)
+        avg_fpts_pg = dk_batter_fpts(
+            singles=singles_pg,
+            doubles=doubles_pg,
+            triples=triples_pg,
+            hr=hr_pg,
+            rbi=rbi_pg,
+            runs=runs_pg,
+            bb=bb_pg,
+            hbp=hbp_pg,
+            sb=sb_pg,
+        )
+        fpts_std = round(avg_fpts_pg * 0.70, 3) if avg_fpts_pg > 0 else None
+
+        upsert_mlb_batter_stats(
+            db,
+            player_id=player_id,
+            season=season,
+            team_id=team_id,
+            name=name,
+            games=games,
+            pa_pg=round(pa_pg, 3),
+            avg=avg,
+            obp=_safe_float(stat.get("obp")),
+            slg=slg,
+            iso=iso,
+            babip=_safe_float(stat.get("babip")),
+            wrc_plus=None,
+            k_pct=k_pct,
+            bb_pct=bb_pct,
+            hr_pg=round(hr_pg, 4),
+            singles_pg=round(singles_pg, 4),
+            doubles_pg=round(doubles_pg, 4),
+            triples_pg=round(triples_pg, 4),
+            rbi_pg=round(rbi_pg, 4),
+            runs_pg=round(runs_pg, 4),
+            sb_pg=round(sb_pg, 4),
+            hbp_pg=round(hbp_pg, 4),
+            avg_fpts_pg=round(avg_fpts_pg, 3),
+            fpts_std=fpts_std,
+        )
+        updated += 1
+
+    print(f"Batter stats: {updated} players upserted for {season} (MLB Stats API season)")
+    return updated
+
+
+def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
+    """Fetch full-season pitcher aggregates from MLB's official Stats API."""
+    logger.info("Fetching MLB Stats API pitcher season stats for %s ...", season)
+    rows = _fetch_mlb_api_player_stats(season, "pitching")
+    if not rows:
+        logger.warning("MLB Stats API returned no pitcher rows for %s", season)
+        return 0
+
+    abbrev_cache = build_mlb_team_abbrev_cache(db)
+    existing_ids = _existing_player_id_lookup(db, season, "mlb_pitcher_stats")
+    updated = 0
+    for row in rows:
+        stat = row.get("stat") or {}
+        player = row.get("player") or {}
+        api_player_id = _safe_int(player.get("id"))
+        name = str(player.get("fullName") or "").strip()
+        if api_player_id is None or not name:
+            continue
+
+        games = _safe_int(stat.get("gamesPitched")) or _safe_int(stat.get("gamesPlayed")) or 0
+        if games <= 0:
+            continue
+        ip_total = _parse_ip(stat.get("inningsPitched"))
+        if ip_total < _MIN_IP:
+            continue
+
+        team_id = _resolve_mlb_api_team(row.get("team"), abbrev_cache)
+        player_id = _fallback_player_id(api_player_id, name, team_id, existing_ids)
+        ip_pg = ip_total / games
+        batters_faced = _safe_float(stat.get("battersFaced")) or 0.0
+        k_pct = _rate(stat.get("strikeOuts"), batters_faced)
+        bb_pct = _rate(stat.get("baseOnBalls"), batters_faced)
+        gs = _safe_float(stat.get("gamesStarted")) or 0.0
+        wins = _safe_float(stat.get("wins")) or 0.0
+        win_pct = round(wins / gs, 3) if gs > 0 else None
+        era = _safe_float(stat.get("era")) or 99.0
+        qs_pct = _estimate_qs_pct(ip_pg, era) if gs > 0 else None
+
+        def _pg(key: str) -> float:
+            return (_safe_float(stat.get(key)) or 0.0) / games
+
+        avg_fpts_pg = dk_pitcher_fpts(
+            ip=ip_pg,
+            k=_pg("strikeOuts"),
+            er=_pg("earnedRuns"),
+            h=_pg("hits"),
+            bb=_pg("baseOnBalls"),
+            win_prob=win_pct or 0.0,
+        )
+        fpts_std = round(avg_fpts_pg * 0.55, 3) if avg_fpts_pg > 0 else None
+
+        upsert_mlb_pitcher_stats(
+            db,
+            player_id=player_id,
+            season=season,
+            team_id=team_id,
+            name=name,
+            games=games,
+            ip_pg=round(ip_pg, 3),
+            era=_safe_float(stat.get("era")),
+            fip=None,
+            xfip=None,
+            k_per_9=_safe_float(stat.get("strikeoutsPer9Inn")),
+            bb_per_9=_safe_float(stat.get("walksPer9Inn")),
+            hr_per_9=_safe_float(stat.get("homeRunsPer9")),
+            k_pct=k_pct,
+            bb_pct=bb_pct,
+            hr_fb_pct=None,
+            whip=_safe_float(stat.get("whip")),
+            avg_fpts_pg=round(avg_fpts_pg, 3),
+            fpts_std=fpts_std,
+            win_pct=win_pct,
+            qs_pct=qs_pct,
+        )
+        updated += 1
+
+    print(f"Pitcher stats: {updated} pitchers upserted for {season} (MLB Stats API season)")
     return updated
 
 
@@ -603,6 +796,117 @@ def _estimate_qs_pct(ip_pg: float, era: float) -> float | None:
     # ERA penalty: each run above 4.0 ERA reduces QS% by ~10%
     era_factor = max(0.25, 1.0 - max(0.0, era - 4.0) * 0.10)
     return round(base * era_factor, 3)
+
+
+def _fetch_mlb_api_player_stats(season: str, group: str) -> list[dict]:
+    """Return MLB Stats API season aggregate split rows for hitting/pitching."""
+    try:
+        resp = requests.get(
+            f"{MLB_API_BASE}/stats",
+            params={
+                "stats": "season",
+                "group": group,
+                "season": season,
+                "playerPool": "all",
+                "sportIds": 1,
+                "gameType": "R",
+                "limit": 10000,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.warning("MLB Stats API %s stats failed for %s: %s", group, season, exc)
+        return []
+
+    stats = resp.json().get("stats") or []
+    if not stats:
+        return []
+    rows = stats[0].get("splits") or []
+    return rows if isinstance(rows, list) else []
+
+
+def _resolve_mlb_api_team(team: dict | None, abbrev_cache: dict[str, int]) -> int | None:
+    """Map an MLB Stats API team object to our mlb_teams.team_id."""
+    if not team:
+        return None
+    mlb_id = _safe_int(team.get("id"))
+    abbrev = MLB_ID_TO_ABBREV.get(mlb_id) if mlb_id is not None else None
+    return abbrev_cache.get(abbrev) if abbrev else None
+
+
+def _existing_player_id_lookup(
+    db: DatabaseManager,
+    season: str,
+    table: str,
+) -> tuple[dict[tuple[int, str], int], dict[str, int]]:
+    """Return existing season player IDs keyed by normalized name/team.
+
+    The MLB fallback emits MLBAM IDs, while older rows may use FanGraphs IDs.
+    Reusing an existing row by name/team avoids creating parallel rows for the
+    same player when FanGraphs aggregates are temporarily blocked.
+    """
+    if table not in {"mlb_batter_stats", "mlb_pitcher_stats"}:
+        raise ValueError(f"Unsupported stats lookup table: {table}")
+
+    rows = db.execute(
+        f"""
+        SELECT player_id, team_id, name
+        FROM {table}
+        WHERE season = %s
+        ORDER BY player_id
+        """,
+        (season,),
+    )
+    by_team_name: dict[tuple[int, str], int] = {}
+    grouped_by_name: dict[str, set[int]] = {}
+    for row in rows:
+        name_key = normalize_name(row.get("name"))
+        player_id = _safe_int(row.get("player_id"))
+        team_id = _safe_int(row.get("team_id"))
+        if not name_key or player_id is None:
+            continue
+        if team_id is not None:
+            by_team_name.setdefault((team_id, name_key), player_id)
+        grouped_by_name.setdefault(name_key, set()).add(player_id)
+
+    unique_by_name = {
+        name_key: next(iter(player_ids))
+        for name_key, player_ids in grouped_by_name.items()
+        if len(player_ids) == 1
+    }
+    return by_team_name, unique_by_name
+
+
+def _fallback_player_id(
+    api_player_id: int,
+    name: str,
+    team_id: int | None,
+    existing_ids: tuple[dict[tuple[int, str], int], dict[str, int]],
+) -> int:
+    """Prefer an existing season-row ID before using the MLBAM fallback ID."""
+    name_key = normalize_name(name)
+    by_team_name, unique_by_name = existing_ids
+    if team_id is not None:
+        existing = by_team_name.get((team_id, name_key))
+        if existing is not None:
+            return existing
+    return unique_by_name.get(name_key, api_player_id)
+
+
+def _rate(numerator, denominator: float | int | None) -> float | None:
+    """Return numerator / denominator rounded to three decimals."""
+    denom = _safe_float(denominator) or 0.0
+    if denom <= 0:
+        return None
+    num = _safe_float(numerator) or 0.0
+    return round(num / denom, 3)
+
+
+def _safe_int(val) -> int | None:
+    """Convert to int; return None if not numeric or NaN."""
+    f = _safe_float(val)
+    return int(f) if f is not None else None
 
 
 def _safe_float(val) -> float | None:
