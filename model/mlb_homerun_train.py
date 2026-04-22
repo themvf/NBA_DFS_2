@@ -40,11 +40,16 @@ from sklearn.preprocessing import StandardScaler
 from config import load_config
 from db.database import DatabaseManager
 
-MODEL_VERSION = "mlb_homerun_v1"
+MODEL_VERSION = "mlb_homerun_v2"
 DEFAULT_OUTPUT = Path(__file__).resolve().with_name(f"{MODEL_VERSION}.json")
 DEFAULT_TEST_START = "2025-07-01"
 RANDOM_STATE = 42
 PERMUTATION_SAMPLE_ROWS = 15000
+HITTER_ROLLING_GAMES = 60
+PITCHER_ROLLING_GAMES = 10
+HITTER_PRIOR_SEASON_WEIGHT_GAMES = 30
+PITCHER_PRIOR_SEASON_WEIGHT_GAMES = 8
+PA_PER_INNING_ESTIMATE = 4.25
 
 ORDER_PA_FACTOR = {
     1: 1.08,
@@ -200,6 +205,10 @@ def load_training_rows(db: DatabaseManager) -> list[dict[str, Any]]:
             is_home,
             ballpark,
             batting_order,
+            plate_appearances,
+            at_bats,
+            opposing_sp_mlb_id,
+            opposing_sp_name,
             opposing_sp_hand,
             hitter_games,
             hitter_pa_pg,
@@ -260,10 +269,17 @@ def prepare_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
         "park_runs_factor",
         "park_hr_factor",
         "actual_hr",
+        "plate_appearances",
+        "at_bats",
+        "opposing_sp_mlb_id",
     ]
     for column in numeric_columns:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
 
+    return add_derived_features(frame)
+
+
+def add_derived_features(frame: pd.DataFrame) -> pd.DataFrame:
     order = frame["batting_order"]
     frame["has_batting_order"] = order.notna().astype(float)
     frame["order_pa_factor"] = order.map(ORDER_PA_FACTOR)
@@ -300,6 +316,197 @@ def prepare_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
     for feature in FEATURES:
         frame[feature] = pd.to_numeric(frame[feature], errors="coerce")
     return frame
+
+
+def _weighted_average(
+    current_rate: pd.Series,
+    current_weight: pd.Series,
+    prior_rate: pd.Series,
+    prior_weight: pd.Series,
+) -> pd.Series:
+    current_weight = pd.to_numeric(current_weight, errors="coerce").fillna(0.0).clip(lower=0.0)
+    prior_weight = pd.to_numeric(prior_weight, errors="coerce").fillna(0.0).clip(lower=0.0)
+    current_rate = pd.to_numeric(current_rate, errors="coerce")
+    prior_rate = pd.to_numeric(prior_rate, errors="coerce")
+    numerator = current_rate.fillna(0.0) * current_weight + prior_rate.fillna(0.0) * prior_weight
+    denominator = current_weight.where(current_rate.notna(), 0.0) + prior_weight.where(prior_rate.notna(), 0.0)
+    return numerator.where(denominator > 0) / denominator.where(denominator > 0)
+
+
+def _pitcher_key(frame: pd.DataFrame) -> pd.Series:
+    pitcher_id = pd.to_numeric(frame["opposing_sp_mlb_id"], errors="coerce")
+    pitcher_name = frame["opposing_sp_name"].fillna("").astype(str).str.lower().str.strip()
+    return np.where(pitcher_id.notna(), "id:" + pitcher_id.astype("Int64").astype(str), "name:" + pitcher_name)
+
+
+def add_prior_season_context(frame: pd.DataFrame) -> pd.DataFrame:
+    """Attach prior-season aggregate stats for the same hitter/pitcher.
+
+    Prior-season season aggregates are pregame-safe for the following season.
+    They supply early-season priors until current-year rolling samples exist.
+    """
+    result = frame.copy()
+    result["season_int"] = pd.to_numeric(result["season"], errors="coerce").astype("Int64")
+
+    hitter_cols = [
+        "hitter_games",
+        "hitter_pa_pg",
+        "hitter_hr_pg",
+        "hitter_iso",
+        "hitter_slg",
+        "hitter_wrc_plus",
+        "hitter_split_wrc_plus",
+    ]
+    hitter_prior = (
+        frame[["season", "hitter_mlb_id", *hitter_cols]]
+        .copy()
+        .dropna(subset=["hitter_mlb_id"])
+        .drop_duplicates(["season", "hitter_mlb_id"])
+    )
+    hitter_prior["season_int"] = pd.to_numeric(hitter_prior["season"], errors="coerce").astype("Int64") + 1
+    hitter_prior = hitter_prior.drop(columns=["season"]).rename(columns={column: f"prior_{column}" for column in hitter_cols})
+    result = result.merge(hitter_prior, how="left", on=["season_int", "hitter_mlb_id"])
+
+    pitcher_cols = [
+        "pitcher_games",
+        "pitcher_ip_pg",
+        "pitcher_hr_per_9",
+        "pitcher_hr_fb_pct",
+        "pitcher_xfip",
+        "pitcher_fip",
+        "pitcher_k_per_9",
+        "pitcher_bb_per_9",
+        "pitcher_whip",
+        "pitcher_era",
+    ]
+    pitcher_prior = (
+        frame[["season", "opposing_sp_mlb_id", *pitcher_cols]]
+        .copy()
+        .dropna(subset=["opposing_sp_mlb_id"])
+        .drop_duplicates(["season", "opposing_sp_mlb_id"])
+    )
+    pitcher_prior["season_int"] = pd.to_numeric(pitcher_prior["season"], errors="coerce").astype("Int64") + 1
+    pitcher_prior = pitcher_prior.drop(columns=["season"]).rename(columns={column: f"prior_{column}" for column in pitcher_cols})
+    result = result.merge(pitcher_prior, how="left", on=["season_int", "opposing_sp_mlb_id"])
+    return result
+
+
+def add_hitter_rolling_context(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.sort_values(["hitter_mlb_id", "game_date", "game_id"]).copy()
+    rolling_games = pd.Series(index=result.index, dtype=float)
+    rolling_pa = pd.Series(index=result.index, dtype=float)
+    rolling_hr = pd.Series(index=result.index, dtype=float)
+
+    for _, group in result.groupby("hitter_mlb_id", sort=False):
+        shifted_hr = group["actual_hr"].shift(1)
+        shifted_pa = group["plate_appearances"].shift(1)
+        rolling_games.loc[group.index] = shifted_hr.rolling(HITTER_ROLLING_GAMES, min_periods=1).count()
+        rolling_hr.loc[group.index] = shifted_hr.rolling(HITTER_ROLLING_GAMES, min_periods=1).sum()
+        rolling_pa.loc[group.index] = shifted_pa.rolling(HITTER_ROLLING_GAMES, min_periods=1).sum()
+
+    result["hitter_roll_games"] = rolling_games.fillna(0.0)
+    result["hitter_roll_hr_pg"] = rolling_hr / result["hitter_roll_games"].replace(0, np.nan)
+    result["hitter_roll_pa_pg"] = rolling_pa / result["hitter_roll_games"].replace(0, np.nan)
+
+    prior_weight = pd.to_numeric(result["prior_hitter_games"], errors="coerce").clip(
+        lower=0,
+        upper=HITTER_PRIOR_SEASON_WEIGHT_GAMES,
+    )
+    current_weight = result["hitter_roll_games"]
+
+    result["hitter_games"] = current_weight.fillna(0.0) + prior_weight.fillna(0.0)
+    result["hitter_pa_pg"] = _weighted_average(
+        result["hitter_roll_pa_pg"],
+        current_weight,
+        result["prior_hitter_pa_pg"],
+        prior_weight,
+    )
+    result["hitter_hr_pg"] = _weighted_average(
+        result["hitter_roll_hr_pg"],
+        current_weight,
+        result["prior_hitter_hr_pg"],
+        prior_weight,
+    )
+    for column in ["hitter_iso", "hitter_slg", "hitter_wrc_plus", "hitter_split_wrc_plus"]:
+        result[column] = result[f"prior_{column}"]
+    return result.sort_index()
+
+
+def add_pitcher_rolling_context(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    result["_pitcher_key"] = _pitcher_key(result)
+    pitcher_games = (
+        result.groupby(["season", "game_date", "game_id", "_pitcher_key"], dropna=False, as_index=False)
+        .agg(
+            pitcher_game_hr=("actual_hr", "sum"),
+            pitcher_game_pa=("plate_appearances", "sum"),
+        )
+        .sort_values(["season", "_pitcher_key", "game_date", "game_id"])
+    )
+    pitcher_games["pitcher_game_est_ip"] = pitcher_games["pitcher_game_pa"] / PA_PER_INNING_ESTIMATE
+    rolling_games = pd.Series(index=pitcher_games.index, dtype=float)
+    rolling_hr = pd.Series(index=pitcher_games.index, dtype=float)
+    rolling_ip = pd.Series(index=pitcher_games.index, dtype=float)
+
+    for _, group in pitcher_games.groupby(["season", "_pitcher_key"], sort=False):
+        shifted_hr = group["pitcher_game_hr"].shift(1)
+        shifted_ip = group["pitcher_game_est_ip"].shift(1)
+        rolling_games.loc[group.index] = shifted_hr.rolling(PITCHER_ROLLING_GAMES, min_periods=1).count()
+        rolling_hr.loc[group.index] = shifted_hr.rolling(PITCHER_ROLLING_GAMES, min_periods=1).sum()
+        rolling_ip.loc[group.index] = shifted_ip.rolling(PITCHER_ROLLING_GAMES, min_periods=1).sum()
+
+    pitcher_games["pitcher_roll_games"] = rolling_games.fillna(0.0)
+    pitcher_games["pitcher_roll_hr"] = rolling_hr.fillna(0.0)
+    pitcher_games["pitcher_roll_ip"] = rolling_ip.fillna(0.0)
+
+    result = result.merge(
+        pitcher_games[[
+            "season",
+            "game_date",
+            "game_id",
+            "_pitcher_key",
+            "pitcher_roll_games",
+            "pitcher_roll_hr",
+            "pitcher_roll_ip",
+        ]],
+        how="left",
+        on=["season", "game_date", "game_id", "_pitcher_key"],
+    )
+
+    prior_weight = pd.to_numeric(result["prior_pitcher_games"], errors="coerce").clip(
+        lower=0,
+        upper=PITCHER_PRIOR_SEASON_WEIGHT_GAMES,
+    )
+    prior_ip = pd.to_numeric(result["prior_pitcher_ip_pg"], errors="coerce") * prior_weight
+    current_ip = pd.to_numeric(result["pitcher_roll_ip"], errors="coerce").fillna(0.0)
+    current_games = pd.to_numeric(result["pitcher_roll_games"], errors="coerce").fillna(0.0)
+    current_hr = pd.to_numeric(result["pitcher_roll_hr"], errors="coerce").fillna(0.0)
+    prior_hr = pd.to_numeric(result["prior_pitcher_hr_per_9"], errors="coerce") / 9.0 * prior_ip
+    total_ip = current_ip + prior_ip.fillna(0.0)
+    total_games = current_games + prior_weight.fillna(0.0)
+
+    result["pitcher_games"] = total_games
+    result["pitcher_ip_pg"] = total_ip.where(total_games > 0) / total_games.where(total_games > 0)
+    result["pitcher_hr_per_9"] = (
+        (current_hr + prior_hr.fillna(0.0)).where(total_ip > 0)
+        / total_ip.where(total_ip > 0)
+        * 9.0
+    )
+    for column in ["pitcher_hr_fb_pct", "pitcher_xfip", "pitcher_fip", "pitcher_k_per_9", "pitcher_bb_per_9", "pitcher_whip", "pitcher_era"]:
+        result[column] = result[f"prior_{column}"]
+    return result.drop(columns=["_pitcher_key"])
+
+
+def prepare_pregame_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    """Build features using only prior games and prior-season aggregates."""
+    frame = prepare_frame(rows)
+    if frame.empty:
+        return frame
+    frame = add_prior_season_context(frame)
+    frame = add_hitter_rolling_context(frame)
+    frame = add_pitcher_rolling_context(frame)
+    frame["feature_source"] = "pregame_rolling"
+    return add_derived_features(frame)
 
 
 def split_train_test(frame: pd.DataFrame, test_start: str) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -539,13 +746,19 @@ def deployable_logistic_artifact(model: Pipeline) -> dict[str, Any]:
     }
 
 
-def build_report(output: Path, test_start: str) -> dict[str, Any]:
+def build_report(output: Path, test_start: str, feature_mode: str = "pregame_rolling") -> dict[str, Any]:
     config = load_config()
     if not config.database_url:
         raise RuntimeError("DATABASE_URL is required.")
 
     db = DatabaseManager(config.database_url)
-    frame = prepare_frame(load_training_rows(db))
+    rows = load_training_rows(db)
+    if feature_mode == "season_aggregate":
+        frame = prepare_frame(rows)
+    elif feature_mode == "pregame_rolling":
+        frame = prepare_pregame_frame(rows)
+    else:
+        raise ValueError(f"Unsupported feature mode: {feature_mode}")
     if frame.empty:
         raise RuntimeError("No HR training rows found.")
 
@@ -575,11 +788,23 @@ def build_report(output: Path, test_start: str) -> dict[str, Any]:
         "trainedAt": datetime.now(UTC).isoformat(),
         "data": {
             "sourceTable": "mlb_homerun_training_games",
-            "featureSource": "season_aggregate",
-            "leakageWarning": (
-                "Current features are season aggregates, so this report is a first-pass feature analysis. "
-                "A production model should retrain on pre-game rolling/prior-season features."
+            "featureSource": feature_mode,
+            "leakageWarning": None if feature_mode == "pregame_rolling" else (
+                "Season aggregate features include full-season information and should be used only for "
+                "exploratory feature analysis, not production pregame scoring."
             ),
+            "pregameFeatureNotes": (
+                "Pregame mode uses same-day batting order and park context, prior current-season hitter/pitcher "
+                "rolling samples, and prior-season aggregate priors. It excludes HR odds, DFS fields, actual PA/AB, "
+                "and same-season full aggregates."
+            ) if feature_mode == "pregame_rolling" else None,
+            "rollingConfig": {
+                "hitterRollingGames": HITTER_ROLLING_GAMES,
+                "pitcherRollingGames": PITCHER_ROLLING_GAMES,
+                "hitterPriorSeasonWeightGames": HITTER_PRIOR_SEASON_WEIGHT_GAMES,
+                "pitcherPriorSeasonWeightGames": PITCHER_PRIOR_SEASON_WEIGHT_GAMES,
+                "paPerInningEstimate": PA_PER_INNING_ESTIMATE,
+            },
             "rows": int(len(frame)),
             "positiveRows": int(frame["target"].sum()),
             "positiveRatePct": _finite_metric(float(frame["target"].mean() * 100.0)),
@@ -616,12 +841,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train and evaluate MLB home run model.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--test-start", default=DEFAULT_TEST_START)
+    parser.add_argument(
+        "--feature-mode",
+        choices=["pregame_rolling", "season_aggregate"],
+        default="pregame_rolling",
+        help="Feature set to evaluate. pregame_rolling avoids same-season full-aggregate leakage.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    report = build_report(args.output, args.test_start)
+    report = build_report(args.output, args.test_start, args.feature_mode)
     metrics = report["metrics"]
     hgb = metrics["histGradientBoosting"]
     heuristic = metrics["currentHeuristic"]
@@ -629,6 +860,7 @@ def main() -> None:
     print(f"Wrote {args.output}")
     print(
         "Split: "
+        f"{report['data']['featureSource']} features, "
         f"{report['data']['trainRows']} train rows through {report['data']['trainMaxDate']}, "
         f"{report['data']['testRows']} test rows from {report['data']['testMinDate']}"
     )

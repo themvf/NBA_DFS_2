@@ -1,0 +1,1165 @@
+{
+  "modelVersion": "mlb_homerun_v2",
+  "trainedAt": "2026-04-22T16:04:11.987182+00:00",
+  "data": {
+    "sourceTable": "mlb_homerun_training_games",
+    "featureSource": "pregame_rolling",
+    "leakageWarning": null,
+    "pregameFeatureNotes": "Pregame mode uses same-day batting order and park context, prior current-season hitter/pitcher rolling samples, and prior-season aggregate priors. It excludes HR odds, DFS fields, actual PA/AB, and same-season full aggregates.",
+    "rollingConfig": {
+      "hitterRollingGames": 60,
+      "pitcherRollingGames": 10,
+      "hitterPriorSeasonWeightGames": 30,
+      "pitcherPriorSeasonWeightGames": 8,
+      "paPerInningEstimate": 4.25
+    },
+    "rows": 97610,
+    "positiveRows": 10400,
+    "positiveRatePct": 10.654646,
+    "trainRows": 74051,
+    "trainPositiveRows": 7736,
+    "testRows": 23559,
+    "testPositiveRows": 2664,
+    "testStart": "2025-07-01",
+    "trainMinDate": "2024-03-20",
+    "trainMaxDate": "2025-06-30",
+    "testMinDate": "2025-07-01",
+    "testMaxDate": "2025-09-28"
+  },
+  "features": [
+    "is_home",
+    "batting_order",
+    "hitter_games",
+    "hitter_pa_pg",
+    "hitter_hr_pg",
+    "hitter_iso",
+    "hitter_slg",
+    "hitter_wrc_plus",
+    "hitter_split_wrc_plus",
+    "pitcher_games",
+    "pitcher_ip_pg",
+    "pitcher_hr_per_9",
+    "pitcher_hr_fb_pct",
+    "pitcher_xfip",
+    "pitcher_fip",
+    "pitcher_k_per_9",
+    "pitcher_bb_per_9",
+    "pitcher_whip",
+    "pitcher_era",
+    "park_runs_factor",
+    "park_hr_factor",
+    "has_batting_order",
+    "order_pa_factor",
+    "is_order_1",
+    "is_order_2",
+    "is_order_3",
+    "is_order_4",
+    "is_top3_order",
+    "is_bottom3_order",
+    "pitcher_hand_known",
+    "vs_lhp",
+    "vs_rhp",
+    "hitter_power_available",
+    "pitcher_power_allowed_available",
+    "split_wrc_ratio",
+    "hitter_hr_x_park",
+    "hitter_iso_x_park",
+    "hitter_hr_x_order",
+    "hitter_hr_x_pitcher_hr9",
+    "hitter_iso_x_pitcher_hr9",
+    "pitcher_hr9_x_park",
+    "pitcher_xfip_x_park"
+  ],
+  "featureGroups": {
+    "hitter_power": [
+      "hitter_hr_pg",
+      "hitter_iso",
+      "hitter_slg",
+      "hitter_wrc_plus",
+      "hitter_split_wrc_plus",
+      "split_wrc_ratio",
+      "hitter_power_available",
+      "hitter_hr_x_park",
+      "hitter_iso_x_park",
+      "hitter_hr_x_order",
+      "hitter_hr_x_pitcher_hr9",
+      "hitter_iso_x_pitcher_hr9"
+    ],
+    "lineup_position": [
+      "batting_order",
+      "has_batting_order",
+      "order_pa_factor",
+      "is_order_1",
+      "is_order_2",
+      "is_order_3",
+      "is_order_4",
+      "is_top3_order",
+      "is_bottom3_order"
+    ],
+    "pitcher_context": [
+      "pitcher_games",
+      "pitcher_ip_pg",
+      "pitcher_hr_per_9",
+      "pitcher_hr_fb_pct",
+      "pitcher_xfip",
+      "pitcher_fip",
+      "pitcher_k_per_9",
+      "pitcher_bb_per_9",
+      "pitcher_whip",
+      "pitcher_era",
+      "pitcher_power_allowed_available",
+      "pitcher_hand_known",
+      "vs_lhp",
+      "vs_rhp",
+      "hitter_hr_x_pitcher_hr9",
+      "hitter_iso_x_pitcher_hr9",
+      "pitcher_hr9_x_park",
+      "pitcher_xfip_x_park"
+    ],
+    "park_environment": [
+      "is_home",
+      "park_runs_factor",
+      "park_hr_factor",
+      "hitter_hr_x_park",
+      "hitter_iso_x_park",
+      "pitcher_hr9_x_park",
+      "pitcher_xfip_x_park"
+    ]
+  },
+  "metrics": {
+    "constantTrainRate": {
+      "rows": 23559,
+      "positiveRows": 2664,
+      "positiveRate": 0.113078,
+      "brier": 0.100365,
+      "logLoss": 0.353289,
+      "averagePrecision": 0.113078,
+      "rocAuc": 0.5,
+      "top15": {
+        "dates": 86,
+        "k": 15,
+        "topRows": 1290,
+        "topHrRows": 162,
+        "topHitRatePct": 12.55814,
+        "overallHitRatePct": 11.30778,
+        "liftVsOverall": 1.110575,
+        "totalHrRows": 2664,
+        "captureRatePct": 6.081081,
+        "avgDateCapturePct": 7.092463,
+        "avgTopHrPerDate": 1.883721
+      },
+      "calibration": [
+        {
+          "bucket": "10-12.5%",
+          "rows": 23559,
+          "avgPredictedPct": 10.446854,
+          "hitRatePct": 11.30778,
+          "brier": 0.100365
+        }
+      ],
+      "modelType": "constantTrainRate"
+    },
+    "currentHeuristic": {
+      "rows": 23559,
+      "positiveRows": 2664,
+      "positiveRate": 0.113078,
+      "brier": 0.099415,
+      "logLoss": 0.36354,
+      "averagePrecision": 0.167346,
+      "rocAuc": 0.618621,
+      "top15": {
+        "dates": 86,
+        "k": 15,
+        "topRows": 1290,
+        "topHrRows": 296,
+        "topHitRatePct": 22.945736,
+        "overallHitRatePct": 11.30778,
+        "liftVsOverall": 2.029199,
+        "totalHrRows": 2664,
+        "captureRatePct": 11.111111,
+        "avgDateCapturePct": 12.238538,
+        "avgTopHrPerDate": 3.44186
+      },
+      "calibration": [
+        {
+          "bucket": "0-2.5%",
+          "rows": 2082,
+          "avgPredictedPct": 0.811717,
+          "hitRatePct": 5.667627,
+          "brier": 0.055935
+        },
+        {
+          "bucket": "2.5-5%",
+          "rows": 2716,
+          "avgPredictedPct": 3.855185,
+          "hitRatePct": 6.516937,
+          "brier": 0.061676
+        },
+        {
+          "bucket": "5-7.5%",
+          "rows": 3534,
+          "avgPredictedPct": 6.279444,
+          "hitRatePct": 8.121109,
+          "brier": 0.074995
+        },
+        {
+          "bucket": "7.5-10%",
+          "rows": 3582,
+          "avgPredictedPct": 8.74422,
+          "hitRatePct": 10.217755,
+          "brier": 0.091821
+        },
+        {
+          "bucket": "10-12.5%",
+          "rows": 3173,
+          "avgPredictedPct": 11.198695,
+          "hitRatePct": 12.322723,
+          "brier": 0.108218
+        },
+        {
+          "bucket": "12.5-15%",
+          "rows": 2567,
+          "avgPredictedPct": 13.713986,
+          "hitRatePct": 11.92053,
+          "brier": 0.10533
+        },
+        {
+          "bucket": "15-20%",
+          "rows": 3209,
+          "avgPredictedPct": 17.215569,
+          "hitRatePct": 15.113743,
+          "brier": 0.128499
+        },
+        {
+          "bucket": "20-25%",
+          "rows": 1532,
+          "avgPredictedPct": 22.155766,
+          "hitRatePct": 17.428198,
+          "brier": 0.145646
+        },
+        {
+          "bucket": "25%+",
+          "rows": 1164,
+          "avgPredictedPct": 30.335929,
+          "hitRatePct": 22.938144,
+          "brier": 0.184695
+        }
+      ],
+      "modelType": "currentHeuristic"
+    },
+    "logistic": {
+      "rows": 23559,
+      "positiveRows": 2664,
+      "positiveRate": 0.113078,
+      "brier": 0.098508,
+      "logLoss": 0.344875,
+      "averagePrecision": 0.169498,
+      "rocAuc": 0.616642,
+      "top15": {
+        "dates": 86,
+        "k": 15,
+        "topRows": 1290,
+        "topHrRows": 292,
+        "topHitRatePct": 22.635659,
+        "overallHitRatePct": 11.30778,
+        "liftVsOverall": 2.001777,
+        "totalHrRows": 2664,
+        "captureRatePct": 10.960961,
+        "avgDateCapturePct": 11.798883,
+        "avgTopHrPerDate": 3.395349
+      },
+      "calibration": [
+        {
+          "bucket": "0-2.5%",
+          "rows": 20,
+          "avgPredictedPct": 2.164316,
+          "hitRatePct": 0.0,
+          "brier": 0.000481
+        },
+        {
+          "bucket": "2.5-5%",
+          "rows": 1472,
+          "avgPredictedPct": 4.233027,
+          "hitRatePct": 6.38587,
+          "brier": 0.060397
+        },
+        {
+          "bucket": "5-7.5%",
+          "rows": 4869,
+          "avgPredictedPct": 6.329788,
+          "hitRatePct": 7.414253,
+          "brier": 0.068731
+        },
+        {
+          "bucket": "7.5-10%",
+          "rows": 5534,
+          "avgPredictedPct": 8.729774,
+          "hitRatePct": 9.053126,
+          "brier": 0.082235
+        },
+        {
+          "bucket": "10-12.5%",
+          "rows": 4643,
+          "avgPredictedPct": 11.181223,
+          "hitRatePct": 11.328882,
+          "brier": 0.100439
+        },
+        {
+          "bucket": "12.5-15%",
+          "rows": 3338,
+          "avgPredictedPct": 13.662327,
+          "hitRatePct": 14.020371,
+          "brier": 0.120416
+        },
+        {
+          "bucket": "15-20%",
+          "rows": 2862,
+          "avgPredictedPct": 16.892684,
+          "hitRatePct": 17.924528,
+          "brier": 0.147067
+        },
+        {
+          "bucket": "20-25%",
+          "rows": 602,
+          "avgPredictedPct": 21.875002,
+          "hitRatePct": 24.252492,
+          "brier": 0.184488
+        },
+        {
+          "bucket": "25%+",
+          "rows": 219,
+          "avgPredictedPct": 28.427144,
+          "hitRatePct": 25.114155,
+          "brier": 0.191028
+        }
+      ],
+      "modelType": "LogisticRegression"
+    },
+    "histGradientBoosting": {
+      "rows": 23559,
+      "positiveRows": 2664,
+      "positiveRate": 0.113078,
+      "brier": 0.098632,
+      "logLoss": 0.345451,
+      "averagePrecision": 0.166469,
+      "rocAuc": 0.617702,
+      "top15": {
+        "dates": 86,
+        "k": 15,
+        "topRows": 1290,
+        "topHrRows": 269,
+        "topHitRatePct": 20.852713,
+        "overallHitRatePct": 11.30778,
+        "liftVsOverall": 1.844103,
+        "totalHrRows": 2664,
+        "captureRatePct": 10.097598,
+        "avgDateCapturePct": 11.093973,
+        "avgTopHrPerDate": 3.127907
+      },
+      "calibration": [
+        {
+          "bucket": "0-2.5%",
+          "rows": 203,
+          "avgPredictedPct": 2.080062,
+          "hitRatePct": 5.418719,
+          "brier": 0.05243
+        },
+        {
+          "bucket": "2.5-5%",
+          "rows": 1956,
+          "avgPredictedPct": 3.974317,
+          "hitRatePct": 6.595092,
+          "brier": 0.06228
+        },
+        {
+          "bucket": "5-7.5%",
+          "rows": 4280,
+          "avgPredictedPct": 6.301266,
+          "hitRatePct": 7.126168,
+          "brier": 0.066203
+        },
+        {
+          "bucket": "7.5-10%",
+          "rows": 5598,
+          "avgPredictedPct": 8.724958,
+          "hitRatePct": 8.842444,
+          "brier": 0.08063
+        },
+        {
+          "bucket": "10-12.5%",
+          "rows": 4281,
+          "avgPredictedPct": 11.217542,
+          "hitRatePct": 11.656155,
+          "brier": 0.102984
+        },
+        {
+          "bucket": "12.5-15%",
+          "rows": 3583,
+          "avgPredictedPct": 13.708305,
+          "hitRatePct": 15.210717,
+          "brier": 0.129211
+        },
+        {
+          "bucket": "15-20%",
+          "rows": 3145,
+          "avgPredictedPct": 16.620656,
+          "hitRatePct": 17.678855,
+          "brier": 0.145484
+        },
+        {
+          "bucket": "20-25%",
+          "rows": 379,
+          "avgPredictedPct": 21.982605,
+          "hitRatePct": 24.274406,
+          "brier": 0.185157
+        },
+        {
+          "bucket": "25%+",
+          "rows": 134,
+          "avgPredictedPct": 29.115644,
+          "hitRatePct": 23.880597,
+          "brier": 0.186016
+        }
+      ],
+      "modelType": "HistGradientBoostingClassifier"
+    }
+  },
+  "featureAnalysis": {
+    "logisticStandardizedCoefficients": [
+      {
+        "feature": "batting_order",
+        "coefficient": -0.24024,
+        "absCoefficient": 0.24024
+      },
+      {
+        "feature": "order_pa_factor",
+        "coefficient": 0.157032,
+        "absCoefficient": 0.157032
+      },
+      {
+        "feature": "hitter_pa_pg",
+        "coefficient": 0.14467,
+        "absCoefficient": 0.14467
+      },
+      {
+        "feature": "hitter_iso",
+        "coefficient": 0.13893,
+        "absCoefficient": 0.13893
+      },
+      {
+        "feature": "is_top3_order",
+        "coefficient": -0.135515,
+        "absCoefficient": 0.135515
+      },
+      {
+        "feature": "hitter_slg",
+        "coefficient": -0.134066,
+        "absCoefficient": 0.134066
+      },
+      {
+        "feature": "park_hr_factor",
+        "coefficient": 0.104019,
+        "absCoefficient": 0.104019
+      },
+      {
+        "feature": "is_order_1",
+        "coefficient": -0.103847,
+        "absCoefficient": 0.103847
+      },
+      {
+        "feature": "hitter_hr_x_pitcher_hr9",
+        "coefficient": 0.097999,
+        "absCoefficient": 0.097999
+      },
+      {
+        "feature": "hitter_hr_x_order",
+        "coefficient": 0.090517,
+        "absCoefficient": 0.090517
+      },
+      {
+        "feature": "hitter_games",
+        "coefficient": 0.078491,
+        "absCoefficient": 0.078491
+      },
+      {
+        "feature": "is_bottom3_order",
+        "coefficient": 0.076297,
+        "absCoefficient": 0.076297
+      },
+      {
+        "feature": "is_order_2",
+        "coefficient": -0.074622,
+        "absCoefficient": 0.074622
+      },
+      {
+        "feature": "park_runs_factor",
+        "coefficient": -0.060752,
+        "absCoefficient": 0.060752
+      },
+      {
+        "feature": "pitcher_k_per_9",
+        "coefficient": -0.058174,
+        "absCoefficient": 0.058174
+      },
+      {
+        "feature": "pitcher_whip",
+        "coefficient": -0.056961,
+        "absCoefficient": 0.056961
+      },
+      {
+        "feature": "pitcher_ip_pg",
+        "coefficient": 0.044332,
+        "absCoefficient": 0.044332
+      },
+      {
+        "feature": "is_order_4",
+        "coefficient": -0.043066,
+        "absCoefficient": 0.043066
+      },
+      {
+        "feature": "pitcher_games",
+        "coefficient": -0.042577,
+        "absCoefficient": 0.042577
+      },
+      {
+        "feature": "hitter_iso_x_park",
+        "coefficient": 0.036296,
+        "absCoefficient": 0.036296
+      },
+      {
+        "feature": "pitcher_hr_per_9",
+        "coefficient": -0.035397,
+        "absCoefficient": 0.035397
+      },
+      {
+        "feature": "pitcher_era",
+        "coefficient": 0.030399,
+        "absCoefficient": 0.030399
+      },
+      {
+        "feature": "hitter_power_available",
+        "coefficient": 0.026748,
+        "absCoefficient": 0.026748
+      },
+      {
+        "feature": "is_order_3",
+        "coefficient": -0.025941,
+        "absCoefficient": 0.025941
+      },
+      {
+        "feature": "hitter_iso_x_pitcher_hr9",
+        "coefficient": 0.017667,
+        "absCoefficient": 0.017667
+      },
+      {
+        "feature": "pitcher_bb_per_9",
+        "coefficient": 0.010551,
+        "absCoefficient": 0.010551
+      },
+      {
+        "feature": "hitter_hr_x_park",
+        "coefficient": 0.009029,
+        "absCoefficient": 0.009029
+      },
+      {
+        "feature": "hitter_hr_pg",
+        "coefficient": 0.006468,
+        "absCoefficient": 0.006468
+      },
+      {
+        "feature": "pitcher_power_allowed_available",
+        "coefficient": 0.006444,
+        "absCoefficient": 0.006444
+      },
+      {
+        "feature": "is_home",
+        "coefficient": -0.005674,
+        "absCoefficient": 0.005674
+      },
+      {
+        "feature": "pitcher_hr9_x_park",
+        "coefficient": -0.005398,
+        "absCoefficient": 0.005398
+      },
+      {
+        "feature": "hitter_wrc_plus",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "hitter_split_wrc_plus",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "pitcher_hr_fb_pct",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "pitcher_xfip",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "pitcher_fip",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "has_batting_order",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "pitcher_hand_known",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "vs_lhp",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "vs_rhp",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "split_wrc_ratio",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      },
+      {
+        "feature": "pitcher_xfip_x_park",
+        "coefficient": 0.0,
+        "absCoefficient": 0.0
+      }
+    ],
+    "histGradientBoostingPermutationImportance": [
+      {
+        "feature": "hitter_hr_x_order",
+        "importanceMean": 0.019889,
+        "importanceStd": 0.002474
+      },
+      {
+        "feature": "hitter_hr_x_park",
+        "importanceMean": 0.016039,
+        "importanceStd": 0.003594
+      },
+      {
+        "feature": "hitter_pa_pg",
+        "importanceMean": 0.00811,
+        "importanceStd": 0.002054
+      },
+      {
+        "feature": "batting_order",
+        "importanceMean": 0.004942,
+        "importanceStd": 0.003585
+      },
+      {
+        "feature": "hitter_hr_pg",
+        "importanceMean": 0.004369,
+        "importanceStd": 0.001925
+      },
+      {
+        "feature": "hitter_iso",
+        "importanceMean": 0.002811,
+        "importanceStd": 0.00098
+      },
+      {
+        "feature": "hitter_hr_x_pitcher_hr9",
+        "importanceMean": 0.002283,
+        "importanceStd": 0.000788
+      },
+      {
+        "feature": "hitter_games",
+        "importanceMean": 0.001745,
+        "importanceStd": 0.000846
+      },
+      {
+        "feature": "hitter_slg",
+        "importanceMean": 0.001281,
+        "importanceStd": 0.00034
+      },
+      {
+        "feature": "park_hr_factor",
+        "importanceMean": 0.001237,
+        "importanceStd": 0.000901
+      },
+      {
+        "feature": "pitcher_whip",
+        "importanceMean": 0.001006,
+        "importanceStd": 0.001008
+      },
+      {
+        "feature": "pitcher_games",
+        "importanceMean": 0.000814,
+        "importanceStd": 0.000402
+      },
+      {
+        "feature": "hitter_iso_x_park",
+        "importanceMean": 0.000766,
+        "importanceStd": 0.000413
+      },
+      {
+        "feature": "park_runs_factor",
+        "importanceMean": 0.000577,
+        "importanceStd": 0.00037
+      },
+      {
+        "feature": "hitter_iso_x_pitcher_hr9",
+        "importanceMean": 0.000511,
+        "importanceStd": 0.001228
+      },
+      {
+        "feature": "pitcher_ip_pg",
+        "importanceMean": 0.000399,
+        "importanceStd": 0.000205
+      },
+      {
+        "feature": "is_home",
+        "importanceMean": 8.5e-05,
+        "importanceStd": 4.6e-05
+      },
+      {
+        "feature": "is_order_4",
+        "importanceMean": 7.6e-05,
+        "importanceStd": 0.000129
+      },
+      {
+        "feature": "is_order_3",
+        "importanceMean": 4.6e-05,
+        "importanceStd": 9.1e-05
+      },
+      {
+        "feature": "order_pa_factor",
+        "importanceMean": 4.5e-05,
+        "importanceStd": 0.000989
+      },
+      {
+        "feature": "hitter_wrc_plus",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "hitter_split_wrc_plus",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "pitcher_hr_fb_pct",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "pitcher_xfip",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "pitcher_fip",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "has_batting_order",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "is_order_2",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "is_top3_order",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "is_bottom3_order",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "pitcher_hand_known",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "vs_lhp",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "vs_rhp",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "hitter_power_available",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "pitcher_power_allowed_available",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "split_wrc_ratio",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "pitcher_xfip_x_park",
+        "importanceMean": 0.0,
+        "importanceStd": 0.0
+      },
+      {
+        "feature": "is_order_1",
+        "importanceMean": -1e-05,
+        "importanceStd": 1.2e-05
+      },
+      {
+        "feature": "pitcher_hr9_x_park",
+        "importanceMean": -0.000183,
+        "importanceStd": 0.000465
+      },
+      {
+        "feature": "pitcher_hr_per_9",
+        "importanceMean": -0.000331,
+        "importanceStd": 0.00072
+      },
+      {
+        "feature": "pitcher_era",
+        "importanceMean": -0.000354,
+        "importanceStd": 0.000619
+      },
+      {
+        "feature": "pitcher_bb_per_9",
+        "importanceMean": -0.000615,
+        "importanceStd": 0.000912
+      },
+      {
+        "feature": "pitcher_k_per_9",
+        "importanceMean": -0.001125,
+        "importanceStd": 0.001303
+      }
+    ],
+    "groupedPermutationImportance": [
+      {
+        "group": "hitter_power",
+        "averagePrecisionDrop": 0.03613,
+        "baselineAveragePrecision": 0.165348,
+        "shuffledAveragePrecision": 0.129218,
+        "features": [
+          "hitter_hr_pg",
+          "hitter_iso",
+          "hitter_slg",
+          "hitter_wrc_plus",
+          "hitter_split_wrc_plus",
+          "split_wrc_ratio",
+          "hitter_power_available",
+          "hitter_hr_x_park",
+          "hitter_iso_x_park",
+          "hitter_hr_x_order",
+          "hitter_hr_x_pitcher_hr9",
+          "hitter_iso_x_pitcher_hr9"
+        ]
+      },
+      {
+        "group": "park_environment",
+        "averagePrecisionDrop": 0.017804,
+        "baselineAveragePrecision": 0.165348,
+        "shuffledAveragePrecision": 0.147543,
+        "features": [
+          "is_home",
+          "park_runs_factor",
+          "park_hr_factor",
+          "hitter_hr_x_park",
+          "hitter_iso_x_park",
+          "pitcher_hr9_x_park",
+          "pitcher_xfip_x_park"
+        ]
+      },
+      {
+        "group": "lineup_position",
+        "averagePrecisionDrop": 0.006769,
+        "baselineAveragePrecision": 0.165348,
+        "shuffledAveragePrecision": 0.158579,
+        "features": [
+          "batting_order",
+          "has_batting_order",
+          "order_pa_factor",
+          "is_order_1",
+          "is_order_2",
+          "is_order_3",
+          "is_order_4",
+          "is_top3_order",
+          "is_bottom3_order"
+        ]
+      },
+      {
+        "group": "pitcher_context",
+        "averagePrecisionDrop": 0.000353,
+        "baselineAveragePrecision": 0.165348,
+        "shuffledAveragePrecision": 0.164994,
+        "features": [
+          "pitcher_games",
+          "pitcher_ip_pg",
+          "pitcher_hr_per_9",
+          "pitcher_hr_fb_pct",
+          "pitcher_xfip",
+          "pitcher_fip",
+          "pitcher_k_per_9",
+          "pitcher_bb_per_9",
+          "pitcher_whip",
+          "pitcher_era",
+          "pitcher_power_allowed_available",
+          "pitcher_hand_known",
+          "vs_lhp",
+          "vs_rhp",
+          "hitter_hr_x_pitcher_hr9",
+          "hitter_iso_x_pitcher_hr9",
+          "pitcher_hr9_x_park",
+          "pitcher_xfip_x_park"
+        ]
+      }
+    ]
+  },
+  "deployableModel": {
+    "kind": "standardized_logistic_regression",
+    "features": [
+      "is_home",
+      "batting_order",
+      "hitter_games",
+      "hitter_pa_pg",
+      "hitter_hr_pg",
+      "hitter_iso",
+      "hitter_slg",
+      "hitter_wrc_plus",
+      "hitter_split_wrc_plus",
+      "pitcher_games",
+      "pitcher_ip_pg",
+      "pitcher_hr_per_9",
+      "pitcher_hr_fb_pct",
+      "pitcher_xfip",
+      "pitcher_fip",
+      "pitcher_k_per_9",
+      "pitcher_bb_per_9",
+      "pitcher_whip",
+      "pitcher_era",
+      "park_runs_factor",
+      "park_hr_factor",
+      "has_batting_order",
+      "order_pa_factor",
+      "is_order_1",
+      "is_order_2",
+      "is_order_3",
+      "is_order_4",
+      "is_top3_order",
+      "is_bottom3_order",
+      "pitcher_hand_known",
+      "vs_lhp",
+      "vs_rhp",
+      "hitter_power_available",
+      "pitcher_power_allowed_available",
+      "split_wrc_ratio",
+      "hitter_hr_x_park",
+      "hitter_iso_x_park",
+      "hitter_hr_x_order",
+      "hitter_hr_x_pitcher_hr9",
+      "hitter_iso_x_pitcher_hr9",
+      "pitcher_hr9_x_park",
+      "pitcher_xfip_x_park"
+    ],
+    "imputerMedians": [
+      0.0,
+      5.0,
+      60.0,
+      3.8333333333333335,
+      0.10272931034482757,
+      0.154,
+      0.4,
+      0.0,
+      0.0,
+      10.0,
+      8.329411764705883,
+      1.1130952380952381,
+      0.0,
+      0.0,
+      0.0,
+      8.34,
+      2.81,
+      1.24,
+      3.9,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.10161972222222222,
+      0.151,
+      0.1033206,
+      0.10740699762413876,
+      0.16664899633363886,
+      1.0891525423728814,
+      0.0
+    ],
+    "scalerMean": [
+      0.4992828603626678,
+      5.094939043130827,
+      60.65748386435816,
+      3.741549696076751,
+      0.11259250595792991,
+      0.15473497592459787,
+      0.3987407130416965,
+      0.0,
+      0.0,
+      9.923870505071202,
+      7.975468323905984,
+      1.1226376967453506,
+      0.0,
+      0.0,
+      0.0,
+      8.431191373834649,
+      2.852533346993135,
+      1.2500674111259094,
+      4.005144349964142,
+      0.9992342997643685,
+      0.9821065464604036,
+      1.0,
+      0.9980440528634363,
+      0.10779633234299764,
+      0.10756070074787419,
+      0.10767339411945498,
+      0.10686405081446573,
+      0.3230304272103268,
+      0.35065054809957996,
+      0.0,
+      0.0,
+      0.0,
+      0.9919270566540314,
+      0.9475770925110132,
+      0.0,
+      0.1107340773476142,
+      0.15185734719803298,
+      0.11495635918992218,
+      0.12598715747294223,
+      0.1713556914992403,
+      1.1036462122494188,
+      0.0
+    ],
+    "scalerScale": [
+      0.49999948571047614,
+      2.6024292590242792,
+      29.433448196547225,
+      0.577704223921636,
+      0.08187517242857717,
+      0.04143593857208733,
+      0.05937492975695033,
+      1.0,
+      1.0,
+      5.5847800564661805,
+      1.2451981566150008,
+      0.4509920308133094,
+      1.0,
+      1.0,
+      1.0,
+      1.1272455827288708,
+      0.7282937872371141,
+      0.14550217759334463,
+      0.9471378060916975,
+      0.03864734358153373,
+      0.08166157207915616,
+      1.0,
+      0.08440171156315711,
+      0.3101230128132958,
+      0.30982478338974184,
+      0.30996747300039645,
+      0.3089403266943133,
+      0.4676342270478505,
+      0.4771737013049274,
+      1.0,
+      1.0,
+      1.0,
+      0.08948614938470327,
+      0.22287832164521504,
+      1.0,
+      0.0816107459164757,
+      0.04189944762033366,
+      0.08698861028677168,
+      0.10598004519046471,
+      0.06538291554963832,
+      0.4552836146584121,
+      1.0
+    ],
+    "coefficients": [
+      -0.005384878617138649,
+      -0.21076916486364622,
+      0.06562888802893052,
+      0.12942900262832754,
+      0.005833205569364608,
+      0.19765150683464316,
+      -0.1264065325766332,
+      0.0,
+      0.0,
+      -0.02005861446973619,
+      0.028246006214730904,
+      -0.05458717195555106,
+      0.0,
+      0.0,
+      0.0,
+      -0.025581187166042345,
+      -0.006820731235481687,
+      -0.0060108622793111615,
+      0.014207019355537294,
+      -0.022257800205497492,
+      0.067501022517987,
+      0.0,
+      0.12543462202157235,
+      -0.09296780792766723,
+      -0.060206558003143056,
+      -0.024274078736491372,
+      -0.0297656933551768,
+      -0.11763278251417543,
+      0.05410328541788261,
+      0.0,
+      0.0,
+      0.0,
+      0.023203252027364576,
+      -0.003832007748660304,
+      0.0,
+      0.0006322941213341452,
+      0.004715965094053401,
+      0.1081241829332917,
+      0.10286063523584767,
+      -0.008889808827092435,
+      0.016744714464282266,
+      0.0
+    ],
+    "intercept": -2.197019332685812,
+    "probabilityBounds": [
+      0.0001,
+      0.9999
+    ]
+  },
+  "fullSampleReference": {
+    "histGradientBoostingModelType": "HistGradientBoostingClassifier",
+    "note": "Tree model is evaluated for feature analysis; deployable artifact is logistic JSON for easier TS porting."
+  }
+}
