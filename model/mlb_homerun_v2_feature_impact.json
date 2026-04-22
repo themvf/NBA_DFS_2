@@ -1,0 +1,509 @@
+{
+  "modelVersion": "mlb_homerun_v2",
+  "featureSource": "pregame_rolling",
+  "testStart": "2025-07-01",
+  "testRows": 23559,
+  "testPositiveRows": 2664,
+  "groupedPermutationImportance": [
+    {
+      "group": "hitter_power",
+      "averagePrecisionDrop": 0.03613,
+      "baselineAveragePrecision": 0.165348,
+      "shuffledAveragePrecision": 0.129218,
+      "features": [
+        "hitter_hr_pg",
+        "hitter_iso",
+        "hitter_slg",
+        "hitter_wrc_plus",
+        "hitter_split_wrc_plus",
+        "split_wrc_ratio",
+        "hitter_power_available",
+        "hitter_hr_x_park",
+        "hitter_iso_x_park",
+        "hitter_hr_x_order",
+        "hitter_hr_x_pitcher_hr9",
+        "hitter_iso_x_pitcher_hr9"
+      ]
+    },
+    {
+      "group": "park_environment",
+      "averagePrecisionDrop": 0.017804,
+      "baselineAveragePrecision": 0.165348,
+      "shuffledAveragePrecision": 0.147543,
+      "features": [
+        "is_home",
+        "park_runs_factor",
+        "park_hr_factor",
+        "hitter_hr_x_park",
+        "hitter_iso_x_park",
+        "pitcher_hr9_x_park",
+        "pitcher_xfip_x_park"
+      ]
+    },
+    {
+      "group": "lineup_position",
+      "averagePrecisionDrop": 0.006769,
+      "baselineAveragePrecision": 0.165348,
+      "shuffledAveragePrecision": 0.158579,
+      "features": [
+        "batting_order",
+        "has_batting_order",
+        "order_pa_factor",
+        "is_order_1",
+        "is_order_2",
+        "is_order_3",
+        "is_order_4",
+        "is_top3_order",
+        "is_bottom3_order"
+      ]
+    },
+    {
+      "group": "pitcher_context",
+      "averagePrecisionDrop": 0.000353,
+      "baselineAveragePrecision": 0.165348,
+      "shuffledAveragePrecision": 0.164994,
+      "features": [
+        "pitcher_games",
+        "pitcher_ip_pg",
+        "pitcher_hr_per_9",
+        "pitcher_hr_fb_pct",
+        "pitcher_xfip",
+        "pitcher_fip",
+        "pitcher_k_per_9",
+        "pitcher_bb_per_9",
+        "pitcher_whip",
+        "pitcher_era",
+        "pitcher_power_allowed_available",
+        "pitcher_hand_known",
+        "vs_lhp",
+        "vs_rhp",
+        "hitter_hr_x_pitcher_hr9",
+        "hitter_iso_x_pitcher_hr9",
+        "pitcher_hr9_x_park",
+        "pitcher_xfip_x_park"
+      ]
+    }
+  ],
+  "features": [
+    {
+      "feature": "hitter_hr_x_order",
+      "group": "hitter_power",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.090517,
+      "logisticAbsCoefficient": 0.090517,
+      "treePermutationAveragePrecisionDrop": 0.019889,
+      "treePermutationStd": 0.002474,
+      "imputerMedian": 0.1033206
+    },
+    {
+      "feature": "hitter_hr_x_park",
+      "group": "hitter_power, park_environment",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.009029,
+      "logisticAbsCoefficient": 0.009029,
+      "treePermutationAveragePrecisionDrop": 0.016039,
+      "treePermutationStd": 0.003594,
+      "imputerMedian": 0.10161972222222222
+    },
+    {
+      "feature": "hitter_pa_pg",
+      "group": "base_context",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.14467,
+      "logisticAbsCoefficient": 0.14467,
+      "treePermutationAveragePrecisionDrop": 0.00811,
+      "treePermutationStd": 0.002054,
+      "imputerMedian": 3.8333333333333335
+    },
+    {
+      "feature": "batting_order",
+      "group": "lineup_position",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.24024,
+      "logisticAbsCoefficient": 0.24024,
+      "treePermutationAveragePrecisionDrop": 0.004942,
+      "treePermutationStd": 0.003585,
+      "imputerMedian": 5.0
+    },
+    {
+      "feature": "hitter_hr_pg",
+      "group": "hitter_power",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.006468,
+      "logisticAbsCoefficient": 0.006468,
+      "treePermutationAveragePrecisionDrop": 0.004369,
+      "treePermutationStd": 0.001925,
+      "imputerMedian": 0.10272931034482757
+    },
+    {
+      "feature": "hitter_iso",
+      "group": "hitter_power",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.13893,
+      "logisticAbsCoefficient": 0.13893,
+      "treePermutationAveragePrecisionDrop": 0.002811,
+      "treePermutationStd": 0.00098,
+      "imputerMedian": 0.154
+    },
+    {
+      "feature": "hitter_hr_x_pitcher_hr9",
+      "group": "hitter_power, pitcher_context",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.097999,
+      "logisticAbsCoefficient": 0.097999,
+      "treePermutationAveragePrecisionDrop": 0.002283,
+      "treePermutationStd": 0.000788,
+      "imputerMedian": 0.10740699762413876
+    },
+    {
+      "feature": "hitter_games",
+      "group": "base_context",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.078491,
+      "logisticAbsCoefficient": 0.078491,
+      "treePermutationAveragePrecisionDrop": 0.001745,
+      "treePermutationStd": 0.000846,
+      "imputerMedian": 60.0
+    },
+    {
+      "feature": "hitter_slg",
+      "group": "hitter_power",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.134066,
+      "logisticAbsCoefficient": 0.134066,
+      "treePermutationAveragePrecisionDrop": 0.001281,
+      "treePermutationStd": 0.00034,
+      "imputerMedian": 0.4
+    },
+    {
+      "feature": "park_hr_factor",
+      "group": "park_environment",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.104019,
+      "logisticAbsCoefficient": 0.104019,
+      "treePermutationAveragePrecisionDrop": 0.001237,
+      "treePermutationStd": 0.000901,
+      "imputerMedian": 1.0
+    },
+    {
+      "feature": "pitcher_whip",
+      "group": "pitcher_context",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.056961,
+      "logisticAbsCoefficient": 0.056961,
+      "treePermutationAveragePrecisionDrop": 0.001006,
+      "treePermutationStd": 0.001008,
+      "imputerMedian": 1.24
+    },
+    {
+      "feature": "pitcher_games",
+      "group": "pitcher_context",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.042577,
+      "logisticAbsCoefficient": 0.042577,
+      "treePermutationAveragePrecisionDrop": 0.000814,
+      "treePermutationStd": 0.000402,
+      "imputerMedian": 10.0
+    },
+    {
+      "feature": "hitter_iso_x_park",
+      "group": "hitter_power, park_environment",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.036296,
+      "logisticAbsCoefficient": 0.036296,
+      "treePermutationAveragePrecisionDrop": 0.000766,
+      "treePermutationStd": 0.000413,
+      "imputerMedian": 0.151
+    },
+    {
+      "feature": "park_runs_factor",
+      "group": "park_environment",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.060752,
+      "logisticAbsCoefficient": 0.060752,
+      "treePermutationAveragePrecisionDrop": 0.000577,
+      "treePermutationStd": 0.00037,
+      "imputerMedian": 1.0
+    },
+    {
+      "feature": "hitter_iso_x_pitcher_hr9",
+      "group": "hitter_power, pitcher_context",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.017667,
+      "logisticAbsCoefficient": 0.017667,
+      "treePermutationAveragePrecisionDrop": 0.000511,
+      "treePermutationStd": 0.001228,
+      "imputerMedian": 0.16664899633363886
+    },
+    {
+      "feature": "pitcher_ip_pg",
+      "group": "pitcher_context",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.044332,
+      "logisticAbsCoefficient": 0.044332,
+      "treePermutationAveragePrecisionDrop": 0.000399,
+      "treePermutationStd": 0.000205,
+      "imputerMedian": 8.329411764705883
+    },
+    {
+      "feature": "is_home",
+      "group": "park_environment",
+      "direction": "neutral",
+      "logisticCoefficient": -0.005674,
+      "logisticAbsCoefficient": 0.005674,
+      "treePermutationAveragePrecisionDrop": 8.5e-05,
+      "treePermutationStd": 4.6e-05,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "is_order_4",
+      "group": "lineup_position",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.043066,
+      "logisticAbsCoefficient": 0.043066,
+      "treePermutationAveragePrecisionDrop": 7.6e-05,
+      "treePermutationStd": 0.000129,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "is_order_3",
+      "group": "lineup_position",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.025941,
+      "logisticAbsCoefficient": 0.025941,
+      "treePermutationAveragePrecisionDrop": 4.6e-05,
+      "treePermutationStd": 9.1e-05,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "order_pa_factor",
+      "group": "lineup_position",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.157032,
+      "logisticAbsCoefficient": 0.157032,
+      "treePermutationAveragePrecisionDrop": 4.5e-05,
+      "treePermutationStd": 0.000989,
+      "imputerMedian": 1.0
+    },
+    {
+      "feature": "is_top3_order",
+      "group": "lineup_position",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.135515,
+      "logisticAbsCoefficient": 0.135515,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "is_bottom3_order",
+      "group": "lineup_position",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.076297,
+      "logisticAbsCoefficient": 0.076297,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "is_order_2",
+      "group": "lineup_position",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.074622,
+      "logisticAbsCoefficient": 0.074622,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "hitter_power_available",
+      "group": "hitter_power",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.026748,
+      "logisticAbsCoefficient": 0.026748,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 1.0
+    },
+    {
+      "feature": "pitcher_power_allowed_available",
+      "group": "pitcher_context",
+      "direction": "neutral",
+      "logisticCoefficient": 0.006444,
+      "logisticAbsCoefficient": 0.006444,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 1.0
+    },
+    {
+      "feature": "hitter_wrc_plus",
+      "group": "hitter_power",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "hitter_split_wrc_plus",
+      "group": "hitter_power",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "pitcher_hr_fb_pct",
+      "group": "pitcher_context",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "pitcher_xfip",
+      "group": "pitcher_context",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "pitcher_fip",
+      "group": "pitcher_context",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "has_batting_order",
+      "group": "lineup_position",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 1.0
+    },
+    {
+      "feature": "pitcher_hand_known",
+      "group": "pitcher_context",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "vs_lhp",
+      "group": "pitcher_context",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "vs_rhp",
+      "group": "pitcher_context",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "split_wrc_ratio",
+      "group": "hitter_power",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "pitcher_xfip_x_park",
+      "group": "pitcher_context, park_environment",
+      "direction": "neutral",
+      "logisticCoefficient": 0.0,
+      "logisticAbsCoefficient": 0.0,
+      "treePermutationAveragePrecisionDrop": 0.0,
+      "treePermutationStd": 0.0,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "is_order_1",
+      "group": "lineup_position",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.103847,
+      "logisticAbsCoefficient": 0.103847,
+      "treePermutationAveragePrecisionDrop": -1e-05,
+      "treePermutationStd": 1.2e-05,
+      "imputerMedian": 0.0
+    },
+    {
+      "feature": "pitcher_hr9_x_park",
+      "group": "pitcher_context, park_environment",
+      "direction": "neutral",
+      "logisticCoefficient": -0.005398,
+      "logisticAbsCoefficient": 0.005398,
+      "treePermutationAveragePrecisionDrop": -0.000183,
+      "treePermutationStd": 0.000465,
+      "imputerMedian": 1.0891525423728814
+    },
+    {
+      "feature": "pitcher_hr_per_9",
+      "group": "pitcher_context",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.035397,
+      "logisticAbsCoefficient": 0.035397,
+      "treePermutationAveragePrecisionDrop": -0.000331,
+      "treePermutationStd": 0.00072,
+      "imputerMedian": 1.1130952380952381
+    },
+    {
+      "feature": "pitcher_era",
+      "group": "pitcher_context",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.030399,
+      "logisticAbsCoefficient": 0.030399,
+      "treePermutationAveragePrecisionDrop": -0.000354,
+      "treePermutationStd": 0.000619,
+      "imputerMedian": 3.9
+    },
+    {
+      "feature": "pitcher_bb_per_9",
+      "group": "pitcher_context",
+      "direction": "higher HR probability",
+      "logisticCoefficient": 0.010551,
+      "logisticAbsCoefficient": 0.010551,
+      "treePermutationAveragePrecisionDrop": -0.000615,
+      "treePermutationStd": 0.000912,
+      "imputerMedian": 2.81
+    },
+    {
+      "feature": "pitcher_k_per_9",
+      "group": "pitcher_context",
+      "direction": "lower HR probability",
+      "logisticCoefficient": -0.058174,
+      "logisticAbsCoefficient": 0.058174,
+      "treePermutationAveragePrecisionDrop": -0.001125,
+      "treePermutationStd": 0.001303,
+      "imputerMedian": 8.34
+    }
+  ]
+}
