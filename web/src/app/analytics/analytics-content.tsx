@@ -5,6 +5,7 @@ import {
   getCachedMlbBattingOrderCalibration,
   getCachedOwnershipVsTeamTotal,
   getCachedPositionAccuracy,
+  getCachedPositionSalaryMatrix,
   getCachedProjectionSourceBreakdown,
   getCachedSalaryTierAccuracy,
   getCachedSlateTypePerformance,
@@ -40,6 +41,7 @@ export default async function AnalyticsContent({
     crossSlate,
     posAccuracy,
     salaryTier,
+    positionSalaryMatrix,
     slateTypePerformance,
     leverageCalib,
     ownVsTotal,
@@ -51,6 +53,7 @@ export default async function AnalyticsContent({
     safeRun(() => getCachedCrossSlateAccuracy(sport)),
     safeRun(() => getCachedPositionAccuracy(sport)),
     safeRun(() => getCachedSalaryTierAccuracy(sport)),
+    safeRun(() => getCachedPositionSalaryMatrix(sport)),
     safeRun(() => getCachedSlateTypePerformance(sport)),
     safeRun(() => getCachedLeverageCalibration(sport)),
     safeRun(() => getCachedOwnershipVsTeamTotal(sport)),
@@ -65,6 +68,7 @@ export default async function AnalyticsContent({
       crossSlate={crossSlate ?? []}
       posAccuracy={posAccuracy ?? []}
       salaryTier={salaryTier ?? []}
+      positionSalaryMatrix={positionSalaryMatrix ?? []}
       slateTypePerformance={slateTypePerformance ?? []}
       leverageCalib={leverageCalib ?? []}
       ownVsTotal={ownVsTotal ?? []}

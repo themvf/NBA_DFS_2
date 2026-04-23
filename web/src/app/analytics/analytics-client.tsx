@@ -16,6 +16,7 @@ import {
 import type {
   CrossSlateAccuracyRow,
   PositionAccuracyRow,
+  PositionSalaryMatrixRow,
   SalaryTierAccuracyRow,
   LeverageCalibrationRow,
   OwnershipVsTeamTotalRow,
@@ -51,6 +52,7 @@ type Props = {
   crossSlate: CrossSlateAccuracyRow[];
   posAccuracy: PositionAccuracyRow[];
   salaryTier: SalaryTierAccuracyRow[];
+  positionSalaryMatrix: PositionSalaryMatrixRow[];
   slateTypePerformance: SlateTypePerformanceRow[];
   leverageCalib: LeverageCalibrationRow[];
   ownVsTotal: OwnershipVsTeamTotalRow[];
@@ -66,6 +68,7 @@ export default function AnalyticsClient({
   crossSlate,
   posAccuracy,
   salaryTier,
+  positionSalaryMatrix,
   slateTypePerformance,
   leverageCalib,
   ownVsTotal,
@@ -79,6 +82,9 @@ export default function AnalyticsClient({
   const router = useRouter();
   const hasData = crossSlate.length > 0;
   const sparseOurCoverage = crossSlate.some((row) => row.nOur < row.nLinestar);
+  const positionOrder = sport === "mlb"
+    ? ["SP", "RP", "C", "1B", "2B", "3B", "SS", "OF", "UTIL"]
+    : ["PG", "SG", "SF", "PF", "C", "UTIL"];
 
   const [historicalDate, setHistoricalDate] = useState("");
   const [historicalText, setHistoricalText] = useState("");
@@ -167,6 +173,31 @@ export default function AnalyticsClient({
       setIsSaving(false);
     }
   }
+
+  function biasCellStyle(bias: number | null | undefined, n: number): React.CSSProperties {
+    if (bias == null || n <= 0) {
+      return { backgroundColor: "#f8fafc", color: "#94a3b8" };
+    }
+    const magnitude = Math.min(Math.abs(bias), 8);
+    const sampleWeight = Math.min(1, Math.max(n / 50, 0.35));
+    const alpha = 0.12 + (magnitude / 8) * 0.28 * sampleWeight;
+    return bias > 0
+      ? { backgroundColor: `rgba(239, 68, 68, ${alpha.toFixed(3)})`, color: "#991b1b" }
+      : { backgroundColor: `rgba(37, 99, 235, ${alpha.toFixed(3)})`, color: "#1d4ed8" };
+  }
+
+  const orderedMatrixRows = [...positionOrder]
+    .filter((position) => positionSalaryMatrix.some((row) => row.position === position));
+  const unorderedMatrixRows = positionSalaryMatrix
+    .map((row) => row.position)
+    .filter((position, index, arr) => arr.indexOf(position) === index && !positionOrder.includes(position));
+  const matrixPositions = [...orderedMatrixRows, ...unorderedMatrixRows];
+  const matrixSalaryTiers = positionSalaryMatrix
+    .map((row) => ({ salaryTier: row.salaryTier, tierMin: row.tierMin ?? Number.MAX_SAFE_INTEGER }))
+    .filter((row, index, arr) => arr.findIndex((candidate) => candidate.salaryTier === row.salaryTier) === index)
+    .sort((a, b) => a.tierMin - b.tierMin)
+    .map((row) => row.salaryTier);
+  const matrixMap = new Map(positionSalaryMatrix.map((row) => [`${row.position}|${row.salaryTier}`, row]));
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6 text-slate-900 [&_.text-gray-100]:text-slate-900 [&_.text-gray-300]:text-slate-700 [&_.text-gray-400]:text-slate-600 [&_.text-gray-500]:text-slate-700">
@@ -569,6 +600,74 @@ export default function AnalyticsClient({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {positionSalaryMatrix.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold mb-1">Position x Salary Bias Matrix</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Use this to see whether positive bias is concentrated in specific position and salary combinations.
+            Red cells are over-projected, blue cells are under-projected. Each cell shows bias, sample, and MAE.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-4 text-[11px] text-slate-600">
+            <span className="inline-flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-sm bg-red-200" />
+              Over-projected
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-sm bg-blue-200" />
+              Under-projected
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-sm bg-slate-100" />
+              No sample
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b text-gray-400">
+                  <th className="py-2 pr-3 text-left">Pos</th>
+                  {matrixSalaryTiers.map((tier) => (
+                    <th key={tier} className="py-2 px-1 text-center whitespace-nowrap">{tier}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {matrixPositions.map((position) => (
+                  <tr key={position} className="border-b border-gray-50">
+                    <td className="py-2 pr-3 font-medium align-top">{position}</td>
+                    {matrixSalaryTiers.map((tier) => {
+                      const cell = matrixMap.get(`${position}|${tier}`) ?? null;
+                      return (
+                        <td key={`${position}-${tier}`} className="px-1 py-2 align-top">
+                          <div
+                            className="min-h-[68px] min-w-[96px] rounded-md border border-white/70 px-2 py-2 text-center shadow-sm"
+                            style={biasCellStyle(cell?.ourBias, cell?.ourN ?? 0)}
+                          >
+                            {cell && cell.ourN > 0 ? (
+                              <>
+                                <div className="font-semibold">
+                                  {cell.ourBias != null
+                                    ? `${cell.ourBias > 0 ? "+" : ""}${cell.ourBias.toFixed(2)}`
+                                    : "—"}
+                                </div>
+                                <div className="mt-1 text-[11px]">n={cell.ourN}</div>
+                                <div className="text-[11px]">MAE {fmt2(cell.ourMae)}</div>
+                              </>
+                            ) : (
+                              <div className="pt-4 text-[11px]">—</div>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

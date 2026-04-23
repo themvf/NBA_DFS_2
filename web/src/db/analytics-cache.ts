@@ -29,6 +29,7 @@ import {
   getNbaPerfectLineupAnalytics,
   getOwnershipVsTeamTotal,
   getPositionAccuracy,
+  getPositionSalaryMatrix,
   getProjectionSourceBreakdown,
   getSalaryTierAccuracy,
   getSlateTypePerformance,
@@ -69,6 +70,12 @@ export const getCachedPositionAccuracy = unstable_cache(
 export const getCachedSalaryTierAccuracy = unstable_cache(
   (sport: Sport) => getSalaryTierAccuracy(sport),
   ["analytics-salary-tier"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedPositionSalaryMatrix = unstable_cache(
+  (sport: Sport) => getPositionSalaryMatrix(sport),
+  ["analytics-position-salary-matrix"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 

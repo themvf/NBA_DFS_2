@@ -1906,6 +1906,64 @@ export async function getSalaryTierAccuracy(sport: Sport = "nba"): Promise<Salar
   return result.rows;
 }
 
+export type PositionSalaryMatrixRow = {
+  position: string;
+  salaryTier: string;
+  tierMin: number | null;
+  ourN: number;
+  ourMae: number | null;
+  ourBias: number | null;
+};
+
+export async function getPositionSalaryMatrix(sport: Sport = "nba"): Promise<PositionSalaryMatrixRow[]> {
+  const posCase = sport === "mlb"
+    ? sql`CASE
+        WHEN dp.eligible_positions LIKE '%SP%' THEN 'SP'
+        WHEN dp.eligible_positions LIKE '%RP%' THEN 'RP'
+        WHEN dp.eligible_positions LIKE '%OF%' THEN 'OF'
+        WHEN dp.eligible_positions LIKE '%SS%' THEN 'SS'
+        WHEN dp.eligible_positions LIKE '%3B%' THEN '3B'
+        WHEN dp.eligible_positions LIKE '%2B%' THEN '2B'
+        WHEN dp.eligible_positions LIKE '%1B%' THEN '1B'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`
+    : sql`CASE
+        WHEN dp.eligible_positions LIKE '%PG%' THEN 'PG'
+        WHEN dp.eligible_positions LIKE '%SG%' THEN 'SG'
+        WHEN dp.eligible_positions LIKE '%SF%' THEN 'SF'
+        WHEN dp.eligible_positions LIKE '%PF%' THEN 'PF'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`;
+
+  const result = await db.execute<PositionSalaryMatrixRow>(sql`
+    SELECT
+      ${posCase} AS "position",
+      CASE
+        WHEN dp.salary < 5000 THEN 'Under $5k'
+        WHEN dp.salary < 6000 THEN '$5k-$6k'
+        WHEN dp.salary < 7000 THEN '$6k-$7k'
+        WHEN dp.salary < 8000 THEN '$7k-$8k'
+        WHEN dp.salary < 9000 THEN '$8k-$9k'
+        ELSE '$9k+'
+      END AS "salaryTier",
+      MIN(dp.salary) AS "tierMin",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL)::int AS "ourN",
+      AVG(ABS(dp.our_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourMae",
+      AVG(dp.our_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.our_proj IS NOT NULL) AS "ourBias"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+    GROUP BY 1, 2
+    ORDER BY MIN(dp.salary) ASC NULLS LAST, 1 ASC
+  `);
+  return result.rows;
+}
+
 export type LeverageCalibrationRow = {
   leverageQuartile: number;
   avgLeverage: number | null;
