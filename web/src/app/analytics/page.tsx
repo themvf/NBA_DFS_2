@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 import type { ReactNode } from "react";
+import { Suspense } from "react";
 import type { OwnershipDetailSort, Sport } from "@/db/queries";
 import AnalyticsContent from "./analytics-content";
 import MlbBlowupCandidatePanel from "./mlb-blowup-candidate-panel";
@@ -52,6 +53,32 @@ async function safeSection(
   }
 }
 
+async function AnalyticsSection({
+  label,
+  render,
+  timeoutMs = SECTION_TIMEOUT_MS,
+}: {
+  label: string;
+  render: () => Promise<ReactNode>;
+  timeoutMs?: number;
+}) {
+  return safeSection(label, render, timeoutMs);
+}
+
+function SectionFallback({
+  label,
+}: {
+  label: string;
+}) {
+  return (
+    <div className="mx-auto mt-4 max-w-5xl rounded border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+      <span className="font-semibold text-slate-700">{label}</span>
+      {": "}
+      <span>Loading...</span>
+    </div>
+  );
+}
+
 export default async function AnalyticsPage({
   searchParams,
 }: {
@@ -68,54 +95,59 @@ export default async function AnalyticsPage({
       ? rawOwnershipSort
       : "field-error";
 
-    // Run all sections in parallel — page.tsx has no inter-section dependencies.
     if (sport === "mlb") {
-      const [
-        calibration,
-        healthCard,
-        signalCard,
-        postmortem,
-        ownership,
-        blowup,
-        runEnvironment,
-        pitcherLineup,
-        perfectLineup,
-      ] = await Promise.all([
-        safeSection("Calibration", () => AnalyticsContent({ sport })),
-        safeSection("HealthCard", () => MlbHealthCard()),
-        safeSection("SignalCard", () => MlbSignalCard()),
-        safeSection("Postmortem", () => MlbPostmortemPanel()),
-        safeSection("Ownership", () => MlbOwnershipModelPanel({ selectedSlateId: ownershipSlateId, sortBy: ownershipSort })),
-        safeSection("Blowup", () => MlbBlowupCandidatePanel()),
-        safeSection("RunEnvironment", () => MlbRunEnvironmentPanel()),
-        safeSection("PitcherLineup", () => MlbPitcherLineupPanel()),
-        safeSection("PerfectLineup", () => PerfectLineupPanel({ sport }), PERFECT_LINEUP_TIMEOUT_MS),
-      ]);
-
       return (
         <>
-          {calibration}
-          {healthCard}
-          {signalCard}
-          {postmortem}
-          {ownership}
-          {blowup}
-          {runEnvironment}
-          {pitcherLineup}
-          {perfectLineup}
+          <Suspense fallback={<SectionFallback label="Calibration" />}>
+            <AnalyticsSection label="Calibration" render={() => AnalyticsContent({ sport })} />
+          </Suspense>
+          <Suspense fallback={<SectionFallback label="HealthCard" />}>
+            <AnalyticsSection label="HealthCard" render={() => MlbHealthCard()} />
+          </Suspense>
+          <Suspense fallback={<SectionFallback label="SignalCard" />}>
+            <AnalyticsSection label="SignalCard" render={() => MlbSignalCard()} />
+          </Suspense>
+          <Suspense fallback={<SectionFallback label="Postmortem" />}>
+            <AnalyticsSection label="Postmortem" render={() => MlbPostmortemPanel()} />
+          </Suspense>
+          <Suspense fallback={<SectionFallback label="Ownership" />}>
+            <AnalyticsSection
+              label="Ownership"
+              render={() => MlbOwnershipModelPanel({ selectedSlateId: ownershipSlateId, sortBy: ownershipSort })}
+            />
+          </Suspense>
+          <Suspense fallback={<SectionFallback label="Blowup" />}>
+            <AnalyticsSection label="Blowup" render={() => MlbBlowupCandidatePanel()} />
+          </Suspense>
+          <Suspense fallback={<SectionFallback label="RunEnvironment" />}>
+            <AnalyticsSection label="RunEnvironment" render={() => MlbRunEnvironmentPanel()} />
+          </Suspense>
+          <Suspense fallback={<SectionFallback label="PitcherLineup" />}>
+            <AnalyticsSection label="PitcherLineup" render={() => MlbPitcherLineupPanel()} />
+          </Suspense>
+          <Suspense fallback={<SectionFallback label="PerfectLineup" />}>
+            <AnalyticsSection
+              label="PerfectLineup"
+              render={() => PerfectLineupPanel({ sport })}
+              timeoutMs={PERFECT_LINEUP_TIMEOUT_MS}
+            />
+          </Suspense>
         </>
       );
     }
 
-    const [calibration, perfectLineup] = await Promise.all([
-      safeSection("Calibration", () => AnalyticsContent({ sport })),
-      safeSection("PerfectLineup", () => PerfectLineupPanel({ sport }), PERFECT_LINEUP_TIMEOUT_MS),
-    ]);
-
     return (
       <>
-        {calibration}
-        {perfectLineup}
+        <Suspense fallback={<SectionFallback label="Calibration" />}>
+          <AnalyticsSection label="Calibration" render={() => AnalyticsContent({ sport })} />
+        </Suspense>
+        <Suspense fallback={<SectionFallback label="PerfectLineup" />}>
+          <AnalyticsSection
+            label="PerfectLineup"
+            render={() => PerfectLineupPanel({ sport })}
+            timeoutMs={PERFECT_LINEUP_TIMEOUT_MS}
+          />
+        </Suspense>
       </>
     );
   } catch (fatal) {
