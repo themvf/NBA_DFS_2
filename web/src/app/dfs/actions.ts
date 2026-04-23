@@ -2628,7 +2628,10 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
     // Get current slate
     const [slate] = await db
       .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
-      .from(dkSlates).orderBy(desc(dkSlates.slateDate)).limit(1);
+      .from(dkSlates)
+      .where(eq(dkSlates.sport, "nba"))
+      .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
+      .limit(1);
     if (!slate) return { ok: false, message: "No slate loaded — load a slate first" };
     const targetDate = slate.slateDate; // "YYYY-MM-DD"
 
@@ -3263,6 +3266,7 @@ export async function auditNbaPropCoverage(gameKeys: string[]): Promise<NbaPropC
     const [slate] = await db
       .select({ id: dkSlates.id, slateDate: dkSlates.slateDate })
       .from(dkSlates)
+      .where(eq(dkSlates.sport, "nba"))
       .orderBy(desc(dkSlates.slateDate), desc(dkSlates.id))
       .limit(1);
     if (!slate) {
