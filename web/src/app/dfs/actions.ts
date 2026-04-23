@@ -4920,7 +4920,9 @@ export async function saveHistoricalSlate(
     )
     .limit(1);
 
-  // If no exact match, fall back to the loaded slate with the most our_proj coverage for this date.
+  // If no exact match, fall back to a loaded DFS slate for the same date/format with the
+  // most our_proj coverage. Exclude special contests like MLB homerun-only boards because
+  // those use different salary structures and will never match historical LineStar pastes.
   const existingSlate: { id: number }[] = exactMatch[0]
     ? exactMatch
     : (await db.execute<{ id: number }>(sql`
@@ -4928,6 +4930,8 @@ export async function saveHistoricalSlate(
         FROM dk_slates ds
         WHERE ds.slate_date = ${date}
           AND ds.sport = ${sport}
+          AND COALESCE(ds.contest_format, 'gpp') = ${effectiveFormat}
+          AND LOWER(COALESCE(ds.contest_type, 'main')) IN ('turbo', 'early', 'main', 'night', 'late')
           AND EXISTS (
             SELECT 1 FROM dk_players dp
             WHERE dp.slate_id = ds.id AND dp.our_proj IS NOT NULL
