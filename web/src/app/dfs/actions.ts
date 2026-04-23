@@ -4920,28 +4920,80 @@ export async function saveHistoricalSlate(
     )
     .limit(1);
 
-  // If no exact match, fall back to a loaded DFS slate for the same date/format with the
-  // most our_proj coverage. Exclude special contests like MLB homerun-only boards because
-  // those use different salary structures and will never match historical LineStar pastes.
-  const existingSlate: { id: number }[] = exactMatch[0]
-    ? exactMatch
-    : (await db.execute<{ id: number }>(sql`
-        SELECT ds.id
+  let existingSlate: { id: number }[] = exactMatch[0] ? exactMatch : [];
+  if (!existingSlate[0] && parsed.size >= 50) {
+    const fallbackCandidates = (await db.execute<{
+      id: number;
+      contestType: string | null;
+      ourProjCount: number;
+    }>(sql`
+        SELECT
+          ds.id,
+          ds.contest_type AS "contestType",
+          COUNT(*) FILTER (WHERE dp.our_proj IS NOT NULL)::int AS "ourProjCount"
         FROM dk_slates ds
+        JOIN dk_players dp ON dp.slate_id = ds.id
         WHERE ds.slate_date = ${date}
           AND ds.sport = ${sport}
           AND COALESCE(ds.contest_format, 'gpp') = ${effectiveFormat}
           AND LOWER(COALESCE(ds.contest_type, 'main')) IN ('turbo', 'early', 'main', 'night', 'late')
-          AND EXISTS (
-            SELECT 1 FROM dk_players dp
-            WHERE dp.slate_id = ds.id AND dp.our_proj IS NOT NULL
-          )
-        ORDER BY (
-          SELECT COUNT(*) FROM dk_players dp
-          WHERE dp.slate_id = ds.id AND dp.our_proj IS NOT NULL
-        ) DESC
-        LIMIT 1
+        GROUP BY ds.id, ds.contest_type
+        HAVING COUNT(*) FILTER (WHERE dp.our_proj IS NOT NULL) > 0
+        ORDER BY "ourProjCount" DESC, ds.id DESC
       `)).rows;
+
+    const scoredCandidates: Array<{
+      id: number;
+      contestType: string | null;
+      ourProjCount: number;
+      exactMatches: number;
+      matchRatio: number;
+    }> = [];
+
+    for (const candidate of fallbackCandidates) {
+      const candidatePool = await db.execute<{ name: string; salary: number }>(sql`
+        SELECT name, salary
+        FROM dk_players
+        WHERE slate_id = ${candidate.id}
+      `);
+
+      let exactMatches = 0;
+      for (const row of candidatePool.rows) {
+        if (parsed.has(`${row.name.toLowerCase()}|${row.salary}`)) {
+          exactMatches++;
+        }
+      }
+
+      scoredCandidates.push({
+        id: candidate.id,
+        contestType: candidate.contestType,
+        ourProjCount: Number(candidate.ourProjCount ?? 0),
+        exactMatches,
+        matchRatio: parsed.size > 0 ? exactMatches / parsed.size : 0,
+      });
+    }
+
+    scoredCandidates.sort((a, b) =>
+      b.exactMatches - a.exactMatches
+      || b.matchRatio - a.matchRatio
+      || b.ourProjCount - a.ourProjCount
+      || b.id - a.id
+    );
+
+    const bestCandidate = scoredCandidates[0];
+    const runnerUp = scoredCandidates[1];
+    const minExactMatches = Math.max(12, Math.ceil(parsed.size * 0.5));
+    const minLead = Math.max(8, Math.ceil(parsed.size * 0.15));
+
+    if (
+      bestCandidate
+      && bestCandidate.exactMatches >= minExactMatches
+      && bestCandidate.matchRatio >= 0.5
+      && (!runnerUp || bestCandidate.exactMatches >= runnerUp.exactMatches + minLead)
+    ) {
+      existingSlate = [{ id: bestCandidate.id }];
+    }
+  }
 
   const abbrevCache = new Map(
     (await db
