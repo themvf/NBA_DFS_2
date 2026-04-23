@@ -44,17 +44,19 @@ export default async function DfsPage({
       ? getMlbGameEnvironmentCards(slateDate)
       : Promise.resolve([] as MlbGameEnvironmentCard[]),
   ]);
+  const slateKey = `${sport}:${slateDate ?? "none"}:${players[0]?.slateId ?? "none"}`;
 
   return (
     <div className="space-y-6">
       <DfsClient
+        key={slateKey}
         players={players}
         slateDate={slateDate}
         mlbPitcherSignals={mlbPitcherSignals}
         mlbGameCards={mlbGameCards}
         sport={sport}
       />
-      <Suspense fallback={<DfsSecondaryPanelsFallback />}>
+      <Suspense key={`secondary:${slateKey}`} fallback={<DfsSecondaryPanelsFallback />}>
         <DfsSecondaryPanels sport={sport} />
       </Suspense>
     </div>
