@@ -732,11 +732,51 @@ export type MlbOptimizerHrSignalImpactRow = OptimizerFeatureMetrics & {
   avgHrInfluenceScore: number | null;
 };
 
+export type MlbOptimizerHrPlayerImpactRow = {
+  bucket: string;
+  exposures: number;
+  uniquePlayers: number;
+  nJobs: number;
+  nSlates: number;
+  avgHrProbPct: number | null;
+  avgExpectedHr: number | null;
+  avgMarketHrProbPct: number | null;
+  avgEdgePct: number | null;
+  avgInfluenceScore: number | null;
+  avgProjectedOwnPct: number | null;
+  avgActualOwnPct: number | null;
+  avgProjection: number | null;
+  avgActualFpts: number | null;
+  avgBeat: number | null;
+  hrRate: number | null;
+  avgActualHr: number | null;
+};
+
+export type MlbOptimizerHrPlayerLeaderRow = {
+  playerId: number;
+  name: string;
+  teamAbbrev: string;
+  exposures: number;
+  nSlates: number;
+  avgHrProbPct: number | null;
+  avgExpectedHr: number | null;
+  avgEdgePct: number | null;
+  avgInfluenceScore: number | null;
+  avgProjectedOwnPct: number | null;
+  avgActualOwnPct: number | null;
+  avgActualFpts: number | null;
+  avgBeat: number | null;
+  hrRate: number | null;
+  actualHr: number;
+};
+
 export type MlbOptimizerFeatureImpactSummary = {
   hrCorrelation: MlbHrCorrelationImpactRow[];
   pitcherCeiling: MlbPitcherCeilingImpactRow[];
   antiCorrelation: MlbAntiCorrelationImpactRow[];
   hrSignal: MlbOptimizerHrSignalImpactRow[];
+  hrPlayerBuckets: MlbOptimizerHrPlayerImpactRow[];
+  hrPlayerLeaders: MlbOptimizerHrPlayerLeaderRow[];
   combinations: MlbOptimizerFeatureCombinationRow[];
 };
 
@@ -905,6 +945,137 @@ export async function getMlbOptimizerFeatureImpactSummary(): Promise<MlbOptimize
       END DESC
   `));
 
+  const playerBaseCte = `
+    WITH player_exposures AS (
+      SELECT
+        oj.id AS job_id,
+        oj.slate_id,
+        (player_signal ->> 'playerId')::integer AS player_id,
+        COALESCE(NULLIF(player_signal ->> 'name', ''), dp.name) AS name,
+        COALESCE(NULLIF(player_signal ->> 'teamAbbrev', ''), dp.team_abbrev) AS team_abbrev,
+        (player_signal ->> 'projection')::double precision AS projection,
+        (player_signal ->> 'projectedOwnership')::double precision AS projected_own_pct,
+        (player_signal ->> 'hrProb1Plus')::double precision AS hr_prob,
+        (player_signal ->> 'expectedHr')::double precision AS expected_hr,
+        (player_signal ->> 'marketHrProb')::double precision AS market_hr_prob,
+        (player_signal ->> 'hrEdgePct')::double precision AS hr_edge_pct,
+        (player_signal ->> 'hrInfluenceScore')::double precision AS hr_influence_score,
+        COALESCE((player_signal ->> 'isHrTarget')::boolean, false) AS is_hr_target,
+        COALESCE((player_signal ->> 'isHighHrTarget')::boolean, false) AS is_high_hr_target,
+        COALESCE((player_signal ->> 'isOrder23')::boolean, false) AS is_order23,
+        COALESCE((player_signal ->> 'isPositiveEdge')::boolean, false) AS is_positive_edge,
+        COALESCE((player_signal ->> 'isTop15Hr')::boolean, false) AS is_top15_hr,
+        COALESCE((player_signal ->> 'isTop15Edge')::boolean, false) AS is_top15_edge,
+        COALESCE((player_signal ->> 'isHrTarget')::boolean, false)
+          AND COALESCE((player_signal ->> 'projectedOwnership')::double precision, 999) <= 12 AS is_low_owned_hr_target,
+        dp.actual_fpts,
+        dp.actual_own_pct,
+        dp.actual_hr
+      FROM optimizer_job_lineups ojl
+      INNER JOIN optimizer_jobs oj
+        ON oj.id = ojl.job_id
+      INNER JOIN LATERAL jsonb_array_elements(ojl.mlb_hr_signal_json -> 'players') AS player_json(player_signal)
+        ON TRUE
+      LEFT JOIN dk_players dp
+        ON dp.id = (player_signal ->> 'playerId')::integer
+       AND dp.slate_id = oj.slate_id
+      WHERE oj.sport = 'mlb'
+        AND ojl.mlb_hr_signal_json IS NOT NULL
+        AND dp.actual_fpts IS NOT NULL
+    ),
+    bucketed AS (
+      SELECT 'All selected hitters' AS bucket, * FROM player_exposures
+      UNION ALL
+      SELECT 'HR targets', * FROM player_exposures WHERE is_hr_target
+      UNION ALL
+      SELECT 'High HR targets', * FROM player_exposures WHERE is_high_hr_target
+      UNION ALL
+      SELECT '#2/#3 HR targets', * FROM player_exposures WHERE is_order23 AND is_hr_target
+      UNION ALL
+      SELECT 'Low-owned HR targets', * FROM player_exposures WHERE is_low_owned_hr_target
+      UNION ALL
+      SELECT 'Positive-edge hitters', * FROM player_exposures WHERE is_positive_edge
+      UNION ALL
+      SELECT 'Top-15 HR selected', * FROM player_exposures WHERE is_top15_hr
+      UNION ALL
+      SELECT 'Top-15 edge selected', * FROM player_exposures WHERE is_top15_edge
+    )
+  `;
+
+  const playerBucketMetrics = `
+      COUNT(*)::int AS "exposures",
+      COUNT(DISTINCT player_id)::int AS "uniquePlayers",
+      COUNT(DISTINCT job_id)::int AS "nJobs",
+      COUNT(DISTINCT slate_id)::int AS "nSlates",
+      AVG(hr_prob) * 100 AS "avgHrProbPct",
+      AVG(expected_hr) AS "avgExpectedHr",
+      AVG(market_hr_prob) * 100 AS "avgMarketHrProbPct",
+      AVG(hr_edge_pct) AS "avgEdgePct",
+      AVG(hr_influence_score) AS "avgInfluenceScore",
+      AVG(projected_own_pct) AS "avgProjectedOwnPct",
+      AVG(actual_own_pct) AS "avgActualOwnPct",
+      AVG(projection) AS "avgProjection",
+      AVG(actual_fpts) AS "avgActualFpts",
+      AVG(actual_fpts - projection) AS "avgBeat",
+      AVG(CASE WHEN actual_hr > 0 THEN 1.0 ELSE 0.0 END) FILTER (WHERE actual_hr IS NOT NULL) * 100 AS "hrRate",
+      AVG(actual_hr) FILTER (WHERE actual_hr IS NOT NULL) AS "avgActualHr"
+  `;
+
+  const hrPlayerBuckets = await db.execute<MlbOptimizerHrPlayerImpactRow>(sql.raw(`
+    ${playerBaseCte}
+    SELECT
+      bucket AS "bucket",
+      ${playerBucketMetrics}
+    FROM bucketed
+    GROUP BY 1
+    ORDER BY
+      CASE bucket
+        WHEN 'All selected hitters' THEN 1
+        WHEN 'HR targets' THEN 2
+        WHEN 'High HR targets' THEN 3
+        WHEN '#2/#3 HR targets' THEN 4
+        WHEN 'Low-owned HR targets' THEN 5
+        WHEN 'Positive-edge hitters' THEN 6
+        WHEN 'Top-15 HR selected' THEN 7
+        WHEN 'Top-15 edge selected' THEN 8
+        ELSE 99
+      END ASC
+  `));
+
+  const hrPlayerLeaders = await db.execute<MlbOptimizerHrPlayerLeaderRow>(sql.raw(`
+    ${playerBaseCte}
+    SELECT
+      player_id AS "playerId",
+      MIN(name) AS "name",
+      MIN(team_abbrev) AS "teamAbbrev",
+      COUNT(*)::int AS "exposures",
+      COUNT(DISTINCT slate_id)::int AS "nSlates",
+      AVG(hr_prob) * 100 AS "avgHrProbPct",
+      AVG(expected_hr) AS "avgExpectedHr",
+      AVG(hr_edge_pct) AS "avgEdgePct",
+      AVG(hr_influence_score) AS "avgInfluenceScore",
+      AVG(projected_own_pct) AS "avgProjectedOwnPct",
+      AVG(actual_own_pct) AS "avgActualOwnPct",
+      AVG(actual_fpts) AS "avgActualFpts",
+      AVG(actual_fpts - projection) AS "avgBeat",
+      AVG(CASE WHEN actual_hr > 0 THEN 1.0 ELSE 0.0 END) FILTER (WHERE actual_hr IS NOT NULL) * 100 AS "hrRate",
+      COALESCE(SUM(actual_hr) FILTER (WHERE actual_hr IS NOT NULL), 0)::int AS "actualHr"
+    FROM player_exposures
+    WHERE is_hr_target
+      OR is_high_hr_target
+      OR is_top15_hr
+      OR is_top15_edge
+      OR is_positive_edge
+      OR hr_influence_score > 0
+    GROUP BY player_id
+    ORDER BY
+      COALESCE(SUM(actual_hr) FILTER (WHERE actual_hr IS NOT NULL), 0) DESC,
+      AVG(actual_fpts - projection) DESC NULLS LAST,
+      AVG(hr_influence_score) DESC NULLS LAST,
+      COUNT(*) DESC
+    LIMIT 12
+  `));
+
   const combinations = await db.execute<MlbOptimizerFeatureCombinationRow>(sql.raw(`
     ${baseCte}
     SELECT
@@ -924,6 +1095,8 @@ export async function getMlbOptimizerFeatureImpactSummary(): Promise<MlbOptimize
     pitcherCeiling: pitcherCeiling.rows,
     antiCorrelation: antiCorrelation.rows,
     hrSignal: hrSignal.rows,
+    hrPlayerBuckets: hrPlayerBuckets.rows,
+    hrPlayerLeaders: hrPlayerLeaders.rows,
     combinations: combinations.rows,
   };
 }

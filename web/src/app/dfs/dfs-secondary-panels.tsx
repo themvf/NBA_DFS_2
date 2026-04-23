@@ -26,7 +26,9 @@ export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
     (optimizerFeatureImpact.hrCorrelation.length > 0 ||
       optimizerFeatureImpact.pitcherCeiling.length > 0 ||
       optimizerFeatureImpact.antiCorrelation.length > 0 ||
-      optimizerFeatureImpact.hrSignal.length > 0),
+      optimizerFeatureImpact.hrSignal.length > 0 ||
+      optimizerFeatureImpact.hrPlayerBuckets.length > 0 ||
+      optimizerFeatureImpact.hrPlayerLeaders.length > 0),
   );
 
   if (!accuracy && comparison.length === 0 && strategySummary.length === 0 && !hasOptimizerFeatureImpact) {
@@ -221,6 +223,96 @@ export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {(optimizerFeatureImpact.hrPlayerBuckets.length > 0 || optimizerFeatureImpact.hrPlayerLeaders.length > 0) && (
+            <div className="mb-5 space-y-4">
+              {optimizerFeatureImpact.hrPlayerBuckets.length > 0 && (
+                <div className="overflow-x-auto">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">HR Player Outcome Audit</h3>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b text-gray-400">
+                        <th className="py-1 text-left">Bucket</th>
+                        <th className="py-1 text-right">Exp</th>
+                        <th className="py-1 text-right">Players</th>
+                        <th className="py-1 text-right">HR%</th>
+                        <th className="py-1 text-right">Hit HR</th>
+                        <th className="py-1 text-right">Avg Act</th>
+                        <th className="py-1 text-right">Beat</th>
+                        <th className="py-1 text-right">Own</th>
+                        <th className="py-1 text-right">Edge</th>
+                        <th className="py-1 text-right">Influence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {optimizerFeatureImpact.hrPlayerBuckets.map((row) => (
+                        <tr key={row.bucket} className="border-b border-gray-50">
+                          <td className="py-1 font-medium">{row.bucket}</td>
+                          <td className="py-1 text-right">{row.exposures}</td>
+                          <td className="py-1 text-right">{row.uniquePlayers}</td>
+                          <td className="py-1 text-right">{fmtPct(row.avgHrProbPct)}</td>
+                          <td className="py-1 text-right">{fmtPct(row.hrRate)}</td>
+                          <td className="py-1 text-right">{fmt1(row.avgActualFpts)}</td>
+                          <td className={`py-1 text-right ${row.avgBeat != null && row.avgBeat >= 0 ? "text-green-600" : "text-red-500"}`}>
+                            {fmtSigned(row.avgBeat)}
+                          </td>
+                          <td className="py-1 text-right">{fmtPct(row.avgActualOwnPct)}</td>
+                          <td className={`py-1 text-right ${row.avgEdgePct != null && row.avgEdgePct >= 0 ? "text-green-600" : "text-red-500"}`}>
+                            {fmtSigned(row.avgEdgePct)}
+                          </td>
+                          <td className="py-1 text-right">{fmt1(row.avgInfluenceScore)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {optimizerFeatureImpact.hrPlayerLeaders.length > 0 && (
+                <div className="overflow-x-auto">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Selected HR Signal Leaders</h3>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b text-gray-400">
+                        <th className="py-1 text-left">Player</th>
+                        <th className="py-1 text-right">Exp</th>
+                        <th className="py-1 text-right">HRs</th>
+                        <th className="py-1 text-right">Hit HR</th>
+                        <th className="py-1 text-right">HR%</th>
+                        <th className="py-1 text-right">Avg Act</th>
+                        <th className="py-1 text-right">Beat</th>
+                        <th className="py-1 text-right">Own</th>
+                        <th className="py-1 text-right">Edge</th>
+                        <th className="py-1 text-right">Influence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {optimizerFeatureImpact.hrPlayerLeaders.map((row) => (
+                        <tr key={row.playerId} className="border-b border-gray-50">
+                          <td className="py-1 font-medium">
+                            {row.name} <span className="text-gray-400">{row.teamAbbrev}</span>
+                          </td>
+                          <td className="py-1 text-right">{row.exposures}</td>
+                          <td className="py-1 text-right">{row.actualHr}</td>
+                          <td className="py-1 text-right">{fmtPct(row.hrRate)}</td>
+                          <td className="py-1 text-right">{fmtPct(row.avgHrProbPct)}</td>
+                          <td className="py-1 text-right">{fmt1(row.avgActualFpts)}</td>
+                          <td className={`py-1 text-right ${row.avgBeat != null && row.avgBeat >= 0 ? "text-green-600" : "text-red-500"}`}>
+                            {fmtSigned(row.avgBeat)}
+                          </td>
+                          <td className="py-1 text-right">{fmtPct(row.avgActualOwnPct)}</td>
+                          <td className={`py-1 text-right ${row.avgEdgePct != null && row.avgEdgePct >= 0 ? "text-green-600" : "text-red-500"}`}>
+                            {fmtSigned(row.avgEdgePct)}
+                          </td>
+                          <td className="py-1 text-right">{fmt1(row.avgInfluenceScore)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
