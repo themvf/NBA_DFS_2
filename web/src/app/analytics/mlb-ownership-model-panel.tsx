@@ -27,27 +27,29 @@ function sortLabel(sortBy: OwnershipDetailSort): string {
   }
 }
 
-function sortHref(sortBy: OwnershipDetailSort, selectedSlateId: number | null) {
+function sortHref(sortBy: OwnershipDetailSort, selectedSlateId: number | null, basePath: string) {
   const params = new URLSearchParams({ sport: "mlb", ownershipSort: sortBy });
   if (selectedSlateId != null) params.set("ownershipSlate", String(selectedSlateId));
-  return `/analytics?${params.toString()}`;
+  return `${basePath}?${params.toString()}`;
 }
 
-function slateHref(slateId: number, sortBy: OwnershipDetailSort) {
+function slateHref(slateId: number, sortBy: OwnershipDetailSort, basePath: string) {
   const params = new URLSearchParams({
     sport: "mlb",
     ownershipSlate: String(slateId),
     ownershipSort: sortBy,
   });
-  return `/analytics?${params.toString()}`;
+  return `${basePath}?${params.toString()}`;
 }
 
 export default async function MlbOwnershipModelPanel({
   selectedSlateId,
   sortBy,
+  basePath = "/analytics",
 }: {
   selectedSlateId: number | null;
   sortBy: OwnershipDetailSort;
+  basePath?: string;
 }) {
   let report;
   try {
@@ -222,7 +224,7 @@ export default async function MlbOwnershipModelPanel({
                     <tr key={`${row.slateId}-${row.ownershipVersion}-${row.source}`} className="border-b border-slate-100">
                       <td className="py-1">
                         <Link
-                          href={slateHref(row.slateId, sortBy)}
+                          href={slateHref(row.slateId, sortBy, basePath)}
                           className={`font-medium underline-offset-2 hover:underline ${active ? "text-slate-900" : "text-sky-700"}`}
                         >
                           {row.slateDate}
@@ -333,7 +335,7 @@ export default async function MlbOwnershipModelPanel({
               {(["field-error", "gain", "actual", "field-own"] as OwnershipDetailSort[]).map((option) => (
                 <Link
                   key={option}
-                  href={sortHref(option, report.selectedSlate?.slateId ?? null)}
+                  href={sortHref(option, report.selectedSlate?.slateId ?? null, basePath)}
                   className={`rounded-full border px-2 py-1 ${
                     option === sortBy
                       ? "border-slate-900 bg-slate-900 text-white"

@@ -73,7 +73,7 @@ export function SportNav() {
         <nav className="flex items-center gap-1 text-sm">
           {PAGE_LINKS.map((l) => {
             const href = `${l.href}?sport=${currentSport}`;
-            const isActive = pathname === l.href;
+            const isActive = pathname === l.href || pathname.startsWith(`${l.href}/`);
             return (
               <Link
                 key={l.href}

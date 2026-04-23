@@ -59,6 +59,7 @@ type Props = {
   statLevelAccuracy: StatLevelAccuracyRow[];
   gameTotalModel: GameTotalModelRow[];
   sport: Sport;
+  showHeader?: boolean;
 };
 
 export default function AnalyticsClient({
@@ -73,6 +74,7 @@ export default function AnalyticsClient({
   statLevelAccuracy,
   gameTotalModel,
   sport,
+  showHeader = true,
 }: Props) {
   const router = useRouter();
   const hasData = crossSlate.length > 0;
@@ -168,18 +170,25 @@ export default function AnalyticsClient({
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6 text-slate-900 [&_.text-gray-100]:text-slate-900 [&_.text-gray-300]:text-slate-700 [&_.text-gray-400]:text-slate-600 [&_.text-gray-500]:text-slate-700">
-      <div>
-        <h1 className="text-xl font-bold">Model Calibration Analytics</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Cross-slate projection accuracy, position breakdown, salary tier miscalibration, and leverage validation.
-        </p>
-        {sparseOurCoverage && (
-          <p className="mt-2 text-xs text-amber-700">
-            Some slates have broader LineStar coverage than `our_proj`. The tables below show both so MLB hitter
-            results do not disappear when model coverage is sparse.
+      {showHeader ? (
+        <div>
+          <h1 className="text-xl font-bold">Model Calibration Analytics</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Cross-slate projection accuracy, position breakdown, salary tier miscalibration, and leverage validation.
           </p>
-        )}
-      </div>
+          {sparseOurCoverage && (
+            <p className="mt-2 text-xs text-amber-700">
+              Some slates have broader LineStar coverage than `our_proj`. The tables below show both so MLB hitter
+              results do not disappear when model coverage is sparse.
+            </p>
+          )}
+        </div>
+      ) : sparseOurCoverage ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Some slates have broader LineStar coverage than `our_proj`. The tables below show both so MLB hitter
+          results do not disappear when model coverage is sparse.
+        </div>
+      ) : null}
 
       {/* ── Results Ingestion ────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

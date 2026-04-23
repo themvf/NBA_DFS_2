@@ -26,7 +26,13 @@ async function safeRun<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
-export default async function AnalyticsContent({ sport }: { sport: Sport }) {
+export default async function AnalyticsContent({
+  sport,
+  showHeader = true,
+}: {
+  sport: Sport;
+  showHeader?: boolean;
+}) {
   // Run all independent queries in parallel — reduces total DB time from
   // sum(query latencies) to max(query latency), preventing function timeouts
   // on cache miss when Neon wakes from suspend.
@@ -67,6 +73,7 @@ export default async function AnalyticsContent({ sport }: { sport: Sport }) {
       statLevelAccuracy={statLevelAccuracy ?? []}
       gameTotalModel={gameTotalModel ?? []}
       sport={sport}
+      showHeader={showHeader}
     />
   );
 }
