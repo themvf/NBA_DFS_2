@@ -4773,19 +4773,10 @@ function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, H
 
     let playerName = cells[salaryIdx - 1];
     let teamAbbrev = "";
-    for (let idx = salaryIdx - 1; idx >= 1; idx--) {
-      if (looksLikeTeamAbbrev(cells[idx] ?? "")) {
-        teamAbbrev = cells[idx] ?? "";
-        if (idx > 0) {
-          playerName = cells[idx - 1] ?? playerName;
-        }
-        break;
-      }
-    }
-    if (!teamAbbrev && looksLikeTeamAbbrev(playerName) && salaryIdx >= 2) {
+    if (looksLikeTeamAbbrev(playerName) && salaryIdx >= 2) {
       teamAbbrev = playerName;
-      playerName = cells[salaryIdx - 2];
-    } else if (!teamAbbrev && salaryIdx >= 2) {
+      playerName = cells[salaryIdx - 2] ?? "";
+    } else if (salaryIdx >= 2) {
       teamAbbrev = cells[salaryIdx - 2] ?? "";
     }
     if (!playerName || playerName.toLowerCase() === "player") continue;
