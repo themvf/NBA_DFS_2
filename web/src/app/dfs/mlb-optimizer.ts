@@ -970,6 +970,19 @@ function calculateMlbSharedCount(players: MlbOptimizerPlayer[], previousLineup: 
   return shared;
 }
 
+function isExactDuplicateMlbLineup(
+  players: MlbOptimizerPlayer[],
+  previousLineupSets: Set<number>[],
+): boolean {
+  for (const previousLineup of previousLineupSets) {
+    if (previousLineup.size !== players.length) continue;
+    if (calculateMlbSharedCount(players, previousLineup) === players.length) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function assignMlbPlayersToSlots(
   players: MlbOptimizerPlayer[],
   slots: readonly MlbLineupSlot[],
@@ -1021,6 +1034,7 @@ function validateMlbLineupExact(
 ): MlbValidationResult {
   if (players.length !== MLB_ROSTER_SIZE) return { ok: false };
   if (new Set(players.map((player) => player.id)).size !== MLB_ROSTER_SIZE) return { ok: false };
+  if (isExactDuplicateMlbLineup(players, previousLineupSets)) return { ok: false };
   if (players.reduce((sum, player) => sum + player.salary, 0) > MLB_SALARY_CAP) return { ok: false };
 
   const slots = assignMlbPositions(players);

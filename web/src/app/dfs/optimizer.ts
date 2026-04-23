@@ -881,6 +881,19 @@ function calculateSharedCount(players: OptimizerPlayer[], previousLineup: Set<nu
   return shared;
 }
 
+function isExactDuplicateLineup(
+  players: OptimizerPlayer[],
+  previousLineupSets: Set<number>[],
+): boolean {
+  for (const previousLineup of previousLineupSets) {
+    if (previousLineup.size !== players.length) continue;
+    if (calculateSharedCount(players, previousLineup) === players.length) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function validateLineupExact(
   players: OptimizerPlayer[],
   minStack: number,
@@ -896,6 +909,9 @@ function validateLineupExact(
   }
   if (new Set(players.map((player) => player.id)).size !== ROSTER_SIZE) {
     return { ok: false, reason: "duplicate_player" };
+  }
+  if (isExactDuplicateLineup(players, previousLineupSets)) {
+    return { ok: false, reason: "exact_duplicate_lineup" };
   }
 
   const totalSalary = players.reduce((sum, player) => sum + player.salary, 0);

@@ -75,6 +75,14 @@ function sanitizeProbability(value: number | null | undefined): number | null {
   return finite == null ? null : Math.max(0, Math.min(0.9999, finite));
 }
 
+function canonicalLineupSignature(playerIds: readonly number[]): string {
+  return [...playerIds]
+    .map((playerId) => Number(playerId))
+    .filter((playerId) => Number.isFinite(playerId))
+    .sort((a, b) => a - b)
+    .join(",");
+}
+
 function roundMetric(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
@@ -1497,6 +1505,9 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
 
   const priorLineups = await readJobLineups(jobId);
   const priorLineupPlayerIds = priorLineups.map((lineup) => lineup.playerIds);
+  const priorLineupSignatures = new Set(
+    priorLineupPlayerIds.map((playerIds) => canonicalLineupSignature(playerIds)),
+  );
   const prepared = buildPreparedFromJob(job);
   const nextResult = prepared.sport === "mlb"
     ? buildNextMlbLineup(prepared as MlbPreparedOptimizerRun, priorLineupPlayerIds)
@@ -1521,6 +1532,20 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
     ? toMlbSlotPlayerIds(nextResult.lineup as MlbGeneratedLineup)
     : toNbaSlotPlayerIds(nextResult.lineup as GeneratedLineup);
   const playerIds = nextResult.lineup.players.map((player) => player.id);
+  const lineupSignature = canonicalLineupSignature(playerIds);
+  if (priorLineupSignatures.has(lineupSignature)) {
+    await db
+      .update(optimizerJobs)
+      .set({
+        builtLineups: priorLineups.length,
+        heartbeatAt: now,
+        terminationReason: "lineup_failed",
+        error: "Optimizer generated a duplicate lineup. No additional unique lineups could be built under the current constraints.",
+        totalMs: computeJobTotalMs(job, now),
+      })
+      .where(eq(optimizerJobs.id, jobId));
+    return { built: false };
+  }
   const mlbHrSignal = prepared.sport === "mlb"
     ? buildMlbLineupHrSignal(nextResult.lineup as MlbGeneratedLineup, prepared as MlbPreparedOptimizerRun)
     : null;
