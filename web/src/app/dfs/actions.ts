@@ -1373,11 +1373,13 @@ function buildNbaProjectionBlend(
   } = {},
 ): NbaProjectionBlend {
   const modelStats = computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, {});
-  const marketStats = computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, props);
-  const modelProj = sanitizeProjection(modelStats?.fpts ?? null);
-  const marketProj = sanitizeProjection(marketStats?.fpts ?? null);
-  const lsProj = sanitizeProjection(linestarProj);
   const propCount = countProjectionProps(props);
+  const marketStats = propCount > 0
+    ? computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, props)
+    : null;
+  const modelProj = sanitizeProjection(modelStats?.fpts ?? null);
+  const marketProj = propCount > 0 ? sanitizeProjection(marketStats?.fpts ?? null) : null;
+  const lsProj = sanitizeProjection(linestarProj);
   const avgMinutes = player.avgMinutes ?? 0;
 
   let modelConfidence = avgMinutes >= 30 ? 0.82 : avgMinutes >= 24 ? 0.72 : avgMinutes >= 18 ? 0.58 : 0.42;
@@ -1402,6 +1404,14 @@ function buildNbaProjectionBlend(
     modelConfidence = clamp01(modelConfidence - 0.12);
     lsConfidence = clamp01(lsConfidence + 0.12);
   }
+  if (propCount === 0 && lsProj != null && lsGap >= 8) {
+    const guardrailPenalty = avgMinutes < 18 ? 0.16 : avgMinutes < 24 ? 0.12 : avgMinutes < 30 ? 0.08 : 0;
+    if (guardrailPenalty > 0) {
+      modelConfidence = clamp01(modelConfidence - guardrailPenalty);
+      lsConfidence = clamp01(lsConfidence + guardrailPenalty);
+      flags.push("ls_guardrail");
+    }
+  }
   if (marketGap >= 6 && marketConfidence > 0) {
     modelConfidence = clamp01(modelConfidence - 0.08);
     marketConfidence = clamp01(marketConfidence + 0.05);
@@ -1418,7 +1428,16 @@ function buildNbaProjectionBlend(
       ? { model: 0.30, market: 0.60, ls: lsProj != null ? 0.10 : 0 }
       : { model: 0.45, market: 0.45, ls: lsProj != null ? 0.10 : 0 };
   } else {
-    baseWeights = { model: modelProj != null ? 0.75 : 0, market: 0, ls: lsProj != null ? 0.25 : 0 };
+    const guardedNoPropWeights = lsProj != null && lsGap >= 8
+      ? avgMinutes < 18
+        ? { model: modelProj != null ? 0.45 : 0, market: 0, ls: 0.55 }
+        : avgMinutes < 24
+          ? { model: modelProj != null ? 0.55 : 0, market: 0, ls: 0.45 }
+          : avgMinutes < 30
+            ? { model: modelProj != null ? 0.62 : 0, market: 0, ls: 0.38 }
+            : null
+      : null;
+    baseWeights = guardedNoPropWeights ?? { model: modelProj != null ? 0.75 : 0, market: 0, ls: lsProj != null ? 0.25 : 0 };
     if (lsProj == null) baseWeights.model = modelProj != null ? 1 : 0;
   }
   if (marketProj != null && (marketFptsDelta > 0 || totalDelta > 0)) {
@@ -1433,11 +1452,18 @@ function buildNbaProjectionBlend(
     ls: lsProj != null ? baseWeights.ls * lsConfidence : 0,
   });
 
-  const finalProj = sanitizeProjection(
+  let finalProj = sanitizeProjection(
     (modelProj != null ? effectiveWeights.model * modelProj : 0)
     + (marketProj != null ? effectiveWeights.market * marketProj : 0)
     + (lsProj != null ? effectiveWeights.ls * lsProj : 0),
   );
+  if (finalProj != null && propCount === 0 && lsProj != null && lsGap >= 8) {
+    const bridgeWeight = avgMinutes < 18 ? 0.18 : avgMinutes < 24 ? 0.14 : avgMinutes < 30 ? 0.10 : 0;
+    if (bridgeWeight > 0) {
+      finalProj = sanitizeProjection(finalProj * (1 - bridgeWeight) + lsProj * bridgeWeight);
+      flags.push("no_props_ls_bridge");
+    }
+  }
 
   return {
     modelProj,

@@ -1261,8 +1261,8 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
               <SortHeader col="linestarProj" label="LS Proj" sortCol={sortCol} sortDir={sortDir} onToggleSort={onToggleSort} />
               {sport === "nba" && (
                 <>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Our Proj</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Market</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Model</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Props Mkt</th>
                 </>
               )}
               <SortHeader
@@ -1529,7 +1529,7 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                   {sport === "nba" && (
                     <>
                       <td className="px-3 py-1.5 text-xs">{fmt1(ourProjDisplay)}</td>
-                      <td className="px-3 py-1.5 text-xs">{fmt1(p.marketProj)}</td>
+                      <td className="px-3 py-1.5 text-xs">{propTokens.length > 0 ? fmt1(p.marketProj) : "—"}</td>
                     </>
                   )}
                   <td className="px-3 py-1.5 text-xs font-medium">{fmt1(liveProjDisplay)}</td>
