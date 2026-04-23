@@ -73,6 +73,57 @@ export type MlbPreparedOptimizerRun = {
 
 export type PreparedOptimizerRun = NbaPreparedOptimizerRun | MlbPreparedOptimizerRun;
 
+export type MlbLineupHrSignalPlayer = {
+  playerId: number;
+  dkPlayerId: number | null;
+  name: string;
+  teamAbbrev: string;
+  eligiblePositions: string;
+  salary: number;
+  lineupOrder: number | null;
+  projection: number | null;
+  projectedOwnership: number | null;
+  hrProb1Plus: number | null;
+  expectedHr: number | null;
+  marketHrProb: number | null;
+  hrEdgePct: number | null;
+  hrInfluenceScore: number;
+  gpp2OrderBonus: number;
+  hrCorrelationBonus: number;
+  isHrTarget: boolean;
+  isHighHrTarget: boolean;
+  isOrder23: boolean;
+  isPositiveEdge: boolean;
+  isTop15Hr: boolean;
+  isTop15Edge: boolean;
+};
+
+export type MlbLineupHrSignal = {
+  version: "mlb_dfs_hr_signal_v1";
+  mode: OptimizerMode;
+  hitterCount: number;
+  hrTargetCount: number;
+  highHrTargetCount: number;
+  order23HitterCount: number;
+  order23HrTargetCount: number;
+  positiveEdgeCount: number;
+  lowOwnedHrTargetCount: number;
+  selectedTop15HrCount: number;
+  selectedTop15EdgeCount: number;
+  avgHrProb: number | null;
+  maxHrProb: number | null;
+  totalExpectedHr: number;
+  avgExpectedHr: number | null;
+  avgMarketHrProb: number | null;
+  maxEdgePct: number | null;
+  totalPositiveEdgePct: number;
+  avgProjectedOwnership: number | null;
+  totalHrInfluenceScore: number;
+  gpp2OrderBonusTotal: number;
+  hrCorrelationBonusTotal: number;
+  players: MlbLineupHrSignalPlayer[];
+};
+
 export type NbaSlotPlayerIds = Record<LineupSlot, number>;
 export type MlbSlotPlayerIds = Record<MlbLineupSlot, number>;
 export type PersistedSlotPlayerIds = Record<string, number>;
@@ -85,6 +136,7 @@ export type PersistedOptimizerJobLineup = {
   projFpts: number;
   leverageScore: number;
   actualFpts: number | null;
+  mlbHrSignal: MlbLineupHrSignal | null;
   durationMs: number;
   winningStage?: string;
   attempts: OptimizerLineupAttemptDebug[];

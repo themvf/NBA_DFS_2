@@ -508,6 +508,28 @@ export function computeMlbGpp2HitterOrderBonus(
   ) / 1000;
 }
 
+export function computeMlbHrInfluenceScore(
+  player: MlbOptimizerPlayer,
+  mode: OptimizerMode,
+  hrCorrelationBonus = 0,
+): number {
+  if (isPitcher(player.eligiblePositions)) return 0;
+  const profile = getMlbTournamentProfile(mode);
+  const hrProb = getMlbHrProbability(player);
+  const hrCeilingSignal = getMlbHrCeilingSignal(player);
+  const hrEdgePct = getMlbHrEdgePct(player);
+  const gpp2OrderBonus = isLargeFieldTournamentMode(mode)
+    ? computeMlbGpp2HitterOrderBonus(player, mode)
+    : 0;
+  return Math.round((
+    (hrProb * profile.hrWeight)
+    + (hrCeilingSignal * profile.hrCeilingWeight)
+    + (Math.max(0, hrEdgePct ?? 0) * profile.hrEdgeWeight)
+    + gpp2OrderBonus
+    + Math.max(0, hrCorrelationBonus)
+  ) * 1000) / 1000;
+}
+
 function getMlbGpp2StackShapeBonus(
   selectedStackPlayers: MlbOptimizerPlayer[],
   mode: OptimizerMode,

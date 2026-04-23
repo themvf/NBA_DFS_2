@@ -25,7 +25,8 @@ export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
     optimizerFeatureImpact &&
     (optimizerFeatureImpact.hrCorrelation.length > 0 ||
       optimizerFeatureImpact.pitcherCeiling.length > 0 ||
-      optimizerFeatureImpact.antiCorrelation.length > 0),
+      optimizerFeatureImpact.antiCorrelation.length > 0 ||
+      optimizerFeatureImpact.hrSignal.length > 0),
   );
 
   if (!accuracy && comparison.length === 0 && strategySummary.length === 0 && !hasOptimizerFeatureImpact) {
@@ -180,6 +181,48 @@ export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
           <p className="mb-4 text-xs text-gray-500">
             Only durable optimizer jobs with full lineup actuals loaded are included. Beat = actual minus projected lineup score.
           </p>
+
+          {optimizerFeatureImpact.hrSignal.length > 0 && (
+            <div className="mb-5 overflow-x-auto">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">HR Signal In Lineups</h3>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-gray-400">
+                    <th className="py-1 text-left">Bucket</th>
+                    <th className="py-1 text-right">Lineups</th>
+                    <th className="py-1 text-right">Avg Act</th>
+                    <th className="py-1 text-right">Beat</th>
+                    <th className="py-1 text-right">Cash%</th>
+                    <th className="py-1 text-right">HR Tgt</th>
+                    <th className="py-1 text-right">#2/#3</th>
+                    <th className="py-1 text-right">Low Own</th>
+                    <th className="py-1 text-right">Top15 HR</th>
+                    <th className="py-1 text-right">Edge Pts</th>
+                    <th className="py-1 text-right">HR Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {optimizerFeatureImpact.hrSignal.map((row) => (
+                    <tr key={row.bucket} className="border-b border-gray-50">
+                      <td className="py-1 font-medium">{row.bucket}</td>
+                      <td className="py-1 text-right">{row.totalLineups}</td>
+                      <td className="py-1 text-right">{fmt1(row.avgActualFpts)}</td>
+                      <td className={`py-1 text-right ${row.avgBeat != null && row.avgBeat >= 0 ? "text-green-600" : "text-red-500"}`}>
+                        {fmtSigned(row.avgBeat)}
+                      </td>
+                      <td className="py-1 text-right">{fmtPct(row.cashRate)}</td>
+                      <td className="py-1 text-right">{fmt1(row.avgHrTargets)}</td>
+                      <td className="py-1 text-right">{fmt1(row.avgOrder23HrTargets)}</td>
+                      <td className="py-1 text-right">{fmt1(row.avgLowOwnedHrTargets)}</td>
+                      <td className="py-1 text-right">{fmt1(row.avgTop15HrSelected)}</td>
+                      <td className="py-1 text-right">{fmt1(row.avgPositiveEdgePts)}</td>
+                      <td className="py-1 text-right">{fmt1(row.avgHrInfluenceScore)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div className="grid gap-4 xl:grid-cols-3">
             <div className="overflow-x-auto">

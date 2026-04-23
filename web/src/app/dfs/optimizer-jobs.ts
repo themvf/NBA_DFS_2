@@ -15,6 +15,8 @@ import {
 } from "./optimizer";
 import {
   buildNextMlbLineup,
+  computeMlbGpp2HitterOrderBonus,
+  computeMlbHrInfluenceScore,
   computePitcherCeilingBonusMap,
   computeHrBonusMap,
   isPitcher,
@@ -41,6 +43,8 @@ import type {
   OptimizerJobTerminationReason,
   OptimizerJobView,
   PersistedOptimizerJobLineup,
+  MlbLineupHrSignal,
+  MlbLineupHrSignalPlayer,
   PreparedOptimizerRun,
 } from "./optimizer-job-types";
 
@@ -69,6 +73,28 @@ function sanitizeLeverage(value: number | null | undefined): number | null {
 function sanitizeProbability(value: number | null | undefined): number | null {
   const finite = finiteOrNull(value);
   return finite == null ? null : Math.max(0, Math.min(0.9999, finite));
+}
+
+function roundMetric(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function roundMetricOrNull(value: number | null | undefined): number | null {
+  return value == null || !Number.isFinite(value) ? null : roundMetric(value);
+}
+
+function average(values: Array<number | null | undefined>): number | null {
+  const numeric = values.filter((value): value is number => value != null && Number.isFinite(value));
+  if (numeric.length === 0) return null;
+  return numeric.reduce((sum, value) => sum + value, 0) / numeric.length;
+}
+
+function americanOddsToProbability(price: number | null | undefined): number | null {
+  const odds = finiteOrNull(price);
+  if (odds == null || odds === 0) return null;
+  return odds > 0
+    ? 100 / (odds + 100)
+    : Math.abs(odds) / (Math.abs(odds) + 100);
 }
 
 function computePoolLeverage(
@@ -131,6 +157,10 @@ async function runEnsureStatements() {
   await db.execute(sql.raw(`
     ALTER TABLE optimizer_job_lineups
     ADD COLUMN IF NOT EXISTS actual_fpts DOUBLE PRECISION
+  `));
+  await db.execute(sql.raw(`
+    ALTER TABLE optimizer_job_lineups
+    ADD COLUMN IF NOT EXISTS mlb_hr_signal_json JSONB
   `));
   await db.execute(sql.raw(`
     CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_lookup
@@ -457,6 +487,7 @@ function buildPersistedLineup(lineup: JobLineupRecord): PersistedOptimizerJobLin
     projFpts: lineup.projFpts,
     leverageScore: lineup.leverage,
     actualFpts: lineup.actualFpts ?? null,
+    mlbHrSignal: (lineup.mlbHrSignalJson as MlbLineupHrSignal | null) ?? null,
     durationMs: lineup.durationMs,
     winningStage: lineup.winningStage ?? undefined,
     attempts: (lineup.attemptsJson as PersistedOptimizerJobLineup["attempts"]) ?? [],
@@ -689,10 +720,23 @@ export type MlbOptimizerFeatureCombinationRow = OptimizerFeatureMetrics & {
   effectiveAntiCorrMax: number;
 };
 
+export type MlbOptimizerHrSignalImpactRow = OptimizerFeatureMetrics & {
+  bucket: string;
+  avgHrTargets: number | null;
+  avgOrder23HrTargets: number | null;
+  avgLowOwnedHrTargets: number | null;
+  avgTop15HrSelected: number | null;
+  avgTop15EdgeSelected: number | null;
+  avgTotalExpectedHr: number | null;
+  avgPositiveEdgePts: number | null;
+  avgHrInfluenceScore: number | null;
+};
+
 export type MlbOptimizerFeatureImpactSummary = {
   hrCorrelation: MlbHrCorrelationImpactRow[];
   pitcherCeiling: MlbPitcherCeilingImpactRow[];
   antiCorrelation: MlbAntiCorrelationImpactRow[];
+  hrSignal: MlbOptimizerHrSignalImpactRow[];
   combinations: MlbOptimizerFeatureCombinationRow[];
 };
 
@@ -726,6 +770,7 @@ export async function getMlbOptimizerFeatureImpactSummary(): Promise<MlbOptimize
         ojl.actual_fpts AS stored_actual_fpts,
         ojl.leverage,
         ds.cash_line,
+        ojl.mlb_hr_signal_json,
         COUNT(pid.player_id_text)::int AS player_count,
         COUNT(dp.actual_fpts)::int AS actual_count,
         SUM(dp.actual_fpts) AS derived_actual_fpts
@@ -740,7 +785,7 @@ export async function getMlbOptimizerFeatureImpactSummary(): Promise<MlbOptimize
         ON dp.id = pid.player_id_text::INTEGER
        AND dp.slate_id = oj.slate_id
       WHERE oj.sport = 'mlb'
-      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
     ),
     base AS (
       SELECT
@@ -760,7 +805,18 @@ export async function getMlbOptimizerFeatureImpactSummary(): Promise<MlbOptimize
           END
         ) AS actual_fpts,
         leverage,
-        cash_line
+        cash_line,
+        (mlb_hr_signal_json IS NOT NULL) AS has_hr_signal,
+        COALESCE((mlb_hr_signal_json ->> 'hrTargetCount')::integer, 0) AS hr_target_count,
+        COALESCE((mlb_hr_signal_json ->> 'highHrTargetCount')::integer, 0) AS high_hr_target_count,
+        COALESCE((mlb_hr_signal_json ->> 'order23HrTargetCount')::integer, 0) AS order23_hr_target_count,
+        COALESCE((mlb_hr_signal_json ->> 'positiveEdgeCount')::integer, 0) AS positive_edge_count,
+        COALESCE((mlb_hr_signal_json ->> 'lowOwnedHrTargetCount')::integer, 0) AS low_owned_hr_target_count,
+        COALESCE((mlb_hr_signal_json ->> 'selectedTop15HrCount')::integer, 0) AS selected_top15_hr_count,
+        COALESCE((mlb_hr_signal_json ->> 'selectedTop15EdgeCount')::integer, 0) AS selected_top15_edge_count,
+        COALESCE((mlb_hr_signal_json ->> 'totalExpectedHr')::double precision, 0) AS total_expected_hr,
+        COALESCE((mlb_hr_signal_json ->> 'totalPositiveEdgePct')::double precision, 0) AS total_positive_edge_pct,
+        COALESCE((mlb_hr_signal_json ->> 'totalHrInfluenceScore')::double precision, 0) AS total_hr_influence_score
       FROM lineup_actuals
       WHERE COALESCE(
         stored_actual_fpts,
@@ -819,6 +875,36 @@ export async function getMlbOptimizerFeatureImpactSummary(): Promise<MlbOptimize
     ORDER BY 1 ASC
   `));
 
+  const hrSignal = await db.execute<MlbOptimizerHrSignalImpactRow>(sql.raw(`
+    ${baseCte}
+    SELECT
+      CASE
+        WHEN hr_target_count >= 4 THEN '4+ HR targets'
+        WHEN hr_target_count >= 2 THEN '2-3 HR targets'
+        WHEN hr_target_count = 1 THEN '1 HR target'
+        ELSE '0 HR targets'
+      END AS "bucket",
+      AVG(hr_target_count) AS "avgHrTargets",
+      AVG(order23_hr_target_count) AS "avgOrder23HrTargets",
+      AVG(low_owned_hr_target_count) AS "avgLowOwnedHrTargets",
+      AVG(selected_top15_hr_count) AS "avgTop15HrSelected",
+      AVG(selected_top15_edge_count) AS "avgTop15EdgeSelected",
+      AVG(total_expected_hr) AS "avgTotalExpectedHr",
+      AVG(total_positive_edge_pct) AS "avgPositiveEdgePts",
+      AVG(total_hr_influence_score) AS "avgHrInfluenceScore",
+      ${sharedMetrics}
+    FROM base
+    WHERE has_hr_signal
+    GROUP BY 1
+    ORDER BY
+      CASE
+        WHEN MIN(hr_target_count) >= 4 THEN 4
+        WHEN MIN(hr_target_count) >= 2 THEN 3
+        WHEN MIN(hr_target_count) = 1 THEN 2
+        ELSE 1
+      END DESC
+  `));
+
   const combinations = await db.execute<MlbOptimizerFeatureCombinationRow>(sql.raw(`
     ${baseCte}
     SELECT
@@ -837,6 +923,7 @@ export async function getMlbOptimizerFeatureImpactSummary(): Promise<MlbOptimize
     hrCorrelation: hrCorrelation.rows,
     pitcherCeiling: pitcherCeiling.rows,
     antiCorrelation: antiCorrelation.rows,
+    hrSignal: hrSignal.rows,
     combinations: combinations.rows,
   };
 }
@@ -1019,6 +1106,116 @@ function toMlbSlotPlayerIds(lineup: MlbGeneratedLineup): Record<MlbLineupSlot, n
   };
 }
 
+const MLB_HR_SIGNAL_TARGET_THRESHOLD = 0.12;
+const MLB_HR_SIGNAL_HIGH_THRESHOLD = 0.18;
+const MLB_HR_SIGNAL_LOW_OWNERSHIP_THRESHOLD = 12;
+
+function getMlbPlayerHrEdgePct(player: MlbOptimizerPlayer): number | null {
+  const hrProb = sanitizeProbability(player.hrProb1Plus);
+  const marketProb = americanOddsToProbability(player.propStlPrice);
+  if (hrProb == null || marketProb == null) return null;
+  return (hrProb - marketProb) * 100;
+}
+
+function buildMlbLineupHrSignal(
+  lineup: MlbGeneratedLineup,
+  prepared: MlbPreparedOptimizerRun,
+): MlbLineupHrSignal {
+  const poolHitters = prepared.pool.filter((player) => !isPitcher(player.eligiblePositions));
+  const top15HrIds = new Set(
+    [...poolHitters]
+      .filter((player) => sanitizeProbability(player.hrProb1Plus) != null)
+      .sort((a, b) => (sanitizeProbability(b.hrProb1Plus) ?? -1) - (sanitizeProbability(a.hrProb1Plus) ?? -1))
+      .slice(0, 15)
+      .map((player) => player.id),
+  );
+  const top15EdgeIds = new Set(
+    [...poolHitters]
+      .map((player) => ({ player, edge: getMlbPlayerHrEdgePct(player) }))
+      .filter((entry): entry is { player: MlbOptimizerPlayer; edge: number } => entry.edge != null)
+      .sort((a, b) => b.edge - a.edge)
+      .slice(0, 15)
+      .map((entry) => entry.player.id),
+  );
+
+  const players: MlbLineupHrSignalPlayer[] = lineup.players
+    .filter((player) => !isPitcher(player.eligiblePositions))
+    .map((player) => {
+      const hrProb = sanitizeProbability(player.hrProb1Plus);
+      const expectedHr = sanitizeProjection(player.expectedHr);
+      const projectedOwnership = sanitizeOwnershipPct(player.projOwnPct);
+      const marketHrProb = americanOddsToProbability(player.propStlPrice);
+      const hrEdgePct = getMlbPlayerHrEdgePct(player);
+      const lineupOrder = player.dkStartingLineupOrder ?? null;
+      const hrCorrelationBonus = roundMetric(Number(prepared.hrBonusRecord?.[player.id] ?? 0));
+      const gpp2OrderBonus = computeMlbGpp2HitterOrderBonus(player, prepared.mode);
+      const hrInfluenceScore = computeMlbHrInfluenceScore(player, prepared.mode, hrCorrelationBonus);
+
+      return {
+        playerId: player.id,
+        dkPlayerId: player.dkPlayerId == null ? null : Number(player.dkPlayerId),
+        name: player.name,
+        teamAbbrev: player.teamAbbrev,
+        eligiblePositions: player.eligiblePositions,
+        salary: player.salary,
+        lineupOrder,
+        projection: roundMetricOrNull(player.ourProj),
+        projectedOwnership: roundMetricOrNull(projectedOwnership),
+        hrProb1Plus: roundMetricOrNull(hrProb),
+        expectedHr: roundMetricOrNull(expectedHr),
+        marketHrProb: roundMetricOrNull(marketHrProb),
+        hrEdgePct: roundMetricOrNull(hrEdgePct),
+        hrInfluenceScore,
+        gpp2OrderBonus,
+        hrCorrelationBonus,
+        isHrTarget: (hrProb ?? 0) >= MLB_HR_SIGNAL_TARGET_THRESHOLD,
+        isHighHrTarget: (hrProb ?? 0) >= MLB_HR_SIGNAL_HIGH_THRESHOLD,
+        isOrder23: lineupOrder === 2 || lineupOrder === 3,
+        isPositiveEdge: (hrEdgePct ?? Number.NEGATIVE_INFINITY) > 0,
+        isTop15Hr: top15HrIds.has(player.id),
+        isTop15Edge: top15EdgeIds.has(player.id),
+      };
+    });
+
+  const hrProbs = players.map((player) => player.hrProb1Plus);
+  const expectedHrs = players.map((player) => player.expectedHr);
+  const marketProbs = players.map((player) => player.marketHrProb);
+  const ownerships = players.map((player) => player.projectedOwnership);
+  const edgePcts = players.map((player) => player.hrEdgePct);
+
+  return {
+    version: "mlb_dfs_hr_signal_v1",
+    mode: prepared.mode,
+    hitterCount: players.length,
+    hrTargetCount: players.filter((player) => player.isHrTarget).length,
+    highHrTargetCount: players.filter((player) => player.isHighHrTarget).length,
+    order23HitterCount: players.filter((player) => player.isOrder23).length,
+    order23HrTargetCount: players.filter((player) => player.isOrder23 && player.isHrTarget).length,
+    positiveEdgeCount: players.filter((player) => player.isPositiveEdge).length,
+    lowOwnedHrTargetCount: players.filter((player) =>
+      player.isHrTarget
+      && player.projectedOwnership != null
+      && player.projectedOwnership <= MLB_HR_SIGNAL_LOW_OWNERSHIP_THRESHOLD
+    ).length,
+    selectedTop15HrCount: players.filter((player) => player.isTop15Hr).length,
+    selectedTop15EdgeCount: players.filter((player) => player.isTop15Edge).length,
+    avgHrProb: roundMetricOrNull(average(hrProbs)),
+    maxHrProb: roundMetricOrNull(hrProbs.reduce<number | null>((best, value) =>
+      value == null ? best : best == null ? value : Math.max(best, value), null)),
+    totalExpectedHr: roundMetric(expectedHrs.reduce<number>((sum, value) => sum + (value ?? 0), 0)),
+    avgExpectedHr: roundMetricOrNull(average(expectedHrs)),
+    avgMarketHrProb: roundMetricOrNull(average(marketProbs)),
+    maxEdgePct: roundMetricOrNull(edgePcts.reduce<number | null>((best, value) =>
+      value == null ? best : best == null ? value : Math.max(best, value), null)),
+    totalPositiveEdgePct: roundMetric(edgePcts.reduce<number>((sum, value) => sum + Math.max(0, value ?? 0), 0)),
+    avgProjectedOwnership: roundMetricOrNull(average(ownerships)),
+    totalHrInfluenceScore: roundMetric(players.reduce((sum, player) => sum + player.hrInfluenceScore, 0)),
+    gpp2OrderBonusTotal: roundMetric(players.reduce((sum, player) => sum + player.gpp2OrderBonus, 0)),
+    hrCorrelationBonusTotal: roundMetric(players.reduce((sum, player) => sum + player.hrCorrelationBonus, 0)),
+    players,
+  };
+}
+
 function buildPreparedFromJob(job: JobRecord): PreparedOptimizerRun {
   const settings = job.settingsJson as OptimizerSettings | MlbOptimizerSettings;
   const effectiveSettings = job.effectiveSettingsJson as OptimizerDebugInfo["effectiveSettings"] | null;
@@ -1151,6 +1348,9 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
     ? toMlbSlotPlayerIds(nextResult.lineup as MlbGeneratedLineup)
     : toNbaSlotPlayerIds(nextResult.lineup as GeneratedLineup);
   const playerIds = nextResult.lineup.players.map((player) => player.id);
+  const mlbHrSignal = prepared.sport === "mlb"
+    ? buildMlbLineupHrSignal(nextResult.lineup as MlbGeneratedLineup, prepared as MlbPreparedOptimizerRun)
+    : null;
 
   await db
     .insert(optimizerJobLineups)
@@ -1162,6 +1362,7 @@ export async function buildAndPersistOptimizerJobLineup(jobId: number, lineupNum
       totalSalary: nextResult.lineup.totalSalary,
       projFpts: nextResult.lineup.projFpts,
       leverage: nextResult.lineup.leverageScore,
+      mlbHrSignalJson: mlbHrSignal,
       durationMs: nextResult.summary.durationMs,
       winningStage: nextResult.summary.winningStage ?? null,
       attemptsJson: nextResult.summary.attempts,

@@ -816,6 +816,7 @@ export const optimizerJobLineups = pgTable(
     projFpts: doublePrecision("proj_fpts").notNull(),
     leverage: doublePrecision("leverage").notNull(),
     actualFpts: doublePrecision("actual_fpts"),
+    mlbHrSignalJson: jsonb("mlb_hr_signal_json"),
     durationMs: integer("duration_ms").notNull(),
     winningStage: text("winning_stage"),
     attemptsJson: jsonb("attempts_json").notNull().default([]),
