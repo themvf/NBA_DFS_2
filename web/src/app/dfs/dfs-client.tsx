@@ -1462,11 +1462,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                   )}
                   <td className="px-3 py-1.5 text-[11px] text-gray-500">
                     {propTokens.length > 0 ? (
-                      <div className="flex max-w-[280px] flex-wrap gap-1">
+                      <div className="flex max-w-[240px] gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:thin]">
                         {propTokens.map((prop) => (
                           <span
                             key={`${p.id}-${prop.stat}`}
-                            className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
+                            className="shrink-0 rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
                           >
                             {prop.stat} {prop.line.toFixed(1)}
                             {prop.price != null ? ` (${fmtAmericanOdds(prop.price)})` : ""}
