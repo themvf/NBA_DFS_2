@@ -3,6 +3,7 @@ import {
   getCachedGameTotalModelAccuracy,
   getCachedLeverageCalibration,
   getCachedLsOwnershipBiasMatrix,
+  getCachedLsOwnershipTeamPositionMatrix,
   getCachedLsProjectionBiasMatrix,
   getCachedMlbBattingOrderCalibration,
   getCachedOurOwnershipBiasMatrix,
@@ -55,6 +56,7 @@ export default async function AnalyticsContent({
     lsProjectionBiasMatrix,
     ourOwnershipBiasMatrix,
     lsOwnershipBiasMatrix,
+    lsOwnershipTeamPositionMatrix,
   ] = await Promise.all([
     safeRun(() => getCachedCrossSlateAccuracy(sport)),
     safeRun(() => getCachedPositionAccuracy(sport)),
@@ -70,6 +72,7 @@ export default async function AnalyticsContent({
     safeRun(() => getCachedLsProjectionBiasMatrix(sport)),
     safeRun(() => getCachedOurOwnershipBiasMatrix(sport)),
     safeRun(() => getCachedLsOwnershipBiasMatrix(sport)),
+    safeRun(() => getCachedLsOwnershipTeamPositionMatrix(sport)),
   ]);
 
   return (
@@ -88,6 +91,7 @@ export default async function AnalyticsContent({
       lsProjectionBiasMatrix={lsProjectionBiasMatrix ?? []}
       ourOwnershipBiasMatrix={ourOwnershipBiasMatrix ?? []}
       lsOwnershipBiasMatrix={lsOwnershipBiasMatrix ?? []}
+      lsOwnershipTeamPositionMatrix={lsOwnershipTeamPositionMatrix ?? []}
       sport={sport}
       showHeader={showHeader}
     />

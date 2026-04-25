@@ -20,6 +20,7 @@ import {
   getGameTotalModelAccuracy,
   getLeverageCalibration,
   getLsOwnershipBiasMatrix,
+  getLsOwnershipTeamPositionMatrix,
   getLsProjectionBiasMatrix,
   getMlbBattingOrderCalibration,
   getMlbBlowupCandidateReport,
@@ -97,6 +98,12 @@ export const getCachedOurOwnershipBiasMatrix = unstable_cache(
 export const getCachedLsOwnershipBiasMatrix = unstable_cache(
   (sport: Sport) => getLsOwnershipBiasMatrix(sport),
   ["analytics-ls-own-bias-matrix"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedLsOwnershipTeamPositionMatrix = unstable_cache(
+  (sport: Sport) => getLsOwnershipTeamPositionMatrix(sport),
+  ["analytics-ls-own-team-position-matrix"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 

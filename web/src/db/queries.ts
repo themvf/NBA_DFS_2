@@ -2091,6 +2091,60 @@ export async function getLsOwnershipBiasMatrix(sport: Sport = "nba"): Promise<Ow
   return result.rows;
 }
 
+export type LsOwnershipTeamPositionRow = {
+  teamAbbrev: string;
+  position: string;
+  n: number;
+  mae: number | null;
+  bias: number | null;
+  avgActualOwn: number | null;
+};
+
+export async function getLsOwnershipTeamPositionMatrix(sport: Sport = "nba"): Promise<LsOwnershipTeamPositionRow[]> {
+  const posCase = sport === "mlb"
+    ? sql`CASE
+        WHEN dp.eligible_positions LIKE '%SP%' THEN 'SP'
+        WHEN dp.eligible_positions LIKE '%RP%' THEN 'RP'
+        WHEN dp.eligible_positions LIKE '%OF%' THEN 'OF'
+        WHEN dp.eligible_positions LIKE '%SS%' THEN 'SS'
+        WHEN dp.eligible_positions LIKE '%3B%' THEN '3B'
+        WHEN dp.eligible_positions LIKE '%2B%' THEN '2B'
+        WHEN dp.eligible_positions LIKE '%1B%' THEN '1B'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`
+    : sql`CASE
+        WHEN dp.eligible_positions LIKE '%PG%' THEN 'PG'
+        WHEN dp.eligible_positions LIKE '%SG%' THEN 'SG'
+        WHEN dp.eligible_positions LIKE '%SF%' THEN 'SF'
+        WHEN dp.eligible_positions LIKE '%PF%' THEN 'PF'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`;
+
+  const result = await db.execute<LsOwnershipTeamPositionRow>(sql`
+    SELECT
+      dp.team_abbrev                                                          AS "teamAbbrev",
+      ${posCase}                                                              AS "position",
+      COUNT(*) FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL)::int AS "n",
+      AVG(ABS(dp.proj_own_pct - dp.actual_own_pct))
+        FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL)             AS "mae",
+      AVG(dp.proj_own_pct - dp.actual_own_pct)
+        FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL)             AS "bias",
+      AVG(dp.actual_own_pct)
+        FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL)             AS "avgActualOwn"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
+      AND dp.team_abbrev IS NOT NULL
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+    GROUP BY dp.team_abbrev, 2
+    HAVING COUNT(*) FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) >= 3
+    ORDER BY dp.team_abbrev ASC, 2 ASC
+  `);
+  return result.rows;
+}
+
 export type LeverageCalibrationRow = {
   leverageQuartile: number;
   avgLeverage: number | null;

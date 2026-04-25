@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import type {
   CrossSlateAccuracyRow,
+  LsOwnershipTeamPositionRow,
   LsProjectionMatrixRow,
   OwnershipBiasMatrixRow,
   PositionAccuracyRow,
@@ -65,6 +66,7 @@ type Props = {
   lsProjectionBiasMatrix: LsProjectionMatrixRow[];
   ourOwnershipBiasMatrix: OwnershipBiasMatrixRow[];
   lsOwnershipBiasMatrix: OwnershipBiasMatrixRow[];
+  lsOwnershipTeamPositionMatrix: LsOwnershipTeamPositionRow[];
   sport: Sport;
   showHeader?: boolean;
 };
@@ -84,6 +86,7 @@ export default function AnalyticsClient({
   lsProjectionBiasMatrix,
   ourOwnershipBiasMatrix,
   lsOwnershipBiasMatrix,
+  lsOwnershipTeamPositionMatrix,
   sport,
   showHeader = true,
 }: Props) {
@@ -229,6 +232,24 @@ export default function AnalyticsClient({
 
   // Ownership bias is in pct-point units (0-100 scale) — use 15 as max magnitude for color scaling
   const OWN_MAX_MAG = 15;
+
+  // Team × Position matrix: rows = teams sorted by avg |bias| desc, cols = positions
+  const teamPosPositions = [...positionOrder].filter((p) =>
+    lsOwnershipTeamPositionMatrix.some((r) => r.position === p)
+  );
+  const teamPosTeams = Array.from(
+    new Set(lsOwnershipTeamPositionMatrix.map((r) => r.teamAbbrev))
+  ).sort((a, b) => {
+    // Sort teams by average absolute bias across positions (most biased first)
+    const avgBias = (team: string) => {
+      const rows = lsOwnershipTeamPositionMatrix.filter((r) => r.teamAbbrev === team && r.bias != null);
+      return rows.length > 0 ? rows.reduce((s, r) => s + Math.abs(r.bias!), 0) / rows.length : 0;
+    };
+    return avgBias(b) - avgBias(a);
+  });
+  const teamPosMap = new Map(
+    lsOwnershipTeamPositionMatrix.map((r) => [`${r.teamAbbrev}|${r.position}`, r])
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6 text-slate-900 [&_.text-gray-100]:text-slate-900 [&_.text-gray-300]:text-slate-700 [&_.text-gray-400]:text-slate-600 [&_.text-gray-500]:text-slate-700">
@@ -863,6 +884,64 @@ export default function AnalyticsClient({
                               </>
                             ) : (
                               <div className="pt-4 text-[11px]">—</div>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── LineStar Ownership: Team × Position ──────────────── */}
+      {lsOwnershipTeamPositionMatrix.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold mb-1">LineStar Ownership Bias — Team × Position</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            LineStar ownership prediction error broken down by team and position.
+            Teams sorted by average |bias| — most systematically mispriced at the top.
+            Red = LS over-estimates how often that position is owned on that team. Blue = under-estimates.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-4 text-[11px] text-slate-600">
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-red-200" />Over-estimated</span>
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-blue-200" />Under-estimated</span>
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-slate-100" />No sample</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b text-gray-400">
+                  <th className="py-2 pr-4 text-left">Team</th>
+                  {teamPosPositions.map((pos) => (
+                    <th key={pos} className="py-2 px-1 text-center w-20">{pos}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {teamPosTeams.map((team) => (
+                  <tr key={team} className="border-b border-gray-50">
+                    <td className="py-1.5 pr-4 font-medium">{team}</td>
+                    {teamPosPositions.map((pos) => {
+                      const cell = teamPosMap.get(`${team}|${pos}`) ?? null;
+                      return (
+                        <td key={`${team}-${pos}`} className="px-1 py-1.5">
+                          <div
+                            className="min-w-[72px] rounded-md border border-white/70 px-1.5 py-1.5 text-center shadow-sm"
+                            style={biasCellStyle(cell?.bias, cell?.n ?? 0, OWN_MAX_MAG)}
+                          >
+                            {cell && cell.n > 0 ? (
+                              <>
+                                <div className="font-semibold text-[11px]">
+                                  {cell.bias != null ? `${cell.bias > 0 ? "+" : ""}${cell.bias.toFixed(1)}%` : "—"}
+                                </div>
+                                <div className="text-[10px] opacity-75">n={cell.n}</div>
+                              </>
+                            ) : (
+                              <div className="text-[10px] text-slate-300">—</div>
                             )}
                           </div>
                         </td>
