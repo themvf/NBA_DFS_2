@@ -28,6 +28,8 @@ import type {
   SlateTypePerformanceRow,
   StatLevelAccuracyRow,
   GameTotalModelRow,
+  TeamPositionBiasRow,
+  TeamSalaryBiasRow,
   Sport,
 } from "@/db/queries";
 import { DK_SLATE_TIMING_OPTIONS } from "@/lib/dk-slate-timing";
@@ -67,6 +69,14 @@ type Props = {
   ourOwnershipBiasMatrix: OwnershipBiasMatrixRow[];
   lsOwnershipBiasMatrix: OwnershipBiasMatrixRow[];
   lsOwnershipTeamPositionMatrix: LsOwnershipTeamPositionRow[];
+  mlbOurProjTeamPos: TeamPositionBiasRow[];
+  mlbOurProjTeamSal: TeamSalaryBiasRow[];
+  mlbOurOwnTeamPos: TeamPositionBiasRow[];
+  mlbOurOwnTeamSal: TeamSalaryBiasRow[];
+  mlbLsProjTeamPos: TeamPositionBiasRow[];
+  mlbLsProjTeamSal: TeamSalaryBiasRow[];
+  mlbLsOwnTeamPos: TeamPositionBiasRow[];
+  mlbLsOwnTeamSal: TeamSalaryBiasRow[];
   sport: Sport;
   showHeader?: boolean;
 };
@@ -87,6 +97,14 @@ export default function AnalyticsClient({
   ourOwnershipBiasMatrix,
   lsOwnershipBiasMatrix,
   lsOwnershipTeamPositionMatrix,
+  mlbOurProjTeamPos,
+  mlbOurProjTeamSal,
+  mlbOurOwnTeamPos,
+  mlbOurOwnTeamSal,
+  mlbLsProjTeamPos,
+  mlbLsProjTeamSal,
+  mlbLsOwnTeamPos,
+  mlbLsOwnTeamSal,
   sport,
   showHeader = true,
 }: Props) {
@@ -250,6 +268,39 @@ export default function AnalyticsClient({
   const teamPosMap = new Map(
     lsOwnershipTeamPositionMatrix.map((r) => [`${r.teamAbbrev}|${r.position}`, r])
   );
+
+  // ── MLB Team × Dimension bias matrix helpers ───────────────────────────────
+  const MLB_POS_ORDER = ["SP", "RP", "C", "1B", "2B", "3B", "SS", "OF", "UTIL"];
+
+  function buildTeamPositionLayout(rows: TeamPositionBiasRow[]) {
+    const positions = [...MLB_POS_ORDER].filter((p) => rows.some((r) => r.position === p));
+    const teams = Array.from(new Set(rows.map((r) => r.teamAbbrev))).sort((a, b) => {
+      const avg = (t: string) => {
+        const r = rows.filter((x) => x.teamAbbrev === t && x.bias != null);
+        return r.length > 0 ? r.reduce((s, x) => s + Math.abs(x.bias!), 0) / r.length : 0;
+      };
+      return avg(b) - avg(a);
+    });
+    const map = new Map(rows.map((r) => [`${r.teamAbbrev}|${r.position}`, r]));
+    return { positions, teams, map };
+  }
+
+  function buildTeamSalaryLayout(rows: TeamSalaryBiasRow[]) {
+    const tiers = rows
+      .map((r) => ({ salaryTier: r.salaryTier, tierMin: r.tierMin ?? Number.MAX_SAFE_INTEGER }))
+      .filter((r, i, arr) => arr.findIndex((c) => c.salaryTier === r.salaryTier) === i)
+      .sort((a, b) => a.tierMin - b.tierMin)
+      .map((r) => r.salaryTier);
+    const teams = Array.from(new Set(rows.map((r) => r.teamAbbrev))).sort((a, b) => {
+      const avg = (t: string) => {
+        const r = rows.filter((x) => x.teamAbbrev === t && x.bias != null);
+        return r.length > 0 ? r.reduce((s, x) => s + Math.abs(x.bias!), 0) / r.length : 0;
+      };
+      return avg(b) - avg(a);
+    });
+    const map = new Map(rows.map((r) => [`${r.teamAbbrev}|${r.salaryTier}`, r]));
+    return { tiers, teams, map };
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6 text-slate-900 [&_.text-gray-100]:text-slate-900 [&_.text-gray-300]:text-slate-700 [&_.text-gray-400]:text-slate-600 [&_.text-gray-500]:text-slate-700">
@@ -1386,6 +1437,138 @@ export default function AnalyticsClient({
             </table>
           </div>
         </div>
+      )}
+
+      {/* ── MLB Team × Dimension Bias Matrices ───────────────────────── */}
+      {sport === "mlb" && (
+        <>
+          {/* Projection matrices */}
+          {[
+            { label: "Our Projection Bias — Team × Position",  desc: "bias = ourProj − actualFpts. Red = over-projected, Blue = under-projected.", rows: mlbOurProjTeamPos,  isOwn: false, kind: "pos" as const },
+            { label: "Our Projection Bias — Team × Salary",    desc: "bias = ourProj − actualFpts. Red = over-projected, Blue = under-projected.", rows: mlbOurProjTeamSal,  isOwn: false, kind: "sal" as const },
+            { label: "LS Projection Bias — Team × Position",   desc: "bias = linestarProj − actualFpts. Red = LS over-projects, Blue = under-projects.", rows: mlbLsProjTeamPos, isOwn: false, kind: "pos" as const },
+            { label: "LS Projection Bias — Team × Salary",     desc: "bias = linestarProj − actualFpts. Red = LS over-projects, Blue = under-projects.", rows: mlbLsProjTeamSal, isOwn: false, kind: "sal" as const },
+            { label: "Our Ownership Bias — Team × Position",   desc: "bias = ourOwnPct − actualOwnPct. Red = we over-estimate ownership, Blue = under-estimate.", rows: mlbOurOwnTeamPos, isOwn: true, kind: "pos" as const },
+            { label: "Our Ownership Bias — Team × Salary",     desc: "bias = ourOwnPct − actualOwnPct. Red = we over-estimate ownership, Blue = under-estimate.", rows: mlbOurOwnTeamSal, isOwn: true, kind: "sal" as const },
+            { label: "LS Ownership Bias — Team × Position",    desc: "bias = projOwnPct − actualOwnPct. Red = LS over-estimates ownership, Blue = under-estimates.", rows: mlbLsOwnTeamPos, isOwn: true, kind: "pos" as const },
+            { label: "LS Ownership Bias — Team × Salary",      desc: "bias = projOwnPct − actualOwnPct. Red = LS over-estimates ownership, Blue = under-estimates.", rows: mlbLsOwnTeamSal, isOwn: true, kind: "sal" as const },
+          ].map(({ label, desc, rows, isOwn, kind }) => {
+            if (rows.length === 0) return null;
+            const maxMag = isOwn ? OWN_MAX_MAG : 8;
+            const unit = isOwn ? "%" : " pts";
+
+            if (kind === "pos") {
+              const { positions, teams, map } = buildTeamPositionLayout(rows as TeamPositionBiasRow[]);
+              return (
+                <div key={label} className="rounded-lg border bg-card p-4">
+                  <h2 className="text-sm font-semibold mb-1">{label}</h2>
+                  <p className="text-xs text-gray-500 mb-3">{desc} Teams sorted by avg |bias|.</p>
+                  <div className="mb-3 flex flex-wrap gap-4 text-[11px] text-slate-600">
+                    <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-red-200" />Over-estimated</span>
+                    <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-blue-200" />Under-estimated</span>
+                    <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-slate-100" />No sample</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead>
+                        <tr className="border-b text-gray-400">
+                          <th className="py-2 pr-4 text-left">Team</th>
+                          {positions.map((pos) => (
+                            <th key={pos} className="py-2 px-1 text-center w-20">{pos}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teams.map((team) => (
+                          <tr key={team} className="border-b border-gray-50">
+                            <td className="py-1.5 pr-4 font-medium">{team}</td>
+                            {positions.map((pos) => {
+                              const cell = map.get(`${team}|${pos}`) ?? null;
+                              return (
+                                <td key={`${team}-${pos}`} className="px-1 py-1.5">
+                                  <div
+                                    className="min-w-[72px] rounded-md border border-white/70 px-1.5 py-1.5 text-center shadow-sm"
+                                    style={biasCellStyle(cell?.bias, cell?.n ?? 0, maxMag)}
+                                  >
+                                    {cell && cell.n > 0 ? (
+                                      <>
+                                        <div className="font-semibold text-[11px]">
+                                          {cell.bias != null ? `${cell.bias > 0 ? "+" : ""}${cell.bias.toFixed(1)}${unit}` : "—"}
+                                        </div>
+                                        <div className="text-[10px] opacity-75">n={cell.n}</div>
+                                      </>
+                                    ) : (
+                                      <div className="text-[10px] text-slate-300">—</div>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            }
+
+            // kind === "sal"
+            const { tiers, teams, map } = buildTeamSalaryLayout(rows as TeamSalaryBiasRow[]);
+            return (
+              <div key={label} className="rounded-lg border bg-card p-4">
+                <h2 className="text-sm font-semibold mb-1">{label}</h2>
+                <p className="text-xs text-gray-500 mb-3">{desc} Teams sorted by avg |bias|.</p>
+                <div className="mb-3 flex flex-wrap gap-4 text-[11px] text-slate-600">
+                  <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-red-200" />Over-estimated</span>
+                  <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-blue-200" />Under-estimated</span>
+                  <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-slate-100" />No sample</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead>
+                      <tr className="border-b text-gray-400">
+                        <th className="py-2 pr-4 text-left">Team</th>
+                        {tiers.map((tier) => (
+                          <th key={tier} className="py-2 px-1 text-center w-20">{tier}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teams.map((team) => (
+                        <tr key={team} className="border-b border-gray-50">
+                          <td className="py-1.5 pr-4 font-medium">{team}</td>
+                          {tiers.map((tier) => {
+                            const cell = map.get(`${team}|${tier}`) ?? null;
+                            return (
+                              <td key={`${team}-${tier}`} className="px-1 py-1.5">
+                                <div
+                                  className="min-w-[72px] rounded-md border border-white/70 px-1.5 py-1.5 text-center shadow-sm"
+                                  style={biasCellStyle(cell?.bias, cell?.n ?? 0, maxMag)}
+                                >
+                                  {cell && cell.n > 0 ? (
+                                    <>
+                                      <div className="font-semibold text-[11px]">
+                                        {cell.bias != null ? `${cell.bias > 0 ? "+" : ""}${cell.bias.toFixed(1)}${unit}` : "—"}
+                                      </div>
+                                      <div className="text-[10px] opacity-75">n={cell.n}</div>
+                                    </>
+                                  ) : (
+                                    <div className="text-[10px] text-slate-300">—</div>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </>
       )}
     </div>
   );

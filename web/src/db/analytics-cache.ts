@@ -38,6 +38,14 @@ import {
   getSalaryTierAccuracy,
   getSlateTypePerformance,
   getStatLevelAccuracy,
+  getMlbOurProjTeamPositionMatrix,
+  getMlbOurProjTeamSalaryMatrix,
+  getMlbOurOwnTeamPositionMatrix,
+  getMlbOurOwnTeamSalaryMatrix,
+  getMlbLsProjTeamPositionMatrix,
+  getMlbLsProjTeamSalaryMatrix,
+  getMlbLsOwnTeamPositionMatrix,
+  getMlbLsOwnTeamSalaryMatrix,
 } from "./queries";
 import type { OwnershipDetailSort, Sport } from "./queries";
 
@@ -203,5 +211,56 @@ export const getCachedNbaPerfectLineupAnalytics = unstable_cache(
 export const getCachedMlbPerfectLineupAnalytics = unstable_cache(
   () => getMlbPerfectLineupAnalytics(),
   ["analytics-perfect-lineup-mlb-v2"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+// ---------------------------------------------------------------------------
+// MLB Team × Dimension bias matrices
+// ---------------------------------------------------------------------------
+export const getCachedMlbOurProjTeamPositionMatrix = unstable_cache(
+  () => getMlbOurProjTeamPositionMatrix(),
+  ["analytics-mlb-our-proj-team-pos"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbOurProjTeamSalaryMatrix = unstable_cache(
+  () => getMlbOurProjTeamSalaryMatrix(),
+  ["analytics-mlb-our-proj-team-sal"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbOurOwnTeamPositionMatrix = unstable_cache(
+  () => getMlbOurOwnTeamPositionMatrix(),
+  ["analytics-mlb-our-own-team-pos"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbOurOwnTeamSalaryMatrix = unstable_cache(
+  () => getMlbOurOwnTeamSalaryMatrix(),
+  ["analytics-mlb-our-own-team-sal"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbLsProjTeamPositionMatrix = unstable_cache(
+  () => getMlbLsProjTeamPositionMatrix(),
+  ["analytics-mlb-ls-proj-team-pos"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbLsProjTeamSalaryMatrix = unstable_cache(
+  () => getMlbLsProjTeamSalaryMatrix(),
+  ["analytics-mlb-ls-proj-team-sal"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbLsOwnTeamPositionMatrix = unstable_cache(
+  () => getMlbLsOwnTeamPositionMatrix(),
+  ["analytics-mlb-ls-own-team-pos"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedMlbLsOwnTeamSalaryMatrix = unstable_cache(
+  () => getMlbLsOwnTeamSalaryMatrix(),
+  ["analytics-mlb-ls-own-team-sal"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );

@@ -14,6 +14,14 @@ import {
   getCachedSalaryTierAccuracy,
   getCachedSlateTypePerformance,
   getCachedStatLevelAccuracy,
+  getCachedMlbOurProjTeamPositionMatrix,
+  getCachedMlbOurProjTeamSalaryMatrix,
+  getCachedMlbOurOwnTeamPositionMatrix,
+  getCachedMlbOurOwnTeamSalaryMatrix,
+  getCachedMlbLsProjTeamPositionMatrix,
+  getCachedMlbLsProjTeamSalaryMatrix,
+  getCachedMlbLsOwnTeamPositionMatrix,
+  getCachedMlbLsOwnTeamSalaryMatrix,
 } from "@/db/analytics-cache";
 import type { Sport } from "@/db/queries";
 import AnalyticsClient from "./analytics-client";
@@ -57,6 +65,14 @@ export default async function AnalyticsContent({
     ourOwnershipBiasMatrix,
     lsOwnershipBiasMatrix,
     lsOwnershipTeamPositionMatrix,
+    mlbOurProjTeamPos,
+    mlbOurProjTeamSal,
+    mlbOurOwnTeamPos,
+    mlbOurOwnTeamSal,
+    mlbLsProjTeamPos,
+    mlbLsProjTeamSal,
+    mlbLsOwnTeamPos,
+    mlbLsOwnTeamSal,
   ] = await Promise.all([
     safeRun(() => getCachedCrossSlateAccuracy(sport)),
     safeRun(() => getCachedPositionAccuracy(sport)),
@@ -73,6 +89,14 @@ export default async function AnalyticsContent({
     safeRun(() => getCachedOurOwnershipBiasMatrix(sport)),
     safeRun(() => getCachedLsOwnershipBiasMatrix(sport)),
     safeRun(() => getCachedLsOwnershipTeamPositionMatrix(sport)),
+    sport === "mlb" ? safeRun(() => getCachedMlbOurProjTeamPositionMatrix()) : Promise.resolve(null),
+    sport === "mlb" ? safeRun(() => getCachedMlbOurProjTeamSalaryMatrix())   : Promise.resolve(null),
+    sport === "mlb" ? safeRun(() => getCachedMlbOurOwnTeamPositionMatrix())  : Promise.resolve(null),
+    sport === "mlb" ? safeRun(() => getCachedMlbOurOwnTeamSalaryMatrix())    : Promise.resolve(null),
+    sport === "mlb" ? safeRun(() => getCachedMlbLsProjTeamPositionMatrix())  : Promise.resolve(null),
+    sport === "mlb" ? safeRun(() => getCachedMlbLsProjTeamSalaryMatrix())    : Promise.resolve(null),
+    sport === "mlb" ? safeRun(() => getCachedMlbLsOwnTeamPositionMatrix())   : Promise.resolve(null),
+    sport === "mlb" ? safeRun(() => getCachedMlbLsOwnTeamSalaryMatrix())     : Promise.resolve(null),
   ]);
 
   return (
@@ -92,6 +116,14 @@ export default async function AnalyticsContent({
       ourOwnershipBiasMatrix={ourOwnershipBiasMatrix ?? []}
       lsOwnershipBiasMatrix={lsOwnershipBiasMatrix ?? []}
       lsOwnershipTeamPositionMatrix={lsOwnershipTeamPositionMatrix ?? []}
+      mlbOurProjTeamPos={mlbOurProjTeamPos ?? []}
+      mlbOurProjTeamSal={mlbOurProjTeamSal ?? []}
+      mlbOurOwnTeamPos={mlbOurOwnTeamPos ?? []}
+      mlbOurOwnTeamSal={mlbOurOwnTeamSal ?? []}
+      mlbLsProjTeamPos={mlbLsProjTeamPos ?? []}
+      mlbLsProjTeamSal={mlbLsProjTeamSal ?? []}
+      mlbLsOwnTeamPos={mlbLsOwnTeamPos ?? []}
+      mlbLsOwnTeamSal={mlbLsOwnTeamSal ?? []}
       sport={sport}
       showHeader={showHeader}
     />

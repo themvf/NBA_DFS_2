@@ -2146,6 +2146,109 @@ export async function getLsOwnershipTeamPositionMatrix(sport: Sport = "nba"): Pr
 }
 
 // ---------------------------------------------------------------------------
+// MLB Team × Dimension bias matrices (projection + ownership, our + LineStar)
+// ---------------------------------------------------------------------------
+
+export type TeamPositionBiasRow = {
+  teamAbbrev: string;
+  position: string;
+  n: number;
+  mae: number | null;
+  bias: number | null;
+};
+
+export type TeamSalaryBiasRow = {
+  teamAbbrev: string;
+  salaryTier: string;
+  tierMin: number | null;
+  n: number;
+  mae: number | null;
+  bias: number | null;
+};
+
+type PredictedCol = "our_proj" | "linestar_proj" | "our_own_pct" | "proj_own_pct";
+type ReferenceCol = "actual_fpts" | "actual_own_pct";
+
+function mlbPosCase() {
+  return sql`CASE
+    WHEN dp.eligible_positions LIKE '%SP%' THEN 'SP'
+    WHEN dp.eligible_positions LIKE '%RP%' THEN 'RP'
+    WHEN dp.eligible_positions LIKE '%OF%' THEN 'OF'
+    WHEN dp.eligible_positions LIKE '%SS%' THEN 'SS'
+    WHEN dp.eligible_positions LIKE '%3B%' THEN '3B'
+    WHEN dp.eligible_positions LIKE '%2B%' THEN '2B'
+    WHEN dp.eligible_positions LIKE '%1B%' THEN '1B'
+    WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+    ELSE 'UTIL'
+  END`;
+}
+
+function mlbSalaryTierCase() {
+  return sql`CASE
+    WHEN dp.salary < 5000 THEN 'Under $5k'
+    WHEN dp.salary < 6000 THEN '$5k-$6k'
+    WHEN dp.salary < 7000 THEN '$6k-$7k'
+    WHEN dp.salary < 8000 THEN '$7k-$8k'
+    WHEN dp.salary < 9000 THEN '$8k-$9k'
+    ELSE '$9k+'
+  END`;
+}
+
+async function buildTeamPositionBiasMatrix(predicted: PredictedCol, reference: ReferenceCol): Promise<TeamPositionBiasRow[]> {
+  const pred = sql.raw(`dp.${predicted}`);
+  const ref = sql.raw(`dp.${reference}`);
+  const result = await db.execute<TeamPositionBiasRow>(sql`
+    SELECT
+      dp.team_abbrev                                                               AS "teamAbbrev",
+      ${mlbPosCase()}                                                              AS "position",
+      COUNT(*) FILTER (WHERE ${ref} IS NOT NULL AND ${pred} IS NOT NULL)::int      AS "n",
+      AVG(ABS(${pred} - ${ref})) FILTER (WHERE ${ref} IS NOT NULL AND ${pred} IS NOT NULL) AS "mae",
+      AVG(${pred} - ${ref})      FILTER (WHERE ${ref} IS NOT NULL AND ${pred} IS NOT NULL) AS "bias"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = 'mlb'
+      AND dp.team_abbrev IS NOT NULL
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+    GROUP BY dp.team_abbrev, 2
+    HAVING COUNT(*) FILTER (WHERE ${ref} IS NOT NULL AND ${pred} IS NOT NULL) >= 3
+    ORDER BY dp.team_abbrev ASC, 2 ASC
+  `);
+  return result.rows;
+}
+
+async function buildTeamSalaryBiasMatrix(predicted: PredictedCol, reference: ReferenceCol): Promise<TeamSalaryBiasRow[]> {
+  const pred = sql.raw(`dp.${predicted}`);
+  const ref = sql.raw(`dp.${reference}`);
+  const result = await db.execute<TeamSalaryBiasRow>(sql`
+    SELECT
+      dp.team_abbrev                                                                    AS "teamAbbrev",
+      ${mlbSalaryTierCase()}                                                            AS "salaryTier",
+      MIN(dp.salary)                                                                    AS "tierMin",
+      COUNT(*) FILTER (WHERE ${ref} IS NOT NULL AND ${pred} IS NOT NULL)::int           AS "n",
+      AVG(ABS(${pred} - ${ref})) FILTER (WHERE ${ref} IS NOT NULL AND ${pred} IS NOT NULL) AS "mae",
+      AVG(${pred} - ${ref})      FILTER (WHERE ${ref} IS NOT NULL AND ${pred} IS NOT NULL) AS "bias"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = 'mlb'
+      AND dp.team_abbrev IS NOT NULL
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+    GROUP BY dp.team_abbrev, 2
+    HAVING COUNT(*) FILTER (WHERE ${ref} IS NOT NULL AND ${pred} IS NOT NULL) >= 3
+    ORDER BY dp.team_abbrev ASC, MIN(dp.salary) ASC NULLS LAST
+  `);
+  return result.rows;
+}
+
+export async function getMlbOurProjTeamPositionMatrix():  Promise<TeamPositionBiasRow[]> { return buildTeamPositionBiasMatrix("our_proj",      "actual_fpts");    }
+export async function getMlbOurProjTeamSalaryMatrix():    Promise<TeamSalaryBiasRow[]>   { return buildTeamSalaryBiasMatrix(  "our_proj",      "actual_fpts");    }
+export async function getMlbOurOwnTeamPositionMatrix():   Promise<TeamPositionBiasRow[]> { return buildTeamPositionBiasMatrix("our_own_pct",   "actual_own_pct"); }
+export async function getMlbOurOwnTeamSalaryMatrix():     Promise<TeamSalaryBiasRow[]>   { return buildTeamSalaryBiasMatrix(  "our_own_pct",   "actual_own_pct"); }
+export async function getMlbLsProjTeamPositionMatrix():   Promise<TeamPositionBiasRow[]> { return buildTeamPositionBiasMatrix("linestar_proj", "actual_fpts");    }
+export async function getMlbLsProjTeamSalaryMatrix():     Promise<TeamSalaryBiasRow[]>   { return buildTeamSalaryBiasMatrix(  "linestar_proj", "actual_fpts");    }
+export async function getMlbLsOwnTeamPositionMatrix():    Promise<TeamPositionBiasRow[]> { return buildTeamPositionBiasMatrix("proj_own_pct",  "actual_own_pct"); }
+export async function getMlbLsOwnTeamSalaryMatrix():      Promise<TeamSalaryBiasRow[]>   { return buildTeamSalaryBiasMatrix(  "proj_own_pct",  "actual_own_pct"); }
+
+// ---------------------------------------------------------------------------
 // LineStar Calibrated Ownership — correction lookup tables
 // ---------------------------------------------------------------------------
 
