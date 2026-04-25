@@ -971,6 +971,16 @@ function validateLineupExact(
     teamCounts.set(player.teamId, (teamCounts.get(player.teamId) ?? 0) + 1);
   }
 
+  // DK Classic requires players from at least 2 distinct games.
+  // This is independent of stacking requirements — even a single-stack
+  // lineup where both teams are from the same matchup is invalid.
+  const lineupGameKeys = new Set(
+    players.map((p) => getPlayerGameKey(p)).filter((k): k is string => k != null)
+  );
+  if (lineupGameKeys.size < 2) {
+    return { ok: false, reason: "single_game_lineup" };
+  }
+
   const opponentByTeamId = buildOpponentByTeamId(players);
   const gameKeyByTeamId = buildGameKeyByTeamId(players);
   const requiredStackSizeByTeam = new Map(
@@ -1045,6 +1055,7 @@ function solveReducedLineup(
     leverage: number;
     ownership: number;
     highOwnedCount: number;
+    distinctGameKeys: Set<string>;
   };
 
   function canMeetTeamMinimums(
@@ -1155,6 +1166,12 @@ function solveReducedLineup(
     return selected;
   }
 
+  // Pre-compute which game keys are reachable from each player in the pool
+  // so the pruning check is O(1) per candidate rather than O(pool).
+  const poolGameKeys = new Set(
+    pool.map((p) => getPlayerGameKey(p)).filter((k): k is string => k != null)
+  );
+
   let states: SearchState[] = [{
     slotAssignment: {},
     selectedIds: new Set<number>(),
@@ -1166,6 +1183,7 @@ function solveReducedLineup(
     leverage: 0,
     ownership: 0,
     highOwnedCount: 0,
+    distinctGameKeys: new Set<string>(),
   }];
 
   for (let depth = 0; depth < orderedSlots.length; depth++) {
@@ -1192,6 +1210,14 @@ function solveReducedLineup(
         if (!canMeetTeamMinimums(selectedIds, teamCounts, remainingSlots)) continue;
         if (!canPlaceLockedPlayers(selectedIds, remainingSlots)) continue;
 
+        // Prune states that can't satisfy the 2-distinct-games DK requirement.
+        // If we're on the last slot and still only have 1 game key, skip.
+        const playerGameKey = getPlayerGameKey(player);
+        const distinctGameKeys = playerGameKey && !state.distinctGameKeys.has(playerGameKey)
+          ? new Set([...state.distinctGameKeys, playerGameKey])
+          : state.distinctGameKeys;
+        if (remainingCount === 0 && distinctGameKeys.size < 2 && poolGameKeys.size >= 2) continue;
+
         const salaryRange = salaryBounds(selectedIds, remainingCount);
         if (salary + salaryRange.min > SALARY_CAP) continue;
         if (salary + salaryRange.max < salaryFloor) continue;
@@ -1210,6 +1236,7 @@ function solveReducedLineup(
           leverage: state.leverage + getPlayerLeverage(player),
           ownership: state.ownership + getProjectedOwnership(player),
           highOwnedCount: state.highOwnedCount + (isHighOwnedNbaPlayer(player, mode) ? 1 : 0),
+          distinctGameKeys,
         };
         nextStates.push({
           ...nextState,
