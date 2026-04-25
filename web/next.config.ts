@@ -2,15 +2,20 @@ import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
-  // @workflow/core uses require(targetWorld) — a dynamic require that Turbopack
-  // can't statically analyse. Marking workflow packages as server externals
-  // keeps them as Node.js require() calls at runtime rather than bundled.
+  // Packages that use require() inside conditional/function bodies, which
+  // Turbopack can't statically resolve. Marking them as server externals
+  // delegates loading to Node.js's native require() at runtime.
+  //
+  // @workflow/core: require(targetWorld) — dynamic variable require
+  // javascript-lp-solver: require("fs") / require("child_process") inside
+  //   conditional blocks in solver.js — not resolvable at Turbopack compile time
   serverExternalPackages: [
     "@workflow/core",
     "@workflow/world",
     "@workflow/world-local",
     "@workflow/world-vercel",
     "workflow",
+    "javascript-lp-solver",
   ],
   images: {
     remotePatterns: [
