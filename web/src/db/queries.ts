@@ -2145,6 +2145,118 @@ export async function getLsOwnershipTeamPositionMatrix(sport: Sport = "nba"): Pr
   return result.rows;
 }
 
+// ---------------------------------------------------------------------------
+// LineStar Calibrated Ownership — correction lookup tables
+// ---------------------------------------------------------------------------
+
+export type LsPosSalaryCorrection = {
+  position: string;
+  salaryTier: string;
+  bias: number;
+  n: number;
+};
+
+export type LsTeamPositionCorrection = {
+  teamAbbrev: string;
+  position: string;
+  bias: number;
+  n: number;
+};
+
+export type LsPositionMeanBias = {
+  position: string;
+  meanBias: number;
+};
+
+export type LsOwnershipCorrectionTables = {
+  posSalary: LsPosSalaryCorrection[];
+  teamPosition: LsTeamPositionCorrection[];
+  positionMeanBias: LsPositionMeanBias[];
+};
+
+export async function getLsOwnershipCorrectionTables(sport: Sport = "nba"): Promise<LsOwnershipCorrectionTables> {
+  const posCase = sport === "mlb"
+    ? sql`CASE
+        WHEN dp.eligible_positions LIKE '%SP%' THEN 'SP'
+        WHEN dp.eligible_positions LIKE '%RP%' THEN 'RP'
+        WHEN dp.eligible_positions LIKE '%OF%' THEN 'OF'
+        WHEN dp.eligible_positions LIKE '%SS%' THEN 'SS'
+        WHEN dp.eligible_positions LIKE '%3B%' THEN '3B'
+        WHEN dp.eligible_positions LIKE '%2B%' THEN '2B'
+        WHEN dp.eligible_positions LIKE '%1B%' THEN '1B'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`
+    : sql`CASE
+        WHEN dp.eligible_positions LIKE '%PG%' THEN 'PG'
+        WHEN dp.eligible_positions LIKE '%SG%' THEN 'SG'
+        WHEN dp.eligible_positions LIKE '%SF%' THEN 'SF'
+        WHEN dp.eligible_positions LIKE '%PF%' THEN 'PF'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`;
+
+  const [psResult, tpResult] = await Promise.all([
+    // Position × salary bias (Layer 1)
+    db.execute<LsPosSalaryCorrection>(sql`
+      SELECT
+        ${posCase} AS "position",
+        CASE
+          WHEN dp.salary < 5000 THEN 'Under $5k'
+          WHEN dp.salary < 6000 THEN '$5k-$6k'
+          WHEN dp.salary < 7000 THEN '$6k-$7k'
+          WHEN dp.salary < 8000 THEN '$7k-$8k'
+          WHEN dp.salary < 9000 THEN '$8k-$9k'
+          ELSE '$9k+'
+        END AS "salaryTier",
+        AVG(dp.proj_own_pct - dp.actual_own_pct)
+          FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) AS "bias",
+        COUNT(*) FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL)::int AS "n"
+      FROM dk_players dp
+      JOIN dk_slates ds ON ds.id = dp.slate_id
+      WHERE ds.sport = ${sport}
+        AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+      GROUP BY 1, 2
+      HAVING COUNT(*) FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) >= 5
+    `),
+    // Team × position bias (Layer 2)
+    db.execute<LsTeamPositionCorrection>(sql`
+      SELECT
+        dp.team_abbrev                                                           AS "teamAbbrev",
+        ${posCase}                                                               AS "position",
+        AVG(dp.proj_own_pct - dp.actual_own_pct)
+          FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) AS "bias",
+        COUNT(*) FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL)::int AS "n"
+      FROM dk_players dp
+      JOIN dk_slates ds ON ds.id = dp.slate_id
+      WHERE ds.sport = ${sport}
+        AND dp.team_abbrev IS NOT NULL
+        AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+      GROUP BY dp.team_abbrev, 2
+      HAVING COUNT(*) FILTER (WHERE dp.actual_own_pct IS NOT NULL AND dp.proj_own_pct IS NOT NULL) >= 5
+    `),
+  ]);
+
+  const posSalary = psResult.rows.filter((r) => r.bias != null) as LsPosSalaryCorrection[];
+  const teamPosition = tpResult.rows.filter((r) => r.bias != null) as LsTeamPositionCorrection[];
+
+  // Pre-aggregate weighted mean bias per position across all salary tiers.
+  // Used to isolate the team-specific residual (Layer 2 = teamBias - positionMean).
+  const positionMap = new Map<string, { sumBiasN: number; sumN: number }>();
+  for (const row of posSalary) {
+    const existing = positionMap.get(row.position) ?? { sumBiasN: 0, sumN: 0 };
+    positionMap.set(row.position, {
+      sumBiasN: existing.sumBiasN + row.bias * row.n,
+      sumN: existing.sumN + row.n,
+    });
+  }
+  const positionMeanBias: LsPositionMeanBias[] = Array.from(positionMap.entries()).map(
+    ([position, { sumBiasN, sumN }]) => ({ position, meanBias: sumN > 0 ? sumBiasN / sumN : 0 })
+  );
+
+  return { posSalary, teamPosition, positionMeanBias };
+}
+
 export type LeverageCalibrationRow = {
   leverageQuartile: number;
   avgLeverage: number | null;

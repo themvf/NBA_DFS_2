@@ -28,6 +28,9 @@ import {
 } from "./mlb-optimizer";
 import { loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
 import { applyMlbHitterProjectionCalibration } from "./mlb-projection-utils";
+import { computeLsLeverage } from "./ls-ownership-calibration";
+import { getLsOwnershipCorrectionTables } from "@/db/queries";
+import { isLinestArMode } from "./optimizer-mode";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import { normalizeNbaRuleSelections, validateNbaRuleSelections } from "./nba-optimizer-rules";
 import { normalizeMlbRuleSelections, validateMlbRuleSelections } from "./mlb-optimizer-rules";
@@ -225,7 +228,8 @@ async function loadNbaOptimizerPool(
       dp.game_info AS "gameInfo",
       t.logo_url AS "teamLogo",
       t.name AS "teamName",
-      m.home_team_id AS "homeTeamId"
+      m.home_team_id AS "homeTeamId",
+      dp.proj_own_pct AS "rawLsProjOwnPct"
     FROM dk_players dp
     LEFT JOIN teams t ON t.team_id = dp.team_id
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
@@ -1125,10 +1129,30 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
     }
   }
 
-  const poolSnapshot = await loadOptimizerPool(input.sport, input.slateId, input.selectedMatchupIds);
+  let poolSnapshot = await loadOptimizerPool(input.sport, input.slateId, input.selectedMatchupIds);
   if (poolSnapshot.length === 0) {
     throw new Error("No players available for the selected slate and games.");
   }
+
+  // GPP_LS: enrich each NBA player with a pre-computed lsLeverage score
+  // using the two-layer calibrated LineStar ownership correction.
+  if (input.sport === "nba" && isLinestArMode(input.settings.mode)) {
+    const correctionTables = await getLsOwnershipCorrectionTables("nba");
+    poolSnapshot = (poolSnapshot as OptimizerPlayer[]).map((p) => ({
+      ...p,
+      lsLeverage: computeLsLeverage(
+        p.projCeiling ?? null,
+        p.ourProj ?? null,
+        p.linestarProj ?? null,
+        p.rawLsProjOwnPct ?? null,
+        p.salary,
+        p.eligiblePositions,
+        p.teamAbbrev ?? "",
+        correctionTables,
+      ),
+    }));
+  }
+
   if (input.sport === "nba") {
     const validation = validateNbaRuleSelections(poolSnapshot as OptimizerPlayer[], input.settings as OptimizerSettings);
     if (!validation.ok) {

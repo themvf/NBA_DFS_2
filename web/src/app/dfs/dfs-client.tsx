@@ -3051,11 +3051,17 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
             >
               <option value="gpp">GPP (balanced)</option>
               <option value="gpp2">GPP2 (large field)</option>
+              {sport === "nba" && <option value="gpp_ls">GPP LineStar (ceiling + calibrated own)</option>}
               <option value="cash">Cash (proj)</option>
             </select>
             {mode === "gpp2" && (
               <p className="mt-1 max-w-44 text-[11px] leading-4 text-muted-foreground">
                 Built for top-heavy, large-field contests around 10k+ entries.
+              </p>
+            )}
+            {mode === "gpp_ls" && (
+              <p className="mt-1 max-w-44 text-[11px] leading-4 text-muted-foreground">
+                High-variance GPP using p90 ceiling edge + LineStar ownership calibrated for team/position bias.
               </p>
             )}
           </div>

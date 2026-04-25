@@ -30,7 +30,8 @@ import { applyMlbHitterProjectionCalibration } from "./mlb-projection-utils";
 import { applyMlbOwnershipModelV1 } from "./mlb-ownership-model";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbGeneratedLineup } from "./mlb-optimizer";
-import type { Sport } from "@/db/queries";
+import { getLsOwnershipCorrectionTables } from "@/db/queries";
+import type { LsOwnershipCorrectionTables, Sport } from "@/db/queries";
 
 /** Minimal lineup shape accepted by saveLineups — satisfied by both NBA and MLB lineup types. */
 type LineupForSave = {
@@ -7254,6 +7255,17 @@ export async function uploadResults(formData: FormData): Promise<{
 }
 
 // ── Clear Slate ───────────────────────────────────────────────
+
+export async function fetchLsOwnershipCorrectionTables(
+  sport: Sport
+): Promise<{ ok: boolean; data: LsOwnershipCorrectionTables | null; message?: string }> {
+  try {
+    const data = await getLsOwnershipCorrectionTables(sport);
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, data: null, message: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 export async function clearSlate(sport: Sport): Promise<{ ok: boolean; message: string }> {
   try {

@@ -20,7 +20,7 @@ import type { DkPlayerRow } from "@/db/queries";
 import { stringifyCsvLine } from "./csv";
 import type { OptimizerDebugInfo, OptimizerLineupAttemptDebug } from "./optimizer-debug";
 import type { NbaPreparedOptimizerRun } from "./optimizer-job-types";
-import { isLargeFieldTournamentMode, isTournamentMode, type OptimizerMode } from "./optimizer-mode";
+import { isLargeFieldTournamentMode, isLinestArMode, isTournamentMode, type OptimizerMode } from "./optimizer-mode";
 import {
   normalizeNbaRuleSelections,
   validateNbaRuleSelections,
@@ -67,6 +67,13 @@ export type OptimizerPlayer = Pick<
 > & {
   /** Home team ID for the player's matchup - used for bring-back enforcement. */
   homeTeamId: number | null;
+  /**
+   * GPP LineStar leverage score — computed from calibrated LS ownership + p90.
+   * Populated only when mode = "gpp_ls"; null otherwise.
+   */
+  lsLeverage?: number | null;
+  /** Raw LineStar proj_own_pct — used for calibrated ownership computation. */
+  rawLsProjOwnPct?: number | null;
 };
 
 export type LineupSlot = "PG" | "SG" | "SF" | "PF" | "C" | "G" | "F" | "UTIL";
@@ -292,8 +299,32 @@ const NBA_GPP2_PROFILE: NbaTournamentProfile = {
   extraUpsideKeepCount: 22,
 };
 
+// GPP LineStar: highest-variance profile using calibrated LS ownership + p90 ceiling.
+// lsLeverage is pre-computed externally (see ls-ownership-calibration.ts) using the
+// two-layer residual correction. The weight here is higher than GPP2 because the
+// signal is more accurate (LS ownership beats our own model).
+const NBA_GPP_LS_PROFILE: NbaTournamentProfile = {
+  leverageWeight: 0.95,
+  ceilingEdgeWeight: 0.30,
+  boomWeight: 7.5,
+  chalkPenaltyStart: 12.0,
+  chalkPenaltyWeight: 0.07,
+  lineupOwnershipTarget: 105.0,
+  lineupOwnershipWeight: 0.08,
+  highOwnedThreshold: 16.0,
+  highOwnedAllowance: 2,
+  highOwnedPenalty: 1.25,
+  stackOwnershipThreshold: 36.0,
+  stackOwnershipWeight: 0.06,
+  recentLineupPenaltyWeight: 4.0,
+  extraLeverageKeepCount: 32,
+  extraUpsideKeepCount: 26,
+};
+
 function getNbaTournamentProfile(mode: OptimizerMode): NbaTournamentProfile {
-  return isLargeFieldTournamentMode(mode) ? NBA_GPP2_PROFILE : NBA_GPP_PROFILE;
+  if (isLargeFieldTournamentMode(mode)) return NBA_GPP2_PROFILE;
+  if (isLinestArMode(mode)) return NBA_GPP_LS_PROFILE;
+  return NBA_GPP_PROFILE;
 }
 
 function getNbaDefaultMinChanges(mode: OptimizerMode, eligibleCount: number, relaxed: boolean): number {
@@ -363,7 +394,11 @@ function getNbaLineupDuplicationPenalty(
 
 function getPlayerScore(p: OptimizerPlayer, mode: OptimizerMode): number {
   const projection = getPlayerProjection(p) ?? 0;
-  const leverage = finiteOrNull(p.ourLeverage) ?? 0;
+  // GPP_LS: use pre-computed lsLeverage (p90-based + calibrated LS ownership).
+  // Fallback to ourLeverage if lsLeverage is absent (e.g. missing LS data).
+  const leverage = isLinestArMode(mode)
+    ? (finiteOrNull(p.lsLeverage) ?? finiteOrNull(p.ourLeverage) ?? 0)
+    : (finiteOrNull(p.ourLeverage) ?? 0);
   const weight = isTournamentMode(mode) ? getNbaTournamentProfile(mode).leverageWeight : NBA_CASH_LEVERAGE_WEIGHT;
   return projection + leverage * weight + (isTournamentMode(mode) ? getNbaGppBonus(p, mode) : 0);
 }
