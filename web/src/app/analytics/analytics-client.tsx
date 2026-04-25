@@ -15,6 +15,8 @@ import {
 } from "recharts";
 import type {
   CrossSlateAccuracyRow,
+  LsProjectionMatrixRow,
+  OwnershipBiasMatrixRow,
   PositionAccuracyRow,
   PositionSalaryMatrixRow,
   SalaryTierAccuracyRow,
@@ -60,6 +62,9 @@ type Props = {
   projSourceBreakdown: ProjectionSourceRow[];
   statLevelAccuracy: StatLevelAccuracyRow[];
   gameTotalModel: GameTotalModelRow[];
+  lsProjectionBiasMatrix: LsProjectionMatrixRow[];
+  ourOwnershipBiasMatrix: OwnershipBiasMatrixRow[];
+  lsOwnershipBiasMatrix: OwnershipBiasMatrixRow[];
   sport: Sport;
   showHeader?: boolean;
 };
@@ -76,6 +81,9 @@ export default function AnalyticsClient({
   projSourceBreakdown,
   statLevelAccuracy,
   gameTotalModel,
+  lsProjectionBiasMatrix,
+  ourOwnershipBiasMatrix,
+  lsOwnershipBiasMatrix,
   sport,
   showHeader = true,
 }: Props) {
@@ -174,13 +182,13 @@ export default function AnalyticsClient({
     }
   }
 
-  function biasCellStyle(bias: number | null | undefined, n: number): React.CSSProperties {
+  function biasCellStyle(bias: number | null | undefined, n: number, maxMag = 8): React.CSSProperties {
     if (bias == null || n <= 0) {
       return { backgroundColor: "#f8fafc", color: "#94a3b8" };
     }
-    const magnitude = Math.min(Math.abs(bias), 8);
+    const magnitude = Math.min(Math.abs(bias), maxMag);
     const sampleWeight = Math.min(1, Math.max(n / 50, 0.35));
-    const alpha = 0.12 + (magnitude / 8) * 0.28 * sampleWeight;
+    const alpha = 0.12 + (magnitude / maxMag) * 0.28 * sampleWeight;
     return bias > 0
       ? { backgroundColor: `rgba(239, 68, 68, ${alpha.toFixed(3)})`, color: "#991b1b" }
       : { backgroundColor: `rgba(37, 99, 235, ${alpha.toFixed(3)})`, color: "#1d4ed8" };
@@ -198,6 +206,29 @@ export default function AnalyticsClient({
     .sort((a, b) => a.tierMin - b.tierMin)
     .map((row) => row.salaryTier);
   const matrixMap = new Map(positionSalaryMatrix.map((row) => [`${row.position}|${row.salaryTier}`, row]));
+
+  // ── Helper: build positions/tiers/map for any matrix with {position, salaryTier, tierMin}
+  function buildMatrixLayout<T extends { position: string; salaryTier: string; tierMin: number | null }>(rows: T[]) {
+    const ordered = [...positionOrder].filter((p) => rows.some((r) => r.position === p));
+    const unordered = rows
+      .map((r) => r.position)
+      .filter((p, i, arr) => arr.indexOf(p) === i && !positionOrder.includes(p));
+    const positions = [...ordered, ...unordered];
+    const tiers = rows
+      .map((r) => ({ salaryTier: r.salaryTier, tierMin: r.tierMin ?? Number.MAX_SAFE_INTEGER }))
+      .filter((r, i, arr) => arr.findIndex((c) => c.salaryTier === r.salaryTier) === i)
+      .sort((a, b) => a.tierMin - b.tierMin)
+      .map((r) => r.salaryTier);
+    const map = new Map(rows.map((r) => [`${r.position}|${r.salaryTier}`, r]));
+    return { positions, tiers, map };
+  }
+
+  const lsProjMatrix = buildMatrixLayout(lsProjectionBiasMatrix);
+  const ourOwnMatrix = buildMatrixLayout(ourOwnershipBiasMatrix);
+  const lsOwnMatrix = buildMatrixLayout(lsOwnershipBiasMatrix);
+
+  // Ownership bias is in pct-point units (0-100 scale) — use 15 as max magnitude for color scaling
+  const OWN_MAX_MAG = 15;
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6 text-slate-900 [&_.text-gray-100]:text-slate-900 [&_.text-gray-300]:text-slate-700 [&_.text-gray-400]:text-slate-600 [&_.text-gray-500]:text-slate-700">
@@ -655,6 +686,180 @@ export default function AnalyticsClient({
                                 </div>
                                 <div className="mt-1 text-[11px]">n={cell.ourN}</div>
                                 <div className="text-[11px]">MAE {fmt2(cell.ourMae)}</div>
+                              </>
+                            ) : (
+                              <div className="pt-4 text-[11px]">—</div>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── LineStar Projection Bias Matrix ─────────────────── */}
+      {lsProjectionBiasMatrix.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold mb-1">LineStar Projection Bias Matrix</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Where does LineStar over- or under-project by position and salary tier?
+            Compare to the Our Model matrix above to see if the biases are shared or unique to each source.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-4 text-[11px] text-slate-600">
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-red-200" />Over-projected</span>
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-blue-200" />Under-projected</span>
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-slate-100" />No sample</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b text-gray-400">
+                  <th className="py-2 pr-3 text-left">Pos</th>
+                  {lsProjMatrix.tiers.map((tier) => (
+                    <th key={tier} className="py-2 px-1 text-center whitespace-nowrap">{tier}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {lsProjMatrix.positions.map((position) => (
+                  <tr key={position} className="border-b border-gray-50">
+                    <td className="py-2 pr-3 font-medium align-top">{position}</td>
+                    {lsProjMatrix.tiers.map((tier) => {
+                      const cell = lsProjMatrix.map.get(`${position}|${tier}`) ?? null;
+                      return (
+                        <td key={`${position}-${tier}`} className="px-1 py-2 align-top">
+                          <div
+                            className="min-h-[68px] min-w-[96px] rounded-md border border-white/70 px-2 py-2 text-center shadow-sm"
+                            style={biasCellStyle(cell?.lsBias, cell?.lsN ?? 0)}
+                          >
+                            {cell && cell.lsN > 0 ? (
+                              <>
+                                <div className="font-semibold">
+                                  {cell.lsBias != null ? `${cell.lsBias > 0 ? "+" : ""}${cell.lsBias.toFixed(2)}` : "—"}
+                                </div>
+                                <div className="mt-1 text-[11px]">n={cell.lsN}</div>
+                                <div className="text-[11px]">MAE {fmt2(cell.lsMae)}</div>
+                              </>
+                            ) : (
+                              <div className="pt-4 text-[11px]">—</div>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Our Ownership Bias Matrix ─────────────────────────── */}
+      {ourOwnershipBiasMatrix.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold mb-1">Our Ownership Bias Matrix</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Where does our ownership model over- or under-predict actual DFS ownership by position and salary tier?
+            Bias is in percentage-point units. Red = over-estimated (we thought more people would own them than did).
+          </p>
+          <div className="mb-3 flex flex-wrap gap-4 text-[11px] text-slate-600">
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-red-200" />Over-estimated ownership</span>
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-blue-200" />Under-estimated ownership</span>
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-slate-100" />No sample</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b text-gray-400">
+                  <th className="py-2 pr-3 text-left">Pos</th>
+                  {ourOwnMatrix.tiers.map((tier) => (
+                    <th key={tier} className="py-2 px-1 text-center whitespace-nowrap">{tier}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ourOwnMatrix.positions.map((position) => (
+                  <tr key={position} className="border-b border-gray-50">
+                    <td className="py-2 pr-3 font-medium align-top">{position}</td>
+                    {ourOwnMatrix.tiers.map((tier) => {
+                      const cell = ourOwnMatrix.map.get(`${position}|${tier}`) ?? null;
+                      return (
+                        <td key={`${position}-${tier}`} className="px-1 py-2 align-top">
+                          <div
+                            className="min-h-[68px] min-w-[96px] rounded-md border border-white/70 px-2 py-2 text-center shadow-sm"
+                            style={biasCellStyle(cell?.bias, cell?.n ?? 0, OWN_MAX_MAG)}
+                          >
+                            {cell && cell.n > 0 ? (
+                              <>
+                                <div className="font-semibold">
+                                  {cell.bias != null ? `${cell.bias > 0 ? "+" : ""}${cell.bias.toFixed(1)}%` : "—"}
+                                </div>
+                                <div className="mt-1 text-[11px]">n={cell.n}</div>
+                                <div className="text-[11px]">MAE {cell.mae != null ? `${cell.mae.toFixed(1)}%` : "—"}</div>
+                              </>
+                            ) : (
+                              <div className="pt-4 text-[11px]">—</div>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── LineStar Ownership Bias Matrix ───────────────────── */}
+      {lsOwnershipBiasMatrix.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold mb-1">LineStar Ownership Bias Matrix</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Where does LineStar over- or under-predict actual DFS ownership by position and salary tier?
+            Use these corrections to calibrate LineStar ownership before feeding it into the GPP LineStar leverage formula.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-4 text-[11px] text-slate-600">
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-red-200" />Over-estimated ownership</span>
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-blue-200" />Under-estimated ownership</span>
+            <span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-slate-100" />No sample</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b text-gray-400">
+                  <th className="py-2 pr-3 text-left">Pos</th>
+                  {lsOwnMatrix.tiers.map((tier) => (
+                    <th key={tier} className="py-2 px-1 text-center whitespace-nowrap">{tier}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {lsOwnMatrix.positions.map((position) => (
+                  <tr key={position} className="border-b border-gray-50">
+                    <td className="py-2 pr-3 font-medium align-top">{position}</td>
+                    {lsOwnMatrix.tiers.map((tier) => {
+                      const cell = lsOwnMatrix.map.get(`${position}|${tier}`) ?? null;
+                      return (
+                        <td key={`${position}-${tier}`} className="px-1 py-2 align-top">
+                          <div
+                            className="min-h-[68px] min-w-[96px] rounded-md border border-white/70 px-2 py-2 text-center shadow-sm"
+                            style={biasCellStyle(cell?.bias, cell?.n ?? 0, OWN_MAX_MAG)}
+                          >
+                            {cell && cell.n > 0 ? (
+                              <>
+                                <div className="font-semibold">
+                                  {cell.bias != null ? `${cell.bias > 0 ? "+" : ""}${cell.bias.toFixed(1)}%` : "—"}
+                                </div>
+                                <div className="mt-1 text-[11px]">n={cell.n}</div>
+                                <div className="text-[11px]">MAE {cell.mae != null ? `${cell.mae.toFixed(1)}%` : "—"}</div>
                               </>
                             ) : (
                               <div className="pt-4 text-[11px]">—</div>

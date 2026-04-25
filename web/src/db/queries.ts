@@ -1964,6 +1964,133 @@ export async function getPositionSalaryMatrix(sport: Sport = "nba"): Promise<Pos
   return result.rows;
 }
 
+export type LsProjectionMatrixRow = {
+  position: string;
+  salaryTier: string;
+  tierMin: number | null;
+  lsN: number;
+  lsMae: number | null;
+  lsBias: number | null;
+};
+
+export async function getLsProjectionBiasMatrix(sport: Sport = "nba"): Promise<LsProjectionMatrixRow[]> {
+  const posCase = sport === "mlb"
+    ? sql`CASE
+        WHEN dp.eligible_positions LIKE '%SP%' THEN 'SP'
+        WHEN dp.eligible_positions LIKE '%RP%' THEN 'RP'
+        WHEN dp.eligible_positions LIKE '%OF%' THEN 'OF'
+        WHEN dp.eligible_positions LIKE '%SS%' THEN 'SS'
+        WHEN dp.eligible_positions LIKE '%3B%' THEN '3B'
+        WHEN dp.eligible_positions LIKE '%2B%' THEN '2B'
+        WHEN dp.eligible_positions LIKE '%1B%' THEN '1B'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`
+    : sql`CASE
+        WHEN dp.eligible_positions LIKE '%PG%' THEN 'PG'
+        WHEN dp.eligible_positions LIKE '%SG%' THEN 'SG'
+        WHEN dp.eligible_positions LIKE '%SF%' THEN 'SF'
+        WHEN dp.eligible_positions LIKE '%PF%' THEN 'PF'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`;
+
+  const result = await db.execute<LsProjectionMatrixRow>(sql`
+    SELECT
+      ${posCase} AS "position",
+      CASE
+        WHEN dp.salary < 5000 THEN 'Under $5k'
+        WHEN dp.salary < 6000 THEN '$5k-$6k'
+        WHEN dp.salary < 7000 THEN '$6k-$7k'
+        WHEN dp.salary < 8000 THEN '$7k-$8k'
+        WHEN dp.salary < 9000 THEN '$8k-$9k'
+        ELSE '$9k+'
+      END AS "salaryTier",
+      MIN(dp.salary) AS "tierMin",
+      COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL)::int AS "lsN",
+      AVG(ABS(dp.linestar_proj - dp.actual_fpts))
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsMae",
+      AVG(dp.linestar_proj - dp.actual_fpts)
+        FILTER (WHERE dp.actual_fpts IS NOT NULL AND dp.linestar_proj IS NOT NULL) AS "lsBias"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+    GROUP BY 1, 2
+    ORDER BY MIN(dp.salary) ASC NULLS LAST, 1 ASC
+  `);
+  return result.rows;
+}
+
+export type OwnershipBiasMatrixRow = {
+  position: string;
+  salaryTier: string;
+  tierMin: number | null;
+  n: number;
+  mae: number | null;
+  bias: number | null;
+};
+
+function buildOwnershipBiasMatrixQuery(sport: Sport, ownershipCol: "our_own_pct" | "proj_own_pct") {
+  const posCase = sport === "mlb"
+    ? sql`CASE
+        WHEN dp.eligible_positions LIKE '%SP%' THEN 'SP'
+        WHEN dp.eligible_positions LIKE '%RP%' THEN 'RP'
+        WHEN dp.eligible_positions LIKE '%OF%' THEN 'OF'
+        WHEN dp.eligible_positions LIKE '%SS%' THEN 'SS'
+        WHEN dp.eligible_positions LIKE '%3B%' THEN '3B'
+        WHEN dp.eligible_positions LIKE '%2B%' THEN '2B'
+        WHEN dp.eligible_positions LIKE '%1B%' THEN '1B'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`
+    : sql`CASE
+        WHEN dp.eligible_positions LIKE '%PG%' THEN 'PG'
+        WHEN dp.eligible_positions LIKE '%SG%' THEN 'SG'
+        WHEN dp.eligible_positions LIKE '%SF%' THEN 'SF'
+        WHEN dp.eligible_positions LIKE '%PF%' THEN 'PF'
+        WHEN dp.eligible_positions LIKE '%C%'  THEN 'C'
+        ELSE 'UTIL'
+      END`;
+
+  const col = ownershipCol === "our_own_pct" ? sql`dp.our_own_pct` : sql`dp.proj_own_pct`;
+
+  return db.execute<OwnershipBiasMatrixRow>(sql`
+    SELECT
+      ${posCase} AS "position",
+      CASE
+        WHEN dp.salary < 5000 THEN 'Under $5k'
+        WHEN dp.salary < 6000 THEN '$5k-$6k'
+        WHEN dp.salary < 7000 THEN '$6k-$7k'
+        WHEN dp.salary < 8000 THEN '$7k-$8k'
+        WHEN dp.salary < 9000 THEN '$8k-$9k'
+        ELSE '$9k+'
+      END AS "salaryTier",
+      MIN(dp.salary) AS "tierMin",
+      COUNT(*) FILTER (WHERE dp.actual_own_pct IS NOT NULL AND ${col} IS NOT NULL)::int AS "n",
+      AVG(ABS(${col} - dp.actual_own_pct))
+        FILTER (WHERE dp.actual_own_pct IS NOT NULL AND ${col} IS NOT NULL) AS "mae",
+      AVG(${col} - dp.actual_own_pct)
+        FILTER (WHERE dp.actual_own_pct IS NOT NULL AND ${col} IS NOT NULL) AS "bias"
+    FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
+    WHERE ds.sport = ${sport}
+      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+    GROUP BY 1, 2
+    ORDER BY MIN(dp.salary) ASC NULLS LAST, 1 ASC
+  `);
+}
+
+export async function getOurOwnershipBiasMatrix(sport: Sport = "nba"): Promise<OwnershipBiasMatrixRow[]> {
+  const result = await buildOwnershipBiasMatrixQuery(sport, "our_own_pct");
+  return result.rows;
+}
+
+export async function getLsOwnershipBiasMatrix(sport: Sport = "nba"): Promise<OwnershipBiasMatrixRow[]> {
+  const result = await buildOwnershipBiasMatrixQuery(sport, "proj_own_pct");
+  return result.rows;
+}
+
 export type LeverageCalibrationRow = {
   leverageQuartile: number;
   avgLeverage: number | null;

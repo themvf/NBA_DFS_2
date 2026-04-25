@@ -19,6 +19,8 @@ import {
   getCrossSlateAccuracy,
   getGameTotalModelAccuracy,
   getLeverageCalibration,
+  getLsOwnershipBiasMatrix,
+  getLsProjectionBiasMatrix,
   getMlbBattingOrderCalibration,
   getMlbBlowupCandidateReport,
   getMlbPostmortemReport,
@@ -27,6 +29,7 @@ import {
   getMlbPitcherLineupReport,
   getMlbPerfectLineupAnalytics,
   getNbaPerfectLineupAnalytics,
+  getOurOwnershipBiasMatrix,
   getOwnershipVsTeamTotal,
   getPositionAccuracy,
   getPositionSalaryMatrix,
@@ -76,6 +79,24 @@ export const getCachedSalaryTierAccuracy = unstable_cache(
 export const getCachedPositionSalaryMatrix = unstable_cache(
   (sport: Sport) => getPositionSalaryMatrix(sport),
   ["analytics-position-salary-matrix"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedLsProjectionBiasMatrix = unstable_cache(
+  (sport: Sport) => getLsProjectionBiasMatrix(sport),
+  ["analytics-ls-proj-bias-matrix"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedOurOwnershipBiasMatrix = unstable_cache(
+  (sport: Sport) => getOurOwnershipBiasMatrix(sport),
+  ["analytics-our-own-bias-matrix"],
+  { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
+);
+
+export const getCachedLsOwnershipBiasMatrix = unstable_cache(
+  (sport: Sport) => getLsOwnershipBiasMatrix(sport),
+  ["analytics-ls-own-bias-matrix"],
   { revalidate: REVALIDATE, tags: [ANALYTICS_CACHE_TAG] },
 );
 
