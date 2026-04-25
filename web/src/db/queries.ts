@@ -2,11 +2,6 @@ import { db } from ".";
 import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const solver = require("javascript-lp-solver") as {
-  Solve: (model: SolverModel) => SolverResult;
-};
-
 const CURRENT_SEASON = "2025-26";
 
 type SolverModel = {
@@ -5165,6 +5160,8 @@ function getOpponentTeamId<T extends { teamId: number | null; homeTeamId: number
 
 function solveNbaPerfectLineup(players: NbaPerfectLineupSourceRow[]): NbaPerfectLineupSourceRow[] {
   if (players.length < NBA_ANALYTICS_SLOTS.length) return [];
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
 
   const constraints: SolverModel["constraints"] = {
     salary: { max: 50000 },
@@ -5216,6 +5213,8 @@ function solveNbaPerfectLineup(players: NbaPerfectLineupSourceRow[]): NbaPerfect
 
 function solveMlbPerfectLineup(players: MlbPerfectLineupSourceRow[]): MlbPerfectLineupSourceRow[] {
   if (players.length < MLB_ANALYTICS_SLOTS.length) return [];
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
 
   const constraints: SolverModel["constraints"] = {
     salary: { max: 50000 },
