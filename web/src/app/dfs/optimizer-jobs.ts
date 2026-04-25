@@ -28,9 +28,9 @@ import {
 } from "./mlb-optimizer";
 import { loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
 import { applyMlbHitterProjectionCalibration } from "./mlb-projection-utils";
-import { computeLsLeverage } from "./ls-ownership-calibration";
+import { computeCalibratedLsOwn, computeLsLeverage, getPrimaryNbaPosition, getSalaryTier } from "./ls-ownership-calibration";
 import { getLsOwnershipCorrectionTables } from "@/db/queries";
-import { isLinestArMode } from "./optimizer-mode";
+import { isLinestArMode, isTournamentMode } from "./optimizer-mode";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import { normalizeNbaRuleSelections, validateNbaRuleSelections } from "./nba-optimizer-rules";
 import { normalizeMlbRuleSelections, validateMlbRuleSelections } from "./mlb-optimizer-rules";
@@ -1134,23 +1134,41 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
     throw new Error("No players available for the selected slate and games.");
   }
 
-  // GPP_LS: enrich each NBA player with a pre-computed lsLeverage score
-  // using the two-layer calibrated LineStar ownership correction.
-  if (input.sport === "nba" && isLinestArMode(input.settings.mode)) {
+  // All NBA tournament modes: override projOwnPct with calibrated LS ownership.
+  // The two-layer correction (position×salary + team×position residual) removes
+  // systematic biases in LineStar's raw ownership before it feeds chalk penalties,
+  // high-owned counting, and lineup ownership scoring.
+  // GPP_LS additionally pre-computes lsLeverage using the same calibration.
+  if (input.sport === "nba" && isTournamentMode(input.settings.mode)) {
     const correctionTables = await getLsOwnershipCorrectionTables("nba");
-    poolSnapshot = (poolSnapshot as OptimizerPlayer[]).map((p) => ({
-      ...p,
-      lsLeverage: computeLsLeverage(
-        p.projCeiling ?? null,
-        p.ourProj ?? null,
-        p.linestarProj ?? null,
-        p.rawLsProjOwnPct ?? null,
-        p.salary,
-        p.eligiblePositions,
-        p.teamAbbrev ?? "",
-        correctionTables,
-      ),
-    }));
+    const isLsMode = isLinestArMode(input.settings.mode);
+    poolSnapshot = (poolSnapshot as OptimizerPlayer[]).map((p) => {
+      const rawLsOwn = p.rawLsProjOwnPct ?? null;
+      if (rawLsOwn == null) return p;
+
+      const position = getPrimaryNbaPosition(p.eligiblePositions);
+      const salaryTier = getSalaryTier(p.salary);
+      const calibratedOwn = computeCalibratedLsOwn(
+        rawLsOwn, position, salaryTier, p.teamAbbrev ?? "", correctionTables,
+      );
+
+      return {
+        ...p,
+        projOwnPct: calibratedOwn,
+        ...(isLsMode && {
+          lsLeverage: computeLsLeverage(
+            p.projCeiling ?? null,
+            p.ourProj ?? null,
+            p.linestarProj ?? null,
+            rawLsOwn,
+            p.salary,
+            p.eligiblePositions,
+            p.teamAbbrev ?? "",
+            correctionTables,
+          ),
+        }),
+      };
+    });
   }
 
   if (input.sport === "nba") {
