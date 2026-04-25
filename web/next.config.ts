@@ -2,17 +2,6 @@ import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
-  // @workflow/core uses require(targetWorld) — a dynamic variable require that
-  // Turbopack can't statically resolve. Marking workflow packages as server
-  // externals keeps them as Node.js require() calls at runtime instead of
-  // being bundled by Turbopack.
-  serverExternalPackages: [
-    "@workflow/core",
-    "@workflow/world",
-    "@workflow/world-local",
-    "@workflow/world-vercel",
-    "workflow",
-  ],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "cdn.nba.com" },
