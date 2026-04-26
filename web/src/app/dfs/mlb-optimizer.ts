@@ -51,7 +51,9 @@ export type MlbOptimizerPlayer = Pick<
   | "propStl"
   | "propStlPrice"
   | "propStlBook"
->;
+> & {
+  rawLsProjOwnPct?: number | null;
+};
 
 export type MlbLineupSlot = "P1" | "P2" | "C" | "1B" | "2B" | "3B" | "SS" | "OF1" | "OF2" | "OF3";
 

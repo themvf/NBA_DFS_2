@@ -28,7 +28,7 @@ import {
 } from "./mlb-optimizer";
 import { loadMlbHitterProjectionCalibration } from "./mlb-projection-calibration";
 import { applyMlbHitterProjectionCalibration } from "./mlb-projection-utils";
-import { computeCalibratedLsOwn, computeLsLeverage, getPrimaryNbaPosition, getSalaryTier } from "./ls-ownership-calibration";
+import { computeCalibratedLsOwn, computeLsLeverage, getPrimaryMlbPosition, getPrimaryNbaPosition, getSalaryTier } from "./ls-ownership-calibration";
 import { getLsOwnershipCorrectionTables } from "@/db/queries";
 import { isLinestArMode, isTournamentMode } from "./optimizer-mode";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
@@ -270,6 +270,7 @@ async function loadMlbOptimizerPool(
       dp.our_leverage AS "ourLeverage",
       dp.linestar_proj AS "linestarProj",
       dp.proj_own_pct AS "projOwnPct",
+      dp.proj_own_pct AS "rawLsProjOwnPct",
       dp.avg_fpts_dk AS "avgFptsDk",
       dp.proj_ceiling AS "projCeiling",
       dp.boom_rate AS "boomRate",
@@ -1168,6 +1169,23 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
           ),
         }),
       };
+    });
+  }
+
+  // All MLB tournament modes: same two-layer calibration applied to LS ownership.
+  if (input.sport === "mlb" && isTournamentMode(input.settings.mode)) {
+    const correctionTables = await getLsOwnershipCorrectionTables("mlb");
+    poolSnapshot = (poolSnapshot as MlbOptimizerPlayer[]).map((p) => {
+      const rawLsOwn = p.rawLsProjOwnPct ?? null;
+      if (rawLsOwn == null) return p;
+
+      const position = getPrimaryMlbPosition(p.eligiblePositions);
+      const salaryTier = getSalaryTier(p.salary);
+      const calibratedOwn = computeCalibratedLsOwn(
+        rawLsOwn, position, salaryTier, p.teamAbbrev ?? "", correctionTables,
+      );
+
+      return { ...p, projOwnPct: calibratedOwn };
     });
   }
 

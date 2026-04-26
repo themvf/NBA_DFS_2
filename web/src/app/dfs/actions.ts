@@ -1372,6 +1372,7 @@ function buildNbaProjectionBlend(
     vegasTotalDelta?: number;
     homeSpreadDelta?: number | null;
   } = {},
+  recentActualFpts: number[] | null = null,
 ): NbaProjectionBlend {
   const modelStats = computeNbaProjectionStats(player, teamPace, oppPace, oppDefRtg, vegasTotal, homeMl, awayMl, isHome, {});
   const propCount = countProjectionProps(props);
@@ -1405,9 +1406,22 @@ function buildNbaProjectionBlend(
     modelConfidence = clamp01(modelConfidence - 0.12);
     lsConfidence = clamp01(lsConfidence + 0.12);
   }
+  // Recent trend: compare last 3 actual FPTS to the model projection.
+  // recentTrend >= 0.65 → player performing near model → bypass guardrail.
+  // recentTrend <= 0.35 → recent form confirms LS's low view → full guardrail.
+  // Linear interpolation between the two thresholds.
+  let guardrailScale = 1.0;
+  if (recentActualFpts && recentActualFpts.length >= 2 && modelProj != null && modelProj > 0) {
+    const recentAvg = recentActualFpts.reduce((a, b) => a + b, 0) / recentActualFpts.length;
+    const recentTrend = recentAvg / modelProj;
+    guardrailScale = clamp01((0.65 - recentTrend) / 0.30);
+    if (guardrailScale < 0.15) flags.push("recent_confirms_model");
+    else if (guardrailScale > 0.85) flags.push("recent_confirms_ls");
+  }
   if (propCount === 0 && lsProj != null && lsGap >= 8) {
-    const guardrailPenalty = avgMinutes < 18 ? 0.16 : avgMinutes < 24 ? 0.12 : avgMinutes < 30 ? 0.08 : 0;
-    if (guardrailPenalty > 0) {
+    const rawPenalty = avgMinutes < 18 ? 0.16 : avgMinutes < 24 ? 0.12 : avgMinutes < 30 ? 0.08 : 0;
+    const guardrailPenalty = rawPenalty * guardrailScale;
+    if (guardrailPenalty > 0.01) {
       modelConfidence = clamp01(modelConfidence - guardrailPenalty);
       lsConfidence = clamp01(lsConfidence + guardrailPenalty);
       flags.push("ls_guardrail");
@@ -1429,14 +1443,19 @@ function buildNbaProjectionBlend(
       ? { model: 0.30, market: 0.60, ls: lsProj != null ? 0.10 : 0 }
       : { model: 0.45, market: 0.45, ls: lsProj != null ? 0.10 : 0 };
   } else {
-    const guardedNoPropWeights = lsProj != null && lsGap >= 8
-      ? avgMinutes < 18
-        ? { model: modelProj != null ? 0.45 : 0, market: 0, ls: 0.55 }
-        : avgMinutes < 24
-          ? { model: modelProj != null ? 0.55 : 0, market: 0, ls: 0.45 }
-          : avgMinutes < 30
-            ? { model: modelProj != null ? 0.62 : 0, market: 0, ls: 0.38 }
-            : null
+    const guardedNoPropWeights = lsProj != null && lsGap >= 8 && guardrailScale > 0.1
+      ? (() => {
+          const guardedModel = avgMinutes < 18 ? 0.45 : avgMinutes < 24 ? 0.55 : avgMinutes < 30 ? 0.62 : null;
+          if (guardedModel == null) return null;
+          const defaultModel = modelProj != null ? 0.75 : 0;
+          const defaultLs = lsProj != null ? 0.25 : 0;
+          const guardedLs = 1 - guardedModel;
+          return {
+            model: modelProj != null ? defaultModel + (guardedModel - defaultModel) * guardrailScale : 0,
+            market: 0,
+            ls: defaultLs + (guardedLs - defaultLs) * guardrailScale,
+          };
+        })()
       : null;
     baseWeights = guardedNoPropWeights ?? { model: modelProj != null ? 0.75 : 0, market: 0, ls: lsProj != null ? 0.25 : 0 };
     if (lsProj == null) baseWeights.model = modelProj != null ? 1 : 0;
@@ -1458,9 +1477,10 @@ function buildNbaProjectionBlend(
     + (marketProj != null ? effectiveWeights.market * marketProj : 0)
     + (lsProj != null ? effectiveWeights.ls * lsProj : 0),
   );
-  if (finalProj != null && propCount === 0 && lsProj != null && lsGap >= 8) {
-    const bridgeWeight = avgMinutes < 18 ? 0.18 : avgMinutes < 24 ? 0.14 : avgMinutes < 30 ? 0.10 : 0;
-    if (bridgeWeight > 0) {
+  if (finalProj != null && propCount === 0 && lsProj != null && lsGap >= 8 && guardrailScale > 0.1) {
+    const rawBridge = avgMinutes < 18 ? 0.18 : avgMinutes < 24 ? 0.14 : avgMinutes < 30 ? 0.10 : 0;
+    const bridgeWeight = rawBridge * guardrailScale;
+    if (bridgeWeight > 0.01) {
       finalProj = sanitizeProjection(finalProj * (1 - bridgeWeight) + lsProj * bridgeWeight);
       flags.push("no_props_ls_bridge");
     }
@@ -2897,6 +2917,21 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
         arr.push(ps);
         playersByTeam.set(ps.teamId, arr);
       }
+      const recentActualsRows = await db.execute<{ dk_player_id: number; actual_fpts: number }>(sql`
+        SELECT dk_player_id, actual_fpts FROM (
+          SELECT p.dk_player_id, p.actual_fpts,
+            ROW_NUMBER() OVER (PARTITION BY p.dk_player_id ORDER BY p.slate_id DESC) AS rn
+          FROM dk_players p
+          JOIN dk_slates s ON s.id = p.slate_id
+          WHERE p.actual_fpts IS NOT NULL AND s.sport = 'nba' AND p.slate_id != ${slate.id}
+        ) sub WHERE rn <= 3
+      `);
+      const recentActualsByDkId = new Map<number, number[]>();
+      for (const row of recentActualsRows.rows) {
+        const arr = recentActualsByDkId.get(Number(row.dk_player_id)) ?? [];
+        arr.push(Number(row.actual_fpts));
+        recentActualsByDkId.set(Number(row.dk_player_id), arr);
+      }
       const oddsMovementContext = await buildNbaOddsMovementContext(slate.id, targetDate);
       const projectionCalibration = await loadNbaProjectionCalibration();
 
@@ -2958,6 +2993,7 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
               vegasTotalDelta: matchupMovement?.vegasTotalDelta,
               homeSpreadDelta: matchupMovement?.homeSpreadDelta,
             },
+            recentActualsByDkId.get(p.dkPlayerId) ?? null,
           );
           ourProj = computeNbaInternalProjection(
             projectionBlend,
@@ -4156,6 +4192,21 @@ async function enrichAndSave(
     arr.push(ps);
     playersByTeam.set(ps.teamId, arr);
   }
+  const recentActualsRows2 = await db.execute<{ dk_player_id: number; actual_fpts: number }>(sql`
+    SELECT dk_player_id, actual_fpts FROM (
+      SELECT p.dk_player_id, p.actual_fpts,
+        ROW_NUMBER() OVER (PARTITION BY p.dk_player_id ORDER BY p.slate_id DESC) AS rn
+      FROM dk_players p
+      JOIN dk_slates s ON s.id = p.slate_id
+      WHERE p.actual_fpts IS NOT NULL AND s.sport = 'nba' AND p.slate_id != ${slateId}
+    ) sub WHERE rn <= 3
+  `);
+  const recentActualsByDkId2 = new Map<number, number[]>();
+  for (const row of recentActualsRows2.rows) {
+    const arr = recentActualsByDkId2.get(Number(row.dk_player_id)) ?? [];
+    arr.push(Number(row.actual_fpts));
+    recentActualsByDkId2.set(Number(row.dk_player_id), arr);
+  }
   const oddsMovementContext = await buildNbaOddsMovementContext(slateId, slateDate);
   const projectionCalibration = await loadNbaProjectionCalibration();
 
@@ -4238,6 +4289,7 @@ async function enrichAndSave(
             vegasTotalDelta: matchupMovement?.vegasTotalDelta,
             homeSpreadDelta: matchupMovement?.homeSpreadDelta,
           },
+          recentActualsByDkId2.get(p.dkId) ?? null,
         );
         ourProj = computeNbaInternalProjection(
           projectionBlend,
@@ -7347,6 +7399,21 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       arr.push(ps);
       playersByTeam.set(ps.teamId, arr);
     }
+    const recentActualsRows3 = await db.execute<{ dk_player_id: number; actual_fpts: number }>(sql`
+      SELECT dk_player_id, actual_fpts FROM (
+        SELECT p.dk_player_id, p.actual_fpts,
+          ROW_NUMBER() OVER (PARTITION BY p.dk_player_id ORDER BY p.slate_id DESC) AS rn
+        FROM dk_players p
+        JOIN dk_slates s ON s.id = p.slate_id
+        WHERE p.actual_fpts IS NOT NULL AND s.sport = 'nba' AND p.slate_id != ${slate.id}
+      ) sub WHERE rn <= 3
+    `);
+    const recentActualsByDkId3 = new Map<number, number[]>();
+    for (const row of recentActualsRows3.rows) {
+      const arr = recentActualsByDkId3.get(Number(row.dk_player_id)) ?? [];
+      arr.push(Number(row.actual_fpts));
+      recentActualsByDkId3.set(Number(row.dk_player_id), arr);
+    }
     const oddsMovementContext = await buildNbaOddsMovementContext(slate.id, slate.slateDate);
     const projectionCalibration = await loadNbaProjectionCalibration();
 
@@ -7442,6 +7509,7 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
               vegasTotalDelta: matchupMovement?.vegasTotalDelta,
               homeSpreadDelta: matchupMovement?.homeSpreadDelta,
             },
+            recentActualsByDkId3.get(p.dkPlayerId) ?? null,
           );
           ourProj = computeNbaInternalProjection(
             projectionBlend,

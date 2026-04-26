@@ -18,6 +18,18 @@ export function getPrimaryNbaPosition(eligiblePositions: string): string {
   return "UTIL";
 }
 
+export function getPrimaryMlbPosition(eligiblePositions: string): string {
+  if (eligiblePositions.includes("SP")) return "SP";
+  if (eligiblePositions.includes("RP")) return "RP";
+  if (eligiblePositions.includes("C")) return "C";
+  if (eligiblePositions.includes("1B")) return "1B";
+  if (eligiblePositions.includes("2B")) return "2B";
+  if (eligiblePositions.includes("3B")) return "3B";
+  if (eligiblePositions.includes("SS")) return "SS";
+  if (eligiblePositions.includes("OF")) return "OF";
+  return "UTIL";
+}
+
 /**
  * Apply two-layer calibration to LineStar's raw ownership prediction.
  *
