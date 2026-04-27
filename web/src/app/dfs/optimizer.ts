@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * DraftKings NBA lineup optimizer using Integer Linear Programming.
+ * DraftKings NBA lineup optimizer using heuristic search.
  *
  * Lineup structure: PG / SG / SF / PF / C / G / F / UTIL (8 players, $50k cap)
  *   - PG slot: player with "PG" in eligible_positions
@@ -12,8 +12,6 @@ import "server-only";
  *   - G slot:  player with "G" in eligible_positions (PG or SG flex)
  *   - F slot:  player with "F" in eligible_positions (SF or PF flex)
  *   - UTIL:    any player
- *
- * Uses javascript-lp-solver for binary ILP.
  */
 
 import type { DkPlayerRow } from "@/db/queries";
@@ -28,20 +26,6 @@ import {
   type NormalizedNbaRuleSelections,
 } from "./nba-optimizer-rules";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const solver = require("javascript-lp-solver") as {
-  Solve: (model: SolverModel) => SolverResult;
-};
-
-type SolverModel = {
-  optimize: string;
-  opType: "max" | "min";
-  constraints: Record<string, { min?: number; max?: number; equal?: number }>;
-  variables: Record<string, Record<string, number>>;
-  binaries: Record<string, number>;
-};
-
-type SolverResult = Record<string, number> & { feasible: boolean; result: number };
 
 export type OptimizerPlayer = Pick<
   DkPlayerRow,
