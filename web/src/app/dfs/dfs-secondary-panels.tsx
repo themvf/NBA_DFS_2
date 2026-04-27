@@ -14,12 +14,18 @@ function fmtSigned(v: number | null | undefined): string {
 }
 
 export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
-  const [accuracy, comparison, strategySummary, optimizerFeatureImpact] = await Promise.all([
-    getDfsAccuracy(sport),
-    getDkLineupComparison(sport),
-    getDkStrategySummary(sport),
-    sport === "mlb" ? getMlbOptimizerFeatureImpactSummary() : Promise.resolve(null),
-  ]);
+  let accuracy, comparison, strategySummary, optimizerFeatureImpact;
+  try {
+    [accuracy, comparison, strategySummary, optimizerFeatureImpact] = await Promise.all([
+      getDfsAccuracy(sport),
+      getDkLineupComparison(sport),
+      getDkStrategySummary(sport),
+      sport === "mlb" ? getMlbOptimizerFeatureImpactSummary() : Promise.resolve(null),
+    ]);
+  } catch (e) {
+    console.error("[DfsSecondaryPanels] error:", e);
+    throw e;
+  }
 
   const hasOptimizerFeatureImpact = Boolean(
     optimizerFeatureImpact &&
