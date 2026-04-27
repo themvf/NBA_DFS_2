@@ -1,31 +1,33 @@
 import { getDfsAccuracy, getDkLineupComparison, getDkStrategySummary, type Sport } from "@/db/queries";
 import { getMlbOptimizerFeatureImpactSummary } from "./optimizer-jobs";
 
-function fmt1(v: number | null | undefined): string {
-  return v != null ? v.toFixed(1) : "-";
+function fmt1(v: number | string | null | undefined): string {
+  const n = v != null ? Number(v) : null;
+  return n != null && !isNaN(n) ? n.toFixed(1) : "-";
 }
 
-function fmtPct(v: number | null | undefined): string {
-  return v != null ? `${v.toFixed(1)}%` : "-";
+function fmtPct(v: number | string | null | undefined): string {
+  const n = v != null ? Number(v) : null;
+  return n != null && !isNaN(n) ? `${n.toFixed(1)}%` : "-";
 }
 
-function fmtSigned(v: number | null | undefined): string {
-  return v != null ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}` : "-";
+function fmtSigned(v: number | string | null | undefined): string {
+  const n = v != null ? Number(v) : null;
+  return n != null && !isNaN(n) ? `${n >= 0 ? "+" : ""}${n.toFixed(1)}` : "-";
+}
+
+function fmtSigned2(v: number | string | null | undefined): string {
+  const n = v != null ? Number(v) : null;
+  return n != null && !isNaN(n) ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}` : "-";
 }
 
 export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
-  let accuracy, comparison, strategySummary, optimizerFeatureImpact;
-  try {
-    [accuracy, comparison, strategySummary, optimizerFeatureImpact] = await Promise.all([
-      getDfsAccuracy(sport),
-      getDkLineupComparison(sport),
-      getDkStrategySummary(sport),
-      sport === "mlb" ? getMlbOptimizerFeatureImpactSummary() : Promise.resolve(null),
-    ]);
-  } catch (e) {
-    console.error("[DfsSecondaryPanels] error:", e);
-    throw e;
-  }
+  const [accuracy, comparison, strategySummary, optimizerFeatureImpact] = await Promise.all([
+    getDfsAccuracy(sport),
+    getDkLineupComparison(sport),
+    getDkStrategySummary(sport),
+    sport === "mlb" ? getMlbOptimizerFeatureImpactSummary() : Promise.resolve(null),
+  ]);
 
   const hasOptimizerFeatureImpact = Boolean(
     optimizerFeatureImpact &&
@@ -57,14 +59,14 @@ export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
               <p className="mb-1 text-xs text-gray-500">Our Model (n={accuracy.metrics.nOur})</p>
               <p className="text-lg font-bold">{fmt1(accuracy.metrics.ourMAE)} MAE</p>
               <p className="text-xs text-gray-500">
-                Bias: {accuracy.metrics.ourBias != null ? (accuracy.metrics.ourBias >= 0 ? "+" : "") + accuracy.metrics.ourBias.toFixed(2) : "-"}
+                Bias: {fmtSigned2(accuracy.metrics.ourBias)}
               </p>
             </div>
             <div className="rounded border p-3">
               <p className="mb-1 text-xs text-gray-500">Our Active Only (n={accuracy.metrics.nOurActive})</p>
               <p className="text-lg font-bold">{fmt1(accuracy.metrics.ourActiveMAE)} MAE</p>
               <p className="text-xs text-gray-500">
-                Bias: {accuracy.metrics.ourActiveBias != null ? (accuracy.metrics.ourActiveBias >= 0 ? "+" : "") + accuracy.metrics.ourActiveBias.toFixed(2) : "-"}
+                Bias: {fmtSigned2(accuracy.metrics.ourActiveBias)}
               </p>
             </div>
             {accuracy.metrics.nLinestar > 0 && (
@@ -72,7 +74,7 @@ export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
                 <p className="mb-1 text-xs text-gray-500">LineStar (n={accuracy.metrics.nLinestar})</p>
                 <p className="text-lg font-bold">{fmt1(accuracy.metrics.linestarMAE)} MAE</p>
                 <p className="text-xs text-gray-500">
-                  Bias: {accuracy.metrics.linestarBias != null ? (accuracy.metrics.linestarBias >= 0 ? "+" : "") + accuracy.metrics.linestarBias.toFixed(2) : "-"}
+                  Bias: {fmtSigned2(accuracy.metrics.linestarBias)}
                 </p>
               </div>
             )}
@@ -81,7 +83,7 @@ export default async function DfsSecondaryPanels({ sport }: { sport: Sport }) {
                 <p className="mb-1 text-xs text-gray-500">LS Active Only (n={accuracy.metrics.nLinestarActive})</p>
                 <p className="text-lg font-bold">{fmt1(accuracy.metrics.linestarActiveMAE)} MAE</p>
                 <p className="text-xs text-gray-500">
-                  Bias: {accuracy.metrics.linestarActiveBias != null ? (accuracy.metrics.linestarActiveBias >= 0 ? "+" : "") + accuracy.metrics.linestarActiveBias.toFixed(2) : "-"}
+                  Bias: {fmtSigned2(accuracy.metrics.linestarActiveBias)}
                 </p>
               </div>
             )}

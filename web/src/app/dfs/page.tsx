@@ -38,25 +38,12 @@ export default async function DfsPage({
   let players: Awaited<ReturnType<typeof getDfsPagePlayers>> = [];
   let mlbPitcherSignals: MlbPitcherSlateSignal[] = [];
   let mlbGameCards: MlbGameEnvironmentCard[] = [];
-  try {
-    players = await getDfsPagePlayers(sport);
-  } catch (e) {
-    console.error("[DfsPage] getDfsPagePlayers error:", e);
-    throw e;
-  }
+  players = await getDfsPagePlayers(sport);
   if (sport === "mlb") {
-    try {
-      mlbPitcherSignals = await getLatestMlbPitcherSignals();
-    } catch (e) {
-      console.error("[DfsPage] getLatestMlbPitcherSignals error:", e);
-      throw e;
-    }
-    try {
-      mlbGameCards = await getMlbGameEnvironmentCards(slateDate);
-    } catch (e) {
-      console.error("[DfsPage] getMlbGameEnvironmentCards error:", e);
-      throw e;
-    }
+    [mlbPitcherSignals, mlbGameCards] = await Promise.all([
+      getLatestMlbPitcherSignals(),
+      getMlbGameEnvironmentCards(slateDate),
+    ]);
   }
   const slateKey = `${sport}:${slateDate ?? "none"}:${players[0]?.slateId ?? "none"}`;
 
