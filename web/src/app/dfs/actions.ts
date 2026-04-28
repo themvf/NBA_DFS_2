@@ -7521,6 +7521,18 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
           spgForLev = bestPlayer.spg ?? 0;
           bpgForLev = bestPlayer.bpg ?? 0;
           if (ourProj != null) projComputed++;
+
+          // GTD/no-props floor: when a player has no prop lines posted (common for
+          // last-minute injury decisions), the blend can catastrophically underproject.
+          // Floor at 75% of avgFptsDk — the baseline the field already knows about.
+          if (!p.isOut && p.propPts == null && p.propReb == null && p.propAst == null) {
+            const avgFptsDk = sanitizeProjection(p.avgFptsDk ?? null);
+            if (avgFptsDk != null && avgFptsDk > 0) {
+              const floor = avgFptsDk * 0.75;
+              if (ourProj != null && ourProj < floor) ourProj = Math.round(floor * 100) / 100;
+              if (liveProj != null && liveProj < floor) liveProj = Math.round(floor * 100) / 100;
+            }
+          }
         }
       }
 

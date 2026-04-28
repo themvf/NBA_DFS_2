@@ -415,6 +415,7 @@ export const dkPlayers = pgTable(
     dkInStartingLineup: boolean("dk_in_starting_lineup"),
     dkStartingLineupOrder: integer("dk_starting_lineup_order"),
     dkTeamLineupConfirmed: boolean("dk_team_lineup_confirmed"),
+    dkStatus: text("dk_status"),
     isOut: boolean("is_out").default(false),
     actualFpts: real("actual_fpts"),
     actualOwnPct: real("actual_own_pct"),

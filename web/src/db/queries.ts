@@ -70,6 +70,7 @@ export type DkPlayerRow = {
   dkInStartingLineup: boolean | null;
   dkStartingLineupOrder: number | null;
   dkTeamLineupConfirmed: boolean | null;
+  dkStatus: string | null;
   isOut: boolean | null;
   actualFpts: number | null;
   actualOwnPct: number | null;
@@ -138,6 +139,7 @@ export type DfsPagePlayerRow = Pick<
   | "dkInStartingLineup"
   | "dkStartingLineupOrder"
   | "dkTeamLineupConfirmed"
+  | "dkStatus"
   | "isOut"
   | "teamName"
   | "teamLogo"
@@ -204,6 +206,7 @@ export async function getDfsPagePlayers(sport: Sport = "nba"): Promise<DfsPagePl
         dp.dk_in_starting_lineup AS "dkInStartingLineup",
         dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
         dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
+        dp.dk_status          AS "dkStatus",
         dp.is_out             AS "isOut",
         mt.name               AS "teamName",
         mt.logo_url           AS "teamLogo",
@@ -277,6 +280,7 @@ export async function getDfsPagePlayers(sport: Sport = "nba"): Promise<DfsPagePl
       NULL::BOOLEAN AS "dkInStartingLineup",
       NULL::INTEGER AS "dkStartingLineupOrder",
       NULL::BOOLEAN AS "dkTeamLineupConfirmed",
+      dp.dk_status         AS "dkStatus",
       dp.is_out            AS "isOut",
       t.name               AS "teamName",
       t.logo_url           AS "teamLogo",

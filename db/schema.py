@@ -453,6 +453,7 @@ TABLES = [
         dk_in_starting_lineup BOOLEAN,
         dk_starting_lineup_order INTEGER,
         dk_team_lineup_confirmed BOOLEAN,
+        dk_status TEXT,
         is_out BOOLEAN DEFAULT FALSE,
         actual_fpts REAL,
         actual_own_pct REAL,

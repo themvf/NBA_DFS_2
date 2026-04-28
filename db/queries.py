@@ -437,9 +437,9 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             linestar_proj, linestar_own_pct, proj_own_pct, our_proj, expected_hr, hr_prob_1plus, our_own_pct, our_leverage,
             proj_floor, proj_ceiling, boom_rate,
             dk_in_starting_lineup, dk_starting_lineup_order, dk_team_lineup_confirmed,
-            is_out
+            dk_status, is_out
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (slate_id, dk_player_id) DO UPDATE SET
             name = EXCLUDED.name,
             team_abbrev = EXCLUDED.team_abbrev,
@@ -464,6 +464,7 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             dk_in_starting_lineup = EXCLUDED.dk_in_starting_lineup,
             dk_starting_lineup_order = EXCLUDED.dk_starting_lineup_order,
             dk_team_lineup_confirmed = EXCLUDED.dk_team_lineup_confirmed,
+            dk_status = EXCLUDED.dk_status,
             is_out = EXCLUDED.is_out
         """,
         (
@@ -492,6 +493,7 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
             player.get("dk_in_starting_lineup"),
             player.get("dk_starting_lineup_order"),
             player.get("dk_team_lineup_confirmed"),
+            player.get("dk_status"),
             player.get("is_out", False),
         ),
     )

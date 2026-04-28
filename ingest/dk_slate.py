@@ -462,6 +462,7 @@ def run(
             "dk_in_starting_lineup":   None,
             "dk_starting_lineup_order": None,
             "dk_team_lineup_confirmed": None,
+            "dk_status":          p.get("dk_status"),
             "is_out":             p.get("is_out", False),
         })
         saved += 1

@@ -1368,6 +1368,9 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                         {(isBlocked || isTeamBlocked) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">BLOCK</span>}
                         {isManuallyOut && <span className="rounded bg-orange-200 px-1.5 py-0.5 text-[10px] font-medium text-orange-800">M-OUT</span>}
                         {!isManuallyOut && projBonus > 0 && <span title={`+${projBonus.toFixed(1)} from teammate scratch`} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">+{projBonus.toFixed(1)}</span>}
+                        {!rowUnavailable && !isManuallyOut && (p.dkStatus === "Q" || p.dkStatus === "GTD") && (
+                          <span title={`DK status: ${p.dkStatus} — no prop lines posted; projection floored at 75% of DK avg`} className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800">{p.dkStatus}</span>
+                        )}
                         {stackSize != null && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">STACK {stackSize}</span>}
                         {mlbPitcherCeilingBadge && (
                           <span title={mlbPitcherCeilingBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbPitcherCeilingBadge.className}`}>
