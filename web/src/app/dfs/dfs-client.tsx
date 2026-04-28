@@ -201,8 +201,11 @@ type PlayerPoolTableProps = {
   nbaCeilingBadges: Map<number, NbaCeilingBadge>;
   mlbPitcherDecisionBadges: Map<number, MlbPitcherDecisionBadge>;
   mlbPitcherCeilingBadges: Map<number, MlbPitcherCeilingBadge>;
+  manuallyOutSet: Set<number>;
+  manuallyOutAdjustments: Map<number, number>;
   onTogglePlayerLock: (player: DkPlayerRow) => void;
   onTogglePlayerBlock: (player: DkPlayerRow) => void;
+  onToggleManuallyOut: (player: DkPlayerRow) => void;
 };
 
 type GeneratedLineupsSectionProps = {
@@ -1141,8 +1144,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
   nbaCeilingBadges,
   mlbPitcherDecisionBadges,
   mlbPitcherCeilingBadges,
+  manuallyOutSet,
+  manuallyOutAdjustments,
   onTogglePlayerLock,
   onTogglePlayerBlock,
+  onToggleManuallyOut,
 }: PlayerPoolTableProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -1317,8 +1323,11 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
               const leverageDisplay = sport === "nba"
                 ? (p.liveLeverage ?? p.ourLeverage)
                 : p.ourLeverage;
-              const delta = liveProjDisplay != null && p.linestarProj != null ? liveProjDisplay - p.linestarProj : null;
-              const value = liveProjDisplay != null ? liveProjDisplay / (p.salary / 1000) : null;
+              const isManuallyOut = manuallyOutSet.has(p.id);
+              const projBonus = manuallyOutAdjustments.get(p.id) ?? 0;
+              const effectiveLiveProj = isManuallyOut ? 0 : (liveProjDisplay != null ? liveProjDisplay + projBonus : null);
+              const delta = effectiveLiveProj != null && p.linestarProj != null ? effectiveLiveProj - p.linestarProj : null;
+              const value = effectiveLiveProj != null ? effectiveLiveProj / (p.salary / 1000) : null;
               const propTokens = getPlayerPropTokens(p, sport);
               const odds = getPlayerOddsContext(p);
               const hrMarketProb = sport === "mlb" ? getPlayerHrMarketProb(p) : null;
@@ -1340,9 +1349,9 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                 <tr
                   key={p.id}
                   className={`hover:bg-gray-50 ${
-                    rowUnavailable ? "opacity-40 line-through" : ""
+                    rowUnavailable || isManuallyOut ? "opacity-40 line-through" : ""
                   } ${
-                    isLocked ? "bg-blue-50" : isBlocked || isTeamBlocked ? "bg-red-50" : ""
+                    isLocked ? "bg-blue-50" : isBlocked || isTeamBlocked ? "bg-red-50" : isManuallyOut ? "bg-orange-50" : ""
                   }`}
                 >
                   <td className="px-3 py-1.5">
@@ -1357,6 +1366,8 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                       <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
                         {isLocked && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">LOCK</span>}
                         {(isBlocked || isTeamBlocked) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">BLOCK</span>}
+                        {isManuallyOut && <span className="rounded bg-orange-200 px-1.5 py-0.5 text-[10px] font-medium text-orange-800">M-OUT</span>}
+                        {!isManuallyOut && projBonus > 0 && <span title={`+${projBonus.toFixed(1)} from teammate scratch`} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">+{projBonus.toFixed(1)}</span>}
                         {stackSize != null && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">STACK {stackSize}</span>}
                         {mlbPitcherCeilingBadge && (
                           <span title={mlbPitcherCeilingBadge.title} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${mlbPitcherCeilingBadge.className}`}>
@@ -1520,6 +1531,19 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                         >
                           {isBlocked ? "Blocked" : "Block"}
                         </button>
+                        {sport === "nba" && !rowUnavailable && (
+                          <button
+                            onClick={() => onToggleManuallyOut(p)}
+                            title={isManuallyOut ? "Remove manual scratch" : "Treat as OUT — redistributes 70% of projected FPTS to teammates"}
+                            className={`rounded border px-2 py-0.5 ${
+                              isManuallyOut
+                                ? "border-orange-300 bg-orange-100 text-orange-700"
+                                : "text-gray-400 hover:bg-gray-50"
+                            }`}
+                          >
+                            {isManuallyOut ? "M-OUT" : "OUT?"}
+                          </button>
+                        )}
                       </div>
                     </td>
                   )}
@@ -1532,7 +1556,12 @@ const PlayerPoolTable = memo(function PlayerPoolTable({
                       <td className="px-3 py-1.5 text-xs">{propTokens.length > 0 ? fmt1(p.marketProj) : "—"}</td>
                     </>
                   )}
-                  <td className="px-3 py-1.5 text-xs font-medium">{fmt1(liveProjDisplay)}</td>
+                  <td className="px-3 py-1.5 text-xs font-medium">
+                    {fmt1(effectiveLiveProj)}
+                    {projBonus > 0 && !isManuallyOut && (
+                      <span className="ml-1 text-[10px] text-emerald-600">+{projBonus.toFixed(1)}</span>
+                    )}
+                  </td>
                   <td className={`px-3 py-1.5 text-xs font-medium ${
                     delta == null ? "text-gray-400" : delta >= 2 ? "text-green-600" : delta <= -2 ? "text-red-500" : ""
                   }`}>
@@ -1707,6 +1736,7 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
   const [blockedPlayerIds, setBlockedPlayerIds] = useState<number[]>([]);
   const [blockedTeamIds, setBlockedTeamIds] = useState<number[]>([]);
   const [requiredTeamStacks, setRequiredTeamStacks] = useState<TeamStackRule[]>([]);
+  const [manuallyOutIds, setManuallyOutIds] = useState<number[]>([]);
 
   // ── Lineups ───────────────────────────────────────────────
   const [lineups,    setLineups]    = useState<GeneratedLineup[]    | null>(null);
@@ -1791,6 +1821,29 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
   const lockedPlayerSet = useMemo(() => new Set(lockedPlayerIds), [lockedPlayerIds]);
   const blockedPlayerSet = useMemo(() => new Set(blockedPlayerIds), [blockedPlayerIds]);
   const blockedTeamSet = useMemo(() => new Set(blockedTeamIds), [blockedTeamIds]);
+  const manuallyOutSet = useMemo(() => new Set(manuallyOutIds), [manuallyOutIds]);
+  const manuallyOutAdjustments = useMemo(() => {
+    if (sport !== "nba" || manuallyOutIds.length === 0) return new Map<number, number>();
+    const bonusMap = new Map<number, number>();
+    for (const outId of manuallyOutIds) {
+      const outPlayer = playersById.get(outId);
+      if (!outPlayer || outPlayer.teamId == null) continue;
+      const outProj = outPlayer.liveProj ?? outPlayer.blendProj ?? outPlayer.ourProj ?? 0;
+      const projToRedist = outProj * 0.7;
+      if (projToRedist <= 0) continue;
+      const teammates = players.filter(
+        (p) => p.teamId === outPlayer.teamId && !p.isOut && !manuallyOutSet.has(p.id) && p.id !== outId,
+      );
+      if (teammates.length === 0) continue;
+      const totalSalary = teammates.reduce((sum, p) => sum + p.salary, 0);
+      if (totalSalary <= 0) continue;
+      for (const teammate of teammates) {
+        const bonus = projToRedist * (teammate.salary / totalSalary);
+        bonusMap.set(teammate.id, (bonusMap.get(teammate.id) ?? 0) + bonus);
+      }
+    }
+    return bonusMap;
+  }, [manuallyOutIds, manuallyOutSet, players, playersById, sport]);
   const requiredTeamStackMap = useMemo(
     () => new Map(requiredTeamStacks.map((rule) => [rule.teamId, rule.stackSize])),
     [requiredTeamStacks],
@@ -2230,6 +2283,14 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
     );
   }, []);
 
+  const toggleManuallyOut = useCallback((player: DkPlayerRow) => {
+    setManuallyOutIds((current) =>
+      current.includes(player.id)
+        ? current.filter((id) => id !== player.id)
+        : [...current, player.id],
+    );
+  }, []);
+
   const toggleTeamBlock = useCallback((teamId: number) => {
     setRequiredTeamStacks((current) => current.filter((rule) => rule.teamId !== teamId));
     setBlockedTeamIds((current) =>
@@ -2368,7 +2429,7 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
             minSalaryFilter: minSalaryFilter ? parseInt(minSalaryFilter, 10) : null,
             maxSalaryFilter: maxSalaryFilter ? parseInt(maxSalaryFilter, 10) : null,
             playerLocks: lockedPlayerIds,
-            playerBlocks: blockedPlayerIds,
+            playerBlocks: [...blockedPlayerIds, ...manuallyOutIds],
             blockedTeamIds,
             requiredTeamStacks,
           } satisfies OptimizerSettings;
@@ -3617,8 +3678,11 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
             nbaCeilingBadges={nbaCeilingBadges}
             mlbPitcherDecisionBadges={mlbPitcherDecisionBadges}
             mlbPitcherCeilingBadges={mlbPitcherCeilingBadges}
+            manuallyOutSet={manuallyOutSet}
+            manuallyOutAdjustments={manuallyOutAdjustments}
             onTogglePlayerLock={togglePlayerLock}
             onTogglePlayerBlock={togglePlayerBlock}
+            onToggleManuallyOut={toggleManuallyOut}
           />
         ) : (
           <div className="rounded-lg border bg-card overflow-hidden">
