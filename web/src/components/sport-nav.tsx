@@ -19,19 +19,24 @@ const SPORTS: { sport: Sport; label: string; icon: string }[] = [
   { sport: "mlb", label: "MLB", icon: "⚾" },
 ];
 
-const PAGE_LINKS = [
-  { href: "/dfs",       label: "DFS" },
-  { href: "/homerun",   label: "Homeruns" },
+const PAGE_LINKS: Array<{
+  href: string;
+  label: string;
+  sports?: Sport[];
+}> = [
+  { href: "/dfs", label: "DFS" },
+  { href: "/homerun", label: "Homeruns", sports: ["mlb"] },
   { href: "/analytics", label: "Analytics" },
-  { href: "/vegas",     label: "Vegas" },
-  { href: "/stats",     label: "Team Stats" },
-  { href: "/schedule",  label: "Schedule" },
+  { href: "/vegas", label: "Vegas" },
+  { href: "/stats", label: "Team Stats" },
+  { href: "/schedule", label: "Schedule" },
 ];
 
 export function SportNav() {
   const pathname    = usePathname();
   const searchParams = useSearchParams();
   const currentSport = (searchParams.get("sport") ?? "nba") as Sport;
+  const visiblePageLinks = PAGE_LINKS.filter((link) => !link.sports || link.sports.includes(currentSport));
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -71,7 +76,7 @@ export function SportNav() {
 
         {/* Page links — carry current sport forward */}
         <nav className="flex items-center gap-1 text-sm">
-          {PAGE_LINKS.map((l) => {
+          {visiblePageLinks.map((l) => {
             const href = `${l.href}?sport=${currentSport}`;
             const isActive = pathname === l.href || pathname.startsWith(`${l.href}/`);
             return (

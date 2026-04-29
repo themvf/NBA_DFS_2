@@ -19,6 +19,7 @@ import { normalizeDkSlateTiming } from "@/lib/dk-slate-timing";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
+import { computeCalibratedLsOwn, computeLsLeverage, getPrimaryNbaPosition, getSalaryTier } from "./ls-ownership-calibration";
 import { buildMlbBlowupCandidates, MLB_BLOWUP_CANDIDATE_VERSION } from "./mlb-blowup";
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import { isTournamentMode } from "./optimizer-mode";
@@ -6767,7 +6768,7 @@ export async function refreshPlayerStatus(slateId: number): Promise<{
         || confirmedBatterOut;
       liveStatus.set(player.dkId, {
         isOut,
-        dkInStartingLineup: sport === "mlb" ? player.inStartingLineup : null,
+        dkInStartingLineup: sport === "nba" ? player.inStartingLineup : (sport === "mlb" ? player.inStartingLineup : null),
         dkStartingLineupOrder,
         dkTeamLineupConfirmed,
       });
@@ -6824,6 +6825,44 @@ export async function refreshPlayerStatus(slateId: number): Promise<{
   }
 }
 
+async function applyNbaTournamentOwnershipCalibration(
+  pool: OptimizerPlayer[],
+  mode: OptimizerSettings["mode"],
+): Promise<OptimizerPlayer[]> {
+  if (!isTournamentMode(mode)) return pool;
+
+  const correctionTables = await getLsOwnershipCorrectionTables("nba");
+  const isLsMode = mode === "gpp_ls";
+
+  return pool.map((player) => {
+    const rawLsOwn = player.rawLsProjOwnPct ?? null;
+    if (rawLsOwn == null) return player;
+
+    const position = getPrimaryNbaPosition(player.eligiblePositions);
+    const salaryTier = getSalaryTier(player.salary);
+    const calibratedOwn = sanitizeOwnershipPct(
+      computeCalibratedLsOwn(rawLsOwn, position, salaryTier, player.teamAbbrev ?? "", correctionTables),
+    );
+
+    return {
+      ...player,
+      projOwnPct: calibratedOwn,
+      ...(isLsMode ? {
+        lsLeverage: sanitizeLeverage(computeLsLeverage(
+          player.projCeiling ?? null,
+          player.ourProj ?? null,
+          player.linestarProj ?? null,
+          rawLsOwn,
+          player.salary,
+          player.eligiblePositions,
+          player.teamAbbrev ?? "",
+          correctionTables,
+        )),
+      } : {}),
+    };
+  });
+}
+
 export async function runOptimizer(
   slateId: number,
   gameFilter: number[],
@@ -6839,31 +6878,71 @@ export async function runOptimizer(
       dp.id, dp.dk_player_id AS "dkPlayerId", dp.name, dp.team_abbrev AS "teamAbbrev",
       dp.team_id AS "teamId", dp.matchup_id AS "matchupId",
       dp.eligible_positions AS "eligiblePositions", dp.salary,
+      dp.avg_fpts_dk AS "avgFptsDk",
       COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS "ourProj",
       COALESCE(dp.live_leverage, dp.our_leverage) AS "ourLeverage",
       dp.linestar_proj AS "linestarProj",
       COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projOwnPct",
+      dp.proj_own_pct AS "rawLsProjOwnPct",
       dp.proj_ceiling AS "projCeiling",
       dp.boom_rate AS "boomRate",
       dp.prop_pts AS "propPts",
+      dp.dk_in_starting_lineup AS "dkInStartingLineup",
+      dp.dk_starting_lineup_order AS "dkStartingLineupOrder",
+      dp.dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
       dp.is_out AS "isOut", dp.game_info AS "gameInfo",
       t.logo_url AS "teamLogo", t.name AS "teamName",
-      m.home_team_id AS "homeTeamId"
+      m.home_team_id AS "homeTeamId",
+      ps."avgMinutes",
+      ps."usageRate",
+      recent."recentMinutesAvg"
     FROM dk_players dp
     LEFT JOIN teams t ON t.team_id = dp.team_id
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
+    LEFT JOIN LATERAL (
+      SELECT
+        nps.avg_minutes AS "avgMinutes",
+        nps.usage_rate AS "usageRate"
+      FROM nba_player_stats nps
+      WHERE nps.team_id = dp.team_id
+        AND LOWER(nps.name) = LOWER(dp.name)
+      ORDER BY nps.season DESC NULLS LAST, nps.games DESC NULLS LAST
+      LIMIT 1
+    ) ps ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT AVG(recent_logs.minutes)::double precision AS "recentMinutesAvg"
+      FROM (
+        SELECT npgl.minutes
+        FROM nba_player_game_logs npgl
+        WHERE npgl.team_id = dp.team_id
+          AND LOWER(npgl.name) = LOWER(dp.name)
+          AND npgl.minutes IS NOT NULL
+        ORDER BY npgl.game_date DESC NULLS LAST, npgl.id DESC
+        LIMIT 5
+      ) recent_logs
+    ) recent ON TRUE
     WHERE dp.slate_id = ${slateId}
   `);
 
-  const pool: OptimizerPlayer[] = rows.rows
+  const basePool: OptimizerPlayer[] = rows.rows
     .map((p) => ({
       ...p,
       ourProj: sanitizeProjection(p.ourProj ?? p.linestarProj ?? null),
       ourLeverage: sanitizeLeverage(p.ourLeverage),
       linestarProj: sanitizeProjection(p.linestarProj),
       projOwnPct: sanitizeOwnershipPct(p.projOwnPct),
+      avgMinutes: finiteOrNull((p as OptimizerPlayer).avgMinutes),
+      usageRate: finiteOrNull((p as OptimizerPlayer).usageRate),
+      recentMinutesAvg: finiteOrNull((p as OptimizerPlayer).recentMinutesAvg),
+      recentMinutesDelta: (() => {
+        const avgMinutes = finiteOrNull((p as OptimizerPlayer).avgMinutes);
+        const recentMinutesAvg = finiteOrNull((p as OptimizerPlayer).recentMinutesAvg);
+        if (avgMinutes == null || recentMinutesAvg == null) return null;
+        return Math.round((recentMinutesAvg - avgMinutes) * 10) / 10;
+      })(),
     }))
     .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
+  const pool = await applyNbaTournamentOwnershipCalibration(basePool, settings.mode);
 
   try {
     const { lineups, debug } = optimizeLineupsWithDebug(pool, settings);

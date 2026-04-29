@@ -37,6 +37,7 @@ export type OptimizerPlayer = Pick<
   | "matchupId"
   | "eligiblePositions"
   | "salary"
+  | "avgFptsDk"
   | "ourProj"
   | "ourLeverage"
   | "linestarProj"
@@ -51,6 +52,13 @@ export type OptimizerPlayer = Pick<
 > & {
   /** Home team ID for the player's matchup - used for bring-back enforcement. */
   homeTeamId: number | null;
+  dkInStartingLineup?: boolean | null;
+  dkStartingLineupOrder?: number | null;
+  dkTeamLineupConfirmed?: boolean | null;
+  avgMinutes?: number | null;
+  usageRate?: number | null;
+  recentMinutesAvg?: number | null;
+  recentMinutesDelta?: number | null;
   /**
    * GPP LineStar leverage score — computed from calibrated LS ownership + p90.
    * Populated only when mode = "gpp_ls"; null otherwise.
@@ -68,6 +76,10 @@ export type GeneratedLineup = {
   totalSalary: number;
   projFpts: number;
   leverageScore: number;
+  cheapPlayerDebug?: Array<{
+    playerId: number;
+    reasons: string[];
+  }>;
 };
 
 export type OptimizerSettings = {
@@ -109,11 +121,25 @@ const CHEAP_KEEP_COUNT = 14;
 const TEAM_KEEP_COUNT = 6;
 const REQUIRED_TEAM_KEEP_COUNT = 10;
 const TEMPLATE_FILL_KEEP_COUNT = 30;
+const TEMPLATE_CHEAP_KEEP_COUNT = 4;
 const TEMPLATE_CANDIDATE_LIMIT = 80;
 const MAX_REPAIR_ATTEMPTS = 8;
 const SLOT_BRANCH_LIMIT = 24;
 const BEAM_WIDTH = 160;
 const NBA_CEILING_BONUSES = [2.5, 1.75, 1.0, 0.5, 0.25] as const;
+const NBA_CHEAP_SALARY_MAX = 4000;
+const NBA_CHEAP_CORE_SALARY_MAX = 3500;
+const NBA_CHEAP_MIN_PRICE_SALARY_MAX = 3300;
+const NBA_CHEAP_MIN_PROJECTION = 16.0;
+const NBA_CHEAP_CORE_MIN_PROJECTION = 16.0;
+const NBA_CHEAP_MIN_PRICE_MIN_PROJECTION = 18.0;
+const NBA_CHEAP_RECENT_MINUTES_SIGNAL = 24;
+const NBA_CHEAP_MINUTES_DELTA_SIGNAL = 3;
+const NBA_CHEAP_USAGE_SIGNAL = 24;
+const NBA_CHEAP_STRONG_RECENT_MINUTES_SIGNAL = 28;
+const NBA_CHEAP_STRONG_MINUTES_DELTA_SIGNAL = 5;
+const NBA_CHEAP_STRONG_USAGE_SIGNAL = 27;
+const NBA_GPP_MAX_SUB4000_PLAYERS = 1;
 
 type NbaHeuristicFailureReason =
   | "exposure_exhausted"
@@ -223,6 +249,117 @@ function getPlayerLeverage(p: OptimizerPlayer): number {
   return finiteOrNull(p.ourLeverage) ?? 0;
 }
 
+function getTournamentLeverage(p: OptimizerPlayer, mode: OptimizerMode): number {
+  if (isLinestArMode(mode)) {
+    return finiteOrNull(p.lsLeverage) ?? finiteOrNull(p.ourLeverage) ?? 0;
+  }
+  return finiteOrNull(p.ourLeverage) ?? 0;
+}
+
+function getCheapPlayerRoleSignalCount(player: OptimizerPlayer): number {
+  let signals = 0;
+  if (player.dkInStartingLineup === true) signals++;
+  if ((finiteOrNull(player.recentMinutesAvg) ?? 0) >= NBA_CHEAP_STRONG_RECENT_MINUTES_SIGNAL) signals++;
+  if ((finiteOrNull(player.recentMinutesDelta) ?? 0) >= NBA_CHEAP_STRONG_MINUTES_DELTA_SIGNAL) signals++;
+  if ((finiteOrNull(player.usageRate) ?? 0) >= NBA_CHEAP_STRONG_USAGE_SIGNAL) signals++;
+  return signals;
+}
+
+function hasCheapPlayerLiveRoleSignal(player: OptimizerPlayer): boolean {
+  return player.dkInStartingLineup === true;
+}
+
+function isNbaCheapStarter(player: OptimizerPlayer, mode: OptimizerMode): boolean {
+  return isTournamentMode(mode)
+    && player.salary < NBA_CHEAP_SALARY_MAX
+    && player.dkInStartingLineup === true;
+}
+
+function countCheapPlayers(players: readonly OptimizerPlayer[]): number {
+  return players.filter((player) => player.salary < NBA_CHEAP_SALARY_MAX).length;
+}
+
+function exceedsTournamentCheapPlayerCap(players: readonly OptimizerPlayer[], mode: OptimizerMode): boolean {
+  return isTournamentMode(mode) && countCheapPlayers(players) > NBA_GPP_MAX_SUB4000_PLAYERS;
+}
+
+function getCheapPlayerDebugReasons(player: OptimizerPlayer, mode: OptimizerMode): string[] {
+  if (!isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX) return [];
+
+  const reasons: string[] = [];
+  const projection = getPlayerProjection(player) ?? 0;
+  const leverage = getTournamentLeverage(player, mode);
+  const recentMinutesAvg = finiteOrNull(player.recentMinutesAvg) ?? 0;
+  const recentMinutesDelta = finiteOrNull(player.recentMinutesDelta) ?? 0;
+  const usageRate = finiteOrNull(player.usageRate) ?? 0;
+  const roleSignals = getCheapPlayerRoleSignalCount(player);
+
+  if (leverage > 0) reasons.push(`Lev ${leverage.toFixed(1)}`);
+  if (projection > 0) reasons.push(`Proj ${projection.toFixed(1)}`);
+  if (hasCheapPlayerLiveRoleSignal(player)) reasons.push("DK starter flag");
+  if (recentMinutesAvg >= NBA_CHEAP_RECENT_MINUTES_SIGNAL) reasons.push(`Recent min ${recentMinutesAvg.toFixed(1)}`);
+  if (recentMinutesDelta >= NBA_CHEAP_MINUTES_DELTA_SIGNAL) reasons.push(`Min delta +${recentMinutesDelta.toFixed(1)}`);
+  if (usageRate >= NBA_CHEAP_USAGE_SIGNAL) reasons.push(`Usage ${usageRate.toFixed(1)}%`);
+  if (roleSignals >= 2) reasons.push(`${roleSignals} strong role signals`);
+  if (player.salary <= NBA_CHEAP_MIN_PRICE_SALARY_MAX) reasons.push("Min-price guardrail passed");
+
+  return reasons;
+}
+
+function finalizeGeneratedLineup(lineup: GeneratedLineup, mode: OptimizerMode): GeneratedLineup {
+  if (!isTournamentMode(mode)) return lineup;
+  const cheapPlayerDebug = lineup.players
+    .filter((player) => player.salary < NBA_CHEAP_SALARY_MAX)
+    .map((player) => ({
+      playerId: player.id,
+      reasons: getCheapPlayerDebugReasons(player, mode),
+    }))
+    .filter((entry) => entry.reasons.length > 0);
+
+  return cheapPlayerDebug.length > 0
+    ? { ...lineup, cheapPlayerDebug }
+    : lineup;
+}
+
+function getCheapPlayerSearchProjection(player: OptimizerPlayer, mode: OptimizerMode): number {
+  const projection = getPlayerProjection(player) ?? 0;
+  if (!isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX || projection <= 0) return projection;
+  if (isNbaCheapStarter(player, mode)) return projection;
+
+  const fieldProjection = Math.max(
+    0,
+    finiteOrNull(player.avgFptsDk)
+      ?? finiteOrNull(player.linestarProj)
+      ?? projection,
+  );
+  const edge = Math.max(0, projection - fieldProjection);
+  if (edge <= 0) return projection;
+
+  const roleSignals = getCheapPlayerRoleSignalCount(player);
+  let edgeRetention = 0.7;
+  if (player.salary <= NBA_CHEAP_CORE_SALARY_MAX) {
+    edgeRetention = roleSignals >= 2 ? 0.65 : roleSignals === 1 ? 0.35 : 0.15;
+  } else {
+    edgeRetention = roleSignals >= 2 ? 0.8 : roleSignals === 1 ? 0.55 : 0.3;
+  }
+
+  return fieldProjection + (edge * edgeRetention);
+}
+
+function getCheapPlayerLeverageScale(player: OptimizerPlayer, mode: OptimizerMode): number {
+  if (!isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX) return 1;
+  if (isNbaCheapStarter(player, mode)) return 1;
+  const roleSignals = getCheapPlayerRoleSignalCount(player);
+  if (player.salary <= NBA_CHEAP_CORE_SALARY_MAX) {
+    if (roleSignals >= 2) return 0.65;
+    if (roleSignals === 1) return 0.35;
+    return 0.12;
+  }
+  if (roleSignals >= 2) return 0.8;
+  if (roleSignals === 1) return 0.5;
+  return 0.2;
+}
+
 // GPP leverage weight — how much leverage adds on top of projection in search score.
 // Projection is the primary signal; leverage is a differentiator.
 // Calibrated to live_leverage quartile data (Q4 avg_lev ≈ +6.0, avg_proj ≈ 25.0):
@@ -320,7 +457,7 @@ function getNbaDefaultMinChanges(mode: OptimizerMode, eligibleCount: number, rel
 }
 
 function getNbaUpsideCandidateScore(player: OptimizerPlayer): number {
-  const projection = getPlayerProjection(player) ?? 0;
+  const projection = getCheapPlayerSearchProjection(player, "gpp");
   const ceiling = finiteOrNull(player.projCeiling) ?? (projection * 1.18);
   const ceilingEdge = Math.max(0, ceiling - projection);
   const boomRate = Math.max(0, finiteOrNull(player.boomRate) ?? 0);
@@ -329,7 +466,7 @@ function getNbaUpsideCandidateScore(player: OptimizerPlayer): number {
 }
 
 function getNbaGppBonus(p: OptimizerPlayer, mode: OptimizerMode): number {
-  const projection = getPlayerProjection(p) ?? 0;
+  const projection = getCheapPlayerSearchProjection(p, mode);
   if (projection <= 0) return 0;
   const profile = getNbaTournamentProfile(mode);
 
@@ -377,12 +514,10 @@ function getNbaLineupDuplicationPenalty(
 }
 
 function getPlayerScore(p: OptimizerPlayer, mode: OptimizerMode): number {
-  const projection = getPlayerProjection(p) ?? 0;
+  const projection = getCheapPlayerSearchProjection(p, mode);
   // GPP_LS: use pre-computed lsLeverage (p90-based + calibrated LS ownership).
   // Fallback to ourLeverage if lsLeverage is absent (e.g. missing LS data).
-  const leverage = isLinestArMode(mode)
-    ? (finiteOrNull(p.lsLeverage) ?? finiteOrNull(p.ourLeverage) ?? 0)
-    : (finiteOrNull(p.ourLeverage) ?? 0);
+  const leverage = getTournamentLeverage(p, mode) * getCheapPlayerLeverageScale(p, mode);
   const weight = isTournamentMode(mode) ? getNbaTournamentProfile(mode).leverageWeight : NBA_CASH_LEVERAGE_WEIGHT;
   return projection + leverage * weight + (isTournamentMode(mode) ? getNbaGppBonus(p, mode) : 0);
 }
@@ -423,6 +558,39 @@ function filterEligibleNbaPool(
     if (player.teamId != null && blockedTeams.has(player.teamId)) return false;
     const ourProj = getPlayerProjection(player);
     if (!(ourProj != null && ourProj > 0 && player.salary > 0)) return false;
+    if (isTournamentMode(settings.mode) && player.salary < NBA_CHEAP_SALARY_MAX) {
+      if (isNbaCheapStarter(player, settings.mode)) {
+        return true;
+      }
+      const leverage = getTournamentLeverage(player, settings.mode);
+      if (!(leverage > 0)) return false;
+
+      const minProjection = player.salary <= NBA_CHEAP_CORE_SALARY_MAX
+        ? NBA_CHEAP_CORE_MIN_PROJECTION
+        : NBA_CHEAP_MIN_PROJECTION;
+      if (ourProj < minProjection) return false;
+
+      if (player.salary <= NBA_CHEAP_CORE_SALARY_MAX) {
+        const recentMinutesAvg = finiteOrNull(player.recentMinutesAvg) ?? 0;
+        const recentMinutesDelta = finiteOrNull(player.recentMinutesDelta) ?? 0;
+        const usageRate = finiteOrNull(player.usageRate) ?? 0;
+        const hasRoleSignal = hasCheapPlayerLiveRoleSignal(player)
+          || recentMinutesAvg >= NBA_CHEAP_RECENT_MINUTES_SIGNAL
+          || recentMinutesDelta >= NBA_CHEAP_MINUTES_DELTA_SIGNAL
+          || usageRate >= NBA_CHEAP_USAGE_SIGNAL;
+        if (!hasRoleSignal) return false;
+
+        if (player.salary <= NBA_CHEAP_MIN_PRICE_SALARY_MAX) {
+          const roleSignals = getCheapPlayerRoleSignalCount(player);
+          const hasStrongRecentRole = recentMinutesAvg >= NBA_CHEAP_STRONG_RECENT_MINUTES_SIGNAL
+            || recentMinutesDelta >= NBA_CHEAP_STRONG_MINUTES_DELTA_SIGNAL;
+          const hasStrongUsage = usageRate >= NBA_CHEAP_STRONG_USAGE_SIGNAL;
+          if (ourProj < NBA_CHEAP_MIN_PRICE_MIN_PROJECTION) return false;
+          if (roleSignals < 2) return false;
+          if (!hasCheapPlayerLiveRoleSignal(player) && !hasStrongRecentRole && !hasStrongUsage) return false;
+        }
+      }
+    }
     if (minSalaryFilter != null && player.salary < minSalaryFilter) return false;
     if (maxSalaryFilter != null && player.salary > maxSalaryFilter) return false;
     return true;
@@ -649,10 +817,13 @@ function pruneNbaCandidatePool(
     GLOBAL_KEEP_COUNT,
   );
   if (isTournamentMode(mode)) {
+    for (const player of pool) {
+      if (isNbaCheapStarter(player, mode)) keepIds.add(player.id);
+    }
     const tournamentProfile = getNbaTournamentProfile(mode);
     addTopPlayers(
       keepIds,
-      [...pool].sort((a, b) => getPlayerLeverage(b) - getPlayerLeverage(a) || comparePlayersForSearch(a, b, mode)),
+      [...pool].sort((a, b) => getTournamentLeverage(b, mode) - getTournamentLeverage(a, mode) || comparePlayersForSearch(a, b, mode)),
       tournamentProfile.extraLeverageKeepCount,
     );
     addTopPlayers(
@@ -661,7 +832,11 @@ function pruneNbaCandidatePool(
       tournamentProfile.extraUpsideKeepCount,
     );
   }
-  addCheapestPlayers(keepIds, pool, CHEAP_KEEP_COUNT);
+  addCheapestPlayers(
+    keepIds,
+    pool.filter((player) => !isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX || getTournamentLeverage(player, mode) > 0),
+    CHEAP_KEEP_COUNT,
+  );
 
   for (const slot of LINEUP_SLOTS) {
     addTopPlayers(
@@ -845,10 +1020,17 @@ function buildTemplatePool(
     if (player.teamId != null && templateTeams.has(player.teamId)) {
       keepIds.add(player.id);
     }
+    if (isNbaCheapStarter(player, mode)) {
+      keepIds.add(player.id);
+    }
   }
 
   addTopPlayers(keepIds, sorted, TEMPLATE_FILL_KEEP_COUNT);
-  addCheapestPlayers(keepIds, prunedPool, 8);
+  addCheapestPlayers(
+    keepIds,
+    prunedPool.filter((player) => !isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX || getTournamentLeverage(player, mode) > 0),
+    TEMPLATE_CHEAP_KEEP_COUNT,
+  );
 
   return sorted.filter((player) => keepIds.has(player.id));
 }
@@ -915,6 +1097,7 @@ function isExactDuplicateLineup(
 
 function validateLineupExact(
   players: OptimizerPlayer[],
+  mode: OptimizerMode,
   minStack: number,
   teamStackCount: number,
   previousLineupSets: Set<number>[],
@@ -936,6 +1119,9 @@ function validateLineupExact(
   const totalSalary = players.reduce((sum, player) => sum + player.salary, 0);
   if (totalSalary > SALARY_CAP) return { ok: false, reason: "salary_cap_exceeded" };
   if (totalSalary < salaryFloor) return { ok: false, reason: "salary_floor_missed" };
+  if (exceedsTournamentCheapPlayerCap(players, mode)) {
+    return { ok: false, reason: "cheap_player_cap_exceeded" };
+  }
 
   const lockedPlayers = new Set(ruleSelections.playerLocks);
   for (const playerId of lockedPlayers) {
@@ -1040,6 +1226,7 @@ function solveReducedLineup(
     ownership: number;
     highOwnedCount: number;
     distinctGameKeys: Set<string>;
+    cheapPlayerCount: number;
   };
 
   function canMeetTeamMinimums(
@@ -1168,6 +1355,7 @@ function solveReducedLineup(
     ownership: 0,
     highOwnedCount: 0,
     distinctGameKeys: new Set<string>(),
+    cheapPlayerCount: 0,
   }];
 
   for (let depth = 0; depth < orderedSlots.length; depth++) {
@@ -1191,6 +1379,8 @@ function solveReducedLineup(
 
         const salary = state.salary + player.salary;
         if (salary > SALARY_CAP) continue;
+        const cheapPlayerCount = state.cheapPlayerCount + (player.salary < NBA_CHEAP_SALARY_MAX ? 1 : 0);
+        if (isTournamentMode(mode) && cheapPlayerCount > NBA_GPP_MAX_SUB4000_PLAYERS) continue;
         if (!canMeetTeamMinimums(selectedIds, teamCounts, remainingSlots)) continue;
         if (!canPlaceLockedPlayers(selectedIds, remainingSlots)) continue;
 
@@ -1221,6 +1411,7 @@ function solveReducedLineup(
           ownership: state.ownership + getProjectedOwnership(player),
           highOwnedCount: state.highOwnedCount + (isHighOwnedNbaPlayer(player, mode) ? 1 : 0),
           distinctGameKeys,
+          cheapPlayerCount,
         };
         nextStates.push({
           ...nextState,
@@ -1321,6 +1512,7 @@ function attemptRepairForDiversity(
       const nextPlayers = lineup.players.map((player) => player.id === currentPlayer.id ? replacement : player);
       const validation = validateLineupExact(
         nextPlayers,
+        mode,
         minStack,
         teamStackCount,
         previousLineupSets,
@@ -1331,13 +1523,13 @@ function attemptRepairForDiversity(
       );
       if (!validation.ok) continue;
       return {
-        lineup: {
+        lineup: finalizeGeneratedLineup({
           players: nextPlayers,
           slots: validation.slots,
           totalSalary: nextPlayers.reduce((sum, player) => sum + player.salary, 0),
           projFpts: nextPlayers.reduce((sum, player) => sum + (getPlayerProjection(player) ?? 0), 0),
           leverageScore: nextPlayers.reduce((sum, player) => sum + getPlayerLeverage(player), 0),
-        },
+        }, mode),
         attempts,
       };
     }
@@ -1438,6 +1630,7 @@ function solveOneLineupDetailed(
 
     const validation = validateLineupExact(
       lineup.players,
+      mode,
       minStack,
       teamStackCount,
       previousLineupSets,
@@ -1448,10 +1641,10 @@ function solveOneLineupDetailed(
     );
     if (validation.ok) {
       return {
-        lineup: {
+        lineup: finalizeGeneratedLineup({
           ...lineup,
           slots: validation.slots,
-        },
+        }, mode),
         meta,
       };
     }

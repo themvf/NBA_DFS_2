@@ -19,9 +19,9 @@ const TEAM_PLAYER_TEMPLATES: Array<{
   { role: "Scoring SG", eligiblePositions: "SG", salary: 7600, projection: 36, leverage: 7.4 },
   { role: "Wing", eligiblePositions: "SG/SF", salary: 6900, projection: 33, leverage: 6.4 },
   { role: "Forward", eligiblePositions: "SF/PF", salary: 6300, projection: 29, leverage: 5.7 },
-  { role: "Power F", eligiblePositions: "PF", salary: 5800, projection: 27, leverage: 4.8 },
-  { role: "Stretch Big", eligiblePositions: "PF/C", salary: 5400, projection: 24, leverage: 4.2 },
-  { role: "Center", eligiblePositions: "C", salary: 5000, projection: 22, leverage: 3.8 },
+  { role: "Power F", eligiblePositions: "PF", salary: 5600, projection: 27, leverage: 4.8 },
+  { role: "Stretch Big", eligiblePositions: "PF/C", salary: 5100, projection: 24, leverage: 4.2 },
+  { role: "Center", eligiblePositions: "C", salary: 4700, projection: 22, leverage: 3.8 },
 ];
 
 const VALUE_PLAYER_TEMPLATES: Array<{
@@ -32,8 +32,8 @@ const VALUE_PLAYER_TEMPLATES: Array<{
   leverage: number;
 }> = [
   { role: "Value G", eligiblePositions: "PG/SG", salary: 4100, projection: 18, leverage: 3.2 },
-  { role: "Value Wing", eligiblePositions: "SF/PF", salary: 3800, projection: 16, leverage: 2.8 },
-  { role: "Value C", eligiblePositions: "C", salary: 3500, projection: 14, leverage: 2.4 },
+  { role: "Value Wing", eligiblePositions: "SF/PF", salary: 4000, projection: 16, leverage: 2.8 },
+  { role: "Value C", eligiblePositions: "C", salary: 3750, projection: 14, leverage: 2.4 },
 ];
 
 function buildGameKey(gameIndex: number): string {

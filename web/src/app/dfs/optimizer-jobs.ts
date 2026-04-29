@@ -214,6 +214,7 @@ async function loadNbaOptimizerPool(
       dp.matchup_id AS "matchupId",
       dp.eligible_positions AS "eligiblePositions",
       dp.salary,
+      dp.avg_fpts_dk AS "avgFptsDk",
       COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) AS "ourProj",
       COALESCE(dp.live_leverage, dp.our_leverage) AS "ourLeverage",
       dp.linestar_proj AS "linestarProj",
@@ -229,10 +230,35 @@ async function loadNbaOptimizerPool(
       t.logo_url AS "teamLogo",
       t.name AS "teamName",
       m.home_team_id AS "homeTeamId",
-      dp.proj_own_pct AS "rawLsProjOwnPct"
+      dp.proj_own_pct AS "rawLsProjOwnPct",
+      ps."avgMinutes",
+      ps."usageRate",
+      recent."recentMinutesAvg"
     FROM dk_players dp
     LEFT JOIN teams t ON t.team_id = dp.team_id
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
+    LEFT JOIN LATERAL (
+      SELECT
+        nps.avg_minutes AS "avgMinutes",
+        nps.usage_rate AS "usageRate"
+      FROM nba_player_stats nps
+      WHERE nps.team_id = dp.team_id
+        AND LOWER(nps.name) = LOWER(dp.name)
+      ORDER BY nps.season DESC NULLS LAST, nps.games DESC NULLS LAST
+      LIMIT 1
+    ) ps ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT AVG(recent_logs.minutes)::double precision AS "recentMinutesAvg"
+      FROM (
+        SELECT npgl.minutes
+        FROM nba_player_game_logs npgl
+        WHERE npgl.team_id = dp.team_id
+          AND LOWER(npgl.name) = LOWER(dp.name)
+          AND npgl.minutes IS NOT NULL
+        ORDER BY npgl.game_date DESC NULLS LAST, npgl.id DESC
+        LIMIT 5
+      ) recent_logs
+    ) recent ON TRUE
     WHERE dp.slate_id = ${slateId}
     ORDER BY dp.id ASC
   `);
@@ -244,6 +270,15 @@ async function loadNbaOptimizerPool(
       ourLeverage: sanitizeLeverage(player.ourLeverage),
       linestarProj: sanitizeProjection(player.linestarProj),
       projOwnPct: sanitizeOwnershipPct(player.projOwnPct),
+      avgMinutes: finiteOrNull((player as OptimizerPlayer).avgMinutes),
+      usageRate: finiteOrNull((player as OptimizerPlayer).usageRate),
+      recentMinutesAvg: finiteOrNull((player as OptimizerPlayer).recentMinutesAvg),
+      recentMinutesDelta: (() => {
+        const avgMinutes = finiteOrNull((player as OptimizerPlayer).avgMinutes);
+        const recentMinutesAvg = finiteOrNull((player as OptimizerPlayer).recentMinutesAvg);
+        if (avgMinutes == null || recentMinutesAvg == null) return null;
+        return Math.round((recentMinutesAvg - avgMinutes) * 10) / 10;
+      })(),
     }))
     .filter((player) =>
       selectedMatchupIds.length === 0

@@ -1610,6 +1610,12 @@ const GeneratedLineupsSection = memo(function GeneratedLineupsSection({
   exportError,
 }: GeneratedLineupsSectionProps) {
   const slotNames = sport === "nba" ? NBA_SLOT_NAMES : MLB_SLOT_NAMES;
+  const [showCheapDebug, setShowCheapDebug] = useState(false);
+  const hasCheapDebug = sport === "nba" && activeLineups.some((lineup) => (
+    "cheapPlayerDebug" in lineup
+    && Array.isArray(lineup.cheapPlayerDebug)
+    && lineup.cheapPlayerDebug.length > 0
+  ));
 
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -1620,6 +1626,19 @@ const GeneratedLineupsSection = memo(function GeneratedLineupsSection({
           {" "}Lineups Generated
         </h2>
         <div className="flex items-center gap-3">
+          {hasCheapDebug && (
+            <button
+              type="button"
+              onClick={() => setShowCheapDebug((value) => !value)}
+              className={`rounded border px-3 py-1 text-xs ${
+                showCheapDebug
+                  ? "border-amber-600 bg-amber-50 text-amber-700"
+                  : "border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {showCheapDebug ? "Hide Cheap Debug" : "Show Cheap Debug"}
+            </button>
+          )}
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500">Strategy name</label>
             <input
@@ -1640,7 +1659,10 @@ const GeneratedLineupsSection = memo(function GeneratedLineupsSection({
 
       <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
         {activeLineups.map((lineup, i) => {
-          const slots = lineup.slots as Record<string, { name: string; teamLogo: string | null; ourProj: number | null }>;
+          const slots = lineup.slots as Record<string, { id: number; name: string; salary: number; teamLogo: string | null; ourProj: number | null }>;
+          const cheapDebug = "cheapPlayerDebug" in lineup && Array.isArray(lineup.cheapPlayerDebug)
+            ? new Map(lineup.cheapPlayerDebug.map((entry) => [entry.playerId, entry.reasons]))
+            : new Map<number, string[]>();
           return (
             <div key={i} className="rounded border p-2 text-xs">
               <div className="flex items-center gap-4 mb-1 text-gray-500">
@@ -1652,16 +1674,45 @@ const GeneratedLineupsSection = memo(function GeneratedLineupsSection({
               <div className="flex flex-wrap gap-1">
                 {slotNames.map((slot) => {
                   const player = slots[slot];
+                  const cheapReasons = player ? cheapDebug.get(player.id) ?? [] : [];
                   return player ? (
-                    <span key={slot} className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5">
+                    <span
+                      key={slot}
+                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
+                        cheapReasons.length > 0 && showCheapDebug
+                          ? "bg-amber-50"
+                          : "bg-gray-100"
+                      }`}
+                      title={cheapReasons.length > 0 ? cheapReasons.join(" | ") : undefined}
+                    >
                       <span className="text-gray-400">{slot.replace(/\d$/, "")}</span>
                       {player.teamLogo && <img src={player.teamLogo} alt="" className="h-3 w-3" />}
                       <span className="font-medium">{player.name}</span>
                       <span className="text-gray-400">{fmt1(player.ourProj)}</span>
+                      {cheapReasons.length > 0 && showCheapDebug && (
+                        <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700">
+                          {player.salary < 3300 ? "Min-price OK" : "Cheap OK"}
+                        </span>
+                      )}
                     </span>
                   ) : null;
                 })}
               </div>
+              {showCheapDebug && cheapDebug.size > 0 && (
+                <div className="mt-2 space-y-1 text-[11px] text-amber-800">
+                  {lineup.players
+                    .filter((player) => cheapDebug.has(player.id))
+                    .map((player) => (
+                      <div key={player.id} className="rounded bg-amber-50 px-2 py-1">
+                        <span className="font-medium">{player.name}</span>
+                        {" "}
+                        <span className="text-amber-700">({fmtSalary(player.salary)})</span>
+                        {": "}
+                        {cheapDebug.get(player.id)?.join(", ")}
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           );
         })}
