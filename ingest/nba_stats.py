@@ -12,6 +12,7 @@ Data fetched:
 Usage:
     python -m ingest.nba_stats
     python -m ingest.nba_stats --season 2025-26 --season-type "Regular Season"
+    python -m ingest.nba_stats --season 2025-26 --season-type All
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ SLEEP_SECONDS = 1.0
 _MAX_RETRIES = 3
 _RETRY_BASE = 10.0
 DEFAULT_SEASON_TYPE = "Regular Season"
+DEFAULT_SEASON_TYPES = ("Regular Season", "Playoffs")
 NBA_API_TIMEOUT_SECONDS = 90
 
 T = TypeVar("T")
@@ -389,14 +391,20 @@ def fetch_team_game_logs(
 def fetch_player_rolling_stats(
     db: DatabaseManager,
     season: str,
-    season_type: str = DEFAULT_SEASON_TYPE,
+    season_type: str | None = None,
+    season_types: list[str] | None = None,
     n_games: int = 10,
 ) -> int:
     """Compute rolling n-game averages per player from stored raw game logs."""
-    logger.info("Computing rolling player stats from raw logs for %s (%s) ...", season, season_type)
+    selected_season_types = season_types or ([season_type] if season_type else [DEFAULT_SEASON_TYPE])
+    logger.info(
+        "Computing rolling player stats from raw logs for %s (%s) ...",
+        season,
+        ", ".join(selected_season_types),
+    )
 
     rows = db.execute(
-        """
+        f"""
         SELECT
             player_id,
             name,
@@ -415,14 +423,14 @@ def fetch_player_rolling_stats(
             fta,
             fg3m
         FROM nba_player_game_logs
-        WHERE season = %s AND season_type = %s
+        WHERE season = %s AND season_type IN ({", ".join(["%s"] * len(selected_season_types))})
         ORDER BY player_id, game_date DESC NULLS LAST, game_id DESC
         """,
-        (season, season_type),
+        (season, *selected_season_types),
     )
     df = pd.DataFrame(rows)
     if df.empty:
-        logger.warning("No raw player game logs found for %s (%s)", season, season_type)
+        logger.warning("No raw player game logs found for %s (%s)", season, ", ".join(selected_season_types))
         return 0
 
     abbrev_cache = build_team_abbrev_cache(db)
@@ -526,27 +534,46 @@ def _run_refresh_stage(label: str, fn: Callable[[], int]) -> tuple[bool, int | N
         return False, None
 
 
-def run_refresh(db: DatabaseManager, season: str, season_type: str, n_games: int) -> int:
+def _normalize_refresh_season_types(season_type: str | None) -> list[str]:
+    if season_type is None:
+        return list(DEFAULT_SEASON_TYPES)
+    normalized = season_type.strip().lower()
+    if normalized in {"all", "both", "regular+playoffs", "regular season + playoffs"}:
+        return list(DEFAULT_SEASON_TYPES)
+    return [season_type]
+
+
+def run_refresh(db: DatabaseManager, season: str, season_type: str | None, n_games: int) -> int:
+    selected_season_types = _normalize_refresh_season_types(season_type)
     stages: list[tuple[str, bool, int | None]] = []
 
     ok, count = _run_refresh_stage("team_stats", lambda: fetch_team_stats(db, season))
     stages.append(("team_stats", ok, count))
 
-    ok, count = _run_refresh_stage(
-        "team_game_logs",
-        lambda: fetch_team_game_logs(db, season, season_type=season_type),
-    )
-    stages.append(("team_game_logs", ok, count))
+    for selected_season_type in selected_season_types:
+        ok, count = _run_refresh_stage(
+            f"team_game_logs:{selected_season_type}",
+            lambda selected_season_type=selected_season_type: fetch_team_game_logs(
+                db,
+                season,
+                season_type=selected_season_type,
+            ),
+        )
+        stages.append((f"team_game_logs:{selected_season_type}", ok, count))
 
-    ok, count = _run_refresh_stage(
-        "player_game_logs",
-        lambda: fetch_player_game_logs(db, season, season_type=season_type),
-    )
-    stages.append(("player_game_logs", ok, count))
+        ok, count = _run_refresh_stage(
+            f"player_game_logs:{selected_season_type}",
+            lambda selected_season_type=selected_season_type: fetch_player_game_logs(
+                db,
+                season,
+                season_type=selected_season_type,
+            ),
+        )
+        stages.append((f"player_game_logs:{selected_season_type}", ok, count))
 
     ok, count = _run_refresh_stage(
         "player_rolling_stats",
-        lambda: fetch_player_rolling_stats(db, season, season_type=season_type, n_games=n_games),
+        lambda: fetch_player_rolling_stats(db, season, season_types=selected_season_types, n_games=n_games),
     )
     stages.append(("player_rolling_stats", ok, count))
 
@@ -574,7 +601,11 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Fetch NBA stats from stats.nba.com")
     parser.add_argument("--season", default=None, help="Season string e.g. 2025-26")
-    parser.add_argument("--season-type", default=DEFAULT_SEASON_TYPE, help="Season type, e.g. Regular Season")
+    parser.add_argument(
+        "--season-type",
+        default="All",
+        help='Season type: "Regular Season", "Playoffs", or "All" (default)',
+    )
     parser.add_argument("--games", type=int, default=10, help="Rolling game window (default 10)")
     args = parser.parse_args()
 
