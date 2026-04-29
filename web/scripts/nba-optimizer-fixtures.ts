@@ -77,6 +77,7 @@ export function createSyntheticNbaPool(options: SyntheticPoolOptions): Optimizer
           eligiblePositions: template.eligiblePositions,
           salary: template.salary + salaryOffset,
           gameInfo: `${gameKey} 7:00PM ET`,
+          avgFptsDk: Number((template.projection - 2.4 + teamOffset + gameBoost * 0.7).toFixed(2)),
           ourProj: Number((template.projection + teamOffset + gameBoost + projectionOffset).toFixed(2)),
           ourLeverage: Number((template.leverage + teamOffset + gameBoost * 0.2).toFixed(2)),
           linestarProj: Number((template.projection - 1.5 + teamOffset).toFixed(2)),
