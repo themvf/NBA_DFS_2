@@ -1688,6 +1688,7 @@ const GeneratedLineupsSection = memo(function GeneratedLineupsSection({
                       <span className="text-gray-400">{slot.replace(/\d$/, "")}</span>
                       {player.teamLogo && <img src={player.teamLogo} alt="" className="h-3 w-3" />}
                       <span className="font-medium">{player.name}</span>
+                      <span className="font-mono text-gray-500">{fmtSalary(player.salary)}</span>
                       <span className="text-gray-400">{fmt1(player.ourProj)}</span>
                       {cheapReasons.length > 0 && showCheapDebug && (
                         <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700">
@@ -4137,12 +4138,13 @@ export default function DfsClient({ players, slateDate, mlbPitcherSignals, mlbGa
                   {slotNames.map((slot) => {
                     const p = slots[slot];
                     return p ? (
-                      <span key={slot} className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5">
-                        <span className="text-gray-400">{slot.replace(/\d$/, "")}</span>
-                        {p.teamLogo && <img src={p.teamLogo} alt="" className="h-3 w-3" />}
-                        <span className="font-medium">{p.name}</span>
-                        <span className="text-gray-400">{fmt1(p.ourProj)}</span>
-                      </span>
+                        <span key={slot} className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5">
+                          <span className="text-gray-400">{slot.replace(/\d$/, "")}</span>
+                          {p.teamLogo && <img src={p.teamLogo} alt="" className="h-3 w-3" />}
+                          <span className="font-medium">{p.name}</span>
+                          <span className="font-mono text-gray-500">{fmtSalary(p.salary)}</span>
+                          <span className="text-gray-400">{fmt1(p.ourProj)}</span>
+                        </span>
                     ) : null;
                   })}
                 </div>
