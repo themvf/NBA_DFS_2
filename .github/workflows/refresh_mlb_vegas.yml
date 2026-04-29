@@ -1,0 +1,65 @@
+name: Refresh MLB Vegas
+
+on:
+  schedule:
+    # 9:10 AM ET daily (13:10 UTC during DST) to refresh today's MLB slate
+    # plus a rolling historical catch-up window for schedule, scores, and odds.
+    - cron: "10 13 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Target MLB game date YYYY-MM-DD (default: current America/New_York date)"
+        required: false
+        type: string
+      days_back:
+        description: "Rolling historical backfill window ending yesterday"
+        required: false
+        default: "7"
+        type: string
+
+concurrency:
+  group: refresh-mlb-vegas
+  cancel-in-progress: false
+
+jobs:
+  refresh-mlb-vegas:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve MLB refresh inputs
+        shell: bash
+        run: |
+          TARGET_DATE="${{ inputs.date }}"
+          if [ -z "$TARGET_DATE" ]; then
+            TARGET_DATE="$(TZ=America/New_York date +%F)"
+          fi
+
+          DAYS_BACK="${{ inputs.days_back }}"
+          if [ -z "$DAYS_BACK" ]; then
+            DAYS_BACK="7"
+          fi
+
+          echo "MLB_REFRESH_DATE=$TARGET_DATE" >> "$GITHUB_ENV"
+          echo "MLB_REFRESH_DAYS_BACK=$DAYS_BACK" >> "$GITHUB_ENV"
+          echo "Using target date $TARGET_DATE with days_back=$DAYS_BACK"
+
+      - name: Refresh MLB Vegas schedule, scores, and odds
+        run: |
+          python -m ingest.refresh_mlb_vegas \
+            --date "$MLB_REFRESH_DATE" \
+            --days-back "$MLB_REFRESH_DAYS_BACK"
