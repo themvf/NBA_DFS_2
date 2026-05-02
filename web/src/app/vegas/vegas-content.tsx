@@ -11,12 +11,13 @@ import {
   getVegasSummaryStats,
   getBiggestMisses,
   getTeamVegasInsights,
+  getMoneylineBacktest,
 } from "@/db/queries";
 import type { Sport } from "@/db/queries";
 import VegasClient from "./vegas-client";
 
 export default async function VegasContent({ date, sport = "nba" }: { date?: string; sport?: Sport }) {
-  const [sportData, mlbCoverageStatus, vegasSummary, biggestMisses, teamInsights] = await Promise.all([
+  const [sportData, mlbCoverageStatus, vegasSummary, biggestMisses, teamInsights, moneylineBacktest] = await Promise.all([
     Promise.all(
       sport === "mlb"
         ? [getMlbVegasMatchups(date), getMlbOuHitRate(), getMlbTeamTotalAccuracy(), getMlbRunLineCoverage()]
@@ -26,6 +27,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
     getVegasSummaryStats(sport),
     getBiggestMisses(sport, 20),
     getTeamVegasInsights(sport),
+    getMoneylineBacktest(sport),
   ]);
   const [matchups, ouHitRate, teamTotalAccuracy, spreadCoverage] = sportData;
 
@@ -39,6 +41,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       vegasSummary={vegasSummary}
       biggestMisses={biggestMisses}
       teamInsights={teamInsights}
+      moneylineBacktest={moneylineBacktest}
       queryDate={date ?? new Date().toISOString().slice(0, 10)}
       sport={sport}
     />

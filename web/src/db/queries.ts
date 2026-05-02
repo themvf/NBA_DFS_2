@@ -6656,6 +6656,336 @@ export type VegasSummaryStatsRow = {
   teamTotalBias: number | null;
 };
 
+export type MoneylineBacktestStrategyRow = {
+  strategy: string;
+  label: string;
+  n: number;
+  wins: number;
+  losses: number;
+  winRate: number | null;
+  profit: number | null;
+  roi: number | null;
+  favorites: number;
+  underdogs: number;
+  avgEdge: number | null;
+};
+
+export type MoneylineBacktestWindow = {
+  key: string;
+  label: string;
+  dateCount: number;
+  rows: MoneylineBacktestStrategyRow[];
+};
+
+export type MoneylineBacktestReport = {
+  sport: Sport;
+  completedGames: number;
+  completedDateCount: number;
+  completedThrough: string | null;
+  pendingOddsNoScore: number;
+  pendingOddsNoScoreStart: string | null;
+  pendingOddsNoScoreEnd: string | null;
+  windows: MoneylineBacktestWindow[];
+};
+
+type MoneylineBacktestGame = {
+  id: number;
+  gameDate: string;
+  homeAbbrev: string;
+  awayAbbrev: string;
+  homeMl: number;
+  awayMl: number;
+  homeWinProb: number;
+  homeImplied: number;
+  awayImplied: number;
+  homeScore: number;
+  awayScore: number;
+};
+
+type MoneylinePick = {
+  gameDate: string;
+  strategy: string;
+  label: string;
+  won: boolean;
+  profit: number;
+  ml: number;
+  edge: number;
+};
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function rawMoneylineBreakeven(ml: number): number {
+  return ml >= 0 ? 100 / (ml + 100) : Math.abs(ml) / (Math.abs(ml) + 100);
+}
+
+function moneylineProfitForRisk100(ml: number, won: boolean): number {
+  if (!won) return -100;
+  return ml >= 0 ? ml : 10000 / Math.abs(ml);
+}
+
+function roundMetric(value: number | null, digits = 4): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function summarizeMoneylinePicks(
+  strategy: string,
+  label: string,
+  picks: MoneylinePick[],
+): MoneylineBacktestStrategyRow {
+  const n = picks.length;
+  const wins = picks.filter((pick) => pick.won).length;
+  const profit = picks.reduce((sum, pick) => sum + pick.profit, 0);
+  return {
+    strategy,
+    label,
+    n,
+    wins,
+    losses: n - wins,
+    winRate: n > 0 ? roundMetric(wins / n) : null,
+    profit: n > 0 ? roundMetric(profit, 2) : null,
+    roi: n > 0 ? roundMetric(profit / (n * 100)) : null,
+    favorites: picks.filter((pick) => pick.ml < 0).length,
+    underdogs: picks.filter((pick) => pick.ml > 0).length,
+    avgEdge: n > 0 ? roundMetric(picks.reduce((sum, pick) => sum + pick.edge, 0) / n) : null,
+  };
+}
+
+async function loadMoneylineBacktestGames(sport: Sport): Promise<MoneylineBacktestGame[]> {
+  const rows = sport === "mlb"
+    ? await db.execute(sql`
+        SELECT
+          m.id::int                   AS "id",
+          m.game_date::text           AS "gameDate",
+          ht.abbreviation             AS "homeAbbrev",
+          at.abbreviation             AS "awayAbbrev",
+          m.home_ml                   AS "homeMl",
+          m.away_ml                   AS "awayMl",
+          m.vegas_prob_home           AS "homeWinProb",
+          m.home_implied              AS "homeImplied",
+          m.away_implied              AS "awayImplied",
+          m.home_score                AS "homeScore",
+          m.away_score                AS "awayScore"
+        FROM mlb_matchups m
+        JOIN mlb_teams ht ON ht.team_id = m.home_team_id
+        JOIN mlb_teams at ON at.team_id = m.away_team_id
+        WHERE m.home_ml IS NOT NULL
+          AND m.away_ml IS NOT NULL
+          AND m.vegas_prob_home IS NOT NULL
+          AND m.home_implied IS NOT NULL
+          AND m.away_implied IS NOT NULL
+          AND m.home_score IS NOT NULL
+          AND m.away_score IS NOT NULL
+        ORDER BY m.game_date ASC, m.id ASC
+      `)
+    : await db.execute(sql`
+        SELECT
+          nm.id::int                  AS "id",
+          nm.game_date::text          AS "gameDate",
+          ht.abbreviation             AS "homeAbbrev",
+          at.abbreviation             AS "awayAbbrev",
+          nm.home_ml                  AS "homeMl",
+          nm.away_ml                  AS "awayMl",
+          nm.vegas_prob_home          AS "homeWinProb",
+          nm.home_implied             AS "homeImplied",
+          nm.away_implied             AS "awayImplied",
+          nm.home_score               AS "homeScore",
+          nm.away_score               AS "awayScore"
+        FROM nba_matchups nm
+        JOIN teams ht ON ht.team_id = nm.home_team_id
+        JOIN teams at ON at.team_id = nm.away_team_id
+        WHERE nm.home_ml IS NOT NULL
+          AND nm.away_ml IS NOT NULL
+          AND nm.vegas_prob_home IS NOT NULL
+          AND nm.home_implied IS NOT NULL
+          AND nm.away_implied IS NOT NULL
+          AND nm.home_score IS NOT NULL
+          AND nm.away_score IS NOT NULL
+        ORDER BY nm.game_date ASC, nm.id ASC
+      `);
+
+  return (rows.rows as MoneylineBacktestGame[]).map((row) => ({
+    id: Number(row.id),
+    gameDate: String(row.gameDate),
+    homeAbbrev: String(row.homeAbbrev),
+    awayAbbrev: String(row.awayAbbrev),
+    homeMl: Number(row.homeMl),
+    awayMl: Number(row.awayMl),
+    homeWinProb: Number(row.homeWinProb),
+    homeImplied: Number(row.homeImplied),
+    awayImplied: Number(row.awayImplied),
+    homeScore: Number(row.homeScore),
+    awayScore: Number(row.awayScore),
+  }));
+}
+
+async function loadPendingMoneylineCoverage(sport: Sport): Promise<{
+  n: number;
+  start: string | null;
+  end: string | null;
+}> {
+  const rows = sport === "mlb"
+    ? await db.execute(sql`
+        SELECT
+          COUNT(*)::int      AS "n",
+          MIN(game_date)::text AS "start",
+          MAX(game_date)::text AS "end"
+        FROM mlb_matchups
+        WHERE home_ml IS NOT NULL
+          AND away_ml IS NOT NULL
+          AND (home_score IS NULL OR away_score IS NULL)
+      `)
+    : await db.execute(sql`
+        SELECT
+          COUNT(*)::int      AS "n",
+          MIN(game_date)::text AS "start",
+          MAX(game_date)::text AS "end"
+        FROM nba_matchups
+        WHERE home_ml IS NOT NULL
+          AND away_ml IS NOT NULL
+          AND (home_score IS NULL OR away_score IS NULL)
+      `);
+  const row = rows.rows[0] as { n?: unknown; start?: unknown; end?: unknown } | undefined;
+  return {
+    n: row?.n != null ? Number(row.n) : 0,
+    start: row?.start != null ? String(row.start) : null,
+    end: row?.end != null ? String(row.end) : null,
+  };
+}
+
+export async function getMoneylineBacktest(sport: Sport = "nba"): Promise<MoneylineBacktestReport> {
+  const [games, pending] = await Promise.all([
+    loadMoneylineBacktestGames(sport),
+    loadPendingMoneylineCoverage(sport),
+  ]);
+
+  const biasDivisor = sport === "mlb" ? 3 : 30;
+  const teamBias = new Map<string, { sum: number; n: number }>();
+  const allPicks: MoneylinePick[] = [];
+
+  const makePick = (
+    game: MoneylineBacktestGame,
+    strategy: string,
+    label: string,
+    pickHome: boolean,
+    edge: number,
+  ): MoneylinePick => {
+    const ml = pickHome ? game.homeMl : game.awayMl;
+    const homeWon = game.homeScore > game.awayScore;
+    const won = pickHome ? homeWon : !homeWon;
+    return {
+      gameDate: game.gameDate,
+      strategy,
+      label,
+      won,
+      ml,
+      edge,
+      profit: moneylineProfitForRisk100(ml, won),
+    };
+  };
+
+  for (const game of games) {
+    const homeHistory = teamBias.get(game.homeAbbrev);
+    const awayHistory = teamBias.get(game.awayAbbrev);
+    const homeBias = homeHistory && homeHistory.n > 0 ? homeHistory.sum / homeHistory.n : 0;
+    const awayBias = awayHistory && awayHistory.n > 0 ? awayHistory.sum / awayHistory.n : 0;
+    const score = clampNumber(
+      game.homeWinProb + clampNumber((homeBias - awayBias) / biasDivisor, -0.05, 0.05),
+      0.05,
+      0.95,
+    );
+
+    const marketPickHome = game.homeWinProb >= 0.5;
+    const marketProb = marketPickHome ? game.homeWinProb : 1 - game.homeWinProb;
+    const marketMl = marketPickHome ? game.homeMl : game.awayMl;
+    allPicks.push(makePick(
+      game,
+      "market",
+      "Market favorite",
+      marketPickHome,
+      marketProb - rawMoneylineBreakeven(marketMl),
+    ));
+
+    const scorePickHome = score >= 0.5;
+    const scoreProb = scorePickHome ? score : 1 - score;
+    const scoreMl = scorePickHome ? game.homeMl : game.awayMl;
+    allPicks.push(makePick(
+      game,
+      "ml-score",
+      "Dashboard ML side",
+      scorePickHome,
+      scoreProb - rawMoneylineBreakeven(scoreMl),
+    ));
+
+    for (const threshold of [0.015, 0.03]) {
+      const homeEdge = score - rawMoneylineBreakeven(game.homeMl);
+      const awayEdge = (1 - score) - rawMoneylineBreakeven(game.awayMl);
+      const pickHome = homeEdge >= awayEdge;
+      const edge = pickHome ? homeEdge : awayEdge;
+      if (edge > threshold) {
+        allPicks.push(makePick(
+          game,
+          `ev-${Math.round(threshold * 1000)}`,
+          `Value edge > ${(threshold * 100).toFixed(1)}pp`,
+          pickHome,
+          edge,
+        ));
+      }
+    }
+
+    const homeExisting = teamBias.get(game.homeAbbrev) ?? { sum: 0, n: 0 };
+    teamBias.set(game.homeAbbrev, {
+      sum: homeExisting.sum + (game.homeImplied - game.homeScore),
+      n: homeExisting.n + 1,
+    });
+    const awayExisting = teamBias.get(game.awayAbbrev) ?? { sum: 0, n: 0 };
+    teamBias.set(game.awayAbbrev, {
+      sum: awayExisting.sum + (game.awayImplied - game.awayScore),
+      n: awayExisting.n + 1,
+    });
+  }
+
+  const distinctDates = Array.from(new Set(games.map((game) => game.gameDate))).sort();
+  const windows = [
+    { key: "all", label: "All completed", dates: distinctDates },
+    { key: "last30", label: "Last 30 dates", dates: distinctDates.slice(-30) },
+    { key: "last14", label: "Last 14 dates", dates: distinctDates.slice(-14) },
+    { key: "last7", label: "Last 7 dates", dates: distinctDates.slice(-7) },
+  ];
+  const strategyOrder = [
+    ["market", "Market favorite"],
+    ["ml-score", "Dashboard ML side"],
+    ["ev-15", "Value edge > 1.5pp"],
+    ["ev-30", "Value edge > 3.0pp"],
+  ] as const;
+
+  return {
+    sport,
+    completedGames: games.length,
+    completedDateCount: distinctDates.length,
+    completedThrough: distinctDates.at(-1) ?? null,
+    pendingOddsNoScore: pending.n,
+    pendingOddsNoScoreStart: pending.start,
+    pendingOddsNoScoreEnd: pending.end,
+    windows: windows.map((window) => {
+      const dateSet = new Set(window.dates);
+      return {
+        key: window.key,
+        label: window.label,
+        dateCount: window.dates.length,
+        rows: strategyOrder.map(([strategy, label]) => summarizeMoneylinePicks(
+          strategy,
+          label,
+          allPicks.filter((pick) => pick.strategy === strategy && dateSet.has(pick.gameDate)),
+        )),
+      };
+    }),
+  };
+}
+
 export async function getVegasSummaryStats(sport: Sport = "nba"): Promise<VegasSummaryStatsRow> {
   const empty: VegasSummaryStatsRow = {
     n: 0,
@@ -6751,7 +7081,7 @@ export type TeamVegasInsightRow = {
   avgImplied: number | null;
   avgActual: number | null;
   mae: number | null;
-  bias: number | null;  // positive = Vegas underestimates (team scores more than expected)
+  bias: number | null;  // implied - actual; positive = line was too high
   overImpliedRate: number | null;  // how often team beats their implied total
   avgGameTotal: number | null;
   gameOverRate: number | null;     // how often games go over when this team plays
@@ -6808,7 +7138,7 @@ export async function getTeamVegasInsights(sport: Sport = "nba"): Promise<TeamVe
       JOIN mlb_teams t ON t.team_id = ta.team_id
       GROUP BY t.abbreviation, t.name
       HAVING COUNT(*) >= 5
-      ORDER BY AVG(ta.implied - ta.actual) FILTER (WHERE ta.implied IS NOT NULL) DESC NULLS LAST
+      ORDER BY AVG(ta.implied - ta.actual) FILTER (WHERE ta.implied IS NOT NULL) ASC NULLS LAST
     `);
     return (rows.rows as TeamVegasInsightRow[]).map((r) => ({
       teamAbbrev:      String(r.teamAbbrev),
@@ -6873,7 +7203,7 @@ export async function getTeamVegasInsights(sport: Sport = "nba"): Promise<TeamVe
       JOIN teams t ON t.team_id = ta.team_id
       GROUP BY t.abbreviation, t.name
       HAVING COUNT(*) >= 5
-      ORDER BY AVG(ta.implied - ta.actual) FILTER (WHERE ta.implied IS NOT NULL) DESC NULLS LAST
+      ORDER BY AVG(ta.implied - ta.actual) FILTER (WHERE ta.implied IS NOT NULL) ASC NULLS LAST
     `);
     return (rows.rows as TeamVegasInsightRow[]).map((r) => ({
       teamAbbrev:      String(r.teamAbbrev),

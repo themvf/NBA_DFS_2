@@ -11,19 +11,27 @@ import type {
   VegasSummaryStatsRow,
   BiggestMissRow,
   TeamVegasInsightRow,
+  MoneylineBacktestReport,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
 
 const fmt1 = (v: number | null | undefined) =>
   v == null ? "—" : v.toFixed(1);
-const fmt0 = (v: number | null | undefined) =>
-  v == null ? "—" : Math.round(v).toString();
 const fmtPct = (v: number | null | undefined) =>
   v == null ? "—" : `${(v * 100).toFixed(1)}%`;
 const fmtMl = (ml: number | null) => {
   if (ml == null) return "—";
   return ml > 0 ? `+${ml}` : String(ml);
+};
+const fmtSignedMoney = (v: number | null | undefined) => {
+  if (v == null) return "—";
+  const rounded = Math.round(v);
+  return `${rounded >= 0 ? "+" : "-"}$${Math.abs(rounded).toLocaleString()}`;
+};
+const fmtSignedPct = (v: number | null | undefined) => {
+  if (v == null) return "—";
+  return `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
 };
 
 // ── Betting intelligence helpers ────────────────────────────────────────────
@@ -211,7 +219,7 @@ function computeSpreadScore(
 }
 
 /**
- * ML score = Vegas home-win probability adjusted by the net team scoring bias.
+ * ML score = Vegas home-win probability adjusted by bounded team-total mean reversion.
  * Previously added a redundant `ovrAdj` that was strongly correlated with `biasAdj`
  * (both derive from "actual vs implied"), double-counting the same signal — dropped.
  *
@@ -304,6 +312,7 @@ type Props = {
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
   teamInsights: TeamVegasInsightRow[];
+  moneylineBacktest: MoneylineBacktestReport;
   queryDate: string;
   sport: Sport;
 };
@@ -317,6 +326,7 @@ export default function VegasClient({
   vegasSummary,
   biggestMisses,
   teamInsights,
+  moneylineBacktest,
   queryDate,
   sport,
 }: Props) {
@@ -344,7 +354,6 @@ export default function VegasClient({
   // Compute overall O/U stats
   const totalN = ouHitRate.reduce((s, r) => s + r.n, 0);
   const totalOvers = ouHitRate.reduce((s, r) => s + r.overCount, 0);
-  const totalUnders = ouHitRate.reduce((s, r) => s + r.underCount, 0);
   const overallOverRate = totalN > 0 ? totalOvers / totalN : null;
   const missingScoreDates = mlbCoverageStatus?.missingScoreDates ?? [];
   const missingOddsDates = mlbCoverageStatus?.missingOddsDates ?? [];
@@ -569,6 +578,83 @@ export default function VegasClient({
       )}
 
       {/* ── Today's Matchups ─────────────────────────────────── */}
+      {moneylineBacktest.completedGames > 0 && (
+        <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="font-semibold">Moneyline Backtest</h2>
+            <span className="text-xs text-gray-500">
+              {moneylineBacktest.completedGames} games through {fmtDate(moneylineBacktest.completedThrough)}
+            </span>
+            {moneylineBacktest.pendingOddsNoScore > 0 && (
+              <span className="text-xs text-amber-700">
+                {moneylineBacktest.pendingOddsNoScore} odds games still missing scores
+                {moneylineBacktest.pendingOddsNoScoreStart && moneylineBacktest.pendingOddsNoScoreEnd
+                  ? ` (${moneylineBacktest.pendingOddsNoScoreStart} to ${moneylineBacktest.pendingOddsNoScoreEnd})`
+                  : ""}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500">
+            Walk-forward results use only prior team scoring bias at each game. Profit assumes $100 risk per bet at the stored consensus moneyline.
+            Value edge compares our ML probability to the raw breakeven price.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500 text-right">
+                  <th className="py-1 text-left">Window</th>
+                  <th className="py-1 text-left">Strategy</th>
+                  <th className="py-1">Bets</th>
+                  <th className="py-1">W-L</th>
+                  <th className="py-1">Win%</th>
+                  <th className="py-1">Profit</th>
+                  <th className="py-1">ROI</th>
+                  <th className="py-1">Avg Edge</th>
+                  <th className="py-1">Fav/Dog</th>
+                </tr>
+              </thead>
+              <tbody>
+                {moneylineBacktest.windows.flatMap((window) =>
+                  window.rows.map((row, index) => {
+                    const roiClass = row.roi == null
+                      ? ""
+                      : row.roi > 0
+                      ? "text-green-700 font-semibold"
+                      : row.roi < 0
+                      ? "text-red-600 font-semibold"
+                      : "";
+                    const edgeClass = row.avgEdge == null
+                      ? ""
+                      : row.avgEdge > 0
+                      ? "text-green-700"
+                      : row.avgEdge < 0
+                      ? "text-red-600"
+                      : "";
+                    return (
+                      <tr key={`${window.key}-${row.strategy}`} className="border-b border-gray-50">
+                        <td className="py-1.5 text-left font-medium">
+                          {index === 0 ? window.label : ""}
+                        </td>
+                        <td className="py-1.5 text-left">{row.label}</td>
+                        <td className="py-1.5 text-right">{row.n}</td>
+                        <td className="py-1.5 text-right">{row.wins}-{row.losses}</td>
+                        <td className="py-1.5 text-right">{fmtPct(row.winRate)}</td>
+                        <td className={`py-1.5 text-right ${roiClass}`}>{fmtSignedMoney(row.profit)}</td>
+                        <td className={`py-1.5 text-right ${roiClass}`}>{fmtSignedPct(row.roi)}</td>
+                        <td className={`py-1.5 text-right ${edgeClass}`}>{fmtSignedPct(row.avgEdge)}</td>
+                        <td className="py-1.5 text-right text-gray-500">
+                          {row.favorites}/{row.underdogs}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-lg border bg-card p-4 text-sm">
         <h2 className="font-semibold mb-3">
           Matchups — {queryDate}
@@ -670,7 +756,7 @@ export default function VegasClient({
               {sport === "mlb" ? "run line" : "spread"} tiers, team implied accuracy, and ATS cover rates.
               O/U = lean over probability.{" "}
               {sport === "mlb" ? "Run line" : "Spread"} = home-covers probability.
-              ML = adjusted home-win probability.
+              ML = adjusted win probability; price edge is tracked in the moneyline backtest.
               Scores near 50% are neutral; above 57% or below 43% suggest a meaningful lean.
             </p>
           </div>
@@ -962,8 +1048,8 @@ export default function VegasClient({
           <div>
             <h2 className="font-semibold">Team Vegas Insights</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Sorted by scoring bias — teams Vegas most underestimates (top) to most overestimates (bottom).
-              Bias = implied − actual: negative means team scores more than expected.
+              Sorted by scoring bias: teams scoring most above implied at top.
+              Bias = implied minus actual; negative means the team scores more than expected.
               Over Imp% = how often the team beats their own implied total.
               ATS% = against the spread cover rate.
             </p>
@@ -985,8 +1071,8 @@ export default function VegasClient({
               </thead>
               <tbody>
                 {teamInsights.map((row) => {
-                  // bias: positive means Vegas underestimates (team scores more than implied)
-                  const biasColor = row.bias == null ? "" : row.bias > 1 ? "text-green-700 font-semibold" : row.bias < -1 ? "text-red-600 font-semibold" : "";
+                  // Bias is implied - actual; negative means the market has been low on this team.
+                  const biasColor = row.bias == null ? "" : row.bias < -1 ? "text-green-700 font-semibold" : row.bias > 1 ? "text-red-600 font-semibold" : "";
                   const overImpColor = row.overImpliedRate == null ? "" : row.overImpliedRate > 0.53 ? "text-green-700" : row.overImpliedRate < 0.47 ? "text-red-600" : "";
                   const gameOColor = row.gameOverRate == null ? "" : row.gameOverRate > 0.53 ? "text-green-700" : row.gameOverRate < 0.47 ? "text-red-600" : "";
                   const atsColor = row.atsCoverRate == null ? "" : row.atsCoverRate > 0.53 ? "text-green-700" : row.atsCoverRate < 0.47 ? "text-red-600" : "";
@@ -998,7 +1084,7 @@ export default function VegasClient({
                       <td className="py-1.5 text-right">{row.avgActual != null ? row.avgActual.toFixed(1) : "—"}</td>
                       <td className="py-1.5 text-right">{row.mae != null ? row.mae.toFixed(1) : "—"}</td>
                       <td className={`py-1.5 text-right ${biasColor}`}>
-                        {row.bias != null ? `${row.bias > 0 ? "−" : "+"}${Math.abs(row.bias).toFixed(1)}` : "—"}
+                        {row.bias != null ? `${row.bias > 0 ? "+" : ""}${row.bias.toFixed(1)}` : "—"}
                       </td>
                       <td className={`py-1.5 text-right ${overImpColor}`}>
                         {row.overImpliedRate != null ? `${(row.overImpliedRate * 100).toFixed(0)}%` : "—"}
