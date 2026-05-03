@@ -575,6 +575,20 @@ function parseDkCsv(content: string): DkApiPlayer[] {
   return players;
 }
 
+function inferDkContestTimingFromCsv(content: string): string | undefined {
+  const preamble = content
+    .split(/\r?\n/)
+    .slice(0, 20)
+    .join(" ")
+    .toLowerCase();
+
+  if (/\bturbo\b/.test(preamble)) return "turbo";
+  if (/\bearly\b/.test(preamble)) return "early";
+  if (/\bnight\b|\blate\b/.test(preamble)) return "night";
+  if (/\bmain\b/.test(preamble)) return "main";
+  return undefined;
+}
+
 type LinestarEntry = { linestarProj: number; projOwnPct: number; isOut: boolean };
 
 function parseLinestarCsv(content: string): Map<string, LinestarEntry> {
@@ -3945,12 +3959,15 @@ export async function processDkSlate(formData: FormData): Promise<{
   const dkFile        = formData.get("dkFile") as File | null;
   const lsFile        = formData.get("lsFile") as File | null;
   const cashLineStr   = formData.get("cashLine") as string | null;
-  const contestType   = normalizeDkSlateTiming(formData.get("contestType") as string | null);
+  const rawContestType = formData.get("contestType") as string | null;
   const fieldSizeStr  = formData.get("fieldSize") as string | null;
   const contestFormat = (formData.get("contestFormat") as string | null) || undefined;
   if (!dkFile) return { ok: false, message: "DK CSV required" };
 
-  const dkPlayers_ = parseDkCsv(await dkFile.text());
+  const dkText = await dkFile.text();
+  const inferredContestType = inferDkContestTimingFromCsv(dkText);
+  const contestType = normalizeDkSlateTiming(inferredContestType ?? rawContestType);
+  const dkPlayers_ = parseDkCsv(dkText);
   if (dkPlayers_.length === 0) return { ok: false, message: "No players parsed from DK CSV" };
 
   const lsMap    = lsFile ? parseLinestarCsv(await lsFile.text()) : new Map<string, LinestarEntry>();
@@ -4764,6 +4781,9 @@ type HistoricalEntry = {
 };
 
 type HistoricalHeaderHints = {
+  positionIdx: number | null;
+  teamIdx: number | null;
+  playerIdx: number | null;
   salaryIdx: number;
   projOwnIdx: number | null;
   actualOwnIdx: number | null;
@@ -4800,12 +4820,23 @@ function detectHistoricalHeaderHints(cells: string[]): HistoricalHeaderHints | n
   const salaryIdx = normalized.findIndex((cell) => cell === "salary" || cell.includes("salary"));
   if (salaryIdx < 0) return null;
 
+  const positionIdx = normalized.findIndex((cell) => cell === "pos" || cell === "position" || cell.includes("position"));
+  const teamIdx = normalized.findIndex((cell) => cell === "team" || cell === "tm" || cell === "team abbrev");
+  const playerIdx = normalized.findIndex((cell) =>
+    cell === "player"
+    || cell === "name"
+    || cell === "player name"
+    || (cell.includes("player") && !cell.includes("own") && !cell.includes("proj"))
+  );
   const findAfterSalary = (matcher: (cell: string) => boolean): number | null => {
     const idx = normalized.findIndex((cell, i) => i > salaryIdx && matcher(cell));
     return idx >= 0 ? idx : null;
   };
 
   return {
+    positionIdx: positionIdx >= 0 ? positionIdx : null,
+    teamIdx: teamIdx >= 0 ? teamIdx : null,
+    playerIdx: playerIdx >= 0 ? playerIdx : null,
     salaryIdx,
     projOwnIdx: findAfterSalary((cell) => cell.includes("proj") && cell.includes("own")),
     actualOwnIdx: findAfterSalary((cell) => cell.includes("actual") && cell.includes("own")),
@@ -4836,6 +4867,99 @@ function detectHistoricalHeaderHints(cells: string[]): HistoricalHeaderHints | n
   };
 }
 
+const MLB_HISTORICAL_POSITION_RE = /^(?:P|SP|RP|C|1B|2B|3B|SS|OF)(?:\/(?:P|SP|RP|C|1B|2B|3B|SS|OF))*$/;
+const NBA_HISTORICAL_POSITION_RE = /^(PG|SG|SF|PF|C)(\/(?:PG|SG|SF|PF|C))*$/;
+
+function normalizeHistoricalPosition(raw: string, sport: Sport): string {
+  const value = raw.trim().toUpperCase();
+  if (sport === "mlb") {
+    if (!MLB_HISTORICAL_POSITION_RE.test(value)) return "UTIL";
+    return value
+      .split("/")
+      .map((part) => part === "P" ? "SP" : part)
+      .join("/");
+  }
+  return NBA_HISTORICAL_POSITION_RE.test(value) ? value : "UTIL";
+}
+
+function looksLikeHistoricalPosition(value: string, sport: Sport): boolean {
+  const trimmed = value.trim().toUpperCase();
+  return sport === "mlb"
+    ? MLB_HISTORICAL_POSITION_RE.test(trimmed)
+    : NBA_HISTORICAL_POSITION_RE.test(trimmed);
+}
+
+function looksLikeHistoricalGameCell(value: string): boolean {
+  const trimmed = value.trim().toUpperCase();
+  return /[@]/.test(trimmed)
+    || /\bVS\.?\b/.test(trimmed)
+    || /\d{1,2}\/\d{1,2}/.test(trimmed)
+    || /\d{1,2}:\d{2}/.test(trimmed);
+}
+
+function looksLikeHistoricalPlayerName(value: string, sport: Sport): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (/^player$/i.test(trimmed) || /^name$/i.test(trimmed)) return false;
+  if (/^\$[\d,]+$/.test(trimmed)) return false;
+  if (/^-?\d+(\.\d+)?%?$/.test(trimmed)) return false;
+  if (looksLikeHistoricalPosition(trimmed, sport)) return false;
+  if (looksLikeTeamAbbrev(trimmed)) return false;
+  if (looksLikeHistoricalGameCell(trimmed)) return false;
+  return /[A-Za-z]/.test(trimmed);
+}
+
+function inferHistoricalIdentity(
+  cells: string[],
+  salaryIdx: number,
+  sport: Sport,
+  headerHints: HistoricalHeaderHints | null,
+): { playerName: string; teamAbbrev: string; position: string } {
+  const hintedPlayer = headerHints?.playerIdx != null ? (cells[headerHints.playerIdx] ?? "").trim() : "";
+  const hintedTeam = headerHints?.teamIdx != null ? (cells[headerHints.teamIdx] ?? "").trim() : "";
+  const hintedPosition = headerHints?.positionIdx != null ? (cells[headerHints.positionIdx] ?? "").trim() : "";
+
+  let playerName = looksLikeHistoricalPlayerName(hintedPlayer, sport) ? hintedPlayer : "";
+  let teamAbbrev = looksLikeTeamAbbrev(hintedTeam) ? hintedTeam.toUpperCase() : "";
+  let position = normalizeHistoricalPosition(hintedPosition, sport);
+
+  if (!playerName) {
+    for (let idx = salaryIdx - 1; idx >= 0; idx--) {
+      const candidate = (cells[idx] ?? "").trim();
+      if (!teamAbbrev && looksLikeTeamAbbrev(candidate) && !looksLikeHistoricalPosition(candidate, sport)) {
+        teamAbbrev = candidate.toUpperCase();
+        continue;
+      }
+      if (looksLikeHistoricalPlayerName(candidate, sport)) {
+        playerName = candidate;
+        break;
+      }
+    }
+  }
+
+  if (!teamAbbrev) {
+    for (let idx = salaryIdx - 1; idx >= 0; idx--) {
+      const candidate = (cells[idx] ?? "").trim();
+      if (looksLikeTeamAbbrev(candidate) && !looksLikeHistoricalPosition(candidate, sport)) {
+        teamAbbrev = candidate.toUpperCase();
+        break;
+      }
+    }
+  }
+
+  if (position === "UTIL") {
+    for (let idx = 0; idx < salaryIdx; idx++) {
+      const candidate = (cells[idx] ?? "").trim();
+      if (looksLikeHistoricalPosition(candidate, sport)) {
+        position = normalizeHistoricalPosition(candidate, sport);
+        break;
+      }
+    }
+  }
+
+  return { playerName, teamAbbrev, position };
+}
+
 /**
  * Parse LineStar historical paste. Same column anchor as the live parser
  * (salary = $NNNN) but also captures actualOwnPct (+2) and actualFpts (+5).
@@ -4855,33 +4979,11 @@ function parseHistoricalPaste(text: string, sport: Sport = "nba"): Map<string, H
     const salaryIdx = headerHints?.salaryIdx ?? cells.findIndex((c) => /^\$[\d,]{4,7}$/.test(c));
     if (salaryIdx < 1) continue;
 
-    let playerName = cells[salaryIdx - 1];
-    let teamAbbrev = "";
-    if (looksLikeTeamAbbrev(playerName) && salaryIdx >= 2) {
-      teamAbbrev = playerName;
-      playerName = cells[salaryIdx - 2] ?? "";
-    } else if (salaryIdx >= 2) {
-      teamAbbrev = cells[salaryIdx - 2] ?? "";
-    }
+    const { playerName, teamAbbrev, position } = inferHistoricalIdentity(cells, salaryIdx, sport, headerHints);
     if (!playerName || playerName.toLowerCase() === "player") continue;
 
     const salary     = parseInt(cells[salaryIdx].replace(/\D/g, ""), 10);
     if (!salary) continue;
-
-    // Position is always cells[0] (first column in every LineStar format)
-    const posRaw = cells[0]?.trim() ?? "";
-    const position = (() => {
-      if (sport === "mlb") {
-        if (!/^(?:P|SP|RP|C|1B|2B|3B|SS|OF)(?:\/(?:P|SP|RP|C|1B|2B|3B|SS|OF))*$/.test(posRaw)) {
-          return "UTIL";
-        }
-        return posRaw
-          .split("/")
-          .map((part) => part === "P" ? "SP" : part)
-          .join("/");
-      }
-      return /^(PG|SG|SF|PF|C)(\/(?:PG|SG|SF|PF|C))*$/.test(posRaw) ? posRaw : "UTIL";
-    })();
 
     const actualHrIdx = headerHints?.actualHrIdx ?? null;
     const percentCells = cells
@@ -4991,91 +5093,159 @@ export async function saveHistoricalSlate(
   const effectiveType   = normalizeDkSlateTiming(contestType) ?? "main";
   const effectiveFormat = contestFormat ?? "gpp";
 
-  const exactMatch = await db
-    .select({ id: dkSlates.id })
-    .from(dkSlates)
-    .where(
-      and(
-        eq(dkSlates.slateDate, date),
-        eq(dkSlates.contestType, effectiveType),
-        eq(dkSlates.contestFormat, effectiveFormat),
-        eq(dkSlates.sport, sport),
-      )
-    )
-    .limit(1);
+  const parsedEntries = Array.from(parsed.entries()).map(([key, entry]) => {
+    const [playerName, salStr] = key.split("|");
+    const salary = parseInt(salStr, 10);
+    return {
+      key,
+      playerName,
+      salary,
+      normalizedName: normalizeName(playerName),
+      entry,
+    };
+  });
+  const parsedByKey = new Map(parsedEntries.map((entry) => [entry.key, entry]));
+  const parsedByNormalizedName = new Map<string, typeof parsedEntries>();
+  for (const entry of parsedEntries) {
+    const group = parsedByNormalizedName.get(entry.normalizedName) ?? [];
+    group.push(entry);
+    parsedByNormalizedName.set(entry.normalizedName, group);
+  }
 
-  let existingSlate: { id: number }[] = exactMatch[0] ? exactMatch : [];
-  if (!existingSlate[0] && parsed.size >= 50) {
-    const fallbackCandidates = (await db.execute<{
-      id: number;
-      contestType: string | null;
-      ourProjCount: number;
-    }>(sql`
-        SELECT
-          ds.id,
-          ds.contest_type AS "contestType",
-          COUNT(*) FILTER (WHERE dp.our_proj IS NOT NULL)::int AS "ourProjCount"
-        FROM dk_slates ds
-        JOIN dk_players dp ON dp.slate_id = ds.id
-        WHERE ds.slate_date = ${date}
-          AND ds.sport = ${sport}
-          AND COALESCE(ds.contest_format, 'gpp') = ${effectiveFormat}
-          AND LOWER(COALESCE(ds.contest_type, 'main')) IN ('turbo', 'early', 'main', 'night', 'late')
-        GROUP BY ds.id, ds.contest_type
-        HAVING COUNT(*) FILTER (WHERE dp.our_proj IS NOT NULL) > 0
-        ORDER BY "ourProjCount" DESC, ds.id DESC
-      `)).rows;
+  const matchHistoricalEntry = (playerName: string, salary: number): {
+    entry: HistoricalEntry | null;
+    method: "exact" | "normalized" | "fuzzy" | null;
+  } => {
+    const exact = parsedByKey.get(`${playerName.toLowerCase()}|${salary}`);
+    if (exact) return { entry: exact.entry, method: "exact" };
 
-    const scoredCandidates: Array<{
-      id: number;
-      contestType: string | null;
-      ourProjCount: number;
-      exactMatches: number;
-      matchRatio: number;
-    }> = [];
-
-    for (const candidate of fallbackCandidates) {
-      const candidatePool = await db.execute<{ name: string; salary: number }>(sql`
-        SELECT name, salary
-        FROM dk_players
-        WHERE slate_id = ${candidate.id}
-      `);
-
-      let exactMatches = 0;
-      for (const row of candidatePool.rows) {
-        if (parsed.has(`${row.name.toLowerCase()}|${row.salary}`)) {
-          exactMatches++;
-        }
-      }
-
-      scoredCandidates.push({
-        id: candidate.id,
-        contestType: candidate.contestType,
-        ourProjCount: Number(candidate.ourProjCount ?? 0),
-        exactMatches,
-        matchRatio: parsed.size > 0 ? exactMatches / parsed.size : 0,
-      });
+    const normalizedName = normalizeName(playerName);
+    const normalizedCandidates = parsedByNormalizedName.get(normalizedName) ?? [];
+    if (normalizedCandidates.length === 1) {
+      return { entry: normalizedCandidates[0].entry, method: "normalized" };
+    }
+    const normalizedSameSalary = normalizedCandidates.find((candidate) => candidate.salary === salary);
+    if (normalizedSameSalary) {
+      return { entry: normalizedSameSalary.entry, method: "normalized" };
     }
 
-    scoredCandidates.sort((a, b) =>
-      b.exactMatches - a.exactMatches
-      || b.matchRatio - a.matchRatio
-      || b.ourProjCount - a.ourProjCount
-      || b.id - a.id
-    );
+    let best: typeof parsedEntries[number] | null = null;
+    let bestDist = 4;
+    for (const candidate of parsedEntries) {
+      if (candidate.salary !== salary) continue;
+      const dist = levenshtein(normalizedName, candidate.normalizedName);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = candidate;
+      }
+    }
+    return best ? { entry: best.entry, method: "fuzzy" } : { entry: null, method: null };
+  };
 
-    const bestCandidate = scoredCandidates[0];
-    const runnerUp = scoredCandidates[1];
-    const minExactMatches = Math.max(12, Math.ceil(parsed.size * 0.5));
-    const minLead = Math.max(8, Math.ceil(parsed.size * 0.15));
+  type HistoricalSlateCandidate = {
+    id: number;
+    contestType: string | null;
+    gameCount: number | null;
+    poolCount: number;
+    ourProjCount: number;
+  };
+  type HistoricalSlateScore = HistoricalSlateCandidate & {
+    matches: number;
+    exactMatches: number;
+    normalizedMatches: number;
+    fuzzyMatches: number;
+    matchRatio: number;
+  };
 
-    if (
-      bestCandidate
-      && bestCandidate.exactMatches >= minExactMatches
-      && bestCandidate.matchRatio >= 0.5
-      && (!runnerUp || bestCandidate.exactMatches >= runnerUp.exactMatches + minLead)
-    ) {
-      existingSlate = [{ id: bestCandidate.id }];
+  const candidateRows = (await db.execute<HistoricalSlateCandidate>(sql`
+    SELECT
+      ds.id,
+      ds.contest_type AS "contestType",
+      ds.game_count AS "gameCount",
+      COUNT(dp.*)::int AS "poolCount",
+      COUNT(*) FILTER (WHERE dp.our_proj IS NOT NULL)::int AS "ourProjCount"
+    FROM dk_slates ds
+    JOIN dk_players dp ON dp.slate_id = ds.id
+    WHERE ds.slate_date = ${date}
+      AND ds.sport = ${sport}
+      AND COALESCE(ds.contest_format, 'gpp') = ${effectiveFormat}
+    GROUP BY ds.id, ds.contest_type, ds.game_count
+    ORDER BY ds.id DESC
+  `)).rows;
+
+  const scoreHistoricalSlate = async (candidate: HistoricalSlateCandidate): Promise<HistoricalSlateScore> => {
+    const candidatePool = await db.execute<{ name: string; salary: number }>(sql`
+      SELECT name, salary
+      FROM dk_players
+      WHERE slate_id = ${candidate.id}
+    `);
+
+    let exactMatches = 0;
+    let normalizedMatches = 0;
+    let fuzzyMatches = 0;
+    for (const row of candidatePool.rows) {
+      const { method } = matchHistoricalEntry(row.name, row.salary);
+      if (method === "exact") exactMatches++;
+      else if (method === "normalized") normalizedMatches++;
+      else if (method === "fuzzy") fuzzyMatches++;
+    }
+
+    const matches = exactMatches + normalizedMatches + fuzzyMatches;
+    return {
+      ...candidate,
+      matches,
+      exactMatches,
+      normalizedMatches,
+      fuzzyMatches,
+      matchRatio: parsed.size > 0 ? matches / parsed.size : 0,
+    };
+  };
+
+  const scoredCandidates = await Promise.all(candidateRows.map(scoreHistoricalSlate));
+  scoredCandidates.sort((a, b) =>
+    b.matches - a.matches
+    || b.matchRatio - a.matchRatio
+    || b.ourProjCount - a.ourProjCount
+    || b.id - a.id
+  );
+
+  const exactCandidate = scoredCandidates.find(
+    (candidate) => (candidate.contestType ?? "main") === effectiveType,
+  );
+  const bestCandidate = scoredCandidates[0] ?? null;
+  const minLead = Math.max(8, Math.ceil(parsed.size * 0.15));
+  const minimumSlateMatches = (candidate: Pick<HistoricalSlateScore, "poolCount">): number => {
+    const expectedOverlap = Math.min(parsed.size, candidate.poolCount);
+    return Math.max(12, Math.ceil(expectedOverlap * 0.1));
+  };
+  const selectedCandidate = (() => {
+    if (!bestCandidate) return null;
+    if (exactCandidate) {
+      return bestCandidate.id !== exactCandidate.id
+        && bestCandidate.matches >= exactCandidate.matches + minLead
+        ? bestCandidate
+        : exactCandidate;
+    }
+    return bestCandidate.matches >= minimumSlateMatches(bestCandidate) ? bestCandidate : null;
+  })();
+
+  const existingSlate: { id: number }[] = selectedCandidate ? [{ id: selectedCandidate.id }] : [];
+
+  if (selectedCandidate && parsed.size >= 50) {
+    const minMatches = minimumSlateMatches(selectedCandidate);
+    if (selectedCandidate.matches < minMatches) {
+      const candidateSummary = scoredCandidates
+        .slice(0, 3)
+        .map((candidate) =>
+          `slate ${candidate.id} ${candidate.contestType ?? "main"}: ${candidate.matches}/${candidate.poolCount}`
+        )
+        .join("; ");
+      return {
+        ok: false,
+        message: `Only ${selectedCandidate.matches} of ${parsed.size} parsed LineStar rows matched the loaded ${date} ${sport.toUpperCase()} slate. This usually means the LineStar paste is from a different DK slate/timing or site. Candidate matches: ${candidateSummary || "none"}.`,
+        created: 0,
+        updated: 0,
+      };
     }
   }
 
@@ -5103,20 +5273,66 @@ export async function saveHistoricalSlate(
       WHERE slate_id = ${slateId}
     `);
 
-    let updated = 0;
-    for (const p of pool.rows) {
-      const entry = parsed.get(`${p.name.toLowerCase()}|${p.salary}`);
-      let match = entry;
-      if (!match) {
-        let bestDist = 4;
-        for (const [key, val] of parsed) {
-          const [pName, salStr] = key.split("|");
-          if (parseInt(salStr, 10) !== p.salary) continue;
-          const d = levenshtein(p.name.toLowerCase(), pName);
-          if (d < bestDist) { bestDist = d; match = val; }
+    const parsedEntries = Array.from(parsed.entries()).map(([key, entry]) => {
+      const [playerName, salStr] = key.split("|");
+      const salary = parseInt(salStr, 10);
+      return {
+        key,
+        playerName,
+        salary,
+        normalizedName: normalizeName(playerName),
+        entry,
+      };
+    });
+    const parsedByKey = new Map(parsedEntries.map((entry) => [entry.key, entry]));
+    const parsedByNormalizedName = new Map<string, typeof parsedEntries>();
+    for (const entry of parsedEntries) {
+      const group = parsedByNormalizedName.get(entry.normalizedName) ?? [];
+      group.push(entry);
+      parsedByNormalizedName.set(entry.normalizedName, group);
+    }
+
+    const matchHistoricalEntry = (playerName: string, salary: number): {
+      entry: HistoricalEntry | null;
+      method: "exact" | "normalized" | "fuzzy" | null;
+    } => {
+      const exact = parsedByKey.get(`${playerName.toLowerCase()}|${salary}`);
+      if (exact) return { entry: exact.entry, method: "exact" };
+
+      const normalizedName = normalizeName(playerName);
+      const normalizedCandidates = parsedByNormalizedName.get(normalizedName) ?? [];
+      if (normalizedCandidates.length === 1) {
+        return { entry: normalizedCandidates[0].entry, method: "normalized" };
+      }
+      const normalizedSameSalary = normalizedCandidates.find((candidate) => candidate.salary === salary);
+      if (normalizedSameSalary) {
+        return { entry: normalizedSameSalary.entry, method: "normalized" };
+      }
+
+      let best: typeof parsedEntries[number] | null = null;
+      let bestDist = 4;
+      for (const candidate of parsedEntries) {
+        if (candidate.salary !== salary) continue;
+        const dist = levenshtein(normalizedName, candidate.normalizedName);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = candidate;
         }
       }
+      return best ? { entry: best.entry, method: "fuzzy" } : { entry: null, method: null };
+    };
+
+    let updated = 0;
+    let exactMatches = 0;
+    let normalizedMatches = 0;
+    let fuzzyMatches = 0;
+    const unmatchedPoolSamples: string[] = [];
+    for (const p of pool.rows) {
+      const { entry: match, method } = matchHistoricalEntry(p.name, p.salary);
       if (!match) continue;
+      if (method === "exact") exactMatches++;
+      else if (method === "normalized") normalizedMatches++;
+      else if (method === "fuzzy") fuzzyMatches++;
 
       const repairedTeam = sport === "nba" && nbaHistoricalResolver
         ? resolveHistoricalNbaTeam(nbaHistoricalResolver, p.name, match.teamAbbrev)
@@ -5147,6 +5363,15 @@ export async function saveHistoricalSlate(
         .where(eq(dkPlayers.id, p.id));
       updated++;
     }
+    if (updated < Math.min(pool.rows.length, parsed.size) * 0.5) {
+      const parsedNormalizedNames = new Set(parsedEntries.map((entry) => entry.normalizedName));
+      for (const p of pool.rows) {
+        if (unmatchedPoolSamples.length >= 5) break;
+        if (!parsedNormalizedNames.has(normalizeName(p.name))) {
+          unmatchedPoolSamples.push(`${p.name} $${p.salary}`);
+        }
+      }
+    }
 
     await refreshHistoricalSlateGameCount(slateId, sport);
     try { await syncOwnershipSnapshotActualsForSlate(slateId); } catch { /* non-fatal */ }
@@ -5159,9 +5384,18 @@ export async function saveHistoricalSlate(
     revalidatePath("/homerun");
     revalidatePath("/analytics");
     revalidateTag(ANALYTICS_CACHE_TAG, {});
+    const matchBreakdown = [
+      `${parsed.size} LineStar rows parsed`,
+      `${exactMatches} exact`,
+      `${normalizedMatches} name-only`,
+      `${fuzzyMatches} fuzzy`,
+    ].join(", ");
+    const lowMatchHint = unmatchedPoolSamples.length > 0
+      ? ` Unmatched target examples: ${unmatchedPoolSamples.join(", ")}.`
+      : "";
     return {
       ok: true,
-      message: `Updated ${updated}/${pool.rows.length} players with actual results for ${date}`,
+      message: `Updated ${updated}/${pool.rows.length} players with actual results for ${date} (${matchBreakdown}).${lowMatchHint}`,
       created: 0,
       updated,
     };
