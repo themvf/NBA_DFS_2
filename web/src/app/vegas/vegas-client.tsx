@@ -587,7 +587,7 @@ export default function VegasClient({
             </span>
             {moneylineBacktest.pendingOddsNoScore > 0 && (
               <span className="text-xs text-amber-700">
-                {moneylineBacktest.pendingOddsNoScore} odds games still missing scores
+                {moneylineBacktest.pendingOddsNoScore} odds {moneylineBacktest.pendingOddsNoScore === 1 ? "game" : "games"} still missing scores
                 {moneylineBacktest.pendingOddsNoScoreStart && moneylineBacktest.pendingOddsNoScoreEnd
                   ? ` (${moneylineBacktest.pendingOddsNoScoreStart} to ${moneylineBacktest.pendingOddsNoScoreEnd})`
                   : ""}

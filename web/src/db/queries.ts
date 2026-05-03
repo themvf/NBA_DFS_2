@@ -6799,6 +6799,7 @@ async function loadMoneylineBacktestGames(sport: Sport): Promise<MoneylineBackte
         JOIN teams at ON at.team_id = nm.away_team_id
         WHERE nm.home_ml IS NOT NULL
           AND nm.away_ml IS NOT NULL
+          AND nm.game_id IS NOT NULL
           AND nm.vegas_prob_home IS NOT NULL
           AND nm.home_implied IS NOT NULL
           AND nm.away_implied IS NOT NULL
@@ -6846,6 +6847,7 @@ async function loadPendingMoneylineCoverage(sport: Sport): Promise<{
         FROM nba_matchups
         WHERE home_ml IS NOT NULL
           AND away_ml IS NOT NULL
+          AND game_id IS NOT NULL
           AND (home_score IS NULL OR away_score IS NULL)
       `);
   const row = rows.rows[0] as { n?: unknown; start?: unknown; end?: unknown } | undefined;
