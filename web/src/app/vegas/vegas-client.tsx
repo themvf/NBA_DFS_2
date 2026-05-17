@@ -714,6 +714,8 @@ export default function VegasClient({
       || b.strongestEdge - a.strongestEdge
       || a.matchup.homeAbbrev.localeCompare(b.matchup.homeAbbrev)
     );
+  const actionableBettingRows = bettingRows.filter((row) => row.actionableCount > 0);
+  const nbaHasQualifiedEdges = sport === "nba" && (qualifiedMlPlays.length > 0 || qualifiedOuPlays.length > 0);
 
   return (
     <div className="space-y-8 p-6 max-w-5xl mx-auto">
@@ -926,6 +928,39 @@ export default function VegasClient({
         </div>
       )}
 
+      {sport === "nba" && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm space-y-3">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="font-semibold text-blue-900">NBA Edge Focus</h2>
+            <span className="text-xs text-blue-700">
+              ML value is the primary active market. O/U leans are secondary. Spread recommendations are intentionally suppressed.
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded border border-blue-200 bg-white p-3">
+              <div className="text-[11px] uppercase tracking-wide text-blue-700">Qualified ML Plays</div>
+              <div className="mt-1 text-2xl font-bold text-blue-900">{qualifiedMlPlays.length}</div>
+              <div className="mt-1 text-xs text-slate-600">Value edge above +3.0pp</div>
+            </div>
+            <div className="rounded border border-blue-200 bg-white p-3">
+              <div className="text-[11px] uppercase tracking-wide text-blue-700">Qualified O/U Leans</div>
+              <div className="mt-1 text-2xl font-bold text-blue-900">{qualifiedOuPlays.length}</div>
+              <div className="mt-1 text-xs text-slate-600">Only totals outside the no-edge band</div>
+            </div>
+            <div className="rounded border border-blue-200 bg-white p-3">
+              <div className="text-[11px] uppercase tracking-wide text-blue-700">Actionable Matchups</div>
+              <div className="mt-1 text-2xl font-bold text-blue-900">{actionableBettingRows.length}</div>
+              <div className="mt-1 text-xs text-slate-600">Rows with at least one live NBA signal</div>
+            </div>
+          </div>
+          {!nbaHasQualifiedEdges && (
+            <p className="text-xs text-blue-800">
+              No qualified NBA edges today. Current lines look close to market-efficient thresholds.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Today's Matchups ─────────────────────────────────── */}
       {moneylineBacktest.completedGames > 0 && (
         <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
@@ -1006,14 +1041,16 @@ export default function VegasClient({
 
       <div className="rounded-lg border bg-card p-4 text-sm">
         <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="font-semibold">Qualified ML Value Plays</h2>
+          <h2 className="font-semibold">{sport === "nba" ? "Strongest NBA ML Value Plays" : "Qualified ML Value Plays"}</h2>
           <span className="text-xs text-gray-500">
             Upcoming sides where our ML probability clears market breakeven by at least {fmtSignedPp(QUALIFIED_ML_EDGE_THRESHOLD)}.
           </span>
         </div>
         {qualifiedMlPlays.length === 0 ? (
           <p className="mt-3 text-xs text-gray-500">
-            No qualified ML value plays at +3.0pp for this date.
+            {sport === "nba"
+              ? "No qualified NBA ML value plays at +3.0pp for this date."
+              : "No qualified ML value plays at +3.0pp for this date."}
           </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
@@ -1049,14 +1086,16 @@ export default function VegasClient({
 
       <div className="rounded-lg border bg-card p-4 text-sm">
         <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="font-semibold">Qualified O/U Leans</h2>
+          <h2 className="font-semibold">{sport === "nba" ? "Selected NBA O/U Leans" : "Qualified O/U Leans"}</h2>
           <span className="text-xs text-gray-500">
             Upcoming totals where the projected O/U lean clears the no-edge band for {sport.toUpperCase()}.
           </span>
         </div>
         {qualifiedOuPlays.length === 0 ? (
           <p className="mt-3 text-xs text-gray-500">
-            No qualified O/U leans for this date.
+            {sport === "nba"
+              ? "No qualified NBA O/U leans for this date."
+              : "No qualified O/U leans for this date."}
           </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
@@ -1183,11 +1222,10 @@ export default function VegasClient({
           <div>
             <h2 className="font-semibold">Betting Intelligence</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Scores derived from historical O/U tiers,{" "}
-              {sport === "mlb" ? "run line" : "spread"} tiers, team implied accuracy, and ATS cover rates.
-              O/U = lean over probability.{" "}
-              {sport === "mlb" ? "Run line" : "Spread"} = home-covers probability.
-              ML = adjusted win probability; price edge is tracked in the moneyline backtest.
+              {sport === "nba"
+                ? "NBA keeps ML value as the primary live signal and selected O/U leans as secondary context. Spread recommendations are suppressed because recent backtests did not support a stable edge."
+                : "Scores derived from historical O/U tiers, run line tiers, team implied accuracy, and ATS cover rates. O/U = lean over probability. Run line = home-covers probability. ML = adjusted win probability; price edge is tracked in the moneyline backtest."}
+              {" "}
               Low-edge rows are suppressed as no-edge calls.
             </p>
           </div>
@@ -1200,7 +1238,7 @@ export default function VegasClient({
                   <th className="py-1 text-right">Total</th>
                   <th className="py-1 text-right">O/U Score</th>
                   <th className="py-1 text-right">{sport === "mlb" ? "Run Line" : "Spread"}</th>
-                  <th className="py-1 text-right">{sport === "mlb" ? "RL Score" : "Spread Score"}</th>
+                  <th className="py-1 text-right">{sport === "mlb" ? "RL Score" : "Spread Status"}</th>
                   <th className="py-1 text-right">ML Score</th>
                 </tr>
               </thead>
@@ -1297,7 +1335,11 @@ export default function VegasClient({
                       </td>
                       <td className="py-1.5 text-right text-gray-500">{homeSpreadStr}</td>
                       <td className="py-1.5 text-right">
-                        {renderRecommendationScore(
+                        {sport === "nba" ? (
+                          <span className="text-[10px] uppercase tracking-wide text-amber-700">
+                            Suppressed
+                          </span>
+                        ) : renderRecommendationScore(
                           spreadScore,
                           spreadDisplay,
                           spreadLabel,
@@ -1324,7 +1366,9 @@ export default function VegasClient({
           </div>
           <p className="text-xs text-gray-400">
             Scores are statistical summaries of historical patterns — not betting recommendations.
-            Sample sizes vary; actionable rows are surfaced first and low-edge rows are muted as no-edge.
+            {sport === "nba"
+              ? " NBA rows are ordered to show ML/O-U spots first, while spread remains intentionally off."
+              : " Sample sizes vary; actionable rows are surfaced first and low-edge rows are muted as no-edge."}
           </p>
         </div>
       )}
