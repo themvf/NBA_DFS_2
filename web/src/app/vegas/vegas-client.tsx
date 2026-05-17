@@ -42,6 +42,24 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+function scaleSignalConfidence(
+  n: number | null | undefined,
+  stableSample: number,
+): number {
+  const sample = n ?? 0;
+  if (sample <= 0) return 0;
+  return clamp(sample / stableSample, 0, 1);
+}
+
+function blendTowardNeutral(
+  value: number | null,
+  confidence: number,
+  neutral = 0.5,
+): number | null {
+  if (value == null) return null;
+  return neutral + (value - neutral) * clamp(confidence, 0, 1);
+}
+
 /**
  * Bayesian shrinkage of a rate toward a prior.
  *   adjusted = (k + α × prior) / (n + α)
@@ -150,22 +168,54 @@ function computeOuScore(
     // Slope calibrated so a 0.5-run gap shifts score by ~7.5 pp.
     const xfipEdge = (avgXfip - MLB_LEAGUE_AVG_XFIP) / MLB_LEAGUE_AVG_XFIP;
     const spValue = clamp(0.5 + xfipEdge * 1.5, 0.3, 0.7);
-    signals.push({ label: "SP quality", value: spValue, weight: 0.25 });
+    signals.push({ label: "SP quality", value: spValue, weight: 0.15 });
   }
 
-  const tierShrunk = shrinkRate(tierRow?.overRate, tierRow?.n, 0.5, 50);
+  const tierShrunk = shrinkRate(tierRow?.overRate, tierRow?.n, 0.5, sport === "mlb" ? 60 : 50);
   if (tierShrunk != null) {
-    signals.push({ label: "Total tier", value: tierShrunk, weight: sport === "mlb" ? 0.30 : 0.40 });
+    const confidence = sport === "mlb"
+      ? scaleSignalConfidence(tierRow?.n, 12)
+      : scaleSignalConfidence(tierRow?.n, 60);
+    const calibratedTier = blendTowardNeutral(tierShrunk, confidence);
+    if (calibratedTier != null) {
+      signals.push({
+        label: sport === "mlb" ? "Total tier" : "Total tier (calibrated)",
+        value: calibratedTier,
+        weight: sport === "mlb" ? 0.20 : 0.20,
+      });
+    }
   }
 
-  const homeShrunk = shrinkRate(home?.gameOverRate, home?.n, 0.5, 20);
+  const homeBaseRate = home?.gameOverRate;
+  const homeShrunk = shrinkRate(homeBaseRate, home?.n, 0.5, sport === "mlb" ? 40 : 40);
   if (homeShrunk != null) {
-    signals.push({ label: `${m.homeAbbrev} history`, value: homeShrunk, weight: sport === "mlb" ? 0.15 : 0.30 });
+    const confidence = sport === "mlb"
+      ? scaleSignalConfidence(home?.n, 30)
+      : scaleSignalConfidence(home?.n, 40);
+    const calibratedHome = blendTowardNeutral(homeShrunk, confidence);
+    if (calibratedHome != null) {
+      signals.push({
+        label: `${m.homeAbbrev} history`,
+        value: calibratedHome,
+        weight: sport === "mlb" ? 0.20 : 0.20,
+      });
+    }
   }
 
-  const awayShrunk = shrinkRate(away?.gameOverRate, away?.n, 0.5, 20);
+  const awayBaseRate = away?.gameOverRate;
+  const awayShrunk = shrinkRate(awayBaseRate, away?.n, 0.5, sport === "mlb" ? 40 : 40);
   if (awayShrunk != null) {
-    signals.push({ label: `${m.awayAbbrev} history`, value: awayShrunk, weight: sport === "mlb" ? 0.15 : 0.30 });
+    const confidence = sport === "mlb"
+      ? scaleSignalConfidence(away?.n, 30)
+      : scaleSignalConfidence(away?.n, 40);
+    const calibratedAway = blendTowardNeutral(awayShrunk, confidence);
+    if (calibratedAway != null) {
+      signals.push({
+        label: `${m.awayAbbrev} history`,
+        value: calibratedAway,
+        weight: sport === "mlb" ? 0.20 : 0.20,
+      });
+    }
   }
 
   const score = blendSignals(signals);
@@ -186,6 +236,10 @@ function computeSpreadScore(
   teamInsights: TeamVegasInsightRow[],
   sport: Sport,
 ): { score: number; signals: ScoreSignal[] } | null {
+  if (sport === "nba") {
+    return null;
+  }
+
   const tierRow = spreadCoverage.find((r) => r.spreadTier === getSpreadTierKey(m.homeSpread, sport));
   const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
   const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
@@ -226,6 +280,7 @@ function computeSpreadScore(
  * The bias divisor is sport-aware: NBA team-total bias is ±4–5 pts (÷30 → meaningful),
  * MLB bias is ±0.3 runs (÷3 → meaningful). Max shift capped at ±5%.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function computeMlScore(
   m: VegasMatchupRow,
   teamInsights: TeamVegasInsightRow[],
@@ -244,6 +299,40 @@ function computeMlScore(
   const signals: ScoreSignal[] = [
     { label: "Vegas home win%", value: m.homeWinProb, weight: 1 },
     { label: `Net bias adj (÷${biasDivisor})`, value: biasAdj, weight: 0 },
+  ];
+  return { score, signals };
+}
+
+function computeMlScoreCalibrated(
+  m: VegasMatchupRow,
+  teamInsights: TeamVegasInsightRow[],
+  sport: Sport,
+): { score: number; signals: ScoreSignal[] } | null {
+  if (m.homeWinProb == null) return null;
+  const home = teamInsights.find((t) => t.teamAbbrev === m.homeAbbrev);
+  const away = teamInsights.find((t) => t.teamAbbrev === m.awayAbbrev);
+
+  if (sport === "nba") {
+    return {
+      score: m.homeWinProb,
+      signals: [{ label: "Vegas home win%", value: m.homeWinProb, weight: 1 }],
+    };
+  }
+
+  const biasDivisor = 3;
+  const homeBias = home?.bias ?? 0;
+  const awayBias = away?.bias ?? 0;
+  const rawBiasAdj = clamp((homeBias - awayBias) / biasDivisor, -0.05, 0.05);
+  const confidence = Math.min(
+    scaleSignalConfidence(home?.nImplied, 20),
+    scaleSignalConfidence(away?.nImplied, 20),
+  );
+  const biasAdj = rawBiasAdj * confidence;
+
+  const score = clamp(m.homeWinProb + biasAdj, 0.05, 0.95);
+  const signals: ScoreSignal[] = [
+    { label: "Vegas home win%", value: m.homeWinProb, weight: 1 },
+    { label: `Net bias adj (div ${biasDivisor})`, value: biasAdj, weight: 0 },
   ];
   return { score, signals };
 }
@@ -316,6 +405,43 @@ type Props = {
   queryDate: string;
   sport: Sport;
 };
+
+type RecommendationMarket = "ou" | "spread" | "ml";
+
+function getRecommendationBand(sport: Sport, market: RecommendationMarket): number {
+  if (sport === "nba") {
+    if (market === "ou") return 0.03;
+    return 0.04;
+  }
+  if (market === "ou") return 0.025;
+  return 0.03;
+}
+
+function isActionableScore(
+  score: number | null | undefined,
+  sport: Sport,
+  market: RecommendationMarket,
+): score is number {
+  if (score == null) return false;
+  return Math.abs(score - 0.5) >= getRecommendationBand(sport, market);
+}
+
+function renderRecommendationScore(
+  score: number | null | undefined,
+  displayScore: number | null | undefined,
+  label: string | undefined,
+  signals: ScoreSignal[] | undefined,
+  sport: Sport,
+  market: RecommendationMarket,
+) {
+  if (score == null || displayScore == null) {
+    return <span className="text-gray-300 text-xs">—</span>;
+  }
+  if (!isActionableScore(score, sport, market)) {
+    return <span className="text-gray-400 text-xs">No edge</span>;
+  }
+  return <ScoreBadge score={displayScore} label={label} signals={signals} />;
+}
 
 export default function VegasClient({
   matchups,
@@ -757,7 +883,7 @@ export default function VegasClient({
               O/U = lean over probability.{" "}
               {sport === "mlb" ? "Run line" : "Spread"} = home-covers probability.
               ML = adjusted win probability; price edge is tracked in the moneyline backtest.
-              Scores near 50% are neutral; above 57% or below 43% suggest a meaningful lean.
+              Low-edge rows are suppressed as no-edge calls.
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -776,22 +902,26 @@ export default function VegasClient({
                 {matchups.map((m) => {
                   const ou = computeOuScore(m, ouHitRate, teamInsights, sport);
                   const spread = computeSpreadScore(m, spreadCoverage, teamInsights, sport);
-                  const ml = computeMlScore(m, teamInsights, sport);
+                  const ml = computeMlScoreCalibrated(m, teamInsights, sport);
 
                   const ouScore = ou?.score ?? null;
                   const spreadScore = spread?.score ?? null;
                   const mlScore = ml?.score ?? null;
 
                   const ouLabel =
-                    ouScore != null ? (ouScore >= 0.5 ? "O" : "U") : undefined;
+                    isActionableScore(ouScore, sport, "ou")
+                      ? ouScore >= 0.5
+                        ? "O"
+                        : "U"
+                      : undefined;
                   const spreadLabel =
-                    spreadScore != null
+                    isActionableScore(spreadScore, sport, "spread")
                       ? spreadScore >= 0.5
                         ? m.homeAbbrev
                         : m.awayAbbrev
                       : undefined;
                   const mlLabel =
-                    mlScore != null
+                    isActionableScore(mlScore, sport, "ml")
                       ? mlScore >= 0.5
                         ? m.homeAbbrev
                         : m.awayAbbrev
@@ -832,18 +962,35 @@ export default function VegasClient({
                       </td>
                       <td className="py-1.5 text-right text-gray-500">{fmt1(m.vegasTotal)}</td>
                       <td className="py-1.5 text-right">
-                        <ScoreBadge score={ouScore} label={ouLabel} signals={ou?.signals} />
+                        {renderRecommendationScore(
+                          ouScore,
+                          ouScore,
+                          ouLabel,
+                          ou?.signals,
+                          sport,
+                          "ou",
+                        )}
                       </td>
                       <td className="py-1.5 text-right text-gray-500">{homeSpreadStr}</td>
                       <td className="py-1.5 text-right">
-                        <ScoreBadge
-                          score={spreadDisplay}
-                          label={spreadLabel}
-                          signals={spread?.signals}
-                        />
+                        {renderRecommendationScore(
+                          spreadScore,
+                          spreadDisplay,
+                          spreadLabel,
+                          spread?.signals,
+                          sport,
+                          "spread",
+                        )}
                       </td>
                       <td className="py-1.5 text-right">
-                        <ScoreBadge score={mlDisplay} label={mlLabel} signals={ml?.signals} />
+                        {renderRecommendationScore(
+                          mlScore,
+                          mlDisplay,
+                          mlLabel,
+                          ml?.signals,
+                          sport,
+                          "ml",
+                        )}
                       </td>
                     </tr>
                   );
@@ -853,7 +1000,7 @@ export default function VegasClient({
           </div>
           <p className="text-xs text-gray-400">
             Scores are statistical summaries of historical patterns — not betting recommendations.
-            Sample sizes vary; interpret with caution on low-game-count tiers.
+            Sample sizes vary; low-edge rows are shown as no-edge.
           </p>
         </div>
       )}
