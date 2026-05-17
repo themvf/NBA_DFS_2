@@ -33,6 +33,10 @@ const fmtSignedPct = (v: number | null | undefined) => {
   if (v == null) return "—";
   return `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
 };
+const fmtSignedPp = (v: number | null | undefined) => {
+  if (v == null) return "—";
+  return `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}pp`;
+};
 
 // ── Betting intelligence helpers ────────────────────────────────────────────
 
@@ -95,6 +99,12 @@ function blendSignals(signals: ScoreSignal[]): number | null {
   const totalW = signals.reduce((s, r) => s + r.weight, 0);
   if (totalW <= 0) return null;
   return signals.reduce((s, r) => s + r.value * r.weight, 0) / totalW;
+}
+
+function rawMoneylineBreakeven(ml: number | null | undefined): number | null {
+  if (ml == null || ml === 0) return null;
+  if (ml > 0) return 100 / (ml + 100);
+  return Math.abs(ml) / (Math.abs(ml) + 100);
 }
 
 const MLB_DEFAULT_OUTFIELD_BEARING = 45;
@@ -486,6 +496,37 @@ type Props = {
 };
 
 type RecommendationMarket = "ou" | "spread" | "ml";
+type QualifiedMlPlay = {
+  matchupId: number;
+  matchupLabel: string;
+  side: string;
+  moneyline: number;
+  ourWinProb: number;
+  breakevenProb: number;
+  edge: number;
+  sideType: "Fav" | "Dog";
+};
+type QualifiedOuPlay = {
+  matchupId: number;
+  matchupLabel: string;
+  total: number;
+  side: "Over" | "Under";
+  score: number;
+  edge: number;
+};
+type BettingRow = {
+  matchup: VegasMatchupRow;
+  ou: ReturnType<typeof computeOuScore>;
+  spread: ReturnType<typeof computeSpreadScore>;
+  ml: ReturnType<typeof computeMlScoreCalibrated>;
+  ouScore: number | null;
+  spreadScore: number | null;
+  mlScore: number | null;
+  actionableCount: number;
+  strongestEdge: number;
+};
+
+const QUALIFIED_ML_EDGE_THRESHOLD = 0.03;
 
 function getRecommendationBand(sport: Sport, market: RecommendationMarket): number {
   if (sport === "nba") {
@@ -520,6 +561,71 @@ function renderRecommendationScore(
     return <span className="text-gray-400 text-xs">No edge</span>;
   }
   return <ScoreBadge score={displayScore} label={label} signals={signals} />;
+}
+
+function getQualifiedMlPlay(
+  matchup: VegasMatchupRow,
+  teamInsights: TeamVegasInsightRow[],
+  sport: Sport,
+): QualifiedMlPlay | null {
+  const ml = computeMlScoreCalibrated(matchup, teamInsights, sport);
+  if (ml == null) return null;
+
+  const homeBreakeven = rawMoneylineBreakeven(matchup.homeMl);
+  const awayBreakeven = rawMoneylineBreakeven(matchup.awayMl);
+  const homeEdge = homeBreakeven != null ? ml.score - homeBreakeven : null;
+  const awayScore = 1 - ml.score;
+  const awayEdge = awayBreakeven != null ? awayScore - awayBreakeven : null;
+
+  if (homeEdge == null && awayEdge == null) return null;
+
+  const chooseHome = (homeEdge ?? Number.NEGATIVE_INFINITY) >= (awayEdge ?? Number.NEGATIVE_INFINITY);
+  if (chooseHome) {
+    if (matchup.homeMl == null || homeBreakeven == null || homeEdge == null) return null;
+    return {
+      matchupId: matchup.matchupId,
+      matchupLabel: `${matchup.awayAbbrev} @ ${matchup.homeAbbrev}`,
+      side: matchup.homeAbbrev,
+      moneyline: matchup.homeMl,
+      ourWinProb: ml.score,
+      breakevenProb: homeBreakeven,
+      edge: homeEdge,
+      sideType: matchup.homeMl < 0 ? "Fav" : "Dog",
+    };
+  }
+
+  if (matchup.awayMl == null || awayBreakeven == null || awayEdge == null) return null;
+  return {
+    matchupId: matchup.matchupId,
+    matchupLabel: `${matchup.awayAbbrev} @ ${matchup.homeAbbrev}`,
+    side: matchup.awayAbbrev,
+    moneyline: matchup.awayMl,
+    ourWinProb: awayScore,
+    breakevenProb: awayBreakeven,
+    edge: awayEdge,
+    sideType: matchup.awayMl < 0 ? "Fav" : "Dog",
+  };
+}
+
+function getQualifiedOuPlay(
+  matchup: VegasMatchupRow,
+  ouHitRate: OuHitRateRow[],
+  teamInsights: TeamVegasInsightRow[],
+  sport: Sport,
+): QualifiedOuPlay | null {
+  const ou = computeOuScore(matchup, ouHitRate, teamInsights, sport);
+  const score = ou?.score ?? null;
+  if (score == null || matchup.vegasTotal == null || !isActionableScore(score, sport, "ou")) {
+    return null;
+  }
+  return {
+    matchupId: matchup.matchupId,
+    matchupLabel: `${matchup.awayAbbrev} @ ${matchup.homeAbbrev}`,
+    total: matchup.vegasTotal,
+    side: score >= 0.5 ? "Over" : "Under",
+    score: score >= 0.5 ? score : 1 - score,
+    edge: Math.abs(score - 0.5),
+  };
 }
 
 export default function VegasClient({
@@ -570,6 +676,44 @@ export default function VegasClient({
     && mlbCoverageStatus?.historicalEndDate != null
     && !hasActionableBackfill
     && !hasProviderPartialOdds;
+  const qualifiedMlPlays = matchups
+    .map((matchup) => getQualifiedMlPlay(matchup, teamInsights, sport))
+    .filter((play): play is QualifiedMlPlay => play != null && play.edge >= QUALIFIED_ML_EDGE_THRESHOLD)
+    .sort((a, b) => b.edge - a.edge);
+  const qualifiedOuPlays = matchups
+    .map((matchup) => getQualifiedOuPlay(matchup, ouHitRate, teamInsights, sport))
+    .filter((play): play is QualifiedOuPlay => play != null)
+    .sort((a, b) => b.edge - a.edge);
+  const bettingRows: BettingRow[] = matchups
+    .map((matchup) => {
+      const ou = computeOuScore(matchup, ouHitRate, teamInsights, sport);
+      const spread = computeSpreadScore(matchup, spreadCoverage, teamInsights, sport);
+      const ml = computeMlScoreCalibrated(matchup, teamInsights, sport);
+      const ouScore = ou?.score ?? null;
+      const spreadScore = spread?.score ?? null;
+      const mlScore = ml?.score ?? null;
+      const actionableEdges = [
+        isActionableScore(ouScore, sport, "ou") ? Math.abs(ouScore - 0.5) : 0,
+        isActionableScore(spreadScore, sport, "spread") ? Math.abs(spreadScore - 0.5) : 0,
+        isActionableScore(mlScore, sport, "ml") ? Math.abs(mlScore - 0.5) : 0,
+      ].filter((edge) => edge > 0);
+      return {
+        matchup,
+        ou,
+        spread,
+        ml,
+        ouScore,
+        spreadScore,
+        mlScore,
+        actionableCount: actionableEdges.length,
+        strongestEdge: actionableEdges.length > 0 ? Math.max(...actionableEdges) : 0,
+      };
+    })
+    .sort((a, b) =>
+      b.actionableCount - a.actionableCount
+      || b.strongestEdge - a.strongestEdge
+      || a.matchup.homeAbbrev.localeCompare(b.matchup.homeAbbrev)
+    );
 
   return (
     <div className="space-y-8 p-6 max-w-5xl mx-auto">
@@ -801,7 +945,7 @@ export default function VegasClient({
           </div>
           <p className="text-xs text-gray-500">
             Walk-forward results use only prior team scoring bias at each game. Profit assumes $100 risk per bet at the stored consensus moneyline.
-            Value edge compares our ML probability to the raw breakeven price.
+            Value edge compares our ML probability to the raw breakeven price. `pp` means percentage points, so `+3.0pp` means our win rate is 3.0 points above market breakeven.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
@@ -814,7 +958,7 @@ export default function VegasClient({
                   <th className="py-1">Win%</th>
                   <th className="py-1">Profit</th>
                   <th className="py-1">ROI</th>
-                  <th className="py-1">Avg Edge</th>
+                  <th className="py-1">Avg Edge (pp)</th>
                   <th className="py-1">Fav/Dog</th>
                 </tr>
               </thead>
@@ -846,7 +990,7 @@ export default function VegasClient({
                         <td className="py-1.5 text-right">{fmtPct(row.winRate)}</td>
                         <td className={`py-1.5 text-right ${roiClass}`}>{fmtSignedMoney(row.profit)}</td>
                         <td className={`py-1.5 text-right ${roiClass}`}>{fmtSignedPct(row.roi)}</td>
-                        <td className={`py-1.5 text-right ${edgeClass}`}>{fmtSignedPct(row.avgEdge)}</td>
+                        <td className={`py-1.5 text-right ${edgeClass}`}>{fmtSignedPp(row.avgEdge)}</td>
                         <td className="py-1.5 text-right text-gray-500">
                           {row.favorites}/{row.underdogs}
                         </td>
@@ -859,6 +1003,88 @@ export default function VegasClient({
           </div>
         </div>
       )}
+
+      <div className="rounded-lg border bg-card p-4 text-sm">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h2 className="font-semibold">Qualified ML Value Plays</h2>
+          <span className="text-xs text-gray-500">
+            Upcoming sides where our ML probability clears market breakeven by at least {fmtSignedPp(QUALIFIED_ML_EDGE_THRESHOLD)}.
+          </span>
+        </div>
+        {qualifiedMlPlays.length === 0 ? (
+          <p className="mt-3 text-xs text-gray-500">
+            No qualified ML value plays at +3.0pp for this date.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500 text-right">
+                  <th className="py-1 text-left">Matchup</th>
+                  <th className="py-1 text-left">Side</th>
+                  <th className="py-1">ML</th>
+                  <th className="py-1">Our Win%</th>
+                  <th className="py-1">Breakeven%</th>
+                  <th className="py-1">Edge</th>
+                  <th className="py-1">Fav/Dog</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qualifiedMlPlays.map((play) => (
+                  <tr key={play.matchupId} className="border-b border-gray-50">
+                    <td className="py-1.5 text-left font-medium">{play.matchupLabel}</td>
+                    <td className="py-1.5 text-left">{play.side}</td>
+                    <td className="py-1.5 text-right">{fmtMl(play.moneyline)}</td>
+                    <td className="py-1.5 text-right">{fmtPct(play.ourWinProb)}</td>
+                    <td className="py-1.5 text-right">{fmtPct(play.breakevenProb)}</td>
+                    <td className="py-1.5 text-right text-green-700 font-semibold">{fmtSignedPp(play.edge)}</td>
+                    <td className="py-1.5 text-right text-gray-500">{play.sideType}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg border bg-card p-4 text-sm">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h2 className="font-semibold">Qualified O/U Leans</h2>
+          <span className="text-xs text-gray-500">
+            Upcoming totals where the projected O/U lean clears the no-edge band for {sport.toUpperCase()}.
+          </span>
+        </div>
+        {qualifiedOuPlays.length === 0 ? (
+          <p className="mt-3 text-xs text-gray-500">
+            No qualified O/U leans for this date.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500 text-right">
+                  <th className="py-1 text-left">Matchup</th>
+                  <th className="py-1">Total</th>
+                  <th className="py-1 text-left">Side</th>
+                  <th className="py-1">Score</th>
+                  <th className="py-1">Lean Edge</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qualifiedOuPlays.map((play) => (
+                  <tr key={play.matchupId} className="border-b border-gray-50">
+                    <td className="py-1.5 text-left font-medium">{play.matchupLabel}</td>
+                    <td className="py-1.5 text-right">{fmt1(play.total)}</td>
+                    <td className="py-1.5 text-left">{play.side}</td>
+                    <td className="py-1.5 text-right">{fmtPct(play.score)}</td>
+                    <td className="py-1.5 text-right text-green-700 font-semibold">{fmtSignedPp(play.edge)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       <div className="rounded-lg border bg-card p-4 text-sm">
         <h2 className="font-semibold mb-3">
@@ -970,6 +1196,7 @@ export default function VegasClient({
               <thead>
                 <tr className="border-b text-gray-500">
                   <th className="py-1 text-left">Matchup</th>
+                  <th className="py-1 text-left">Actionable</th>
                   <th className="py-1 text-right">Total</th>
                   <th className="py-1 text-right">O/U Score</th>
                   <th className="py-1 text-right">{sport === "mlb" ? "Run Line" : "Spread"}</th>
@@ -978,14 +1205,8 @@ export default function VegasClient({
                 </tr>
               </thead>
               <tbody>
-                {matchups.map((m) => {
-                  const ou = computeOuScore(m, ouHitRate, teamInsights, sport);
-                  const spread = computeSpreadScore(m, spreadCoverage, teamInsights, sport);
-                  const ml = computeMlScoreCalibrated(m, teamInsights, sport);
-
-                  const ouScore = ou?.score ?? null;
-                  const spreadScore = spread?.score ?? null;
-                  const mlScore = ml?.score ?? null;
+                {bettingRows.map((row) => {
+                  const { matchup: m, ou, spread, ml, ouScore, spreadScore, mlScore } = row;
 
                   const ouLabel =
                     isActionableScore(ouScore, sport, "ou")
@@ -1018,9 +1239,17 @@ export default function VegasClient({
                       : m.homeSpread > 0
                       ? `+${m.homeSpread}`
                       : String(m.homeSpread);
+                  const actionableLabels = [
+                    ouLabel ? `O/U ${ouLabel}` : null,
+                    spreadLabel ? `${sport === "mlb" ? "RL" : "Spread"} ${spreadLabel}` : null,
+                    mlLabel ? `ML ${mlLabel}` : null,
+                  ].filter((label): label is string => label != null);
+                  const rowClass = row.actionableCount > 0
+                    ? "border-b border-emerald-100 bg-emerald-50/40 hover:bg-emerald-50"
+                    : "border-b border-gray-50 text-gray-400 hover:bg-gray-50";
 
                   return (
-                    <tr key={m.matchupId} className="border-b border-gray-50 hover:bg-gray-50">
+                    <tr key={m.matchupId} className={rowClass}>
                       <td className="py-1.5 font-medium">
                         {m.awayAbbrev} @ {m.homeAbbrev}
                         {sport === "mlb" && (m.awaySpName || m.homeSpName) && (
@@ -1037,6 +1266,22 @@ export default function VegasClient({
                                 }`
                               : "—"}
                           </div>
+                        )}
+                      </td>
+                      <td className="py-1.5">
+                        {actionableLabels.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {actionableLabels.map((label) => (
+                              <span
+                                key={`${m.matchupId}-${label}`}
+                                className="inline-flex rounded border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800"
+                              >
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] uppercase tracking-wide text-gray-400">No edge</span>
                         )}
                       </td>
                       <td className="py-1.5 text-right text-gray-500">{fmt1(m.vegasTotal)}</td>
@@ -1079,7 +1324,7 @@ export default function VegasClient({
           </div>
           <p className="text-xs text-gray-400">
             Scores are statistical summaries of historical patterns — not betting recommendations.
-            Sample sizes vary; low-edge rows are shown as no-edge.
+            Sample sizes vary; actionable rows are surfaced first and low-edge rows are muted as no-edge.
           </p>
         </div>
       )}
