@@ -42,6 +42,43 @@ MLB_LEAGUE_AVG_ISO        = 0.165  # hitter ISO baseline
 MLB_LEAGUE_AVG_HR_PER_9   = 1.10   # starter HR/9 baseline
 MLB_LEAGUE_AVG_HR_FB      = 0.12   # starter HR/FB baseline
 
+_MLB_DEFAULT_OUTFIELD_BEARING = 45.0
+_MLB_DEFAULT_WIND_EXPOSURE = 1.0
+_MLB_PARK_ENV_METADATA: tuple[tuple[str, float, float], ...] = (
+    ("american family field", 10.0, 0.35),
+    ("angel stadium", 25.0, 1.0),
+    ("busch stadium", 20.0, 1.0),
+    ("chase field", 20.0, 0.35),
+    ("citi field", 25.0, 1.0),
+    ("citizens bank park", 25.0, 1.0),
+    ("comerica park", 20.0, 1.0),
+    ("coors field", 25.0, 1.0),
+    ("daikin park", 32.0, 0.35),
+    ("fenway park", 35.0, 1.0),
+    ("globe life field", 35.0, 0.35),
+    ("kauffman stadium", 15.0, 1.0),
+    ("loandepot park", 10.0, 0.35),
+    ("nationals park", 20.0, 1.0),
+    ("oracle park", 60.0, 1.0),
+    ("oriole park at camden yards", 45.0, 1.0),
+    ("camden yards", 45.0, 1.0),
+    ("petco park", 35.0, 1.0),
+    ("pnc park", 25.0, 1.0),
+    ("progressive field", 35.0, 1.0),
+    ("rate field", 35.0, 1.0),
+    ("rogers centre", 35.0, 0.35),
+    ("sutter health park", 35.0, 1.0),
+    ("t-mobile park", 45.0, 0.45),
+    ("target field", 30.0, 1.0),
+    ("tropicana field", 45.0, 0.0),
+    ("truist park", 35.0, 1.0),
+    ("wrigley field", 40.0, 1.0),
+    ("yankee stadium", 60.0, 1.0),
+    ("dodger stadium", 55.0, 1.0),
+    ("uniqlo field at dodger stadium", 55.0, 1.0),
+    ("great american ball park", 30.0, 1.0),
+)
+
 # PA weight by batting order slot.
 # Recalibrated from 2026 season data (n≈30/slot).  The original 1/2 grouping
 # under-captured the #2/#3 RBI-opportunity premium and over-boosted #1 hitters
@@ -77,6 +114,14 @@ def _rate_fraction(value) -> float | None:
     if parsed is None:
         return None
     return parsed / 100.0 if parsed > 1.0 else parsed
+
+
+def _finite_float(value) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 # ── Public DK scoring formulas ────────────────────────────────────────────────
@@ -178,8 +223,7 @@ def compute_batter_projection(
     env_factor = _cap(team_implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.50, 2.00)
 
     # ── Park factor ────────────────────────────────────────────────────────────
-    runs_pf = _cap(float(park.get("runs_factor") or 1.0), 0.70, 1.30) if park else 1.0
-    hr_pf   = _cap(float(park.get("hr_factor")   or 1.0), 0.70, 1.50) if park else 1.0
+    runs_pf, hr_pf = _park_environment_factors(matchup, park)
 
     # ── Batting order PA weight ────────────────────────────────────────────────
     order_factor = _ORDER_PA_FACTOR.get(int(confirmed_order), 1.0) if confirmed_order else 1.0
@@ -262,7 +306,7 @@ def compute_batter_hr_signal(
                              (matchup.get("vegas_total") or 9.0) / 2.0)
 
     env_factor = _cap(team_implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.50, 2.00)
-    hr_pf = _cap(float(park.get("hr_factor") or 1.0), 0.70, 1.50) if park else 1.0
+    _, hr_pf = _park_environment_factors(matchup, park)
     order_factor = _ORDER_PA_FACTOR.get(int(confirmed_order), 1.0) if confirmed_order else 1.0
 
     iso = _positive_float(batter.get("iso"))
@@ -361,7 +405,7 @@ def compute_pitcher_projection(
     opp_k_factor   = _cap(opp_k_pct / MLB_LEAGUE_AVG_K_PCT, 0.60, 1.60)
 
     # ── Park factor ────────────────────────────────────────────────────────────
-    runs_pf = _cap(float(park.get("runs_factor") or 1.0), 0.70, 1.30) if park else 1.0
+    runs_pf, _ = _park_environment_factors(matchup, park)
 
     # ── Adjusted per-start stats ──────────────────────────────────────────────
     # More Ks vs team that strikes out a lot:
@@ -384,6 +428,64 @@ def compute_pitcher_projection(
         win_prob=effective_win_prob,
     )
     return round(fpts, 2) if fpts > 0 else None
+
+
+def compute_projection_distribution(
+    projection: float | None,
+    pitcher_flag: bool,
+    matchup: dict | None = None,
+    park: dict | None = None,
+    is_home: bool = False,
+    expected_hr: float | None = None,
+    hr_prob_1plus: float | None = None,
+) -> tuple[float | None, float | None, float | None]:
+    """Return MLB-specific floor/ceiling/boom metrics.
+
+    Batters get an upside-sensitive distribution that leans on HR signal plus
+    game environment. Pitchers keep a simpler heuristic because their upside is
+    more smoothly related to projection than to one spiky event class.
+    """
+    if projection is None or not math.isfinite(projection) or projection <= 0:
+        return None, None, None
+
+    if pitcher_flag:
+        floor = max(0.0, projection * 0.42)
+        ceiling = projection * 1.65
+        boom_rate = _cap(0.04 + (projection / 85.0), 0.03, 0.42)
+        return round(floor, 2), round(ceiling, 2), round(boom_rate, 3)
+
+    hr_prob = _cap(float(hr_prob_1plus or 0.0), 0.0, 0.9999)
+    exp_hr = max(0.0, float(expected_hr or 0.0))
+
+    if matchup:
+        if is_home:
+            team_implied = float(matchup.get("home_implied") or (matchup.get("vegas_total") or 9.0) / 2.0)
+        else:
+            team_implied = float(matchup.get("away_implied") or (matchup.get("vegas_total") or 9.0) / 2.0)
+        _, hr_pf = _park_environment_factors(matchup, park)
+    else:
+        team_implied = 4.5
+        hr_pf = 1.0
+
+    team_total_boost = _cap((team_implied - MLB_LEAGUE_AVG_TEAM_TOTAL) / 2.0, -0.35, 0.75)
+    hr_env_boost = _cap((hr_pf - 1.0) / 0.35, -0.40, 0.85)
+    env_gate = 1.0 if (hr_prob >= 0.16 or exp_hr >= 0.16) else 0.0
+    floor_mult = _cap(0.14 + max(0.0, team_total_boost) * 0.01 * env_gate + max(0.0, hr_env_boost) * 0.005 * env_gate, 0.12, 0.22)
+    ceiling_mult = _cap(1.72 + max(0.0, team_total_boost) * 0.04 * env_gate + max(0.0, hr_env_boost) * 0.04 * env_gate, 1.55, 2.00)
+    ceiling_bonus = (hr_prob * 14.0) + (exp_hr * 4.0) + max(0.0, team_implied - 4.6) * 0.65 * env_gate
+    boom_rate = _cap(
+        0.03
+        + (projection / 255.0)
+        + (hr_prob * 0.62)
+        + (exp_hr * 0.12)
+        + max(0.0, team_total_boost) * 0.01 * env_gate
+        + max(0.0, hr_env_boost) * 0.01 * env_gate,
+        0.02,
+        0.62,
+    )
+    floor = max(0.0, projection * floor_mult)
+    ceiling = (projection * ceiling_mult) + ceiling_bonus
+    return round(floor, 2), round(ceiling, 2), round(boom_rate, 3)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -410,6 +512,91 @@ def _ml_to_raw(ml: int) -> float:
     if ml >= 0:
         return 100.0 / (ml + 100.0)
     return abs(ml) / (abs(ml) + 100.0)
+
+
+def _park_environment_factors(matchup: dict, park: dict | None) -> tuple[float, float]:
+    """Weather-adjust the base park factors for run scoring and HR carry."""
+    runs_pf = _cap(float(park.get("runs_factor") or 1.0), 0.70, 1.30) if park else 1.0
+    hr_pf = _cap(float(park.get("hr_factor") or 1.0), 0.70, 1.50) if park else 1.0
+
+    temp = _finite_float(matchup.get("weather_temp"))
+    if temp is not None:
+        temp_delta = _cap((temp - 72.0) / 18.0, -1.0, 1.0)
+        runs_pf *= 1.0 + temp_delta * 0.025
+        hr_pf *= 1.0 + temp_delta * 0.050
+
+    wind_speed = _finite_float(matchup.get("wind_speed"))
+    wind_lean = _wind_directional_lean(matchup.get("ballpark"), matchup.get("wind_direction"))
+    if wind_speed is not None and wind_lean != 0:
+        wind_scale = _cap((wind_speed - 4.0) / 16.0, 0.0, 1.0) * _wind_exposure(matchup.get("ballpark"))
+        runs_pf *= 1.0 + wind_lean * 0.030 * wind_scale
+        hr_pf *= 1.0 + wind_lean * 0.100 * wind_scale
+
+    return _cap(runs_pf, 0.68, 1.38), _cap(hr_pf, 0.65, 1.65)
+
+
+def _wind_directional_lean(ballpark: object, wind_direction: object) -> int:
+    if not wind_direction:
+        return 0
+    direction = str(wind_direction).strip().lower()
+    if "out" in direction:
+        return 1
+    if "in" in direction:
+        return -1
+
+    from_degrees = _compass_degrees(direction)
+    if from_degrees is None:
+        return 0
+    to_degrees = (from_degrees + 180.0) % 360.0
+    outfield_bearing = _outfield_bearing(ballpark)
+    diff = _angular_difference(to_degrees, outfield_bearing)
+    if diff <= 45.0:
+        return 1
+    if diff >= 135.0:
+        return -1
+    return 0
+
+
+def _outfield_bearing(ballpark: object) -> float:
+    _, bearing, _ = _park_metadata(ballpark)
+    return bearing
+
+
+def _wind_exposure(ballpark: object) -> float:
+    _, _, exposure = _park_metadata(ballpark)
+    return exposure
+
+
+def _park_metadata(ballpark: object) -> tuple[str, float, float]:
+    if not ballpark:
+        return "", _MLB_DEFAULT_OUTFIELD_BEARING, _MLB_DEFAULT_WIND_EXPOSURE
+    normalized = str(ballpark).strip().lower()
+    for alias, bearing, exposure in _MLB_PARK_ENV_METADATA:
+        if alias == normalized:
+            return alias, bearing, exposure
+    for alias, bearing, exposure in _MLB_PARK_ENV_METADATA:
+        if alias in normalized:
+            return alias, bearing, exposure
+    return normalized, _MLB_DEFAULT_OUTFIELD_BEARING, _MLB_DEFAULT_WIND_EXPOSURE
+
+
+def _compass_degrees(direction: str) -> float | None:
+    mapping = {
+        "n": 0.0,
+        "ne": 45.0,
+        "e": 90.0,
+        "se": 135.0,
+        "s": 180.0,
+        "sw": 225.0,
+        "w": 270.0,
+        "nw": 315.0,
+    }
+    return mapping.get(direction.strip().lower())
+
+
+def _angular_difference(a: float, b: float) -> float:
+    diff = abs(a - b) % 360.0
+    return 360.0 - diff if diff > 180.0 else diff
 
 
 def _cap(value: float, low: float, high: float) -> float:

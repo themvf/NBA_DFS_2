@@ -5616,9 +5616,45 @@ const MLB_LEAGUE_AVG_K_PCT     = 0.225;
 const MLB_LEAGUE_AVG_ISO       = 0.165;
 const MLB_LEAGUE_AVG_HR_PER_9  = 1.10;
 const MLB_LEAGUE_AVG_HR_FB     = 0.12;
+const MLB_DEFAULT_OUTFIELD_BEARING = 45;
+const MLB_DEFAULT_WIND_EXPOSURE = 1;
+const MLB_PARK_ENV_METADATA: Array<{ alias: string; bearing: number; exposure: number }> = [
+  { alias: "american family field", bearing: 10, exposure: 0.35 },
+  { alias: "angel stadium", bearing: 25, exposure: 1 },
+  { alias: "busch stadium", bearing: 20, exposure: 1 },
+  { alias: "chase field", bearing: 20, exposure: 0.35 },
+  { alias: "citi field", bearing: 25, exposure: 1 },
+  { alias: "citizens bank park", bearing: 25, exposure: 1 },
+  { alias: "comerica park", bearing: 20, exposure: 1 },
+  { alias: "coors field", bearing: 25, exposure: 1 },
+  { alias: "daikin park", bearing: 32, exposure: 0.35 },
+  { alias: "fenway park", bearing: 35, exposure: 1 },
+  { alias: "globe life field", bearing: 35, exposure: 0.35 },
+  { alias: "kauffman stadium", bearing: 15, exposure: 1 },
+  { alias: "loandepot park", bearing: 10, exposure: 0.35 },
+  { alias: "nationals park", bearing: 20, exposure: 1 },
+  { alias: "oracle park", bearing: 60, exposure: 1 },
+  { alias: "oriole park at camden yards", bearing: 45, exposure: 1 },
+  { alias: "camden yards", bearing: 45, exposure: 1 },
+  { alias: "petco park", bearing: 35, exposure: 1 },
+  { alias: "pnc park", bearing: 25, exposure: 1 },
+  { alias: "progressive field", bearing: 35, exposure: 1 },
+  { alias: "rate field", bearing: 35, exposure: 1 },
+  { alias: "rogers centre", bearing: 35, exposure: 0.35 },
+  { alias: "sutter health park", bearing: 35, exposure: 1 },
+  { alias: "t-mobile park", bearing: 45, exposure: 0.45 },
+  { alias: "target field", bearing: 30, exposure: 1 },
+  { alias: "tropicana field", bearing: 45, exposure: 0 },
+  { alias: "truist park", bearing: 35, exposure: 1 },
+  { alias: "wrigley field", bearing: 40, exposure: 1 },
+  { alias: "yankee stadium", bearing: 60, exposure: 1 },
+  { alias: "dodger stadium", bearing: 55, exposure: 1 },
+  { alias: "uniqlo field at dodger stadium", bearing: 55, exposure: 1 },
+  { alias: "great american ball park", bearing: 30, exposure: 1 },
+];
 const MLB_ORDER_PA_FACTOR: Record<number, number> = {
-  1: 1.08, 2: 1.12, 3: 1.10, 4: 1.04,
-  5: 1.00, 6: 0.96, 7: 0.93, 8: 0.90, 9: 0.88,
+  1: 1.03, 2: 1.13, 3: 1.10, 4: 1.05,
+  5: 1.00, 6: 0.98, 7: 0.97, 8: 0.92, 9: 0.90,
 };
 
 function mlbCap(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
@@ -5630,6 +5666,9 @@ function roundMlbMetric(value: number): number {
 function computeMlbProjectionDistribution(
   projection: number | null,
   pitcherFlag: boolean,
+  matchup: Record<string, unknown> | null,
+  park: Record<string, unknown> | null,
+  isHome: boolean,
   expectedHr: number | null,
   hrProb1Plus: number | null,
 ): { projFloor: number | null; projCeiling: number | null; boomRate: number | null } {
@@ -5647,10 +5686,30 @@ function computeMlbProjectionDistribution(
 
   const hrProb = mlbCap(hrProb1Plus ?? 0, 0, 0.9999);
   const expHr = Math.max(0, expectedHr ?? 0);
+  const implied = matchup
+    ? (isHome
+      ? ((matchup.homeImplied as number) || ((matchup.vegasTotal as number) || 9) / 2)
+      : ((matchup.awayImplied as number) || ((matchup.vegasTotal as number) || 9) / 2))
+    : MLB_LEAGUE_AVG_TEAM_TOTAL;
+  const { hrPf } = mlbEnvironmentFactors(matchup ?? {}, park);
+  const teamTotalBoost = mlbCap((implied - MLB_LEAGUE_AVG_TEAM_TOTAL) / 2, -0.35, 0.75);
+  const hrEnvBoost = mlbCap((hrPf - 1.0) / 0.35, -0.4, 0.85);
+  const envGate = (hrProb >= 0.16 || expHr >= 0.16) ? 1 : 0;
+  const floorMult = mlbCap(0.14 + Math.max(0, teamTotalBoost) * 0.01 * envGate + Math.max(0, hrEnvBoost) * 0.005 * envGate, 0.12, 0.22);
+  const ceilingMult = mlbCap(1.72 + Math.max(0, teamTotalBoost) * 0.04 * envGate + Math.max(0, hrEnvBoost) * 0.04 * envGate, 1.55, 2.0);
   return {
-    projFloor: roundMlbMetric(Math.max(0, projection * 0.14)),
-    projCeiling: roundMlbMetric((projection * 1.75) + (hrProb * 14) + (expHr * 4)),
-    boomRate: roundMlbMetric(mlbCap(0.035 + (projection / 220) + (hrProb * 0.62) + (expHr * 0.12), 0.02, 0.55)),
+    projFloor: roundMlbMetric(Math.max(0, projection * floorMult)),
+    projCeiling: roundMlbMetric((projection * ceilingMult) + (hrProb * 14) + (expHr * 4) + Math.max(0, implied - 4.6) * 0.65 * envGate),
+    boomRate: roundMlbMetric(mlbCap(
+      0.03
+      + (projection / 255)
+      + (hrProb * 0.62)
+      + (expHr * 0.12)
+      + Math.max(0, teamTotalBoost) * 0.01 * envGate
+      + Math.max(0, hrEnvBoost) * 0.01 * envGate,
+      0.02,
+      0.62,
+    )),
   };
 }
 
@@ -6173,6 +6232,80 @@ function dkPitcherFpts(ip: number, k: number, er: number, h: number, bb: number,
   return ip * 2.25 + k * 2 - er * 2 - h * 0.6 - bb * 0.6 + wp * 4;
 }
 
+function compassDegrees(direction: string): number | null {
+  const normalized = direction.trim().toLowerCase();
+  const mapping: Record<string, number> = {
+    n: 0,
+    ne: 45,
+    e: 90,
+    se: 135,
+    s: 180,
+    sw: 225,
+    w: 270,
+    nw: 315,
+  };
+  return mapping[normalized] ?? null;
+}
+
+function angularDifference(a: number, b: number): number {
+  const diff = Math.abs(a - b) % 360;
+  return diff > 180 ? 360 - diff : diff;
+}
+
+function mlbParkEnvMeta(ballpark: string | null | undefined): { alias: string; bearing: number; exposure: number } {
+  const normalized = ballpark?.trim().toLowerCase() ?? "";
+  const exact = MLB_PARK_ENV_METADATA.find((entry) => entry.alias === normalized);
+  if (exact) return exact;
+  const partial = MLB_PARK_ENV_METADATA.find((entry) => normalized.includes(entry.alias));
+  if (partial) return partial;
+  return { alias: normalized, bearing: MLB_DEFAULT_OUTFIELD_BEARING, exposure: MLB_DEFAULT_WIND_EXPOSURE };
+}
+
+function mlbWindDirectionalLean(matchup: Record<string, unknown>): number {
+  const rawDirection = matchup.windDirection;
+  if (typeof rawDirection !== "string" || rawDirection.trim().length === 0) return 0;
+  const normalized = rawDirection.trim().toLowerCase();
+  if (normalized.includes("out")) return 1;
+  if (normalized.includes("in")) return -1;
+
+  const fromDegrees = compassDegrees(rawDirection);
+  if (fromDegrees == null) return 0;
+  const outfieldBearing = mlbParkEnvMeta(typeof matchup.ballpark === "string" ? matchup.ballpark : null).bearing;
+  const toDegrees = (fromDegrees + 180) % 360;
+  const diff = angularDifference(toDegrees, outfieldBearing);
+  if (diff <= 45) return 1;
+  if (diff >= 135) return -1;
+  return 0;
+}
+
+function mlbEnvironmentFactors(
+  matchup: Record<string, unknown>,
+  park: Record<string, unknown> | null,
+): { runsPf: number; hrPf: number } {
+  let runsPf = mlbCap((park?.runsFactor as number) || 1.0, 0.7, 1.3);
+  let hrPf = mlbCap((park?.hrFactor as number) || 1.0, 0.7, 1.5);
+
+  const weatherTemp = typeof matchup.weatherTemp === "number" ? matchup.weatherTemp : null;
+  if (weatherTemp != null) {
+    const tempDelta = mlbCap((weatherTemp - 72) / 18, -1, 1);
+    runsPf *= 1 + tempDelta * 0.025;
+    hrPf *= 1 + tempDelta * 0.05;
+  }
+
+  const windSpeed = typeof matchup.windSpeed === "number" ? matchup.windSpeed : null;
+  const windLean = mlbWindDirectionalLean(matchup);
+  if (windSpeed != null && windLean !== 0) {
+    const windScale = mlbCap((windSpeed - 4) / 16, 0, 1) * mlbParkEnvMeta(typeof matchup.ballpark === "string" ? matchup.ballpark : null).exposure;
+    runsPf *= 1 + windLean * 0.03 * windScale;
+    hrPf *= 1 + windLean * 0.10 * windScale;
+  }
+
+  return {
+    runsPf: mlbCap(runsPf, 0.68, 1.38),
+    hrPf: mlbCap(hrPf, 0.65, 1.65),
+  };
+}
+
 function computeMlbBatterProj(
   b: Record<string, unknown>,
   matchup: Record<string, unknown>,
@@ -6194,8 +6327,7 @@ function computeMlbBatterProj(
     ? ((matchup.homeImplied as number) || ((matchup.vegasTotal as number) || 9) / 2)
     : ((matchup.awayImplied as number) || ((matchup.vegasTotal as number) || 9) / 2);
   const envFactor   = mlbCap(implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.5, 2.0);
-  const runsPf      = mlbCap((park?.runsFactor as number) || 1.0, 0.7, 1.3);
-  const hrPf        = mlbCap((park?.hrFactor  as number) || 1.0, 0.7, 1.5);
+  const { runsPf, hrPf } = mlbEnvironmentFactors(matchup, park);
   const orderFactor = confirmedOrder != null ? (MLB_ORDER_PA_FACTOR[confirmedOrder] || 1.0) : 1.0;
   let xfipFactor = 1.0;
   if (oppSp) {
@@ -6233,7 +6365,7 @@ function computeMlbBatterHrSignal(
     ? ((matchup.homeImplied as number) || ((matchup.vegasTotal as number) || 9) / 2)
     : ((matchup.awayImplied as number) || ((matchup.vegasTotal as number) || 9) / 2);
   const envFactor = mlbCap(implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.5, 2.0);
-  const hrPf = mlbCap((park?.hrFactor as number) || 1.0, 0.7, 1.5);
+  const { hrPf } = mlbEnvironmentFactors(matchup, park);
   const orderFactor = confirmedOrder != null ? (MLB_ORDER_PA_FACTOR[confirmedOrder] || 1.0) : 1.0;
 
   const iso = positiveMlbFloat(b.iso);
@@ -6297,7 +6429,7 @@ function computeMlbPitcherProj(
   const oppWrc  = oppTeam ? ((oppTeam.teamWrcPlus as number) || 100) : 100;
   const oppKPct = oppTeam ? ((oppTeam.teamKPct as number)   || MLB_LEAGUE_AVG_K_PCT) : MLB_LEAGUE_AVG_K_PCT;
   const owf = mlbCap(oppWrc / 100, 0.6, 1.6), okf = mlbCap(oppKPct / MLB_LEAGUE_AVG_K_PCT, 0.6, 1.6);
-  const runsPf  = mlbCap((park?.runsFactor as number) || 1.0, 0.7, 1.3);
+  const { runsPf } = mlbEnvironmentFactors(matchup, park);
   const histWin = (p.winPct as number) || 0;
   const teamWin = mlbWinProb(matchup, isHome);
   const effWin  = histWin > 0 ? (histWin + teamWin) / 2 : 0;
@@ -6709,6 +6841,9 @@ async function enrichAndSaveMlb(
     const distribution = computeMlbProjectionDistribution(
       sanitizeProjection(ourProj ?? linestarProj ?? p.avgFptsDk ?? null),
       pitcherFlag,
+      matchup as unknown as Record<string, unknown> | null,
+      park as unknown as Record<string, unknown> | null,
+      isHome,
       expectedHr,
       hrProb1Plus,
     );

@@ -20,8 +20,14 @@ type MatchupRow = {
   awayImplied: number | null;
   homeScore: number | null;
   awayScore: number | null;
+  parkRunsFactor: number | null;
+  weatherTemp: number | null;
+  windSpeed: number | null;
+  windDirection: string | null;
   homeSpXfip: number | null;
+  homeSpKPer9: number | null;
   awaySpXfip: number | null;
+  awaySpKPer9: number | null;
 };
 
 type TeamState = {
@@ -163,6 +169,58 @@ function thresholdProbability(
     : null;
 }
 
+const MLB_DEFAULT_OUTFIELD_BEARING = 45;
+const MLB_OUTFIELD_BEARINGS: Partial<Record<string, number>> = {
+  BOS: 35,
+  CHC: 40,
+  CIN: 30,
+  COL: 25,
+  DET: 20,
+  LAD: 55,
+  MIA: 10,
+  MIN: 30,
+  PIT: 25,
+  SF: 60,
+};
+
+function getCompassDegrees(direction: string): number | null {
+  const normalized = direction.trim().toUpperCase();
+  const mapping: Record<string, number> = {
+    N: 0,
+    NE: 45,
+    E: 90,
+    SE: 135,
+    S: 180,
+    SW: 225,
+    W: 270,
+    NW: 315,
+  };
+  return mapping[normalized] ?? null;
+}
+
+function angularDifference(a: number, b: number): number {
+  const diff = Math.abs(a - b) % 360;
+  return diff > 180 ? 360 - diff : diff;
+}
+
+function getMlbWindDirectionalLean(
+  homeAbbrev: string,
+  windDirection: string | null | undefined,
+): number {
+  if (!windDirection) return 0;
+  const normalized = windDirection.toLowerCase();
+  if (normalized.includes("out")) return 1;
+  if (normalized.includes("in")) return -1;
+  const fromDegrees = getCompassDegrees(windDirection);
+  if (fromDegrees == null) return 0;
+  const outfieldBearing = MLB_OUTFIELD_BEARINGS[homeAbbrev] ?? MLB_DEFAULT_OUTFIELD_BEARING;
+  const toDegrees = (fromDegrees + 180) % 360;
+  const diff = angularDifference(toDegrees, outfieldBearing);
+  if (diff <= 45) return 1;
+  if (diff >= 135) return -1;
+  return 0;
+}
+
 function getOuTierKey(total: number | null, sport: Sport): string | null {
   if (total == null) return null;
   if (sport === "mlb") {
@@ -251,6 +309,79 @@ function computeOuLegacy(
   return blendSignals(signals);
 }
 
+type MlbOuFeatureFlags = {
+  includeSpXfip: boolean;
+  includeSpK: boolean;
+  includePark: boolean;
+  includeTemp: boolean;
+  includeWind: boolean;
+};
+
+const MLB_OU_BASE_FEATURES: MlbOuFeatureFlags = {
+  includeSpXfip: true,
+  includeSpK: false,
+  includePark: false,
+  includeTemp: false,
+  includeWind: false,
+};
+
+const MLB_OU_FULL_FEATURES: MlbOuFeatureFlags = {
+  includeSpXfip: true,
+  includeSpK: true,
+  includePark: true,
+  includeTemp: true,
+  includeWind: true,
+};
+
+function computeMlbOuContextSignals(
+  row: MatchupRow,
+  flags: MlbOuFeatureFlags,
+): ScoreSignal[] {
+  const signals: ScoreSignal[] = [];
+
+  if (flags.includeSpXfip && row.homeSpXfip != null && row.awaySpXfip != null) {
+    const avgXfip = (row.homeSpXfip + row.awaySpXfip) / 2;
+    const edge = (avgXfip - 4.2) / 4.2;
+    signals.push({ label: "sp", value: clamp(0.5 + edge * 1.5, 0.3, 0.7), weight: 0.15 });
+  }
+
+  if (flags.includeSpK && row.homeSpKPer9 != null && row.awaySpKPer9 != null) {
+    const avgK9 = (row.homeSpKPer9 + row.awaySpKPer9) / 2;
+    const kEdge = (avgK9 - 8.6) / 8.6;
+    signals.push({ label: "sp_k", value: clamp(0.5 - kEdge * 0.35, 0.4, 0.6), weight: 0.1 });
+  }
+
+  if (flags.includePark && row.parkRunsFactor != null) {
+    signals.push({
+      label: "park",
+      value: clamp(0.5 + (row.parkRunsFactor - 1) * 0.35, 0.42, 0.58),
+      weight: 0.08,
+    });
+  }
+
+  if (flags.includeTemp && row.weatherTemp != null) {
+    signals.push({
+      label: "temp",
+      value: clamp(0.5 + ((row.weatherTemp - 72) / 25) * 0.05, 0.44, 0.56),
+      weight: 0.04,
+    });
+  }
+
+  if (flags.includeWind && row.windSpeed != null) {
+    const directionalLean = getMlbWindDirectionalLean(row.homeAbbrev, row.windDirection);
+    if (directionalLean !== 0) {
+      const cappedWind = clamp(row.windSpeed, 0, 20);
+      signals.push({
+        label: "wind",
+        value: clamp(0.5 + directionalLean * (cappedWind / 20) * 0.08, 0.42, 0.58),
+        weight: 0.06,
+      });
+    }
+  }
+
+  return signals;
+}
+
 function computeOuCurrent(
   row: MatchupRow,
   sport: Sport,
@@ -263,10 +394,8 @@ function computeOuCurrent(
   const away = getTeamState(teamMap, row.awayAbbrev);
   const signals: ScoreSignal[] = [];
 
-  if (sport === "mlb" && row.homeSpXfip != null && row.awaySpXfip != null) {
-    const avgXfip = (row.homeSpXfip + row.awaySpXfip) / 2;
-    const edge = (avgXfip - 4.2) / 4.2;
-    signals.push({ label: "sp", value: clamp(0.5 + edge * 1.5, 0.3, 0.7), weight: 0.15 });
+  if (sport === "mlb") {
+    signals.push(...computeMlbOuContextSignals(row, MLB_OU_FULL_FEATURES));
   }
 
   const tierRate = shrinkRate(
@@ -622,8 +751,14 @@ async function loadGamesForSport(sport: Sport): Promise<MatchupRow[]> {
         nm.away_implied as "awayImplied",
         nm.home_score as "homeScore",
         nm.away_score as "awayScore",
+        null::double precision as "parkRunsFactor",
+        null::double precision as "weatherTemp",
+        null::double precision as "windSpeed",
+        null::text as "windDirection",
         null::double precision as "homeSpXfip",
-        null::double precision as "awaySpXfip"
+        null::double precision as "homeSpKPer9",
+        null::double precision as "awaySpXfip",
+        null::double precision as "awaySpKPer9"
       from nba_matchups nm
       join teams ht on ht.team_id = nm.home_team_id
       join teams at on at.team_id = nm.away_team_id
@@ -638,7 +773,7 @@ async function loadGamesForSport(sport: Sport): Promise<MatchupRow[]> {
   const result = await db.execute(sql`
     with latest_pitcher as (
       select distinct on (player_id)
-        player_id, name, xfip
+        player_id, name, xfip, k_per_9
       from mlb_pitcher_stats
       order by player_id, season desc, fetched_at desc, id desc
     ),
@@ -646,9 +781,17 @@ async function loadGamesForSport(sport: Sport): Promise<MatchupRow[]> {
       select distinct on (lower(name))
         lower(name) as name_key,
         name,
-        xfip
+        xfip,
+        k_per_9
       from mlb_pitcher_stats
       order by lower(name), season desc, fetched_at desc, id desc
+    ),
+    latest_park as (
+      select distinct on (pf.team_id)
+        pf.team_id,
+        pf.runs_factor
+      from mlb_park_factors pf
+      order by pf.team_id, pf.season desc, pf.id desc
     )
     select
       m.game_date::text as "gameDate",
@@ -663,8 +806,14 @@ async function loadGamesForSport(sport: Sport): Promise<MatchupRow[]> {
       m.away_implied as "awayImplied",
       m.home_score as "homeScore",
       m.away_score as "awayScore",
+      park.runs_factor as "parkRunsFactor",
+      m.weather_temp::double precision as "weatherTemp",
+      m.wind_speed::double precision as "windSpeed",
+      m.wind_direction as "windDirection",
       coalesce(hsp_id.xfip, hsp_name.xfip) as "homeSpXfip",
-      coalesce(asp_id.xfip, asp_name.xfip) as "awaySpXfip"
+      coalesce(hsp_id.k_per_9, hsp_name.k_per_9) as "homeSpKPer9",
+      coalesce(asp_id.xfip, asp_name.xfip) as "awaySpXfip",
+      coalesce(asp_id.k_per_9, asp_name.k_per_9) as "awaySpKPer9"
     from mlb_matchups m
     join mlb_teams ht on ht.team_id = m.home_team_id
     join mlb_teams at on at.team_id = m.away_team_id
@@ -672,6 +821,7 @@ async function loadGamesForSport(sport: Sport): Promise<MatchupRow[]> {
     left join latest_pitcher asp_id on asp_id.player_id = m.away_sp_id
     left join latest_pitcher_by_name hsp_name on hsp_name.name_key = lower(m.home_sp_name)
     left join latest_pitcher_by_name asp_name on asp_name.name_key = lower(m.away_sp_name)
+    left join latest_park park on park.team_id = m.home_team_id
     where m.vegas_total is not null
       and m.home_score is not null
       and m.away_score is not null
@@ -1010,6 +1160,84 @@ function summarizeEval(evalResult: EvalAccumulator) {
   };
 }
 
+async function runMlbOuAblation() {
+  const games = await loadGamesForSport("mlb");
+  const variants: Array<{ key: string; label: string; flags: MlbOuFeatureFlags }> = [
+    { key: "baseline", label: "Baseline (xFIP only)", flags: { ...MLB_OU_BASE_FEATURES } },
+    { key: "plusPark", label: "+ Park", flags: { ...MLB_OU_BASE_FEATURES, includePark: true } },
+    { key: "plusTemp", label: "+ Temperature", flags: { ...MLB_OU_BASE_FEATURES, includeTemp: true } },
+    { key: "plusWind", label: "+ Wind", flags: { ...MLB_OU_BASE_FEATURES, includeWind: true } },
+    { key: "plusSpK", label: "+ Starter K/9", flags: { ...MLB_OU_BASE_FEATURES, includeSpK: true } },
+    { key: "parkTempWind", label: "+ Park + Temp + Wind", flags: { ...MLB_OU_BASE_FEATURES, includePark: true, includeTemp: true, includeWind: true } },
+    { key: "full", label: "Full Context", flags: { ...MLB_OU_FULL_FEATURES } },
+  ];
+
+  const reports = variants.map((variant) => {
+    const teamMap = new Map<string, TeamState>();
+    const ouTiers = new Map<string, TierState>();
+    const overall = initEval();
+    const actionable = initEval();
+
+    for (const row of games) {
+      if (row.homeScore == null || row.awayScore == null || row.vegasTotal == null) {
+        continue;
+      }
+      const tier = getOuTierKey(row.vegasTotal, "mlb");
+      const tierState = tier ? ouTiers.get(tier) : undefined;
+      const home = getTeamState(teamMap, row.homeAbbrev);
+      const away = getTeamState(teamMap, row.awayAbbrev);
+      const signals: ScoreSignal[] = [
+        ...computeMlbOuContextSignals(row, variant.flags),
+      ];
+
+      const tierRate = shrinkRate(safeRate(tierState?.overCount ?? 0, tierState?.n ?? 0), tierState?.n, 0.5, 60);
+      if (tierRate != null) {
+        const confidence = scaleSignalConfidence(tierState?.n, 12);
+        const value = blendTowardNeutral(tierRate, confidence);
+        if (value != null) signals.push({ label: "tier", value, weight: 0.20 });
+      }
+
+      const homeRate = shrinkRate(safeRate(home.gameOverCount, home.gameOverN), home.n, 0.5, 40);
+      if (homeRate != null) {
+        const confidence = scaleSignalConfidence(home.n, 30);
+        const value = blendTowardNeutral(homeRate, confidence);
+        if (value != null) signals.push({ label: "home", value, weight: 0.20 });
+      }
+
+      const awayRate = shrinkRate(safeRate(away.gameOverCount, away.gameOverN), away.n, 0.5, 40);
+      if (awayRate != null) {
+        const confidence = scaleSignalConfidence(away.n, 30);
+        const value = blendTowardNeutral(awayRate, confidence);
+        if (value != null) signals.push({ label: "away", value, weight: 0.20 });
+      }
+
+      const probability = blendSignals(signals);
+      const actualTotal = row.homeScore + row.awayScore;
+      const ouOutcome = actualTotal === row.vegasTotal ? null : actualTotal > row.vegasTotal ? 1 : 0;
+      updateEval(overall, probability, ouOutcome);
+      updateEval(actionable, thresholdProbability(probability, "mlb", "ou"), ouOutcome);
+
+      if (tier) {
+        const state = ouTiers.get(tier) ?? { n: 0, overCount: 0, coverCount: 0 };
+        state.n += 1;
+        state.overCount += actualTotal > row.vegasTotal ? 1 : 0;
+        ouTiers.set(tier, state);
+      }
+
+      updateTeamStates(teamMap, row, "mlb");
+    }
+
+    return {
+      key: variant.key,
+      label: variant.label,
+      overall: summarizeEval(overall),
+      actionable: summarizeEval(actionable),
+    };
+  });
+
+  return reports;
+}
+
 async function main() {
   loadDatabaseUrl();
   const sportArg = process.argv.find((entry) => entry.startsWith("--sport="));
@@ -1037,6 +1265,7 @@ async function main() {
 
   for (const sport of sports) {
     const report = await backtestSport(sport);
+    const mlbOuAblation = sport === "mlb" ? await runMlbOuAblation() : undefined;
     const output = {
       sport,
       games: report.games,
@@ -1065,6 +1294,7 @@ async function main() {
           actionableCurrent: summarizeEval(report.actionable.ml.current),
         },
       },
+      mlbOuAblation,
     };
     console.log(JSON.stringify(output, null, 2));
   }

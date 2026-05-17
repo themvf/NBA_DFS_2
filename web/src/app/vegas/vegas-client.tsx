@@ -81,6 +81,7 @@ function shrinkRate(
 
 /** MLB league-average xFIP (2025) — used to center the SP-quality factor. */
 const MLB_LEAGUE_AVG_XFIP = 4.2;
+const MLB_LEAGUE_AVG_K9 = 8.6;
 
 /** Per-factor contribution to a blended probability score. */
 export type ScoreSignal = { label: string; value: number; weight: number };
@@ -94,6 +95,58 @@ function blendSignals(signals: ScoreSignal[]): number | null {
   const totalW = signals.reduce((s, r) => s + r.weight, 0);
   if (totalW <= 0) return null;
   return signals.reduce((s, r) => s + r.value * r.weight, 0) / totalW;
+}
+
+const MLB_DEFAULT_OUTFIELD_BEARING = 45;
+const MLB_OUTFIELD_BEARINGS: Partial<Record<string, number>> = {
+  BOS: 35,
+  CHC: 40,
+  CIN: 30,
+  COL: 25,
+  DET: 20,
+  LAD: 55,
+  MIA: 10,
+  MIN: 30,
+  PIT: 25,
+  SF: 60,
+};
+
+function getCompassDegrees(direction: string): number | null {
+  const normalized = direction.trim().toUpperCase();
+  const mapping: Record<string, number> = {
+    N: 0,
+    NE: 45,
+    E: 90,
+    SE: 135,
+    S: 180,
+    SW: 225,
+    W: 270,
+    NW: 315,
+  };
+  return mapping[normalized] ?? null;
+}
+
+function angularDifference(a: number, b: number): number {
+  const diff = Math.abs(a - b) % 360;
+  return diff > 180 ? 360 - diff : diff;
+}
+
+function getMlbWindDirectionalLean(
+  homeAbbrev: string,
+  windDirection: string | null | undefined,
+): number {
+  if (!windDirection) return 0;
+  const normalized = windDirection.toLowerCase();
+  if (normalized.includes("out")) return 1;
+  if (normalized.includes("in")) return -1;
+  const fromDegrees = getCompassDegrees(windDirection);
+  if (fromDegrees == null) return 0;
+  const outfieldBearing = MLB_OUTFIELD_BEARINGS[homeAbbrev] ?? MLB_DEFAULT_OUTFIELD_BEARING;
+  const toDegrees = (fromDegrees + 180) % 360;
+  const diff = angularDifference(toDegrees, outfieldBearing);
+  if (diff <= 45) return 1;
+  if (diff >= 135) return -1;
+  return 0;
 }
 
 /** Map a game total to the historical O/U tier key (must match DB CASE labels). */
@@ -169,6 +222,32 @@ function computeOuScore(
     const xfipEdge = (avgXfip - MLB_LEAGUE_AVG_XFIP) / MLB_LEAGUE_AVG_XFIP;
     const spValue = clamp(0.5 + xfipEdge * 1.5, 0.3, 0.7);
     signals.push({ label: "SP quality", value: spValue, weight: 0.15 });
+  }
+
+  if (sport === "mlb" && m.homeSpKPer9 != null && m.awaySpKPer9 != null) {
+    const avgK9 = (m.homeSpKPer9 + m.awaySpKPer9) / 2;
+    const kEdge = (avgK9 - MLB_LEAGUE_AVG_K9) / MLB_LEAGUE_AVG_K9;
+    const strikeoutValue = clamp(0.5 - kEdge * 0.35, 0.4, 0.6);
+    signals.push({ label: "SP strikeout profile", value: strikeoutValue, weight: 0.1 });
+  }
+
+  if (sport === "mlb" && m.parkRunsFactor != null) {
+    const parkValue = clamp(0.5 + (m.parkRunsFactor - 1) * 0.35, 0.42, 0.58);
+    signals.push({ label: "Park run factor", value: parkValue, weight: 0.08 });
+  }
+
+  if (sport === "mlb" && m.weatherTemp != null) {
+    const tempValue = clamp(0.5 + ((m.weatherTemp - 72) / 25) * 0.05, 0.44, 0.56);
+    signals.push({ label: "Temperature", value: tempValue, weight: 0.04 });
+  }
+
+  if (sport === "mlb" && m.windSpeed != null) {
+    const directionalLean = getMlbWindDirectionalLean(m.homeAbbrev, m.windDirection);
+    if (directionalLean !== 0) {
+      const cappedWind = clamp(m.windSpeed, 0, 20);
+      const windValue = clamp(0.5 + directionalLean * (cappedWind / 20) * 0.08, 0.42, 0.58);
+      signals.push({ label: "Wind", value: windValue, weight: 0.06 });
+    }
   }
 
   const tierShrunk = shrinkRate(tierRow?.overRate, tierRow?.n, 0.5, sport === "mlb" ? 60 : 50);

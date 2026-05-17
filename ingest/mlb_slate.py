@@ -46,11 +46,11 @@ from ingest.dk_slate import (
 )
 from model.dfs_projections import (
     compute_leverage,
-    compute_monte_carlo,
 )
 from model.mlb_projections import (
     compute_batter_hr_signal,
     compute_batter_projection,
+    compute_projection_distribution,
     compute_pitcher_projection,
 )
 from model.mlb_ownership_model import predict_pool_ownership
@@ -69,10 +69,6 @@ MLB_DK_ABBREV_OVERRIDES: dict[str, str] = {
     "WAS": "WSH",   # FanGraphs uses WAS; DK uses WSH
 }
 
-# DK MLB boom thresholds (FPTS ≥ N defines a "boom" game for GPP targeting)
-_SP_BOOM_THRESHOLD  = 40.0   # starter:  40+ FPTS is tournament-winning
-_RP_BOOM_THRESHOLD  = 15.0   # reliever: rarely exceeds this range
-_BAT_BOOM_THRESHOLD = 25.0   # batter:   25+ FPTS in one game
 _MLB_PITCHER_OWNERSHIP_BUDGET = 200.0
 _MLB_HITTER_OWNERSHIP_BUDGET = 800.0
 _MLB_PITCHER_SOFTMAX_K = 2.0
@@ -684,7 +680,8 @@ def build_player_pool_mlb(
         SELECT id, home_team_id, away_team_id,
                home_sp_id, home_sp_name, away_sp_id, away_sp_name,
                vegas_total, home_ml, away_ml,
-               home_implied, away_implied, ballpark
+               home_implied, away_implied, ballpark,
+               weather_temp, wind_speed, wind_direction
         FROM mlb_matchups
         WHERE game_date = %s
         """,
@@ -1004,7 +1001,6 @@ def build_player_pool_mlb(
                     park=park,
                     is_home=is_home,
                 )
-                boom_threshold = _SP_BOOM_THRESHOLD if sp_flag else _RP_BOOM_THRESHOLD
             else:
                 opp_sp = sp_by_team.get(opp_team_id) if opp_team_id else None
                 our_proj = compute_batter_projection(
@@ -1025,12 +1021,16 @@ def build_player_pool_mlb(
                 )
                 if hr_signal:
                     expected_hr, hr_prob_1plus = hr_signal
-                boom_threshold = _BAT_BOOM_THRESHOLD
 
-            fpts_std = stats.get("fpts_std")
-            if our_proj and fpts_std and fpts_std > 0:
-                proj_floor, proj_ceiling, boom_rate = compute_monte_carlo(
-                    our_proj, float(fpts_std), boom_threshold=boom_threshold,
+            if our_proj:
+                proj_floor, proj_ceiling, boom_rate = compute_projection_distribution(
+                    projection=our_proj,
+                    pitcher_flag=pitcher_flag,
+                    matchup=matchup or {},
+                    park=park,
+                    is_home=is_home,
+                    expected_hr=expected_hr,
+                    hr_prob_1plus=hr_prob_1plus,
                 )
             if our_proj:
                 matched_stats += 1

@@ -30,7 +30,128 @@ from model.dfs_projections import compute_team_implied_total
 logger = logging.getLogger(__name__)
 
 MLB_API_BASE = "https://statsapi.mlb.com/api/v1"
+NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 NON_PLAYED_STATES = {"Cancelled", "Postponed"}
+
+
+def _build_mlb_team_context_cache(db: DatabaseManager) -> dict[int, dict[str, str | None]]:
+    rows = db.execute("SELECT team_id, city, ballpark FROM mlb_teams")
+    return {
+        int(row["team_id"]): {
+            "city": row.get("city"),
+            "ballpark": row.get("ballpark"),
+        }
+        for row in rows
+    }
+
+
+def _to_compass(degrees: float | None) -> str | None:
+    if degrees is None:
+        return None
+    directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    idx = round((degrees % 360) / 45) % len(directions)
+    return directions[idx]
+
+
+def _nearest_hour_index(times: list[str], target_iso: str) -> int | None:
+    if not times:
+        return None
+    try:
+        target = datetime.fromisoformat(target_iso.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    best_idx: int | None = None
+    best_delta: float | None = None
+    for idx, ts in enumerate(times):
+        try:
+            point = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if point.tzinfo is None:
+                point = point.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        delta = abs((point - target).total_seconds())
+        if best_delta is None or delta < best_delta:
+            best_delta = delta
+            best_idx = idx
+    return best_idx
+
+
+def _geocode_ballpark(
+    query: str,
+    *,
+    timeout_seconds: int,
+    cache: dict[str, tuple[float, float] | None],
+) -> tuple[float, float] | None:
+    if query in cache:
+        return cache[query]
+    try:
+        resp = requests.get(
+            NOMINATIM_SEARCH_URL,
+            params={"q": query, "format": "jsonv2", "limit": 1},
+            headers={"User-Agent": "NBADFS_v2/1.0"},
+            timeout=timeout_seconds,
+        )
+        resp.raise_for_status()
+        results = resp.json() or []
+        if results:
+            match = results[0]
+            coords = (float(match["lat"]), float(match["lon"]))
+            cache[query] = coords
+            return coords
+    except requests.RequestException as exc:
+        logger.debug("Nominatim geocode failed for %s: %s", query, exc)
+    cache[query] = None
+    return None
+
+
+def _fetch_weather_snapshot(
+    *,
+    latitude: float,
+    longitude: float,
+    game_start_iso: str,
+    timeout_seconds: int,
+) -> tuple[int | None, int | None, str | None]:
+    try:
+        game_start = datetime.fromisoformat(game_start_iso.replace("Z", "+00:00"))
+    except ValueError:
+        return (None, None, None)
+
+    endpoint = OPEN_METEO_ARCHIVE_URL if game_start.date() < datetime.now(timezone.utc).date() else OPEN_METEO_FORECAST_URL
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": "temperature_2m,wind_speed_10m,wind_direction_10m",
+        "temperature_unit": "fahrenheit",
+        "wind_speed_unit": "mph",
+        "start_date": game_start.date().isoformat(),
+        "end_date": game_start.date().isoformat(),
+        "timezone": "UTC",
+    }
+    try:
+        resp = requests.get(endpoint, params=params, timeout=timeout_seconds)
+        resp.raise_for_status()
+        payload = resp.json() or {}
+    except requests.RequestException as exc:
+        logger.debug("Open-Meteo weather fetch failed for %.4f, %.4f: %s", latitude, longitude, exc)
+        return (None, None, None)
+
+    hourly = payload.get("hourly") or {}
+    times = hourly.get("time") or []
+    idx = _nearest_hour_index(times, game_start_iso)
+    if idx is None:
+        return (None, None, None)
+
+    temps = hourly.get("temperature_2m") or []
+    winds = hourly.get("wind_speed_10m") or []
+    wind_dirs = hourly.get("wind_direction_10m") or []
+
+    temp = round(float(temps[idx])) if idx < len(temps) and temps[idx] is not None else None
+    wind_speed = round(float(winds[idx])) if idx < len(winds) and winds[idx] is not None else None
+    wind_direction = _to_compass(float(wind_dirs[idx])) if idx < len(wind_dirs) and wind_dirs[idx] is not None else None
+    return (temp, wind_speed, wind_direction)
 
 
 def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[int]:
@@ -67,6 +188,9 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
         return []
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
+    team_context_cache = _build_mlb_team_context_cache(db)
+    geocode_cache: dict[str, tuple[float, float] | None] = {}
+    weather_timeout = load_config().mlb_api.timeout_seconds
 
     matchup_ids: list[int] = []
     skipped_non_played = 0
@@ -78,6 +202,7 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
             continue
 
         game_id    = str(game.get("gamePk", ""))
+        game_start = game.get("gameDate")
         home_info  = game.get("teams", {}).get("home", {})
         away_info  = game.get("teams", {}).get("away", {})
 
@@ -104,6 +229,36 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
         away_sp_id = away_info.get("probablePitcher", {}).get("id")
         away_sp_name = away_info.get("probablePitcher", {}).get("fullName")
         ballpark   = game.get("venue", {}).get("name")
+        team_context = team_context_cache.get(home_team_id, {})
+        query_ballpark = ballpark or team_context.get("ballpark")
+        query_city = team_context.get("city")
+        weather_temp: int | None = None
+        wind_speed: int | None = None
+        wind_direction: str | None = None
+
+        if game_start and query_ballpark:
+            geocode_queries = []
+            if query_city:
+                geocode_queries.append(f"{query_ballpark}, {query_city}")
+                geocode_queries.append(query_city)
+            geocode_queries.append(query_ballpark)
+
+            coords = None
+            for geocode_query in geocode_queries:
+                coords = _geocode_ballpark(
+                    geocode_query,
+                    timeout_seconds=weather_timeout,
+                    cache=geocode_cache,
+                )
+                if coords is not None:
+                    break
+            if coords is not None:
+                weather_temp, wind_speed, wind_direction = _fetch_weather_snapshot(
+                    latitude=coords[0],
+                    longitude=coords[1],
+                    game_start_iso=game_start,
+                    timeout_seconds=weather_timeout,
+                )
 
         mid = upsert_mlb_matchup(
             db,
@@ -116,6 +271,9 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
             away_sp_id=away_sp_id,
             away_sp_name=away_sp_name,
             ballpark=ballpark,
+            weather_temp=weather_temp,
+            wind_speed=wind_speed,
+            wind_direction=wind_direction,
         )
         if mid:
             matchup_ids.append(mid)

@@ -780,6 +780,9 @@ def upsert_mlb_matchup(
     home_implied: float | None = None,
     away_implied: float | None = None,
     ballpark: str | None = None,
+    weather_temp: int | None = None,
+    wind_speed: int | None = None,
+    wind_direction: str | None = None,
 ) -> int:
     row = db.execute_one(
         """
@@ -787,9 +790,10 @@ def upsert_mlb_matchup(
             game_date, game_id, home_team_id, away_team_id,
             home_sp_id, home_sp_name, away_sp_id, away_sp_name,
             vegas_total, home_ml, away_ml, vegas_prob_home,
-            home_implied, away_implied, ballpark
+            home_implied, away_implied, ballpark,
+            weather_temp, wind_speed, wind_direction
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
             game_id        = COALESCE(EXCLUDED.game_id, mlb_matchups.game_id),
             home_sp_id     = COALESCE(EXCLUDED.home_sp_id, mlb_matchups.home_sp_id),
@@ -803,6 +807,9 @@ def upsert_mlb_matchup(
             home_implied   = COALESCE(EXCLUDED.home_implied, mlb_matchups.home_implied),
             away_implied   = COALESCE(EXCLUDED.away_implied, mlb_matchups.away_implied),
             ballpark       = COALESCE(EXCLUDED.ballpark, mlb_matchups.ballpark),
+            weather_temp   = COALESCE(EXCLUDED.weather_temp, mlb_matchups.weather_temp),
+            wind_speed     = COALESCE(EXCLUDED.wind_speed, mlb_matchups.wind_speed),
+            wind_direction = COALESCE(EXCLUDED.wind_direction, mlb_matchups.wind_direction),
             fetched_at     = NOW()
         RETURNING id
         """,
@@ -811,6 +818,7 @@ def upsert_mlb_matchup(
             home_sp_id, home_sp_name, away_sp_id, away_sp_name,
             vegas_total, home_ml, away_ml, vegas_prob_home,
             home_implied, away_implied, ballpark,
+            weather_temp, wind_speed, wind_direction,
         ),
     )
     return row["id"] if row else 0

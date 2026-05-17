@@ -5995,6 +5995,11 @@ export type VegasMatchupRow = {
   awayImplied: number | null;
   homeScore: number | null;
   awayScore: number | null;
+  ballpark: string | null;
+  parkRunsFactor: number | null;
+  weatherTemp: number | null;
+  windSpeed: number | null;
+  windDirection: string | null;
   // MLB-only SP fields (null for NBA)
   homeSpName: string | null;
   homeSpHand: string | null;
@@ -6047,6 +6052,11 @@ export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupR
     awayImplied: r.awayImplied != null ? Number(r.awayImplied) : null,
     homeScore: r.homeScore != null ? Number(r.homeScore) : null,
     awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+    ballpark: null,
+    parkRunsFactor: null,
+    weatherTemp: null,
+    windSpeed: null,
+    windDirection: null,
     homeSpName: null,
     homeSpHand: null,
     homeSpXfip: null,
@@ -6247,6 +6257,13 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
         xfip
       FROM mlb_pitcher_stats
       ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
+    ),
+    latest_park AS (
+      SELECT DISTINCT ON (pf.team_id)
+        pf.team_id,
+        pf.runs_factor
+      FROM mlb_park_factors pf
+      ORDER BY pf.team_id, pf.season DESC, pf.id DESC
     )
     SELECT
       m.id             AS "matchupId",
@@ -6264,6 +6281,11 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
       m.away_implied   AS "awayImplied",
       m.home_score     AS "homeScore",
       m.away_score     AS "awayScore",
+      m.ballpark       AS "ballpark",
+      park.runs_factor AS "parkRunsFactor",
+      m.weather_temp   AS "weatherTemp",
+      m.wind_speed     AS "windSpeed",
+      m.wind_direction AS "windDirection",
       COALESCE(m.home_sp_name, hsp_id.name, hsp_name.name) AS "homeSpName",
       COALESCE(hsp_id.hand, hsp_name.hand) AS "homeSpHand",
       COALESCE(hsp_id.xfip, hsp_name.xfip) AS "homeSpXfip",
@@ -6279,6 +6301,7 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
     LEFT JOIN latest_pitcher asp_id ON asp_id.player_id = m.away_sp_id
     LEFT JOIN latest_pitcher_by_name hsp_name ON hsp_name.name_key = LOWER(m.home_sp_name)
     LEFT JOIN latest_pitcher_by_name asp_name ON asp_name.name_key = LOWER(m.away_sp_name)
+    LEFT JOIN latest_park park ON park.team_id = m.home_team_id
     WHERE m.game_date = ${targetDate}
     ORDER BY m.vegas_total DESC NULLS LAST
   `);
@@ -6298,6 +6321,11 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
     awayImplied: r.awayImplied != null ? Number(r.awayImplied) : null,
     homeScore: r.homeScore != null ? Number(r.homeScore) : null,
     awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+    ballpark: r.ballpark != null ? String(r.ballpark) : null,
+    parkRunsFactor: r.parkRunsFactor != null ? Number(r.parkRunsFactor) : null,
+    weatherTemp: r.weatherTemp != null ? Number(r.weatherTemp) : null,
+    windSpeed: r.windSpeed != null ? Number(r.windSpeed) : null,
+    windDirection: r.windDirection != null ? String(r.windDirection) : null,
     homeSpName: r.homeSpName != null ? String(r.homeSpName) : null,
     homeSpHand: r.homeSpHand != null ? String(r.homeSpHand) : null,
     homeSpXfip: r.homeSpXfip != null ? Number(r.homeSpXfip) : null,
