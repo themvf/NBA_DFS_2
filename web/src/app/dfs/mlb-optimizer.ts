@@ -89,7 +89,12 @@ const MLB_BATTER_BEAM_WIDTH = 120;
 const MLB_BATTER_BRANCH_LIMIT = 12;
 const MLB_GLOBAL_BATTER_KEEP_COUNT = 48;
 const MLB_TEAM_BATTER_KEEP_COUNT = 10;
-const MLB_CHEAP_BATTER_KEEP_COUNT = 10;
+const MLB_CHEAP_BATTER_KEEP_COUNT = 4;
+const MLB_CHEAP_BATTER_SALARY_MAX = 2500;
+const MLB_CHEAP_BATTER_MIN_PROJ = 6.5;
+const MLB_CHEAP_BATTER_MIN_CEILING = 14.0;
+const MLB_CHEAP_BATTER_MIN_HR_PROB = 0.12;
+const MLB_CHEAP_BATTER_MIN_EXPECTED_HR = 0.16;
 const MLB_CASH_LEVERAGE_WEIGHT = 0.1;
 const MLB_LEAGUE_AVG_TEAM_TOTAL = 4.5;
 const MLB_PITCHER_CEILING_BONUSES = [2.5, 1.75, 1.0, 0.5, 0.25] as const;
@@ -254,6 +259,7 @@ function filterEligibleMlbPool(
     if (player.isOut) return false;
     if (blockedPlayers.has(player.id)) return false;
     if (player.teamId != null && blockedTeams.has(player.teamId)) return false;
+    if (!isPitcher(player.eligiblePositions) && !isViableCheapMlbBatter(player)) return false;
     return getMlbProjection(player) > 0 && player.salary > 0;
   });
 }
@@ -352,6 +358,21 @@ function getMlbHrUpsideScore(player: MlbOptimizerPlayer): number {
     + (expectedHr * 4)
     + (boomRate * 16)
     + (getMlbHrCeilingSignal(player) * 2);
+}
+
+function isViableCheapMlbBatter(player: MlbOptimizerPlayer): boolean {
+  if (isPitcher(player.eligiblePositions)) return true;
+  if (player.salary > MLB_CHEAP_BATTER_SALARY_MAX) return true;
+
+  const projection = getMlbProjection(player);
+  const ceiling = finiteOrNull(player.projCeiling) ?? 0;
+  const hrProb = getMlbHrProbability(player);
+  const expectedHr = getMlbExpectedHr(player);
+
+  return projection >= MLB_CHEAP_BATTER_MIN_PROJ
+    || ceiling >= MLB_CHEAP_BATTER_MIN_CEILING
+    || hrProb >= MLB_CHEAP_BATTER_MIN_HR_PROB
+    || expectedHr >= MLB_CHEAP_BATTER_MIN_EXPECTED_HR;
 }
 
 function isHighOwnedMlbPlayer(player: MlbOptimizerPlayer, mode: OptimizerMode): boolean {
@@ -783,6 +804,7 @@ function addTopMlbPlayers(keepIds: Set<number>, players: MlbOptimizerPlayer[], c
 
 function addCheapestMlbPlayers(keepIds: Set<number>, players: MlbOptimizerPlayer[], count: number) {
   const cheapest = [...players]
+    .filter((player) => isViableCheapMlbBatter(player))
     .sort((a, b) => a.salary - b.salary || compareMlbPlayers(a, b, "cash"))
     .slice(0, count);
   for (const player of cheapest) {
@@ -1100,7 +1122,8 @@ function solveMlbLineup(
 ): MlbGeneratedLineup | null {
   const eligible = pool
     .filter((player) => (exposureCount.get(player.id) ?? 0) < maxExposureCount)
-    .filter((player) => !player.isOut && getMlbProjection(player) > 0 && player.salary > 0);
+    .filter((player) => !player.isOut && getMlbProjection(player) > 0 && player.salary > 0)
+    .filter((player) => isPitcher(player.eligiblePositions) || isViableCheapMlbBatter(player));
   if (eligible.length < MLB_ROSTER_SIZE) return null;
 
   const lockedIds = new Set(ruleSelections.playerLocks);
