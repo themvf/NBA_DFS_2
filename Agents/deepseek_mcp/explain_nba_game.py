@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +85,12 @@ def round_diff(a: Any, b: Any, digits: int = 3) -> float | None:
     if a is None or b is None:
         return None
     return round(float(a) - float(b), digits)
+
+
+def average(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 3)
 
 
 @dataclass
@@ -183,9 +190,18 @@ def parse_clock_seconds(clock_value: Any) -> float | None:
         return None
 
 
+@lru_cache(maxsize=128)
 def fetch_box_score(game_id: str) -> dict[str, Any]:
-    traditional = BoxScoreTraditionalV3(game_id=game_id, timeout=60)
-    advanced = BoxScoreAdvancedV3(game_id=game_id, timeout=60)
+    from ingest.nba_stats import _call_with_retry
+
+    traditional = _call_with_retry(
+        lambda: BoxScoreTraditionalV3(game_id=game_id, timeout=90),
+        f"BoxScoreTraditionalV3-{game_id}",
+    )
+    advanced = _call_with_retry(
+        lambda: BoxScoreAdvancedV3(game_id=game_id, timeout=90),
+        f"BoxScoreAdvancedV3-{game_id}",
+    )
 
     traditional_players = _dataset_to_rows(traditional.player_stats)
     traditional_teams = _dataset_to_rows(traditional.team_stats)
@@ -258,8 +274,211 @@ def fetch_box_score(game_id: str) -> dict[str, Any]:
     }
 
 
+def load_prior_team_games(
+    db: DatabaseManager,
+    team_abbrev: str,
+    before_date: str,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT
+            nm.game_date::TEXT AS game_date,
+            nm.game_id,
+            home.abbreviation AS home_abbrev,
+            away.abbreviation AS away_abbrev,
+            nm.home_score,
+            nm.away_score
+        FROM nba_matchups nm
+        JOIN teams home ON home.team_id = nm.home_team_id
+        JOIN teams away ON away.team_id = nm.away_team_id
+        WHERE nm.game_date < %s
+          AND nm.home_score IS NOT NULL
+          AND nm.away_score IS NOT NULL
+          AND nm.game_id IS NOT NULL
+          AND (home.abbreviation = %s OR away.abbreviation = %s)
+        ORDER BY nm.game_date DESC, nm.id DESC
+        LIMIT %s
+        """,
+        (before_date, team_abbrev, team_abbrev, limit),
+    )
+    return [dict(row) for row in rows]
+
+
+def load_prior_head_to_head_games(
+    db: DatabaseManager,
+    team_a: str,
+    team_b: str,
+    before_date: str,
+    limit: int = 7,
+) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT
+            nm.game_date::TEXT AS game_date,
+            nm.game_id,
+            home.abbreviation AS home_abbrev,
+            away.abbreviation AS away_abbrev,
+            nm.home_score,
+            nm.away_score
+        FROM nba_matchups nm
+        JOIN teams home ON home.team_id = nm.home_team_id
+        JOIN teams away ON away.team_id = nm.away_team_id
+        WHERE nm.game_date < %s
+          AND nm.home_score IS NOT NULL
+          AND nm.away_score IS NOT NULL
+          AND nm.game_id IS NOT NULL
+          AND (
+            (home.abbreviation = %s AND away.abbreviation = %s)
+            OR (home.abbreviation = %s AND away.abbreviation = %s)
+          )
+        ORDER BY nm.game_date DESC, nm.id DESC
+        LIMIT %s
+        """,
+        (before_date, team_a, team_b, team_b, team_a, limit),
+    )
+    return [dict(row) for row in rows]
+
+
+def extract_team_snapshot(game_row: dict[str, Any], team_abbrev: str) -> dict[str, Any]:
+    box = fetch_box_score(str(game_row["game_id"]))
+    team_line = box["teams"][team_abbrev]
+    opponent_abbrev = game_row["away_abbrev"] if game_row["home_abbrev"] == team_abbrev else game_row["home_abbrev"]
+    opponent_line = box["teams"][opponent_abbrev]
+    team_score = game_row["home_score"] if game_row["home_abbrev"] == team_abbrev else game_row["away_score"]
+    opp_score = game_row["away_score"] if game_row["home_abbrev"] == team_abbrev else game_row["home_score"]
+    return {
+        "gameDate": game_row["game_date"],
+        "opponent": opponent_abbrev,
+        "won": team_score > opp_score,
+        "margin": team_score - opp_score,
+        "points": team_score,
+        "oppPoints": opp_score,
+        "fgPct": team_line.get("fg_pct"),
+        "threePct": team_line.get("three_pct"),
+        "efgPct": team_line.get("efg_pct"),
+        "tsPct": team_line.get("ts_pct"),
+        "offRtg": team_line.get("offensive_rating"),
+        "pace": team_line.get("pace"),
+        "starterPoints": (team_line.get("points") or 0) - (team_line.get("bench_points") or 0)
+        if team_line.get("points") is not None and team_line.get("bench_points") is not None else None,
+        "benchPoints": team_line.get("bench_points"),
+        "oppFgPct": opponent_line.get("fg_pct"),
+        "oppThreePct": opponent_line.get("three_pct"),
+    }
+
+
+def safe_extract_team_snapshot(game_row: dict[str, Any], team_abbrev: str) -> dict[str, Any] | None:
+    try:
+        return extract_team_snapshot(game_row, team_abbrev)
+    except Exception:
+        return None
+
+
+def summarize_snapshots(snapshots: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "games": len(snapshots),
+        "wins": sum(1 for snap in snapshots if snap["won"]),
+        "avgMargin": average([float(snap["margin"]) for snap in snapshots]),
+        "avgPoints": average([float(snap["points"]) for snap in snapshots]),
+        "avgOppPoints": average([float(snap["oppPoints"]) for snap in snapshots]),
+        "avgFgPct": average([float(snap["fgPct"]) for snap in snapshots if snap["fgPct"] is not None]),
+        "avgThreePct": average([float(snap["threePct"]) for snap in snapshots if snap["threePct"] is not None]),
+        "avgEfgPct": average([float(snap["efgPct"]) for snap in snapshots if snap["efgPct"] is not None]),
+        "avgTsPct": average([float(snap["tsPct"]) for snap in snapshots if snap["tsPct"] is not None]),
+        "avgOffRtg": average([float(snap["offRtg"]) for snap in snapshots if snap["offRtg"] is not None]),
+        "avgPace": average([float(snap["pace"]) for snap in snapshots if snap["pace"] is not None]),
+        "avgStarterPoints": average([float(snap["starterPoints"]) for snap in snapshots if snap["starterPoints"] is not None]),
+        "avgBenchPoints": average([float(snap["benchPoints"]) for snap in snapshots if snap["benchPoints"] is not None]),
+    }
+
+
+def build_recent_form_context(
+    db: DatabaseManager,
+    current_game_date: str,
+    team_abbrev: str,
+    current_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    recent_games = load_prior_team_games(db, team_abbrev, current_game_date, limit=3)
+    recent_snapshots = [
+        snapshot for snapshot in
+        (safe_extract_team_snapshot(row, team_abbrev) for row in recent_games)
+        if snapshot is not None
+    ]
+    summary = summarize_snapshots(recent_snapshots)
+    current_vs_recent = {
+        "pointsDiff": round_diff(current_snapshot.get("points"), summary.get("avgPoints"), 1),
+        "fgPctDiff": round_diff(current_snapshot.get("fgPct"), summary.get("avgFgPct")),
+        "threePctDiff": round_diff(current_snapshot.get("threePct"), summary.get("avgThreePct")),
+        "tsPctDiff": round_diff(current_snapshot.get("tsPct"), summary.get("avgTsPct")),
+        "offRtgDiff": round_diff(current_snapshot.get("offRtg"), summary.get("avgOffRtg"), 1),
+        "starterPointsDiff": round_diff(current_snapshot.get("starterPoints"), summary.get("avgStarterPoints"), 1),
+        "benchPointsDiff": round_diff(current_snapshot.get("benchPoints"), summary.get("avgBenchPoints"), 1),
+    }
+    return {
+        "recentGames": recent_snapshots,
+        "summary": summary,
+        "currentVsRecent": current_vs_recent,
+    }
+
+
+def build_series_context(
+    db: DatabaseManager,
+    current_game_date: str,
+    away_team: str,
+    home_team: str,
+    current_away_snapshot: dict[str, Any],
+    current_home_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    prior_games = load_prior_head_to_head_games(db, away_team, home_team, current_game_date, limit=3)
+    away_snaps = [
+        snapshot for snapshot in
+        (safe_extract_team_snapshot(row, away_team) for row in prior_games)
+        if snapshot is not None
+    ]
+    home_snaps = [
+        snapshot for snapshot in
+        (safe_extract_team_snapshot(row, home_team) for row in prior_games)
+        if snapshot is not None
+    ]
+    away_summary = summarize_snapshots(away_snaps)
+    home_summary = summarize_snapshots(home_snaps)
+    return {
+        "priorGames": len(prior_games),
+        "recentHeadToHead": [
+            {
+                "gameDate": row["game_date"],
+                "matchup": f"{row['away_abbrev']} @ {row['home_abbrev']}",
+                "finalScore": f"{row['away_abbrev']} {row['away_score']} - {row['home_abbrev']} {row['home_score']}",
+            }
+            for row in prior_games
+        ],
+        "teamSummary": {
+            away_team: away_summary,
+            home_team: home_summary,
+        },
+        "currentVsSeries": {
+            away_team: {
+                "pointsDiff": round_diff(current_away_snapshot.get("points"), away_summary.get("avgPoints"), 1),
+                "threePctDiff": round_diff(current_away_snapshot.get("threePct"), away_summary.get("avgThreePct")),
+                "tsPctDiff": round_diff(current_away_snapshot.get("tsPct"), away_summary.get("avgTsPct")),
+            },
+            home_team: {
+                "pointsDiff": round_diff(current_home_snapshot.get("points"), home_summary.get("avgPoints"), 1),
+                "threePctDiff": round_diff(current_home_snapshot.get("threePct"), home_summary.get("avgThreePct")),
+                "tsPctDiff": round_diff(current_home_snapshot.get("tsPct"), home_summary.get("avgTsPct")),
+            },
+        },
+    }
+
+
 def fetch_play_by_play_summary(game_id: str, home_team: str, away_team: str) -> dict[str, Any]:
-    pbp = PlayByPlayV3(game_id=game_id, timeout=60)
+    from ingest.nba_stats import _call_with_retry
+
+    pbp = _call_with_retry(
+        lambda: PlayByPlayV3(game_id=game_id, timeout=90),
+        f"PlayByPlayV3-{game_id}",
+    )
     rows = _dataset_to_rows(pbp.play_by_play)
     scoring_rows = [
         row for row in rows
@@ -429,6 +648,26 @@ def build_game_context(
     players = box["players"]
     home_minute_summary = summarize_team_minutes(players, home_team)
     away_minute_summary = summarize_team_minutes(players, away_team)
+    current_home_snapshot = {
+        "points": home_score,
+        "fgPct": home_box.get("fg_pct"),
+        "threePct": home_box.get("three_pct"),
+        "tsPct": home_box.get("ts_pct"),
+        "offRtg": home_box.get("offensive_rating"),
+        "starterPoints": (home_box.get("points") or 0) - (home_box.get("bench_points") or 0)
+        if home_box.get("points") is not None and home_box.get("bench_points") is not None else None,
+        "benchPoints": home_box.get("bench_points"),
+    }
+    current_away_snapshot = {
+        "points": away_score,
+        "fgPct": away_box.get("fg_pct"),
+        "threePct": away_box.get("three_pct"),
+        "tsPct": away_box.get("ts_pct"),
+        "offRtg": away_box.get("offensive_rating"),
+        "starterPoints": (away_box.get("points") or 0) - (away_box.get("bench_points") or 0)
+        if away_box.get("points") is not None and away_box.get("bench_points") is not None else None,
+        "benchPoints": away_box.get("bench_points"),
+    }
     top_players = sorted(
         [row for row in players if not row.get("comment")],
         key=lambda row: (
@@ -563,6 +802,18 @@ def build_game_context(
             continue
         edge_candidates.append({"label": label, "team": team, "value": value})
     largest_team_edge = max(edge_candidates, key=lambda item: abs(float(item["value"])), default=None)
+    recent_form = {
+        away_team: build_recent_form_context(db, game_date, away_team, current_away_snapshot),
+        home_team: build_recent_form_context(db, game_date, home_team, current_home_snapshot),
+    }
+    series_context = build_series_context(
+        db,
+        current_game_date=game_date,
+        away_team=away_team,
+        home_team=home_team,
+        current_away_snapshot=current_away_snapshot,
+        current_home_snapshot=current_home_snapshot,
+    )
 
     return {
         "game": {
@@ -628,6 +879,8 @@ def build_game_context(
         "starterVsBenchProduction": starter_vs_bench,
         "shootingGapSummary": shooting_gap_summary,
         "largestTeamEdge": largest_team_edge,
+        "recentForm": recent_form,
+        "seriesContext": series_context,
         "playByPlaySummary": pbp_summary,
         "evidenceFlags": evidence_flags,
         "topPlayers": top_players_by_team,

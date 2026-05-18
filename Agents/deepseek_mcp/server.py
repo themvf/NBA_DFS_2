@@ -107,15 +107,16 @@ def explain_game_outcome_message(
           do not make that claim.
         - If the input includes deterministic summary fields such as
           shootingGapSummary, starterVsBenchProduction, largestTeamEdge,
-          minuteSummary, or playByPlaySummary, prefer those over re-deriving
-          the same conclusions from raw box score fields.
+          minuteSummary, playByPlaySummary, recentForm, or seriesContext,
+          prefer those over re-deriving the same conclusions from raw box
+          score fields.
 
         Prioritize:
         1. The actual score and how it differed from expectation.
         2. Which team-level box score factors drove the result.
         3. Which player-level performances or absences changed the game.
         4. Whether pace, shooting variance, rebounding, turnovers, free throws,
-           bench scoring, or matchup context mattered most.
+           bench scoring, matchup context, or recent-form deviation mattered most.
         5. Any DFS-relevant takeaway such as star underperformance, role-player
            spike, blowout/minutes effect, or overtime distortion.
 
@@ -142,13 +143,16 @@ def explain_game_outcome_message(
           discussing workload or game-flow context.
         - Prefer explicit references to playByPlaySummary when discussing runs,
           lead changes, quarter swings, clutch state, or decisive stretches.
+        - Prefer explicit references to recentForm and seriesContext when
+          explaining what was different from recent baseline or prior matchups.
 
         Format:
         1. Outcome Summary
         2. Why The Result Happened
         3. Key Player Drivers
         4. Market / Expectation Context
-        5. DFS Takeaways
+        5. Compared With Recent Games
+        6. DFS Takeaways
         """
     ).strip()
     user_message = f"Explain this {sport.upper()} game outcome from the structured context below:\n\n{context}"
