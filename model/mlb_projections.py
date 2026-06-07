@@ -200,7 +200,10 @@ def compute_batter_projection(
     Returns:
         Projected DK FPTS, or None if data is insufficient.
     """
-    if (batter.get("games") or 0) < 3:
+    # Require 10+ blended games (current + prior season combined).
+    # 3-game threshold was too permissive — small-sample hot streaks (Sandy Leon
+    # with g=5, ATL 7.8 implied) produced 11+ FPTS projections on noise.
+    if (batter.get("games") or 0) < 10:
         return None
 
     # Base per-game rates (stored from Phase 3 EWMA-smoothed ingestion)
@@ -304,7 +307,7 @@ def compute_batter_hr_signal(
     implied team total, HR-specific park factor, opposing SP quality, handedness
     split, and confirmed batting-order PA boost.
     """
-    if (batter.get("games") or 0) < 3:
+    if (batter.get("games") or 0) < 10:
         return None
 
     hr_pg = float(batter.get("hr_pg") or 0.0)
@@ -385,7 +388,7 @@ def compute_pitcher_projection(
     Returns:
         Projected DK FPTS, or None if data is insufficient.
     """
-    if (pitcher.get("games") or 0) < 2:
+    if (pitcher.get("games") or 0) < 5:
         return None
 
     ip_pg = float(pitcher.get("ip_pg") or 0.0)

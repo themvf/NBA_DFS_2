@@ -1022,6 +1022,19 @@ def build_player_pool_mlb(
                 if hr_signal:
                     expected_hr, hr_prob_1plus = hr_signal
 
+            if our_proj and not pitcher_flag:
+                # DK avg cap: when a batter has a very low DK baseline (avg_fpts_dk < 2.5)
+                # and our projection is more than 3× that baseline, the model is over-fitting
+                # to a small-sample or context-specific signal.  Cap at 3× avg_fpts_dk.
+                # Does not apply when avg_fpts_dk is null (new/unknown player).
+                avg_dk = result.get("avg_fpts_dk")
+                if avg_dk is not None and float(avg_dk) < 2.5 and our_proj > float(avg_dk) * 3.0:
+                    logger.debug(
+                        "Capping %s projection %.1f → %.1f (3× avg_fpts_dk=%.1f)",
+                        result.get("name"), our_proj, float(avg_dk) * 3.0, avg_dk,
+                    )
+                    our_proj = round(float(avg_dk) * 3.0, 2)
+
             if our_proj:
                 proj_floor, proj_ceiling, boom_rate = compute_projection_distribution(
                     projection=our_proj,
