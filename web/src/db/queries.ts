@@ -1543,6 +1543,15 @@ export type CrossSlateAccuracyRow = {
 };
 
 export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<CrossSlateAccuracyRow[]> {
+  // For MLB, exclude pitchers entirely from batter aggregate metrics.
+  // RPs with large negative actual scores (ER/H/BB deductions) contaminate the
+  // cross-slate bias numbers — the batter and pitcher models are separate and
+  // should not be averaged together.  Pitcher accuracy is tracked per-position
+  // in getPositionAccuracy() instead.
+  const pitcherExclude = sport === "mlb"
+    ? sql`AND dp.eligible_positions NOT LIKE '%SP%' AND dp.eligible_positions NOT LIKE '%RP%'`
+    : sql`AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)`;
+
   const matchupCte = sport === "mlb"
     ? sql`
       WITH matchup_stats AS (
@@ -1593,7 +1602,7 @@ export async function getCrossSlateAccuracy(sport: Sport = "nba"): Promise<Cross
     JOIN dk_slates ds ON ds.id = dp.slate_id
     LEFT JOIN matchup_stats ms ON ms.game_date = ds.slate_date
     WHERE ds.sport = ${sport}
-      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+      ${pitcherExclude}
     GROUP BY ds.slate_date
     HAVING COUNT(*) FILTER (WHERE dp.actual_fpts IS NOT NULL) > 0
     ORDER BY ds.slate_date ASC
@@ -1656,6 +1665,10 @@ function rankSlateTypeMetric<T extends Record<string, unknown>>(
 }
 
 export async function getSlateTypePerformance(sport: Sport = "nba"): Promise<SlateTypePerformanceRow[]> {
+  const pitcherExclude = sport === "mlb"
+    ? sql`AND dp.eligible_positions NOT LIKE '%SP%' AND dp.eligible_positions NOT LIKE '%RP%'`
+    : sql`AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)`;
+
   const result = await db.execute<Omit<
     SlateTypePerformanceRow,
     "label"
@@ -1696,7 +1709,7 @@ export async function getSlateTypePerformance(sport: Sport = "nba"): Promise<Sla
       JOIN dk_slates ds ON ds.id = dp.slate_id
       WHERE ds.sport = ${sport}
         AND COALESCE(dp.is_out, false) = false
-        AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+        ${pitcherExclude}
     ),
     grouped AS (
       SELECT
@@ -1874,6 +1887,10 @@ export type SalaryTierAccuracyRow = {
 };
 
 export async function getSalaryTierAccuracy(sport: Sport = "nba"): Promise<SalaryTierAccuracyRow[]> {
+  const pitcherExclude = sport === "mlb"
+    ? sql`AND dp.eligible_positions NOT LIKE '%SP%' AND dp.eligible_positions NOT LIKE '%RP%'`
+    : sql`AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)`;
+
   const result = await db.execute<SalaryTierAccuracyRow>(sql`
     SELECT
       CASE
@@ -1898,7 +1915,7 @@ export async function getSalaryTierAccuracy(sport: Sport = "nba"): Promise<Salar
     FROM dk_players dp
     JOIN dk_slates ds ON ds.id = dp.slate_id
     WHERE ds.sport = ${sport}
-      AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+      ${pitcherExclude}
     GROUP BY 1
     ORDER BY MIN(dp.salary) ASC NULLS LAST
   `);
@@ -2369,6 +2386,10 @@ export type LeverageCalibrationRow = {
 };
 
 export async function getLeverageCalibration(sport: Sport = "nba"): Promise<LeverageCalibrationRow[]> {
+  const pitcherExclude = sport === "mlb"
+    ? sql`AND dp.eligible_positions NOT LIKE '%SP%' AND dp.eligible_positions NOT LIKE '%RP%'`
+    : sql`AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)`;
+
   const result = await db.execute<LeverageCalibrationRow>(sql`
     SELECT
       sub.quartile               AS "leverageQuartile",
@@ -2391,7 +2412,7 @@ export async function getLeverageCalibration(sport: Sport = "nba"): Promise<Leve
         AND COALESCE(dp.live_proj, dp.our_proj, dp.linestar_proj) IS NOT NULL
         AND dp.actual_fpts IS NOT NULL
         AND ds.sport = ${sport}
-        AND NOT (dp.eligible_positions LIKE '%SP%' AND dp.actual_fpts = 0)
+        ${pitcherExclude}
     ) sub
     GROUP BY sub.quartile
     ORDER BY sub.quartile

@@ -42,6 +42,19 @@ MLB_LEAGUE_AVG_ISO        = 0.165  # hitter ISO baseline
 MLB_LEAGUE_AVG_HR_PER_9   = 1.10   # starter HR/9 baseline
 MLB_LEAGUE_AVG_HR_FB      = 0.12   # starter HR/FB baseline
 
+# Dampens how aggressively implied team total scales batter projections
+# for above-average run environments.
+#
+# Raw ratio (implied / 4.5) would amplify a 6.0-implied team by 33%, but
+# 2026 season data shows only ~7-8% real-world FPTS improvement at 6.0 vs 4.5.
+# The downside formula (implied < 4.5) is already calibrated correctly and
+# is left unchanged — only upside amplification is dampened.
+#
+# s=0.20 → 6.0-implied team gets 1 + 0.333×0.20 = 6.7% boost (vs observed 7.8%).
+# Remaining bias after this fix (+~0.9 FPTS for high-total games) is a separate
+# base-rate calibration issue, not an env_factor issue.
+MLB_ENV_SENSITIVITY = 0.20
+
 _MLB_DEFAULT_OUTFIELD_BEARING = 45.0
 _MLB_DEFAULT_WIND_EXPOSURE = 1.0
 _MLB_PARK_ENV_METADATA: tuple[tuple[str, float, float], ...] = (
@@ -220,7 +233,7 @@ def compute_batter_projection(
         team_implied = float(matchup.get("away_implied") or
                              (matchup.get("vegas_total") or 9.0) / 2.0)
 
-    env_factor = _cap(team_implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.50, 2.00)
+    env_factor = _batter_env_factor(team_implied)
 
     # ── Park factor ────────────────────────────────────────────────────────────
     runs_pf, hr_pf = _park_environment_factors(matchup, park)
@@ -305,7 +318,7 @@ def compute_batter_hr_signal(
         team_implied = float(matchup.get("away_implied") or
                              (matchup.get("vegas_total") or 9.0) / 2.0)
 
-    env_factor = _cap(team_implied / MLB_LEAGUE_AVG_TEAM_TOTAL, 0.50, 2.00)
+    env_factor = _batter_env_factor(team_implied)
     _, hr_pf = _park_environment_factors(matchup, park)
     order_factor = _ORDER_PA_FACTOR.get(int(confirmed_order), 1.0) if confirmed_order else 1.0
 
@@ -489,6 +502,23 @@ def compute_projection_distribution(
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
+def _batter_env_factor(team_implied: float) -> float:
+    """Asymmetric run-environment factor for batter projections.
+
+    Below league average (implied < 4.5): full downside penalty, floor 0.50.
+    Above league average (implied > 4.5): dampened upside via MLB_ENV_SENSITIVITY.
+
+    The downside shape was calibrated correctly against 2026 data (bias ≈ -0.3
+    for low-implied games) and is preserved unchanged.  Only the upside was
+    over-amplifying: a 6.0-implied team received a 33% boost when actuals show
+    only a ~8% real-world improvement over neutral implied totals.
+    """
+    raw = team_implied / MLB_LEAGUE_AVG_TEAM_TOTAL
+    if raw >= 1.0:
+        return _cap(1.0 + (raw - 1.0) * MLB_ENV_SENSITIVITY, 1.0, 1.40)
+    return _cap(raw, 0.50, 1.0)
+
 
 def _win_prob(matchup: dict, is_home: bool) -> float:
     """Vig-free win probability from moneylines, or vegas_prob_home fallback."""
