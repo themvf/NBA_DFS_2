@@ -3315,6 +3315,229 @@ async function fetchMlbPlayerProps(): Promise<{ ok: boolean; message: string }> 
       }),
     );
 
+    // Recompute ourProj for players with updated props, then refresh ownership for all
+    if (propMatched > 0) {
+      const updatedIds = new Set(propData.keys());
+      const mlbSeason = inferMlbSeason(slate.slateDate);
+      const priorMlbSeason = inferPriorMlbSeason(mlbSeason);
+
+      const [
+        currentBatterRows, currentPitcherRows, currentTeamStatRows, currentParkRows,
+        priorBatterRows, priorPitcherRows, priorTeamStatRows, priorParkRows,
+        matchupRows,
+      ] = await Promise.all([
+        db.select().from(mlbBatterStats).where(eq(mlbBatterStats.season, mlbSeason)),
+        db.select().from(mlbPitcherStats).where(eq(mlbPitcherStats.season, mlbSeason)),
+        db.select().from(mlbTeamStatsTable).where(eq(mlbTeamStatsTable.season, mlbSeason)),
+        db.select().from(mlbParkFactors).where(eq(mlbParkFactors.season, mlbSeason)),
+        priorMlbSeason ? db.select().from(mlbBatterStats).where(eq(mlbBatterStats.season, priorMlbSeason)) : Promise.resolve([] as MlbBatterStats[]),
+        priorMlbSeason ? db.select().from(mlbPitcherStats).where(eq(mlbPitcherStats.season, priorMlbSeason)) : Promise.resolve([] as MlbPitcherStats[]),
+        priorMlbSeason ? db.select().from(mlbTeamStatsTable).where(eq(mlbTeamStatsTable.season, priorMlbSeason)) : Promise.resolve([] as MlbTeamStats[]),
+        priorMlbSeason ? db.select().from(mlbParkFactors).where(eq(mlbParkFactors.season, priorMlbSeason)) : Promise.resolve([] as MlbParkFactors[]),
+        db.select().from(mlbMatchups).where(eq(mlbMatchups.gameDate, slate.slateDate)),
+      ]);
+
+      const currentBatterMeta  = buildMlbMatchMeta(currentBatterRows, getMlbBatterSample);
+      const priorBatterMeta    = buildMlbMatchMeta(priorBatterRows, getMlbBatterSample);
+      const currentPitcherMeta = buildMlbMatchMeta(currentPitcherRows, getMlbPitcherSample);
+      const priorPitcherMeta   = buildMlbMatchMeta(priorPitcherRows, getMlbPitcherSample);
+
+      const matchupByTeamProp = new Map<number, typeof matchupRows[0]>();
+      for (const m of matchupRows) {
+        if (m.homeTeamId) matchupByTeamProp.set(m.homeTeamId, m);
+        if (m.awayTeamId) matchupByTeamProp.set(m.awayTeamId, m);
+      }
+
+      const currentTeamStatsMap = new Map(currentTeamStatRows.map((r) => [r.teamId, r]));
+      const priorTeamStatsMap   = new Map(priorTeamStatRows.map((r)  => [r.teamId, r]));
+      const currentParkMap      = new Map(currentParkRows.map((r)    => [r.teamId, r]));
+      const priorParkMap        = new Map(priorParkRows.map((r)      => [r.teamId, r]));
+      const currentTeamSamples  = buildMlbTeamSampleMap(currentBatterRows, currentPitcherRows);
+
+      const teamStatsMapProp = new Map<number, MlbTeamStats>();
+      for (const teamId of new Set([...currentTeamStatsMap.keys(), ...priorTeamStatsMap.keys()])) {
+        const blended = blendMlbTeamStats(
+          currentTeamStatsMap.get(teamId) ?? null,
+          priorTeamStatsMap.get(teamId) ?? null,
+          currentTeamSamples.get(teamId) ?? 0,
+        );
+        if (blended) teamStatsMapProp.set(teamId, blended);
+      }
+      const parkMapProp = new Map<number, MlbParkFactors>();
+      for (const teamId of new Set([...currentParkMap.keys(), ...priorParkMap.keys()])) {
+        const picked = pickMlbParkFactor(currentParkMap.get(teamId) ?? null, priorParkMap.get(teamId) ?? null);
+        if (picked) parkMapProp.set(teamId, picked);
+      }
+
+      const allSlatePlayerRows = await db.execute<{
+        id: number; name: string; salary: number; eligiblePositions: string;
+        mlbTeamId: number | null; avgFptsDk: number | null;
+        linestarProj: number | null; linestarOwnPct: number | null; projOwnPct: number | null;
+        ourProj: number | null; isOut: boolean | null;
+        dkStartingLineupOrder: number | null; dkTeamLineupConfirmed: boolean | null;
+        propPts: number | null; propReb: number | null; propAst: number | null;
+        propBlk: number | null; propStl: number | null;
+        expectedHr: number | null; hrProb1Plus: number | null;
+      }>(sql`
+        SELECT id, name, salary, eligible_positions AS "eligiblePositions",
+               mlb_team_id AS "mlbTeamId", avg_fpts_dk AS "avgFptsDk",
+               linestar_proj AS "linestarProj", linestar_own_pct AS "linestarOwnPct",
+               proj_own_pct AS "projOwnPct", our_proj AS "ourProj", is_out AS "isOut",
+               dk_starting_lineup_order AS "dkStartingLineupOrder",
+               dk_team_lineup_confirmed AS "dkTeamLineupConfirmed",
+               prop_pts AS "propPts", prop_reb AS "propReb", prop_ast AS "propAst",
+               prop_blk AS "propBlk", prop_stl AS "propStl",
+               expected_hr AS "expectedHr", hr_prob_1plus AS "hrProb1Plus"
+        FROM dk_players WHERE slate_id = ${slate.id}
+      `);
+
+      // SP pre-pass for opposing pitcher lookup
+      const spByTeamProp = new Map<number, MlbPitcherStats>();
+      for (const p of allSlatePlayerRows.rows) {
+        if (!isPitcherPos(p.eligiblePositions) || !p.mlbTeamId) continue;
+        if (spByTeamProp.has(p.mlbTeamId)) continue;
+        const match = matchMlbStatsAcrossSeasons(
+          p.name, p.mlbTeamId, currentPitcherMeta, priorPitcherMeta,
+          getMlbPitcherSample, MLB_PITCHER_PRIOR_SEASON_PIVOT,
+          MLB_PITCHER_TEAM_CHANGE_PIVOT, MLB_PITCHER_TEAM_CHANGE_MIN_WEIGHT,
+        );
+        const blended = blendMlbPitcherStats(match, p.mlbTeamId);
+        if (blended) spByTeamProp.set(p.mlbTeamId, blended);
+      }
+      const hitterCalibration = await loadMlbHitterProjectionCalibration();
+
+      type PropEnrichedPlayer = MlbOwnershipPlayerLike & {
+        id: number;
+        projFloor: number | null;
+        projCeiling: number | null;
+        boomRate: number | null;
+        expectedHr: number | null;
+        hrProb1Plus: number | null;
+        _propUpdated: boolean;
+      };
+      const propEnriched: PropEnrichedPlayer[] = [];
+
+      for (const p of allSlatePlayerRows.rows) {
+        const mlbTeamId   = p.mlbTeamId;
+        const matchup     = mlbTeamId ? matchupByTeamProp.get(mlbTeamId) ?? null : null;
+        const isHome      = matchup?.homeTeamId === mlbTeamId;
+        const park        = matchup ? parkMapProp.get(matchup.homeTeamId ?? 0) ?? null : null;
+        const pitcherFlag = isPitcherPos(p.eligiblePositions);
+        const propUpdated = updatedIds.has(p.id);
+
+        let ourProj = sanitizeProjection(p.ourProj);
+        let expectedHr: number | null = p.expectedHr;
+        let hrProb1Plus: number | null = p.hrProb1Plus;
+
+        if (propUpdated && mlbTeamId && matchup) {
+          const playerProps = {
+            propPts: p.propPts, propReb: p.propReb, propAst: p.propAst,
+            propBlk: p.propBlk, propStl: p.propStl,
+          };
+          if (pitcherFlag) {
+            const match = matchMlbStatsAcrossSeasons(
+              p.name, mlbTeamId, currentPitcherMeta, priorPitcherMeta,
+              getMlbPitcherSample, MLB_PITCHER_PRIOR_SEASON_PIVOT,
+              MLB_PITCHER_TEAM_CHANGE_PIVOT, MLB_PITCHER_TEAM_CHANGE_MIN_WEIGHT,
+            );
+            const blended = blendMlbPitcherStats(match, mlbTeamId);
+            if (blended) {
+              const oppTeamId = isHome ? matchup.awayTeamId : matchup.homeTeamId;
+              const oppTeam   = oppTeamId ? teamStatsMapProp.get(oppTeamId) ?? null : null;
+              ourProj = sanitizeProjection(computeMlbPitcherProj(
+                blended as unknown as Record<string, unknown>,
+                matchup as unknown as Record<string, unknown>,
+                oppTeam as unknown as Record<string, unknown> | null,
+                park as unknown as Record<string, unknown> | null,
+                isHome, playerProps,
+              ));
+            }
+          } else {
+            const match = matchMlbStatsAcrossSeasons(
+              p.name, mlbTeamId, currentBatterMeta, priorBatterMeta,
+              getMlbBatterSample, MLB_BATTER_PRIOR_SEASON_PIVOT,
+              MLB_BATTER_TEAM_CHANGE_PIVOT, MLB_BATTER_TEAM_CHANGE_MIN_WEIGHT,
+            );
+            const blended = blendMlbBatterStats(match, mlbTeamId);
+            if (blended) {
+              const oppTeamId = isHome ? matchup.awayTeamId : matchup.homeTeamId;
+              const oppSp     = oppTeamId ? spByTeamProp.get(oppTeamId) ?? null : null;
+              ourProj = sanitizeProjection(computeMlbBatterProj(
+                blended as unknown as Record<string, unknown>,
+                matchup as unknown as Record<string, unknown>,
+                oppSp as unknown as Record<string, unknown> | null,
+                park as unknown as Record<string, unknown> | null,
+                isHome, p.dkStartingLineupOrder, playerProps,
+              ));
+              ourProj = applyMlbHitterProjectionCalibration(
+                ourProj, p.dkStartingLineupOrder, p.dkTeamLineupConfirmed ?? false, hitterCalibration,
+              );
+              const hrSignal = computeMlbBatterHrSignal(
+                blended as unknown as Record<string, unknown>,
+                matchup as unknown as Record<string, unknown>,
+                oppSp as unknown as Record<string, unknown> | null,
+                park as unknown as Record<string, unknown> | null,
+                isHome, p.dkStartingLineupOrder,
+              );
+              expectedHr = hrSignal?.expectedHr ?? null;
+              hrProb1Plus = hrSignal?.hrProb1Plus ?? null;
+            }
+          }
+        }
+
+        const distribution = computeMlbProjectionDistribution(
+          sanitizeProjection(ourProj ?? p.linestarProj ?? p.avgFptsDk ?? null),
+          pitcherFlag,
+          matchup as unknown as Record<string, unknown> | null,
+          park as unknown as Record<string, unknown> | null,
+          isHome, expectedHr, hrProb1Plus,
+        );
+
+        propEnriched.push({
+          id: p.id, eligiblePositions: p.eligiblePositions, salary: p.salary,
+          isOut: p.isOut ?? false, ourProj,
+          linestarProj: sanitizeProjection(p.linestarProj),
+          linestarOwnPct: sanitizeOwnershipPct(p.linestarOwnPct),
+          projOwnPct: sanitizeOwnershipPct(p.projOwnPct),
+          avgFptsDk: sanitizeProjection(p.avgFptsDk),
+          ourOwnPct: null, ourLeverage: null,
+          dkStartingLineupOrder: p.dkStartingLineupOrder,
+          dkTeamLineupConfirmed: p.dkTeamLineupConfirmed,
+          teamImplied: matchup ? (isHome ? matchup.homeImplied : matchup.awayImplied) : null,
+          oppImplied: matchup ? (isHome ? matchup.awayImplied : matchup.homeImplied) : null,
+          teamMl: matchup ? (isHome ? matchup.homeMl : matchup.awayMl) : null,
+          vegasTotal: matchup?.vegasTotal ?? null,
+          isHome, projFloor: distribution.projFloor,
+          projCeiling: distribution.projCeiling, boomRate: distribution.boomRate,
+          expectedHr, hrProb1Plus, _propUpdated: propUpdated,
+        });
+      }
+
+      applyMlbOwnershipModels(propEnriched);
+
+      for (let i = 0; i < propEnriched.length; i += 50) {
+        const batch = propEnriched.slice(i, i + 50);
+        for (const player of batch) {
+          const baseSet = {
+            ourOwnPct: player.ourOwnPct,
+            ourLeverage: player.ourLeverage,
+            projOwnPct: player.projOwnPct,
+          };
+          const projSet = player._propUpdated ? {
+            ourProj: player.ourProj,
+            projFloor: player.projFloor,
+            projCeiling: player.projCeiling,
+            boomRate: player.boomRate,
+            ...(player.expectedHr != null && { expectedHr: player.expectedHr }),
+            ...(player.hrProb1Plus != null && { hrProb1Plus: player.hrProb1Plus }),
+          } : {};
+          await db.update(dkPlayers)
+            .set({ ...baseSet, ...projSet })
+            .where(eq(dkPlayers.id, player.id));
+        }
+      }
+    }
+
     revalidatePath("/dfs");
     return {
       ok: true,
@@ -6313,8 +6536,9 @@ function computeMlbBatterProj(
   park: Record<string, unknown> | null,
   isHome: boolean,
   confirmedOrder: number | null,
+  props?: { propPts?: number | null; propReb?: number | null; propAst?: number | null; propBlk?: number | null; propStl?: number | null } | null,
 ): number | null {
-  if (((b.games as number) || 0) < 3) return null;
+  if (((b.games as number) || 0) < 10) return null;
   const sPg = (b.singlesPg as number) || 0, dPg = (b.doublesPg as number) || 0;
   const tPg = (b.triplesPg as number) || 0, hrPg = (b.hrPg as number) || 0;
   const rbiPg = (b.rbiPg as number) || 0, runsPg = (b.runsPg as number) || 0;
@@ -6345,7 +6569,27 @@ function computeMlbBatterProj(
   const hrf = mlbCap(envFactor * hrPf   * xfipFactor * orderFactor * matchupFactor, 0.3, 3.0);
   const wf  = mlbCap(envFactor * xfipFactor * orderFactor, 0.3, 3.0);
   const sf  = mlbCap(envFactor * orderFactor, 0.3, 3.0);
-  const fpts = dkBatterFpts(sPg*hf, dPg*hf, tPg*hf, hrPg*hrf, rbiPg*hf, runsPg*hf, bbPg*wf, hbpPg*wf, sbPg*sf);
+
+  // Props replace formula stats directly (props already bake in matchup/park/pitcher context)
+  const adjHr  = props?.propStl != null ? props.propStl : hrPg * hrf;
+  const adjRbi = props?.propBlk != null ? props.propBlk : rbiPg * hf;
+  const adjR   = props?.propAst != null ? props.propAst : runsPg * hf;
+  let adjS: number, adjD: number, adjT: number;
+  if (props?.propReb != null) {
+    // Back-calculate hit mix from TB prop using player's historical split as prior
+    const totalNonHrHist = sPg + dPg + tPg;
+    const avgTbPerNonHrHit = totalNonHrHist > 0
+      ? (sPg + dPg * 2 + tPg * 3) / totalNonHrHist : 1.18;
+    const nonHrTb = Math.max(0, props.propReb - 4 * adjHr);
+    const impliedNonHrHits = nonHrTb / Math.max(0.8, avgTbPerNonHrHit);
+    adjS = totalNonHrHist > 0 ? impliedNonHrHits * sPg / totalNonHrHist : impliedNonHrHits * 0.75;
+    adjD = totalNonHrHist > 0 ? impliedNonHrHits * dPg / totalNonHrHist : impliedNonHrHits * 0.22;
+    adjT = totalNonHrHist > 0 ? impliedNonHrHits * tPg / totalNonHrHist : impliedNonHrHits * 0.03;
+  } else {
+    adjS = sPg * hf; adjD = dPg * hf; adjT = tPg * hf;
+  }
+
+  const fpts = dkBatterFpts(adjS, adjD, adjT, adjHr, adjRbi, adjR, bbPg * wf, hbpPg * wf, sbPg * sf);
   return fpts > 0 ? Math.round(fpts * 100) / 100 : null;
 }
 
@@ -6357,7 +6601,7 @@ function computeMlbBatterHrSignal(
   isHome: boolean,
   confirmedOrder: number | null,
 ): { expectedHr: number; hrProb1Plus: number } | null {
-  if (((b.games as number) || 0) < 3) return null;
+  if (((b.games as number) || 0) < 10) return null;
   const hrPg = (b.hrPg as number) || 0;
   if (hrPg < 0) return null;
 
@@ -6415,8 +6659,9 @@ function computeMlbPitcherProj(
   oppTeam: Record<string, unknown> | null,
   park: Record<string, unknown> | null,
   isHome: boolean,
+  props?: { propPts?: number | null; propReb?: number | null; propAst?: number | null } | null,
 ): number | null {
-  if (((p.games as number) || 0) < 2) return null;
+  if (((p.games as number) || 0) < 5) return null;
   const ipPg = (p.ipPg as number) || 0;
   if (ipPg < 0.5) return null;
   const kPer9  = (p.kPer9 as number)  || 0;
@@ -6424,7 +6669,9 @@ function computeMlbPitcherProj(
   const era    = (p.era as number)   || 4.5;
   const whip   = (p.whip as number)  || 1.3;
   const xfip   = (p.xfip as number)  || era;
-  const ip = ipPg, k = kPer9 / 9 * ip, bb = bbPer9 / 9 * ip;
+  // outs prop (propReb) converts to IP; use as a game-specific IP anchor when available
+  const ip = props?.propReb != null ? props.propReb / 3 : ipPg;
+  const kBase = kPer9 / 9 * ip, bb = bbPer9 / 9 * ip;
   const er = xfip / 9 * ip, h = Math.max(0, whip * ip - bb);
   const oppWrc  = oppTeam ? ((oppTeam.teamWrcPlus as number) || 100) : 100;
   const oppKPct = oppTeam ? ((oppTeam.teamKPct as number)   || MLB_LEAGUE_AVG_K_PCT) : MLB_LEAGUE_AVG_K_PCT;
@@ -6433,7 +6680,10 @@ function computeMlbPitcherProj(
   const histWin = (p.winPct as number) || 0;
   const teamWin = mlbWinProb(matchup, isHome);
   const effWin  = histWin > 0 ? (histWin + teamWin) / 2 : 0;
-  const fpts = dkPitcherFpts(ip, k * okf, er * owf * runsPf, h * owf * runsPf, bb, effWin);
+  // Props replace formula stats directly (props already bake in matchup/opponent context)
+  const adjK  = props?.propPts != null ? props.propPts  : kBase * okf;
+  const adjEr = props?.propAst != null ? props.propAst  : er * owf * runsPf;
+  const fpts = dkPitcherFpts(ip, adjK, adjEr, h * owf * runsPf, bb, effWin);
   return fpts > 0 ? Math.round(fpts * 100) / 100 : null;
 }
 
