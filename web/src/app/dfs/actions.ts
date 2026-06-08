@@ -3471,6 +3471,7 @@ async function fetchMlbPlayerProps(): Promise<{ ok: boolean; message: string }> 
               ));
               ourProj = applyMlbHitterProjectionCalibration(
                 ourProj, p.dkStartingLineupOrder, p.dkTeamLineupConfirmed ?? false, hitterCalibration,
+                matchup ? (isHome ? matchup.homeImplied : matchup.awayImplied) : null,
               );
               const hrSignal = computeMlbBatterHrSignal(
                 blended as unknown as Record<string, unknown>,
@@ -7032,6 +7033,7 @@ async function enrichAndSaveMlb(
           dkTeamLineupConfirmed ? dkStartingLineupOrder : null,
           dkTeamLineupConfirmed,
           hitterProjectionCalibration,
+          matchup ? (isHome ? matchup.homeImplied : matchup.awayImplied) : null,
         );
         const hrSignal = computeMlbBatterHrSignal(
           blendedBatter as unknown as Record<string, unknown>,
@@ -7727,6 +7729,9 @@ export async function runMlbOptimizer(
     .map((p) => {
       const linestarProj = sanitizeProjection(p.linestarProj);
       const projOwnPct = sanitizeOwnershipPct(p.projOwnPct);
+      const teamImplied = p.teamId === p.homeTeamId
+        ? (p.homeImplied ?? null)
+        : (p.awayImplied ?? null);
       const calibratedProj = isPitcherPos(p.eligiblePositions)
         ? sanitizeProjection(p.ourProj ?? linestarProj ?? null)
         : applyMlbHitterProjectionCalibration(
@@ -7734,6 +7739,7 @@ export async function runMlbOptimizer(
             p.dkTeamLineupConfirmed ? p.dkStartingLineupOrder ?? null : null,
             p.dkTeamLineupConfirmed ?? null,
             hitterProjectionCalibration,
+            teamImplied,
           );
       const fieldProj = sanitizeProjection(p.avgFptsDk ?? linestarProj ?? null);
       const calibratedLeverage = !p.isOut && calibratedProj != null && projOwnPct != null
