@@ -37,7 +37,7 @@ from rapidfuzz import fuzz, process
 
 from config import load_config
 from db.database import DatabaseManager
-from db.queries import build_mlb_team_abbrev_cache, upsert_dk_player, upsert_dk_slate
+from db.queries import build_mlb_dk_abbrev_cache, build_mlb_team_abbrev_cache, upsert_dk_player, upsert_dk_slate
 from ingest.dk_slate import (
     _parse_slate_date,
     _safe_float,
@@ -82,7 +82,7 @@ def match_mlb_team_id(abbrev: str, cache: dict[str, int]) -> int | None:
     canonical = MLB_DK_ABBREV_OVERRIDES.get(a, a)
     tid = cache.get(canonical)
     if not tid:
-        logger.debug("No mlb_team_id for DK abbrev '%s' (mapped '%s')", abbrev, canonical)
+        logger.warning("No mlb_team_id for DK abbrev '%s' (mapped '%s') — add to mlb_teams.dk_abbrev", abbrev, canonical)
     return tid
 
 
@@ -672,7 +672,7 @@ def build_player_pool_mlb(
         Pitchers: opposing lineup wRC+ / K%, park runs factor, win probability
                   blend (historical win_pct + team moneyline).
     """
-    abbrev_cache = build_mlb_team_abbrev_cache(db)
+    abbrev_cache = build_mlb_dk_abbrev_cache(db)
 
     # Today's MLB matchups
     matchups = db.execute(

@@ -6851,9 +6851,13 @@ async function enrichAndSaveMlb(
     .returning({ id: dkSlates.id });
   const slateId = slate.id;
 
-  // Build MLB team abbrev → teamId cache
-  const mlbTeamRows = await db.select({ teamId: mlbTeams.teamId, abbreviation: mlbTeams.abbreviation }).from(mlbTeams);
-  const abbrevToId  = new Map(mlbTeamRows.map((t) => [t.abbreviation.toUpperCase(), t.teamId]));
+  // Build MLB team abbrev → teamId cache (both canonical abbreviation and DK-specific dk_abbrev)
+  const mlbTeamRows = await db.select({ teamId: mlbTeams.teamId, abbreviation: mlbTeams.abbreviation, dkAbbrev: mlbTeams.dkAbbrev }).from(mlbTeams);
+  const abbrevToId = new Map<string, number>();
+  for (const t of mlbTeamRows) {
+    abbrevToId.set(t.abbreviation.toUpperCase(), t.teamId);
+    if (t.dkAbbrev) abbrevToId.set(t.dkAbbrev.toUpperCase(), t.teamId);
+  }
 
   await ensureMatchupsForMlbSlate(slateDate, dkPlayers_, abbrevToId);
 
@@ -6943,10 +6947,12 @@ async function enrichAndSaveMlb(
   const pitcherCoverage = createMlbCoverageCounter();
   const insertValues: Array<Record<string, unknown>> = [];
   const homerunSnapshots: MlbHomerunSnapshotInput[] = [];
+  const unmappedAbbrevs = new Set<string>();
 
   for (const p of dkPlayers_) {
     const canon = MLB_DK_OVERRIDES[p.teamAbbrev] ?? p.teamAbbrev;
     const mlbTeamId = abbrevToId.get(canon) ?? null;
+    if (!mlbTeamId) unmappedAbbrevs.add(p.teamAbbrev);
     const matchup   = mlbTeamId ? matchupByTeam.get(mlbTeamId) ?? null : null;
     const matchupId = matchup?.id ?? null;
     const dkTeamLineupConfirmed = lineupConfirmedByTeam.get((p.teamAbbrev ?? "").toUpperCase()) ?? false;
@@ -7237,9 +7243,12 @@ async function enrichAndSaveMlb(
   revalidatePath("/dfs");
   revalidatePath("/homerun");
   const matchRate = lsMap.size > 0 ? Math.round((lsMatched / dkPlayers_.length) * 100) : null;
+  const unmappedNote = unmappedAbbrevs.size > 0
+    ? ` | WARN: ${unmappedAbbrevs.size} unmapped DK abbrevs: ${[...unmappedAbbrevs].sort().join(", ")} — add to mlb_teams.dk_abbrev`
+    : "";
   return {
     ok: true,
-    message: `Saved ${insertValues.length} MLB players (${projComputed} with our proj, H ${batterCoverage.currentOnly}/${batterCoverage.blended}/${batterCoverage.priorOnly}, P ${pitcherCoverage.currentOnly}/${pitcherCoverage.blended}/${pitcherCoverage.priorOnly}, movers ${batterCoverage.teamChangeAccelerated + pitcherCoverage.teamChangeAccelerated})${matchRate != null ? `, LineStar ${matchRate}% matched` : ""}`,
+    message: `Saved ${insertValues.length} MLB players (${projComputed} with our proj, H ${batterCoverage.currentOnly}/${batterCoverage.blended}/${batterCoverage.priorOnly}, P ${pitcherCoverage.currentOnly}/${pitcherCoverage.blended}/${pitcherCoverage.priorOnly}, movers ${batterCoverage.teamChangeAccelerated + pitcherCoverage.teamChangeAccelerated})${matchRate != null ? `, LineStar ${matchRate}% matched` : ""}${unmappedNote}`,
     playerCount: insertValues.length,
     matchRate: matchRate ?? undefined,
   };
