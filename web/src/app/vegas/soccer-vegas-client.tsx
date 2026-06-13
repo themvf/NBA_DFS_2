@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { SoccerVegasMatchupRow, SoccerBetRow, SoccerBacktestRow } from "@/db/queries";
+import type {
+  SoccerVegasMatchupRow,
+  SoccerBetRow,
+  SoccerBacktestRow,
+  SoccerFirstScorerRow,
+} from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
 const fmtPct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
@@ -250,15 +255,91 @@ function BacktestPanel({ backtest }: { backtest: SoccerBacktestRow[] }) {
   );
 }
 
+function FirstScorerPanel({ rows }: { rows: SoccerFirstScorerRow[] }) {
+  // Group by fixture (already ordered by kickoff, then our prob).
+  const byGame = new Map<string, SoccerFirstScorerRow[]>();
+  for (const r of rows) {
+    const list = byGame.get(r.gameId) ?? [];
+    list.push(r);
+    byGame.set(r.gameId, list);
+  }
+  const games = Array.from(byGame.keys());
+  const anyBet = rows.some((r) => r.stars >= 3);
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-bold">🥅 First Goal Scorer</h2>
+      <p className="rounded-lg border bg-card p-3 text-xs text-muted-foreground">
+        Top candidates per upcoming match: <strong className="text-foreground">Our %</strong> (Poisson
+        superposition — each player&rsquo;s share of expected goals × match P(≥1 goal)) vs the best
+        market price and its vig-free probability.{" "}
+        {!anyBet && (
+          <>
+            First-scorer markets carry a huge built-in margin (~300–500% combined overround), so the
+            model rates essentially all of them <strong className="text-foreground">1★ (don&rsquo;t
+            bet)</strong> — that fade verdict is the value here. A 4–5★ would appear only if a soft
+            price beat our number.
+          </>
+        )}
+      </p>
+
+      {games.length === 0 ? (
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
+          No first-scorer markets posted yet for upcoming games. Books list these ~1–2 days out; the
+          refresh runs <code className="rounded bg-muted px-1 py-0.5">model.soccer_first_scorer</code>.
+        </div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {games.map((gid) => {
+            const list = byGame.get(gid) ?? [];
+            const fixture = list[0]?.fixture ?? "Match";
+            return (
+              <div key={gid} className="overflow-hidden rounded-lg border bg-card">
+                <div className="border-b px-3 py-2 text-sm font-medium">{fixture}</div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-[10px] uppercase text-muted-foreground">
+                      <th className="px-3 py-1.5 text-left font-medium">Player</th>
+                      <th className="px-2 py-1.5 text-center font-medium">Our %</th>
+                      <th className="px-2 py-1.5 text-center font-medium">Best Odds</th>
+                      <th className="px-2 py-1.5 text-center font-medium">Mkt %</th>
+                      <th className="px-2 py-1.5 text-center font-medium">Rating</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map((r) => (
+                      <tr key={r.player} className="border-b last:border-0 hover:bg-accent/40">
+                        <td className="px-3 py-1.5">{r.player}</td>
+                        <td className="px-2 py-1.5 text-center tabular-nums">{fmtPct(r.ourProb)}</td>
+                        <td className="px-2 py-1.5 text-center tabular-nums">{fmtMl(r.marketOdds)}</td>
+                        <td className="px-2 py-1.5 text-center tabular-nums text-muted-foreground">
+                          {r.marketProb != null ? fmtPct(r.marketProb) : "—"}
+                        </td>
+                        <td className="px-2 py-1.5 text-center"><Stars n={r.stars} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SoccerVegasClient({
   matchups,
   bets,
   backtest,
+  firstScorers,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
   bets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
+  firstScorers: SoccerFirstScorerRow[];
   queryDate: string | null;
 }) {
   const byDate = new Map<string, SoccerVegasMatchupRow[]>();
@@ -295,6 +376,7 @@ export default function SoccerVegasClient({
       </p>
 
       <BetsPanel bets={bets} />
+      <FirstScorerPanel rows={firstScorers} />
       <BacktestPanel backtest={backtest} />
 
       <h2 className="border-t pt-5 text-lg font-bold">📅 Fixtures — Our Model vs Vegas</h2>

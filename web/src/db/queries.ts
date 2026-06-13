@@ -6279,6 +6279,56 @@ export async function getSoccerBetBacktest(): Promise<SoccerBacktestRow[]> {
   });
 }
 
+// Per-game first-scorer candidates (their own panel — they're almost all 1★
+// because the market is high-vig, so they'd be hidden by the Bets star filter).
+export type SoccerFirstScorerRow = {
+  gameId: string;
+  fixture: string | null;
+  commenceTime: string | null;
+  player: string;
+  ourProb: number;
+  marketOdds: number | null;
+  marketProb: number | null;
+  ev: number | null;
+  stars: number;
+  status: string;
+};
+
+export async function getSoccerFirstScorers(perGame = 8): Promise<SoccerFirstScorerRow[]> {
+  const rows = await db.execute(sql`
+    SELECT * FROM (
+      SELECT
+        b.scope AS "gameId",
+        b.inputs_json->>'fixture' AS "fixture",
+        sm.commence_time AS "commenceTime",
+        b.selection_label AS "player",
+        b.our_prob AS "ourProb",
+        b.market_odds AS "marketOdds",
+        b.market_prob AS "marketProb",
+        b.ev, b.stars, b.status,
+        ROW_NUMBER() OVER (PARTITION BY b.scope ORDER BY b.our_prob DESC) AS rn
+      FROM soccer_bets b
+      JOIN soccer_matchups sm ON sm.game_id = b.scope
+      WHERE b.bet_type = 'first_scorer'
+        AND sm.commence_time >= NOW()
+    ) t
+    WHERE rn <= ${perGame}
+    ORDER BY "commenceTime" ASC, "ourProb" DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    gameId: String(r.gameId),
+    fixture: r.fixture != null ? String(r.fixture) : null,
+    commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+    player: String(r.player),
+    ourProb: Number(r.ourProb),
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+    ev: r.ev != null ? Number(r.ev) : null,
+    stars: Number(r.stars),
+    status: String(r.status),
+  }));
+}
+
 export type OuHitRateRow = {
   totalTier: string;
   tierMin: number | null;
