@@ -42,6 +42,11 @@ _NOMARKET_TIERS = [
 ]  # (stars, min_prob_or_None, min_edge); below tier-2 edge → 1 star.
 _LONGSHOT_PROB = 0.02   # below this our_prob, cap stars at 3 (tail noise)
 _LONGSHOT_CAP = 3
+# For efficient single-game markets (moneyline/total/first-scorer), a tiny model
+# edge on a big longshot creates huge but illusory EV.  When longshot_odds_cap is
+# on, cap stars by the offered price.  NOT applied to futures, where longshots are
+# the legitimate value plays.
+_ODDS_CAP_TIERS = [(21.0, 2), (11.0, 3)]   # (min decimal odds, max stars)
 
 
 def american_to_decimal(ml: int) -> float:
@@ -54,11 +59,30 @@ def american_to_prob(ml: int) -> float:
     return 1.0 / american_to_decimal(ml)
 
 
-def rate_market(our_prob: float, decimal_odds: float, ref_prob: float) -> tuple[int, float, float]:
+def prob_to_american(p: float) -> int:
+    """Implied probability → American odds (inverse of american_to_prob).
+
+    Use this to average odds in probability space — averaging American odds
+    arithmetically is invalid (you cannot mean +100 and -120).
+    """
+    p = min(max(p, 1e-6), 0.999999)
+    dec = 1.0 / p
+    if dec >= 2.0:
+        return round((dec - 1.0) * 100)
+    return -round(100.0 / (dec - 1.0))
+
+
+def rate_market(
+    our_prob: float,
+    decimal_odds: float,
+    ref_prob: float,
+    longshot_odds_cap: bool = False,
+) -> tuple[int, float, float]:
     """Return (stars, ev, edge) for a bet with a market line.
 
     ref_prob is the vig-free market probability; edge = our_prob − ref_prob.
-    EV is expected ROI per unit staked.
+    EV is expected ROI per unit staked.  When longshot_odds_cap is set, long
+    prices have their star ceiling lowered (efficient single-game markets).
     """
     ev = our_prob * decimal_odds - 1.0
     edge = our_prob - ref_prob
@@ -69,6 +93,11 @@ def rate_market(our_prob: float, decimal_odds: float, ref_prob: float) -> tuple[
             break
     if our_prob < _LONGSHOT_PROB:
         stars = min(stars, _LONGSHOT_CAP)
+    if longshot_odds_cap:
+        for min_dec, max_stars in _ODDS_CAP_TIERS:
+            if decimal_odds >= min_dec:
+                stars = min(stars, max_stars)
+                break
     return stars, ev, edge
 
 
@@ -109,13 +138,14 @@ def record_bet(
     subject_team_id: int | None = None,
     event_commence: datetime | None = None,
     inputs: dict | None = None,
+    longshot_odds_cap: bool = False,
 ) -> int | None:
     """Rate and persist one bet recommendation.  Returns the bet id, or None if
     the row is locked (event already started) and was therefore left untouched.
     """
     if market_odds is not None and market_prob is not None:
         decimal_odds = american_to_decimal(market_odds)
-        stars, ev, edge = rate_market(our_prob, decimal_odds, market_prob)
+        stars, ev, edge = rate_market(our_prob, decimal_odds, market_prob, longshot_odds_cap)
     else:
         decimal_odds = None
         ref = baseline_prob if baseline_prob is not None else 0.0

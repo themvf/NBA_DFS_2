@@ -147,6 +147,67 @@ def settle_group_winners(db: DatabaseManager) -> int:
     return settled
 
 
+def settle_game_bets(db: DatabaseManager) -> int:
+    """Settle moneyline + totals bets for matches that now have a final score."""
+    games = db.execute(
+        """
+        SELECT sm.game_id, sm.home_team_id, sm.away_team_id, sm.home_score, sm.away_score
+        FROM soccer_matchups sm
+        WHERE sm.game_id IS NOT NULL
+          AND sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM soccer_bets b
+            WHERE b.scope = sm.game_id AND b.status = 'pending'
+              AND b.bet_type IN ('moneyline', 'total')
+          )
+        """,
+    )
+    settled = 0
+    for g in games:
+        gid = g["game_id"]
+        hs, as_ = int(g["home_score"]), int(g["away_score"])
+        total = hs + as_
+        # Winning moneyline side.
+        if hs > as_:
+            ml_winner = "home"
+        elif hs < as_:
+            ml_winner = "away"
+        else:
+            ml_winner = "draw"
+
+        bets = db.execute(
+            "SELECT id, bet_type, selection_label, subject_team_id, inputs_json "
+            "FROM soccer_bets WHERE scope = %s AND status = 'pending' "
+            "AND bet_type IN ('moneyline', 'total')",
+            (gid,),
+        )
+        for b in bets:
+            status = None
+            detail = f"Final {hs}-{as_}"
+            if b["bet_type"] == "moneyline":
+                side = (b["inputs_json"] or {}).get("side")
+                status = "won" if side == ml_winner else "lost"
+            else:  # total
+                line = (b["inputs_json"] or {}).get("line")
+                if line is None:
+                    continue
+                is_over = b["selection_label"].lower().startswith("over")
+                if total == line:
+                    status = "void"
+                elif (total > line) == is_over:
+                    status = "won"
+                else:
+                    status = "lost"
+            db.execute(
+                "UPDATE soccer_bets SET status = %s, settled_at = NOW(), result_detail = %s WHERE id = %s",
+                (status, detail, b["id"]),
+            )
+            settled += 1
+    if settled:
+        print(f"Game bets: {settled} moneyline/total bets settled")
+    return settled
+
+
 def settle_outright(db: DatabaseManager, champion_name: str) -> int:
     """Settle all outright-winner bets given the champion's name."""
     team = db.execute_one(
@@ -212,6 +273,7 @@ if __name__ == "__main__":
     db = DatabaseManager(config.database_url)
 
     fetch_scores(db, config.odds_api.api_key, args.days_from)
+    settle_game_bets(db)
     settle_group_winners(db)
     if args.champion:
         settle_outright(db, args.champion)

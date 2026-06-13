@@ -35,6 +35,7 @@ from db.queries import (
     upsert_soccer_matchup,
     upsert_soccer_team,
 )
+from model.soccer_bet_rating import american_to_prob, prob_to_american
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,36 @@ def _three_way_probs(
         round(raw_d / overround, 4),
         round(raw_a / overround, 4),
     )
+
+
+def _consensus_american(prices: list[int]) -> int | None:
+    """Consensus American odds by averaging in IMPLIED-PROBABILITY space.
+
+    Averaging American odds arithmetically is invalid (you cannot mean +100 and
+    −120); average the implied probabilities and convert back.
+    """
+    if not prices:
+        return None
+    avg_prob = sum(american_to_prob(p) for p in prices) / len(prices)
+    return prob_to_american(avg_prob)
+
+
+def _consensus_total_prices(
+    total_books: list[tuple[float, int | None, int | None]],
+    consensus_line: float | None,
+) -> tuple[int | None, int | None]:
+    """Consensus Over/Under prices from books posting the consensus line.
+
+    Only books within 0.13 of the consensus line are used (a 2.5 over price ≠ a
+    3.0 over price), and prices are averaged in probability space.
+    """
+    if not total_books or consensus_line is None:
+        return None, None
+    over_prices = [op for (ln, op, _up) in total_books
+                   if op is not None and abs(ln - consensus_line) < 0.13]
+    under_prices = [up for (ln, _op, up) in total_books
+                    if up is not None and abs(ln - consensus_line) < 0.13]
+    return _consensus_american(over_prices), _consensus_american(under_prices)
 
 
 def _compute_implied_goals(
@@ -196,6 +227,9 @@ def fetch_schedule_and_odds(
         draw_prices: list[int] = []
         away_prices: list[int] = []
         total_points: list[float] = []
+        # Per-book (line, over_price, under_price) so we can average O/U prices at
+        # the consensus line for the totals bet model.
+        total_books: list[tuple[float, int | None, int | None]] = []
         for bm in ev.get("bookmakers") or []:
             for market in bm.get("markets", []):
                 if market["key"] == "h2h":
@@ -209,14 +243,21 @@ def fetch_schedule_and_odds(
                             draw_prices.append(o["price"])
                 elif market["key"] == "totals":
                     over = next((o for o in market.get("outcomes", []) if o.get("name") == "Over"), None)
+                    under = next((o for o in market.get("outcomes", []) if o.get("name") == "Under"), None)
                     if over and over.get("point") is not None:
                         total_points.append(float(over["point"]))
+                        total_books.append((
+                            float(over["point"]),
+                            over.get("price"),
+                            under.get("price") if under else None,
+                        ))
 
-        home_ml = round(sum(home_prices) / len(home_prices)) if home_prices else None
-        draw_ml = round(sum(draw_prices) / len(draw_prices)) if draw_prices else None
-        away_ml = round(sum(away_prices) / len(away_prices)) if away_prices else None
+        home_ml = _consensus_american(home_prices)
+        draw_ml = _consensus_american(draw_prices)
+        away_ml = _consensus_american(away_prices)
         # Soccer goal totals move in 0.25 steps (2.5, 2.75) — round to nearest 0.25.
         vegas_total = round(sum(total_points) / len(total_points) * 4) / 4 if total_points else None
+        over_odds, under_odds = _consensus_total_prices(total_books, vegas_total)
 
         p_home, p_draw, p_away = _three_way_probs(home_ml, draw_ml, away_ml)
         home_implied, away_implied = _compute_implied_goals(vegas_total, p_home, p_away)
@@ -237,6 +278,8 @@ def fetch_schedule_and_odds(
             vegas_prob_away=p_away,
             home_implied=home_implied,
             away_implied=away_implied,
+            over_odds=over_odds,
+            under_odds=under_odds,
         )
         if mid:
             upserted += 1

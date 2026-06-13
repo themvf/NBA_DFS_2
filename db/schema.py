@@ -1389,6 +1389,10 @@ MIGRATIONS = [
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_prob_home DOUBLE PRECISION""",
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_prob_draw DOUBLE PRECISION""",
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_prob_away DOUBLE PRECISION""",
+    # 2026-06-13: Over/Under consensus prices (at the consensus total line) so the
+    # O/U bet model can compute EV.  vegas_total holds the line.
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS over_odds INTEGER""",
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS under_odds INTEGER""",
 ]
 
 INDEXES = [

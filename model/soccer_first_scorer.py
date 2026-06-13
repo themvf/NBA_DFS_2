@@ -113,6 +113,7 @@ def predict_and_record(db: DatabaseManager, api_key: str, window_hours: int = DE
                 book=fs["best_book"],
                 matchup_id=fx["id"],
                 event_commence=fx["commence_time"],
+                longshot_odds_cap=True,
                 inputs={
                     "lambda_p": round(lam_p, 4),
                     "lambda_total": round(lam_total, 4),

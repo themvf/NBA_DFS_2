@@ -59,5 +59,8 @@ jobs:
       - name: Rate futures bets (outright + group winner)
         run: python -m model.soccer_futures --sims 20000
 
+      - name: Rate moneyline + totals bets (every fixture)
+        run: python -m model.soccer_game_bets
+
       - name: Rate first-scorer bets (near-term fixtures)
         run: python -m model.soccer_first_scorer --hours 48

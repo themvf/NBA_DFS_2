@@ -28,6 +28,8 @@ const fmtSignedPp = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(0)}%
 const fmtSignedGoals = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 
 const BET_TYPE_LABEL: Record<string, string> = {
+  moneyline: "Moneyline",
+  total: "Over/Under",
   first_scorer: "First Scorer",
   outright_winner: "Outright Winner",
   group_winner: "Group Winner",
@@ -111,6 +113,8 @@ function BetsPanel({ bets }: { bets: SoccerBetRow[] }) {
               className="rounded border bg-background px-1.5 py-1"
             >
               <option value="all">All</option>
+              <option value="moneyline">Moneyline</option>
+              <option value="total">Over/Under</option>
               <option value="outright_winner">Outright</option>
               <option value="group_winner">Group winner</option>
               <option value="first_scorer">First scorer</option>

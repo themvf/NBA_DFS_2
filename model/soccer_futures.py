@@ -318,6 +318,14 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
         written += 1
 
     # ── Group winners (clean groups only) ──
+    # Group labels are derived from fixtures and can shift as more games load, so
+    # clear PENDING group bets first to avoid orphan rows under reused labels.
+    # Settled bets (status != 'pending') are preserved for the backtest.
+    db.execute(
+        "DELETE FROM soccer_bets WHERE bet_type = 'group_winner' "
+        "AND model_version = %s AND status = 'pending'",
+        (MODEL_VERSION,),
+    )
     groups = derive_groups(db)
     elo_by_id = {t["team_id"]: float(t["elo"]) for t in field}
     name_by_id = {t["team_id"]: t["name"] for t in field}
