@@ -920,6 +920,31 @@ def upsert_soccer_matchup(
     return row["id"] if row else 0
 
 
+def upsert_soccer_team_rating(
+    db: DatabaseManager,
+    team_id: int,
+    elo: float | None = None,
+    attack: float | None = None,
+    defense: float | None = None,
+    matches: int = 0,
+    rating_date: str | None = None,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO soccer_team_ratings (team_id, elo, attack, defense, matches, rating_date, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (team_id) DO UPDATE SET
+            elo         = EXCLUDED.elo,
+            attack      = EXCLUDED.attack,
+            defense     = EXCLUDED.defense,
+            matches     = EXCLUDED.matches,
+            rating_date = EXCLUDED.rating_date,
+            updated_at  = NOW()
+        """,
+        (team_id, elo, attack, defense, matches, rating_date),
+    )
+
+
 MLB_HOMERUN_TRAINING_COLUMNS = [
     "season",
     "game_date",

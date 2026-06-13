@@ -783,3 +783,74 @@ implied-total math must add **3-way (draw) handling**. **Name matching:** normal
 | **DK soccer scoring drift** | Re-verify on each new DK contest — DK has changed soccer rules between tournaments |
 | **Sparse contest calendar** | World Cup is ~6 weeks; treat as a seasonal module, not always-on |
 | **Showdown is the dominant format** | Showdown optimizer mode is a hard prerequisite — coordinate with MLB Showdown work |
+
+---
+
+## Soccer Prediction Model (our own number vs the market)
+
+Goal chosen 2026-06-13: **beat the market** — produce an independent game prediction
+and surface over/under + win-probability edges where we disagree with Vegas. This is
+the soccer analog of NBA `model/game_predictions.py` / `model/nba_game_total_model.py`,
+which predict the Vegas miss from team-efficiency features and write `our_game_total_pred`.
+
+### Why soccer needs a different model than NBA/MLB
+
+1. **Low-scoring, discrete, with draws** → a linear "total points" Ridge is the wrong
+   shape. Use a **bivariate Poisson goal model** that produces the full score matrix,
+   which yields the O/U number AND 3-way win/draw/away probabilities together.
+2. **Cold-start** — zero completed soccer games in the DB and no team-ratings table at
+   tournament start. The strength signal must come from external history first, then
+   update in-tournament as `soccer_matchups.home_score/away_score` fill in.
+
+### Model
+
+```
+λ_home = exp(μ + home_adv + attack[home] − defense[away])
+λ_away = exp(μ +           attack[away] − defense[home])      (home_adv=0 at neutral sites)
+```
+Score matrix P(i,j) from (λ_home, λ_away) + small Dixon-Coles low-score correlation →
+```
+our_total_pred = λ_home + λ_away          ← our O/U (direct NBA analog)
+our_home_xg / our_away_xg                 ← our implied goals per side
+our_prob_home / our_prob_draw / our_prob_away  ← our 3-way, vs market's vig-removed probs
+our_prob_over_2_5, btts_prob              ← reused later for DFS ceiling / environment
+```
+**Market anchor:** shrink ratings toward the opening line so value comes from
+*disagreement*, not from fighting a sharp market — same philosophy as the LineStar delta.
+
+### Strength ratings (the "team stats" layer soccer lacks)
+
+- **Elo** from historical international results — recency- and margin-weighted, +home_adv,
+  tournament-importance K. Soccer analog of off/def rating.
+- **Attack/defense coefficients** via Poisson regression on the same history with
+  time-decay (Dixon-Coles). Fit with sklearn `PoissonRegressor` over a sparse team-dummy
+  design matrix (2 rows per match: each side's goals). Ratings computed over ALL teams in
+  history (opponents matter) but **stored only for teams in `soccer_teams`**.
+
+### Data source (free, no auth — solves cold start)
+
+- **`martj42/international_results`** (GitHub raw `results.csv`): every men's international
+  1872→present (date, teams, scores, tournament, neutral). Cache to `data/` then train.
+- In-tournament: a results fetch fills WC scores → ratings re-trained as games complete.
+
+### Schema additions
+
+- **`soccer_team_ratings`** — `team_id | elo | attack | defense | matches | rating_date` (P1).
+- **`soccer_matchups`** new cols (P2) — `our_total_pred, our_home_xg, our_away_xg,
+  our_prob_home, our_prob_draw, our_prob_away`. Mirrors `our_game_total_pred` on nba_matchups.
+
+### New files (parallel to NBA)
+
+- `ingest/soccer_results_history.py` → downloads/caches martj42 history (analog of stats refresh)
+- `model/soccer_ratings.py` → Elo + Poisson attack/defense fit → writes `soccer_team_ratings`
+- `model/soccer_predictions.py` → bivariate Poisson → writes `our_*` to soccer_matchups,
+  called after `ingest.soccer_schedule` (analog of `game_predictions.predict_and_write`)
+
+### Phases
+
+| Phase | Scope | Status |
+|---|---|---|
+| **P1** | History ingest + Elo/attack-defense ratings + `soccer_team_ratings` | In progress (2026-06-13) |
+| **P2** | Bivariate Poisson `soccer_predictions.py` → write `our_*` columns | Planned |
+| **P3** | Frontend "Our vs Vegas" deltas + edge flags on the soccer Vegas view | Planned |
+| **P4** | In-tournament rating updates from completed scores; backtest our vs market vs actual | Planned |

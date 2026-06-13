@@ -756,6 +756,23 @@ TABLES = [
         UNIQUE(game_date, home_team_id, away_team_id)
     )
     """,
+
+    # ── Soccer team strength ratings (our model) ──────────────
+    # elo: World-Football-style Elo from historical international results.
+    # attack/defense: Dixon-Coles Poisson coefficients (log scale).
+    # Re-trained from history + completed World Cup games; feeds the bivariate
+    # Poisson goal model in model/soccer_predictions.py.
+    """
+    CREATE TABLE IF NOT EXISTS soccer_team_ratings (
+        team_id INTEGER PRIMARY KEY REFERENCES soccer_teams(team_id),
+        elo DOUBLE PRECISION,
+        attack DOUBLE PRECISION,
+        defense DOUBLE PRECISION,
+        matches INTEGER DEFAULT 0,
+        rating_date DATE,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
 ]
 
 MIGRATIONS = [
