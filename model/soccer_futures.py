@@ -284,38 +284,40 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
     capture_key = new_capture_key()
     written = 0
 
-    # ── Outright winner ──
+    # ── Outright winner ── (one connection for the batch)
     champ = simulate_outright(field, sims)
     market = _fetch_outright_market(api_key, name_to_id)
-    for t in field:
-        tid = t["team_id"]
-        sim_prob = champ.get(tid, 0.0)
-        mkt = market.get(tid)
-        # Anchor the approximate sim to the market when a line exists.
-        if mkt is not None:
-            our_prob = _W_OUTRIGHT_MODEL * sim_prob + (1 - _W_OUTRIGHT_MODEL) * mkt["prob_vigfree"]
-        else:
-            our_prob = sim_prob
-        record_bet(
-            db,
-            model_version=MODEL_VERSION,
-            bet_type="outright_winner",
-            scope="tournament",
-            selection_label=t["name"],
-            our_prob=our_prob,
-            capture_key=capture_key,
-            market_odds=mkt["best_odds"] if mkt else None,
-            market_prob=mkt["prob_vigfree"] if mkt else None,
-            book=mkt["best_book"] if mkt else None,
-            subject_team_id=tid,
-            baseline_prob=1.0 / len(field),
-            inputs={"elo": round(float(t["elo"]), 1), "sims": sims,
-                    "sim_prob": round(sim_prob, 4),
-                    "market_vigfree": round(mkt["prob_vigfree"], 4) if mkt else None,
-                    "anchor_w_model": _W_OUTRIGHT_MODEL,
-                    "has_market": mkt is not None},
-        )
-        written += 1
+    with db.connect() as conn:
+        for t in field:
+            tid = t["team_id"]
+            sim_prob = champ.get(tid, 0.0)
+            mkt = market.get(tid)
+            # Anchor the approximate sim to the market when a line exists.
+            if mkt is not None:
+                our_prob = _W_OUTRIGHT_MODEL * sim_prob + (1 - _W_OUTRIGHT_MODEL) * mkt["prob_vigfree"]
+            else:
+                our_prob = sim_prob
+            record_bet(
+                db,
+                model_version=MODEL_VERSION,
+                bet_type="outright_winner",
+                scope="tournament",
+                selection_label=t["name"],
+                our_prob=our_prob,
+                capture_key=capture_key,
+                market_odds=mkt["best_odds"] if mkt else None,
+                market_prob=mkt["prob_vigfree"] if mkt else None,
+                book=mkt["best_book"] if mkt else None,
+                subject_team_id=tid,
+                baseline_prob=1.0 / len(field),
+                conn=conn,
+                inputs={"elo": round(float(t["elo"]), 1), "sims": sims,
+                        "sim_prob": round(sim_prob, 4),
+                        "market_vigfree": round(mkt["prob_vigfree"], 4) if mkt else None,
+                        "anchor_w_model": _W_OUTRIGHT_MODEL,
+                        "has_market": mkt is not None},
+            )
+            written += 1
 
     # ── Group winners (clean groups only) ──
     # Group labels are derived from fixtures and can shift as more games load, so
@@ -329,26 +331,28 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
     groups = derive_groups(db)
     elo_by_id = {t["team_id"]: float(t["elo"]) for t in field}
     name_by_id = {t["team_id"]: t["name"] for t in field}
-    for label, members in groups.items():
-        member_elos = [(tid, elo_by_id.get(tid, 1500.0)) for tid in members]
-        probs = simulate_group(member_elos, sims)
-        for tid in members:
-            if tid not in name_by_id:
-                continue
-            record_bet(
-                db,
-                model_version=MODEL_VERSION,
-                bet_type="group_winner",
-                scope=f"Group {label}",
-                selection_label=name_by_id[tid],
-                our_prob=probs.get(tid, 0.0),
-                capture_key=capture_key,
-                subject_team_id=tid,
-                baseline_prob=1.0 / len(members),
-                inputs={"elo": round(elo_by_id.get(tid, 1500.0), 1),
-                        "group": label, "sims": sims},
-            )
-            written += 1
+    with db.connect() as conn:
+        for label, members in groups.items():
+            member_elos = [(tid, elo_by_id.get(tid, 1500.0)) for tid in members]
+            probs = simulate_group(member_elos, sims)
+            for tid in members:
+                if tid not in name_by_id:
+                    continue
+                record_bet(
+                    db,
+                    model_version=MODEL_VERSION,
+                    bet_type="group_winner",
+                    scope=f"Group {label}",
+                    selection_label=name_by_id[tid],
+                    our_prob=probs.get(tid, 0.0),
+                    capture_key=capture_key,
+                    subject_team_id=tid,
+                    baseline_prob=1.0 / len(members),
+                    conn=conn,
+                    inputs={"elo": round(elo_by_id.get(tid, 1500.0), 1),
+                            "group": label, "sims": sims},
+                )
+                written += 1
 
     print(f"Futures: {written} bets rated "
           f"({len(field)} teams outright, {len(groups)} clean groups derived)")

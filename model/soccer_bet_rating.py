@@ -139,9 +139,14 @@ def record_bet(
     event_commence: datetime | None = None,
     inputs: dict | None = None,
     longshot_odds_cap: bool = False,
+    conn=None,
 ) -> int | None:
     """Rate and persist one bet recommendation.  Returns the bet id, or None if
     the row is locked (event already started) and was therefore left untouched.
+
+    Pass ``conn`` (an open connection from ``db.connect()``) to batch many bets
+    over a single connection — important from CI, where each new connection to
+    Neon costs a full TLS round-trip.  When omitted, opens its own connection.
     """
     if market_odds is not None and market_prob is not None:
         decimal_odds = american_to_decimal(market_odds)
@@ -153,50 +158,57 @@ def record_bet(
 
     now = datetime.now(timezone.utc)
     locked = event_commence is not None and now >= event_commence
+    params = (
+        model_version, bet_type, scope, matchup_id, subject_team_id,
+        selection_label, market_odds, decimal_odds, market_prob, book,
+        our_prob, edge, ev, stars, json.dumps(inputs or {}), event_commence, locked,
+    )
 
-    row = db.execute_one(
-        """
-        INSERT INTO soccer_bets (
-            model_version, bet_type, scope, matchup_id, subject_team_id,
-            selection_label, market_odds, market_decimal, market_prob, book,
-            our_prob, edge, ev, stars, inputs_json, event_commence, locked, updated_at
+    def _do(cur) -> int | None:
+        cur.execute(
+            """
+            INSERT INTO soccer_bets (
+                model_version, bet_type, scope, matchup_id, subject_team_id,
+                selection_label, market_odds, market_decimal, market_prob, book,
+                our_prob, edge, ev, stars, inputs_json, event_commence, locked, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (bet_type, scope, selection_label, model_version) DO UPDATE SET
+                matchup_id      = EXCLUDED.matchup_id,
+                subject_team_id = EXCLUDED.subject_team_id,
+                market_odds     = EXCLUDED.market_odds,
+                market_decimal  = EXCLUDED.market_decimal,
+                market_prob     = EXCLUDED.market_prob,
+                book            = EXCLUDED.book,
+                our_prob        = EXCLUDED.our_prob,
+                edge            = EXCLUDED.edge,
+                ev              = EXCLUDED.ev,
+                stars           = EXCLUDED.stars,
+                inputs_json     = EXCLUDED.inputs_json,
+                event_commence  = EXCLUDED.event_commence,
+                locked          = EXCLUDED.locked,
+                updated_at      = NOW()
+            WHERE soccer_bets.locked = FALSE
+              AND soccer_bets.status = 'pending'
+            RETURNING id
+            """,
+            params,
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        ON CONFLICT (bet_type, scope, selection_label, model_version) DO UPDATE SET
-            matchup_id      = EXCLUDED.matchup_id,
-            subject_team_id = EXCLUDED.subject_team_id,
-            market_odds     = EXCLUDED.market_odds,
-            market_decimal  = EXCLUDED.market_decimal,
-            market_prob     = EXCLUDED.market_prob,
-            book            = EXCLUDED.book,
-            our_prob        = EXCLUDED.our_prob,
-            edge            = EXCLUDED.edge,
-            ev              = EXCLUDED.ev,
-            stars           = EXCLUDED.stars,
-            inputs_json     = EXCLUDED.inputs_json,
-            event_commence  = EXCLUDED.event_commence,
-            locked          = EXCLUDED.locked,
-            updated_at      = NOW()
-        WHERE soccer_bets.locked = FALSE
-          AND soccer_bets.status = 'pending'
-        RETURNING id
-        """,
-        (
-            model_version, bet_type, scope, matchup_id, subject_team_id,
-            selection_label, market_odds, decimal_odds, market_prob, book,
-            our_prob, edge, ev, stars, json.dumps(inputs or {}), event_commence, locked,
-        ),
-    )
-    if not row:
-        return None  # locked — left as the frozen closing recommendation
+        row = cur.fetchone()
+        if not row:
+            return None  # locked — left as the frozen closing recommendation
+        bet_id = row["id"]
+        cur.execute(
+            """
+            INSERT INTO soccer_bet_snapshots
+                (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars),
+        )
+        return bet_id
 
-    bet_id = row["id"]
-    db.execute(
-        """
-        INSERT INTO soccer_bet_snapshots
-            (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars),
-    )
-    return bet_id
+    if conn is not None:
+        return _do(conn.cursor())
+    with db.connect() as own_conn:
+        return _do(own_conn.cursor())

@@ -88,44 +88,48 @@ def predict_and_record(db: DatabaseManager, api_key: str, window_hours: int = DE
         Lambda = float(fx["our_total_pred"])
         p_at_least_one = 1.0 - math.exp(-Lambda)
 
-        for npl, fs in markets["first"].items():
-            if fs["best_odds"] is None:
-                continue
-            lam_p = lam.get(npl)
-            if lam_p is None:
-                # First-scorer listed but no anytime line — skip (no strength estimate).
-                continue
-            share = lam_p / lam_total
-            our_prob = share * p_at_least_one
-            if our_prob <= 0:
-                continue
+        # One connection per fixture for its writes (the API call already happened
+        # above, so we never hold a DB connection idle across slow HTTP).
+        with db.connect() as conn:
+            for npl, fs in markets["first"].items():
+                if fs["best_odds"] is None:
+                    continue
+                lam_p = lam.get(npl)
+                if lam_p is None:
+                    # First-scorer listed but no anytime line — skip (no strength estimate).
+                    continue
+                share = lam_p / lam_total
+                our_prob = share * p_at_least_one
+                if our_prob <= 0:
+                    continue
 
-            record_bet(
-                db,
-                model_version=MODEL_VERSION,
-                bet_type="first_scorer",
-                scope=str(fx["game_id"]),
-                selection_label=fs["name"],
-                our_prob=our_prob,
-                capture_key=capture_key,
-                market_odds=fs["best_odds"],
-                market_prob=fs["prob_vigfree"],
-                book=fs["best_book"],
-                matchup_id=fx["id"],
-                event_commence=fx["commence_time"],
-                longshot_odds_cap=True,
-                inputs={
-                    "lambda_p": round(lam_p, 4),
-                    "lambda_total": round(lam_total, 4),
-                    "match_total_xg": round(Lambda, 4),
-                    "share": round(share, 4),
-                    "p_at_least_one_goal": round(p_at_least_one, 4),
-                    "market_prob_vigfree": round(fs["prob_vigfree"], 4),
-                    "book_count": fs["book_count"],
-                    "fixture": f"{fx['home']} v {fx['away']}",
-                },
-            )
-            written += 1
+                record_bet(
+                    db,
+                    model_version=MODEL_VERSION,
+                    bet_type="first_scorer",
+                    scope=str(fx["game_id"]),
+                    selection_label=fs["name"],
+                    our_prob=our_prob,
+                    capture_key=capture_key,
+                    market_odds=fs["best_odds"],
+                    market_prob=fs["prob_vigfree"],
+                    book=fs["best_book"],
+                    matchup_id=fx["id"],
+                    event_commence=fx["commence_time"],
+                    longshot_odds_cap=True,
+                    conn=conn,
+                    inputs={
+                        "lambda_p": round(lam_p, 4),
+                        "lambda_total": round(lam_total, 4),
+                        "match_total_xg": round(Lambda, 4),
+                        "share": round(share, 4),
+                        "p_at_least_one_goal": round(p_at_least_one, 4),
+                        "market_prob_vigfree": round(fs["prob_vigfree"], 4),
+                        "book_count": fs["book_count"],
+                        "fixture": f"{fx['home']} v {fx['away']}",
+                    },
+                )
+                written += 1
 
     print(f"First scorer: {written} bets rated across {len(fixtures)} fixtures")
     return written

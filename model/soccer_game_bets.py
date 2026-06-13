@@ -93,77 +93,81 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
         print("Game bets: no upcoming fixtures to rate")
         return 0
 
+    from model.soccer_bet_rating import american_to_prob
     capture_key = new_capture_key()
     written = 0
-    for fx in fixtures:
-        fixture_label = f"{fx['home']} v {fx['away']}"
-        commence = fx["commence_time"]
+    # One connection for the whole batch — far fewer round-trips to Neon from CI.
+    with db.connect() as conn:
+        for fx in fixtures:
+            fixture_label = f"{fx['home']} v {fx['away']}"
+            commence = fx["commence_time"]
 
-        # ── Moneyline (3-way) ──
-        legs = [
-            ("home", fx["home"], fx["home_team_id"], fx["our_prob_home"], fx["vegas_prob_home"], fx["home_ml"]),
-            ("draw", "Draw", None, fx["our_prob_draw"], fx["vegas_prob_draw"], fx["draw_ml"]),
-            ("away", fx["away"], fx["away_team_id"], fx["our_prob_away"], fx["vegas_prob_away"], fx["away_ml"]),
-        ]
-        for side, label, team_id, our_p, mkt_p, ml in legs:
-            if our_p is None or ml is None:
-                continue
-            mkt_p_f = float(mkt_p) if mkt_p is not None else None
-            anchored = _anchor(float(our_p), mkt_p_f, _W_MONEYLINE_MODEL)
-            record_bet(
-                db,
-                model_version=MODEL_VERSION,
-                bet_type="moneyline",
-                scope=str(fx["game_id"]),
-                selection_label=label,
-                our_prob=anchored,
-                capture_key=capture_key,
-                market_odds=int(ml),
-                market_prob=mkt_p_f,
-                matchup_id=fx["id"],
-                subject_team_id=team_id,
-                event_commence=commence,
-                longshot_odds_cap=True,
-                inputs={"side": side, "fixture": fixture_label,
-                        "model_prob": round(float(our_p), 4),
-                        "anchored_prob": round(anchored, 4),
-                        "market_prob_vigfree": round(mkt_p_f, 4) if mkt_p_f is not None else None},
-            )
-            written += 1
-
-        # ── Totals (O/U) ──
-        line = fx["vegas_total"]
-        lam = fx["our_total_pred"]
-        over_odds, under_odds = fx["over_odds"], fx["under_odds"]
-        if line is not None and lam is not None and over_odds is not None and under_odds is not None:
-            from model.soccer_bet_rating import american_to_prob
-            p_over, p_under = _over_under_probs(float(line), float(lam))
-            raw_o, raw_u = american_to_prob(int(over_odds)), american_to_prob(int(under_odds))
-            vf_over = raw_o / (raw_o + raw_u) if (raw_o + raw_u) > 0 else None
-            vf_under = raw_u / (raw_o + raw_u) if (raw_o + raw_u) > 0 else None
-            for label, our_p, mkt_p, odds in [
-                (f"Over {line}", p_over, vf_over, over_odds),
-                (f"Under {line}", p_under, vf_under, under_odds),
-            ]:
-                anchored = _anchor(float(our_p), mkt_p, _W_TOTAL_MODEL)
+            # ── Moneyline (3-way) ──
+            legs = [
+                ("home", fx["home"], fx["home_team_id"], fx["our_prob_home"], fx["vegas_prob_home"], fx["home_ml"]),
+                ("draw", "Draw", None, fx["our_prob_draw"], fx["vegas_prob_draw"], fx["draw_ml"]),
+                ("away", fx["away"], fx["away_team_id"], fx["our_prob_away"], fx["vegas_prob_away"], fx["away_ml"]),
+            ]
+            for side, label, team_id, our_p, mkt_p, ml in legs:
+                if our_p is None or ml is None:
+                    continue
+                mkt_p_f = float(mkt_p) if mkt_p is not None else None
+                anchored = _anchor(float(our_p), mkt_p_f, _W_MONEYLINE_MODEL)
                 record_bet(
                     db,
                     model_version=MODEL_VERSION,
-                    bet_type="total",
+                    bet_type="moneyline",
                     scope=str(fx["game_id"]),
                     selection_label=label,
                     our_prob=anchored,
                     capture_key=capture_key,
-                    market_odds=int(odds),
-                    market_prob=float(mkt_p) if mkt_p is not None else None,
+                    market_odds=int(ml),
+                    market_prob=mkt_p_f,
                     matchup_id=fx["id"],
+                    subject_team_id=team_id,
                     event_commence=commence,
                     longshot_odds_cap=True,
-                    inputs={"line": float(line), "lambda": round(float(lam), 4),
-                            "model_p": round(float(our_p), 4), "anchored_p": round(anchored, 4),
-                            "fixture": fixture_label},
+                    conn=conn,
+                    inputs={"side": side, "fixture": fixture_label,
+                            "model_prob": round(float(our_p), 4),
+                            "anchored_prob": round(anchored, 4),
+                            "market_prob_vigfree": round(mkt_p_f, 4) if mkt_p_f is not None else None},
                 )
                 written += 1
+
+            # ── Totals (O/U) ──
+            line = fx["vegas_total"]
+            lam = fx["our_total_pred"]
+            over_odds, under_odds = fx["over_odds"], fx["under_odds"]
+            if line is not None and lam is not None and over_odds is not None and under_odds is not None:
+                p_over, p_under = _over_under_probs(float(line), float(lam))
+                raw_o, raw_u = american_to_prob(int(over_odds)), american_to_prob(int(under_odds))
+                vf_over = raw_o / (raw_o + raw_u) if (raw_o + raw_u) > 0 else None
+                vf_under = raw_u / (raw_o + raw_u) if (raw_o + raw_u) > 0 else None
+                for label, our_p, mkt_p, odds in [
+                    (f"Over {line}", p_over, vf_over, over_odds),
+                    (f"Under {line}", p_under, vf_under, under_odds),
+                ]:
+                    anchored = _anchor(float(our_p), mkt_p, _W_TOTAL_MODEL)
+                    record_bet(
+                        db,
+                        model_version=MODEL_VERSION,
+                        bet_type="total",
+                        scope=str(fx["game_id"]),
+                        selection_label=label,
+                        our_prob=anchored,
+                        capture_key=capture_key,
+                        market_odds=int(odds),
+                        market_prob=float(mkt_p) if mkt_p is not None else None,
+                        matchup_id=fx["id"],
+                        event_commence=commence,
+                        longshot_odds_cap=True,
+                        conn=conn,
+                        inputs={"line": float(line), "lambda": round(float(lam), 4),
+                                "model_p": round(float(our_p), 4), "anchored_p": round(anchored, 4),
+                                "fixture": fixture_label},
+                    )
+                    written += 1
 
     print(f"Game bets: {written} moneyline/total bets rated across {len(fixtures)} fixtures")
     return written
