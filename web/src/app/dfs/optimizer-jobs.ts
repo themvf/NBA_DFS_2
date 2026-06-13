@@ -579,7 +579,7 @@ function buildDebugInfo(
         };
 
   return {
-    sport: job.sport as Sport,
+    sport: job.sport as "nba" | "mlb",
     mode,
     eligibleCount: job.eligibleCount ?? 0,
     requestedLineups: job.requestedLineups,

@@ -36,16 +36,6 @@ function factorFromAverages(
   return clamp(avgActual / avgProj, minFactor, maxFactor);
 }
 
-// Implied-total bucket key → label used in the calibration map
-function impliedBucketKey(teamImplied: number): string {
-  if (teamImplied < 4.0) return "u40";
-  if (teamImplied < 5.0) return "n50";
-  if (teamImplied < 6.0) return "n60";
-  return "hi";
-}
-
-export { impliedBucketKey };
-
 export async function loadMlbHitterProjectionCalibration(): Promise<MlbHitterProjectionCalibration> {
   const now = Date.now();
   if (mlbHitterProjectionCalibrationCache && now - mlbHitterProjectionCalibrationCache.loadedAtMs < 15 * 60 * 1000) {

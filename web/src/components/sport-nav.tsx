@@ -17,19 +17,22 @@ import type { Sport } from "@/db/queries";
 const SPORTS: { sport: Sport; label: string; icon: string }[] = [
   { sport: "nba", label: "NBA", icon: "🏀" },
   { sport: "mlb", label: "MLB", icon: "⚾" },
+  { sport: "soccer", label: "World Cup", icon: "⚽" },
 ];
 
+// Soccer currently only has the Vegas model wired up; DFS/analytics pages are
+// NBA/MLB-only until the soccer DFS phase lands.
 const PAGE_LINKS: Array<{
   href: string;
   label: string;
   sports?: Sport[];
 }> = [
-  { href: "/dfs", label: "DFS" },
+  { href: "/dfs", label: "DFS", sports: ["nba", "mlb"] },
   { href: "/homerun", label: "Homeruns", sports: ["mlb"] },
-  { href: "/analytics", label: "Analytics" },
+  { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },
-  { href: "/stats", label: "Team Stats" },
-  { href: "/schedule", label: "Schedule" },
+  { href: "/stats", label: "Team Stats", sports: ["nba", "mlb"] },
+  { href: "/schedule", label: "Schedule", sports: ["nba", "mlb"] },
 ];
 
 export function SportNav() {
@@ -44,7 +47,7 @@ export function SportNav() {
 
         {/* Logo */}
         <Link
-          href={`/dfs?sport=${currentSport}`}
+          href={currentSport === "soccer" ? `/vegas?sport=soccer` : `/dfs?sport=${currentSport}`}
           className="mr-3 shrink-0 font-bold text-lg tracking-tight"
         >
           DFS

@@ -10,13 +10,15 @@ export default async function VegasPage({
   searchParams: Promise<{ date?: string; sport?: string }>;
 }) {
   const { date, sport } = await searchParams;
-  const resolvedSport: Sport = sport === "mlb" ? "mlb" : "nba";
+  const resolvedSport: Sport =
+    sport === "mlb" ? "mlb" : sport === "soccer" ? "soccer" : "nba";
+  const sportLabel = resolvedSport === "soccer" ? "WORLD CUP" : resolvedSport.toUpperCase();
 
   return (
     <Suspense
       fallback={
         <div className="space-y-6 p-6 max-w-5xl mx-auto">
-          <h1 className="text-xl font-bold">Vegas Analysis — {resolvedSport.toUpperCase()}</h1>
+          <h1 className="text-xl font-bold">Vegas Analysis — {sportLabel}</h1>
           <div className="rounded-lg border bg-card p-6 text-sm text-gray-400">
             Loading matchups and historical Vegas data…
           </div>

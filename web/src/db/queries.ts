@@ -16,7 +16,7 @@ type SolverResult = Record<string, number> & { feasible: boolean; result: number
 
 // ── Sport discriminator ──────────────────────────────────────
 // Add new sports here as the project expands.
-export type Sport = "nba" | "mlb";
+export type Sport = "nba" | "mlb" | "soccer";
 
 // ── DFS Player Pool ──────────────────────────────────────────
 
@@ -6086,6 +6086,84 @@ export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupR
     awaySpHand: null,
     awaySpXfip: null,
     awaySpKPer9: null,
+  }));
+}
+
+// ── Soccer / World Cup Vegas matchups ─────────────────────────────────────────
+// Soccer differs from NBA/MLB: 3-way moneyline (home/draw/away), vegas_total is
+// GOALS, and implied values are expected goals per side.  Fixtures span the whole
+// tournament, so the default view is "upcoming" rather than a single date.
+export type SoccerVegasMatchupRow = {
+  matchupId: number;
+  gameDate: string;
+  commenceTime: string | null;
+  homeTeam: string;
+  awayTeam: string;
+  homeAbbrev: string | null;
+  awayAbbrev: string | null;
+  vegasTotal: number | null;
+  homeMl: number | null;
+  drawMl: number | null;
+  awayMl: number | null;
+  homeWinProb: number | null;
+  drawProb: number | null;
+  awayWinProb: number | null;
+  homeImplied: number | null;
+  awayImplied: number | null;
+  homeScore: number | null;
+  awayScore: number | null;
+};
+
+export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerVegasMatchupRow[]> {
+  // With a date: that matchday. Without: all upcoming fixtures (today onward).
+  const whereClause = gameDate
+    ? sql`WHERE sm.game_date = ${gameDate}`
+    : sql`WHERE sm.game_date >= CURRENT_DATE`;
+  const rows = await db.execute(sql`
+    SELECT
+      sm.id              AS "matchupId",
+      sm.game_date       AS "gameDate",
+      sm.commence_time   AS "commenceTime",
+      t_home.name        AS "homeTeam",
+      t_away.name        AS "awayTeam",
+      t_home.abbreviation AS "homeAbbrev",
+      t_away.abbreviation AS "awayAbbrev",
+      sm.vegas_total     AS "vegasTotal",
+      sm.home_ml         AS "homeMl",
+      sm.draw_ml         AS "drawMl",
+      sm.away_ml         AS "awayMl",
+      sm.vegas_prob_home AS "homeWinProb",
+      sm.vegas_prob_draw AS "drawProb",
+      sm.vegas_prob_away AS "awayWinProb",
+      sm.home_implied    AS "homeImplied",
+      sm.away_implied    AS "awayImplied",
+      sm.home_score      AS "homeScore",
+      sm.away_score      AS "awayScore"
+    FROM soccer_matchups sm
+    LEFT JOIN soccer_teams t_home ON t_home.team_id = sm.home_team_id
+    LEFT JOIN soccer_teams t_away ON t_away.team_id = sm.away_team_id
+    ${whereClause}
+    ORDER BY sm.commence_time ASC NULLS LAST
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    matchupId: Number(r.matchupId),
+    gameDate: String(r.gameDate),
+    commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+    homeTeam: String(r.homeTeam ?? ""),
+    awayTeam: String(r.awayTeam ?? ""),
+    homeAbbrev: r.homeAbbrev != null ? String(r.homeAbbrev) : null,
+    awayAbbrev: r.awayAbbrev != null ? String(r.awayAbbrev) : null,
+    vegasTotal: r.vegasTotal != null ? Number(r.vegasTotal) : null,
+    homeMl: r.homeMl != null ? Number(r.homeMl) : null,
+    drawMl: r.drawMl != null ? Number(r.drawMl) : null,
+    awayMl: r.awayMl != null ? Number(r.awayMl) : null,
+    homeWinProb: r.homeWinProb != null ? Number(r.homeWinProb) : null,
+    drawProb: r.drawProb != null ? Number(r.drawProb) : null,
+    awayWinProb: r.awayWinProb != null ? Number(r.awayWinProb) : null,
+    homeImplied: r.homeImplied != null ? Number(r.homeImplied) : null,
+    awayImplied: r.awayImplied != null ? Number(r.awayImplied) : null,
+    homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+    awayScore: r.awayScore != null ? Number(r.awayScore) : null,
   }));
 }
 

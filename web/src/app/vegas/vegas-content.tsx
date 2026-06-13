@@ -12,11 +12,20 @@ import {
   getBiggestMisses,
   getTeamVegasInsights,
   getMoneylineBacktest,
+  getSoccerVegasMatchups,
 } from "@/db/queries";
 import type { Sport } from "@/db/queries";
 import VegasClient from "./vegas-client";
+import SoccerVegasClient from "./soccer-vegas-client";
 
 export default async function VegasContent({ date, sport = "nba" }: { date?: string; sport?: Sport }) {
+  // Soccer only has the Vegas model (no historical results/backtest yet),
+  // so it gets a focused fixtures view rather than the NBA/MLB analytics panels.
+  if (sport === "soccer") {
+    const matchups = await getSoccerVegasMatchups(date);
+    return <SoccerVegasClient matchups={matchups} queryDate={date ?? null} />;
+  }
+
   const [sportData, mlbCoverageStatus, vegasSummary, biggestMisses, teamInsights, moneylineBacktest] = await Promise.all([
     Promise.all(
       sport === "mlb"
