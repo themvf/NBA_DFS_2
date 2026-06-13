@@ -29,6 +29,7 @@ from datetime import date
 
 from config import DATA_DIR, load_config
 from db.database import DatabaseManager
+from db.queries import get_soccer_model_params
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +53,16 @@ _W_MODEL_SUPREMACY = 0.45
 _MAX_GOALS = 10
 
 
-def _load_params() -> tuple[float, float]:
+def _load_params(db: DatabaseManager) -> tuple[float, float]:
+    """Load trained mu/home_adv: DB first (CI-safe), then local json, then defaults."""
+    row = get_soccer_model_params(db)
+    if row and row.get("mu") is not None and row.get("home_adv") is not None:
+        return float(row["mu"]), float(row["home_adv"])
     try:
         data = json.loads(PARAMS_PATH.read_text())
         return float(data["mu"]), float(data["home_adv"])
     except Exception:
-        logger.warning("Model params not found at %s — using defaults", PARAMS_PATH)
+        logger.warning("Trained model params not found (DB or %s) — using defaults", PARAMS_PATH)
         return _DEFAULT_MU, _DEFAULT_HOME_ADV
 
 
@@ -98,7 +103,7 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
     (the market anchor needs it).  With game_date, restricts to that matchday;
     otherwise all upcoming fixtures (today onward).  Returns rows updated.
     """
-    mu, home_adv_raw = _load_params()
+    mu, home_adv_raw = _load_params(db)
     home_adv = home_adv_raw * _NEUTRAL_HOME_DAMPEN
 
     ratings = {

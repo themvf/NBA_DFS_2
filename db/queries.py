@@ -920,6 +920,34 @@ def upsert_soccer_matchup(
     return row["id"] if row else 0
 
 
+def upsert_soccer_model_params(
+    db: DatabaseManager,
+    mu: float,
+    home_adv: float,
+    n_matches: int | None = None,
+    trained_at: str | None = None,
+) -> None:
+    """Store the singleton global Poisson params (id=1)."""
+    db.execute(
+        """
+        INSERT INTO soccer_model_params (id, mu, home_adv, n_matches, trained_at, updated_at)
+        VALUES (1, %s, %s, %s, %s, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+            mu         = EXCLUDED.mu,
+            home_adv   = EXCLUDED.home_adv,
+            n_matches  = EXCLUDED.n_matches,
+            trained_at = EXCLUDED.trained_at,
+            updated_at = NOW()
+        """,
+        (mu, home_adv, n_matches, trained_at),
+    )
+
+
+def get_soccer_model_params(db: DatabaseManager) -> dict | None:
+    """Return {mu, home_adv, n_matches, trained_at} or None if never trained."""
+    return db.execute_one("SELECT mu, home_adv, n_matches, trained_at FROM soccer_model_params WHERE id = 1")
+
+
 def upsert_soccer_team_rating(
     db: DatabaseManager,
     team_id: int,

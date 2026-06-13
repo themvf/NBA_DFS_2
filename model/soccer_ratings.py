@@ -33,7 +33,11 @@ import pandas as pd
 
 from config import DATA_DIR, load_config
 from db.database import DatabaseManager
-from db.queries import build_soccer_team_name_cache, upsert_soccer_team_rating
+from db.queries import (
+    build_soccer_team_name_cache,
+    upsert_soccer_model_params,
+    upsert_soccer_team_rating,
+)
 from ingest.soccer_results_history import load_history
 
 logger = logging.getLogger(__name__)
@@ -238,12 +242,15 @@ def train_and_store(db: DatabaseManager, write: bool = True) -> int:
     elo, elo_matches = compute_elo(df)
     mu, home_adv, attack, defense = fit_poisson_strengths(df)
 
-    # Persist global params for the prediction step.
+    # Persist global params for the prediction step — to the DB (so CI is
+    # self-sufficient) and to a local json cache (for --report / offline use).
     if write:
+        today = date.today().isoformat()
+        upsert_soccer_model_params(db, mu=mu, home_adv=home_adv, n_matches=int(len(df)), trained_at=today)
         PARAMS_PATH.write_text(json.dumps({
             "mu": mu,
             "home_adv": home_adv,
-            "trained_at": date.today().isoformat(),
+            "trained_at": today,
             "n_matches": int(len(df)),
         }, indent=2))
 

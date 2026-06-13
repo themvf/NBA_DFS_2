@@ -773,6 +773,22 @@ TABLES = [
         updated_at TIMESTAMPTZ DEFAULT NOW()
     )
     """,
+
+    # ── Soccer model global params (singleton) ────────────────
+    # mu (log base goals) + home_adv from the Poisson fit.  Stored in the DB so
+    # the prediction step is self-sufficient in CI (the data/ json cache is
+    # gitignored and absent on fresh checkouts).
+    """
+    CREATE TABLE IF NOT EXISTS soccer_model_params (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        mu DOUBLE PRECISION,
+        home_adv DOUBLE PRECISION,
+        n_matches INTEGER,
+        trained_at DATE,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT soccer_model_params_singleton CHECK (id = 1)
+    )
+    """,
 ]
 
 MIGRATIONS = [

@@ -1,0 +1,54 @@
+name: Refresh Soccer (World Cup)
+
+# Fetches World Cup fixtures + 3-way Vegas odds from The Odds API and recomputes
+# our model predictions (our_* columns on soccer_matchups).  Safe to run from
+# GitHub runners: The Odds API has no IP restrictions (unlike stats.nba.com).
+#
+# Strength ratings (soccer_team_ratings) are NOT refreshed here — they barely
+# move game-to-game and are retrained manually/weekly via:
+#     python -m model.soccer_ratings
+# The trained mu/home_adv live in the DB (soccer_model_params), so predictions
+# here are self-sufficient without the gitignored data/ cache.
+
+on:
+  schedule:
+    # Every 3 hours — keeps lines + predictions fresh through a match day.
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Kickoff date YYYY-MM-DD (UTC). Default: all upcoming fixtures"
+        required: false
+        type: string
+
+concurrency:
+  group: refresh-soccer
+  cancel-in-progress: false
+
+jobs:
+  refresh-soccer:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh World Cup odds + model predictions
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            python -m ingest.soccer_schedule --date "${{ inputs.date }}"
+          else
+            python -m ingest.soccer_schedule
+          fi
