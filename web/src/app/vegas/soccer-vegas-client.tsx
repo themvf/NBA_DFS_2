@@ -1,6 +1,7 @@
 "use client";
 
-import type { SoccerVegasMatchupRow } from "@/db/queries";
+import { useState } from "react";
+import type { SoccerVegasMatchupRow, SoccerBetRow, SoccerBacktestRow } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
 const fmtPct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
@@ -25,6 +26,31 @@ function fmtDayHeading(gameDate: string): string {
 
 const fmtSignedPp = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(0)}%`;
 const fmtSignedGoals = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
+
+const BET_TYPE_LABEL: Record<string, string> = {
+  first_scorer: "First Scorer",
+  outright_winner: "Outright Winner",
+  group_winner: "Group Winner",
+};
+
+function Stars({ n }: { n: number }) {
+  return (
+    <span className="tabular-nums tracking-tight text-amber-400" title={`${n} of 5 stars`}>
+      {"★".repeat(n)}
+      <span className="text-muted-foreground/40">{"★".repeat(5 - n)}</span>
+    </span>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const cls =
+    status === "won"
+      ? "bg-emerald-500/15 text-emerald-400"
+      : status === "lost"
+        ? "bg-rose-500/15 text-rose-400"
+        : "bg-muted text-muted-foreground";
+  return <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${cls}`}>{status}</span>;
+}
 
 // Three-way probability bar (home / draw / away).
 function ProbBar({ home, draw, away }: { home: number | null; draw: number | null; away: number | null }) {
@@ -53,11 +79,182 @@ function bestEdge(m: SoccerVegasMatchupRow): { label: string; edge: number } | n
   return cands.reduce((best, c) => (c.edge > best.edge ? c : best));
 }
 
+function BetsPanel({ bets }: { bets: SoccerBetRow[] }) {
+  const [minStars, setMinStars] = useState(4);
+  const [betType, setBetType] = useState<string>("all");
+  const filtered = bets.filter(
+    (b) => b.stars >= minStars && (betType === "all" || b.betType === betType),
+  );
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-bold">⭐ Star-Rated Bets</h2>
+        <div className="flex items-center gap-3 text-xs">
+          <label className="flex items-center gap-1">
+            <span className="text-muted-foreground">Min stars</span>
+            <select
+              value={minStars}
+              onChange={(e) => setMinStars(Number(e.target.value))}
+              className="rounded border bg-background px-1.5 py-1"
+            >
+              {[1, 2, 3, 4, 5].map((s) => (
+                <option key={s} value={s}>{s}★+</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1">
+            <span className="text-muted-foreground">Type</span>
+            <select
+              value={betType}
+              onChange={(e) => setBetType(e.target.value)}
+              className="rounded border bg-background px-1.5 py-1"
+            >
+              <option value="all">All</option>
+              <option value="outright_winner">Outright</option>
+              <option value="group_winner">Group winner</option>
+              <option value="first_scorer">First scorer</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <p className="rounded-lg border bg-card p-3 text-xs text-muted-foreground">
+        Every recommendation is logged to an auditable ledger with the model version and frozen
+        inputs, and <strong className="text-foreground">locks at kickoff</strong> so the backtest
+        uses the number we committed to. Stars combine EV (vs the offered price) and edge (vs the
+        vig-free market). 1★ = avoid/fade. Note: first-scorer markets carry huge vig, so the model
+        rates almost all of them 1★ — that &ldquo;don&rsquo;t bet&rdquo; signal is itself the value.
+      </p>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
+          No bets at {minStars}★+ for this filter. Lower the threshold, or run{" "}
+          <code className="rounded bg-muted px-1 py-0.5">model.soccer_futures</code> /{" "}
+          <code className="rounded bg-muted px-1 py-0.5">model.soccer_first_scorer</code>.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border bg-card">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b text-xs text-muted-foreground">
+                <th className="px-3 py-2 text-left font-medium">Rating</th>
+                <th className="px-2 py-2 text-left font-medium">Type</th>
+                <th className="px-2 py-2 text-left font-medium">Selection</th>
+                <th className="px-2 py-2 text-center font-medium">Our %</th>
+                <th className="px-2 py-2 text-center font-medium">Mkt %</th>
+                <th className="px-2 py-2 text-center font-medium">Odds</th>
+                <th className="px-2 py-2 text-center font-medium">EV</th>
+                <th className="px-2 py-2 text-center font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((b) => (
+                <tr key={b.id} className="border-b last:border-0 hover:bg-accent/40">
+                  <td className="px-3 py-2"><Stars n={b.stars} /></td>
+                  <td className="px-2 py-2 text-xs text-muted-foreground">
+                    {BET_TYPE_LABEL[b.betType] ?? b.betType}
+                    {b.scope.startsWith("Group ") && <span className="ml-1">({b.scope})</span>}
+                  </td>
+                  <td className="px-2 py-2">
+                    <div className="font-medium">{b.selectionLabel}</div>
+                    {b.fixture && <div className="text-[10px] text-muted-foreground">{b.fixture}</div>}
+                  </td>
+                  <td className="px-2 py-2 text-center tabular-nums">{fmtPct(b.ourProb)}</td>
+                  <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
+                    {b.marketProb != null ? fmtPct(b.marketProb) : "—"}
+                  </td>
+                  <td className="px-2 py-2 text-center tabular-nums">{fmtMl(b.marketOdds)}</td>
+                  <td className="px-2 py-2 text-center tabular-nums">
+                    {b.ev != null ? (
+                      <span className={b.ev > 0 ? "text-emerald-400" : "text-muted-foreground"}>
+                        {fmtSignedPp(b.ev)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground" title="no market line">—</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-center"><StatusPill status={b.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BacktestPanel({ backtest }: { backtest: SoccerBacktestRow[] }) {
+  const totalSettled = backtest.reduce((s, r) => s + r.n, 0);
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-bold">📊 Star-Rating Backtest</h2>
+      <p className="rounded-lg border bg-card p-3 text-xs text-muted-foreground">
+        The accountability check: among <strong className="text-foreground">settled</strong> bets,
+        does each star tier win at the rate we claimed? <strong className="text-foreground">Expected</strong>{" "}
+        is our average model probability; <strong className="text-foreground">Realized</strong> is the
+        actual win rate. A trustworthy 4–5★ tier has Realized ≥ Expected and positive ROI.
+      </p>
+      {totalSettled === 0 ? (
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
+          No settled bets yet — the World Cup hasn&rsquo;t produced results. Group/outright settle
+          from final standings; first-scorer via{" "}
+          <code className="rounded bg-muted px-1 py-0.5">ingest.soccer_results</code>. Check back as
+          games complete.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border bg-card">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead>
+              <tr className="border-b text-xs text-muted-foreground">
+                <th className="px-3 py-2 text-left font-medium">Tier</th>
+                <th className="px-2 py-2 text-center font-medium">Bets</th>
+                <th className="px-2 py-2 text-center font-medium">Expected</th>
+                <th className="px-2 py-2 text-center font-medium">Realized</th>
+                <th className="px-2 py-2 text-center font-medium">ROI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {backtest.map((r) => {
+                const beat = r.realizedWinRate >= r.expectedWinRate;
+                return (
+                  <tr key={r.stars} className="border-b last:border-0">
+                    <td className="px-3 py-2"><Stars n={r.stars} /></td>
+                    <td className="px-2 py-2 text-center tabular-nums">{r.n}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
+                      {fmtPct(r.expectedWinRate)}
+                    </td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${beat ? "text-emerald-400" : "text-rose-400"}`}>
+                      {fmtPct(r.realizedWinRate)}
+                    </td>
+                    <td className="px-2 py-2 text-center tabular-nums">
+                      {r.roi != null ? (
+                        <span className={r.roi >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                          {fmtSignedPp(r.roi)}
+                        </span>
+                      ) : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SoccerVegasClient({
   matchups,
+  bets,
+  backtest,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
+  bets: SoccerBetRow[];
+  backtest: SoccerBacktestRow[];
   queryDate: string | null;
 }) {
   const byDate = new Map<string, SoccerVegasMatchupRow[]>();
@@ -93,6 +290,10 @@ export default function SoccerVegasClient({
         )}
       </p>
 
+      <BetsPanel bets={bets} />
+      <BacktestPanel backtest={backtest} />
+
+      <h2 className="border-t pt-5 text-lg font-bold">📅 Fixtures — Our Model vs Vegas</h2>
       {matchups.length === 0 && (
         <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           No fixtures found. Run{" "}

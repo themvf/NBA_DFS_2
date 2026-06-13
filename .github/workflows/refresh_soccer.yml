@@ -52,3 +52,12 @@ jobs:
           else
             python -m ingest.soccer_schedule
           fi
+
+      - name: Settle completed bets (scores + group standings)
+        run: python -m ingest.soccer_results --days-from 3
+
+      - name: Rate futures bets (outright + group winner)
+        run: python -m model.soccer_futures --sims 20000
+
+      - name: Rate first-scorer bets (near-term fixtures)
+        run: python -m model.soccer_first_scorer --hours 48

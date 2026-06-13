@@ -6186,6 +6186,99 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
   }));
 }
 
+// ── Soccer bet ledger + backtest ──────────────────────────────────────────────
+export type SoccerBetRow = {
+  id: number;
+  betType: string;
+  scope: string;
+  selectionLabel: string;
+  fixture: string | null;
+  marketOdds: number | null;
+  marketProb: number | null;
+  ourProb: number;
+  edge: number | null;
+  ev: number | null;
+  stars: number;
+  book: string | null;
+  status: string;
+  resultDetail: string | null;
+  modelVersion: string;
+};
+
+export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBetRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      b.id, b.bet_type AS "betType", b.scope, b.selection_label AS "selectionLabel",
+      b.inputs_json->>'fixture' AS "fixture",
+      b.market_odds AS "marketOdds", b.market_prob AS "marketProb",
+      b.our_prob AS "ourProb", b.edge, b.ev, b.stars, b.book,
+      b.status, b.result_detail AS "resultDetail", b.model_version AS "modelVersion"
+    FROM soccer_bets b
+    WHERE b.stars >= ${minStars}
+    ORDER BY
+      CASE b.status WHEN 'pending' THEN 0 ELSE 1 END,
+      b.stars DESC,
+      COALESCE(b.ev, b.edge, 0) DESC
+    LIMIT ${limit}
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    id: Number(r.id),
+    betType: String(r.betType),
+    scope: String(r.scope),
+    selectionLabel: String(r.selectionLabel),
+    fixture: r.fixture != null ? String(r.fixture) : null,
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+    ourProb: Number(r.ourProb),
+    edge: r.edge != null ? Number(r.edge) : null,
+    ev: r.ev != null ? Number(r.ev) : null,
+    stars: Number(r.stars),
+    book: r.book != null ? String(r.book) : null,
+    status: String(r.status),
+    resultDetail: r.resultDetail != null ? String(r.resultDetail) : null,
+    modelVersion: String(r.modelVersion),
+  }));
+}
+
+export type SoccerBacktestRow = {
+  stars: number;
+  n: number;
+  expectedWinRate: number;
+  realizedWinRate: number;
+  roi: number | null; // null when no market bets in tier
+  marketBets: number;
+};
+
+export async function getSoccerBetBacktest(): Promise<SoccerBacktestRow[]> {
+  // Calibration on SETTLED bets: does each star tier win at the rate we claimed?
+  const rows = await db.execute(sql`
+    SELECT
+      b.stars,
+      COUNT(*) AS n,
+      AVG(b.our_prob) AS "expectedWinRate",
+      AVG(CASE WHEN b.status = 'won' THEN 1.0 ELSE 0.0 END) AS "realizedWinRate",
+      COUNT(*) FILTER (WHERE b.market_decimal IS NOT NULL) AS "marketBets",
+      SUM(CASE WHEN b.market_decimal IS NULL THEN 0
+               WHEN b.status = 'won' THEN b.market_decimal - 1 ELSE -1 END) AS "profitUnits"
+    FROM soccer_bets b
+    WHERE b.status IN ('won', 'lost')
+    GROUP BY b.stars
+    ORDER BY b.stars DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const marketBets = Number(r.marketBets);
+    const profit = r.profitUnits != null ? Number(r.profitUnits) : 0;
+    return {
+      stars: Number(r.stars),
+      n: Number(r.n),
+      expectedWinRate: Number(r.expectedWinRate),
+      realizedWinRate: Number(r.realizedWinRate),
+      roi: marketBets > 0 ? profit / marketBets : null,
+      marketBets,
+    };
+  });
+}
+
 export type OuHitRateRow = {
   totalTier: string;
   tierMin: number | null;

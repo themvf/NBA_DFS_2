@@ -789,6 +789,69 @@ TABLES = [
         CONSTRAINT soccer_model_params_singleton CHECK (id = 1)
     )
     """,
+
+    # ── World Cup group assignments (derived from fixtures) ───
+    # team_id → group label.  Populated by model/soccer_futures.py from the
+    # loaded group-stage fixtures; group-winner bets only activate for groups
+    # with a clean set of teams (no fabricated groups).
+    """
+    CREATE TABLE IF NOT EXISTS soccer_groups (
+        team_id INTEGER PRIMARY KEY REFERENCES soccer_teams(team_id),
+        group_label TEXT,
+        derived_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    # ── Soccer bet ledger (the auditable running list) ───────
+    # One row per (bet_type, scope, selection, model_version), upserted each run.
+    # Rows LOCK at event_commence so the backtest uses the closing recommendation
+    # we committed to — never edited after the event starts.
+    """
+    CREATE TABLE IF NOT EXISTS soccer_bets (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        model_version TEXT NOT NULL,
+        bet_type TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        matchup_id INTEGER REFERENCES soccer_matchups(id),
+        subject_team_id INTEGER REFERENCES soccer_teams(team_id),
+        selection_label TEXT NOT NULL,
+        market_odds INTEGER,
+        market_decimal DOUBLE PRECISION,
+        market_prob DOUBLE PRECISION,
+        book TEXT,
+        our_prob DOUBLE PRECISION NOT NULL,
+        edge DOUBLE PRECISION,
+        ev DOUBLE PRECISION,
+        stars SMALLINT NOT NULL,
+        inputs_json JSONB,
+        event_commence TIMESTAMPTZ,
+        locked BOOLEAN DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        result_detail TEXT,
+        settled_at TIMESTAMPTZ,
+        UNIQUE(bet_type, scope, selection_label, model_version)
+    )
+    """,
+
+    # ── Append-only audit trail for every bet recommendation ─
+    # Each refresh logs each selection's view, so the full lineage of how a
+    # recommendation evolved is reproducible (accountability).
+    """
+    CREATE TABLE IF NOT EXISTS soccer_bet_snapshots (
+        id SERIAL PRIMARY KEY,
+        bet_id INTEGER REFERENCES soccer_bets(id) ON DELETE CASCADE,
+        captured_at TIMESTAMPTZ DEFAULT NOW(),
+        capture_key TEXT,
+        our_prob DOUBLE PRECISION,
+        market_prob DOUBLE PRECISION,
+        market_odds INTEGER,
+        edge DOUBLE PRECISION,
+        ev DOUBLE PRECISION,
+        stars SMALLINT
+    )
+    """,
 ]
 
 MIGRATIONS = [
@@ -1373,4 +1436,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_optimizer_job_lineups_job ON optimizer_job_lineups(job_id, lineup_num)",
     # Soccer indexes
     "CREATE INDEX IF NOT EXISTS idx_soccer_matchups_date ON soccer_matchups(game_date)",
+    "CREATE INDEX IF NOT EXISTS idx_soccer_bets_type_status ON soccer_bets(bet_type, status, stars)",
+    "CREATE INDEX IF NOT EXISTS idx_soccer_bets_scope ON soccer_bets(scope)",
+    "CREATE INDEX IF NOT EXISTS idx_soccer_bets_settle ON soccer_bets(status, stars)",
+    "CREATE INDEX IF NOT EXISTS idx_soccer_bet_snapshots_bet ON soccer_bet_snapshots(bet_id, captured_at DESC)",
 ]

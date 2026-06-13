@@ -850,7 +850,108 @@ our_prob_over_2_5, btts_prob              ← reused later for DFS ceiling / env
 
 | Phase | Scope | Status |
 |---|---|---|
-| **P1** | History ingest + Elo/attack-defense ratings + `soccer_team_ratings` | In progress (2026-06-13) |
-| **P2** | Bivariate Poisson `soccer_predictions.py` → write `our_*` columns | Planned |
-| **P3** | Frontend "Our vs Vegas" deltas + edge flags on the soccer Vegas view | Planned |
+| **P1** | History ingest + Elo/attack-defense ratings + `soccer_team_ratings` | ✅ Done (2026-06-13) |
+| **P2** | Bivariate Poisson `soccer_predictions.py` → write `our_*` columns | ✅ Done (2026-06-13) |
+| **P3** | Frontend "Our vs Vegas" deltas + edge flags on the soccer Vegas view | ✅ Done (2026-06-13) |
 | **P4** | In-tournament rating updates from completed scores; backtest our vs market vs actual | Planned |
+
+Automation: `refresh_soccer.yml` (every 3h) fetches odds + writes predictions. Ratings manual/weekly.
+Global params (`mu`, `home_adv`) persisted to `soccer_model_params` (DB) so CI predictions are self-sufficient.
+
+---
+
+## Soccer Betting Recommendations + Backtest Framework
+
+Goal (2026-06-13): rate individual bets **1–5 stars**, keep an auditable running ledger,
+and **backtest whether 4–5★ bets actually win at the rate we claim**. Traceability and
+testability are first-class: every recommendation is reproducible (model version + frozen
+input snapshot) and every outcome is settle-able.
+
+### Bet types & market availability (verified against the live key)
+
+| Bet type | Market source | Our model | Settlement |
+|---|---|---|---|
+| **First goal scorer** | `player_first_goal_scorer` (+ `player_goal_scorer_anytime` as a model input), per event, `regions=us,uk,eu` | Poisson superposition (below) | goal-events feed (TheSportsDB best-effort) + manual CLI |
+| **Outright winner** | `soccer_fifa_world_cup_winner` / `outrights` (48 teams, DK + 4 books) | Monte Carlo tournament sim from Elo | champion from final score |
+| **Group winner** | **No API market** — model-only | Same Monte Carlo (P finish 1st in group) | final group standings from scores |
+
+### Models
+
+**First scorer (`firstscorer-v1`):** Poisson superposition.
+```
+λ_p   = player expected goals, from anytime-scorer market, then RE-SCALED so each team's
+        Σλ_p equals our model team xG (our_home_xg / our_away_xg) — removes anytime-market
+        vig and anchors player strength to OUR match model in one step.
+Λ     = our_total_pred (home xG + away xG)
+P(player scores first) = (λ_p / Λ) · (1 − e^(−Λ))      ← first event in superposed Poisson
+```
+Compare to the (vig-removed, overround-normalized) first-scorer market → edge, EV, stars.
+First-scorer books carry huge margins (~30–40% overround), so genuine edges exist.
+
+**Futures (`futures-v1`):** Monte Carlo. Simulate group round-robins with the bivariate
+Poisson match model (Elo-driven λ), rank, advance, then a strength-seeded knockout to a
+champion; repeat N sims. Yields P(win tournament) and P(win group). The bracket pairing is a
+documented simplification — championship probability is dominated by team strength, so it is
+defensible; refine pairing when the full bracket is known. Group composition is **derived from
+the loaded group-stage fixtures** (`soccer_groups`); group-winner bets activate only once a
+clean 4-team group is available (no fabricated groups).
+
+### Star rubric (deterministic → testable; constants in `model/soccer_bet_rating.py`)
+
+```
+decimal_odds = full gross payout per 1 unit (incl. stake)
+EV   = our_prob · decimal_odds − 1                      (only when a market exists)
+edge = our_prob − reference_prob   (reference = vig-free market prob, else 1/num_options)
+
+Market-based:                          No-market (e.g. group winner):
+  5★: EV ≥ .20 and edge ≥ .04           5★: our_prob ≥ .45 and edge ≥ .15
+  4★: EV ≥ .10 and edge ≥ .025          4★: our_prob ≥ .32 and edge ≥ .08
+  3★: EV ≥ .03                          3★: edge ≥ .03
+  2★: EV ≥ −.03                         2★: edge ≥ −.03
+  1★: EV < −.03                         1★: edge < −.03
+Longshot guard: our_prob < .02 → cap at 3★ (tail calibration noise).
+```
+
+### Traceability / accountability design
+
+- **`soccer_bets`** — the running ledger. One row per (bet_type, scope, selection, model_version),
+  upserted each run. Carries market odds/prob, our_prob, edge, EV, stars, `inputs_json` (frozen
+  model inputs), `status` (pending/won/lost/void), settlement. **Rows lock at kickoff**
+  (`event_commence`) so the backtest uses the closing recommendation we actually committed to —
+  no post-hoc edits.
+- **`soccer_bet_snapshots`** — append-only audit trail: every refresh writes each selection's
+  (stars, our_prob, market_prob, edge, ev, capture_key, captured_at). Full lineage of how a
+  recommendation evolved.
+- **`model_version`** stamped on every row; bump it when a model changes so old and new
+  recommendations never silently mix in the backtest.
+
+### Backtest (the headline metric)
+
+Calibration by star tier on **settled** bets:
+```
+for each star tier: n, expected_win_rate = avg(our_prob), realized_win_rate = wins/n,
+                    ROI = Σpayout / Σstake (market bets), Brier score
+```
+The 4–5★ rows are the focus: realized win rate should ≥ expected. First-scorer supplies the
+volume (≈20 selections × 60+ games) for statistically meaningful calibration; futures are few
+but high-value. Surfaced on `/vegas?sport=soccer` (Bets + Backtest panels) and re-runnable.
+
+### Files
+
+- `db/schema.py` — `soccer_bets`, `soccer_bet_snapshots`, `soccer_groups`
+- `model/soccer_bet_rating.py` — vig removal, EV, star rubric, ledger upsert + snapshot + locking
+- `ingest/soccer_props.py` — fetch first-scorer + anytime player markets per event
+- `model/soccer_first_scorer.py` — superposition model → rate → ledger
+- `model/soccer_futures.py` — Monte Carlo sim + outright market → rate → ledger; derives `soccer_groups`
+- `ingest/soccer_results.py` — Odds API `/scores` → settle match/group/outright; first-scorer settle (TheSportsDB + manual)
+- `web` — `getSoccerBets`, `getSoccerBetBacktest`; Bets + Backtest panels on the soccer Vegas view
+- `refresh_soccer.yml` — add rating + settlement steps
+
+### Known limitations (documented for accountability)
+
+- **First-scorer settlement** has no guaranteed free feed; TheSportsDB is best-effort, manual CLI
+  is the fallback. Until settled, those bets stay `pending` and are excluded from the backtest.
+- **Group winner** has no market line → EV is null; stars come from edge over the 1/4 baseline.
+- **Futures sample is tiny** (1 champion, 12 group winners) → low-power calibration; first-scorer
+  carries the statistical weight.
+- **Knockout bracket pairing** is simplified (strength-seeded), not the exact FIFA bracket.
