@@ -637,3 +637,149 @@ no_sp_stack: bool = True         # block pitcher-opponent batter combos
 - `ingest/mlb_schedule.py` → analogous to `ingest/nba_schedule.py` (uses MLB Stats API)
 - `ingest/mlb_slate.py` → analogous to `ingest/dk_slate.py`
 - `model/mlb_projections.py` → analogous to `model/dfs_projections.py`
+
+---
+
+## Soccer / World Cup 2026 Expansion Plan
+
+### Strategic Context
+
+Target slate: **FIFA World Cup 2026** (`sport_key = "soccer_fifa_world_cup"` on The Odds API).
+The tournament runs Jun–Jul 2026 across US/Canada/Mexico — DK runs heavy contest volume
+during a World Cup, primarily **Showdown (Captain Mode)** single-match slates and some
+multi-match **Classic** slates on busy group-stage days.
+
+### Key Architectural Insight — Props-First, No Stats API Required (V1)
+
+Unlike NBA (`nba_api`) and MLB (pybaseball/MLB Stats API), **soccer has no free first-party
+player-stats API.** But we don't strictly need one for V1, because **The Odds API — already
+integrated in this repo — exposes soccer player prop markets** that the NBA/MLB models do not have:
+
+| Odds API market key | DK stat it feeds |
+|---|---|
+| `player_goal_scorer_anytime` | P(goal) → expected goals contribution |
+| `player_shots_on_target` (O/U) | shots on target |
+| `player_shots` (O/U) | total shots |
+| `player_assists` (O/U) | assists |
+| `player_to_receive_card` | card / negative points |
+
+This is the same **"props replace the formula"** pattern already documented for NBA pts/reb/ast
+and MLB. The market lines already embed matchup, form, and (post-lineup-release) starting status.
+**So the projection model is built directly from props — a separate stats API is optional, not required.**
+
+**Constraints on World Cup props (verified Jun 2026):**
+- **US books DO post World Cup player props** — FanDuel and DraftKings both carry anytime
+  goalscorer, shots on target, and assists for 2026 World Cup matches (confirmed: FanDuel had
+  Pulisic +210 ATGS / +390 assist / +290 2+ SOT for USA vs Paraguay, Jun 2026). FanDuel/DK are
+  in The Odds API **`us`** region, so use **`regions=us,uk,eu`** to maximize book coverage and
+  get consensus lines. ⚠️ One thing still to verify in P0: a book offering a market on its own
+  site does not guarantee The Odds API *surfaces* it in the feed — test one event-odds call.
+- Player props are a **premium / "additional" market** on The Odds API and may require a paid
+  plan tier. Confirm the `ODDS_API_KEY` plan returns player-prop markets before building (P0).
+- Props are only available **per-event** via `/v4/sports/soccer_fifa_world_cup/events/{id}/odds`
+  (the same event-odds pattern as `nba_schedule.py` / `actions.ts` already use), not on the
+  bulk `/odds` endpoint.
+- **No historical box-score stats** from The Odds API → calibration (`actual_fpts`) must come
+  from a free supplement: **StatsBomb open data** (free, complete World Cup event data,
+  `github.com/statsbomb/open-data`) or **football-data.org** (free tier, results only).
+
+### DK Soccer Scoring & Roster — VERIFY EMPIRICALLY BEFORE CODING
+
+⚠️ DK soccer scoring and roster structure must be confirmed on a live DK soccer contest page
+before implementation — do not trust the values below blindly. As of last public DK rules,
+**Classic** soccer scoring (approx):
+
+```
+Goal              +10      Shot On Goal      +1
+Assist            +6       Created Chance    +1.5  (key pass)
+Tackle Won        +1?      Pass Interception/Clearance/Block  (small +)
+Goalkeeper Save   +1       Goal Allowed (GK/D)  −1 per
+Penalty Save      +5       Win bonus (GK/D)  +
+Card (Yellow)     −2       Red Card          −5
+Clean Sheet (GK/D)  +     Cross  (small +)
+```
+
+**Classic roster** (8 players, $50,000 cap — confirm slot names on DK):
+```
+GK  D  D  M  M  F  F  UTIL     (UTIL = any non-GK outfielder)
+```
+**Showdown / Captain Mode** (6 players): `CPT ×1 (1.5× pts, 1.5× salary)  +  5× FLEX` —
+the dominant World Cup contest format. Reuse the MLB-plan note: detect via
+`contest_format = 'showdown'` on `dk_slates`; the optimizer must refuse until Showdown mode exists.
+
+> The bulk of available data (anytime-goalscorer, shots, assists) maps cleanly to Classic batter-
+> style scoring. **Goalkeeper and clean-sheet scoring is the hard part** — The Odds API has no
+> save/clean-sheet props. GK projections will rely on team-defense odds (clean-sheet markets,
+> match totals) rather than player props.
+
+### Schema (parallel tables, mirrors MLB approach)
+
+`sport TEXT` on `dk_slates` already exists. `dk_players` / `dk_lineups` are sport-agnostic.
+
+- **`soccer_teams`** — 48 World Cup nations: `team_id | name | abbreviation | dk_abbrev | fifa_code | group | logo_url`
+- **`soccer_matchups`** — `id | game_date | game_id (Odds API event id, UNIQUE) | home_team_id | away_team_id | vegas_total | home_ml | draw_ml | away_ml | home_implied | away_implied | clean_sheet_home_prob | clean_sheet_away_prob`
+  (note the **3-way moneyline** — soccer has draws; implied-total math must handle draw probability, unlike NBA/MLB)
+- **`soccer_player_props`** — per-slate prop snapshot: `player_id | game_id | name | position | team_id | goal_anytime_prob | shots_line | shots_on_target_line | assists_line | card_prob`
+- **`soccer_player_stats`** (optional, calibration only) — from StatsBomb: `player_id | tournament | minutes | goals | assists | shots | sot | avg_fpts_pg | fpts_std`
+
+### Projection Model — `model/soccer_projections.py`
+
+Per-position, props-driven:
+```
+Outfielders (F/M/D):
+  exp_goals   = goal_anytime_prob × 1.15      (anytime→expected uplift for multi-goal tail)
+  exp_assists = assists_line       (or prob-implied)
+  exp_sot     = shots_on_target_line
+  exp_shots   = shots_line
+  card_pen    = card_prob × (−2)
+  FPTS = exp_goals×10 + exp_assists×6 + exp_sot×1 + created_chance×1.5 + card_pen
+         + clean_sheet_prob×CS_bonus×(position is D)
+Goalkeepers:
+  FPTS driven by clean_sheet_prob (from match total / clean-sheet odds) + expected_saves
+         (derived from opponent implied goals × shot volume) − expected_goals_allowed
+```
+Monte Carlo: reuse `compute_monte_carlo()`; `fpts_std` from StatsBomb history or a position-default.
+**Boom threshold ~ 18 FPTS** (a single goal ≈ 10–16 pts; soccer FPTS distributions are
+extremely low-mean / heavy-tail — leverage & ceiling matter more than in NBA).
+
+### Stacking Strategy (soccer-specific)
+
+- **Team correlation:** goals are rare and bunched — stack 2–3 attackers (F + attacking M)
+  from a heavy favorite in a high-total match. Goal + assist often share the same two players.
+- **Game stack** for high-total matches; **bring-back** one attacker from the opponent.
+- **GK ↔ own-defender correlation:** clean sheet rewards GK *and* defenders simultaneously →
+  GK + 1–2 D from the same team is a natural correlated block (the inverse of MLB's no-SP-stack rule).
+- **Anti-correlation:** do not pair your GK/D with opposing attackers.
+
+### Reuse Map
+
+**Zero changes:** `dk_api.py` (sport-agnostic), `compute_monte_carlo()`, `compute_leverage()`,
+`_ml_to_prob()`, `_levenshtein()`, the event-odds fetch pattern in `nba_schedule.py` / `actions.ts`.
+**Parameterize:** `config.py` add `sport_key="soccer_fifa_world_cup"` + `regions="uk,eu"` + props markets list;
+implied-total math must add **3-way (draw) handling**. **Name matching:** normalize accents with
+`unicodedata.normalize('NFKD', ...)` — essential for international names (Mbappé, Güler, Şahin).
+
+### Phase Plan
+
+| Phase | Scope | New/Modified Files |
+|---|---|---|
+| **P0 — Verify** | Confirm DK soccer scoring + roster on a live contest; confirm `ODDS_API_KEY` plan surfaces World Cup player props via the feed (`regions=us,uk,eu`, FanDuel/DK books) | none (manual) |
+| **P1 — Schema** | `soccer_teams`, `soccer_matchups`, `soccer_player_props`, optional `soccer_player_stats` | `db/schema.py`, `web/src/db/schema.ts` |
+| **P2 — Teams + Schedule** | 48 nations, World Cup fixtures + 3-way odds via Odds API events endpoint | `ingest/soccer_teams.py`, `ingest/soccer_schedule.py` |
+| **P3 — Props Ingestion** | Fetch player props per event (`regions=uk,eu`), upsert `soccer_player_props` | `ingest/soccer_props.py` |
+| **P4 — Slate Pipeline** | DK API reuse, soccer abbrev overrides, match linking, Showdown detection | `ingest/soccer_slate.py` |
+| **P5 — Projection Model** | Outfielder + GK models, Monte Carlo | `model/soccer_projections.py` |
+| **P6 — Web Actions + Frontend** | Sport switcher → Soccer, props fetch button, GK/clean-sheet columns, stacking view | `web/src/app/dfs/actions.ts`, `dfs-client.tsx` |
+| **P7 — Optimizer** | Classic GK/D/M/F slots + correlation stacking; Showdown CPT mode (shared w/ MLB showdown work) | `actions.ts` optimizer section |
+| **P8 — Calibration** | StatsBomb `actual_fpts` backfill → feed `/analytics` | `ingest/soccer_results.py` |
+
+### Open Questions / Risks
+
+| Risk | Mitigation |
+|---|---|
+| **Odds API feed may not surface FanDuel/DK World Cup player props** | P0 — test one event-odds call with `regions=us,uk,eu&markets=player_goal_scorer_anytime,player_shots_on_target` before building anything |
+| **Lineup confirmation latency** — World Cup XIs released ~1h pre-match | Mark props `confirmed=false` until starter status known; surface UI warning (same pattern as MLB batting order) |
+| **GK / clean-sheet has no player props** | Derive from team clean-sheet & match-total markets, not player props |
+| **DK soccer scoring drift** | Re-verify on each new DK contest — DK has changed soccer rules between tournaments |
+| **Sparse contest calendar** | World Cup is ~6 weeks; treat as a seasonal module, not always-on |
+| **Showdown is the dominant format** | Showdown optimizer mode is a hard prerequisite — coordinate with MLB Showdown work |

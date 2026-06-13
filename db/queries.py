@@ -824,6 +824,102 @@ def upsert_mlb_matchup(
     return row["id"] if row else 0
 
 
+# ── Soccer / World Cup queries ─────────────────────────────────────────────────
+
+def build_soccer_team_name_cache(db: DatabaseManager) -> dict[str, int]:
+    """Return {name: team_id} for all soccer teams.
+
+    Callers normalize names (accents, casing) before lookup — the raw canonical
+    name is stored here so it stays aligned with the odds feed's naming.
+    """
+    rows = db.execute("SELECT team_id, name FROM soccer_teams")
+    return {r["name"]: r["team_id"] for r in rows}
+
+
+def upsert_soccer_team(
+    db: DatabaseManager,
+    name: str,
+    abbreviation: str | None = None,
+    dk_abbrev: str | None = None,
+    confederation: str | None = None,
+    logo_url: str = "",
+) -> int:
+    """Upsert a national team keyed on canonical name.
+
+    Name is the conflict key (not abbreviation) because odds feeds are the
+    source of truth for naming and a few nations qualify late.  Existing
+    non-NULL metadata is preserved when the new value is NULL.
+    """
+    row = db.execute_one(
+        """
+        INSERT INTO soccer_teams (name, abbreviation, dk_abbrev, confederation, logo_url)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (name) DO UPDATE SET
+            abbreviation  = COALESCE(EXCLUDED.abbreviation, soccer_teams.abbreviation),
+            dk_abbrev     = COALESCE(EXCLUDED.dk_abbrev, soccer_teams.dk_abbrev),
+            confederation = COALESCE(EXCLUDED.confederation, soccer_teams.confederation),
+            logo_url      = CASE WHEN EXCLUDED.logo_url <> '' THEN EXCLUDED.logo_url
+                                 ELSE soccer_teams.logo_url END
+        RETURNING team_id
+        """,
+        (name, abbreviation, dk_abbrev, confederation, logo_url),
+    )
+    return row["team_id"] if row else 0
+
+
+def upsert_soccer_matchup(
+    db: DatabaseManager,
+    game_date: str,
+    game_id: str | None,
+    home_team_id: int | None,
+    away_team_id: int | None,
+    commence_time=None,
+    stage: str | None = None,
+    vegas_total: float | None = None,
+    home_ml: int | None = None,
+    draw_ml: int | None = None,
+    away_ml: int | None = None,
+    vegas_prob_home: float | None = None,
+    vegas_prob_draw: float | None = None,
+    vegas_prob_away: float | None = None,
+    home_implied: float | None = None,
+    away_implied: float | None = None,
+) -> int:
+    row = db.execute_one(
+        """
+        INSERT INTO soccer_matchups (
+            game_date, game_id, commence_time, home_team_id, away_team_id, stage,
+            vegas_total, home_ml, draw_ml, away_ml,
+            vegas_prob_home, vegas_prob_draw, vegas_prob_away,
+            home_implied, away_implied
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
+            game_id         = COALESCE(EXCLUDED.game_id, soccer_matchups.game_id),
+            commence_time   = COALESCE(EXCLUDED.commence_time, soccer_matchups.commence_time),
+            stage           = COALESCE(EXCLUDED.stage, soccer_matchups.stage),
+            vegas_total     = COALESCE(EXCLUDED.vegas_total, soccer_matchups.vegas_total),
+            home_ml         = COALESCE(EXCLUDED.home_ml, soccer_matchups.home_ml),
+            draw_ml         = COALESCE(EXCLUDED.draw_ml, soccer_matchups.draw_ml),
+            away_ml         = COALESCE(EXCLUDED.away_ml, soccer_matchups.away_ml),
+            vegas_prob_home = COALESCE(EXCLUDED.vegas_prob_home, soccer_matchups.vegas_prob_home),
+            vegas_prob_draw = COALESCE(EXCLUDED.vegas_prob_draw, soccer_matchups.vegas_prob_draw),
+            vegas_prob_away = COALESCE(EXCLUDED.vegas_prob_away, soccer_matchups.vegas_prob_away),
+            home_implied    = COALESCE(EXCLUDED.home_implied, soccer_matchups.home_implied),
+            away_implied    = COALESCE(EXCLUDED.away_implied, soccer_matchups.away_implied),
+            fetched_at      = NOW()
+        RETURNING id
+        """,
+        (
+            game_date, game_id, commence_time, home_team_id, away_team_id, stage,
+            vegas_total, home_ml, draw_ml, away_ml,
+            vegas_prob_home, vegas_prob_draw, vegas_prob_away,
+            home_implied, away_implied,
+        ),
+    )
+    return row["id"] if row else 0
+
+
 MLB_HOMERUN_TRAINING_COLUMNS = [
     "season",
     "game_date",

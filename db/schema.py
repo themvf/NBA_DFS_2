@@ -710,6 +710,52 @@ TABLES = [
         UNIQUE(job_id, lineup_num)
     )
     """,
+
+    # ── Soccer / World Cup teams ──────────────────────────────
+    # National teams (48 at the 2026 World Cup).  Separate ID space from
+    # NBA `teams` / `mlb_teams`.  `abbreviation` holds the 3-letter FIFA code
+    # when known; name is the canonical conflict key because odds feeds are the
+    # source of truth for naming and a few nations qualify late.
+    """
+    CREATE TABLE IF NOT EXISTS soccer_teams (
+        team_id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        abbreviation TEXT,
+        dk_abbrev TEXT,
+        confederation TEXT,
+        logo_url TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    # ── Daily soccer schedule + Vegas odds (3-way) ────────────
+    # Soccer differs from NBA/MLB: the moneyline is 3-way (home/draw/away),
+    # vegas_total is GOALS (e.g. 2.75), and home_implied/away_implied are
+    # expected goals per side, derived from the supremacy implied by win prob.
+    """
+    CREATE TABLE IF NOT EXISTS soccer_matchups (
+        id SERIAL PRIMARY KEY,
+        game_date DATE NOT NULL,
+        game_id TEXT UNIQUE,
+        commence_time TIMESTAMPTZ,
+        home_team_id INTEGER REFERENCES soccer_teams(team_id),
+        away_team_id INTEGER REFERENCES soccer_teams(team_id),
+        stage TEXT,
+        vegas_total DOUBLE PRECISION,
+        home_ml INTEGER,
+        draw_ml INTEGER,
+        away_ml INTEGER,
+        vegas_prob_home DOUBLE PRECISION,
+        vegas_prob_draw DOUBLE PRECISION,
+        vegas_prob_away DOUBLE PRECISION,
+        home_implied DOUBLE PRECISION,
+        away_implied DOUBLE PRECISION,
+        home_score INTEGER,
+        away_score INTEGER,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(game_date, home_team_id, away_team_id)
+    )
+    """,
 ]
 
 MIGRATIONS = [
@@ -1284,4 +1330,6 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_lookup ON optimizer_jobs(client_token, sport, slate_id, status)",
     "CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_created ON optimizer_jobs(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_optimizer_job_lineups_job ON optimizer_job_lineups(job_id, lineup_num)",
+    # Soccer indexes
+    "CREATE INDEX IF NOT EXISTS idx_soccer_matchups_date ON soccer_matchups(game_date)",
 ]
