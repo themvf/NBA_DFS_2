@@ -30,6 +30,10 @@ _ANYTIME = "player_goal_scorer_anytime"
 _FIRST = "player_first_goal_scorer"
 # Description text marking the non-player "no goalscorer" outcome.
 _NO_SCORER_HINTS = ("no goalscorer", "no goal scorer", "no goal")
+# No single player is more than ~35% to score the FIRST goal; an implied prob
+# above this is a stale/glitch line (e.g. a book posting -10000) that would
+# corrupt the mutually-exclusive power de-vig. Drop those outcomes.
+_MAX_FIRST_PROB = 0.45
 
 
 def norm_player(name: str) -> str:
@@ -96,6 +100,8 @@ def fetch_player_markets(api_key: str, event_id: str, regions: str = REGIONS) ->
                     e["prob_sum"] += prob
                     e["n"] += 1
                 else:  # first scorer
+                    if prob > _MAX_FIRST_PROB:
+                        continue  # glitch/stale line — would corrupt the de-vig
                     dec = american_to_decimal(price)
                     e = first_acc.setdefault(
                         npl,
@@ -125,7 +131,10 @@ def fetch_player_markets(api_key: str, event_id: str, regions: str = REGIONS) ->
             continue
         first[npl] = {
             "name": e["name"],
+            # Naive proportional de-vig (kept for reference); v2 uses prob_raw +
+            # the power method instead, which corrects favorite-longshot bias.
             "prob_vigfree": (first_avg[npl] / overround) if overround > 0 else first_avg[npl],
+            "prob_raw": first_avg[npl],
             "best_odds": e["best_odds"],
             "best_book": e["best_book"],
             "book_count": e["n"],
@@ -135,4 +144,5 @@ def fetch_player_markets(api_key: str, event_id: str, regions: str = REGIONS) ->
         "anytime": anytime,
         "first": first,
         "no_scorer_prob": (no_scorer_avg / overround) if overround > 0 else 0.0,
+        "no_scorer_raw": no_scorer_avg,
     }

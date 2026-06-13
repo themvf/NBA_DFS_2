@@ -885,16 +885,23 @@ on decimal odds ≥ 11/≥ 21) so a tiny model edge on a big price can't manufac
 
 ### Models
 
-**First scorer (`firstscorer-v1`):** Poisson superposition.
+**First scorer (`firstscorer-v2`):** Poisson superposition with favorite-longshot-aware
+de-vigging. v1 deflated favorites (Haaland ~13% vs true ~23%) because it built shares from the
+RAW anytime market — books vig longshots harder, inflating the denominator. v2 uses the **power
+method**:
 ```
-λ_p   = player expected goals, from anytime-scorer market, then RE-SCALED so each team's
-        Σλ_p equals our model team xG (our_home_xg / our_away_xg) — removes anytime-market
-        vig and anchors player strength to OUR match model in one step.
-Λ     = our_total_pred (home xG + away xG)
-P(player scores first) = (λ_p / Λ) · (1 − e^(−Λ))      ← first event in superposed Poisson
+anytime de-vig: solve exponent k_a so Σ_p −ln(1 − p_anytime^k_a) = our_total_pred (Λ).
+                This removes vig AND anchors total to our match model at once.
+                share_p = λ_p / Λ ;  our_model_first = share_p · (1 − e^(−Λ)).
+first-scorer market de-vig: solve k_f so Σ p^k_f = 1 over players + "no goalscorer".
+blend:  our_prob = 0.5 · our_model_first + 0.5 · market_fair.
 ```
-Compare to the (vig-removed, overround-normalized) first-scorer market → edge, EV, stars.
-First-scorer books carry huge margins (~30–40% overround), so genuine edges exist.
+Reference for edge = the power-de-vigged first-scorer market; EV uses the best offered price.
+Glitch lines (implied > 0.45 — no player is >35% to score first) are dropped before de-vigging,
+or one stale −10000 line corrupts the mutually-exclusive normalization. First-scorer offered odds
+carry ~300–500% combined overround, so the model correctly rates ~all 1★ (avoid); the v2 value is
+**calibration**, not finding bets. Re-rating clears UNLOCKED pending rows first (no orphans);
+locked closing lines + settled rows are preserved.
 
 **Futures (`futures-v1`):** Monte Carlo. Simulate group round-robins with the bivariate
 Poisson match model (Elo-driven λ), rank, advance, then a strength-seeded knockout to a
