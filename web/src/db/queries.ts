@@ -6112,6 +6112,13 @@ export type SoccerVegasMatchupRow = {
   awayImplied: number | null;
   homeScore: number | null;
   awayScore: number | null;
+  // Our model (bivariate Poisson) — null until model/soccer_predictions.py runs.
+  ourTotalPred: number | null;
+  ourHomeXg: number | null;
+  ourAwayXg: number | null;
+  ourProbHome: number | null;
+  ourProbDraw: number | null;
+  ourProbAway: number | null;
 };
 
 export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerVegasMatchupRow[]> {
@@ -6138,7 +6145,13 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
       sm.home_implied    AS "homeImplied",
       sm.away_implied    AS "awayImplied",
       sm.home_score      AS "homeScore",
-      sm.away_score      AS "awayScore"
+      sm.away_score      AS "awayScore",
+      sm.our_total_pred  AS "ourTotalPred",
+      sm.our_home_xg     AS "ourHomeXg",
+      sm.our_away_xg     AS "ourAwayXg",
+      sm.our_prob_home   AS "ourProbHome",
+      sm.our_prob_draw   AS "ourProbDraw",
+      sm.our_prob_away   AS "ourProbAway"
     FROM soccer_matchups sm
     LEFT JOIN soccer_teams t_home ON t_home.team_id = sm.home_team_id
     LEFT JOIN soccer_teams t_away ON t_away.team_id = sm.away_team_id
@@ -6164,6 +6177,12 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
     awayImplied: r.awayImplied != null ? Number(r.awayImplied) : null,
     homeScore: r.homeScore != null ? Number(r.homeScore) : null,
     awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+    ourTotalPred: r.ourTotalPred != null ? Number(r.ourTotalPred) : null,
+    ourHomeXg: r.ourHomeXg != null ? Number(r.ourHomeXg) : null,
+    ourAwayXg: r.ourAwayXg != null ? Number(r.ourAwayXg) : null,
+    ourProbHome: r.ourProbHome != null ? Number(r.ourProbHome) : null,
+    ourProbDraw: r.ourProbDraw != null ? Number(r.ourProbDraw) : null,
+    ourProbAway: r.ourProbAway != null ? Number(r.ourProbAway) : null,
   }));
 }
 

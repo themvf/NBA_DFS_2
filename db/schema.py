@@ -1302,6 +1302,14 @@ MIGRATIONS = [
             ALTER TABLE dk_players ADD COLUMN actual_3pm REAL;
         END IF;
     END $$""",
+    # 2026-06-13: Soccer prediction model (P2) — our own numbers vs the market.
+    # Bivariate Poisson goal model output, written by model/soccer_predictions.py.
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_total_pred DOUBLE PRECISION""",
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_home_xg DOUBLE PRECISION""",
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_away_xg DOUBLE PRECISION""",
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_prob_home DOUBLE PRECISION""",
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_prob_draw DOUBLE PRECISION""",
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS our_prob_away DOUBLE PRECISION""",
 ]
 
 INDEXES = [

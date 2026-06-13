@@ -259,3 +259,10 @@ if __name__ == "__main__":
     config = load_config()
     db = DatabaseManager(config.database_url)
     fetch_schedule_and_odds(db, config.odds_api.api_key, args.date)
+
+    # Write our model predictions (our_* columns) for the same fixtures.
+    try:
+        from model.soccer_predictions import predict_and_write
+        predict_and_write(db, game_date=args.date)
+    except Exception as exc:
+        logger.warning("Soccer predictions skipped: %s", exc)
