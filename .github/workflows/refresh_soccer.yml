@@ -1,25 +1,28 @@
 name: Refresh Soccer (World Cup)
 
-# Fetches World Cup fixtures + 3-way Vegas odds from The Odds API and recomputes
-# our model predictions (our_* columns on soccer_matchups).  Safe to run from
-# GitHub runners: The Odds API has no IP restrictions (unlike stats.nba.com).
-#
-# Two heavy steps run locally (not here) and persist their results in the DB:
-#   - Strength ratings:     python -m model.soccer_ratings       (weekly)
-#   - Player xG history:   python -m ingest.soccer_player_history (once + after tournament)
-# The trained params / player stats live in the DB, so the CI steps below are
-# self-sufficient without the gitignored data/ cache.
+# 3h cron: odds + predictions + settle + rate all bet types.
+# Weekly cron (Mondays): also refreshes player xG history from StatsBomb open data.
+# StatsBomb pulls from github.com/statsbomb/open-data — no auth, no IP restrictions.
+# Strength ratings (soccer_team_ratings) are still refreshed manually/weekly via:
+#     python -m model.soccer_ratings
 
 on:
   schedule:
     # Every 3 hours — keeps lines + predictions fresh through a match day.
     - cron: "0 */3 * * *"
+    # Weekly on Monday 06:00 UTC — refresh player history from StatsBomb.
+    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       date:
         description: "Kickoff date YYYY-MM-DD (UTC). Default: all upcoming fixtures"
         required: false
         type: string
+      refresh_player_history:
+        description: "Force-refresh player xG history from StatsBomb"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: refresh-soccer
@@ -44,6 +47,10 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Refresh player xG history (weekly or on demand)
+        if: github.event.schedule == '0 6 * * 1' || inputs.refresh_player_history == true
+        run: python -m ingest.soccer_player_history
 
       - name: Refresh World Cup odds + model predictions
         run: |
