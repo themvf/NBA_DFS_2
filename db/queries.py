@@ -977,6 +977,75 @@ def upsert_soccer_team_rating(
     )
 
 
+def upsert_soccer_player_stat(
+    db: DatabaseManager,
+    *,
+    player_name: str,
+    normalized_name: str,
+    team_id: int | None,
+    team_name: str | None,
+    season: str,
+    position: str | None,
+    matches: int,
+    minutes_played: float,
+    goals: int,
+    shots: int,
+    shots_on_target: int,
+    xg: float,
+    npxg: float,
+    goals_per_90: float | None,
+    shots_per_90: float | None,
+    xg_per_90: float | None,
+    npxg_per_90: float | None,
+    is_penalty_taker: bool = False,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO soccer_player_stats (
+            player_name, normalized_name, team_id, team_name, season, position,
+            matches, minutes_played, goals, shots, shots_on_target,
+            xg, npxg, goals_per_90, shots_per_90, xg_per_90, npxg_per_90,
+            is_penalty_taker, updated_at
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+        ON CONFLICT (player_name, season) DO UPDATE SET
+            normalized_name  = EXCLUDED.normalized_name,
+            team_id          = EXCLUDED.team_id,
+            team_name        = EXCLUDED.team_name,
+            position         = EXCLUDED.position,
+            matches          = EXCLUDED.matches,
+            minutes_played   = EXCLUDED.minutes_played,
+            goals            = EXCLUDED.goals,
+            shots            = EXCLUDED.shots,
+            shots_on_target  = EXCLUDED.shots_on_target,
+            xg               = EXCLUDED.xg,
+            npxg             = EXCLUDED.npxg,
+            goals_per_90     = EXCLUDED.goals_per_90,
+            shots_per_90     = EXCLUDED.shots_per_90,
+            xg_per_90        = EXCLUDED.xg_per_90,
+            npxg_per_90      = EXCLUDED.npxg_per_90,
+            is_penalty_taker = EXCLUDED.is_penalty_taker,
+            updated_at       = NOW()
+        """,
+        (
+            player_name, normalized_name, team_id, team_name, season, position,
+            matches, minutes_played, goals, shots, shots_on_target,
+            xg, npxg, goals_per_90, shots_per_90, xg_per_90, npxg_per_90,
+            is_penalty_taker,
+        ),
+    )
+
+
+def get_all_soccer_player_stats(
+    db: DatabaseManager,
+    season: str = "combined",
+) -> dict[str, dict]:
+    """Return {normalized_name: row} for all players in a given season."""
+    rows = db.execute(
+        "SELECT * FROM soccer_player_stats WHERE season = %s", (season,)
+    )
+    return {r["normalized_name"]: r for r in rows}
+
+
 MLB_HOMERUN_TRAINING_COLUMNS = [
     "season",
     "game_date",

@@ -852,6 +852,36 @@ TABLES = [
         stars SMALLINT
     )
     """,
+
+    # ── Player-level historical stats for the stat-based first-scorer model ──
+    # Aggregated from StatsBomb open data (WC 2018 + 2022 + continental tourneys).
+    # xg_per_90 is the primary input to firstscorer-v3.  normalized_name is the
+    # accent-stripped lowercase key for matching against market player names.
+    """
+    CREATE TABLE IF NOT EXISTS soccer_player_stats (
+        id SERIAL PRIMARY KEY,
+        player_name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        team_id INTEGER REFERENCES soccer_teams(team_id),
+        team_name TEXT,
+        season TEXT NOT NULL DEFAULT 'combined',
+        position TEXT,
+        matches INTEGER DEFAULT 0,
+        minutes_played REAL DEFAULT 0,
+        goals INTEGER DEFAULT 0,
+        shots INTEGER DEFAULT 0,
+        shots_on_target INTEGER DEFAULT 0,
+        xg REAL DEFAULT 0.0,
+        npxg REAL DEFAULT 0.0,
+        goals_per_90 REAL,
+        shots_per_90 REAL,
+        xg_per_90 REAL,
+        npxg_per_90 REAL,
+        is_penalty_taker BOOLEAN DEFAULT FALSE,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (player_name, season)
+    )
+    """,
 ]
 
 MIGRATIONS = [
@@ -1393,6 +1423,30 @@ MIGRATIONS = [
     # O/U bet model can compute EV.  vegas_total holds the line.
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS over_odds INTEGER""",
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS under_odds INTEGER""",
+    # 2026-06-14: Player-level historical stats for firstscorer-v3.
+    """CREATE TABLE IF NOT EXISTS soccer_player_stats (
+        id SERIAL PRIMARY KEY,
+        player_name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        team_id INTEGER REFERENCES soccer_teams(team_id),
+        team_name TEXT,
+        season TEXT NOT NULL DEFAULT 'combined',
+        position TEXT,
+        matches INTEGER DEFAULT 0,
+        minutes_played REAL DEFAULT 0,
+        goals INTEGER DEFAULT 0,
+        shots INTEGER DEFAULT 0,
+        shots_on_target INTEGER DEFAULT 0,
+        xg REAL DEFAULT 0.0,
+        npxg REAL DEFAULT 0.0,
+        goals_per_90 REAL,
+        shots_per_90 REAL,
+        xg_per_90 REAL,
+        npxg_per_90 REAL,
+        is_penalty_taker BOOLEAN DEFAULT FALSE,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (player_name, season)
+    )""",
 ]
 
 INDEXES = [
@@ -1439,6 +1493,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_created ON optimizer_jobs(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_optimizer_job_lineups_job ON optimizer_job_lineups(job_id, lineup_num)",
     # Soccer indexes
+    "CREATE INDEX IF NOT EXISTS idx_soccer_player_stats_norm ON soccer_player_stats(normalized_name, season)",
+    "CREATE INDEX IF NOT EXISTS idx_soccer_player_stats_team ON soccer_player_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_matchups_date ON soccer_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_bets_type_status ON soccer_bets(bet_type, status, stars)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_bets_scope ON soccer_bets(scope)",

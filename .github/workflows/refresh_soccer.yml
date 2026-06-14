@@ -4,11 +4,11 @@ name: Refresh Soccer (World Cup)
 # our model predictions (our_* columns on soccer_matchups).  Safe to run from
 # GitHub runners: The Odds API has no IP restrictions (unlike stats.nba.com).
 #
-# Strength ratings (soccer_team_ratings) are NOT refreshed here — they barely
-# move game-to-game and are retrained manually/weekly via:
-#     python -m model.soccer_ratings
-# The trained mu/home_adv live in the DB (soccer_model_params), so predictions
-# here are self-sufficient without the gitignored data/ cache.
+# Two heavy steps run locally (not here) and persist their results in the DB:
+#   - Strength ratings:     python -m model.soccer_ratings       (weekly)
+#   - Player xG history:   python -m ingest.soccer_player_history (once + after tournament)
+# The trained params / player stats live in the DB, so the CI steps below are
+# self-sufficient without the gitignored data/ cache.
 
 on:
   schedule:
