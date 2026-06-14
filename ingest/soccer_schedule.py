@@ -148,9 +148,13 @@ def _compute_implied_goals(
         half = round(vegas_total / 2, 2)
         return half, half
     supremacy = max(-_MAX_SUPREMACY, min(_MAX_SUPREMACY, (prob_home - prob_away) * _SUPREMACY_SCALE))
-    home_implied = round(vegas_total / 2 + supremacy / 2, 2)
-    away_implied = round(vegas_total - home_implied, 2)
-    return home_implied, away_implied
+    # Clamp the favorite's share so neither side's implied goals go negative on a
+    # low-total game with extreme supremacy (e.g. total 1.75, supremacy 2.5).
+    floor = 0.05
+    home_implied = vegas_total / 2 + supremacy / 2
+    home_implied = max(floor, min(vegas_total - floor, home_implied))
+    away_implied = vegas_total - home_implied
+    return round(home_implied, 2), round(away_implied, 2)
 
 
 def fetch_schedule_and_odds(

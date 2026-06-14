@@ -101,8 +101,11 @@ def derive_groups(db: DatabaseManager) -> dict[str, list[int]]:
     """Derive clean 4-team groups from group-stage fixtures and store them.
 
     A group = a connected component of exactly 4 teams that forms a complete
-    round-robin (all 6 pairings present) within the fixtures.  Only such clean
-    groups are stored — no fabricated groups.  Returns {label: [team_id,...]}.
+    round-robin (all 6 pairings present).  Derivation is **additive**: once a
+    group is found it is kept, even after knockout fixtures later merge the graph
+    into bigger components (which would otherwise make the clean K4 disappear and
+    break group settlement).  Labels are stable — a found group never changes
+    letter.  Returns ALL stored groups {label: [team_id,...]}.
     """
     edges = db.execute(
         "SELECT home_team_id AS a, away_team_id AS b FROM soccer_matchups "
@@ -116,11 +119,21 @@ def derive_groups(db: DatabaseManager) -> dict[str, list[int]]:
         adj.setdefault(b, set()).add(a)
         pairset.add(frozenset((a, b)))
 
-    # Connected components.
+    # Already-known assignments (kept; never relabeled).
+    existing = {r["team_id"]: r["group_label"] for r in db.execute(
+        "SELECT team_id, group_label FROM soccer_groups")}
+    used_labels = set(existing.values())
+
+    def next_label() -> str:
+        for i in range(26):
+            lab = chr(ord("A") + i)
+            if lab not in used_labels:
+                used_labels.add(lab)
+                return lab
+        return f"G{len(used_labels)}"
+
     seen: set[int] = set()
-    groups: dict[str, list[int]] = {}
-    label_ord = 0
-    for start in adj:
+    for start in list(adj):
         if start in seen:
             continue
         stack, comp = [start], []
@@ -132,23 +145,28 @@ def derive_groups(db: DatabaseManager) -> dict[str, list[int]]:
             comp.append(n)
             stack.extend(adj[n] - seen)
         # Clean group: exactly 4 teams, all 6 pairings present.
-        if len(comp) == 4:
-            complete = all(frozenset((comp[i], comp[j])) in pairset
-                           for i in range(4) for j in range(i + 1, 4))
-            if complete:
-                label = chr(ord("A") + label_ord)
-                label_ord += 1
-                groups[label] = comp
-
-    # Persist.
-    db.execute("DELETE FROM soccer_groups")
-    for label, members in groups.items():
-        for tid in members:
+        if len(comp) != 4:
+            continue
+        if not all(frozenset((comp[i], comp[j])) in pairset
+                   for i in range(4) for j in range(i + 1, 4)):
+            continue
+        # Skip if any member is already assigned (a team belongs to one group, so
+        # this is either an already-known group or a transient artifact).
+        if any(tid in existing for tid in comp):
+            continue
+        label = next_label()
+        for tid in comp:
+            existing[tid] = label
             db.execute(
                 "INSERT INTO soccer_groups (team_id, group_label, derived_at) VALUES (%s, %s, NOW()) "
                 "ON CONFLICT (team_id) DO UPDATE SET group_label = EXCLUDED.group_label, derived_at = NOW()",
                 (tid, label),
             )
+
+    # Return ALL stored groups (label → members).
+    groups: dict[str, list[int]] = {}
+    for tid, lab in existing.items():
+        groups.setdefault(lab, []).append(tid)
     return groups
 
 
@@ -333,6 +351,8 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
     name_by_id = {t["team_id"]: t["name"] for t in field}
     with db.connect() as conn:
         for label, members in groups.items():
+            if len(members) != 4:
+                continue  # only rate/settle complete 4-team groups
             member_elos = [(tid, elo_by_id.get(tid, 1500.0)) for tid in members]
             probs = simulate_group(member_elos, sims)
             for tid in members:

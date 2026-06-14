@@ -101,19 +101,25 @@ def settle_group_winners(db: DatabaseManager) -> int:
 
     settled = 0
     for label, members in by_label.items():
-        # All intra-group matches with scores.
+        if len(members) != 4:
+            continue  # only settle complete 4-team groups
+        # Intra-group matches with scores, earliest first.  We take only the first
+        # 6 (the round-robin) so a later knockout rematch between two group-mates
+        # can't corrupt the group standings.
         rows = db.execute(
             """
             SELECT home_team_id, away_team_id, home_score, away_score
             FROM soccer_matchups
             WHERE home_team_id = ANY(%s) AND away_team_id = ANY(%s)
               AND home_score IS NOT NULL AND away_score IS NOT NULL
+            ORDER BY commence_time ASC NULLS LAST
             """,
             (members, members),
         )
         # A 4-team round-robin is 6 games; require them all before settling.
         if len(rows) < 6:
             continue
+        rows = rows[:6]
         pts = {t: 0 for t in members}
         gd = {t: 0 for t in members}
         gf = {t: 0 for t in members}
@@ -243,20 +249,43 @@ def settle_first_scorer(db: DatabaseManager, game_id: str, scorer_name: str) -> 
     if not bets:
         print(f"No pending first-scorer bets for game {game_id}")
         return 0
+
+    # Identify the winning bet.  Try exact normalized match first; if none, fall
+    # back to a last-name/substring match so "Mbappe" settles "Kylian Mbappe".
+    # Only accept the fallback when it is UNAMBIGUOUS (exactly one candidate).
+    def _matches(label: str) -> bool:
+        return _norm(label) == target
+
+    def _loose(label: str) -> bool:
+        nl = _norm(label)
+        return target in nl.split() or nl.endswith(" " + target) or target == nl
+
+    winner_id = None
+    exact = [b for b in bets if _matches(b["selection_label"])]
+    if len(exact) == 1:
+        winner_id = exact[0]["id"]
+    elif not exact:
+        loose = [b for b in bets if _loose(b["selection_label"])]
+        if len(loose) == 1:
+            winner_id = loose[0]["id"]
+        elif len(loose) > 1:
+            logger.warning("Ambiguous scorer '%s' for %s (%d candidates) — enter the full name",
+                           scorer_name, game_id, len(loose))
+            print(f"First scorer ({game_id}): ambiguous '{scorer_name}', nothing settled")
+            return 0
+
     settled = 0
-    matched = False
     for b in bets:
-        won = _norm(b["selection_label"]) == target
-        matched = matched or won
+        won = b["id"] == winner_id
         db.execute(
             "UPDATE soccer_bets SET status = %s, settled_at = NOW(), result_detail = %s WHERE id = %s",
             ("won" if won else "lost", f"First scorer: {scorer_name}", b["id"]),
         )
         settled += 1
-    if not matched:
-        # "No goalscorer" or a player not in our pool → all listed selections lost (correct).
+    if winner_id is None:
+        # "No goalscorer" or a scorer not in our pool → all listed selections lost (correct).
         logger.info("Scorer '%s' not among listed selections for %s — all marked lost", scorer_name, game_id)
-    print(f"First scorer ({game_id}): {settled} bets settled, winner found={matched}")
+    print(f"First scorer ({game_id}): {settled} bets settled, winner found={winner_id is not None}")
     return settled
 
 
