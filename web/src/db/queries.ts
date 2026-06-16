@@ -6203,6 +6203,8 @@ export type SoccerBetRow = {
   status: string;
   resultDetail: string | null;
   modelVersion: string;
+  gameDate: string | null;
+  settledAt: string | null;
 };
 
 export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBetRow[]> {
@@ -6237,6 +6239,8 @@ export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBe
     status: String(r.status),
     resultDetail: r.resultDetail != null ? String(r.resultDetail) : null,
     modelVersion: String(r.modelVersion),
+    gameDate: null,
+    settledAt: null,
   }));
 }
 
@@ -6247,10 +6251,12 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
       b.inputs_json->>'fixture' AS "fixture",
       b.market_odds AS "marketOdds", b.market_prob AS "marketProb",
       b.our_prob AS "ourProb", b.edge, b.ev, b.stars, b.book,
-      b.status, b.result_detail AS "resultDetail", b.model_version AS "modelVersion"
+      b.status, b.result_detail AS "resultDetail", b.model_version AS "modelVersion",
+      DATE(b.event_commence AT TIME ZONE 'UTC') AS "gameDate",
+      b.settled_at AS "settledAt"
     FROM soccer_bets b
     WHERE b.status IN ('won', 'lost', 'void')
-    ORDER BY b.stars DESC, COALESCE(b.ev, b.edge, 0) DESC
+    ORDER BY b.event_commence DESC NULLS LAST, b.stars DESC
   `);
   return (rows.rows as Record<string, unknown>[]).map((r) => ({
     id: Number(r.id),
@@ -6268,6 +6274,8 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
     status: String(r.status),
     resultDetail: r.resultDetail != null ? String(r.resultDetail) : null,
     modelVersion: String(r.modelVersion),
+    gameDate: r.gameDate != null ? String(r.gameDate) : null,
+    settledAt: r.settledAt != null ? String(r.settledAt) : null,
   }));
 }
 

@@ -134,30 +134,37 @@ function ResultsPanel({
   const [tType, setTType] = useState("all");
   const [tStatus, setTStatus] = useState("all");
   const [tMinStars, setTMinStars] = useState(1);
-  const [sort, setSort] = useState<{ col: string; dir: SortDir }>({ col: "stars", dir: "desc" });
+  const [tSearch, setTSearch] = useState("");
+  const [sort, setSort] = useState<{ col: string; dir: SortDir }>({ col: "gameDate", dir: "desc" });
 
   function toggleSort(col: string) {
     setSort((s) => s.col === col ? { col, dir: s.dir === "desc" ? "asc" : "desc" } : { col, dir: "desc" });
   }
 
-  const settledBets = bets.filter((b) => b.status !== "pending");
-  const filteredBets = settledBets.filter(
+  const searchLower = tSearch.toLowerCase();
+  const filteredBets = bets.filter(
     (b) =>
       (tType === "all" || b.betType === tType) &&
       (tStatus === "all" || b.status === tStatus) &&
-      b.stars >= tMinStars,
+      b.stars >= tMinStars &&
+      (tSearch === "" ||
+        b.selectionLabel.toLowerCase().includes(searchLower) ||
+        (b.fixture ?? "").toLowerCase().includes(searchLower)),
   ).sort((a, b) => {
-    let av: number, bv: number;
-    if (sort.col === "stars")    { av = a.stars;         bv = b.stars; }
-    else if (sort.col === "ev")  { av = a.ev ?? -99;     bv = b.ev ?? -99; }
-    else if (sort.col === "ourProb") { av = a.ourProb;   bv = b.ourProb; }
-    else if (sort.col === "edge")    { av = a.edge ?? -99; bv = b.edge ?? -99; }
+    let av: number | string, bv: number | string;
+    if (sort.col === "stars")       { av = a.stars;              bv = b.stars; }
+    else if (sort.col === "ev")     { av = a.ev ?? -99;          bv = b.ev ?? -99; }
+    else if (sort.col === "ourProb"){ av = a.ourProb;            bv = b.ourProb; }
+    else if (sort.col === "edge")   { av = a.edge ?? -99;        bv = b.edge ?? -99; }
+    else if (sort.col === "gameDate") { av = a.gameDate ?? "";   bv = b.gameDate ?? ""; }
     else if (sort.col === "status") {
       const order: Record<string, number> = { won: 0, lost: 1, void: 2 };
       av = order[a.status] ?? 3; bv = order[b.status] ?? 3;
     }
-    else { av = a.stars; bv = b.stars; }
-    return sort.dir === "desc" ? bv - av : av - bv;
+    else { av = a.gameDate ?? ""; bv = b.gameDate ?? ""; }
+    if (typeof av === "string" && typeof bv === "string")
+      return sort.dir === "desc" ? bv.localeCompare(av) : av.localeCompare(bv);
+    return sort.dir === "desc" ? (bv as number) - (av as number) : (av as number) - (bv as number);
   });
 
   // ── Aggregate stats ───────────────────────────────────────────────────────────
@@ -173,7 +180,7 @@ function ResultsPanel({
   const overallWinRate = (totalWon + totalLost) > 0 ? totalWon / (totalWon + totalLost) : null;
   const overallRoi = totalMarket > 0 ? totalProfit / totalMarket : null;
 
-  if (totalSettled === 0) {
+  if (totalSettled === 0 && bets.length === 0) {
     return (
       <section className="space-y-3">
         <h2 className="text-lg font-bold">📈 Results &amp; Analytics</h2>
@@ -219,9 +226,16 @@ function ResultsPanel({
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Settled bets ({filteredBets.length}{filteredBets.length !== settledBets.length ? ` of ${settledBets.length}` : ""})
+            Settled bets ({filteredBets.length}{filteredBets.length !== bets.length ? ` of ${bets.length}` : ""})
           </h3>
           <div className="flex flex-wrap items-center gap-2 text-xs">
+            <input
+              type="text"
+              placeholder="Search team / selection…"
+              value={tSearch}
+              onChange={(e) => setTSearch(e.target.value)}
+              className="rounded border bg-background px-2 py-1 text-xs placeholder:text-muted-foreground w-44"
+            />
             <label className="flex items-center gap-1">
               <span className="text-muted-foreground">Type</span>
               <select value={tType} onChange={(e) => setTType(e.target.value)}
@@ -256,13 +270,16 @@ function ResultsPanel({
 
         {filteredBets.length === 0 ? (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-            No settled bets match these filters.
+            {bets.length === 0
+              ? "No settled bets yet — check back after group-stage matches complete."
+              : "No bets match these filters."}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full min-w-[700px] text-sm">
+            <table className="w-full min-w-[820px] text-sm">
               <thead>
                 <tr className="border-b text-xs">
+                  <SortTh col="gameDate" label="Date" sort={sort} onSort={toggleSort} align="left" />
                   <SortTh col="stars" label="Rating" sort={sort} onSort={toggleSort} align="left" />
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Type</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Selection</th>
@@ -271,14 +288,20 @@ function ResultsPanel({
                   <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Odds</th>
                   <SortTh col="ev" label="EV" sort={sort} onSort={toggleSort} />
                   <SortTh col="edge" label="Edge" sort={sort} onSort={toggleSort} />
+                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Score</th>
                   <SortTh col="status" label="Result" sort={sort} onSort={toggleSort} />
                 </tr>
               </thead>
               <tbody>
                 {filteredBets.map((b) => (
                   <tr key={b.id} className="border-b last:border-0 hover:bg-accent/40">
+                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                      {b.gameDate
+                        ? new Date(`${b.gameDate}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                        : "—"}
+                    </td>
                     <td className="px-3 py-2"><Stars n={b.stars} /></td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
                       {BET_TYPE_LABEL[b.betType] ?? b.betType}
                     </td>
                     <td className="px-3 py-2">
@@ -305,6 +328,9 @@ function ResultsPanel({
                           {fmtSignedPp(b.edge)}
                         </span>
                       ) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center text-xs text-muted-foreground whitespace-nowrap">
+                      {b.resultDetail ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-center">
                       <StatusPill status={b.status} />
