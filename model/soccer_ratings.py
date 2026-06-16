@@ -233,12 +233,48 @@ def _ratio_strengths(window, team_key, decay, max_date):
     return math.log(league_avg), 0.2, attack, defense
 
 
+def _load_wc2026_results(db: DatabaseManager) -> "pd.DataFrame":
+    """Pull completed WC 2026 fixtures from soccer_matchups as a history-format DataFrame.
+
+    Uses team names from soccer_teams so the rows are consistent with the martj42
+    history (same _normalize() key scheme).  All WC 2026 venues are neutral.
+    """
+    rows = db.execute(
+        """
+        SELECT ht.name AS home_team, at.name AS away_team,
+               sm.home_score, sm.away_score,
+               sm.game_date AS date
+        FROM soccer_matchups sm
+        JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+        JOIN soccer_teams at ON at.team_id = sm.away_team_id
+        WHERE sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
+        ORDER BY sm.game_date
+        """
+    )
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
+    df["home_score"] = df["home_score"].astype(int)
+    df["away_score"] = df["away_score"].astype(int)
+    df["tournament"] = "FIFA World Cup"   # matches the K=60 keyword
+    df["neutral"] = True
+    logger.info("Loaded %d completed WC 2026 results from DB", len(df))
+    return df
+
+
 def train_and_store(db: DatabaseManager, write: bool = True) -> int:
     """Train Elo + Poisson strengths and upsert ratings for World Cup teams.
 
     Returns the number of soccer_teams rows updated with ratings.
     """
     df = load_history()
+    wc_df = _load_wc2026_results(db)
+    if not wc_df.empty:
+        df = pd.concat([df, wc_df], ignore_index=True).sort_values("date").reset_index(drop=True)
+        logger.info("Combined history: %d matches (including %d WC 2026)", len(df), len(wc_df))
+
     elo, elo_matches = compute_elo(df)
     mu, home_adv, attack, defense = fit_poisson_strengths(df)
 
@@ -285,6 +321,9 @@ def train_and_store(db: DatabaseManager, write: bool = True) -> int:
 
 def _report(db: DatabaseManager) -> None:
     df = load_history()
+    wc_df = _load_wc2026_results(db)
+    if not wc_df.empty:
+        df = pd.concat([df, wc_df], ignore_index=True).sort_values("date").reset_index(drop=True)
     elo, matches = compute_elo(df)
     mu, home_adv, attack, defense = fit_poisson_strengths(df)
     name_to_id = build_soccer_team_name_cache(db)

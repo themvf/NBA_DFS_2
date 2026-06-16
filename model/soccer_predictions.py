@@ -25,7 +25,7 @@ import argparse
 import json
 import logging
 import math
-from datetime import date
+from datetime import date, datetime
 
 from config import DATA_DIR, load_config
 from db.database import DatabaseManager
@@ -51,6 +51,15 @@ _W_MODEL_SUPREMACY = 0.45
 
 # Score-matrix truncation — P(>=8 goals for one side) is negligible.
 _MAX_GOALS = 10
+
+# Group-stage draw correction: the Poisson model systematically underestimates
+# draws in knockout-or-die scenarios. Group stage teams play conservatively for
+# a point, producing draws at ~30–35% historically vs ~24% from our model.
+# We add this flat probability mass to p_draw and scale home/away proportionally.
+# Calibrated to roughly match historical WC group-stage draw rates.
+# Set to 0 after GROUP_STAGE_END (knockout games have proper incentives).
+_GROUP_STAGE_END = date(2026, 6, 30)
+_GROUP_STAGE_DRAW_BOOST = 0.07
 
 
 def _load_params(db: DatabaseManager) -> tuple[float, float]:
@@ -116,7 +125,8 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
     matchups = db.execute(
         f"""
         SELECT sm.id, sm.home_team_id, sm.away_team_id,
-               sm.vegas_total, sm.home_implied, sm.away_implied
+               sm.vegas_total, sm.home_implied, sm.away_implied,
+               sm.game_date
         FROM soccer_matchups sm
         WHERE {where}
         """,
@@ -158,6 +168,19 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         our_home_xg = max(0.05, (our_total + our_sup) / 2.0)
         our_away_xg = max(0.05, (our_total - our_sup) / 2.0)
         p_home, p_draw, p_away = outcome_probs(our_home_xg, our_away_xg)
+
+        # Group-stage draw boost: inflate draw probability and scale home/away
+        # down proportionally so the three probs still sum to 1.
+        raw_date = m.get("game_date")
+        if raw_date is not None:
+            gd = raw_date if isinstance(raw_date, date) else datetime.fromisoformat(str(raw_date)).date()
+            if gd <= _GROUP_STAGE_END and _GROUP_STAGE_DRAW_BOOST > 0:
+                boost = min(_GROUP_STAGE_DRAW_BOOST, 1.0 - p_draw - 0.01)
+                p_draw_new = p_draw + boost
+                scale = (1.0 - p_draw_new) / max(p_home + p_away, 1e-9)
+                p_home = p_home * scale
+                p_away = p_away * scale
+                p_draw = p_draw_new
 
         db.execute(
             """

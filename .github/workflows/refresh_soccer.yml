@@ -1,10 +1,9 @@
 name: Refresh Soccer (World Cup)
 
-# 3h cron: odds + predictions + settle + rate all bet types.
+# 3h cron: settle → re-train ratings on live WC results → odds + predictions → rate bets.
 # Weekly cron (Mondays): also refreshes player xG history from StatsBomb open data.
 # StatsBomb pulls from github.com/statsbomb/open-data — no auth, no IP restrictions.
-# Strength ratings (soccer_team_ratings) are still refreshed manually/weekly via:
-#     python -m model.soccer_ratings
+# Ratings are now auto-updated every 3h from completed WC 2026 scores in the DB.
 
 on:
   schedule:
@@ -62,6 +61,9 @@ jobs:
 
       - name: Settle completed bets (scores + group standings)
         run: python -m ingest.soccer_results --days-from 3
+
+      - name: Re-train strength ratings on live WC 2026 results
+        run: python -m model.soccer_ratings
 
       - name: Rate futures bets (outright + group winner)
         run: python -m model.soccer_futures --sims 20000
