@@ -6363,7 +6363,7 @@ export async function getSoccerFirstScorers(perGame = 8): Promise<SoccerFirstSco
       FROM soccer_bets b
       JOIN soccer_matchups sm ON sm.game_id = b.scope
       WHERE b.bet_type = 'first_scorer'
-        AND sm.commence_time >= NOW()
+        AND sm.game_date >= CURRENT_DATE - INTERVAL '3 days'
     ) t
     WHERE rn <= ${perGame}
     ORDER BY "commenceTime" ASC, "ourProb" DESC
@@ -6379,6 +6379,41 @@ export async function getSoccerFirstScorers(perGame = 8): Promise<SoccerFirstSco
     ev: r.ev != null ? Number(r.ev) : null,
     stars: Number(r.stars),
     status: String(r.status),
+  }));
+}
+
+// Per-match goal log — who scored, how many times, and who was first.
+// Used to annotate the First Scorer panel after a match completes.
+export type SoccerMatchGoalRow = {
+  gameId: string;
+  playerName: string;
+  playerTeam: string | null;
+  goalCount: number;
+  isFirstGoal: boolean;
+  firstGoalMinute: number | null;
+};
+
+export async function getSoccerMatchGoals(): Promise<SoccerMatchGoalRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      game_id                                           AS "gameId",
+      player_name                                       AS "playerName",
+      player_team                                       AS "playerTeam",
+      COUNT(*)::int                                     AS "goalCount",
+      BOOL_OR(is_first_goal)                            AS "isFirstGoal",
+      MIN(goal_minute) FILTER (WHERE is_first_goal)     AS "firstGoalMinute"
+    FROM soccer_match_goals
+    WHERE game_date >= CURRENT_DATE - INTERVAL '3 days'
+    GROUP BY game_id, player_name, player_team
+    ORDER BY game_id, "isFirstGoal" DESC, "goalCount" DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    gameId: String(r.gameId),
+    playerName: String(r.playerName),
+    playerTeam: r.playerTeam != null ? String(r.playerTeam) : null,
+    goalCount: Number(r.goalCount),
+    isFirstGoal: Boolean(r.isFirstGoal),
+    firstGoalMinute: r.firstGoalMinute != null ? Number(r.firstGoalMinute) : null,
   }));
 }
 

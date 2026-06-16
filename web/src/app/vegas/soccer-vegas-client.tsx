@@ -6,6 +6,7 @@ import type {
   SoccerBetRow,
   SoccerBacktestRow,
   SoccerFirstScorerRow,
+  SoccerMatchGoalRow,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -608,7 +609,20 @@ function BetsPanel({ bets }: { bets: SoccerBetRow[] }) {
 }
 
 // ── First scorer panel ────────────────────────────────────────────────────────
-function FirstScorerPanel({ rows }: { rows: SoccerFirstScorerRow[] }) {
+// Normalize a name for fuzzy matching (strip accents, lowercase, alphanumeric only).
+function normName(s: string) {
+  return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function FirstScorerPanel({ rows, matchGoals }: { rows: SoccerFirstScorerRow[]; matchGoals: SoccerMatchGoalRow[] }) {
+  // Index goals by gameId for fast lookup.
+  const goalsByGame = new Map<string, SoccerMatchGoalRow[]>();
+  for (const g of matchGoals) {
+    const list = goalsByGame.get(g.gameId) ?? [];
+    list.push(g);
+    goalsByGame.set(g.gameId, list);
+  }
+
   const byGame = new Map<string, SoccerFirstScorerRow[]>();
   for (const r of rows) {
     const list = byGame.get(r.gameId) ?? [];
@@ -644,9 +658,24 @@ function FirstScorerPanel({ rows }: { rows: SoccerFirstScorerRow[] }) {
           {games.map((gid) => {
             const list = byGame.get(gid) ?? [];
             const fixture = list[0]?.fixture ?? "Match";
+            const goals = goalsByGame.get(gid) ?? [];
+            const hasResult = goals.length > 0;
+            const firstGoal = goals.find((g) => g.isFirstGoal);
+
+            // Build goal lookup: normalized player name → { goalCount, isFirst, minute }
+            const goalMap = new Map<string, SoccerMatchGoalRow>();
+            for (const g of goals) goalMap.set(normName(g.playerName), g);
+
             return (
               <div key={gid} className="overflow-hidden rounded-lg border bg-card">
-                <div className="border-b px-3 py-2 text-sm font-medium">{fixture}</div>
+                <div className="flex items-center justify-between border-b px-3 py-2">
+                  <span className="text-sm font-medium">{fixture}</span>
+                  {hasResult && firstGoal && (
+                    <span className="text-[10px] text-emerald-400 font-medium">
+                      1st goal: {firstGoal.playerName} {firstGoal.firstGoalMinute != null ? `${firstGoal.firstGoalMinute}'` : ""}
+                    </span>
+                  )}
+                </div>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-[10px] uppercase text-muted-foreground">
@@ -655,22 +684,58 @@ function FirstScorerPanel({ rows }: { rows: SoccerFirstScorerRow[] }) {
                       <th className="px-2 py-1.5 text-center font-medium">Best Odds</th>
                       <th className="px-2 py-1.5 text-center font-medium">Mkt %</th>
                       <th className="px-2 py-1.5 text-center font-medium">Rating</th>
+                      {hasResult && <th className="px-2 py-1.5 text-center font-medium">Goals</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {list.map((r) => (
-                      <tr key={r.player} className="border-b last:border-0 hover:bg-accent/40">
-                        <td className="px-3 py-1.5">{r.player}</td>
-                        <td className="px-2 py-1.5 text-center tabular-nums">{fmtPct(r.ourProb)}</td>
-                        <td className="px-2 py-1.5 text-center tabular-nums">{fmtMl(r.marketOdds)}</td>
-                        <td className="px-2 py-1.5 text-center tabular-nums text-muted-foreground">
-                          {r.marketProb != null ? fmtPct(r.marketProb) : "—"}
-                        </td>
-                        <td className="px-2 py-1.5 text-center"><Stars n={r.stars} /></td>
-                      </tr>
-                    ))}
+                    {list.map((r) => {
+                      const g = goalMap.get(normName(r.player));
+                      const scored = g != null && g.goalCount > 0;
+                      const scoredFirst = g?.isFirstGoal ?? false;
+                      return (
+                        <tr
+                          key={r.player}
+                          className={`border-b last:border-0 hover:bg-accent/40 ${scoredFirst ? "bg-emerald-500/10" : ""}`}
+                        >
+                          <td className="px-3 py-1.5 font-medium">
+                            {r.player}
+                            {scoredFirst && (
+                              <span className="ml-1.5 text-[10px] font-semibold text-emerald-400">1st</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-center tabular-nums">{fmtPct(r.ourProb)}</td>
+                          <td className="px-2 py-1.5 text-center tabular-nums">{fmtMl(r.marketOdds)}</td>
+                          <td className="px-2 py-1.5 text-center tabular-nums text-muted-foreground">
+                            {r.marketProb != null ? fmtPct(r.marketProb) : "—"}
+                          </td>
+                          <td className="px-2 py-1.5 text-center"><Stars n={r.stars} /></td>
+                          {hasResult && (
+                            <td className="px-2 py-1.5 text-center tabular-nums">
+                              {scored ? (
+                                <span className={`font-semibold ${scoredFirst ? "text-emerald-400" : "text-foreground"}`}>
+                                  {"⚽".repeat(g!.goalCount)}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                {hasResult && goals.length > 0 && (
+                  <div className="border-t px-3 py-1.5 text-[10px] text-muted-foreground">
+                    All scorers:{" "}
+                    {goals.map((g, i) => (
+                      <span key={i} className={g.isFirstGoal ? "text-emerald-400 font-medium" : ""}>
+                        {g.playerName}{g.goalCount > 1 ? ` ×${g.goalCount}` : ""}
+                        {i < goals.length - 1 ? ", " : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -857,6 +922,7 @@ export default function SoccerVegasClient({
   settledBets,
   backtest,
   firstScorers,
+  matchGoals,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -864,6 +930,7 @@ export default function SoccerVegasClient({
   settledBets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
   firstScorers: SoccerFirstScorerRow[];
+  matchGoals: SoccerMatchGoalRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -908,7 +975,7 @@ export default function SoccerVegasClient({
 
       {/* Tab content */}
       {tab === "bets" && <BetsPanel bets={bets} />}
-      {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} />}
+      {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} matchGoals={matchGoals} />}
       {tab === "results" && <ResultsPanel bets={settledBets} backtest={backtest} />}
       {tab === "fixtures" && <FixturesPanel matchups={matchups} queryDate={queryDate} />}
     </div>

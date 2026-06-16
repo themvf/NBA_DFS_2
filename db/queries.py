@@ -1080,6 +1080,31 @@ def upsert_soccer_match_scorer(
     )
 
 
+def upsert_soccer_match_goal(
+    db: DatabaseManager,
+    *,
+    game_id: str,
+    game_date: str,
+    player_name: str,
+    player_team: str | None,
+    goal_minute: int | None,
+    is_first_goal: bool = False,
+    source: str = "thesportsdb",
+) -> None:
+    db.execute(
+        """
+        INSERT INTO soccer_match_goals
+            (game_id, game_date, player_name, player_team, goal_minute, is_first_goal, source)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (game_id, player_name, goal_minute) DO UPDATE SET
+            player_team    = EXCLUDED.player_team,
+            is_first_goal  = EXCLUDED.is_first_goal,
+            source         = EXCLUDED.source
+        """,
+        (game_id, game_date, player_name, player_team, goal_minute, is_first_goal, source),
+    )
+
+
 def get_all_soccer_player_stats(
     db: DatabaseManager,
     season: str = "combined",

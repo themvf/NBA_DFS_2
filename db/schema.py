@@ -1473,6 +1473,19 @@ MIGRATIONS = [
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS pinnacle_prob_home DOUBLE PRECISION""",
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS pinnacle_prob_draw DOUBLE PRECISION""",
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS pinnacle_prob_away DOUBLE PRECISION""",
+    # 2026-06-16: All goals per match (not just first scorer) for result overlay.
+    """CREATE TABLE IF NOT EXISTS soccer_match_goals (
+        id SERIAL PRIMARY KEY,
+        game_id TEXT NOT NULL,
+        game_date DATE NOT NULL,
+        player_name TEXT NOT NULL,
+        player_team TEXT,
+        goal_minute INTEGER,
+        is_first_goal BOOLEAN DEFAULT FALSE,
+        source TEXT DEFAULT 'thesportsdb',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (game_id, player_name, goal_minute)
+    )""",
 ]
 
 INDEXES = [

@@ -25,7 +25,7 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
-from db.queries import upsert_soccer_match_scorer
+from db.queries import upsert_soccer_match_goal, upsert_soccer_match_scorer
 from ingest.soccer_results import _tsdb_find_event, _tsdb_first_scorer, TSDB_BASE
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -98,6 +98,8 @@ def backfill(db: DatabaseManager, api_key: str = "123", force: bool = False, dry
     # Skip games already stored unless --force.
     if not force:
         stored = {r["game_id"] for r in db.execute("SELECT game_id FROM soccer_match_scorers")}
+        # Also skip if we already have full goals data for that game.
+        stored |= {r["game_id"] for r in db.execute("SELECT DISTINCT game_id FROM soccer_match_goals")}
     else:
         stored = set()
 
@@ -126,15 +128,10 @@ def backfill(db: DatabaseManager, api_key: str = "123", force: bool = False, dry
             if dry_run:
                 print(f"  {game_date} {home} {g['home_score']}-{g['away_score']} {away}: NO SCORER")
             else:
-                # Record explicitly so we don't re-query next time.
                 upsert_soccer_match_scorer(
-                    db,
-                    game_id=gid,
-                    game_date=game_date,
-                    scorer_name="[none]",
-                    scorer_team=None,
-                    goal_minute=None,
-                    tsdb_event_id=tsdb_id,
+                    db, game_id=gid, game_date=game_date,
+                    scorer_name="[none]", scorer_team=None,
+                    goal_minute=None, tsdb_event_id=tsdb_id,
                 )
         else:
             first = goals[0]
@@ -145,15 +142,20 @@ def backfill(db: DatabaseManager, api_key: str = "123", force: bool = False, dry
                     f"{len(goals)} total goals"
                 )
             else:
+                # Store first scorer summary (existing behavior).
                 upsert_soccer_match_scorer(
-                    db,
-                    game_id=gid,
-                    game_date=game_date,
-                    scorer_name=first["player"],
-                    scorer_team=first["team"],
-                    goal_minute=first["minute"],
-                    tsdb_event_id=tsdb_id,
+                    db, game_id=gid, game_date=game_date,
+                    scorer_name=first["player"], scorer_team=first["team"],
+                    goal_minute=first["minute"], tsdb_event_id=tsdb_id,
                 )
+                # Store all goals so the UI can show per-player goal counts.
+                for goal in goals:
+                    upsert_soccer_match_goal(
+                        db, game_id=gid, game_date=game_date,
+                        player_name=goal["player"], player_team=goal["team"],
+                        goal_minute=goal["minute"],
+                        is_first_goal=(goal is first),
+                    )
 
         processed += 1
         time.sleep(0.3)  # gentle rate limit — free tier has no stated limit but be courteous
