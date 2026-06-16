@@ -40,16 +40,34 @@ WINNER_SPORT_KEY = "soccer_fifa_world_cup_winner"
 REGIONS = "us,uk,eu"
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 
+# Pinnacle public guest API — no auth required for odds reads.
+_PINNACLE_BASE = "https://guest.api.arcadia.pinnacle.com/0.1"
+_PINNACLE_HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json",
+    "x-api-key": "CmX2KcMrXuFmNg6YFbmTxE0y9CblMOzm",
+}
+_PINNACLE_WC_LEAGUE = 2686
+
 DEFAULT_SIMS = 20000
 _DRAW_BASE = 0.32   # max draw probability at an even matchup
 # The single-elim bracket is an approximation that over-concentrates probability
 # on top seeds; anchor the outright to the market so we don't claim wild favorite
 # edges (same market-anchoring philosophy as the match model).
 _W_OUTRIGHT_MODEL = 0.35
+# Group winner markets are 4-team and more efficient — lean on the market more.
+_W_GROUP_MODEL = 0.30
 
 _TEAM_ALIASES = {  # outright-market name → our soccer_teams name
     "United States": "USA",
     "Bosnia and Herzegovina": "Bosnia & Herzegovina",
+}
+
+# Pinnacle team names that differ from our soccer_teams.name
+_PINNACLE_ALIASES = {
+    "Bosnia and Herzegovina": "Bosnia & Herzegovina",
+    "Czechia": "Czech Republic",
+    "Turkiye": "Turkey",
 }
 
 
@@ -233,6 +251,93 @@ def simulate_group(member_elos: list[tuple[int, float]], sims: int) -> dict[int,
     return {tid: c / sims for tid, c in first.items()}
 
 
+# ── Pinnacle group winner market ──────────────────────────────────────────────
+
+def _fetch_pinnacle_group_winner_odds(name_to_id: dict[str, int]) -> dict[int, dict]:
+    """Fetch WC group winner odds from Pinnacle's public API.
+
+    Returns {team_id: {"prob_vigfree": float, "american_odds": int}}.
+    Pinnacle applies ~3% vig on 4-team futures; we remove it with the
+    multiplicative method (divide each implied prob by the group overround).
+    Group matching is by team-set intersection, not by label, because our
+    derived group labels may differ from Pinnacle's FIFA labels.
+    """
+    import time
+
+    norm_to_id = {_norm(alias if (alias := _PINNACLE_ALIASES.get(name)) else name): tid
+                  for name, tid in name_to_id.items()}
+    # Also index by original name and alias
+    for orig, aliased in _PINNACLE_ALIASES.items():
+        tid = next((v for k, v in name_to_id.items() if _norm(k) == _norm(aliased)), None)
+        if tid:
+            norm_to_id[_norm(orig)] = tid
+
+    try:
+        r = requests.get(
+            f"{_PINNACLE_BASE}/leagues/{_PINNACLE_WC_LEAGUE}/matchups",
+            headers=_PINNACLE_HEADERS, timeout=15,
+        )
+        r.raise_for_status()
+        matchups = r.json()
+    except requests.RequestException as e:
+        logger.warning("Pinnacle matchup list failed: %s", e)
+        return {}
+
+    gw_matchups = [
+        m for m in matchups
+        if m.get("special")
+        and "group" in m["special"].get("description", "").lower()
+        and "winner" in m["special"].get("description", "").lower()
+    ]
+    logger.info("Pinnacle: %d group winner matchups found", len(gw_matchups))
+
+    result: dict[int, dict] = {}
+    for m in gw_matchups:
+        pid_to_name = {p["id"]: p["name"] for p in m.get("participants", [])}
+        try:
+            mr = requests.get(
+                f"{_PINNACLE_BASE}/matchups/{m['id']}/markets/straight",
+                headers=_PINNACLE_HEADERS, timeout=10,
+            )
+            mr.raise_for_status()
+            markets = mr.json()
+        except requests.RequestException as e:
+            logger.warning("Pinnacle market fetch failed (%s): %s", m["id"], e)
+            time.sleep(0.1)
+            continue
+
+        prices: list[tuple[int, int]] = []  # (team_id, american_odds)
+        for mkt in markets:
+            if mkt.get("type") != "moneyline":
+                continue
+            for price in mkt.get("prices", []):
+                raw_name = pid_to_name.get(price["participantId"], "")
+                tid = norm_to_id.get(_norm(raw_name))
+                if tid is not None and price.get("price") is not None:
+                    prices.append((tid, int(price["price"])))
+
+        if not prices:
+            time.sleep(0.1)
+            continue
+
+        # De-vig multiplicatively
+        impl = [(tid, american_to_prob(odds)) for tid, odds in prices]
+        total = sum(p for _, p in impl)
+        if total <= 0:
+            time.sleep(0.1)
+            continue
+
+        for (tid, impl_prob), (_, american_odds) in zip(impl, prices):
+            result[tid] = {
+                "prob_vigfree": impl_prob / total,
+                "american_odds": american_odds,
+            }
+        time.sleep(0.1)
+
+    logger.info("Pinnacle group winner odds: %d teams mapped", len(result))
+    return result
+
+
 # ── Outright market ───────────────────────────────────────────────────────────
 
 def _fetch_outright_market(api_key: str, name_to_id: dict[str, int]) -> dict[int, dict]:
@@ -349,6 +454,8 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
     groups = derive_groups(db)
     elo_by_id = {t["team_id"]: float(t["elo"]) for t in field}
     name_by_id = {t["team_id"]: t["name"] for t in field}
+    # Fetch Pinnacle group winner market — degrades gracefully to no-market if unavailable.
+    gw_market = _fetch_pinnacle_group_winner_odds(name_to_id)
     with db.connect() as conn:
         for label, members in groups.items():
             if len(members) != 4:
@@ -358,19 +465,32 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
             for tid in members:
                 if tid not in name_by_id:
                     continue
+                mkt = gw_market.get(tid)
+                # Anchor to Pinnacle market (sharper than a 4-team single-elim sim).
+                if mkt is not None:
+                    our_prob = (_W_GROUP_MODEL * probs.get(tid, 0.0)
+                                + (1.0 - _W_GROUP_MODEL) * mkt["prob_vigfree"])
+                else:
+                    our_prob = probs.get(tid, 0.0)
                 record_bet(
                     db,
                     model_version=MODEL_VERSION,
                     bet_type="group_winner",
                     scope=f"Group {label}",
                     selection_label=name_by_id[tid],
-                    our_prob=probs.get(tid, 0.0),
+                    our_prob=our_prob,
                     capture_key=capture_key,
                     subject_team_id=tid,
                     baseline_prob=1.0 / len(members),
+                    market_odds=mkt["american_odds"] if mkt else None,
+                    market_prob=mkt["prob_vigfree"] if mkt else None,
                     conn=conn,
                     inputs={"elo": round(elo_by_id.get(tid, 1500.0), 1),
-                            "group": label, "sims": sims},
+                            "group": label, "sims": sims,
+                            "sim_prob": round(probs.get(tid, 0.0), 4),
+                            "market_vigfree": round(mkt["prob_vigfree"], 4) if mkt else None,
+                            "anchor_w_model": _W_GROUP_MODEL,
+                            "pinnacle_odds": mkt["american_odds"] if mkt else None},
                 )
                 written += 1
 

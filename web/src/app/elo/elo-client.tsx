@@ -461,11 +461,13 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
       <p className="rounded-lg border bg-card p-3 text-xs text-muted-foreground">
         <strong className="text-foreground">Our %</strong> is from the Monte
         Carlo tournament simulation (20k runs, Elo-driven bivariate Poisson
-        match model).{" "}
-        <strong className="text-foreground">Mkt %</strong> is the vig-removed
-        consensus from The Odds API (4–5 books for outright; no market for group
-        winner — stars use edge over 1/4 baseline). Green edge = we rate this
-        team higher than the market.
+        match model), anchored 30% model / 70% market for group winner and 35%
+        model / 65% market for outright.{" "}
+        <strong className="text-foreground">Mkt %</strong> is vig-free: outright
+        from The Odds API consensus (4–5 books); group winner from{" "}
+        <strong className="text-foreground">Pinnacle</strong> (sharpest line,
+        ~3% vig removed multiplicatively). Green edge = we like this team more
+        than the market.
       </p>
 
       {/* Outright winner */}
@@ -575,6 +577,7 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {groups.map(([key, rows]) => {
               const sorted = [...rows].sort((a, b) => b.ourProb - a.ourProb);
+              const hasMarket = sorted.some((f) => f.marketProb != null);
               return (
                 <div key={key} className="rounded-lg border bg-card">
                   <div className="border-b px-3 py-2 text-sm font-semibold">
@@ -589,9 +592,24 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
                         <th className="px-2 py-1.5 text-center font-medium">
                           Our %
                         </th>
+                        {hasMarket && (
+                          <>
+                            <th className="px-2 py-1.5 text-center font-medium">
+                              Mkt %
+                            </th>
+                            <th className="px-2 py-1.5 text-center font-medium">
+                              Pinnacle
+                            </th>
+                          </>
+                        )}
                         <th className="px-2 py-1.5 text-center font-medium">
                           Edge
                         </th>
+                        {hasMarket && (
+                          <th className="px-2 py-1.5 text-center font-medium">
+                            EV
+                          </th>
+                        )}
                         <th className="px-2 py-1.5 text-center font-medium">
                           ★
                         </th>
@@ -609,6 +627,18 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
                           <td className="px-2 py-1.5 text-center tabular-nums font-semibold">
                             {fmtPct1(f.ourProb)}
                           </td>
+                          {hasMarket && (
+                            <>
+                              <td className="px-2 py-1.5 text-center tabular-nums text-xs text-muted-foreground">
+                                {f.marketProb != null
+                                  ? fmtPct1(f.marketProb)
+                                  : "—"}
+                              </td>
+                              <td className="px-2 py-1.5 text-center tabular-nums text-xs">
+                                {fmtMl(f.marketOdds)}
+                              </td>
+                            </>
+                          )}
                           <td className="px-2 py-1.5 text-center tabular-nums text-xs">
                             {f.edge != null ? (
                               <span
@@ -624,6 +654,23 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
                               "—"
                             )}
                           </td>
+                          {hasMarket && (
+                            <td className="px-2 py-1.5 text-center tabular-nums text-xs">
+                              {f.ev != null ? (
+                                <span
+                                  className={
+                                    f.ev > 0
+                                      ? "text-emerald-400"
+                                      : "text-muted-foreground"
+                                  }
+                                >
+                                  {fmtSigned(f.ev)}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                          )}
                           <td className="px-2 py-1.5 text-center">
                             <Stars n={f.stars} />
                           </td>
@@ -636,8 +683,8 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
             })}
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Group winner bets have no market line — stars use edge vs the 25%
-            baseline (each team has equal 1/4 prior). Settled from final
+            Group winner market from Pinnacle (vig-free). EV uses Pinnacle
+            price; DraftKings prices may differ. Settled from final group
             standings.
           </p>
         </div>
