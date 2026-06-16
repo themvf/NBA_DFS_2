@@ -1,0 +1,823 @@
+Tue 04/28/2026 18:13:35.77 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs completed (26651)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs=ok (2460), player_game_logs=ok (26651), player_rolling_stats=ok (582)
+Tue 04/28/2026 18:17:57.07 - Done (exit code 0) 
+Wed 04/29/2026 12:07:07.99 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (72)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (818)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 72 rows upserted for 2025-26 (Playoffs)
+Player game logs: 818 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (72), player_game_logs:Playoffs=ok (818), player_rolling_stats=ok (582)
+Wed 04/29/2026 12:09:55.70 - Done (exit code 0) 
+Thu 04/30/2026  6:01:47.83 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (78)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (872)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 78 rows upserted for 2025-26 (Playoffs)
+Player game logs: 872 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (78), player_game_logs:Playoffs=ok (872), player_rolling_stats=ok (582)
+Sat 05/02/2026 13:59:09.14 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (90)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1004)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 90 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1004 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (90), player_game_logs:Playoffs=ok (1004), player_rolling_stats=ok (582)
+Sat 05/02/2026 14:03:30.57 - Done (exit code 0) 
+Mon 05/11/2026  9:06:33.10 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (124)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1387)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 124 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1387 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (124), player_game_logs:Playoffs=ok (1387), player_rolling_stats=ok (582)
+Mon 05/11/2026  9:14:08.86 - Done (exit code 0) 
+Wed 05/13/2026 21:22:02.47 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (130)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1461)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 130 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1461 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (130), player_game_logs:Playoffs=ok (1461), player_rolling_stats=ok (582)
+Wed 05/13/2026 21:28:26.31 - Done (exit code 0) 
+Thu 05/14/2026  7:32:52.18 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (132)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1480)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 132 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1480 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (132), player_game_logs:Playoffs=ok (1480), player_rolling_stats=ok (582)
+Thu 05/14/2026  7:37:17.28 - Done (exit code 0) 
+Fri 05/15/2026  7:44:10.91 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (132)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1480)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 132 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1480 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (132), player_game_logs:Playoffs=ok (1480), player_rolling_stats=ok (582)
+Fri 05/15/2026  7:46:44.02 - Done (exit code 0) 
+Sat 05/16/2026 13:18:55.48 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (136)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1534)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 136 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1534 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (136), player_game_logs:Playoffs=ok (1534), player_rolling_stats=ok (582)
+Sat 05/16/2026 13:21:48.49 - Done (exit code 0) 
+Sun 05/17/2026  9:43:15.09 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (136)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1534)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 136 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1534 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (136), player_game_logs:Playoffs=ok (1534), player_rolling_stats=ok (582)
+Sun 05/17/2026  9:46:09.50 - Done (exit code 0) 
+Mon 05/18/2026  8:53:58.22 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (138)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1560)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 138 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1560 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (138), player_game_logs:Playoffs=ok (1560), player_rolling_stats=ok (582)
+Mon 05/18/2026  8:56:43.75 - Done (exit code 0) 
+Tue 05/19/2026  6:00:02.01 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+WARNING PlayerGameLogs: unexpected error on attempt 1/3 (ChunkedEncodingError). Retrying in 10s...
+WARNING PlayerGameLogs: unexpected error on attempt 2/3 (ChunkedEncodingError). Retrying in 20s...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (140)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1560)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 140 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1560 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (140), player_game_logs:Playoffs=ok (1560), player_rolling_stats=ok (582)
+Tue 05/19/2026  6:04:49.40 - Done (exit code 0) 
+Wed 05/20/2026  6:00:01.99 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+WARNING PlayerGameLogs: unexpected error on attempt 1/3 (JSONDecodeError). Retrying in 10s...
+WARNING PlayerGameLogs: unexpected error on attempt 2/3 (JSONDecodeError). Retrying in 20s...
+ERROR player_game_logs:Regular Season failed: Expecting value: line 1 column 1 (char 0)
+Traceback (most recent call last):
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\ingest\nba_stats.py", line 528, in _run_refresh_stage
+    count = fn()
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\ingest\nba_stats.py", line 566, in <lambda>
+    lambda selected_season_type=selected_season_type: fetch_player_game_logs(
+                                                      ~~~~~~~~~~~~~~~~~~~~~~^
+        db,
+        ^^^
+        season,
+        ^^^^^^^
+        season_type=selected_season_type,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\ingest\nba_stats.py", line 249, in fetch_player_game_logs
+    df: pd.DataFrame = _call_with_retry(_fetch, "PlayerGameLogs")
+                       ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\ingest\nba_stats.py", line 58, in _call_with_retry
+    return fn()
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\ingest\nba_stats.py", line 241, in _fetch
+    endpoint = playergamelogs.PlayerGameLogs(
+        season_nullable=season,
+    ...<2 lines>...
+        timeout=NBA_API_TIMEOUT_SECONDS,
+    )
+  File "C:\Users\joshb\AppData\Roaming\Python\Python313\site-packages\nba_api\stats\endpoints\playergamelogs.py", line 154, in __init__
+    self.get_request()
+    ~~~~~~~~~~~~~~~~^^
+  File "C:\Users\joshb\AppData\Roaming\Python\Python313\site-packages\nba_api\stats\endpoints\playergamelogs.py", line 164, in get_request
+    self.load_response()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\joshb\AppData\Roaming\Python\Python313\site-packages\nba_api\stats\endpoints\playergamelogs.py", line 167, in load_response
+    data_sets = self.nba_response.get_data_sets()
+  File "C:\Users\joshb\AppData\Roaming\Python\Python313\site-packages\nba_api\stats\library\http.py", line 127, in get_data_sets
+    raw_dict = self.get_dict()
+  File "C:\Users\joshb\AppData\Roaming\Python\Python313\site-packages\nba_api\library\http.py", line 42, in get_dict
+    return json.loads(self._response)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\json\__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Python313\Lib\json\decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\json\decoder.py", line 363, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (142)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1600)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+WARNING NBA refresh partially succeeded; failed stages: player_game_logs:Regular Season
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+player_game_logs:Regular Season: FAILED (JSONDecodeError: Expecting value: line 1 column 1 (char 0))
+Team game logs: 142 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1600 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=failed, team_game_logs:Playoffs=ok (142), player_game_logs:Playoffs=ok (1600), player_rolling_stats=ok (582)
+Wed 05/20/2026  6:03:06.92 - Done (exit code 0) 
+Thu 05/21/2026 18:19:56.63 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (144)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1622)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 144 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1622 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (144), player_game_logs:Playoffs=ok (1622), player_rolling_stats=ok (582)
+Thu 05/21/2026 18:26:25.32 - Done (exit code 0) 
+Fri 05/22/2026  9:38:18.92 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (146)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1648)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 146 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1648 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (146), player_game_logs:Playoffs=ok (1648), player_rolling_stats=ok (582)
+Fri 05/22/2026  9:40:45.54 - Done (exit code 0) 
+Sat 05/23/2026  6:00:02.55 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (148)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1676)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 148 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1676 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (148), player_game_logs:Playoffs=ok (1676), player_rolling_stats=ok (582)
+Sat 05/23/2026  6:02:29.20 - Done (exit code 0) 
+Sun 05/24/2026  6:00:02.08 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (150)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1695)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 150 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1695 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (150), player_game_logs:Playoffs=ok (1695), player_rolling_stats=ok (582)
+Sun 05/24/2026  6:02:28.55 - Done (exit code 0) 
+Mon 05/25/2026  6:00:02.08 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (152)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1720)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 152 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1720 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (152), player_game_logs:Playoffs=ok (1720), player_rolling_stats=ok (582)
+Mon 05/25/2026  6:02:14.69 - Done (exit code 0) 
+Tue 05/26/2026  6:00:02.13 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (154)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1747)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 154 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1747 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (154), player_game_logs:Playoffs=ok (1747), player_rolling_stats=ok (582)
+Tue 05/26/2026  6:02:30.91 - Done (exit code 0) 
+Wed 05/27/2026  8:38:09.80 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (156)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1773)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 156 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1773 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (156), player_game_logs:Playoffs=ok (1773), player_rolling_stats=ok (582)
+Wed 05/27/2026  8:40:35.20 - Done (exit code 0) 
+Fri 05/29/2026  7:11:39.66 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (158)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1801)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 158 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1801 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (158), player_game_logs:Playoffs=ok (1801), player_rolling_stats=ok (582)
+Fri 05/29/2026  7:15:00.52 - Done (exit code 0) 
+Sat 05/30/2026  6:00:02.38 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (158)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1801)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 158 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1801 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (158), player_game_logs:Playoffs=ok (1801), player_rolling_stats=ok (582)
+Sat 05/30/2026  6:02:51.21 - Done (exit code 0) 
+Sun 05/31/2026  6:00:01.98 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (160)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1820)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 160 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1820 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (160), player_game_logs:Playoffs=ok (1820), player_rolling_stats=ok (582)
+Sun 05/31/2026  6:02:23.49 - Done (exit code 0) 
+Mon 06/01/2026  7:23:31.15 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (160)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1820)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 160 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1820 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (160), player_game_logs:Playoffs=ok (1820), player_rolling_stats=ok (582)
+Mon 06/01/2026  7:26:49.68 - Done (exit code 0) 
+Tue 06/02/2026  6:00:02.21 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (160)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1820)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 160 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1820 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (160), player_game_logs:Playoffs=ok (1820), player_rolling_stats=ok (582)
+Tue 06/02/2026  6:03:42.01 - Done (exit code 0) 
+Wed 06/03/2026  6:00:02.23 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (160)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1820)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 160 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1820 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (160), player_game_logs:Playoffs=ok (1820), player_rolling_stats=ok (582)
+Wed 06/03/2026  6:02:50.07 - Done (exit code 0) 
+Thu 06/04/2026  6:00:02.16 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (162)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1840)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 162 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1840 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (162), player_game_logs:Playoffs=ok (1840), player_rolling_stats=ok (582)
+Thu 06/04/2026  6:02:45.47 - Done (exit code 0) 
+Fri 06/05/2026  6:00:02.60 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (162)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1840)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 162 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1840 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (162), player_game_logs:Playoffs=ok (1840), player_rolling_stats=ok (582)
+Fri 06/05/2026  6:02:36.15 - Done (exit code 0) 
+Sat 06/06/2026  6:00:02.59 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (164)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1859)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 164 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1859 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (164), player_game_logs:Playoffs=ok (1859), player_rolling_stats=ok (582)
+Sat 06/06/2026  6:02:42.77 - Done (exit code 0) 
+Sun 06/07/2026  6:00:02.62 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (164)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1859)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 164 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1859 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (164), player_game_logs:Playoffs=ok (1859), player_rolling_stats=ok (582)
+Sun 06/07/2026  6:03:11.63 - Done (exit code 0) 
+Mon 06/08/2026  6:00:02.65 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+Tue 06/09/2026  6:00:02.62 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (166)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1879)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 166 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1879 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (166), player_game_logs:Playoffs=ok (1879), player_rolling_stats=ok (582)
+Tue 06/09/2026  6:03:11.03 - Done (exit code 0) 
+Sat 06/13/2026 13:55:29.57 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (168)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1900)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+ERROR player_rolling_stats failed: connection to server at "ep-holy-lab-ampee3vi-pooler.c-5.us-east-1.aws.neon.tech" (34.206.177.121), port 5432 failed: ERROR:  Authentication timed out
+Traceback (most recent call last):
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\ingest\nba_stats.py", line 528, in _run_refresh_stage
+    count = fn()
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\ingest\nba_stats.py", line 576, in <lambda>
+    lambda: fetch_player_rolling_stats(db, season, season_types=selected_season_types, n_games=n_games),
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\ingest\nba_stats.py", line 500, in fetch_player_rolling_stats
+    upsert_nba_player_stats(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        db,
+        ^^^
+    ...<16 lines>...
+        fpts_std=round(fpts_std, 3) if fpts_std is not None else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\db\queries.py", line 98, in upsert_nba_player_stats
+    db.execute(
+    ~~~~~~~~~~^
+        """
+        ^^^
+    ...<28 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\db\database.py", line 42, in execute
+    with self.connect() as conn:
+         ~~~~~~~~~~~~^^
+  File "C:\Python313\Lib\contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "c:\Docs\_AI Python Projects\NBADFS_v2\db\database.py", line 30, in connect
+    conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+  File "C:\Users\joshb\AppData\Roaming\Python\Python313\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "ep-holy-lab-ampee3vi-pooler.c-5.us-east-1.aws.neon.tech" (34.206.177.121), port 5432 failed: ERROR:  Authentication timed out
+
+WARNING NBA refresh partially succeeded; failed stages: player_rolling_stats
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 168 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1900 rows upserted for 2025-26 (Playoffs)
+player_rolling_stats: FAILED (OperationalError: connection to server at "ep-holy-lab-ampee3vi-pooler.c-5.us-east-1.aws.neon.tech" (34.206.177.121), port 5432 failed: ERROR:  Authentication timed out
+)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (168), player_game_logs:Playoffs=ok (1900), player_rolling_stats=failed
+Sun 06/14/2026  6:00:02.86 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (170)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1921)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 170 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1921 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (170), player_game_logs:Playoffs=ok (1921), player_rolling_stats=ok (582)
+Sun 06/14/2026  6:03:05.57 - Done (exit code 0) 
+Mon 06/15/2026  6:00:02.73 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (170)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1921)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 170 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1921 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (170), player_game_logs:Playoffs=ok (1921), player_rolling_stats=ok (582)
+Mon 06/15/2026  6:02:40.11 - Done (exit code 0) 
+Tue 06/16/2026  6:00:03.04 - Starting NBA stats refresh 
+INFO Fetching team stats for season 2025-26 ...
+INFO team_stats completed (30)
+INFO Fetching raw team game logs for season 2025-26 (Regular Season) ...
+INFO team_game_logs:Regular Season completed (2460)
+INFO Fetching raw player game logs for season 2025-26 (Regular Season) ...
+INFO player_game_logs:Regular Season completed (26651)
+INFO Fetching raw team game logs for season 2025-26 (Playoffs) ...
+INFO team_game_logs:Playoffs completed (170)
+INFO Fetching raw player game logs for season 2025-26 (Playoffs) ...
+INFO player_game_logs:Playoffs completed (1921)
+INFO Computing rolling player stats from raw logs for 2025-26 (Regular Season, Playoffs) ...
+INFO player_rolling_stats completed (582)
+Team stats: 30/30 teams updated for 2025-26
+Team game logs: 2460 rows upserted for 2025-26 (Regular Season)
+Player game logs: 26651 rows upserted for 2025-26 (Regular Season)
+Team game logs: 170 rows upserted for 2025-26 (Playoffs)
+Player game logs: 1921 rows upserted for 2025-26 (Playoffs)
+Player stats: 582 players updated for 2025-26 (last 10 games)
+NBA refresh summary: team_stats=ok (30), team_game_logs:Regular Season=ok (2460), player_game_logs:Regular Season=ok (26651), team_game_logs:Playoffs=ok (170), player_game_logs:Playoffs=ok (1921), player_rolling_stats=ok (582)
+Tue 06/16/2026  6:02:37.47 - Done (exit code 0) 
