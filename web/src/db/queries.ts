@@ -6329,6 +6329,59 @@ export async function getSoccerFirstScorers(perGame = 8): Promise<SoccerFirstSco
   }));
 }
 
+// Settled bet results broken down by bet_type — powers the Results tab.
+export type SoccerResultsByTypeRow = {
+  betType: string;
+  n: number;
+  won: number;
+  lost: number;
+  voided: number;
+  expectedWinRate: number | null;
+  realizedWinRate: number | null;
+  marketBets: number;
+  roi: number | null;
+};
+
+export async function getSoccerResultsByType(): Promise<SoccerResultsByTypeRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      b.bet_type AS "betType",
+      COUNT(*) AS n,
+      COUNT(*) FILTER (WHERE b.status = 'won')  AS won,
+      COUNT(*) FILTER (WHERE b.status = 'lost') AS lost,
+      COUNT(*) FILTER (WHERE b.status = 'void') AS voided,
+      AVG(b.our_prob) FILTER (WHERE b.status IN ('won','lost')) AS "expectedWinRate",
+      AVG(CASE WHEN b.status = 'won' THEN 1.0 ELSE 0.0 END)
+          FILTER (WHERE b.status IN ('won','lost'))             AS "realizedWinRate",
+      COUNT(*) FILTER (WHERE b.market_decimal IS NOT NULL AND b.status != 'void') AS "marketBets",
+      SUM(CASE
+            WHEN b.status = 'void' THEN 0
+            WHEN b.market_decimal IS NULL THEN 0
+            WHEN b.status = 'won' THEN b.market_decimal - 1
+            ELSE -1
+          END) AS "profitUnits"
+    FROM soccer_bets b
+    WHERE b.status IN ('won', 'lost', 'void')
+    GROUP BY b.bet_type
+    ORDER BY b.bet_type
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const marketBets = Number(r.marketBets ?? 0);
+    const profit = r.profitUnits != null ? Number(r.profitUnits) : 0;
+    return {
+      betType: String(r.betType),
+      n: Number(r.n),
+      won: Number(r.won ?? 0),
+      lost: Number(r.lost ?? 0),
+      voided: Number(r.voided ?? 0),
+      expectedWinRate: r.expectedWinRate != null ? Number(r.expectedWinRate) : null,
+      realizedWinRate: r.realizedWinRate != null ? Number(r.realizedWinRate) : null,
+      marketBets,
+      roi: marketBets > 0 ? profit / marketBets : null,
+    };
+  });
+}
+
 export type OuHitRateRow = {
   totalTier: string;
   tierMin: number | null;
