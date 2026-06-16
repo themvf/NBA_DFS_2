@@ -998,6 +998,10 @@ def upsert_soccer_player_stat(
     xg_per_90: float | None,
     npxg_per_90: float | None,
     is_penalty_taker: bool = False,
+    first_scorer_matches: int = 0,
+    early_goals: int = 0,
+    early_goal_rate: float | None = None,
+    first_scorer_rate: float | None = None,
 ) -> None:
     db.execute(
         """
@@ -1005,33 +1009,66 @@ def upsert_soccer_player_stat(
             player_name, normalized_name, team_id, team_name, season, position,
             matches, minutes_played, goals, shots, shots_on_target,
             xg, npxg, goals_per_90, shots_per_90, xg_per_90, npxg_per_90,
-            is_penalty_taker, updated_at
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+            is_penalty_taker, first_scorer_matches, early_goals,
+            early_goal_rate, first_scorer_rate, updated_at
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
         ON CONFLICT (player_name, season) DO UPDATE SET
-            normalized_name  = EXCLUDED.normalized_name,
-            team_id          = EXCLUDED.team_id,
-            team_name        = EXCLUDED.team_name,
-            position         = EXCLUDED.position,
-            matches          = EXCLUDED.matches,
-            minutes_played   = EXCLUDED.minutes_played,
-            goals            = EXCLUDED.goals,
-            shots            = EXCLUDED.shots,
-            shots_on_target  = EXCLUDED.shots_on_target,
-            xg               = EXCLUDED.xg,
-            npxg             = EXCLUDED.npxg,
-            goals_per_90     = EXCLUDED.goals_per_90,
-            shots_per_90     = EXCLUDED.shots_per_90,
-            xg_per_90        = EXCLUDED.xg_per_90,
-            npxg_per_90      = EXCLUDED.npxg_per_90,
-            is_penalty_taker = EXCLUDED.is_penalty_taker,
-            updated_at       = NOW()
+            normalized_name       = EXCLUDED.normalized_name,
+            team_id               = EXCLUDED.team_id,
+            team_name             = EXCLUDED.team_name,
+            position              = EXCLUDED.position,
+            matches               = EXCLUDED.matches,
+            minutes_played        = EXCLUDED.minutes_played,
+            goals                 = EXCLUDED.goals,
+            shots                 = EXCLUDED.shots,
+            shots_on_target       = EXCLUDED.shots_on_target,
+            xg                    = EXCLUDED.xg,
+            npxg                  = EXCLUDED.npxg,
+            goals_per_90          = EXCLUDED.goals_per_90,
+            shots_per_90          = EXCLUDED.shots_per_90,
+            xg_per_90             = EXCLUDED.xg_per_90,
+            npxg_per_90           = EXCLUDED.npxg_per_90,
+            is_penalty_taker      = EXCLUDED.is_penalty_taker,
+            first_scorer_matches  = EXCLUDED.first_scorer_matches,
+            early_goals           = EXCLUDED.early_goals,
+            early_goal_rate       = EXCLUDED.early_goal_rate,
+            first_scorer_rate     = EXCLUDED.first_scorer_rate,
+            updated_at            = NOW()
         """,
         (
             player_name, normalized_name, team_id, team_name, season, position,
             matches, minutes_played, goals, shots, shots_on_target,
             xg, npxg, goals_per_90, shots_per_90, xg_per_90, npxg_per_90,
-            is_penalty_taker,
+            is_penalty_taker, first_scorer_matches, early_goals,
+            early_goal_rate, first_scorer_rate,
         ),
+    )
+
+
+def upsert_soccer_match_scorer(
+    db: DatabaseManager,
+    *,
+    game_id: str,
+    game_date: str,
+    scorer_name: str,
+    scorer_team: str | None,
+    goal_minute: int | None,
+    tsdb_event_id: str | None,
+    source: str = "thesportsdb",
+) -> None:
+    db.execute(
+        """
+        INSERT INTO soccer_match_scorers
+            (game_id, game_date, scorer_name, scorer_team, goal_minute, tsdb_event_id, source)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (game_id) DO UPDATE SET
+            scorer_name    = EXCLUDED.scorer_name,
+            scorer_team    = EXCLUDED.scorer_team,
+            goal_minute    = EXCLUDED.goal_minute,
+            tsdb_event_id  = EXCLUDED.tsdb_event_id,
+            source         = EXCLUDED.source
+        """,
+        (game_id, game_date, scorer_name, scorer_team, goal_minute, tsdb_event_id, source),
     )
 
 

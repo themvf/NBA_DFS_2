@@ -43,7 +43,7 @@ from model.soccer_bet_rating import new_capture_key, record_bet
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "firstscorer-v3"
+MODEL_VERSION = "firstscorer-v4"
 DEFAULT_WINDOW_HOURS = 72
 _CLAMP_HI = 0.999
 _MIN_ANYTIME_PROB = 0.01
@@ -59,6 +59,13 @@ _POS_XG_DEFAULT = {
     "GK": 0.003,
 }
 _UNKNOWN_XG_DEFAULT = 0.065  # fallback when position unknown
+
+# Early-goal rate adjustment: fraction of goals scored in first half (≤45 min).
+# League baseline ≈ 45% of goals are first-half (WC data skews slightly under 50%).
+# Players above baseline get a boost; below get penalized.
+# Adjustment is blended 50/50 with raw xg_per_90 to avoid over-fitting small samples.
+_EARLY_GOAL_BASELINE = 0.45
+_MIN_GOALS_FOR_EARLY_RATE = 3   # need at least 3 historical goals to apply adjustment
 
 
 def _norm(name: str) -> str:
@@ -134,6 +141,32 @@ def power_devig_exclusive(raw_probs: list[float]) -> list[float]:
 
 # ── Stat-based first-scorer model ─────────────────────────────────────────────
 
+def _early_goal_multiplier(row: dict | None) -> float:
+    """Compute an early-goal timing multiplier for a player's xG/90 rate.
+
+    Players who score more first-half goals are more likely to be the match's
+    first scorer.  We multiply their effective xg_per_90 by this factor so the
+    Poisson share allocation rewards early-goal tendency.
+
+    Multiplier = 0.5 + 0.5 × (early_goal_rate / baseline).
+    This blends 50% raw rate with 50% timing-adjusted rate, keeping extreme values
+    within [0.3×, 1.6×] of the raw xG/90.  Applied only when the player has ≥3
+    historical goals (small samples revert to multiplier=1.0).
+    """
+    if row is None:
+        return 1.0
+    goals = row.get("goals") or 0
+    if goals < _MIN_GOALS_FOR_EARLY_RATE:
+        return 1.0
+    early_rate = row.get("early_goal_rate")
+    if early_rate is None:
+        return 1.0
+    raw_mult = float(early_rate) / _EARLY_GOAL_BASELINE
+    # Blend: 50% raw + 50% timing-adjusted → multiplier range stays reasonable
+    mult = 0.5 + 0.5 * raw_mult
+    return max(0.3, min(mult, 1.6))
+
+
 def _compute_stat_first_probs(
     player_norm_names: list[str],
     team_match_xg: float,
@@ -141,34 +174,37 @@ def _compute_stat_first_probs(
     stat_lookup: dict[str, dict],
     fuzzy_lookup: dict[str, dict],
 ) -> dict[str, float]:
-    """Return {norm_name: first_scorer_prob} using historical xG/90 rates.
+    """Return {norm_name: first_scorer_prob} using historical xG/90 × early-goal rate.
 
     Steps:
     1. Look up each player's xg_per_90 (exact then fuzzy); fall back to position default.
-    2. Scale to this match: λ_p = (xg_per_90 / Σ xg_per_90) × team_match_xg.
-    3. P(scores first) = (λ_p / Λ_total) × (1 - e^(-Λ_total)).
+    2. Apply early_goal_rate timing multiplier (v4 addition).
+    3. Scale to this match: λ_p = (effective_xg90 / Σ effective_xg90) × team_match_xg.
+    4. P(scores first) = (λ_p / Λ_total) × (1 - e^(-Λ_total)).
     """
     if not player_norm_names or team_match_xg <= 0 or total_match_xg <= 0:
         return {}
 
     # Look up historical xG/90 per player; fall back to position defaults.
-    xg90: dict[str, float] = {}
+    # Apply early-goal timing multiplier to produce an effective rate.
+    effective_xg90: dict[str, float] = {}
     for nname in player_norm_names:
         row = _lookup_player(nname, stat_lookup, fuzzy_lookup)
         if row and row.get("xg_per_90") and row["xg_per_90"] > 0:
-            xg90[nname] = float(row["xg_per_90"])
+            base_rate = float(row["xg_per_90"])
         elif row and row.get("position"):
             pos = (row["position"] or "MF").upper()[:2]
-            xg90[nname] = _POS_XG_DEFAULT.get(pos, _UNKNOWN_XG_DEFAULT)
+            base_rate = _POS_XG_DEFAULT.get(pos, _UNKNOWN_XG_DEFAULT)
         else:
-            xg90[nname] = _UNKNOWN_XG_DEFAULT
+            base_rate = _UNKNOWN_XG_DEFAULT
+        effective_xg90[nname] = base_rate * _early_goal_multiplier(row)
 
-    total_xg90 = sum(xg90.values()) or 1.0
+    total_eff_xg90 = sum(effective_xg90.values()) or 1.0
 
     # Each player's expected goals in this specific match.
     lambda_p = {
-        nname: (rate / total_xg90) * team_match_xg
-        for nname, rate in xg90.items()
+        nname: (rate / total_eff_xg90) * team_match_xg
+        for nname, rate in effective_xg90.items()
     }
 
     # Poisson first-scorer formula: P(p scores first) = (λ_p / Λ) × (1 - e^(-Λ))
@@ -351,7 +387,7 @@ def predict_and_record(
     stat_total = stat_hits + stat_misses
     coverage_pct = (stat_hits / stat_total * 100) if stat_total > 0 else 0
     print(
-        f"First scorer (v3): {written} bets rated across {len(fixtures)} fixtures "
+        f"First scorer ({MODEL_VERSION}): {written} bets rated across {len(fixtures)} fixtures "
         f"(stat coverage {coverage_pct:.0f}% — {stat_hits}/{stat_total} players)"
     )
     return written

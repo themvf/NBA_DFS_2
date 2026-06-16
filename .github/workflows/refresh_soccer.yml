@@ -33,6 +33,7 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      THESPORTSDB_API_KEY: ${{ secrets.THESPORTSDB_API_KEY || '123' }}
 
     steps:
       - name: Checkout
@@ -53,6 +54,9 @@ jobs:
 
       - name: Settle completed bets (scores + group standings)
         run: python -m ingest.soccer_results --days-from 3
+
+      - name: Backfill first-scorer actuals from TheSportsDB
+        run: python -m ingest.soccer_scorers_history
 
       - name: Re-train strength ratings on live WC 2026 results
         run: python -m model.soccer_ratings

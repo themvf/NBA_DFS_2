@@ -1423,6 +1423,11 @@ MIGRATIONS = [
     # O/U bet model can compute EV.  vegas_total holds the line.
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS over_odds INTEGER""",
     """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS under_odds INTEGER""",
+    # 2026-06-16: Goal-timing stats for firstscorer-v4 early-goal model.
+    """ALTER TABLE soccer_player_stats ADD COLUMN IF NOT EXISTS first_scorer_matches INTEGER DEFAULT 0""",
+    """ALTER TABLE soccer_player_stats ADD COLUMN IF NOT EXISTS early_goals INTEGER DEFAULT 0""",
+    """ALTER TABLE soccer_player_stats ADD COLUMN IF NOT EXISTS early_goal_rate REAL""",
+    """ALTER TABLE soccer_player_stats ADD COLUMN IF NOT EXISTS first_scorer_rate REAL""",
     # 2026-06-14: Player-level historical stats for firstscorer-v3.
     """CREATE TABLE IF NOT EXISTS soccer_player_stats (
         id SERIAL PRIMARY KEY,
@@ -1444,8 +1449,25 @@ MIGRATIONS = [
         xg_per_90 REAL,
         npxg_per_90 REAL,
         is_penalty_taker BOOLEAN DEFAULT FALSE,
+        first_scorer_matches INTEGER DEFAULT 0,
+        early_goals INTEGER DEFAULT 0,
+        early_goal_rate REAL,
+        first_scorer_rate REAL,
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (player_name, season)
+    )""",
+    # 2026-06-16: Actual first-scorer results per WC 2026 match (TheSportsDB source).
+    # Enables calibration: do our model's favorites actually score first?
+    """CREATE TABLE IF NOT EXISTS soccer_match_scorers (
+        id SERIAL PRIMARY KEY,
+        game_id TEXT UNIQUE,
+        game_date DATE,
+        scorer_name TEXT NOT NULL,
+        scorer_team TEXT,
+        goal_minute INTEGER,
+        tsdb_event_id TEXT,
+        source TEXT DEFAULT 'thesportsdb',
+        created_at TIMESTAMPTZ DEFAULT NOW()
     )""",
 ]
 
@@ -1495,6 +1517,8 @@ INDEXES = [
     # Soccer indexes
     "CREATE INDEX IF NOT EXISTS idx_soccer_player_stats_norm ON soccer_player_stats(normalized_name, season)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_player_stats_team ON soccer_player_stats(team_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_soccer_match_scorers_game ON soccer_match_scorers(game_id)",
+    "CREATE INDEX IF NOT EXISTS idx_soccer_match_scorers_name ON soccer_match_scorers(scorer_name)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_matchups_date ON soccer_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_bets_type_status ON soccer_bets(bet_type, status, stars)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_bets_scope ON soccer_bets(scope)",

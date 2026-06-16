@@ -45,15 +45,27 @@ CACHE_DIR = DATA_DIR / "statsbomb"
 CACHE_TTL_DAYS = 30   # re-download match files after 30 days (data rarely changes)
 
 # Competitions to include.  Tuple: (competition_id, season_id, label, weight)
-# weight: tournament importance multiplier (WC data weighted higher — strongest
-# opposition, most comparable to WC 2026).
+# weight: tournament importance multiplier — WC and recent international
+# tournaments weighted highest (same opposition quality as WC 2026).
 # Source: StatsBomb open data (github.com/statsbomb/open-data).
-# Note: AFCON is not in the free dataset; Copa America 2021 has 1 match only.
+#
+# Coverage strategy:
+#   International (weight ≥1.0): covers WC 2026 rosters by confederation
+#   Domestic (weight 0.7):        fills gaps for players who missed those tournaments
+#
+# Note: the old (16, 44) entry was CL 2003/2004 — mislabeled, now removed.
 COMPETITIONS = [
-    (43, 106, "WC2022", 2.0),
-    (43,   3, "WC2018", 1.8),
-    (55,  43, "EURO2020", 1.0),
-    (16,  44, "COPA2021", 1.0),
+    # ── International tournaments (most relevant context for WC 2026) ────────
+    (43,  106, "WC2022",      2.0),   # FIFA World Cup 2022 (Qatar)
+    (55,  282, "EURO2024",    1.8),   # UEFA Euro 2024 — covers 17 WC 2026 EU teams
+    (223, 282, "COPA2024",    1.8),   # Copa América 2024 — all SA WC 2026 teams
+    (43,    3, "WC2018",      1.5),   # FIFA World Cup 2018 (Russia) — slightly older
+    (1267, 107, "AFCON2023",  1.0),   # AFCON 2023 — Morocco, Senegal, Ivory Coast, etc.
+    (55,   43, "EURO2020",    0.9),   # UEFA Euro 2020 — supplemental, dated
+    # ── Domestic leagues (broader player coverage, lower context weight) ─────
+    (9,  281, "BUNDESLIGA2324", 0.7), # Bundesliga 2023/24 — German WC players
+    (7,  235, "LIGUE1_2223",    0.7), # Ligue 1 2022/23 — French players not in EURO
+    (44, 107, "MLS2023",        0.6), # MLS 2023 — USMNT / CanMNT players
 ]
 
 
@@ -164,7 +176,9 @@ def aggregate_tournament(
     """Download and aggregate one competition.
 
     Returns {player_name: {team, position, goals, shots, sot, xg, npxg, minutes,
-    weight_sum}} where weight is the tournament importance weight.
+    weight_sum, first_scorer_matches, early_goals}} where weight is tournament
+    importance weight.  first_scorer_matches counts matches where this player
+    scored the first goal; early_goals counts goals in the first half (≤45 min).
     """
     matches = _get_matches(comp_id, season_id, force)
     if not matches:
@@ -199,7 +213,6 @@ def aggregate_tournament(
                 team_map[pname] = team_name
                 pos_list = []
                 for p in player.get("positions", []):
-                    # StatsBomb: position is a plain string ("Right Center Back")
                     pos_val = p.get("position", "")
                     if isinstance(pos_val, dict):
                         pos_val = pos_val.get("name", "")
@@ -207,6 +220,28 @@ def aggregate_tournament(
                         pos_list.append(pos_val)
                 if pos_list:
                     position_map[pname] = _classify_position(pos_list)
+
+        # Find the first scorer of this match (earliest non-own-goal Shot→Goal event).
+        first_scorer_name: str | None = None
+        first_scorer_minute = 9999
+        for ev in events:
+            if ev.get("type", {}).get("name") != "Shot":
+                continue
+            shot = ev.get("shot", {}) or {}
+            outcome = (shot.get("outcome", {}) or {}).get("name", "")
+            if outcome != "Goal":
+                continue
+            # Exclude own goals (StatsBomb marks them with type "Own Goal Against" on the
+            # conceding team's Shot list — check the play_pattern or player team against
+            # the match home/away team structure, or simply check for "own goal" tag).
+            # StatsBomb encodes own goals as a separate event type "Own Goal Against" for
+            # the defending team, so filtering on type=="Shot" + outcome=="Goal" already
+            # excludes own goals (they appear only as "Own Goal Against" events).
+            pname = ev.get("player", {}).get("name", "")
+            minute = ev.get("minute", 9999)
+            if pname and minute < first_scorer_minute:
+                first_scorer_minute = minute
+                first_scorer_name = pname
 
         # Accumulate per-player for this match.
         for pname, mins in player_minutes.items():
@@ -220,13 +255,17 @@ def aggregate_tournament(
                     "goals": 0, "shots": 0, "sot": 0,
                     "xg": 0.0, "npxg": 0.0,
                     "weight_sum": 0.0,
+                    "first_scorer_matches": 0,
+                    "early_goals": 0,
                 }
             row = acc[pname]
             row["matches"] += 1
             row["minutes"] += mins
-            row["weight_sum"] += weight * mins   # weighted contribution
+            row["weight_sum"] += weight * mins
+            if first_scorer_name and pname == first_scorer_name:
+                row["first_scorer_matches"] += 1
 
-        # Process shot events.
+        # Process shot events for goals/shots/xG + goal-timing stats.
         for ev in events:
             if ev.get("type", {}).get("name") != "Shot":
                 continue
@@ -240,6 +279,7 @@ def aggregate_tournament(
             is_sot = outcome in ("Goal", "Saved", "Saved to Post")
             is_penalty = (shot.get("type", {}) or {}).get("name", "") == "Penalty"
             npxg_val = 0.0 if is_penalty else xg_val
+            minute = ev.get("minute", 999)
 
             if pname not in acc:
                 acc[pname] = {
@@ -249,6 +289,8 @@ def aggregate_tournament(
                     "goals": 0, "shots": 0, "sot": 0,
                     "xg": 0.0, "npxg": 0.0,
                     "weight_sum": 0.0,
+                    "first_scorer_matches": 0,
+                    "early_goals": 0,
                 }
             row = acc[pname]
             row["goals"] += int(is_goal)
@@ -256,6 +298,9 @@ def aggregate_tournament(
             row["sot"] += int(is_sot)
             row["xg"] += xg_val
             row["npxg"] += npxg_val
+            # First half (≤45 min) goals = "early goals"
+            if is_goal and minute <= 45:
+                row["early_goals"] += 1
 
         time.sleep(0.05)  # gentle rate limit
 
@@ -283,6 +328,8 @@ def combine_tournaments(
                     "xg_raw": 0.0, "npxg_raw": 0.0,
                     "xg_weighted": 0.0, "npxg_weighted": 0.0,
                     "weight_sum": 0.0,
+                    "first_scorer_matches": 0,
+                    "early_goals": 0,
                 }
             c = combined[pname]
             mins = row["minutes"]
@@ -295,15 +342,11 @@ def combine_tournaments(
             c["sot"] += row["sot"]
             c["xg_raw"] += row["xg"]
             c["npxg_raw"] += row["npxg"]
-            # For the weighted-average xG/90:
-            #   accumulator = Σ(xg_per_90_t × weight × mins_t)
-            #   weight_sum  = Σ(weight × mins_t)
-            #   xg_per_90   = accumulator / weight_sum
-            # which simplifies the accumulator to Σ(xg_t × weight × 90 / mins_t × mins_t)
-            # = Σ(xg_t × weight × 90).  We store without the 90 factor and divide later.
+            c["first_scorer_matches"] += row.get("first_scorer_matches", 0)
+            c["early_goals"] += row.get("early_goals", 0)
             w = weight * mins
-            xg_rate = row["xg"] / (mins / 90.0)   # xG/90 for this tournament
-            c["xg_weighted"] += xg_rate * w        # Σ(xg/90 × w)
+            xg_rate = row["xg"] / (mins / 90.0)
+            c["xg_weighted"] += xg_rate * w
             c["npxg_weighted"] += (row["npxg"] / (mins / 90.0)) * w
             c["weight_sum"] += w
 
@@ -314,23 +357,33 @@ def combine_tournaments(
             continue
         mins = c["minutes"]
         w_sum = c["weight_sum"]
-        # Weighted average xG/90 = Σ(xg/90 × w) / Σ(w)  (no extra ×90 needed)
         xg_per_90 = (c["xg_weighted"] / w_sum) if w_sum > 0 else 0.0
         npxg_per_90 = (c["npxg_weighted"] / w_sum) if w_sum > 0 else 0.0
+        goals = c["goals"]
+        matches = c["matches"]
+        # first_scorer_rate: matches as first scorer / total matches played.
+        first_scorer_rate = c["first_scorer_matches"] / matches if matches > 0 else None
+        # early_goal_rate: fraction of goals scored in first half (≤45 min).
+        # Require ≥2 goals for a meaningful rate; otherwise leave None.
+        early_goal_rate = (c["early_goals"] / goals) if goals >= 2 else None
         result[pname] = {
             "team": c["team"],
             "position": c["position"],
-            "matches": c["matches"],
+            "matches": matches,
             "minutes": mins,
-            "goals": c["goals"],
+            "goals": goals,
             "shots": c["shots"],
             "sot": c["sot"],
             "xg": round(c["xg_raw"], 4),
             "npxg": round(c["npxg_raw"], 4),
-            "goals_per_90": round(c["goals"] / mins * 90.0, 4),
+            "goals_per_90": round(goals / mins * 90.0, 4),
             "shots_per_90": round(c["shots"] / mins * 90.0, 4),
             "xg_per_90": round(xg_per_90, 4),
             "npxg_per_90": round(npxg_per_90, 4),
+            "first_scorer_matches": c["first_scorer_matches"],
+            "early_goals": c["early_goals"],
+            "first_scorer_rate": round(first_scorer_rate, 4) if first_scorer_rate is not None else None,
+            "early_goal_rate": round(early_goal_rate, 4) if early_goal_rate is not None else None,
         }
     return result
 
@@ -360,13 +413,16 @@ def ingest(
 
     if dry_run:
         top = sorted(combined.items(), key=lambda kv: kv[1].get("xg_per_90", 0), reverse=True)[:20]
-        print(f"\n{'Player':<30} {'Team':<20} {'Pos':<4} {'xG/90':>7} {'Mins':>6}")
+        print(f"\n{'Player':<30} {'Pos':<4} {'xG/90':>7} {'EarlyG%':>8} {'FSRate':>7} {'Mins':>6}")
         for name, row in top:
-            # Strip non-ASCII for safe terminal output on any platform.
             safe_name = name.encode("ascii", "replace").decode("ascii")
-            safe_team = (row["team"] or "").encode("ascii", "replace").decode("ascii")
-            print(f"{safe_name:<30} {safe_team:<20} {row.get('position', '?'):<4} "
-                  f"{row['xg_per_90']:>7.3f} {row['minutes']:>6.0f}")
+            egr = row.get("early_goal_rate")
+            fsr = row.get("first_scorer_rate")
+            print(f"{safe_name:<30} {row.get('position', '?'):<4} "
+                  f"{row['xg_per_90']:>7.3f} "
+                  f"{egr*100:>7.0f}%" if egr is not None else f"{'—':>8} "
+                  f"{fsr*100:>6.1f}%" if fsr is not None else f"{'—':>7} "
+                  f"{row['minutes']:>6.0f}")
         print(f"\n{len(combined)} players would be written (dry run — nothing saved)")
         return len(combined)
 
@@ -393,6 +449,10 @@ def ingest(
             shots_per_90=row["shots_per_90"],
             xg_per_90=row["xg_per_90"],
             npxg_per_90=row["npxg_per_90"],
+            first_scorer_matches=row.get("first_scorer_matches", 0),
+            early_goals=row.get("early_goals", 0),
+            early_goal_rate=row.get("early_goal_rate"),
+            first_scorer_rate=row.get("first_scorer_rate"),
         )
         written += 1
 

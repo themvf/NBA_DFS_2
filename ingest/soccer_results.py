@@ -7,18 +7,18 @@ Fills final scores from The Odds API `/scores` endpoint, then settles bets:
     winner 'won', the rest 'lost'.
   * **Outright winner** — settled manually when the champion is known
     (``--champion "Spain"``): that team 'won', everyone else 'lost'.
-  * **First goal scorer** — settled manually per game
-    (``--first-scorer GAME_ID "Player Name"``): that player 'won', all other
-    first-scorer selections for the game 'lost'.  (No free goal-events feed; a
-    manual entry keeps settlement fully traceable.)
+  * **First goal scorer** — auto-settled via TheSportsDB timeline API (free tier,
+    API key "123").  Falls back to manual ``--first-scorer GAME_ID "Player Name"``
+    if the auto-lookup fails for a specific game.
 
 Every settlement stamps status + settled_at + result_detail on the locked ledger
 row, so the backtest is reproducible.
 
 Usage:
-    python -m ingest.soccer_results                              # scores + auto group settle
+    python -m ingest.soccer_results                              # scores + auto group/firstscorer settle
     python -m ingest.soccer_results --champion "Spain"
     python -m ingest.soccer_results --first-scorer <game_id> "Lionel Messi"
+    python -m ingest.soccer_results --no-auto-first-scorer      # skip TheSportsDB lookup
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 SPORT_KEY = "soccer_fifa_world_cup"
 ODDS_BASE = "https://api.the-odds-api.com/v4"
+TSDB_BASE = "https://www.thesportsdb.com/api/v1/json"
 
 
 def _norm(s: str) -> str:
@@ -238,6 +239,121 @@ def settle_outright(db: DatabaseManager, champion_name: str) -> int:
     return settled
 
 
+def _tsdb_find_event(game_date: str, home_name: str, away_name: str, api_key: str) -> str | None:
+    """Return TheSportsDB idEvent for a match, matched by date + normalized team names."""
+    try:
+        r = requests.get(
+            f"{TSDB_BASE}/{api_key}/eventsday.php",
+            params={"d": game_date, "s": "Soccer"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        events = r.json().get("events") or []
+    except requests.RequestException as e:
+        logger.warning("TheSportsDB eventsday failed for %s: %s", game_date, e)
+        return None
+
+    hn, an = _norm(home_name), _norm(away_name)
+    for ev in events:
+        if _norm(ev.get("strHomeTeam", "")) == hn and _norm(ev.get("strAwayTeam", "")) == an:
+            return ev.get("idEvent")
+    # Substring fallback for minor name divergence (e.g. "Côte d'Ivoire" vs "Ivory Coast")
+    for ev in events:
+        eh = _norm(ev.get("strHomeTeam", ""))
+        ea = _norm(ev.get("strAwayTeam", ""))
+        if (hn in eh or eh in hn) and (an in ea or ea in an):
+            return ev.get("idEvent")
+    return None
+
+
+def _tsdb_first_scorer(tsdb_event_id: str, api_key: str) -> str | None:
+    """Return the first goal scorer's name from a TheSportsDB timeline, or None if no goals."""
+    try:
+        r = requests.get(
+            f"{TSDB_BASE}/{api_key}/lookuptimeline.php",
+            params={"id": tsdb_event_id},
+            timeout=15,
+        )
+        r.raise_for_status()
+        timeline = r.json().get("timeline") or []
+    except requests.RequestException as e:
+        logger.warning("TheSportsDB lookuptimeline failed for event %s: %s", tsdb_event_id, e)
+        return None
+
+    goals = [e for e in timeline if e.get("strTimeline") == "Goal"]
+    if not goals:
+        return None
+    goals.sort(key=lambda x: int(x.get("intTime") or 999))
+    return goals[0].get("strPlayer")
+
+
+def settle_first_scorer_auto(db: DatabaseManager, tsdb_api_key: str = "123") -> int:
+    """Auto-settle first-scorer bets for completed games via TheSportsDB timeline API.
+
+    Looks up each completed game that still has pending first-scorer bets, fetches
+    the goal timeline, and calls ``settle_first_scorer`` with the actual first scorer.
+    Games with no goals settle all selections as 'void'.
+    """
+    games = db.execute(
+        """
+        SELECT sm.game_id, sm.game_date,
+               ht.name AS home_name, at.name AS away_name
+        FROM soccer_matchups sm
+        JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+        JOIN soccer_teams at ON at.team_id = sm.away_team_id
+        WHERE sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM soccer_bets b
+            WHERE b.scope = sm.game_id AND b.status = 'pending'
+              AND b.bet_type = 'first_scorer'
+          )
+        ORDER BY sm.game_date
+        """
+    )
+    if not games:
+        return 0
+
+    total_settled = 0
+    for g in games:
+        game_date = str(g["game_date"])[:10]
+        game_id = g["game_id"]
+        home_name = g["home_name"]
+        away_name = g["away_name"]
+
+        tsdb_id = _tsdb_find_event(game_date, home_name, away_name, tsdb_api_key)
+        if not tsdb_id:
+            logger.warning(
+                "TheSportsDB: no event found for %s vs %s on %s — skipping auto-settle",
+                home_name, away_name, game_date,
+            )
+            continue
+
+        scorer = _tsdb_first_scorer(tsdb_id, tsdb_api_key)
+        if scorer is None:
+            # No goals (0-0) → all first-scorer selections are void.
+            bets = db.execute(
+                "SELECT id FROM soccer_bets "
+                "WHERE bet_type = 'first_scorer' AND scope = %s AND status = 'pending'",
+                (game_id,),
+            )
+            for b in bets:
+                db.execute(
+                    "UPDATE soccer_bets SET status = 'void', settled_at = NOW(), "
+                    "result_detail = 'No goals scored' WHERE id = %s",
+                    (b["id"],),
+                )
+            n = len(bets)
+            if n:
+                print(f"First scorer ({game_id} {home_name} vs {away_name}): no goals, {n} bets voided")
+            total_settled += n
+        else:
+            logger.info("TheSportsDB: first scorer for %s = %s", game_id, scorer)
+            n = settle_first_scorer(db, game_id, scorer)
+            total_settled += n
+
+    return total_settled
+
+
 def settle_first_scorer(db: DatabaseManager, game_id: str, scorer_name: str) -> int:
     """Settle first-scorer bets for one game given the actual first scorer."""
     target = _norm(scorer_name)
@@ -290,20 +406,26 @@ def settle_first_scorer(db: DatabaseManager, game_id: str, scorer_name: str) -> 
 
 
 if __name__ == "__main__":
+    import os
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Settle soccer bets")
     parser.add_argument("--days-from", type=int, default=3, help="Scores look-back window")
     parser.add_argument("--champion", help="Settle outright winner with this champion name")
     parser.add_argument("--first-scorer", nargs=2, metavar=("GAME_ID", "PLAYER"),
-                        help="Settle first-scorer for a game")
+                        help="Manually settle first-scorer for a game")
+    parser.add_argument("--no-auto-first-scorer", action="store_true",
+                        help="Skip automatic TheSportsDB first-scorer settlement")
     args = parser.parse_args()
 
     config = load_config()
     db = DatabaseManager(config.database_url)
+    tsdb_key = os.getenv("THESPORTSDB_API_KEY", "123")
 
     fetch_scores(db, config.odds_api.api_key, args.days_from)
     settle_game_bets(db)
     settle_group_winners(db)
+    if not args.no_auto_first_scorer:
+        settle_first_scorer_auto(db, tsdb_key)
     if args.champion:
         settle_outright(db, args.champion)
     if args.first_scorer:
