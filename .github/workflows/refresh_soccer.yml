@@ -51,6 +51,12 @@ jobs:
         if: github.event.schedule == '0 6 * * 1' || inputs.refresh_player_history == true
         run: python -m ingest.soccer_player_history
 
+      - name: Settle completed bets (scores + group standings)
+        run: python -m ingest.soccer_results --days-from 3
+
+      - name: Re-train strength ratings on live WC 2026 results
+        run: python -m model.soccer_ratings
+
       - name: Refresh World Cup odds + model predictions
         run: |
           if [ -n "${{ inputs.date }}" ]; then
@@ -58,12 +64,6 @@ jobs:
           else
             python -m ingest.soccer_schedule
           fi
-
-      - name: Settle completed bets (scores + group standings)
-        run: python -m ingest.soccer_results --days-from 3
-
-      - name: Re-train strength ratings on live WC 2026 results
-        run: python -m model.soccer_ratings
 
       - name: Rate futures bets (outright + group winner)
         run: python -m model.soccer_futures --sims 20000
