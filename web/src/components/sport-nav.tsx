@@ -31,6 +31,7 @@ const PAGE_LINKS: Array<{
   { href: "/homerun", label: "Homeruns", sports: ["mlb"] },
   { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },
+  { href: "/elo", label: "Elo / Power", sports: ["soccer"] },
   { href: "/stats", label: "Team Stats", sports: ["nba", "mlb"] },
   { href: "/schedule", label: "Schedule", sports: ["nba", "mlb"] },
 ];

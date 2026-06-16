@@ -6425,6 +6425,167 @@ export async function getSoccerResultsByType(): Promise<SoccerResultsByTypeRow[]
   });
 }
 
+// ── Soccer Elo / Power Rankings ───────────────────────────────────────────────
+
+export type SoccerEloTeamRow = {
+  teamId: number;
+  name: string;
+  abbreviation: string | null;
+  groupLabel: string | null;
+  elo: number;
+  attack: number;
+  defense: number;
+  matches: number;
+  ratingDate: string | null;
+};
+
+export async function getSoccerEloRankings(): Promise<SoccerEloTeamRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      st.team_id          AS "teamId",
+      st.name,
+      st.abbreviation,
+      sg.group_label      AS "groupLabel",
+      str.elo,
+      str.attack,
+      str.defense,
+      str.matches,
+      str.rating_date     AS "ratingDate"
+    FROM soccer_teams st
+    JOIN soccer_team_ratings str ON str.team_id = st.team_id
+    LEFT JOIN soccer_groups sg ON sg.team_id = st.team_id
+    ORDER BY sg.group_label NULLS LAST, str.elo DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    teamId: Number(r.teamId),
+    name: String(r.name),
+    abbreviation: r.abbreviation != null ? String(r.abbreviation) : null,
+    groupLabel: r.groupLabel != null ? String(r.groupLabel) : null,
+    elo: Number(r.elo),
+    attack: Number(r.attack),
+    defense: Number(r.defense),
+    matches: Number(r.matches),
+    ratingDate: r.ratingDate != null ? String(r.ratingDate) : null,
+  }));
+}
+
+export type SoccerCompletedResultRow = {
+  matchupId: number;
+  gameDate: string;
+  homeTeam: string;
+  homeAbbrev: string | null;
+  awayTeam: string;
+  awayAbbrev: string | null;
+  homeScore: number;
+  awayScore: number;
+  homeElo: number | null;
+  awayElo: number | null;
+  ourProbHome: number | null;
+  ourProbDraw: number | null;
+  ourProbAway: number | null;
+  vegasProbHome: number | null;
+  vegasProbDraw: number | null;
+  vegasProbAway: number | null;
+};
+
+export async function getSoccerCompletedResults(): Promise<SoccerCompletedResultRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      sm.id               AS "matchupId",
+      sm.game_date        AS "gameDate",
+      ht.name             AS "homeTeam",
+      ht.abbreviation     AS "homeAbbrev",
+      at.name             AS "awayTeam",
+      at.abbreviation     AS "awayAbbrev",
+      sm.home_score       AS "homeScore",
+      sm.away_score       AS "awayScore",
+      htr.elo             AS "homeElo",
+      atr.elo             AS "awayElo",
+      sm.our_prob_home    AS "ourProbHome",
+      sm.our_prob_draw    AS "ourProbDraw",
+      sm.our_prob_away    AS "ourProbAway",
+      sm.vegas_prob_home  AS "vegasProbHome",
+      sm.vegas_prob_draw  AS "vegasProbDraw",
+      sm.vegas_prob_away  AS "vegasProbAway"
+    FROM soccer_matchups sm
+    JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+    JOIN soccer_teams at ON at.team_id = sm.away_team_id
+    LEFT JOIN soccer_team_ratings htr ON htr.team_id = sm.home_team_id
+    LEFT JOIN soccer_team_ratings atr ON atr.team_id = sm.away_team_id
+    WHERE sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
+    ORDER BY sm.game_date ASC, sm.id ASC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    matchupId: Number(r.matchupId),
+    gameDate: String(r.gameDate),
+    homeTeam: String(r.homeTeam ?? ""),
+    homeAbbrev: r.homeAbbrev != null ? String(r.homeAbbrev) : null,
+    awayTeam: String(r.awayTeam ?? ""),
+    awayAbbrev: r.awayAbbrev != null ? String(r.awayAbbrev) : null,
+    homeScore: Number(r.homeScore),
+    awayScore: Number(r.awayScore),
+    homeElo: r.homeElo != null ? Number(r.homeElo) : null,
+    awayElo: r.awayElo != null ? Number(r.awayElo) : null,
+    ourProbHome: r.ourProbHome != null ? Number(r.ourProbHome) : null,
+    ourProbDraw: r.ourProbDraw != null ? Number(r.ourProbDraw) : null,
+    ourProbAway: r.ourProbAway != null ? Number(r.ourProbAway) : null,
+    vegasProbHome: r.vegasProbHome != null ? Number(r.vegasProbHome) : null,
+    vegasProbDraw: r.vegasProbDraw != null ? Number(r.vegasProbDraw) : null,
+    vegasProbAway: r.vegasProbAway != null ? Number(r.vegasProbAway) : null,
+  }));
+}
+
+export type SoccerFuturesBetRow = {
+  id: number;
+  betType: string;
+  scope: string;
+  selectionLabel: string;
+  ourProb: number;
+  marketProb: number | null;
+  marketOdds: number | null;
+  edge: number | null;
+  ev: number | null;
+  stars: number;
+  status: string;
+  groupLabel: string | null;
+};
+
+export async function getSoccerFuturesBets(): Promise<SoccerFuturesBetRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      sb.id,
+      sb.bet_type         AS "betType",
+      sb.scope,
+      sb.selection_label  AS "selectionLabel",
+      sb.our_prob         AS "ourProb",
+      sb.market_prob      AS "marketProb",
+      sb.market_odds      AS "marketOdds",
+      sb.edge,
+      sb.ev,
+      sb.stars,
+      sb.status,
+      sg.group_label      AS "groupLabel"
+    FROM soccer_bets sb
+    LEFT JOIN soccer_groups sg ON sg.team_id = sb.subject_team_id
+    WHERE sb.bet_type IN ('outright_winner', 'group_winner')
+    ORDER BY sb.bet_type, sb.scope, sb.our_prob DESC NULLS LAST
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    id: Number(r.id),
+    betType: String(r.betType),
+    scope: String(r.scope),
+    selectionLabel: String(r.selectionLabel),
+    ourProb: Number(r.ourProb ?? 0),
+    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    edge: r.edge != null ? Number(r.edge) : null,
+    ev: r.ev != null ? Number(r.ev) : null,
+    stars: Number(r.stars ?? 1),
+    status: String(r.status),
+    groupLabel: r.groupLabel != null ? String(r.groupLabel) : null,
+  }));
+}
+
 export type OuHitRateRow = {
   totalTier: string;
   tierMin: number | null;

@@ -1,0 +1,33 @@
+import { Suspense } from "react";
+import {
+  getSoccerEloRankings,
+  getSoccerCompletedResults,
+  getSoccerFuturesBets,
+} from "@/db/queries";
+import EloClient from "./elo-client";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+async function EloContent() {
+  const [teams, results, futures] = await Promise.all([
+    getSoccerEloRankings(),
+    getSoccerCompletedResults(),
+    getSoccerFuturesBets(),
+  ]);
+  return <EloClient teams={teams} results={results} futures={futures} />;
+}
+
+export default function EloPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-6xl p-6 text-muted-foreground text-sm">
+          Loading power rankings…
+        </div>
+      }
+    >
+      <EloContent />
+    </Suspense>
+  );
+}
