@@ -10,3 +10,11 @@ data/
 node_modules/
 .next/
 web/.env.local
+web/.env*.local
+web/tsconfig.tsbuildinfo
+DK/
+_tmp_NBA_Daily/
+.claude/
+refresh_stats.log
+model/explore_nba_xgboost.py
+model/soccer_game_bets.py
