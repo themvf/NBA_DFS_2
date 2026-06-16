@@ -45,6 +45,15 @@ SPORT_KEY = "soccer_fifa_world_cup"
 REGIONS = "us,uk,eu"
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 
+# Pinnacle public guest API — no auth, lowest vig (~2%), sharpest book.
+_PINNACLE_BASE = "https://guest.api.arcadia.pinnacle.com/0.1"
+_PINNACLE_HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json",
+    "x-api-key": "CmX2KcMrXuFmNg6YFbmTxE0y9CblMOzm",
+}
+_PINNACLE_WC_LEAGUE = 2686
+
 # Expected goal difference at a 100%/0% win-prob gap, before clamping.  A 60/20
 # home/away split (~0.40 prob gap) → ~0.9 goal supremacy, which matches typical
 # World Cup -0.75/-1.0 Asian-handicap favorites.
@@ -157,6 +166,85 @@ def _compute_implied_goals(
     return round(home_implied, 2), round(away_implied, 2)
 
 
+def _fetch_pinnacle_h2h(norm_cache: dict[str, int]) -> dict[tuple[int, int], tuple[float, float, float]]:
+    """Fetch Pinnacle WC 2026 h2h odds.
+
+    Returns {(home_team_id, away_team_id): (prob_home, prob_draw, prob_away)},
+    vig-removed multiplicatively.  Pinnacle's WC vig is ~2%, so these fair
+    probabilities are the sharpest comparison point available.
+    """
+    try:
+        r = requests.get(
+            f"{_PINNACLE_BASE}/leagues/{_PINNACLE_WC_LEAGUE}/matchups",
+            headers=_PINNACLE_HEADERS, timeout=15,
+        )
+        r.raise_for_status()
+        matchups = r.json()
+    except requests.RequestException as e:
+        logger.warning("Pinnacle h2h fetch failed: %s", e)
+        return {}
+
+    # Only regular (non-special) full-match h2h — filter out prop markets
+    # (corners, cards) whose team names contain parenthetical qualifiers.
+    regular = [
+        m for m in matchups
+        if not m.get("special")
+        and len(m.get("participants", [])) == 2
+        and "(" not in m["participants"][0].get("name", "")
+        and "(" not in m["participants"][1].get("name", "")
+    ]
+
+    result: dict[tuple[int, int], tuple[float, float, float]] = {}
+    for m in regular:
+        parts = m.get("participants", [])
+        home_part = next((p for p in parts if p.get("alignment") == "home"), parts[0])
+        away_part = next((p for p in parts if p.get("alignment") == "away"), parts[1])
+
+        home_id = norm_cache.get(_normalize_name(home_part.get("name", "")))
+        away_id = norm_cache.get(_normalize_name(away_part.get("name", "")))
+        if not home_id or not away_id:
+            continue
+
+        try:
+            mr = requests.get(
+                f"{_PINNACLE_BASE}/matchups/{m['id']}/markets/straight",
+                headers=_PINNACLE_HEADERS, timeout=10,
+            )
+            mr.raise_for_status()
+            markets = mr.json()
+        except requests.RequestException:
+            continue
+
+        for mkt in markets:
+            if mkt.get("type") != "moneyline" or mkt.get("period") != 0:
+                continue
+            # Pinnacle uses designation: "home" / "draw" / "away" (not participantId).
+            by_desig = {p.get("designation"): p["price"] for p in mkt.get("prices", [])}
+            h_price = by_desig.get("home")
+            a_price = by_desig.get("away")
+            d_price = by_desig.get("draw")
+
+            if h_price is None or a_price is None:
+                continue
+
+            raw_h = _ml_to_raw(h_price)
+            raw_a = _ml_to_raw(a_price)
+            raw_d = _ml_to_raw(d_price) if d_price is not None else 0.0
+            total = raw_h + raw_d + raw_a
+            if total <= 0:
+                continue
+
+            result[(home_id, away_id)] = (
+                round(raw_h / total, 4),
+                round(raw_d / total, 4) if d_price is not None else None,
+                round(raw_a / total, 4),
+            )
+            break
+
+    logger.info("Pinnacle h2h: %d matches mapped", len(result))
+    return result
+
+
 def fetch_schedule_and_odds(
     db: DatabaseManager,
     api_key: str,
@@ -199,6 +287,9 @@ def fetch_schedule_and_odds(
         _normalize_name(name): tid
         for name, tid in build_soccer_team_name_cache(db).items()
     }
+
+    # Fetch Pinnacle h2h once for the whole batch — degrades gracefully if unavailable.
+    pinnacle_h2h = _fetch_pinnacle_h2h(norm_cache)
 
     upserted = 0
     skipped_date = 0
@@ -266,6 +357,11 @@ def fetch_schedule_and_odds(
         p_home, p_draw, p_away = _three_way_probs(home_ml, draw_ml, away_ml)
         home_implied, away_implied = _compute_implied_goals(vegas_total, p_home, p_away)
 
+        pin = pinnacle_h2h.get((home_team_id, away_team_id))
+        pin_home = pin[0] if pin else None
+        pin_draw = pin[1] if pin else None
+        pin_away = pin[2] if pin else None
+
         mid = upsert_soccer_matchup(
             db,
             game_date=ev_date,
@@ -284,6 +380,9 @@ def fetch_schedule_and_odds(
             away_implied=away_implied,
             over_odds=over_odds,
             under_odds=under_odds,
+            pinnacle_prob_home=pin_home,
+            pinnacle_prob_draw=pin_draw,
+            pinnacle_prob_away=pin_away,
         )
         if mid:
             upserted += 1

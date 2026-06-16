@@ -886,6 +886,9 @@ def upsert_soccer_matchup(
     away_implied: float | None = None,
     over_odds: int | None = None,
     under_odds: int | None = None,
+    pinnacle_prob_home: float | None = None,
+    pinnacle_prob_draw: float | None = None,
+    pinnacle_prob_away: float | None = None,
 ) -> int:
     row = db.execute_one(
         """
@@ -893,25 +896,29 @@ def upsert_soccer_matchup(
             game_date, game_id, commence_time, home_team_id, away_team_id, stage,
             vegas_total, home_ml, draw_ml, away_ml,
             vegas_prob_home, vegas_prob_draw, vegas_prob_away,
-            home_implied, away_implied, over_odds, under_odds
+            home_implied, away_implied, over_odds, under_odds,
+            pinnacle_prob_home, pinnacle_prob_draw, pinnacle_prob_away
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
-            game_id         = COALESCE(EXCLUDED.game_id, soccer_matchups.game_id),
-            commence_time   = COALESCE(EXCLUDED.commence_time, soccer_matchups.commence_time),
-            stage           = COALESCE(EXCLUDED.stage, soccer_matchups.stage),
-            vegas_total     = COALESCE(EXCLUDED.vegas_total, soccer_matchups.vegas_total),
-            home_ml         = COALESCE(EXCLUDED.home_ml, soccer_matchups.home_ml),
-            draw_ml         = COALESCE(EXCLUDED.draw_ml, soccer_matchups.draw_ml),
-            away_ml         = COALESCE(EXCLUDED.away_ml, soccer_matchups.away_ml),
-            vegas_prob_home = COALESCE(EXCLUDED.vegas_prob_home, soccer_matchups.vegas_prob_home),
-            vegas_prob_draw = COALESCE(EXCLUDED.vegas_prob_draw, soccer_matchups.vegas_prob_draw),
-            vegas_prob_away = COALESCE(EXCLUDED.vegas_prob_away, soccer_matchups.vegas_prob_away),
-            home_implied    = COALESCE(EXCLUDED.home_implied, soccer_matchups.home_implied),
-            away_implied    = COALESCE(EXCLUDED.away_implied, soccer_matchups.away_implied),
-            over_odds       = COALESCE(EXCLUDED.over_odds, soccer_matchups.over_odds),
-            under_odds      = COALESCE(EXCLUDED.under_odds, soccer_matchups.under_odds),
-            fetched_at      = NOW()
+            game_id              = COALESCE(EXCLUDED.game_id, soccer_matchups.game_id),
+            commence_time        = COALESCE(EXCLUDED.commence_time, soccer_matchups.commence_time),
+            stage                = COALESCE(EXCLUDED.stage, soccer_matchups.stage),
+            vegas_total          = COALESCE(EXCLUDED.vegas_total, soccer_matchups.vegas_total),
+            home_ml              = COALESCE(EXCLUDED.home_ml, soccer_matchups.home_ml),
+            draw_ml              = COALESCE(EXCLUDED.draw_ml, soccer_matchups.draw_ml),
+            away_ml              = COALESCE(EXCLUDED.away_ml, soccer_matchups.away_ml),
+            vegas_prob_home      = COALESCE(EXCLUDED.vegas_prob_home, soccer_matchups.vegas_prob_home),
+            vegas_prob_draw      = COALESCE(EXCLUDED.vegas_prob_draw, soccer_matchups.vegas_prob_draw),
+            vegas_prob_away      = COALESCE(EXCLUDED.vegas_prob_away, soccer_matchups.vegas_prob_away),
+            home_implied         = COALESCE(EXCLUDED.home_implied, soccer_matchups.home_implied),
+            away_implied         = COALESCE(EXCLUDED.away_implied, soccer_matchups.away_implied),
+            over_odds            = COALESCE(EXCLUDED.over_odds, soccer_matchups.over_odds),
+            under_odds           = COALESCE(EXCLUDED.under_odds, soccer_matchups.under_odds),
+            pinnacle_prob_home   = COALESCE(EXCLUDED.pinnacle_prob_home, soccer_matchups.pinnacle_prob_home),
+            pinnacle_prob_draw   = COALESCE(EXCLUDED.pinnacle_prob_draw, soccer_matchups.pinnacle_prob_draw),
+            pinnacle_prob_away   = COALESCE(EXCLUDED.pinnacle_prob_away, soccer_matchups.pinnacle_prob_away),
+            fetched_at           = NOW()
         RETURNING id
         """,
         (
@@ -919,6 +926,7 @@ def upsert_soccer_matchup(
             vegas_total, home_ml, draw_ml, away_ml,
             vegas_prob_home, vegas_prob_draw, vegas_prob_away,
             home_implied, away_implied, over_odds, under_odds,
+            pinnacle_prob_home, pinnacle_prob_draw, pinnacle_prob_away,
         ),
     )
     return row["id"] if row else 0

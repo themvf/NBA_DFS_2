@@ -727,7 +727,7 @@ function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRo
         <div key={day} className="space-y-2">
           <h2 className="text-sm font-semibold text-muted-foreground">{fmtDayHeading(day)}</h2>
           <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[880px] text-sm">
               <thead>
                 <tr className="border-b text-xs text-muted-foreground">
                   <th className="px-3 py-2 text-left font-medium">Match</th>
@@ -735,6 +735,7 @@ function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRo
                   <th className="px-2 py-2 text-center font-medium">Moneyline (H/D/A)</th>
                   <th className="px-2 py-2 text-center font-medium">O/U<br />V → Model</th>
                   <th className="px-2 py-2 text-center font-medium">Vegas Win %</th>
+                  <th className="px-2 py-2 text-center font-medium">Pinnacle %</th>
                   <th className="px-2 py-2 text-center font-medium">Our Win %</th>
                   <th className="px-2 py-2 text-center font-medium">Edge</th>
                 </tr>
@@ -787,6 +788,18 @@ function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRo
                             {fmtPct(m.homeWinProb)}/{fmtPct(m.drawProb)}/{fmtPct(m.awayWinProb)}
                           </div>
                         </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        {m.pinnacleProbHome != null ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <ProbBar home={m.pinnacleProbHome} draw={m.pinnacleProbDraw} away={m.pinnacleProbAway} />
+                            <div className="text-[10px] tabular-nums text-purple-400">
+                              {fmtPct(m.pinnacleProbHome)}/{fmtPct(m.pinnacleProbDraw)}/{fmtPct(m.pinnacleProbAway)}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center text-xs text-muted-foreground">—</div>
+                        )}
                       </td>
                       <td className="px-2 py-2">
                         {m.ourProbHome != null ? (

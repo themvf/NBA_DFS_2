@@ -1469,6 +1469,10 @@ MIGRATIONS = [
         source TEXT DEFAULT 'thesportsdb',
         created_at TIMESTAMPTZ DEFAULT NOW()
     )""",
+    # 2026-06-16: Pinnacle h2h — sharpest-book comparison alongside consensus.
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS pinnacle_prob_home DOUBLE PRECISION""",
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS pinnacle_prob_draw DOUBLE PRECISION""",
+    """ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS pinnacle_prob_away DOUBLE PRECISION""",
 ]
 
 INDEXES = [

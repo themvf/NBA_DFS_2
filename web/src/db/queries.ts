@@ -6119,6 +6119,10 @@ export type SoccerVegasMatchupRow = {
   ourProbHome: number | null;
   ourProbDraw: number | null;
   ourProbAway: number | null;
+  // Pinnacle (sharpest book, ~2% vig, vig-removed).
+  pinnacleProbHome: number | null;
+  pinnacleProbDraw: number | null;
+  pinnacleProbAway: number | null;
 };
 
 export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerVegasMatchupRow[]> {
@@ -6149,9 +6153,12 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
       sm.our_total_pred  AS "ourTotalPred",
       sm.our_home_xg     AS "ourHomeXg",
       sm.our_away_xg     AS "ourAwayXg",
-      sm.our_prob_home   AS "ourProbHome",
-      sm.our_prob_draw   AS "ourProbDraw",
-      sm.our_prob_away   AS "ourProbAway"
+      sm.our_prob_home       AS "ourProbHome",
+      sm.our_prob_draw       AS "ourProbDraw",
+      sm.our_prob_away       AS "ourProbAway",
+      sm.pinnacle_prob_home  AS "pinnacleProbHome",
+      sm.pinnacle_prob_draw  AS "pinnacleProbDraw",
+      sm.pinnacle_prob_away  AS "pinnacleProbAway"
     FROM soccer_matchups sm
     LEFT JOIN soccer_teams t_home ON t_home.team_id = sm.home_team_id
     LEFT JOIN soccer_teams t_away ON t_away.team_id = sm.away_team_id
@@ -6183,6 +6190,9 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
     ourProbHome: r.ourProbHome != null ? Number(r.ourProbHome) : null,
     ourProbDraw: r.ourProbDraw != null ? Number(r.ourProbDraw) : null,
     ourProbAway: r.ourProbAway != null ? Number(r.ourProbAway) : null,
+    pinnacleProbHome: r.pinnacleProbHome != null ? Number(r.pinnacleProbHome) : null,
+    pinnacleProbDraw: r.pinnacleProbDraw != null ? Number(r.pinnacleProbDraw) : null,
+    pinnacleProbAway: r.pinnacleProbAway != null ? Number(r.pinnacleProbAway) : null,
   }));
 }
 
