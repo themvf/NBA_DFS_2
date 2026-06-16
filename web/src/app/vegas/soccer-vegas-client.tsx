@@ -793,6 +793,7 @@ const TABS: { id: Tab; label: string }[] = [
 export default function SoccerVegasClient({
   matchups,
   bets,
+  settledBets,
   backtest,
   firstScorers,
   resultsByType,
@@ -800,6 +801,7 @@ export default function SoccerVegasClient({
 }: {
   matchups: SoccerVegasMatchupRow[];
   bets: SoccerBetRow[];
+  settledBets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
   firstScorers: SoccerFirstScorerRow[];
   resultsByType: SoccerResultsByTypeRow[];
@@ -846,7 +848,7 @@ export default function SoccerVegasClient({
       {/* Tab content */}
       {tab === "bets" && <BetsPanel bets={bets} />}
       {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} />}
-      {tab === "results" && <ResultsPanel bets={bets} resultsByType={resultsByType} backtest={backtest} />}
+      {tab === "results" && <ResultsPanel bets={settledBets} resultsByType={resultsByType} backtest={backtest} />}
       {tab === "fixtures" && <FixturesPanel matchups={matchups} queryDate={queryDate} />}
     </div>
   );

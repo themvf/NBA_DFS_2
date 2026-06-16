@@ -6240,6 +6240,37 @@ export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBe
   }));
 }
 
+export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      b.id, b.bet_type AS "betType", b.scope, b.selection_label AS "selectionLabel",
+      b.inputs_json->>'fixture' AS "fixture",
+      b.market_odds AS "marketOdds", b.market_prob AS "marketProb",
+      b.our_prob AS "ourProb", b.edge, b.ev, b.stars, b.book,
+      b.status, b.result_detail AS "resultDetail", b.model_version AS "modelVersion"
+    FROM soccer_bets b
+    WHERE b.status IN ('won', 'lost', 'void')
+    ORDER BY b.stars DESC, COALESCE(b.ev, b.edge, 0) DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    id: Number(r.id),
+    betType: String(r.betType),
+    scope: String(r.scope),
+    selectionLabel: String(r.selectionLabel),
+    fixture: r.fixture != null ? String(r.fixture) : null,
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+    ourProb: Number(r.ourProb),
+    edge: r.edge != null ? Number(r.edge) : null,
+    ev: r.ev != null ? Number(r.ev) : null,
+    stars: Number(r.stars),
+    book: r.book != null ? String(r.book) : null,
+    status: String(r.status),
+    resultDetail: r.resultDetail != null ? String(r.resultDetail) : null,
+    modelVersion: String(r.modelVersion),
+  }));
+}
+
 export type SoccerBacktestRow = {
   stars: number;
   n: number;
