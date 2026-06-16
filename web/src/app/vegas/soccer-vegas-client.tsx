@@ -101,14 +101,66 @@ function StatCard({ label, value, sub, color }: {
   );
 }
 
+// ── Sortable column header ─────────────────────────────────────────────────────
+type SortDir = "asc" | "desc";
+function SortTh({
+  col, label, sort, onSort, align = "center",
+}: {
+  col: string; label: string; sort: { col: string; dir: SortDir };
+  onSort: (col: string) => void; align?: "left" | "center";
+}) {
+  const active = sort.col === col;
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className={`cursor-pointer select-none px-3 py-2 text-${align} font-medium hover:text-foreground ${active ? "text-foreground" : "text-muted-foreground"}`}
+    >
+      {label}{active ? (sort.dir === "desc" ? " ↓" : " ↑") : ""}
+    </th>
+  );
+}
+
 // ── Results panel ─────────────────────────────────────────────────────────────
 function ResultsPanel({
+  bets,
   resultsByType,
   backtest,
 }: {
+  bets: SoccerBetRow[];
   resultsByType: SoccerResultsByTypeRow[];
   backtest: SoccerBacktestRow[];
 }) {
+  // ── Settled bet table state ──────────────────────────────────────────────────
+  const [tType, setTType] = useState("all");
+  const [tStatus, setTStatus] = useState("all");
+  const [tMinStars, setTMinStars] = useState(1);
+  const [sort, setSort] = useState<{ col: string; dir: SortDir }>({ col: "stars", dir: "desc" });
+
+  function toggleSort(col: string) {
+    setSort((s) => s.col === col ? { col, dir: s.dir === "desc" ? "asc" : "desc" } : { col, dir: "desc" });
+  }
+
+  const settledBets = bets.filter((b) => b.status !== "pending");
+  const filteredBets = settledBets.filter(
+    (b) =>
+      (tType === "all" || b.betType === tType) &&
+      (tStatus === "all" || b.status === tStatus) &&
+      b.stars >= tMinStars,
+  ).sort((a, b) => {
+    let av: number, bv: number;
+    if (sort.col === "stars")    { av = a.stars;         bv = b.stars; }
+    else if (sort.col === "ev")  { av = a.ev ?? -99;     bv = b.ev ?? -99; }
+    else if (sort.col === "ourProb") { av = a.ourProb;   bv = b.ourProb; }
+    else if (sort.col === "edge")    { av = a.edge ?? -99; bv = b.edge ?? -99; }
+    else if (sort.col === "status") {
+      const order: Record<string, number> = { won: 0, lost: 1, void: 2 };
+      av = order[a.status] ?? 3; bv = order[b.status] ?? 3;
+    }
+    else { av = a.stars; bv = b.stars; }
+    return sort.dir === "desc" ? bv - av : av - bv;
+  });
+
+  // ── Aggregate stats ───────────────────────────────────────────────────────────
   const totalSettled = resultsByType.reduce((s, r) => s + r.won + r.lost + r.voided, 0);
   const totalWon = resultsByType.reduce((s, r) => s + r.won, 0);
   const totalLost = resultsByType.reduce((s, r) => s + r.lost, 0);
@@ -161,6 +213,108 @@ function ResultsPanel({
           value={String(backtest.length)}
           sub={backtest.length > 0 ? `${backtest[0]?.stars}★ top tier` : "none yet"}
         />
+      </div>
+
+      {/* Individual settled bets — filterable + sortable */}
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Settled bets ({filteredBets.length}{filteredBets.length !== settledBets.length ? ` of ${settledBets.length}` : ""})
+          </h3>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground">Type</span>
+              <select value={tType} onChange={(e) => setTType(e.target.value)}
+                className="rounded border bg-background px-1.5 py-1">
+                <option value="all">All</option>
+                <option value="moneyline">Moneyline</option>
+                <option value="total">Over/Under</option>
+                <option value="outright_winner">Outright</option>
+                <option value="group_winner">Group Winner</option>
+                <option value="first_scorer">First Scorer</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground">Result</span>
+              <select value={tStatus} onChange={(e) => setTStatus(e.target.value)}
+                className="rounded border bg-background px-1.5 py-1">
+                <option value="all">All</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+                <option value="void">Push</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground">Min ★</span>
+              <select value={tMinStars} onChange={(e) => setTMinStars(Number(e.target.value))}
+                className="rounded border bg-background px-1.5 py-1">
+                {[1, 2, 3, 4, 5].map((s) => <option key={s} value={s}>{s}★+</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {filteredBets.length === 0 ? (
+          <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+            No settled bets match these filters.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full min-w-[700px] text-sm">
+              <thead>
+                <tr className="border-b text-xs">
+                  <SortTh col="stars" label="Rating" sort={sort} onSort={toggleSort} align="left" />
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Type</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Selection</th>
+                  <SortTh col="ourProb" label="Our %" sort={sort} onSort={toggleSort} />
+                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Mkt %</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Odds</th>
+                  <SortTh col="ev" label="EV" sort={sort} onSort={toggleSort} />
+                  <SortTh col="edge" label="Edge" sort={sort} onSort={toggleSort} />
+                  <SortTh col="status" label="Result" sort={sort} onSort={toggleSort} />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBets.map((b) => (
+                  <tr key={b.id} className="border-b last:border-0 hover:bg-accent/40">
+                    <td className="px-3 py-2"><Stars n={b.stars} /></td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {BET_TYPE_LABEL[b.betType] ?? b.betType}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="font-medium leading-tight">{b.selectionLabel}</div>
+                      {b.fixture && (
+                        <div className="text-[10px] text-muted-foreground">{b.fixture}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">{fmtPct(b.ourProb)}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">
+                      {b.marketProb != null ? fmtPct(b.marketProb) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">{fmtMl(b.marketOdds)}</td>
+                    <td className="px-3 py-2 text-center tabular-nums">
+                      {b.ev != null ? (
+                        <span className={b.ev > 0 ? "text-emerald-400" : "text-muted-foreground"}>
+                          {fmtSignedPp(b.ev)}
+                        </span>
+                      ) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">
+                      {b.edge != null ? (
+                        <span className={b.edge > 0 ? "text-emerald-400" : "text-rose-400"}>
+                          {fmtSignedPp(b.edge)}
+                        </span>
+                      ) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <StatusPill status={b.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* By bet type */}
@@ -692,7 +846,7 @@ export default function SoccerVegasClient({
       {/* Tab content */}
       {tab === "bets" && <BetsPanel bets={bets} />}
       {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} />}
-      {tab === "results" && <ResultsPanel resultsByType={resultsByType} backtest={backtest} />}
+      {tab === "results" && <ResultsPanel bets={bets} resultsByType={resultsByType} backtest={backtest} />}
       {tab === "fixtures" && <FixturesPanel matchups={matchups} queryDate={queryDate} />}
     </div>
   );
