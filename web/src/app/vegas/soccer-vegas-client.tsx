@@ -6,7 +6,6 @@ import type {
   SoccerBetRow,
   SoccerBacktestRow,
   SoccerFirstScorerRow,
-  SoccerResultsByTypeRow,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -123,11 +122,9 @@ function SortTh({
 // ── Results panel ─────────────────────────────────────────────────────────────
 function ResultsPanel({
   bets,
-  resultsByType,
   backtest,
 }: {
   bets: SoccerBetRow[];
-  resultsByType: SoccerResultsByTypeRow[];
   backtest: SoccerBacktestRow[];
 }) {
   // ── Settled bet table state ──────────────────────────────────────────────────
@@ -167,16 +164,33 @@ function ResultsPanel({
     return sort.dir === "desc" ? (bv as number) - (av as number) : (av as number) - (bv as number);
   });
 
-  // ── Aggregate stats ───────────────────────────────────────────────────────────
-  const totalSettled = resultsByType.reduce((s, r) => s + r.won + r.lost + r.voided, 0);
-  const totalWon = resultsByType.reduce((s, r) => s + r.won, 0);
-  const totalLost = resultsByType.reduce((s, r) => s + r.lost, 0);
-  const totalVoid = resultsByType.reduce((s, r) => s + r.voided, 0);
-  const totalMarket = resultsByType.reduce((s, r) => s + r.marketBets, 0);
-  const totalProfit = resultsByType.reduce((s, r) => {
-    if (r.roi == null || r.marketBets === 0) return s;
-    return s + r.roi * r.marketBets;
-  }, 0);
+  // ── Aggregate stats — computed from bets filtered by tMinStars ───────────────
+  const starFilteredBets = bets.filter((b) => b.stars >= tMinStars);
+
+  // Group by bet type for the aggregate table
+  const byTypeMap = new Map<string, { won: number; lost: number; voided: number; sumExpected: number; nExpected: number; marketBets: number; profit: number }>();
+  for (const b of starFilteredBets) {
+    const entry = byTypeMap.get(b.betType) ?? { won: 0, lost: 0, voided: 0, sumExpected: 0, nExpected: 0, marketBets: 0, profit: 0 };
+    if (b.status === "won") entry.won++;
+    else if (b.status === "lost") entry.lost++;
+    else if (b.status === "void") entry.voided++;
+    if (b.status !== "void") { entry.sumExpected += b.ourProb; entry.nExpected++; }
+    if (b.marketDecimal != null && b.status !== "void") {
+      entry.marketBets++;
+      entry.profit += b.status === "won" ? b.marketDecimal - 1 : -1;
+    }
+    byTypeMap.set(b.betType, entry);
+  }
+  const byTypeRows = Array.from(byTypeMap.entries())
+    .map(([betType, e]) => ({ betType, ...e }))
+    .sort((a, b) => a.betType.localeCompare(b.betType));
+
+  const totalWon = starFilteredBets.filter((b) => b.status === "won").length;
+  const totalLost = starFilteredBets.filter((b) => b.status === "lost").length;
+  const totalVoid = starFilteredBets.filter((b) => b.status === "void").length;
+  const totalSettled = totalWon + totalLost + totalVoid;
+  const totalMarket = byTypeRows.reduce((s, r) => s + r.marketBets, 0);
+  const totalProfit = byTypeRows.reduce((s, r) => s + r.profit, 0);
   const overallWinRate = (totalWon + totalLost) > 0 ? totalWon / (totalWon + totalLost) : null;
   const overallRoi = totalMarket > 0 ? totalProfit / totalMarket : null;
 
@@ -343,65 +357,73 @@ function ResultsPanel({
         )}
       </div>
 
-      {/* By bet type */}
+      {/* By bet type — reacts to tMinStars filter */}
       <div>
         <h3 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Results by bet type
+          Results by bet type{tMinStars > 1 ? ` — ${tMinStars}★+ only` : ""}
         </h3>
-        <div className="overflow-x-auto rounded-lg border bg-card">
-          <table className="w-full min-w-[600px] text-sm">
-            <thead>
-              <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-3 py-2 text-left font-medium">Type</th>
-                <th className="px-2 py-2 text-center font-medium">Won</th>
-                <th className="px-2 py-2 text-center font-medium">Lost</th>
-                <th className="px-2 py-2 text-center font-medium">Push</th>
-                <th className="px-2 py-2 text-center font-medium">Win %</th>
-                <th className="px-2 py-2 text-center font-medium">Expected</th>
-                <th className="px-2 py-2 text-center font-medium">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resultsByType.map((r) => {
-                const nonVoid = r.won + r.lost;
-                const wr = nonVoid > 0 ? r.won / nonVoid : null;
-                const beat = wr != null && r.expectedWinRate != null && wr >= r.expectedWinRate;
-                return (
-                  <tr key={r.betType} className="border-b last:border-0 hover:bg-accent/40">
-                    <td className="px-3 py-2 font-medium">
-                      {BET_TYPE_LABEL[r.betType] ?? r.betType}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <span className="font-medium text-emerald-400">{r.won}</span>
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <span className="text-rose-400">{r.lost}</span>
-                    </td>
-                    <td className="px-2 py-2 text-center text-muted-foreground">{r.voided}</td>
-                    <td className={`px-2 py-2 text-center font-medium tabular-nums ${beat ? "text-emerald-400" : wr != null ? "text-rose-400" : "text-muted-foreground"}`}>
-                      {wr != null ? fmtPct1(wr) : "—"}
-                    </td>
-                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
-                      {r.expectedWinRate != null ? fmtPct1(r.expectedWinRate) : "—"}
-                    </td>
-                    <td className="px-2 py-2 text-center tabular-nums">
-                      {r.roi != null ? (
-                        <span className={r.roi >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                          {fmtRoi(r.roi)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {byTypeRows.length === 0 ? (
+          <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+            No settled bets at {tMinStars}★+.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full min-w-[600px] text-sm">
+              <thead>
+                <tr className="border-b text-xs text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-medium">Type</th>
+                  <th className="px-2 py-2 text-center font-medium">Won</th>
+                  <th className="px-2 py-2 text-center font-medium">Lost</th>
+                  <th className="px-2 py-2 text-center font-medium">Push</th>
+                  <th className="px-2 py-2 text-center font-medium">Win %</th>
+                  <th className="px-2 py-2 text-center font-medium">Expected</th>
+                  <th className="px-2 py-2 text-center font-medium">ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byTypeRows.map((r) => {
+                  const nonVoid = r.won + r.lost;
+                  const wr = nonVoid > 0 ? r.won / nonVoid : null;
+                  const expectedWr = r.nExpected > 0 ? r.sumExpected / r.nExpected : null;
+                  const beat = wr != null && expectedWr != null && wr >= expectedWr;
+                  const roi = r.marketBets > 0 ? r.profit / r.marketBets : null;
+                  return (
+                    <tr key={r.betType} className="border-b last:border-0 hover:bg-accent/40">
+                      <td className="px-3 py-2 font-medium">
+                        {BET_TYPE_LABEL[r.betType] ?? r.betType}
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <span className="font-medium text-emerald-400">{r.won}</span>
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <span className="text-rose-400">{r.lost}</span>
+                      </td>
+                      <td className="px-2 py-2 text-center text-muted-foreground">{r.voided}</td>
+                      <td className={`px-2 py-2 text-center font-medium tabular-nums ${beat ? "text-emerald-400" : wr != null ? "text-rose-400" : "text-muted-foreground"}`}>
+                        {wr != null ? fmtPct1(wr) : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
+                        {expectedWr != null ? fmtPct1(expectedWr) : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-center tabular-nums">
+                        {roi != null ? (
+                          <span className={roi >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                            {fmtRoi(roi)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
         <p className="mt-1 text-[11px] text-muted-foreground">
           Win % excludes pushes. ROI = profit per unit staked (−100% = all lost, +100% = doubled).
-          Green = beating our own expected win rate.
+          Green = beating our own expected win rate. Use the Min ★ filter above to drill into a star tier.
         </p>
       </div>
 
@@ -822,7 +844,6 @@ export default function SoccerVegasClient({
   settledBets,
   backtest,
   firstScorers,
-  resultsByType,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -830,13 +851,14 @@ export default function SoccerVegasClient({
   settledBets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
   firstScorers: SoccerFirstScorerRow[];
-  resultsByType: SoccerResultsByTypeRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
 
-  const totalSettled = resultsByType.reduce((s, r) => s + r.won + r.lost + r.voided, 0);
-  const totalWon = resultsByType.reduce((s, r) => s + r.won, 0);
+  const totalWon = settledBets.filter((b) => b.status === "won").length;
+  const totalLost = settledBets.filter((b) => b.status === "lost").length;
+  const totalVoid = settledBets.filter((b) => b.status === "void").length;
+  const totalSettled = settledBets.length;
   const pendingCount = bets.filter((b) => b.status === "pending").length;
 
   return (
@@ -847,8 +869,8 @@ export default function SoccerVegasClient({
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {pendingCount > 0 && <span>{pendingCount} pending bets</span>}
           {totalSettled > 0 && (
-            <span className={totalWon / totalSettled >= 0.5 ? "text-emerald-400" : "text-rose-400"}>
-              {totalWon}W / {totalSettled - totalWon - resultsByType.reduce((s, r) => s + r.voided, 0)}L / {resultsByType.reduce((s, r) => s + r.voided, 0)} push ({fmtPct(totalWon / Math.max(1, totalSettled - resultsByType.reduce((s, r) => s + r.voided, 0)))} win)
+            <span className={totalWon / (totalWon + totalLost || 1) >= 0.5 ? "text-emerald-400" : "text-rose-400"}>
+              {totalWon}W / {totalLost}L / {totalVoid} push ({fmtPct(totalWon / Math.max(1, totalWon + totalLost))} win)
             </span>
           )}
         </div>
@@ -874,7 +896,7 @@ export default function SoccerVegasClient({
       {/* Tab content */}
       {tab === "bets" && <BetsPanel bets={bets} />}
       {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} />}
-      {tab === "results" && <ResultsPanel bets={settledBets} resultsByType={resultsByType} backtest={backtest} />}
+      {tab === "results" && <ResultsPanel bets={settledBets} backtest={backtest} />}
       {tab === "fixtures" && <FixturesPanel matchups={matchups} queryDate={queryDate} />}
     </div>
   );

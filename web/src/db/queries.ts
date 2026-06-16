@@ -6194,6 +6194,7 @@ export type SoccerBetRow = {
   selectionLabel: string;
   fixture: string | null;
   marketOdds: number | null;
+  marketDecimal: number | null;
   marketProb: number | null;
   ourProb: number;
   edge: number | null;
@@ -6230,6 +6231,7 @@ export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBe
     selectionLabel: String(r.selectionLabel),
     fixture: r.fixture != null ? String(r.fixture) : null,
     marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    marketDecimal: null,
     marketProb: r.marketProb != null ? Number(r.marketProb) : null,
     ourProb: Number(r.ourProb),
     edge: r.edge != null ? Number(r.edge) : null,
@@ -6249,7 +6251,8 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
     SELECT
       b.id, b.bet_type AS "betType", b.scope, b.selection_label AS "selectionLabel",
       b.inputs_json->>'fixture' AS "fixture",
-      b.market_odds AS "marketOdds", b.market_prob AS "marketProb",
+      b.market_odds AS "marketOdds", b.market_decimal AS "marketDecimal",
+      b.market_prob AS "marketProb",
       b.our_prob AS "ourProb", b.edge, b.ev, b.stars, b.book,
       b.status, b.result_detail AS "resultDetail", b.model_version AS "modelVersion",
       DATE(b.event_commence AT TIME ZONE 'UTC') AS "gameDate",
@@ -6265,6 +6268,7 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
     selectionLabel: String(r.selectionLabel),
     fixture: r.fixture != null ? String(r.fixture) : null,
     marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    marketDecimal: r.marketDecimal != null ? Number(r.marketDecimal) : null,
     marketProb: r.marketProb != null ? Number(r.marketProb) : null,
     ourProb: Number(r.ourProb),
     edge: r.edge != null ? Number(r.edge) : null,
