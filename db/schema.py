@@ -1480,12 +1480,14 @@ MIGRATIONS = [
         game_date DATE NOT NULL,
         player_name TEXT NOT NULL,
         player_team TEXT,
+        assist_name TEXT,
         goal_minute INTEGER,
         is_first_goal BOOLEAN DEFAULT FALSE,
         source TEXT DEFAULT 'thesportsdb',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (game_id, player_name, goal_minute)
     )""",
+    "ALTER TABLE soccer_match_goals ADD COLUMN IF NOT EXISTS assist_name TEXT",
 ]
 
 INDEXES = [

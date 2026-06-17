@@ -62,9 +62,14 @@ def fetch_all_goals(tsdb_event_id: str, api_key: str) -> list[dict]:
             minute = int(ev.get("intTime") or 999)
         except (TypeError, ValueError):
             minute = 999
+        assist = ev.get("strAssist") or None
+        # idAssist="0" means no assist recorded
+        if assist and ev.get("idAssist") in ("0", 0):
+            assist = None
         goals.append({
             "player": ev.get("strPlayer", ""),
             "team": ev.get("strTeam", ""),
+            "assist": assist,
             "minute": minute,
             "detail": ev.get("strTimelineDetail", ""),
         })
@@ -153,6 +158,7 @@ def backfill(db: DatabaseManager, api_key: str = "123", force: bool = False, dry
                     upsert_soccer_match_goal(
                         db, game_id=gid, game_date=game_date,
                         player_name=goal["player"], player_team=goal["team"],
+                        assist_name=goal.get("assist"),
                         goal_minute=goal["minute"],
                         is_first_goal=(goal is first),
                     )

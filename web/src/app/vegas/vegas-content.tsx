@@ -18,6 +18,7 @@ import {
   getSoccerBetBacktest,
   getSoccerFirstScorers,
   getSoccerMatchGoals,
+  getSoccerPlayerStats,
 } from "@/db/queries";
 import type { Sport } from "@/db/queries";
 import VegasClient from "./vegas-client";
@@ -27,13 +28,14 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
   // Soccer: focused fixtures view + star-rated bet ledger + backtest, rather
   // than the NBA/MLB analytics panels.
   if (sport === "soccer") {
-    const [matchups, bets, settledBets, backtest, firstScorers, matchGoals] = await Promise.all([
+    const [matchups, bets, settledBets, backtest, firstScorers, matchGoals, playerStats] = await Promise.all([
       getSoccerVegasMatchups(date),
       getSoccerBets(1, 150),
       getSoccerSettledBets(),
       getSoccerBetBacktest(),
       getSoccerFirstScorers(8),
       getSoccerMatchGoals(),
+      getSoccerPlayerStats(),
     ]);
     return (
       <SoccerVegasClient
@@ -43,6 +45,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
         backtest={backtest}
         firstScorers={firstScorers}
         matchGoals={matchGoals}
+        playerStats={playerStats}
         queryDate={date ?? null}
       />
     );

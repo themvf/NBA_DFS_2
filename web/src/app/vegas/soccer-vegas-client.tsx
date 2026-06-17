@@ -7,6 +7,7 @@ import type {
   SoccerBacktestRow,
   SoccerFirstScorerRow,
   SoccerMatchGoalRow,
+  SoccerPlayerStatsRow,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -905,12 +906,93 @@ function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRo
   );
 }
 
+// ── Scorers panel ─────────────────────────────────────────────────────────────
+function ScorersPanel({ rows }: { rows: SoccerPlayerStatsRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <section className="space-y-3">
+        <h2 className="text-lg font-bold">⚽ Tournament Scorers</h2>
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
+          No goals recorded yet. Data updates after each match via TheSportsDB.
+        </div>
+      </section>
+    );
+  }
+
+  const maxGoals = rows[0]?.goals ?? 1;
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-lg font-bold">⚽ Tournament Scorers &amp; Assists</h2>
+
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-[10px] uppercase text-muted-foreground">
+              <th className="w-8 px-3 py-2 text-center font-medium">#</th>
+              <th className="px-3 py-2 text-left font-medium">Player</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Team</th>
+              <th className="px-2 py-2 text-center font-medium">G</th>
+              <th className="px-2 py-2 text-center font-medium">A</th>
+              <th className="px-2 py-2 text-center font-medium">G+A</th>
+              <th className="px-2 py-2 text-center font-medium hidden sm:table-cell">1st</th>
+              <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Goals</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const ga = r.goals + r.assists;
+              return (
+                <tr
+                  key={r.playerName}
+                  className={`border-b last:border-0 hover:bg-accent/40 ${r.goals === maxGoals && maxGoals > 0 ? "bg-amber-500/5" : ""}`}
+                >
+                  <td className="px-3 py-2 text-center text-xs text-muted-foreground">{i + 1}</td>
+                  <td className="px-3 py-2 font-medium">
+                    {r.playerName}
+                    {r.goals === maxGoals && maxGoals > 0 && (
+                      <span className="ml-1.5 text-[10px] text-amber-400 font-semibold">🥇</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground text-xs">{r.playerTeam ?? "—"}</td>
+                  <td className="px-2 py-2 text-center font-bold tabular-nums">
+                    {r.goals > 0 ? r.goals : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
+                    {r.assists > 0 ? r.assists : <span className="opacity-40">—</span>}
+                  </td>
+                  <td className="px-2 py-2 text-center tabular-nums font-medium">{ga}</td>
+                  <td className="px-2 py-2 text-center hidden sm:table-cell">
+                    {r.firstGoals > 0 ? (
+                      <span className="text-emerald-400 text-xs font-semibold">{r.firstGoals}</span>
+                    ) : (
+                      <span className="text-muted-foreground opacity-40">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground hidden md:table-cell">
+                    {"⚽".repeat(r.goals)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        G = goals, A = assists, G+A = goal contributions, 1st = first goals scored.
+        Assists from TheSportsDB — penalties credited with no assist. Data lags 1–6h post-match.
+      </p>
+    </section>
+  );
+}
+
 // ── Tab nav ───────────────────────────────────────────────────────────────────
-type Tab = "bets" | "first_scorer" | "results" | "fixtures";
+type Tab = "bets" | "first_scorer" | "scorers" | "results" | "fixtures";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "bets", label: "⭐ Bets" },
   { id: "first_scorer", label: "🥅 First Scorer" },
+  { id: "scorers", label: "⚽ Scorers" },
   { id: "results", label: "📈 Results" },
   { id: "fixtures", label: "📅 Fixtures" },
 ];
@@ -923,6 +1005,7 @@ export default function SoccerVegasClient({
   backtest,
   firstScorers,
   matchGoals,
+  playerStats,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -931,6 +1014,7 @@ export default function SoccerVegasClient({
   backtest: SoccerBacktestRow[];
   firstScorers: SoccerFirstScorerRow[];
   matchGoals: SoccerMatchGoalRow[];
+  playerStats: SoccerPlayerStatsRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -976,6 +1060,7 @@ export default function SoccerVegasClient({
       {/* Tab content */}
       {tab === "bets" && <BetsPanel bets={bets} />}
       {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} matchGoals={matchGoals} />}
+      {tab === "scorers" && <ScorersPanel rows={playerStats} />}
       {tab === "results" && <ResultsPanel bets={settledBets} backtest={backtest} />}
       {tab === "fixtures" && <FixturesPanel matchups={matchups} queryDate={queryDate} />}
     </div>

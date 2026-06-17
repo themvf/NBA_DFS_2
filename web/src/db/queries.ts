@@ -6391,17 +6391,19 @@ export type SoccerMatchGoalRow = {
   goalCount: number;
   isFirstGoal: boolean;
   firstGoalMinute: number | null;
+  assistNames: string[];
 };
 
 export async function getSoccerMatchGoals(): Promise<SoccerMatchGoalRow[]> {
   const rows = await db.execute(sql`
     SELECT
-      game_id                                           AS "gameId",
-      player_name                                       AS "playerName",
-      player_team                                       AS "playerTeam",
-      COUNT(*)::int                                     AS "goalCount",
-      BOOL_OR(is_first_goal)                            AS "isFirstGoal",
-      MIN(goal_minute) FILTER (WHERE is_first_goal)     AS "firstGoalMinute"
+      game_id                                                     AS "gameId",
+      player_name                                                 AS "playerName",
+      player_team                                                 AS "playerTeam",
+      COUNT(*)::int                                               AS "goalCount",
+      BOOL_OR(is_first_goal)                                      AS "isFirstGoal",
+      MIN(goal_minute) FILTER (WHERE is_first_goal)               AS "firstGoalMinute",
+      ARRAY_REMOVE(ARRAY_AGG(assist_name ORDER BY goal_minute), NULL) AS "assistNames"
     FROM soccer_match_goals
     WHERE game_date >= CURRENT_DATE - INTERVAL '3 days'
     GROUP BY game_id, player_name, player_team
@@ -6414,7 +6416,76 @@ export async function getSoccerMatchGoals(): Promise<SoccerMatchGoalRow[]> {
     goalCount: Number(r.goalCount),
     isFirstGoal: Boolean(r.isFirstGoal),
     firstGoalMinute: r.firstGoalMinute != null ? Number(r.firstGoalMinute) : null,
+    assistNames: Array.isArray(r.assistNames) ? (r.assistNames as string[]) : [],
   }));
+}
+
+export type SoccerPlayerStatsRow = {
+  playerName: string;
+  playerTeam: string | null;
+  goals: number;
+  assists: number;
+  gamesPlayed: number;
+  firstGoals: number;
+};
+
+export async function getSoccerPlayerStats(): Promise<SoccerPlayerStatsRow[]> {
+  // Goals scored (one row per scorer per game → aggregate across tournament)
+  const goalRows = await db.execute(sql`
+    SELECT
+      player_name   AS "playerName",
+      player_team   AS "playerTeam",
+      COUNT(*)::int AS goals,
+      COUNT(DISTINCT game_id)::int AS "gamesPlayed",
+      COUNT(*) FILTER (WHERE is_first_goal)::int AS "firstGoals"
+    FROM soccer_match_goals
+    GROUP BY player_name, player_team
+  `);
+
+  // Assists (player credited as assist_name)
+  const assistRows = await db.execute(sql`
+    SELECT
+      assist_name   AS "playerName",
+      player_team   AS "playerTeam",
+      COUNT(*)::int AS assists
+    FROM soccer_match_goals
+    WHERE assist_name IS NOT NULL
+    GROUP BY assist_name, player_team
+  `);
+
+  // Merge: key by normalized name
+  const map = new Map<string, SoccerPlayerStatsRow>();
+  for (const r of goalRows.rows as Record<string, unknown>[]) {
+    const key = String(r.playerName).toLowerCase();
+    map.set(key, {
+      playerName: String(r.playerName),
+      playerTeam: r.playerTeam != null ? String(r.playerTeam) : null,
+      goals: Number(r.goals),
+      assists: 0,
+      gamesPlayed: Number(r.gamesPlayed),
+      firstGoals: Number(r.firstGoals),
+    });
+  }
+  for (const r of assistRows.rows as Record<string, unknown>[]) {
+    const key = String(r.playerName).toLowerCase();
+    const existing = map.get(key);
+    if (existing) {
+      existing.assists = Number(r.assists);
+    } else {
+      map.set(key, {
+        playerName: String(r.playerName),
+        playerTeam: r.playerTeam != null ? String(r.playerTeam) : null,
+        goals: 0,
+        assists: Number(r.assists),
+        gamesPlayed: 0,
+        firstGoals: 0,
+      });
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) =>
+    b.goals !== a.goals ? b.goals - a.goals : b.assists - a.assists
+  );
 }
 
 // Settled bet results broken down by bet_type — powers the Results tab.
