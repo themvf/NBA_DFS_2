@@ -23,16 +23,16 @@ logger = logging.getLogger(__name__)
 OFFICIAL_GROUPS: dict[str, list[str]] = {
     "A": ["Mexico", "South Korea", "Czech Republic", "South Africa"],
     "B": ["Switzerland", "Canada", "Qatar", "Bosnia & Herzegovina"],
-    "C": ["Brazil", "Scotland", "Morocco", "Haiti"],
+    "C": ["Scotland", "Morocco", "Brazil", "Haiti"],
     "D": ["USA", "Australia", "Turkey", "Paraguay"],
-    "E": ["England", "Croatia", "Ghana", "Panama"],
-    "F": ["Germany", "Curaçao", "Ecuador", "Ivory Coast"],
-    "G": ["Japan", "Netherlands", "Sweden", "Tunisia"],
-    "H": ["Belgium", "Egypt", "Iran", "New Zealand"],
-    "I": ["Spain", "Cape Verde", "Saudi Arabia", "Uruguay"],
-    "J": ["France", "Iraq", "Norway", "Senegal"],
-    "K": ["Argentina", "Algeria", "Austria", "Jordan"],
-    "L": ["Colombia", "DR Congo", "Portugal", "Uzbekistan"],
+    "E": ["Germany", "Ivory Coast", "Ecuador", "Curaçao"],
+    "F": ["Sweden", "Japan", "Netherlands", "Tunisia"],
+    "G": ["New Zealand", "Iran", "Belgium", "Egypt"],
+    "H": ["Uruguay", "Saudi Arabia", "Spain", "Cape Verde"],
+    "I": ["Norway", "France", "Senegal", "Iraq"],
+    "J": ["Argentina", "Austria", "Jordan", "Algeria"],
+    "K": ["Colombia", "DR Congo", "Portugal", "Uzbekistan"],
+    "L": ["England", "Ghana", "Panama", "Croatia"],
 }
 
 
