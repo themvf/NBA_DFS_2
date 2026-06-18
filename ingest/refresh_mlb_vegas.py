@@ -46,6 +46,12 @@ def _run_refresh_stage(label: str, fn: Callable[[], T]) -> tuple[bool, T | None]
         return False, None
 
 
+def _write_total_predictions(db: DatabaseManager, refresh_date_iso: str) -> int:
+    """Train + write our_total_pred for the slate (soft dependency)."""
+    from model.mlb_game_total_model import predict_and_write
+    return predict_and_write(db, refresh_date_iso)
+
+
 def _rolling_backfill_window(target_date: date, days_back: int) -> tuple[str, str] | None:
     if days_back <= 0:
         return None
@@ -75,6 +81,15 @@ def run_refresh(
 
     ok, result = _run_refresh_stage("mlb_scores_today", lambda: fetch_scores(db, refresh_date_iso))
     stages.append(("mlb_scores_today", ok, result))
+
+    # Our independent O/U number — train on completed games, write our_total_pred
+    # for today's slate. Runs after odds so today's vegas_total is present, and
+    # after scores so the newest completed games join the training set.
+    ok, result = _run_refresh_stage(
+        "mlb_total_predictions",
+        lambda: _write_total_predictions(db, refresh_date_iso),
+    )
+    stages.append(("mlb_total_predictions", ok, result))
 
     window = _rolling_backfill_window(refresh_date, days_back)
     if window is not None:

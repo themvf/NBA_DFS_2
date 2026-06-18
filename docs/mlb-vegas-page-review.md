@@ -1,0 +1,86 @@
+# MLB Vegas Page Review & Build Plan
+
+_Review date: 2026-06-18. Covers the MLB tab of `/vegas` — the descriptive
+Vegas-accuracy analytics, the data-coverage tracker, and the client-side O/U
+recommendation score._
+
+## What the page is today
+
+Rendered through the shared `VegasClient` (`sport="mlb"`). Two layers:
+
+1. **Descriptive Vegas-accuracy analytics** (`web/src/db/queries.ts`)
+   - `getMlbOuHitRate` — O/U hit rate by total tier (7.5 → 10.5+), game-total MAE
+   - `getMlbTeamTotalAccuracy` — team implied vs actual runs (MAE + bias)
+   - `getMlbRunLineCoverage` — favorite cover rate by run-line tier
+   - `getMlbVegasCoverageStatus` — data-completeness tracker
+2. **Client-side O/U "recommendation score"** (`computeOuScore` in `vegas-client.tsx`)
+   — hand-weighted blend: SP xFIP 0.15, SP K/9 0.10, park 0.08, temp 0.04,
+   wind 0.06, total-tier history 0.20, home over-history 0.20, away over-history 0.20.
+
+## What's good
+
+- Descriptive analytics are clean and correct — game-level totals are immune to
+  the DNP contamination that distorts the projection model.
+- `getMlbVegasCoverageStatus` is best-in-repo operational tooling (missing
+  scores/odds per date, backfill ranges, provider-partial detection).
+- The Phase-1 O/U score reuses real MLB context (SP xFIP/K9, park, weather, and
+  the same compass wind geometry as the projection model), with sensible signal
+  directions and shrinkage on historical rates.
+- `blendSignals` normalizes by total weight → graceful degradation.
+
+## Core gaps
+
+1. **No independent predicted total.** MLB is the only sport without an
+   `our_*_pred` column (NBA: `our_game_total_pred`; soccer: `our_total_pred`).
+   The O/U "score" is a hand-weighted heuristic measured at **52.4% accuracy
+   (53.2% actionable)** in the phase-1 backtest — coin-flip-grade.
+2. **40% of the score leans on team over-history**, which is largely the residual
+   of an efficient market (noise). Real environment signals carry only ~43%.
+3. **Unused context in the DB.** `mlb_team_stats` has `team_wrc_plus`, `team_iso`,
+   `bullpen_era`, `bullpen_fip` — none feeds the O/U score. Offense + bullpen are
+   first-order run-total drivers.
+4. **No actionable bet layer** — only a lean probability. No edge-vs-market flag,
+   no settled-bet ledger, no per-tier calibration (unlike the soccer Vegas page).
+5. **Minor:** `getMlbOuHitRate` has no season filter (run-env drifts year to year);
+   `overRate` includes pushes in the denominator (negligible for half-run totals).
+
+## Build plan (priority order)
+
+| # | Item | Status |
+|---|---|---|
+| 1 | **Residual-over-Vegas total model** → write `our_total_pred` to `mlb_matchups` (features: SP xFIP/K9, park, weather/wind, team wRC+/ISO, bullpen FIP). `model/mlb_game_total_model.py`. | ✅ Done |
+| 2 | Feed unused team offense + bullpen stats into the O/U score | ✅ Done (via the model — the model consumes wRC+/ISO/bullpen FIP and feeds the score as one dominant signal, cleaner than raw feeding) |
+| 3 | Down-weight raw team over-history once real environment signals exist | ✅ Done (history signals drop 0.20→0.10 each when the model total is present) |
+| 4 | Edge flag + settled-bet backtest mirroring the soccer Vegas ledger | Planned (next) |
+
+## Build readout (2026-06-18)
+
+`model/mlb_game_total_model.py` — Ridge on `actual_total − vegas_total`, trained on
+1,074 completed 2026 games, writes `our_total_pred`. Holdout (n=215):
+
+- Vegas MAE 3.31 / our MAE 3.36 — ~tied on raw MAE (expected; nobody beats an
+  efficient line on MAE).
+- **O/U side accuracy 54.9%** — beats the old heuristic (~52.4%) and clears the
+  −110 breakeven (52.38%). This is the metric that matters for betting.
+- Our bias +0.27 vs Vegas −0.68 → better calibrated (2026 totals ran ~0.68 over
+  the lines; the model partially corrects toward that).
+- Top features: SP xFIP avg/diff, ISO, wRC+, bullpen FIP, temp — all sensible.
+
+Wired into `ingest/refresh_mlb_vegas.py` (retrains + writes daily after odds/scores).
+Surfaced on `/vegas?sport=mlb`: new "Our Total" column with O/U edge, and the model
+is the dominant O/U-score signal (weight 0.45) with history signals halved.
+
+**Known limitation (for #4 / future):** the model currently leans over on most
+games because it's absorbing a global 2026 over-tendency rather than purely
+game-specific discrimination. A future iteration should de-mean the global bias
+and rank on *relative* edge, plus add the settled-bet ledger so we can verify the
+54.9% holds out of sample by edge magnitude.
+
+## Notes
+
+- Reuse the NBA pattern: a Ridge/linear model predicting the Vegas miss
+  (`actual_total − vegas_total`) from team-efficiency features, anchored to the
+  line so value comes from disagreement. Persist params to a DB table so CI
+  predictions are self-sufficient (same approach as `soccer_model_params`).
+- Settlement data is already present: `mlb_matchups.home_score/away_score` +
+  `vegas_total` give actual-vs-line for backtesting with no new ingestion.

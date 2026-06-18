@@ -6021,6 +6021,8 @@ export type VegasMatchupRow = {
   weatherTemp: number | null;
   windSpeed: number | null;
   windDirection: string | null;
+  // Our independent predicted total (residual-over-Vegas model). MLB-only for now.
+  ourTotalPred: number | null;
   // MLB-only SP fields (null for NBA)
   homeSpName: string | null;
   homeSpHand: string | null;
@@ -6078,6 +6080,7 @@ export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupR
     weatherTemp: null,
     windSpeed: null,
     windDirection: null,
+    ourTotalPred: null,
     homeSpName: null,
     homeSpHand: null,
     homeSpXfip: null,
@@ -6925,6 +6928,7 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
       m.weather_temp   AS "weatherTemp",
       m.wind_speed     AS "windSpeed",
       m.wind_direction AS "windDirection",
+      m.our_total_pred AS "ourTotalPred",
       COALESCE(m.home_sp_name, hsp_id.name, hsp_name.name) AS "homeSpName",
       COALESCE(hsp_id.hand, hsp_name.hand) AS "homeSpHand",
       COALESCE(hsp_id.xfip, hsp_name.xfip) AS "homeSpXfip",
@@ -6965,6 +6969,7 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
     weatherTemp: r.weatherTemp != null ? Number(r.weatherTemp) : null,
     windSpeed: r.windSpeed != null ? Number(r.windSpeed) : null,
     windDirection: r.windDirection != null ? String(r.windDirection) : null,
+    ourTotalPred: r.ourTotalPred != null ? Number(r.ourTotalPred) : null,
     homeSpName: r.homeSpName != null ? String(r.homeSpName) : null,
     homeSpHand: r.homeSpHand != null ? String(r.homeSpHand) : null,
     homeSpXfip: r.homeSpXfip != null ? Number(r.homeSpXfip) : null,

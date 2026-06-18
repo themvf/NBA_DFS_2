@@ -235,6 +235,7 @@ export const mlbMatchups = pgTable(
     weatherTemp: integer("weather_temp"),
     windSpeed: integer("wind_speed"),
     windDirection: text("wind_direction"),
+    ourTotalPred: doublePrecision("our_total_pred"),
     fetchedAt: timestamp("fetched_at").defaultNow(),
   },
   (t) => [

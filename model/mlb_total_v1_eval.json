@@ -1,0 +1,45 @@
+{
+  "model_version": "mlb-total-v1",
+  "n_train": 859,
+  "n_test": 215,
+  "vegas_mae": 3.312,
+  "our_mae": 3.359,
+  "mae_improvement": -0.047,
+  "vegas_bias": -0.679,
+  "our_bias": 0.27,
+  "ou_side_accuracy": 0.549,
+  "top_features": [
+    {
+      "feature": "sp_xfip_avg",
+      "coef": 0.6732
+    },
+    {
+      "feature": "sp_xfip_diff",
+      "coef": -0.6182
+    },
+    {
+      "feature": "iso_avg",
+      "coef": -0.404
+    },
+    {
+      "feature": "wrc_avg",
+      "coef": 0.3399
+    },
+    {
+      "feature": "bullpen_fip_avg",
+      "coef": 0.2884
+    },
+    {
+      "feature": "temp_delta",
+      "coef": 0.2843
+    },
+    {
+      "feature": "abs_spread",
+      "coef": 0.2193
+    },
+    {
+      "feature": "vegas_total",
+      "coef": -0.2054
+    }
+  ]
+}

@@ -223,6 +223,21 @@ function computeOuScore(
 
   const signals: ScoreSignal[] = [];
 
+  // Model total — MLB only. The residual-over-Vegas Ridge model
+  // (model/mlb_game_total_model.py) is our strongest single O/U signal
+  // (~55% side accuracy on holdout), and it already folds in SP xFIP/K9, park,
+  // weather, team wRC+/ISO, and bullpen FIP. When present it dominates the
+  // blend; the legacy historical-rate signals become secondary context.
+  const hasModelTotal =
+    sport === "mlb" && m.ourTotalPred != null && m.vegasTotal != null;
+  if (hasModelTotal) {
+    const edge = (m.ourTotalPred as number) - (m.vegasTotal as number);
+    // Runs of edge → over probability. ~1 run edge ≈ 0.62; capped to avoid
+    // overconfidence from a single noisy feature row.
+    const modelValue = clamp(1 / (1 + Math.exp(-edge / 2.0)), 0.3, 0.7);
+    signals.push({ label: "Model total", value: modelValue, weight: 0.45 });
+  }
+
   // SP-quality factor — MLB only, when both SPs are known
   if (sport === "mlb" && m.homeSpXfip != null && m.awaySpXfip != null) {
     const avgXfip = (m.homeSpXfip + m.awaySpXfip) / 2;
@@ -270,7 +285,7 @@ function computeOuScore(
       signals.push({
         label: sport === "mlb" ? "Total tier" : "Total tier (calibrated)",
         value: calibratedTier,
-        weight: sport === "mlb" ? 0.20 : 0.20,
+        weight: sport === "mlb" ? (hasModelTotal ? 0.10 : 0.20) : 0.20,
       });
     }
   }
@@ -286,7 +301,7 @@ function computeOuScore(
       signals.push({
         label: `${m.homeAbbrev} history`,
         value: calibratedHome,
-        weight: sport === "mlb" ? 0.20 : 0.20,
+        weight: sport === "mlb" ? (hasModelTotal ? 0.10 : 0.20) : 0.20,
       });
     }
   }
@@ -302,7 +317,7 @@ function computeOuScore(
       signals.push({
         label: `${m.awayAbbrev} history`,
         value: calibratedAway,
-        weight: sport === "mlb" ? 0.20 : 0.20,
+        weight: sport === "mlb" ? (hasModelTotal ? 0.10 : 0.20) : 0.20,
       });
     }
   }
@@ -1236,6 +1251,7 @@ export default function VegasClient({
                   <th className="py-1 text-left">Matchup</th>
                   <th className="py-1 text-left">Actionable</th>
                   <th className="py-1 text-right">Total</th>
+                  {sport === "mlb" && <th className="py-1 text-right">Our Total</th>}
                   <th className="py-1 text-right">O/U Score</th>
                   <th className="py-1 text-right">{sport === "mlb" ? "Run Line" : "Spread"}</th>
                   <th className="py-1 text-right">{sport === "mlb" ? "RL Score" : "Spread Status"}</th>
@@ -1323,6 +1339,28 @@ export default function VegasClient({
                         )}
                       </td>
                       <td className="py-1.5 text-right text-gray-500">{fmt1(m.vegasTotal)}</td>
+                      {sport === "mlb" && (
+                        <td className="py-1.5 text-right tabular-nums">
+                          {m.ourTotalPred != null && m.vegasTotal != null ? (
+                            <span>
+                              {m.ourTotalPred.toFixed(1)}
+                              <span
+                                className={
+                                  m.ourTotalPred - m.vegasTotal > 0
+                                    ? "ml-1 text-[10px] text-emerald-600"
+                                    : "ml-1 text-[10px] text-sky-600"
+                                }
+                              >
+                                ({m.ourTotalPred - m.vegasTotal > 0 ? "O" : "U"}{" "}
+                                {(m.ourTotalPred - m.vegasTotal > 0 ? "+" : "")}
+                                {(m.ourTotalPred - m.vegasTotal).toFixed(1)})
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="py-1.5 text-right">
                         {renderRecommendationScore(
                           ouScore,
