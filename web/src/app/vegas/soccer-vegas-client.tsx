@@ -115,6 +115,77 @@ function StatCard({ label, value, sub, color }: {
   );
 }
 
+// ── Per-type KPI card ─────────────────────────────────────────────────────────
+const BET_TYPE_ICON: Record<string, string> = {
+  moneyline: "🎯",
+  total: "📊",
+  first_scorer: "🥅",
+  outright_winner: "🏆",
+  group_winner: "🗂️",
+};
+
+function BetTypeCard({ betType, won, lost, voided, sumExpected, nExpected, marketBets, profit }: {
+  betType: string; won: number; lost: number; voided: number;
+  sumExpected: number; nExpected: number; marketBets: number; profit: number;
+}) {
+  const nonVoid = won + lost;
+  const wr = nonVoid > 0 ? won / nonVoid : null;
+  const expectedWr = nExpected > 0 ? sumExpected / nExpected : null;
+  const beating = wr != null && expectedWr != null && wr >= expectedWr;
+  const roi = marketBets > 0 ? profit / marketBets : null;
+  const total = won + lost + voided;
+
+  return (
+    <div className="rounded-lg border bg-card p-4 flex flex-col gap-2">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          {BET_TYPE_ICON[betType] ?? "📌"} {BET_TYPE_LABEL[betType] ?? betType}
+        </span>
+        {roi != null && (
+          <span className={`text-[10px] font-semibold rounded px-1.5 py-0.5 tabular-nums ${roi >= 0 ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"}`}>
+            ROI {fmtRoi(roi)}
+          </span>
+        )}
+      </div>
+
+      {/* Win rate — big number */}
+      <div className="flex items-end gap-2">
+        <span className={`text-3xl font-bold tabular-nums leading-none ${wr != null && beating ? "text-emerald-400" : wr != null ? "text-rose-400" : "text-muted-foreground"}`}>
+          {wr != null ? fmtPct1(wr) : "—"}
+        </span>
+        {expectedWr != null && (
+          <span className="text-xs text-muted-foreground mb-0.5">
+            exp {fmtPct1(expectedWr)}
+          </span>
+        )}
+      </div>
+
+      {/* W / L / push pills */}
+      <div className="flex items-center gap-1.5 text-xs">
+        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-medium text-emerald-400 tabular-nums">{won}W</span>
+        <span className="rounded bg-rose-500/15 px-1.5 py-0.5 font-medium text-rose-400 tabular-nums">{lost}L</span>
+        {voided > 0 && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground tabular-nums">{voided} push</span>
+        )}
+        <span className="ml-auto text-muted-foreground">{total} settled</span>
+      </div>
+
+      {/* Calibration badge */}
+      {wr != null && expectedWr != null && nonVoid >= 3 && (
+        <div className={`text-[10px] ${beating ? "text-emerald-400" : "text-rose-400"}`}>
+          {beating
+            ? `+${fmtPct1(wr - expectedWr)} above expected ✓`
+            : `${fmtPct1(wr - expectedWr)} below expected`}
+        </div>
+      )}
+      {nonVoid < 3 && (
+        <div className="text-[10px] text-muted-foreground">need more data</div>
+      )}
+    </div>
+  );
+}
+
 // ── Sortable column header ─────────────────────────────────────────────────────
 type SortDir = "asc" | "desc";
 function SortTh({
@@ -330,31 +401,48 @@ function ResultsPanel({
     <section className="space-y-5">
       <h2 className="text-lg font-bold">📈 Results &amp; Analytics</h2>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard
-          label="Settled bets"
-          value={String(totalSettled)}
-          sub={`${totalWon}W · ${totalLost}L · ${totalVoid} push`}
-        />
-        <StatCard
-          label="Overall win rate"
-          value={overallWinRate != null ? fmtPct1(overallWinRate) : "—"}
-          sub={`${totalWon + totalLost} non-void`}
-          color={overallWinRate != null && overallWinRate >= 0.5 ? "text-emerald-400" : "text-rose-400"}
-        />
-        <StatCard
-          label="ROI (market bets)"
-          value={overallRoi != null ? fmtRoi(overallRoi) : "—"}
-          sub={`${totalMarket} bets with odds`}
-          color={overallRoi != null && overallRoi >= 0 ? "text-emerald-400" : "text-rose-400"}
-        />
-        <StatCard
-          label="Star tiers tracked"
-          value={String(backtest.length)}
-          sub={backtest.length > 0 ? `${backtest[0]?.stars}★ top tier` : "none yet"}
-        />
+      {/* Overall summary strip */}
+      <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
+        <div>
+          <span className="text-muted-foreground text-xs">Settled</span>
+          <span className="ml-1.5 font-bold tabular-nums">{totalSettled}</span>
+          <span className="ml-1 text-xs text-muted-foreground">({totalWon}W · {totalLost}L · {totalVoid} push)</span>
+        </div>
+        <div className="h-4 w-px bg-border hidden sm:block" />
+        <div>
+          <span className="text-muted-foreground text-xs">Win rate</span>
+          <span className={`ml-1.5 font-bold tabular-nums ${overallWinRate != null && overallWinRate >= 0.5 ? "text-emerald-400" : "text-rose-400"}`}>
+            {overallWinRate != null ? fmtPct1(overallWinRate) : "—"}
+          </span>
+        </div>
+        <div className="h-4 w-px bg-border hidden sm:block" />
+        <div>
+          <span className="text-muted-foreground text-xs">Overall ROI</span>
+          <span className={`ml-1.5 font-bold tabular-nums ${overallRoi != null && overallRoi >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            {overallRoi != null ? fmtRoi(overallRoi) : "—"}
+          </span>
+          <span className="ml-1 text-xs text-muted-foreground">({totalMarket} bets)</span>
+        </div>
+        <div className="h-4 w-px bg-border hidden sm:block" />
+        <div>
+          <span className="text-muted-foreground text-xs">Star tiers</span>
+          <span className="ml-1.5 font-bold tabular-nums">{backtest.length}</span>
+        </div>
       </div>
+
+      {/* Per-type KPI cards */}
+      {byTypeRows.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            By bet type{tMinStars > 1 ? ` — ${tMinStars}★+ only` : ""}
+          </h3>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {byTypeRows.map((r) => (
+              <BetTypeCard key={r.betType} {...r} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* P&L chart */}
       <PnlChart bets={bets} />
@@ -478,76 +566,6 @@ function ResultsPanel({
             </table>
           </div>
         )}
-      </div>
-
-      {/* By bet type — reacts to tMinStars filter */}
-      <div>
-        <h3 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Results by bet type{tMinStars > 1 ? ` — ${tMinStars}★+ only` : ""}
-        </h3>
-        {byTypeRows.length === 0 ? (
-          <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-            No settled bets at {tMinStars}★+.
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full min-w-[600px] text-sm">
-              <thead>
-                <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-3 py-2 text-left font-medium">Type</th>
-                  <th className="px-2 py-2 text-center font-medium">Won</th>
-                  <th className="px-2 py-2 text-center font-medium">Lost</th>
-                  <th className="px-2 py-2 text-center font-medium">Push</th>
-                  <th className="px-2 py-2 text-center font-medium">Win %</th>
-                  <th className="px-2 py-2 text-center font-medium">Expected</th>
-                  <th className="px-2 py-2 text-center font-medium">ROI</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byTypeRows.map((r) => {
-                  const nonVoid = r.won + r.lost;
-                  const wr = nonVoid > 0 ? r.won / nonVoid : null;
-                  const expectedWr = r.nExpected > 0 ? r.sumExpected / r.nExpected : null;
-                  const beat = wr != null && expectedWr != null && wr >= expectedWr;
-                  const roi = r.marketBets > 0 ? r.profit / r.marketBets : null;
-                  return (
-                    <tr key={r.betType} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="px-3 py-2 font-medium">
-                        {BET_TYPE_LABEL[r.betType] ?? r.betType}
-                      </td>
-                      <td className="px-2 py-2 text-center">
-                        <span className="font-medium text-emerald-400">{r.won}</span>
-                      </td>
-                      <td className="px-2 py-2 text-center">
-                        <span className="text-rose-400">{r.lost}</span>
-                      </td>
-                      <td className="px-2 py-2 text-center text-muted-foreground">{r.voided}</td>
-                      <td className={`px-2 py-2 text-center font-medium tabular-nums ${beat ? "text-emerald-400" : wr != null ? "text-rose-400" : "text-muted-foreground"}`}>
-                        {wr != null ? fmtPct1(wr) : "—"}
-                      </td>
-                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
-                        {expectedWr != null ? fmtPct1(expectedWr) : "—"}
-                      </td>
-                      <td className="px-2 py-2 text-center tabular-nums">
-                        {roi != null ? (
-                          <span className={roi >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                            {fmtRoi(roi)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Win % excludes pushes. ROI = profit per unit staked (−100% = all lost, +100% = doubled).
-          Green = beating our own expected win rate. Use the Min ★ filter above to drill into a star tier.
-        </p>
       </div>
 
       {/* By star rating */}
