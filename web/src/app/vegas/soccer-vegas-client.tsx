@@ -297,7 +297,7 @@ function PnlChart({ bets }: { bets: SoccerBetRow[] }) {
         </ResponsiveContainer>
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        1 unit staked per bet (market bets only — excludes no-market group winner bets and pushes).
+        1 unit staked per game (best-rated side only — excludes no-market group winner bets and pushes).
         Peak: {peak >= 0 ? "+" : ""}{peak.toFixed(2)}u · Trough: {trough.toFixed(2)}u · {points.length} settled bets.
       </p>
     </div>
@@ -622,8 +622,8 @@ function ResultsPanel({
         );
       })()}
 
-      {/* P&L chart */}
-      <PnlChart bets={bets} />
+      {/* P&L chart — same best-per-game pool as the KPI cards */}
+      <PnlChart bets={bestPerGame} />
 
       {/* Individual settled bets — filterable + sortable */}
       <div>
