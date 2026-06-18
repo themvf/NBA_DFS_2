@@ -1,6 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from "recharts";
 import type {
   SoccerVegasMatchupRow,
   SoccerBetRow,
@@ -121,6 +131,105 @@ function SortTh({
     >
       {label}{active ? (sort.dir === "desc" ? " ↓" : " ↑") : ""}
     </th>
+  );
+}
+
+// ── P&L chart ─────────────────────────────────────────────────────────────────
+function PnlChart({ bets }: { bets: SoccerBetRow[] }) {
+  const points = useMemo(() => {
+    const settled = bets
+      .filter((b) => b.status !== "pending" && b.status !== "void" && b.marketDecimal != null)
+      .sort((a, b) => (a.gameDate ?? "").localeCompare(b.gameDate ?? ""));
+
+    let cumPnl = 0;
+    const pts: { label: string; pnl: number; bet: string }[] = [];
+    for (const b of settled) {
+      const pnl = b.status === "won" ? b.marketDecimal! - 1 : -1;
+      cumPnl += pnl;
+      const date = b.gameDate
+        ? new Date(`${b.gameDate}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+        : "?";
+      pts.push({ label: date, pnl: Math.round(cumPnl * 100) / 100, bet: b.selectionLabel });
+    }
+    return pts;
+  }, [bets]);
+
+  if (points.length < 2) return null;
+
+  const final = points[points.length - 1]?.pnl ?? 0;
+  const peak = Math.max(...points.map((p) => p.pnl), 0);
+  const trough = Math.min(...points.map((p) => p.pnl), 0);
+  const positive = final >= 0;
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Cumulative P&amp;L (units)
+        </h3>
+        <span className={`text-sm font-bold tabular-nums ${positive ? "text-emerald-400" : "text-rose-400"}`}>
+          {final >= 0 ? "+" : ""}{final.toFixed(2)}u
+        </span>
+      </div>
+      <div className="rounded-lg border bg-card p-3">
+        <ResponsiveContainer width="100%" height={160}>
+          <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={positive ? "#10b981" : "#f43f5e"} stopOpacity={0.25} />
+                <stop offset="95%" stopColor={positive ? "#10b981" : "#f43f5e"} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false}
+              axisLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v) => `${v > 0 ? "+" : ""}${v}`}
+              domain={[Math.floor(trough - 0.5), Math.ceil(peak + 0.5)]}
+              width={36}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "hsl(var(--card))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: 6,
+                fontSize: 11,
+              }}
+              formatter={(value) => {
+                const v = typeof value === "number" ? value : 0;
+                return [`${v >= 0 ? "+" : ""}${v.toFixed(2)}u`, "Cumul. P&L"];
+              }}
+              labelFormatter={(label, payload) => {
+                const bet = payload?.[0]?.payload?.bet ?? "";
+                return `${label}${bet ? ` · ${bet}` : ""}`;
+              }}
+            />
+            <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.4} strokeDasharray="4 4" />
+            <Area
+              type="monotone"
+              dataKey="pnl"
+              stroke={positive ? "#10b981" : "#f43f5e"}
+              strokeWidth={2}
+              fill="url(#pnlGrad)"
+              dot={false}
+              activeDot={{ r: 4, strokeWidth: 0 }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        1 unit staked per bet (market bets only — excludes no-market group winner bets and pushes).
+        Peak: {peak >= 0 ? "+" : ""}{peak.toFixed(2)}u · Trough: {trough.toFixed(2)}u · {points.length} settled bets.
+      </p>
+    </div>
   );
 }
 
@@ -246,6 +355,9 @@ function ResultsPanel({
           sub={backtest.length > 0 ? `${backtest[0]?.stars}★ top tier` : "none yet"}
         />
       </div>
+
+      {/* P&L chart */}
+      <PnlChart bets={bets} />
 
       {/* Individual settled bets — filterable + sortable */}
       <div>
@@ -1282,21 +1394,36 @@ export default function SoccerVegasClient({
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 border-b">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? "border-b-2 border-primary text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+      {/* Tab bar — pill nav on desktop, select dropdown on mobile */}
+      <div>
+        {/* Mobile: dropdown */}
+        <div className="sm:hidden">
+          <select
+            value={tab}
+            onChange={(e) => setTab(e.target.value as Tab)}
+            className="w-full rounded-lg border bg-card px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary"
           >
-            {t.label}
-          </button>
-        ))}
+            {TABS.map((t) => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+        {/* Desktop: pill nav */}
+        <div className="hidden sm:flex gap-1 border-b overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? "border-b-2 border-primary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Tab content */}
