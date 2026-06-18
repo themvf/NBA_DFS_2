@@ -261,6 +261,47 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
     return updated
 
 
+def backfill_predictions(db: DatabaseManager, start_date: str, end_date: str) -> int:
+    """Walk-forward backfill of our_total_pred over a historical date range.
+
+    For each game date in [start_date, end_date], the model is trained ONLY on
+    games that completed strictly before that date, then predicts that date's
+    games.  This is look-ahead-safe, so the resulting ``our_total_pred`` on
+    already-completed games forms an honest out-of-sample track record for the
+    backtest (no future information leaks into any prediction).
+
+    Returns the number of games written.
+    """
+    df = build_features(load_game_data(db))
+    df["game_date"] = df["game_date"].astype(str)
+    feat_ok = df[FEATURE_COLS].notna().all(axis=1)
+    has_actual = df["actual_total"].notna() & df["vegas_total"].notna()
+
+    dates = sorted(d for d in df.loc[(df["game_date"] >= start_date)
+                                     & (df["game_date"] <= end_date), "game_date"].unique())
+    written = 0
+    for d in dates:
+        train = df[has_actual & feat_ok & (df["game_date"] < d)]
+        if len(train) < _MIN_TRAIN_GAMES:
+            continue
+        targets = df[feat_ok & (df["game_date"] == d)]
+        if targets.empty:
+            continue
+        model, scaler = _fit(train)
+        miss = np.clip(model.predict(scaler.transform(targets[FEATURE_COLS].values.astype(float))), -3.0, 3.0)
+        preds = targets["vegas_total"].values.astype(float) + miss
+        for mid, pred in zip(targets["id"].values, preds):
+            db.execute(
+                "UPDATE mlb_matchups SET our_total_pred = %s WHERE id = %s",
+                (float(round(float(pred), 2)), int(mid)),
+            )
+            written += 1
+
+    print(f"MLB total model: walk-forward backfill wrote {written} predictions "
+          f"across {len(dates)} dates ({start_date} to {end_date})")
+    return written
+
+
 def evaluate(db: DatabaseManager, test_fraction: float = 0.20) -> dict:
     """Chronological holdout — our MAE/bias vs the Vegas baseline."""
     df = build_features(load_game_data(db))
@@ -316,6 +357,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MLB game-total (O/U) model")
     parser.add_argument("--date", help="Game date YYYY-MM-DD (default: today)")
     parser.add_argument("--evaluate", action="store_true", help="Print holdout evaluation and exit")
+    parser.add_argument("--backfill", nargs=2, metavar=("START", "END"),
+                        help="Walk-forward backfill our_total_pred over a date range (look-ahead safe)")
     parser.add_argument("--output", help="Optional path to write evaluation JSON")
     args = parser.parse_args()
 
@@ -328,5 +371,7 @@ if __name__ == "__main__":
             from pathlib import Path
             Path(args.output).write_text(json.dumps(res, indent=2))
             print(f"Wrote {args.output}")
+    elif args.backfill:
+        backfill_predictions(db, args.backfill[0], args.backfill[1])
     else:
         predict_and_write(db, args.date)

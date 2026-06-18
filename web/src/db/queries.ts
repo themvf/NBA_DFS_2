@@ -7109,6 +7109,135 @@ export async function getMlbRunLineCoverage(): Promise<SpreadCoverageRow[]> {
   });
 }
 
+// ── MLB total model backtest (our O/U number vs the line) ─────────
+// The model's prediction is frozen in mlb_matchups (predict_and_write only
+// writes unscored games), so a completed row IS the settled recommendation:
+// our lean = sign(our_total_pred − vegas_total), graded against the actual.
+// Bucketed by |edge| so we can see whether bigger disagreements win more.
+
+export type MlbTotalBacktestTier = {
+  tier: string;
+  tierMin: number | null;
+  n: number;          // games in this tier (incl. no-lean / push)
+  bets: number;       // decided bets (edge ≠ 0 and not a push)
+  wins: number;
+  losses: number;
+  pushes: number;
+  winRate: number | null;   // wins / bets
+  roi: number | null;       // units per 1u bet at −110
+  avgEdge: number | null;   // avg |our − vegas| in the tier
+};
+
+export type MlbTotalBacktest = {
+  overall: MlbTotalBacktestTier;
+  tiers: MlbTotalBacktestTier[];
+};
+
+const _MLB_WIN_PAYOUT = 100 / 110; // −110 net return on a winning unit
+
+function _mlbTierFromRows(rows: MlbTotalBacktestTier[], label: string): MlbTotalBacktestTier {
+  const agg = rows.reduce(
+    (a, r) => ({
+      n: a.n + r.n,
+      bets: a.bets + r.bets,
+      wins: a.wins + r.wins,
+      losses: a.losses + r.losses,
+      pushes: a.pushes + r.pushes,
+      edgeSum: a.edgeSum + (r.avgEdge ?? 0) * r.bets,
+    }),
+    { n: 0, bets: 0, wins: 0, losses: 0, pushes: 0, edgeSum: 0 },
+  );
+  return {
+    tier: label,
+    tierMin: null,
+    n: agg.n,
+    bets: agg.bets,
+    wins: agg.wins,
+    losses: agg.losses,
+    pushes: agg.pushes,
+    winRate: agg.bets > 0 ? agg.wins / agg.bets : null,
+    roi: agg.bets > 0 ? (agg.wins * _MLB_WIN_PAYOUT - agg.losses) / agg.bets : null,
+    avgEdge: agg.bets > 0 ? agg.edgeSum / agg.bets : null,
+  };
+}
+
+export async function getMlbTotalModelBacktest(): Promise<MlbTotalBacktest> {
+  const rows = await db.execute<{
+    tier: string;
+    tierMin: number | null;
+    n: number;
+    bets: number;
+    wins: number;
+    losses: number;
+    pushes: number;
+    avgEdge: number | null;
+  }>(sql`
+    WITH settled AS (
+      SELECT
+        m.our_total_pred - m.vegas_total                       AS edge,
+        (m.home_score + m.away_score) - m.vegas_total          AS actual_margin
+      FROM mlb_matchups m
+      WHERE m.our_total_pred IS NOT NULL
+        AND m.vegas_total   IS NOT NULL
+        AND m.home_score    IS NOT NULL
+        AND m.away_score    IS NOT NULL
+    ),
+    graded AS (
+      SELECT
+        ABS(edge)                                  AS abs_edge,
+        (edge <> 0 AND actual_margin <> 0)         AS is_bet,
+        (edge <> 0 AND actual_margin <> 0
+          AND sign(edge) = sign(actual_margin))    AS is_win,
+        (edge <> 0 AND actual_margin <> 0
+          AND sign(edge) <> sign(actual_margin))   AS is_loss,
+        (actual_margin = 0)                        AS is_push
+      FROM settled
+    )
+    SELECT
+      CASE
+        WHEN abs_edge < 0.5 THEN '0.0–0.5 (no lean)'
+        WHEN abs_edge < 1.0 THEN '0.5–1.0 (lean)'
+        WHEN abs_edge < 1.5 THEN '1.0–1.5 (moderate)'
+        ELSE '1.5+ (strong)'
+      END                                                       AS "tier",
+      CASE
+        WHEN abs_edge < 0.5 THEN 0.0
+        WHEN abs_edge < 1.0 THEN 0.5
+        WHEN abs_edge < 1.5 THEN 1.0
+        ELSE 1.5
+      END                                                       AS "tierMin",
+      COUNT(*)::int                                             AS "n",
+      COUNT(*) FILTER (WHERE is_bet)::int                       AS "bets",
+      COUNT(*) FILTER (WHERE is_win)::int                       AS "wins",
+      COUNT(*) FILTER (WHERE is_loss)::int                      AS "losses",
+      COUNT(*) FILTER (WHERE is_push)::int                      AS "pushes",
+      AVG(abs_edge) FILTER (WHERE is_bet)                       AS "avgEdge"
+    FROM graded
+    GROUP BY 1, 2
+    ORDER BY 2 ASC
+  `);
+
+  const tiers: MlbTotalBacktestTier[] = rows.rows.map((r) => {
+    const bets = Number(r.bets);
+    const wins = Number(r.wins);
+    const losses = Number(r.losses);
+    return {
+      tier: String(r.tier),
+      tierMin: r.tierMin != null ? Number(r.tierMin) : null,
+      n: Number(r.n),
+      bets,
+      wins,
+      losses,
+      pushes: Number(r.pushes),
+      winRate: bets > 0 ? wins / bets : null,
+      roi: bets > 0 ? (wins * _MLB_WIN_PAYOUT - losses) / bets : null,
+      avgEdge: r.avgEdge != null ? Number(r.avgEdge) : null,
+    };
+  });
+
+  return { overall: _mlbTierFromRows(tiers, "All graded"), tiers };
+}
+
 // ── Vegas Summary Stats ──────────────────────────────────────
 
 export type MlbVegasCoverageStatus = {

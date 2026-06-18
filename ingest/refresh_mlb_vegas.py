@@ -46,9 +46,21 @@ def _run_refresh_stage(label: str, fn: Callable[[], T]) -> tuple[bool, T | None]
         return False, None
 
 
-def _write_total_predictions(db: DatabaseManager, refresh_date_iso: str) -> int:
-    """Train + write our_total_pred for the slate (soft dependency)."""
-    from model.mlb_game_total_model import predict_and_write
+def _write_total_predictions(db: DatabaseManager, refresh_date_iso: str, days_back: int = 7) -> int:
+    """Write our_total_pred for the slate, self-healing recent gaps.
+
+    First walk-forward-backfills the trailing window (deterministic + look-ahead
+    safe, so it just fills any days a prior run missed without disturbing the
+    frozen pre-game numbers), then writes today's slate.
+    """
+    from model.mlb_game_total_model import backfill_predictions, predict_and_write
+
+    if days_back > 0:
+        refresh_date = date.fromisoformat(refresh_date_iso)
+        start = (refresh_date - timedelta(days=days_back)).isoformat()
+        yesterday = (refresh_date - timedelta(days=1)).isoformat()
+        if yesterday >= start:
+            backfill_predictions(db, start, yesterday)
     return predict_and_write(db, refresh_date_iso)
 
 

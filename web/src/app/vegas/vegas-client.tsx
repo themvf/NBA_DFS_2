@@ -12,6 +12,7 @@ import type {
   BiggestMissRow,
   TeamVegasInsightRow,
   MoneylineBacktestReport,
+  MlbTotalBacktest,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
@@ -496,12 +497,151 @@ function BiasChip({ bias }: { bias: number | null }) {
   );
 }
 
+/**
+ * MLB "Our Total" cell — our model number plus a calibrated strength chip.
+ * Tiers come straight from the walk-forward backtest:
+ *   ≥1.5 run edge → Strong (≈56%, +7% ROI)
+ *   ≥1.0 run edge → Lean   (≈56%, +7% ROI)   ← actionable threshold
+ *   0.5–1.0       → sub-threshold (≈49–53%, skip)
+ *   <0.5          → no lean
+ */
+function OurTotalCell({ edge, ourTotal }: { edge: number | null; ourTotal: number | null }) {
+  if (edge == null || ourTotal == null) {
+    return <span className="text-gray-400">—</span>;
+  }
+  const abs = Math.abs(edge);
+  const side = edge > 0 ? "O" : "U";
+  const signed = `${edge > 0 ? "+" : ""}${edge.toFixed(1)}`;
+
+  let chip: { text: string; cls: string } | null = null;
+  if (abs >= 1.5) {
+    chip = { text: `Strong ${side}`, cls: "bg-emerald-600 text-white" };
+  } else if (abs >= MLB_TOTAL_ACTIONABLE_EDGE) {
+    chip = { text: `Lean ${side}`, cls: "bg-emerald-100 text-emerald-800 border border-emerald-300" };
+  } else if (abs >= 0.5) {
+    chip = { text: `${side} ${signed}`, cls: "bg-gray-100 text-gray-500" };
+  }
+
+  return (
+    <span className="inline-flex items-center justify-end gap-1.5 tabular-nums">
+      <span className="text-gray-700">{ourTotal.toFixed(1)}</span>
+      {chip ? (
+        <span
+          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${chip.cls}`}
+          title={`Model ${edge > 0 ? "over" : "under"} by ${abs.toFixed(1)} runs`}
+        >
+          {abs >= MLB_TOTAL_ACTIONABLE_EDGE ? `${chip.text} ${signed}` : chip.text}
+        </span>
+      ) : (
+        <span className="text-[10px] text-gray-400">{signed}</span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * MLB total-model backtest panel — walk-forward calibration of our O/U number
+ * vs the line, bucketed by edge magnitude. Makes the "trust the ≥1-run edges,
+ * skip the small ones" finding legible at a glance.
+ */
+function MlbTotalBacktestPanel({ backtest }: { backtest: MlbTotalBacktest }) {
+  const { overall, tiers } = backtest;
+  if (overall.bets === 0) {
+    return (
+      <div className="rounded-lg border bg-white p-4">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
+          Model O/U Backtest
+        </h3>
+        <p className="text-xs text-gray-500">
+          No settled model predictions yet. Track record builds as games with{" "}
+          <code className="rounded bg-gray-100 px-1">our_total_pred</code> complete.
+        </p>
+      </div>
+    );
+  }
+
+  const BREAKEVEN = 0.5238; // −110 vig
+  const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
+  const roiStr = (v: number | null) =>
+    v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          Model O/U Backtest
+        </h3>
+        <span className="text-xs text-gray-500">
+          {overall.wins}–{overall.losses} ({pct(overall.winRate)}),{" "}
+          <span className={overall.roi != null && overall.roi >= 0 ? "text-emerald-600" : "text-red-600"}>
+            {roiStr(overall.roi)} ROI
+          </span>{" "}
+          on {overall.bets} graded bets
+        </span>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">
+        Walk-forward (train on prior games only). Our lean = side of the line our number takes;
+        graded vs the actual total. <strong>Edges ≥ 1 run are the actionable tier</strong> —
+        the page only flags those as O/U leans.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b text-gray-500">
+              <th className="py-1 text-left">Edge (|our − line|)</th>
+              <th className="py-1 text-right">Bets</th>
+              <th className="py-1 text-right">W–L</th>
+              <th className="py-1 text-right">Win%</th>
+              <th className="py-1 text-right">ROI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tiers.map((t) => {
+              const actionable = t.tierMin != null && t.tierMin >= MLB_TOTAL_ACTIONABLE_EDGE;
+              const beatBreakeven = t.winRate != null && t.winRate >= BREAKEVEN;
+              return (
+                <tr
+                  key={t.tier}
+                  className={`border-b border-gray-50 ${actionable ? "bg-emerald-50/40" : ""}`}
+                >
+                  <td className="py-1.5">
+                    {t.tier}
+                    {actionable && (
+                      <span className="ml-1.5 rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold text-emerald-700">
+                        ACTIONABLE
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-1.5 text-right text-gray-500">{t.bets}</td>
+                  <td className="py-1.5 text-right tabular-nums">{t.wins}–{t.losses}</td>
+                  <td className={`py-1.5 text-right tabular-nums font-medium ${beatBreakeven ? "text-emerald-600" : "text-gray-500"}`}>
+                    {pct(t.winRate)}
+                  </td>
+                  <td className={`py-1.5 text-right tabular-nums ${t.roi != null && t.roi >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                    {roiStr(t.roi)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-gray-400">
+        Win% ≥ 52.4% (green) clears the −110 breakeven. Settlement is automatic: the prediction
+        freezes pre-game in <code className="rounded bg-gray-100 px-1">mlb_matchups</code> and is
+        graded once the final score lands.
+      </p>
+    </div>
+  );
+}
+
 type Props = {
   matchups: VegasMatchupRow[];
   ouHitRate: OuHitRateRow[];
   teamTotalAccuracy: TeamTotalAccuracyRow[];
   spreadCoverage: SpreadCoverageRow[];
   mlbCoverageStatus: MlbVegasCoverageStatus | null;
+  mlbTotalBacktest: MlbTotalBacktest | null;
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
   teamInsights: TeamVegasInsightRow[];
@@ -537,6 +677,7 @@ type BettingRow = {
   ouScore: number | null;
   spreadScore: number | null;
   mlScore: number | null;
+  ouActionable: boolean;
   actionableCount: number;
   strongestEdge: number;
 };
@@ -561,6 +702,31 @@ function isActionableScore(
   return Math.abs(score - 0.5) >= getRecommendationBand(sport, market);
 }
 
+// Calibrated MLB O/U actionability. The walk-forward backtest
+// (getMlbTotalModelBacktest) shows our_total_pred edges < 1.0 run are
+// coin-flips (49–53%) while edges ≥ 1.0 run hit ~56% / +7% ROI. So a MLB O/U
+// lean is only "actionable" when the model disagrees with the line by ≥ 1 run.
+const MLB_TOTAL_ACTIONABLE_EDGE = 1.0;
+
+function mlbTotalEdge(m: VegasMatchupRow): number | null {
+  if (m.ourTotalPred == null || m.vegasTotal == null) return null;
+  return m.ourTotalPred - m.vegasTotal;
+}
+
+function isOuActionable(
+  m: VegasMatchupRow,
+  ouScore: number | null | undefined,
+  sport: Sport,
+): boolean {
+  if (sport === "mlb") {
+    const edge = mlbTotalEdge(m);
+    // With a model number, gate on the calibrated edge; otherwise fall back
+    // to the blended-score band (e.g. a game missing our_total_pred).
+    if (edge != null) return Math.abs(edge) >= MLB_TOTAL_ACTIONABLE_EDGE;
+  }
+  return isActionableScore(ouScore, sport, "ou");
+}
+
 function renderRecommendationScore(
   score: number | null | undefined,
   displayScore: number | null | undefined,
@@ -568,11 +734,13 @@ function renderRecommendationScore(
   signals: ScoreSignal[] | undefined,
   sport: Sport,
   market: RecommendationMarket,
+  forceActionable?: boolean,
 ) {
   if (score == null || displayScore == null) {
     return <span className="text-gray-300 text-xs">—</span>;
   }
-  if (!isActionableScore(score, sport, market)) {
+  const actionable = forceActionable ?? isActionableScore(score, sport, market);
+  if (!actionable) {
     return <span className="text-gray-400 text-xs">No edge</span>;
   }
   return <ScoreBadge score={displayScore} label={label} signals={signals} />;
@@ -630,16 +798,20 @@ function getQualifiedOuPlay(
 ): QualifiedOuPlay | null {
   const ou = computeOuScore(matchup, ouHitRate, teamInsights, sport);
   const score = ou?.score ?? null;
-  if (score == null || matchup.vegasTotal == null || !isActionableScore(score, sport, "ou")) {
+  if (score == null || matchup.vegasTotal == null || !isOuActionable(matchup, score, sport)) {
     return null;
   }
+  // For MLB, the side + edge come from the calibrated model number; other
+  // sports use the blended score.
+  const mlbEdge = sport === "mlb" ? mlbTotalEdge(matchup) : null;
+  const isOver = mlbEdge != null ? mlbEdge > 0 : score >= 0.5;
   return {
     matchupId: matchup.matchupId,
     matchupLabel: `${matchup.awayAbbrev} @ ${matchup.homeAbbrev}`,
     total: matchup.vegasTotal,
-    side: score >= 0.5 ? "Over" : "Under",
+    side: isOver ? "Over" : "Under",
     score: score >= 0.5 ? score : 1 - score,
-    edge: Math.abs(score - 0.5),
+    edge: mlbEdge != null ? Math.abs(mlbEdge) : Math.abs(score - 0.5),
   };
 }
 
@@ -649,6 +821,7 @@ export default function VegasClient({
   teamTotalAccuracy,
   spreadCoverage,
   mlbCoverageStatus,
+  mlbTotalBacktest,
   vegasSummary,
   biggestMisses,
   teamInsights,
@@ -707,8 +880,9 @@ export default function VegasClient({
       const ouScore = ou?.score ?? null;
       const spreadScore = spread?.score ?? null;
       const mlScore = ml?.score ?? null;
+      const ouActionable = isOuActionable(matchup, ouScore, sport);
       const actionableEdges = [
-        isActionableScore(ouScore, sport, "ou") ? Math.abs(ouScore - 0.5) : 0,
+        ouActionable && ouScore != null ? Math.abs(ouScore - 0.5) : 0,
         isActionableScore(spreadScore, sport, "spread") ? Math.abs(spreadScore - 0.5) : 0,
         isActionableScore(mlScore, sport, "ml") ? Math.abs(mlScore - 0.5) : 0,
       ].filter((edge) => edge > 0);
@@ -720,6 +894,7 @@ export default function VegasClient({
         ouScore,
         spreadScore,
         mlScore,
+        ouActionable,
         actionableCount: actionableEdges.length,
         strongestEdge: actionableEdges.length > 0 ? Math.max(...actionableEdges) : 0,
       };
@@ -1131,7 +1306,9 @@ export default function VegasClient({
                     <td className="py-1.5 text-right">{fmt1(play.total)}</td>
                     <td className="py-1.5 text-left">{play.side}</td>
                     <td className="py-1.5 text-right">{fmtPct(play.score)}</td>
-                    <td className="py-1.5 text-right text-green-700 font-semibold">{fmtSignedPp(play.edge)}</td>
+                    <td className="py-1.5 text-right text-green-700 font-semibold">
+                      {sport === "mlb" ? `+${play.edge.toFixed(1)} runs` : fmtSignedPp(play.edge)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1260,14 +1437,18 @@ export default function VegasClient({
               </thead>
               <tbody>
                 {bettingRows.map((row) => {
-                  const { matchup: m, ou, spread, ml, ouScore, spreadScore, mlScore } = row;
+                  const { matchup: m, ou, spread, ml, ouScore, spreadScore, mlScore, ouActionable } = row;
 
-                  const ouLabel =
-                    isActionableScore(ouScore, sport, "ou")
-                      ? ouScore >= 0.5
+                  // MLB O/U lean direction comes from the model edge (calibrated
+                  // ≥1-run gate); other sports/markets use the blended score.
+                  const mlbEdge = sport === "mlb" ? mlbTotalEdge(m) : null;
+                  const ouLabel = ouActionable
+                    ? sport === "mlb" && mlbEdge != null
+                      ? mlbEdge > 0 ? "O" : "U"
+                      : ouScore != null && ouScore >= 0.5
                         ? "O"
                         : "U"
-                      : undefined;
+                    : undefined;
                   const spreadLabel =
                     isActionableScore(spreadScore, sport, "spread")
                       ? spreadScore >= 0.5
@@ -1341,24 +1522,7 @@ export default function VegasClient({
                       <td className="py-1.5 text-right text-gray-500">{fmt1(m.vegasTotal)}</td>
                       {sport === "mlb" && (
                         <td className="py-1.5 text-right tabular-nums">
-                          {m.ourTotalPred != null && m.vegasTotal != null ? (
-                            <span>
-                              {m.ourTotalPred.toFixed(1)}
-                              <span
-                                className={
-                                  m.ourTotalPred - m.vegasTotal > 0
-                                    ? "ml-1 text-[10px] text-emerald-600"
-                                    : "ml-1 text-[10px] text-sky-600"
-                                }
-                              >
-                                ({m.ourTotalPred - m.vegasTotal > 0 ? "O" : "U"}{" "}
-                                {(m.ourTotalPred - m.vegasTotal > 0 ? "+" : "")}
-                                {(m.ourTotalPred - m.vegasTotal).toFixed(1)})
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
+                          <OurTotalCell edge={mlbEdge} ourTotal={m.ourTotalPred} />
                         </td>
                       )}
                       <td className="py-1.5 text-right">
@@ -1369,6 +1533,7 @@ export default function VegasClient({
                           ou?.signals,
                           sport,
                           "ou",
+                          ouActionable,
                         )}
                       </td>
                       <td className="py-1.5 text-right text-gray-500">{homeSpreadStr}</td>
@@ -1444,6 +1609,11 @@ export default function VegasClient({
             </>
           )}
         </div>
+      )}
+
+      {/* ── Model O/U Backtest (MLB) ──────────────────────────── */}
+      {sport === "mlb" && mlbTotalBacktest && (
+        <MlbTotalBacktestPanel backtest={mlbTotalBacktest} />
       )}
 
       {/* ── O/U Hit Rate ──────────────────────────────────────── */}

@@ -51,7 +51,44 @@ Rendered through the shared `VegasClient` (`sport="mlb"`). Two layers:
 | 1 | **Residual-over-Vegas total model** → write `our_total_pred` to `mlb_matchups` (features: SP xFIP/K9, park, weather/wind, team wRC+/ISO, bullpen FIP). `model/mlb_game_total_model.py`. | ✅ Done |
 | 2 | Feed unused team offense + bullpen stats into the O/U score | ✅ Done (via the model — the model consumes wRC+/ISO/bullpen FIP and feeds the score as one dominant signal, cleaner than raw feeding) |
 | 3 | Down-weight raw team over-history once real environment signals exist | ✅ Done (history signals drop 0.20→0.10 each when the model total is present) |
-| 4 | Edge flag + settled-bet backtest mirroring the soccer Vegas ledger | Planned (next) |
+| 4 | Edge flag + settled-bet backtest mirroring the soccer Vegas ledger | ✅ Done |
+
+## Priority 4 readout (2026-06-18) — calibration + UI indicators
+
+No separate ledger table needed: `predict_and_write` only touches unscored
+games, so a completed `mlb_matchups` row IS the frozen settled recommendation.
+`getMlbTotalModelBacktest()` grades our lean (side of the line our number takes)
+vs the actual, bucketed by edge magnitude. Historical predictions were
+**walk-forward backfilled** (`--backfill`, train on strictly-prior games only —
+no look-ahead) so the track record is real and out-of-sample.
+
+**Walk-forward backtest (954 graded bets):**
+
+| Edge \|our − line\| | Bets | Win% | ROI (−110) |
+|---|---|---|---|
+| 0.0–0.5 | 287 | 52.6% | +0.4% |
+| 0.5–1.0 | 271 | 49.1% | −6.3% |
+| 1.0–1.5 | 177 | **55.9%** | **+6.8%** |
+| 1.5+ | 219 | **56.2%** | **+7.2%** |
+
+**Key finding → drives the UI:** edges < 1 run are coin-flips; edges **≥ 1 run hit
+~56% / +7% ROI**. So the page now only flags O/U leans when the model disagrees
+with the line by ≥ 1 run (`MLB_TOTAL_ACTIONABLE_EDGE = 1.0`).
+
+### Meaningful UI indications added
+
+- **"Our Total" column** with a calibrated strength chip: solid-green
+  **Strong O/U** (≥1.5), green **Lean O/U** (≥1.0, the actionable threshold),
+  gray sub-threshold (0.5–1.0), faint (<0.5). Color = calibrated confidence.
+- **O/U "Actionable" flag + lean direction** now gated on the ≥1-run model edge
+  (not the old score band), so the green action badges only fire where the
+  backtest says we win.
+- **Model O/U Backtest panel** — win%/ROI by edge tier with the actionable tier
+  highlighted and a green/red breakeven (52.4%) cue; headline record + ROI.
+- **"Qualified O/U Leans"** table + count now use the model edge (shown in runs),
+  consistent with the matchup-table badges.
+- Self-healing: `refresh_mlb_vegas.py` walk-forward-backfills the trailing 7 days
+  each run, so the backtest never has gaps.
 
 ## Build readout (2026-06-18)
 
