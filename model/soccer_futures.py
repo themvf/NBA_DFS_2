@@ -295,6 +295,34 @@ def simulate_group(
 
 # ── Pinnacle group winner market ──────────────────────────────────────────────
 
+def _pinnacle_get(url: str, retries: int = 3, base_delay: float = 0.6):
+    """GET from Pinnacle's guest API with retry-on-rate-limit.
+
+    The guest endpoint rate-limits bursts with 403/429, so a single group
+    market can transiently fail and leave that whole group without market data
+    (e.g. Group H dropping while the other 11 succeed). Retry with exponential
+    backoff so a throttle doesn't become a permanent gap. Returns the parsed
+    JSON, or None after exhausting retries.
+    """
+    import time
+
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, headers=_PINNACLE_HEADERS, timeout=12)
+            if r.status_code in (403, 429) and attempt < retries - 1:
+                time.sleep(base_delay * (2 ** attempt))
+                continue
+            r.raise_for_status()
+            return r.json()
+        except requests.RequestException as e:
+            if attempt < retries - 1:
+                time.sleep(base_delay * (2 ** attempt))
+                continue
+            logger.warning("Pinnacle GET failed after %d tries (%s): %s", retries, url, e)
+            return None
+    return None
+
+
 def _fetch_pinnacle_group_winner_odds(name_to_id: dict[str, int]) -> dict[int, dict]:
     """Fetch WC group winner odds from Pinnacle's public API.
 
@@ -314,15 +342,9 @@ def _fetch_pinnacle_group_winner_odds(name_to_id: dict[str, int]) -> dict[int, d
         if tid:
             norm_to_id[_norm(orig)] = tid
 
-    try:
-        r = requests.get(
-            f"{_PINNACLE_BASE}/leagues/{_PINNACLE_WC_LEAGUE}/matchups",
-            headers=_PINNACLE_HEADERS, timeout=15,
-        )
-        r.raise_for_status()
-        matchups = r.json()
-    except requests.RequestException as e:
-        logger.warning("Pinnacle matchup list failed: %s", e)
+    matchups = _pinnacle_get(f"{_PINNACLE_BASE}/leagues/{_PINNACLE_WC_LEAGUE}/matchups")
+    if not matchups:
+        logger.warning("Pinnacle matchup list unavailable")
         return {}
 
     gw_matchups = [
@@ -336,15 +358,9 @@ def _fetch_pinnacle_group_winner_odds(name_to_id: dict[str, int]) -> dict[int, d
     result: dict[int, dict] = {}
     for m in gw_matchups:
         pid_to_name = {p["id"]: p["name"] for p in m.get("participants", [])}
-        try:
-            mr = requests.get(
-                f"{_PINNACLE_BASE}/matchups/{m['id']}/markets/straight",
-                headers=_PINNACLE_HEADERS, timeout=10,
-            )
-            mr.raise_for_status()
-            markets = mr.json()
-        except requests.RequestException as e:
-            logger.warning("Pinnacle market fetch failed (%s): %s", m["id"], e)
+        markets = _pinnacle_get(f"{_PINNACLE_BASE}/matchups/{m['id']}/markets/straight")
+        if not markets:
+            logger.warning("Pinnacle group market unavailable (%s)", m["id"])
             time.sleep(0.1)
             continue
 
