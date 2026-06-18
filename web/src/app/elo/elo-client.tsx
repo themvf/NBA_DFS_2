@@ -577,40 +577,33 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {groups.map(([key, rows]) => {
               const sorted = [...rows].sort((a, b) => b.ourProb - a.ourProb);
-              const hasMarket = sorted.some((f) => f.marketProb != null);
               return (
                 <div key={key} className="rounded-lg border bg-card">
                   <div className="border-b px-3 py-2 text-sm font-semibold">
                     Group {key}
                   </div>
-                  <table className="w-full text-sm">
+                  <table className="w-full table-fixed text-sm">
                     <thead>
                       <tr className="border-b text-[10px] text-muted-foreground">
-                        <th className="px-3 py-1.5 text-left font-medium">
+                        <th className="w-[28%] px-3 py-1.5 text-left font-medium">
                           Team
                         </th>
-                        <th className="px-2 py-1.5 text-center font-medium">
+                        <th className="px-1 py-1.5 text-center font-medium">
                           Our %
                         </th>
-                        {hasMarket && (
-                          <>
-                            <th className="px-2 py-1.5 text-center font-medium">
-                              Mkt %
-                            </th>
-                            <th className="px-2 py-1.5 text-center font-medium">
-                              Pinnacle
-                            </th>
-                          </>
-                        )}
-                        <th className="px-2 py-1.5 text-center font-medium">
+                        <th className="px-1 py-1.5 text-center font-medium">
+                          Mkt %
+                        </th>
+                        <th className="px-1 py-1.5 text-center font-medium">
+                          Pinnacle
+                        </th>
+                        <th className="px-1 py-1.5 text-center font-medium">
                           Edge
                         </th>
-                        {hasMarket && (
-                          <th className="px-2 py-1.5 text-center font-medium">
-                            EV
-                          </th>
-                        )}
-                        <th className="px-2 py-1.5 text-center font-medium">
+                        <th className="px-1 py-1.5 text-center font-medium">
+                          EV
+                        </th>
+                        <th className="w-[12%] px-1 py-1.5 text-center font-medium">
                           ★
                         </th>
                       </tr>
@@ -621,25 +614,19 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
                           key={f.id}
                           className="border-b last:border-0 hover:bg-accent/40"
                         >
-                          <td className="px-3 py-1.5 font-medium text-sm">
+                          <td className="px-3 py-1.5 font-medium text-sm truncate">
                             {f.selectionLabel}
                           </td>
-                          <td className="px-2 py-1.5 text-center tabular-nums font-semibold">
+                          <td className="px-1 py-1.5 text-center tabular-nums font-semibold">
                             {fmtPct1(f.ourProb)}
                           </td>
-                          {hasMarket && (
-                            <>
-                              <td className="px-2 py-1.5 text-center tabular-nums text-xs text-muted-foreground">
-                                {f.marketProb != null
-                                  ? fmtPct1(f.marketProb)
-                                  : "—"}
-                              </td>
-                              <td className="px-2 py-1.5 text-center tabular-nums text-xs">
-                                {fmtMl(f.marketOdds)}
-                              </td>
-                            </>
-                          )}
-                          <td className="px-2 py-1.5 text-center tabular-nums text-xs">
+                          <td className="px-1 py-1.5 text-center tabular-nums text-xs text-muted-foreground">
+                            {f.marketProb != null ? fmtPct1(f.marketProb) : "—"}
+                          </td>
+                          <td className="px-1 py-1.5 text-center tabular-nums text-xs">
+                            {fmtMl(f.marketOdds)}
+                          </td>
+                          <td className="px-1 py-1.5 text-center tabular-nums text-xs">
                             {f.edge != null ? (
                               <span
                                 className={
@@ -654,24 +641,22 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
                               "—"
                             )}
                           </td>
-                          {hasMarket && (
-                            <td className="px-2 py-1.5 text-center tabular-nums text-xs">
-                              {f.ev != null ? (
-                                <span
-                                  className={
-                                    f.ev > 0
-                                      ? "text-emerald-400"
-                                      : "text-muted-foreground"
-                                  }
-                                >
-                                  {fmtSigned(f.ev)}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-                          )}
-                          <td className="px-2 py-1.5 text-center">
+                          <td className="px-1 py-1.5 text-center tabular-nums text-xs">
+                            {f.ev != null ? (
+                              <span
+                                className={
+                                  f.ev > 0
+                                    ? "text-emerald-400"
+                                    : "text-muted-foreground"
+                                }
+                              >
+                                {fmtSigned(f.ev)}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className="px-1 py-1.5 text-center">
                             <Stars n={f.stars} />
                           </td>
                         </tr>
