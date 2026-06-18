@@ -227,27 +227,69 @@ def simulate_outright(field: list[dict], sims: int) -> dict[int, float]:
     return {tid: w / sims for tid, w in wins.items()}
 
 
-def simulate_group(member_elos: list[tuple[int, float]], sims: int) -> dict[int, float]:
-    """Round-robin Monte Carlo → {team_id: P(finish 1st)}."""
-    first: dict[int, int] = {tid: 0 for tid, _ in member_elos}
-    pairs = [(i, j) for i in range(len(member_elos)) for j in range(i + 1, len(member_elos))]
+def simulate_group(
+    member_elos: list[tuple[int, float]],
+    sims: int,
+    results_by_pair: dict[tuple[int, int], tuple[int, int]] | None = None,
+) -> dict[int, float]:
+    """Round-robin Monte Carlo → {team_id: P(finish 1st)}.
+
+    Results-aware: games already played — passed in ``results_by_pair`` keyed by
+    the ordered ``(home_team_id, away_team_id)`` with value ``(home_goals,
+    away_goals)`` — are banked once as fixed points + goal difference, and only
+    the unplayed pairings are simulated.  A team's secured points (e.g. an
+    opening-game win) therefore carry into the projection instead of being
+    re-rolled from Elo every sim.  Ties break on points → goal difference (real
+    banked GD plus a nominal ±1 per simulated result) → random.
+    """
+    results_by_pair = results_by_pair or {}
+    ids = [tid for tid, _ in member_elos]
+    elo = dict(member_elos)
+    first: dict[int, int] = {tid: 0 for tid in ids}
+    unordered = [(ids[i], ids[j]) for i in range(len(ids)) for j in range(i + 1, len(ids))]
+
+    # Bank completed results once (constant across sims).
+    base_pts: dict[int, int] = {tid: 0 for tid in ids}
+    base_gd: dict[int, int] = {tid: 0 for tid in ids}
+    remaining: list[tuple[int, int]] = []
+    for a, b in unordered:
+        if (a, b) in results_by_pair:
+            (hs, as_), home, away = results_by_pair[(a, b)], a, b
+        elif (b, a) in results_by_pair:
+            (hs, as_), home, away = results_by_pair[(b, a)], b, a
+        else:
+            remaining.append((a, b))
+            continue
+        base_gd[home] += hs - as_
+        base_gd[away] += as_ - hs
+        if hs > as_:
+            base_pts[home] += 3
+        elif hs < as_:
+            base_pts[away] += 3
+        else:
+            base_pts[home] += 1
+            base_pts[away] += 1
+
     for _ in range(sims):
-        pts = {tid: 0 for tid, _ in member_elos}
-        for i, j in pairs:
-            (ti, ei), (tj, ej) = member_elos[i], member_elos[j]
-            p_a, p_draw, _ = wdl_probs(ei, ej)
+        pts = dict(base_pts)
+        gd = dict(base_gd)
+        for a, b in remaining:
+            p_a, p_draw, _ = wdl_probs(elo[a], elo[b])
             r = random.random()
             if r < p_a:
-                pts[ti] += 3
+                pts[a] += 3
+                gd[a] += 1
+                gd[b] -= 1
             elif r < p_a + p_draw:
-                pts[ti] += 1
-                pts[tj] += 1
+                pts[a] += 1
+                pts[b] += 1
             else:
-                pts[tj] += 3
-        top = max(pts.values())
-        leaders = [tid for tid, p in pts.items() if p == top]
-        # Split a tie randomly (proxy for tiebreakers).
-        first[random.choice(leaders)] += 1
+                pts[b] += 3
+                gd[b] += 1
+                gd[a] -= 1
+        # Winner: most points, then best goal difference, then random.
+        winner = max(ids, key=lambda t: (pts[t], gd[t], random.random()))
+        first[winner] += 1
     return {tid: c / sims for tid, c in first.items()}
 
 
@@ -454,6 +496,13 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
     groups = derive_groups(db)
     elo_by_id = {t["team_id"]: float(t["elo"]) for t in field}
     name_by_id = {t["team_id"]: t["name"] for t in field}
+    # Completed group-stage results → bank points/GD so the sim conditions on
+    # games already played rather than re-rolling the whole group from Elo.
+    played = db.execute(
+        "SELECT home_team_id AS h, away_team_id AS a, home_score AS hs, away_score AS as_ "
+        "FROM soccer_matchups WHERE home_score IS NOT NULL AND away_score IS NOT NULL"
+    )
+    results_by_pair = {(r["h"], r["a"]): (r["hs"], r["as_"]) for r in played}
     # Fetch Pinnacle group winner market — degrades gracefully to no-market if unavailable.
     gw_market = _fetch_pinnacle_group_winner_odds(name_to_id)
     with db.connect() as conn:
@@ -461,7 +510,7 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
             if len(members) != 4:
                 continue  # only rate/settle complete 4-team groups
             member_elos = [(tid, elo_by_id.get(tid, 1500.0)) for tid in members]
-            probs = simulate_group(member_elos, sims)
+            probs = simulate_group(member_elos, sims, results_by_pair)
             for tid in members:
                 if tid not in name_by_id:
                     continue
