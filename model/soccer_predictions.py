@@ -53,13 +53,13 @@ _W_MODEL_SUPREMACY = 0.45
 _MAX_GOALS = 10
 
 # Group-stage draw correction: the Poisson model systematically underestimates
-# draws in knockout-or-die scenarios. Group stage teams play conservatively for
-# a point, producing draws at ~30–35% historically vs ~24% from our model.
-# We add this flat probability mass to p_draw and scale home/away proportionally.
-# Calibrated to roughly match historical WC group-stage draw rates.
-# Set to 0 after GROUP_STAGE_END (knockout games have proper incentives).
+# draws in evenly-matched group games (conservative "take a point" tactics).
+# Applied ONLY when xG disparity is low — in lopsided matches our model already
+# overestimates draws relative to sharp markets, so boosting makes it worse.
+# Max disparity threshold: if |home_xg - away_xg| >= this, skip the boost.
 _GROUP_STAGE_END = date(2026, 6, 30)
-_GROUP_STAGE_DRAW_BOOST = 0.07
+_GROUP_STAGE_DRAW_BOOST = 0.05          # reduced from 0.07
+_GROUP_STAGE_BOOST_MAX_DISPARITY = 0.8  # only boost when game is evenly matched
 
 
 def _load_params(db: DatabaseManager) -> tuple[float, float]:
@@ -169,12 +169,16 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         our_away_xg = max(0.05, (our_total - our_sup) / 2.0)
         p_home, p_draw, p_away = outcome_probs(our_home_xg, our_away_xg)
 
-        # Group-stage draw boost: inflate draw probability and scale home/away
-        # down proportionally so the three probs still sum to 1.
+        # Group-stage draw boost: inflate draw probability for evenly-matched games
+        # only. In lopsided matches our Poisson already overestimates draws vs
+        # sharp markets, so skip the boost when disparity is high.
         raw_date = m.get("game_date")
+        xg_disparity = abs(our_home_xg - our_away_xg)
         if raw_date is not None:
             gd = raw_date if isinstance(raw_date, date) else datetime.fromisoformat(str(raw_date)).date()
-            if gd <= _GROUP_STAGE_END and _GROUP_STAGE_DRAW_BOOST > 0:
+            if (gd <= _GROUP_STAGE_END
+                    and _GROUP_STAGE_DRAW_BOOST > 0
+                    and xg_disparity < _GROUP_STAGE_BOOST_MAX_DISPARITY):
                 boost = min(_GROUP_STAGE_DRAW_BOOST, 1.0 - p_draw - 0.01)
                 p_draw_new = p_draw + boost
                 scale = (1.0 - p_draw_new) / max(p_home + p_away, 1e-9)

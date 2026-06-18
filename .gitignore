@@ -17,4 +17,3 @@ _tmp_NBA_Daily/
 .claude/
 refresh_stats.log
 model/explore_nba_xgboost.py
-model/soccer_game_bets.py
