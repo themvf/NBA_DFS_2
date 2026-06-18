@@ -90,6 +90,34 @@ with the line by ≥ 1 run (`MLB_TOTAL_ACTIONABLE_EDGE = 1.0`).
 - Self-healing: `refresh_mlb_vegas.py` walk-forward-backfills the trailing 7 days
   each run, so the backtest never has gaps.
 
+## Moneyline (2026-06-18) — honest negative result
+
+Built `model/mlb_moneyline_model.py` (market-anchored logistic predicting
+P(home win) from the vig-free line + SP xFIP/K9, team wRC+/ISO, bullpen FIP),
+writing `our_prob_home`, with the same walk-forward backfill + edge-tier backtest
+(`getMlbMoneylineModelBacktest`, ROI priced at the real moneyline).
+
+**Finding: the MLB moneyline market is efficient and the model has no edge.**
+- Holdout: our logloss 0.672 vs market 0.663, our Brier 0.240 vs 0.237 — we are
+  slightly *worse* than just using the line.
+- Edge-bet sims lose: −2.8% ROI at 3pp, −24% at 5pp.
+- Full walk-forward tiers are non-monotonic (−12% / +3% / −10% / +65%); the lone
+  positive (6pp+) is a few big-underdog hits (high Dog%), not a repeatable signal,
+  and the out-of-sample holdout contradicts it.
+- Strength-feature coefficients are tiny and some have the wrong sign (noise) —
+  the market already prices SP/offense/bullpen.
+
+**Decision (accountability-first):** deploy the *infrastructure and the proof*,
+not a fake signal. The page shows a **Model Moneyline Backtest** panel flagged
+"INFORMATIONAL — market efficient, no stable edge," keeps `our_prob_home` as a
+muted per-game **Our Win%** context line (where we disagree with the line), and
+does **not** add an ML bet flag. This mirrors the soccer first-scorer pattern
+where the calibration *is* the value (it tells you not to bet).
+
+Contrast with totals: totals had a real, stable +7% ROI edge on ≥1-run
+disagreements → actionable. Moneyline does not → informational only. The
+backtest is what lets us tell those two apart honestly.
+
 ## Build readout (2026-06-18)
 
 `model/mlb_game_total_model.py` — Ridge on `actual_total − vegas_total`, trained on

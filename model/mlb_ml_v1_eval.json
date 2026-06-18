@@ -1,0 +1,47 @@
+{
+  "model_version": "mlb-ml-v1",
+  "n_train": 856,
+  "n_test": 214,
+  "market_logloss": 0.6717,
+  "our_logloss": 0.6772,
+  "market_brier": 0.2411,
+  "our_brier": 0.2424,
+  "edge_sims": {
+    "edge_3pp": {
+      "bets": 85,
+      "win_rate": 0.4471,
+      "roi": 0.0805
+    },
+    "edge_5pp": {
+      "bets": 45,
+      "win_rate": 0.2889,
+      "roi": -0.1769
+    }
+  },
+  "coefs": [
+    {
+      "feature": "market_home_prob",
+      "coef": 0.375
+    },
+    {
+      "feature": "iso_adv",
+      "coef": 0.0915
+    },
+    {
+      "feature": "sp_xfip_adv",
+      "coef": 0.0907
+    },
+    {
+      "feature": "sp_k9_adv",
+      "coef": -0.0483
+    },
+    {
+      "feature": "wrc_adv",
+      "coef": -0.0211
+    },
+    {
+      "feature": "bullpen_adv",
+      "coef": 0.0173
+    }
+  ]
+}

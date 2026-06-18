@@ -13,6 +13,7 @@ import type {
   TeamVegasInsightRow,
   MoneylineBacktestReport,
   MlbTotalBacktest,
+  MlbMlBacktest,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
@@ -635,6 +636,86 @@ function MlbTotalBacktestPanel({ backtest }: { backtest: MlbTotalBacktest }) {
   );
 }
 
+/**
+ * MLB moneyline-model backtest. Unlike totals, the ML market is efficient: our
+ * win-prob model does not beat it out of sample, so this panel's job is to make
+ * that *visible* and stop us betting noise. Edges are informational, not
+ * actionable; the high-edge ROI is dog-variance, not a repeatable signal.
+ */
+function MlbMoneylineBacktestPanel({ backtest }: { backtest: MlbMlBacktest }) {
+  const { overall, tiers } = backtest;
+  if (overall.bets === 0) {
+    return (
+      <div className="rounded-lg border bg-white p-4">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
+          Model Moneyline Backtest
+        </h3>
+        <p className="text-xs text-gray-500">No settled moneyline predictions yet.</p>
+      </div>
+    );
+  }
+  const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
+  const roiStr = (v: number | null) =>
+    v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          Model Moneyline Backtest
+        </h3>
+        <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+          INFORMATIONAL — market efficient, no stable edge
+        </span>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">
+        Walk-forward; bet the side our win-prob favours vs the vig-free line, by
+        edge size, priced at the real moneyline. Out of sample our model does{" "}
+        <strong>not</strong> beat the market (logloss slightly worse), so — unlike
+        the totals model — <strong>ML edges are not flagged as bets.</strong> Any
+        positive ROI below is dominated by a few big-underdog hits (see Dog%),
+        not a repeatable signal.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b text-gray-500">
+              <th className="py-1 text-left">Edge (|our − mkt| win%)</th>
+              <th className="py-1 text-right">Bets</th>
+              <th className="py-1 text-right">W–L</th>
+              <th className="py-1 text-right">Win%</th>
+              <th className="py-1 text-right">ROI</th>
+              <th className="py-1 text-right">Dog%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tiers.map((t) => (
+              <tr key={t.tier} className="border-b border-gray-50">
+                <td className="py-1.5">{t.tier}</td>
+                <td className="py-1.5 text-right text-gray-500">{t.bets}</td>
+                <td className="py-1.5 text-right tabular-nums">{t.wins}–{t.losses}</td>
+                <td className="py-1.5 text-right tabular-nums">{pct(t.winRate)}</td>
+                <td className={`py-1.5 text-right tabular-nums ${t.roi != null && t.roi >= 0 ? "text-gray-600" : "text-red-500"}`}>
+                  {roiStr(t.roi)}
+                </td>
+                <td className="py-1.5 text-right tabular-nums text-gray-400">
+                  {t.bets > 0 ? `${Math.round((t.dogBets / t.bets) * 100)}%` : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-gray-400">
+        Overall: {overall.wins}–{overall.losses} ({pct(overall.winRate)}), ROI{" "}
+        {roiStr(overall.roi)} across {overall.bets} bets. ROI uses true ML prices.
+        The model number (Our Win%) is kept as context — where we disagree with the
+        line — not as a bet recommendation.
+      </p>
+    </div>
+  );
+}
+
 type Props = {
   matchups: VegasMatchupRow[];
   ouHitRate: OuHitRateRow[];
@@ -642,6 +723,7 @@ type Props = {
   spreadCoverage: SpreadCoverageRow[];
   mlbCoverageStatus: MlbVegasCoverageStatus | null;
   mlbTotalBacktest: MlbTotalBacktest | null;
+  mlbMoneylineBacktest: MlbMlBacktest | null;
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
   teamInsights: TeamVegasInsightRow[];
@@ -822,6 +904,7 @@ export default function VegasClient({
   spreadCoverage,
   mlbCoverageStatus,
   mlbTotalBacktest,
+  mlbMoneylineBacktest,
   vegasSummary,
   biggestMisses,
   teamInsights,
@@ -1502,6 +1585,16 @@ export default function VegasClient({
                               : "—"}
                           </div>
                         )}
+                        {sport === "mlb" && m.ourProbHome != null && m.homeWinProb != null && (
+                          <div className="text-[10px] font-normal text-gray-400 mt-0.5" title="Model win prob is context only — the moneyline market is efficient and these edges are not actionable.">
+                            Model: {m.homeAbbrev} {(m.ourProbHome * 100).toFixed(0)}%
+                            <span className="text-gray-300">
+                              {" "}(mkt {(m.homeWinProb * 100).toFixed(0)}%,{" "}
+                              {m.ourProbHome - m.homeWinProb >= 0 ? "+" : ""}
+                              {((m.ourProbHome - m.homeWinProb) * 100).toFixed(0)}pp)
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-1.5">
                         {actionableLabels.length > 0 ? (
@@ -1614,6 +1707,11 @@ export default function VegasClient({
       {/* ── Model O/U Backtest (MLB) ──────────────────────────── */}
       {sport === "mlb" && mlbTotalBacktest && (
         <MlbTotalBacktestPanel backtest={mlbTotalBacktest} />
+      )}
+
+      {/* ── Model Moneyline Backtest (MLB) ────────────────────── */}
+      {sport === "mlb" && mlbMoneylineBacktest && (
+        <MlbMoneylineBacktestPanel backtest={mlbMoneylineBacktest} />
       )}
 
       {/* ── O/U Hit Rate ──────────────────────────────────────── */}

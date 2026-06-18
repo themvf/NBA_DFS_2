@@ -6023,6 +6023,8 @@ export type VegasMatchupRow = {
   windDirection: string | null;
   // Our independent predicted total (residual-over-Vegas model). MLB-only for now.
   ourTotalPred: number | null;
+  // Our independent P(home win) (market-anchored logistic). MLB-only for now.
+  ourProbHome: number | null;
   // MLB-only SP fields (null for NBA)
   homeSpName: string | null;
   homeSpHand: string | null;
@@ -6081,10 +6083,11 @@ export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupR
     windSpeed: null,
     windDirection: null,
     ourTotalPred: null,
+    ourProbHome: null,
     homeSpName: null,
     homeSpHand: null,
-    homeSpXfip: null,
     homeSpKPer9: null,
+    homeSpXfip: null,
     awaySpName: null,
     awaySpHand: null,
     awaySpXfip: null,
@@ -6929,6 +6932,7 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
       m.wind_speed     AS "windSpeed",
       m.wind_direction AS "windDirection",
       m.our_total_pred AS "ourTotalPred",
+      m.our_prob_home  AS "ourProbHome",
       COALESCE(m.home_sp_name, hsp_id.name, hsp_name.name) AS "homeSpName",
       COALESCE(hsp_id.hand, hsp_name.hand) AS "homeSpHand",
       COALESCE(hsp_id.xfip, hsp_name.xfip) AS "homeSpXfip",
@@ -6970,6 +6974,7 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
     windSpeed: r.windSpeed != null ? Number(r.windSpeed) : null,
     windDirection: r.windDirection != null ? String(r.windDirection) : null,
     ourTotalPred: r.ourTotalPred != null ? Number(r.ourTotalPred) : null,
+    ourProbHome: r.ourProbHome != null ? Number(r.ourProbHome) : null,
     homeSpName: r.homeSpName != null ? String(r.homeSpName) : null,
     homeSpHand: r.homeSpHand != null ? String(r.homeSpHand) : null,
     homeSpXfip: r.homeSpXfip != null ? Number(r.homeSpXfip) : null,
@@ -7236,6 +7241,141 @@ export async function getMlbTotalModelBacktest(): Promise<MlbTotalBacktest> {
   });
 
   return { overall: _mlbTierFromRows(tiers, "All graded"), tiers };
+}
+
+// ── MLB moneyline model backtest (our win-prob vs the market) ─────
+// Bet the side our_prob_home favours vs the vig-free line, bucketed by edge.
+// ROI uses the actual moneyline price of the bet side (not a flat −110).
+// The market is sharp, so this exists to PROVE whether any edge survives out of
+// sample, not to assume one.
+
+export type MlbMlBacktestTier = {
+  tier: string;
+  tierMin: number | null;
+  bets: number;
+  wins: number;
+  losses: number;
+  winRate: number | null;
+  roi: number | null;       // units per 1u risked, using true ML prices
+  avgEdge: number | null;   // avg |our − market| home-prob, in pp/100
+  dogBets: number;          // how many bets were on +money underdogs
+};
+
+export type MlbMlBacktest = {
+  overall: MlbMlBacktestTier;
+  tiers: MlbMlBacktestTier[];
+};
+
+function _mlbMlOverall(rows: MlbMlBacktestTier[]): MlbMlBacktestTier {
+  const a = rows.reduce(
+    (acc, r) => ({
+      bets: acc.bets + r.bets,
+      wins: acc.wins + r.wins,
+      losses: acc.losses + r.losses,
+      dogBets: acc.dogBets + r.dogBets,
+      edgeSum: acc.edgeSum + (r.avgEdge ?? 0) * r.bets,
+      roiSum: acc.roiSum + (r.roi ?? 0) * r.bets,
+    }),
+    { bets: 0, wins: 0, losses: 0, dogBets: 0, edgeSum: 0, roiSum: 0 },
+  );
+  return {
+    tier: "All graded",
+    tierMin: null,
+    bets: a.bets,
+    wins: a.wins,
+    losses: a.losses,
+    winRate: a.bets > 0 ? a.wins / a.bets : null,
+    roi: a.bets > 0 ? a.roiSum / a.bets : null,
+    avgEdge: a.bets > 0 ? a.edgeSum / a.bets : null,
+    dogBets: a.dogBets,
+  };
+}
+
+export async function getMlbMoneylineModelBacktest(): Promise<MlbMlBacktest> {
+  const rows = await db.execute<{
+    tier: string;
+    tierMin: number | null;
+    bets: number;
+    wins: number;
+    losses: number;
+    dogBets: number;
+    avgEdge: number | null;
+    avgProfit: number | null;   // avg profit per 100 risked
+  }>(sql`
+    WITH settled AS (
+      SELECT
+        m.our_prob_home          AS op,
+        m.vegas_prob_home        AS mp,
+        m.home_ml                AS hml,
+        m.away_ml                AS aml,
+        (m.home_score > m.away_score) AS home_won
+      FROM mlb_matchups m
+      WHERE m.our_prob_home   IS NOT NULL
+        AND m.vegas_prob_home IS NOT NULL
+        AND m.home_ml IS NOT NULL AND m.away_ml IS NOT NULL
+        AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+    ),
+    bets AS (
+      SELECT
+        ABS(op - mp)                       AS abs_edge,
+        (op > mp)                          AS bet_home,
+        CASE WHEN op > mp THEN home_won ELSE NOT home_won END AS won,
+        CASE WHEN op > mp THEN hml ELSE aml END               AS ml
+      FROM settled
+      WHERE op <> mp
+    ),
+    graded AS (
+      SELECT
+        abs_edge,
+        won,
+        (ml > 0)                           AS is_dog,
+        CASE
+          WHEN won AND ml >= 0 THEN ml
+          WHEN won AND ml < 0  THEN 10000.0 / ABS(ml)
+          ELSE -100.0
+        END                                AS profit
+      FROM bets
+    )
+    SELECT
+      CASE
+        WHEN abs_edge < 0.02 THEN '0–2pp'
+        WHEN abs_edge < 0.04 THEN '2–4pp'
+        WHEN abs_edge < 0.06 THEN '4–6pp'
+        ELSE '6pp+'
+      END                                                     AS "tier",
+      CASE
+        WHEN abs_edge < 0.02 THEN 0.0
+        WHEN abs_edge < 0.04 THEN 0.02
+        WHEN abs_edge < 0.06 THEN 0.04
+        ELSE 0.06
+      END                                                     AS "tierMin",
+      COUNT(*)::int                                           AS "bets",
+      COUNT(*) FILTER (WHERE won)::int                        AS "wins",
+      COUNT(*) FILTER (WHERE NOT won)::int                    AS "losses",
+      COUNT(*) FILTER (WHERE is_dog)::int                     AS "dogBets",
+      AVG(abs_edge)                                           AS "avgEdge",
+      AVG(profit)                                             AS "avgProfit"
+    FROM graded
+    GROUP BY 1, 2
+    ORDER BY 2 ASC
+  `);
+
+  const tiers: MlbMlBacktestTier[] = rows.rows.map((r) => {
+    const bets = Number(r.bets);
+    return {
+      tier: String(r.tier),
+      tierMin: r.tierMin != null ? Number(r.tierMin) : null,
+      bets,
+      wins: Number(r.wins),
+      losses: Number(r.losses),
+      winRate: bets > 0 ? Number(r.wins) / bets : null,
+      roi: r.avgProfit != null ? Number(r.avgProfit) / 100 : null,
+      avgEdge: r.avgEdge != null ? Number(r.avgEdge) : null,
+      dogBets: Number(r.dogBets),
+    };
+  });
+
+  return { overall: _mlbMlOverall(tiers), tiers };
 }
 
 // ── Vegas Summary Stats ──────────────────────────────────────

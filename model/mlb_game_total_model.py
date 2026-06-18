@@ -114,6 +114,8 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
             m.home_implied,
             m.away_implied,
             m.home_spread,
+            m.home_ml,
+            m.away_ml,
             m.vegas_prob_home,
             m.home_score,
             m.away_score,

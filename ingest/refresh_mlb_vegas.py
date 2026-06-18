@@ -54,6 +54,10 @@ def _write_total_predictions(db: DatabaseManager, refresh_date_iso: str, days_ba
     frozen pre-game numbers), then writes today's slate.
     """
     from model.mlb_game_total_model import backfill_predictions, predict_and_write
+    from model.mlb_moneyline_model import (
+        backfill_predictions as ml_backfill,
+        predict_and_write as ml_predict,
+    )
 
     if days_back > 0:
         refresh_date = date.fromisoformat(refresh_date_iso)
@@ -61,7 +65,10 @@ def _write_total_predictions(db: DatabaseManager, refresh_date_iso: str, days_ba
         yesterday = (refresh_date - timedelta(days=1)).isoformat()
         if yesterday >= start:
             backfill_predictions(db, start, yesterday)
-    return predict_and_write(db, refresh_date_iso)
+            ml_backfill(db, start, yesterday)
+    total_written = predict_and_write(db, refresh_date_iso)
+    ml_predict(db, refresh_date_iso)
+    return total_written
 
 
 def _rolling_backfill_window(target_date: date, days_back: int) -> tuple[str, str] | None:

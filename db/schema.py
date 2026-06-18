@@ -1492,6 +1492,9 @@ MIGRATIONS = [
     # Ridge residual-over-Vegas total, written by model/mlb_game_total_model.py.
     # Mirrors nba_matchups.our_game_total_pred / soccer_matchups.our_total_pred.
     "ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS our_total_pred DOUBLE PRECISION",
+    # 2026-06-18: MLB moneyline model — our independent P(home win) vs the market.
+    # Market-anchored logistic, written by model/mlb_moneyline_model.py.
+    "ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS our_prob_home DOUBLE PRECISION",
 ]
 
 INDEXES = [
