@@ -14,6 +14,13 @@ kickoff — the pre-game number is captured and never edited afterward.
 Usage:
     python -m model.soccer_game_bets                 # all upcoming fixtures
     python -m model.soccer_game_bets --date 2026-06-14
+
+gameline-v3 changes vs v2:
+  * Global +6% hydration-break uplift on all WC totals (cooling breaks at
+    ~30' and ~75' sustain attacking intensity, pushing goals above historical
+    Poisson baseline).
+  * Lopsided-match uplift bumped 1.12 → 1.14 (compounds with hydration factor:
+    lopsided games now see ~1.06 × 1.14 ≈ 1.21× raw prediction).
 """
 
 from __future__ import annotations
@@ -28,7 +35,7 @@ from model.soccer_bet_rating import new_capture_key, record_bet
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "gameline-v2"
+MODEL_VERSION = "gameline-v3"
 
 # Moneyline and totals are efficient markets; the independent Poisson has a fat
 # upset tail, so anchor our probability toward the vig-free market and surface
@@ -45,12 +52,18 @@ _W_DRAW_HIGH_DISP   = 0.10   # lopsided (|xG gap| > 1.5): 90% Pinnacle
 _W_DRAW_MED_DISP    = 0.20   # moderate (|xG gap| 0.8–1.5): 80% Pinnacle
 _W_DRAW_NORMAL      = 0.35   # evenly matched: normal weight
 
-# Group-stage total uplift for lopsided matches. The Poisson/Elo model trains on
-# historical internationals that include qualifiers and friendlies where blowouts
-# are rarer. In WC group games a heavy favourite faces a weak side and keeps
-# attacking freely — actual totals run 10-12% higher than our raw prediction.
+# Global hydration-break uplift (v3). The 2026 WC uses mandatory cooling breaks
+# at ~30' and ~75' in high heat-stress conditions. These reduce second-half
+# fatigue, sustaining attacking intensity into the 70-90' window and pushing
+# actual totals above what the Poisson (trained on historical internationals)
+# predicts. Applied to ALL fixtures — even close games benefit from the breaks.
+_HYDRATION_BREAK_UPLIFT = 1.06  # +6% goals across the board
+
+# Additional uplift for lopsided matches on top of the hydration factor. A heavy
+# favourite presses relentlessly against a weak side; combined with the break
+# recovery, blowouts run ~14% above raw prediction (bumped from 1.12).
 _TOTAL_UPLIFT_DISPARITY = 1.5   # |home_xg - away_xg| threshold
-_TOTAL_UPLIFT_FACTOR    = 1.12  # multiply our_total_pred by this
+_TOTAL_UPLIFT_FACTOR    = 1.14  # multiply our_total_pred by this (was 1.12)
 
 
 def _anchor(model_p: float, market_p: float | None, w_model: float) -> float:
@@ -187,14 +200,14 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
                 written += 1
 
             # ── Totals (O/U) ──
-            # Apply uplift for lopsided matches: WC group games with a heavy
-            # favourite produce more total goals than our Elo/Poisson predicts
-            # (trained on history including qualifiers where blowouts are rarer).
+            # Two uplifts applied in sequence:
+            #   1. Global hydration-break uplift (+6%) — all WC fixtures.
+            #   2. Lopsided-match uplift (+14%) — when xG disparity > 1.5.
             line = fx["vegas_total"]
             lam_raw = fx["our_total_pred"]
             over_odds, under_odds = fx["over_odds"], fx["under_odds"]
             if line is not None and lam_raw is not None and over_odds is not None and under_odds is not None:
-                lam = float(lam_raw)
+                lam = float(lam_raw) * _HYDRATION_BREAK_UPLIFT
                 uplift_applied = xg_disp > _TOTAL_UPLIFT_DISPARITY
                 if uplift_applied:
                     lam *= _TOTAL_UPLIFT_FACTOR
@@ -223,6 +236,7 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
                         conn=conn,
                         inputs={"line": float(line), "lambda": round(lam, 4),
                                 "lambda_raw": round(float(lam_raw), 4),
+                                "hydration_uplift": _HYDRATION_BREAK_UPLIFT,
                                 "xg_disp": round(xg_disp, 2),
                                 "uplift_applied": uplift_applied,
                                 "model_p": round(float(our_p), 4),
