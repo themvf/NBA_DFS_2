@@ -168,7 +168,7 @@ function BetTypeCard({ betType, won, lost, voided, sumExpected, nExpected, marke
         {voided > 0 && (
           <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground tabular-nums">{voided} push</span>
         )}
-        <span className="ml-auto text-muted-foreground">{total} settled</span>
+        <span className="ml-auto text-muted-foreground">{total} games</span>
       </div>
 
       {/* Calibration badge */}
@@ -355,12 +355,27 @@ function ResultsPanel({
     return sort.dir === "desc" ? (bv as number) - (av as number) : (av as number) - (bv as number);
   });
 
-  // ── Aggregate stats — computed from bets filtered by tMinStars ───────────────
-  const starFilteredBets = bets.filter((b) => b.stars >= tMinStars);
+  // ── Best-per-game: for multi-side markets (moneyline: 3 sides, total: 2 sides)
+  // pick the highest-rated side per (betType, scope) so the KPI cards reflect
+  // "if we bet the best side of each game, how did we do?" not all sides at once.
+  const bestPerGame = useMemo(() => {
+    const map = new Map<string, SoccerBetRow>();
+    for (const b of bets) {
+      if (b.status === "pending") continue;
+      const key = `${b.betType}::${b.scope}`;
+      const cur = map.get(key);
+      if (!cur || b.stars > cur.stars || (b.stars === cur.stars && (b.ev ?? -99) > (cur.ev ?? -99))) {
+        map.set(key, b);
+      }
+    }
+    return Array.from(map.values());
+  }, [bets]);
 
-  // Group by bet type for the aggregate table
+  // ── Aggregate stats — one bet per game per type, filtered by tMinStars ────────
+  const starFilteredBest = bestPerGame.filter((b) => b.stars >= tMinStars);
+
   const byTypeMap = new Map<string, { won: number; lost: number; voided: number; sumExpected: number; nExpected: number; marketBets: number; profit: number }>();
-  for (const b of starFilteredBets) {
+  for (const b of starFilteredBest) {
     const entry = byTypeMap.get(b.betType) ?? { won: 0, lost: 0, voided: 0, sumExpected: 0, nExpected: 0, marketBets: 0, profit: 0 };
     if (b.status === "won") entry.won++;
     else if (b.status === "lost") entry.lost++;
@@ -376,9 +391,9 @@ function ResultsPanel({
     .map(([betType, e]) => ({ betType, ...e }))
     .sort((a, b) => a.betType.localeCompare(b.betType));
 
-  const totalWon = starFilteredBets.filter((b) => b.status === "won").length;
-  const totalLost = starFilteredBets.filter((b) => b.status === "lost").length;
-  const totalVoid = starFilteredBets.filter((b) => b.status === "void").length;
+  const totalWon = starFilteredBest.filter((b) => b.status === "won").length;
+  const totalLost = starFilteredBest.filter((b) => b.status === "lost").length;
+  const totalVoid = starFilteredBest.filter((b) => b.status === "void").length;
   const totalSettled = totalWon + totalLost + totalVoid;
   const totalMarket = byTypeRows.reduce((s, r) => s + r.marketBets, 0);
   const totalProfit = byTypeRows.reduce((s, r) => s + r.profit, 0);
@@ -404,7 +419,7 @@ function ResultsPanel({
       {/* Overall summary strip */}
       <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
         <div>
-          <span className="text-muted-foreground text-xs">Settled</span>
+          <span className="text-muted-foreground text-xs">Games bet</span>
           <span className="ml-1.5 font-bold tabular-nums">{totalSettled}</span>
           <span className="ml-1 text-xs text-muted-foreground">({totalWon}W · {totalLost}L · {totalVoid} push)</span>
         </div>
@@ -441,6 +456,10 @@ function ResultsPanel({
               <BetTypeCard key={r.betType} {...r} />
             ))}
           </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            1 bet per game — best-rated side only (moneyline: home/draw/away; O/U: over/under).
+            Win % excludes pushes. ROI = profit per unit staked at market odds.
+          </p>
         </div>
       )}
 
