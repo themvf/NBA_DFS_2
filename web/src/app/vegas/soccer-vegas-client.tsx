@@ -8,6 +8,9 @@ import type {
   SoccerFirstScorerRow,
   SoccerMatchGoalRow,
   SoccerPlayerStatsRow,
+  SoccerFirstScorerTierRow,
+  SoccerFirstScorerNearMissRow,
+  SoccerTopPickRow,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -125,9 +128,15 @@ function SortTh({
 function ResultsPanel({
   bets,
   backtest,
+  fscorerTiers,
+  fscorerNearMisses,
+  topPickAccuracy,
 }: {
   bets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
+  fscorerTiers: SoccerFirstScorerTierRow[];
+  fscorerNearMisses: SoccerFirstScorerNearMissRow[];
+  topPickAccuracy: SoccerTopPickRow[];
 }) {
   // ── Settled bet table state ──────────────────────────────────────────────────
   const [tType, setTType] = useState("all");
@@ -496,7 +505,234 @@ function ResultsPanel({
           </p>
         </div>
       )}
+
+      <FirstScorerAnalysis
+        tiers={fscorerTiers}
+        nearMisses={fscorerNearMisses}
+        topPicks={topPickAccuracy}
+      />
     </section>
+  );
+}
+
+// ── First scorer analytics ────────────────────────────────────────────────────
+function FirstScorerAnalysis({
+  tiers,
+  nearMisses,
+  topPicks,
+}: {
+  tiers: SoccerFirstScorerTierRow[];
+  nearMisses: SoccerFirstScorerNearMissRow[];
+  topPicks: SoccerTopPickRow[];
+}) {
+  const totalSettled = tiers.reduce((s, r) => s + r.n, 0);
+  if (totalSettled === 0) return null;
+
+  // Top-pick summary stats
+  const completedGames = topPicks.filter((r) => r.actualFirstScorer != null);
+  const topPickHits = completedGames.filter((r) => r.topPickWasFirst).length;
+  const topPickScored = completedGames.filter((r) => r.topPickScored).length;
+  const hitRate = completedGames.length > 0 ? topPickHits / completedGames.length : null;
+  const scoredRate = completedGames.length > 0 ? topPickScored / completedGames.length : null;
+
+  // Near-miss summary
+  const scoredButNotFirst = nearMisses.filter((r) => r.scoredInMatch).length;
+  const nearMissRate = nearMisses.length > 0 ? scoredButNotFirst / nearMisses.length : null;
+
+  return (
+    <div className="space-y-4 border-t pt-4">
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+        First Scorer — Model Diagnostics
+      </h3>
+
+      {/* Summary stat cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          label="Top pick hit rate"
+          value={hitRate != null ? fmtPct1(hitRate) : "—"}
+          sub={`${topPickHits}/${completedGames.length} games`}
+          color={hitRate != null && hitRate > 0.12 ? "text-emerald-400" : "text-muted-foreground"}
+        />
+        <StatCard
+          label="Top pick scored (any)"
+          value={scoredRate != null ? fmtPct1(scoredRate) : "—"}
+          sub="scored but may not be 1st"
+          color={scoredRate != null && scoredRate > 0.25 ? "text-emerald-400" : "text-muted-foreground"}
+        />
+        <StatCard
+          label="Near-miss rate"
+          value={nearMissRate != null ? fmtPct1(nearMissRate) : "—"}
+          sub={`${scoredButNotFirst}/${nearMisses.length} losses`}
+          color="text-amber-400"
+        />
+        <StatCard
+          label="Settled bets (1★)"
+          value={String(totalSettled)}
+          sub="excl. voids (no scorer)"
+        />
+      </div>
+
+      {/* Indicator 1: Tier calibration */}
+      <div>
+        <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          1. Probability tier calibration
+        </h4>
+        <div className="overflow-x-auto rounded-lg border bg-card">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-[10px] uppercase text-muted-foreground">
+                <th className="px-3 py-2 text-left font-medium">Prob bucket</th>
+                <th className="px-2 py-2 text-center font-medium">Bets</th>
+                <th className="px-2 py-2 text-center font-medium">Wins</th>
+                <th className="px-2 py-2 text-center font-medium">Avg our %</th>
+                <th className="px-2 py-2 text-center font-medium">Actual %</th>
+                <th className="px-3 py-2 text-left font-medium">Calibration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tiers.map((r) => {
+                const delta = r.realizedRate - r.avgOurProb;
+                const calibrated = Math.abs(delta) < 0.03;
+                return (
+                  <tr key={r.tier} className="border-b last:border-0 hover:bg-accent/40">
+                    <td className="px-3 py-2 text-xs font-medium">{r.tier}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{r.n}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-emerald-400">{r.wins}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{fmtPct1(r.avgOurProb)}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums font-medium ${r.realizedRate >= r.avgOurProb ? "text-emerald-400" : "text-rose-400"}`}>
+                      {fmtPct1(r.realizedRate)}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {r.n < 5 ? (
+                        <span className="text-muted-foreground">need more data</span>
+                      ) : calibrated ? (
+                        <span className="text-emerald-400">well calibrated ✓</span>
+                      ) : delta > 0 ? (
+                        <span className="text-emerald-400">+{fmtPct1(delta)} above expected</span>
+                      ) : (
+                        <span className="text-rose-400">{fmtPct1(delta)} below expected</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Actual % = fraction of bets in this bucket where the player scored first.
+          A calibrated model has Avg our % ≈ Actual %. Needs ~20+ bets per tier for significance.
+        </p>
+      </div>
+
+      {/* Indicator 2: Near-misses */}
+      {nearMisses.length > 0 && (
+        <div>
+          <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            2. Scored but not first (near-misses)
+          </h4>
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-[10px] uppercase text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-medium">Player</th>
+                  <th className="px-3 py-2 text-left font-medium">Game</th>
+                  <th className="px-2 py-2 text-center font-medium">Our %</th>
+                  <th className="px-2 py-2 text-center font-medium">Odds</th>
+                  <th className="px-2 py-2 text-center font-medium">Scored?</th>
+                  <th className="px-2 py-2 text-left font-medium">Minute(s)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nearMisses.filter((r) => r.scoredInMatch).slice(0, 15).map((r, i) => (
+                  <tr key={i} className="border-b last:border-0 hover:bg-accent/40 bg-amber-500/5">
+                    <td className="px-3 py-2 font-medium text-amber-400">{r.playerName}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{r.fixture}</td>
+                    <td className="px-2 py-2 text-center tabular-nums">{fmtPct1(r.ourProb)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{fmtMl(r.marketOdds)}</td>
+                    <td className="px-2 py-2 text-center">
+                      <span className="text-amber-400 font-medium">⚽ ×{r.goalCount}</span>
+                    </td>
+                    <td className="px-2 py-2 text-xs text-muted-foreground">
+                      {r.goalMinutes.length > 0 ? r.goalMinutes.map((m) => `${m}'`).join(", ") : "—"}
+                    </td>
+                  </tr>
+                ))}
+                {nearMisses.filter((r) => !r.scoredInMatch).slice(0, 5).map((r, i) => (
+                  <tr key={`miss-${i}`} className="border-b last:border-0 hover:bg-accent/40 opacity-50">
+                    <td className="px-3 py-2 text-xs">{r.playerName}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{r.fixture}</td>
+                    <td className="px-2 py-2 text-center tabular-nums">{fmtPct1(r.ourProb)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{fmtMl(r.marketOdds)}</td>
+                    <td className="px-2 py-2 text-center text-muted-foreground text-xs">—</td>
+                    <td className="px-2 py-2 text-xs text-muted-foreground">—</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Amber rows = player scored in the match but wasn&apos;t first. Faded rows = player didn&apos;t score at all.
+            Near-misses show directional accuracy: the model identified the right scorer, just wrong timing.
+            Near-miss rate: <strong className="text-foreground">{nearMissRate != null ? fmtPct1(nearMissRate) : "—"}</strong> of lost bets.
+          </p>
+        </div>
+      )}
+
+      {/* Indicator 3: Top-pick accuracy per game */}
+      {completedGames.length > 0 && (
+        <div>
+          <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            3. Top pick vs actual first scorer (per game)
+          </h4>
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-[10px] uppercase text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-medium">Game</th>
+                  <th className="px-3 py-2 text-left font-medium">Our top pick</th>
+                  <th className="px-2 py-2 text-center font-medium">Our %</th>
+                  <th className="px-3 py-2 text-left font-medium">Actual first scorer</th>
+                  <th className="px-2 py-2 text-center font-medium">Hit?</th>
+                </tr>
+              </thead>
+              <tbody>
+                {completedGames.map((r, i) => (
+                  <tr
+                    key={i}
+                    className={`border-b last:border-0 hover:bg-accent/40 ${r.topPickWasFirst ? "bg-emerald-500/10" : r.topPickScored ? "bg-amber-500/5" : ""}`}
+                  >
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{r.fixture}</td>
+                    <td className="px-3 py-2 font-medium text-sm">
+                      {r.topPick}
+                      {r.topPickScored && !r.topPickWasFirst && (
+                        <span className="ml-1.5 text-[10px] text-amber-400">scored later</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{fmtPct1(r.topPickProb)}</td>
+                    <td className="px-3 py-2 text-sm">
+                      {r.actualFirstScorer ?? <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-2 py-2 text-center">
+                      {r.topPickWasFirst ? (
+                        <span className="text-emerald-400 font-bold">✓</span>
+                      ) : (
+                        <span className="text-rose-400 text-xs">✗</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Top pick = player with highest <em>our %</em> per game (model&apos;s #1 choice, not necessarily the bet value pick).
+            Hit rate: <strong className="text-foreground">{hitRate != null ? fmtPct1(hitRate) : "—"}</strong> ({topPickHits}/{completedGames.length}).
+            Amber = top pick scored but wasn&apos;t first (near-miss). Baseline for random pick ≈ 1/22 = ~4.5%.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1006,6 +1242,9 @@ export default function SoccerVegasClient({
   firstScorers,
   matchGoals,
   playerStats,
+  fscorerTiers,
+  fscorerNearMisses,
+  topPickAccuracy,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -1015,6 +1254,9 @@ export default function SoccerVegasClient({
   firstScorers: SoccerFirstScorerRow[];
   matchGoals: SoccerMatchGoalRow[];
   playerStats: SoccerPlayerStatsRow[];
+  fscorerTiers: SoccerFirstScorerTierRow[];
+  fscorerNearMisses: SoccerFirstScorerNearMissRow[];
+  topPickAccuracy: SoccerTopPickRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -1061,7 +1303,15 @@ export default function SoccerVegasClient({
       {tab === "bets" && <BetsPanel bets={bets} />}
       {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} matchGoals={matchGoals} />}
       {tab === "scorers" && <ScorersPanel rows={playerStats} />}
-      {tab === "results" && <ResultsPanel bets={settledBets} backtest={backtest} />}
+      {tab === "results" && (
+        <ResultsPanel
+          bets={settledBets}
+          backtest={backtest}
+          fscorerTiers={fscorerTiers}
+          fscorerNearMisses={fscorerNearMisses}
+          topPickAccuracy={topPickAccuracy}
+        />
+      )}
       {tab === "fixtures" && <FixturesPanel matchups={matchups} queryDate={queryDate} />}
     </div>
   );

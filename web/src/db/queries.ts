@@ -8963,3 +8963,184 @@ export async function getMlbPitcherLineupReport(): Promise<MlbPitcherLineupRepor
     currentSlate,
   };
 }
+
+// ── Soccer First Scorer Analytics ─────────────────────────────────────────────
+
+// Indicator 1: Tier calibration — bucket by our_prob, show realized first-goal
+// rate per bucket for all settled (won + lost, not void) first-scorer bets.
+export type SoccerFirstScorerTierRow = {
+  tier: string;
+  probLow: number;
+  probHigh: number;
+  n: number;
+  wins: number;
+  realizedRate: number;
+  avgOurProb: number;
+};
+
+export async function getSoccerFirstScorerTiers(): Promise<SoccerFirstScorerTierRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      CASE
+        WHEN our_prob >= 0.12 THEN 'Top pick (12%+)'
+        WHEN our_prob >= 0.07 THEN 'Strong (7–12%)'
+        WHEN our_prob >= 0.04 THEN 'Mid (4–7%)'
+        ELSE                       'Longshot (<4%)'
+      END                                                         AS tier,
+      CASE
+        WHEN our_prob >= 0.12 THEN 0.12
+        WHEN our_prob >= 0.07 THEN 0.07
+        WHEN our_prob >= 0.04 THEN 0.04
+        ELSE                       0.00
+      END                                                         AS "probLow",
+      CASE
+        WHEN our_prob >= 0.12 THEN 1.00
+        WHEN our_prob >= 0.07 THEN 0.12
+        WHEN our_prob >= 0.04 THEN 0.07
+        ELSE                       0.04
+      END                                                         AS "probHigh",
+      COUNT(*)::int                                               AS n,
+      COUNT(*) FILTER (WHERE status = 'won')::int                 AS wins,
+      AVG(CASE WHEN status = 'won' THEN 1.0 ELSE 0.0 END)        AS "realizedRate",
+      AVG(our_prob)                                               AS "avgOurProb"
+    FROM soccer_bets
+    WHERE bet_type = 'first_scorer'
+      AND status IN ('won', 'lost')
+    GROUP BY 1, 2, 3
+    ORDER BY "probLow" DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    tier: String(r.tier),
+    probLow: Number(r.probLow),
+    probHigh: Number(r.probHigh),
+    n: Number(r.n),
+    wins: Number(r.wins),
+    realizedRate: Number(r.realizedRate),
+    avgOurProb: Number(r.avgOurProb),
+  }));
+}
+
+// Indicator 2: "Scored but not first" — for lost first-scorer bets, cross-
+// reference soccer_match_goals to flag near-misses (player scored, just not 1st).
+export type SoccerFirstScorerNearMissRow = {
+  gameId: string;
+  fixture: string;
+  playerName: string;
+  ourProb: number;
+  marketOdds: number | null;
+  scoredInMatch: boolean;
+  goalCount: number;
+  goalMinutes: number[];
+};
+
+export async function getSoccerFirstScorerNearMisses(): Promise<SoccerFirstScorerNearMissRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      b.scope                                             AS "gameId",
+      COALESCE(b.inputs_json->>'fixture', b.scope)        AS fixture,
+      b.selection_label                                   AS "playerName",
+      b.our_prob                                          AS "ourProb",
+      b.market_odds                                       AS "marketOdds",
+      -- aggregate goals for this player in this game
+      COALESCE(g.goal_count, 0)::int                      AS "goalCount",
+      COALESCE(g.minutes, ARRAY[]::int[])                 AS "goalMinutes"
+    FROM soccer_bets b
+    LEFT JOIN (
+      SELECT
+        game_id,
+        player_name,
+        COUNT(*)::int         AS goal_count,
+        ARRAY_AGG(goal_minute ORDER BY goal_minute) AS minutes
+      FROM soccer_match_goals
+      GROUP BY game_id, player_name
+    ) g ON g.game_id = b.scope
+      AND lower(regexp_replace(g.player_name, '[^a-zA-Z]', '', 'g'))
+          = lower(regexp_replace(b.selection_label, '[^a-zA-Z]', '', 'g'))
+    WHERE b.bet_type = 'first_scorer'
+      AND b.status = 'lost'
+    ORDER BY b.our_prob DESC
+    LIMIT 100
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    gameId: String(r.gameId),
+    fixture: String(r.fixture),
+    playerName: String(r.playerName),
+    ourProb: Number(r.ourProb),
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    scoredInMatch: Number(r.goalCount) > 0,
+    goalCount: Number(r.goalCount),
+    goalMinutes: Array.isArray(r.goalMinutes)
+      ? (r.goalMinutes as unknown[]).map(Number).filter((n) => !isNaN(n))
+      : [],
+  }));
+}
+
+// Indicator 3: Top-pick hit rate — per game, was our #1-ranked player the
+// actual first scorer? Measures raw model accuracy independent of bet value.
+export type SoccerTopPickRow = {
+  gameId: string;
+  fixture: string;
+  gameDate: string;
+  topPick: string;
+  topPickProb: number;
+  actualFirstScorer: string | null;
+  topPickWasFirst: boolean;
+  topPickScored: boolean;
+};
+
+export async function getSoccerTopPickAccuracy(): Promise<SoccerTopPickRow[]> {
+  const rows = await db.execute(sql`
+    WITH ranked AS (
+      SELECT
+        b.scope                                                     AS game_id,
+        COALESCE(b.inputs_json->>'fixture', b.scope)                AS fixture,
+        sm.game_date::text                                          AS game_date,
+        b.selection_label                                           AS top_pick,
+        b.our_prob                                                  AS top_pick_prob,
+        ROW_NUMBER() OVER (PARTITION BY b.scope ORDER BY b.our_prob DESC) AS rn
+      FROM soccer_bets b
+      JOIN soccer_matchups sm ON sm.game_id = b.scope
+      WHERE b.bet_type = 'first_scorer'
+        AND b.status IN ('won', 'lost')
+        AND b.selection_label NOT IN ('No Scorer')
+    ),
+    top_picks AS (SELECT * FROM ranked WHERE rn = 1),
+    first_goals AS (
+      SELECT game_id, player_name AS first_scorer
+      FROM soccer_match_goals
+      WHERE is_first_goal = true
+    ),
+    any_goals AS (
+      SELECT game_id, player_name
+      FROM soccer_match_goals
+    )
+    SELECT
+      tp.game_id                                                    AS "gameId",
+      tp.fixture,
+      tp.game_date                                                  AS "gameDate",
+      tp.top_pick                                                   AS "topPick",
+      tp.top_pick_prob                                              AS "topPickProb",
+      fg.first_scorer                                               AS "actualFirstScorer",
+      (lower(regexp_replace(fg.first_scorer, '[^a-zA-Z]', '', 'g'))
+        = lower(regexp_replace(tp.top_pick, '[^a-zA-Z]', '', 'g'))) AS "topPickWasFirst",
+      EXISTS (
+        SELECT 1 FROM any_goals ag
+        WHERE ag.game_id = tp.game_id
+          AND lower(regexp_replace(ag.player_name, '[^a-zA-Z]', '', 'g'))
+              = lower(regexp_replace(tp.top_pick, '[^a-zA-Z]', '', 'g'))
+      )                                                             AS "topPickScored"
+    FROM top_picks tp
+    LEFT JOIN first_goals fg ON fg.game_id = tp.game_id
+    ORDER BY tp.game_date DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    gameId: String(r.gameId),
+    fixture: String(r.fixture),
+    gameDate: String(r.gameDate),
+    topPick: String(r.topPick),
+    topPickProb: Number(r.topPickProb),
+    actualFirstScorer: r.actualFirstScorer != null ? String(r.actualFirstScorer) : null,
+    topPickWasFirst: Boolean(r.topPickWasFirst),
+    topPickScored: Boolean(r.topPickScored),
+  }));
+}
