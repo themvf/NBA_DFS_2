@@ -467,7 +467,8 @@ function ResultsPanel({
       {(() => {
         const mlBets = bestPerGame.filter((b) => b.betType === "moneyline" && b.status !== "void" && b.side != null);
         if (mlBets.length === 0) return null;
-        const sides: { key: string; label: string; emoji: string }[] = [
+        const totalGames = mlBets.length;
+        const sides = [
           { key: "home", label: "Home", emoji: "🏠" },
           { key: "draw", label: "Draw", emoji: "🤝" },
           { key: "away", label: "Away", emoji: "✈️" },
@@ -478,54 +479,56 @@ function ResultsPanel({
           const lost = rows.filter((b) => b.status === "lost").length;
           const n = won + lost;
           const wr = n > 0 ? won / n : null;
+          const expWr = n > 0 ? rows.filter(b => b.status !== "void").reduce((s, b) => s + b.ourProb, 0) / n : null;
           const marketRows = rows.filter((b) => b.marketDecimal != null);
           const profit = marketRows.reduce((s, b) => s + (b.status === "won" ? b.marketDecimal! - 1 : -1), 0);
           const roi = marketRows.length > 0 ? profit / marketRows.length : null;
-          const avgOdds = won > 0
-            ? rows.filter((b) => b.status === "won" && b.marketOdds != null)
-                  .reduce((s, b) => s + b.marketOdds!, 0) / rows.filter((b) => b.status === "won" && b.marketOdds != null).length
-            : null;
-          return { key, label, emoji, n, won, lost, wr, roi, avgOdds };
-        }).filter((r) => r.n > 0);
-        if (sideStats.length === 0) return null;
+          return { key, label, emoji, n, won, lost, wr, expWr, roi, pct: totalGames > 0 ? n / totalGames : 0 };
+        });
+        const dominant = sideStats.find((r) => r.pct >= 0.8);
         return (
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              Moneyline — breakdown by side
-            </h3>
+            <div className="mb-2 flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Moneyline — breakdown by side
+              </h3>
+              {dominant && (
+                <span className="rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                  Model leaned {dominant.label} in {dominant.n}/{totalGames} games
+                </span>
+              )}
+            </div>
             <div className="overflow-x-auto rounded-lg border bg-card">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-[10px] uppercase text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium">Side</th>
-                    <th className="px-2 py-2 text-center font-medium">Games</th>
+                    <th className="px-2 py-2 text-center font-medium">Picked</th>
                     <th className="px-2 py-2 text-center font-medium">W</th>
                     <th className="px-2 py-2 text-center font-medium">L</th>
                     <th className="px-2 py-2 text-center font-medium">Win %</th>
-                    <th className="px-2 py-2 text-center font-medium">Avg win odds</th>
+                    <th className="px-2 py-2 text-center font-medium">Exp %</th>
                     <th className="px-2 py-2 text-center font-medium">ROI</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sideStats.map((r) => (
-                    <tr key={r.key} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="px-3 py-2 font-medium">
-                        {r.emoji} {r.label}
+                    <tr key={r.key} className={`border-b last:border-0 hover:bg-accent/40 ${r.n === 0 ? "opacity-40" : ""}`}>
+                      <td className="px-3 py-2 font-medium">{r.emoji} {r.label}</td>
+                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
+                        {r.n > 0 ? <>{r.n} <span className="text-[10px]">({fmtPct(r.pct)})</span></> : "—"}
                       </td>
-                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{r.n}</td>
-                      <td className="px-2 py-2 text-center tabular-nums text-emerald-400 font-medium">{r.won}</td>
-                      <td className="px-2 py-2 text-center tabular-nums text-rose-400">{r.lost}</td>
-                      <td className={`px-2 py-2 text-center tabular-nums font-medium ${r.wr != null && r.wr > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
+                      <td className="px-2 py-2 text-center tabular-nums text-emerald-400 font-medium">{r.n > 0 ? r.won : "—"}</td>
+                      <td className="px-2 py-2 text-center tabular-nums text-rose-400">{r.n > 0 ? r.lost : "—"}</td>
+                      <td className={`px-2 py-2 text-center tabular-nums font-medium ${r.wr != null ? (r.wr >= (r.expWr ?? 0) ? "text-emerald-400" : "text-rose-400") : "text-muted-foreground"}`}>
                         {r.wr != null ? fmtPct1(r.wr) : "—"}
                       </td>
                       <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
-                        {r.avgOdds != null ? fmtMl(Math.round(r.avgOdds)) : "—"}
+                        {r.expWr != null ? fmtPct1(r.expWr) : "—"}
                       </td>
                       <td className="px-2 py-2 text-center tabular-nums">
                         {r.roi != null ? (
-                          <span className={r.roi >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                            {fmtRoi(r.roi)}
-                          </span>
+                          <span className={r.roi >= 0 ? "text-emerald-400" : "text-rose-400"}>{fmtRoi(r.roi)}</span>
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                     </tr>
@@ -534,7 +537,7 @@ function ResultsPanel({
               </table>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Best-rated side per game only. "Avg win odds" = average American odds on the winning picks for that side.
+              Best-rated side per game. Win % green = beating our own expected %. Faded rows = model never picked this side.
             </p>
           </div>
         );
@@ -544,7 +547,8 @@ function ResultsPanel({
       {(() => {
         const ouBets = bestPerGame.filter((b) => b.betType === "total" && b.status !== "void");
         if (ouBets.length === 0) return null;
-        const sides: { key: string; label: string; emoji: string }[] = [
+        const totalGames = ouBets.length;
+        const sides = [
           { key: "over",  label: "Over",  emoji: "📈" },
           { key: "under", label: "Under", emoji: "📉" },
         ];
@@ -554,52 +558,56 @@ function ResultsPanel({
           const lost = rows.filter((b) => b.status === "lost").length;
           const n = won + lost;
           const wr = n > 0 ? won / n : null;
+          const expWr = n > 0 ? rows.filter(b => b.status !== "void").reduce((s, b) => s + b.ourProb, 0) / n : null;
           const marketRows = rows.filter((b) => b.marketDecimal != null);
           const profit = marketRows.reduce((s, b) => s + (b.status === "won" ? b.marketDecimal! - 1 : -1), 0);
           const roi = marketRows.length > 0 ? profit / marketRows.length : null;
-          const avgOdds = won > 0
-            ? rows.filter((b) => b.status === "won" && b.marketOdds != null)
-                  .reduce((s, b) => s + b.marketOdds!, 0) / rows.filter((b) => b.status === "won" && b.marketOdds != null).length
-            : null;
-          return { key, label, emoji, n, won, lost, wr, roi, avgOdds };
-        }).filter((r) => r.n > 0);
-        if (sideStats.length === 0) return null;
+          return { key, label, emoji, n, won, lost, wr, expWr, roi, pct: totalGames > 0 ? n / totalGames : 0 };
+        });
+        const dominant = sideStats.find((r) => r.pct >= 0.8);
         return (
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              Over/Under — breakdown by side
-            </h3>
+            <div className="mb-2 flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Over/Under — breakdown by side
+              </h3>
+              {dominant && (
+                <span className="rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                  Model leaned {dominant.label} in {dominant.n}/{totalGames} games
+                </span>
+              )}
+            </div>
             <div className="overflow-x-auto rounded-lg border bg-card">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-[10px] uppercase text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium">Side</th>
-                    <th className="px-2 py-2 text-center font-medium">Games</th>
+                    <th className="px-2 py-2 text-center font-medium">Picked</th>
                     <th className="px-2 py-2 text-center font-medium">W</th>
                     <th className="px-2 py-2 text-center font-medium">L</th>
                     <th className="px-2 py-2 text-center font-medium">Win %</th>
-                    <th className="px-2 py-2 text-center font-medium">Avg win odds</th>
+                    <th className="px-2 py-2 text-center font-medium">Exp %</th>
                     <th className="px-2 py-2 text-center font-medium">ROI</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sideStats.map((r) => (
-                    <tr key={r.key} className="border-b last:border-0 hover:bg-accent/40">
+                    <tr key={r.key} className={`border-b last:border-0 hover:bg-accent/40 ${r.n === 0 ? "opacity-40" : ""}`}>
                       <td className="px-3 py-2 font-medium">{r.emoji} {r.label}</td>
-                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{r.n}</td>
-                      <td className="px-2 py-2 text-center tabular-nums text-emerald-400 font-medium">{r.won}</td>
-                      <td className="px-2 py-2 text-center tabular-nums text-rose-400">{r.lost}</td>
-                      <td className={`px-2 py-2 text-center tabular-nums font-medium ${r.wr != null && r.wr > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
+                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
+                        {r.n > 0 ? <>{r.n} <span className="text-[10px]">({fmtPct(r.pct)})</span></> : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-center tabular-nums text-emerald-400 font-medium">{r.n > 0 ? r.won : "—"}</td>
+                      <td className="px-2 py-2 text-center tabular-nums text-rose-400">{r.n > 0 ? r.lost : "—"}</td>
+                      <td className={`px-2 py-2 text-center tabular-nums font-medium ${r.wr != null ? (r.wr >= (r.expWr ?? 0) ? "text-emerald-400" : "text-rose-400") : "text-muted-foreground"}`}>
                         {r.wr != null ? fmtPct1(r.wr) : "—"}
                       </td>
                       <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
-                        {r.avgOdds != null ? fmtMl(Math.round(r.avgOdds)) : "—"}
+                        {r.expWr != null ? fmtPct1(r.expWr) : "—"}
                       </td>
                       <td className="px-2 py-2 text-center tabular-nums">
                         {r.roi != null ? (
-                          <span className={r.roi >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                            {fmtRoi(r.roi)}
-                          </span>
+                          <span className={r.roi >= 0 ? "text-emerald-400" : "text-rose-400"}>{fmtRoi(r.roi)}</span>
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                     </tr>
@@ -608,7 +616,7 @@ function ResultsPanel({
               </table>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Best-rated side per game only. Over/Under determined from selection label.
+              Best-rated side per game. Win % green = beating our own expected %. Faded rows = model never picked this side.
             </p>
           </div>
         );
