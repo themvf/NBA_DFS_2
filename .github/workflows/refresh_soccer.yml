@@ -52,6 +52,13 @@ jobs:
         if: github.event.schedule == '0 6 * * 1' || inputs.refresh_player_history == true
         run: python -m ingest.soccer_player_history
 
+      - name: Backfill completed fixtures missing from the schedule (TheSportsDB)
+        # The odds feed only carries upcoming games and /scores reaches back just
+        # 3 days, so matches that kicked off before first ingest are never
+        # captured. Recover them from TheSportsDB's full fixture history so
+        # standings, settlement, ratings, and the group sim all see real results.
+        run: python -m ingest.soccer_backfill_results
+
       - name: Settle completed bets (scores + group standings)
         run: python -m ingest.soccer_results --days-from 3
 
