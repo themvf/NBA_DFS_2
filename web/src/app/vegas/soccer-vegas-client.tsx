@@ -463,6 +463,83 @@ function ResultsPanel({
         </div>
       )}
 
+      {/* Moneyline by side breakdown */}
+      {(() => {
+        const mlBets = bestPerGame.filter((b) => b.betType === "moneyline" && b.status !== "void" && b.side != null);
+        if (mlBets.length === 0) return null;
+        const sides: { key: string; label: string; emoji: string }[] = [
+          { key: "home", label: "Home", emoji: "🏠" },
+          { key: "draw", label: "Draw", emoji: "🤝" },
+          { key: "away", label: "Away", emoji: "✈️" },
+        ];
+        const sideStats = sides.map(({ key, label, emoji }) => {
+          const rows = mlBets.filter((b) => b.side === key);
+          const won = rows.filter((b) => b.status === "won").length;
+          const lost = rows.filter((b) => b.status === "lost").length;
+          const n = won + lost;
+          const wr = n > 0 ? won / n : null;
+          const marketRows = rows.filter((b) => b.marketDecimal != null);
+          const profit = marketRows.reduce((s, b) => s + (b.status === "won" ? b.marketDecimal! - 1 : -1), 0);
+          const roi = marketRows.length > 0 ? profit / marketRows.length : null;
+          const avgOdds = won > 0
+            ? rows.filter((b) => b.status === "won" && b.marketOdds != null)
+                  .reduce((s, b) => s + b.marketOdds!, 0) / rows.filter((b) => b.status === "won" && b.marketOdds != null).length
+            : null;
+          return { key, label, emoji, n, won, lost, wr, roi, avgOdds };
+        }).filter((r) => r.n > 0);
+        if (sideStats.length === 0) return null;
+        return (
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Moneyline — breakdown by side
+            </h3>
+            <div className="overflow-x-auto rounded-lg border bg-card">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-[10px] uppercase text-muted-foreground">
+                    <th className="px-3 py-2 text-left font-medium">Side</th>
+                    <th className="px-2 py-2 text-center font-medium">Games</th>
+                    <th className="px-2 py-2 text-center font-medium">W</th>
+                    <th className="px-2 py-2 text-center font-medium">L</th>
+                    <th className="px-2 py-2 text-center font-medium">Win %</th>
+                    <th className="px-2 py-2 text-center font-medium">Avg win odds</th>
+                    <th className="px-2 py-2 text-center font-medium">ROI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sideStats.map((r) => (
+                    <tr key={r.key} className="border-b last:border-0 hover:bg-accent/40">
+                      <td className="px-3 py-2 font-medium">
+                        {r.emoji} {r.label}
+                      </td>
+                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{r.n}</td>
+                      <td className="px-2 py-2 text-center tabular-nums text-emerald-400 font-medium">{r.won}</td>
+                      <td className="px-2 py-2 text-center tabular-nums text-rose-400">{r.lost}</td>
+                      <td className={`px-2 py-2 text-center tabular-nums font-medium ${r.wr != null && r.wr > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
+                        {r.wr != null ? fmtPct1(r.wr) : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
+                        {r.avgOdds != null ? fmtMl(Math.round(r.avgOdds)) : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-center tabular-nums">
+                        {r.roi != null ? (
+                          <span className={r.roi >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                            {fmtRoi(r.roi)}
+                          </span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Best-rated side per game only. "Avg win odds" = average American odds on the winning picks for that side.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* P&L chart */}
       <PnlChart bets={bets} />
 

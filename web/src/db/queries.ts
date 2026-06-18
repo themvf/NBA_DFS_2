@@ -6202,6 +6202,7 @@ export type SoccerBetRow = {
   betType: string;
   scope: string;
   selectionLabel: string;
+  side: string | null;
   fixture: string | null;
   marketOdds: number | null;
   marketDecimal: number | null;
@@ -6222,6 +6223,7 @@ export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBe
   const rows = await db.execute(sql`
     SELECT
       b.id, b.bet_type AS "betType", b.scope, b.selection_label AS "selectionLabel",
+      b.inputs_json->>'side' AS "side",
       b.inputs_json->>'fixture' AS "fixture",
       b.market_odds AS "marketOdds", b.market_prob AS "marketProb",
       b.our_prob AS "ourProb", b.edge, b.ev, b.stars, b.book,
@@ -6239,6 +6241,7 @@ export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBe
     betType: String(r.betType),
     scope: String(r.scope),
     selectionLabel: String(r.selectionLabel),
+    side: r.side != null ? String(r.side) : null,
     fixture: r.fixture != null ? String(r.fixture) : null,
     marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
     marketDecimal: null,
@@ -6260,6 +6263,7 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
   const rows = await db.execute(sql`
     SELECT
       b.id, b.bet_type AS "betType", b.scope, b.selection_label AS "selectionLabel",
+      b.inputs_json->>'side' AS "side",
       b.inputs_json->>'fixture' AS "fixture",
       b.market_odds AS "marketOdds", b.market_decimal AS "marketDecimal",
       b.market_prob AS "marketProb",
@@ -6276,6 +6280,7 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
     betType: String(r.betType),
     scope: String(r.scope),
     selectionLabel: String(r.selectionLabel),
+    side: r.side != null ? String(r.side) : null,
     fixture: r.fixture != null ? String(r.fixture) : null,
     marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
     marketDecimal: r.marketDecimal != null ? Number(r.marketDecimal) : null,
