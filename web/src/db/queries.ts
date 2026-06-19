@@ -6222,6 +6222,7 @@ export type SoccerBetRow = {
   resultDetail: string | null;
   modelVersion: string;
   gameDate: string | null;
+  eventCommence: string | null;   // raw kickoff timestamp — format in local tz
   settledAt: string | null;
 };
 
@@ -6233,7 +6234,8 @@ export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBe
       b.inputs_json->>'fixture' AS "fixture",
       b.market_odds AS "marketOdds", b.market_prob AS "marketProb",
       b.our_prob AS "ourProb", b.edge, b.ev, b.stars, b.book,
-      b.status, b.result_detail AS "resultDetail", b.model_version AS "modelVersion"
+      b.status, b.result_detail AS "resultDetail", b.model_version AS "modelVersion",
+      b.event_commence AS "eventCommence"
     FROM soccer_bets b
     WHERE b.stars >= ${minStars}
     ORDER BY
@@ -6261,6 +6263,7 @@ export async function getSoccerBets(minStars = 1, limit = 120): Promise<SoccerBe
     resultDetail: r.resultDetail != null ? String(r.resultDetail) : null,
     modelVersion: String(r.modelVersion),
     gameDate: null,
+    eventCommence: r.eventCommence != null ? String(r.eventCommence) : null,
     settledAt: null,
   }));
 }
@@ -6276,6 +6279,7 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
       b.our_prob AS "ourProb", b.edge, b.ev, b.stars, b.book,
       b.status, b.result_detail AS "resultDetail", b.model_version AS "modelVersion",
       DATE(b.event_commence AT TIME ZONE 'UTC') AS "gameDate",
+      b.event_commence AS "eventCommence",
       b.settled_at AS "settledAt"
     FROM soccer_bets b
     WHERE b.status IN ('won', 'lost', 'void')
@@ -6300,6 +6304,7 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
     resultDetail: r.resultDetail != null ? String(r.resultDetail) : null,
     modelVersion: String(r.modelVersion),
     gameDate: r.gameDate != null ? String(r.gameDate) : null,
+    eventCommence: r.eventCommence != null ? String(r.eventCommence) : null,
     settledAt: r.settledAt != null ? String(r.settledAt) : null,
   }));
 }

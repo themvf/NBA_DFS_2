@@ -44,6 +44,37 @@ function fmtDayHeading(gameDate: string): string {
   return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
+// Bet date for the ledger: prefer the real kickoff timestamp formatted in the
+// viewer's LOCAL timezone (a 01:00 UTC game is the prior evening in the US), and
+// only fall back to the bare UTC-derived game_date when no timestamp exists.
+function fmtBetDate(eventCommence: string | null, gameDate: string | null): string {
+  if (eventCommence) {
+    const d = new Date(eventCommence);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    }
+  }
+  return gameDate
+    ? new Date(`${gameDate}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : "?";
+}
+
+// Local-timezone YYYY-MM-DD for a fixture, so games group under the day they
+// actually fall on for the viewer (a 01:00 UTC kickoff is the prior US evening),
+// not the UTC-derived game_date. Falls back to game_date when no timestamp.
+function localDateKey(commenceTime: string | null, gameDate: string): string {
+  if (commenceTime) {
+    const d = new Date(commenceTime);
+    if (!Number.isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+  }
+  return gameDate;
+}
+
 const fmtSignedPp = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(0)}%`;
 const fmtSignedGoals = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 const fmtRoi = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
@@ -217,9 +248,7 @@ function PnlChart({ bets }: { bets: SoccerBetRow[] }) {
     for (const b of settled) {
       const pnl = b.status === "won" ? b.marketDecimal! - 1 : -1;
       cumPnl += pnl;
-      const date = b.gameDate
-        ? new Date(`${b.gameDate}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-        : "?";
+      const date = fmtBetDate(b.eventCommence, b.gameDate);
       pts.push({ label: date, pnl: Math.round(cumPnl * 100) / 100, bet: b.selectionLabel });
     }
     return pts;
@@ -699,9 +728,7 @@ function ResultsPanel({
                 {filteredBets.map((b) => (
                   <tr key={b.id} className="border-b last:border-0 hover:bg-accent/40">
                     <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                      {b.gameDate
-                        ? new Date(`${b.gameDate}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-                        : "—"}
+                      {b.eventCommence || b.gameDate ? fmtBetDate(b.eventCommence, b.gameDate) : "—"}
                     </td>
                     <td className="px-3 py-2"><Stars n={b.stars} /></td>
                     <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
@@ -1294,11 +1321,12 @@ function FirstScorerPanel({ rows, matchGoals }: { rows: SoccerFirstScorerRow[]; 
 function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRow[]; queryDate: string | null }) {
   const byDate = new Map<string, SoccerVegasMatchupRow[]>();
   for (const m of matchups) {
-    const list = byDate.get(m.gameDate) ?? [];
+    const key = localDateKey(m.commenceTime, m.gameDate);
+    const list = byDate.get(key) ?? [];
     list.push(m);
-    byDate.set(m.gameDate, list);
+    byDate.set(key, list);
   }
-  const days = Array.from(byDate.keys());
+  const days = Array.from(byDate.keys()).sort();
   const hasModel = matchups.some((m) => m.ourTotalPred != null);
 
   return (
