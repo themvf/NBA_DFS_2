@@ -227,6 +227,70 @@ def simulate_outright(field: list[dict], sims: int) -> dict[int, float]:
     return {tid: w / sims for tid, w in wins.items()}
 
 
+# Group-stage scoreline model (for proper FIFA tiebreakers): map the Elo win-prob
+# gap to a goal supremacy around an international group-stage average total, then
+# sample a Poisson scoreline.  Real goals → real GD + goals-for, and a known
+# head-to-head result per pair, so ties resolve the way FIFA actually breaks them
+# instead of by a coin flip.
+_GROUP_SIM_TOTAL = 2.6        # avg goals/game, group stage
+_GROUP_SIM_SUP_SCALE = 2.2    # win-prob gap → goal supremacy
+_GROUP_SIM_MAX_SUP = 2.4
+
+
+def _elo_lambdas(elo_a: float, elo_b: float) -> tuple[float, float]:
+    """Poisson goal rates (λ_a, λ_b) implied by the Elo win-prob gap."""
+    p_a, _, p_b = wdl_probs(elo_a, elo_b)
+    sup = max(-_GROUP_SIM_MAX_SUP, min(_GROUP_SIM_MAX_SUP, (p_a - p_b) * _GROUP_SIM_SUP_SCALE))
+    return max(0.2, (_GROUP_SIM_TOTAL + sup) / 2.0), max(0.2, (_GROUP_SIM_TOTAL - sup) / 2.0)
+
+
+def _sample_poisson(lam: float) -> int:
+    """Knuth sampler — fine for the small λ (~1–2) of a football scoreline."""
+    target = math.exp(-lam)
+    k, p = 0, 1.0
+    while True:
+        p *= random.random()
+        if p <= target:
+            return k
+        k += 1
+
+
+def _group_winner(ids: list[int], pts: dict, gd: dict, gf: dict,
+                  scorelines: dict[tuple[int, int], tuple[int, int]]) -> int:
+    """Group winner by FIFA order: pts → GD → goals-for → head-to-head → random."""
+    best = max((pts[t], gd[t], gf[t]) for t in ids)
+    tied = [t for t in ids if (pts[t], gd[t], gf[t]) == best]
+    if len(tied) == 1:
+        return tied[0]
+    # Head-to-head mini-table among the tied teams (pts → GD → GF → random).
+    hp = {t: 0 for t in tied}
+    hgd = {t: 0 for t in tied}
+    hgf = {t: 0 for t in tied}
+    for i in range(len(tied)):
+        for j in range(i + 1, len(tied)):
+            x, y = tied[i], tied[j]
+            sc = scorelines.get((x, y))
+            if sc is not None:
+                gx, gy = sc
+            else:
+                sc = scorelines.get((y, x))
+                if sc is None:
+                    continue
+                gy, gx = sc
+            hgf[x] += gx
+            hgf[y] += gy
+            hgd[x] += gx - gy
+            hgd[y] += gy - gx
+            if gx > gy:
+                hp[x] += 3
+            elif gx < gy:
+                hp[y] += 3
+            else:
+                hp[x] += 1
+                hp[y] += 1
+    return max(tied, key=lambda t: (hp[t], hgd[t], hgf[t], random.random()))
+
+
 def simulate_group(
     member_elos: list[tuple[int, float]],
     sims: int,
@@ -236,11 +300,11 @@ def simulate_group(
 
     Results-aware: games already played — passed in ``results_by_pair`` keyed by
     the ordered ``(home_team_id, away_team_id)`` with value ``(home_goals,
-    away_goals)`` — are banked once as fixed points + goal difference, and only
-    the unplayed pairings are simulated.  A team's secured points (e.g. an
-    opening-game win) therefore carry into the projection instead of being
-    re-rolled from Elo every sim.  Ties break on points → goal difference (real
-    banked GD plus a nominal ±1 per simulated result) → random.
+    away_goals)`` — are banked once and only the unplayed pairings are simulated.
+    Remaining games sample a Poisson scoreline from the Elo-implied goal rates, so
+    each sim has real points, goal difference, goals-for, and head-to-head
+    results — and the group winner is decided by the full FIFA tiebreaker order
+    (pts → GD → goals-for → head-to-head → random) rather than pts → GD → coin flip.
     """
     results_by_pair = results_by_pair or {}
     ids = [tid for tid, _ in member_elos]
@@ -248,48 +312,57 @@ def simulate_group(
     first: dict[int, int] = {tid: 0 for tid in ids}
     unordered = [(ids[i], ids[j]) for i in range(len(ids)) for j in range(i + 1, len(ids))]
 
-    # Bank completed results once (constant across sims).
+    # Bank completed results once (constant across sims): points, GD, goals-for,
+    # and the per-pair scoreline (for head-to-head).
     base_pts: dict[int, int] = {tid: 0 for tid in ids}
     base_gd: dict[int, int] = {tid: 0 for tid in ids}
+    base_gf: dict[int, int] = {tid: 0 for tid in ids}
+    base_scores: dict[tuple[int, int], tuple[int, int]] = {}
     remaining: list[tuple[int, int]] = []
     for a, b in unordered:
         if (a, b) in results_by_pair:
-            (hs, as_), home, away = results_by_pair[(a, b)], a, b
+            (ga, gb) = results_by_pair[(a, b)]
         elif (b, a) in results_by_pair:
-            (hs, as_), home, away = results_by_pair[(b, a)], b, a
+            (gb, ga) = results_by_pair[(b, a)]
         else:
             remaining.append((a, b))
             continue
-        base_gd[home] += hs - as_
-        base_gd[away] += as_ - hs
-        if hs > as_:
-            base_pts[home] += 3
-        elif hs < as_:
-            base_pts[away] += 3
+        base_scores[(a, b)] = (ga, gb)
+        base_gf[a] += ga
+        base_gf[b] += gb
+        base_gd[a] += ga - gb
+        base_gd[b] += gb - ga
+        if ga > gb:
+            base_pts[a] += 3
+        elif ga < gb:
+            base_pts[b] += 3
         else:
-            base_pts[home] += 1
-            base_pts[away] += 1
+            base_pts[a] += 1
+            base_pts[b] += 1
+
+    lambdas = {(a, b): _elo_lambdas(elo[a], elo[b]) for a, b in remaining}
 
     for _ in range(sims):
         pts = dict(base_pts)
         gd = dict(base_gd)
+        gf = dict(base_gf)
+        scores = dict(base_scores)
         for a, b in remaining:
-            p_a, p_draw, _ = wdl_probs(elo[a], elo[b])
-            r = random.random()
-            if r < p_a:
+            lam_a, lam_b = lambdas[(a, b)]
+            ga, gb = _sample_poisson(lam_a), _sample_poisson(lam_b)
+            scores[(a, b)] = (ga, gb)
+            gf[a] += ga
+            gf[b] += gb
+            gd[a] += ga - gb
+            gd[b] += gb - ga
+            if ga > gb:
                 pts[a] += 3
-                gd[a] += 1
-                gd[b] -= 1
-            elif r < p_a + p_draw:
+            elif ga < gb:
+                pts[b] += 3
+            else:
                 pts[a] += 1
                 pts[b] += 1
-            else:
-                pts[b] += 3
-                gd[b] += 1
-                gd[a] -= 1
-        # Winner: most points, then best goal difference, then random.
-        winner = max(ids, key=lambda t: (pts[t], gd[t], random.random()))
-        first[winner] += 1
+        first[_group_winner(ids, pts, gd, gf, scores)] += 1
     return {tid: c / sims for tid, c in first.items()}
 
 
