@@ -55,8 +55,21 @@ _DRAW_BASE = 0.32   # max draw probability at an even matchup
 # on top seeds; anchor the outright to the market so we don't claim wild favorite
 # edges (same market-anchoring philosophy as the match model).
 _W_OUTRIGHT_MODEL = 0.35
-# Group winner markets are 4-team and more efficient — lean on the market more.
-_W_GROUP_MODEL = 0.30
+# Group winner markets are 4-team and more efficient — lean on the market more
+# PRE-tournament. But Pinnacle's group-winner futures are stale (they still list
+# pre-tournament placeholder participants like "UEFA Path A Winner" and never
+# update for results), so once group games are played the results-aware sim is
+# far more reliable. _group_market_weight scales the sim weight up with group
+# completion, and a team the sim says is mathematically out can't be resurrected.
+_W_GROUP_MODEL = 0.30          # sim weight at 0 games played (trust market prior)
+_GROUP_ELIM_FLOOR = 0.01       # sim_prob below this → team can't win → ignore market
+
+
+def _group_market_weight(completed_games: int) -> float:
+    """Sim weight for a group's anchor, rising from _W_GROUP_MODEL to ~1.0 as the
+    6 round-robin games complete (the stale futures line fades as results land)."""
+    completion = max(0.0, min(1.0, completed_games / 6.0))
+    return _W_GROUP_MODEL + (1.0 - _W_GROUP_MODEL) * completion
 
 _TEAM_ALIASES = {  # outright-market name → our soccer_teams name
     "United States": "USA",
@@ -600,16 +613,23 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
                 continue  # only rate/settle complete 4-team groups
             member_elos = [(tid, elo_by_id.get(tid, 1500.0)) for tid in members]
             probs = simulate_group(member_elos, sims, results_by_pair)
+            # Group completion → how much to trust the results-aware sim over the
+            # stale futures line.
+            member_set = set(members)
+            completed_games = sum(1 for (h, a) in results_by_pair
+                                  if h in member_set and a in member_set)
+            w_model = _group_market_weight(completed_games)
             for tid in members:
                 if tid not in name_by_id:
                     continue
                 mkt = gw_market.get(tid)
-                # Anchor to Pinnacle market (sharper than a 4-team single-elim sim).
-                if mkt is not None:
-                    our_prob = (_W_GROUP_MODEL * probs.get(tid, 0.0)
-                                + (1.0 - _W_GROUP_MODEL) * mkt["prob_vigfree"])
+                sim_p = probs.get(tid, 0.0)
+                # Anchor to the market, but: (a) fade it as results accumulate, and
+                # (b) never let a stale line resurrect a mathematically-out team.
+                if mkt is not None and sim_p >= _GROUP_ELIM_FLOOR:
+                    our_prob = w_model * sim_p + (1.0 - w_model) * mkt["prob_vigfree"]
                 else:
-                    our_prob = probs.get(tid, 0.0)
+                    our_prob = sim_p
                 record_bet(
                     db,
                     model_version=MODEL_VERSION,
@@ -625,9 +645,10 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
                     conn=conn,
                     inputs={"elo": round(elo_by_id.get(tid, 1500.0), 1),
                             "group": label, "sims": sims,
-                            "sim_prob": round(probs.get(tid, 0.0), 4),
+                            "sim_prob": round(sim_p, 4),
                             "market_vigfree": round(mkt["prob_vigfree"], 4) if mkt else None,
-                            "anchor_w_model": _W_GROUP_MODEL,
+                            "anchor_w_model": round(w_model, 3),
+                            "group_games_done": completed_games,
                             "pinnacle_odds": mkt["american_odds"] if mkt else None},
                 )
                 written += 1
