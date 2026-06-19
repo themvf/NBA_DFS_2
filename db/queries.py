@@ -783,6 +783,7 @@ def upsert_mlb_matchup(
     weather_temp: int | None = None,
     wind_speed: int | None = None,
     wind_direction: str | None = None,
+    commence_time=None,
 ) -> int:
     row = db.execute_one(
         """
@@ -791,9 +792,9 @@ def upsert_mlb_matchup(
             home_sp_id, home_sp_name, away_sp_id, away_sp_name,
             vegas_total, home_ml, away_ml, vegas_prob_home,
             home_implied, away_implied, ballpark,
-            weather_temp, wind_speed, wind_direction
+            weather_temp, wind_speed, wind_direction, commence_time
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
             game_id        = COALESCE(EXCLUDED.game_id, mlb_matchups.game_id),
             home_sp_id     = COALESCE(EXCLUDED.home_sp_id, mlb_matchups.home_sp_id),
@@ -810,6 +811,7 @@ def upsert_mlb_matchup(
             weather_temp   = COALESCE(EXCLUDED.weather_temp, mlb_matchups.weather_temp),
             wind_speed     = COALESCE(EXCLUDED.wind_speed, mlb_matchups.wind_speed),
             wind_direction = COALESCE(EXCLUDED.wind_direction, mlb_matchups.wind_direction),
+            commence_time  = COALESCE(EXCLUDED.commence_time, mlb_matchups.commence_time),
             fetched_at     = NOW()
         RETURNING id
         """,
@@ -818,7 +820,7 @@ def upsert_mlb_matchup(
             home_sp_id, home_sp_name, away_sp_id, away_sp_name,
             vegas_total, home_ml, away_ml, vegas_prob_home,
             home_implied, away_implied, ballpark,
-            weather_temp, wind_speed, wind_direction,
+            weather_temp, wind_speed, wind_direction, commence_time,
         ),
     )
     return row["id"] if row else 0

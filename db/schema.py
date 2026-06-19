@@ -1495,6 +1495,54 @@ MIGRATIONS = [
     # 2026-06-18: MLB moneyline model — our independent P(home win) vs the market.
     # Market-anchored logistic, written by model/mlb_moneyline_model.py.
     "ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS our_prob_home DOUBLE PRECISION",
+    # 2026-06-18: first-pitch timestamp so MLB bets can lock at game start
+    # (the kickoff-lock the soccer accountability ledger uses).
+    "ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS commence_time TIMESTAMPTZ",
+    # 2026-06-18: MLB bet ledger — parity with the soccer accountability framework.
+    # One immutable, model_version-stamped, lock-at-first-pitch row per rated bet;
+    # totals + moneyline. Mirrors soccer_bets / soccer_bet_snapshots.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_bets (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        model_version TEXT NOT NULL,
+        bet_type TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        matchup_id INTEGER REFERENCES mlb_matchups(id),
+        subject_team_id INTEGER REFERENCES mlb_teams(team_id),
+        selection_label TEXT NOT NULL,
+        market_odds INTEGER,
+        market_decimal DOUBLE PRECISION,
+        market_prob DOUBLE PRECISION,
+        book TEXT,
+        our_prob DOUBLE PRECISION NOT NULL,
+        edge DOUBLE PRECISION,
+        ev DOUBLE PRECISION,
+        stars SMALLINT NOT NULL,
+        inputs_json JSONB,
+        event_commence TIMESTAMPTZ,
+        locked BOOLEAN DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        result_detail TEXT,
+        settled_at TIMESTAMPTZ,
+        UNIQUE(bet_type, scope, selection_label, model_version)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS mlb_bet_snapshots (
+        id SERIAL PRIMARY KEY,
+        bet_id INTEGER REFERENCES mlb_bets(id) ON DELETE CASCADE,
+        captured_at TIMESTAMPTZ DEFAULT NOW(),
+        capture_key TEXT,
+        our_prob DOUBLE PRECISION,
+        market_prob DOUBLE PRECISION,
+        market_odds INTEGER,
+        edge DOUBLE PRECISION,
+        ev DOUBLE PRECISION,
+        stars SMALLINT
+    )
+    """,
 ]
 
 INDEXES = [

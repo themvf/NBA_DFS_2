@@ -14,6 +14,8 @@ import type {
   MoneylineBacktestReport,
   MlbTotalBacktest,
   MlbMlBacktest,
+  MlbBetRow,
+  MlbBetBacktestRow,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
@@ -716,6 +718,179 @@ function MlbMoneylineBacktestPanel({ backtest }: { backtest: MlbMlBacktest }) {
   );
 }
 
+function StarChips({ n }: { n: number }) {
+  return (
+    <span className="text-amber-500" title={`${n}★`}>
+      {"★".repeat(n)}
+      <span className="text-gray-300">{"★".repeat(Math.max(0, 5 - n))}</span>
+    </span>
+  );
+}
+
+function BetStatusPill({ status, locked }: { status: string; locked: boolean }) {
+  const cls =
+    status === "won" ? "bg-emerald-100 text-emerald-700"
+    : status === "lost" ? "bg-red-100 text-red-600"
+    : status === "void" ? "bg-gray-100 text-gray-500"
+    : locked ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700";
+  const label = status === "pending" ? (locked ? "locked" : "pending") : status;
+  return <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${cls}`}>{label}</span>;
+}
+
+/**
+ * MLB rated bet ledger — parity with the soccer accountability framework.
+ * Immutable, model_version-stamped, lock-at-first-pitch rows from mlb_bets.
+ */
+function MlbBetLedgerPanel({ bets }: { bets: MlbBetRow[] }) {
+  const [minStars, setMinStars] = useState(3);
+  const fmtOdds = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
+  const shown = bets.filter((b) => b.stars >= minStars);
+  const pending = bets.filter((b) => b.status === "pending").length;
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          Rated Bet Ledger
+        </h3>
+        <div className="flex items-center gap-2 text-xs">
+          {pending > 0 && <span className="text-gray-500">{pending} pending</span>}
+          <label className="flex items-center gap-1">
+            <span className="text-gray-500">Min ★</span>
+            <select
+              value={minStars}
+              onChange={(e) => setMinStars(Number(e.target.value))}
+              className="rounded border bg-white px-1.5 py-0.5"
+            >
+              {[1, 2, 3, 4, 5].map((s) => <option key={s} value={s}>{s}★+</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">
+        Every rated bet is logged immutably with its model version and{" "}
+        <strong>locks at first pitch</strong>, so the backtest uses the number we
+        actually committed to. Stars combine EV (vs the price) and edge (vs the
+        vig-free market). <strong>Totals</strong> stars are backtest-profitable
+        (2★+ all +ROI). <strong>Moneyline</strong> can rate high on plus-money
+        dogs, but the market is efficient and those stars are overconfident — for
+        ML, trust the Bet Ledger Backtest below, not the star.
+      </p>
+      {shown.length === 0 ? (
+        <p className="text-xs text-gray-400">No bets at {minStars}★+.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b text-gray-500">
+                <th className="py-1 text-left">Rating</th>
+                <th className="py-1 text-left">Type</th>
+                <th className="py-1 text-left">Selection</th>
+                <th className="py-1 text-right">Our %</th>
+                <th className="py-1 text-right">Odds</th>
+                <th className="py-1 text-right">EV</th>
+                <th className="py-1 text-right">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.slice(0, 60).map((b) => (
+                <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <td className="py-1.5"><StarChips n={b.stars} /></td>
+                  <td className="py-1.5 text-gray-500">{b.betType === "moneyline" ? "ML" : "O/U"}</td>
+                  <td className="py-1.5">
+                    <span className="font-medium">{b.selectionLabel}</span>
+                    {b.fixture && <span className="block text-[10px] text-gray-400">{b.fixture}</span>}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">{(b.ourProb * 100).toFixed(0)}%</td>
+                  <td className="py-1.5 text-right tabular-nums">{fmtOdds(b.marketOdds)}</td>
+                  <td className={`py-1.5 text-right tabular-nums ${b.ev != null && b.ev > 0 ? "text-emerald-600" : "text-gray-500"}`}>
+                    {b.ev != null ? `${b.ev >= 0 ? "+" : ""}${(b.ev * 100).toFixed(0)}%` : "—"}
+                  </td>
+                  <td className="py-1.5 text-right"><BetStatusPill status={b.status} locked={b.locked} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Calibration of the bet ledger by star tier — do the stars mean what we claim? */
+function MlbBetLedgerBacktestPanel({ rows }: { rows: MlbBetBacktestRow[] }) {
+  const overall = rows.find((r) => r.betType === "all");
+  const byType = (t: string) => rows.filter((r) => r.betType === t && r.stars > 0).sort((a, b) => b.stars - a.stars);
+  const subtotal = (t: string) => rows.find((r) => r.betType === t && r.stars === 0);
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const roiStr = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
+
+  const section = (t: string, label: string) => {
+    const tiers = byType(t);
+    const sub = subtotal(t);
+    if (!sub || sub.n === 0) return null;
+    return (
+      <div key={t}>
+        <div className="text-xs font-semibold text-gray-600 mt-2 mb-1">{label}</div>
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b text-gray-500">
+              <th className="py-1 text-left">Stars</th>
+              <th className="py-1 text-right">n</th>
+              <th className="py-1 text-right">Exp win%</th>
+              <th className="py-1 text-right">Real win%</th>
+              <th className="py-1 text-right">ROI</th>
+              <th className="py-1 text-right">Brier</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tiers.map((r) => (
+              <tr key={r.stars} className={`border-b border-gray-50 ${r.stars >= 4 ? "bg-emerald-50/40" : ""}`}>
+                <td className="py-1.5"><StarChips n={r.stars} /></td>
+                <td className="py-1.5 text-right text-gray-500">{r.n}</td>
+                <td className="py-1.5 text-right tabular-nums text-gray-500">{pct(r.expectedWinRate)}</td>
+                <td className="py-1.5 text-right tabular-nums font-medium">{pct(r.realizedWinRate)}</td>
+                <td className={`py-1.5 text-right tabular-nums ${r.roi != null && r.roi >= 0 ? "text-emerald-600" : "text-red-500"}`}>{roiStr(r.roi)}</td>
+                <td className="py-1.5 text-right tabular-nums text-gray-400">{r.brier != null ? r.brier.toFixed(3) : "—"}</td>
+              </tr>
+            ))}
+            <tr className="border-t font-medium">
+              <td className="py-1.5 text-gray-500">All</td>
+              <td className="py-1.5 text-right text-gray-500">{sub.n}</td>
+              <td className="py-1.5 text-right tabular-nums text-gray-500">{pct(sub.expectedWinRate)}</td>
+              <td className="py-1.5 text-right tabular-nums">{pct(sub.realizedWinRate)}</td>
+              <td className={`py-1.5 text-right tabular-nums ${sub.roi != null && sub.roi >= 0 ? "text-emerald-600" : "text-red-500"}`}>{roiStr(sub.roi)}</td>
+              <td className="py-1.5 text-right tabular-nums text-gray-400">{sub.brier != null ? sub.brier.toFixed(3) : "—"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Bet Ledger Backtest</h3>
+        {overall && overall.n > 0 && (
+          <span className="text-xs text-gray-500">
+            {overall.n} settled · realized {pct(overall.realizedWinRate)} vs expected {pct(overall.expectedWinRate)}
+            {overall.roi != null && (
+              <span className={overall.roi >= 0 ? " text-emerald-600" : " text-red-600"}> · {roiStr(overall.roi)} ROI</span>
+            )}
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-gray-500 mb-1">
+        Calibration on settled bets: realized win% should meet or beat expected
+        (our_prob) in each star tier. ROI is priced at each bet&rsquo;s true odds.
+      </p>
+      {section("total", "Totals (O/U)")}
+      {section("moneyline", "Moneyline")}
+    </div>
+  );
+}
+
 type Props = {
   matchups: VegasMatchupRow[];
   ouHitRate: OuHitRateRow[];
@@ -724,6 +899,8 @@ type Props = {
   mlbCoverageStatus: MlbVegasCoverageStatus | null;
   mlbTotalBacktest: MlbTotalBacktest | null;
   mlbMoneylineBacktest: MlbMlBacktest | null;
+  mlbBets: MlbBetRow[] | null;
+  mlbBetBacktest: MlbBetBacktestRow[] | null;
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
   teamInsights: TeamVegasInsightRow[];
@@ -905,6 +1082,8 @@ export default function VegasClient({
   mlbCoverageStatus,
   mlbTotalBacktest,
   mlbMoneylineBacktest,
+  mlbBets,
+  mlbBetBacktest,
   vegasSummary,
   biggestMisses,
   teamInsights,
@@ -1712,6 +1891,14 @@ export default function VegasClient({
       {/* ── Model Moneyline Backtest (MLB) ────────────────────── */}
       {sport === "mlb" && mlbMoneylineBacktest && (
         <MlbMoneylineBacktestPanel backtest={mlbMoneylineBacktest} />
+      )}
+
+      {/* ── Rated Bet Ledger + calibration (MLB) ──────────────── */}
+      {sport === "mlb" && mlbBets && mlbBets.length > 0 && (
+        <MlbBetLedgerPanel bets={mlbBets} />
+      )}
+      {sport === "mlb" && mlbBetBacktest && mlbBetBacktest.length > 0 && (
+        <MlbBetLedgerBacktestPanel rows={mlbBetBacktest} />
       )}
 
       {/* ── O/U Hit Rate ──────────────────────────────────────── */}

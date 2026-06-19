@@ -118,6 +118,33 @@ Contrast with totals: totals had a real, stable +7% ROI edge on ≥1-run
 disagreements → actionable. Moneyline does not → informational only. The
 backtest is what lets us tell those two apart honestly.
 
+## Accountability ledger — full parity with the soccer framework (2026-06-18)
+
+MLB now matches the soccer accountability spine. New tables `mlb_bets` +
+`mlb_bet_snapshots` (mirror `soccer_bets`), plus `commence_time` on
+`mlb_matchups` for the lock.
+
+- `model/mlb_bet_rating.py` — `record_bet` reusing soccer's exact rating math
+  (same star rubric); upserts one immutable, **model_version-stamped** row per
+  selection and an append-only snapshot. **Locks at first pitch** so the backtest
+  uses the number we committed to.
+- `model/mlb_game_bets.py` — rates a moneyline + a total bet per game from the
+  stored `our_total_pred`/`our_prob_home`, with walk-forward `--backfill` and
+  `--settle` (won/lost/void from finals, no draws). Wired into
+  `refresh_mlb_vegas.py` (rate slate + settle each run).
+- Backfilled **1,999 bets** across 1,015 games; 1,985 settled.
+- `getMlbBets` + `getMlbBetBacktest` (calibration by bet-type × star tier:
+  expected vs realized win%, ROI at true price, Brier). UI: **Rated Bet Ledger**
+  + **Bet Ledger Backtest** panels on `/vegas?sport=mlb`.
+
+**Ledger calibration confirms the two findings, now visible per star:**
+- **Totals** — 2★+ all profitable (+3% to +8% ROI), 1★ loses (−15%); realized
+  win ~55% matches the edge-tier backtest. Stars are meaningful. (5★ is
+  overconfident on probability — exp 70% vs real 55% — but still +ROI on price.)
+- **Moneyline** — non-monotonic, expected > realized (overconfident), ROI swings
+  are dog-variance. The ledger makes the "no edge" finding visible per tier, so
+  for ML you trust the backtest, not the star.
+
 ## Build readout (2026-06-18)
 
 `model/mlb_game_total_model.py` — Ridge on `actual_total − vegas_total`, trained on

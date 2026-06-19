@@ -71,6 +71,15 @@ def _write_total_predictions(db: DatabaseManager, refresh_date_iso: str, days_ba
     return total_written
 
 
+def _rate_and_settle_bets(db: DatabaseManager, refresh_date_iso: str) -> int:
+    """Rate today's slate into the bet ledger and settle any finals (parity with
+    the soccer accountability framework). Runs after predictions are written."""
+    from model.mlb_game_bets import rate_slate, settle
+    rated = rate_slate(db, refresh_date_iso)
+    settle(db)
+    return rated
+
+
 def _rolling_backfill_window(target_date: date, days_back: int) -> tuple[str, str] | None:
     if days_back <= 0:
         return None
@@ -109,6 +118,13 @@ def run_refresh(
         lambda: _write_total_predictions(db, refresh_date_iso),
     )
     stages.append(("mlb_total_predictions", ok, result))
+
+    # Rate today's slate into the accountability ledger + settle finals.
+    ok, result = _run_refresh_stage(
+        "mlb_bet_ledger",
+        lambda: _rate_and_settle_bets(db, refresh_date_iso),
+    )
+    stages.append(("mlb_bet_ledger", ok, result))
 
     window = _rolling_backfill_window(refresh_date, days_back)
     if window is not None:

@@ -274,6 +274,7 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
             weather_temp=weather_temp,
             wind_speed=wind_speed,
             wind_direction=wind_direction,
+            commence_time=game_start,
         )
         if mid:
             matchup_ids.append(mid)

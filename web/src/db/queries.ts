@@ -7378,6 +7378,109 @@ export async function getMlbMoneylineModelBacktest(): Promise<MlbMlBacktest> {
   return { overall: _mlbMlOverall(tiers), tiers };
 }
 
+// ── MLB bet ledger (parity with the soccer accountability framework) ──────────
+// Immutable, model_version-stamped, lock-at-first-pitch rated bets in mlb_bets.
+
+export type MlbBetRow = {
+  id: number;
+  betType: string;
+  selectionLabel: string;
+  fixture: string | null;
+  side: string | null;
+  marketOdds: number | null;
+  marketProb: number | null;
+  ourProb: number;
+  edge: number | null;
+  ev: number | null;
+  stars: number;
+  status: string;
+  locked: boolean;
+  eventCommence: string | null;
+  resultDetail: string | null;
+  modelVersion: string;
+};
+
+export async function getMlbBets(minStars = 1, limit = 200): Promise<MlbBetRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      b.id, b.bet_type AS "betType", b.selection_label AS "selectionLabel",
+      b.inputs_json->>'fixture' AS "fixture",
+      b.inputs_json->>'side' AS "side",
+      b.market_odds AS "marketOdds", b.market_prob AS "marketProb",
+      b.our_prob AS "ourProb", b.edge, b.ev, b.stars, b.status, b.locked,
+      b.event_commence AS "eventCommence", b.result_detail AS "resultDetail",
+      b.model_version AS "modelVersion"
+    FROM mlb_bets b
+    WHERE b.stars >= ${minStars}
+    ORDER BY
+      CASE WHEN b.status = 'pending' THEN 0 ELSE 1 END,
+      b.stars DESC, b.ev DESC NULLS LAST, b.event_commence DESC NULLS LAST
+    LIMIT ${limit}
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    id: Number(r.id),
+    betType: String(r.betType),
+    selectionLabel: String(r.selectionLabel),
+    fixture: r.fixture != null ? String(r.fixture) : null,
+    side: r.side != null ? String(r.side) : null,
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+    ourProb: Number(r.ourProb),
+    edge: r.edge != null ? Number(r.edge) : null,
+    ev: r.ev != null ? Number(r.ev) : null,
+    stars: Number(r.stars),
+    status: String(r.status),
+    locked: Boolean(r.locked),
+    eventCommence: r.eventCommence != null ? String(r.eventCommence) : null,
+    resultDetail: r.resultDetail != null ? String(r.resultDetail) : null,
+    modelVersion: String(r.modelVersion),
+  }));
+}
+
+export type MlbBetBacktestRow = {
+  betType: string;       // 'moneyline' | 'total' | 'all'
+  stars: number;
+  n: number;
+  expectedWinRate: number;   // avg our_prob
+  realizedWinRate: number;   // wins / (won+lost)
+  roi: number | null;        // units per 1u at the bet's true price
+  brier: number | null;
+};
+
+export async function getMlbBetBacktest(): Promise<MlbBetBacktestRow[]> {
+  // Calibration on SETTLED bets, by bet type + star tier: does each tier win at
+  // the rate we claimed, and is it profitable at the offered price?
+  const rows = await db.execute(sql`
+    SELECT
+      b.bet_type AS "betType",
+      b.stars,
+      COUNT(*) AS n,
+      AVG(b.our_prob) AS "expectedWinRate",
+      AVG(CASE WHEN b.status = 'won' THEN 1.0 ELSE 0.0 END) AS "realizedWinRate",
+      AVG(POWER(b.our_prob - CASE WHEN b.status = 'won' THEN 1.0 ELSE 0.0 END, 2)) AS "brier",
+      COUNT(*) FILTER (WHERE b.market_decimal IS NOT NULL) AS "marketBets",
+      SUM(CASE WHEN b.market_decimal IS NULL THEN 0
+               WHEN b.status = 'won' THEN b.market_decimal - 1 ELSE -1 END) AS "profitUnits"
+    FROM mlb_bets b
+    WHERE b.status IN ('won', 'lost')
+    GROUP BY GROUPING SETS ((b.bet_type, b.stars), (b.bet_type), ())
+    ORDER BY "betType" NULLS FIRST, b.stars DESC NULLS FIRST
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const marketBets = Number(r.marketBets);
+    const profit = r.profitUnits != null ? Number(r.profitUnits) : 0;
+    return {
+      betType: r.betType != null ? String(r.betType) : "all",
+      stars: r.stars != null ? Number(r.stars) : 0, // 0 = bet-type subtotal / overall
+      n: Number(r.n),
+      expectedWinRate: Number(r.expectedWinRate),
+      realizedWinRate: Number(r.realizedWinRate),
+      roi: marketBets > 0 ? profit / marketBets : null,
+      brier: r.brier != null ? Number(r.brier) : null,
+    };
+  });
+}
+
 // ── Vegas Summary Stats ──────────────────────────────────────
 
 export type MlbVegasCoverageStatus = {
