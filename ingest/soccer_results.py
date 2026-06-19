@@ -62,6 +62,7 @@ def fetch_scores(db: DatabaseManager, api_key: str, days_from: int = 3) -> int:
         return 0
 
     updated = 0
+    corrected = 0
     for ev in events:
         if not ev.get("completed"):
             continue
@@ -77,17 +78,35 @@ def fetch_scores(db: DatabaseManager, api_key: str, days_from: int = 3) -> int:
             hs, as_ = int(by_name[home]), int(by_name[away])
         except (TypeError, ValueError):
             continue
-        res = db.execute_one(
-            """
-            UPDATE soccer_matchups SET home_score = %s, away_score = %s
-            WHERE game_id = %s AND (home_score IS NULL OR away_score IS NULL)
-            RETURNING id
-            """,
-            (hs, as_, ev.get("id")),
+        ev_id = ev.get("id")
+        prev = db.execute_one(
+            "SELECT home_score, away_score FROM soccer_matchups WHERE game_id = %s", (ev_id,)
         )
-        if res:
-            updated += 1
-    print(f"Scores: {updated} matches updated")
+        if prev is None:
+            continue
+        if (prev["home_score"], prev["away_score"]) == (hs, as_):
+            continue  # already correct
+        # Write the completed-game score, correcting any stale/in-progress value
+        # that got frozen earlier (the old NULL-only guard could never fix a wrong
+        # score — e.g. a game polled at 0-0 while live).
+        db.execute(
+            "UPDATE soccer_matchups SET home_score = %s, away_score = %s WHERE game_id = %s",
+            (hs, as_, ev_id),
+        )
+        updated += 1
+        # If we corrected a previously-recorded (non-NULL) score, reopen this
+        # game's settled bets so the next settle pass re-grades against the truth.
+        if prev["home_score"] is not None or prev["away_score"] is not None:
+            db.execute(
+                "UPDATE soccer_bets SET status = 'pending', settled_at = NULL, result_detail = NULL "
+                "WHERE scope = %s AND status IN ('won', 'lost', 'void')",
+                (ev_id,),
+            )
+            corrected += 1
+    if corrected:
+        print(f"Scores: {updated} matches updated ({corrected} score corrections -> bets reopened)")
+    else:
+        print(f"Scores: {updated} matches updated")
     return updated
 
 
@@ -374,7 +393,15 @@ def settle_first_scorer(db: DatabaseManager, game_id: str, scorer_name: str) -> 
 
     def _loose(label: str) -> bool:
         nl = _norm(label)
-        return target in nl.split() or nl.endswith(" " + target) or target == nl
+        tt = set(target.split())
+        lt = set(nl.split())
+        if not tt:
+            return False
+        # Token-subset either way handles a short feed name vs a long market name:
+        # "luis romo" ⊆ "luis francisco romo barron".  Plus surname fallback.
+        return (tt <= lt or lt <= tt
+                or target in nl.split() or nl.endswith(" " + target)
+                or target.split()[-1] in lt)
 
     winner_id = None
     exact = [b for b in bets if _matches(b["selection_label"])]

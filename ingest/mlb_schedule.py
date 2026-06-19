@@ -496,18 +496,27 @@ def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
         if home_runs is None or away_runs is None:
             continue
 
-        result = db.execute_one(
-            """
-            UPDATE mlb_matchups
-            SET home_score = %s, away_score = %s
-            WHERE game_id = %s
-              AND (home_score IS NULL OR away_score IS NULL)
-            RETURNING id
-            """,
-            (int(home_runs), int(away_runs), game_id),
+        hs, as_ = int(home_runs), int(away_runs)
+        prev = db.execute_one(
+            "SELECT id, home_score, away_score FROM mlb_matchups WHERE game_id = %s", (game_id,)
         )
-        if result:
-            updated += 1
+        if prev is None or (prev["home_score"], prev["away_score"]) == (hs, as_):
+            continue  # unknown game or already correct
+        # Write the final score, correcting any stale/wrong value that got frozen
+        # earlier (the old NULL-only guard could never fix a wrong score).
+        db.execute(
+            "UPDATE mlb_matchups SET home_score = %s, away_score = %s WHERE id = %s",
+            (hs, as_, prev["id"]),
+        )
+        updated += 1
+        # If we corrected a previously-recorded score, reopen this game's settled
+        # bets so the next settle pass re-grades against the truth.
+        if prev["home_score"] is not None or prev["away_score"] is not None:
+            db.execute(
+                "UPDATE mlb_bets SET status = 'pending', settled_at = NULL, result_detail = NULL "
+                "WHERE matchup_id = %s AND status IN ('won', 'lost', 'void')",
+                (prev["id"],),
+            )
 
     logger.info("MLB Scores: %d matchups updated for %s", updated, target_date)
     return updated
