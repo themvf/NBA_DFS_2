@@ -1488,6 +1488,9 @@ MIGRATIONS = [
         UNIQUE (game_id, player_name, goal_minute)
     )""",
     "ALTER TABLE soccer_match_goals ADD COLUMN IF NOT EXISTS assist_name TEXT",
+    # 2026-06-19: matchday-3 motivation / dead-rubber state, written by
+    # model/soccer_motivation.py and applied in soccer_predictions.py.
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS motivation TEXT",
     # 2026-06-18: MLB game-total model — our own number vs the market.
     # Ridge residual-over-Vegas total, written by model/mlb_game_total_model.py.
     # Mirrors nba_matchups.our_game_total_pred / soccer_matchups.our_total_pred.

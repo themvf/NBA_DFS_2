@@ -120,6 +120,12 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         for r in db.execute("SELECT team_id, attack, defense FROM soccer_team_ratings")
     }
 
+    # Matchday-3 motivation / dead-rubber state (the model is otherwise blind to
+    # game state — see model/soccer_motivation.py). Adjustment is applied to the
+    # raw model number BEFORE market anchoring.
+    from model.soccer_motivation import compute_motivation
+    motivation = compute_motivation(db, game_date)
+
     where = "sm.game_date = %s" if game_date else "sm.game_date >= CURRENT_DATE"
     params: tuple = (game_date,) if game_date else ()
     matchups = db.execute(
@@ -148,6 +154,15 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         lam_away = math.exp(mu + atk_away + def_home)
         model_total = lam_home + lam_away
         model_supremacy = lam_home - lam_away
+
+        # MD3 motivation: dampen total for eased-off sides, tilt supremacy toward
+        # the more motivated team (positive sup_shift = toward home).
+        motiv = motivation.get(m["id"])
+        motivation_label = None
+        if motiv is not None:
+            model_total *= motiv["total_factor"]
+            model_supremacy += motiv["sup_shift"]
+            motivation_label = motiv["label"]
 
         # Market anchor (only when a line exists).
         vegas_total = m.get("vegas_total")
@@ -194,7 +209,8 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
                 our_away_xg    = %s,
                 our_prob_home  = %s,
                 our_prob_draw  = %s,
-                our_prob_away  = %s
+                our_prob_away  = %s,
+                motivation     = %s
             WHERE id = %s
             """,
             (
@@ -204,6 +220,7 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
                 round(p_home, 4),
                 round(p_draw, 4),
                 round(p_away, 4),
+                motivation_label,
                 m["id"],
             ),
         )

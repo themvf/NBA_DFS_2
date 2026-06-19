@@ -6129,6 +6129,8 @@ export type SoccerVegasMatchupRow = {
   pinnacleProbHome: number | null;
   pinnacleProbDraw: number | null;
   pinnacleProbAway: number | null;
+  // Matchday-3 motivation / dead-rubber label (null for non-MD3 / unaffected games).
+  motivation: string | null;
 };
 
 export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerVegasMatchupRow[]> {
@@ -6164,7 +6166,8 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
       sm.our_prob_away       AS "ourProbAway",
       sm.pinnacle_prob_home  AS "pinnacleProbHome",
       sm.pinnacle_prob_draw  AS "pinnacleProbDraw",
-      sm.pinnacle_prob_away  AS "pinnacleProbAway"
+      sm.pinnacle_prob_away  AS "pinnacleProbAway",
+      sm.motivation          AS "motivation"
     FROM soccer_matchups sm
     LEFT JOIN soccer_teams t_home ON t_home.team_id = sm.home_team_id
     LEFT JOIN soccer_teams t_away ON t_away.team_id = sm.away_team_id
@@ -6199,6 +6202,7 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
     pinnacleProbHome: r.pinnacleProbHome != null ? Number(r.pinnacleProbHome) : null,
     pinnacleProbDraw: r.pinnacleProbDraw != null ? Number(r.pinnacleProbDraw) : null,
     pinnacleProbAway: r.pinnacleProbAway != null ? Number(r.pinnacleProbAway) : null,
+    motivation: r.motivation != null ? String(r.motivation) : null,
   }));
 }
 

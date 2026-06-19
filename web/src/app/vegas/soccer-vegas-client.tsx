@@ -1398,6 +1398,14 @@ function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRo
                             Final {m.homeScore}–{m.awayScore}
                           </div>
                         )}
+                        {!finished && m.motivation && (
+                          <div
+                            className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+                            title="Matchday-3 game state — our number is adjusted for rotation/dead-rubber risk the Elo model is otherwise blind to."
+                          >
+                            ⚑ {m.motivation}
+                          </div>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-center text-xs text-muted-foreground">
                         {fmtKickoff(m.commenceTime)}
