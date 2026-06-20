@@ -571,9 +571,14 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
       {/* Group winner — per group */}
       {groups.length > 0 && (
         <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Group Winner
           </h2>
+          <p className="mb-3 text-[11px] text-muted-foreground">
+            <span className="text-emerald-500">▲</span> = current group leader · 🏆 = group won
+            (group complete, finished 1st). No group is mathematically decided until the final
+            round is played.
+          </p>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {groups.map(([key, rows]) => {
               const sorted = [...rows].sort((a, b) => b.ourProb - a.ourProb);
@@ -615,6 +620,16 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
                           className="border-b last:border-0 hover:bg-accent/40"
                         >
                           <td className="px-3 py-1.5 font-medium text-sm truncate">
+                            {f.wonGroup ? (
+                              <span className="mr-1" title="Won the group">🏆</span>
+                            ) : f.isLeader ? (
+                              <span
+                                className="mr-1 text-emerald-500"
+                                title={`Current group leader${f.groupPts != null ? ` — ${f.groupPts} pts` : ""}`}
+                              >
+                                ▲
+                              </span>
+                            ) : null}
                             {f.selectionLabel}
                           </td>
                           <td className="px-1 py-1.5 text-center tabular-nums font-semibold">

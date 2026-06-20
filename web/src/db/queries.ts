@@ -6834,10 +6834,41 @@ export type SoccerFuturesBetRow = {
   stars: number;
   status: string;
   groupLabel: string | null;
+  // Live group standing for the subject team (group_winner rows).
+  groupPts: number | null;
+  groupRank: number | null;     // 1 = current leader (pts → GD → GF)
+  groupComplete: boolean;       // all 6 group games played
+  isLeader: boolean;            // currently 1st on the table
+  wonGroup: boolean;            // group complete AND finished 1st → group winner
 };
 
 export async function getSoccerFuturesBets(): Promise<SoccerFuturesBetRow[]> {
   const rows = await db.execute(sql`
+    WITH gm AS (
+      SELECT m.home_team_id AS tid, m.home_score AS gf, m.away_score AS ga,
+        CASE WHEN m.home_score > m.away_score THEN 3 WHEN m.home_score = m.away_score THEN 1 ELSE 0 END AS pts
+      FROM soccer_matchups m
+      JOIN soccer_groups gh ON gh.team_id = m.home_team_id
+      JOIN soccer_groups ga ON ga.team_id = m.away_team_id AND ga.group_label = gh.group_label
+      WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+      UNION ALL
+      SELECT m.away_team_id, m.away_score, m.home_score,
+        CASE WHEN m.away_score > m.home_score THEN 3 WHEN m.home_score = m.away_score THEN 1 ELSE 0 END
+      FROM soccer_matchups m
+      JOIN soccer_groups gh ON gh.team_id = m.home_team_id
+      JOIN soccer_groups ga ON ga.team_id = m.away_team_id AND ga.group_label = gh.group_label
+      WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+    ),
+    standing AS (
+      SELECT tid, SUM(pts) AS pts, SUM(gf - ga) AS gd, SUM(gf) AS gf, COUNT(*) AS played
+      FROM gm GROUP BY tid
+    ),
+    ranked AS (
+      SELECT s.tid, s.pts, sg.group_label,
+        ROW_NUMBER() OVER (PARTITION BY sg.group_label ORDER BY s.pts DESC, s.gd DESC, s.gf DESC) AS rnk,
+        SUM(s.played) OVER (PARTITION BY sg.group_label) AS team_games
+      FROM standing s JOIN soccer_groups sg ON sg.team_id = s.tid
+    )
     SELECT
       sb.id,
       sb.bet_type         AS "betType",
@@ -6850,26 +6881,39 @@ export async function getSoccerFuturesBets(): Promise<SoccerFuturesBetRow[]> {
       sb.ev,
       sb.stars,
       sb.status,
-      sg.group_label      AS "groupLabel"
+      sg.group_label      AS "groupLabel",
+      r.pts               AS "groupPts",
+      r.rnk               AS "groupRank",
+      (r.team_games >= 12) AS "groupComplete"
     FROM soccer_bets sb
     LEFT JOIN soccer_groups sg ON sg.team_id = sb.subject_team_id
+    LEFT JOIN ranked r ON r.tid = sb.subject_team_id
     WHERE sb.bet_type IN ('outright_winner', 'group_winner')
     ORDER BY sb.bet_type, sb.scope, sb.our_prob DESC NULLS LAST
   `);
-  return (rows.rows as Record<string, unknown>[]).map((r) => ({
-    id: Number(r.id),
-    betType: String(r.betType),
-    scope: String(r.scope),
-    selectionLabel: String(r.selectionLabel),
-    ourProb: Number(r.ourProb ?? 0),
-    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
-    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
-    edge: r.edge != null ? Number(r.edge) : null,
-    ev: r.ev != null ? Number(r.ev) : null,
-    stars: Number(r.stars ?? 1),
-    status: String(r.status),
-    groupLabel: r.groupLabel != null ? String(r.groupLabel) : null,
-  }));
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const rank = r.groupRank != null ? Number(r.groupRank) : null;
+    const complete = Boolean(r.groupComplete);
+    return {
+      id: Number(r.id),
+      betType: String(r.betType),
+      scope: String(r.scope),
+      selectionLabel: String(r.selectionLabel),
+      ourProb: Number(r.ourProb ?? 0),
+      marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+      marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+      edge: r.edge != null ? Number(r.edge) : null,
+      ev: r.ev != null ? Number(r.ev) : null,
+      stars: Number(r.stars ?? 1),
+      status: String(r.status),
+      groupLabel: r.groupLabel != null ? String(r.groupLabel) : null,
+      groupPts: r.groupPts != null ? Number(r.groupPts) : null,
+      groupRank: rank,
+      groupComplete: complete,
+      isLeader: rank === 1,
+      wonGroup: complete && rank === 1,
+    };
+  });
 }
 
 export type OuHitRateRow = {
