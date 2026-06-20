@@ -22,6 +22,8 @@ import type {
   SoccerFirstScorerNearMissRow,
   SoccerTopPickRow,
   SoccerClvRow,
+  SoccerCalibCutRow,
+  SoccerClvTrendRow,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -406,10 +408,111 @@ function ClvPanel({ clv }: { clv: SoccerClvRow[] }) {
   );
 }
 
+/**
+ * Model diagnostics — calibration (realized − expected win%) sliced by the cuts
+ * that matter, plus the rated-CLV trend. Makes systematic bias self-serve: the
+ * Side row is exactly how the home/away bias surfaces without running a script.
+ */
+function DiagnosticsPanel({ cuts, clvTrend }: { cuts: SoccerCalibCutRow[]; clvTrend: SoccerClvTrendRow[] }) {
+  if (cuts.length === 0) return null;
+  const dims = Array.from(new Set(cuts.map((c) => c.dimension)));
+  const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
+  const trend = clvTrend.filter((t) => t.n > 0).map((t) => ({
+    date: new Date(`${t.date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    clv: Math.round(t.avgClvPp * 100) / 100,
+    n: t.n,
+  }));
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border bg-card p-4">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+          Calibration by cut
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Realized minus expected win% on settled bets, sliced by the levers we can act on. A
+          persistent <strong className="text-foreground">gap</strong> in one bucket is a systematic
+          bias to fix — e.g. the <strong className="text-foreground">Side</strong> rows are how the
+          home/away miss shows up. Each row is a group mean, so it stays honest on a small sample;
+          mind low <em>n</em>.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b text-muted-foreground">
+                <th className="py-1 text-left">Cut</th>
+                <th className="py-1 text-left">Bucket</th>
+                <th className="py-1 text-right">n</th>
+                <th className="py-1 text-right">Exp</th>
+                <th className="py-1 text-right">Real</th>
+                <th className="py-1 text-right">Gap</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dims.flatMap((dim) =>
+                cuts.filter((c) => c.dimension === dim).map((c, i) => {
+                  const gap = c.realized - c.expected;
+                  const big = Math.abs(gap) >= 0.05 && c.n >= 15;
+                  return (
+                    <tr key={`${dim}-${c.bucket}`} className="border-b last:border-0">
+                      <td className="py-1.5 text-muted-foreground">{i === 0 ? dim : ""}</td>
+                      <td className="py-1.5">{c.bucket}</td>
+                      <td className="py-1.5 text-right text-muted-foreground">{c.n}</td>
+                      <td className="py-1.5 text-right tabular-nums text-muted-foreground">{pct(c.expected)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{pct(c.realized)}</td>
+                      <td className={`py-1.5 text-right tabular-nums font-medium ${big ? (gap > 0 ? "text-emerald-500" : "text-rose-500") : "text-muted-foreground"}`}>
+                        {gap >= 0 ? "+" : ""}{(gap * 100).toFixed(0)}pp
+                      </td>
+                    </tr>
+                  );
+                }),
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {trend.length > 1 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+            Rated CLV trend
+          </h3>
+          <p className="text-xs text-muted-foreground mb-3">
+            Closing-line value of our 3★+ bets by game date. This is the &ldquo;is it working?&rdquo;
+            view — as model changes land, watch the line climb toward and above zero.
+          </p>
+          <ResponsiveContainer width="100%" height={160}>
+            <AreaChart data={trend} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <defs>
+                <linearGradient id="clvGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 10 }} width={40} tickFormatter={(v) => `${v}pp`} />
+              <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
+              <Tooltip
+                formatter={(value) => {
+                  const v = typeof value === "number" ? value : 0;
+                  return [`${v >= 0 ? "+" : ""}${v.toFixed(2)}pp`, "Avg CLV"];
+                }}
+              />
+              <Area type="monotone" dataKey="clv" stroke="#10b981" fill="url(#clvGrad)" strokeWidth={2} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultsPanel({
   bets,
   backtest,
   clv,
+  calibCuts,
+  clvTrend,
   fscorerTiers,
   fscorerNearMisses,
   topPickAccuracy,
@@ -417,6 +520,8 @@ function ResultsPanel({
   bets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
   clv: SoccerClvRow[];
+  calibCuts: SoccerCalibCutRow[];
+  clvTrend: SoccerClvTrendRow[];
   fscorerTiers: SoccerFirstScorerTierRow[];
   fscorerNearMisses: SoccerFirstScorerNearMissRow[];
   topPickAccuracy: SoccerTopPickRow[];
@@ -849,6 +954,9 @@ function ResultsPanel({
 
       {/* Closing line value — leading indicator of real edge */}
       <ClvPanel clv={clv} />
+
+      {/* Model diagnostics — calibration by cut + rated CLV trend */}
+      <DiagnosticsPanel cuts={calibCuts} clvTrend={clvTrend} />
 
       {/* By star rating */}
       {backtest.length > 0 && (
@@ -1661,6 +1769,8 @@ export default function SoccerVegasClient({
   settledBets,
   backtest,
   clv,
+  calibCuts,
+  clvTrend,
   firstScorers,
   matchGoals,
   playerStats,
@@ -1674,6 +1784,8 @@ export default function SoccerVegasClient({
   settledBets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
   clv: SoccerClvRow[];
+  calibCuts: SoccerCalibCutRow[];
+  clvTrend: SoccerClvTrendRow[];
   firstScorers: SoccerFirstScorerRow[];
   matchGoals: SoccerMatchGoalRow[];
   playerStats: SoccerPlayerStatsRow[];
@@ -1746,6 +1858,8 @@ export default function SoccerVegasClient({
           bets={settledBets}
           backtest={backtest}
           clv={clv}
+          calibCuts={calibCuts}
+          clvTrend={clvTrend}
           fscorerTiers={fscorerTiers}
           fscorerNearMisses={fscorerNearMisses}
           topPickAccuracy={topPickAccuracy}

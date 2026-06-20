@@ -6414,6 +6414,94 @@ export async function getSoccerClv(): Promise<SoccerClvRow[]> {
   return out;
 }
 
+// ── Model diagnostics ─────────────────────────────────────────────────────────
+// Calibration (realized − expected win%) sliced by the cuts that matter, so the
+// next systematic bias surfaces on screen instead of via an ad-hoc script — the
+// way the home/away bias was found. Group means stay honest on a small sample.
+
+export type SoccerCalibCutRow = {
+  dimension: string;   // 'Side (ML)' | 'Market' | 'Motivation' | 'Venue'
+  bucket: string;
+  n: number;
+  expected: number;    // avg our_prob
+  realized: number;    // win rate
+};
+
+export async function getSoccerCalibrationCuts(): Promise<SoccerCalibCutRow[]> {
+  const rows = await db.execute(sql`
+    WITH settled AS (
+      SELECT b.bet_type, b.our_prob, (b.status = 'won')::int AS won,
+             b.inputs_json->>'side' AS side,
+             m.motivation,
+             hm.name AS home_name
+      FROM soccer_bets b
+      LEFT JOIN soccer_matchups m ON m.id = b.matchup_id
+      LEFT JOIN soccer_teams hm ON hm.team_id = m.home_team_id
+      WHERE b.status IN ('won', 'lost') AND b.bet_type IN ('moneyline', 'total')
+    )
+    SELECT 'Side (ML)' AS "dimension", side AS "bucket",
+           COUNT(*)::int AS "n", AVG(our_prob) AS "expected", AVG(won::float) AS "realized"
+      FROM settled WHERE bet_type = 'moneyline' AND side IS NOT NULL GROUP BY side
+    UNION ALL
+    SELECT 'Market', bet_type, COUNT(*)::int, AVG(our_prob), AVG(won::float)
+      FROM settled GROUP BY bet_type
+    UNION ALL
+    SELECT 'Motivation',
+           CASE WHEN motivation IS NOT NULL THEN 'MD3-adjusted' ELSE 'standard' END,
+           COUNT(*)::int, AVG(our_prob), AVG(won::float)
+      FROM settled GROUP BY 2
+    UNION ALL
+    SELECT 'Venue',
+           CASE WHEN home_name IN ('USA', 'Mexico', 'Canada') THEN 'host home' ELSE 'neutral' END,
+           COUNT(*)::int, AVG(our_prob), AVG(won::float)
+      FROM settled GROUP BY 2
+    ORDER BY 1, 2
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    dimension: String(r.dimension),
+    bucket: String(r.bucket),
+    n: Number(r.n),
+    expected: Number(r.expected),
+    realized: Number(r.realized),
+  }));
+}
+
+export type SoccerClvTrendRow = {
+  date: string;
+  n: number;
+  avgClvPp: number;
+  beatRate: number | null;
+};
+
+export async function getSoccerClvTrend(): Promise<SoccerClvTrendRow[]> {
+  // Rated (3★+) closing-line value by game date — the "is it working?" trend.
+  const rows = await db.execute(sql`
+    WITH ordered AS (
+      SELECT bet_id, market_prob,
+        ROW_NUMBER() OVER (PARTITION BY bet_id ORDER BY captured_at ASC)  AS rf,
+        ROW_NUMBER() OVER (PARTITION BY bet_id ORDER BY captured_at DESC) AS rl
+      FROM soccer_bet_snapshots WHERE market_prob IS NOT NULL
+    ),
+    o AS (SELECT bet_id, market_prob AS op FROM ordered WHERE rf = 1),
+    c AS (SELECT bet_id, market_prob AS cl FROM ordered WHERE rl = 1)
+    SELECT (b.event_commence AT TIME ZONE 'UTC')::date::text AS "date",
+           COUNT(*)::int AS "n",
+           AVG((c.cl - o.op) * 100) AS "avgClvPp",
+           AVG(CASE WHEN c.cl > o.op THEN 1.0 WHEN c.cl < o.op THEN 0.0 END) AS "beatRate"
+    FROM o JOIN c ON c.bet_id = o.bet_id
+    JOIN soccer_bets b ON b.id = o.bet_id
+    WHERE b.bet_type IN ('moneyline', 'total') AND b.stars >= 3
+      AND b.event_commence IS NOT NULL
+    GROUP BY 1 ORDER BY 1
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    date: String(r.date),
+    n: Number(r.n),
+    avgClvPp: r.avgClvPp != null ? Number(r.avgClvPp) : 0,
+    beatRate: r.beatRate != null ? Number(r.beatRate) : null,
+  }));
+}
+
 // Per-game first-scorer candidates (their own panel — they're almost all 1★
 // because the market is high-vig, so they'd be hidden by the Bets star filter).
 export type SoccerFirstScorerRow = {
