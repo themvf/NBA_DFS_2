@@ -39,10 +39,16 @@ PARAMS_PATH = DATA_DIR / "soccer_model_params.json"
 _DEFAULT_MU = math.log(1.35)
 _DEFAULT_HOME_ADV = 0.25
 
-# World Cup is mostly neutral venues (only the 3 hosts truly play at home), but
-# the odds feed still designates a home side.  Dampen the historical home-advantage
-# term rather than applying it in full.
-_NEUTRAL_HOME_DAMPEN = 0.5
+# Home advantage is host-aware. The ledger showed we systematically underrate
+# home teams (31 completed games: home win 55% vs ~47% expected), and the three
+# host nations are not neutral at all — playing in their own country they went
+# 5-0-1 (83% win, 0 away losses). So hosts get FULL home advantage while other
+# "designated home" sides keep a damped term (away still wins only ~16% in those,
+# so a modest edge, not zero). Directly lifts home win prob + home goals → moves
+# both moneyline and totals toward the realized bias.
+_NEUTRAL_HOME_DAMPEN = 0.6     # non-host designated-home side (was 0.5)
+_HOST_HOME_DAMPEN = 1.0        # host nation at home → full home advantage
+_HOST_TEAMS = {"USA", "Mexico", "Canada"}
 
 # Market anchor: weight on our independent model vs the Vegas line.  0.40 = trust
 # the market 60%, surface the 40% of our disagreement that survives shrinkage.
@@ -113,11 +119,17 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
     otherwise all upcoming fixtures (today onward).  Returns rows updated.
     """
     mu, home_adv_raw = _load_params(db)
-    home_adv = home_adv_raw * _NEUTRAL_HOME_DAMPEN
 
     ratings = {
         int(r["team_id"]): (float(r["attack"] or 0.0), float(r["defense"] or 0.0))
         for r in db.execute("SELECT team_id, attack, defense FROM soccer_team_ratings")
+    }
+
+    # Host nations get full home advantage; other designated-home sides are damped.
+    host_ids = {
+        int(r["team_id"])
+        for r in db.execute("SELECT team_id FROM soccer_teams WHERE name = ANY(%s)",
+                            (list(_HOST_TEAMS),))
     }
 
     # Matchday-3 motivation / dead-rubber state (the model is otherwise blind to
@@ -150,6 +162,9 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         atk_home, def_home = ratings[home_id]
         atk_away, def_away = ratings[away_id]
 
+        # Host nation at home → full home advantage; otherwise damped (neutral-ish).
+        dampen = _HOST_HOME_DAMPEN if home_id in host_ids else _NEUTRAL_HOME_DAMPEN
+        home_adv = home_adv_raw * dampen
         lam_home = math.exp(mu + atk_home + def_away + home_adv)
         lam_away = math.exp(mu + atk_away + def_home)
         model_total = lam_home + lam_away
