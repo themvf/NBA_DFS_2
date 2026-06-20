@@ -21,6 +21,7 @@ import type {
   SoccerFirstScorerTierRow,
   SoccerFirstScorerNearMissRow,
   SoccerTopPickRow,
+  SoccerClvRow,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -334,15 +335,88 @@ function PnlChart({ bets }: { bets: SoccerBetRow[] }) {
 }
 
 // ── Results panel ─────────────────────────────────────────────────────────────
+/**
+ * Closing Line Value — did the market move toward our side between when we rated
+ * the bet and kickoff? The sharpest small-sample read on real edge: positive CLV
+ * means we beat the close. The "rated" (3★+) row is what matters — it's the bets
+ * we'd actually place.
+ */
+function ClvPanel({ clv }: { clv: SoccerClvRow[] }) {
+  if (clv.length === 0) return null;
+  const byKey = (t: string, tier: string) => clv.find((r) => r.betType === t && r.tier === tier);
+  const markets: { type: string; label: string }[] = [
+    { type: "moneyline", label: "Moneyline" },
+    { type: "total", label: "Totals (O/U)" },
+  ];
+  const fmtClv = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}pp`;
+  const fmtPct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+        Closing Line Value
+      </h3>
+      <p className="text-xs text-muted-foreground mb-3">
+        Did the market move <strong className="text-foreground">toward our side</strong> between
+        our rating and kickoff? Positive CLV = we beat the close = real edge — visible on far fewer
+        bets than win/loss ROI needs. The <strong className="text-foreground">rated (3★+)</strong>
+        row is the one that matters: it&rsquo;s the bets we&rsquo;d actually place.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b text-muted-foreground">
+              <th className="py-1 text-left">Market</th>
+              <th className="py-1 text-left">Tier</th>
+              <th className="py-1 text-right">Bets</th>
+              <th className="py-1 text-right">Avg CLV</th>
+              <th className="py-1 text-right">Beat close</th>
+            </tr>
+          </thead>
+          <tbody>
+            {markets.flatMap((m) =>
+              ["all", "rated"].map((tier) => {
+                const r = byKey(m.type, tier);
+                if (!r || r.n === 0) return null;
+                const good = r.avgClvPp >= 0;
+                return (
+                  <tr key={`${m.type}-${tier}`} className={`border-b last:border-0 ${tier === "rated" ? "bg-accent/30 font-medium" : ""}`}>
+                    <td className="py-1.5">{tier === "all" ? m.label : ""}</td>
+                    <td className="py-1.5 text-muted-foreground">{tier === "rated" ? "3★+ (placed)" : "all"}</td>
+                    <td className="py-1.5 text-right text-muted-foreground">{r.n}</td>
+                    <td className={`py-1.5 text-right tabular-nums ${good ? "text-emerald-500" : "text-rose-500"}`}>
+                      {fmtClv(r.avgClvPp)}
+                    </td>
+                    <td className={`py-1.5 text-right tabular-nums ${(r.beatRate ?? 0) >= 0.5 ? "text-emerald-500" : "text-rose-500"}`}>
+                      {fmtPct(r.beatRate)}
+                    </td>
+                  </tr>
+                );
+              }),
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Beat-close &lt; 50% or negative CLV on the rated row means the market is moving against our
+        confident bets — a warning that those edges aren&rsquo;t real, independent of the win/loss
+        sample. Watch this as model changes land.
+      </p>
+    </div>
+  );
+}
+
 function ResultsPanel({
   bets,
   backtest,
+  clv,
   fscorerTiers,
   fscorerNearMisses,
   topPickAccuracy,
 }: {
   bets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
+  clv: SoccerClvRow[];
   fscorerTiers: SoccerFirstScorerTierRow[];
   fscorerNearMisses: SoccerFirstScorerNearMissRow[];
   topPickAccuracy: SoccerTopPickRow[];
@@ -772,6 +846,9 @@ function ResultsPanel({
           </div>
         )}
       </div>
+
+      {/* Closing line value — leading indicator of real edge */}
+      <ClvPanel clv={clv} />
 
       {/* By star rating */}
       {backtest.length > 0 && (
@@ -1583,6 +1660,7 @@ export default function SoccerVegasClient({
   bets,
   settledBets,
   backtest,
+  clv,
   firstScorers,
   matchGoals,
   playerStats,
@@ -1595,6 +1673,7 @@ export default function SoccerVegasClient({
   bets: SoccerBetRow[];
   settledBets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
+  clv: SoccerClvRow[];
   firstScorers: SoccerFirstScorerRow[];
   matchGoals: SoccerMatchGoalRow[];
   playerStats: SoccerPlayerStatsRow[];
@@ -1666,6 +1745,7 @@ export default function SoccerVegasClient({
         <ResultsPanel
           bets={settledBets}
           backtest={backtest}
+          clv={clv}
           fscorerTiers={fscorerTiers}
           fscorerNearMisses={fscorerNearMisses}
           topPickAccuracy={topPickAccuracy}

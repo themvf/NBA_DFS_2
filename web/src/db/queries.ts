@@ -6352,6 +6352,68 @@ export async function getSoccerBetBacktest(): Promise<SoccerBacktestRow[]> {
   });
 }
 
+// ── Closing Line Value (CLV) ──────────────────────────────────────────────────
+// The sharpest small-sample read on whether our bets actually have edge: did the
+// market move TOWARD our side between when we first rated the bet (open) and the
+// last pre-kickoff snapshot (close)?  Positive CLV = we beat the close = real
+// edge, detectable in ~20–30 bets long before win/loss ROI stabilizes.
+// soccer_bet_snapshots stores each refresh's vig-free market_prob for the bet's
+// side, so first→last movement is the line move on our number.
+
+export type SoccerClvRow = {
+  betType: string;          // 'moneyline' | 'total'
+  tier: string;             // 'all' | 'rated' (3★+ — the bets we'd actually place)
+  n: number;
+  avgClvPp: number;         // avg (close − open) in percentage points; >0 = beat close
+  beatRate: number | null;  // share where the market moved toward us (pushes excluded)
+};
+
+export async function getSoccerClv(): Promise<SoccerClvRow[]> {
+  const rows = await db.execute(sql`
+    WITH ordered AS (
+      SELECT bet_id, market_prob,
+        ROW_NUMBER() OVER (PARTITION BY bet_id ORDER BY captured_at ASC)  AS rf,
+        ROW_NUMBER() OVER (PARTITION BY bet_id ORDER BY captured_at DESC) AS rl
+      FROM soccer_bet_snapshots
+      WHERE market_prob IS NOT NULL
+    ),
+    o AS (SELECT bet_id, market_prob AS open_p  FROM ordered WHERE rf = 1),
+    c AS (SELECT bet_id, market_prob AS close_p FROM ordered WHERE rl = 1),
+    clv AS (
+      SELECT b.bet_type,
+             (b.stars >= 3) AS rated,
+             (c.close_p - o.open_p) AS move
+      FROM o JOIN c ON c.bet_id = o.bet_id
+      JOIN soccer_bets b ON b.id = o.bet_id
+      WHERE b.bet_type IN ('moneyline', 'total')
+    )
+    SELECT bet_type AS "betType",
+           COUNT(*)::int AS "nAll",
+           AVG(move * 100) AS "clvAll",
+           AVG(CASE WHEN move > 0 THEN 1.0 WHEN move < 0 THEN 0.0 END) AS "beatAll",
+           COUNT(*) FILTER (WHERE rated)::int AS "nRated",
+           AVG(move * 100) FILTER (WHERE rated) AS "clvRated",
+           AVG(CASE WHEN move > 0 THEN 1.0 WHEN move < 0 THEN 0.0 END) FILTER (WHERE rated) AS "beatRated"
+    FROM clv
+    GROUP BY bet_type
+    ORDER BY bet_type
+  `);
+  const out: SoccerClvRow[] = [];
+  for (const r of rows.rows as Record<string, unknown>[]) {
+    out.push({
+      betType: String(r.betType), tier: "all", n: Number(r.nAll),
+      avgClvPp: r.clvAll != null ? Number(r.clvAll) : 0,
+      beatRate: r.beatAll != null ? Number(r.beatAll) : null,
+    });
+    out.push({
+      betType: String(r.betType), tier: "rated", n: Number(r.nRated),
+      avgClvPp: r.clvRated != null ? Number(r.clvRated) : 0,
+      beatRate: r.beatRated != null ? Number(r.beatRated) : null,
+    });
+  }
+  return out;
+}
+
 // Per-game first-scorer candidates (their own panel — they're almost all 1★
 // because the market is high-vig, so they'd be hidden by the Bets star filter).
 export type SoccerFirstScorerRow = {
