@@ -9810,3 +9810,48 @@ export async function getSoccerGroupStandings(): Promise<SoccerGroupStandingRow[
     pts: Number(r.pts),
   }));
 }
+
+// ── Soccer group remaining fixtures ──────────────────────────────────────────
+export type SoccerGroupFixtureRow = {
+  groupLabel: string;
+  matchupId: number;
+  gameDate: string;
+  commenceTime: string | null;
+  homeAbbr: string | null;
+  homeName: string;
+  awayAbbr: string | null;
+  awayName: string;
+};
+
+export async function getSoccerGroupFixtures(): Promise<SoccerGroupFixtureRow[]> {
+  const rows = await db.execute<{
+    groupLabel: string; matchupId: number; gameDate: string; commenceTime: string | null;
+    homeAbbr: string | null; homeName: string; awayAbbr: string | null; awayName: string;
+  }>(sql`
+    SELECT
+      g.group_label          AS "groupLabel",
+      m.id                   AS "matchupId",
+      m.game_date::text      AS "gameDate",
+      m.commence_time::text  AS "commenceTime",
+      ht.abbreviation        AS "homeAbbr",
+      ht.name                AS "homeName",
+      at.abbreviation        AS "awayAbbr",
+      at.name                AS "awayName"
+    FROM soccer_matchups m
+    JOIN soccer_teams ht ON ht.team_id = m.home_team_id
+    JOIN soccer_teams at ON at.team_id = m.away_team_id
+    JOIN soccer_groups g   ON g.team_id  = m.home_team_id
+    WHERE m.home_score IS NULL
+    ORDER BY g.group_label, m.commence_time ASC NULLS LAST
+  `);
+  return rows.rows.map((r) => ({
+    groupLabel: String(r.groupLabel),
+    matchupId: Number(r.matchupId),
+    gameDate: String(r.gameDate),
+    commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+    homeAbbr: r.homeAbbr != null ? String(r.homeAbbr) : null,
+    homeName: String(r.homeName),
+    awayAbbr: r.awayAbbr != null ? String(r.awayAbbr) : null,
+    awayName: String(r.awayName),
+  }));
+}

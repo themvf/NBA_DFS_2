@@ -6,6 +6,7 @@ import type {
   SoccerCompletedResultRow,
   SoccerFuturesBetRow,
   SoccerGroupStandingRow,
+  SoccerGroupFixtureRow,
 } from "@/db/queries";
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -444,9 +445,11 @@ function ResultsTab({ results }: { results: SoccerCompletedResultRow[] }) {
 function FuturesTab({
   futures,
   standings,
+  fixtures,
 }: {
   futures: SoccerFuturesBetRow[];
   standings: SoccerGroupStandingRow[];
+  fixtures: SoccerGroupFixtureRow[];
 }) {
   const outright = futures.filter((f) => f.betType === "outright_winner");
   const groupWinner = futures.filter((f) => f.betType === "group_winner");
@@ -469,6 +472,14 @@ function FuturesTab({
     const list = standingsByGroup.get(s.groupLabel) ?? [];
     list.push(s);
     standingsByGroup.set(s.groupLabel, list);
+  }
+
+  // Remaining fixtures lookup: groupLabel → upcoming intra-group games
+  const fixturesByGroup = new Map<string, SoccerGroupFixtureRow[]>();
+  for (const f of fixtures) {
+    const list = fixturesByGroup.get(f.groupLabel) ?? [];
+    list.push(f);
+    fixturesByGroup.set(f.groupLabel, list);
   }
 
   return (
@@ -706,6 +717,43 @@ function FuturesTab({
                       ))}
                     </tbody>
                   </table>
+                  {/* Remaining fixtures */}
+                  {(fixturesByGroup.get(key) ?? []).length > 0 && (
+                    <div className="border-t px-3 py-2 space-y-1">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                        Still to play
+                      </p>
+                      {(fixturesByGroup.get(key) ?? []).map((f) => {
+                        const home = f.homeAbbr ?? f.homeName;
+                        const away = f.awayAbbr ?? f.awayName;
+                        // Format date as "Jun 25" in local time from commence_time if available
+                        const dateStr = f.commenceTime
+                          ? new Date(f.commenceTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                          : f.gameDate.slice(5).replace("-", "/");
+                        // Points for each team from standings
+                        const grpStandings = standingsByGroup.get(key) ?? [];
+                        const homePts = grpStandings.find((s) => (s.abbreviation ?? s.name) === home)?.pts;
+                        const awayPts = grpStandings.find((s) => (s.abbreviation ?? s.name) === away)?.pts;
+                        return (
+                          <div key={f.matchupId} className="flex items-center justify-between text-[11px]">
+                            <span className="text-muted-foreground">{dateStr}</span>
+                            <span className="font-medium">
+                              {home}
+                              {homePts != null && (
+                                <span className="text-muted-foreground ml-0.5">({homePts})</span>
+                              )}
+                              {" vs "}
+                              {away}
+                              {awayPts != null && (
+                                <span className="text-muted-foreground ml-0.5">({awayPts})</span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Standings mini-table */}
                   {(standingsByGroup.get(key) ?? []).length > 0 && (
                     <div className="border-t">
@@ -781,11 +829,13 @@ export default function EloClient({
   results,
   futures,
   standings,
+  fixtures,
 }: {
   teams: SoccerEloTeamRow[];
   results: SoccerCompletedResultRow[];
   futures: SoccerFuturesBetRow[];
   standings: SoccerGroupStandingRow[];
+  fixtures: SoccerGroupFixtureRow[];
 }) {
   const [tab, setTab] = useState<Tab>("rankings");
 
@@ -844,7 +894,7 @@ export default function EloClient({
       {/* Tab content */}
       {tab === "rankings" && <RankingsTab teams={teams} />}
       {tab === "results" && <ResultsTab results={results} />}
-      {tab === "futures" && <FuturesTab futures={futures} standings={standings} />}
+      {tab === "futures" && <FuturesTab futures={futures} standings={standings} fixtures={fixtures} />}
     </div>
   );
 }
