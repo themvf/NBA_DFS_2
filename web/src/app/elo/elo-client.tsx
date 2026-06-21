@@ -846,7 +846,7 @@ function FuturesTab({
                                   <span className="mr-1 text-muted-foreground/50">{i + 1}</span>
                                   {s.abbreviation ?? s.name}
                                   {advClinched && (
-                                    <span className="ml-1 text-[9px] font-semibold text-emerald-400">✓ADV</span>
+                                    <span className="ml-1 text-[9px] font-semibold text-emerald-400">✓R16</span>
                                   )}
                                   {eliminated && (
                                     <span className="ml-1 text-[9px] font-semibold text-rose-400">OUT</span>
@@ -868,40 +868,47 @@ function FuturesTab({
                           })}
                         </tbody>
                       </table>
-                      {/* Clinch summary — one line per team with remaining scenarios */}
+                      {/* Clinch summary — R16 qualification vs group winner, clearly labelled */}
                       {clinch.size > 0 && (
-                        <div className="border-t px-3 py-2 space-y-0.5">
-                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                            Clinch scenarios
+                        <div className="border-t px-3 py-2 space-y-1">
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+                            Scenario breakdown
+                            <span className="ml-2 normal-case font-normal text-muted-foreground/70">
+                              ({Math.pow(3, grpFixtures.length)} outcomes · pts→GD→GF tiebreak)
+                            </span>
                           </p>
                           {grpStandings.map((s) => {
                             const c = clinch.get(s.teamId);
                             if (!c) return null;
                             const name = s.abbreviation ?? s.name;
-                            const advClinched = c.advanceIn === c.total;
-                            const eliminated  = c.advanceIn === 0;
-                            const advPct = Math.round((c.advanceIn / c.total) * 100);
-                            const winPct = Math.round((c.winsGroupIn / c.total) * 100);
+                            const r16Clinched  = c.advanceIn === c.total;
+                            const r16Pct       = Math.round((c.advanceIn / c.total) * 100);
+                            const firstPct     = Math.round((c.winsGroupIn / c.total) * 100);
+                            const r16Color = r16Clinched ? "text-emerald-400" :
+                              r16Pct === 0 ? "text-rose-400" :
+                              r16Pct >= 67 ? "text-emerald-400" :
+                              r16Pct <= 33 ? "text-rose-400" : "text-amber-400";
                             return (
-                              <div key={s.teamId} className="flex items-baseline gap-1.5 text-[11px]">
-                                <span className="font-medium w-8 shrink-0">{name}</span>
-                                {advClinched ? (
-                                  <span className="text-emerald-400">Advancement clinched ·{" "}
-                                    <span className="text-foreground">wins group {winPct === 100 ? "in all" : winPct === 0 ? "in no" : `in ${c.winsGroupIn}/${c.total}`} scenarios</span>
-                                  </span>
-                                ) : eliminated ? (
-                                  <span className="text-rose-400">Eliminated from group winner</span>
-                                ) : (
-                                  <span className="text-muted-foreground">
-                                    Advances in{" "}
-                                    <span className={advPct >= 67 ? "text-emerald-400 font-semibold" : advPct <= 33 ? "text-rose-400 font-semibold" : "text-amber-400 font-semibold"}>
-                                      {c.advanceIn}/{c.total} scenarios ({advPct}%)
-                                    </span>
-                                    {c.winsGroupIn > 0 && c.winsGroupIn < c.total && (
-                                      <span> · wins group in {c.winsGroupIn}/{c.total} ({winPct}%)</span>
-                                    )}
-                                  </span>
-                                )}
+                              <div key={s.teamId} className="grid grid-cols-[2rem_1fr_1fr] gap-x-2 text-[11px] items-baseline">
+                                <span className="font-medium text-foreground">{name}</span>
+                                <span>
+                                  <span className="text-muted-foreground">R16: </span>
+                                  {r16Clinched ? (
+                                    <span className="text-emerald-400 font-semibold">Clinched</span>
+                                  ) : (
+                                    <span className={`font-semibold ${r16Color}`}>{c.advanceIn}/{c.total} ({r16Pct}%)</span>
+                                  )}
+                                </span>
+                                <span>
+                                  <span className="text-muted-foreground">1st: </span>
+                                  {c.winsGroupIn === c.total ? (
+                                    <span className="text-emerald-400 font-semibold">Clinched</span>
+                                  ) : c.winsGroupIn === 0 ? (
+                                    <span className="text-muted-foreground/50">impossible</span>
+                                  ) : (
+                                    <span className="font-semibold text-foreground">{c.winsGroupIn}/{c.total} ({firstPct}%)</span>
+                                  )}
+                                </span>
                               </div>
                             );
                           })}
