@@ -928,68 +928,48 @@ function FuturesTab({
                           })}
                         </tbody>
                       </table>
-                      {/* To win the group — plain-English conditions per team */}
-                      {clinch.size > 0 && (
-                        <div className="border-t px-3 py-2 space-y-1">
-                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
-                            To win the group
-                          </p>
-                          {grpStandings.map((s) => {
-                            const c = clinch.get(s.teamId);
-                            if (!c) return null;
-                            const name = s.abbreviation ?? s.name;
-                            const opp  = c.nextFxOpponentAbbr ?? c.nextFxOpponentName ?? "?";
+                      {/* To win the group — only guaranteed paths + eliminated teams */}
+                      {(() => {
+                        const rows = grpStandings.map((s) => {
+                          const c = clinch.get(s.teamId);
+                          if (!c) return null;
+                          const guaranteed: string[] = [];
+                          if (c.winFirst  === 'always') guaranteed.push('Win');
+                          if (c.drawFirst === 'always') guaranteed.push('Draw');
+                          if (c.lossFirst === 'always') guaranteed.push('Loss');
+                          const impossible = c.winFirst === 'never' && c.drawFirst === 'never' && c.lossFirst === 'never';
+                          return { s, c, guaranteed, impossible };
+                        }).filter(Boolean) as { s: SoccerGroupStandingRow; c: ClinchStatus; guaranteed: string[]; impossible: boolean }[];
 
-                            // Build list of always-sufficient results
-                            const guaranteed: string[] = [];
-                            if (c.winFirst  === 'always') guaranteed.push('Win');
-                            if (c.drawFirst === 'always') guaranteed.push('Draw');
-                            if (c.lossFirst === 'always') guaranteed.push('Loss');
+                        // Only render the section if at least one team has a guaranteed path or is eliminated
+                        const hasContent = rows.some((r) => r.guaranteed.length > 0 || r.impossible);
+                        if (!hasContent) return null;
 
-                            // Build list of sometimes-sufficient results
-                            const conditional: string[] = [];
-                            if (c.winFirst  === 'sometimes') conditional.push('Win');
-                            if (c.drawFirst === 'sometimes') conditional.push('Draw');
-                            if (c.lossFirst === 'sometimes') conditional.push('Loss');
-
-                            const impossible = guaranteed.length === 0 && conditional.length === 0;
-                            const noGame = !c.nextFxOpponentName;
-
-                            return (
-                              <div key={s.teamId} className="flex gap-2 text-[11px] items-baseline">
-                                <span className="font-medium w-8 shrink-0 text-foreground">{name}</span>
-                                {noGame ? (
-                                  <span className="text-muted-foreground/50">No games remaining</span>
-                                ) : impossible ? (
-                                  <span className="text-muted-foreground/50">Cannot win group</span>
-                                ) : (
-                                  <span>
-                                    {guaranteed.length > 0 && (
-                                      <span>
-                                        <span className="text-emerald-400 font-semibold">
-                                          {guaranteed.join(' or ')} vs {opp}
-                                        </span>
-                                        <span className="text-muted-foreground"> clinches 1st</span>
-                                      </span>
-                                    )}
-                                    {guaranteed.length > 0 && conditional.length > 0 && (
-                                      <span className="text-muted-foreground"> · </span>
-                                    )}
-                                    {conditional.length > 0 && (
-                                      <span>
-                                        <span className="text-amber-400 font-semibold">
-                                          {conditional.join(' or ')} vs {opp}
-                                        </span>
-                                        <span className="text-muted-foreground"> may clinch (other results needed)</span>
-                                      </span>
-                                    )}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                        return (
+                          <div className="border-t px-3 py-2 space-y-1">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+                              To win the group
+                            </p>
+                            {rows.filter((r) => r.guaranteed.length > 0 || r.impossible).map(({ s, c, guaranteed, impossible }) => {
+                              const name = s.abbreviation ?? s.name;
+                              const opp  = c.nextFxOpponentAbbr ?? c.nextFxOpponentName ?? "?";
+                              return (
+                                <div key={s.teamId} className="flex gap-2 text-[11px] items-baseline">
+                                  <span className="font-medium w-8 shrink-0 text-foreground">{name}</span>
+                                  {impossible ? (
+                                    <span className="text-muted-foreground/50">Cannot win group</span>
+                                  ) : (
+                                    <span>
+                                      <span className="text-emerald-400 font-semibold">{guaranteed.join(' or ')} vs {opp}</span>
+                                      <span className="text-muted-foreground"> clinches 1st</span>
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
