@@ -992,13 +992,18 @@ function FuturesTab({
                           r.conditional.some((p) => p.condition !== null) ||
                           r.impossible
                         );
-                        if (!hasContent) return null;
+                        const tooEarly = !hasContent && grpFixtures.length > 2;
+
+                        if (!hasContent && !tooEarly) return null;
 
                         return (
                           <div className="border-t px-3 py-2 space-y-1.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
                               To win the group
                             </p>
+                            {tooEarly && (
+                              <p className="text-[11px] text-muted-foreground/50 italic">Too early to call — check back on the final matchday.</p>
+                            )}
                             {rows.map(({ s, c, guaranteed, conditional, impossible }) => {
                               const name = s.abbreviation ?? s.name;
                               const opp  = c.nextFxOpponentAbbr ?? c.nextFxOpponentName ?? "?";
