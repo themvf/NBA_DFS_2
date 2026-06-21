@@ -446,10 +446,12 @@ function FuturesTab({
   futures,
   standings,
   fixtures,
+  teams,
 }: {
   futures: SoccerFuturesBetRow[];
   standings: SoccerGroupStandingRow[];
   fixtures: SoccerGroupFixtureRow[];
+  teams: SoccerEloTeamRow[];
 }) {
   const outright = futures.filter((f) => f.betType === "outright_winner");
   const groupWinner = futures.filter((f) => f.betType === "group_winner");
@@ -481,6 +483,10 @@ function FuturesTab({
     list.push(f);
     fixturesByGroup.set(f.groupLabel, list);
   }
+
+  // Elo lookup: teamId → elo rating
+  const eloByTeam = new Map<number, number>();
+  for (const t of teams) eloByTeam.set(t.teamId, Math.round(t.elo));
 
   return (
     <div className="space-y-6">
@@ -760,32 +766,39 @@ function FuturesTab({
                       <table className="w-full table-fixed text-[11px]">
                         <thead>
                           <tr className="border-b text-[10px] text-muted-foreground bg-muted/30">
-                            <th className="px-3 py-1 text-left font-medium w-[38%]">Standings</th>
+                            <th className="px-3 py-1 text-left font-medium w-[34%]">Standings</th>
                             <th className="px-1 py-1 text-center font-medium">GP</th>
                             <th className="px-1 py-1 text-center font-medium">W</th>
                             <th className="px-1 py-1 text-center font-medium">D</th>
                             <th className="px-1 py-1 text-center font-medium">L</th>
                             <th className="px-1 py-1 text-center font-medium">GD</th>
                             <th className="px-1 py-1 text-center font-medium font-semibold">P</th>
+                            <th className="px-1 py-1 text-center font-medium text-violet-400">Elo</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(standingsByGroup.get(key) ?? []).map((s, i) => (
-                            <tr key={s.teamId} className="border-b last:border-0">
-                              <td className="px-3 py-1 truncate text-muted-foreground">
-                                <span className="mr-1 text-muted-foreground/50">{i + 1}</span>
-                                {s.abbreviation ?? s.name}
-                              </td>
-                              <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.gp}</td>
-                              <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.w}</td>
-                              <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.d}</td>
-                              <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.l}</td>
-                              <td className={`px-1 py-1 text-center tabular-nums ${s.gd > 0 ? "text-emerald-400" : s.gd < 0 ? "text-rose-400" : "text-muted-foreground"}`}>
-                                {s.gd > 0 ? `+${s.gd}` : s.gd}
-                              </td>
-                              <td className="px-1 py-1 text-center tabular-nums font-semibold">{s.pts}</td>
-                            </tr>
-                          ))}
+                          {(standingsByGroup.get(key) ?? []).map((s, i) => {
+                            const elo = eloByTeam.get(s.teamId);
+                            return (
+                              <tr key={s.teamId} className="border-b last:border-0">
+                                <td className="px-3 py-1 truncate text-muted-foreground">
+                                  <span className="mr-1 text-muted-foreground/50">{i + 1}</span>
+                                  {s.abbreviation ?? s.name}
+                                </td>
+                                <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.gp}</td>
+                                <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.w}</td>
+                                <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.d}</td>
+                                <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.l}</td>
+                                <td className={`px-1 py-1 text-center tabular-nums ${s.gd > 0 ? "text-emerald-400" : s.gd < 0 ? "text-rose-400" : "text-muted-foreground"}`}>
+                                  {s.gd > 0 ? `+${s.gd}` : s.gd}
+                                </td>
+                                <td className="px-1 py-1 text-center tabular-nums font-semibold">{s.pts}</td>
+                                <td className="px-1 py-1 text-center tabular-nums text-violet-400 text-[10px]">
+                                  {elo ?? "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -894,7 +907,7 @@ export default function EloClient({
       {/* Tab content */}
       {tab === "rankings" && <RankingsTab teams={teams} />}
       {tab === "results" && <ResultsTab results={results} />}
-      {tab === "futures" && <FuturesTab futures={futures} standings={standings} fixtures={fixtures} />}
+      {tab === "futures" && <FuturesTab futures={futures} standings={standings} fixtures={fixtures} teams={teams} />}
     </div>
   );
 }
