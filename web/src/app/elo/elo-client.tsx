@@ -454,10 +454,33 @@ type ClinchStatus = {
   // "To win the group" — per-result-in-their-next-game
   nextFxOpponentAbbr: string | null;
   nextFxOpponentName: string | null;
-  winFirst: ResultKind;   // if they win their next game, do they finish 1st?
-  drawFirst: ResultKind;  // if they draw their next game?
-  lossFirst: ResultKind;  // if they lose their next game?
+  winFirst: ResultKind;
+  drawFirst: ResultKind;
+  lossFirst: ResultKind;
+  // For N=2 (final matchday): plain-English condition for each 'sometimes' result
+  // e.g. "if Morocco doesn't win" — what the other game needs to be
+  winCondition: string | null;
+  drawCondition: string | null;
+  lossCondition: string | null;
 };
+
+// Describes which outcome of the OTHER game a team needs, given N=2 simultaneous games.
+function _describeOtherCondition(
+  worksWhen: Set<number>, // raw other-game outcomes (0=home win,1=draw,2=away win) that allow group win
+  otherFx: SoccerGroupFixtureRow,
+): string | null {
+  if (worksWhen.size === 0 || worksWhen.size === 3) return null;
+  const h = otherFx.homeAbbr ?? otherFx.homeName;
+  const a = otherFx.awayAbbr ?? otherFx.awayName;
+  const hw = worksWhen.has(0), d = worksWhen.has(1), aw = worksWhen.has(2);
+  if (hw && d && !aw) return `if ${a} doesn't win`;
+  if (!hw && d && aw) return `if ${h} doesn't win`;
+  if (hw && !d && !aw) return `if ${h} wins`;
+  if (!hw && !d && aw) return `if ${a} wins`;
+  if (!hw && d && !aw) return `if ${h} draws ${a}`;
+  if (hw && !d && aw)  return `if ${h} vs ${a} isn't a draw`;
+  return null;
+}
 
 function _rankTeams(
   rows: SoccerGroupStandingRow[],
@@ -485,11 +508,14 @@ function computeGroupClinch(
 
   // Per-team accumulators
   const advanceIn = new Map(rows.map((s) => [s.teamId, 0]));
-  // win/draw/loss buckets: [scenarios_in_bucket, group_wins_in_bucket]
   type Bucket = [number, number];
   const winB  = new Map<number, Bucket>(rows.map((s) => [s.teamId, [0, 0]]));
   const drawB = new Map<number, Bucket>(rows.map((s) => [s.teamId, [0, 0]]));
   const lossB = new Map<number, Bucket>(rows.map((s) => [s.teamId, [0, 0]]));
+  // For N=2: track which other-game outcomes allow group win, per my result
+  const winWhen  = new Map<number, Set<number>>(rows.map((s) => [s.teamId, new Set()]));
+  const drawWhen = new Map<number, Set<number>>(rows.map((s) => [s.teamId, new Set()]));
+  const lossWhen = new Map<number, Set<number>>(rows.map((s) => [s.teamId, new Set()]));
 
   // For each team, find their next fixture index
   const nextFxIdx = new Map<number, number>();
@@ -523,13 +549,20 @@ function computeGroupClinch(
         const o = outcomes[fi];
         const fx = fxs[fi];
         const isHome = fx.homeTeamId === s.teamId;
-        // translate raw outcome → team's result
         const myResult: 'win' | 'draw' | 'loss' =
           o === 1 ? 'draw' : (o === 0) === isHome ? 'win' : 'loss';
         const b = myResult === 'win' ? winB : myResult === 'draw' ? drawB : lossB;
         const bucket = b.get(s.teamId)!;
         bucket[0]++;
-        if (winsGroup) bucket[1]++;
+        if (winsGroup) {
+          bucket[1]++;
+          // Track other-game outcome for condition description (N=2 only)
+          if (N === 2) {
+            const otherFxIdx = 1 - fi;
+            const when = myResult === 'win' ? winWhen : myResult === 'draw' ? drawWhen : lossWhen;
+            when.get(s.teamId)!.add(outcomes[otherFxIdx]);
+          }
+        }
       }
     }
   }
@@ -542,14 +575,21 @@ function computeGroupClinch(
     const fi = nextFxIdx.get(s.teamId);
     const fx = fi !== undefined ? fxs[fi] : undefined;
     const isHome = fx ? fx.homeTeamId === s.teamId : false;
+    const otherFx = (N === 2 && fi !== undefined) ? fxs[1 - fi] : undefined;
+    const wF = classify(winB.get(s.teamId)  ?? [0, 0]);
+    const dF = classify(drawB.get(s.teamId) ?? [0, 0]);
+    const lF = classify(lossB.get(s.teamId) ?? [0, 0]);
     result.set(s.teamId, {
       advanceIn: advanceIn.get(s.teamId) ?? 0,
       total,
       nextFxOpponentAbbr: fx ? (isHome ? fx.awayAbbr : fx.homeAbbr) : null,
       nextFxOpponentName: fx ? (isHome ? fx.awayName : fx.homeName) : null,
-      winFirst:  classify(winB.get(s.teamId)  ?? [0, 0]),
-      drawFirst: classify(drawB.get(s.teamId) ?? [0, 0]),
-      lossFirst: classify(lossB.get(s.teamId) ?? [0, 0]),
+      winFirst:  wF,
+      drawFirst: dF,
+      lossFirst: lF,
+      winCondition:  (wF  === 'sometimes' && otherFx) ? _describeOtherCondition(winWhen.get(s.teamId)!,  otherFx) : null,
+      drawCondition: (dF  === 'sometimes' && otherFx) ? _describeOtherCondition(drawWhen.get(s.teamId)!, otherFx) : null,
+      lossCondition: (lF  === 'sometimes' && otherFx) ? _describeOtherCondition(lossWhen.get(s.teamId)!, otherFx) : null,
     });
   }
   return result;
@@ -930,38 +970,59 @@ function FuturesTab({
                       </table>
                       {/* To win the group — only guaranteed paths + eliminated teams */}
                       {(() => {
-                        const rows = grpStandings.map((s) => {
+                        type RowData = { s: SoccerGroupStandingRow; c: ClinchStatus; guaranteed: string[]; conditional: { result: string; condition: string | null }[]; impossible: boolean };
+                        const rows = grpStandings.map((s): RowData | null => {
                           const c = clinch.get(s.teamId);
                           if (!c) return null;
                           const guaranteed: string[] = [];
                           if (c.winFirst  === 'always') guaranteed.push('Win');
                           if (c.drawFirst === 'always') guaranteed.push('Draw');
                           if (c.lossFirst === 'always') guaranteed.push('Loss');
+                          const conditional: { result: string; condition: string | null }[] = [];
+                          if (c.winFirst  === 'sometimes') conditional.push({ result: 'Win',  condition: c.winCondition });
+                          if (c.drawFirst === 'sometimes') conditional.push({ result: 'Draw', condition: c.drawCondition });
+                          if (c.lossFirst === 'sometimes') conditional.push({ result: 'Loss', condition: c.lossCondition });
                           const impossible = c.winFirst === 'never' && c.drawFirst === 'never' && c.lossFirst === 'never';
-                          return { s, c, guaranteed, impossible };
-                        }).filter(Boolean) as { s: SoccerGroupStandingRow; c: ClinchStatus; guaranteed: string[]; impossible: boolean }[];
+                          return { s, c, guaranteed, conditional, impossible };
+                        }).filter(Boolean) as RowData[];
 
-                        // Only render the section if at least one team has a guaranteed path or is eliminated
-                        const hasContent = rows.some((r) => r.guaranteed.length > 0 || r.impossible);
+                        // Only show when there's something meaningful: guaranteed path, conditional path with known condition, or eliminated
+                        const hasContent = rows.some((r) =>
+                          r.guaranteed.length > 0 ||
+                          r.conditional.some((p) => p.condition !== null) ||
+                          r.impossible
+                        );
                         if (!hasContent) return null;
 
                         return (
-                          <div className="border-t px-3 py-2 space-y-1">
+                          <div className="border-t px-3 py-2 space-y-1.5">
                             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
                               To win the group
                             </p>
-                            {rows.filter((r) => r.guaranteed.length > 0 || r.impossible).map(({ s, c, guaranteed, impossible }) => {
+                            {rows.map(({ s, c, guaranteed, conditional, impossible }) => {
                               const name = s.abbreviation ?? s.name;
                               const opp  = c.nextFxOpponentAbbr ?? c.nextFxOpponentName ?? "?";
+                              const showConditional = conditional.filter((p) => p.condition !== null);
+                              if (!guaranteed.length && !showConditional.length && !impossible) return null;
                               return (
-                                <div key={s.teamId} className="flex gap-2 text-[11px] items-baseline">
-                                  <span className="font-medium w-8 shrink-0 text-foreground">{name}</span>
+                                <div key={s.teamId} className="flex gap-2 text-[11px] items-start">
+                                  <span className="font-medium w-8 shrink-0 text-foreground pt-px">{name}</span>
                                   {impossible ? (
                                     <span className="text-muted-foreground/50">Cannot win group</span>
                                   ) : (
-                                    <span>
-                                      <span className="text-emerald-400 font-semibold">{guaranteed.join(' or ')} vs {opp}</span>
-                                      <span className="text-muted-foreground"> clinches 1st</span>
+                                    <span className="flex flex-col gap-0.5">
+                                      {guaranteed.length > 0 && (
+                                        <span>
+                                          <span className="text-emerald-400 font-semibold">{guaranteed.join(' or ')} vs {opp}</span>
+                                          <span className="text-muted-foreground"> → clinches 1st</span>
+                                        </span>
+                                      )}
+                                      {showConditional.map((p) => (
+                                        <span key={p.result}>
+                                          <span className="text-amber-400 font-semibold">{p.result} vs {opp}</span>
+                                          <span className="text-muted-foreground"> → 1st {p.condition}</span>
+                                        </span>
+                                      ))}
                                     </span>
                                   )}
                                 </div>
