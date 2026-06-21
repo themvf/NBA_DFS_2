@@ -442,55 +442,115 @@ function ResultsTab({ results }: { results: SoccerCompletedResultRow[] }) {
 }
 
 // ── Group clinch computation ──────────────────────────────────────────────────
-// Enumerates all 3^N outcomes of remaining intra-group fixtures and counts, per
-// team, how many scenarios lead to top-2 advancement and to winning the group.
-// Tiebreaker: pts → gd (current aggregate, since we can't know exact GD swing
-// without knowing scorelines — conservative but correct on points boundaries).
+// Enumerates all 3^N outcomes of remaining intra-group fixtures.
+// Tiebreaker: pts → GD → GF (conservative; no scoreline data for future games).
+
+type ResultKind = 'always' | 'sometimes' | 'never';
+
 type ClinchStatus = {
-  advanceIn: number;   // # scenarios where team finishes top-2
-  winsGroupIn: number; // # scenarios where team finishes 1st
-  total: number;       // total scenarios enumerated (3^N)
+  // R16 (top-2) advancement
+  advanceIn: number;
+  total: number;
+  // "To win the group" — per-result-in-their-next-game
+  nextFxOpponentAbbr: string | null;
+  nextFxOpponentName: string | null;
+  winFirst: ResultKind;   // if they win their next game, do they finish 1st?
+  drawFirst: ResultKind;  // if they draw their next game?
+  lossFirst: ResultKind;  // if they lose their next game?
 };
 
-function computeGroupClinch(
+function _rankTeams(
   rows: SoccerGroupStandingRow[],
-  fxs: SoccerGroupFixtureRow[],
-): Map<number, ClinchStatus> {
-  const result = new Map<number, ClinchStatus>(
-    rows.map((s) => [s.teamId, { advanceIn: 0, winsGroupIn: 0, total: 0 }]),
-  );
-  const N = fxs.length;
-  const total = Math.pow(3, N);
-  for (let mask = 0; mask < total; mask++) {
-    const pts = new Map(rows.map((s) => [s.teamId, s.pts]));
-    const gd  = new Map(rows.map((s) => [s.teamId, s.gd]));
-    const gf  = new Map(rows.map((s) => [s.teamId, s.gf]));
-    let m = mask;
-    for (const fx of fxs) {
-      const outcome = m % 3; m = Math.floor(m / 3);
-      if (outcome === 0) {
-        pts.set(fx.homeTeamId, (pts.get(fx.homeTeamId) ?? 0) + 3);
-      } else if (outcome === 1) {
-        pts.set(fx.homeTeamId, (pts.get(fx.homeTeamId) ?? 0) + 1);
-        pts.set(fx.awayTeamId, (pts.get(fx.awayTeamId) ?? 0) + 1);
-      } else {
-        pts.set(fx.awayTeamId, (pts.get(fx.awayTeamId) ?? 0) + 3);
-      }
-    }
-    const ranked = [...rows].sort((a, b) => {
+  pts: Map<number, number>,
+  gd: Map<number, number>,
+  gf: Map<number, number>,
+): number[] {
+  return [...rows]
+    .sort((a, b) => {
       const dp = (pts.get(b.teamId) ?? 0) - (pts.get(a.teamId) ?? 0);
       if (dp !== 0) return dp;
       const dg = (gd.get(b.teamId) ?? 0) - (gd.get(a.teamId) ?? 0);
       if (dg !== 0) return dg;
       return (gf.get(b.teamId) ?? 0) - (gf.get(a.teamId) ?? 0);
-    });
-    for (const s of rows) {
-      const c = result.get(s.teamId)!;
-      c.total++;
-      const rank = ranked.findIndex((r) => r.teamId === s.teamId);
-      if (rank < 2) c.advanceIn++;
-      if (rank === 0) c.winsGroupIn++;
+    })
+    .map((r) => r.teamId);
+}
+
+function computeGroupClinch(
+  rows: SoccerGroupStandingRow[],
+  fxs: SoccerGroupFixtureRow[],
+): Map<number, ClinchStatus> {
+  const N = fxs.length;
+  const total = Math.pow(3, N);
+
+  // Per-team accumulators
+  const advanceIn = new Map(rows.map((s) => [s.teamId, 0]));
+  // win/draw/loss buckets: [scenarios_in_bucket, group_wins_in_bucket]
+  type Bucket = [number, number];
+  const winB  = new Map<number, Bucket>(rows.map((s) => [s.teamId, [0, 0]]));
+  const drawB = new Map<number, Bucket>(rows.map((s) => [s.teamId, [0, 0]]));
+  const lossB = new Map<number, Bucket>(rows.map((s) => [s.teamId, [0, 0]]));
+
+  // For each team, find their next fixture index
+  const nextFxIdx = new Map<number, number>();
+  for (const s of rows) {
+    const idx = fxs.findIndex((f) => f.homeTeamId === s.teamId || f.awayTeamId === s.teamId);
+    if (idx !== -1) nextFxIdx.set(s.teamId, idx);
+  }
+
+  for (let mask = 0; mask < total; mask++) {
+    const pts = new Map(rows.map((s) => [s.teamId, s.pts]));
+    const gd  = new Map(rows.map((s) => [s.teamId, s.gd]));
+    const gf  = new Map(rows.map((s) => [s.teamId, s.gf]));
+    const outcomes: number[] = [];
+    let m = mask;
+    for (let i = 0; i < N; i++) {
+      const o = m % 3; m = Math.floor(m / 3); outcomes.push(o);
+      const fx = fxs[i];
+      if (o === 0)      { pts.set(fx.homeTeamId, (pts.get(fx.homeTeamId) ?? 0) + 3); }
+      else if (o === 1) { pts.set(fx.homeTeamId, (pts.get(fx.homeTeamId) ?? 0) + 1); pts.set(fx.awayTeamId, (pts.get(fx.awayTeamId) ?? 0) + 1); }
+      else              { pts.set(fx.awayTeamId, (pts.get(fx.awayTeamId) ?? 0) + 3); }
     }
+    const ranked = _rankTeams(rows, pts, gd, gf);
+
+    for (const s of rows) {
+      const rank = ranked.indexOf(s.teamId);
+      if (rank < 2) advanceIn.set(s.teamId, (advanceIn.get(s.teamId) ?? 0) + 1);
+      const winsGroup = rank === 0;
+
+      const fi = nextFxIdx.get(s.teamId);
+      if (fi !== undefined) {
+        const o = outcomes[fi];
+        const fx = fxs[fi];
+        const isHome = fx.homeTeamId === s.teamId;
+        // translate raw outcome → team's result
+        const myResult: 'win' | 'draw' | 'loss' =
+          o === 1 ? 'draw' : (o === 0) === isHome ? 'win' : 'loss';
+        const b = myResult === 'win' ? winB : myResult === 'draw' ? drawB : lossB;
+        const bucket = b.get(s.teamId)!;
+        bucket[0]++;
+        if (winsGroup) bucket[1]++;
+      }
+    }
+  }
+
+  const classify = ([n, w]: Bucket): ResultKind =>
+    n === 0 ? 'never' : w === n ? 'always' : w > 0 ? 'sometimes' : 'never';
+
+  const result = new Map<number, ClinchStatus>();
+  for (const s of rows) {
+    const fi = nextFxIdx.get(s.teamId);
+    const fx = fi !== undefined ? fxs[fi] : undefined;
+    const isHome = fx ? fx.homeTeamId === s.teamId : false;
+    result.set(s.teamId, {
+      advanceIn: advanceIn.get(s.teamId) ?? 0,
+      total,
+      nextFxOpponentAbbr: fx ? (isHome ? fx.awayAbbr : fx.homeAbbr) : null,
+      nextFxOpponentName: fx ? (isHome ? fx.awayName : fx.homeName) : null,
+      winFirst:  classify(winB.get(s.teamId)  ?? [0, 0]),
+      drawFirst: classify(drawB.get(s.teamId) ?? [0, 0]),
+      lossFirst: classify(lossB.get(s.teamId) ?? [0, 0]),
+    });
   }
   return result;
 }
@@ -868,47 +928,63 @@ function FuturesTab({
                           })}
                         </tbody>
                       </table>
-                      {/* Clinch summary — R16 qualification vs group winner, clearly labelled */}
+                      {/* To win the group — plain-English conditions per team */}
                       {clinch.size > 0 && (
                         <div className="border-t px-3 py-2 space-y-1">
                           <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
-                            Scenario breakdown
-                            <span className="ml-2 normal-case font-normal text-muted-foreground/70">
-                              ({Math.pow(3, grpFixtures.length)} outcomes · pts→GD→GF tiebreak)
-                            </span>
+                            To win the group
                           </p>
                           {grpStandings.map((s) => {
                             const c = clinch.get(s.teamId);
                             if (!c) return null;
                             const name = s.abbreviation ?? s.name;
-                            const r16Clinched  = c.advanceIn === c.total;
-                            const r16Pct       = Math.round((c.advanceIn / c.total) * 100);
-                            const firstPct     = Math.round((c.winsGroupIn / c.total) * 100);
-                            const r16Color = r16Clinched ? "text-emerald-400" :
-                              r16Pct === 0 ? "text-rose-400" :
-                              r16Pct >= 67 ? "text-emerald-400" :
-                              r16Pct <= 33 ? "text-rose-400" : "text-amber-400";
+                            const opp  = c.nextFxOpponentAbbr ?? c.nextFxOpponentName ?? "?";
+
+                            // Build list of always-sufficient results
+                            const guaranteed: string[] = [];
+                            if (c.winFirst  === 'always') guaranteed.push('Win');
+                            if (c.drawFirst === 'always') guaranteed.push('Draw');
+                            if (c.lossFirst === 'always') guaranteed.push('Loss');
+
+                            // Build list of sometimes-sufficient results
+                            const conditional: string[] = [];
+                            if (c.winFirst  === 'sometimes') conditional.push('Win');
+                            if (c.drawFirst === 'sometimes') conditional.push('Draw');
+                            if (c.lossFirst === 'sometimes') conditional.push('Loss');
+
+                            const impossible = guaranteed.length === 0 && conditional.length === 0;
+                            const noGame = !c.nextFxOpponentName;
+
                             return (
-                              <div key={s.teamId} className="grid grid-cols-[2rem_1fr_1fr] gap-x-2 text-[11px] items-baseline">
-                                <span className="font-medium text-foreground">{name}</span>
-                                <span>
-                                  <span className="text-muted-foreground">R16: </span>
-                                  {r16Clinched ? (
-                                    <span className="text-emerald-400 font-semibold">Clinched</span>
-                                  ) : (
-                                    <span className={`font-semibold ${r16Color}`}>{c.advanceIn}/{c.total} ({r16Pct}%)</span>
-                                  )}
-                                </span>
-                                <span>
-                                  <span className="text-muted-foreground">1st: </span>
-                                  {c.winsGroupIn === c.total ? (
-                                    <span className="text-emerald-400 font-semibold">Clinched</span>
-                                  ) : c.winsGroupIn === 0 ? (
-                                    <span className="text-muted-foreground/50">impossible</span>
-                                  ) : (
-                                    <span className="font-semibold text-foreground">{c.winsGroupIn}/{c.total} ({firstPct}%)</span>
-                                  )}
-                                </span>
+                              <div key={s.teamId} className="flex gap-2 text-[11px] items-baseline">
+                                <span className="font-medium w-8 shrink-0 text-foreground">{name}</span>
+                                {noGame ? (
+                                  <span className="text-muted-foreground/50">No games remaining</span>
+                                ) : impossible ? (
+                                  <span className="text-muted-foreground/50">Cannot win group</span>
+                                ) : (
+                                  <span>
+                                    {guaranteed.length > 0 && (
+                                      <span>
+                                        <span className="text-emerald-400 font-semibold">
+                                          {guaranteed.join(' or ')} vs {opp}
+                                        </span>
+                                        <span className="text-muted-foreground"> clinches 1st</span>
+                                      </span>
+                                    )}
+                                    {guaranteed.length > 0 && conditional.length > 0 && (
+                                      <span className="text-muted-foreground"> · </span>
+                                    )}
+                                    {conditional.length > 0 && (
+                                      <span>
+                                        <span className="text-amber-400 font-semibold">
+                                          {conditional.join(' or ')} vs {opp}
+                                        </span>
+                                        <span className="text-muted-foreground"> may clinch (other results needed)</span>
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
                               </div>
                             );
                           })}
