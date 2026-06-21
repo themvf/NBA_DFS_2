@@ -441,6 +441,60 @@ function ResultsTab({ results }: { results: SoccerCompletedResultRow[] }) {
   );
 }
 
+// ── Group clinch computation ──────────────────────────────────────────────────
+// Enumerates all 3^N outcomes of remaining intra-group fixtures and counts, per
+// team, how many scenarios lead to top-2 advancement and to winning the group.
+// Tiebreaker: pts → gd (current aggregate, since we can't know exact GD swing
+// without knowing scorelines — conservative but correct on points boundaries).
+type ClinchStatus = {
+  advanceIn: number;   // # scenarios where team finishes top-2
+  winsGroupIn: number; // # scenarios where team finishes 1st
+  total: number;       // total scenarios enumerated (3^N)
+};
+
+function computeGroupClinch(
+  rows: SoccerGroupStandingRow[],
+  fxs: SoccerGroupFixtureRow[],
+): Map<number, ClinchStatus> {
+  const result = new Map<number, ClinchStatus>(
+    rows.map((s) => [s.teamId, { advanceIn: 0, winsGroupIn: 0, total: 0 }]),
+  );
+  const N = fxs.length;
+  const total = Math.pow(3, N);
+  for (let mask = 0; mask < total; mask++) {
+    const pts = new Map(rows.map((s) => [s.teamId, s.pts]));
+    const gd  = new Map(rows.map((s) => [s.teamId, s.gd]));
+    const gf  = new Map(rows.map((s) => [s.teamId, s.gf]));
+    let m = mask;
+    for (const fx of fxs) {
+      const outcome = m % 3; m = Math.floor(m / 3);
+      if (outcome === 0) {
+        pts.set(fx.homeTeamId, (pts.get(fx.homeTeamId) ?? 0) + 3);
+      } else if (outcome === 1) {
+        pts.set(fx.homeTeamId, (pts.get(fx.homeTeamId) ?? 0) + 1);
+        pts.set(fx.awayTeamId, (pts.get(fx.awayTeamId) ?? 0) + 1);
+      } else {
+        pts.set(fx.awayTeamId, (pts.get(fx.awayTeamId) ?? 0) + 3);
+      }
+    }
+    const ranked = [...rows].sort((a, b) => {
+      const dp = (pts.get(b.teamId) ?? 0) - (pts.get(a.teamId) ?? 0);
+      if (dp !== 0) return dp;
+      const dg = (gd.get(b.teamId) ?? 0) - (gd.get(a.teamId) ?? 0);
+      if (dg !== 0) return dg;
+      return (gf.get(b.teamId) ?? 0) - (gf.get(a.teamId) ?? 0);
+    });
+    for (const s of rows) {
+      const c = result.get(s.teamId)!;
+      c.total++;
+      const rank = ranked.findIndex((r) => r.teamId === s.teamId);
+      if (rank < 2) c.advanceIn++;
+      if (rank === 0) c.winsGroupIn++;
+    }
+  }
+  return result;
+}
+
 // ── Futures tab ───────────────────────────────────────────────────────────────
 function FuturesTab({
   futures,
@@ -619,6 +673,11 @@ function FuturesTab({
                   ? sorted[0].ourProb - sorted[1].ourProb
                   : 1;
               const contested = !sorted[0]?.wonGroup && top2Gap <= 0.10;
+              const grpStandings = standingsByGroup.get(key) ?? [];
+              const grpFixtures  = fixturesByGroup.get(key) ?? [];
+              const clinch = grpFixtures.length > 0
+                ? computeGroupClinch(grpStandings, grpFixtures)
+                : new Map<number, ClinchStatus>();
               return (
                 <div key={key} className="rounded-lg border bg-card">
                   <div className="border-b px-3 py-2 text-sm font-semibold flex items-center gap-2">
@@ -737,7 +796,6 @@ function FuturesTab({
                           ? new Date(f.commenceTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })
                           : f.gameDate.slice(5).replace("-", "/");
                         // Points for each team from standings
-                        const grpStandings = standingsByGroup.get(key) ?? [];
                         const homePts = grpStandings.find((s) => (s.abbreviation ?? s.name) === home)?.pts;
                         const awayPts = grpStandings.find((s) => (s.abbreviation ?? s.name) === away)?.pts;
                         return (
@@ -761,7 +819,7 @@ function FuturesTab({
                   )}
 
                   {/* Standings mini-table */}
-                  {(standingsByGroup.get(key) ?? []).length > 0 && (
+                  {grpStandings.length > 0 && (
                     <div className="border-t">
                       <table className="w-full table-fixed text-[11px]">
                         <thead>
@@ -777,13 +835,22 @@ function FuturesTab({
                           </tr>
                         </thead>
                         <tbody>
-                          {(standingsByGroup.get(key) ?? []).map((s, i) => {
+                          {grpStandings.map((s, i) => {
                             const elo = eloByTeam.get(s.teamId);
+                            const c = clinch.get(s.teamId);
+                            const advClinched = c && c.advanceIn === c.total;
+                            const eliminated  = c && c.advanceIn === 0;
                             return (
                               <tr key={s.teamId} className="border-b last:border-0">
                                 <td className="px-3 py-1 truncate text-muted-foreground">
                                   <span className="mr-1 text-muted-foreground/50">{i + 1}</span>
                                   {s.abbreviation ?? s.name}
+                                  {advClinched && (
+                                    <span className="ml-1 text-[9px] font-semibold text-emerald-400">✓ADV</span>
+                                  )}
+                                  {eliminated && (
+                                    <span className="ml-1 text-[9px] font-semibold text-rose-400">OUT</span>
+                                  )}
                                 </td>
                                 <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.gp}</td>
                                 <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.w}</td>
@@ -801,6 +868,45 @@ function FuturesTab({
                           })}
                         </tbody>
                       </table>
+                      {/* Clinch summary — one line per team with remaining scenarios */}
+                      {clinch.size > 0 && (
+                        <div className="border-t px-3 py-2 space-y-0.5">
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                            Clinch scenarios
+                          </p>
+                          {grpStandings.map((s) => {
+                            const c = clinch.get(s.teamId);
+                            if (!c) return null;
+                            const name = s.abbreviation ?? s.name;
+                            const advClinched = c.advanceIn === c.total;
+                            const eliminated  = c.advanceIn === 0;
+                            const advPct = Math.round((c.advanceIn / c.total) * 100);
+                            const winPct = Math.round((c.winsGroupIn / c.total) * 100);
+                            return (
+                              <div key={s.teamId} className="flex items-baseline gap-1.5 text-[11px]">
+                                <span className="font-medium w-8 shrink-0">{name}</span>
+                                {advClinched ? (
+                                  <span className="text-emerald-400">Advancement clinched ·{" "}
+                                    <span className="text-foreground">wins group {winPct === 100 ? "in all" : winPct === 0 ? "in no" : `in ${c.winsGroupIn}/${c.total}`} scenarios</span>
+                                  </span>
+                                ) : eliminated ? (
+                                  <span className="text-rose-400">Eliminated from group winner</span>
+                                ) : (
+                                  <span className="text-muted-foreground">
+                                    Advances in{" "}
+                                    <span className={advPct >= 67 ? "text-emerald-400 font-semibold" : advPct <= 33 ? "text-rose-400 font-semibold" : "text-amber-400 font-semibold"}>
+                                      {c.advanceIn}/{c.total} scenarios ({advPct}%)
+                                    </span>
+                                    {c.winsGroupIn > 0 && c.winsGroupIn < c.total && (
+                                      <span> · wins group in {c.winsGroupIn}/{c.total} ({winPct}%)</span>
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

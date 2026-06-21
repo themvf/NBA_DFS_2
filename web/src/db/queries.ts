@@ -9817,8 +9817,10 @@ export type SoccerGroupFixtureRow = {
   matchupId: number;
   gameDate: string;
   commenceTime: string | null;
+  homeTeamId: number;
   homeAbbr: string | null;
   homeName: string;
+  awayTeamId: number;
   awayAbbr: string | null;
   awayName: string;
 };
@@ -9826,15 +9828,18 @@ export type SoccerGroupFixtureRow = {
 export async function getSoccerGroupFixtures(): Promise<SoccerGroupFixtureRow[]> {
   const rows = await db.execute<{
     groupLabel: string; matchupId: number; gameDate: string; commenceTime: string | null;
-    homeAbbr: string | null; homeName: string; awayAbbr: string | null; awayName: string;
+    homeTeamId: number; homeAbbr: string | null; homeName: string;
+    awayTeamId: number; awayAbbr: string | null; awayName: string;
   }>(sql`
     SELECT
       g.group_label          AS "groupLabel",
       m.id                   AS "matchupId",
       m.game_date::text      AS "gameDate",
       m.commence_time::text  AS "commenceTime",
+      ht.team_id             AS "homeTeamId",
       ht.abbreviation        AS "homeAbbr",
       ht.name                AS "homeName",
+      at.team_id             AS "awayTeamId",
       at.abbreviation        AS "awayAbbr",
       at.name                AS "awayName"
     FROM soccer_matchups m
@@ -9849,8 +9854,10 @@ export async function getSoccerGroupFixtures(): Promise<SoccerGroupFixtureRow[]>
     matchupId: Number(r.matchupId),
     gameDate: String(r.gameDate),
     commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+    homeTeamId: Number(r.homeTeamId),
     homeAbbr: r.homeAbbr != null ? String(r.homeAbbr) : null,
     homeName: String(r.homeName),
+    awayTeamId: Number(r.awayTeamId),
     awayAbbr: r.awayAbbr != null ? String(r.awayAbbr) : null,
     awayName: String(r.awayName),
   }));
