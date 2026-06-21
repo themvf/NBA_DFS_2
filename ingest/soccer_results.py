@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import logging
 import unicodedata
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -61,11 +62,27 @@ def fetch_scores(db: DatabaseManager, api_key: str, days_from: int = 3) -> int:
         logger.warning("Scores fetch failed: %s", e)
         return 0
 
+    # Minimum time after kickoff before we trust a "completed" score.
+    # Covers full 90 min + stoppage + 30 min ET + 15 min penalties + publish lag.
+    _MIN_ELAPSED = timedelta(hours=3)
+    now = datetime.now(timezone.utc)
+
     updated = 0
     corrected = 0
+    skipped_live = 0
     for ev in events:
         if not ev.get("completed"):
             continue
+        # Guard: skip if the game hasn't had enough time to actually finish.
+        commence_str = ev.get("commence_time", "")
+        if commence_str:
+            try:
+                commence_dt = datetime.fromisoformat(commence_str.replace("Z", "+00:00"))
+                if now - commence_dt < _MIN_ELAPSED:
+                    skipped_live += 1
+                    continue
+            except ValueError:
+                pass
         scores = ev.get("scores") or []
         if not scores:
             continue
@@ -103,10 +120,12 @@ def fetch_scores(db: DatabaseManager, api_key: str, days_from: int = 3) -> int:
                 (ev_id,),
             )
             corrected += 1
+    parts = [f"{updated} matches updated"]
     if corrected:
-        print(f"Scores: {updated} matches updated ({corrected} score corrections -> bets reopened)")
-    else:
-        print(f"Scores: {updated} matches updated")
+        parts.append(f"{corrected} score corrections -> bets reopened")
+    if skipped_live:
+        parts.append(f"{skipped_live} skipped (kickoff < {_MIN_ELAPSED} ago)")
+    print(f"Scores: {', '.join(parts)}")
     return updated
 
 

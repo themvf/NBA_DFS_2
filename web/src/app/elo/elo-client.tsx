@@ -5,6 +5,7 @@ import type {
   SoccerEloTeamRow,
   SoccerCompletedResultRow,
   SoccerFuturesBetRow,
+  SoccerGroupStandingRow,
 } from "@/db/queries";
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -440,7 +441,13 @@ function ResultsTab({ results }: { results: SoccerCompletedResultRow[] }) {
 }
 
 // ── Futures tab ───────────────────────────────────────────────────────────────
-function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
+function FuturesTab({
+  futures,
+  standings,
+}: {
+  futures: SoccerFuturesBetRow[];
+  standings: SoccerGroupStandingRow[];
+}) {
   const outright = futures.filter((f) => f.betType === "outright_winner");
   const groupWinner = futures.filter((f) => f.betType === "group_winner");
 
@@ -455,6 +462,14 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
   const groups = Array.from(byGroup.entries()).sort(([a], [b]) =>
     a.localeCompare(b)
   );
+
+  // Standings lookup: groupLabel → rows already sorted pts/gd/gf
+  const standingsByGroup = new Map<string, SoccerGroupStandingRow[]>();
+  for (const s of standings) {
+    const list = standingsByGroup.get(s.groupLabel) ?? [];
+    list.push(s);
+    standingsByGroup.set(s.groupLabel, list);
+  }
 
   return (
     <div className="space-y-6">
@@ -575,17 +590,30 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
             Group Winner
           </h2>
           <p className="mb-3 text-[11px] text-muted-foreground">
-            <span className="text-emerald-500">▲</span> = current group leader · 🏆 = group won
-            (group complete, finished 1st). No group is mathematically decided until the final
-            round is played.
+            <span className="text-emerald-500">▲</span> = current group leader · 🏆 = group won ·{" "}
+            <span className="text-amber-400 font-semibold">≈ CLOSE</span> = top two teams within 10pp (too close to call).
+            No group is mathematically decided until the final round is played.
           </p>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {groups.map(([key, rows]) => {
               const sorted = [...rows].sort((a, b) => b.ourProb - a.ourProb);
+              const top2Gap =
+                sorted.length >= 2
+                  ? sorted[0].ourProb - sorted[1].ourProb
+                  : 1;
+              const contested = !sorted[0]?.wonGroup && top2Gap <= 0.10;
               return (
                 <div key={key} className="rounded-lg border bg-card">
-                  <div className="border-b px-3 py-2 text-sm font-semibold">
+                  <div className="border-b px-3 py-2 text-sm font-semibold flex items-center gap-2">
                     Group {key}
+                    {contested && (
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/15 text-amber-400"
+                        title={`Top two teams within ${(top2Gap * 100).toFixed(0)}pp — group too close to call`}
+                      >
+                        ≈ CLOSE
+                      </span>
+                    )}
                   </div>
                   <table className="w-full table-fixed text-sm">
                     <thead>
@@ -678,6 +706,42 @@ function FuturesTab({ futures }: { futures: SoccerFuturesBetRow[] }) {
                       ))}
                     </tbody>
                   </table>
+                  {/* Standings mini-table */}
+                  {(standingsByGroup.get(key) ?? []).length > 0 && (
+                    <div className="border-t">
+                      <table className="w-full table-fixed text-[11px]">
+                        <thead>
+                          <tr className="border-b text-[10px] text-muted-foreground bg-muted/30">
+                            <th className="px-3 py-1 text-left font-medium w-[38%]">Standings</th>
+                            <th className="px-1 py-1 text-center font-medium">GP</th>
+                            <th className="px-1 py-1 text-center font-medium">W</th>
+                            <th className="px-1 py-1 text-center font-medium">D</th>
+                            <th className="px-1 py-1 text-center font-medium">L</th>
+                            <th className="px-1 py-1 text-center font-medium">GD</th>
+                            <th className="px-1 py-1 text-center font-medium font-semibold">P</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(standingsByGroup.get(key) ?? []).map((s, i) => (
+                            <tr key={s.teamId} className="border-b last:border-0">
+                              <td className="px-3 py-1 truncate text-muted-foreground">
+                                <span className="mr-1 text-muted-foreground/50">{i + 1}</span>
+                                {s.abbreviation ?? s.name}
+                              </td>
+                              <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.gp}</td>
+                              <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.w}</td>
+                              <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.d}</td>
+                              <td className="px-1 py-1 text-center tabular-nums text-muted-foreground">{s.l}</td>
+                              <td className={`px-1 py-1 text-center tabular-nums ${s.gd > 0 ? "text-emerald-400" : s.gd < 0 ? "text-rose-400" : "text-muted-foreground"}`}>
+                                {s.gd > 0 ? `+${s.gd}` : s.gd}
+                              </td>
+                              <td className="px-1 py-1 text-center tabular-nums font-semibold">{s.pts}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -716,10 +780,12 @@ export default function EloClient({
   teams,
   results,
   futures,
+  standings,
 }: {
   teams: SoccerEloTeamRow[];
   results: SoccerCompletedResultRow[];
   futures: SoccerFuturesBetRow[];
+  standings: SoccerGroupStandingRow[];
 }) {
   const [tab, setTab] = useState<Tab>("rankings");
 
@@ -778,7 +844,7 @@ export default function EloClient({
       {/* Tab content */}
       {tab === "rankings" && <RankingsTab teams={teams} />}
       {tab === "results" && <ResultsTab results={results} />}
-      {tab === "futures" && <FuturesTab futures={futures} />}
+      {tab === "futures" && <FuturesTab futures={futures} standings={standings} />}
     </div>
   );
 }

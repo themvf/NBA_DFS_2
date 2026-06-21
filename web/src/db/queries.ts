@@ -9729,3 +9729,84 @@ export async function getSoccerTopPickAccuracy(): Promise<SoccerTopPickRow[]> {
     topPickScored: Boolean(r.topPickScored),
   }));
 }
+
+// ── Soccer group standings ────────────────────────────────────────────────────
+export type SoccerGroupStandingRow = {
+  groupLabel: string;
+  teamId: number;
+  name: string;
+  abbreviation: string | null;
+  gp: number;
+  w: number;
+  d: number;
+  l: number;
+  gf: number;
+  ga: number;
+  gd: number;
+  pts: number;
+};
+
+export async function getSoccerGroupStandings(): Promise<SoccerGroupStandingRow[]> {
+  const rows = await db.execute<{
+    groupLabel: string; teamId: number; name: string; abbreviation: string | null;
+    gp: number; w: number; d: number; l: number; gf: number; ga: number; gd: number; pts: number;
+  }>(sql`
+    SELECT
+      g.group_label                                    AS "groupLabel",
+      t.team_id                                        AS "teamId",
+      t.name,
+      t.abbreviation,
+      COUNT(m.id)                                      AS "gp",
+      COUNT(m.id) FILTER (
+        WHERE (m.home_team_id = t.team_id AND m.home_score > m.away_score)
+           OR (m.away_team_id = t.team_id AND m.away_score > m.home_score)
+      )                                                AS "w",
+      COUNT(m.id) FILTER (
+        WHERE m.home_score = m.away_score
+          AND (m.home_team_id = t.team_id OR m.away_team_id = t.team_id)
+      )                                                AS "d",
+      COUNT(m.id) FILTER (
+        WHERE (m.home_team_id = t.team_id AND m.home_score < m.away_score)
+           OR (m.away_team_id = t.team_id AND m.away_score < m.home_score)
+      )                                                AS "l",
+      COALESCE(SUM(
+        CASE WHEN m.home_team_id = t.team_id THEN m.home_score ELSE m.away_score END
+      ), 0)                                            AS "gf",
+      COALESCE(SUM(
+        CASE WHEN m.home_team_id = t.team_id THEN m.away_score ELSE m.home_score END
+      ), 0)                                            AS "ga",
+      COALESCE(SUM(
+        CASE WHEN m.home_team_id = t.team_id THEN m.home_score - m.away_score
+             ELSE m.away_score - m.home_score END
+      ), 0)                                            AS "gd",
+      COALESCE(SUM(
+        CASE
+          WHEN (m.home_team_id = t.team_id AND m.home_score > m.away_score)
+            OR (m.away_team_id = t.team_id AND m.away_score > m.home_score) THEN 3
+          WHEN m.home_score = m.away_score THEN 1
+          ELSE 0
+        END
+      ), 0)                                            AS "pts"
+    FROM soccer_teams t
+    JOIN soccer_groups g ON g.team_id = t.team_id
+    LEFT JOIN soccer_matchups m
+      ON (m.home_team_id = t.team_id OR m.away_team_id = t.team_id)
+     AND m.home_score IS NOT NULL
+    GROUP BY g.group_label, t.team_id, t.name, t.abbreviation
+    ORDER BY g.group_label, "pts" DESC, "gd" DESC, "gf" DESC
+  `);
+  return rows.rows.map((r) => ({
+    groupLabel: String(r.groupLabel),
+    teamId: Number(r.teamId),
+    name: String(r.name),
+    abbreviation: r.abbreviation != null ? String(r.abbreviation) : null,
+    gp: Number(r.gp),
+    w: Number(r.w),
+    d: Number(r.d),
+    l: Number(r.l),
+    gf: Number(r.gf),
+    ga: Number(r.ga),
+    gd: Number(r.gd),
+    pts: Number(r.pts),
+  }));
+}

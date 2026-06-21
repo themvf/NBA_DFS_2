@@ -3,6 +3,7 @@ import {
   getSoccerEloRankings,
   getSoccerCompletedResults,
   getSoccerFuturesBets,
+  getSoccerGroupStandings,
 } from "@/db/queries";
 import EloClient from "./elo-client";
 
@@ -10,12 +11,13 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 async function EloContent() {
-  const [teams, results, futures] = await Promise.all([
+  const [teams, results, futures, standings] = await Promise.all([
     getSoccerEloRankings(),
     getSoccerCompletedResults(),
     getSoccerFuturesBets(),
+    getSoccerGroupStandings(),
   ]);
-  return <EloClient teams={teams} results={results} futures={futures} />;
+  return <EloClient teams={teams} results={results} futures={futures} standings={standings} />;
 }
 
 export default function EloPage() {
