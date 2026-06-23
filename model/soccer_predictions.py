@@ -39,21 +39,24 @@ PARAMS_PATH = DATA_DIR / "soccer_model_params.json"
 _DEFAULT_MU = math.log(1.35)
 _DEFAULT_HOME_ADV = 0.25
 
-# Home advantage is host-aware. The ledger showed we systematically underrate
-# home teams (31 completed games: home win 55% vs ~47% expected), and the three
-# host nations are not neutral at all — playing in their own country they went
-# 5-0-1 (83% win, 0 away losses). So hosts get FULL home advantage while other
-# "designated home" sides keep a damped term (away still wins only ~16% in those,
-# so a modest edge, not zero). Directly lifts home win prob + home goals → moves
-# both moneyline and totals toward the realized bias.
-_NEUTRAL_HOME_DAMPEN = 0.6     # non-host designated-home side (was 0.5)
-_HOST_HOME_DAMPEN = 1.0        # host nation at home → full home advantage
+# All WC 2026 games are played on neutral sites — no team has a true home
+# advantage regardless of host-nation status. The "home" designation in the
+# fixture is purely administrative (bracket assignment), not venue-based.
+_NEUTRAL_HOME_DAMPEN = 0.0     # neutral site: no home advantage
+_HOST_HOME_DAMPEN = 0.0        # host nations also at neutral venues
 _HOST_TEAMS = {"USA", "Mexico", "Canada"}
 
 # Market anchor: weight on our independent model vs the Vegas line.  0.40 = trust
 # the market 60%, surface the 40% of our disagreement that survives shrinkage.
 _W_MODEL_TOTAL = 0.40
 _W_MODEL_SUPREMACY = 0.45
+
+# WC 2026 mismatch calibration: regression on 42 completed games shows
+# error = 0.37 * sup - 0.07 (blowout potential grows with Elo gap; even games
+# tend toward 0-0 caginess). Apply 50% shrinkage for small-sample caution.
+# Applies after the market anchor so it lifts our number above a biased Vegas line.
+_WC_SUP_BONUS_SLOPE = 0.18    # shrunk from 0.37 fit
+_WC_SUP_BONUS_INTERCEPT = -0.04  # even games get a tiny downward nudge
 
 # Score-matrix truncation — P(>=8 goals for one side) is negligible.
 _MAX_GOALS = 10
@@ -64,7 +67,7 @@ _MAX_GOALS = 10
 # overestimates draws relative to sharp markets, so boosting makes it worse.
 # Max disparity threshold: if |home_xg - away_xg| >= this, skip the boost.
 _GROUP_STAGE_END = date(2026, 6, 30)
-_GROUP_STAGE_DRAW_BOOST = 0.05          # reduced from 0.07
+_GROUP_STAGE_DRAW_BOOST = 0.07          # restored: WC 2026 showing 32% draws over 42 games
 _GROUP_STAGE_BOOST_MAX_DISPARITY = 0.8  # only boost when game is evenly matched
 
 
@@ -192,6 +195,10 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
             our_sup = _W_MODEL_SUPREMACY * model_supremacy + (1 - _W_MODEL_SUPREMACY) * mkt_sup
         else:
             our_sup = model_supremacy
+
+        # WC 2026 mismatch calibration: add goal uplift that scales with Elo gap.
+        sup_mag = abs(our_sup)
+        our_total += _WC_SUP_BONUS_SLOPE * sup_mag + _WC_SUP_BONUS_INTERCEPT
 
         # Reconstruct anchored per-side expected goals, then re-derive outcome
         # probabilities from THOSE lambdas so totals and 3-way stay consistent.

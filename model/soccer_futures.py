@@ -245,7 +245,7 @@ def simulate_outright(field: list[dict], sims: int) -> dict[int, float]:
 # sample a Poisson scoreline.  Real goals → real GD + goals-for, and a known
 # head-to-head result per pair, so ties resolve the way FIFA actually breaks them
 # instead of by a coin flip.
-_GROUP_SIM_TOTAL = 2.6        # avg goals/game, group stage
+_GROUP_SIM_TOTAL = 2.9        # avg goals/game, group stage (WC 2026 actual: 2.95 over 42 games)
 _GROUP_SIM_SUP_SCALE = 2.2    # win-prob gap → goal supremacy
 _GROUP_SIM_MAX_SUP = 2.4
 
