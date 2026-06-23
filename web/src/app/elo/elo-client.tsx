@@ -542,19 +542,17 @@ function computeGroupClinch(
 
     for (const s of rows) {
       const rank = ranked.indexOf(s.teamId);
-      // Same tie logic as winsGroup: if tied with rank-1 team on pts/GD/GF, count as advancing.
+      // Same tie logic: if pts-tied with the 2nd place team, count as potentially advancing.
       const rank1Id = ranked[1];
       const tiedWithSecond = rank >= 2 && rank1Id != null &&
-        (pts.get(s.teamId) ?? 0) === (pts.get(rank1Id) ?? 0) &&
-        (gd.get(s.teamId)  ?? 0) === (gd.get(rank1Id)  ?? 0) &&
-        (gf.get(s.teamId)  ?? 0) === (gf.get(rank1Id)  ?? 0);
+        (pts.get(s.teamId) ?? 0) === (pts.get(rank1Id) ?? 0);
       if (rank < 2 || tiedWithSecond) advanceIn.set(s.teamId, (advanceIn.get(s.teamId) ?? 0) + 1);
-      // Also count as "wins group" when tied with the leader on pts/GD/GF: future
-      // scorelines (not modeled here) or H2H tiebreakers could resolve in this team's favour.
+      // Also count as "wins group" when tied with the leader on pts: GD and GF are
+      // frozen at current values in this simulation (future scorelines not modeled),
+      // so a pts tie is sufficient — the team could pull ahead on GD/GF or win via
+      // H2H tiebreakers depending on how the actual games play out.
       const tiedWithTop = rank > 0 &&
-        (pts.get(s.teamId) ?? 0) === (pts.get(topId) ?? 0) &&
-        (gd.get(s.teamId)  ?? 0) === (gd.get(topId)  ?? 0) &&
-        (gf.get(s.teamId)  ?? 0) === (gf.get(topId)  ?? 0);
+        (pts.get(s.teamId) ?? 0) === (pts.get(topId) ?? 0);
       const winsGroup = rank === 0 || tiedWithTop;
 
       const fi = nextFxIdx.get(s.teamId);
