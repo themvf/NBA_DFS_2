@@ -542,26 +542,32 @@ function computeGroupClinch(
 
     for (const s of rows) {
       const rank = ranked.indexOf(s.teamId);
-      // Same tie logic: if pts-tied with the 2nd place team, count as potentially advancing.
-      const rank1Id = ranked[1];
-      const tiedWithSecond = rank >= 2 && rank1Id != null &&
-        (pts.get(s.teamId) ?? 0) === (pts.get(rank1Id) ?? 0);
-      if (rank < 2 || tiedWithSecond) advanceIn.set(s.teamId, (advanceIn.get(s.teamId) ?? 0) + 1);
-      // Also count as "wins group" when tied with the leader on pts: GD and GF are
-      // frozen at current values in this simulation (future scorelines not modeled),
-      // so a pts tie is sufficient — the team could pull ahead on GD/GF or win via
-      // H2H tiebreakers depending on how the actual games play out.
-      const tiedWithTop = rank > 0 &&
-        (pts.get(s.teamId) ?? 0) === (pts.get(topId) ?? 0);
-      const winsGroup = rank === 0 || tiedWithTop;
 
+      // Compute this team's result in their next fixture up front — used both for
+      // the tie-with-leader check and for the bucket counting below.
       const fi = nextFxIdx.get(s.teamId);
+      let myResult: 'win' | 'draw' | 'loss' | undefined;
       if (fi !== undefined) {
         const o = outcomes[fi];
         const fx = fxs[fi];
         const isHome = fx.homeTeamId === s.teamId;
-        const myResult: 'win' | 'draw' | 'loss' =
-          o === 1 ? 'draw' : (o === 0) === isHome ? 'win' : 'loss';
+        myResult = o === 1 ? 'draw' : (o === 0) === isHome ? 'win' : 'loss';
+      }
+
+      // Tie-with-leader/2nd: count as "could win/advance" when pts-tied.
+      // Draws never change GD (both sides net zero), so current GD is the reliable
+      // tiebreaker for draw scenarios. Wins/losses shift GD significantly, so
+      // pts-only applies there (future scoreline is unknown).
+      const ptsTied  = (t: number) => (pts.get(s.teamId) ?? 0) === (pts.get(t) ?? 0);
+      const gdOk     = (t: number) => myResult !== 'draw' || (gd.get(s.teamId) ?? 0) >= (gd.get(t) ?? 0);
+      const tiedWithTop    = rank > 0 && ptsTied(topId) && gdOk(topId);
+      const rank1Id = ranked[1];
+      const tiedWithSecond = rank >= 2 && rank1Id != null && ptsTied(rank1Id) && gdOk(rank1Id);
+
+      if (rank < 2 || tiedWithSecond) advanceIn.set(s.teamId, (advanceIn.get(s.teamId) ?? 0) + 1);
+      const winsGroup = rank === 0 || tiedWithTop;
+
+      if (fi !== undefined && myResult !== undefined) {
         const b = myResult === 'win' ? winB : myResult === 'draw' ? drawB : lossB;
         const bucket = b.get(s.teamId)!;
         bucket[0]++;
@@ -997,13 +1003,14 @@ function FuturesTab({
                           return { s, c, guaranteed, conditional, impossible };
                         }).filter(Boolean) as RowData[];
 
-                        // Only show when there's something meaningful: guaranteed path, conditional path with known condition, or eliminated
+                        // Show when there's something meaningful: guaranteed path, any conditional path, or eliminated.
+                        // For N>2 games remaining, conditions can't be described precisely — show them anyway without a condition string.
                         const hasContent = rows.some((r) =>
                           r.guaranteed.length > 0 ||
-                          r.conditional.some((p) => p.condition !== null) ||
+                          r.conditional.length > 0 ||
                           r.impossible
                         );
-                        const tooEarly = !hasContent && grpFixtures.length > 2;
+                        const tooEarly = !hasContent && grpFixtures.length > 3;
 
                         if (!hasContent && !tooEarly) return null;
 
@@ -1018,8 +1025,7 @@ function FuturesTab({
                             {rows.map(({ s, c, guaranteed, conditional, impossible }) => {
                               const name = s.abbreviation ?? s.name;
                               const opp  = c.nextFxOpponentAbbr ?? c.nextFxOpponentName ?? "?";
-                              const showConditional = conditional.filter((p) => p.condition !== null);
-                              if (!guaranteed.length && !showConditional.length && !impossible) return null;
+                              if (!guaranteed.length && !conditional.length && !impossible) return null;
                               return (
                                 <div key={s.teamId} className="flex gap-2 text-[11px] items-start">
                                   <span className="font-medium w-8 shrink-0 text-foreground pt-px">{name}</span>
@@ -1033,10 +1039,12 @@ function FuturesTab({
                                           <span className="text-muted-foreground"> → clinches 1st</span>
                                         </span>
                                       )}
-                                      {showConditional.map((p) => (
+                                      {conditional.map((p) => (
                                         <span key={p.result}>
                                           <span className="text-amber-400 font-semibold">{p.result} vs {opp}</span>
-                                          <span className="text-muted-foreground"> → 1st {p.condition}</span>
+                                          <span className="text-muted-foreground">
+                                            {p.condition ? ` → 1st ${p.condition}` : ' → can win group'}
+                                          </span>
                                         </span>
                                       ))}
                                     </span>
