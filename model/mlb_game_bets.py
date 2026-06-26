@@ -32,9 +32,26 @@ from model.soccer_game_bets import _over_under_probs  # Poisson P(over)/P(under)
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "mlb-gameline-v1"
+MODEL_VERSION = "mlb-gameline-v2"
 _STD_TOTAL_ODDS = -110          # MLB O/U is −110/−110; vig-free ref = 0.5
 _STD_TOTAL_REF = 0.5
+
+# Market anchor — shrink our_prob toward the vig-free market line before rating.
+# v1 had NO anchor and was systematically overconfident (realized win% ~5.5pp
+# below claimed across every tier/month), which manufactured fake high-star bets
+# and made the ledger a "bet every game" longshot-variance machine. Offline
+# walk-forward eval: anchoring closes the calibration gap (−6.6pp → −2.0pp at
+# w=0.5, −0.1pp at 0.35) and flips the low-variance favorite side from −8% to
+# breakeven+. w = fraction of our deviation from market we KEEP (0 = trust market
+# fully, 1 = no anchor = v1). 0.5 is a conservative 50/50 prior, not tuned to the
+# exact data minimum; matches the market-anchoring philosophy used in soccer.
+_MARKET_ANCHOR_W = 0.5
+
+
+def _anchor(our_prob: float, market_prob: float, w: float = _MARKET_ANCHOR_W) -> float:
+    """Shrink our probability toward the vig-free market line: keep `w` of our
+    deviation from market. Corrects the model's systematic overconfidence."""
+    return market_prob + w * (our_prob - market_prob)
 
 
 def _fixtures(db: DatabaseManager, where: str, params: tuple) -> list[dict]:
@@ -66,24 +83,29 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
     mp = fx["vegas_prob_home"]
     if op is not None and mp is not None and fx["home_ml"] is not None and fx["away_ml"] is not None:
         op, mp = float(op), float(mp)
+        # Pick the side on the RAW model edge, then anchor the bet probability
+        # toward the (vig-free) market for that side before rating.
         bet_home = op >= mp
+        side_raw = op if bet_home else 1.0 - op
+        side_mkt = mp if bet_home else 1.0 - mp
         record_bet(
             db,
             model_version=MODEL_VERSION,
             bet_type="moneyline",
             scope=scope,
             selection_label=fx["home"] if bet_home else fx["away"],
-            our_prob=op if bet_home else 1.0 - op,
+            our_prob=_anchor(side_raw, side_mkt),
             capture_key=capture_key,
             market_odds=int(fx["home_ml"] if bet_home else fx["away_ml"]),
-            market_prob=mp if bet_home else 1.0 - mp,
+            market_prob=side_mkt,
             matchup_id=fx["id"],
             subject_team_id=fx["home_team_id"] if bet_home else fx["away_team_id"],
             event_commence=commence,
             longshot_odds_cap=True,
             conn=conn,
             inputs={"side": "home" if bet_home else "away", "fixture": fixture_label,
-                    "our_prob_home": round(op, 4), "market_prob_home": round(mp, 4)},
+                    "our_prob_home": round(op, 4), "market_prob_home": round(mp, 4),
+                    "anchor_w": _MARKET_ANCHOR_W},
         )
         written += 1
 
@@ -94,13 +116,16 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
         line, lam = float(line), float(lam)
         p_over, p_under = _over_under_probs(line, lam)
         is_over = lam > line
+        side_raw = p_over if is_over else p_under
         record_bet(
             db,
             model_version=MODEL_VERSION,
             bet_type="total",
             scope=scope,
             selection_label=f"Over {line}" if is_over else f"Under {line}",
-            our_prob=p_over if is_over else p_under,
+            # Anchor toward the −110 vig-free coin-flip — tempers the totals
+            # model's strong overconfidence (v1 5★ claimed 70%, hit 54%).
+            our_prob=_anchor(side_raw, _STD_TOTAL_REF),
             capture_key=capture_key,
             market_odds=_STD_TOTAL_ODDS,
             market_prob=_STD_TOTAL_REF,
@@ -109,7 +134,8 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
             longshot_odds_cap=True,
             conn=conn,
             inputs={"line": line, "side": "over" if is_over else "under",
-                    "our_total_pred": round(lam, 2), "fixture": fixture_label},
+                    "our_total_pred": round(lam, 2), "fixture": fixture_label,
+                    "anchor_w": _MARKET_ANCHOR_W},
         )
         written += 1
 

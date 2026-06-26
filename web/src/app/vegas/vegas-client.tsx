@@ -16,6 +16,7 @@ import type {
   MlbMlBacktest,
   MlbBetRow,
   MlbBetBacktestRow,
+  MlbBetSideRow,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
@@ -891,6 +892,75 @@ function MlbBetLedgerBacktestPanel({ rows }: { rows: MlbBetBacktestRow[] }) {
   );
 }
 
+// Anti-longshot-illusion guardrail: ROI split by favorite/dog & over/under, per
+// model version. The favorite + over sides are the low-variance honest skill test
+// — a model with real edge shouldn't lose there. "Selected" = positive-EV subset
+// (the bets we'd actually place). Side-by-side model versions show v1→v2 progress.
+function MlbBetSideBreakdownPanel({ rows }: { rows: MlbBetSideRow[] }) {
+  if (rows.length === 0) return null;
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const roiStr = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
+  const roiCls = (v: number | null) => (v == null ? "text-gray-400" : v >= 0 ? "text-emerald-600" : "text-red-500");
+  const versions = Array.from(new Set(rows.map((r) => r.modelVersion))).sort();
+  const BUCKETS = ["favorite", "underdog", "over", "under"];
+  const LOW_VAR = new Set(["favorite", "over"]); // the honest skill test
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
+        Bet ROI by side (longshot guardrail)
+      </h3>
+      <p className="text-xs text-gray-500 mb-2">
+        Profit on plus-money <b>underdogs</b> is high-variance and can look great by luck.
+        The honest skill test is the low-variance side (<b>favorites</b>, <b>overs</b>) —
+        a model with real edge shouldn&rsquo;t lose there. &ldquo;Sel ROI&rdquo; restricts to
+        positive-EV bets (what we&rsquo;d actually place).
+      </p>
+      {versions.map((mv) => {
+        const vr = rows.filter((r) => r.modelVersion === mv);
+        return (
+          <div key={mv} className="mb-2">
+            <div className="text-xs font-semibold text-gray-600 mt-2 mb-1">{mv}</div>
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b text-gray-500">
+                  <th className="py-1 text-left">Side</th>
+                  <th className="py-1 text-right">n</th>
+                  <th className="py-1 text-right">Real win%</th>
+                  <th className="py-1 text-right">Cal gap</th>
+                  <th className="py-1 text-right">ROI</th>
+                  <th className="py-1 text-right">Sel n</th>
+                  <th className="py-1 text-right">Sel ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {BUCKETS.map((bucket) => {
+                  const r = vr.find((x) => x.sideBucket === bucket);
+                  if (!r) return null;
+                  const gap = r.winRate - r.expectedWinRate;
+                  return (
+                    <tr key={bucket} className={`border-b border-gray-50 ${LOW_VAR.has(bucket) ? "bg-amber-50/40" : ""}`}>
+                      <td className="py-1.5 capitalize font-medium">
+                        {bucket}{LOW_VAR.has(bucket) && <span className="ml-1 text-amber-600" title="low-variance skill test">★</span>}
+                      </td>
+                      <td className="py-1.5 text-right text-gray-500">{r.n}</td>
+                      <td className="py-1.5 text-right tabular-nums">{pct(r.winRate)}</td>
+                      <td className={`py-1.5 text-right tabular-nums ${gap >= 0 ? "text-emerald-600" : "text-red-500"}`}>{`${gap >= 0 ? "+" : ""}${(gap * 100).toFixed(1)}`}</td>
+                      <td className={`py-1.5 text-right tabular-nums ${roiCls(r.roi)}`}>{roiStr(r.roi)}</td>
+                      <td className="py-1.5 text-right text-gray-500">{r.selectedN}</td>
+                      <td className={`py-1.5 text-right tabular-nums ${roiCls(r.selectedRoi)}`}>{roiStr(r.selectedRoi)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 type Props = {
   matchups: VegasMatchupRow[];
   ouHitRate: OuHitRateRow[];
@@ -901,6 +971,7 @@ type Props = {
   mlbMoneylineBacktest: MlbMlBacktest | null;
   mlbBets: MlbBetRow[] | null;
   mlbBetBacktest: MlbBetBacktestRow[] | null;
+  mlbBetBySide: MlbBetSideRow[] | null;
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
   teamInsights: TeamVegasInsightRow[];
@@ -1084,6 +1155,7 @@ export default function VegasClient({
   mlbMoneylineBacktest,
   mlbBets,
   mlbBetBacktest,
+  mlbBetBySide,
   vegasSummary,
   biggestMisses,
   teamInsights,
@@ -1899,6 +1971,10 @@ export default function VegasClient({
       )}
       {sport === "mlb" && mlbBetBacktest && mlbBetBacktest.length > 0 && (
         <MlbBetLedgerBacktestPanel rows={mlbBetBacktest} />
+      )}
+
+      {sport === "mlb" && mlbBetBySide && mlbBetBySide.length > 0 && (
+        <MlbBetSideBreakdownPanel rows={mlbBetBySide} />
       )}
 
       {/* ── O/U Hit Rate ──────────────────────────────────────── */}

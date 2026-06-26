@@ -7709,7 +7709,14 @@ export type MlbBetBacktestRow = {
 export async function getMlbBetBacktest(): Promise<MlbBetBacktestRow[]> {
   // Calibration on SETTLED bets, by bet type + star tier: does each tier win at
   // the rate we claimed, and is it profitable at the offered price?
+  // Scoped to the CURRENT model_version (latest by recency) so a model change
+  // (e.g. the v1→v2 market-anchor recalibration) doesn't silently average the
+  // old overconfident ledger with the new one.
   const rows = await db.execute(sql`
+    WITH latest AS (
+      SELECT model_version FROM mlb_bets
+      GROUP BY model_version ORDER BY MAX(created_at) DESC LIMIT 1
+    )
     SELECT
       b.bet_type AS "betType",
       b.stars,
@@ -7722,6 +7729,7 @@ export async function getMlbBetBacktest(): Promise<MlbBetBacktestRow[]> {
                WHEN b.status = 'won' THEN b.market_decimal - 1 ELSE -1 END) AS "profitUnits"
     FROM mlb_bets b
     WHERE b.status IN ('won', 'lost')
+      AND b.model_version = (SELECT model_version FROM latest)
     GROUP BY GROUPING SETS ((b.bet_type, b.stars), (b.bet_type), ())
     ORDER BY "betType" NULLS FIRST, b.stars DESC NULLS FIRST
   `);
@@ -7738,6 +7746,76 @@ export async function getMlbBetBacktest(): Promise<MlbBetBacktestRow[]> {
       brier: r.brier != null ? Number(r.brier) : null,
     };
   });
+}
+
+// ── MLB bet backtest by side (the anti-longshot-illusion guardrail) ───────────
+// The headline ROI hid a trap: profit came entirely from plus-money underdogs
+// (high variance), while moneyline favorites — the low-variance honest skill
+// test — were LOSING. This cut makes that split permanent: ROI by favorite/dog
+// and over/under, per model_version, so v1→v2 progress (and any return of the
+// longshot illusion) is always visible. "selectedRoi" restricts to bets that
+// still show positive EV after the v2 market anchor — the bets we'd actually
+// place, not bet-every-game.
+export type MlbBetSideRow = {
+  modelVersion: string;
+  betType: string;       // 'moneyline' | 'total'
+  sideBucket: string;    // 'favorite' | 'underdog' | 'over' | 'under'
+  n: number;
+  winRate: number;
+  expectedWinRate: number;  // avg anchored our_prob
+  roi: number | null;       // all settled bets in bucket
+  units: number;
+  selectedN: number;        // subset with ev > 0
+  selectedRoi: number | null;
+};
+
+export async function getMlbBetBacktestBySide(): Promise<MlbBetSideRow[]> {
+  const rows = await db.execute(sql`
+    WITH s AS (
+      SELECT
+        b.model_version,
+        b.bet_type,
+        CASE
+          WHEN b.bet_type = 'moneyline' AND b.market_prob >= 0.5 THEN 'favorite'
+          WHEN b.bet_type = 'moneyline' THEN 'underdog'
+          WHEN lower(b.selection_label) LIKE 'over%' THEN 'over'
+          ELSE 'under'
+        END AS side_bucket,
+        (b.status = 'won')::int AS won,
+        b.our_prob,
+        b.ev,
+        b.market_decimal,
+        CASE WHEN b.status = 'won' THEN b.market_decimal - 1 ELSE -1 END AS profit
+      FROM mlb_bets b
+      WHERE b.status IN ('won', 'lost') AND b.market_decimal IS NOT NULL
+    )
+    SELECT
+      model_version AS "modelVersion",
+      bet_type      AS "betType",
+      side_bucket   AS "sideBucket",
+      COUNT(*)::int AS n,
+      AVG(won::float) AS "winRate",
+      AVG(our_prob)   AS "expectedWinRate",
+      AVG(profit)     AS roi,
+      SUM(profit)     AS units,
+      COUNT(*) FILTER (WHERE ev > 0)::int AS "selectedN",
+      AVG(profit) FILTER (WHERE ev > 0) AS "selectedRoi"
+    FROM s
+    GROUP BY model_version, bet_type, side_bucket
+    ORDER BY model_version, bet_type, side_bucket
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    modelVersion: String(r.modelVersion),
+    betType: String(r.betType),
+    sideBucket: String(r.sideBucket),
+    n: Number(r.n),
+    winRate: Number(r.winRate),
+    expectedWinRate: Number(r.expectedWinRate),
+    roi: r.roi != null ? Number(r.roi) : null,
+    units: Number(r.units),
+    selectedN: Number(r.selectedN),
+    selectedRoi: r.selectedRoi != null ? Number(r.selectedRoi) : null,
+  }));
 }
 
 // ── Vegas Summary Stats ──────────────────────────────────────
