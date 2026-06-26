@@ -2,9 +2,15 @@ name: Refresh MLB Vegas
 
 on:
   schedule:
-    # 9:10 AM ET daily (13:10 UTC during DST) to refresh today's MLB slate
-    # plus a rolling historical catch-up window for schedule, scores, and odds.
+    # 9:10 AM ET (13:10 UTC, DST) — full refresh: today's slate + rolling
+    # historical catch-up (schedule, scores, odds) + open-line bet snapshot.
     - cron: "10 13 * * *"
+    # Intra-day CLV passes — re-fetch odds + re-rate the still-unlocked slate so
+    # each bet accumulates open→close snapshots before first pitch (Closing Line
+    # Value needs ≥2 snapshots/bet). These skip the historical backfill (days_back=0).
+    # ~1:10 PM ET (close for afternoon games) and ~6:10 PM ET (close for night games).
+    - cron: "10 17 * * *"
+    - cron: "10 22 * * *"
   workflow_dispatch:
     inputs:
       date:
@@ -49,9 +55,17 @@ jobs:
             TARGET_DATE="$(TZ=America/New_York date +%F)"
           fi
 
-          DAYS_BACK="${{ inputs.days_back }}"
-          if [ -z "$DAYS_BACK" ]; then
-            DAYS_BACK="7"
+          # The morning cron (and manual dispatch) does the full historical
+          # catch-up; the intra-day CLV passes only need today's odds + a fresh
+          # bet snapshot, so they skip the rolling backfill (days_back=0).
+          SCHED="${{ github.event.schedule }}"
+          if [ -n "$SCHED" ] && [ "$SCHED" != "10 13 * * *" ]; then
+            DAYS_BACK="0"
+          else
+            DAYS_BACK="${{ inputs.days_back }}"
+            if [ -z "$DAYS_BACK" ]; then
+              DAYS_BACK="7"
+            fi
           fi
 
           echo "MLB_REFRESH_DATE=$TARGET_DATE" >> "$GITHUB_ENV"

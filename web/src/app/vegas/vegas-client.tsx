@@ -17,6 +17,7 @@ import type {
   MlbBetRow,
   MlbBetBacktestRow,
   MlbBetSideRow,
+  MlbClvRow,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
@@ -961,6 +962,62 @@ function MlbBetSideBreakdownPanel({ rows }: { rows: MlbBetSideRow[] }) {
   );
 }
 
+// Closing Line Value (moneyline) — the sharpest small-sample edge signal: did
+// the market move toward our side between open and the last pre-kickoff snapshot?
+// Needs ≥2 snapshots per bet, so it reads "accruing" until the refresh cadence
+// captures intra-day line movement.
+function MlbClvPanel({ rows }: { rows: MlbClvRow[] }) {
+  const all = rows.find((r) => r.tier === "all");
+  const rated = rows.find((r) => r.tier === "rated");
+  const hasData = (all?.n ?? 0) > 0;
+  const clvStr = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}pp`;
+  const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
+        Closing Line Value (moneyline)
+      </h3>
+      <p className="text-xs text-gray-500 mb-2">
+        Did the market move toward our side between when we rated the bet and first pitch?
+        Positive CLV = we beat the close = real edge, detectable long before win/loss ROI
+        stabilizes. Totals are excluded (fixed −110 price; only the line moves).
+      </p>
+      {!hasData ? (
+        <div className="rounded bg-amber-50/60 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+          Accruing — CLV needs ≥2 snapshots per bet (open vs close). The refresh currently
+          captures one snapshot per bet before it locks at first pitch, so there&rsquo;s no
+          intra-day line movement to measure yet. Populates once the slate is re-rated
+          multiple times before first pitch.
+        </div>
+      ) : (
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b text-gray-500">
+              <th className="py-1 text-left">Tier</th>
+              <th className="py-1 text-right">n</th>
+              <th className="py-1 text-right">Avg CLV</th>
+              <th className="py-1 text-right">Beat close %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[all, rated].map((r, i) =>
+              r ? (
+                <tr key={r.tier} className={`border-b border-gray-50 ${i === 1 ? "bg-emerald-50/40" : ""}`}>
+                  <td className="py-1.5 font-medium">{r.tier === "rated" ? "Rated (3★+)" : "All"}</td>
+                  <td className="py-1.5 text-right text-gray-500">{r.n}</td>
+                  <td className={`py-1.5 text-right tabular-nums ${r.avgClvPp >= 0 ? "text-emerald-600" : "text-red-500"}`}>{clvStr(r.avgClvPp)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{pct(r.beatRate)}</td>
+                </tr>
+              ) : null,
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 type Props = {
   matchups: VegasMatchupRow[];
   ouHitRate: OuHitRateRow[];
@@ -972,6 +1029,7 @@ type Props = {
   mlbBets: MlbBetRow[] | null;
   mlbBetBacktest: MlbBetBacktestRow[] | null;
   mlbBetBySide: MlbBetSideRow[] | null;
+  mlbClv: MlbClvRow[] | null;
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
   teamInsights: TeamVegasInsightRow[];
@@ -1156,6 +1214,7 @@ export default function VegasClient({
   mlbBets,
   mlbBetBacktest,
   mlbBetBySide,
+  mlbClv,
   vegasSummary,
   biggestMisses,
   teamInsights,
@@ -1975,6 +2034,10 @@ export default function VegasClient({
 
       {sport === "mlb" && mlbBetBySide && mlbBetBySide.length > 0 && (
         <MlbBetSideBreakdownPanel rows={mlbBetBySide} />
+      )}
+
+      {sport === "mlb" && mlbClv && (
+        <MlbClvPanel rows={mlbClv} />
       )}
 
       {/* ── O/U Hit Rate ──────────────────────────────────────── */}

@@ -7706,6 +7706,77 @@ export type MlbBetBacktestRow = {
   brier: number | null;
 };
 
+// ── MLB Closing Line Value (CLV) ──────────────────────────────────────────────
+// At this sample size, win/loss ROI is dominated by variance; CLV is the sharper
+// read on whether our bets carry real edge — did the market move TOWARD our side
+// between when we first rated it (open) and the last pre-kickoff snapshot (close)?
+// Positive CLV = we beat the close = genuine edge, detectable in far fewer bets
+// than ROI needs. mlb_bet_snapshots stores each refresh's vig-free market_prob
+// for the bet's side, so first→last movement is the line move on our number.
+//
+// MONEYLINE ONLY: MLB totals are a fixed −110 (snapshot market_prob is always
+// 0.5) — only the LINE moves, which snapshots don't capture, so totals CLV would
+// always read 0. Tracking the total line over time is a separate change.
+//
+// Requires ≥2 snapshots per bet (open ≠ close). With the once-daily refresh each
+// bet has a single snapshot, so this reads n=0 ("accruing") until the refresh
+// cadence captures intra-day line movement before first pitch.
+export type MlbClvRow = {
+  tier: string;             // 'all' | 'rated' (3★+ — the bets we'd actually place)
+  n: number;
+  avgClvPp: number;         // avg (close − open) market_prob in pp; >0 = beat close
+  beatRate: number | null;  // share where the market moved toward us (ties excluded)
+};
+
+export async function getMlbClv(): Promise<MlbClvRow[]> {
+  const rows = await db.execute(sql`
+    WITH latest AS (
+      SELECT model_version FROM mlb_bets
+      GROUP BY model_version ORDER BY MAX(created_at) DESC LIMIT 1
+    ),
+    snaps AS (
+      SELECT s.bet_id, s.market_prob, s.captured_at,
+        ROW_NUMBER() OVER (PARTITION BY s.bet_id ORDER BY s.captured_at ASC)  AS rf,
+        ROW_NUMBER() OVER (PARTITION BY s.bet_id ORDER BY s.captured_at DESC) AS rl,
+        COUNT(*)    OVER (PARTITION BY s.bet_id)                              AS cnt
+      FROM mlb_bet_snapshots s
+      WHERE s.market_prob IS NOT NULL
+    ),
+    o AS (SELECT bet_id, market_prob AS open_p  FROM snaps WHERE rf = 1 AND cnt >= 2),
+    c AS (SELECT bet_id, market_prob AS close_p FROM snaps WHERE rl = 1 AND cnt >= 2),
+    clv AS (
+      SELECT (b.stars >= 3) AS rated, (c.close_p - o.open_p) AS move
+      FROM o JOIN c ON c.bet_id = o.bet_id
+      JOIN mlb_bets b ON b.id = o.bet_id
+      WHERE b.bet_type = 'moneyline'
+        AND b.model_version = (SELECT model_version FROM latest)
+    )
+    SELECT
+      COUNT(*)::int AS "nAll",
+      AVG(move * 100) AS "clvAll",
+      AVG(CASE WHEN move > 0 THEN 1.0 WHEN move < 0 THEN 0.0 END) AS "beatAll",
+      COUNT(*) FILTER (WHERE rated)::int AS "nRated",
+      AVG(move * 100) FILTER (WHERE rated) AS "clvRated",
+      AVG(CASE WHEN move > 0 THEN 1.0 WHEN move < 0 THEN 0.0 END) FILTER (WHERE rated) AS "beatRated"
+    FROM clv
+  `);
+  const r = (rows.rows[0] ?? {}) as Record<string, unknown>;
+  return [
+    {
+      tier: "all",
+      n: Number(r.nAll ?? 0),
+      avgClvPp: r.clvAll != null ? Number(r.clvAll) : 0,
+      beatRate: r.beatAll != null ? Number(r.beatAll) : null,
+    },
+    {
+      tier: "rated",
+      n: Number(r.nRated ?? 0),
+      avgClvPp: r.clvRated != null ? Number(r.clvRated) : 0,
+      beatRate: r.beatRated != null ? Number(r.beatRated) : null,
+    },
+  ];
+}
+
 export async function getMlbBetBacktest(): Promise<MlbBetBacktestRow[]> {
   // Calibration on SETTLED bets, by bet type + star tier: does each tier win at
   // the rate we claimed, and is it profitable at the offered price?
