@@ -14,6 +14,7 @@ import {
   getMlbBetBacktest,
   getMlbBetBacktestBySide,
   getMlbClv,
+  getMlbPipelineHealth,
   getVegasSummaryStats,
   getBiggestMisses,
   getTeamVegasInsights,
@@ -80,7 +81,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
     );
   }
 
-  const [sportData, mlbCoverageStatus, mlbTotalBacktest, mlbMoneylineBacktest, mlbBets, mlbBetBacktest, mlbBetBySide, mlbClv, vegasSummary, biggestMisses, teamInsights, moneylineBacktest] = await Promise.all([
+  const [sportData, mlbCoverageStatus, mlbTotalBacktest, mlbMoneylineBacktest, mlbBets, mlbBetBacktest, mlbBetBySide, mlbClv, mlbHealth, vegasSummary, biggestMisses, teamInsights, moneylineBacktest] = await Promise.all([
     Promise.all(
       sport === "mlb"
         ? [getMlbVegasMatchups(date), getMlbOuHitRate(), getMlbTeamTotalAccuracy(), getMlbRunLineCoverage()]
@@ -93,6 +94,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
     sport === "mlb" ? getMlbBetBacktest() : Promise.resolve(null),
     sport === "mlb" ? getMlbBetBacktestBySide() : Promise.resolve(null),
     sport === "mlb" ? getMlbClv() : Promise.resolve(null),
+    sport === "mlb" ? getMlbPipelineHealth() : Promise.resolve(null),
     getVegasSummaryStats(sport),
     getBiggestMisses(sport, 20),
     getTeamVegasInsights(sport),
@@ -113,6 +115,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       mlbBetBacktest={mlbBetBacktest}
       mlbBetBySide={mlbBetBySide}
       mlbClv={mlbClv}
+      mlbHealth={mlbHealth}
       vegasSummary={vegasSummary}
       biggestMisses={biggestMisses}
       teamInsights={teamInsights}

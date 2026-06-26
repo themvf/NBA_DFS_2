@@ -7706,6 +7706,91 @@ export type MlbBetBacktestRow = {
   brier: number | null;
 };
 
+// ── MLB pipeline health (Tier 1: operational "something's off") ────────────────
+// Silent failure has been the recurring failure mode of this whole system (wrong
+// settlements, NULL commence_time, mixed model versions). This surfaces the
+// unambiguous, low-false-positive breakage states so a dead cron / broken stage
+// can't sit unnoticed. Renders only when something trips. Three checks:
+//   * staleLedger    — newest bet older than 36h while games exist (refresh died)
+//   * unsettledFinals — games finished on a prior day with bets still pending
+//   * slateUnrated   — today has odds but the rating stage produced no bets
+// CLV-accrual is deliberately NOT auto-flagged: afternoon games legitimately lock
+// before the next intra-day pass, so "1 snapshot" is often correct — auto-alarming
+// there would cry wolf. The CLV panel's own "accruing" state covers visibility.
+export type MlbHealthIssue = {
+  kind: "staleLedger" | "unsettledFinals" | "slateUnrated";
+  severity: "error" | "warn";
+  title: string;
+  detail: string;
+};
+
+export async function getMlbPipelineHealth(): Promise<MlbHealthIssue[]> {
+  const rows = await db.execute(sql`
+    WITH et AS (SELECT (NOW() AT TIME ZONE 'America/New_York')::date AS today)
+    SELECT
+      EXTRACT(EPOCH FROM (NOW() - (SELECT MAX(created_at) FROM mlb_bets))) / 3600.0 AS "hrsSinceBet",
+      (SELECT COUNT(*) FROM mlb_matchups m, et
+         WHERE m.game_date BETWEEN et.today - 1 AND et.today + 1) AS "recentGames",
+      (SELECT COUNT(DISTINCT m.id) FROM mlb_matchups m, et
+         WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL AND m.game_date < et.today
+           AND EXISTS (SELECT 1 FROM mlb_bets b WHERE b.matchup_id = m.id AND b.status = 'pending')) AS "unsettledGames",
+      (SELECT COUNT(*) FROM mlb_bets b JOIN mlb_matchups m ON m.id = b.matchup_id, et
+         WHERE b.status = 'pending' AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+           AND m.game_date < et.today) AS "unsettledBets",
+      (SELECT COUNT(*) FROM mlb_matchups m, et
+         WHERE m.game_date = et.today AND m.home_ml IS NOT NULL) AS "todayWithOdds",
+      (SELECT COUNT(*) FROM mlb_matchups m, et
+         WHERE m.game_date = et.today AND m.home_ml IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM mlb_bets b WHERE b.matchup_id = m.id)) AS "todayUnrated"
+  `);
+  const r = (rows.rows[0] ?? {}) as Record<string, unknown>;
+  const hrsSinceBet = r.hrsSinceBet == null ? Infinity : Number(r.hrsSinceBet);
+  const recentGames = Number(r.recentGames ?? 0);
+  const unsettledGames = Number(r.unsettledGames ?? 0);
+  const unsettledBets = Number(r.unsettledBets ?? 0);
+  const todayWithOdds = Number(r.todayWithOdds ?? 0);
+  const todayUnrated = Number(r.todayUnrated ?? 0);
+
+  const issues: MlbHealthIssue[] = [];
+
+  // Stale only matters when there were games to rate (avoids offseason/All-Star
+  // false positives).
+  if (recentGames > 0 && hrsSinceBet > 36) {
+    issues.push({
+      kind: "staleLedger",
+      severity: "error",
+      title: "Bet ledger is stale",
+      detail:
+        hrsSinceBet === Infinity
+          ? "No bets have ever been rated, but recent games exist — the refresh pipeline isn't running."
+          : `Newest rated bet is ${Math.round(hrsSinceBet)}h old with recent games on the board — the MLB refresh cron likely failed.`,
+    });
+  }
+
+  if (unsettledGames > 0) {
+    issues.push({
+      kind: "unsettledFinals",
+      severity: "error",
+      title: "Completed games not settled",
+      detail: `${unsettledBets} bet(s) across ${unsettledGames} finished game(s) are still pending — settlement didn't run or a matchup link broke.`,
+    });
+  }
+
+  // Only flag when EVERY odds-having game today is unrated — the rating stage
+  // clearly didn't run. Partial gaps can be a benign mid-refresh state or a
+  // single game lacking prediction inputs.
+  if (todayWithOdds > 0 && todayUnrated === todayWithOdds) {
+    issues.push({
+      kind: "slateUnrated",
+      severity: "error",
+      title: "Today's slate has odds but no rated bets",
+      detail: `${todayWithOdds} game(s) today have odds but none were rated into the ledger — the bet-rating stage failed.`,
+    });
+  }
+
+  return issues;
+}
+
 // ── MLB Closing Line Value (CLV) ──────────────────────────────────────────────
 // At this sample size, win/loss ROI is dominated by variance; CLV is the sharper
 // read on whether our bets carry real edge — did the market move TOWARD our side

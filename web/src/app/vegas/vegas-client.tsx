@@ -18,6 +18,7 @@ import type {
   MlbBetBacktestRow,
   MlbBetSideRow,
   MlbClvRow,
+  MlbHealthIssue,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import type { Sport } from "@/db/queries";
@@ -962,6 +963,36 @@ function MlbBetSideBreakdownPanel({ rows }: { rows: MlbBetSideRow[] }) {
   );
 }
 
+// Pipeline health banner — renders ONLY when an operational check trips, so it's
+// a real alert, not chrome. Catches the silent-failure modes (dead refresh cron,
+// unsettled finals, an unrated slate) that would otherwise sit unnoticed.
+function MlbPipelineHealthBanner({ issues }: { issues: MlbHealthIssue[] }) {
+  if (issues.length === 0) return null;
+  const hasError = issues.some((i) => i.severity === "error");
+  const tone = hasError
+    ? "border-red-300 bg-red-50/70"
+    : "border-amber-300 bg-amber-50/70";
+  const dot = (sev: string) => (sev === "error" ? "text-red-500" : "text-amber-500");
+  return (
+    <div className={`rounded-lg border p-4 text-sm ${tone}`}>
+      <div className="font-semibold text-gray-800 mb-1.5">
+        ⚠ Pipeline needs attention ({issues.length})
+      </div>
+      <ul className="space-y-1.5">
+        {issues.map((i) => (
+          <li key={i.kind} className="flex gap-2">
+            <span className={dot(i.severity)}>●</span>
+            <span>
+              <span className="font-medium text-gray-800">{i.title}</span>
+              <span className="text-gray-600"> — {i.detail}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // Closing Line Value (moneyline) — the sharpest small-sample edge signal: did
 // the market move toward our side between open and the last pre-kickoff snapshot?
 // Needs ≥2 snapshots per bet, so it reads "accruing" until the refresh cadence
@@ -1030,6 +1061,7 @@ type Props = {
   mlbBetBacktest: MlbBetBacktestRow[] | null;
   mlbBetBySide: MlbBetSideRow[] | null;
   mlbClv: MlbClvRow[] | null;
+  mlbHealth: MlbHealthIssue[] | null;
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
   teamInsights: TeamVegasInsightRow[];
@@ -1215,6 +1247,7 @@ export default function VegasClient({
   mlbBetBacktest,
   mlbBetBySide,
   mlbClv,
+  mlbHealth,
   vegasSummary,
   biggestMisses,
   teamInsights,
@@ -1329,6 +1362,11 @@ export default function VegasClient({
           </button>
         </div>
       </div>
+
+      {/* ── Pipeline health (only renders when something is off) ── */}
+      {sport === "mlb" && mlbHealth && mlbHealth.length > 0 && (
+        <MlbPipelineHealthBanner issues={mlbHealth} />
+      )}
 
       {/* ── Fetch feedback ───────────────────────────────────── */}
       {sport === "mlb" && mlbCoverageStatus && (
