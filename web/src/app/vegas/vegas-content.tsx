@@ -29,6 +29,7 @@ import {
   getSoccerFirstScorerTiers,
   getSoccerFirstScorerNearMisses,
   getSoccerTopPickAccuracy,
+  getSoccerSettlementHealth,
 } from "@/db/queries";
 import type { Sport } from "@/db/queries";
 import VegasClient from "./vegas-client";
@@ -39,7 +40,8 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
   // than the NBA/MLB analytics panels.
   if (sport === "soccer") {
     const [matchups, bets, settledBets, backtest, firstScorers, matchGoals, playerStats,
-           fscorerTiers, fscorerNearMisses, topPickAccuracy, clv, calibCuts, clvTrend] = await Promise.all([
+           fscorerTiers, fscorerNearMisses, topPickAccuracy, clv, calibCuts, clvTrend,
+           settlementHealth] = await Promise.all([
       getSoccerVegasMatchups(date),
       getSoccerBets(1, 150),
       getSoccerSettledBets(),
@@ -53,6 +55,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getSoccerClv(),
       getSoccerCalibrationCuts(),
       getSoccerClvTrend(),
+      getSoccerSettlementHealth(),
     ]);
     return (
       <SoccerVegasClient
@@ -69,6 +72,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
         fscorerTiers={fscorerTiers}
         fscorerNearMisses={fscorerNearMisses}
         topPickAccuracy={topPickAccuracy}
+        settlementHealth={settlementHealth}
         queryDate={date ?? null}
       />
     );

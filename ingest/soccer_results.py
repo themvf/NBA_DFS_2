@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import unicodedata
 from datetime import datetime, timedelta, timezone
 
@@ -334,7 +335,7 @@ def settle_first_scorer_auto(db: DatabaseManager, tsdb_api_key: str = "123") -> 
     """
     games = db.execute(
         """
-        SELECT sm.game_id, sm.game_date,
+        SELECT sm.game_id, sm.game_date, sm.home_score, sm.away_score,
                ht.name AS home_name, at.name AS away_name
         FROM soccer_matchups sm
         JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
@@ -367,8 +368,31 @@ def settle_first_scorer_auto(db: DatabaseManager, tsdb_api_key: str = "123") -> 
             continue
 
         scorer = _tsdb_first_scorer(tsdb_id, tsdb_api_key)
+        total_goals = (g["home_score"] or 0) + (g["away_score"] or 0)
+        if scorer is None and total_goals > 0:
+            # TheSportsDB had no timeline for a game that clearly had goals — this
+            # is a DATA GAP, not a 0-0.  Voiding here would wrongly wipe real
+            # win/loss outcomes (and corrupt the backtest), so leave the bets
+            # pending for manual `--first-scorer` settlement.
+            logger.warning(
+                "TheSportsDB: no goal timeline for %s vs %s (final %d-%d) — "
+                "leaving first-scorer bets pending for manual settle",
+                home_name, away_name, g["home_score"], g["away_score"],
+            )
+            continue
         if scorer is None:
-            # No goals (0-0) → all first-scorer selections are void.
+            # Genuine 0-0 → all first-scorer selections are void.
+            # Defensive: reaching here with goals on the board means the data-gap
+            # guard above was bypassed (e.g. a future refactor). Fail SAFE — log
+            # loudly and skip rather than crash the batch or resurrect the
+            # wrong-void bug that silently wiped real results.
+            if total_goals != 0:
+                logger.error(
+                    "BUG: void path reached for %s vs %s with %d goals — skipping "
+                    "(would have wrongly voided real outcomes)",
+                    home_name, away_name, total_goals,
+                )
+                continue
             bets = db.execute(
                 "SELECT id FROM soccer_bets "
                 "WHERE bet_type = 'first_scorer' AND scope = %s AND status = 'pending'",
@@ -451,8 +475,95 @@ def settle_first_scorer(db: DatabaseManager, game_id: str, scorer_name: str) -> 
     return settled
 
 
+def check_settlement_health(db: DatabaseManager, stale_days: int = 2, annotate: bool = False) -> int:
+    """Surface settlement problems loudly so silent mis-settlement can't rot.
+
+    A wrong settlement (or a game stuck unsettled) is invisible until someone
+    eyeballs a dashboard — exactly how the wrong-void bug went unnoticed. This
+    check runs every settlement pass and reports two failure classes:
+
+      1. IMPOSSIBLE STATE — first-scorer bets voided 'No goals scored' on a game
+         that actually had goals. The void-guard makes this unreachable now; if a
+         row ever shows up here, a settlement path regressed — reopen & re-settle.
+      2. STALE PENDING — first-scorer bets still pending more than `stale_days`
+         after a completed game that had goals. TheSportsDB timelines are
+         eventually-consistent, so a short lag is normal and self-heals on the next
+         cron run; anything past the window is a genuine data hole that needs a
+         manual `--first-scorer`. This is the manual-settle queue.
+
+    When `annotate` is set and we're running under GitHub Actions, each issue is
+    also emitted as a `::warning::` workflow annotation so it surfaces in the
+    Actions run summary instead of being buried in step logs.
+
+    Returns the number of distinct problems found (0 = healthy).
+    """
+    problems = 0
+    gh_annotate = annotate and os.environ.get("GITHUB_ACTIONS") == "true"
+
+    def _warn(msg: str) -> None:
+        if gh_annotate:
+            # GitHub parses ::warning:: lines from stdout into run annotations.
+            print(f"::warning::{msg}")
+
+    bad_voids = db.execute(
+        """
+        SELECT b.scope, ht.name AS h, at.name AS a,
+               sm.home_score AS hs, sm.away_score AS as_, COUNT(*) AS n
+        FROM soccer_bets b
+        JOIN soccer_matchups sm ON sm.game_id = b.scope
+        JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+        JOIN soccer_teams at ON at.team_id = sm.away_team_id
+        WHERE b.bet_type = 'first_scorer' AND b.status = 'void'
+          AND b.result_detail = 'No goals scored'
+          AND (sm.home_score + sm.away_score) > 0
+        GROUP BY b.scope, ht.name, at.name, sm.home_score, sm.away_score
+        ORDER BY ht.name
+        """
+    )
+    if bad_voids:
+        problems += len(bad_voids)
+        print("\n  [!] IMPOSSIBLE STATE — first-scorer bets voided 'No goals' on games WITH goals:")
+        for r in bad_voids:
+            print(f"      {r['h']} {r['hs']}-{r['as_']} {r['a']}  ({r['n']} bets) — reopen & re-settle")
+            _warn(f"Settlement: {r['h']} {r['hs']}-{r['as_']} {r['a']} voided 'No goals' but had goals "
+                  f"({r['n']} first-scorer bets) — reopen & re-settle")
+
+    stale = db.execute(
+        """
+        SELECT b.scope, ht.name AS h, at.name AS a,
+               sm.home_score AS hs, sm.away_score AS as_,
+               COALESCE(sm.commence_time, sm.game_date::timestamptz) AS kickoff,
+               COUNT(*) AS n
+        FROM soccer_bets b
+        JOIN soccer_matchups sm ON sm.game_id = b.scope
+        JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+        JOIN soccer_teams at ON at.team_id = sm.away_team_id
+        WHERE b.bet_type = 'first_scorer' AND b.status = 'pending'
+          AND sm.home_score IS NOT NULL AND (sm.home_score + sm.away_score) > 0
+          AND COALESCE(sm.commence_time, sm.game_date::timestamptz)
+              < NOW() - (%s || ' days')::interval
+        GROUP BY b.scope, ht.name, at.name, sm.home_score, sm.away_score, kickoff
+        ORDER BY kickoff
+        """,
+        (str(stale_days),),
+    )
+    if stale:
+        problems += len(stale)
+        print(f"\n  [!] STALE — first-scorer bets pending > {stale_days}d after a completed game with goals")
+        print("      (TheSportsDB never produced a usable timeline — settle manually):")
+        for r in stale:
+            print(f"      python -m ingest.soccer_results --first-scorer {r['scope']} \"<player>\""
+                  f"   # {r['h']} {r['hs']}-{r['as_']} {r['a']}")
+            _warn(f"Settlement: {r['h']} {r['hs']}-{r['as_']} {r['a']} has {r['n']} first-scorer bets "
+                  f"stuck pending >{stale_days}d — settle manually "
+                  f"(python -m ingest.soccer_results --first-scorer {r['scope']} \"<player>\")")
+
+    if problems == 0:
+        print("Settlement health: OK (no impossible-state voids, no stale pending first-scorer bets)")
+    return problems
+
+
 if __name__ == "__main__":
-    import os
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Settle soccer bets")
     parser.add_argument("--days-from", type=int, default=3, help="Scores look-back window")
@@ -461,11 +572,20 @@ if __name__ == "__main__":
                         help="Manually settle first-scorer for a game")
     parser.add_argument("--no-auto-first-scorer", action="store_true",
                         help="Skip automatic TheSportsDB first-scorer settlement")
+    parser.add_argument("--health-check", action="store_true",
+                        help="Only run the settlement health check (no fetch/settle); "
+                             "emits GitHub annotations under Actions")
     args = parser.parse_args()
 
     config = load_config()
     db = DatabaseManager(config.database_url)
     tsdb_key = os.getenv("THESPORTSDB_API_KEY", "123")
+
+    if args.health_check:
+        # Dedicated, standalone pass — used by the workflow's own step so issues
+        # surface as run annotations even if an earlier settle step failed.
+        check_settlement_health(db, annotate=True)
+        raise SystemExit(0)
 
     fetch_scores(db, config.odds_api.api_key, args.days_from)
     settle_game_bets(db)
@@ -476,3 +596,6 @@ if __name__ == "__main__":
         settle_outright(db, args.champion)
     if args.first_scorer:
         settle_first_scorer(db, args.first_scorer[0], args.first_scorer[1])
+
+    # Loud, last so it isn't buried — settlement health is the headline of every run.
+    check_settlement_health(db)

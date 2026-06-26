@@ -24,6 +24,7 @@ import type {
   SoccerClvRow,
   SoccerCalibCutRow,
   SoccerClvTrendRow,
+  SoccerSettlementIssue,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -516,6 +517,7 @@ function ResultsPanel({
   fscorerTiers,
   fscorerNearMisses,
   topPickAccuracy,
+  settlementHealth,
 }: {
   bets: SoccerBetRow[];
   backtest: SoccerBacktestRow[];
@@ -525,6 +527,7 @@ function ResultsPanel({
   fscorerTiers: SoccerFirstScorerTierRow[];
   fscorerNearMisses: SoccerFirstScorerNearMissRow[];
   topPickAccuracy: SoccerTopPickRow[];
+  settlementHealth: SoccerSettlementIssue[];
 }) {
   // ── Settled bet table state ──────────────────────────────────────────────────
   const [tType, setTType] = useState("all");
@@ -566,15 +569,25 @@ function ResultsPanel({
   // ── Best-per-game: for multi-side markets (moneyline: 3 sides, total: 2 sides)
   // pick the highest-rated side per (betType, scope) so the KPI cards reflect
   // "if we bet the best side of each game, how did we do?" not all sides at once.
+  //
+  // first_scorer is special: it has 15+ mutually-exclusive selections per game.
+  // Ranking those by stars/EV always surfaces the biggest-edge LONGSHOT (e.g. our
+  // 8% vs the market's 2.6% — a ~38/1 shot) which by construction almost never
+  // wins, making the panel read 0% and misrepresenting model accuracy. For this
+  // market the meaningful "best pick" is the model's FAVORITE (highest our_prob),
+  // i.e. who we actually think is most likely to score first.
   const bestPerGame = useMemo(() => {
     const map = new Map<string, SoccerBetRow>();
     for (const b of bets) {
       if (b.status === "pending") continue;
       const key = `${b.betType}::${b.scope}`;
       const cur = map.get(key);
-      if (!cur || b.stars > cur.stars || (b.stars === cur.stars && (b.ev ?? -99) > (cur.ev ?? -99))) {
-        map.set(key, b);
-      }
+      const better =
+        !cur ||
+        (b.betType === "first_scorer"
+          ? b.ourProb > cur.ourProb
+          : b.stars > cur.stars || (b.stars === cur.stars && (b.ev ?? -99) > (cur.ev ?? -99)));
+      if (better) map.set(key, b);
     }
     return Array.from(map.values());
   }, [bets]);
@@ -623,6 +636,37 @@ function ResultsPanel({
   return (
     <section className="space-y-5">
       <h2 className="text-lg font-bold">📈 Results &amp; Analytics</h2>
+
+      {/* Settlement health alert — only renders when something is wrong, so it's a
+          real alert, not noise. Catches the silent-rot failure mode (stuck/wrong
+          first-scorer settlements) that hid the wrong-void bug for weeks. */}
+      {settlementHealth.length > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <div className="font-semibold text-amber-700 dark:text-amber-400">
+            ⚠ Settlement needs attention ({settlementHealth.length})
+          </div>
+          <ul className="mt-2 space-y-1 text-muted-foreground">
+            {settlementHealth.map((h) => (
+              <li key={`${h.kind}-${h.gameId}`}>
+                {h.kind === "badVoid" ? (
+                  <>
+                    <span className="font-medium text-foreground">{h.fixture} ({h.score})</span>{" "}
+                    — voided “No goals” but the game had goals; reopen &amp; re-settle ({h.nBets} bets).
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium text-foreground">{h.fixture} ({h.score})</span>{" "}
+                    — {h.nBets} first-scorer bets stuck pending (no timeline from feed). Settle:{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                      python -m ingest.soccer_results --first-scorer {h.gameId} &quot;&lt;player&gt;&quot;
+                    </code>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Overall summary strip */}
       <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-card px-4 py-3 text-sm">
@@ -1777,6 +1821,7 @@ export default function SoccerVegasClient({
   fscorerTiers,
   fscorerNearMisses,
   topPickAccuracy,
+  settlementHealth,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -1792,6 +1837,7 @@ export default function SoccerVegasClient({
   fscorerTiers: SoccerFirstScorerTierRow[];
   fscorerNearMisses: SoccerFirstScorerNearMissRow[];
   topPickAccuracy: SoccerTopPickRow[];
+  settlementHealth: SoccerSettlementIssue[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -1863,6 +1909,7 @@ export default function SoccerVegasClient({
           fscorerTiers={fscorerTiers}
           fscorerNearMisses={fscorerNearMisses}
           topPickAccuracy={topPickAccuracy}
+          settlementHealth={settlementHealth}
         />
       )}
       {tab === "fixtures" && <FixturesPanel matchups={matchups} queryDate={queryDate} />}

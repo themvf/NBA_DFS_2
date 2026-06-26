@@ -6322,6 +6322,62 @@ export type SoccerBacktestRow = {
   marketBets: number;
 };
 
+// ── Settlement health ─────────────────────────────────────────────────────────
+// A wrong/stuck settlement is invisible until someone eyeballs the dashboard —
+// exactly how the wrong-void bug went unnoticed. This surfaces two failure
+// classes so they alert instead of rot:
+//   * stale   — first-scorer bets pending > N days after a completed game WITH
+//               goals (TheSportsDB never produced a timeline → needs manual settle)
+//   * badVoid — bets voided 'No goals scored' on a game that actually had goals
+//               (an impossible state; the void-guard makes this unreachable now)
+export type SoccerSettlementIssue = {
+  kind: "stale" | "badVoid";
+  gameId: string;
+  fixture: string;
+  score: string;
+  nBets: number;
+};
+
+export async function getSoccerSettlementHealth(
+  staleDays = 2,
+): Promise<SoccerSettlementIssue[]> {
+  const rows = await db.execute(sql`
+    SELECT 'badVoid' AS kind, b.scope AS "gameId",
+           ht.name || ' vs ' || at.name AS fixture,
+           sm.home_score || '-' || sm.away_score AS score,
+           COUNT(*)::int AS "nBets"
+    FROM soccer_bets b
+    JOIN soccer_matchups sm ON sm.game_id = b.scope
+    JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+    JOIN soccer_teams at ON at.team_id = sm.away_team_id
+    WHERE b.bet_type = 'first_scorer' AND b.status = 'void'
+      AND b.result_detail = 'No goals scored'
+      AND (sm.home_score + sm.away_score) > 0
+    GROUP BY b.scope, ht.name, at.name, sm.home_score, sm.away_score
+    UNION ALL
+    SELECT 'stale' AS kind, b.scope,
+           ht.name || ' vs ' || at.name,
+           sm.home_score || '-' || sm.away_score,
+           COUNT(*)::int
+    FROM soccer_bets b
+    JOIN soccer_matchups sm ON sm.game_id = b.scope
+    JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+    JOIN soccer_teams at ON at.team_id = sm.away_team_id
+    WHERE b.bet_type = 'first_scorer' AND b.status = 'pending'
+      AND sm.home_score IS NOT NULL AND (sm.home_score + sm.away_score) > 0
+      AND COALESCE(sm.commence_time, sm.game_date::timestamptz)
+          < NOW() - (${String(staleDays)} || ' days')::interval
+    GROUP BY b.scope, ht.name, at.name, sm.home_score, sm.away_score
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    kind: r.kind as "stale" | "badVoid",
+    gameId: String(r.gameId),
+    fixture: String(r.fixture),
+    score: String(r.score),
+    nBets: Number(r.nBets),
+  }));
+}
+
 export async function getSoccerBetBacktest(): Promise<SoccerBacktestRow[]> {
   // Calibration on SETTLED bets: does each star tier win at the rate we claimed?
   const rows = await db.execute(sql`

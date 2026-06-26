@@ -84,3 +84,10 @@ jobs:
 
       - name: Rate first-scorer bets (near-term fixtures)
         run: python -m model.soccer_first_scorer --hours 48
+
+      - name: Settlement health check (alerts on stuck/wrong first-scorer bets)
+        # always() so a failed settle/rating step above can't hide a rotting
+        # ledger. Emits ::warning:: annotations for any impossible-state void or
+        # stale-pending game so it surfaces in the Actions run summary.
+        if: always()
+        run: python -m ingest.soccer_results --health-check
