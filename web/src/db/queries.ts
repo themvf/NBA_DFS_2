@@ -6313,19 +6313,9 @@ export async function getSoccerSettledBets(): Promise<SoccerBetRow[]> {
   }));
 }
 
-export type SoccerBacktestRow = {
-  stars: number;
-  n: number;
-  expectedWinRate: number;
-  realizedWinRate: number;
-  roi: number | null; // null when no market bets in tier
-  marketBets: number;
-};
-
 // Per-(bet_type, stars) calibration so each betting model is judged on its own —
 // the aggregate stars ladder blended e.g. no-edge totals with moneyline, creating
-// a false impression for model evaluation. `betType='all'` rows are the rollup and
-// are numerically identical to getSoccerBetBacktest() per star tier.
+// a false impression for model evaluation. `betType='all'` rows are the rollup.
 // See docs/specs/soccer-backtest-by-bettype.md.
 export type SoccerBacktestTypeRow = {
   betType: string;          // bet_type or 'all' (GROUPING SETS rollup)
@@ -6392,36 +6382,6 @@ export async function getSoccerSettlementHealth(
     score: String(r.score),
     nBets: Number(r.nBets),
   }));
-}
-
-export async function getSoccerBetBacktest(): Promise<SoccerBacktestRow[]> {
-  // Calibration on SETTLED bets: does each star tier win at the rate we claimed?
-  const rows = await db.execute(sql`
-    SELECT
-      b.stars,
-      COUNT(*) AS n,
-      AVG(b.our_prob) AS "expectedWinRate",
-      AVG(CASE WHEN b.status = 'won' THEN 1.0 ELSE 0.0 END) AS "realizedWinRate",
-      COUNT(*) FILTER (WHERE b.market_decimal IS NOT NULL) AS "marketBets",
-      SUM(CASE WHEN b.market_decimal IS NULL THEN 0
-               WHEN b.status = 'won' THEN b.market_decimal - 1 ELSE -1 END) AS "profitUnits"
-    FROM soccer_bets b
-    WHERE b.status IN ('won', 'lost')
-    GROUP BY b.stars
-    ORDER BY b.stars DESC
-  `);
-  return (rows.rows as Record<string, unknown>[]).map((r) => {
-    const marketBets = Number(r.marketBets);
-    const profit = r.profitUnits != null ? Number(r.profitUnits) : 0;
-    return {
-      stars: Number(r.stars),
-      n: Number(r.n),
-      expectedWinRate: Number(r.expectedWinRate),
-      realizedWinRate: Number(r.realizedWinRate),
-      roi: marketBets > 0 ? profit / marketBets : null,
-      marketBets,
-    };
-  });
 }
 
 export async function getSoccerBetBacktestByType(): Promise<SoccerBacktestTypeRow[]> {

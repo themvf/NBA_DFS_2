@@ -243,8 +243,8 @@ versions visible.
 3. Switch `vegas-content.tsx`; update `SoccerVegasClient` + `ResultsPanel`.
 4. Verify data conservation queries + `tsc`.
 5. Commit, push, merge (ff-only), as per session convention.
-6. Follow-up commit: delete the now-unused `getSoccerBetBacktest()` +
-   `SoccerBacktestRow` if nothing else imports them.
+6. ✅ Follow-up commit: deleted the unused `getSoccerBetBacktest()` +
+   `SoccerBacktestRow` (no remaining importers).
 
 **No DB migration. No model re-run. Pure read/display.**
 
