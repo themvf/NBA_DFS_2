@@ -62,7 +62,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getSoccerClvTrend(),
       getSoccerSettlementHealth(),
       getSoccerKnockoutAdvance(),
-      getSoccerTitleOdds(16),
+      getSoccerTitleOdds(),
     ]);
     return (
       <SoccerVegasClient

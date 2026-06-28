@@ -240,6 +240,56 @@ def simulate_outright(field: list[dict], sims: int) -> dict[int, float]:
     return {tid: w / sims for tid, w in wins.items()}
 
 
+def simulate_bracket_reach(
+    r32_ties: list[tuple[int, int, float]],
+    elo: dict[int, float],
+    sims: int,
+) -> dict[int, dict[str, float]]:
+    """Per-team P(reach each knockout round) from the ACTUAL Round-of-32 ties.
+
+    ``r32_ties`` is the real bracket's first round: ``(home_id, away_id,
+    p_home_advance)`` where p_home_advance is the match model's advance prob
+    (P(win 90′) + ½·P(draw)) — so P(reach R16) here equals the V1 advance% exactly.
+
+    Round 1 uses those real pairings + real probs. Rounds 2+ have no known
+    opponents (R16 fixtures aren't published yet) and no per-matchup model, so
+    survivors are re-paired at random each round and resolved by Elo — the same
+    strength-seeded approximation the outright sim already uses. Deeper-round
+    numbers are therefore approximate and must be labeled as such in the UI.
+
+    Returns {team_id: {"r16","qf","sf","final","champion"}} as probabilities.
+    """
+    teams = [t for tie in r32_ties for t in (tie[0], tie[1])]
+    later_rounds = ["qf", "sf", "final", "champion"]
+    reach = {t: {"r16": 0, "qf": 0, "sf": 0, "final": 0, "champion": 0} for t in teams}
+    if not r32_ties:
+        return {}
+
+    for _ in range(sims):
+        # Round 1 — real ties, real advance probs.
+        survivors = []
+        for a, b, p_a in r32_ties:
+            survivors.append(a if random.random() < p_a else b)
+        for w in survivors:
+            reach[w]["r16"] += 1
+        # Rounds 2+ — random re-pairing among survivors, Elo-resolved.
+        for rnd in later_rounds:
+            if len(survivors) < 2:
+                break
+            random.shuffle(survivors)
+            nxt = []
+            for i in range(0, len(survivors) - 1, 2):
+                a, b = survivors[i], survivors[i + 1]
+                ea = elo.get(a, 1500.0)
+                eb = elo.get(b, 1500.0)
+                nxt.append(a if random.random() < knockout_win_prob(ea, eb) else b)
+            for w in nxt:
+                reach[w][rnd] += 1
+            survivors = nxt
+
+    return {t: {k: v / sims for k, v in d.items()} for t, d in reach.items()}
+
+
 # Group-stage scoreline model (for proper FIFA tiebreakers): map the Elo win-prob
 # gap to a goal supremacy around an international group-stage average total, then
 # sample a Poisson scoreline.  Real goals → real GD + goals-for, and a known
@@ -554,6 +604,26 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
     # ── Outright winner ── (one connection for the batch)
     champ = simulate_outright(field, sims)
     market = _fetch_outright_market(api_key, name_to_id)
+
+    # Per-round reach probabilities from the ACTUAL R32 bracket (round 1 exact via
+    # the match-model advance prob; deeper rounds strength-seeded). Stored in each
+    # outright bet's inputs for the Knockout "deep run" board (no separate table).
+    elo_by_id = {t["team_id"]: float(t["elo"]) for t in field}
+    r32 = db.execute(
+        """
+        SELECT home_team_id AS h, away_team_id AS a,
+               (our_prob_home + 0.5 * our_prob_draw) AS p_home
+        FROM soccer_matchups
+        WHERE game_date >= CURRENT_DATE AND stage IS DISTINCT FROM 'group'
+          AND home_score IS NULL                      -- unplayed only (group stage is done;
+                                                      -- excludes stale completed group games)
+          AND our_prob_home IS NOT NULL AND our_prob_draw IS NOT NULL
+          AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+        """,
+    )
+    r32_ties = [(row["h"], row["a"], float(row["p_home"])) for row in r32]
+    reach = simulate_bracket_reach(r32_ties, elo_by_id, sims) if r32_ties else {}
+
     with db.connect() as conn:
         for t in field:
             tid = t["team_id"]
@@ -564,6 +634,14 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
                 our_prob = _W_OUTRIGHT_MODEL * sim_prob + (1 - _W_OUTRIGHT_MODEL) * mkt["prob_vigfree"]
             else:
                 our_prob = sim_prob
+            rk = reach.get(tid)
+            reach_inputs = {
+                "reach_r16": round(rk["r16"], 4),
+                "reach_qf": round(rk["qf"], 4),
+                "reach_sf": round(rk["sf"], 4),
+                "reach_final": round(rk["final"], 4),
+                "reach_champion": round(rk["champion"], 4),
+            } if rk else {}
             record_bet(
                 db,
                 model_version=MODEL_VERSION,
@@ -582,7 +660,8 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
                         "sim_prob": round(sim_prob, 4),
                         "market_vigfree": round(mkt["prob_vigfree"], 4) if mkt else None,
                         "anchor_w_model": _W_OUTRIGHT_MODEL,
-                        "has_market": mkt is not None},
+                        "has_market": mkt is not None,
+                        **reach_inputs},
             )
             written += 1
 

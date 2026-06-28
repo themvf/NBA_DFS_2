@@ -26,7 +26,7 @@ import type {
   SoccerClvTrendRow,
   SoccerSettlementIssue,
   SoccerKnockoutTieRow,
-  SoccerTitleOddsRow,
+  SoccerDeepRunRow,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -1924,7 +1924,7 @@ function KnockoutPanel({
   ties, titleOdds,
 }: {
   ties: SoccerKnockoutTieRow[];
-  titleOdds: SoccerTitleOddsRow[];
+  titleOdds: SoccerDeepRunRow[];
 }) {
   if (ties.length === 0 && titleOdds.length === 0) {
     return (
@@ -1975,44 +1975,52 @@ function KnockoutPanel({
       {titleOdds.length > 0 && (
         <div>
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Title odds — our Monte-Carlo vs the outright market
+            Deep run — P(reach each round), our model vs the title market
           </h3>
           <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full min-w-[420px] text-sm">
+            <table className="w-full min-w-[560px] text-sm">
               <thead>
                 <tr className="border-b text-xs text-muted-foreground">
                   <th className="px-3 py-2 text-left font-medium">Team</th>
-                  <th className="px-2 py-2 text-center font-medium">Our P(win)</th>
-                  <th className="px-2 py-2 text-center font-medium">Market</th>
+                  <th className="px-2 py-2 text-center font-medium">R16</th>
+                  <th className="px-2 py-2 text-center font-medium">QF</th>
+                  <th className="px-2 py-2 text-center font-medium">SF</th>
+                  <th className="px-2 py-2 text-center font-medium">Final</th>
+                  <th className="px-2 py-2 text-center font-medium">Champ</th>
+                  <th className="px-2 py-2 text-center font-medium">Mkt</th>
                   <th className="px-2 py-2 text-center font-medium">Edge</th>
                   <th className="px-2 py-2 text-center font-medium">Odds</th>
-                  <th className="px-2 py-2 text-center font-medium">Rating</th>
                 </tr>
               </thead>
               <tbody>
                 {titleOdds.map((r) => (
                   <tr key={r.team} className="border-b last:border-0">
                     <td className="px-3 py-2 font-medium">{r.team}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmtPct1(r.ourProb)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{Math.round(r.reachR16 * 100)}%</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{Math.round(r.reachQf * 100)}%</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{Math.round(r.reachSf * 100)}%</td>
+                    <td className="px-2 py-2 text-center tabular-nums">{Math.round(r.reachFinal * 100)}%</td>
+                    <td className="px-2 py-2 text-center tabular-nums font-semibold text-foreground">{fmtPct1(r.reachChampion)}</td>
                     <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
                       {r.marketProb != null ? fmtPct1(r.marketProb) : "—"}
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums font-medium ${
-                      r.edge == null ? "text-muted-foreground"
-                        : r.edge > 0 ? "text-emerald-400" : "text-rose-400"
+                      r.champEdge == null ? "text-muted-foreground"
+                        : r.champEdge > 0 ? "text-emerald-400" : "text-rose-400"
                     }`}>
-                      {r.edge != null ? `${r.edge >= 0 ? "+" : ""}${(r.edge * 100).toFixed(1)}` : "—"}
+                      {r.champEdge != null ? `${r.champEdge >= 0 ? "+" : ""}${(r.champEdge * 100).toFixed(1)}` : "—"}
                     </td>
                     <td className="px-2 py-2 text-center tabular-nums">{fmtMl(r.marketOdds)}</td>
-                    <td className="px-2 py-2 text-center"><Stars n={r.stars} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            P(win) is from the tournament Monte-Carlo (Elo-driven bivariate Poisson). Edge in points
-            vs the vig-free outright market. Eliminated teams drop off as the sim re-runs.
+            <strong className="text-foreground">R16</strong> = P(win the R32 tie) — exact (same advance%
+            as above). <strong className="text-foreground">QF→Champ</strong> are strength-seeded among
+            survivors (R16+ pairings aren&rsquo;t published yet) — directional, not exact.
+            <strong className="text-foreground"> Edge</strong> = our P(champion) − vig-free title market, in points.
           </p>
         </div>
       )}
@@ -2066,7 +2074,7 @@ export default function SoccerVegasClient({
   topPickAccuracy: SoccerTopPickRow[];
   settlementHealth: SoccerSettlementIssue[];
   knockoutTies: SoccerKnockoutTieRow[];
-  titleOdds: SoccerTitleOddsRow[];
+  titleOdds: SoccerDeepRunRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");

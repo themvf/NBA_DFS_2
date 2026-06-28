@@ -6480,6 +6480,7 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
     JOIN soccer_teams a ON a.team_id = sm.away_team_id
     WHERE sm.game_date >= CURRENT_DATE
       AND sm.stage IS DISTINCT FROM 'group'
+      AND sm.home_score IS NULL  -- unplayed only (group stage done; drops stale completed games)
       AND sm.our_prob_home IS NOT NULL AND sm.our_prob_draw IS NOT NULL
       AND sm.vegas_prob_home IS NOT NULL AND sm.vegas_prob_draw IS NOT NULL
     ORDER BY sm.commence_time ASC NULLS LAST, sm.id ASC
@@ -6509,43 +6510,64 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
   });
 }
 
-// ── Title odds — our Monte-Carlo P(win tournament) vs the outright market ──────
-export type SoccerTitleOddsRow = {
+// ── Deep run — per-round reach probabilities from the bracket Monte-Carlo ──────
+// P(reach round) per team, computed by model/soccer_futures.simulate_bracket_reach
+// and stashed in each outright bet's inputs_json. Round 1 (reachR16) is exact —
+// it uses the real R32 ties + the same advance% as the V1 cards. Deeper rounds
+// are strength-seeded among survivors (R16+ pairings aren't published yet), so
+// they're approximate and labeled as such in the UI. Champion is compared to the
+// vig-free outright market.
+export type SoccerDeepRunRow = {
   team: string;
-  ourProb: number;          // our P(win tournament) from the futures sim
-  marketProb: number | null; // vig-free outright market prob
+  reachR16: number;
+  reachQf: number;
+  reachSf: number;
+  reachFinal: number;
+  reachChampion: number;
+  marketProb: number | null;   // vig-free outright market prob
   marketOdds: number | null;
-  edge: number | null;      // ourProb − marketProb
+  champEdge: number | null;    // reachChampion − marketProb
   stars: number;
 };
 
-export async function getSoccerTitleOdds(limit = 16): Promise<SoccerTitleOddsRow[]> {
-  // Pending outright_winner bets (one per team) from the latest futures model.
-  // Eliminated teams fall toward our_prob≈0 after each re-sim, so ordering by
-  // our_prob and capping at `limit` naturally surfaces the live contenders.
+export async function getSoccerTitleOdds(): Promise<SoccerDeepRunRow[]> {
+  // Outright bets carrying reach_* inputs are exactly the 32 live R32 teams
+  // (eliminated teams have no reach data). Order by P(champion) descending.
   const rows = await db.execute(sql`
     WITH latest AS (
       SELECT model_version FROM soccer_bets
       WHERE bet_type = 'outright_winner'
       GROUP BY model_version ORDER BY MAX(created_at) DESC LIMIT 1
     )
-    SELECT b.selection_label AS team, b.our_prob AS "ourProb",
-           b.market_prob AS "marketProb", b.market_odds AS "marketOdds",
-           b.edge, b.stars
+    SELECT b.selection_label AS team,
+           (b.inputs_json->>'reach_r16')::float       AS "reachR16",
+           (b.inputs_json->>'reach_qf')::float        AS "reachQf",
+           (b.inputs_json->>'reach_sf')::float        AS "reachSf",
+           (b.inputs_json->>'reach_final')::float     AS "reachFinal",
+           (b.inputs_json->>'reach_champion')::float  AS "reachChampion",
+           b.market_prob AS "marketProb", b.market_odds AS "marketOdds", b.stars
     FROM soccer_bets b
     WHERE b.bet_type = 'outright_winner' AND b.status = 'pending'
       AND b.model_version = (SELECT model_version FROM latest)
-    ORDER BY b.our_prob DESC NULLS LAST
-    LIMIT ${limit}
+      AND b.inputs_json->>'reach_r16' IS NOT NULL
+    ORDER BY (b.inputs_json->>'reach_champion')::float DESC NULLS LAST
   `);
-  return (rows.rows as Record<string, unknown>[]).map((r) => ({
-    team: String(r.team),
-    ourProb: Number(r.ourProb),
-    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
-    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
-    edge: r.edge != null ? Number(r.edge) : null,
-    stars: Number(r.stars),
-  }));
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const reachChampion = Number(r.reachChampion);
+    const marketProb = r.marketProb != null ? Number(r.marketProb) : null;
+    return {
+      team: String(r.team),
+      reachR16: Number(r.reachR16),
+      reachQf: Number(r.reachQf),
+      reachSf: Number(r.reachSf),
+      reachFinal: Number(r.reachFinal),
+      reachChampion,
+      marketProb,
+      marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+      champEdge: marketProb != null ? reachChampion - marketProb : null,
+      stars: Number(r.stars),
+    };
+  });
 }
 
 // ── Closing Line Value (CLV) ──────────────────────────────────────────────────
