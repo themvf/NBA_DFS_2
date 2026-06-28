@@ -1608,4 +1608,9 @@ INDEXES = [
     "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS dk_dnb_away_ml INTEGER",
     "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS dnb_home_prob DOUBLE PRECISION",
     "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS dnb_away_prob DOUBLE PRECISION",
+    # 2026-06-28: Knockout bracket position (1..16 top→bottom) for the R32 ties, so
+    # the bracket tree + exact deep-run sim use the REAL pairings (consecutive slots
+    # meet each round) instead of strength-seeded random re-pairing. Populated by
+    # ingest/soccer_bracket.py from the published bracket. NULL outside knockouts.
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS bracket_slot INTEGER",
 ]

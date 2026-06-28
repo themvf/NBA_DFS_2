@@ -26,6 +26,7 @@ import type {
   SoccerClvTrendRow,
   SoccerSettlementIssue,
   SoccerKnockoutTieRow,
+  SoccerReach,
   SoccerDeepRunRow,
 } from "@/db/queries";
 
@@ -1874,7 +1875,141 @@ function ScorersPanel({ rows }: { rows: SoccerPlayerStatsRow[] }) {
   );
 }
 
-// ── Tab nav ───────────────────────────────────────────────────────────────────
+// ── Bracket tree ──────────────────────────────────────────────────────────────
+// Real bracket: ties carry bracket_slot (1..16), so consecutive slots meet each
+// round (the published structure). R32 cells show the actual ties + advance%;
+// future-round cells show the PROJECTED occupants — the team most likely to reach
+// that node (argmax reach[round]) from each child subtree, with its probability.
+type BracketPick = { team: string; logo: string | null; prob: number } | null;
+
+function _pickTop(ties: SoccerKnockoutTieRow[], lo: number, hi: number, key: keyof SoccerReach): BracketPick {
+  let best: BracketPick = null;
+  for (let i = lo; i < hi && i < ties.length; i++) {
+    const t = ties[i];
+    const sides = [
+      { team: t.homeTeam, logo: t.homeLogo, reach: t.homeReach },
+      { team: t.awayTeam, logo: t.awayLogo, reach: t.awayReach },
+    ];
+    for (const s of sides) {
+      const p = s.reach ? s.reach[key] : 0;
+      if (!best || p > best.prob) best = { team: s.team, logo: s.logo, prob: p };
+    }
+  }
+  return best;
+}
+
+function PickCell({ pick }: { pick: BracketPick }) {
+  if (!pick) return <div className="rounded border bg-muted/20 px-2 py-1 text-[11px] text-muted-foreground">TBD</div>;
+  return (
+    <div className="flex items-center justify-between gap-1.5 rounded border bg-card px-2 py-1">
+      <span className="flex items-center gap-1 truncate">
+        {pick.logo
+          ? <img src={pick.logo} alt="" className="h-3.5 w-3.5 rounded-sm object-contain" />
+          : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
+        <span className="truncate text-[11px]">{pick.team}</span>
+      </span>
+      <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">{Math.round(pick.prob * 100)}%</span>
+    </div>
+  );
+}
+
+function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
+  // Need the full, slotted 16-tie bracket to render the tree.
+  const slotted = ties.filter((t) => t.bracketSlot != null)
+    .sort((a, b) => (a.bracketSlot as number) - (b.bracketSlot as number));
+  if (slotted.length < 16) return null;
+
+  // Future rounds: r=0 R16, 1 QF, 2 SF, 3 Final. Node covers 2^(r+1) ties, split
+  // into two child halves; each contributes its argmax-reach[round] team.
+  const ROUND_KEYS: (keyof SoccerReach)[] = ["r16", "qf", "sf", "final"];
+  const rounds = ROUND_KEYS.map((key, r) => {
+    const span = 2 ** (r + 1);
+    const nodes: { top: BracketPick; bottom: BracketPick }[] = [];
+    for (let lo = 0; lo < 16; lo += span) {
+      const mid = lo + span / 2;
+      nodes.push({ top: _pickTop(slotted, lo, mid, key), bottom: _pickTop(slotted, mid, lo + span, key) });
+    }
+    return nodes;
+  });
+  const champ = _pickTop(slotted, 0, 16, "champion");
+
+  const COL_LABELS = ["Round of 32", "Round of 16", "Quarterfinals", "Semifinals", "Final"];
+  const colClass = "flex min-w-[150px] flex-col justify-around gap-2";
+
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        Bracket — projected path (most-likely team per slot)
+      </h3>
+      <div className="overflow-x-auto rounded-lg border bg-card p-3">
+        <div className="flex items-stretch gap-3">
+          {/* R32 — real ties */}
+          <div className={colClass}>
+            <div className="mb-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[0]}</div>
+            {slotted.map((t) => {
+              const homeFav = t.ourHomeAdvance >= t.ourAwayAdvance;
+              return (
+                <div key={t.gameId} className="rounded border bg-background p-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className={`flex items-center gap-1 truncate ${homeFav ? "font-semibold" : ""}`}>
+                      {t.homeLogo
+                        ? <img src={t.homeLogo} alt="" className="h-3.5 w-3.5 rounded-sm object-contain" />
+                        : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
+                      <span className="truncate text-[11px]">{t.homeTeam}</span>
+                    </span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{Math.round(t.ourHomeAdvance * 100)}%</span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between gap-1">
+                    <span className={`flex items-center gap-1 truncate ${!homeFav ? "font-semibold" : ""}`}>
+                      {t.awayLogo
+                        ? <img src={t.awayLogo} alt="" className="h-3.5 w-3.5 rounded-sm object-contain" />
+                        : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
+                      <span className="truncate text-[11px]">{t.awayTeam}</span>
+                    </span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{Math.round(t.ourAwayAdvance * 100)}%</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* R16 → Final — projected */}
+          {rounds.map((nodes, r) => (
+            <div key={r} className={colClass}>
+              <div className="mb-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[r + 1]}</div>
+              {nodes.map((n, i) => (
+                <div key={i} className="space-y-1">
+                  <PickCell pick={n.top} />
+                  <PickCell pick={n.bottom} />
+                </div>
+              ))}
+            </div>
+          ))}
+          {/* Champion */}
+          <div className="flex min-w-[150px] flex-col justify-center">
+            <div className="mb-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">Champion</div>
+            <div className="rounded-lg border-2 border-amber-500/50 bg-amber-500/10 p-2 text-center">
+              {champ ? (
+                <>
+                  <div className="flex items-center justify-center gap-1.5">
+                    {champ.logo && <img src={champ.logo} alt="" className="h-4 w-4 rounded-sm object-contain" />}
+                    <span className="text-sm font-bold">{champ.team}</span>
+                  </div>
+                  <div className="text-[11px] tabular-nums text-amber-400">{fmtPct1(champ.prob)} to win</div>
+                </>
+              ) : <span className="text-xs text-muted-foreground">TBD</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        R32 shows real ties + advance%. R16→Final show the <strong className="text-foreground">most likely</strong> team
+        to reach each slot (argmax P(reach round)) with its probability — a projection, not a fixed matchup.
+        Real bracket adjacency (consecutive slots meet each round).
+      </p>
+    </div>
+  );
+}
+
 // ── Knockout bracket panel ────────────────────────────────────────────────────
 // Per-tie advance probability (our model vs market) + the title-odds board.
 // "To advance" isn't a market the feed carries, so market advance% is DERIVED
@@ -1935,6 +2070,8 @@ function KnockoutPanel({
   }
   return (
     <section className="space-y-5">
+      <BracketTree ties={ties} />
+
       <p className="rounded-lg border bg-card p-3 text-xs text-muted-foreground">
         <strong className="text-foreground">Advance %</strong> = P(win in 90′) + ½·P(draw)
         — a 50/50 extra-time/penalties prior. <strong className="text-foreground">mkt</strong> is the

@@ -244,18 +244,22 @@ def simulate_bracket_reach(
     r32_ties: list[tuple[int, int, float]],
     elo: dict[int, float],
     sims: int,
+    bracket_ordered: bool = False,
 ) -> dict[int, dict[str, float]]:
     """Per-team P(reach each knockout round) from the ACTUAL Round-of-32 ties.
 
-    ``r32_ties`` is the real bracket's first round: ``(home_id, away_id,
-    p_home_advance)`` where p_home_advance is the match model's advance prob
-    (P(win 90′) + ½·P(draw)) — so P(reach R16) here equals the V1 advance% exactly.
+    ``r32_ties`` is the first round: ``(team_a_id, team_b_id, p_a_advance)`` where
+    p_a_advance is the match model's advance prob (P(win 90′) + ½·P(draw)) — so
+    P(reach R16) equals the V1 advance% exactly. Round 1 always uses these real
+    pairings/probs.
 
-    Round 1 uses those real pairings + real probs. Rounds 2+ have no known
-    opponents (R16 fixtures aren't published yet) and no per-matchup model, so
-    survivors are re-paired at random each round and resolved by Elo — the same
-    strength-seeded approximation the outright sim already uses. Deeper-round
-    numbers are therefore approximate and must be labeled as such in the UI.
+    ``bracket_ordered`` controls rounds 2+:
+      * True  — ``r32_ties`` are in bracket order (slot 1..16) and EACH ROUND PAIRS
+        CONSECUTIVE survivors (1v2, 3v4, …): the real bracket path. P(reach QF/SF/…)
+        is then exact for the published structure.
+      * False — survivors are re-paired at random each round (strength-seeded
+        approximation, used when the bracket linkage is unknown).
+    Rounds 2+ resolve by Elo (no per-matchup model for hypothetical opponents).
 
     Returns {team_id: {"r16","qf","sf","final","champion"}} as probabilities.
     """
@@ -266,17 +270,19 @@ def simulate_bracket_reach(
         return {}
 
     for _ in range(sims):
-        # Round 1 — real ties, real advance probs.
+        # Round 1 — real ties, real advance probs. Winner of slot i stays in
+        # position i so bracket adjacency is preserved for later rounds.
         survivors = []
         for a, b, p_a in r32_ties:
             survivors.append(a if random.random() < p_a else b)
         for w in survivors:
             reach[w]["r16"] += 1
-        # Rounds 2+ — random re-pairing among survivors, Elo-resolved.
+        # Rounds 2+ — consecutive pairing (real bracket) or random (approximate).
         for rnd in later_rounds:
             if len(survivors) < 2:
                 break
-            random.shuffle(survivors)
+            if not bracket_ordered:
+                random.shuffle(survivors)
             nxt = []
             for i in range(0, len(survivors) - 1, 2):
                 a, b = survivors[i], survivors[i + 1]
@@ -609,20 +615,32 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
     # the match-model advance prob; deeper rounds strength-seeded). Stored in each
     # outright bet's inputs for the Knockout "deep run" board (no separate table).
     elo_by_id = {t["team_id"]: float(t["elo"]) for t in field}
+    # Order by bracket_slot when populated → exact bracket adjacency; otherwise
+    # fall back to the strength-seeded approximation (slot NULLs sort last).
     r32 = db.execute(
         """
         SELECT home_team_id AS h, away_team_id AS a,
-               (our_prob_home + 0.5 * our_prob_draw) AS p_home
+               (our_prob_home + 0.5 * our_prob_draw) AS p_home,
+               bracket_slot AS slot
         FROM soccer_matchups
         WHERE game_date >= CURRENT_DATE AND stage IS DISTINCT FROM 'group'
           AND home_score IS NULL                      -- unplayed only (group stage is done;
                                                       -- excludes stale completed group games)
           AND our_prob_home IS NOT NULL AND our_prob_draw IS NOT NULL
           AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+        ORDER BY bracket_slot ASC NULLS LAST
         """,
     )
     r32_ties = [(row["h"], row["a"], float(row["p_home"])) for row in r32]
-    reach = simulate_bracket_reach(r32_ties, elo_by_id, sims) if r32_ties else {}
+    # Use the real bracket only if it's complete & fully slotted (power-of-two,
+    # every tie has a slot); else the random-pairing approximation.
+    n = len(r32_ties)
+    fully_slotted = n > 0 and all(row["slot"] is not None for row in r32) and (n & (n - 1) == 0)
+    reach = (simulate_bracket_reach(r32_ties, elo_by_id, sims, bracket_ordered=fully_slotted)
+             if r32_ties else {})
+    if r32_ties:
+        logger.info("Bracket reach: %d ties, %s pairing",
+                    n, "real-bracket" if fully_slotted else "strength-seeded")
 
     with db.connect() as conn:
         for t in field:

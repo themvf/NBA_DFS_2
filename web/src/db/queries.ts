@@ -6446,6 +6446,7 @@ export type SoccerKnockoutTieRow = {
   gameId: string;
   gameDate: string | null;
   commenceTime: string | null;
+  bracketSlot: number | null;   // 1..16 top→bottom; defines the tree adjacency
   homeTeam: string;
   awayTeam: string;
   homeLogo: string | null;
@@ -6458,32 +6459,64 @@ export type SoccerKnockoutTieRow = {
   awayEdge: number;
   dnbHomeMl: number | null; // real 2-way (90-min, void-on-draw) price if posted
   dnbAwayMl: number | null;
+  // P(this team reaches each future round) from the bracket Monte-Carlo, for the
+  // tree's projected occupants. null for teams without reach data.
+  homeReach: SoccerReach | null;
+  awayReach: SoccerReach | null;
+};
+
+export type SoccerReach = {
+  r16: number; qf: number; sf: number; final: number; champion: number;
 };
 
 export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]> {
   // Group stage is complete, so all upcoming fixtures are knockout ties. Require
   // both our + market 3-way probs so an advance number can be computed for each.
+  // Reach (champion) probs come from the outright bets' reach_* inputs (one per
+  // team) so the bracket tree can show each side's deep-run chance.
   const rows = await db.execute(sql`
+    WITH latest AS (
+      SELECT model_version FROM soccer_bets
+      WHERE bet_type = 'outright_winner'
+      GROUP BY model_version ORDER BY MAX(created_at) DESC LIMIT 1
+    ),
+    reach AS (
+      SELECT subject_team_id AS team_id,
+             (inputs_json->>'reach_r16')::float AS r16,
+             (inputs_json->>'reach_qf')::float AS qf,
+             (inputs_json->>'reach_sf')::float AS sf,
+             (inputs_json->>'reach_final')::float AS final,
+             (inputs_json->>'reach_champion')::float AS champion
+      FROM soccer_bets
+      WHERE bet_type = 'outright_winner' AND status = 'pending'
+        AND model_version = (SELECT model_version FROM latest)
+        AND inputs_json->>'reach_champion' IS NOT NULL
+    )
     SELECT
       sm.game_id AS "gameId",
       sm.game_date AS "gameDate",
       sm.commence_time AS "commenceTime",
+      sm.bracket_slot AS "bracketSlot",
       h.name AS "homeTeam", a.name AS "awayTeam",
       h.logo_url AS "homeLogo", a.logo_url AS "awayLogo",
       (sm.our_prob_home + 0.5 * sm.our_prob_draw) AS "ourHomeAdvance",
       (sm.our_prob_away + 0.5 * sm.our_prob_draw) AS "ourAwayAdvance",
       (sm.vegas_prob_home + 0.5 * sm.vegas_prob_draw) AS "mktHomeAdvance",
       (sm.vegas_prob_away + 0.5 * sm.vegas_prob_draw) AS "mktAwayAdvance",
-      sm.dk_dnb_home_ml AS "dnbHomeMl", sm.dk_dnb_away_ml AS "dnbAwayMl"
+      sm.dk_dnb_home_ml AS "dnbHomeMl", sm.dk_dnb_away_ml AS "dnbAwayMl",
+      rh.r16 AS "hR16", rh.qf AS "hQf", rh.sf AS "hSf", rh.final AS "hFinal", rh.champion AS "hChamp",
+      ra.r16 AS "aR16", ra.qf AS "aQf", ra.sf AS "aSf", ra.final AS "aFinal", ra.champion AS "aChamp"
     FROM soccer_matchups sm
     JOIN soccer_teams h ON h.team_id = sm.home_team_id
     JOIN soccer_teams a ON a.team_id = sm.away_team_id
+    LEFT JOIN reach rh ON rh.team_id = sm.home_team_id
+    LEFT JOIN reach ra ON ra.team_id = sm.away_team_id
     WHERE sm.game_date >= CURRENT_DATE
       AND sm.stage IS DISTINCT FROM 'group'
       AND sm.home_score IS NULL  -- unplayed only (group stage done; drops stale completed games)
       AND sm.our_prob_home IS NOT NULL AND sm.our_prob_draw IS NOT NULL
       AND sm.vegas_prob_home IS NOT NULL AND sm.vegas_prob_draw IS NOT NULL
-    ORDER BY sm.commence_time ASC NULLS LAST, sm.id ASC
+    ORDER BY sm.bracket_slot ASC NULLS LAST, sm.commence_time ASC NULLS LAST, sm.id ASC
   `);
   return (rows.rows as Record<string, unknown>[]).map((r) => {
     const ourHomeAdvance = Number(r.ourHomeAdvance);
@@ -6494,6 +6527,7 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       gameId: String(r.gameId),
       gameDate: r.gameDate != null ? String(r.gameDate) : null,
       commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+      bracketSlot: r.bracketSlot != null ? Number(r.bracketSlot) : null,
       homeTeam: String(r.homeTeam),
       awayTeam: String(r.awayTeam),
       homeLogo: r.homeLogo ? String(r.homeLogo) : null,
@@ -6506,6 +6540,14 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       awayEdge: ourAwayAdvance - mktAwayAdvance,
       dnbHomeMl: r.dnbHomeMl != null ? Number(r.dnbHomeMl) : null,
       dnbAwayMl: r.dnbAwayMl != null ? Number(r.dnbAwayMl) : null,
+      homeReach: r.hChamp != null ? {
+        r16: Number(r.hR16), qf: Number(r.hQf), sf: Number(r.hSf),
+        final: Number(r.hFinal), champion: Number(r.hChamp),
+      } : null,
+      awayReach: r.aChamp != null ? {
+        r16: Number(r.aR16), qf: Number(r.aQf), sf: Number(r.aSf),
+        final: Number(r.aFinal), champion: Number(r.aChamp),
+      } : null,
     };
   });
 }

@@ -76,6 +76,11 @@ jobs:
             python -m ingest.soccer_schedule
           fi
 
+      - name: Populate knockout bracket slots (for the bracket tree + exact deep-run)
+        # Idempotent; sets bracket_slot on the R32 ties so soccer_futures simulates
+        # the real bracket path instead of a strength-seeded approximation.
+        run: python -m ingest.soccer_bracket
+
       - name: Rate futures bets (outright + group winner)
         run: python -m model.soccer_futures --sims 20000
 

@@ -63,10 +63,29 @@ today's date, double-counting teams (Argentina showed 165% to reach R16). Added
 knockouts) to both `getSoccerKnockoutAdvance` and the futures R32 query → clean 16
 ties / 32 teams.
 
-## V3 (still planned) — visual bracket tree
-- A fixed bracket-pairing map (R32→R16→…) so winners visually connect like the
-  screenshot, and exact deeper-round probs. Unblocks once R16 fixtures load (then
-  pairings are real instead of strength-seeded).
+## V3 (shipped 2026-06-28) — real bracket tree + exact deep-run
+The bracket-pairing map was sourced from the published bracket (FOX bracket view;
+R32→R16 confirmed by the "RD32 W#" feeder labels, QF+ by standard adjacency).
+
+- **`soccer_matchups.bracket_slot`** (1..16, top→bottom) encodes the tree: consecutive
+  slots meet each round. Populated by **`ingest/soccer_bracket.py`** (idempotent,
+  `BRACKET_ORDER` constant; runs in `refresh_soccer.yml` before futures).
+- **Exact deep-run**: `simulate_bracket_reach(..., bracket_ordered=True)` pairs
+  consecutive survivors each round (real path) instead of random re-pairing. Verified
+  invariants: Σreach = 16/8/4/2/1 per round; each half yields exactly 1.0 finalist.
+- **Visual tree** (`BracketTree` in `soccer-vegas-client.tsx`): R32 column shows the
+  real ties + advance%; R16→Final columns show the **projected occupant** of each
+  slot (argmax P(reach round) from each child subtree) + its probability; a champion
+  cell. Horizontally scrollable. Rendered from the same `getSoccerKnockoutAdvance`
+  fetch (extended with `bracket_slot` + per-team reach), so no extra query.
+
+**Fallback:** if the 16 ties aren't fully slotted (e.g. before `soccer_bracket` runs),
+the sim reverts to strength-seeded pairing and the tree hides (needs all 16 slots).
+
+## V4 (optional, later)
+- When R16 fixtures actually load with real teams, swap projected occupants for the
+  confirmed matchups, and extend `BRACKET_ORDER`/slotting to later rounds.
+- Elbow connector lines between columns for a more polished bracket look.
 
 ## Known limitations
 - 50/50 ET prior ignores that the stronger side also wins ET/pens more often.
