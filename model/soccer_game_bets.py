@@ -122,7 +122,9 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
                sm.our_prob_home, sm.our_prob_draw, sm.our_prob_away,
                sm.our_home_xg, sm.our_away_xg,
                sm.pinnacle_prob_home, sm.pinnacle_prob_draw, sm.pinnacle_prob_away,
-               sm.vegas_total, sm.over_odds, sm.under_odds, sm.our_total_pred
+               sm.vegas_total, sm.over_odds, sm.under_odds, sm.our_total_pred,
+               sm.dk_dnb_home_ml, sm.dk_dnb_away_ml,
+               sm.dnb_home_prob, sm.dnb_away_prob
         FROM soccer_matchups sm
         JOIN soccer_teams h ON h.team_id = sm.home_team_id
         JOIN soccer_teams a ON a.team_id = sm.away_team_id
@@ -245,7 +247,54 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
                     )
                     written += 1
 
-    print(f"Game bets: {written} moneyline/total bets rated across {len(fixtures)} fixtures")
+            # ── Draw No Bet (knockout rounds) ──
+            # A 2-way market: void on 90-min draw, won/lost otherwise.
+            # Our prob = our conditional win prob given the match is decided in 90 min.
+            # market_odds = DK's actual posted price (the book the user bets at).
+            # market_prob  = Pinnacle/consensus vig-free DNB reference (edge signal).
+            dk_h = fx["dk_dnb_home_ml"]
+            dk_a = fx["dk_dnb_away_ml"]
+            ref_h_dnb = fx["dnb_home_prob"]
+            ref_a_dnb = fx["dnb_away_prob"]
+            if dk_h is not None and dk_a is not None and fx["our_prob_home"] is not None and fx["our_prob_away"] is not None:
+                op_h = float(fx["our_prob_home"])
+                op_a = float(fx["our_prob_away"])
+                denom = op_h + op_a
+                if denom > 0:
+                    our_h_dnb = op_h / denom
+                    our_a_dnb = op_a / denom
+                    ref_h = float(ref_h_dnb) if ref_h_dnb is not None else None
+                    ref_a = float(ref_a_dnb) if ref_a_dnb is not None else None
+                    for label, team_id, our_p, ref_p, ml in [
+                        (fx["home"], fx["home_team_id"], our_h_dnb, ref_h, dk_h),
+                        (fx["away"], fx["away_team_id"], our_a_dnb, ref_a, dk_a),
+                    ]:
+                        anchored = _anchor(our_p, ref_p, _W_MONEYLINE_MODEL)
+                        record_bet(
+                            db,
+                            model_version=MODEL_VERSION,
+                            bet_type="draw_no_bet",
+                            scope=str(fx["game_id"]),
+                            selection_label=label,
+                            our_prob=anchored,
+                            capture_key=capture_key,
+                            market_odds=int(ml),
+                            market_prob=ref_p,
+                            matchup_id=fx["id"],
+                            subject_team_id=team_id,
+                            event_commence=commence,
+                            longshot_odds_cap=True,
+                            conn=conn,
+                            inputs={"side": "home" if label == fx["home"] else "away",
+                                    "fixture": fixture_label,
+                                    "model_prob_conditional": round(our_p, 4),
+                                    "anchored_prob": round(anchored, 4),
+                                    "dnb_ref_prob": round(ref_p, 4) if ref_p is not None else None,
+                                    "dk_odds": int(ml)},
+                        )
+                        written += 1
+
+    print(f"Game bets: {written} moneyline/total/dnb bets rated across {len(fixtures)} fixtures")
     return written
 
 

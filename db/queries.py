@@ -891,6 +891,10 @@ def upsert_soccer_matchup(
     pinnacle_prob_home: float | None = None,
     pinnacle_prob_draw: float | None = None,
     pinnacle_prob_away: float | None = None,
+    dk_dnb_home_ml: int | None = None,
+    dk_dnb_away_ml: int | None = None,
+    dnb_home_prob: float | None = None,
+    dnb_away_prob: float | None = None,
 ) -> int:
     row = db.execute_one(
         """
@@ -899,9 +903,10 @@ def upsert_soccer_matchup(
             vegas_total, home_ml, draw_ml, away_ml,
             vegas_prob_home, vegas_prob_draw, vegas_prob_away,
             home_implied, away_implied, over_odds, under_odds,
-            pinnacle_prob_home, pinnacle_prob_draw, pinnacle_prob_away
+            pinnacle_prob_home, pinnacle_prob_draw, pinnacle_prob_away,
+            dk_dnb_home_ml, dk_dnb_away_ml, dnb_home_prob, dnb_away_prob
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
             game_id              = COALESCE(EXCLUDED.game_id, soccer_matchups.game_id),
             commence_time        = COALESCE(EXCLUDED.commence_time, soccer_matchups.commence_time),
@@ -920,6 +925,10 @@ def upsert_soccer_matchup(
             pinnacle_prob_home   = COALESCE(EXCLUDED.pinnacle_prob_home, soccer_matchups.pinnacle_prob_home),
             pinnacle_prob_draw   = COALESCE(EXCLUDED.pinnacle_prob_draw, soccer_matchups.pinnacle_prob_draw),
             pinnacle_prob_away   = COALESCE(EXCLUDED.pinnacle_prob_away, soccer_matchups.pinnacle_prob_away),
+            dk_dnb_home_ml       = COALESCE(EXCLUDED.dk_dnb_home_ml, soccer_matchups.dk_dnb_home_ml),
+            dk_dnb_away_ml       = COALESCE(EXCLUDED.dk_dnb_away_ml, soccer_matchups.dk_dnb_away_ml),
+            dnb_home_prob        = COALESCE(EXCLUDED.dnb_home_prob, soccer_matchups.dnb_home_prob),
+            dnb_away_prob        = COALESCE(EXCLUDED.dnb_away_prob, soccer_matchups.dnb_away_prob),
             fetched_at           = NOW()
         RETURNING id
         """,
@@ -929,6 +938,7 @@ def upsert_soccer_matchup(
             vegas_prob_home, vegas_prob_draw, vegas_prob_away,
             home_implied, away_implied, over_odds, under_odds,
             pinnacle_prob_home, pinnacle_prob_draw, pinnacle_prob_away,
+            dk_dnb_home_ml, dk_dnb_away_ml, dnb_home_prob, dnb_away_prob,
         ),
     )
     return row["id"] if row else 0

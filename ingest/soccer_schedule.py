@@ -309,6 +309,8 @@ def fetch_schedule_and_odds(
 
     upserted = 0
     skipped_date = 0
+    # Collect (game_id, home_name, away_name) for the DNB second pass.
+    dnb_queue: list[tuple[str, str, str]] = []
     for ev in events:
         commence_iso = ev.get("commence_time")
         if not commence_iso:
@@ -402,6 +404,9 @@ def fetch_schedule_and_odds(
         )
         if mid:
             upserted += 1
+            game_id = ev.get("id")
+            if game_id:
+                dnb_queue.append((game_id, home_name, away_name))
 
     msg = f"Soccer: {upserted} fixtures upserted with Vegas lines"
     if game_date:
@@ -409,7 +414,101 @@ def fetch_schedule_and_odds(
         if skipped_date:
             msg += f" ({skipped_date} other-date fixtures skipped)"
     print(msg)
+
+    # Second pass: fetch draw_no_bet per-event (specialty market, not in bulk endpoint).
+    dnb_updated = _fetch_and_store_dnb(db, api_key, dnb_queue)
+    if dnb_updated:
+        print(f"Soccer: {dnb_updated}/{len(dnb_queue)} fixtures updated with DNB odds (DK + Pinnacle)")
+
     return upserted
+
+
+def _fetch_and_store_dnb(
+    db: DatabaseManager,
+    api_key: str,
+    queue: list[tuple[str, str, str]],
+) -> int:
+    """Fetch draw_no_bet market per event and write DK + Pinnacle prices to soccer_matchups.
+
+    The bulk /odds/ endpoint rejects draw_no_bet — must use /events/{id}/odds per game.
+    DK's price is stored for EV (the book the user bets at); Pinnacle/consensus vig-free
+    is stored as the edge reference.
+    """
+    import time
+    updated = 0
+    for game_id, home_name, away_name in queue:
+        try:
+            r = requests.get(
+                f"{ODDS_BASE}/sports/{SPORT_KEY}/events/{game_id}/odds",
+                params={
+                    "apiKey": api_key,
+                    "regions": REGIONS,
+                    "markets": "draw_no_bet",
+                    "oddsFormat": "american",
+                },
+                timeout=15,
+            )
+            if not r.ok:
+                logger.debug("DNB fetch failed for %s: %s", game_id, r.status_code)
+                continue
+            data = r.json()
+        except requests.RequestException as exc:
+            logger.warning("DNB request error for %s: %s", game_id, exc)
+            continue
+
+        dk_h: int | None = None
+        dk_a: int | None = None
+        pin_h: int | None = None
+        pin_a: int | None = None
+        dnb_home_prices: list[int] = []
+        dnb_away_prices: list[int] = []
+
+        for bm in data.get("bookmakers") or []:
+            bm_key = bm.get("key", "")
+            for mkt in bm.get("markets", []):
+                if mkt["key"] != "draw_no_bet":
+                    continue
+                h_out = next((o for o in mkt.get("outcomes", []) if o.get("name") == home_name), None)
+                a_out = next((o for o in mkt.get("outcomes", []) if o.get("name") == away_name), None)
+                if not h_out or not a_out:
+                    continue
+                hp, ap = int(h_out["price"]), int(a_out["price"])
+                dnb_home_prices.append(hp)
+                dnb_away_prices.append(ap)
+                if bm_key == "draftkings":
+                    dk_h, dk_a = hp, ap
+                if bm_key == "pinnacle":
+                    pin_h, pin_a = hp, ap
+
+        if not dnb_home_prices:
+            continue
+
+        # Vig-free reference: Pinnacle preferred, else consensus 2-way.
+        ref_h = pin_h if pin_h is not None else _consensus_american(dnb_home_prices)
+        ref_a = pin_a if pin_a is not None else _consensus_american(dnb_away_prices)
+        dnb_home_prob: float | None = None
+        dnb_away_prob: float | None = None
+        if ref_h is not None and ref_a is not None:
+            rh, ra = _ml_to_raw(ref_h), _ml_to_raw(ref_a)
+            tot = rh + ra
+            if tot > 0:
+                dnb_home_prob = round(rh / tot, 4)
+                dnb_away_prob = round(ra / tot, 4)
+
+        db.execute(
+            """
+            UPDATE soccer_matchups SET
+                dk_dnb_home_ml = %s, dk_dnb_away_ml = %s,
+                dnb_home_prob  = %s, dnb_away_prob  = %s,
+                fetched_at     = NOW()
+            WHERE game_id = %s
+            """,
+            (dk_h, dk_a, dnb_home_prob, dnb_away_prob, game_id),
+        )
+        updated += 1
+        time.sleep(0.15)  # ~6 req/s — well within Odds API rate limits
+
+    return updated
 
 
 if __name__ == "__main__":

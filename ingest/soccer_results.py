@@ -204,7 +204,7 @@ def settle_game_bets(db: DatabaseManager) -> int:
           AND EXISTS (
             SELECT 1 FROM soccer_bets b
             WHERE b.scope = sm.game_id AND b.status = 'pending'
-              AND b.bet_type IN ('moneyline', 'total')
+              AND b.bet_type IN ('moneyline', 'total', 'draw_no_bet')
           )
         """,
     )
@@ -224,7 +224,7 @@ def settle_game_bets(db: DatabaseManager) -> int:
         bets = db.execute(
             "SELECT id, bet_type, selection_label, subject_team_id, inputs_json "
             "FROM soccer_bets WHERE scope = %s AND status = 'pending' "
-            "AND bet_type IN ('moneyline', 'total')",
+            "AND bet_type IN ('moneyline', 'total', 'draw_no_bet')",
             (gid,),
         )
         for b in bets:
@@ -233,6 +233,14 @@ def settle_game_bets(db: DatabaseManager) -> int:
             if b["bet_type"] == "moneyline":
                 side = (b["inputs_json"] or {}).get("side")
                 status = "won" if side == ml_winner else "lost"
+            elif b["bet_type"] == "draw_no_bet":
+                # Void on 90-min draw; won/lost on decisive 90-min result.
+                if hs == as_:
+                    status = "void"
+                    detail = f"Draw {hs}-{as_} (DNB push)"
+                else:
+                    side = (b["inputs_json"] or {}).get("side")
+                    status = "won" if side == ml_winner else "lost"
             else:  # total
                 line = (b["inputs_json"] or {}).get("line")
                 if line is None:

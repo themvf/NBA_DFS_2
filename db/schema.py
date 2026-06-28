@@ -1601,4 +1601,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_soccer_bets_scope ON soccer_bets(scope)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_bets_settle ON soccer_bets(status, stars)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_bet_snapshots_bet ON soccer_bet_snapshots(bet_id, captured_at DESC)",
+    # 2026-06-28: Draw No Bet market for knockout rounds — 2-way (void on draw).
+    # dk_dnb_*_ml  = DraftKings' posted price (used for EV — the book the user bets at).
+    # dnb_*_prob   = Pinnacle vig-free reference (or consensus 2-way if Pinnacle missing).
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS dk_dnb_home_ml INTEGER",
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS dk_dnb_away_ml INTEGER",
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS dnb_home_prob DOUBLE PRECISION",
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS dnb_away_prob DOUBLE PRECISION",
 ]

@@ -86,6 +86,7 @@ const fmtRoi = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
 const BET_TYPE_LABEL: Record<string, string> = {
   moneyline: "Moneyline",
   total: "Over/Under",
+  draw_no_bet: "Win (DNB)",
   first_scorer: "First Scorer",
   outright_winner: "Outright Winner",
   group_winner: "Group Winner",
@@ -154,6 +155,7 @@ function StatCard({ label, value, sub, color }: {
 const BET_TYPE_ICON: Record<string, string> = {
   moneyline: "🎯",
   total: "📊",
+  draw_no_bet: "2️⃣",
   first_scorer: "🥅",
   outright_winner: "🏆",
   group_winner: "🗂️",
@@ -898,6 +900,7 @@ function ResultsPanel({
                 <option value="all">All</option>
                 <option value="moneyline">Moneyline</option>
                 <option value="total">Over/Under</option>
+                <option value="draw_no_bet">Win (DNB)</option>
                 <option value="outright_winner">Outright</option>
                 <option value="group_winner">Group Winner</option>
                 <option value="first_scorer">First Scorer</option>
@@ -1335,6 +1338,7 @@ function BetsPanel({ bets }: { bets: SoccerBetRow[] }) {
               <option value="all">All</option>
               <option value="moneyline">Moneyline</option>
               <option value="total">Over/Under</option>
+              <option value="draw_no_bet">Win (DNB)</option>
               <option value="outright_winner">Outright</option>
               <option value="group_winner">Group winner</option>
               <option value="first_scorer">First scorer</option>
