@@ -25,6 +25,8 @@ import type {
   SoccerCalibCutRow,
   SoccerClvTrendRow,
   SoccerSettlementIssue,
+  SoccerKnockoutTieRow,
+  SoccerTitleOddsRow,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -1873,10 +1875,156 @@ function ScorersPanel({ rows }: { rows: SoccerPlayerStatsRow[] }) {
 }
 
 // ── Tab nav ───────────────────────────────────────────────────────────────────
-type Tab = "bets" | "first_scorer" | "scorers" | "results" | "fixtures";
+// ── Knockout bracket panel ────────────────────────────────────────────────────
+// Per-tie advance probability (our model vs market) + the title-odds board.
+// "To advance" isn't a market the feed carries, so market advance% is DERIVED
+// from the vig-free 3-way (P(win 90) + 0.5·P(draw), a 50/50 ET/pens prior) — an
+// analytical lens, not a bettable line. The real bettable price is DNB (shown).
+function AdvanceRow({
+  team, logo, ourAdvance, mktAdvance, edge, dnb,
+}: {
+  team: string; logo: string | null;
+  ourAdvance: number; mktAdvance: number; edge: number; dnb: number | null;
+}) {
+  const favored = ourAdvance >= 0.5;
+  return (
+    <div className="flex items-center gap-2 py-1.5">
+      <div className="flex w-32 shrink-0 items-center gap-1.5 sm:w-40">
+        {logo
+          ? <img src={logo} alt="" className="h-4 w-4 rounded-sm object-contain" />
+          : <span className="inline-block h-4 w-4 rounded-sm bg-muted" />}
+        <span className={`truncate text-sm ${favored ? "font-semibold" : ""}`}>{team}</span>
+      </div>
+      {/* our advance% bar */}
+      <div className="relative h-4 flex-1 overflow-hidden rounded bg-muted/40">
+        <div
+          className={`h-full ${favored ? "bg-emerald-500/70" : "bg-sky-500/50"}`}
+          style={{ width: `${Math.round(ourAdvance * 100)}%` }}
+        />
+        <span className="absolute inset-y-0 left-1.5 flex items-center text-[11px] font-medium tabular-nums">
+          {fmtPct1(ourAdvance)}
+        </span>
+      </div>
+      <div className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+        mkt {Math.round(mktAdvance * 100)}%
+      </div>
+      <div className={`w-12 shrink-0 text-right text-[11px] font-semibold tabular-nums ${
+        edge > 0.02 ? "text-emerald-400" : edge < -0.02 ? "text-rose-400" : "text-muted-foreground"
+      }`}>
+        {edge >= 0 ? "+" : ""}{(edge * 100).toFixed(1)}
+      </div>
+      <div className="hidden w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground sm:block">
+        {dnb != null ? fmtMl(dnb) : "—"}
+      </div>
+    </div>
+  );
+}
+
+function KnockoutPanel({
+  ties, titleOdds,
+}: {
+  ties: SoccerKnockoutTieRow[];
+  titleOdds: SoccerTitleOddsRow[];
+}) {
+  if (ties.length === 0 && titleOdds.length === 0) {
+    return (
+      <section className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+        No upcoming knockout ties found. Load a knockout-round slate to populate this view.
+      </section>
+    );
+  }
+  return (
+    <section className="space-y-5">
+      <p className="rounded-lg border bg-card p-3 text-xs text-muted-foreground">
+        <strong className="text-foreground">Advance %</strong> = P(win in 90′) + ½·P(draw)
+        — a 50/50 extra-time/penalties prior. <strong className="text-foreground">mkt</strong> is the
+        same number derived from the vig-free 3-way line (there is no dedicated
+        &ldquo;to advance&rdquo; market in the feed), so it&rsquo;s an analytical comparison, not a
+        bettable price. The real bettable 2-way line is <strong className="text-foreground">DNB</strong>
+        {" "}(Draw No Bet, 90′). Edge = our − market, in points.
+      </p>
+
+      {ties.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Who advances — our model vs market
+          </h3>
+          <div className="space-y-2">
+            {ties.map((t) => {
+              const maxEdge = Math.max(Math.abs(t.homeEdge), Math.abs(t.awayEdge));
+              const flag = maxEdge >= 0.04;
+              return (
+                <div key={t.gameId} className={`rounded-lg border bg-card p-2.5 ${flag ? "border-amber-500/40" : ""}`}>
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>{fmtKickoff(t.commenceTime)}</span>
+                    {flag && <span className="text-amber-400">⚡ {(maxEdge * 100).toFixed(1)}pt edge</span>}
+                  </div>
+                  <AdvanceRow team={t.homeTeam} logo={t.homeLogo}
+                    ourAdvance={t.ourHomeAdvance} mktAdvance={t.mktHomeAdvance}
+                    edge={t.homeEdge} dnb={t.dnbHomeMl} />
+                  <AdvanceRow team={t.awayTeam} logo={t.awayLogo}
+                    ourAdvance={t.ourAwayAdvance} mktAdvance={t.mktAwayAdvance}
+                    edge={t.awayEdge} dnb={t.dnbAwayMl} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {titleOdds.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Title odds — our Monte-Carlo vs the outright market
+          </h3>
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full min-w-[420px] text-sm">
+              <thead>
+                <tr className="border-b text-xs text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-medium">Team</th>
+                  <th className="px-2 py-2 text-center font-medium">Our P(win)</th>
+                  <th className="px-2 py-2 text-center font-medium">Market</th>
+                  <th className="px-2 py-2 text-center font-medium">Edge</th>
+                  <th className="px-2 py-2 text-center font-medium">Odds</th>
+                  <th className="px-2 py-2 text-center font-medium">Rating</th>
+                </tr>
+              </thead>
+              <tbody>
+                {titleOdds.map((r) => (
+                  <tr key={r.team} className="border-b last:border-0">
+                    <td className="px-3 py-2 font-medium">{r.team}</td>
+                    <td className="px-2 py-2 text-center tabular-nums">{fmtPct1(r.ourProb)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">
+                      {r.marketProb != null ? fmtPct1(r.marketProb) : "—"}
+                    </td>
+                    <td className={`px-2 py-2 text-center tabular-nums font-medium ${
+                      r.edge == null ? "text-muted-foreground"
+                        : r.edge > 0 ? "text-emerald-400" : "text-rose-400"
+                    }`}>
+                      {r.edge != null ? `${r.edge >= 0 ? "+" : ""}${(r.edge * 100).toFixed(1)}` : "—"}
+                    </td>
+                    <td className="px-2 py-2 text-center tabular-nums">{fmtMl(r.marketOdds)}</td>
+                    <td className="px-2 py-2 text-center"><Stars n={r.stars} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            P(win) is from the tournament Monte-Carlo (Elo-driven bivariate Poisson). Edge in points
+            vs the vig-free outright market. Eliminated teams drop off as the sim re-runs.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type Tab = "bets" | "knockout" | "first_scorer" | "scorers" | "results" | "fixtures";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "bets", label: "⭐ Bets" },
+  { id: "knockout", label: "🏆 Knockout" },
   { id: "first_scorer", label: "🥅 First Scorer" },
   { id: "scorers", label: "⚽ Scorers" },
   { id: "results", label: "📈 Results" },
@@ -1899,6 +2047,8 @@ export default function SoccerVegasClient({
   fscorerNearMisses,
   topPickAccuracy,
   settlementHealth,
+  knockoutTies,
+  titleOdds,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -1915,6 +2065,8 @@ export default function SoccerVegasClient({
   fscorerNearMisses: SoccerFirstScorerNearMissRow[];
   topPickAccuracy: SoccerTopPickRow[];
   settlementHealth: SoccerSettlementIssue[];
+  knockoutTies: SoccerKnockoutTieRow[];
+  titleOdds: SoccerTitleOddsRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -1974,6 +2126,7 @@ export default function SoccerVegasClient({
 
       {/* Tab content */}
       {tab === "bets" && <BetsPanel bets={bets} />}
+      {tab === "knockout" && <KnockoutPanel ties={knockoutTies} titleOdds={titleOdds} />}
       {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} matchGoals={matchGoals} />}
       {tab === "scorers" && <ScorersPanel rows={playerStats} />}
       {tab === "results" && (

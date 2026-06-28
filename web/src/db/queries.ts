@@ -6436,6 +6436,118 @@ export async function getSoccerBetBacktestByType(): Promise<SoccerBacktestTypeRo
   });
 }
 
+// ── Knockout bracket — advance probabilities (our model vs market) ─────────────
+// "To advance" is NOT a market The Odds API surfaces, so the market advance prob
+// is DERIVED from the vig-free 3-way: P(advance) = P(win 90) + 0.5·P(draw), the
+// same 50/50 extra-time/penalties prior we use for our own number. This is an
+// analytical lens, not a bettable line — the actionable bet stays moneyline/DNB
+// (dnbHomeMl/dnbAwayMl carry the real 2-way price where DK posts it).
+export type SoccerKnockoutTieRow = {
+  gameId: string;
+  gameDate: string | null;
+  commenceTime: string | null;
+  homeTeam: string;
+  awayTeam: string;
+  homeLogo: string | null;
+  awayLogo: string | null;
+  ourHomeAdvance: number;   // our P(home advances)
+  ourAwayAdvance: number;
+  mktHomeAdvance: number;   // derived-from-3-way P(home advances)
+  mktAwayAdvance: number;
+  homeEdge: number;         // ourHomeAdvance − mktHomeAdvance
+  awayEdge: number;
+  dnbHomeMl: number | null; // real 2-way (90-min, void-on-draw) price if posted
+  dnbAwayMl: number | null;
+};
+
+export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]> {
+  // Group stage is complete, so all upcoming fixtures are knockout ties. Require
+  // both our + market 3-way probs so an advance number can be computed for each.
+  const rows = await db.execute(sql`
+    SELECT
+      sm.game_id AS "gameId",
+      sm.game_date AS "gameDate",
+      sm.commence_time AS "commenceTime",
+      h.name AS "homeTeam", a.name AS "awayTeam",
+      h.logo_url AS "homeLogo", a.logo_url AS "awayLogo",
+      (sm.our_prob_home + 0.5 * sm.our_prob_draw) AS "ourHomeAdvance",
+      (sm.our_prob_away + 0.5 * sm.our_prob_draw) AS "ourAwayAdvance",
+      (sm.vegas_prob_home + 0.5 * sm.vegas_prob_draw) AS "mktHomeAdvance",
+      (sm.vegas_prob_away + 0.5 * sm.vegas_prob_draw) AS "mktAwayAdvance",
+      sm.dk_dnb_home_ml AS "dnbHomeMl", sm.dk_dnb_away_ml AS "dnbAwayMl"
+    FROM soccer_matchups sm
+    JOIN soccer_teams h ON h.team_id = sm.home_team_id
+    JOIN soccer_teams a ON a.team_id = sm.away_team_id
+    WHERE sm.game_date >= CURRENT_DATE
+      AND sm.stage IS DISTINCT FROM 'group'
+      AND sm.our_prob_home IS NOT NULL AND sm.our_prob_draw IS NOT NULL
+      AND sm.vegas_prob_home IS NOT NULL AND sm.vegas_prob_draw IS NOT NULL
+    ORDER BY sm.commence_time ASC NULLS LAST, sm.id ASC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const ourHomeAdvance = Number(r.ourHomeAdvance);
+    const ourAwayAdvance = Number(r.ourAwayAdvance);
+    const mktHomeAdvance = Number(r.mktHomeAdvance);
+    const mktAwayAdvance = Number(r.mktAwayAdvance);
+    return {
+      gameId: String(r.gameId),
+      gameDate: r.gameDate != null ? String(r.gameDate) : null,
+      commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+      homeTeam: String(r.homeTeam),
+      awayTeam: String(r.awayTeam),
+      homeLogo: r.homeLogo ? String(r.homeLogo) : null,
+      awayLogo: r.awayLogo ? String(r.awayLogo) : null,
+      ourHomeAdvance,
+      ourAwayAdvance,
+      mktHomeAdvance,
+      mktAwayAdvance,
+      homeEdge: ourHomeAdvance - mktHomeAdvance,
+      awayEdge: ourAwayAdvance - mktAwayAdvance,
+      dnbHomeMl: r.dnbHomeMl != null ? Number(r.dnbHomeMl) : null,
+      dnbAwayMl: r.dnbAwayMl != null ? Number(r.dnbAwayMl) : null,
+    };
+  });
+}
+
+// ── Title odds — our Monte-Carlo P(win tournament) vs the outright market ──────
+export type SoccerTitleOddsRow = {
+  team: string;
+  ourProb: number;          // our P(win tournament) from the futures sim
+  marketProb: number | null; // vig-free outright market prob
+  marketOdds: number | null;
+  edge: number | null;      // ourProb − marketProb
+  stars: number;
+};
+
+export async function getSoccerTitleOdds(limit = 16): Promise<SoccerTitleOddsRow[]> {
+  // Pending outright_winner bets (one per team) from the latest futures model.
+  // Eliminated teams fall toward our_prob≈0 after each re-sim, so ordering by
+  // our_prob and capping at `limit` naturally surfaces the live contenders.
+  const rows = await db.execute(sql`
+    WITH latest AS (
+      SELECT model_version FROM soccer_bets
+      WHERE bet_type = 'outright_winner'
+      GROUP BY model_version ORDER BY MAX(created_at) DESC LIMIT 1
+    )
+    SELECT b.selection_label AS team, b.our_prob AS "ourProb",
+           b.market_prob AS "marketProb", b.market_odds AS "marketOdds",
+           b.edge, b.stars
+    FROM soccer_bets b
+    WHERE b.bet_type = 'outright_winner' AND b.status = 'pending'
+      AND b.model_version = (SELECT model_version FROM latest)
+    ORDER BY b.our_prob DESC NULLS LAST
+    LIMIT ${limit}
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    team: String(r.team),
+    ourProb: Number(r.ourProb),
+    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    edge: r.edge != null ? Number(r.edge) : null,
+    stars: Number(r.stars),
+  }));
+}
+
 // ── Closing Line Value (CLV) ──────────────────────────────────────────────────
 // The sharpest small-sample read on whether our bets actually have edge: did the
 // market move TOWARD our side between when we first rated the bet (open) and the
