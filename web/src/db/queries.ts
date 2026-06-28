@@ -6459,6 +6459,8 @@ export type SoccerKnockoutTieRow = {
   awayEdge: number;
   dnbHomeMl: number | null; // real 2-way (90-min, void-on-draw) price if posted
   dnbAwayMl: number | null;
+  homeElo: number | null;   // Elo rating (the strength input behind the model)
+  awayElo: number | null;
   // P(this team reaches each future round) from the bracket Monte-Carlo, for the
   // tree's projected occupants. null for teams without reach data.
   homeReach: SoccerReach | null;
@@ -6504,6 +6506,7 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       (sm.vegas_prob_home + 0.5 * sm.vegas_prob_draw) AS "mktHomeAdvance",
       (sm.vegas_prob_away + 0.5 * sm.vegas_prob_draw) AS "mktAwayAdvance",
       sm.dk_dnb_home_ml AS "dnbHomeMl", sm.dk_dnb_away_ml AS "dnbAwayMl",
+      reh.elo AS "homeElo", rea.elo AS "awayElo",
       rh.r16 AS "hR16", rh.qf AS "hQf", rh.sf AS "hSf", rh.final AS "hFinal", rh.champion AS "hChamp",
       ra.r16 AS "aR16", ra.qf AS "aQf", ra.sf AS "aSf", ra.final AS "aFinal", ra.champion AS "aChamp"
     FROM soccer_matchups sm
@@ -6511,6 +6514,8 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
     JOIN soccer_teams a ON a.team_id = sm.away_team_id
     LEFT JOIN reach rh ON rh.team_id = sm.home_team_id
     LEFT JOIN reach ra ON ra.team_id = sm.away_team_id
+    LEFT JOIN soccer_team_ratings reh ON reh.team_id = sm.home_team_id
+    LEFT JOIN soccer_team_ratings rea ON rea.team_id = sm.away_team_id
     WHERE sm.game_date >= CURRENT_DATE
       AND sm.stage IS DISTINCT FROM 'group'
       AND sm.home_score IS NULL  -- unplayed only (group stage done; drops stale completed games)
@@ -6540,6 +6545,8 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       awayEdge: ourAwayAdvance - mktAwayAdvance,
       dnbHomeMl: r.dnbHomeMl != null ? Number(r.dnbHomeMl) : null,
       dnbAwayMl: r.dnbAwayMl != null ? Number(r.dnbAwayMl) : null,
+      homeElo: r.homeElo != null ? Number(r.homeElo) : null,
+      awayElo: r.awayElo != null ? Number(r.awayElo) : null,
       homeReach: r.hChamp != null ? {
         r16: Number(r.hR16), qf: Number(r.hQf), sf: Number(r.hSf),
         final: Number(r.hFinal), champion: Number(r.hChamp),

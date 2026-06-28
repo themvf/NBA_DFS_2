@@ -2016,19 +2016,25 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
 // from the vig-free 3-way (P(win 90) + 0.5·P(draw), a 50/50 ET/pens prior) — an
 // analytical lens, not a bettable line. The real bettable price is DNB (shown).
 function AdvanceRow({
-  team, logo, ourAdvance, mktAdvance, edge, dnb,
+  team, logo, elo, ourAdvance, mktAdvance, edge, dnb,
 }: {
-  team: string; logo: string | null;
+  team: string; logo: string | null; elo: number | null;
   ourAdvance: number; mktAdvance: number; edge: number; dnb: number | null;
 }) {
   const favored = ourAdvance >= 0.5;
   return (
     <div className="flex items-center gap-2 py-1.5">
-      <div className="flex w-32 shrink-0 items-center gap-1.5 sm:w-40">
+      <div className="flex w-32 shrink-0 items-center gap-1.5 sm:w-44">
         {logo
           ? <img src={logo} alt="" className="h-4 w-4 rounded-sm object-contain" />
           : <span className="inline-block h-4 w-4 rounded-sm bg-muted" />}
         <span className={`truncate text-sm ${favored ? "font-semibold" : ""}`}>{team}</span>
+        {elo != null && (
+          <span className="shrink-0 rounded bg-muted/60 px-1 text-[10px] font-medium tabular-nums text-muted-foreground"
+            title="Our Elo rating">
+            {Math.round(elo)}
+          </span>
+        )}
       </div>
       {/* our advance% bar */}
       <div className="relative h-4 flex-1 overflow-hidden rounded bg-muted/40">
@@ -2096,10 +2102,10 @@ function KnockoutPanel({
                     <span>{fmtKickoff(t.commenceTime)}</span>
                     {flag && <span className="text-amber-400">⚡ {(maxEdge * 100).toFixed(1)}pt edge</span>}
                   </div>
-                  <AdvanceRow team={t.homeTeam} logo={t.homeLogo}
+                  <AdvanceRow team={t.homeTeam} logo={t.homeLogo} elo={t.homeElo}
                     ourAdvance={t.ourHomeAdvance} mktAdvance={t.mktHomeAdvance}
                     edge={t.homeEdge} dnb={t.dnbHomeMl} />
-                  <AdvanceRow team={t.awayTeam} logo={t.awayLogo}
+                  <AdvanceRow team={t.awayTeam} logo={t.awayLogo} elo={t.awayElo}
                     ourAdvance={t.ourAwayAdvance} mktAdvance={t.mktAwayAdvance}
                     edge={t.awayEdge} dnb={t.dnbAwayMl} />
                 </div>
