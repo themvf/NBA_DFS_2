@@ -131,6 +131,17 @@ ORDER BY "betType", b.stars DESC
 - `void` excluded (matches current behavior; DNB/totals pushes don't count as
   won/lost). Documented in the panel footer.
 
+**Totals display-clamp (added during build):** historical *settled* totals rated
+3–4★ by the old overfit model are `status='won'/'lost'` (not `'pending'`), so the
+model-side 2★ cap + pending-only re-rate cannot reach them — they'd render as 3–4★
+rows in the Over/Under tab, contradicting its hardcoded "capped at 2★" verdict. Fix:
+clamp totals stars to ≤2 **in the query** via a `graded` CTE
+(`CASE WHEN bet_type='total' THEN LEAST(stars,2) ELSE stars END`). Display-only —
+the raw ledger keeps original stars for audit. This also de-pollutes the `'all'`
+rollup's high tiers (totals contributions fold into ≤2★). Consequence: the `'all'`
+rollup no longer matches the old query in tiers where totals appeared at 3–4★ —
+**intended** (that pollution is the bug). Conservation of total `n` still holds.
+
 **Decision — model_version scoping:** do **not** filter by version. Show full
 history, but expose `modelVersions[]` per cell so a tier rated under a retired
 model is visible (e.g. totals 3★ → `["gameline-v1","gameline-v2"]`). Rationale:

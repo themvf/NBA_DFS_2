@@ -14,7 +14,7 @@ import {
 import type {
   SoccerVegasMatchupRow,
   SoccerBetRow,
-  SoccerBacktestRow,
+  SoccerBacktestTypeRow,
   SoccerFirstScorerRow,
   SoccerMatchGoalRow,
   SoccerPlayerStatsRow,
@@ -159,7 +159,37 @@ const BET_TYPE_ICON: Record<string, string> = {
   first_scorer: "🥅",
   outright_winner: "🏆",
   group_winner: "🗂️",
+  all: "📋",
 };
+
+// Deterministic per-type verdict for the backtest panel. Derived from the type's
+// 3★+ market-bet tiers (the bets we'd actually place). `total` is HARDCODED to a
+// no-edge verdict regardless of its small settled sample — a lucky positive ROI
+// must never re-create the false impression the walk-forward disproved
+// (spec §8 decision 5; memory soccer-totals-no-edge).
+type Verdict = { tone: "good" | "warn" | "muted"; text: string };
+function backtestVerdict(betType: string, rows: SoccerBacktestTypeRow[]): Verdict {
+  if (betType === "total")
+    return { tone: "warn", text: "No out-of-sample edge — capped at 2★ (walk-forward)" };
+  const placed = rows.filter((r) => r.stars >= 3 && r.marketBets > 0);
+  const n = placed.reduce((s, r) => s + r.marketBets, 0);
+  if (n === 0) return { tone: "muted", text: "No graded plays at 3★+ yet" };
+  // Aggregate ROI + realized-vs-expected across the placeable tiers.
+  const wExp = placed.reduce((s, r) => s + r.expectedWinRate * r.n, 0);
+  const wReal = placed.reduce((s, r) => s + r.realizedWinRate * r.n, 0);
+  const totN = placed.reduce((s, r) => s + r.n, 0);
+  const exp = totN > 0 ? wExp / totN : 0;
+  const real = totN > 0 ? wReal / totN : 0;
+  const roiVals = placed.filter((r) => r.roi != null);
+  const roi = roiVals.length
+    ? roiVals.reduce((s, r) => s + (r.roi as number) * r.marketBets, 0) / n
+    : null;
+  const positive = roi != null && roi > 0 && real >= exp;
+  if (n < 10) return { tone: "muted", text: `Insufficient sample (n=${n})` };
+  if (positive && n >= 20) return { tone: "good", text: `Edge holds (n=${n})` };
+  if (positive) return { tone: "warn", text: `Leaning positive — small sample (n=${n})` };
+  return { tone: "warn", text: `Underperforming (n=${n})` };
+}
 
 function BetTypeCard({ betType, won, lost, voided, sumExpected, nExpected, marketBets, profit }: {
   betType: string; won: number; lost: number; voided: number;
@@ -522,7 +552,7 @@ function ResultsPanel({
   settlementHealth,
 }: {
   bets: SoccerBetRow[];
-  backtest: SoccerBacktestRow[];
+  backtest: SoccerBacktestTypeRow[];
   clv: SoccerClvRow[];
   calibCuts: SoccerCalibCutRow[];
   clvTrend: SoccerClvTrendRow[];
@@ -536,6 +566,10 @@ function ResultsPanel({
   const [tStatus, setTStatus] = useState("all");
   const [tMinStars, setTMinStars] = useState(1);
   const [tSearch, setTSearch] = useState("");
+  // Backtest panel: which bet type's calibration to show. Default 'moneyline' —
+  // the market that carries edge — so the panel opens on the meaningful view
+  // rather than the blended 'all' rollup (spec §8 decision 2).
+  const [btType, setBtType] = useState("moneyline");
   const [sort, setSort] = useState<{ col: string; dir: SortDir }>({ col: "gameDate", dir: "desc" });
 
   function toggleSort(col: string) {
@@ -695,7 +729,9 @@ function ResultsPanel({
         <div className="h-4 w-px bg-border hidden sm:block" />
         <div>
           <span className="text-muted-foreground text-xs">Star tiers</span>
-          <span className="ml-1.5 font-bold tabular-nums">{backtest.length}</span>
+          <span className="ml-1.5 font-bold tabular-nums">
+            {backtest.filter((r) => r.betType === "all").length}
+          </span>
         </div>
       </div>
 
@@ -1006,11 +1042,49 @@ function ResultsPanel({
       <DiagnosticsPanel cuts={calibCuts} clvTrend={clvTrend} />
 
       {/* By star rating */}
-      {backtest.length > 0 && (
+      {backtest.length > 0 && (() => {
+        // Bet types present in the settled data (exclude the 'all' rollup from the
+        // selector — it's reachable via its own pill). Ordered: markets we care
+        // about first, then the rollup.
+        const present = Array.from(new Set(backtest.map((r) => r.betType)));
+        const ORDER = ["moneyline", "draw_no_bet", "total", "first_scorer",
+                       "outright_winner", "group_winner", "all"];
+        const types = ORDER.filter((t) => present.includes(t));
+        // Fall back to 'all' if the default (moneyline) has no settled rows yet.
+        const activeType = types.includes(btType) ? btType : (types[0] ?? "all");
+        const rows = backtest.filter((r) => r.betType === activeType)
+          .sort((a, b) => b.stars - a.stars);
+        const verdict = backtestVerdict(activeType, rows);
+        const versions = Array.from(new Set(rows.flatMap((r) => r.modelVersions)))
+          .map((v) => v.replace(/^(gameline-|firstscorer-|futures-)/, ""));
+        const vTone = verdict.tone === "good" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+          : verdict.tone === "warn" ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+          : "border-border bg-muted/30 text-muted-foreground";
+        return (
         <div>
           <h3 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
             Results by star rating
           </h3>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {types.map((t) => (
+              <button
+                key={t}
+                onClick={() => setBtType(t)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                  t === activeType ? "border-foreground bg-foreground text-background"
+                    : "border-border bg-background text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {BET_TYPE_ICON[t] ?? "📌"} {t === "all" ? "All (rollup)" : (BET_TYPE_LABEL[t] ?? t)}
+              </button>
+            ))}
+          </div>
+          <div className={`mb-2 flex items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium ${vTone}`}>
+            <span>{verdict.text}</span>
+            {versions.length > 0 && (
+              <span className="font-normal opacity-70">model: {versions.join(", ")}</span>
+            )}
+          </div>
           <div className="overflow-x-auto rounded-lg border bg-card">
             <table className="w-full min-w-[500px] text-sm">
               <thead>
@@ -1025,9 +1099,9 @@ function ResultsPanel({
                 </tr>
               </thead>
               <tbody>
-                {backtest.map((r) => {
+                {rows.map((r) => {
                   const beat = r.realizedWinRate >= r.expectedWinRate;
-                  const brier = r.realizedWinRate - r.expectedWinRate;
+                  const calibGap = r.realizedWinRate - r.expectedWinRate;
                   return (
                     <tr key={r.stars} className="border-b last:border-0">
                       <td className="px-3 py-2"><Stars n={r.stars} /></td>
@@ -1051,11 +1125,11 @@ function ResultsPanel({
                       <td className="px-2 py-2 text-xs">
                         {beat ? (
                           <span className="text-emerald-400">
-                            +{fmtPct1(brier)} above expected ✓
+                            +{fmtPct1(calibGap)} above expected ✓
                           </span>
                         ) : (
                           <span className="text-rose-400">
-                            {fmtPct1(brier)} below expected
+                            {fmtPct1(calibGap)} below expected
                           </span>
                         )}
                       </td>
@@ -1066,12 +1140,11 @@ function ResultsPanel({
             </table>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            A trustworthy 4–5★ tier has Realized ≥ Expected and positive ROI. The first-scorer
-            pool dominates settled count but are all 1★; moneyline/totals carry the meaningful
-            signal at higher tiers.
+            ROI is the profitability metric; win% vs expected is the calibration check. Voids excluded.
           </p>
         </div>
-      )}
+        );
+      })()}
 
       <FirstScorerAnalysis
         tiers={fscorerTiers}
@@ -1831,7 +1904,7 @@ export default function SoccerVegasClient({
   matchups: SoccerVegasMatchupRow[];
   bets: SoccerBetRow[];
   settledBets: SoccerBetRow[];
-  backtest: SoccerBacktestRow[];
+  backtest: SoccerBacktestTypeRow[];
   clv: SoccerClvRow[];
   calibCuts: SoccerCalibCutRow[];
   clvTrend: SoccerClvTrendRow[];

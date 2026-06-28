@@ -6322,6 +6322,22 @@ export type SoccerBacktestRow = {
   marketBets: number;
 };
 
+// Per-(bet_type, stars) calibration so each betting model is judged on its own —
+// the aggregate stars ladder blended e.g. no-edge totals with moneyline, creating
+// a false impression for model evaluation. `betType='all'` rows are the rollup and
+// are numerically identical to getSoccerBetBacktest() per star tier.
+// See docs/specs/soccer-backtest-by-bettype.md.
+export type SoccerBacktestTypeRow = {
+  betType: string;          // bet_type or 'all' (GROUPING SETS rollup)
+  stars: number;
+  n: number;
+  expectedWinRate: number;
+  realizedWinRate: number;
+  roi: number | null;
+  marketBets: number;
+  modelVersions: string[];  // distinct model_versions contributing (provenance)
+};
+
 // ── Settlement health ─────────────────────────────────────────────────────────
 // A wrong/stuck settlement is invisible until someone eyeballs the dashboard —
 // exactly how the wrong-void bug went unnoticed. This surfaces two failure
@@ -6404,6 +6420,58 @@ export async function getSoccerBetBacktest(): Promise<SoccerBacktestRow[]> {
       realizedWinRate: Number(r.realizedWinRate),
       roi: marketBets > 0 ? profit / marketBets : null,
       marketBets,
+    };
+  });
+}
+
+export async function getSoccerBetBacktestByType(): Promise<SoccerBacktestTypeRow[]> {
+  // GROUPING SETS returns per-(type,stars) rows AND a (stars)-only rollup in one
+  // trip; the rollup rows have bet_type = NULL → mapped to 'all'. void excluded
+  // (a DNB/totals push is neither won nor lost). All history, no version filter —
+  // modelVersions[] gives provenance per cell (see spec §8 decision 1).
+  //
+  // Totals stars are CLAMPED to ≤2 at display time. Totals have no out-of-sample
+  // edge (walk-forward; memory soccer-totals-no-edge) and are capped at 2★ going
+  // forward, but historical SETTLED totals rated 3–4★ by the old overfit model
+  // are status='won'/'lost' (not 'pending'), so the model-side cap + pending-only
+  // re-rate can't reach them. Clamping here keeps the backtest consistent with the
+  // current policy and de-pollutes the rollup's high tiers, without mutating the
+  // raw ledger (original stars preserved for audit). Non-totals are unchanged.
+  const rows = await db.execute(sql`
+    WITH graded AS (
+      SELECT
+        b.bet_type,
+        CASE WHEN b.bet_type = 'total' THEN LEAST(b.stars, 2) ELSE b.stars END AS stars,
+        b.our_prob, b.status, b.market_decimal, b.model_version
+      FROM soccer_bets b
+      WHERE b.status IN ('won', 'lost')
+    )
+    SELECT
+      COALESCE(g.bet_type, 'all') AS "betType",
+      g.stars,
+      COUNT(*) AS n,
+      AVG(g.our_prob) AS "expectedWinRate",
+      AVG(CASE WHEN g.status = 'won' THEN 1.0 ELSE 0.0 END) AS "realizedWinRate",
+      COUNT(*) FILTER (WHERE g.market_decimal IS NOT NULL) AS "marketBets",
+      SUM(CASE WHEN g.market_decimal IS NULL THEN 0
+               WHEN g.status = 'won' THEN g.market_decimal - 1 ELSE -1 END) AS "profitUnits",
+      ARRAY_AGG(DISTINCT g.model_version) AS "modelVersions"
+    FROM graded g
+    GROUP BY GROUPING SETS ((g.bet_type, g.stars), (g.stars))
+    ORDER BY "betType", g.stars DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const marketBets = Number(r.marketBets);
+    const profit = r.profitUnits != null ? Number(r.profitUnits) : 0;
+    return {
+      betType: String(r.betType),
+      stars: Number(r.stars),
+      n: Number(r.n),
+      expectedWinRate: Number(r.expectedWinRate),
+      realizedWinRate: Number(r.realizedWinRate),
+      roi: marketBets > 0 ? profit / marketBets : null,
+      marketBets,
+      modelVersions: ((r.modelVersions as string[]) ?? []).filter(Boolean),
     };
   });
 }
