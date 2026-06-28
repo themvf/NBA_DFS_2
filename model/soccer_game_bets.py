@@ -21,6 +21,21 @@ gameline-v3 changes vs v2:
     Poisson baseline).
   * Lopsided-match uplift bumped 1.12 → 1.14 (compounds with hydration factor:
     lopsided games now see ~1.06 × 1.14 ≈ 1.21× raw prediction).
+
+2026-06-28 revision (honesty fix — totals have no out-of-sample edge):
+  A walk-forward backtest (correction set only from games BEFORE each match)
+  showed the totals edge is an in-sample illusion. NO bias/uplift damping
+  factor (0.0 → 1.0) clears the −110 breakeven (0.524); even blindly betting
+  the Over hits only 0.522. The earlier 54%/61% "edge" came from scoring the
+  finished model on the games it was tuned on. Pinnacle — the sharpest book —
+  sits dead on consensus (~2.5) while actuals run ~3.0, i.e. the +0.34 "gap"
+  is positive variance over 68 games, not a predictable signal. Therefore:
+    * the hydration + lopsided uplifts (overfit constants) are REMOVED — totals
+      now use the raw bivariate-Poisson λ;
+    * totals are hard-capped at 2★ (_TOTALS_MAX_STARS) so we never surface a
+      market we can't beat as a "play". Moneyline / DNB are unchanged.
+  Kept under MODEL_VERSION gameline-v3 (re-rates pending rows in place; the
+  backtest is version-agnostic, so bumping would only duplicate pending bets).
 """
 
 from __future__ import annotations
@@ -52,18 +67,14 @@ _W_DRAW_HIGH_DISP   = 0.10   # lopsided (|xG gap| > 1.5): 90% Pinnacle
 _W_DRAW_MED_DISP    = 0.20   # moderate (|xG gap| 0.8–1.5): 80% Pinnacle
 _W_DRAW_NORMAL      = 0.35   # evenly matched: normal weight
 
-# Global hydration-break uplift (v3). The 2026 WC uses mandatory cooling breaks
-# at ~30' and ~75' in high heat-stress conditions. These reduce second-half
-# fatigue, sustaining attacking intensity into the 70-90' window and pushing
-# actual totals above what the Poisson (trained on historical internationals)
-# predicts. Applied to ALL fixtures — even close games benefit from the breaks.
-_HYDRATION_BREAK_UPLIFT = 1.06  # +6% goals across the board
-
-# Additional uplift for lopsided matches on top of the hydration factor. A heavy
-# favourite presses relentlessly against a weak side; combined with the break
-# recovery, blowouts run ~14% above raw prediction (bumped from 1.12).
-_TOTAL_UPLIFT_DISPARITY = 1.5   # |home_xg - away_xg| threshold
-_TOTAL_UPLIFT_FACTOR    = 1.14  # multiply our_total_pred by this (was 1.12)
+# Totals star cap (2026-06-28). Walk-forward shows totals have no out-of-sample
+# edge (see module docstring) — no damping factor clears the −110 breakeven, and
+# even always-Over is a coinflip. We still RATE totals (for record-keeping and
+# CLV tracking) but cap them at 2★ ("neutral — no demonstrated edge") so the
+# Bets panel never advertises a totals play we can't actually beat. The overfit
+# hydration/lopsided uplifts were removed in the same revision; totals now use
+# the raw bivariate-Poisson λ from soccer_matchups.our_total_pred.
+_TOTALS_MAX_STARS = 2
 
 
 def _anchor(model_p: float, market_p: float | None, w_model: float) -> float:
@@ -202,17 +213,15 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
                 written += 1
 
             # ── Totals (O/U) ──
-            # Two uplifts applied in sequence:
-            #   1. Global hydration-break uplift (+6%) — all WC fixtures.
-            #   2. Lopsided-match uplift (+14%) — when xG disparity > 1.5.
+            # Raw bivariate-Poisson λ (the overfit hydration/lopsided uplifts were
+            # removed 2026-06-28 — see docstring). Totals are rated for the record
+            # and CLV tracking but hard-capped at 2★: walk-forward shows no
+            # out-of-sample edge, so a play-grade star would be a false signal.
             line = fx["vegas_total"]
             lam_raw = fx["our_total_pred"]
             over_odds, under_odds = fx["over_odds"], fx["under_odds"]
             if line is not None and lam_raw is not None and over_odds is not None and under_odds is not None:
-                lam = float(lam_raw) * _HYDRATION_BREAK_UPLIFT
-                uplift_applied = xg_disp > _TOTAL_UPLIFT_DISPARITY
-                if uplift_applied:
-                    lam *= _TOTAL_UPLIFT_FACTOR
+                lam = float(lam_raw)
                 p_over, p_under = _over_under_probs(float(line), lam)
                 raw_o, raw_u = american_to_prob(int(over_odds)), american_to_prob(int(under_odds))
                 vf_over = raw_o / (raw_o + raw_u) if (raw_o + raw_u) > 0 else None
@@ -235,14 +244,13 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
                         matchup_id=fx["id"],
                         event_commence=commence,
                         longshot_odds_cap=True,
+                        max_stars=_TOTALS_MAX_STARS,
                         conn=conn,
                         inputs={"line": float(line), "lambda": round(lam, 4),
-                                "lambda_raw": round(float(lam_raw), 4),
-                                "hydration_uplift": _HYDRATION_BREAK_UPLIFT,
-                                "xg_disp": round(xg_disp, 2),
-                                "uplift_applied": uplift_applied,
                                 "model_p": round(float(our_p), 4),
                                 "anchored_p": round(anchored, 4),
+                                "stars_capped_at": _TOTALS_MAX_STARS,
+                                "edge_status": "no_walkforward_edge",
                                 "fixture": fixture_label},
                     )
                     written += 1

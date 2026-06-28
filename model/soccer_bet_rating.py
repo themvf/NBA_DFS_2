@@ -77,12 +77,18 @@ def rate_market(
     decimal_odds: float,
     ref_prob: float,
     longshot_odds_cap: bool = False,
+    max_stars: int | None = None,
 ) -> tuple[int, float, float]:
     """Return (stars, ev, edge) for a bet with a market line.
 
     ref_prob is the vig-free market probability; edge = our_prob − ref_prob.
     EV is expected ROI per unit staked.  When longshot_odds_cap is set, long
     prices have their star ceiling lowered (efficient single-game markets).
+
+    ``max_stars`` hard-caps the rating for a whole market we've shown we cannot
+    beat out-of-sample (e.g. totals — walk-forward hit rate sits below the −110
+    breakeven at every damping factor, so any "play"-grade star would be a false
+    edge).  The cap is applied last, after all tier/longshot logic.
     """
     ev = our_prob * decimal_odds - 1.0
     edge = our_prob - ref_prob
@@ -94,10 +100,12 @@ def rate_market(
     if our_prob < _LONGSHOT_PROB:
         stars = min(stars, _LONGSHOT_CAP)
     if longshot_odds_cap:
-        for min_dec, max_stars in _ODDS_CAP_TIERS:
+        for min_dec, max_stars_cap in _ODDS_CAP_TIERS:
             if decimal_odds >= min_dec:
-                stars = min(stars, max_stars)
+                stars = min(stars, max_stars_cap)
                 break
+    if max_stars is not None:
+        stars = min(stars, max_stars)
     return stars, ev, edge
 
 
@@ -139,6 +147,7 @@ def record_bet(
     event_commence: datetime | None = None,
     inputs: dict | None = None,
     longshot_odds_cap: bool = False,
+    max_stars: int | None = None,
     conn=None,
 ) -> int | None:
     """Rate and persist one bet recommendation.  Returns the bet id, or None if
@@ -150,11 +159,13 @@ def record_bet(
     """
     if market_odds is not None and market_prob is not None:
         decimal_odds = american_to_decimal(market_odds)
-        stars, ev, edge = rate_market(our_prob, decimal_odds, market_prob, longshot_odds_cap)
+        stars, ev, edge = rate_market(our_prob, decimal_odds, market_prob, longshot_odds_cap, max_stars)
     else:
         decimal_odds = None
         ref = baseline_prob if baseline_prob is not None else 0.0
         stars, ev, edge = rate_no_market(our_prob, ref)
+        if max_stars is not None:
+            stars = min(stars, max_stars)
 
     now = datetime.now(timezone.utc)
     locked = event_commence is not None and now >= event_commence
