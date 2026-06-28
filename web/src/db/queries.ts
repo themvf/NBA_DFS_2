@@ -6559,6 +6559,30 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
   });
 }
 
+// Freshness for the Knockout tab. refresh_soccer.yml runs odds → bracket → futures
+// in one sequence every ~3h, so the latest of (knockout odds fetched_at, futures
+// sim run) is a faithful "as of" — it flags when a refresh has stalled.
+export type SoccerKnockoutAsOf = {
+  oddsFetchedAt: string | null;  // last odds/prediction refresh on the knockout ties
+  modelRunAt: string | null;     // last futures sim (reach/champion numbers)
+};
+
+export async function getSoccerKnockoutAsOf(): Promise<SoccerKnockoutAsOf> {
+  const r = await db.execute(sql`
+    SELECT
+      (SELECT MAX(fetched_at) FROM soccer_matchups
+        WHERE bracket_slot IS NOT NULL AND home_score IS NULL) AS "oddsFetchedAt",
+      -- updated_at, not created_at: record_bet upserts in place, so created_at is
+      -- frozen at the bet's first appearance; updated_at tracks the latest sim run.
+      (SELECT MAX(updated_at) FROM soccer_bets WHERE bet_type = 'outright_winner') AS "modelRunAt"
+  `);
+  const row = (r.rows[0] ?? {}) as Record<string, unknown>;
+  return {
+    oddsFetchedAt: row.oddsFetchedAt != null ? String(row.oddsFetchedAt) : null,
+    modelRunAt: row.modelRunAt != null ? String(row.modelRunAt) : null,
+  };
+}
+
 // ── Deep run — per-round reach probabilities from the bracket Monte-Carlo ──────
 // P(reach round) per team, computed by model/soccer_futures.simulate_bracket_reach
 // and stashed in each outright bet's inputs_json. Round 1 (reachR16) is exact —

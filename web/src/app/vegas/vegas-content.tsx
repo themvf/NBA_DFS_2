@@ -24,6 +24,7 @@ import {
   getSoccerSettledBets,
   getSoccerBetBacktestByType,
   getSoccerKnockoutAdvance,
+  getSoccerKnockoutAsOf,
   getSoccerTitleOdds,
   getSoccerClv,
   getSoccerCalibrationCuts,
@@ -46,7 +47,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
   if (sport === "soccer") {
     const [matchups, bets, settledBets, backtest, firstScorers, matchGoals, playerStats,
            fscorerTiers, fscorerNearMisses, topPickAccuracy, clv, calibCuts, clvTrend,
-           settlementHealth, knockoutTies, titleOdds] = await Promise.all([
+           settlementHealth, knockoutTies, titleOdds, knockoutAsOf] = await Promise.all([
       getSoccerVegasMatchups(date),
       getSoccerBets(1, 150),
       getSoccerSettledBets(),
@@ -63,6 +64,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getSoccerSettlementHealth(),
       getSoccerKnockoutAdvance(),
       getSoccerTitleOdds(),
+      getSoccerKnockoutAsOf(),
     ]);
     return (
       <SoccerVegasClient
@@ -82,6 +84,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
         settlementHealth={settlementHealth}
         knockoutTies={knockoutTies}
         titleOdds={titleOdds}
+        knockoutAsOf={knockoutAsOf}
         queryDate={date ?? null}
       />
     );

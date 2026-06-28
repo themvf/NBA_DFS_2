@@ -28,6 +28,7 @@ import type {
   SoccerKnockoutTieRow,
   SoccerReach,
   SoccerDeepRunRow,
+  SoccerKnockoutAsOf,
 } from "@/db/queries";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -2061,11 +2062,41 @@ function AdvanceRow({
   );
 }
 
+// "As of" freshness line. Shows when the model + odds were last refreshed, and
+// turns amber if the most recent refresh is stale (refresh_soccer runs ~every 3h,
+// so >6h means a run was missed).
+function fmtAsOf(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function AsOfLine({ asOf }: { asOf: SoccerKnockoutAsOf }) {
+  const times = [asOf.modelRunAt, asOf.oddsFetchedAt]
+    .filter(Boolean)
+    .map((t) => new Date(t as string).getTime())
+    .filter((t) => !Number.isNaN(t));
+  if (times.length === 0) return null;
+  const newest = Math.max(...times);
+  const ageHrs = (Date.now() - newest) / 3.6e6;
+  const stale = ageHrs > 6;  // cron is ~every 3h
+  return (
+    <div className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] ${stale ? "text-amber-400" : "text-muted-foreground"}`}>
+      <span>{stale ? "⚠️ " : ""}Model as of {fmtAsOf(asOf.modelRunAt)}</span>
+      <span>·</span>
+      <span>Odds as of {fmtAsOf(asOf.oddsFetchedAt)}</span>
+      {stale && <span>· refresh may have stalled ({Math.round(ageHrs)}h ago)</span>}
+    </div>
+  );
+}
+
 function KnockoutPanel({
-  ties, titleOdds,
+  ties, titleOdds, asOf,
 }: {
   ties: SoccerKnockoutTieRow[];
   titleOdds: SoccerDeepRunRow[];
+  asOf: SoccerKnockoutAsOf;
 }) {
   if (ties.length === 0 && titleOdds.length === 0) {
     return (
@@ -2076,6 +2107,7 @@ function KnockoutPanel({
   }
   return (
     <section className="space-y-5">
+      <AsOfLine asOf={asOf} />
       <BracketTree ties={ties} />
 
       <p className="rounded-lg border bg-card p-3 text-xs text-muted-foreground">
@@ -2200,6 +2232,7 @@ export default function SoccerVegasClient({
   settlementHealth,
   knockoutTies,
   titleOdds,
+  knockoutAsOf,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -2218,6 +2251,7 @@ export default function SoccerVegasClient({
   settlementHealth: SoccerSettlementIssue[];
   knockoutTies: SoccerKnockoutTieRow[];
   titleOdds: SoccerDeepRunRow[];
+  knockoutAsOf: SoccerKnockoutAsOf;
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -2277,7 +2311,7 @@ export default function SoccerVegasClient({
 
       {/* Tab content */}
       {tab === "bets" && <BetsPanel bets={bets} />}
-      {tab === "knockout" && <KnockoutPanel ties={knockoutTies} titleOdds={titleOdds} />}
+      {tab === "knockout" && <KnockoutPanel ties={knockoutTies} titleOdds={titleOdds} asOf={knockoutAsOf} />}
       {tab === "first_scorer" && <FirstScorerPanel rows={firstScorers} matchGoals={matchGoals} />}
       {tab === "scorers" && <ScorersPanel rows={playerStats} />}
       {tab === "results" && (
