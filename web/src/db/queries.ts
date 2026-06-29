@@ -6465,6 +6465,8 @@ export type SoccerKnockoutTieRow = {
   // tree's projected occupants. null for teams without reach data.
   homeReach: SoccerReach | null;
   awayReach: SoccerReach | null;
+  homeScore: number | null; // null = not yet played; non-null = final score (90+ET)
+  awayScore: number | null;
 };
 
 export type SoccerReach = {
@@ -6472,10 +6474,10 @@ export type SoccerReach = {
 };
 
 export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]> {
-  // Group stage is complete, so all upcoming fixtures are knockout ties. Require
-  // both our + market 3-way probs so an advance number can be computed for each.
-  // Reach (champion) probs come from the outright bets' reach_* inputs (one per
-  // team) so the bracket tree can show each side's deep-run chance.
+  // Returns ALL knockout ties (completed and upcoming) from the R32 start date.
+  // Completed ties (home_score IS NOT NULL) are always included so the bracket
+  // tree shows settled results with winner trophy. Upcoming ties require probs.
+  // Reach comes from the latest outright-winner sim run (inputs_json).
   const rows = await db.execute(sql`
     WITH latest AS (
       SELECT model_version FROM soccer_bets
@@ -6501,14 +6503,16 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       sm.bracket_slot AS "bracketSlot",
       h.name AS "homeTeam", a.name AS "awayTeam",
       h.logo_url AS "homeLogo", a.logo_url AS "awayLogo",
-      (sm.our_prob_home + 0.5 * sm.our_prob_draw) AS "ourHomeAdvance",
-      (sm.our_prob_away + 0.5 * sm.our_prob_draw) AS "ourAwayAdvance",
-      (sm.vegas_prob_home + 0.5 * sm.vegas_prob_draw) AS "mktHomeAdvance",
-      (sm.vegas_prob_away + 0.5 * sm.vegas_prob_draw) AS "mktAwayAdvance",
+      COALESCE(sm.our_prob_home + 0.5 * sm.our_prob_draw, 0) AS "ourHomeAdvance",
+      COALESCE(sm.our_prob_away + 0.5 * sm.our_prob_draw, 0) AS "ourAwayAdvance",
+      COALESCE(sm.vegas_prob_home + 0.5 * sm.vegas_prob_draw, 0) AS "mktHomeAdvance",
+      COALESCE(sm.vegas_prob_away + 0.5 * sm.vegas_prob_draw, 0) AS "mktAwayAdvance",
       sm.dk_dnb_home_ml AS "dnbHomeMl", sm.dk_dnb_away_ml AS "dnbAwayMl",
       reh.elo AS "homeElo", rea.elo AS "awayElo",
       rh.r16 AS "hR16", rh.qf AS "hQf", rh.sf AS "hSf", rh.final AS "hFinal", rh.champion AS "hChamp",
-      ra.r16 AS "aR16", ra.qf AS "aQf", ra.sf AS "aSf", ra.final AS "aFinal", ra.champion AS "aChamp"
+      ra.r16 AS "aR16", ra.qf AS "aQf", ra.sf AS "aSf", ra.final AS "aFinal", ra.champion AS "aChamp",
+      sm.home_score AS "homeScore",
+      sm.away_score AS "awayScore"
     FROM soccer_matchups sm
     JOIN soccer_teams h ON h.team_id = sm.home_team_id
     JOIN soccer_teams a ON a.team_id = sm.away_team_id
@@ -6516,11 +6520,13 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
     LEFT JOIN reach ra ON ra.team_id = sm.away_team_id
     LEFT JOIN soccer_team_ratings reh ON reh.team_id = sm.home_team_id
     LEFT JOIN soccer_team_ratings rea ON rea.team_id = sm.away_team_id
-    WHERE sm.game_date >= CURRENT_DATE
+    WHERE sm.game_date >= '2026-06-29'
       AND sm.stage IS DISTINCT FROM 'group'
-      AND sm.home_score IS NULL  -- unplayed only (group stage done; drops stale completed games)
-      AND sm.our_prob_home IS NOT NULL AND sm.our_prob_draw IS NOT NULL
-      AND sm.vegas_prob_home IS NOT NULL AND sm.vegas_prob_draw IS NOT NULL
+      AND (
+        sm.home_score IS NOT NULL
+        OR (sm.our_prob_home IS NOT NULL AND sm.our_prob_draw IS NOT NULL
+            AND sm.vegas_prob_home IS NOT NULL AND sm.vegas_prob_draw IS NOT NULL)
+      )
     ORDER BY sm.bracket_slot ASC NULLS LAST, sm.commence_time ASC NULLS LAST, sm.id ASC
   `);
   return (rows.rows as Record<string, unknown>[]).map((r) => {
@@ -6555,6 +6561,8 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
         r16: Number(r.aR16), qf: Number(r.aQf), sf: Number(r.aSf),
         final: Number(r.aFinal), champion: Number(r.aChamp),
       } : null,
+      homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+      awayScore: r.awayScore != null ? Number(r.awayScore) : null,
     };
   });
 }
@@ -6571,7 +6579,7 @@ export async function getSoccerKnockoutAsOf(): Promise<SoccerKnockoutAsOf> {
   const r = await db.execute(sql`
     SELECT
       (SELECT MAX(fetched_at) FROM soccer_matchups
-        WHERE bracket_slot IS NOT NULL AND home_score IS NULL) AS "oddsFetchedAt",
+        WHERE bracket_slot IS NOT NULL) AS "oddsFetchedAt",
       -- updated_at, not created_at: record_bet upserts in place, so created_at is
       -- frozen at the bet's first appearance; updated_at tracks the latest sim run.
       (SELECT MAX(updated_at) FROM soccer_bets WHERE bet_type = 'outright_winner') AS "modelRunAt"

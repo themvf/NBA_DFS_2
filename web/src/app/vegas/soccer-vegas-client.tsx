@@ -1948,26 +1948,35 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
           <div className={colClass}>
             <div className="mb-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[0]}</div>
             {slotted.map((t) => {
-              const homeFav = t.ourHomeAdvance >= t.ourAwayAdvance;
+              const done = t.homeScore != null && t.awayScore != null;
+              const homeWon = done && t.homeScore! > t.awayScore!;
+              const awayWon = done && t.awayScore! > t.homeScore!;
+              const homeFav = !done && t.ourHomeAdvance >= t.ourAwayAdvance;
               return (
-                <div key={t.gameId} className="rounded border bg-background p-1">
+                <div key={t.gameId} className={`rounded border bg-background p-1 ${done ? "opacity-80" : ""}`}>
                   <div className="flex items-center justify-between gap-1">
-                    <span className={`flex items-center gap-1 truncate ${homeFav ? "font-semibold" : ""}`}>
+                    <span className={`flex items-center gap-1 truncate ${homeWon ? "font-semibold" : homeFav ? "font-semibold" : ""}`}>
                       {t.homeLogo
                         ? <img src={t.homeLogo} alt="" className="h-3.5 w-3.5 rounded-sm object-contain" />
                         : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
-                      <span className="truncate text-[11px]">{t.homeTeam}</span>
+                      <span className={`truncate text-[11px] ${done && !homeWon ? "text-muted-foreground" : ""}`}>{t.homeTeam}</span>
+                      {homeWon && <span className="text-[10px]">🏆</span>}
                     </span>
-                    <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{Math.round(t.ourHomeAdvance * 100)}%</span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                      {done ? t.homeScore : `${Math.round(t.ourHomeAdvance * 100)}%`}
+                    </span>
                   </div>
                   <div className="mt-0.5 flex items-center justify-between gap-1">
-                    <span className={`flex items-center gap-1 truncate ${!homeFav ? "font-semibold" : ""}`}>
+                    <span className={`flex items-center gap-1 truncate ${awayWon ? "font-semibold" : !homeFav ? "font-semibold" : ""}`}>
                       {t.awayLogo
                         ? <img src={t.awayLogo} alt="" className="h-3.5 w-3.5 rounded-sm object-contain" />
                         : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
-                      <span className="truncate text-[11px]">{t.awayTeam}</span>
+                      <span className={`truncate text-[11px] ${done && !awayWon ? "text-muted-foreground" : ""}`}>{t.awayTeam}</span>
+                      {awayWon && <span className="text-[10px]">🏆</span>}
                     </span>
-                    <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{Math.round(t.ourAwayAdvance * 100)}%</span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                      {done ? t.awayScore : `${Math.round(t.ourAwayAdvance * 100)}%`}
+                    </span>
                   </div>
                 </div>
               );
@@ -2017,47 +2026,66 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
 // from the vig-free 3-way (P(win 90) + 0.5·P(draw), a 50/50 ET/pens prior) — an
 // analytical lens, not a bettable line. The real bettable price is DNB (shown).
 function AdvanceRow({
-  team, logo, elo, ourAdvance, mktAdvance, edge, dnb,
+  team, logo, elo, ourAdvance, mktAdvance, edge, dnb, won,
 }: {
   team: string; logo: string | null; elo: number | null;
   ourAdvance: number; mktAdvance: number; edge: number; dnb: number | null;
+  won: boolean | null; // true=advanced, false=eliminated, null=not played yet
 }) {
   const favored = ourAdvance >= 0.5;
+  const eliminated = won === false;
   return (
-    <div className="flex items-center gap-2 py-1.5">
+    <div className={`flex items-center gap-2 py-1.5 ${eliminated ? "opacity-50" : ""}`}>
       <div className="flex w-32 shrink-0 items-center gap-1.5 sm:w-44">
         {logo
           ? <img src={logo} alt="" className="h-4 w-4 rounded-sm object-contain" />
           : <span className="inline-block h-4 w-4 rounded-sm bg-muted" />}
-        <span className={`truncate text-sm ${favored ? "font-semibold" : ""}`}>{team}</span>
-        {elo != null && (
+        <span className={`truncate text-sm ${(favored || won === true) ? "font-semibold" : ""}`}>{team}</span>
+        {won === true && <span className="shrink-0 text-xs">🏆</span>}
+        {elo != null && won == null && (
           <span className="shrink-0 rounded bg-muted/60 px-1 text-[10px] font-medium tabular-nums text-muted-foreground"
             title="Our Elo rating">
             {Math.round(elo)}
           </span>
         )}
       </div>
-      {/* our advance% bar */}
-      <div className="relative h-4 flex-1 overflow-hidden rounded bg-muted/40">
-        <div
-          className={`h-full ${favored ? "bg-emerald-500/70" : "bg-sky-500/50"}`}
-          style={{ width: `${Math.round(ourAdvance * 100)}%` }}
-        />
-        <span className="absolute inset-y-0 left-1.5 flex items-center text-[11px] font-medium tabular-nums">
-          {fmtPct1(ourAdvance)}
-        </span>
-      </div>
-      <div className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-        mkt {Math.round(mktAdvance * 100)}%
-      </div>
-      <div className={`w-12 shrink-0 text-right text-[11px] font-semibold tabular-nums ${
-        edge > 0.02 ? "text-emerald-400" : edge < -0.02 ? "text-rose-400" : "text-muted-foreground"
-      }`}>
-        {edge >= 0 ? "+" : ""}{(edge * 100).toFixed(1)}
-      </div>
-      <div className="hidden w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground sm:block">
-        {dnb != null ? fmtMl(dnb) : "—"}
-      </div>
+      {won != null ? (
+        /* completed — show outcome badge instead of advance bar */
+        <div className="flex flex-1 items-center gap-2">
+          <span className={`rounded px-2 py-0.5 text-[11px] font-medium ${
+            won ? "bg-emerald-500/20 text-emerald-400" : "bg-muted/40 text-muted-foreground"
+          }`}>
+            {won ? "Advanced" : "Eliminated"}
+          </span>
+          <span className="text-[11px] tabular-nums text-muted-foreground">
+            pre-game: {fmtPct1(ourAdvance)}
+          </span>
+        </div>
+      ) : (
+        <>
+          {/* our advance% bar */}
+          <div className="relative h-4 flex-1 overflow-hidden rounded bg-muted/40">
+            <div
+              className={`h-full ${favored ? "bg-emerald-500/70" : "bg-sky-500/50"}`}
+              style={{ width: `${Math.round(ourAdvance * 100)}%` }}
+            />
+            <span className="absolute inset-y-0 left-1.5 flex items-center text-[11px] font-medium tabular-nums">
+              {fmtPct1(ourAdvance)}
+            </span>
+          </div>
+          <div className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+            mkt {Math.round(mktAdvance * 100)}%
+          </div>
+          <div className={`w-12 shrink-0 text-right text-[11px] font-semibold tabular-nums ${
+            edge > 0.02 ? "text-emerald-400" : edge < -0.02 ? "text-rose-400" : "text-muted-foreground"
+          }`}>
+            {edge >= 0 ? "+" : ""}{(edge * 100).toFixed(1)}
+          </div>
+          <div className="hidden w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground sm:block">
+            {dnb != null ? fmtMl(dnb) : "—"}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2126,20 +2154,24 @@ function KnockoutPanel({
           </h3>
           <div className="space-y-2">
             {ties.map((t) => {
+              const done = t.homeScore != null && t.awayScore != null;
+              const homeWon = done ? t.homeScore! > t.awayScore! : null;
+              const awayWon = done ? t.awayScore! > t.homeScore! : null;
               const maxEdge = Math.max(Math.abs(t.homeEdge), Math.abs(t.awayEdge));
-              const flag = maxEdge >= 0.04;
+              const flag = !done && maxEdge >= 0.04;
               return (
-                <div key={t.gameId} className={`rounded-lg border bg-card p-2.5 ${flag ? "border-amber-500/40" : ""}`}>
+                <div key={t.gameId} className={`rounded-lg border bg-card p-2.5 ${flag ? "border-amber-500/40" : done ? "border-muted/50" : ""}`}>
                   <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>{fmtKickoff(t.commenceTime)}</span>
+                    <span>{done ? `FT ${t.homeScore}–${t.awayScore}` : fmtKickoff(t.commenceTime)}</span>
                     {flag && <span className="text-amber-400">⚡ {(maxEdge * 100).toFixed(1)}pt edge</span>}
+                    {done && <span className="text-xs text-muted-foreground">Final</span>}
                   </div>
                   <AdvanceRow team={t.homeTeam} logo={t.homeLogo} elo={t.homeElo}
                     ourAdvance={t.ourHomeAdvance} mktAdvance={t.mktHomeAdvance}
-                    edge={t.homeEdge} dnb={t.dnbHomeMl} />
+                    edge={t.homeEdge} dnb={t.dnbHomeMl} won={homeWon} />
                   <AdvanceRow team={t.awayTeam} logo={t.awayLogo} elo={t.awayElo}
                     ourAdvance={t.ourAwayAdvance} mktAdvance={t.mktAwayAdvance}
-                    edge={t.awayEdge} dnb={t.dnbAwayMl} />
+                    edge={t.awayEdge} dnb={t.dnbAwayMl} won={awayWon} />
                 </div>
               );
             })}
