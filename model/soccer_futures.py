@@ -241,17 +241,20 @@ def simulate_outright(field: list[dict], sims: int) -> dict[int, float]:
 
 
 def simulate_bracket_reach(
-    r32_ties: list[tuple[int, int, float]],
+    r32_ties: list[tuple],
     elo: dict[int, float],
     sims: int,
     bracket_ordered: bool = False,
 ) -> dict[int, dict[str, float]]:
     """Per-team P(reach each knockout round) from the ACTUAL Round-of-32 ties.
 
-    ``r32_ties`` is the first round: ``(team_a_id, team_b_id, p_a_advance)`` where
-    p_a_advance is the match model's advance prob (P(win 90′) + ½·P(draw)) — so
-    P(reach R16) equals the V1 advance% exactly. Round 1 always uses these real
-    pairings/probs.
+    ``r32_ties`` is the first round: ``(team_a_id, team_b_id, p_a_advance)`` or
+    ``(team_a_id, team_b_id, p_a_advance, decided_winner_id)`` where p_a_advance
+    is the match model's advance prob (P(win 90′) + ½·P(draw)) — so P(reach R16)
+    equals the V1 advance% exactly. Round 1 always uses these real pairings/probs.
+    When ``decided_winner_id`` is provided (a completed knockout tie), that team is
+    treated as the certain survivor instead of being sampled — so already-advanced
+    teams (e.g. a penalty-shootout winner) keep their bracket path.
 
     ``bracket_ordered`` controls rounds 2+:
       * True  — ``r32_ties`` are in bracket order (slot 1..16) and EACH ROUND PAIRS
@@ -272,9 +275,15 @@ def simulate_bracket_reach(
     for _ in range(sims):
         # Round 1 — real ties, real advance probs. Winner of slot i stays in
         # position i so bracket adjacency is preserved for later rounds.
+        # A decided tie (4th tuple element) contributes its known winner.
         survivors = []
-        for a, b, p_a in r32_ties:
-            survivors.append(a if random.random() < p_a else b)
+        for tie in r32_ties:
+            a, b, p_a = tie[0], tie[1], tie[2]
+            decided = tie[3] if len(tie) > 3 else None
+            if decided is not None:
+                survivors.append(decided)
+            else:
+                survivors.append(a if random.random() < p_a else b)
         for w in survivors:
             reach[w]["r16"] += 1
         # Rounds 2+ — consecutive pairing (real bracket) or random (approximate).
@@ -615,27 +624,40 @@ def run(db: DatabaseManager, api_key: str, sims: int = DEFAULT_SIMS) -> int:
     # the match-model advance prob; deeper rounds strength-seeded). Stored in each
     # outright bet's inputs for the Knockout "deep run" board (no separate table).
     elo_by_id = {t["team_id"]: float(t["elo"]) for t in field}
-    # Order by bracket_slot when populated → exact bracket adjacency; otherwise
-    # fall back to the strength-seeded approximation (slot NULLs sort last).
+    # ALL slotted knockout ties (completed + upcoming). Completed ties contribute
+    # their known winner as a certain survivor so already-advanced teams keep their
+    # bracket path — filtering them out would drop the bracket below 16 ties and
+    # break the round adjacency. Upcoming ties sample from the match-model advance%.
     r32 = db.execute(
         """
         SELECT home_team_id AS h, away_team_id AS a,
                (our_prob_home + 0.5 * our_prob_draw) AS p_home,
-               bracket_slot AS slot
+               bracket_slot AS slot,
+               home_score AS hs, away_score AS as_, winner_team_id AS winner
         FROM soccer_matchups
-        WHERE game_date >= CURRENT_DATE AND stage IS DISTINCT FROM 'group'
-          AND home_score IS NULL                      -- unplayed only (group stage is done;
-                                                      -- excludes stale completed group games)
-          AND our_prob_home IS NOT NULL AND our_prob_draw IS NOT NULL
+        WHERE bracket_slot IS NOT NULL
           AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
-        ORDER BY bracket_slot ASC NULLS LAST
+        ORDER BY bracket_slot ASC
         """,
     )
-    r32_ties = [(row["h"], row["a"], float(row["p_home"])) for row in r32]
+
+    def _decided_winner(row) -> int | None:
+        """Known survivor of a completed tie: winner_team_id, else from score."""
+        if row["winner"] is not None:
+            return row["winner"]
+        if row["hs"] is not None and row["as_"] is not None and row["hs"] != row["as_"]:
+            return row["h"] if row["hs"] > row["as_"] else row["a"]
+        return None
+
+    r32_ties = []
+    for row in r32:
+        p_home = float(row["p_home"]) if row["p_home"] is not None else \
+            knockout_win_prob(elo_by_id.get(row["h"], 1500.0), elo_by_id.get(row["a"], 1500.0))
+        r32_ties.append((row["h"], row["a"], p_home, _decided_winner(row)))
     # Use the real bracket only if it's complete & fully slotted (power-of-two,
     # every tie has a slot); else the random-pairing approximation.
     n = len(r32_ties)
-    fully_slotted = n > 0 and all(row["slot"] is not None for row in r32) and (n & (n - 1) == 0)
+    fully_slotted = n > 0 and all(row["slot"] is not None for row in r32) and ((n & (n - 1)) == 0)
     reach = (simulate_bracket_reach(r32_ties, elo_by_id, sims, bracket_ordered=fully_slotted)
              if r32_ties else {})
     if r32_ties:
