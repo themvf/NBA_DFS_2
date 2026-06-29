@@ -1915,24 +1915,25 @@ function PickCell({ pick }: { pick: BracketPick }) {
 }
 
 function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
-  // Need the full, slotted 16-tie bracket to render the tree.
   const slotted = ties.filter((t) => t.bracketSlot != null)
     .sort((a, b) => (a.bracketSlot as number) - (b.bracketSlot as number));
-  if (slotted.length < 16) return null;
+  if (slotted.length === 0) return null;
 
+  // Pad to 16 slots so projected-round math works even with a partial bracket.
+  const total = Math.max(slotted.length, 16);
   // Future rounds: r=0 R16, 1 QF, 2 SF, 3 Final. Node covers 2^(r+1) ties, split
   // into two child halves; each contributes its argmax-reach[round] team.
   const ROUND_KEYS: (keyof SoccerReach)[] = ["r16", "qf", "sf", "final"];
   const rounds = ROUND_KEYS.map((key, r) => {
     const span = 2 ** (r + 1);
     const nodes: { top: BracketPick; bottom: BracketPick }[] = [];
-    for (let lo = 0; lo < 16; lo += span) {
+    for (let lo = 0; lo < total; lo += span) {
       const mid = lo + span / 2;
       nodes.push({ top: _pickTop(slotted, lo, mid, key), bottom: _pickTop(slotted, mid, lo + span, key) });
     }
     return nodes;
   });
-  const champ = _pickTop(slotted, 0, 16, "champion");
+  const champ = _pickTop(slotted, 0, total, "champion");
 
   const COL_LABELS = ["Round of 32", "Round of 16", "Quarterfinals", "Semifinals", "Final"];
   const colClass = "flex min-w-[150px] flex-col justify-around gap-2";
