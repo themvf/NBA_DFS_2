@@ -1949,9 +1949,19 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
             <div className="mb-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[0]}</div>
             {slotted.map((t) => {
               const done = t.homeScore != null && t.awayScore != null;
-              const homeWon = done && t.homeScore! > t.awayScore!;
-              const awayWon = done && t.awayScore! > t.homeScore!;
+              // Use explicit winner_team_id (handles pens); fall back to score comparison.
+              const homeWon = done && (t.winnerTeamId != null
+                ? t.winnerTeamId === t.homeTeamId
+                : t.homeScore! > t.awayScore!);
+              const awayWon = done && (t.winnerTeamId != null
+                ? t.winnerTeamId === t.awayTeamId
+                : t.awayScore! > t.homeScore!);
               const homeFav = !done && t.ourHomeAdvance >= t.ourAwayAdvance;
+              const scoreLabel = done
+                ? (t.winnerTeamId == null && t.homeScore === t.awayScore
+                    ? `${t.homeScore}–${t.awayScore} (pens)`
+                    : `${t.homeScore}–${t.awayScore}`)
+                : null;
               return (
                 <div key={t.gameId} className={`rounded border bg-background p-1 ${done ? "opacity-80" : ""}`}>
                   <div className="flex items-center justify-between gap-1">
@@ -1963,7 +1973,7 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
                       {homeWon && <span className="text-[10px]">🏆</span>}
                     </span>
                     <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                      {done ? t.homeScore : `${Math.round(t.ourHomeAdvance * 100)}%`}
+                      {done ? scoreLabel : `${Math.round(t.ourHomeAdvance * 100)}%`}
                     </span>
                   </div>
                   <div className="mt-0.5 flex items-center justify-between gap-1">
@@ -1975,7 +1985,7 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
                       {awayWon && <span className="text-[10px]">🏆</span>}
                     </span>
                     <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                      {done ? t.awayScore : `${Math.round(t.ourAwayAdvance * 100)}%`}
+                      {done ? "" : `${Math.round(t.ourAwayAdvance * 100)}%`}
                     </span>
                   </div>
                 </div>
@@ -2155,8 +2165,13 @@ function KnockoutPanel({
           <div className="space-y-2">
             {ties.map((t) => {
               const done = t.homeScore != null && t.awayScore != null;
-              const homeWon = done ? t.homeScore! > t.awayScore! : null;
-              const awayWon = done ? t.awayScore! > t.homeScore! : null;
+              // Prefer explicit winner_team_id (handles pens); fall back to score.
+              const homeWon = done
+                ? (t.winnerTeamId != null ? t.winnerTeamId === t.homeTeamId : t.homeScore! > t.awayScore!)
+                : null;
+              const awayWon = done
+                ? (t.winnerTeamId != null ? t.winnerTeamId === t.awayTeamId : t.awayScore! > t.homeScore!)
+                : null;
               const maxEdge = Math.max(Math.abs(t.homeEdge), Math.abs(t.awayEdge));
               const flag = !done && maxEdge >= 0.04;
               return (

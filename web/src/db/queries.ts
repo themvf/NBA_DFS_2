@@ -6467,6 +6467,9 @@ export type SoccerKnockoutTieRow = {
   awayReach: SoccerReach | null;
   homeScore: number | null; // null = not yet played; non-null = final score (90+ET)
   awayScore: number | null;
+  winnerTeamId: number | null; // explicit winner — handles penalty shootouts (no goals scored)
+  homeTeamId: number | null;
+  awayTeamId: number | null;
 };
 
 export type SoccerReach = {
@@ -6512,7 +6515,10 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       rh.r16 AS "hR16", rh.qf AS "hQf", rh.sf AS "hSf", rh.final AS "hFinal", rh.champion AS "hChamp",
       ra.r16 AS "aR16", ra.qf AS "aQf", ra.sf AS "aSf", ra.final AS "aFinal", ra.champion AS "aChamp",
       sm.home_score AS "homeScore",
-      sm.away_score AS "awayScore"
+      sm.away_score AS "awayScore",
+      sm.winner_team_id AS "winnerTeamId",
+      sm.home_team_id AS "homeTeamId",
+      sm.away_team_id AS "awayTeamId"
     FROM soccer_matchups sm
     JOIN soccer_teams h ON h.team_id = sm.home_team_id
     JOIN soccer_teams a ON a.team_id = sm.away_team_id
@@ -6563,6 +6569,9 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       } : null,
       homeScore: r.homeScore != null ? Number(r.homeScore) : null,
       awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+      winnerTeamId: r.winnerTeamId != null ? Number(r.winnerTeamId) : null,
+      homeTeamId: r.homeTeamId != null ? Number(r.homeTeamId) : null,
+      awayTeamId: r.awayTeamId != null ? Number(r.awayTeamId) : null,
     };
   });
 }

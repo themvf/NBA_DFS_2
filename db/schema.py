@@ -1613,4 +1613,10 @@ INDEXES = [
     # meet each round) instead of strength-seeded random re-pairing. Populated by
     # ingest/soccer_bracket.py from the published bracket. NULL outside knockouts.
     "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS bracket_slot INTEGER",
+    # 2026-06-29: Explicit winner for knockout ties. home_score/away_score capture
+    # 90+ET goals but cannot encode penalty shootout results (no goals scored).
+    # winner_team_id is written by soccer_backfill_results using TheSportsDB's
+    # intScoreHomeShootout / intScoreAwayShootout fields so pens winners show a
+    # trophy in the bracket. NULL for group stage and unplayed knockout ties.
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS winner_team_id INTEGER REFERENCES soccer_teams(team_id)",
 ]
