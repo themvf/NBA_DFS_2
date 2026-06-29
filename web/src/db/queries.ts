@@ -6526,13 +6526,7 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
     LEFT JOIN reach ra ON ra.team_id = sm.away_team_id
     LEFT JOIN soccer_team_ratings reh ON reh.team_id = sm.home_team_id
     LEFT JOIN soccer_team_ratings rea ON rea.team_id = sm.away_team_id
-    WHERE sm.game_date >= '2026-06-29'
-      AND sm.stage IS DISTINCT FROM 'group'
-      AND (
-        sm.home_score IS NOT NULL
-        OR (sm.our_prob_home IS NOT NULL AND sm.our_prob_draw IS NOT NULL
-            AND sm.vegas_prob_home IS NOT NULL AND sm.vegas_prob_draw IS NOT NULL)
-      )
+    WHERE sm.bracket_slot IS NOT NULL
     ORDER BY sm.bracket_slot ASC NULLS LAST, sm.commence_time ASC NULLS LAST, sm.id ASC
   `);
   return (rows.rows as Record<string, unknown>[]).map((r) => {
