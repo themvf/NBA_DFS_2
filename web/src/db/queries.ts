@@ -6461,6 +6461,13 @@ export type SoccerKnockoutTieRow = {
   dnbAwayMl: number | null;
   homeElo: number | null;   // Elo rating (the strength input behind the model)
   awayElo: number | null;
+  ourHomeXg: number | null; // our Bivariate-Poisson expected goals per side
+  ourAwayXg: number | null;
+  homeImplied: number | null; // market implied goals from moneylines
+  awayImplied: number | null;
+  ourProbHome: number | null; // raw 3-way W/D/L (advance = ourProbHome + 0.5×draw)
+  ourProbDraw: number | null;
+  ourProbAway: number | null;
   // P(this team reaches each future round) from the bracket Monte-Carlo, for the
   // tree's projected occupants. null for teams without reach data.
   homeReach: SoccerReach | null;
@@ -6512,6 +6519,10 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       COALESCE(sm.vegas_prob_away + 0.5 * sm.vegas_prob_draw, 0) AS "mktAwayAdvance",
       sm.dk_dnb_home_ml AS "dnbHomeMl", sm.dk_dnb_away_ml AS "dnbAwayMl",
       reh.elo AS "homeElo", rea.elo AS "awayElo",
+      sm.our_home_xg AS "ourHomeXg", sm.our_away_xg AS "ourAwayXg",
+      sm.home_implied AS "homeImplied", sm.away_implied AS "awayImplied",
+      sm.our_prob_home AS "ourProbHome", sm.our_prob_draw AS "ourProbDraw",
+      sm.our_prob_away AS "ourProbAway",
       rh.r16 AS "hR16", rh.qf AS "hQf", rh.sf AS "hSf", rh.final AS "hFinal", rh.champion AS "hChamp",
       ra.r16 AS "aR16", ra.qf AS "aQf", ra.sf AS "aSf", ra.final AS "aFinal", ra.champion AS "aChamp",
       sm.home_score AS "homeScore",
@@ -6553,6 +6564,13 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       dnbAwayMl: r.dnbAwayMl != null ? Number(r.dnbAwayMl) : null,
       homeElo: r.homeElo != null ? Number(r.homeElo) : null,
       awayElo: r.awayElo != null ? Number(r.awayElo) : null,
+      ourHomeXg: r.ourHomeXg != null ? Number(r.ourHomeXg) : null,
+      ourAwayXg: r.ourAwayXg != null ? Number(r.ourAwayXg) : null,
+      homeImplied: r.homeImplied != null ? Number(r.homeImplied) : null,
+      awayImplied: r.awayImplied != null ? Number(r.awayImplied) : null,
+      ourProbHome: r.ourProbHome != null ? Number(r.ourProbHome) : null,
+      ourProbDraw: r.ourProbDraw != null ? Number(r.ourProbDraw) : null,
+      ourProbAway: r.ourProbAway != null ? Number(r.ourProbAway) : null,
       homeReach: r.hChamp != null ? {
         r16: Number(r.hR16), qf: Number(r.hQf), sf: Number(r.hSf),
         final: Number(r.hFinal), champion: Number(r.hChamp),

@@ -373,6 +373,107 @@ function PnlChart({ bets }: { bets: SoccerBetRow[] }) {
   );
 }
 
+// ── Bet Ledger Backtest — unified star-tier calibration (mirrors MLB panel) ────
+function SoccerBetLedgerBacktestPanel({ rows }: { rows: SoccerBacktestTypeRow[] }) {
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const roiStr = (v: number | null) =>
+    v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+
+  // Compute aggregate totals client-side — the query has no stars=0 subtotal row.
+  function aggregate(typeRows: SoccerBacktestTypeRow[]) {
+    const totalN = typeRows.reduce((s, r) => s + r.n, 0);
+    if (totalN === 0) return null;
+    const expWr = typeRows.reduce((s, r) => s + r.expectedWinRate * r.n, 0) / totalN;
+    const realWr = typeRows.reduce((s, r) => s + r.realizedWinRate * r.n, 0) / totalN;
+    const mktBets = typeRows.reduce((s, r) => s + r.marketBets, 0);
+    // Reconstruct profit from roi × marketBets per row
+    const profit = typeRows.reduce(
+      (s, r) => s + (r.roi != null ? r.roi * r.marketBets : 0),
+      0,
+    );
+    const roi = mktBets > 0 ? profit / mktBets : null;
+    return { n: totalN, expectedWinRate: expWr, realizedWinRate: realWr, roi };
+  }
+
+  const section = (t: string, label: string) => {
+    const tiers = rows.filter((r) => r.betType === t).sort((a, b) => b.stars - a.stars);
+    const sub = aggregate(tiers);
+    if (!sub || sub.n === 0) return null;
+    return (
+      <div key={t}>
+        <div className="text-xs font-semibold text-muted-foreground mt-3 mb-1">{label}</div>
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b text-muted-foreground">
+              <th className="py-1 text-left">Stars</th>
+              <th className="py-1 text-right">n</th>
+              <th className="py-1 text-right">Exp win%</th>
+              <th className="py-1 text-right">Real win%</th>
+              <th className="py-1 text-right">ROI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tiers.map((r) => (
+              <tr key={r.stars} className={`border-b border-border/40 ${r.stars >= 4 ? "bg-emerald-500/5" : ""}`}>
+                <td className="py-1.5"><Stars n={r.stars} /></td>
+                <td className="py-1.5 text-right tabular-nums text-muted-foreground">{r.n}</td>
+                <td className="py-1.5 text-right tabular-nums text-muted-foreground">{pct(r.expectedWinRate)}</td>
+                <td className={`py-1.5 text-right tabular-nums font-medium ${r.realizedWinRate >= r.expectedWinRate ? "text-emerald-400" : "text-rose-400"}`}>
+                  {pct(r.realizedWinRate)}
+                </td>
+                <td className={`py-1.5 text-right tabular-nums ${r.roi != null && r.roi >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                  {roiStr(r.roi)}
+                </td>
+              </tr>
+            ))}
+            <tr className="border-t font-medium">
+              <td className="py-1.5 text-muted-foreground">All</td>
+              <td className="py-1.5 text-right tabular-nums text-muted-foreground">{sub.n}</td>
+              <td className="py-1.5 text-right tabular-nums text-muted-foreground">{pct(sub.expectedWinRate)}</td>
+              <td className={`py-1.5 text-right tabular-nums ${sub.realizedWinRate >= sub.expectedWinRate ? "text-emerald-400" : "text-rose-400"}`}>
+                {pct(sub.realizedWinRate)}
+              </td>
+              <td className={`py-1.5 text-right tabular-nums ${sub.roi != null && sub.roi >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                {roiStr(sub.roi)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Overall header — aggregate across the two markets we show
+  const shownTypes = ["total", "moneyline"];
+  const overallRows = rows.filter((r) => shownTypes.includes(r.betType));
+  const overall = aggregate(overallRows);
+  if (!overall || overall.n === 0) return null;
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Bet Ledger Backtest
+        </h3>
+        <span className="text-xs text-muted-foreground">
+          {overall.n} settled · realized {pct(overall.realizedWinRate)} vs expected {pct(overall.expectedWinRate)}
+          {overall.roi != null && (
+            <span className={overall.roi >= 0 ? " text-emerald-400" : " text-rose-400"}>
+              {" · "}{roiStr(overall.roi)} ROI
+            </span>
+          )}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">
+        Calibration on settled bets: realized win% should meet or beat expected (our_prob) in each
+        star tier. ROI is priced at each bet&rsquo;s true odds.
+      </p>
+      {section("total", "Totals (O/U)")}
+      {section("moneyline", "Moneyline")}
+    </div>
+  );
+}
+
 // ── Results panel ─────────────────────────────────────────────────────────────
 /**
  * Closing Line Value — did the market move toward our side between when we rated
@@ -918,6 +1019,9 @@ function ResultsPanel({
 
       {/* P&L chart — same best-per-game pool as the KPI cards */}
       <PnlChart bets={bestPerGame} />
+
+      {/* Bet Ledger Backtest — unified star-tier calibration, mirroring MLB panel */}
+      <SoccerBetLedgerBacktestPanel rows={backtest} />
 
       {/* Individual settled bets — filterable + sortable */}
       <div>
@@ -2042,11 +2146,12 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
 // from the vig-free 3-way (P(win 90) + 0.5·P(draw), a 50/50 ET/pens prior) — an
 // analytical lens, not a bettable line. The real bettable price is DNB (shown).
 function AdvanceRow({
-  team, logo, elo, ourAdvance, mktAdvance, edge, dnb, won,
+  team, logo, elo, ourAdvance, mktAdvance, edge, dnb, won, wdlTooltip,
 }: {
   team: string; logo: string | null; elo: number | null;
   ourAdvance: number; mktAdvance: number; edge: number; dnb: number | null;
   won: boolean | null; // true=advanced, false=eliminated, null=not played yet
+  wdlTooltip?: string; // hover text: "Win 65% / Draw 18% / Loss 17%"
 }) {
   const favored = ourAdvance >= 0.5;
   const eliminated = won === false;
@@ -2079,8 +2184,11 @@ function AdvanceRow({
         </div>
       ) : (
         <>
-          {/* our advance% bar */}
-          <div className="relative h-4 flex-1 overflow-hidden rounded bg-muted/40">
+          {/* our advance% bar — hover shows W/D/L decomposition */}
+          <div
+            className="relative h-4 flex-1 cursor-help overflow-hidden rounded bg-muted/40"
+            title={wdlTooltip}
+          >
             <div
               className={`h-full ${favored ? "bg-emerald-500/70" : "bg-sky-500/50"}`}
               style={{ width: `${Math.round(ourAdvance * 100)}%` }}
@@ -2156,10 +2264,11 @@ function KnockoutPanel({
 
       <p className="rounded-lg border bg-card p-3 text-xs text-muted-foreground">
         <strong className="text-foreground">Advance %</strong> = P(win in 90′) + ½·P(draw)
-        — a 50/50 extra-time/penalties prior. <strong className="text-foreground">mkt</strong> is the
-        same number derived from the vig-free 3-way line (there is no dedicated
-        &ldquo;to advance&rdquo; market in the feed), so it&rsquo;s an analytical comparison, not a
-        bettable price. The real bettable 2-way line is <strong className="text-foreground">DNB</strong>
+        — a 50/50 extra-time/penalties prior.{" "}
+        <strong className="text-foreground">Hover the bar</strong> to see the full Win / Draw / Loss breakdown.{" "}
+        <strong className="text-foreground">our xG</strong> = Bivariate-Poisson predicted goals per side (the direct model input).{" "}
+        <strong className="text-foreground">mkt</strong> advance is derived from the vig-free 3-way line (not a
+        bettable price). The real bettable 2-way line is <strong className="text-foreground">DNB</strong>
         {" "}(Draw No Bet, 90′). Edge = our − market, in points.
       </p>
 
@@ -2180,6 +2289,13 @@ function KnockoutPanel({
                 : null;
               const maxEdge = Math.max(Math.abs(t.homeEdge), Math.abs(t.awayEdge));
               const flag = !done && maxEdge >= 0.04;
+              // W/D/L tooltip for each team row (hover over the advance bar)
+              const homeWdl = t.ourProbHome != null && t.ourProbDraw != null && t.ourProbAway != null
+                ? `Win ${(t.ourProbHome * 100).toFixed(0)}% / Draw ${(t.ourProbDraw * 100).toFixed(0)}% / Loss ${(t.ourProbAway * 100).toFixed(0)}%\nAdvance = Win + ½×Draw`
+                : undefined;
+              const awayWdl = t.ourProbHome != null && t.ourProbDraw != null && t.ourProbAway != null
+                ? `Win ${(t.ourProbAway * 100).toFixed(0)}% / Draw ${(t.ourProbDraw * 100).toFixed(0)}% / Loss ${(t.ourProbHome * 100).toFixed(0)}%\nAdvance = Win + ½×Draw`
+                : undefined;
               return (
                 <div key={t.gameId} className={`rounded-lg border bg-card p-2.5 ${flag ? "border-amber-500/40" : done ? "border-muted/50" : ""}`}>
                   <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
@@ -2187,12 +2303,31 @@ function KnockoutPanel({
                     {flag && <span className="text-amber-400">⚡ {(maxEdge * 100).toFixed(1)}pt edge</span>}
                     {done && <span className="text-xs text-muted-foreground">Final</span>}
                   </div>
+                  {/* xG / implied goals line — key model inputs at a glance */}
+                  {!done && (t.ourHomeXg != null || t.homeImplied != null) && (
+                    <div className="mb-1.5 flex items-center gap-3 text-[10px] text-muted-foreground">
+                      {t.ourHomeXg != null && t.ourAwayXg != null && (
+                        <span title="Our Bivariate-Poisson predicted goals per side">
+                          our xG: <span className="font-medium text-foreground tabular-nums">{t.ourHomeXg.toFixed(2)}</span>
+                          {" – "}
+                          <span className="font-medium text-foreground tabular-nums">{t.ourAwayXg.toFixed(2)}</span>
+                        </span>
+                      )}
+                      {t.homeImplied != null && t.awayImplied != null && (
+                        <span title="Market implied goals derived from moneylines">
+                          mkt: <span className="tabular-nums">{t.homeImplied.toFixed(2)}</span>
+                          {" – "}
+                          <span className="tabular-nums">{t.awayImplied.toFixed(2)}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <AdvanceRow team={t.homeTeam} logo={t.homeLogo} elo={t.homeElo}
                     ourAdvance={t.ourHomeAdvance} mktAdvance={t.mktHomeAdvance}
-                    edge={t.homeEdge} dnb={t.dnbHomeMl} won={homeWon} />
+                    edge={t.homeEdge} dnb={t.dnbHomeMl} won={homeWon} wdlTooltip={homeWdl} />
                   <AdvanceRow team={t.awayTeam} logo={t.awayLogo} elo={t.awayElo}
                     ourAdvance={t.ourAwayAdvance} mktAdvance={t.mktAwayAdvance}
-                    edge={t.awayEdge} dnb={t.dnbAwayMl} won={awayWon} />
+                    edge={t.awayEdge} dnb={t.dnbAwayMl} won={awayWon} wdlTooltip={awayWdl} />
                 </div>
               );
             })}
