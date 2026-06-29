@@ -1936,7 +1936,6 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
   const champ = _pickTop(slotted, 0, total, "champion");
 
   const COL_LABELS = ["Round of 32", "Round of 16", "Quarterfinals", "Semifinals", "Final"];
-  const colClass = "flex min-w-[150px] flex-col justify-around gap-2";
 
   return (
     <div>
@@ -1946,8 +1945,9 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
       <div className="overflow-x-auto rounded-lg border bg-card p-3">
         <div className="flex items-stretch gap-3">
           {/* R32 — real ties */}
-          <div className={colClass}>
-            <div className="mb-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[0]}</div>
+          <div className="flex min-w-[150px] flex-col">
+            <div className="mb-1 shrink-0 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[0]}</div>
+            <div className="flex flex-1 flex-col justify-around gap-2">
             {slotted.map((t) => {
               const done = t.homeScore != null && t.awayScore != null;
               // Use explicit winner_team_id (handles pens); fall back to score comparison.
@@ -1992,22 +1992,26 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
                 </div>
               );
             })}
+            </div>
           </div>
           {/* R16 → Final — projected */}
           {rounds.map((nodes, r) => (
-            <div key={r} className={colClass}>
-              <div className="mb-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[r + 1]}</div>
+            <div key={r} className="flex min-w-[150px] flex-col">
+              <div className="mb-1 shrink-0 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[r + 1]}</div>
+              <div className="flex flex-1 flex-col justify-around gap-2">
               {nodes.map((n, i) => (
                 <div key={i} className="space-y-1">
                   <PickCell pick={n.top} />
                   <PickCell pick={n.bottom} />
                 </div>
               ))}
+              </div>
             </div>
           ))}
           {/* Champion */}
-          <div className="flex min-w-[150px] flex-col justify-center">
-            <div className="mb-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">Champion</div>
+          <div className="flex min-w-[150px] flex-col">
+            <div className="mb-1 shrink-0 text-center text-[10px] font-semibold uppercase text-muted-foreground">Champion</div>
+            <div className="flex flex-1 flex-col justify-center">
             <div className="rounded-lg border-2 border-amber-500/50 bg-amber-500/10 p-2 text-center">
               {champ ? (
                 <>
@@ -2018,6 +2022,7 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
                   <div className="text-[11px] tabular-nums text-amber-400">{fmtPct1(champ.prob)} to win</div>
                 </>
               ) : <span className="text-xs text-muted-foreground">TBD</span>}
+            </div>
             </div>
           </div>
         </div>
