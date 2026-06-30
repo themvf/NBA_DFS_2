@@ -51,7 +51,7 @@ function StatusPill({ status }: { status: string }) {
 
 // ── Results & calibration ─────────────────────────────────────────────────────
 // Renders its full structure even before any bet is settled, so the analytics
-// surface exists from day one. Realized win%/ROI populate once the Kaggle
+// surface exists from day one. Realized win%/ROI populate once the tennis-data.co.uk
 // settlement job grades bets (status won/lost).
 function TennisResults({ bets, backtest }: { bets: TennisBetRow[]; backtest: TennisBetBacktestRow[] }) {
   const settled = bets.filter((b) => b.status === "won" || b.status === "lost");
@@ -115,12 +115,12 @@ function TennisResults({ bets, backtest }: { bets: TennisBetRow[]; backtest: Ten
         </div>
         <p className="text-xs text-muted-foreground mb-2">
           Calibration on settled bets: realized win% should meet or beat expected (our_prob) in each
-          star tier. ROI is priced at each bet&rsquo;s true odds. Populates once Kaggle settlement grades results.
+          star tier. ROI is priced at each bet&rsquo;s true odds. Populates once tennis-data.co.uk results grade the bets.
         </p>
         {backtest.length === 0 ? (
           <div className="rounded border border-dashed bg-muted/20 p-4 text-center text-xs text-muted-foreground">
             No settled bets yet. The {pending} pending recommendations grade automatically once the
-            daily Kaggle results pull lands set scores. Star-tier calibration appears here then.
+            tennis-data.co.uk results publish (near-daily during a Slam). Star-tier calibration appears here then.
           </div>
         ) : (
           <table className="w-full text-xs border-collapse">
@@ -294,7 +294,7 @@ export default function TennisVegasClient({
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
               Edge = our model prob − vig-free market prob. EV = expected ROI per unit at the offered price.
-              Calibration (do these win at the rate we claim?) lands with Kaggle settlement.
+              Calibration (do these win at the rate we claim?) lands as tennis-data.co.uk results settle the bets.
             </p>
           </div>
         );

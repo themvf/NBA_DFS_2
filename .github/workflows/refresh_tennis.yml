@@ -32,8 +32,6 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
     steps:
       - name: Checkout
@@ -52,13 +50,12 @@ jobs:
         if: github.event.schedule == '0 6 * * 1' || inputs.rebuild_ratings == true
         run: python -m ingest.tennis_history
 
-      - name: Settle completed bets from Kaggle results (if creds present)
-        # Settlement needs KAGGLE_USERNAME/KAGGLE_KEY. Gated so the run still
-        # refreshes odds + recommendations before settlement is wired/credentialed.
-        # continue-on-error: a flaky Kaggle pull must not block the odds refresh.
-        if: env.KAGGLE_KEY != ''
+      - name: Settle completed bets from tennis-data.co.uk results
+        # Free results source (ATP+WTA, set/game scores). Updates near-daily during
+        # a Slam but lags a few days for smaller events. continue-on-error so a
+        # flaky download never blocks the odds + recommendations refresh below.
         continue-on-error: true
-        run: python -m ingest.tennis_results_kaggle
+        run: python -m ingest.tennis_results
 
       - name: Refresh Wimbledon odds (both tours)
         run: |
