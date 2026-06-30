@@ -179,7 +179,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Backfill WC 2026 first-scorer results")
     parser.add_argument("--force", action="store_true", help="Re-fetch even if already stored")
     parser.add_argument("--dry-run", action="store_true", help="Print results, don't write DB")
-    parser.add_argument("--api-key", default="123", help="TheSportsDB API key (default: free '123')")
+    # default MUST be None: with default="123" the `args.api_key or getenv(...)`
+    # below is always truthy "123", so the premium THESPORTSDB_API_KEY env is
+    # never consulted — which silently ran first-scorer backfill on the
+    # rate-limited free tier (429s) even with a paid key configured.
+    parser.add_argument("--api-key", default=None, help="TheSportsDB API key (default: env or free '123')")
     args = parser.parse_args()
 
     import os
