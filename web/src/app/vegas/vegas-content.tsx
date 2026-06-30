@@ -37,17 +37,20 @@ import {
   getSoccerTopPickAccuracy,
   getSoccerSettlementHealth,
 } from "@/db/queries";
-import { getTennisVegasMatchups } from "@/db/queries";
+import { getTennisVegasMatchups, getTennisBets } from "@/db/queries";
 import type { Sport } from "@/db/queries";
 import VegasClient from "./vegas-client";
 import SoccerVegasClient from "./soccer-vegas-client";
 import TennisVegasClient from "./tennis-vegas-client";
 
 export default async function VegasContent({ date, sport = "nba" }: { date?: string; sport?: Sport }) {
-  // Tennis (Wimbledon MVP): odds-only fixtures view.
+  // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
-    const matchups = await getTennisVegasMatchups(date);
-    return <TennisVegasClient matchups={matchups} queryDate={date ?? null} />;
+    const [matchups, bets] = await Promise.all([
+      getTennisVegasMatchups(date),
+      getTennisBets(120),
+    ]);
+    return <TennisVegasClient matchups={matchups} bets={bets} queryDate={date ?? null} />;
   }
 
   // Soccer: focused fixtures view + star-rated bet ledger + backtest, rather

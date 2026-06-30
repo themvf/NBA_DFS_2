@@ -885,8 +885,64 @@ TABLES = [
         home_games INTEGER,
         away_games INTEGER,
         winner TEXT,                        -- 'home' | 'away' | 'retired'
+        -- our model (Elo + market anchor); NULL until model/tennis_predictions runs
+        our_prob_home DOUBLE PRECISION,
+        our_prob_away DOUBLE PRECISION,
+        our_total_pred DOUBLE PRECISION,
         fetched_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(tour, match_date, home_player, away_player)
+    )
+    """,
+
+    # ── Tennis player ratings (from Sackmann match history) ───
+    # Keyed by (tour, normalized_name).  overall_elo: all-surface Elo (robust).
+    # grass_elo: grass-only Elo (sparse → blended with overall in predictions).
+    # serve/return points-won% on grass feed totals later.  Rebuilt by
+    # ingest/tennis_history.py from the public ATP/WTA CSVs.
+    """
+    CREATE TABLE IF NOT EXISTS tennis_player_ratings (
+        tour TEXT NOT NULL,
+        norm_name TEXT NOT NULL,
+        display_name TEXT,
+        overall_elo DOUBLE PRECISION,
+        grass_elo DOUBLE PRECISION,
+        grass_matches INTEGER DEFAULT 0,
+        serve_pts_won_pct DOUBLE PRECISION,
+        return_pts_won_pct DOUBLE PRECISION,
+        matches INTEGER DEFAULT 0,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (tour, norm_name)
+    )
+    """,
+
+    # ── Tennis bet ledger (star-rated recommendations) ───────
+    # Mirrors soccer_bets: one row per (bet_type, match, side, model_version),
+    # locked at event_commence so the backtest uses the closing recommendation.
+    # MVP rates moneyline only (the market that carries edge).
+    """
+    CREATE TABLE IF NOT EXISTS tennis_bets (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        model_version TEXT NOT NULL,
+        bet_type TEXT NOT NULL,
+        match_id INTEGER REFERENCES tennis_matches(id),
+        side TEXT,                          -- 'home' | 'away'
+        selection_label TEXT NOT NULL,
+        market_odds INTEGER,
+        market_decimal DOUBLE PRECISION,
+        market_prob DOUBLE PRECISION,
+        our_prob DOUBLE PRECISION NOT NULL,
+        edge DOUBLE PRECISION,
+        ev DOUBLE PRECISION,
+        stars SMALLINT NOT NULL,
+        inputs_json JSONB,
+        event_commence TIMESTAMPTZ,
+        locked BOOLEAN DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        result_detail TEXT,
+        settled_at TIMESTAMPTZ,
+        UNIQUE(bet_type, match_id, side, model_version)
     )
     """,
 
@@ -1640,6 +1696,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_soccer_bet_snapshots_bet ON soccer_bet_snapshots(bet_id, captured_at DESC)",
     # Tennis (Wimbledon MVP)
     "CREATE INDEX IF NOT EXISTS idx_tennis_matches_date ON tennis_matches(match_date, tour)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_bets_type_status ON tennis_bets(bet_type, status, stars)",
+    # Prediction columns added after the odds-only MVP table already existed.
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS our_prob_home DOUBLE PRECISION",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS our_prob_away DOUBLE PRECISION",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS our_total_pred DOUBLE PRECISION",
     # 2026-06-28: Draw No Bet market for knockout rounds — 2-way (void on draw).
     # dk_dnb_*_ml  = DraftKings' posted price (used for EV — the book the user bets at).
     # dnb_*_prob   = Pinnacle vig-free reference (or consensus 2-way if Pinnacle missing).

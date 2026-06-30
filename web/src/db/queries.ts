@@ -6227,6 +6227,8 @@ export type TennisMatchRow = {
   handicapAwayOdds: number | null;
   nBooks: number | null;
   winner: string | null;
+  ourProbHome: number | null;
+  ourProbAway: number | null;
 };
 
 export async function getTennisVegasMatchups(matchDate?: string): Promise<TennisMatchRow[]> {
@@ -6254,7 +6256,9 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
       tm.handicap_home_odds AS "handicapHomeOdds",
       tm.handicap_away_odds AS "handicapAwayOdds",
       tm.n_books            AS "nBooks",
-      tm.winner             AS "winner"
+      tm.winner             AS "winner",
+      tm.our_prob_home      AS "ourProbHome",
+      tm.our_prob_away      AS "ourProbAway"
     FROM tennis_matches tm
     ${whereClause}
     ORDER BY tm.commence_time ASC NULLS LAST
@@ -6279,6 +6283,67 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
     handicapAwayOdds: r.handicapAwayOdds != null ? Number(r.handicapAwayOdds) : null,
     nBooks: r.nBooks != null ? Number(r.nBooks) : null,
     winner: r.winner != null ? String(r.winner) : null,
+    ourProbHome: r.ourProbHome != null ? Number(r.ourProbHome) : null,
+    ourProbAway: r.ourProbAway != null ? Number(r.ourProbAway) : null,
+  }));
+}
+
+export type TennisBetRow = {
+  id: number;
+  matchId: number | null;
+  side: string | null;
+  selectionLabel: string;
+  fixture: string | null;
+  matchDate: string | null;
+  commenceTime: string | null;
+  marketOdds: number | null;
+  marketProb: number | null;
+  ourProb: number;
+  edge: number | null;
+  ev: number | null;
+  stars: number;
+  status: string;
+};
+
+// Rated moneyline bets (pending + settled), best-rated first. Joins the match
+// for fixture context. ATP-only in V1 (WTA has no rating signal yet).
+export async function getTennisBets(limit = 100): Promise<TennisBetRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      tb.id              AS "id",
+      tb.match_id        AS "matchId",
+      tb.side            AS "side",
+      tb.selection_label AS "selectionLabel",
+      tb.market_odds     AS "marketOdds",
+      tb.market_prob     AS "marketProb",
+      tb.our_prob        AS "ourProb",
+      tb.edge            AS "edge",
+      tb.ev              AS "ev",
+      tb.stars           AS "stars",
+      tb.status          AS "status",
+      tm.match_date      AS "matchDate",
+      tm.commence_time   AS "commenceTime",
+      tm.home_player || ' vs ' || tm.away_player AS "fixture"
+    FROM tennis_bets tb
+    LEFT JOIN tennis_matches tm ON tm.id = tb.match_id
+    ORDER BY tb.stars DESC, tb.edge DESC NULLS LAST
+    LIMIT ${limit}
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    id: Number(r.id),
+    matchId: r.matchId != null ? Number(r.matchId) : null,
+    side: r.side != null ? String(r.side) : null,
+    selectionLabel: String(r.selectionLabel ?? ""),
+    fixture: r.fixture != null ? String(r.fixture) : null,
+    matchDate: r.matchDate != null ? String(r.matchDate) : null,
+    commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+    ourProb: Number(r.ourProb),
+    edge: r.edge != null ? Number(r.edge) : null,
+    ev: r.ev != null ? Number(r.ev) : null,
+    stars: Number(r.stars),
+    status: String(r.status ?? "pending"),
   }));
 }
 
