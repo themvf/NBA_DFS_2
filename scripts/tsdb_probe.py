@@ -72,6 +72,38 @@ def main() -> int:
 
     _try("v2 livescore/soccer", lambda: requests.get(f"{V2}/livescore/soccer", headers=H, timeout=20))
 
+    # Find a penalty-decided tie's idEvent from the v2 schedule, then dump the
+    # single-event lookup (both APIs) to locate where the winner is encoded.
+    print("\n== single-event inspection (penalty tie) ==")
+    _, sched = _try("v2 schedule (for id)", lambda: requests.get(
+        f"{V2}/schedule/league/{WC_LEAGUE}/{SEASON}", headers=H, timeout=25))
+    target_id = None
+    evs = (sched or {}).get("schedule") or (sched or {}).get("events") or []
+    for e in evs:
+        if "Germany" in e.get("strHomeTeam", "") and "Paraguay" in e.get("strAwayTeam", "") \
+           and str(e.get("intRound")) == "32":
+            target_id = e.get("idEvent")
+            break
+    print(f"    target idEvent: {target_id}")
+    if target_id:
+        def _dump(label, body):
+            ev = None
+            if isinstance(body, dict):
+                arr = body.get("events") or body.get("lookup") or []
+                ev = arr[0] if arr else (body if "strHomeTeam" in body else None)
+            if not ev:
+                print(f"    [{label}] no event body; keys={list(body.keys())[:6] if isinstance(body,dict) else None}")
+                return
+            hits = {k: v for k, v in ev.items()
+                    if any(t in k.lower() for t in ("shoot", "penal", "winner", "result", "score", "status", "round"))}
+            print(f"    [{label}] {ev.get('strHomeTeam')} v {ev.get('strAwayTeam')}: {hits}")
+        _, b1 = _try("v1 lookupevent", lambda: requests.get(
+            f"{V1}/{KEY}/lookupevent.php", params={"id": target_id}, timeout=20))
+        _dump("v1", b1)
+        _, b2 = _try("v2 lookup/event", lambda: requests.get(
+            f"{V2}/lookup/event/{target_id}", headers=H, timeout=20))
+        _dump("v2", b2)
+
     return 0
 
 
