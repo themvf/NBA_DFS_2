@@ -6347,6 +6347,48 @@ export async function getTennisBets(limit = 100): Promise<TennisBetRow[]> {
   }));
 }
 
+export type TennisBetBacktestRow = {
+  stars: number;          // 1..5, or 0 for the 'All' rollup
+  n: number;
+  expectedWinRate: number;
+  realizedWinRate: number;
+  roi: number | null;
+  brier: number | null;
+};
+
+// Star-tier calibration on SETTLED tennis bets (won/lost). Empty until the
+// Kaggle settlement job grades bets — the panel renders its structure regardless.
+// stars=0 is the client-aggregated 'All' rollup (computed in the component).
+export async function getTennisBetBacktest(): Promise<TennisBetBacktestRow[]> {
+  const rows = await db.execute(sql`
+    SELECT
+      tb.stars                                              AS "stars",
+      COUNT(*)                                              AS "n",
+      AVG(tb.our_prob)                                      AS "expectedWinRate",
+      AVG(CASE WHEN tb.status = 'won' THEN 1.0 ELSE 0.0 END) AS "realizedWinRate",
+      COUNT(*) FILTER (WHERE tb.market_decimal IS NOT NULL) AS "marketBets",
+      SUM(CASE WHEN tb.market_decimal IS NULL THEN 0
+               WHEN tb.status = 'won' THEN tb.market_decimal - 1 ELSE -1 END) AS "profitUnits",
+      AVG(POWER((CASE WHEN tb.status = 'won' THEN 1.0 ELSE 0.0 END) - tb.our_prob, 2)) AS "brier"
+    FROM tennis_bets tb
+    WHERE tb.status IN ('won', 'lost') AND tb.bet_type = 'moneyline'
+    GROUP BY tb.stars
+    ORDER BY tb.stars DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const marketBets = Number(r.marketBets);
+    const profit = r.profitUnits != null ? Number(r.profitUnits) : 0;
+    return {
+      stars: Number(r.stars),
+      n: Number(r.n),
+      expectedWinRate: Number(r.expectedWinRate),
+      realizedWinRate: Number(r.realizedWinRate),
+      roi: marketBets > 0 ? profit / marketBets : null,
+      brier: r.brier != null ? Number(r.brier) : null,
+    };
+  });
+}
+
 // ── Soccer bet ledger + backtest ──────────────────────────────────────────────
 export type SoccerBetRow = {
   id: number;
