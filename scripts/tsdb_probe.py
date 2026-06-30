@@ -104,6 +104,15 @@ def main() -> int:
             f"{V2}/lookup/event/{target_id}", headers=H, timeout=20))
         _dump("v2", b2)
 
+        # Verify the REAL resolver logic picks the right side (expect 'away' = Paraguay).
+        try:
+            from ingest.soccer_results import _penalty_winner_side
+            ev = (b1 or {}).get("events", [{}])[0] if isinstance(b1, dict) else {}
+            side = _penalty_winner_side(ev, "Germany", "Paraguay")
+            print(f"    _penalty_winner_side -> {side!r} (expect 'away' = Paraguay)")
+        except Exception as e:  # noqa: BLE001
+            print(f"    resolver check ERROR: {type(e).__name__}: {e}")
+
     return 0
 
 

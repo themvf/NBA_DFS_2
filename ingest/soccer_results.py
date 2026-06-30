@@ -292,6 +292,60 @@ def _tsdb_event_by_date(game_date: str, home_name: str, away_name: str, api_key:
     return None
 
 
+def _penalty_winner_side(ev: dict, home_name: str, away_name: str) -> str | None:
+    """Return 'home'/'away'/None for a penalty-decided tie from a single-event dict.
+
+    Pure (no I/O) so it's unit-testable. TheSportsDB encodes the shootout result in
+    intHomeScoreExtra / intAwayScoreExtra (NOT intScoreHomeShootout, which is null),
+    with a human-readable strResult like "Paraguay win 4-3 on penalties" as backup.
+    """
+    try:
+        ph, pa = ev.get("intHomeScoreExtra"), ev.get("intAwayScoreExtra")
+        if ph not in (None, "") and pa not in (None, ""):
+            ph, pa = int(ph), int(pa)
+            if ph != pa:
+                return "home" if ph > pa else "away"
+    except (TypeError, ValueError):
+        pass
+    # Fallback: parse "<Team> win X-Y on penalties".
+    res = ev.get("strResult") or ""
+    if res:
+        head = _norm(res.split(" win")[0])
+        if head:
+            if _norm(home_name) and _norm(home_name) in head:
+                return "home"
+            if _norm(away_name) and _norm(away_name) in head:
+                return "away"
+    return None
+
+
+def _tsdb_lookup_event(event_id: str, api_key: str) -> dict | None:
+    """Full single-event dict (has intHomeScoreExtra / strResult); None on failure."""
+    try:
+        r = requests.get(
+            f"{TSDB_BASE}/{api_key}/lookupevent.php", params={"id": event_id}, timeout=15)
+        r.raise_for_status()
+        evs = r.json().get("events") or []
+        return evs[0] if evs else None
+    except requests.RequestException as e:
+        logger.warning("TheSportsDB lookupevent failed for %s: %s", event_id, e)
+        return None
+
+
+def _resolve_penalty_winner(game_date, home_name, away_name, home_id, away_id, api_key):
+    """team_id of the shootout winner, or None. Finds the event by date+teams, then
+    reads the single-event lookup (where the penalty score actually lives)."""
+    ev = _tsdb_event_by_date(game_date, home_name, away_name, api_key)
+    event_id = ev.get("idEvent") if ev else None
+    if not event_id:
+        return None
+    full = _tsdb_lookup_event(event_id, api_key)
+    if not full:
+        return None
+    side = _penalty_winner_side(full, home_name, away_name)
+    return home_id if side == "home" else away_id if side == "away" else None
+
+
 def resolve_knockout_winners(db: DatabaseManager, api_key: str = "123") -> int:
     """Set winner_team_id for completed knockout ties (bracket_slot not null).
 
@@ -325,15 +379,9 @@ def resolve_knockout_winners(db: DatabaseManager, api_key: str = "123") -> int:
         elif as_ > hs:
             winner_id = g["away_team_id"]
         else:
-            ev = _tsdb_event_by_date(str(g["game_date"])[:10], g["home_name"], g["away_name"], api_key)
-            ph = ev.get("intScoreHomeShootout") if ev else None
-            pa = ev.get("intScoreAwayShootout") if ev else None
-            try:
-                if ph not in (None, "") and pa not in (None, ""):
-                    ph, pa = int(ph), int(pa)
-                    winner_id = g["home_team_id"] if ph > pa else g["away_team_id"] if pa > ph else None
-            except (TypeError, ValueError):
-                winner_id = None
+            winner_id = _resolve_penalty_winner(
+                str(g["game_date"])[:10], g["home_name"], g["away_name"],
+                g["home_team_id"], g["away_team_id"], api_key)
         if winner_id is None:
             msg = (f"Knockout tie {g['home_name']} {hs}-{as_} {g['away_name']} is drawn with no "
                    f"shootout winner from the feed — set manually: "
