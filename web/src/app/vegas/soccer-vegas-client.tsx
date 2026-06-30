@@ -1985,22 +1985,27 @@ function ScorersPanel({ rows }: { rows: SoccerPlayerStatsRow[] }) {
 // round (the published structure). R32 cells show the actual ties + advance%;
 // future-round cells show the PROJECTED occupants — the team most likely to reach
 // that node (argmax reach[round]) from each child subtree, with its probability.
-type BracketPick = { team: string; logo: string | null; prob: number } | null;
+type BracketPick = { team: string; logo: string | null; prob: number; elo: number | null } | null;
 
 function _pickTop(ties: SoccerKnockoutTieRow[], lo: number, hi: number, key: keyof SoccerReach): BracketPick {
   let best: BracketPick = null;
   for (let i = lo; i < hi && i < ties.length; i++) {
     const t = ties[i];
     const sides = [
-      { team: t.homeTeam, logo: t.homeLogo, reach: t.homeReach },
-      { team: t.awayTeam, logo: t.awayLogo, reach: t.awayReach },
+      { team: t.homeTeam, logo: t.homeLogo, reach: t.homeReach, elo: t.homeElo },
+      { team: t.awayTeam, logo: t.awayLogo, reach: t.awayReach, elo: t.awayElo },
     ];
     for (const s of sides) {
       const p = s.reach ? s.reach[key] : 0;
-      if (!best || p > best.prob) best = { team: s.team, logo: s.logo, prob: p };
+      if (!best || p > best.prob) best = { team: s.team, logo: s.logo, prob: p, elo: s.elo };
     }
   }
   return best;
+}
+
+function EloChip({ elo }: { elo: number | null }) {
+  if (elo == null) return null;
+  return <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-medium tabular-nums text-muted-foreground/80" title="Elo rating">{Math.round(elo)}</span>;
 }
 
 function PickCell({ pick }: { pick: BracketPick }) {
@@ -2012,6 +2017,7 @@ function PickCell({ pick }: { pick: BracketPick }) {
           ? <img src={pick.logo} alt="" className="h-3.5 w-3.5 rounded-sm object-contain" />
           : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
         <span className="truncate text-[11px]">{pick.team}</span>
+        <EloChip elo={pick.elo} />
       </span>
       <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">{Math.round(pick.prob * 100)}%</span>
     </div>
@@ -2076,6 +2082,7 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
                         : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
                       <span className={`truncate text-[11px] ${done && !homeWon ? "text-muted-foreground" : ""}`}>{t.homeTeam}</span>
                       {homeWon && <span className="text-[10px]">🏆</span>}
+                      <EloChip elo={t.homeElo} />
                     </span>
                     <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                       {done ? scoreLabel : `${Math.round(t.ourHomeAdvance * 100)}%`}
@@ -2088,6 +2095,7 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
                         : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
                       <span className={`truncate text-[11px] ${done && !awayWon ? "text-muted-foreground" : ""}`}>{t.awayTeam}</span>
                       {awayWon && <span className="text-[10px]">🏆</span>}
+                      <EloChip elo={t.awayElo} />
                     </span>
                     <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                       {done ? "" : `${Math.round(t.ourAwayAdvance * 100)}%`}

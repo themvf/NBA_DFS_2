@@ -284,8 +284,10 @@ def simulate_bracket_reach(
                 survivors.append(decided)
             else:
                 survivors.append(a if random.random() < p_a else b)
-        for w in survivors:
-            reach[w]["r16"] += 1
+        # NB: r16 reach is set EXACTLY below (= the advance prob), not sampled —
+        # sampling it introduced ±1pp noise that disagreed with the R32 advance%
+        # shown in the bracket (e.g. Spain 76% R32 vs 75% R16). Only rounds 2+
+        # (unknown pairings) are Monte-Carlo estimates.
         # Rounds 2+ — consecutive pairing (real bracket) or random (approximate).
         for rnd in later_rounds:
             if len(survivors) < 2:
@@ -302,7 +304,23 @@ def simulate_bracket_reach(
                 reach[w][rnd] += 1
             survivors = nxt
 
-    return {t: {k: v / sims for k, v in d.items()} for t, d in reach.items()}
+    result = {t: {k: v / sims for k, v in d.items()} for t, d in reach.items()}
+    # Overwrite r16 with the EXACT advance probability (decided ties → 1/0), so
+    # P(reach R16) matches the R32 advance% exactly instead of carrying sim noise.
+    for tie in r32_ties:
+        a, b, p_a = tie[0], tie[1], tie[2]
+        decided = tie[3] if len(tie) > 3 else None
+        if decided is not None:
+            if a in result:
+                result[a]["r16"] = 1.0 if decided == a else 0.0
+            if b in result:
+                result[b]["r16"] = 1.0 if decided == b else 0.0
+        else:
+            if a in result:
+                result[a]["r16"] = round(p_a, 4)
+            if b in result:
+                result[b]["r16"] = round(1.0 - p_a, 4)
+    return result
 
 
 # Group-stage scoreline model (for proper FIFA tiebreakers): map the Elo win-prob
