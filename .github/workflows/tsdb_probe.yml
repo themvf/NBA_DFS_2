@@ -1,0 +1,25 @@
+name: TSDB Probe (diagnostic)
+
+# Temporary diagnostic: determine which TheSportsDB API style the premium key
+# supports (v1 path vs v2 header) and whether WC shootout fields are reachable.
+# Manually triggered; safe to delete after the migration is confirmed.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      THESPORTSDB_API_KEY: ${{ secrets.THESPORTSDB_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install requests
+        run: pip install requests
+      - name: Run probe
+        run: python scripts/tsdb_probe.py
