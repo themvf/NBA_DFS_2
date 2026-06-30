@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import unicodedata
 from datetime import datetime, timezone
 
@@ -37,7 +38,12 @@ from db.queries import build_soccer_team_name_cache
 
 logger = logging.getLogger(__name__)
 
-TSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123"
+# Use the real key from the env (the workflow passes THESPORTSDB_API_KEY); fall
+# back to the free '123' tier locally. Hardcoding '123' here meant CI ran on the
+# rate-limited free tier even when a paid key was configured — 429 responses then
+# made _fetch_round return [] and knockout results silently never landed.
+_TSDB_KEY = os.getenv("THESPORTSDB_API_KEY", "123")
+TSDB_BASE = f"https://www.thesportsdb.com/api/v1/json/{_TSDB_KEY}"
 WC_LEAGUE_ID = 4429          # FIFA World Cup on TheSportsDB
 WC_SEASON = "2026"
 GROUP_STAGE_ROUNDS = (1, 2, 3)

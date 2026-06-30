@@ -262,6 +262,113 @@ def settle_game_bets(db: DatabaseManager) -> int:
     return settled
 
 
+def _tsdb_event_by_date(game_date: str, home_name: str, away_name: str, api_key: str) -> dict | None:
+    """Return the full TheSportsDB event dict for a match, matched by date + teams.
+
+    Like ``_tsdb_find_event`` but returns the whole event (so callers can read
+    shootout/score fields) instead of just the id.  Uses eventsday.php — the
+    DATE-based endpoint — so it does NOT depend on TheSportsDB's knockout round
+    numbering, which eventsround.php (soccer_backfill_results) fails to cover.
+    """
+    try:
+        r = requests.get(
+            f"{TSDB_BASE}/{api_key}/eventsday.php",
+            params={"d": game_date, "s": "Soccer"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        events = r.json().get("events") or []
+    except requests.RequestException as e:
+        logger.warning("TheSportsDB eventsday failed for %s: %s", game_date, e)
+        return None
+    hn, an = _norm(home_name), _norm(away_name)
+    for ev in events:
+        if _norm(ev.get("strHomeTeam", "")) == hn and _norm(ev.get("strAwayTeam", "")) == an:
+            return ev
+    for ev in events:  # substring fallback (name divergence)
+        eh, ea = _norm(ev.get("strHomeTeam", "")), _norm(ev.get("strAwayTeam", ""))
+        if (hn in eh or eh in hn) and (an in ea or ea in an):
+            return ev
+    return None
+
+
+def resolve_knockout_winners(db: DatabaseManager, api_key: str = "123") -> int:
+    """Set winner_team_id for completed knockout ties (bracket_slot not null).
+
+    Decisive ties (hs != as) resolve from the score alone — no feed needed.
+    Drawn ties were decided on penalties: read TheSportsDB shootout scores via a
+    DATE-based lookup (robust to knockout round numbering).  A drawn tie that
+    can't be resolved emits a loud warning + manual-settle hint rather than
+    silently staying blank — this was the silent failure behind knockout winners
+    (e.g. penalty-shootout advancers) never appearing in the bracket.
+    """
+    games = db.execute(
+        """
+        SELECT sm.game_id, sm.game_date, sm.home_team_id, sm.away_team_id,
+               sm.home_score, sm.away_score, ht.name AS home_name, at.name AS away_name
+        FROM soccer_matchups sm
+        JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+        JOIN soccer_teams at ON at.team_id = sm.away_team_id
+        WHERE sm.bracket_slot IS NOT NULL
+          AND sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
+          AND sm.winner_team_id IS NULL
+        ORDER BY sm.game_date
+        """
+    )
+    gh = os.environ.get("GITHUB_ACTIONS") == "true"
+    resolved = 0
+    for g in games:
+        hs, as_ = int(g["home_score"]), int(g["away_score"])
+        winner_id = None
+        if hs > as_:
+            winner_id = g["home_team_id"]
+        elif as_ > hs:
+            winner_id = g["away_team_id"]
+        else:
+            ev = _tsdb_event_by_date(str(g["game_date"])[:10], g["home_name"], g["away_name"], api_key)
+            ph = ev.get("intScoreHomeShootout") if ev else None
+            pa = ev.get("intScoreAwayShootout") if ev else None
+            try:
+                if ph not in (None, "") and pa not in (None, ""):
+                    ph, pa = int(ph), int(pa)
+                    winner_id = g["home_team_id"] if ph > pa else g["away_team_id"] if pa > ph else None
+            except (TypeError, ValueError):
+                winner_id = None
+        if winner_id is None:
+            msg = (f"Knockout tie {g['home_name']} {hs}-{as_} {g['away_name']} is drawn with no "
+                   f"shootout winner from the feed — set manually: "
+                   f"python -m ingest.soccer_results --winner {g['game_id']} home|away")
+            print(f"  [!] Unresolved knockout winner: {msg}")
+            if gh:
+                print(f"::warning::Settlement: {msg}")
+            continue
+        db.execute(
+            "UPDATE soccer_matchups SET winner_team_id = %s WHERE game_id = %s",
+            (winner_id, g["game_id"]),
+        )
+        resolved += 1
+    if resolved:
+        print(f"Knockout winners: {resolved} ties resolved (decisive + shootouts)")
+    return resolved
+
+
+def settle_knockout_winner_manual(db: DatabaseManager, game_id: str, side: str) -> int:
+    """Manually set a knockout tie's winner ('home' | 'away').  Immediate override
+    for penalty results the feed hasn't published yet."""
+    if side not in ("home", "away"):
+        print("side must be 'home' or 'away'")
+        return 0
+    row = db.execute_one(
+        "SELECT home_team_id, away_team_id FROM soccer_matchups WHERE game_id = %s", (game_id,))
+    if not row:
+        print(f"No match with game_id {game_id}")
+        return 0
+    wid = row["home_team_id"] if side == "home" else row["away_team_id"]
+    db.execute("UPDATE soccer_matchups SET winner_team_id = %s WHERE game_id = %s", (wid, game_id))
+    print(f"Set winner_team_id = {wid} ({side}) for game {game_id}")
+    return 1
+
+
 def settle_outright(db: DatabaseManager, champion_name: str) -> int:
     """Settle all outright-winner bets given the champion's name."""
     team = db.execute_one(
@@ -578,6 +685,8 @@ if __name__ == "__main__":
     parser.add_argument("--champion", help="Settle outright winner with this champion name")
     parser.add_argument("--first-scorer", nargs=2, metavar=("GAME_ID", "PLAYER"),
                         help="Manually settle first-scorer for a game")
+    parser.add_argument("--winner", nargs=2, metavar=("GAME_ID", "SIDE"),
+                        help="Manually set a knockout tie winner (SIDE = home|away)")
     parser.add_argument("--no-auto-first-scorer", action="store_true",
                         help="Skip automatic TheSportsDB first-scorer settlement")
     parser.add_argument("--health-check", action="store_true",
@@ -595,8 +704,15 @@ if __name__ == "__main__":
         check_settlement_health(db, annotate=True)
         raise SystemExit(0)
 
+    if args.winner:
+        settle_knockout_winner_manual(db, args.winner[0], args.winner[1])
+        raise SystemExit(0)
+
     fetch_scores(db, config.odds_api.api_key, args.days_from)
     settle_game_bets(db)
+    # Resolve knockout advancers (decisive scores + penalty shootouts) so the
+    # bracket shows winners — runs every cycle, loud on unresolved ties.
+    resolve_knockout_winners(db, tsdb_key)
     settle_group_winners(db)
     if not args.no_auto_first_scorer:
         settle_first_scorer_auto(db, tsdb_key)
