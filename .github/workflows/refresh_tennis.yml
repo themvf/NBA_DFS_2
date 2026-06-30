@@ -1,0 +1,85 @@
+name: Refresh Tennis (Wimbledon)
+
+# Every 3h: refresh odds → write predictions → rate moneyline bets.
+# Settlement (Kaggle daily results) runs only when KAGGLE creds are present.
+# Weekly (Mon 06:00 UTC): rebuild ATP grass-Elo ratings from TML-Database,
+# which folds completed Wimbledon results back into player strength.
+# ATP only — WTA has no live ratings source (see memory tennis-data-sources).
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"   # odds + predictions + ratings, through a match day
+    - cron: "0 6 * * 1"     # weekly: rebuild player ratings
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Match date YYYY-MM-DD (UTC). Default: all upcoming"
+        required: false
+        type: string
+      rebuild_ratings:
+        description: "Force-rebuild ATP ratings from match history"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: refresh-tennis
+  cancel-in-progress: false
+
+jobs:
+  refresh-tennis:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Rebuild ATP ratings (weekly or on demand)
+        if: github.event.schedule == '0 6 * * 1' || inputs.rebuild_ratings == true
+        run: python -m ingest.tennis_history
+
+      - name: Settle completed bets from Kaggle results (if creds present)
+        # Settlement needs KAGGLE_USERNAME/KAGGLE_KEY. Gated so the run still
+        # refreshes odds + recommendations before settlement is wired/credentialed.
+        # continue-on-error: a flaky Kaggle pull must not block the odds refresh.
+        if: env.KAGGLE_KEY != ''
+        continue-on-error: true
+        run: python -m ingest.tennis_results_kaggle
+
+      - name: Refresh Wimbledon odds (both tours)
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            python -m ingest.tennis_schedule --date "${{ inputs.date }}"
+          else
+            python -m ingest.tennis_schedule
+          fi
+
+      - name: Write model predictions (ATP grass-Elo, market-anchored)
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            python -m model.tennis_predictions --date "${{ inputs.date }}"
+          else
+            python -m model.tennis_predictions
+          fi
+
+      - name: Rate moneyline bets
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            python -m model.tennis_bets --date "${{ inputs.date }}"
+          else
+            python -m model.tennis_bets
+          fi
