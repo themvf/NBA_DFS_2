@@ -101,17 +101,20 @@ def _winner_from_event(ev: dict, home_id: int, away_id: int, hs: int, as_: int) 
     """Determine winning team_id from a TheSportsDB event dict.
 
     Regular-time / ET winner is clear from the score. For penalty shootouts
-    (hs == as_ after 90+ET), TheSportsDB provides intScoreHomeShootout /
-    intScoreAwayShootout. Returns None if the game is tied and no shootout data.
+    (hs == as_ after 90+ET), TheSportsDB encodes the result in intHomeScoreExtra /
+    intAwayScoreExtra (NOT intScoreHomeShootout, which is null). Returns None if
+    the game is tied and no penalty data. NOTE: the eventsround.php feed this
+    consumes is deprecated (404s); resolve_knockout_winners in soccer_results.py
+    is the live path — this stays correct for if/when backfill moves to v2.
     """
     if hs > as_:
         return home_id
     if as_ > hs:
         return away_id
-    # Draw after 90+ET — check for penalty shootout scores.
+    # Draw after 90+ET — read the penalty shootout score from the Extra fields.
     try:
-        pens_h = ev.get("intScoreHomeShootout")
-        pens_a = ev.get("intScoreAwayShootout")
+        pens_h = ev.get("intHomeScoreExtra")
+        pens_a = ev.get("intAwayScoreExtra")
         if pens_h not in (None, "") and pens_a not in (None, ""):
             ph, pa = int(pens_h), int(pens_a)
             if ph > pa:
