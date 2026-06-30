@@ -853,6 +853,43 @@ TABLES = [
     )
     """,
 
+    # ── Tennis matches (MVP: Wimbledon Vegas odds only) ──────
+    # Single sport-agnostic table; player NAMES are stored inline from the Odds
+    # API feed (home_team/away_team), so no separate players table is needed for
+    # the odds-only MVP.  2-way market (no draw) → simpler than soccer.  game_id
+    # is the Odds API event id.  Result columns are written later by the Kaggle
+    # settlement job (set/game scores → settle bets, compute totals/handicap).
+    """
+    CREATE TABLE IF NOT EXISTS tennis_matches (
+        id SERIAL PRIMARY KEY,
+        game_id TEXT UNIQUE,
+        tour TEXT NOT NULL,                 -- 'ATP' | 'WTA'
+        tournament TEXT DEFAULT 'Wimbledon',
+        match_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ,
+        home_player TEXT NOT NULL,
+        away_player TEXT NOT NULL,
+        home_ml INTEGER,
+        away_ml INTEGER,
+        home_win_prob DOUBLE PRECISION,     -- vig-removed 2-way consensus
+        away_win_prob DOUBLE PRECISION,
+        total_games_line DOUBLE PRECISION,
+        over_odds INTEGER,
+        under_odds INTEGER,
+        set_handicap DOUBLE PRECISION,      -- favorite handicap line (games/sets)
+        handicap_home_odds INTEGER,
+        handicap_away_odds INTEGER,
+        n_books INTEGER,
+        home_sets INTEGER,
+        away_sets INTEGER,
+        home_games INTEGER,
+        away_games INTEGER,
+        winner TEXT,                        -- 'home' | 'away' | 'retired'
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(tour, match_date, home_player, away_player)
+    )
+    """,
+
     # ── Player-level historical stats for the stat-based first-scorer model ──
     # Aggregated from StatsBomb open data (WC 2018 + 2022 + continental tourneys).
     # xg_per_90 is the primary input to firstscorer-v3.  normalized_name is the
@@ -1601,6 +1638,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_soccer_bets_scope ON soccer_bets(scope)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_bets_settle ON soccer_bets(status, stars)",
     "CREATE INDEX IF NOT EXISTS idx_soccer_bet_snapshots_bet ON soccer_bet_snapshots(bet_id, captured_at DESC)",
+    # Tennis (Wimbledon MVP)
+    "CREATE INDEX IF NOT EXISTS idx_tennis_matches_date ON tennis_matches(match_date, tour)",
     # 2026-06-28: Draw No Bet market for knockout rounds — 2-way (void on draw).
     # dk_dnb_*_ml  = DraftKings' posted price (used for EV — the book the user bets at).
     # dnb_*_prob   = Pinnacle vig-free reference (or consensus 2-way if Pinnacle missing).

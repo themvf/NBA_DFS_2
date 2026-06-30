@@ -18,6 +18,7 @@ const SPORTS: { sport: Sport; label: string; icon: string }[] = [
   { sport: "nba", label: "NBA", icon: "🏀" },
   { sport: "mlb", label: "MLB", icon: "⚾" },
   { sport: "soccer", label: "World Cup", icon: "⚽" },
+  { sport: "tennis", label: "Wimbledon", icon: "🎾" },
 ];
 
 // Soccer currently only has the Vegas model wired up; DFS/analytics pages are
@@ -48,7 +49,7 @@ export function SportNav() {
 
         {/* Logo */}
         <Link
-          href={currentSport === "soccer" ? `/vegas?sport=soccer` : `/dfs?sport=${currentSport}`}
+          href={currentSport === "soccer" || currentSport === "tennis" ? `/vegas?sport=${currentSport}` : `/dfs?sport=${currentSport}`}
           className="mr-3 shrink-0 font-bold text-lg tracking-tight"
         >
           DFS

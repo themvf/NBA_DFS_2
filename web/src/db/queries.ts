@@ -16,7 +16,7 @@ type SolverResult = Record<string, number> & { feasible: boolean; result: number
 
 // ── Sport discriminator ──────────────────────────────────────
 // Add new sports here as the project expands.
-export type Sport = "nba" | "mlb" | "soccer";
+export type Sport = "nba" | "mlb" | "soccer" | "tennis";
 
 // ── DFS Player Pool ──────────────────────────────────────────
 
@@ -6203,6 +6203,82 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
     pinnacleProbDraw: r.pinnacleProbDraw != null ? Number(r.pinnacleProbDraw) : null,
     pinnacleProbAway: r.pinnacleProbAway != null ? Number(r.pinnacleProbAway) : null,
     motivation: r.motivation != null ? String(r.motivation) : null,
+  }));
+}
+
+// ── Tennis (Wimbledon Vegas odds MVP) ─────────────────────────────────────────
+export type TennisMatchRow = {
+  id: number;
+  gameId: string | null;
+  tour: string;
+  matchDate: string;
+  commenceTime: string | null;
+  homePlayer: string;
+  awayPlayer: string;
+  homeMl: number | null;
+  awayMl: number | null;
+  homeWinProb: number | null;
+  awayWinProb: number | null;
+  totalGamesLine: number | null;
+  overOdds: number | null;
+  underOdds: number | null;
+  setHandicap: number | null;
+  handicapHomeOdds: number | null;
+  handicapAwayOdds: number | null;
+  nBooks: number | null;
+  winner: string | null;
+};
+
+export async function getTennisVegasMatchups(matchDate?: string): Promise<TennisMatchRow[]> {
+  // With a date: that match-day. Without: all upcoming (today onward).
+  const whereClause = matchDate
+    ? sql`WHERE tm.match_date = ${matchDate}`
+    : sql`WHERE tm.match_date >= CURRENT_DATE`;
+  const rows = await db.execute(sql`
+    SELECT
+      tm.id                 AS "id",
+      tm.game_id            AS "gameId",
+      tm.tour               AS "tour",
+      tm.match_date         AS "matchDate",
+      tm.commence_time      AS "commenceTime",
+      tm.home_player        AS "homePlayer",
+      tm.away_player        AS "awayPlayer",
+      tm.home_ml            AS "homeMl",
+      tm.away_ml            AS "awayMl",
+      tm.home_win_prob      AS "homeWinProb",
+      tm.away_win_prob      AS "awayWinProb",
+      tm.total_games_line   AS "totalGamesLine",
+      tm.over_odds          AS "overOdds",
+      tm.under_odds         AS "underOdds",
+      tm.set_handicap       AS "setHandicap",
+      tm.handicap_home_odds AS "handicapHomeOdds",
+      tm.handicap_away_odds AS "handicapAwayOdds",
+      tm.n_books            AS "nBooks",
+      tm.winner             AS "winner"
+    FROM tennis_matches tm
+    ${whereClause}
+    ORDER BY tm.commence_time ASC NULLS LAST
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    id: Number(r.id),
+    gameId: r.gameId != null ? String(r.gameId) : null,
+    tour: String(r.tour),
+    matchDate: String(r.matchDate),
+    commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+    homePlayer: String(r.homePlayer ?? ""),
+    awayPlayer: String(r.awayPlayer ?? ""),
+    homeMl: r.homeMl != null ? Number(r.homeMl) : null,
+    awayMl: r.awayMl != null ? Number(r.awayMl) : null,
+    homeWinProb: r.homeWinProb != null ? Number(r.homeWinProb) : null,
+    awayWinProb: r.awayWinProb != null ? Number(r.awayWinProb) : null,
+    totalGamesLine: r.totalGamesLine != null ? Number(r.totalGamesLine) : null,
+    overOdds: r.overOdds != null ? Number(r.overOdds) : null,
+    underOdds: r.underOdds != null ? Number(r.underOdds) : null,
+    setHandicap: r.setHandicap != null ? Number(r.setHandicap) : null,
+    handicapHomeOdds: r.handicapHomeOdds != null ? Number(r.handicapHomeOdds) : null,
+    handicapAwayOdds: r.handicapAwayOdds != null ? Number(r.handicapAwayOdds) : null,
+    nBooks: r.nBooks != null ? Number(r.nBooks) : null,
+    winner: r.winner != null ? String(r.winner) : null,
   }));
 }
 

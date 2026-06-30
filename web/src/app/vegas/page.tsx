@@ -11,8 +11,11 @@ export default async function VegasPage({
 }) {
   const { date, sport } = await searchParams;
   const resolvedSport: Sport =
-    sport === "mlb" ? "mlb" : sport === "soccer" ? "soccer" : "nba";
-  const sportLabel = resolvedSport === "soccer" ? "WORLD CUP" : resolvedSport.toUpperCase();
+    sport === "mlb" ? "mlb" : sport === "soccer" ? "soccer" : sport === "tennis" ? "tennis" : "nba";
+  const sportLabel =
+    resolvedSport === "soccer" ? "WORLD CUP"
+    : resolvedSport === "tennis" ? "WIMBLEDON"
+    : resolvedSport.toUpperCase();
 
   return (
     <Suspense
