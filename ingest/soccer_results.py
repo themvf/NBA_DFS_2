@@ -104,20 +104,42 @@ def fetch_scores(db: DatabaseManager, api_key: str, days_from: int = 3) -> int:
             continue
         if (prev["home_score"], prev["away_score"]) == (hs, as_):
             continue  # already correct
+        is_correction = prev["home_score"] is not None or prev["away_score"] is not None
         # Write the completed-game score, correcting any stale/in-progress value
         # that got frozen earlier (the old NULL-only guard could never fix a wrong
-        # score — e.g. a game polled at 0-0 while live).
-        db.execute(
-            "UPDATE soccer_matchups SET home_score = %s, away_score = %s WHERE game_id = %s",
-            (hs, as_, ev_id),
-        )
+        # score — e.g. a game polled at 0-0 while live).  On a correction, also
+        # reset the derived fields computed FROM the old score: winner_team_id
+        # (resolve_knockout_winners only processes NULL rows, so a wrong winner
+        # would otherwise stick forever — Belgium-Senegal 2026-07-01) and the
+        # regulation scores (re-derived from the goal timeline next pass).
+        if is_correction:
+            db.execute(
+                "UPDATE soccer_matchups SET home_score = %s, away_score = %s, "
+                "winner_team_id = NULL, reg_home_score = NULL, reg_away_score = NULL "
+                "WHERE game_id = %s",
+                (hs, as_, ev_id),
+            )
+        else:
+            db.execute(
+                "UPDATE soccer_matchups SET home_score = %s, away_score = %s WHERE game_id = %s",
+                (hs, as_, ev_id),
+            )
         updated += 1
         # If we corrected a previously-recorded (non-NULL) score, reopen this
-        # game's settled bets so the next settle pass re-grades against the truth.
-        if prev["home_score"] is not None or prev["away_score"] is not None:
+        # game's SCORE-DEPENDENT settled bets so the next settle pass re-grades
+        # against the truth.  Two deliberate scope limits:
+        #   * first_scorer bets are NOT reopened — their outcome comes from the
+        #     goal timeline (who scored first never changes with a score
+        #     correction), and a reopened-pending first_scorer row would be
+        #     DELETEd by soccer_first_scorer's unlocked-pending sweep.
+        #   * reopened rows are locked: kickoff is long past, so no rating pass
+        #     may re-rate or clear them while they await re-settlement.
+        if is_correction:
             db.execute(
-                "UPDATE soccer_bets SET status = 'pending', settled_at = NULL, result_detail = NULL "
-                "WHERE scope = %s AND status IN ('won', 'lost', 'void')",
+                "UPDATE soccer_bets SET status = 'pending', settled_at = NULL, "
+                "result_detail = NULL, locked = TRUE "
+                "WHERE scope = %s AND status IN ('won', 'lost', 'void') "
+                "AND bet_type IN ('moneyline', 'total', 'draw_no_bet')",
                 (ev_id,),
             )
             corrected += 1
@@ -128,6 +150,116 @@ def fetch_scores(db: DatabaseManager, api_key: str, days_from: int = 3) -> int:
         parts.append(f"{skipped_live} skipped (kickoff < {_MIN_ELAPSED} ago)")
     print(f"Scores: {', '.join(parts)}")
     return updated
+
+
+def derive_regulation_scores(db: DatabaseManager) -> int:
+    """Fill reg_home_score / reg_away_score — the 90-minute result game bets settle on.
+
+    ``home_score``/``away_score`` is the FINAL score (including extra time —
+    what the Odds API publishes and what knockout advancement needs), but
+    soccer moneyline / totals / draw-no-bet markets settle on the 90-minute
+    result.  Grading on the ET-inclusive score would e.g. mark "Belgium ML" won
+    for a match Belgium only won in the 125th minute (2-2 at 90') — a bet every
+    sportsbook grades as a LOSS.  For group games the two scores are identical
+    (no extra time).  For knockout ties the regulation score is rebuilt from
+    the TheSportsDB goal timeline in soccer_match_goals: TheSportsDB caps
+    stoppage-time goals at the period boundary (a 90+2' goal is stored with
+    minute 90 — verified on Eustaquio, RSA-CAN R32), so minute <= 90 is
+    regulation and 91+ is extra time.
+
+    Safety gate: the timeline is only trusted when its goal count equals the
+    final score's total.  This rejects partial timelines (the live-poll bug
+    stored one mid-match) and own-goal games (own goals are excluded from
+    soccer_match_goals).  A knockout game that fails the gate keeps NULL reg
+    scores — settle_game_bets skips it loudly with a --reg-score manual hint
+    rather than grading on a possibly-ET-inclusive score.
+    """
+    games = db.execute(
+        """
+        SELECT sm.game_id, sm.home_score, sm.away_score,
+               ht.name AS home_name, at.name AS away_name,
+               ((gh.group_label IS NOT NULL AND ga.group_label IS NOT NULL
+                   AND gh.group_label <> ga.group_label)
+                OR sm.bracket_slot IS NOT NULL) AS is_knockout
+        FROM soccer_matchups sm
+        JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+        JOIN soccer_teams at ON at.team_id = sm.away_team_id
+        LEFT JOIN soccer_groups gh ON gh.team_id = sm.home_team_id
+        LEFT JOIN soccer_groups ga ON ga.team_id = sm.away_team_id
+        WHERE sm.game_id IS NOT NULL
+          AND sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
+          AND (sm.reg_home_score IS NULL OR sm.reg_away_score IS NULL)
+        """
+    )
+    filled = 0
+    for g in games:
+        hs, as_ = int(g["home_score"]), int(g["away_score"])
+        if not g["is_knockout"]:
+            reg_h, reg_a = hs, as_  # group stage: no extra time possible
+        else:
+            total = hs + as_
+            if total == 0:
+                reg_h = reg_a = 0
+            else:
+                goals = db.execute(
+                    "SELECT player_team, goal_minute FROM soccer_match_goals "
+                    "WHERE game_id = %s",
+                    (g["game_id"],),
+                )
+                if len(goals) != total:
+                    logger.warning(
+                        "Regulation score for %s vs %s: goal timeline has %d goals "
+                        "but final is %d-%d — waiting for a complete timeline "
+                        "(or own goals; settle manually with --reg-score %s H A)",
+                        g["home_name"], g["away_name"], len(goals), hs, as_, g["game_id"],
+                    )
+                    continue
+                hn, an = _norm(g["home_name"]), _norm(g["away_name"])
+                reg_h = reg_a = 0
+                attributed = True
+                for goal in goals:
+                    if (goal["goal_minute"] or 999) > 90:
+                        continue  # extra-time goal
+                    team = _norm(goal["player_team"] or "")
+                    if team == hn:
+                        reg_h += 1
+                    elif team == an:
+                        reg_a += 1
+                    else:
+                        logger.warning(
+                            "Regulation score for %s vs %s: cannot attribute goal "
+                            "team %r — settle manually with --reg-score %s H A",
+                            g["home_name"], g["away_name"], goal["player_team"], g["game_id"],
+                        )
+                        attributed = False
+                        break
+                if not attributed:
+                    continue
+        db.execute(
+            "UPDATE soccer_matchups SET reg_home_score = %s, reg_away_score = %s "
+            "WHERE game_id = %s",
+            (reg_h, reg_a, g["game_id"]),
+        )
+        filled += 1
+    if filled:
+        print(f"Regulation scores: {filled} games filled")
+    return filled
+
+
+def set_regulation_score_manual(db: DatabaseManager, game_id: str, hs: int, as_: int) -> int:
+    """Manually set a game's 90-minute score (for games the timeline can't resolve)."""
+    row = db.execute_one(
+        "SELECT home_score, away_score FROM soccer_matchups WHERE game_id = %s", (game_id,))
+    if not row:
+        print(f"No match with game_id {game_id}")
+        return 0
+    db.execute(
+        "UPDATE soccer_matchups SET reg_home_score = %s, reg_away_score = %s WHERE game_id = %s",
+        (hs, as_, game_id),
+    )
+    print(f"Set regulation score {hs}-{as_} for game {game_id} "
+          f"(final {row['home_score']}-{row['away_score']})")
+    return 1
 
 
 def settle_group_winners(db: DatabaseManager) -> int:
@@ -194,11 +326,23 @@ def settle_group_winners(db: DatabaseManager) -> int:
 
 
 def settle_game_bets(db: DatabaseManager) -> int:
-    """Settle moneyline + totals bets for matches that now have a final score."""
+    """Settle moneyline + totals + DNB bets on the 90-minute (regulation) score.
+
+    Soccer game markets settle on the 90-minute result, NOT extra time — a
+    knockout tie that finishes 2-2 and is won 3-2 in ET grades the moneyline as
+    Draw and the total as 4, whatever the ET-inclusive final says.  The
+    regulation score is filled by ``derive_regulation_scores`` (identical to
+    the final for group games); a game without one is skipped loudly rather
+    than mis-graded.
+    """
     games = db.execute(
         """
-        SELECT sm.game_id, sm.home_team_id, sm.away_team_id, sm.home_score, sm.away_score
+        SELECT sm.game_id, sm.home_score, sm.away_score,
+               sm.reg_home_score, sm.reg_away_score,
+               ht.name AS home_name, at.name AS away_name
         FROM soccer_matchups sm
+        JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
+        JOIN soccer_teams at ON at.team_id = sm.away_team_id
         WHERE sm.game_id IS NOT NULL
           AND sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
           AND EXISTS (
@@ -208,12 +352,28 @@ def settle_game_bets(db: DatabaseManager) -> int:
           )
         """,
     )
+    gh = os.environ.get("GITHUB_ACTIONS") == "true"
     settled = 0
     for g in games:
         gid = g["game_id"]
-        hs, as_ = int(g["home_score"]), int(g["away_score"])
+        if g["reg_home_score"] is None or g["reg_away_score"] is None:
+            msg = (f"{g['home_name']} {g['home_score']}-{g['away_score']} {g['away_name']} "
+                   f"has pending game bets but no regulation (90') score yet — "
+                   f"derive failed or timeline incomplete; manual: "
+                   f"python -m ingest.soccer_results --reg-score {gid} H A")
+            print(f"  [!] Unsettled game bets: {msg}")
+            if gh:
+                print(f"::warning::Settlement: {msg}")
+            continue
+        hs, as_ = int(g["reg_home_score"]), int(g["reg_away_score"])
+        fin_h, fin_a = int(g["home_score"]), int(g["away_score"])
         total = hs + as_
-        # Winning moneyline side.
+        # Result detail records both scores when ET changed the scoreline.
+        if (hs, as_) == (fin_h, fin_a):
+            final_str = f"Final {hs}-{as_}"
+        else:
+            final_str = f"Final {fin_h}-{fin_a} aet (90': {hs}-{as_})"
+        # Winning moneyline side (90 minutes).
         if hs > as_:
             ml_winner = "home"
         elif hs < as_:
@@ -229,7 +389,7 @@ def settle_game_bets(db: DatabaseManager) -> int:
         )
         for b in bets:
             status = None
-            detail = f"Final {hs}-{as_}"
+            detail = final_str
             if b["bet_type"] == "moneyline":
                 side = (b["inputs_json"] or {}).get("side")
                 status = "won" if side == ml_winner else "lost"
@@ -237,7 +397,7 @@ def settle_game_bets(db: DatabaseManager) -> int:
                 # Void on 90-min draw; won/lost on decisive 90-min result.
                 if hs == as_:
                     status = "void"
-                    detail = f"Draw {hs}-{as_} (DNB push)"
+                    detail = f"Draw {hs}-{as_} at 90' (DNB push)"
                 else:
                     side = (b["inputs_json"] or {}).get("side")
                     status = "won" if side == ml_winner else "lost"
@@ -751,6 +911,9 @@ if __name__ == "__main__":
                         help="Manually settle first-scorer for a game")
     parser.add_argument("--winner", nargs=2, metavar=("GAME_ID", "SIDE"),
                         help="Manually set a knockout tie winner (SIDE = home|away)")
+    parser.add_argument("--reg-score", nargs=3, metavar=("GAME_ID", "HOME", "AWAY"),
+                        help="Manually set a game's 90-minute score (for knockout ties "
+                             "the goal timeline can't resolve, e.g. own goals)")
     parser.add_argument("--no-auto-first-scorer", action="store_true",
                         help="Skip automatic TheSportsDB first-scorer settlement")
     parser.add_argument("--health-check", action="store_true",
@@ -772,7 +935,16 @@ if __name__ == "__main__":
         settle_knockout_winner_manual(db, args.winner[0], args.winner[1])
         raise SystemExit(0)
 
+    if args.reg_score:
+        set_regulation_score_manual(
+            db, args.reg_score[0], int(args.reg_score[1]), int(args.reg_score[2]))
+        derive_regulation_scores(db)
+        settle_game_bets(db)
+        raise SystemExit(0)
+
     fetch_scores(db, config.odds_api.api_key, args.days_from)
+    # 90-minute scores first — game bets grade on regulation, not extra time.
+    derive_regulation_scores(db)
     settle_game_bets(db)
     # Resolve knockout advancers (decisive scores + penalty shootouts) so the
     # bracket shows winners — runs every cycle, loud on unresolved ties.

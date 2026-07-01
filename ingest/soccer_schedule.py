@@ -309,6 +309,8 @@ def fetch_schedule_and_odds(
 
     upserted = 0
     skipped_date = 0
+    skipped_live = 0
+    now = datetime.now(timezone.utc)
     # Collect (game_id, home_name, away_name) for the DNB second pass.
     dnb_queue: list[tuple[str, str, str]] = []
     for ev in events:
@@ -318,6 +320,14 @@ def fetch_schedule_and_odds(
         try:
             commence_dt = datetime.fromisoformat(commence_iso.replace("Z", "+00:00"))
         except ValueError:
+            continue
+        # In-play guard: after kickoff the odds feed serves LIVE prices.
+        # Writing them replaces the pre-match closing line every prediction,
+        # edge display, and backtest reference assumes (a mid-game refresh
+        # stored Belgium +5053 / Senegal -1424 while Senegal led 2-0 on
+        # 2026-07-01). Once a match starts, its stored odds are frozen.
+        if commence_dt <= now:
+            skipped_live += 1
             continue
         ev_date = commence_dt.astimezone(timezone.utc).date().isoformat()
         if game_date and ev_date != game_date:
@@ -413,6 +423,8 @@ def fetch_schedule_and_odds(
         msg += f" for {game_date}"
         if skipped_date:
             msg += f" ({skipped_date} other-date fixtures skipped)"
+    if skipped_live:
+        msg += f" ({skipped_live} in-play fixtures skipped — closing lines frozen)"
     print(msg)
 
     # Second pass: fetch draw_no_bet per-event (specialty market, not in bulk endpoint).

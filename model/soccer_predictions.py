@@ -150,6 +150,10 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
                sm.game_date
         FROM soccer_matchups sm
         WHERE {where}
+          -- Only fixtures that haven't kicked off: our_* columns are the
+          -- pre-match prediction of record (the ledger locks at kickoff), and
+          -- re-predicting a live game re-anchors to in-play market data.
+          AND (sm.commence_time IS NULL OR sm.commence_time > NOW())
         """,
         params,
     )

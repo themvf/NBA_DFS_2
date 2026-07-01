@@ -100,13 +100,20 @@ def backfill(db: DatabaseManager, api_key: str = "123", force: bool = False, dry
         print("No completed games found.")
         return 0
 
-    # Skip games already stored unless --force.
+    # Skip games whose stored timeline is COMPLETE unless --force.  "Present" is
+    # not enough: a timeline fetched while the match was live (or before TSDB
+    # finished publishing) is partial — Belgium-Senegal froze at 2 of 5 goals —
+    # so completeness is judged by goal count vs the final score.  Games with an
+    # own goal never look complete (own goals are excluded from
+    # soccer_match_goals) and get harmlessly re-fetched each pass.
     if not force:
-        stored = {r["game_id"] for r in db.execute("SELECT game_id FROM soccer_match_scorers")}
-        # Also skip if we already have full goals data for that game.
-        stored |= {r["game_id"] for r in db.execute("SELECT DISTINCT game_id FROM soccer_match_goals")}
+        goal_counts = {r["game_id"]: r["n"] for r in db.execute(
+            "SELECT game_id, COUNT(*) AS n FROM soccer_match_goals GROUP BY game_id")}
+        goalless_stored = {r["game_id"] for r in db.execute(
+            "SELECT game_id FROM soccer_match_scorers WHERE scorer_name = '[none]'")}
     else:
-        stored = set()
+        goal_counts = {}
+        goalless_stored = set()
 
     processed = 0
     skipped = 0
@@ -114,7 +121,10 @@ def backfill(db: DatabaseManager, api_key: str = "123", force: bool = False, dry
 
     for g in games:
         gid = g["game_id"]
-        if gid in stored:
+        total = (g["home_score"] or 0) + (g["away_score"] or 0)
+        complete = (goal_counts.get(gid, 0) == total and total > 0) or \
+                   (total == 0 and gid in goalless_stored)
+        if complete:
             skipped += 1
             continue
 
@@ -153,6 +163,10 @@ def backfill(db: DatabaseManager, api_key: str = "123", force: bool = False, dry
                     scorer_name=first["player"], scorer_team=first["team"],
                     goal_minute=first["minute"], tsdb_event_id=tsdb_id,
                 )
+                # Replace, don't merge: a stale partial row with a divergent
+                # minute would survive the upsert as a duplicate and the goal
+                # count would never match the final score again.
+                db.execute("DELETE FROM soccer_match_goals WHERE game_id = %s", (gid,))
                 # Store all goals so the UI can show per-player goal counts.
                 for goal in goals:
                     upsert_soccer_match_goal(

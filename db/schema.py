@@ -1726,4 +1726,14 @@ INDEXES = [
     # intHomeScoreExtra / intAwayScoreExtra (+ strResult) via a single-event
     # lookup. NULL for group stage and unplayed knockout ties.
     "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS winner_team_id INTEGER REFERENCES soccer_teams(team_id)",
+    # 2026-07-01: 90-minute (regulation) score. home_score/away_score is the
+    # ET-inclusive final (what the Odds API publishes; drives knockout
+    # advancement + ratings), but moneyline/totals/DNB markets settle on the
+    # 90-minute result — Belgium 3-2 aet Senegal grades ML as Draw (2-2 at 90').
+    # Filled by soccer_results.derive_regulation_scores (= final for group
+    # games; rebuilt from the soccer_match_goals timeline for knockout ties,
+    # where TheSportsDB caps stoppage goals at the period boundary so
+    # minute <= 90 is regulation). Manual override: --reg-score.
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS reg_home_score INTEGER",
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS reg_away_score INTEGER",
 ]
