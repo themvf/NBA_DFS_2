@@ -32,8 +32,6 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
     steps:
       - name: Checkout
@@ -48,15 +46,23 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Configure Kaggle credentials
+        env:
+          KAGGLE_API: ${{ secrets.KAGGLE_API }}
+        run: |
+          if [ -n "$KAGGLE_API" ]; then
+            mkdir -p ~/.kaggle
+            echo '{"username":"JosBAN","key":"'"$KAGGLE_API"'"}' > ~/.kaggle/kaggle.json
+            chmod 600 ~/.kaggle/kaggle.json
+          fi
+
       - name: Rebuild ATP ratings (weekly or on demand)
         if: github.event.schedule == '0 6 * * 1' || inputs.rebuild_ratings == true
         run: python -m ingest.tennis_history
 
       - name: Settle completed bets from Kaggle results (if creds present)
-        # Settlement needs KAGGLE_USERNAME/KAGGLE_KEY. Gated so the run still
-        # refreshes odds + recommendations before settlement is wired/credentialed.
         # continue-on-error: a flaky Kaggle pull must not block the odds refresh.
-        if: env.KAGGLE_KEY != ''
+        # Python raises clearly if ~/.kaggle/kaggle.json is absent (no creds configured).
         continue-on-error: true
         run: python -m ingest.tennis_results_kaggle
 

@@ -48,10 +48,10 @@ def download_dataset(dataset: str = DEFAULT_DATASET, dest: Path = DOWNLOAD_DIR) 
     (local). Raises a clear error if neither is present, so an expired/missing
     token surfaces loudly in CI instead of silently producing no settlements.
     """
-    if not (os.getenv("KAGGLE_KEY") or (Path.home() / ".kaggle" / "kaggle.json").exists()):
+    if not ((Path.home() / ".kaggle" / "kaggle.json").exists() or os.getenv("KAGGLE_KEY")):
         raise RuntimeError(
-            "No Kaggle credentials. Set KAGGLE_USERNAME + KAGGLE_KEY env vars "
-            "(GitHub Secrets) or place ~/.kaggle/kaggle.json. "
+            "No Kaggle credentials. Place ~/.kaggle/kaggle.json "
+            '({"username":"JosBAN","key":"<token>"}) or set KAGGLE_USERNAME + KAGGLE_KEY. '
             "Token: kaggle.com → Account → Create New API Token."
         )
 

@@ -6229,6 +6229,12 @@ export type TennisMatchRow = {
   winner: string | null;
   ourProbHome: number | null;
   ourProbAway: number | null;
+  homeElo: number | null;
+  homeGrassElo: number | null;
+  homeGrassMatches: number | null;
+  awayElo: number | null;
+  awayGrassElo: number | null;
+  awayGrassMatches: number | null;
 };
 
 export async function getTennisVegasMatchups(matchDate?: string): Promise<TennisMatchRow[]> {
@@ -6258,8 +6264,20 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
       tm.n_books            AS "nBooks",
       tm.winner             AS "winner",
       tm.our_prob_home      AS "ourProbHome",
-      tm.our_prob_away      AS "ourProbAway"
+      tm.our_prob_away      AS "ourProbAway",
+      rh.overall_elo        AS "homeElo",
+      rh.grass_elo          AS "homeGrassElo",
+      rh.grass_matches      AS "homeGrassMatches",
+      ra.overall_elo        AS "awayElo",
+      ra.grass_elo          AS "awayGrassElo",
+      ra.grass_matches      AS "awayGrassMatches"
     FROM tennis_matches tm
+    LEFT JOIN tennis_player_ratings rh
+      ON rh.norm_name = regexp_replace(lower(tm.home_player), '[^a-z0-9]', '', 'g')
+      AND rh.tour = tm.tour
+    LEFT JOIN tennis_player_ratings ra
+      ON ra.norm_name = regexp_replace(lower(tm.away_player), '[^a-z0-9]', '', 'g')
+      AND ra.tour = tm.tour
     ${whereClause}
     ORDER BY tm.commence_time ASC NULLS LAST
   `);
@@ -6285,6 +6303,12 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
     winner: r.winner != null ? String(r.winner) : null,
     ourProbHome: r.ourProbHome != null ? Number(r.ourProbHome) : null,
     ourProbAway: r.ourProbAway != null ? Number(r.ourProbAway) : null,
+    homeElo: r.homeElo != null ? Number(r.homeElo) : null,
+    homeGrassElo: r.homeGrassElo != null ? Number(r.homeGrassElo) : null,
+    homeGrassMatches: r.homeGrassMatches != null ? Number(r.homeGrassMatches) : null,
+    awayElo: r.awayElo != null ? Number(r.awayElo) : null,
+    awayGrassElo: r.awayGrassElo != null ? Number(r.awayGrassElo) : null,
+    awayGrassMatches: r.awayGrassMatches != null ? Number(r.awayGrassMatches) : null,
   }));
 }
 
