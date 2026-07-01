@@ -60,11 +60,12 @@ jobs:
         if: github.event.schedule == '0 6 * * 1' || inputs.rebuild_ratings == true
         run: python -m ingest.tennis_history
 
-      - name: Settle completed bets from Kaggle results (if creds present)
-        # continue-on-error: a flaky Kaggle pull must not block the odds refresh.
-        # Python raises clearly if ~/.kaggle/kaggle.json is absent (no creds configured).
+      - name: Settle completed bets from tennis-data.co.uk results
+        # Free results source (ATP+WTA, set/game scores). Updates near-daily during
+        # a Slam but lags a few days for smaller events. continue-on-error so a
+        # flaky download never blocks the odds + recommendations refresh below.
         continue-on-error: true
-        run: python -m ingest.tennis_results_kaggle
+        run: python -m ingest.tennis_results
 
       - name: Refresh Wimbledon odds (both tours)
         run: |

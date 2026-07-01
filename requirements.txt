@@ -8,3 +8,4 @@ rapidfuzz>=3.0
 nba_api>=1.5
 pybaseball>=2.2
 scikit-learn>=1.4,<2
+openpyxl>=3.1
