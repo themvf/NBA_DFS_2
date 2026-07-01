@@ -6381,7 +6381,7 @@ export type TennisBetBacktestRow = {
 };
 
 // Star-tier calibration on SETTLED tennis bets (won/lost). Empty until the
-// Kaggle settlement job grades bets — the panel renders its structure regardless.
+// tennis-data.co.uk settlement job grades bets — the panel renders its structure regardless.
 // stars=0 is the client-aggregated 'All' rollup (computed in the component).
 export async function getTennisBetBacktest(): Promise<TennisBetBacktestRow[]> {
   const rows = await db.execute(sql`
