@@ -16,6 +16,14 @@ function Stars({ n }: { n: number }) {
   );
 }
 
+// Mirror the Python _blended_elo logic (grass_matches >= 20 → pure grass, else lerp).
+function blendedElo(overall: number | null, grassElo: number | null, grassMatches: number | null): number | null {
+  if (overall == null) return null;
+  if (grassElo == null || grassMatches == null || grassMatches < 5) return overall;
+  const t = Math.min(grassMatches / 20, 1);
+  return Math.round(overall * (1 - t) + grassElo * t);
+}
+
 function fmtTime(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -357,12 +365,26 @@ export default function TennisVegasClient({
                       </td>
                       <td className="px-2 py-2 text-xs text-muted-foreground">{m.tour}</td>
                       <td className="px-3 py-2">
-                        <div className={`leading-tight ${homeFav ? "font-semibold" : ""}`}>
-                          {m.homePlayer}
-                        </div>
-                        <div className={`leading-tight ${!homeFav ? "font-semibold" : ""}`}>
-                          {m.awayPlayer}
-                        </div>
+                        {(() => {
+                          const homeEloVal = blendedElo(m.homeElo, m.homeGrassElo, m.homeGrassMatches);
+                          const awayEloVal = blendedElo(m.awayElo, m.awayGrassElo, m.awayGrassMatches);
+                          return (
+                            <>
+                              <div className={`leading-tight flex items-baseline gap-1.5 ${homeFav ? "font-semibold" : ""}`}>
+                                {m.homePlayer}
+                                {homeEloVal != null && (
+                                  <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{homeEloVal}</span>
+                                )}
+                              </div>
+                              <div className={`leading-tight flex items-baseline gap-1.5 ${!homeFav ? "font-semibold" : ""}`}>
+                                {m.awayPlayer}
+                                {awayEloVal != null && (
+                                  <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{awayEloVal}</span>
+                                )}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </td>
                       <td className="px-2 py-2 text-center tabular-nums whitespace-nowrap">
                         <div>{fmtMl(m.homeMl)}</div>

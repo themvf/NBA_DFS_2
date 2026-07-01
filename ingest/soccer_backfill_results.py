@@ -7,10 +7,11 @@ before our first ingest is never captured at all — e.g. USA 4-1 Paraguay
 (2026-06-13), which left USA invisible to the group-winner model even though
 they top the group.
 
-This module backfills those gaps from **TheSportsDB** (free tier, key "123",
-already used for first-scorer settlement), which keeps the full historical
-fixture list with final scores.  Round-based queries return complete matchdays
-(``eventsround.php`` → 24 games/round) without the 15-row ``eventsseason`` cap.
+This module backfills those gaps from **TheSportsDB**, which keeps the full
+historical fixture list with final scores.  It uses the **v2 API**
+(``schedule/league/{id}/{season}``) which returns the entire tournament
+(~89 group + knockout events) in a single call.  The old ``eventsround.php``
+(v1) path is deprecated and 404s for every round even with a premium key.
 
 For each completed event it either UPDATEs the score of an existing fixture
 (matched by team pair, orientation-aware) or INSERTs a new fixture row with a
@@ -18,8 +19,7 @@ For each completed event it either UPDATEs the score of an existing fixture
 standings/settlement and the results-aware group sim, not betting.
 
 Usage:
-    python -m ingest.soccer_backfill_results                # group stage (rounds 1-3)
-    python -m ingest.soccer_backfill_results --rounds 1 2 3 4
+    python -m ingest.soccer_backfill_results                # full tournament (v2 schedule)
 """
 
 from __future__ import annotations
@@ -43,14 +43,13 @@ logger = logging.getLogger(__name__)
 # rate-limited free tier even when a paid key was configured — 429 responses then
 # made _fetch_round return [] and knockout results silently never landed.
 _TSDB_KEY = os.getenv("THESPORTSDB_API_KEY", "123")
-TSDB_BASE = f"https://www.thesportsdb.com/api/v1/json/{_TSDB_KEY}"
+# v2 API: key goes in the X-API-KEY header, NOT the path. The single
+# schedule/league/{id}/{season} call returns the whole tournament at once,
+# replacing the deprecated (404) v1 eventsround.php per-round loop.
+TSDB_V2_BASE = "https://www.thesportsdb.com/api/v2/json"
+_TSDB_HEADERS = {"X-API-KEY": _TSDB_KEY}
 WC_LEAGUE_ID = 4429          # FIFA World Cup on TheSportsDB
 WC_SEASON = "2026"
-GROUP_STAGE_ROUNDS = (1, 2, 3)
-# Full tournament: group stage (1-3) + R32 (4) + R16 (5) + QF (6) + SF (7) + Final (8).
-# TheSportsDB uses sequential round numbering. We default to all rounds so knockout
-# scores and winner_team_id are populated automatically each cron run.
-ALL_ROUNDS = (1, 2, 3, 4, 5, 6, 7, 8)
 
 # TheSportsDB nation names that differ from our soccer_teams.name beyond what
 # accent/punctuation normalization already collapses.
@@ -82,19 +81,41 @@ def _commence(date_event: str | None, str_time: str | None):
         return None
 
 
-def _fetch_round(round_no: int) -> list[dict]:
-    """All events for one matchday round; [] on any failure."""
+def _fetch_season() -> list[dict]:
+    """All events for the whole tournament in one v2 schedule call; [] on failure."""
     try:
         r = requests.get(
-            f"{TSDB_BASE}/eventsround.php",
-            params={"id": WC_LEAGUE_ID, "r": round_no, "s": WC_SEASON},
+            f"{TSDB_V2_BASE}/schedule/league/{WC_LEAGUE_ID}/{WC_SEASON}",
+            headers=_TSDB_HEADERS,
             timeout=20,
         )
         r.raise_for_status()
-        return r.json().get("events") or []
+        data = r.json() or {}
+        # v2 returns {"schedule": [...]}; tolerate the legacy {"events": [...]} too.
+        return data.get("schedule") or data.get("events") or []
     except requests.RequestException as e:
-        logger.warning("TheSportsDB round %s fetch failed: %s", round_no, e)
+        logger.warning("TheSportsDB v2 schedule fetch failed: %s", e)
         return []
+
+
+def _fetch_event(event_id) -> dict | None:
+    """Single-event v2 lookup — needed for the penalty Extra fields the bulk
+    schedule omits. Returns the event dict or None on any failure."""
+    if not event_id:
+        return None
+    try:
+        r = requests.get(
+            f"{TSDB_V2_BASE}/lookup/event/{event_id}",
+            headers=_TSDB_HEADERS,
+            timeout=20,
+        )
+        r.raise_for_status()
+        data = r.json() or {}
+        events = data.get("events") or data.get("event") or []
+        return events[0] if events else None
+    except (requests.RequestException, IndexError) as e:
+        logger.warning("TheSportsDB v2 event %s lookup failed: %s", event_id, e)
+        return None
 
 
 def _winner_from_event(ev: dict, home_id: int, away_id: int, hs: int, as_: int) -> int | None:
@@ -103,9 +124,9 @@ def _winner_from_event(ev: dict, home_id: int, away_id: int, hs: int, as_: int) 
     Regular-time / ET winner is clear from the score. For penalty shootouts
     (hs == as_ after 90+ET), TheSportsDB encodes the result in intHomeScoreExtra /
     intAwayScoreExtra (NOT intScoreHomeShootout, which is null). Returns None if
-    the game is tied and no penalty data. NOTE: the eventsround.php feed this
-    consumes is deprecated (404s); resolve_knockout_winners in soccer_results.py
-    is the live path — this stays correct for if/when backfill moves to v2.
+    the game is tied and no penalty data. The Extra fields are only present on
+    the v2 single-event lookup (`_fetch_event`), not the bulk schedule, so the
+    caller fetches the full event before passing it here on a draw.
     """
     if hs > as_:
         return home_id
@@ -126,102 +147,112 @@ def _winner_from_event(ev: dict, home_id: int, away_id: int, hs: int, as_: int) 
     return None
 
 
-def backfill(db: DatabaseManager, rounds=ALL_ROUNDS) -> int:
+def backfill(db: DatabaseManager) -> int:
     """Insert/update completed WC fixtures from TheSportsDB.  Returns rows touched.
 
-    Covers all tournament rounds by default (group stage + all knockout rounds).
-    Writes home_score, away_score, and winner_team_id (handles penalty shootouts
-    via TheSportsDB intScoreHomeShootout / intScoreAwayShootout fields).
+    Pulls the entire tournament (group stage + all knockout rounds) via one v2
+    schedule call. Writes home_score, away_score, and winner_team_id (handles
+    penalty shootouts via a single-event lookup for the intHomeScoreExtra /
+    intAwayScoreExtra fields the bulk schedule omits).
     """
     norm_cache = {_norm(name): tid for name, tid in build_soccer_team_name_cache(db).items()}
 
     inserted = updated = skipped = unresolved = 0
-    for round_no in rounds:
-        for ev in _fetch_round(round_no):
-            hs, as_ = ev.get("intHomeScore"), ev.get("intAwayScore")
-            if hs is None or as_ is None:
-                continue  # not played yet
-            try:
-                hs, as_ = int(hs), int(as_)
-            except (TypeError, ValueError):
+    for ev in _fetch_season():
+        hs, as_ = ev.get("intHomeScore"), ev.get("intAwayScore")
+        if hs is None or as_ is None:
+            continue  # not played yet
+        try:
+            hs, as_ = int(hs), int(as_)
+        except (TypeError, ValueError):
+            continue
+
+        home_id = norm_cache.get(_norm(ev.get("strHomeTeam", "")))
+        away_id = norm_cache.get(_norm(ev.get("strAwayTeam", "")))
+        if not home_id or not away_id:
+            unresolved += 1
+            logger.warning("Unresolved teams: %r vs %r",
+                           ev.get("strHomeTeam"), ev.get("strAwayTeam"))
+            continue
+
+        # Derive winner. The bulk schedule lacks the penalty Extra fields, so on a
+        # draw fetch the single event to read intHomeScoreExtra / intAwayScoreExtra.
+        winner_ev = ev
+        if hs == as_:
+            full = _fetch_event(ev.get("idEvent"))
+            if full:
+                winner_ev = full
+        winner_id = _winner_from_event(winner_ev, home_id, away_id, hs, as_)
+        # Stage label from the round number (groups are rounds 1-3, knockout 4+).
+        try:
+            round_no = int(ev.get("intRound") or 0)
+        except (TypeError, ValueError):
+            round_no = 0
+        stage_label = "group" if 0 < round_no <= 3 else "knockout"
+
+        date_event = ev.get("dateEvent")
+
+        # Match existing fixture by team pair in either orientation.
+        existing = db.execute_one(
+            """
+            SELECT id, home_team_id, away_team_id, home_score, away_score, winner_team_id
+            FROM soccer_matchups
+            WHERE (home_team_id = %s AND away_team_id = %s)
+               OR (home_team_id = %s AND away_team_id = %s)
+            ORDER BY game_date ASC
+            LIMIT 1
+            """,
+            (home_id, away_id, away_id, home_id),
+        )
+
+        if existing:
+            already_scored = (existing["home_score"] is not None
+                              and existing["away_score"] is not None)
+            already_winnered = existing.get("winner_team_id") is not None
+            if already_scored and already_winnered:
+                skipped += 1
                 continue
-
-            home_id = norm_cache.get(_norm(ev.get("strHomeTeam", "")))
-            away_id = norm_cache.get(_norm(ev.get("strAwayTeam", "")))
-            if not home_id or not away_id:
-                unresolved += 1
-                logger.warning("Unresolved teams: %r vs %r",
-                               ev.get("strHomeTeam"), ev.get("strAwayTeam"))
-                continue
-
-            # Derive winner (including penalty shootouts).
-            winner_id = _winner_from_event(ev, home_id, away_id, hs, as_)
-            # Stage label: group stage for rounds 1-3, knockout for rounds 4+.
-            stage_label = "group" if round_no <= 3 else "knockout"
-
-            date_event = ev.get("dateEvent")
-
-            # Match existing fixture by team pair in either orientation.
-            existing = db.execute_one(
-                """
-                SELECT id, home_team_id, away_team_id, home_score, away_score, winner_team_id
-                FROM soccer_matchups
-                WHERE (home_team_id = %s AND away_team_id = %s)
-                   OR (home_team_id = %s AND away_team_id = %s)
-                ORDER BY game_date ASC
-                LIMIT 1
-                """,
-                (home_id, away_id, away_id, home_id),
-            )
-
-            if existing:
-                already_scored = (existing["home_score"] is not None
-                                  and existing["away_score"] is not None)
-                already_winnered = existing.get("winner_team_id") is not None
-                if already_scored and already_winnered:
-                    skipped += 1
-                    continue
-                # Orient the score to the stored row's home/away.
-                if existing["home_team_id"] == home_id:
-                    row_hs, row_as = hs, as_
-                    row_winner = winner_id
-                else:
-                    row_hs, row_as = as_, hs
-                    # Flip winner if orientation is reversed.
-                    if winner_id == home_id:
-                        row_winner = existing["away_team_id"]
-                    elif winner_id == away_id:
-                        row_winner = existing["home_team_id"]
-                    else:
-                        row_winner = None
-                db.execute(
-                    """UPDATE soccer_matchups
-                       SET home_score = %s, away_score = %s,
-                           winner_team_id = COALESCE(%s, winner_team_id)
-                       WHERE id = %s""",
-                    (row_hs, row_as, row_winner, existing["id"]),
-                )
-                updated += 1
+            # Orient the score to the stored row's home/away.
+            if existing["home_team_id"] == home_id:
+                row_hs, row_as = hs, as_
+                row_winner = winner_id
             else:
-                # New fixture — insert with score in TheSportsDB's orientation.
-                db.execute(
-                    """
-                    INSERT INTO soccer_matchups
-                        (game_date, game_id, commence_time, home_team_id, away_team_id,
-                         stage, home_score, away_score, winner_team_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
-                        home_score     = COALESCE(soccer_matchups.home_score, EXCLUDED.home_score),
-                        away_score     = COALESCE(soccer_matchups.away_score, EXCLUDED.away_score),
-                        winner_team_id = COALESCE(soccer_matchups.winner_team_id, EXCLUDED.winner_team_id),
-                        game_id        = COALESCE(soccer_matchups.game_id, EXCLUDED.game_id)
-                    """,
-                    (date_event, f"tsdb-{ev.get('idEvent')}", _commence(date_event, ev.get("strTime")),
-                     home_id, away_id, stage_label, hs, as_, winner_id),
-                )
-                inserted += 1
-                logger.info("Backfilled: %s %d-%d %s (%s)",
-                            ev.get("strHomeTeam"), hs, as_, ev.get("strAwayTeam"), date_event)
+                row_hs, row_as = as_, hs
+                # Flip winner if orientation is reversed.
+                if winner_id == home_id:
+                    row_winner = existing["away_team_id"]
+                elif winner_id == away_id:
+                    row_winner = existing["home_team_id"]
+                else:
+                    row_winner = None
+            db.execute(
+                """UPDATE soccer_matchups
+                   SET home_score = %s, away_score = %s,
+                       winner_team_id = COALESCE(%s, winner_team_id)
+                   WHERE id = %s""",
+                (row_hs, row_as, row_winner, existing["id"]),
+            )
+            updated += 1
+        else:
+            # New fixture — insert with score in TheSportsDB's orientation.
+            db.execute(
+                """
+                INSERT INTO soccer_matchups
+                    (game_date, game_id, commence_time, home_team_id, away_team_id,
+                     stage, home_score, away_score, winner_team_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
+                    home_score     = COALESCE(soccer_matchups.home_score, EXCLUDED.home_score),
+                    away_score     = COALESCE(soccer_matchups.away_score, EXCLUDED.away_score),
+                    winner_team_id = COALESCE(soccer_matchups.winner_team_id, EXCLUDED.winner_team_id),
+                    game_id        = COALESCE(soccer_matchups.game_id, EXCLUDED.game_id)
+                """,
+                (date_event, f"tsdb-{ev.get('idEvent')}", _commence(date_event, ev.get("strTime")),
+                 home_id, away_id, stage_label, hs, as_, winner_id),
+            )
+            inserted += 1
+            logger.info("Backfilled: %s %d-%d %s (%s)",
+                        ev.get("strHomeTeam"), hs, as_, ev.get("strAwayTeam"), date_event)
 
     print(f"Backfill: {inserted} inserted, {updated} score-updated, "
           f"{skipped} already complete, {unresolved} unresolved")
@@ -230,11 +261,8 @@ def backfill(db: DatabaseManager, rounds=ALL_ROUNDS) -> int:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="Backfill completed WC fixtures from TheSportsDB")
-    parser.add_argument("--rounds", type=int, nargs="+", default=list(ALL_ROUNDS),
-                        help="Matchday rounds to backfill (default: 1-8, full tournament)")
-    args = parser.parse_args()
+    argparse.ArgumentParser(description="Backfill completed WC fixtures from TheSportsDB").parse_args()
 
     config = load_config()
     db = DatabaseManager(config.database_url)
-    backfill(db, rounds=args.rounds)
+    backfill(db)

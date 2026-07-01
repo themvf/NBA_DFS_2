@@ -168,8 +168,7 @@ def fetch_tour(db: DatabaseManager, api_key: str, tour_key: str, game_date: str 
                 %s, %s, 'Wimbledon', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, NOW()
             )
-            ON CONFLICT (tour, match_date, home_player, away_player) DO UPDATE SET
-                game_id = EXCLUDED.game_id,
+            ON CONFLICT (game_id) DO UPDATE SET
                 commence_time = EXCLUDED.commence_time,
                 home_ml = EXCLUDED.home_ml,
                 away_ml = EXCLUDED.away_ml,
