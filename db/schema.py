@@ -857,8 +857,8 @@ TABLES = [
     # Single sport-agnostic table; player NAMES are stored inline from the Odds
     # API feed (home_team/away_team), so no separate players table is needed for
     # the odds-only MVP.  2-way market (no draw) → simpler than soccer.  game_id
-    # is the Odds API event id.  Result columns are written later by the Kaggle
-    # settlement job (set/game scores → settle bets, compute totals/handicap).
+    # is the Odds API event id.  Result columns are written later by the
+    # tennis-data.co.uk settlement job (set/game scores → settle bets).
     """
     CREATE TABLE IF NOT EXISTS tennis_matches (
         id SERIAL PRIMARY KEY,
@@ -894,11 +894,17 @@ TABLES = [
     )
     """,
 
-    # ── Tennis player ratings (from Sackmann match history) ───
-    # Keyed by (tour, normalized_name).  overall_elo: all-surface Elo (robust).
-    # grass_elo: grass-only Elo (sparse → blended with overall in predictions).
-    # serve/return points-won% on grass feed totals later.  Rebuilt by
-    # ingest/tennis_history.py from the public ATP/WTA CSVs.
+    # ── Tennis player ratings (from match history, per tour) ──
+    # Rebuilt by ingest/tennis_history.py from two sources (see memory
+    # tennis-data-sources):
+    #   ATP — TML-Database CSVs (with serve stats). norm_name = full-name concat.
+    #   WTA — tennis-data.co.uk xlsx (results only, NO serve stats). norm_name =
+    #         (surname+first-initial), since tennis-data carries only "Surname I.".
+    # overall_elo: all-surface Elo (robust). grass_elo: grass-only Elo (sparse →
+    # blended with overall in predictions). serve/return points-won% on grass
+    # (ATP only; NULL for WTA) feed totals later.
+    # NOTE the norm_name key differs by tour → the predictions layer must derive
+    # the WTA lookup key as (surname+initial), not the full-name concat.
     """
     CREATE TABLE IF NOT EXISTS tennis_player_ratings (
         tour TEXT NOT NULL,
