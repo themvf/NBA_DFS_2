@@ -59,11 +59,15 @@ jobs:
         # standings, settlement, ratings, and the group sim all see real results.
         run: python -m ingest.soccer_backfill_results
 
-      - name: Settle completed bets (scores + group standings)
-        run: python -m ingest.soccer_results --days-from 3
-
-      - name: Backfill first-scorer actuals from TheSportsDB
+      - name: Backfill goal timelines from TheSportsDB (first scorers + goal minutes)
+        # BEFORE settlement: settle_game_bets grades knockout moneyline/totals on
+        # the 90-minute score, which derive_regulation_scores rebuilds from these
+        # goal timelines (goals with minute <= 90). Running this first lets a
+        # knockout tie settle in the same cycle it completes.
         run: python -m ingest.soccer_scorers_history
+
+      - name: Settle completed bets (scores + regulation derivation + group standings)
+        run: python -m ingest.soccer_results --days-from 3
 
       - name: Re-train strength ratings on live WC 2026 results
         run: python -m model.soccer_ratings

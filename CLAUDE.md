@@ -871,17 +871,28 @@ input snapshot) and every outcome is settle-able.
 
 | Bet type | Market source | Our model | Settlement |
 |---|---|---|---|
-| **Moneyline (3-way)** | h2h home/draw/away (consensus, prob-space averaged) | bivariate-Poisson 3-way, market-anchored (w=0.35) | from final score (`settle_game_bets`) |
-| **Total (O/U)** | totals over/under prices at the consensus line | Poisson(`our_total_pred`) on total goals, anchored (w=0.40) | from final score; push on integer line = void |
+| **Moneyline (3-way)** | h2h home/draw/away (consensus, prob-space averaged) | bivariate-Poisson 3-way, market-anchored (w=0.35) | from the **90-minute** score (`reg_home_score`/`reg_away_score`, `settle_game_bets`) — never the ET-inclusive final |
+| **Total (O/U)** | totals over/under prices at the consensus line | Poisson(`our_total_pred`) on total goals, anchored (w=0.40) | from the 90-minute score; push on integer line = void |
 | **First goal scorer** | `player_first_goal_scorer` (+ `player_goal_scorer_anytime` as a model input), per event, `regions=us,uk,eu` | Poisson superposition (below) | goal-events feed (TheSportsDB best-effort) + manual CLI |
 | **Outright winner** | `soccer_fifa_world_cup_winner` / `outrights` (48 teams, DK + 4 books) | Monte Carlo tournament sim from Elo | champion from final score |
 | **Group winner** | **No API market** — model-only | Same Monte Carlo (P finish 1st in group) | final group standings from scores |
 
 Moneyline + totals are rated for **every game** by `model/soccer_game_bets.py` (`gameline-v1`),
-with `event_commence = kickoff` so the ledger locks the rating pre-kickoff. Two correctness
+with `event_commence = kickoff` so the ledger locks the rating pre-kickoff. Correctness
 rules learned here: **(1)** average odds in probability space, never arithmetic American
 (`prob_to_american`); **(2)** efficient single-game markets get a `longshot_odds_cap` (cap stars
-on decimal odds ≥ 11/≥ 21) so a tiny model edge on a big price can't manufacture a fake 5★.
+on decimal odds ≥ 11/≥ 21) so a tiny model edge on a big price can't manufacture a fake 5★;
+**(3)** never ingest scores or odds for a match that is (or may be) in progress — TheSportsDB
+publishes `intHomeScore` live and the Odds API serves in-play prices after kickoff, so an
+unguarded mid-match refresh froze Belgium 0-2 Senegal (true final: 3-2 aet) and settled all
+56 bets on the game against a scoreline that never happened (2026-07-01). Guards: backfill
+skips live-status / <3h-past-kickoff events; schedule ingest skips started events; predictions
+skip started events; `fetch_scores` corrections also clear `winner_team_id` + reg scores and
+reopen only ML/total/DNB (locked);
+**(4)** knockout game bets settle on the **90-minute** score (`derive_regulation_scores`
+rebuilds it from the `soccer_match_goals` timeline; TheSportsDB caps stoppage goals at the
+period boundary, so minute ≤ 90 = regulation). ML/totals graded on an ET-inclusive final are
+wrong at every sportsbook — Belgium 3-2 aet grades as ML Draw, total 4.
 
 ### Models
 

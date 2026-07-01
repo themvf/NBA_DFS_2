@@ -28,7 +28,7 @@ import argparse
 import logging
 import os
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -56,6 +56,25 @@ WC_SEASON = "2026"
 _TSDB_ALIASES = {
     "bosniaherzegovina": "bosniaandherzegovina",  # both normalize away the &/-
 }
+
+# TheSportsDB populates intHomeScore/intAwayScore DURING the match, so a bare
+# "score is present" check accepts live scores.  That froze Belgium 0-2 Senegal
+# mid-comeback (final: 3-2 aet, 2026-07-01) and settled every bet on the game
+# against a scoreline that never happened.  Two guards, mirroring
+# soccer_results.fetch_scores:
+#   1. reject events whose strStatus is a known live/not-started marker;
+#   2. reject events that kicked off < 3h ago (90' + stoppage + ET + pens +
+#      publish lag).  This also covers unknown/missing status values.
+# "Match Finished" / "FT" / "AET" style statuses pass through — the whitelist is
+# deliberately NOT inverted so an unrecognized finished-vocabulary can't silently
+# stop the backfill; the elapsed-time guard is the backstop.
+_LIVE_STATUSES = {
+    "ns", "not started", "1h", "1st half", "ht", "halftime", "half time",
+    "2h", "2nd half", "et", "extra time", "bt", "break time",
+    "live", "in play", "postponed", "postp", "susp", "suspended",
+    "int", "interrupted",
+}
+_MIN_ELAPSED = timedelta(hours=3)
 
 
 def _norm(name: str) -> str:
@@ -157,7 +176,8 @@ def backfill(db: DatabaseManager) -> int:
     """
     norm_cache = {_norm(name): tid for name, tid in build_soccer_team_name_cache(db).items()}
 
-    inserted = updated = skipped = unresolved = 0
+    now = datetime.now(timezone.utc)
+    inserted = updated = skipped = unresolved = in_progress = 0
     for ev in _fetch_season():
         hs, as_ = ev.get("intHomeScore"), ev.get("intAwayScore")
         if hs is None or as_ is None:
@@ -165,6 +185,17 @@ def backfill(db: DatabaseManager) -> int:
         try:
             hs, as_ = int(hs), int(as_)
         except (TypeError, ValueError):
+            continue
+
+        # Live-score guards (see _LIVE_STATUSES above): never accept a score
+        # from a match that is (or may still be) in progress.
+        status = (ev.get("strStatus") or "").strip().lower()
+        if status in _LIVE_STATUSES:
+            in_progress += 1
+            continue
+        kickoff = _commence(ev.get("dateEvent"), ev.get("strTime"))
+        if kickoff is None or now - kickoff < _MIN_ELAPSED:
+            in_progress += 1
             continue
 
         home_id = norm_cache.get(_norm(ev.get("strHomeTeam", "")))
@@ -255,7 +286,8 @@ def backfill(db: DatabaseManager) -> int:
                         ev.get("strHomeTeam"), hs, as_, ev.get("strAwayTeam"), date_event)
 
     print(f"Backfill: {inserted} inserted, {updated} score-updated, "
-          f"{skipped} already complete, {unresolved} unresolved")
+          f"{skipped} already complete, {unresolved} unresolved, "
+          f"{in_progress} skipped (live/too recent)")
     return inserted + updated
 
 
