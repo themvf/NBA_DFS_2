@@ -347,7 +347,7 @@ def _resolve_penalty_winner(game_date, home_name, away_name, home_id, away_id, a
 
 
 def resolve_knockout_winners(db: DatabaseManager, api_key: str = "123") -> int:
-    """Set winner_team_id for completed knockout ties (bracket_slot not null).
+    """Set winner_team_id for every completed knockout tie.
 
     Decisive ties (hs != as) resolve from the score alone — no feed needed.
     Drawn ties were decided on penalties: read TheSportsDB shootout scores via a
@@ -355,6 +355,16 @@ def resolve_knockout_winners(db: DatabaseManager, api_key: str = "123") -> int:
     can't be resolved emits a loud warning + manual-settle hint rather than
     silently staying blank — this was the silent failure behind knockout winners
     (e.g. penalty-shootout advancers) never appearing in the bracket.
+
+    A knockout tie is identified as a CROSS-GROUP match (the two teams are in
+    different groups) OR one carrying a bracket_slot.  This is the correct
+    discriminator: teams only play WITHIN their group in the group stage, so a
+    same-group pairing is always a group match — even one played on a date that
+    overlaps the start of the knockouts (late groups finish as R32 opens).  Using
+    date or bracket_slot alone is wrong: date flags legitimate group draws (e.g. a
+    same-group 3-3), and bracket_slot alone misses a cross-group tie whose slot
+    never populated (later rounds, or a pairing the projected bracket lacked).
+    Group-stage draws are same-group, so they are never touched here.
     """
     games = db.execute(
         """
@@ -363,9 +373,15 @@ def resolve_knockout_winners(db: DatabaseManager, api_key: str = "123") -> int:
         FROM soccer_matchups sm
         JOIN soccer_teams ht ON ht.team_id = sm.home_team_id
         JOIN soccer_teams at ON at.team_id = sm.away_team_id
-        WHERE sm.bracket_slot IS NOT NULL
-          AND sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
+        LEFT JOIN soccer_groups gh ON gh.team_id = sm.home_team_id
+        LEFT JOIN soccer_groups ga ON ga.team_id = sm.away_team_id
+        WHERE sm.home_score IS NOT NULL AND sm.away_score IS NOT NULL
           AND sm.winner_team_id IS NULL
+          AND (
+                (gh.group_label IS NOT NULL AND ga.group_label IS NOT NULL
+                   AND gh.group_label <> ga.group_label)
+             OR sm.bracket_slot IS NOT NULL
+          )
         ORDER BY sm.game_date
         """
     )
