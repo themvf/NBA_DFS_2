@@ -1,16 +1,25 @@
-"""Rate moneyline bets and write the tennis_bets ledger (ATP, V1).
+"""Rate moneyline bets and write the tennis_bets ledger (both tours).
 
 Reuses the soccer rating engine (rate_market, american_to_decimal) — the star
-rubric is sport-agnostic.  Only matches with a real Elo signal (both players
-rated) are recorded, so the ledger isn't padded with zero-edge market-fallback
-rows.  Each side (home/away) is rated separately; the UI's best-per-game picks
-the higher-rated side.
+rubric is sport-agnostic.  Each side (home/away) is rated separately; the UI's
+best-per-game picks the higher-rated side.
 
-Moneyline is an efficient single-game market, so longshot_odds_cap is ON: a tiny
-model edge on a big price can't manufacture a fake 5★ (same guard as soccer ML).
+P3 (model/tennis_model.py) proved tennis moneyline has NO exploitable edge, so
+model/tennis_predictions now sets our_prob = the vig-free market consensus. With
+our_prob == market, edge ≈ 0 and EV ≈ −vig, so every bet honestly rates ≤2★:
+the ledger becomes a calibration record, not an edge feed (see memory
+tennis-moneyline-no-edge). Both tours are rated — the old ATP-only guard existed
+only because WTA lacked ratings; that no longer gates anything when our number is
+the market.
+
+Moneyline is an efficient single-game market, so longshot_odds_cap stays ON.
 
 Rows LOCK at event_commence (kickoff) so the backtest uses the closing
-recommendation we committed to.  model_version = 'tennis-ml-v1'.
+recommendation we committed to.  model_version = 'tennis-ml-v2'. Re-rating first
+clears UNLOCKED pending rows from older versions (no double-count / orphans);
+locked + settled rows are preserved as the committed audit trail — including the
+v1 Elo-blend recommendations, whose settled results are themselves evidence of
+the no-edge finding.
 """
 
 from __future__ import annotations
@@ -18,7 +27,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import unicodedata
 from datetime import datetime, timezone
 
 from config import load_config
@@ -27,12 +35,7 @@ from model.soccer_bet_rating import american_to_decimal, rate_market
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "tennis-ml-v1"
-
-
-def _normalize_name(name: str) -> str:
-    text = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode("ascii")
-    return "".join(ch for ch in text.lower() if ch.isalnum())
+MODEL_VERSION = "tennis-ml-v2"
 
 
 def _record(cur, *, match_id, side, label, our_prob, market_odds, market_prob,
@@ -71,10 +74,7 @@ def _record(cur, *, match_id, side, label, our_prob, market_odds, market_prob,
 
 
 def rate_and_write(db: DatabaseManager, match_date: str | None = None) -> int:
-    """Rate moneyline for ATP matches with an Elo signal. Returns bets written."""
-    rated = {r["norm_name"] for r in db.execute(
-        "SELECT norm_name FROM tennis_player_ratings WHERE tour = 'ATP'")}
-
+    """Rate moneyline for both tours (our_prob = market → honest ≤2★). Returns bets written."""
     where = "WHERE match_date = %s" if match_date else "WHERE match_date >= CURRENT_DATE"
     params = (match_date,) if match_date else ()
     matches = db.execute(
@@ -88,14 +88,14 @@ def rate_and_write(db: DatabaseManager, match_date: str | None = None) -> int:
     written = 0
     with db.connect() as conn:
         cur = conn.cursor()
+        # Drop stale UNLOCKED pending rows from older model versions so a version
+        # bump never double-counts a still-open match (locked/settled preserved).
+        cur.execute(
+            "DELETE FROM tennis_bets WHERE bet_type='moneyline' AND status='pending' "
+            "AND locked = FALSE AND model_version <> %s",
+            (MODEL_VERSION,),
+        )
         for m in matches:
-            # Only ATP matches where BOTH players are rated (real signal).
-            if m["tour"] != "ATP":
-                continue
-            if _normalize_name(m["home_player"]) not in rated:
-                continue
-            if _normalize_name(m["away_player"]) not in rated:
-                continue
             if m["our_prob_home"] is None or m["home_ml"] is None or m["away_ml"] is None:
                 continue
             if m["home_win_prob"] is None or m["away_win_prob"] is None:
