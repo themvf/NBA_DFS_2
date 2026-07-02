@@ -17,6 +17,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
       - name: Checkout
@@ -42,6 +44,12 @@ jobs:
       # MLB first: it's the in-season capture that feeds the CLV harness.
       - name: Capture MLB odds history
         run: python -m ingest.mlb_schedule --date "$TARGET_DATE"
+
+      - name: Scan + settle sharp line alerts (MLB)
+        # Auditable alert ledger: Pinnacle divergence + multi-book steam,
+        # graded on CLV + outcomes (model/line_alerts.py). Telegram push if
+        # the optional secrets are set.
+        run: python -m model.line_alerts --sport mlb
 
       # stats.nba.com blocks GitHub runner IPs (ReadTimeout — the reason
       # daily_stats.yml was removed), so this step fails routinely. It must

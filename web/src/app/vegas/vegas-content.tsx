@@ -16,6 +16,8 @@ import {
   getMlbClv,
   getMlbLineMovement,
   getLineMovement,
+  getLineAlerts,
+  getLineAlertBacktest,
   getMlbPipelineHealth,
   getVegasSummaryStats,
   getBiggestMisses,
@@ -48,13 +50,15 @@ import TennisVegasClient from "./tennis-vegas-client";
 export default async function VegasContent({ date, sport = "nba" }: { date?: string; sport?: Sport }) {
   // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
-    const [matchups, bets, backtest, lineMovement] = await Promise.all([
+    const [matchups, bets, backtest, lineMovement, lineAlerts, lineAlertBacktest] = await Promise.all([
       getTennisVegasMatchups(date),
       getTennisBets(300),
       getTennisBetBacktest(),
       getLineMovement("tennis"),
+      getLineAlerts("tennis"),
+      getLineAlertBacktest("tennis"),
     ]);
-    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} lineMovement={lineMovement} queryDate={date ?? null} />;
+    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} lineMovement={lineMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} queryDate={date ?? null} />;
   }
 
   // Soccer: focused fixtures view + star-rated bet ledger + backtest, rather
@@ -62,7 +66,8 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
   if (sport === "soccer") {
     const [matchups, bets, settledBets, backtest, firstScorers, matchGoals, playerStats,
            fscorerTiers, fscorerNearMisses, topPickAccuracy, clv, calibCuts, clvTrend,
-           settlementHealth, knockoutTies, titleOdds, knockoutAsOf, soccerLineMovement] = await Promise.all([
+           settlementHealth, knockoutTies, titleOdds, knockoutAsOf, soccerLineMovement,
+           soccerLineAlerts, soccerLineAlertBacktest] = await Promise.all([
       getSoccerVegasMatchups(date),
       getSoccerBets(1, 150),
       getSoccerSettledBets(),
@@ -81,6 +86,8 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getSoccerTitleOdds(),
       getSoccerKnockoutAsOf(),
       getLineMovement("soccer"),
+      getLineAlerts("soccer"),
+      getLineAlertBacktest("soccer"),
     ]);
     return (
       <SoccerVegasClient
@@ -102,12 +109,14 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
         titleOdds={titleOdds}
         knockoutAsOf={knockoutAsOf}
         lineMovement={soccerLineMovement}
+        lineAlerts={soccerLineAlerts}
+        lineAlertBacktest={soccerLineAlertBacktest}
         queryDate={date ?? null}
       />
     );
   }
 
-  const [sportData, mlbCoverageStatus, mlbTotalBacktest, mlbMoneylineBacktest, mlbBets, mlbBetBacktest, mlbBetBySide, mlbClv, mlbLineMovement, mlbHealth, vegasSummary, biggestMisses, teamInsights, moneylineBacktest] = await Promise.all([
+  const [sportData, mlbCoverageStatus, mlbTotalBacktest, mlbMoneylineBacktest, mlbBets, mlbBetBacktest, mlbBetBySide, mlbClv, mlbLineMovement, mlbLineAlerts, mlbLineAlertBacktest, mlbHealth, vegasSummary, biggestMisses, teamInsights, moneylineBacktest] = await Promise.all([
     Promise.all(
       sport === "mlb"
         ? [getMlbVegasMatchups(date), getMlbOuHitRate(), getMlbTeamTotalAccuracy(), getMlbRunLineCoverage()]
@@ -121,6 +130,8 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
     sport === "mlb" ? getMlbBetBacktestBySide() : Promise.resolve(null),
     sport === "mlb" ? getMlbClv() : Promise.resolve(null),
     sport === "mlb" ? getMlbLineMovement(7) : Promise.resolve(null),
+    sport === "mlb" ? getLineAlerts("mlb") : Promise.resolve(null),
+    sport === "mlb" ? getLineAlertBacktest("mlb") : Promise.resolve(null),
     sport === "mlb" ? getMlbPipelineHealth() : Promise.resolve(null),
     getVegasSummaryStats(sport),
     getBiggestMisses(sport, 20),
@@ -143,6 +154,8 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       mlbBetBySide={mlbBetBySide}
       mlbClv={mlbClv}
       mlbLineMovement={mlbLineMovement}
+      mlbLineAlerts={mlbLineAlerts}
+      mlbLineAlertBacktest={mlbLineAlertBacktest}
       mlbHealth={mlbHealth}
       vegasSummary={vegasSummary}
       biggestMisses={biggestMisses}
