@@ -20,6 +20,7 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.mlb_schedule import _consensus_american
 from db.queries import (
     build_team_abbrev_cache,
     insert_game_odds_history_rows,
@@ -176,8 +177,10 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                     if over and over.get("point") is not None:
                         total_points.append(float(over["point"]))
 
-        home_ml = round(sum(home_prices) / len(home_prices)) if home_prices else None
-        away_ml = round(sum(away_prices) / len(away_prices)) if away_prices else None
+        # Probability-space consensus — arithmetic American averaging is invalid
+        # near even money (see _consensus_american in ingest.mlb_schedule).
+        home_ml = _consensus_american(home_prices)
+        away_ml = _consensus_american(away_prices)
         home_spread = round(sum(home_spreads) / len(home_spreads) * 2) / 2 if home_spreads else None
         vegas_total = round(sum(total_points) / len(total_points) * 2) / 2 if total_points else None
         vegas_prob_home = _ml_to_prob(home_ml, away_ml) if home_ml and away_ml else None
