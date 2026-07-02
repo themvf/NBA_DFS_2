@@ -329,7 +329,11 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/",
             params={
                 "apiKey": api_key,
-                "regions": "us",
+                # us + eu: eu brings Pinnacle — the sharp reference book that
+                # per-book movement analysis (Edge-Finding P1/P2) anchors on.
+                # Doubles this call's Odds API credit cost (markets x regions);
+                # revert to "us" if quota becomes a problem.
+                "regions": "us,eu",
                 "markets": "h2h,totals,spreads",
                 "oddsFormat": "american",
                 "dateFormat": "iso",
@@ -395,28 +399,43 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             logger.debug("No matchup found for Odds API home team: %s", home_name)
             continue
 
-        # Consensus across ALL bookmakers for h2h and totals
+        # Consensus across ALL bookmakers for h2h and totals, plus the full
+        # per-book detail — consensus averages away exactly the structure
+        # sharp-movement detection needs (which book moved first, line vs
+        # price). Stored as JSONB on the history row; zero extra API cost.
         away_name = g.get("away_team", "")
         home_prices: list[int] = []
         away_prices: list[int] = []
         total_points: list[float] = []
         home_spreads: list[float] = []
+        books: dict[str, dict] = {}
         bookmakers = g.get("bookmakers") or []
         for bm in bookmakers:
+            book = books.setdefault(bm.get("key", "?"), {"last_update": bm.get("last_update")})
             for market in bm.get("markets", []):
                 if market["key"] == "h2h":
                     for o in market.get("outcomes", []):
                         if o["name"] == home_name or o["name"] in _OAK_ALIASES and home_name in _OAK_ALIASES:
                             home_prices.append(o["price"])
+                            book["ml_home"] = o["price"]
                         elif o["name"] == away_name:
                             away_prices.append(o["price"])
+                            book["ml_away"] = o["price"]
                 elif market["key"] == "totals":
                     over = next(
                         (o for o in market.get("outcomes", []) if o["name"] == "Over"),
                         None,
                     )
+                    under = next(
+                        (o for o in market.get("outcomes", []) if o["name"] == "Under"),
+                        None,
+                    )
                     if over and over.get("point") is not None:
                         total_points.append(float(over["point"]))
+                        book["total_line"] = float(over["point"])
+                        book["over"] = over.get("price")
+                        if under:
+                            book["under"] = under.get("price")
                 elif market["key"] == "spreads":
                     home_outcome = next(
                         (o for o in market.get("outcomes", []) if o["name"] == home_name),
@@ -424,10 +443,13 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                     )
                     if home_outcome and home_outcome.get("point") is not None:
                         home_spreads.append(float(home_outcome["point"]))
+                        book["spread_home"] = float(home_outcome["point"])
+                        book["spread_price"] = home_outcome.get("price")
 
         home_ml    = _consensus_american(home_prices)
         away_ml    = _consensus_american(away_prices)
-        vegas_total = round(sum(total_points) / len(total_points) * 2) / 2 if total_points else None
+        vegas_total_raw = sum(total_points) / len(total_points) if total_points else None
+        vegas_total = round(vegas_total_raw * 2) / 2 if vegas_total_raw is not None else None
         home_spread = round(sum(home_spreads) / len(home_spreads) * 2) / 2 if home_spreads else None
         vegas_prob_home = _ml_to_prob(home_ml, away_ml) if home_ml and away_ml else None
 
@@ -474,6 +496,8 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                 "away_implied": away_implied,
                 "capture_key": capture_key,
                 "captured_at": captured_at,
+                "books": books or None,
+                "vegas_total_raw": vegas_total_raw,
             }
         )
         updated += 1

@@ -8333,6 +8333,99 @@ export async function getMlbClv(): Promise<MlbClvRow[]> {
   ];
 }
 
+export type MlbLineMovementRow = {
+  gameDate: string;
+  matchup: string;
+  captures: number;
+  openProb: number;
+  closeProb: number;
+  openTotal: number | null;
+  totalMove: number | null;
+  maxJumpPp: number;
+  pinGapPp: number | null;
+  postFix: boolean;
+};
+
+export async function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]> {
+  // Open -> close line movement per game from the 30-min game_odds_history
+  // capture trail (Edge-Finding P2). open = first pre-game capture, close =
+  // last capture before first pitch (the in-play guard stops captures at
+  // commence). pinGap = Pinnacle's vig-free P(home) minus consensus at the
+  // close: the sharp book sitting off retail marks the sharp side. Rows whose
+  // first capture predates 2026-07-02 carry the arithmetic-averaging bug in
+  // their consensus history (postFix=false) - movement on them is noise.
+  const rows = await db.execute(sql`
+    WITH caps AS (
+      SELECT h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
+             h.captured_at, h.vegas_prob_home,
+             COALESCE(h.vegas_total_raw, h.vegas_total) AS total,
+             h.books,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at ASC)  AS rf,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at DESC) AS rl,
+             COUNT(*)    OVER (PARTITION BY h.matchup_id) AS cnt,
+             ABS(h.vegas_prob_home - LAG(h.vegas_prob_home) OVER (
+               PARTITION BY h.matchup_id ORDER BY h.captured_at)) AS jump
+      FROM game_odds_history h
+      LEFT JOIN mlb_matchups m ON m.id = h.matchup_id
+      WHERE h.sport = 'mlb'
+        AND h.game_date >= CURRENT_DATE - ${days}::int
+        AND h.vegas_prob_home IS NOT NULL
+        AND (m.commence_time IS NULL OR h.captured_at <= m.commence_time)
+    ),
+    o AS (SELECT * FROM caps WHERE rf = 1 AND cnt >= 2),
+    c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= 2),
+    j AS (SELECT matchup_id, MAX(jump) AS max_jump, MIN(captured_at) AS first_cap
+          FROM caps GROUP BY matchup_id)
+    SELECT o.game_date::text AS "gameDate",
+           c.away_team_name || ' @ ' || c.home_team_name AS matchup,
+           o.cnt::int AS captures,
+           o.vegas_prob_home AS "openProb",
+           c.vegas_prob_home AS "closeProb",
+           o.total AS "openTotal",
+           (c.total - o.total) AS "totalMove",
+           COALESCE(j.max_jump, 0) * 100 AS "maxJumpPp",
+           CASE WHEN pin_p.ph IS NOT NULL AND pin_p.pa IS NOT NULL AND pin_p.ph + pin_p.pa > 0
+                THEN (pin_p.ph / (pin_p.ph + pin_p.pa) - c.vegas_prob_home) * 100
+           END AS "pinGapPp",
+           (j.first_cap >= '2026-07-02'::timestamptz) AS "postFix"
+    FROM o
+    JOIN c USING (matchup_id)
+    JOIN j USING (matchup_id)
+    CROSS JOIN LATERAL (
+      SELECT (c.books->'pinnacle'->>'ml_home')::numeric AS mlh,
+             (c.books->'pinnacle'->>'ml_away')::numeric AS mla
+    ) pin_ml
+    CROSS JOIN LATERAL (
+      SELECT CASE WHEN pin_ml.mlh IS NULL THEN NULL
+                  WHEN pin_ml.mlh > 0 THEN 100.0 / (pin_ml.mlh + 100)
+                  ELSE ABS(pin_ml.mlh) / (ABS(pin_ml.mlh) + 100) END AS ph,
+             CASE WHEN pin_ml.mla IS NULL THEN NULL
+                  WHEN pin_ml.mla > 0 THEN 100.0 / (pin_ml.mla + 100)
+                  ELSE ABS(pin_ml.mla) / (ABS(pin_ml.mla) + 100) END AS pa
+    ) pin_p
+    -- Clean (post-odds-fix) rows first: pre-fix consensus noise produces fake
+    -- 30pp "moves" that would otherwise crowd trusted rows out of the LIMIT.
+    ORDER BY (j.first_cap >= '2026-07-02'::timestamptz) DESC,
+             ABS(c.vegas_prob_home - o.vegas_prob_home) DESC
+    LIMIT 40
+  `);
+  return rows.rows.map((r) => {
+    const rec = r as Record<string, unknown>;
+    return {
+      gameDate: String(rec.gameDate),
+      matchup: String(rec.matchup),
+      captures: Number(rec.captures),
+      openProb: Number(rec.openProb),
+      closeProb: Number(rec.closeProb),
+      openTotal: rec.openTotal != null ? Number(rec.openTotal) : null,
+      totalMove: rec.totalMove != null ? Number(rec.totalMove) : null,
+      maxJumpPp: Number(rec.maxJumpPp ?? 0),
+      pinGapPp: rec.pinGapPp != null ? Number(rec.pinGapPp) : null,
+      postFix: Boolean(rec.postFix),
+    };
+  });
+}
+
 export async function getMlbBetBacktest(): Promise<MlbBetBacktestRow[]> {
   // Calibration on SETTLED bets, by bet type + star tier: does each tier win at
   // the rate we claimed, and is it profitable at the offered price?
