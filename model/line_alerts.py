@@ -147,7 +147,15 @@ def _notify(alerts: list[dict]) -> None:
         return
     for a in alerts:
         d = a.get("details") or {}
-        if a["alert_type"] == "dk_value":
+        if a["alert_type"] in ("dk_prop_value", "prop_line_gap"):
+            label = {"pitcher_strikeouts": "Strikeouts",
+                     "batter_total_bases": "Total Bases"}.get(d.get("market", ""), d.get("market", ""))
+            text = (f"💰 {a['sport'].upper()} PROP: {a['matchup']}\n"
+                    f"{d.get('player')} {label} {d.get('bet')} {d.get('line')} "
+                    f"@ DK {d.get('dk_odds', '?'):+}"
+                    + (f"  EV +{d.get('ev_pct')}%" if d.get("ev_pct") else
+                       f"  (Pinnacle line: {d.get('pin_line')})"))
+        elif a["alert_type"] == "dk_value":
             text = (f"💰 {a['sport'].upper()} DK VALUE: {a['matchup']}\n"
                     f"Bet {a['side']} @ DK {d.get('dk_odds', '?'):+}  "
                     f"EV {d.get('ev_pct', '?')}% vs Pinnacle fair "
