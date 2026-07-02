@@ -936,6 +936,11 @@ Market-based:                          No-market (e.g. group winner):
   2★: EV ≥ −.03                         2★: edge ≥ −.03
   1★: EV < −.03                         1★: edge < −.03
 Longshot guard: our_prob < .02 → cap at 3★ (tail calibration noise).
+Market-type caps (no walk-forward edge; rated for the ledger, never surfaced as plays):
+  totals ≤ 2★ (2026-06-28) · moneyline/DNB ≤ 2★ and first-scorer ≤ 2★ (2026-07-01 —
+  ML 2-3★ tiers ran −36% ROI over 221 bets across all three gameline versions; FS ≥2★
+  went 1/47). Only futures (outright/group winner) can still reach 4-5★ — the Elo+MC
+  sim is the one component with demonstrated skill (group-winner Brier .036 vs .188).
 ```
 
 ### Traceability / accountability design
