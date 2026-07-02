@@ -207,7 +207,13 @@ export default function LineAlertsPanel({
                 <td className="py-1 text-right tabular-nums"
                     title={`Retail consensus P(${sideName(a)}) when the alert fired`}>{pct(a.alertProb)}</td>
                 <td className="py-1 text-right tabular-nums text-indigo-600"
-                    title={`Pinnacle's vig-free P(${sideName(a)}) when the alert fired`}>{pct(a.sharpProb)}</td>
+                    title={a.alertType === "prop_line_gap"
+                      ? `Pinnacle's vig-free probability AT ITS OWN LINE (${(a.details as Record<string, unknown>)?.pin_line}) — a different proposition than DK's line, shown for context only`
+                      : `Pinnacle's vig-free P(${sideName(a)}) when the alert fired`}>
+                  {a.alertType === "prop_line_gap" && a.details?.pin_line != null
+                    ? `${pct(a.sharpProb)} @ ${String(a.details.pin_line)}`
+                    : pct(a.sharpProb)}
+                </td>
                 <td className={`py-1 text-right tabular-nums ${
                   a.clvPp == null ? "text-gray-400" : a.clvPp > 0 ? "text-emerald-600" : "text-red-500"
                 }`}
