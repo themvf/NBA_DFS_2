@@ -1827,4 +1827,13 @@ INDEXES = [
         UNIQUE (sport, event_id, market, player, capture_key)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_prop_odds_latest ON prop_odds_history(sport, event_id, market, player, captured_at DESC)",
+    # 2026-07-02: execution-book CLV. clv_pp measures the REFERENCE market
+    # (did the sharp consensus move toward the flagged side — informational
+    # content); dk_clv_pct measures the EXECUTION book (did DK's own price on
+    # the flagged side worsen after the alert — was the discrepancy a
+    # temporarily executable window). entry from details_json.dk_decimal
+    # frozen at trigger; close from the last pre-commence capture. Positive =
+    # the alerted price was better than DK's close = the window was real.
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS dk_close_decimal DOUBLE PRECISION",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS dk_clv_pct DOUBLE PRECISION",
 ]

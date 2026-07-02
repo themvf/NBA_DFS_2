@@ -518,10 +518,12 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
                 outcome = "won"
             else:
                 outcome = "lost"
+        dk_close, dk_clv = _dk_execution_clv(db, a)
         db.execute(
             "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
+            "dk_close_decimal = %s, dk_clv_pct = %s, "
             "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
-            (outcome,
+            (outcome, dk_close, dk_clv,
              (int(a["home_games"]) + int(a["away_games"]))
              if a["home_games"] is not None and a["away_games"] is not None else None,
              a["id"]),
@@ -675,9 +677,11 @@ def settle_props_soccer(db: DatabaseManager) -> int:
             (lambda nl: tt <= set(nl.split()) or set(nl.split()) <= tt)(norm(s["player_name"]))
             for s in scorers
         )
+        dk_close, dk_clv = _dk_execution_clv(db, a)
         db.execute(
-            "UPDATE line_alerts SET outcome = %s, settled_at = NOW() WHERE id = %s",
-            ("won" if scored else "lost", a["id"]),
+            "UPDATE line_alerts SET outcome = %s, dk_close_decimal = %s, dk_clv_pct = %s, "
+            "settled_at = NOW() WHERE id = %s",
+            ("won" if scored else "lost", dk_close, dk_clv, a["id"]),
         )
         graded += 1
     if graded:
@@ -744,15 +748,76 @@ def settle_props(db: DatabaseManager) -> int:
             outcome = "won"
         else:
             outcome = "lost"
+        dk_close, dk_clv = _dk_execution_clv(db, a)
         db.execute(
             "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
+            "dk_close_decimal = %s, dk_clv_pct = %s, "
             "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
-            (outcome, actual, a["id"]),
+            (outcome, dk_close, dk_clv, actual, a["id"]),
         )
         graded += 1
     if graded:
         print(f"Prop alerts (mlb): {graded} graded from boxscores")
     return graded
+
+
+def _dk_execution_clv(db, a) -> tuple[float | None, float | None]:
+    """(dk_close_decimal, dk_clv_pct) — did DK's own price on the flagged
+    selection worsen after the alert? Positive dk_clv_pct = the alerted price
+    beat DK's close = the discrepancy was a temporarily executable window
+    (execution-book CLV, distinct from reference-market clv_pp)."""
+    d = a["details_json"] or {}
+    entry_dec = d.get("dk_decimal")
+    if entry_dec is None:
+        return None, None
+    close_dec = None
+    if a["alert_type"] in ("dk_prop_value", "prop_line_gap", "prop_outlier") \
+            and d.get("market") != "total_games":
+        row = db.execute_one(
+            """SELECT books FROM prop_odds_history
+               WHERE sport = %s AND matchup_id = %s AND market = %s AND player = %s
+                 AND captured_at <= %s
+               ORDER BY captured_at DESC LIMIT 1""",
+            (a["sport"], a["matchup_id"], d.get("market"), d.get("player"), a["commence_time"]),
+        )
+        dk = (row["books"] or {}).get(_DK_BOOK) if row else None
+        if dk:
+            if d.get("market") == "player_goal_scorer_anytime":
+                price = dk.get("yes")
+            elif dk.get("line") == d.get("line"):  # same-line only — a moved line
+                price = dk.get("over" if d.get("bet") == "Over" else "under")
+            else:
+                price = None
+            if price is not None:
+                try:
+                    close_dec = american_to_decimal(int(price))
+                except (TypeError, ValueError):
+                    pass
+    else:
+        row = db.execute_one(
+            """SELECT books FROM game_odds_history
+               WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
+                 AND captured_at <= %s
+               ORDER BY captured_at DESC LIMIT 1""",
+            (a["sport"], a["matchup_id"], a["commence_time"]),
+        )
+        dk = (row["books"] or {}).get(_DK_BOOK) if row else None
+        if dk:
+            if d.get("market") == "total_games":
+                if dk.get("total_line") == d.get("line"):
+                    price = dk.get("over" if d.get("bet") == "Over" else "under")
+                else:
+                    price = None
+            else:
+                price = dk.get(_SIDE_KEY.get(a["side"], ""))
+            if price is not None:
+                try:
+                    close_dec = american_to_decimal(int(price))
+                except (TypeError, ValueError):
+                    pass
+    if close_dec is None or close_dec <= 0:
+        return None, None
+    return close_dec, round((float(entry_dec) / close_dec - 1) * 100, 2)
 
 
 def settle(db: DatabaseManager, sport: str) -> int:
@@ -810,11 +875,13 @@ def settle(db: DatabaseManager, sport: str) -> int:
         # and is filled in the same pass on a later run if still NULL then.
         if clv_pp is None and outcome is None:
             continue
+        dk_close, dk_clv = _dk_execution_clv(db, a)
         db.execute(
             "UPDATE line_alerts SET close_prob = %s, clv_pp = %s, outcome = %s, "
+            "dk_close_decimal = %s, dk_clv_pct = %s, "
             "settled_at = CASE WHEN %s::text IS NOT NULL THEN NOW() ELSE settled_at END "
             "WHERE id = %s",
-            (close_prob, clv_pp, outcome, outcome, a["id"]),
+            (close_prob, clv_pp, outcome, dk_close, dk_clv, outcome, a["id"]),
         )
         graded += 1
     if graded:
@@ -842,7 +909,9 @@ def report(db: DatabaseManager) -> None:
                ROUND(SUM(CASE WHEN outcome = 'won'
                               THEN (details_json->>'dk_decimal')::numeric - 1
                               WHEN outcome = 'lost' THEN -1 END)
-                     FILTER (WHERE details_json ? 'dk_decimal')::numeric, 2) dk_units
+                     FILTER (WHERE details_json ? 'dk_decimal')::numeric, 2) dk_units,
+               COUNT(*) FILTER (WHERE dk_clv_pct IS NOT NULL) n_dkclv,
+               ROUND(AVG(dk_clv_pct)::numeric, 2) avg_dk_clv
         FROM line_alerts
         GROUP BY sport, alert_type ORDER BY sport, alert_type
         """
@@ -857,7 +926,44 @@ def report(db: DatabaseManager) -> None:
         if (r["alert_type"] in ("dk_value", "dk_prop_value", "prop_line_gap")
                 and r["dk_units"] is not None and r["n_out"]):
             line += f"  ROI@DK: {r['dk_units']:+}u/{r['n_out']} ({float(r['dk_units'])/r['n_out']*100:+.1f}%)"
+        if r["n_dkclv"]:
+            line += f"  execCLV: {r['avg_dk_clv']:+}% (n={r['n_dkclv']})"
         print(line)
+
+    # ── EV-tier calibration (monotonicity): a real signal should RANK ──
+    # opportunities — higher claimed EV should win/return more. If 6% edges
+    # perform no better than 1% edges, the numeric precision is decorative.
+    tiers = db.execute(
+        """
+        SELECT CASE WHEN ev >= 8 THEN '8%%+'
+                    WHEN ev >= 5 THEN '5-8%%'
+                    WHEN ev >= 3 THEN '3-5%%'
+                    ELSE '<3%%' END AS tier,
+               MIN(ev) AS tier_min,
+               COUNT(*) n,
+               COUNT(*) FILTER (WHERE outcome IN ('won','lost')) n_out,
+               ROUND(AVG((outcome = 'won')::int)
+                     FILTER (WHERE outcome IN ('won','lost'))::numeric, 3) win_rate,
+               ROUND(SUM(CASE WHEN outcome = 'won'
+                              THEN (details_json->>'dk_decimal')::numeric - 1
+                              WHEN outcome = 'lost' THEN -1 END)::numeric, 2) units,
+               ROUND(AVG(dk_clv_pct)::numeric, 2) avg_dk_clv
+        FROM (
+            SELECT *, COALESCE((details_json->>'ev_pct')::numeric,
+                               (details_json->>'edge_vs_median_pct')::numeric) AS ev
+            FROM line_alerts
+            WHERE alert_type IN ('dk_value','dk_prop_value','prop_outlier')
+        ) t
+        WHERE ev IS NOT NULL
+        GROUP BY 1 ORDER BY tier_min
+        """
+    )
+    if tiers:
+        print("\n  Claimed-EV tier calibration (monotonic win/ROI = the signal ranks; flat = decorative precision):")
+        for t in tiers:
+            roi = (f"{float(t['units'])/t['n_out']*100:+.1f}%" if t["units"] is not None and t["n_out"] else "—")
+            print(f"    {t['tier']:<6} n={t['n']:>4} settled={t['n_out']:>3}  win={t['win_rate'] if t['win_rate'] is not None else '—'}  "
+                  f"ROI@DK={roi}  execCLV={t['avg_dk_clv'] if t['avg_dk_clv'] is not None else '—'}%")
     print()
 
 
