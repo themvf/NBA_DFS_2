@@ -140,21 +140,33 @@ def _sides(books: dict) -> list[str]:
 
 
 def _notify(alerts: list[dict]) -> None:
-    """Push new alerts via Telegram if configured; silent no-op otherwise."""
+    """Push new alerts to any configured channel; silent no-op otherwise.
+
+    Channels (set the secret, get the pushes — the ledger row is written
+    regardless, so the audit never depends on delivery):
+      * Telegram — TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
+      * Discord  — DISCORD_WEBHOOK_URL (a channel webhook URL; no bot needed)
+    """
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if not token or not chat_id or not alerts:
+    discord_url = os.getenv("DISCORD_WEBHOOK_URL")
+    if not alerts or (not discord_url and not (token and chat_id)):
         return
     for a in alerts:
         d = a.get("details") or {}
         if a["alert_type"] in ("dk_prop_value", "prop_line_gap"):
             label = {"pitcher_strikeouts": "Strikeouts",
-                     "batter_total_bases": "Total Bases"}.get(d.get("market", ""), d.get("market", ""))
+                     "batter_total_bases": "Total Bases",
+                     "total_games": "Total Games"}.get(d.get("market", ""), d.get("market", ""))
             text = (f"💰 {a['sport'].upper()} PROP: {a['matchup']}\n"
                     f"{d.get('player')} {label} {d.get('bet')} {d.get('line')} "
                     f"@ DK {d.get('dk_odds', '?'):+}"
                     + (f"  EV +{d.get('ev_pct')}%" if d.get("ev_pct") else
                        f"  (Pinnacle line: {d.get('pin_line')})"))
+        elif a["alert_type"] == "prop_outlier":
+            text = (f"💰 {a['sport'].upper()} ATGS: {a['matchup']}\n"
+                    f"{d.get('player')} to score @ DK {d.get('dk_odds', '?'):+}  "
+                    f"+{d.get('edge_vs_median_pct')}% vs market median")
         elif a["alert_type"] == "dk_value":
             text = (f"💰 {a['sport'].upper()} DK VALUE: {a['matchup']}\n"
                     f"Bet {a['side']} @ DK {d.get('dk_odds', '?'):+}  "
@@ -166,14 +178,20 @@ def _notify(alerts: list[dict]) -> None:
                     f"sharp={a['sharp_prob']*100:.1f}%")
         else:
             text = f"🚨 {a['sport'].upper()} {a['alert_type']}: {a['matchup']} side={a['side']}"
-        try:
-            requests.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat_id, "text": text},
-                timeout=10,
-            )
-        except requests.RequestException as e:
-            logger.warning("Telegram notify failed: %s", e)
+        if token and chat_id:
+            try:
+                requests.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": chat_id, "text": text},
+                    timeout=10,
+                )
+            except requests.RequestException as e:
+                logger.warning("Telegram notify failed: %s", e)
+        if discord_url:
+            try:
+                requests.post(discord_url, json={"content": text}, timeout=10)
+            except requests.RequestException as e:
+                logger.warning("Discord notify failed: %s", e)
 
 
 def scan(db: DatabaseManager, sport: str) -> int:
