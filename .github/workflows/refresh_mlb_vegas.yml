@@ -33,6 +33,9 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
     steps:
       - name: Checkout
@@ -77,3 +80,11 @@ jobs:
           python -m ingest.refresh_mlb_vegas \
             --date "$MLB_REFRESH_DATE" \
             --days-back "$MLB_REFRESH_DAYS_BACK"
+
+      - name: Capture MLB player-prop odds (K + total bases, per-book)
+        # Per-event calls (4 credits each) — 3x/day here, never on the 30-min
+        # game-line cadence. Feeds dk_prop_value / prop_line_gap detectors.
+        run: python -m ingest.mlb_prop_odds
+
+      - name: Scan + settle sharp line alerts (game lines + props)
+        run: python -m model.line_alerts --sport mlb
