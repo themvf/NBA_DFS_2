@@ -395,6 +395,125 @@ def scan_props(db: DatabaseManager) -> int:
     return len(new_alerts)
 
 
+# ── Tennis total-games (the tennis "prop-equivalent": the Odds API carries no
+# tennis player props at all — player_aces etc. are invalid market keys — but
+# match total games is a two-sided DK+Pinnacle market already in the per-book
+# game_odds_history captures, and it settles mechanically from the final score).
+_TENNIS_TOTALS_MIN_EV = 0.03
+_TENNIS_TOTALS_LINE_GAP = 2.0   # games; tennis totals cluster tightly (~21.5-23.5)
+
+
+def scan_tennis_totals(db: DatabaseManager) -> int:
+    """DK-vs-Pinnacle value on tennis match total games (same-line EV + line gap)."""
+    rows = db.execute(
+        """
+        SELECT DISTINCT ON (h.matchup_id)
+               h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
+               h.capture_key, h.books, m.commence_time
+        FROM game_odds_history h
+        JOIN tennis_matches m ON m.id = h.matchup_id
+        WHERE h.sport = 'tennis' AND h.books IS NOT NULL AND m.commence_time > NOW()
+        ORDER BY h.matchup_id, h.captured_at DESC
+        """
+    )
+    new_alerts: list[dict] = []
+    for r in rows:
+        books = r["books"] or {}
+        dk, pin = books.get(_DK_BOOK), books.get("pinnacle")
+        if not dk or not pin:
+            continue
+        pin_p = _prop_pair(pin)
+        if pin_p is None or dk.get("total_line") is None:
+            continue
+        pin_line, fair_over, fair_under = pin_p
+        dk_line = float(dk["total_line"])
+        label = f"{r['away_team_name']} @ {r['home_team_name']}"
+        shim = {"matchup_id": r["matchup_id"], "game_date": r["game_date"],
+                "commence_time": r["commence_time"], "capture_key": r["capture_key"]}
+        if dk_line == pin_line:
+            for side, fair, price_key in (("Over", fair_over, "over"), ("Under", fair_under, "under")):
+                price = dk.get(price_key)
+                if price is None:
+                    continue
+                dec = american_to_decimal(int(price))
+                if dec >= _DK_VALUE_MAX_DECIMAL:
+                    continue
+                ev = fair * dec - 1
+                if ev >= _TENNIS_TOTALS_MIN_EV:
+                    new_alerts.extend(_insert(
+                        db, sport="tennis", r=shim, label=label,
+                        alert_type="dk_prop_value",
+                        side=f"Games {side[0]}{dk_line}",
+                        alert_prob=1 / dec, sharp_prob=fair,
+                        details={"market": "total_games", "bet": side,
+                                 "line": dk_line, "player": label,
+                                 "dk_odds": int(price),
+                                 "dk_decimal": round(dec, 4),
+                                 "ev_pct": round(ev * 100, 2)},
+                    ))
+        elif abs(dk_line - pin_line) >= _TENNIS_TOTALS_LINE_GAP:
+            bet = "Over" if dk_line < pin_line else "Under"
+            price = dk.get("over" if bet == "Over" else "under")
+            dec = american_to_decimal(int(price)) if price is not None else None
+            new_alerts.extend(_insert(
+                db, sport="tennis", r=shim, label=label,
+                alert_type="prop_line_gap",
+                side=f"Games {bet[0]}{dk_line}",
+                alert_prob=(1 / dec) if dec else None,
+                sharp_prob=fair_over if bet == "Over" else fair_under,
+                details={"market": "total_games", "bet": bet, "player": label,
+                         "line": dk_line, "pin_line": pin_line,
+                         "gap": round(abs(dk_line - pin_line), 1),
+                         "dk_odds": int(price) if price is not None else None,
+                         "dk_decimal": round(dec, 4) if dec else None},
+            ))
+    if new_alerts:
+        print(f"Tennis totals alerts: {len(new_alerts)} new — "
+              + ", ".join(f"{a['matchup']} {a['side']}" for a in new_alerts[:5]))
+        _notify(new_alerts)
+    return len(new_alerts)
+
+
+def settle_tennis_totals(db: DatabaseManager) -> int:
+    """Grade tennis totals alerts from final games; retirements void (book rule)."""
+    open_alerts = db.execute(
+        """
+        SELECT a.*, m.home_games, m.away_games, m.winner
+        FROM line_alerts a JOIN tennis_matches m ON m.id = a.matchup_id
+        WHERE a.sport = 'tennis' AND a.alert_type IN ('dk_prop_value', 'prop_line_gap')
+          AND a.settled_at IS NULL AND m.winner IS NOT NULL
+        """
+    )
+    graded = 0
+    for a in open_alerts:
+        d = a["details_json"] or {}
+        if a["winner"] == "retired":
+            outcome = "void"
+        elif a["home_games"] is None or a["away_games"] is None:
+            continue  # winner known but games not filled yet — next pass
+        else:
+            total = int(a["home_games"]) + int(a["away_games"])
+            line, bet = float(d["line"]), d["bet"]
+            if total == line:
+                outcome = "void"
+            elif (total > line) == (bet == "Over"):
+                outcome = "won"
+            else:
+                outcome = "lost"
+        db.execute(
+            "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
+            "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
+            (outcome,
+             (int(a["home_games"]) + int(a["away_games"]))
+             if a["home_games"] is not None and a["away_games"] is not None else None,
+             a["id"]),
+        )
+        graded += 1
+    if graded:
+        print(f"Tennis totals alerts: {graded} graded")
+    return graded
+
+
 # ── World Cup anytime-goalscorer outlier (Pinnacle posts no WC player props,
 # so the anchor is the market MEDIAN across ~8 books; DK paying ≥10% over the
 # median decimal is the stale-price flag). Model-free, longshot-guarded, and
@@ -784,6 +903,9 @@ if __name__ == "__main__":
         if args.sport == "soccer":
             scan_props_soccer(db)
             settle_props_soccer(db)
+        if args.sport == "tennis":
+            scan_tennis_totals(db)
+            settle_tennis_totals(db)
     if args.dk_board:
         dk_board(db)
     if args.report or (not args.sport and not args.dk_board):
