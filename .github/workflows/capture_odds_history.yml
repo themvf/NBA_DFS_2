@@ -39,8 +39,14 @@ jobs:
           fi
           echo "TARGET_DATE=$TARGET_DATE" >> "$GITHUB_ENV"
 
-      - name: Capture NBA odds and props history
-        run: python -m ingest.nba_schedule --date "$TARGET_DATE"
-
+      # MLB first: it's the in-season capture that feeds the CLV harness.
       - name: Capture MLB odds history
         run: python -m ingest.mlb_schedule --date "$TARGET_DATE"
+
+      # stats.nba.com blocks GitHub runner IPs (ReadTimeout — the reason
+      # daily_stats.yml was removed), so this step fails routinely. It must
+      # never take the MLB capture down with it: continue-on-error, and it
+      # runs AFTER MLB. During the offseason it does nothing useful anyway.
+      - name: Capture NBA odds and props history
+        continue-on-error: true
+        run: python -m ingest.nba_schedule --date "$TARGET_DATE"
