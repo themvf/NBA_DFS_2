@@ -82,6 +82,9 @@ jobs:
             python -m ingest.soccer_schedule
           fi
 
+      - name: Capture WC anytime-scorer prop odds (per-book, DK outlier detection)
+        run: python -m ingest.soccer_prop_odds
+
       - name: Scan + settle sharp line alerts (soccer)
         run: python -m model.line_alerts --sport soccer
 

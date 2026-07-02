@@ -395,6 +395,159 @@ def scan_props(db: DatabaseManager) -> int:
     return len(new_alerts)
 
 
+# ── World Cup anytime-goalscorer outlier (Pinnacle posts no WC player props,
+# so the anchor is the market MEDIAN across ~8 books; DK paying ≥10% over the
+# median decimal is the stale-price flag). Model-free, longshot-guarded, and
+# graded like everything else — plus true ROI at DK's frozen price.
+_SOCCER_OUTLIER_MIN_RATIO = 0.10   # DK decimal ≥ 10% above the median decimal
+_SOCCER_OUTLIER_MIN_BOOKS = 5      # need a real median, not a 2-book coin flip
+
+
+def scan_props_soccer(db: DatabaseManager) -> int:
+    """Flag WC anytime-scorer prices where DK is a fat outlier vs the median.
+
+    A raw price median is the WRONG anchor here: uk/eu books carry far heavier
+    ATGS margin than DK, so every DK price looks "long" against them and the
+    first raw scan flagged 24% of the board — book-style artifact, not edge.
+    Instead each book's implied probabilities are normalized by that book's
+    own total over all players in the game (its overround), making shares
+    comparable across margin structures; the flag fires only when DK prices a
+    player RELATIVELY longer than the median book does.
+    """
+    from collections import defaultdict
+    from model.soccer_bet_rating import american_to_prob
+
+    rows = db.execute(
+        """
+        SELECT DISTINCT ON (event_id, player)
+               event_id, matchup_id, game_date, commence_time,
+               home_team_name, away_team_name, player, books, capture_key
+        FROM prop_odds_history
+        WHERE sport = 'soccer' AND market = 'player_goal_scorer_anytime'
+          AND commence_time > NOW() AND matchup_id IS NOT NULL
+        ORDER BY event_id, player, captured_at DESC
+        """
+    )
+    by_event: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_event[r["event_id"]].append(r)
+
+    new_alerts: list[dict] = []
+    for players in by_event.values():
+        # Per-book overround across every player this book prices in the game.
+        book_total: dict[str, float] = defaultdict(float)
+        book_count: dict[str, int] = defaultdict(int)
+        for r in players:
+            for key, b in (r["books"] or {}).items():
+                if b.get("yes") is not None:
+                    try:
+                        book_total[key] += american_to_prob(int(b["yes"]))
+                        book_count[key] += 1
+                    except (TypeError, ValueError):
+                        pass
+        # A book must price most of the slate for its normalizer to mean anything.
+        min_players = max(5, int(0.5 * max(book_count.values(), default=0)))
+        usable = {k for k, n in book_count.items() if n >= min_players and book_total[k] > 0}
+
+        for r in players:
+            books = r["books"] or {}
+            dk = books.get(_DK_BOOK)
+            if not dk or dk.get("yes") is None or _DK_BOOK not in usable:
+                continue
+            try:
+                dk_dec = american_to_decimal(int(dk["yes"]))
+                dk_norm = american_to_prob(int(dk["yes"])) / book_total[_DK_BOOK]
+                other_norms = sorted(
+                    american_to_prob(int(b["yes"])) / book_total[k]
+                    for k, b in books.items()
+                    if k != _DK_BOOK and k in usable and b.get("yes") is not None)
+            except (TypeError, ValueError):
+                continue
+            if len(other_norms) < _SOCCER_OUTLIER_MIN_BOOKS - 1:
+                continue
+            if dk_dec >= _DK_VALUE_MAX_DECIMAL:
+                continue  # longshot — tail prices are where outlier noise lives
+            median_norm = other_norms[len(other_norms) // 2]
+            if dk_norm <= 0:
+                continue
+            # DK prices the player relatively LONGER than the median book.
+            ratio = median_norm / dk_norm - 1
+            if ratio < _SOCCER_OUTLIER_MIN_RATIO:
+                continue
+            shim = {"matchup_id": r["matchup_id"], "game_date": r["game_date"],
+                    "commence_time": r["commence_time"], "capture_key": r["capture_key"]}
+            new_alerts.extend(_insert(
+                db, sport="soccer", r=shim,
+                label=f"{r['away_team_name']} @ {r['home_team_name']}",
+                alert_type="prop_outlier",
+                side=f"{r['player']} ATGS",
+                alert_prob=1 / dk_dec,  # DK implied (vig incl.)
+                # Median share re-inflated to DK's own margin scale so the two
+                # columns are the same kind of number ("what DK *should* imply").
+                sharp_prob=median_norm * book_total[_DK_BOOK],
+                details={"market": "player_goal_scorer_anytime",
+                         "player": r["player"], "bet": "to score",
+                         "dk_odds": int(dk["yes"]),
+                         "dk_decimal": round(dk_dec, 4),
+                         "edge_vs_median_pct": round(ratio * 100, 1),
+                         "n_books": len(books)},
+            ))
+    if new_alerts:
+        print(f"WC prop alerts: {len(new_alerts)} new — "
+              + ", ".join(a["side"] for a in new_alerts[:6]))
+        _notify(new_alerts)
+    return len(new_alerts)
+
+
+def settle_props_soccer(db: DatabaseManager) -> int:
+    """Grade WC anytime-scorer alerts from the goal timeline (90 minutes only).
+
+    DK settles soccer player props on the 90-minute match, so a goal with
+    minute > 90 (extra time) does NOT count — soccer_match_goals minutes are
+    period-capped by TheSportsDB (90+X stoppage stores as 90), which matches
+    the convention exactly. Grading waits for reg scores (the timeline-
+    completeness gate). CONSERVATIVE BIAS, documented: a player who never
+    entered the match grades 'lost' here where a book would void — we have no
+    lineup feed, so measured ROI understates rather than inflates.
+    """
+    open_alerts = db.execute(
+        """
+        SELECT a.*, m.game_id
+        FROM line_alerts a JOIN soccer_matchups m ON m.id = a.matchup_id
+        WHERE a.sport = 'soccer' AND a.alert_type = 'prop_outlier'
+          AND a.settled_at IS NULL
+          AND m.reg_home_score IS NOT NULL AND m.reg_away_score IS NOT NULL
+        """
+    )
+    import unicodedata
+
+    def norm(s: str) -> str:
+        return " ".join(unicodedata.normalize("NFKD", s or "")
+                        .encode("ascii", "ignore").decode("ascii").lower().split())
+
+    graded = 0
+    for a in open_alerts:
+        d = a["details_json"] or {}
+        target = norm(d.get("player", ""))
+        scorers = db.execute(
+            "SELECT player_name FROM soccer_match_goals WHERE game_id = %s AND goal_minute <= 90",
+            (a["game_id"],),
+        )
+        tt = set(target.split())
+        scored = any(
+            (lambda nl: tt <= set(nl.split()) or set(nl.split()) <= tt)(norm(s["player_name"]))
+            for s in scorers
+        )
+        db.execute(
+            "UPDATE line_alerts SET outcome = %s, settled_at = NOW() WHERE id = %s",
+            ("won" if scored else "lost", a["id"]),
+        )
+        graded += 1
+    if graded:
+        print(f"WC prop alerts: {graded} graded from the goal timeline")
+    return graded
+
+
 def _mlb_boxscore_stat(game_pk: str, player: str, market: str) -> float | None:
     """Actual K's (pitcher) or total bases (batter) from the free MLB boxscore."""
     import unicodedata
@@ -628,6 +781,9 @@ if __name__ == "__main__":
         if args.sport == "mlb":
             scan_props(db)
             settle_props(db)
+        if args.sport == "soccer":
+            scan_props_soccer(db)
+            settle_props_soccer(db)
     if args.dk_board:
         dk_board(db)
     if args.report or (not args.sport and not args.dk_board):
