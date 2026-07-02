@@ -518,12 +518,14 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
                 outcome = "won"
             else:
                 outcome = "lost"
-        dk_close, dk_clv = _dk_execution_clv(db, a)
+        g = _grade_alert_prices(db, a)
         db.execute(
             "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
-            "dk_close_decimal = %s, dk_clv_pct = %s, "
+            "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
+            "convergence = %s, dk_survival_min = %s, "
             "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
-            (outcome, dk_close, dk_clv,
+            (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
+             g["convergence"], g["dk_survival_min"],
              (int(a["home_games"]) + int(a["away_games"]))
              if a["home_games"] is not None and a["away_games"] is not None else None,
              a["id"]),
@@ -677,11 +679,13 @@ def settle_props_soccer(db: DatabaseManager) -> int:
             (lambda nl: tt <= set(nl.split()) or set(nl.split()) <= tt)(norm(s["player_name"]))
             for s in scorers
         )
-        dk_close, dk_clv = _dk_execution_clv(db, a)
+        g = _grade_alert_prices(db, a)
         db.execute(
             "UPDATE line_alerts SET outcome = %s, dk_close_decimal = %s, dk_clv_pct = %s, "
+            "pin_close_prob = %s, convergence = %s, dk_survival_min = %s, "
             "settled_at = NOW() WHERE id = %s",
-            ("won" if scored else "lost", dk_close, dk_clv, a["id"]),
+            ("won" if scored else "lost", g["dk_close_decimal"], g["dk_clv_pct"],
+             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], a["id"]),
         )
         graded += 1
     if graded:
@@ -748,12 +752,14 @@ def settle_props(db: DatabaseManager) -> int:
             outcome = "won"
         else:
             outcome = "lost"
-        dk_close, dk_clv = _dk_execution_clv(db, a)
+        g = _grade_alert_prices(db, a)
         db.execute(
             "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
-            "dk_close_decimal = %s, dk_clv_pct = %s, "
+            "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
+            "convergence = %s, dk_survival_min = %s, "
             "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
-            (outcome, dk_close, dk_clv, actual, a["id"]),
+            (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
+             g["convergence"], g["dk_survival_min"], actual, a["id"]),
         )
         graded += 1
     if graded:
@@ -761,63 +767,145 @@ def settle_props(db: DatabaseManager) -> int:
     return graded
 
 
-def _dk_execution_clv(db, a) -> tuple[float | None, float | None]:
-    """(dk_close_decimal, dk_clv_pct) — did DK's own price on the flagged
-    selection worsen after the alert? Positive dk_clv_pct = the alerted price
-    beat DK's close = the discrepancy was a temporarily executable window
-    (execution-book CLV, distinct from reference-market clv_pp)."""
+def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
+    """(dk_decimal, pinnacle_fair_prob) for THIS alert's exact selection from
+    one capture snapshot. Same-line only for props — a moved line is a
+    different proposition and grades as price-gone, not price-moved."""
+    d = a["details_json"] or {}
+    dk = books.get(_DK_BOOK)
+    pin = books.get("pinnacle")
+    dk_dec = None
+    pin_fair = None
+    market = d.get("market")
+    if market == "player_goal_scorer_anytime":
+        price = dk.get("yes") if dk else None
+        if price is not None:
+            try:
+                dk_dec = american_to_decimal(int(price))
+            except (TypeError, ValueError):
+                pass
+        # no Pinnacle for WC props — pin_fair stays None
+    elif market in ("pitcher_strikeouts", "batter_total_bases", "total_games"):
+        line_key = "total_line" if market == "total_games" else "line"
+        bet = d.get("bet")
+        if dk and dk.get(line_key) == d.get("line"):
+            price = dk.get("over" if bet == "Over" else "under")
+            if price is not None:
+                try:
+                    dk_dec = american_to_decimal(int(price))
+                except (TypeError, ValueError):
+                    pass
+        if pin and pin.get(line_key) == d.get("line"):
+            pp = _prop_pair({"line": pin.get(line_key),
+                             "over": pin.get("over"), "under": pin.get("under")})
+            if pp is not None:
+                pin_fair = pp[1] if bet == "Over" else pp[2]
+    else:  # game-side moneyline selection
+        if dk:
+            price = dk.get(_SIDE_KEY.get(a["side"], ""))
+            if price is not None:
+                try:
+                    dk_dec = american_to_decimal(int(price))
+                except (TypeError, ValueError):
+                    pass
+        if pin:
+            pin_fair = _book_fair_side(pin, a["side"])
+    return dk_dec, pin_fair
+
+
+_CONV_EPS = 0.005  # 0.5pp — smaller moves are quote noise, not convergence
+
+
+def _grade_alert_prices(db, a) -> dict:
+    """Full price-context grading over the alert→close capture series.
+
+    Returns dk_close_decimal, dk_clv_pct (execution CLV: positive = the
+    recommended selection got more expensive at DK), pin_close_prob
+    (reference close as its own quantity), convergence (HOW the alert-time
+    DK-vs-Pinnacle gap closed — REFERENCE_CONVERGED_TO_EXECUTION is the
+    "DK's quote was information" pattern, not inferable from the two CLV
+    scalars), and dk_survival_min (minutes until DK's alerted price first
+    changed; NULL = survived to the close — the decay/availability measure).
+    """
+    out = {"dk_close_decimal": None, "dk_clv_pct": None,
+           "pin_close_prob": None, "convergence": None, "dk_survival_min": None}
     d = a["details_json"] or {}
     entry_dec = d.get("dk_decimal")
     if entry_dec is None:
-        return None, None
-    close_dec = None
-    if a["alert_type"] in ("dk_prop_value", "prop_line_gap", "prop_outlier") \
-            and d.get("market") != "total_games":
-        row = db.execute_one(
-            """SELECT books FROM prop_odds_history
+        return out
+    entry_dec = float(entry_dec)
+
+    is_prop_src = (a["alert_type"] in ("dk_prop_value", "prop_line_gap", "prop_outlier")
+                   and d.get("market") != "total_games")
+    if is_prop_src:
+        caps = db.execute(
+            """SELECT captured_at, books FROM prop_odds_history
                WHERE sport = %s AND matchup_id = %s AND market = %s AND player = %s
                  AND captured_at <= %s
-               ORDER BY captured_at DESC LIMIT 1""",
-            (a["sport"], a["matchup_id"], d.get("market"), d.get("player"), a["commence_time"]),
+               ORDER BY captured_at ASC""",
+            (a["sport"], a["matchup_id"], d.get("market"), d.get("player"),
+             a["commence_time"]),
         )
-        dk = (row["books"] or {}).get(_DK_BOOK) if row else None
-        if dk:
-            if d.get("market") == "player_goal_scorer_anytime":
-                price = dk.get("yes")
-            elif dk.get("line") == d.get("line"):  # same-line only — a moved line
-                price = dk.get("over" if d.get("bet") == "Over" else "under")
-            else:
-                price = None
-            if price is not None:
-                try:
-                    close_dec = american_to_decimal(int(price))
-                except (TypeError, ValueError):
-                    pass
     else:
-        row = db.execute_one(
-            """SELECT books FROM game_odds_history
+        caps = db.execute(
+            """SELECT captured_at, books FROM game_odds_history
                WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
                  AND captured_at <= %s
-               ORDER BY captured_at DESC LIMIT 1""",
+               ORDER BY captured_at ASC""",
             (a["sport"], a["matchup_id"], a["commence_time"]),
         )
-        dk = (row["books"] or {}).get(_DK_BOOK) if row else None
-        if dk:
-            if d.get("market") == "total_games":
-                if dk.get("total_line") == d.get("line"):
-                    price = dk.get("over" if d.get("bet") == "Over" else "under")
-                else:
-                    price = None
-            else:
-                price = dk.get(_SIDE_KEY.get(a["side"], ""))
-            if price is not None:
-                try:
-                    close_dec = american_to_decimal(int(price))
-                except (TypeError, ValueError):
-                    pass
-    if close_dec is None or close_dec <= 0:
-        return None, None
-    return close_dec, round((float(entry_dec) / close_dec - 1) * 100, 2)
+
+    series = [(c["captured_at"], *_selection_prices(a, c["books"] or {})) for c in caps]
+    # Slice from the TRIGGERING capture: the alert's created_at lands moments
+    # AFTER the capture that fired it, so a naive >= created_at filter drops
+    # the entry snapshot (and scans can also fire off captures much older than
+    # created_at). Entry = last capture at/before created_at, else the first.
+    entry_idx = 0
+    for idx, (ts, _dk, _pp) in enumerate(series):
+        if ts <= a["created_at"]:
+            entry_idx = idx
+    series = series[entry_idx:]
+
+    # Survival: first post-alert capture where DK's price differs (or is gone).
+    for ts, dk_dec, _pin in series[1:] if series else []:
+        if dk_dec is None or abs(dk_dec - entry_dec) > 1e-9:
+            out["dk_survival_min"] = round(
+                (ts - a["created_at"]).total_seconds() / 60, 1)
+            break
+
+    # Closes: last capture with a usable value for each side.
+    dk_close = next((dk for _, dk, _p in reversed(series) if dk is not None), None)
+    pin_close = next((pp for _, _dk, pp in reversed(series) if pp is not None), None)
+    if dk_close:
+        out["dk_close_decimal"] = dk_close
+        out["dk_clv_pct"] = round((entry_dec / dk_close - 1) * 100, 2)
+    if pin_close is not None:
+        out["pin_close_prob"] = round(pin_close, 4)
+
+    # Convergence classification (needs both books at entry and close).
+    pin_alert = a["sharp_prob"]
+    if dk_close and pin_close is not None and pin_alert is not None:
+        d_dk = (1 / dk_close) - (1 / entry_dec)     # + = DK made the side more expensive
+        d_pin = pin_close - float(pin_alert)        # + = sharp fair moved toward the side
+        dk_up, dk_down = d_dk > _CONV_EPS, d_dk < -_CONV_EPS
+        pin_up, pin_down = d_pin > _CONV_EPS, d_pin < -_CONV_EPS
+        if dk_up and pin_up:
+            out["convergence"] = "BOTH_MOVED_TOWARD_BET"
+        elif dk_down and pin_down:
+            out["convergence"] = "BOTH_MOVED_AGAINST_BET"
+        elif dk_up:
+            out["convergence"] = "EXECUTION_CONVERGED_TO_REFERENCE"
+        elif pin_down:
+            out["convergence"] = "REFERENCE_CONVERGED_TO_EXECUTION"
+        else:
+            out["convergence"] = "DIVERGENCE_PERSISTED"
+    return out
+
+
+def _dk_execution_clv(db, a) -> tuple[float | None, float | None]:
+    """Back-compat shim over _grade_alert_prices (call sites updated in place)."""
+    g = _grade_alert_prices(db, a)
+    return g["dk_close_decimal"], g["dk_clv_pct"]
 
 
 def settle(db: DatabaseManager, sport: str) -> int:
@@ -875,13 +963,16 @@ def settle(db: DatabaseManager, sport: str) -> int:
         # and is filled in the same pass on a later run if still NULL then.
         if clv_pp is None and outcome is None:
             continue
-        dk_close, dk_clv = _dk_execution_clv(db, a)
+        g = _grade_alert_prices(db, a)
         db.execute(
             "UPDATE line_alerts SET close_prob = %s, clv_pp = %s, outcome = %s, "
-            "dk_close_decimal = %s, dk_clv_pct = %s, "
+            "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
+            "convergence = %s, dk_survival_min = %s, "
             "settled_at = CASE WHEN %s::text IS NOT NULL THEN NOW() ELSE settled_at END "
             "WHERE id = %s",
-            (close_prob, clv_pp, outcome, dk_close, dk_clv, outcome, a["id"]),
+            (close_prob, clv_pp, outcome, g["dk_close_decimal"], g["dk_clv_pct"],
+             g["pin_close_prob"], g["convergence"], g["dk_survival_min"],
+             outcome, a["id"]),
         )
         graded += 1
     if graded:
@@ -947,7 +1038,13 @@ def report(db: DatabaseManager) -> None:
                ROUND(SUM(CASE WHEN outcome = 'won'
                               THEN (details_json->>'dk_decimal')::numeric - 1
                               WHEN outcome = 'lost' THEN -1 END)::numeric, 2) units,
-               ROUND(AVG(dk_clv_pct)::numeric, 2) avg_dk_clv
+               ROUND(AVG(dk_clv_pct)::numeric, 2) avg_dk_clv,
+               ROUND(AVG((pin_close_prob - sharp_prob) * 100)
+                     FILTER (WHERE pin_close_prob IS NOT NULL)::numeric, 2) ref_clv_pp,
+               ROUND(AVG((dk_survival_min IS NULL AND dk_close_decimal IS NOT NULL)::int)
+                     FILTER (WHERE settled_at IS NOT NULL)::numeric, 2) survived,
+               ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY dk_survival_min)
+                     ::numeric, 0) med_survival_min
         FROM (
             SELECT *, COALESCE((details_json->>'ev_pct')::numeric,
                                (details_json->>'edge_vs_median_pct')::numeric) AS ev
@@ -959,11 +1056,28 @@ def report(db: DatabaseManager) -> None:
         """
     )
     if tiers:
-        print("\n  Claimed-EV tier calibration (monotonic win/ROI = the signal ranks; flat = decorative precision):")
+        print("\n  Claimed-EV tier calibration — three separate monotonicity verdicts:")
+        print("    signal (refCLV rises with tier) | tradability (ROI rises among survivors) | decay (survival falls with tier)")
         for t in tiers:
             roi = (f"{float(t['units'])/t['n_out']*100:+.1f}%" if t["units"] is not None and t["n_out"] else "—")
+            surv = f"{float(t['survived'])*100:.0f}%" if t["survived"] is not None else "—"
+            med = f"{t['med_survival_min']}m" if t["med_survival_min"] is not None else "—"
             print(f"    {t['tier']:<6} n={t['n']:>4} settled={t['n_out']:>3}  win={t['win_rate'] if t['win_rate'] is not None else '—'}  "
-                  f"ROI@DK={roi}  execCLV={t['avg_dk_clv'] if t['avg_dk_clv'] is not None else '—'}%")
+                  f"ROI@DK={roi}  refCLV={t['ref_clv_pp'] if t['ref_clv_pp'] is not None else '—'}pp  "
+                  f"execCLV={t['avg_dk_clv'] if t['avg_dk_clv'] is not None else '—'}%  "
+                  f"survived={surv}  medDecay={med}")
+
+    conv = db.execute(
+        """SELECT convergence, COUNT(*) n,
+              ROUND(AVG((outcome = 'won')::int)
+                    FILTER (WHERE outcome IN ('won','lost'))::numeric, 2) win_rate
+           FROM line_alerts WHERE convergence IS NOT NULL
+           GROUP BY 1 ORDER BY n DESC"""
+    )
+    if conv:
+        print("\n  Gap-convergence patterns (REFERENCE_CONVERGED_TO_EXECUTION = DK's quote was information):")
+        for c in conv:
+            print(f"    {c['convergence']:<34} n={c['n']:>4}  win={c['win_rate'] if c['win_rate'] is not None else '—'}")
     print()
 
 

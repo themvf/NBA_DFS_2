@@ -1836,4 +1836,16 @@ INDEXES = [
     # the alerted price was better than DK's close = the window was real.
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS dk_close_decimal DOUBLE PRECISION",
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS dk_clv_pct DOUBLE PRECISION",
+    # 2026-07-03: full price-context grading. pin_close_prob stores the sharp
+    # book's closing fair probability as its own quantity (clv_pp's close is
+    # the RETAIL consensus); convergence classifies HOW an alert-time gap
+    # closed (EXECUTION_CONVERGED_TO_REFERENCE / REFERENCE_CONVERGED_TO_
+    # EXECUTION / BOTH_MOVED_TOWARD_BET / BOTH_MOVED_AGAINST_BET /
+    # DIVERGENCE_PERSISTED) — Pinnacle moving toward DK's number is evidence
+    # the "stale" quote was information, and cannot be inferred from two CLV
+    # scalars alone; dk_survival_min = minutes until DK's alerted price first
+    # changed (NULL = survived to the close), the decay/availability measure.
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS pin_close_prob DOUBLE PRECISION",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS convergence TEXT",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS dk_survival_min DOUBLE PRECISION",
 ]
