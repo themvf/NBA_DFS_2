@@ -758,8 +758,14 @@ def settle_props(db: DatabaseManager) -> int:
 def settle(db: DatabaseManager, sport: str) -> int:
     """Grade alerts whose games have started: CLV always, outcome when scored."""
     matchup_tbl = _MATCHUP_TBL[sport]
+    # Game-side alert types ONLY: prop alerts (dk_prop_value / prop_line_gap /
+    # prop_outlier) carry player-market side strings that can never equal
+    # 'home'/'away'/'draw', so grading them here silently marked every one
+    # 'lost' regardless of the actual stat. They have their own settlers
+    # (settle_props / settle_props_soccer / settle_tennis_totals).
     open_alerts = db.execute(
         "SELECT * FROM line_alerts WHERE sport = %s AND settled_at IS NULL "
+        "AND alert_type IN ('pinnacle_divergence', 'steam', 'dk_value') "
         "AND commence_time IS NOT NULL AND commence_time <= NOW()",
         (sport,),
     )
