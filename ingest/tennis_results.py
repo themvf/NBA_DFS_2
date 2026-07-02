@@ -118,12 +118,21 @@ def settle_tour(db: DatabaseManager, tour: str, year: int) -> tuple[int, int]:
         if not cands:
             continue
 
-        # Disambiguate by date (±2 days) when multiple matches share the pair.
+        # HARD date window — not just disambiguation. The same two players meet
+        # across tournaments (Bencic–Kalinskaya at Eastbourne one week, Wimbledon
+        # the next), and the results file carries the whole season: without this
+        # guard a single-candidate pair match grabbed a WEEKS-OLD result and
+        # wrote a winner onto a match that hadn't been played yet (2026-07-02).
+        # A result may only settle a match dated within ±2 days of it; undated
+        # result rows are skipped entirely.
         rd = r.get("Date")
         rd = rd.date() if isinstance(rd, datetime) else rd
-        match = cands[0]
-        if len(cands) > 1 and isinstance(rd, date):
-            match = min(cands, key=lambda m: abs((m["match_date"] - rd).days))
+        if not isinstance(rd, date):
+            continue
+        cands = [m for m in cands if abs((m["match_date"] - rd).days) <= 2]
+        if not cands:
+            continue
+        match = min(cands, key=lambda m: abs((m["match_date"] - rd).days))
 
         # Orientation: is the home_player the Winner?
         home_is_winner = _key_oddsapi(match["home_player"]) == kw
