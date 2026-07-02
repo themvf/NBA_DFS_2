@@ -986,3 +986,31 @@ but high-value. Surfaced on `/vegas?sport=soccer` (Bets + Backtest panels) and r
 - **Futures sample is tiny** (1 champion, 12 group winners) → low-power calibration; first-scorer
   carries the statistical weight.
 - **Knockout bracket pairing** is simplified (strength-seeded), not the exact FIFA bracket.
+
+---
+
+## Edge-Finding Roadmap (2026-07-02)
+
+Three sports of settled-ledger evidence (soccer −36% ROI on ML/DNB value tiers; tennis
+walk-forward failure; MLB models losing to market on their own holdout evals) established
+that we cannot out-predict closing lines with public stats. All game markets are capped at
+2★. The path to a real edge is **structure, not prediction**: weak benchmarks, slow prices,
+information latency, and disciplined measurement. Priorities:
+
+| Priority | Initiative | Why | Status |
+|---|---|---|---|
+| **P1** | **CLV harness** (`model/clv_report.py`) | Closing Line Value converges ~10× faster than ROI (every bet scores, win or lose). For each bet: entry = first snapshot, close = last pre-kickoff snapshot; did the market move toward our number? Slices by sport/market/stars/model_version. The instrument every other idea is measured with. | ✅ Done (2026-07-02) |
+| **P2** | Pre-registered studies: (a) MLB underdog anomaly (post-repair 4-5★ tiers +22% ROI, ~2σ — see [[mlb-gameline-caps-odds-bug]] memory); (b) opener-vs-closer (does our disagreement with the 13:10 open predict movement by close?) | Hypothesis + eval rules written BEFORE looking at data — the discipline that caught the soccer-totals mirage. Walk-forward only, post-odds-fix data only. | Planned |
+| **P3** | Soft markets: NBA player props ledger (our DFS projections vs DK prop lines) | The futures lesson generalized — group-winner won because the benchmark was a uniform prior, not Pinnacle. Prop lines are algorithmic and slow; we already ingest props. Vig is higher, so P1 must confirm any edge clears it. | Planned (NBA season) |
+| **P4** | Information latency (lineups, weather, injuries) — event-driven capture | Only if P1 shows we're directionally right but late. 30-min cron cadence cannot exploit minute-scale news. Don't build speculatively. | Gated on P1 |
+| **P5** | Execution: best-price line shopping across books in every ledger | Worth 1–3%/bet with zero predictive skill; first-scorer already uses best offered price. Makes every edge study realistic. | Planned |
+
+**Discipline rules (non-negotiable):**
+- No fourth gameline revision; no new models from public season stats vs closing lines.
+- Every hypothesis pre-registered (metric, slice, sample size) before data is examined.
+- Walk-forward or CLV only — in-sample win rates are how the totals mirage happened.
+- MLB CLV uses probability movement only for pre-2026-07-02 snapshots (entry odds in old
+  snapshots carry the arithmetic-averaging corruption; bets table was repaired, snapshots kept
+  as-recorded).
+- Star caps are reversible per market the moment a slice demonstrates walk-forward edge.
+
