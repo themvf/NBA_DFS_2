@@ -14,7 +14,8 @@ const sideName = (a: LineAlertRow): string => {
   const [away, home] = a.matchup.split(" @ ");
   if (a.side === "home") return home ?? "home";
   if (a.side === "away") return away ?? "away";
-  return "Draw";
+  if (a.side === "draw") return "Draw";
+  return a.side; // prop sides carry their own label ("Roki Sasaki K O4.5")
 };
 
 function ActionChip({ a }: { a: LineAlertRow }) {
