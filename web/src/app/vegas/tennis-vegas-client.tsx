@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { TennisMatchRow, TennisBetRow, TennisBetBacktestRow } from "@/db/queries";
+import type { TennisMatchRow, TennisBetRow, TennisBetBacktestRow, MlbLineMovementRow } from "@/db/queries";
+import LineMovementPanel from "./line-movement-panel";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
 const fmtPct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
@@ -218,11 +219,13 @@ export default function TennisVegasClient({
   matchups,
   bets,
   backtest,
+  lineMovement,
   queryDate,
 }: {
   matchups: TennisMatchRow[];
   bets: TennisBetRow[];
   backtest: TennisBetBacktestRow[];
+  lineMovement: MlbLineMovementRow[];
   queryDate: string | null;
 }) {
   const [tour, setTour] = useState<"all" | "ATP" | "WTA">("all");
@@ -249,7 +252,7 @@ export default function TennisVegasClient({
   return (
     <div className="space-y-6 p-6 max-w-5xl mx-auto">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-xl font-bold">Vegas Analysis — WIMBLEDON 🎾</h1>
+        <h1 className="text-xl font-bold">Vegas Analysis — TENNIS 🎾</h1>
         <span className="text-xs text-muted-foreground">
           {matchups.length} matches · consensus across books · {queryDate ?? "upcoming"}
         </span>
@@ -257,9 +260,13 @@ export default function TennisVegasClient({
 
       <p className="text-sm text-muted-foreground">
         Live consensus odds from The Odds API across all books, vig removed in probability space.
-        Our grass-Elo model (market-anchored) rates ATP moneylines 1–5★ — value = where we disagree
-        with the market. WTA is odds-only until a women&rsquo;s ratings source is wired.
+        Tournaments are auto-discovered from the feed (post-Wimbledon events included). The ledger
+        is calibration-only — walk-forward shows no moneyline edge, so ratings cap honestly low.
       </p>
+
+      {lineMovement.length > 0 && (
+        <LineMovementPanel rows={lineMovement} cadenceNote="the 6-hourly odds captures" />
+      )}
 
       {/* Top rated bets — the model's recommendations, best first */}
       {bets.length > 0 && (() => {

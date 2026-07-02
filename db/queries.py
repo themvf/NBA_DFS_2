@@ -354,6 +354,7 @@ def insert_game_odds_history_rows(db: DatabaseManager, rows: list[dict]) -> int:
             row.get("captured_at"),
             json.dumps(row["books"]) if row.get("books") else None,
             row.get("vegas_total_raw"),
+            row.get("draw_ml"),
         )
         for row in rows
     ]
@@ -365,7 +366,7 @@ def insert_game_odds_history_rows(db: DatabaseManager, rows: list[dict]) -> int:
             sport, matchup_id, event_id, game_date, home_team_id, away_team_id,
             home_team_name, away_team_name, bookmaker_count, home_ml, away_ml,
             home_spread, vegas_total, vegas_prob_home, home_implied, away_implied,
-            capture_key, captured_at, books, vegas_total_raw
+            capture_key, captured_at, books, vegas_total_raw, draw_ml
         ) VALUES %s
         ON CONFLICT (sport, matchup_id, capture_key) DO NOTHING
         """,

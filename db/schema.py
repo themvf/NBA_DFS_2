@@ -1752,4 +1752,24 @@ INDEXES = [
     # 0.5-rounded vegas_total hides half-point moves across key numbers).
     "ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS books JSONB",
     "ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS vegas_total_raw DOUBLE PRECISION",
+    # 2026-07-02: soccer joins the odds-history trail (3-way market → draw leg;
+    # per-book draw prices live in books JSONB as ml_draw).
+    "ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS draw_ml INTEGER",
+    # 2026-07-02: tennis bet snapshots — append-only audit trail mirroring
+    # soccer_bet_snapshots/mlb_bet_snapshots, so tennis bets get entry→close
+    # CLV measurement (model/clv_report.py). Prerequisite for the tennis
+    # post-Wimbledon upgrade (see Edge-Finding Roadmap).
+    """CREATE TABLE IF NOT EXISTS tennis_bet_snapshots (
+        id SERIAL PRIMARY KEY,
+        bet_id INTEGER REFERENCES tennis_bets(id) ON DELETE CASCADE,
+        captured_at TIMESTAMPTZ DEFAULT NOW(),
+        capture_key TEXT,
+        our_prob DOUBLE PRECISION,
+        market_prob DOUBLE PRECISION,
+        market_odds INTEGER,
+        edge DOUBLE PRECISION,
+        ev DOUBLE PRECISION,
+        stars SMALLINT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_bet_snapshots_bet ON tennis_bet_snapshots(bet_id, captured_at DESC)",
 ]

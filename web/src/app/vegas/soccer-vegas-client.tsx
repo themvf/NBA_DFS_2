@@ -29,7 +29,9 @@ import type {
   SoccerReach,
   SoccerDeepRunRow,
   SoccerKnockoutAsOf,
+  MlbLineMovementRow,
 } from "@/db/queries";
+import LineMovementPanel from "./line-movement-panel";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
 const fmtPct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
@@ -2429,6 +2431,7 @@ export default function SoccerVegasClient({
   knockoutTies,
   titleOdds,
   knockoutAsOf,
+  lineMovement,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -2448,6 +2451,7 @@ export default function SoccerVegasClient({
   knockoutTies: SoccerKnockoutTieRow[];
   titleOdds: SoccerDeepRunRow[];
   knockoutAsOf: SoccerKnockoutAsOf;
+  lineMovement: MlbLineMovementRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -2523,7 +2527,14 @@ export default function SoccerVegasClient({
           settlementHealth={settlementHealth}
         />
       )}
-      {tab === "fixtures" && <FixturesPanel matchups={matchups} queryDate={queryDate} />}
+      {tab === "fixtures" && (
+        <>
+          <FixturesPanel matchups={matchups} queryDate={queryDate} />
+          {lineMovement.length > 0 && (
+            <LineMovementPanel rows={lineMovement} cadenceNote="the 3-hourly odds captures" />
+          )}
+        </>
+      )}
     </div>
   );
 }

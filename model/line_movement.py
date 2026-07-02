@@ -46,19 +46,27 @@ _STEAM_MIN_MOVE = 0.015  # >= 1.5 prob points per book, same direction
 # sport -> matchup table (for commence_time; captures already stop at commence
 # via the in-play guard, but the join keeps the report honest if old in-play
 # rows exist from before the guard).
-_MATCHUP_TBL = {"mlb": "mlb_matchups", "nba": "nba_matchups"}
+_MATCHUP_TBL = {
+    "mlb": "mlb_matchups",
+    "nba": "nba_matchups",
+    "soccer": "soccer_matchups",
+    "tennis": "tennis_matches",
+}
 
 
 def _book_fair_home(book: dict) -> float | None:
-    """Vig-free P(home) from one book's two-way moneyline."""
+    """Vig-free P(home) from one book's moneyline (3-way when ml_draw present)."""
     h, a = book.get("ml_home"), book.get("ml_away")
     if h is None or a is None:
         return None
     try:
         ph, pa = american_to_prob(int(h)), american_to_prob(int(a))
+        d = book.get("ml_draw")
+        pd = american_to_prob(int(d)) if d is not None else 0.0
     except (TypeError, ValueError):
         return None
-    return ph / (ph + pa) if ph + pa > 0 else None
+    total = ph + pa + pd
+    return ph / total if total > 0 else None
 
 
 def _steam_scan(snaps: list[dict]) -> tuple[int, float] | None:

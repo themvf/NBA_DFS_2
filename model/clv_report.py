@@ -55,6 +55,9 @@ logger = logging.getLogger(__name__)
 _SOURCES = {
     "soccer": ("soccer_bets", "soccer_bet_snapshots", "bet_id"),
     "mlb": ("mlb_bets", "mlb_bet_snapshots", "bet_id"),
+    # tennis snapshots exist from 2026-07-02 (post-Wimbledon upgrade); tennis
+    # market_odds are prob-space consensus from day one, so clv_ev is valid.
+    "tennis": ("tennis_bets", "tennis_bet_snapshots", "bet_id"),
 }
 
 
