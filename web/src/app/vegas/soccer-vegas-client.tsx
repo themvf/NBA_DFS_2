@@ -1737,7 +1737,7 @@ function FirstScorerPanel({ rows, matchGoals }: { rows: SoccerFirstScorerRow[]; 
 }
 
 // ── Fixtures panel ────────────────────────────────────────────────────────────
-function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRow[]; queryDate: string | null }) {
+function FixturesPanel({ matchups, queryDate, movementById }: { matchups: SoccerVegasMatchupRow[]; queryDate: string | null; movementById: Map<number, MlbLineMovementRow> }) {
   const byDate = new Map<string, SoccerVegasMatchupRow[]>();
   for (const m of matchups) {
     const key = localDateKey(m.commenceTime, m.gameDate);
@@ -1784,12 +1784,13 @@ function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRo
         <div key={day} className="space-y-2">
           <h2 className="text-sm font-semibold text-muted-foreground">{fmtDayHeading(day)}</h2>
           <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full min-w-[880px] text-sm">
+            <table className="w-full min-w-[980px] text-sm">
               <thead>
                 <tr className="border-b text-xs text-muted-foreground">
                   <th className="px-3 py-2 text-left font-medium">Match</th>
                   <th className="px-2 py-2 text-center font-medium">Time</th>
                   <th className="px-2 py-2 text-center font-medium">Moneyline (H/D/A)</th>
+                  <th className="px-2 py-2 text-center font-medium" title="Consensus P(home) drift since our first capture of this fixture — updates every 3h; the sharp side tends to be where the line is walking. From the same capture trail as the Line Movement panel below.">Line Move</th>
                   <th className="px-2 py-2 text-center font-medium">O/U<br />V → Model</th>
                   <th className="px-2 py-2 text-center font-medium">Vegas Win %</th>
                   <th className="px-2 py-2 text-center font-medium">Pinnacle %</th>
@@ -1832,6 +1833,29 @@ function FixturesPanel({ matchups, queryDate }: { matchups: SoccerVegasMatchupRo
                       <td className="px-2 py-2 text-center tabular-nums text-xs">
                         {fmtMl(m.homeMl)} / <span className="text-muted-foreground">{fmtMl(m.drawMl)}</span> /{" "}
                         {fmtMl(m.awayMl)}
+                      </td>
+                      <td className="px-2 py-2 text-center text-xs">
+                        {(() => {
+                          const mv = movementById.get(m.matchupId);
+                          if (!mv) return <span className="text-muted-foreground">—</span>;
+                          const move = (mv.closeProb - mv.openProb) * 100;
+                          const dir = move > 0.2 ? "→ home" : move < -0.2 ? "→ away" : "flat";
+                          return (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className={`tabular-nums font-medium ${
+                                move > 0.2 ? "text-blue-500" : move < -0.2 ? "text-rose-500" : "text-muted-foreground"
+                              }`} title={`P(home) ${(mv.openProb * 100).toFixed(1)}% → ${(mv.closeProb * 100).toFixed(1)}% over ${mv.captures} captures`}>
+                                {move >= 0 ? "+" : ""}{move.toFixed(1)}pp {dir}
+                              </span>
+                              {mv.pinGapPp != null && Math.abs(mv.pinGapPp) >= 1 && (
+                                <span className="rounded bg-indigo-50 px-1 py-0.5 text-[10px] font-medium text-indigo-600"
+                                      title="Pinnacle's vig-free P(home) minus retail consensus at the latest capture — the sharp book leaning off retail marks the sharp side.">
+                                  Pin {mv.pinGapPp >= 0 ? "+" : ""}{mv.pinGapPp.toFixed(1)}pp
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-2 py-2 text-center tabular-nums">
                         <div className="font-medium">{fmtGoals(m.vegasTotal)}</div>
@@ -2536,7 +2560,8 @@ export default function SoccerVegasClient({
       )}
       {tab === "fixtures" && (
         <>
-          <FixturesPanel matchups={matchups} queryDate={queryDate} />
+          <FixturesPanel matchups={matchups} queryDate={queryDate}
+            movementById={new Map(lineMovement.map((r) => [r.matchupId, r]))} />
           {lineMovement.length > 0 && (
             <LineMovementPanel rows={lineMovement} cadenceNote="the 3-hourly odds captures" />
           )}

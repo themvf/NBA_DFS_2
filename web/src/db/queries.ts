@@ -8334,6 +8334,7 @@ export async function getMlbClv(): Promise<MlbClvRow[]> {
 }
 
 export type MlbLineMovementRow = {
+  matchupId: number;
   gameDate: string;
   matchup: string;
   captures: number;
@@ -8386,7 +8387,8 @@ export async function getLineMovement(
     c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= 2),
     j AS (SELECT matchup_id, MAX(jump) AS max_jump, MIN(captured_at) AS first_cap
           FROM caps GROUP BY matchup_id)
-    SELECT o.game_date::text AS "gameDate",
+    SELECT o.matchup_id AS "matchupId",
+           o.game_date::text AS "gameDate",
            c.away_team_name || ' @ ' || c.home_team_name AS matchup,
            o.cnt::int AS captures,
            o.vegas_prob_home AS "openProb",
@@ -8427,6 +8429,7 @@ export async function getLineMovement(
   return rows.rows.map((r) => {
     const rec = r as Record<string, unknown>;
     return {
+      matchupId: Number(rec.matchupId),
       gameDate: String(rec.gameDate),
       matchup: String(rec.matchup),
       captures: Number(rec.captures),
