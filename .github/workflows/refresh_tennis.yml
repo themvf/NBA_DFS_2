@@ -38,6 +38,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
       - name: Checkout
@@ -80,6 +82,9 @@ jobs:
           else
             python -m ingest.tennis_schedule
           fi
+
+      - name: Scan + settle sharp line alerts (tennis)
+        run: python -m model.line_alerts --sport tennis
 
       - name: Write model predictions (ATP grass-Elo, market-anchored)
         run: |

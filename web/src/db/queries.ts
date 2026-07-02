@@ -8441,6 +8441,87 @@ export async function getLineMovement(
   });
 }
 
+export type LineAlertRow = {
+  createdAt: string;
+  matchup: string;
+  commenceTime: string | null;
+  alertType: string;
+  side: string;
+  alertProb: number | null;
+  sharpProb: number | null;
+  details: Record<string, unknown> | null;
+  clvPp: number | null;
+  outcome: string | null;
+};
+
+export type LineAlertBacktestRow = {
+  alertType: string;
+  n: number;
+  nClv: number;
+  avgClvPp: number | null;
+  beatClose: number | null;
+  nOutcomes: number;
+  winRate: number | null;
+  impliedRate: number | null;
+};
+
+export async function getLineAlerts(sport: string, limit = 25): Promise<LineAlertRow[]> {
+  const rows = await db.execute(sql`
+    SELECT created_at::text AS "createdAt", matchup,
+           commence_time::text AS "commenceTime",
+           alert_type AS "alertType", side,
+           alert_prob AS "alertProb", sharp_prob AS "sharpProb",
+           details_json AS details, clv_pp AS "clvPp", outcome
+    FROM line_alerts WHERE sport = ${sport}
+    ORDER BY created_at DESC LIMIT ${limit}
+  `);
+  return rows.rows.map((r) => {
+    const rec = r as Record<string, unknown>;
+    return {
+      createdAt: String(rec.createdAt),
+      matchup: String(rec.matchup ?? ""),
+      commenceTime: rec.commenceTime != null ? String(rec.commenceTime) : null,
+      alertType: String(rec.alertType),
+      side: String(rec.side),
+      alertProb: rec.alertProb != null ? Number(rec.alertProb) : null,
+      sharpProb: rec.sharpProb != null ? Number(rec.sharpProb) : null,
+      details: (rec.details as Record<string, unknown>) ?? null,
+      clvPp: rec.clvPp != null ? Number(rec.clvPp) : null,
+      outcome: rec.outcome != null ? String(rec.outcome) : null,
+    };
+  });
+}
+
+export async function getLineAlertBacktest(sport: string): Promise<LineAlertBacktestRow[]> {
+  // The audit: does each alert type beat the close (CLV) and win at the
+  // flagged rate? If an alert type shows no positive CLV over a real sample,
+  // its thresholds are noise — retire or retune, the ledger will say so.
+  const rows = await db.execute(sql`
+    SELECT alert_type AS "alertType", COUNT(*)::int AS n,
+           COUNT(*) FILTER (WHERE clv_pp IS NOT NULL)::int AS "nClv",
+           AVG(clv_pp) AS "avgClvPp",
+           AVG((clv_pp > 0)::int) FILTER (WHERE clv_pp IS NOT NULL) AS "beatClose",
+           COUNT(*) FILTER (WHERE outcome IN ('won','lost'))::int AS "nOutcomes",
+           AVG((outcome = 'won')::int) FILTER (WHERE outcome IN ('won','lost')) AS "winRate",
+           AVG(alert_prob) FILTER (WHERE outcome IN ('won','lost')) AS "impliedRate"
+    FROM line_alerts WHERE sport = ${sport}
+    GROUP BY alert_type ORDER BY alert_type
+  `);
+  return rows.rows.map((r) => {
+    const rec = r as Record<string, unknown>;
+    return {
+      alertType: String(rec.alertType),
+      n: Number(rec.n),
+      nClv: Number(rec.nClv),
+      avgClvPp: rec.avgClvPp != null ? Number(rec.avgClvPp) : null,
+      beatClose: rec.beatClose != null ? Number(rec.beatClose) : null,
+      nOutcomes: Number(rec.nOutcomes),
+      winRate: rec.winRate != null ? Number(rec.winRate) : null,
+      impliedRate: rec.impliedRate != null ? Number(rec.impliedRate) : null,
+    };
+  });
+}
+
 export function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]> {
   return getLineMovement("mlb", days);
 }

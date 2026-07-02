@@ -1772,4 +1772,35 @@ INDEXES = [
         stars SMALLINT
     )""",
     "CREATE INDEX IF NOT EXISTS idx_tennis_bet_snapshots_bet ON tennis_bet_snapshots(bet_id, captured_at DESC)",
+    # 2026-07-02: sharp line-movement ALERTS — an auditable ledger, not a toast.
+    # Each row freezes the trigger-time market state (first breach only —
+    # ON CONFLICT DO NOTHING; escalations never rewrite history), then gets
+    # graded twice by model/line_alerts.py settle():
+    #   clv_pp  = close_prob − alert_prob (did the market close toward the
+    #             flagged side? converges in days — the primary audit metric)
+    #   outcome = did the flagged side win (soccer grades on the 90-minute
+    #             regulation score, per betting convention)
+    # If an alert type can't beat the close, its thresholds are noise and the
+    # backtest will say so.
+    """CREATE TABLE IF NOT EXISTS line_alerts (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        sport TEXT NOT NULL,
+        matchup_id INTEGER NOT NULL,
+        game_date DATE,
+        matchup TEXT,
+        commence_time TIMESTAMPTZ,
+        alert_type TEXT NOT NULL,           -- 'pinnacle_divergence' | 'steam'
+        side TEXT NOT NULL,                 -- 'home' | 'away' | 'draw'
+        capture_key TEXT,
+        alert_prob DOUBLE PRECISION,        -- retail vig-free P(side) at trigger
+        sharp_prob DOUBLE PRECISION,        -- Pinnacle vig-free P(side) at trigger
+        details_json JSONB,
+        close_prob DOUBLE PRECISION,        -- vig-free P(side) at the close
+        clv_pp DOUBLE PRECISION,            -- (close_prob − alert_prob) × 100
+        outcome TEXT,                       -- 'won' | 'lost' | 'void'
+        settled_at TIMESTAMPTZ,
+        UNIQUE (sport, matchup_id, alert_type, side)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_line_alerts_open ON line_alerts(sport, settled_at) WHERE settled_at IS NULL",
 ]

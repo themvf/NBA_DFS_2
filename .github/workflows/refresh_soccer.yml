@@ -33,6 +33,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       THESPORTSDB_API_KEY: ${{ secrets.THESPORTSDB_API_KEY || '123' }}
 
     steps:
@@ -79,6 +81,9 @@ jobs:
           else
             python -m ingest.soccer_schedule
           fi
+
+      - name: Scan + settle sharp line alerts (soccer)
+        run: python -m model.line_alerts --sport soccer
 
       - name: Populate knockout bracket slots (for the bracket tree + exact deep-run)
         # Idempotent; sets bracket_slot on the R32 ties so soccer_futures simulates

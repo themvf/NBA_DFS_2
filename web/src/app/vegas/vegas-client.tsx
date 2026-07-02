@@ -19,10 +19,13 @@ import type {
   MlbBetSideRow,
   MlbClvRow,
   MlbLineMovementRow,
+  LineAlertRow,
+  LineAlertBacktestRow,
   MlbHealthIssue,
 } from "@/db/queries";
 import { fetchVegasOdds } from "./actions";
 import LineMovementPanel from "./line-movement-panel";
+import LineAlertsPanel from "./line-alerts-panel";
 import type { Sport } from "@/db/queries";
 
 const fmt1 = (v: number | null | undefined) =>
@@ -1064,6 +1067,8 @@ type Props = {
   mlbBetBySide: MlbBetSideRow[] | null;
   mlbClv: MlbClvRow[] | null;
   mlbLineMovement: MlbLineMovementRow[] | null;
+  mlbLineAlerts: LineAlertRow[] | null;
+  mlbLineAlertBacktest: LineAlertBacktestRow[] | null;
   mlbHealth: MlbHealthIssue[] | null;
   vegasSummary: VegasSummaryStatsRow | null;
   biggestMisses: BiggestMissRow[];
@@ -1251,6 +1256,8 @@ export default function VegasClient({
   mlbBetBySide,
   mlbClv,
   mlbLineMovement,
+  mlbLineAlerts,
+  mlbLineAlertBacktest,
   mlbHealth,
   vegasSummary,
   biggestMisses,
@@ -2083,6 +2090,9 @@ export default function VegasClient({
       )}
       {sport === "mlb" && mlbLineMovement && (
         <LineMovementPanel rows={mlbLineMovement} cadenceNote="the 30-min odds captures" />
+      )}
+      {sport === "mlb" && mlbLineAlerts && mlbLineAlertBacktest && (
+        <LineAlertsPanel alerts={mlbLineAlerts} backtest={mlbLineAlertBacktest} />
       )}
 
       {/* ── O/U Hit Rate ──────────────────────────────────────── */}
