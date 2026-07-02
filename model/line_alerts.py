@@ -46,12 +46,32 @@ import requests
 from config import load_config
 from db.database import DatabaseManager
 from model.line_movement import _MATCHUP_TBL, _book_fair_home
+from model.soccer_bet_rating import american_to_decimal
 
 logger = logging.getLogger(__name__)
 
 _PIN_GAP_MIN_PP = 2.0     # Pinnacle vs retail consensus, probability points
 _STEAM_MIN_BOOKS = 3      # books moving together between consecutive captures
 _STEAM_MIN_MOVE_PP = 1.5  # per-book move threshold, probability points
+# dk_value: EV of DraftKings' OFFERED price judged by Pinnacle's vig-free fair
+# number — EV = pin_fair × dk_decimal − 1. Positive means DK is paying more
+# than sharp fair value: directly exploitable at the book the user bets at,
+# no model or prediction required. DK's two-way vig is ~4.5%, so clearing +2%
+# EV means DK lags Pinnacle by ~4pp of juice-adjusted probability — a real
+# stale line, not feed noise.
+# Longshot guard: proportional de-vigging OVERSTATES longshot fair probs
+# (favorite-longshot bias), so a +1800 price can show fake +5% EV from pure
+# de-vig skew — the same tail failure mode that sank the gameline models.
+# No dk_value alert above decimal 11 (~+1000); the --dk-board still displays
+# everything so nothing is hidden.
+_DK_VALUE_MIN_EV = 0.02
+_DK_VALUE_MAX_DECIMAL = 11.0
+_DK_BOOK = "draftkings"
+
+# Sports wired into the alert pipeline. NBA joins when the season resumes —
+# nba_matchups has no commence_time column yet, which scan()/settle()/dk_board
+# all join on.
+_ALERT_SPORTS = ("mlb", "soccer", "tennis")
 
 # Grading sources per sport: (home score col, away score col). Soccer uses the
 # 90-minute regulation score — a knockout tie decided in extra time is a DRAW
@@ -87,6 +107,33 @@ def _retail_fair_side(books: dict, side: str) -> float | None:
     return sum(probs) / len(probs) if probs else None
 
 
+_SIDE_KEY = {"home": "ml_home", "away": "ml_away", "draw": "ml_draw"}
+
+
+def _dk_side_odds(book: dict, side: str) -> int | None:
+    v = book.get(_SIDE_KEY[side])
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _book_price_prob(book: dict, side: str) -> float | None:
+    """The book's OFFERED implied probability (vig included) — what you pay."""
+    from model.soccer_bet_rating import american_to_prob
+    odds = _dk_side_odds(book, side)
+    return american_to_prob(odds) if odds is not None else None
+
+
+def _dk_value_ev(pin: dict, dk: dict, side: str) -> float | None:
+    """EV of a 1-unit bet at DK's price, judged by Pinnacle's vig-free fair prob."""
+    fair = _book_fair_side(pin, side)
+    odds = _dk_side_odds(dk, side)
+    if fair is None or odds is None:
+        return None
+    return fair * american_to_decimal(odds) - 1
+
+
 def _sides(books: dict) -> list[str]:
     has_draw = any("ml_draw" in b for b in books.values())
     return ["home", "away", "draw"] if has_draw else ["home", "away"]
@@ -99,10 +146,18 @@ def _notify(alerts: list[dict]) -> None:
     if not token or not chat_id or not alerts:
         return
     for a in alerts:
-        text = (f"🚨 {a['sport'].upper()} {a['alert_type']}: {a['matchup']}\n"
-                f"side={a['side']}  retail={a['alert_prob']*100:.1f}%  "
-                f"sharp={a['sharp_prob']*100:.1f}%" if a.get("sharp_prob") is not None else
-                f"🚨 {a['sport'].upper()} {a['alert_type']}: {a['matchup']} side={a['side']}")
+        d = a.get("details") or {}
+        if a["alert_type"] == "dk_value":
+            text = (f"💰 {a['sport'].upper()} DK VALUE: {a['matchup']}\n"
+                    f"Bet {a['side']} @ DK {d.get('dk_odds', '?'):+}  "
+                    f"EV {d.get('ev_pct', '?')}% vs Pinnacle fair "
+                    f"{a['sharp_prob']*100:.1f}%")
+        elif a.get("sharp_prob") is not None:
+            text = (f"🚨 {a['sport'].upper()} {a['alert_type']}: {a['matchup']}\n"
+                    f"side={a['side']}  retail={a['alert_prob']*100:.1f}%  "
+                    f"sharp={a['sharp_prob']*100:.1f}%")
+        else:
+            text = f"🚨 {a['sport'].upper()} {a['alert_type']}: {a['matchup']} side={a['side']}"
         try:
             requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
@@ -149,6 +204,28 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         alert_prob=retail, sharp_prob=sharp,
                         details={"gap_pp": round(gap_pp, 2),
                                  "n_books": len(books)},
+                    ))
+        # ── DraftKings value (Pinnacle fair vs DK's offered price) ──
+        dk = books.get(_DK_BOOK)
+        if pin and dk:
+            for side in _sides(books):
+                ev = _dk_value_ev(pin, dk, side)
+                if ev is None:
+                    continue
+                dk_odds = _dk_side_odds(dk, side)
+                if (dk_odds is not None
+                        and american_to_decimal(dk_odds) >= _DK_VALUE_MAX_DECIMAL):
+                    continue  # longshot — de-vig skew manufactures fake EV
+                if ev >= _DK_VALUE_MIN_EV:
+                    new_alerts.extend(_insert(
+                        db, sport=sport, r=r, label=label,
+                        alert_type="dk_value", side=side,
+                        alert_prob=_book_price_prob(dk, side),  # DK implied, vig incl.
+                        sharp_prob=_book_fair_side(pin, side),
+                        details={"ev_pct": round(ev * 100, 2),
+                                 "dk_odds": dk_odds,
+                                 "dk_decimal": round(american_to_decimal(dk_odds), 4)
+                                 if dk_odds is not None else None},
                     ))
         # ── Steam (needs the previous capture) ──
         prev = db.execute_one(
@@ -203,7 +280,8 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
     if not rows:
         return []
     return [{"sport": sport, "matchup": label, "alert_type": alert_type,
-             "side": side, "alert_prob": alert_prob, "sharp_prob": sharp_prob}]
+             "side": side, "alert_prob": alert_prob, "sharp_prob": sharp_prob,
+             "details": details}]
 
 
 def settle(db: DatabaseManager, sport: str) -> int:
@@ -268,7 +346,11 @@ def settle(db: DatabaseManager, sport: str) -> int:
 
 
 def report(db: DatabaseManager) -> None:
-    """The audit: does each alert type beat the close, and win at the flagged rate?"""
+    """The audit: does each alert type beat the close, and win at the flagged rate?
+
+    dk_value additionally gets true ROI: 1 unit staked at DK's frozen price per
+    settled alert — the direct answer to "is betting these lines profitable".
+    """
     rows = db.execute(
         """
         SELECT sport, alert_type, COUNT(*) n,
@@ -279,7 +361,10 @@ def report(db: DatabaseManager) -> None:
                ROUND(AVG((outcome = 'won')::int)
                      FILTER (WHERE outcome IN ('won','lost'))::numeric, 3) win_rate,
                ROUND(AVG(alert_prob)
-                     FILTER (WHERE outcome IN ('won','lost'))::numeric, 3) implied_rate
+                     FILTER (WHERE outcome IN ('won','lost'))::numeric, 3) implied_rate,
+               ROUND(SUM(CASE WHEN outcome = 'won'
+                              THEN (details_json->>'dk_decimal')::numeric - 1
+                              WHEN outcome = 'lost' THEN -1 END)::numeric, 2) dk_units
         FROM line_alerts
         GROUP BY sport, alert_type ORDER BY sport, alert_type
         """
@@ -288,9 +373,57 @@ def report(db: DatabaseManager) -> None:
     if not rows:
         print("  (no alerts recorded yet)")
     for r in rows:
-        print(f"  {r['sport']:<8}{r['alert_type']:<22} n={r['n']:>4}  "
-              f"CLV: n={r['n_clv']} avg={r['avg_clv_pp'] or 0:+}pp beat-close={r['beat_close'] or 0}  "
-              f"outcomes: n={r['n_out']} win={r['win_rate']} implied={r['implied_rate']}")
+        line = (f"  {r['sport']:<8}{r['alert_type']:<22} n={r['n']:>4}  "
+                f"CLV: n={r['n_clv']} avg={r['avg_clv_pp'] or 0:+}pp beat-close={r['beat_close'] or 0}  "
+                f"outcomes: n={r['n_out']} win={r['win_rate']} implied={r['implied_rate']}")
+        if r["alert_type"] == "dk_value" and r["dk_units"] is not None and r["n_out"]:
+            line += f"  ROI@DK: {r['dk_units']:+}u/{r['n_out']} ({float(r['dk_units'])/r['n_out']*100:+.1f}%)"
+        print(line)
+    print()
+
+
+def dk_board(db: DatabaseManager) -> None:
+    """Live board: every upcoming game's DK price vs Pinnacle fair, sorted by EV.
+
+    Shows ALL sides (including negative EV) so the vig is visible — the point
+    is to see which DK lines are stale, not to pretend everything is a bet.
+    """
+    print("\n=== DraftKings vs Pinnacle — live board (EV of 1u at DK judged by Pinnacle fair) ===")
+    for sport in _ALERT_SPORTS:
+        matchup_tbl = _MATCHUP_TBL[sport]
+        rows = db.execute(
+            f"""
+            SELECT DISTINCT ON (h.matchup_id)
+                   h.home_team_name, h.away_team_name, h.books, m.commence_time
+            FROM game_odds_history h
+            JOIN {matchup_tbl} m ON m.id = h.matchup_id
+            WHERE h.sport = %s AND h.books IS NOT NULL AND m.commence_time > NOW()
+            ORDER BY h.matchup_id, h.captured_at DESC
+            """,
+            (sport,),
+        )
+        board = []
+        for r in rows:
+            books = r["books"] or {}
+            pin, dk = books.get("pinnacle"), books.get(_DK_BOOK)
+            if not pin or not dk:
+                continue
+            names = {"home": r["home_team_name"], "away": r["away_team_name"], "draw": "Draw"}
+            for side in _sides(books):
+                ev = _dk_value_ev(pin, dk, side)
+                if ev is None:
+                    continue
+                odds = _dk_side_odds(dk, side)
+                fair = _book_fair_side(pin, side)
+                board.append((ev, f"{r['away_team_name']} @ {r['home_team_name']}",
+                              names[side], odds, fair))
+        if not board:
+            continue
+        board.sort(reverse=True)
+        print(f"\n  {sport.upper()}")
+        for ev, game, pick, odds, fair in board[:12]:
+            flag = " <-- BET-GRADE VALUE" if ev >= _DK_VALUE_MIN_EV else ""
+            print(f"    {game:<40} {pick:<22} DK {odds:>+5}  pin-fair {fair*100:5.1f}%  EV {ev*100:+5.1f}%{flag}")
     print()
 
 
@@ -298,8 +431,10 @@ if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # Windows cp1252 console
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Sharp line-movement alerts + audit")
-    parser.add_argument("--sport", choices=sorted(_MATCHUP_TBL), help="Scan + settle one sport")
+    parser.add_argument("--sport", choices=list(_ALERT_SPORTS), help="Scan + settle one sport")
     parser.add_argument("--report", action="store_true", help="Print the backtest")
+    parser.add_argument("--dk-board", action="store_true",
+                        help="Live DraftKings-vs-Pinnacle EV board, all sports")
     args = parser.parse_args()
 
     config = load_config()
@@ -307,5 +442,7 @@ if __name__ == "__main__":
     if args.sport:
         scan(db, args.sport)
         settle(db, args.sport)
-    if args.report or not args.sport:
+    if args.dk_board:
+        dk_board(db)
+    if args.report or (not args.sport and not args.dk_board):
         report(db)

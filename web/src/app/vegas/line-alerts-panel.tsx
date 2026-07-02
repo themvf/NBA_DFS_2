@@ -19,6 +19,21 @@ const sideName = (a: LineAlertRow): string => {
 
 function ActionChip({ a }: { a: LineAlertRow }) {
   const name = sideName(a);
+  if (a.alertType === "dk_value") {
+    const d = (a.details ?? {}) as { dk_odds?: number; ev_pct?: number };
+    const odds = d.dk_odds != null ? (d.dk_odds > 0 ? `+${d.dk_odds}` : `${d.dk_odds}`) : "?";
+    return (
+      <span
+        className="cursor-help rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap"
+        title={`DraftKings is paying ${odds} on ${name} — ${d.ev_pct ?? "?"}% better than Pinnacle's vig-free fair value. ` +
+               `This is the most direct signal in the system: no model, no prediction — DK's line lags the sharp book. ` +
+               `The ROI column in the audit above tracks whether betting every one of these at DK has actually been profitable. ` +
+               `Longshots (decimal ≥ 11) are excluded: de-vig skew fakes EV in the tail.`}
+      >
+        Bet {name} @ DK {odds} · EV +{d.ev_pct ?? "?"}%
+      </span>
+    );
+  }
   if (a.alertType === "pinnacle_divergence") {
     const gap = a.sharpProb != null && a.alertProb != null
       ? ((a.sharpProb - a.alertProb) * 100).toFixed(1) : "?";
@@ -55,7 +70,10 @@ export default function LineAlertsPanel({
   const pp = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}pp`;
   const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
   const typeLabel = (t: string) =>
-    t === "pinnacle_divergence" ? "Pin divergence" : t === "steam" ? "Steam" : t;
+    t === "pinnacle_divergence" ? "Pin divergence"
+    : t === "steam" ? "Steam"
+    : t === "dk_value" ? "DK value"
+    : t;
 
   return (
     <div className="rounded-lg border bg-white p-4">
@@ -63,6 +81,8 @@ export default function LineAlertsPanel({
         Sharp Line Alerts
       </h3>
       <p className="text-xs text-gray-500 mb-2">
+        <span className="font-medium">DK value</span> = DraftKings&rsquo; offered price beats Pinnacle&rsquo;s
+        vig-free fair value by ≥2% EV — the most direct signal here (no prediction involved; longshots excluded).
         Alerts freeze the market state at trigger time and are audited below: <span className="font-medium">CLV</span> =
         did the market keep moving toward the flagged team after the alert (positive = the alert was early enough to act
         on), <span className="font-medium">win rate vs implied</span> = did flagged teams win more often than their price
@@ -81,6 +101,7 @@ export default function LineAlertsPanel({
               <th className="py-1 text-right">Outcomes</th>
               <th className="py-1 text-right">Win rate</th>
               <th className="py-1 text-right">Implied</th>
+              <th className="py-1 text-right" title="dk_value only: cumulative units from staking 1u at DK's frozen price on every settled alert">ROI @ DK</th>
               <th className="py-1 text-right">Verdict</th>
             </tr>
           </thead>
@@ -108,6 +129,13 @@ export default function LineAlertsPanel({
                   <td className="py-1 text-right text-gray-500">{b.nOutcomes}</td>
                   <td className="py-1 text-right tabular-nums">{pct(b.winRate)}</td>
                   <td className="py-1 text-right tabular-nums text-gray-400">{pct(b.impliedRate)}</td>
+                  <td className={`py-1 text-right tabular-nums ${
+                    b.dkUnits == null ? "text-gray-300" : b.dkUnits > 0 ? "text-emerald-600 font-medium" : "text-red-500"
+                  }`}>
+                    {b.dkUnits != null && b.nOutcomes > 0
+                      ? `${b.dkUnits >= 0 ? "+" : ""}${b.dkUnits.toFixed(1)}u (${((b.dkUnits / b.nOutcomes) * 100).toFixed(0)}%)`
+                      : "—"}
+                  </td>
                   <td className="py-1 text-right">
                     <span title={verdict.tip}
                           className={`cursor-help rounded-full px-2 py-0.5 text-[10px] font-semibold ${verdict.cls}`}>

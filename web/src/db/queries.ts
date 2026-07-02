@@ -8466,6 +8466,7 @@ export type LineAlertBacktestRow = {
   nOutcomes: number;
   winRate: number | null;
   impliedRate: number | null;
+  dkUnits: number | null; // dk_value only: 1u staked at DK's frozen price per settled alert
 };
 
 export async function getLineAlerts(sport: string, limit = 25): Promise<LineAlertRow[]> {
@@ -8506,7 +8507,10 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
            AVG((clv_pp > 0)::int) FILTER (WHERE clv_pp IS NOT NULL) AS "beatClose",
            COUNT(*) FILTER (WHERE outcome IN ('won','lost'))::int AS "nOutcomes",
            AVG((outcome = 'won')::int) FILTER (WHERE outcome IN ('won','lost')) AS "winRate",
-           AVG(alert_prob) FILTER (WHERE outcome IN ('won','lost')) AS "impliedRate"
+           AVG(alert_prob) FILTER (WHERE outcome IN ('won','lost')) AS "impliedRate",
+           SUM(CASE WHEN outcome = 'won' THEN (details_json->>'dk_decimal')::numeric - 1
+                    WHEN outcome = 'lost' THEN -1 END)
+             FILTER (WHERE alert_type = 'dk_value') AS "dkUnits"
     FROM line_alerts WHERE sport = ${sport}
     GROUP BY alert_type ORDER BY alert_type
   `);
@@ -8521,6 +8525,7 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
       nOutcomes: Number(rec.nOutcomes),
       winRate: rec.winRate != null ? Number(rec.winRate) : null,
       impliedRate: rec.impliedRate != null ? Number(rec.impliedRate) : null,
+      dkUnits: rec.dkUnits != null ? Number(rec.dkUnits) : null,
     };
   });
 }
