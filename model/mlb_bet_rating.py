@@ -53,6 +53,7 @@ def record_bet(
     event_commence: datetime | None = None,
     inputs: dict | None = None,
     longshot_odds_cap: bool = False,
+    max_stars: int | None = None,
     conn=None,
 ) -> int | None:
     """Rate + persist one MLB bet into ``mlb_bets`` (+ snapshot).  Returns the
@@ -67,6 +68,8 @@ def record_bet(
         decimal_odds = None
         ref = baseline_prob if baseline_prob is not None else 0.0
         stars, ev, edge = rate_no_market(our_prob, ref)
+    if max_stars is not None:
+        stars = min(stars, max_stars)
 
     now = datetime.now(timezone.utc)
     locked = event_commence is not None and now >= event_commence

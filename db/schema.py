@@ -1736,4 +1736,11 @@ INDEXES = [
     # minute <= 90 is regulation). Manual override: --reg-score.
     "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS reg_home_score INTEGER",
     "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS reg_away_score INTEGER",
+    # 2026-07-02: MLB game status from the Stats API (detailedState). Stamped by
+    # ingest.mlb_schedule.fetch_scores for Postponed/Cancelled games so
+    # mlb_game_bets.settle() can VOID their pending bets — a postponed game is
+    # made up on a later date under the SAME gamePk, so without this the makeup
+    # score would land on the original date's row and grade tickets every book
+    # voided (10 weather PPDs sat pending May-June 2026).
+    "ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS game_status TEXT",
 ]

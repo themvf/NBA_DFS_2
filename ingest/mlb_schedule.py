@@ -26,6 +26,7 @@ from db.database import DatabaseManager
 from db.queries import build_mlb_team_abbrev_cache, insert_game_odds_history_rows, upsert_mlb_matchup
 from ingest.mlb_teams import MLB_ID_TO_ABBREV
 from model.dfs_projections import compute_team_implied_total
+from model.soccer_bet_rating import american_to_prob, prob_to_american
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +292,22 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
     return matchup_ids
 
 
+def _consensus_american(prices: list[int]) -> int | None:
+    """Consensus American odds by averaging in IMPLIED-PROBABILITY space.
+
+    Arithmetic averaging of American odds is invalid: mixed-sign prices around
+    even money (+102, −112, …) average into the impossible (−100, +100) zone —
+    the ledger held prices like −74 and −42 — and converting that fiction to
+    decimal inflated every moneyline EV, star rating, and backtest payout
+    (discovered 2026-07-02; soccer fixed the same bug in June). Average the
+    implied probabilities and convert back.
+    """
+    if not prices:
+        return None
+    avg_prob = sum(american_to_prob(p) for p in prices) / len(prices)
+    return prob_to_american(avg_prob)
+
+
 def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) -> int:
     """Fetch Vegas totals + moneylines from The Odds API and update mlb_matchups.
 
@@ -346,8 +363,24 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
     _OAK_ALIASES = {"Oakland Athletics", "Athletics", "Sacramento Athletics"}
 
     updated = 0
+    skipped_live = 0
+    now = datetime.now(timezone.utc)
     history_rows: list[dict] = []
     for g in games:
+        # In-play guard: after first pitch the odds feed serves LIVE prices.
+        # Writing them replaces the pre-game closing line that predictions,
+        # the bet ledger reference, and CLV history all assume (the 30-min
+        # odds-capture cron polls straight through the game window). Same
+        # freeze-at-start rule as soccer (2026-07-01).
+        commence_iso = g.get("commence_time")
+        if commence_iso:
+            try:
+                if datetime.fromisoformat(commence_iso.replace("Z", "+00:00")) <= now:
+                    skipped_live += 1
+                    continue
+            except ValueError:
+                pass
+
         home_name = g.get("home_team", "")
         matchup = matchup_by_home.get(home_name)
 
@@ -392,8 +425,8 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                     if home_outcome and home_outcome.get("point") is not None:
                         home_spreads.append(float(home_outcome["point"]))
 
-        home_ml    = round(sum(home_prices) / len(home_prices)) if home_prices else None
-        away_ml    = round(sum(away_prices) / len(away_prices)) if away_prices else None
+        home_ml    = _consensus_american(home_prices)
+        away_ml    = _consensus_american(away_prices)
         vegas_total = round(sum(total_points) / len(total_points) * 2) / 2 if total_points else None
         home_spread = round(sum(home_spreads) / len(home_spreads) * 2) / 2 if home_spreads else None
         vegas_prob_home = _ml_to_prob(home_ml, away_ml) if home_ml and away_ml else None
@@ -447,7 +480,10 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
 
     if history_rows:
         insert_game_odds_history_rows(db, history_rows)
-    print(f"Odds: {updated} matchups updated with Vegas lines for {target_date}")
+    msg = f"Odds: {updated} matchups updated with Vegas lines for {target_date}"
+    if skipped_live:
+        msg += f" ({skipped_live} in-play games skipped — closing lines frozen)"
+    print(msg)
     return updated
 
 
@@ -481,13 +517,29 @@ def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
     if not dates:
         return 0
 
+    # 'Game Over' = game ended, stats being finalized — the score is safe to
+    # settle on ('Final' can lag it by hours, leaving bets stuck pending).
+    _FINAL_STATES = {"Final", "Game Over", "Completed Early"}
+    # Postponed/cancelled games are made up on a LATER date under the SAME
+    # gamePk, so without stamping the status the makeup game's score would
+    # eventually land on the original date's row and grade bets on a game
+    # played weeks later. Books void when the game doesn't play as scheduled;
+    # settle() voids pending bets on these rows. (Suspended games resume and
+    # finish under the same gamePk — those stay pending until final.)
+    _VOID_STATES = {"Postponed", "Cancelled"}
+
     updated = 0
     for game in dates[0].get("games", []):
         detailed_state = game.get("status", {}).get("detailedState", "")
-        if detailed_state != "Final":
-            continue
-
         game_id = str(game.get("gamePk", ""))
+        if detailed_state in _VOID_STATES:
+            db.execute(
+                "UPDATE mlb_matchups SET game_status = %s WHERE game_id = %s",
+                (detailed_state, game_id),
+            )
+            continue
+        if detailed_state not in _FINAL_STATES:
+            continue
         linescore = game.get("linescore", {})
         teams_ls = linescore.get("teams", {})
         home_runs = teams_ls.get("home", {}).get("runs")
