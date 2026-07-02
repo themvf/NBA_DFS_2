@@ -20,6 +20,24 @@ const sideName = (a: LineAlertRow): string => {
 
 function ActionChip({ a }: { a: LineAlertRow }) {
   const name = sideName(a);
+  if (a.alertType === "prop_outlier") {
+    const d = (a.details ?? {}) as {
+      player?: string; dk_odds?: number; median_decimal?: number;
+      edge_vs_median_pct?: number; n_books?: number;
+    };
+    const odds = d.dk_odds != null ? (d.dk_odds > 0 ? `+${d.dk_odds}` : `${d.dk_odds}`) : "?";
+    return (
+      <span
+        className="cursor-help rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap"
+        title={`DraftKings pays ${odds} on ${d.player} to score anytime — ${d.edge_vs_median_pct}% above the median of ` +
+               `${(d.n_books ?? 1) - 1} other books (Pinnacle posts no WC player props, so the median is the anchor). ` +
+               `Settles on the 90-minute match only. Conservative audit: a player who doesn't enter grades as a loss here ` +
+               `where DK would void, so measured ROI understates. Verify DK still shows this price before betting.`}
+      >
+        Bet {d.player} to score @ DK {odds} · +{d.edge_vs_median_pct}% vs market
+      </span>
+    );
+  }
   if (a.alertType === "dk_prop_value" || a.alertType === "prop_line_gap") {
     const d = (a.details ?? {}) as {
       player?: string; bet?: string; line?: number; pin_line?: number;
@@ -109,6 +127,7 @@ export default function LineAlertsPanel({
     : t === "dk_value" ? "DK value"
     : t === "dk_prop_value" ? "DK prop value"
     : t === "prop_line_gap" ? "Prop line gap"
+    : t === "prop_outlier" ? "ATGS outlier"
     : t;
 
   return (
