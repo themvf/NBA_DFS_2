@@ -36,6 +36,19 @@ MODEL_VERSION = "mlb-gameline-v2"
 _STD_TOTAL_ODDS = -110          # MLB O/U is −110/−110; vig-free ref = 0.5
 _STD_TOTAL_REF = 0.5
 
+# Hard star cap (2026-07-02) — same honesty rule as soccer game markets and
+# tennis ML. The models' own holdout evals show neither beats the market:
+#   moneyline (mlb_ml_v1_eval.json):  our logloss .6772 vs market .6717,
+#     our Brier .2424 vs .2411; the 5pp-edge sim ran −17.7% ROI.
+#   totals (mlb_total_v1_eval.json):  our MAE 3.36 vs Vegas 3.31 (worse);
+#     O/U side accuracy .549 on 215 games is noise vs the .524 breakeven,
+#     and the ledger's 4-5★ totals tiers claim .60-.70 but realize ~.54.
+# (The ledger's apparent ML profits were an artifact of the arithmetic
+# American-odds averaging bug fixed 2026-07-02 — fictional payouts.)
+# 2★ = "neutral — no demonstrated edge": every bet is still rated and locked
+# each slate for the ledger/CLV record, but the panel never advertises a play.
+_GAMELINE_MAX_STARS = 2
+
 # Market anchor — shrink our_prob toward the vig-free market line before rating.
 # v1 had NO anchor and was systematically overconfident (realized win% ~5.5pp
 # below claimed across every tier/month), which manufactured fake high-star bets
@@ -102,10 +115,13 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
             subject_team_id=fx["home_team_id"] if bet_home else fx["away_team_id"],
             event_commence=commence,
             longshot_odds_cap=True,
+            max_stars=_GAMELINE_MAX_STARS,
             conn=conn,
             inputs={"side": "home" if bet_home else "away", "fixture": fixture_label,
                     "our_prob_home": round(op, 4), "market_prob_home": round(mp, 4),
-                    "anchor_w": _MARKET_ANCHOR_W},
+                    "anchor_w": _MARKET_ANCHOR_W,
+                    "stars_capped_at": _GAMELINE_MAX_STARS,
+                    "edge_status": "no_walkforward_edge"},
         )
         written += 1
 
@@ -132,10 +148,13 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
             matchup_id=fx["id"],
             event_commence=commence,
             longshot_odds_cap=True,
+            max_stars=_GAMELINE_MAX_STARS,
             conn=conn,
             inputs={"line": line, "side": "over" if is_over else "under",
                     "our_total_pred": round(lam, 2), "fixture": fixture_label,
-                    "anchor_w": _MARKET_ANCHOR_W},
+                    "anchor_w": _MARKET_ANCHOR_W,
+                    "stars_capped_at": _GAMELINE_MAX_STARS,
+                    "edge_status": "no_walkforward_edge"},
         )
         written += 1
 
@@ -179,6 +198,28 @@ def backfill(db: DatabaseManager, start_date: str, end_date: str) -> int:
 
 def settle(db: DatabaseManager) -> int:
     """Settle pending moneyline/total bets for games that now have a final."""
+    # Void pass first: postponed/cancelled games never played as scheduled —
+    # books void those tickets, and the makeup game (same gamePk, later date)
+    # must not grade the original bets. game_status is stamped by
+    # ingest.mlb_schedule.fetch_scores.
+    voided = 0
+    for g in db.execute(
+        """
+        SELECT m.id, m.game_status
+        FROM mlb_matchups m
+        WHERE m.game_status IN ('Postponed', 'Cancelled')
+          AND EXISTS (SELECT 1 FROM mlb_bets b WHERE b.matchup_id = m.id AND b.status = 'pending')
+        """,
+    ):
+        rows = db.execute(
+            "UPDATE mlb_bets SET status = 'void', settled_at = NOW(), result_detail = %s "
+            "WHERE matchup_id = %s AND status = 'pending' RETURNING id",
+            (f"{g['game_status']} — game not played as scheduled; bets void", g["id"]),
+        )
+        voided += len(rows)
+    if voided:
+        print(f"MLB bets: {voided} bets voided (postponed/cancelled games)")
+
     games = db.execute(
         """
         SELECT m.id, m.home_score, m.away_score
