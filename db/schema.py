@@ -1803,4 +1803,28 @@ INDEXES = [
         UNIQUE (sport, matchup_id, alert_type, side)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_line_alerts_open ON line_alerts(sport, settled_at) WHERE settled_at IS NULL",
+    # 2026-07-02: player-prop odds capture (MLB v1: pitcher_strikeouts +
+    # batter_total_bases — P0 verified both carry DraftKings AND Pinnacle in
+    # the us,eu feed). One row per (event, market, player, capture): books =
+    # {book: {line, over, under, last_update}}. Feeds the dk_prop_value /
+    # prop_line_gap detectors in model/line_alerts.py; 3 captures/day via
+    # refresh_mlb_vegas (props are per-event calls — 4 credits each — so the
+    # 30-min game-line cadence would blow the quota).
+    """CREATE TABLE IF NOT EXISTS prop_odds_history (
+        id SERIAL PRIMARY KEY,
+        sport TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        matchup_id INTEGER,
+        game_date DATE,
+        commence_time TIMESTAMPTZ,
+        home_team_name TEXT,
+        away_team_name TEXT,
+        market TEXT NOT NULL,
+        player TEXT NOT NULL,
+        books JSONB NOT NULL,
+        capture_key TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (sport, event_id, market, player, capture_key)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_prop_odds_latest ON prop_odds_history(sport, event_id, market, player, captured_at DESC)",
 ]

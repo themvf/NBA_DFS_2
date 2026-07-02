@@ -284,6 +284,179 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
              "details": details}]
 
 
+# ── MLB player props (dk_prop_value / prop_line_gap) ─────────────────────────
+# The props analog of dk_value, where the soft-book thesis is strongest: DK's
+# prop lines are algorithmic and slow. Two detectors:
+#   dk_prop_value — SAME line at DK and Pinnacle; de-vig Pinnacle's two-way to
+#     fair and price DK's side: EV = pin_fair × dk_decimal − 1. Threshold is
+#     higher than game lines (props carry more vig + feed staleness).
+#   prop_line_gap — DK's line sits ≥ 1.0 off Pinnacle's (K's 8.5 vs 9.5): the
+#     stale-line signature; the value side at DK is mechanical (Over at the
+#     lower line / Under at the higher), no distribution assumption needed.
+_PROP_VALUE_MIN_EV = 0.03
+_PROP_LINE_GAP_MIN = 1.0
+_PROP_MARKET_LABEL = {"pitcher_strikeouts": "K", "batter_total_bases": "TB"}
+
+
+def _prop_pair(book: dict) -> tuple[float, float, float] | None:
+    """(line, fair_over, fair_under) from one book's two-way, vig removed."""
+    from model.soccer_bet_rating import american_to_prob
+    if book.get("line") is None or book.get("over") is None or book.get("under") is None:
+        return None
+    try:
+        po, pu = american_to_prob(int(book["over"])), american_to_prob(int(book["under"]))
+    except (TypeError, ValueError):
+        return None
+    total = po + pu
+    if total <= 0:
+        return None
+    return float(book["line"]), po / total, pu / total
+
+
+def scan_props(db: DatabaseManager) -> int:
+    """Detect DK-vs-Pinnacle prop value on upcoming MLB games. Returns new alerts."""
+    rows = db.execute(
+        """
+        SELECT DISTINCT ON (event_id, market, player)
+               event_id, matchup_id, game_date, commence_time,
+               home_team_name, away_team_name, market, player, books, capture_key, captured_at
+        FROM prop_odds_history
+        WHERE sport = 'mlb' AND commence_time > NOW() AND matchup_id IS NOT NULL
+        ORDER BY event_id, market, player, captured_at DESC
+        """
+    )
+    new_alerts: list[dict] = []
+    for r in rows:
+        books = r["books"] or {}
+        dk, pin = books.get(_DK_BOOK), books.get("pinnacle")
+        if not dk or not pin:
+            continue
+        pin_p = _prop_pair(pin)
+        if pin_p is None or dk.get("line") is None:
+            continue
+        pin_line, fair_over, fair_under = pin_p
+        dk_line = float(dk["line"])
+        label = f"{r['away_team_name']} @ {r['home_team_name']}"
+        mk = _PROP_MARKET_LABEL.get(r["market"], r["market"])
+        shim = {"matchup_id": r["matchup_id"], "game_date": r["game_date"],
+                "commence_time": r["commence_time"], "capture_key": r["capture_key"]}
+
+        # Same-line price value at DK.
+        if dk_line == pin_line:
+            for side, fair, price_key in (("Over", fair_over, "over"), ("Under", fair_under, "under")):
+                price = dk.get(price_key)
+                if price is None:
+                    continue
+                dec = american_to_decimal(int(price))
+                if dec >= _DK_VALUE_MAX_DECIMAL:
+                    continue
+                ev = fair * dec - 1
+                if ev >= _PROP_VALUE_MIN_EV:
+                    new_alerts.extend(_insert(
+                        db, sport="mlb", r=shim, label=label,
+                        alert_type="dk_prop_value",
+                        side=f"{r['player']} {mk} {side[0]}{dk_line}",
+                        alert_prob=1 / dec, sharp_prob=fair,
+                        details={"market": r["market"], "player": r["player"],
+                                 "line": dk_line, "bet": side,
+                                 "dk_odds": int(price),
+                                 "dk_decimal": round(dec, 4),
+                                 "ev_pct": round(ev * 100, 2)},
+                    ))
+        # Stale-line gap (regardless of prices).
+        elif abs(dk_line - pin_line) >= _PROP_LINE_GAP_MIN:
+            bet = "Over" if dk_line < pin_line else "Under"
+            price = dk.get("over" if bet == "Over" else "under")
+            dec = american_to_decimal(int(price)) if price is not None else None
+            new_alerts.extend(_insert(
+                db, sport="mlb", r=shim, label=label,
+                alert_type="prop_line_gap",
+                side=f"{r['player']} {mk} {bet[0]}{dk_line}",
+                alert_prob=(1 / dec) if dec else None,
+                sharp_prob=fair_over if bet == "Over" else fair_under,
+                details={"market": r["market"], "player": r["player"],
+                         "line": dk_line, "pin_line": pin_line, "bet": bet,
+                         "gap": round(abs(dk_line - pin_line), 1),
+                         "dk_odds": int(price) if price is not None else None,
+                         "dk_decimal": round(dec, 4) if dec else None},
+            ))
+    if new_alerts:
+        print(f"Prop alerts (mlb): {len(new_alerts)} new — "
+              + ", ".join(f"{a['alert_type']}:{a['side']}" for a in new_alerts[:6]))
+        _notify(new_alerts)
+    return len(new_alerts)
+
+
+def _mlb_boxscore_stat(game_pk: str, player: str, market: str) -> float | None:
+    """Actual K's (pitcher) or total bases (batter) from the free MLB boxscore."""
+    import unicodedata
+
+    def norm(s: str) -> str:
+        return " ".join(unicodedata.normalize("NFKD", s or "")
+                        .encode("ascii", "ignore").decode("ascii").lower().split())
+    try:
+        r = requests.get(f"https://statsapi.mlb.com/api/v1/game/{game_pk}/boxscore", timeout=20)
+        r.raise_for_status()
+        box = r.json()
+    except requests.RequestException as e:
+        logger.warning("MLB boxscore fetch failed for %s: %s", game_pk, e)
+        return None
+    target = norm(player)
+    for team in box.get("teams", {}).values():
+        for p in (team.get("players") or {}).values():
+            if norm(p.get("person", {}).get("fullName", "")) != target:
+                continue
+            stats = p.get("stats", {})
+            if market == "pitcher_strikeouts":
+                v = (stats.get("pitching") or {}).get("strikeOuts")
+                return float(v) if v is not None else None
+            bat = stats.get("batting") or {}
+            if not bat:
+                return None
+            tb = bat.get("totalBases")
+            if tb is not None:
+                return float(tb)
+            h = bat.get("hits", 0); d = bat.get("doubles", 0)
+            t = bat.get("triples", 0); hr = bat.get("homeRuns", 0)
+            return float((h - d - t - hr) + 2 * d + 3 * t + 4 * hr)
+    return None
+
+
+def settle_props(db: DatabaseManager) -> int:
+    """Grade prop alerts from the MLB boxscore: Over/Under vs the frozen line."""
+    open_alerts = db.execute(
+        """
+        SELECT a.*, m.game_id AS game_pk, m.home_score, m.away_score
+        FROM line_alerts a JOIN mlb_matchups m ON m.id = a.matchup_id
+        WHERE a.sport = 'mlb' AND a.alert_type IN ('dk_prop_value', 'prop_line_gap')
+          AND a.settled_at IS NULL
+          AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+        """
+    )
+    graded = 0
+    for a in open_alerts:
+        d = a["details_json"] or {}
+        actual = _mlb_boxscore_stat(str(a["game_pk"]), d.get("player", ""), d.get("market", ""))
+        if actual is None:
+            continue  # DNP or name mismatch — retried next pass; stays pending
+        line, bet = float(d["line"]), d["bet"]
+        if actual == line:
+            outcome = "void"
+        elif (actual > line) == (bet == "Over"):
+            outcome = "won"
+        else:
+            outcome = "lost"
+        db.execute(
+            "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
+            "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
+            (outcome, actual, a["id"]),
+        )
+        graded += 1
+    if graded:
+        print(f"Prop alerts (mlb): {graded} graded from boxscores")
+    return graded
+
+
 def settle(db: DatabaseManager, sport: str) -> int:
     """Grade alerts whose games have started: CLV always, outcome when scored."""
     matchup_tbl = _MATCHUP_TBL[sport]
@@ -364,7 +537,8 @@ def report(db: DatabaseManager) -> None:
                      FILTER (WHERE outcome IN ('won','lost'))::numeric, 3) implied_rate,
                ROUND(SUM(CASE WHEN outcome = 'won'
                               THEN (details_json->>'dk_decimal')::numeric - 1
-                              WHEN outcome = 'lost' THEN -1 END)::numeric, 2) dk_units
+                              WHEN outcome = 'lost' THEN -1 END)
+                     FILTER (WHERE details_json ? 'dk_decimal')::numeric, 2) dk_units
         FROM line_alerts
         GROUP BY sport, alert_type ORDER BY sport, alert_type
         """
@@ -376,7 +550,8 @@ def report(db: DatabaseManager) -> None:
         line = (f"  {r['sport']:<8}{r['alert_type']:<22} n={r['n']:>4}  "
                 f"CLV: n={r['n_clv']} avg={r['avg_clv_pp'] or 0:+}pp beat-close={r['beat_close'] or 0}  "
                 f"outcomes: n={r['n_out']} win={r['win_rate']} implied={r['implied_rate']}")
-        if r["alert_type"] == "dk_value" and r["dk_units"] is not None and r["n_out"]:
+        if (r["alert_type"] in ("dk_value", "dk_prop_value", "prop_line_gap")
+                and r["dk_units"] is not None and r["n_out"]):
             line += f"  ROI@DK: {r['dk_units']:+}u/{r['n_out']} ({float(r['dk_units'])/r['n_out']*100:+.1f}%)"
         print(line)
     print()
@@ -442,6 +617,9 @@ if __name__ == "__main__":
     if args.sport:
         scan(db, args.sport)
         settle(db, args.sport)
+        if args.sport == "mlb":
+            scan_props(db)
+            settle_props(db)
     if args.dk_board:
         dk_board(db)
     if args.report or (not args.sport and not args.dk_board):

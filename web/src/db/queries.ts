@@ -8510,7 +8510,7 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
            AVG(alert_prob) FILTER (WHERE outcome IN ('won','lost')) AS "impliedRate",
            SUM(CASE WHEN outcome = 'won' THEN (details_json->>'dk_decimal')::numeric - 1
                     WHEN outcome = 'lost' THEN -1 END)
-             FILTER (WHERE alert_type = 'dk_value') AS "dkUnits"
+             FILTER (WHERE details_json ? 'dk_decimal') AS "dkUnits"
     FROM line_alerts WHERE sport = ${sport}
     GROUP BY alert_type ORDER BY alert_type
   `);
