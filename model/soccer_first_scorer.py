@@ -23,6 +23,13 @@ Pipeline:
 
 Reference for edge = market_fair; EV uses best offered odds.
 
+2026-07-01 honesty fix: first-scorer stars are hard-capped at 2★
+(_FS_MAX_STARS). The settled ledger shows the 1★ tier is perfectly calibrated
+(expected 2.1% vs realized 2.1%, n=1,163) — the de-vig works — but every
+selection rated ≥2★ went 1-for-47: the "value" flags are model noise against a
+300-500% overround market, same verdict as totals and moneyline. The model's
+worth is calibration and record-keeping, not finding plays.
+
 Usage:
     python -m model.soccer_first_scorer
     python -m model.soccer_first_scorer --hours 96
@@ -47,6 +54,9 @@ MODEL_VERSION = "firstscorer-v4"
 DEFAULT_WINDOW_HOURS = 72
 _CLAMP_HI = 0.999
 _MIN_ANYTIME_PROB = 0.01
+# Hard star cap (2026-07-01): ≥2★ selections went 1/47 settled — no edge over
+# the de-vigged market. 2★ = "neutral"; never surface a first-scorer play.
+_FS_MAX_STARS = 2
 # How much weight to give our stat-based estimate vs the de-vigged market.
 _W_STAT = 0.40
 
@@ -371,6 +381,7 @@ def predict_and_record(
                     matchup_id=fx["id"],
                     event_commence=fx["commence_time"],
                     longshot_odds_cap=True,
+                    max_stars=_FS_MAX_STARS,
                     conn=conn,
                     inputs={
                         "stat_prob": round(m_stat, 4) if m_stat is not None else None,

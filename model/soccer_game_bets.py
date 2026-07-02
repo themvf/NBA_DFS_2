@@ -36,6 +36,19 @@ gameline-v3 changes vs v2:
       market we can't beat as a "play". Moneyline / DNB are unchanged.
   Kept under MODEL_VERSION gameline-v3 (re-rates pending rows in place; the
   backtest is version-agnostic, so bumping would only duplicate pending bets).
+
+2026-07-01 revision (honesty fix — moneyline/DNB have no out-of-sample edge either):
+  The settled ledger shows the ML "value" tiers lose in EVERY model version:
+  2-3★ ML+DNB combined are 221 bets at −36% ROI, with realized win rates at or
+  BELOW the vig-free market's implied probability (v3 3★: expected .147,
+  realized .100, −20.7u/40). Overall ML Brier is worse than the de-vigged
+  market on home/away sides — the 35% model component subtracts information.
+  The failure mode is underdog inflation: the Elo-Poisson's fat tail prices
+  longshots 15-50% above market, and EV = p × decimal amplifies the error at
+  long prices (every pending 3★ at review time was a big underdog). Therefore
+  moneyline and DNB are hard-capped at 2★ like totals (_ML_DNB_MAX_STARS):
+  still rated for the ledger and CLV tracking, never surfaced as a play.
+  Same in-place convention as the totals cap — no version bump.
 """
 
 from __future__ import annotations
@@ -75,6 +88,13 @@ _W_DRAW_NORMAL      = 0.35   # evenly matched: normal weight
 # hydration/lopsided uplifts were removed in the same revision; totals now use
 # the raw bivariate-Poisson λ from soccer_matchups.our_total_pred.
 _TOTALS_MAX_STARS = 2
+
+# Moneyline/DNB star cap (2026-07-01). Same verdict as totals, one tournament
+# later: 525 settled ML bets show our anchored prob is WORSE than the vig-free
+# market (Brier .1543 vs .1525) and the 2-3★ "value" tiers ran −36% ROI across
+# all three model versions (see module docstring). 2★ = "neutral — no
+# demonstrated edge"; the Bets panel never advertises a game-line play.
+_ML_DNB_MAX_STARS = 2
 
 
 def _anchor(model_p: float, market_p: float | None, w_model: float) -> float:
@@ -203,11 +223,14 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
                     subject_team_id=team_id,
                     event_commence=commence,
                     longshot_odds_cap=True,
+                    max_stars=_ML_DNB_MAX_STARS,
                     conn=conn,
                     inputs={"side": side, "fixture": fixture_label,
                             "model_prob": round(float(our_p), 4),
                             "anchored_prob": round(anchored, 4),
                             "market_prob_vigfree": round(ref_p, 4) if ref_p is not None else None,
+                            "stars_capped_at": _ML_DNB_MAX_STARS,
+                            "edge_status": "no_walkforward_edge",
                             **extra_inputs},
                 )
                 written += 1
@@ -292,13 +315,16 @@ def predict_and_record(db: DatabaseManager, game_date: str | None = None) -> int
                             subject_team_id=team_id,
                             event_commence=commence,
                             longshot_odds_cap=True,
+                            max_stars=_ML_DNB_MAX_STARS,
                             conn=conn,
                             inputs={"side": "home" if label == fx["home"] else "away",
                                     "fixture": fixture_label,
                                     "model_prob_conditional": round(our_p, 4),
                                     "anchored_prob": round(anchored, 4),
                                     "dnb_ref_prob": round(ref_p, 4) if ref_p is not None else None,
-                                    "dk_odds": int(ml)},
+                                    "dk_odds": int(ml),
+                                    "stars_capped_at": _ML_DNB_MAX_STARS,
+                                    "edge_status": "no_walkforward_edge"},
                         )
                         written += 1
 
