@@ -15,6 +15,7 @@ import {
   getMlbBetBacktestBySide,
   getMlbClv,
   getMlbLineMovement,
+  getLineMovement,
   getMlbPipelineHealth,
   getVegasSummaryStats,
   getBiggestMisses,
@@ -47,12 +48,13 @@ import TennisVegasClient from "./tennis-vegas-client";
 export default async function VegasContent({ date, sport = "nba" }: { date?: string; sport?: Sport }) {
   // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
-    const [matchups, bets, backtest] = await Promise.all([
+    const [matchups, bets, backtest, lineMovement] = await Promise.all([
       getTennisVegasMatchups(date),
       getTennisBets(300),
       getTennisBetBacktest(),
+      getLineMovement("tennis"),
     ]);
-    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} queryDate={date ?? null} />;
+    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} lineMovement={lineMovement} queryDate={date ?? null} />;
   }
 
   // Soccer: focused fixtures view + star-rated bet ledger + backtest, rather
@@ -60,7 +62,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
   if (sport === "soccer") {
     const [matchups, bets, settledBets, backtest, firstScorers, matchGoals, playerStats,
            fscorerTiers, fscorerNearMisses, topPickAccuracy, clv, calibCuts, clvTrend,
-           settlementHealth, knockoutTies, titleOdds, knockoutAsOf] = await Promise.all([
+           settlementHealth, knockoutTies, titleOdds, knockoutAsOf, soccerLineMovement] = await Promise.all([
       getSoccerVegasMatchups(date),
       getSoccerBets(1, 150),
       getSoccerSettledBets(),
@@ -78,6 +80,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getSoccerKnockoutAdvance(),
       getSoccerTitleOdds(),
       getSoccerKnockoutAsOf(),
+      getLineMovement("soccer"),
     ]);
     return (
       <SoccerVegasClient
@@ -98,6 +101,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
         knockoutTies={knockoutTies}
         titleOdds={titleOdds}
         knockoutAsOf={knockoutAsOf}
+        lineMovement={soccerLineMovement}
         queryDate={date ?? null}
       />
     );

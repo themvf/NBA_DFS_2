@@ -32,6 +32,7 @@ from config import load_config
 from db.database import DatabaseManager
 from db.queries import (
     build_soccer_team_name_cache,
+    insert_game_odds_history_rows,
     upsert_soccer_matchup,
     upsert_soccer_team,
 )
@@ -311,6 +312,9 @@ def fetch_schedule_and_odds(
     skipped_date = 0
     skipped_live = 0
     now = datetime.now(timezone.utc)
+    captured_at = now.replace(microsecond=0)
+    capture_key = captured_at.isoformat()
+    history_rows: list[dict] = []
     # Collect (game_id, home_name, away_name) for the DNB second pass.
     dnb_queue: list[tuple[str, str, str]] = []
     for ev in events:
@@ -345,30 +349,41 @@ def fetch_schedule_and_odds(
             logger.warning("Could not resolve teams: %s vs %s", home_name, away_name)
             continue
 
-        # Consensus across ALL bookmakers: 3-way h2h + goal totals.
+        # Consensus across ALL bookmakers: 3-way h2h + goal totals, plus
+        # per-book detail (books dict) for sharp-movement analysis — the same
+        # game_odds_history trail MLB/NBA write (see ingest.mlb_schedule).
         home_prices: list[int] = []
         draw_prices: list[int] = []
         away_prices: list[int] = []
         total_points: list[float] = []
+        books: dict[str, dict] = {}
         # Per-book (line, over_price, under_price) so we can average O/U prices at
         # the consensus line for the totals bet model.
         total_books: list[tuple[float, int | None, int | None]] = []
         for bm in ev.get("bookmakers") or []:
+            book = books.setdefault(bm.get("key", "?"), {"last_update": bm.get("last_update")})
             for market in bm.get("markets", []):
                 if market["key"] == "h2h":
                     for o in market.get("outcomes", []):
                         nm = o.get("name", "")
                         if nm == home_name:
                             home_prices.append(o["price"])
+                            book["ml_home"] = o["price"]
                         elif nm == away_name:
                             away_prices.append(o["price"])
+                            book["ml_away"] = o["price"]
                         elif nm.lower() == "draw":
                             draw_prices.append(o["price"])
+                            book["ml_draw"] = o["price"]
                 elif market["key"] == "totals":
                     over = next((o for o in market.get("outcomes", []) if o.get("name") == "Over"), None)
                     under = next((o for o in market.get("outcomes", []) if o.get("name") == "Under"), None)
                     if over and over.get("point") is not None:
                         total_points.append(float(over["point"]))
+                        book["total_line"] = float(over["point"])
+                        book["over"] = over.get("price")
+                        if under:
+                            book["under"] = under.get("price")
                         total_books.append((
                             float(over["point"]),
                             over.get("price"),
@@ -379,7 +394,8 @@ def fetch_schedule_and_odds(
         draw_ml = _consensus_american(draw_prices)
         away_ml = _consensus_american(away_prices)
         # Soccer goal totals move in 0.25 steps (2.5, 2.75) — round to nearest 0.25.
-        vegas_total = round(sum(total_points) / len(total_points) * 4) / 4 if total_points else None
+        vegas_total_raw = sum(total_points) / len(total_points) if total_points else None
+        vegas_total = round(vegas_total_raw * 4) / 4 if vegas_total_raw is not None else None
         over_odds, under_odds = _consensus_total_prices(total_books, vegas_total)
 
         p_home, p_draw, p_away = _three_way_probs(home_ml, draw_ml, away_ml)
@@ -417,7 +433,33 @@ def fetch_schedule_and_odds(
             game_id = ev.get("id")
             if game_id:
                 dnb_queue.append((game_id, home_name, away_name))
+            history_rows.append(
+                {
+                    "sport": "soccer",
+                    "matchup_id": mid,
+                    "event_id": game_id,
+                    "game_date": ev_date,
+                    "home_team_id": home_team_id,
+                    "away_team_id": away_team_id,
+                    "home_team_name": home_name,
+                    "away_team_name": away_name,
+                    "bookmaker_count": len(books),
+                    "home_ml": home_ml,
+                    "away_ml": away_ml,
+                    "draw_ml": draw_ml,
+                    "vegas_total": vegas_total,
+                    "vegas_total_raw": vegas_total_raw,
+                    "vegas_prob_home": p_home,
+                    "home_implied": home_implied,
+                    "away_implied": away_implied,
+                    "capture_key": capture_key,
+                    "captured_at": captured_at,
+                    "books": books or None,
+                }
+            )
 
+    if history_rows:
+        insert_game_odds_history_rows(db, history_rows)
     msg = f"Soccer: {upserted} fixtures upserted with Vegas lines"
     if game_date:
         msg += f" for {game_date}"

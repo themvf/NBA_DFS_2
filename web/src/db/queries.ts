@@ -8346,7 +8346,17 @@ export type MlbLineMovementRow = {
   postFix: boolean;
 };
 
-export async function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]> {
+const LINE_MOVEMENT_MATCHUP_TABLE: Record<string, string> = {
+  mlb: "mlb_matchups",
+  nba: "nba_matchups",
+  soccer: "soccer_matchups",
+  tennis: "tennis_matches",
+};
+
+export async function getLineMovement(
+  sport: "mlb" | "nba" | "soccer" | "tennis",
+  days = 7,
+): Promise<MlbLineMovementRow[]> {
   // Open -> close line movement per game from the 30-min game_odds_history
   // capture trail (Edge-Finding P2). open = first pre-game capture, close =
   // last capture before first pitch (the in-play guard stops captures at
@@ -8366,8 +8376,8 @@ export async function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]
              ABS(h.vegas_prob_home - LAG(h.vegas_prob_home) OVER (
                PARTITION BY h.matchup_id ORDER BY h.captured_at)) AS jump
       FROM game_odds_history h
-      LEFT JOIN mlb_matchups m ON m.id = h.matchup_id
-      WHERE h.sport = 'mlb'
+      LEFT JOIN ${sql.raw(LINE_MOVEMENT_MATCHUP_TABLE[sport])} m ON m.id = h.matchup_id
+      WHERE h.sport = ${sport}
         AND h.game_date >= CURRENT_DATE - ${days}::int
         AND h.vegas_prob_home IS NOT NULL
         AND (m.commence_time IS NULL OR h.captured_at <= m.commence_time)
@@ -8384,8 +8394,8 @@ export async function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]
            o.total AS "openTotal",
            (c.total - o.total) AS "totalMove",
            COALESCE(j.max_jump, 0) * 100 AS "maxJumpPp",
-           CASE WHEN pin_p.ph IS NOT NULL AND pin_p.pa IS NOT NULL AND pin_p.ph + pin_p.pa > 0
-                THEN (pin_p.ph / (pin_p.ph + pin_p.pa) - c.vegas_prob_home) * 100
+           CASE WHEN pin_p.ph IS NOT NULL AND pin_p.pa IS NOT NULL AND pin_p.ph + pin_p.pa + pin_p.pd > 0
+                THEN (pin_p.ph / (pin_p.ph + pin_p.pa + pin_p.pd) - c.vegas_prob_home) * 100
            END AS "pinGapPp",
            (j.first_cap >= '2026-07-02'::timestamptz) AS "postFix"
     FROM o
@@ -8393,7 +8403,8 @@ export async function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]
     JOIN j USING (matchup_id)
     CROSS JOIN LATERAL (
       SELECT (c.books->'pinnacle'->>'ml_home')::numeric AS mlh,
-             (c.books->'pinnacle'->>'ml_away')::numeric AS mla
+             (c.books->'pinnacle'->>'ml_away')::numeric AS mla,
+             (c.books->'pinnacle'->>'ml_draw')::numeric AS mld
     ) pin_ml
     CROSS JOIN LATERAL (
       SELECT CASE WHEN pin_ml.mlh IS NULL THEN NULL
@@ -8401,7 +8412,11 @@ export async function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]
                   ELSE ABS(pin_ml.mlh) / (ABS(pin_ml.mlh) + 100) END AS ph,
              CASE WHEN pin_ml.mla IS NULL THEN NULL
                   WHEN pin_ml.mla > 0 THEN 100.0 / (pin_ml.mla + 100)
-                  ELSE ABS(pin_ml.mla) / (ABS(pin_ml.mla) + 100) END AS pa
+                  ELSE ABS(pin_ml.mla) / (ABS(pin_ml.mla) + 100) END AS pa,
+             -- draw leg: 0 for 2-way sports, so one formula covers 3-way soccer
+             CASE WHEN pin_ml.mld IS NULL THEN 0
+                  WHEN pin_ml.mld > 0 THEN 100.0 / (pin_ml.mld + 100)
+                  ELSE ABS(pin_ml.mld) / (ABS(pin_ml.mld) + 100) END AS pd
     ) pin_p
     -- Clean (post-odds-fix) rows first: pre-fix consensus noise produces fake
     -- 30pp "moves" that would otherwise crowd trusted rows out of the LIMIT.
@@ -8424,6 +8439,10 @@ export async function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]
       postFix: Boolean(rec.postFix),
     };
   });
+}
+
+export function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]> {
+  return getLineMovement("mlb", days);
 }
 
 export async function getMlbBetBacktest(): Promise<MlbBetBacktestRow[]> {

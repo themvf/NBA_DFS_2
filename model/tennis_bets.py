@@ -39,7 +39,7 @@ MODEL_VERSION = "tennis-ml-v2"
 
 
 def _record(cur, *, match_id, side, label, our_prob, market_odds, market_prob,
-            event_commence, inputs) -> bool:
+            event_commence, inputs, capture_key) -> bool:
     """Upsert one rated moneyline bet (returns True if written, False if locked)."""
     decimal_odds = american_to_decimal(market_odds)
     stars, ev, edge = rate_market(our_prob, decimal_odds, market_prob, longshot_odds_cap=True)
@@ -66,11 +66,25 @@ def _record(cur, *, match_id, side, label, our_prob, market_odds, market_prob,
             locked = EXCLUDED.locked,
             updated_at = NOW()
         WHERE tennis_bets.locked = FALSE AND tennis_bets.status = 'pending'
+        RETURNING id
         """,
         (MODEL_VERSION, match_id, side, label, market_odds, decimal_odds,
          market_prob, our_prob, edge, ev, stars, json.dumps(inputs), event_commence, locked),
     )
-    return cur.rowcount > 0
+    row = cur.fetchone()
+    if not row:
+        return False  # locked — frozen closing recommendation
+    # Append-only snapshot trail (mirrors soccer/mlb_bet_snapshots) — gives
+    # tennis entry→close CLV measurement in model/clv_report.py.
+    cur.execute(
+        """
+        INSERT INTO tennis_bet_snapshots
+            (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (row["id"], capture_key, our_prob, market_prob, market_odds, edge, ev, stars),
+    )
+    return True
 
 
 def rate_and_write(db: DatabaseManager, match_date: str | None = None) -> int:
@@ -86,6 +100,7 @@ def rate_and_write(db: DatabaseManager, match_date: str | None = None) -> int:
     )
 
     written = 0
+    capture_key = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     with db.connect() as conn:
         cur = conn.cursor()
         # Drop stale UNLOCKED pending rows from older model versions so a version
@@ -106,12 +121,12 @@ def rate_and_write(db: DatabaseManager, match_date: str | None = None) -> int:
             if _record(cur, match_id=m["id"], side="home", label=m["home_player"],
                        our_prob=m["our_prob_home"], market_odds=m["home_ml"],
                        market_prob=m["home_win_prob"], event_commence=m["commence_time"],
-                       inputs=inputs):
+                       inputs=inputs, capture_key=capture_key):
                 written += 1
             if _record(cur, match_id=m["id"], side="away", label=m["away_player"],
                        our_prob=m["our_prob_away"], market_odds=m["away_ml"],
                        market_prob=m["away_win_prob"], event_commence=m["commence_time"],
-                       inputs=inputs):
+                       inputs=inputs, capture_key=capture_key):
                 written += 1
 
     print(f"Tennis bets: {written} moneyline selections rated ({MODEL_VERSION})")
