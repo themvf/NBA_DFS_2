@@ -153,36 +153,50 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             logger.debug("No matchup found for Odds API home team: %s", home_name)
             continue
 
-        # Consensus across ALL bookmakers for h2h (moneylines) and totals
+        # Consensus across ALL bookmakers for h2h (moneylines) and totals,
+        # plus per-book detail for sharp-movement analysis (JSONB on the
+        # history row — see ingest.mlb_schedule for the pattern rationale).
         away_name = g.get("away_team", "")
         home_prices: list[int] = []
         away_prices: list[int] = []
         home_spreads: list[float] = []
         total_points: list[float] = []
+        books: dict[str, dict] = {}
         bookmakers = g.get("bookmakers") or []
         for bm in bookmakers:
+            book = books.setdefault(bm.get("key", "?"), {"last_update": bm.get("last_update")})
             for market in bm.get("markets", []):
                 if market["key"] == "h2h":
                     for o in market.get("outcomes", []):
                         if o["name"] == home_name:
                             home_prices.append(o["price"])
+                            book["ml_home"] = o["price"]
                         elif o["name"] == away_name:
                             away_prices.append(o["price"])
+                            book["ml_away"] = o["price"]
                 elif market["key"] == "spreads":
                     home_outcome = next((o for o in market.get("outcomes", []) if o["name"] == home_name), None)
                     if home_outcome and home_outcome.get("point") is not None:
                         home_spreads.append(float(home_outcome["point"]))
+                        book["spread_home"] = float(home_outcome["point"])
+                        book["spread_price"] = home_outcome.get("price")
                 elif market["key"] == "totals":
                     over = next((o for o in market.get("outcomes", []) if o["name"] == "Over"), None)
+                    under = next((o for o in market.get("outcomes", []) if o["name"] == "Under"), None)
                     if over and over.get("point") is not None:
                         total_points.append(float(over["point"]))
+                        book["total_line"] = float(over["point"])
+                        book["over"] = over.get("price")
+                        if under:
+                            book["under"] = under.get("price")
 
         # Probability-space consensus — arithmetic American averaging is invalid
         # near even money (see _consensus_american in ingest.mlb_schedule).
         home_ml = _consensus_american(home_prices)
         away_ml = _consensus_american(away_prices)
         home_spread = round(sum(home_spreads) / len(home_spreads) * 2) / 2 if home_spreads else None
-        vegas_total = round(sum(total_points) / len(total_points) * 2) / 2 if total_points else None
+        vegas_total_raw = sum(total_points) / len(total_points) if total_points else None
+        vegas_total = round(vegas_total_raw * 2) / 2 if vegas_total_raw is not None else None
         vegas_prob_home = _ml_to_prob(home_ml, away_ml) if home_ml and away_ml else None
 
         home_implied, away_implied = _compute_implied_totals(vegas_total, home_ml, away_ml)
@@ -212,6 +226,8 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                 "vegas_prob_home": vegas_prob_home,
                 "capture_key": capture_key,
                 "captured_at": captured_at,
+                "books": books or None,
+                "vegas_total_raw": vegas_total_raw,
             }
         )
         updated += 1

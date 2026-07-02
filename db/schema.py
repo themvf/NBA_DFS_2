@@ -1743,4 +1743,13 @@ INDEXES = [
     # score would land on the original date's row and grade tickets every book
     # voided (10 weather PPDs sat pending May-June 2026).
     "ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS game_status TEXT",
+    # 2026-07-02: per-book odds detail for sharp-movement detection (Edge-Finding
+    # Roadmap P1). The consensus columns average away the exact structure sharp
+    # detection needs: which book moved first (Pinnacle leads, retail follows),
+    # and line-vs-price moves. books = {book_key: {ml_home, ml_away, total_line,
+    # over, under, spread_home, last_update}} straight from the Odds API payload
+    # we already fetch. vegas_total_raw is the UNROUNDED consensus total (the
+    # 0.5-rounded vegas_total hides half-point moves across key numbers).
+    "ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS books JSONB",
+    "ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS vegas_total_raw DOUBLE PRECISION",
 ]
