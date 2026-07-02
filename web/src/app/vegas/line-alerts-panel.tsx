@@ -19,6 +19,35 @@ const sideName = (a: LineAlertRow): string => {
 
 function ActionChip({ a }: { a: LineAlertRow }) {
   const name = sideName(a);
+  if (a.alertType === "dk_prop_value" || a.alertType === "prop_line_gap") {
+    const d = (a.details ?? {}) as {
+      player?: string; bet?: string; line?: number; pin_line?: number;
+      dk_odds?: number; ev_pct?: number; gap?: number;
+    };
+    const odds = d.dk_odds != null ? (d.dk_odds > 0 ? `+${d.dk_odds}` : `${d.dk_odds}`) : "?";
+    if (a.alertType === "prop_line_gap") {
+      return (
+        <span
+          className="cursor-help rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-700 whitespace-nowrap"
+          title={`DK's line (${d.line}) sits ${d.gap} off Pinnacle's (${d.pin_line}) — the stale-line signature. ` +
+                 `${d.bet} ${d.line} at DK is the mechanically favored side: you're getting the sharp book's number ` +
+                 `${d.gap} ${(d.gap ?? 0) >= 1 ? "full units" : "units"} better. ROI @ DK in the audit tracks whether these pay.`}
+        >
+          Stale line: {d.player} {d.bet} {d.line} @ DK {odds}
+        </span>
+      );
+    }
+    return (
+      <span
+        className="cursor-help rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap"
+        title={`Same line at both books, but DK's price on ${d.player} ${d.bet} ${d.line} beats Pinnacle's vig-free ` +
+               `fair value by ${d.ev_pct}%. No model involved — DK's prop algorithm is lagging the sharp book. ` +
+               `The ROI @ DK column above is the running verdict on betting every one of these.`}
+      >
+        Bet {d.player} {d.bet} {d.line} @ DK {odds} · EV +{d.ev_pct}%
+      </span>
+    );
+  }
   if (a.alertType === "dk_value") {
     const d = (a.details ?? {}) as { dk_odds?: number; ev_pct?: number };
     const odds = d.dk_odds != null ? (d.dk_odds > 0 ? `+${d.dk_odds}` : `${d.dk_odds}`) : "?";
@@ -73,6 +102,8 @@ export default function LineAlertsPanel({
     t === "pinnacle_divergence" ? "Pin divergence"
     : t === "steam" ? "Steam"
     : t === "dk_value" ? "DK value"
+    : t === "dk_prop_value" ? "DK prop value"
+    : t === "prop_line_gap" ? "Prop line gap"
     : t;
 
   return (
