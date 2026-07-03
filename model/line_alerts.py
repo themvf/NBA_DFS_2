@@ -522,10 +522,10 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
         db.execute(
             "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
             "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
-            "convergence = %s, dk_survival_min = %s, grading_json = %s, "
+            "convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
             "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
             (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
-             g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]),
+             g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"],
              (int(a["home_games"]) + int(a["away_games"]))
              if a["home_games"] is not None and a["away_games"] is not None else None,
              a["id"]),
@@ -682,10 +682,10 @@ def settle_props_soccer(db: DatabaseManager) -> int:
         g = _grade_alert_prices(db, a)
         db.execute(
             "UPDATE line_alerts SET outcome = %s, dk_close_decimal = %s, dk_clv_pct = %s, "
-            "pin_close_prob = %s, convergence = %s, dk_survival_min = %s, grading_json = %s, "
+            "pin_close_prob = %s, convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
             "settled_at = NOW() WHERE id = %s",
             ("won" if scored else "lost", g["dk_close_decimal"], g["dk_clv_pct"],
-             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), a["id"]),
+             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"], a["id"]),
         )
         graded += 1
     if graded:
@@ -756,10 +756,10 @@ def settle_props(db: DatabaseManager) -> int:
         db.execute(
             "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
             "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
-            "convergence = %s, dk_survival_min = %s, grading_json = %s, "
+            "convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
             "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
             (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
-             g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), actual, a["id"]),
+             g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"], actual, a["id"]),
         )
         graded += 1
     if graded:
@@ -813,7 +813,15 @@ def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
     return dk_dec, pin_fair
 
 
-_CONV_EPS = 0.005  # 0.5pp — smaller moves are quote noise, not convergence
+# Two DISTINCT thresholds (deliberately separate, not one reused value):
+_MOVEMENT_EPSILON = 0.005   # 0.5pp — categorical "who moved" noise floor
+_MIN_GAP_FOR_RATIO = 0.01   # 1.0pp — below this initial gap the closure RATIO
+                            # is unstable (0.10→0.02pp reads as 80% closure on
+                            # economically trivial movement), so it's nulled;
+                            # absolute pp movement is still recorded and always
+                            # outranks the ratio in any summary.
+_CONV_EPS = _MOVEMENT_EPSILON  # back-compat alias
+_GRADING_VERSION = "convergence_v2"
 # Settled-count floor below which the report shows raw W-L-P + a
 # "descriptive-only" tag instead of a rate — never implying statistical
 # conclusions from single digits. A floor for INDEPENDENT bets; correlated
@@ -845,10 +853,29 @@ def _grade_alert_prices(db, a) -> dict:
       * dk_survival_min — the survival UPPER bound (back-compat scalar).
     """
     out = {"dk_close_decimal": None, "dk_clv_pct": None, "pin_close_prob": None,
-           "convergence": None, "dk_survival_min": None, "grading_json": None}
+           "convergence": None, "dk_survival_min": None, "grading_json": None,
+           "comparison_status": "NO_REFERENCE", "grading_version": _GRADING_VERSION}
     d = a["details_json"] or {}
     entry_dec = d.get("dk_decimal")
+
+    # Proposition comparability — EXPLICIT, not inferred downstream from
+    # alert_type. Determines convergence eligibility; a new alert type must be
+    # classified here to enter (or be kept out of) the convergence path.
+    at = a["alert_type"]
+    if at in ("dk_value", "dk_prop_value"):
+        comp, elig, reason = "SAME_PROPOSITION", True, None
+    elif at == "prop_line_gap":
+        comp, elig, reason = "DIFFERENT_LINE", False, "dk_and_pinnacle_on_different_lines"
+    elif at == "prop_outlier":
+        comp, elig, reason = "NO_REFERENCE", False, "no_pinnacle_wc_props_median_anchor"
+    else:  # pinnacle_divergence, steam — not DK-vs-sharp same-line propositions
+        comp, elig, reason = "NO_REFERENCE", False, "not_a_dk_reference_alert"
+    out["comparison_status"] = comp
+
     if entry_dec is None:
+        out["grading_json"] = {"comparison_status": comp, "convergence_eligible": elig,
+                               "convergence_exclusion_reason": reason,
+                               "grading_version": _GRADING_VERSION}
         return out
     entry_dec = float(entry_dec)
 
@@ -882,7 +909,16 @@ def _grade_alert_prices(db, a) -> dict:
         if ts <= a["created_at"]:
             entry_idx = idx
     series = series[entry_idx:]
-    grading = {"n_captures": len(series), "epsilon_pp": _CONV_EPS * 100}
+    # A single usable capture can't measure movement — downgrade eligibility.
+    if elig and len(series) < 2:
+        comp, elig, reason = "INSUFFICIENT_CAPTURE", False, "fewer_than_2_captures"
+        out["comparison_status"] = comp
+    grading = {"n_captures": len(series),
+               "movement_epsilon_pp": _MOVEMENT_EPSILON * 100,
+               "min_gap_for_ratio_pp": _MIN_GAP_FOR_RATIO * 100,
+               "comparison_status": comp, "convergence_eligible": elig,
+               "convergence_exclusion_reason": reason,
+               "grading_version": _GRADING_VERSION}
 
     # ── Observed quote persistence (interval-censored by capture cadence) ──
     # The true change time lies in (last_same_at, first_changed_at]; we can only
@@ -921,15 +957,12 @@ def _grade_alert_prices(db, a) -> dict:
     # Gap is signed from the recommended side: gap = P_pinnacle_fair − P_dk_implied.
     # For a value alert the entry gap is POSITIVE (Pinnacle rates the side higher
     # than DK's price implies). Convergence = the gap shrinking toward zero.
-    # Convergence/gap math is only meaningful when DK and Pinnacle price the
-    # SAME proposition. prop_line_gap alerts are, by definition, DK and Pinnacle
-    # on DIFFERENT lines (sharp_prob is Pinnacle's fair at ITS line — not
-    # comparable to DK's line), and prop_outlier has no Pinnacle at all. For
-    # those we still record execution CLV + survival, but leave convergence and
-    # the gap magnitudes NULL rather than emit an apples-to-oranges label.
-    _same_prop = a["alert_type"] in ("dk_value", "dk_prop_value")
+    # Convergence/gap math runs ONLY on SAME_PROPOSITION alerts (comparability
+    # decided explicitly above). DIFFERENT_LINE / NO_REFERENCE rows still get
+    # execution CLV + survival, but convergence and gap magnitudes stay NULL —
+    # not-applicable-by-design, never a grading failure.
     pin_alert = a["sharp_prob"]
-    if _same_prop and dk_close and pin_close is not None and pin_alert is not None:
+    if elig and dk_close and pin_close is not None and pin_alert is not None:
         pin_alert = float(pin_alert)
         dk_impl_entry, dk_impl_close = 1 / entry_dec, 1 / dk_close
         gap_initial = pin_alert - dk_impl_entry
@@ -941,13 +974,18 @@ def _grade_alert_prices(db, a) -> dict:
         for _ts, dk_dec_t, pin_t in series:
             if dk_dec_t and pin_t is not None:
                 min_abs_gap = min(min_abs_gap, abs(pin_t - 1 / dk_dec_t))
-        gcr = ((abs(gap_initial) - abs(gap_final)) / abs(gap_initial)
-               if abs(gap_initial) > 1e-9 else None)
+        # Ratio is NULLED (not zero) when the initial gap is below the
+        # min-meaningful threshold — otherwise trivial pp moves read as large
+        # percentages. Absolute closure (pp) is always recorded and outranks it.
+        ratio_ok = abs(gap_initial) >= _MIN_GAP_FOR_RATIO
+        gcr = ((abs(gap_initial) - abs(gap_final)) / abs(gap_initial)) if ratio_ok else None
         grading.update(
             gap_initial_pp=round(gap_initial * 100, 3),
             gap_final_pp=round(gap_final * 100, 3),
+            gap_abs_closure_pp=round((abs(gap_initial) - abs(gap_final)) * 100, 3),
             gap_max_closure_pp=round((abs(gap_initial) - min_abs_gap) * 100, 3),
             gap_closure_ratio=round(gcr, 4) if gcr is not None else None,
+            gap_closure_ratio_suppressed=(not ratio_ok),
             d_dk_pp=round(d_dk * 100, 3),      # execution movement toward the bet
             d_pin_pp=round(d_pin * 100, 3),    # reference movement toward the bet
         )
@@ -1037,11 +1075,11 @@ def settle(db: DatabaseManager, sport: str) -> int:
         db.execute(
             "UPDATE line_alerts SET close_prob = %s, clv_pp = %s, outcome = %s, "
             "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
-            "convergence = %s, dk_survival_min = %s, grading_json = %s, "
+            "convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
             "settled_at = CASE WHEN %s::text IS NOT NULL THEN NOW() ELSE settled_at END "
             "WHERE id = %s",
             (close_prob, clv_pp, outcome, g["dk_close_decimal"], g["dk_clv_pct"],
-             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]),
+             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"],
              outcome, a["id"]),
         )
         graded += 1
@@ -1133,8 +1171,11 @@ def report(db: DatabaseManager) -> None:
         print("    signal (refCLV rises w/ tier) | tradability (ROI rises among survivors) | decay (survival falls w/ tier)")
         for t in tiers:
             roi = (f"{float(t['units'])/t['n_out']*100:+.1f}%" if t["units"] is not None and t["n_out"] else "—")
+            # % right-censored (quote still present at close) — cadence-robust,
+            # unlike a median-minutes that mixes 30m/3h/6h schedules (dropped;
+            # per-row interval bounds live in grading_json for stratified
+            # interval-censored survival analysis once the sample supports it).
             surv = f"{float(t['survived'])*100:.0f}%" if t["survived"] is not None else "—"
-            med = f"{t['med_survival_min']}m" if t["med_survival_min"] is not None else "—"
             # Below the threshold, show raw counts + a DESCRIPTIVE-ONLY tag —
             # never a rate that implies statistical conclusions from ~single
             # digits. (30 is a floor for INDEPENDENT bets; correlated same-slate
@@ -1145,7 +1186,7 @@ def report(db: DatabaseManager) -> None:
                   f"win={t['win_rate'] if t['win_rate'] is not None else '—'}  "
                   f"ROI@DK={roi}  refCLV={t['ref_clv_pp'] if t['ref_clv_pp'] is not None else '—'}pp  "
                   f"execCLV={t['avg_dk_clv'] if t['avg_dk_clv'] is not None else '—'}%  "
-                  f"survived={surv}  medDecay={med}  [{status}]")
+                  f"persisted-to-close={surv}  [{status}]")
 
     conv = db.execute(
         """SELECT convergence, COUNT(*) n,
@@ -1161,6 +1202,17 @@ def report(db: DatabaseManager) -> None:
         for c in conv:
             print(f"    {c['convergence']:<34} n={c['n']:>4}  W{c['wins']}-L{c['losses']}  "
                   f"avgGapClosure={c['avg_gcr'] if c['avg_gcr'] is not None else '—'}  [descriptive-only]")
+
+    comp = db.execute(
+        """SELECT comparison_status, COUNT(*) n,
+              COUNT(*) FILTER (WHERE convergence IS NOT NULL) has_conv
+           FROM line_alerts WHERE comparison_status IS NOT NULL
+           GROUP BY 1 ORDER BY n DESC"""
+    )
+    if comp:
+        print("\n  Proposition comparability (NULL convergence on non-SAME_PROPOSITION = not-applicable-BY-DESIGN):")
+        for c in comp:
+            print(f"    {c['comparison_status']:<22} n={c['n']:>4}  with-convergence={c['has_conv']}")
     print()
 
 
