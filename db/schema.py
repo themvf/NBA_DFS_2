@@ -1848,4 +1848,18 @@ INDEXES = [
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS pin_close_prob DOUBLE PRECISION",
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS convergence TEXT",
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS dk_survival_min DOUBLE PRECISION",
+    # 2026-07-03: movement MAGNITUDE alongside the categorical label so
+    # near-boundary cases aren't hidden and epsilon sensitivity is testable:
+    # {gap_initial_pp, gap_final_pp, gap_max_closure_pp, gap_closure_ratio,
+    #  d_dk_pp, d_pin_pp, epsilon_pp, n_captures,
+    #  survival_lower_min, survival_upper_min, last_same_at, first_changed_at}.
+    # Survival is INTERVAL-CENSORED by capture cadence (the true change lies
+    # between last-seen-unchanged and first-seen-changed); dk_survival_min is
+    # the UPPER bound kept for back-compat. The metric is "observed quote
+    # persistence" — NOT verified execution availability, which this system
+    # cannot measure. Convergence is a PATH classification, not a quality
+    # verdict: REFERENCE_CONVERGED_TO_EXECUTION means the sharp move was more
+    # consistent with DK's original price than the reference's — evidence DK
+    # may have led price discovery, not proof.
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS grading_json JSONB",
 ]
