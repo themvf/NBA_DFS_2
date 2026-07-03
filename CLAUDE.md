@@ -1015,3 +1015,49 @@ information latency, and disciplined measurement. Priorities:
   as-recorded).
 - Star caps are reversible per market the moment a slice demonstrates walk-forward edge.
 
+---
+
+## Pre-Registered Studies — line_alerts attribution engine (2026-07-03)
+
+The alert ledger is now a market-disagreement attribution engine (instrumentation
+solved: independent closes, path-aware movement, magnitude preservation, interval-
+censored persistence, explicit proposition comparability via `comparison_status`,
+classifier version stamp `grading_version`). The remaining risk is **interpretation
+drift** — a rich attribution engine becomes a story generator if hypotheses are
+formed after seeing the data. These comparisons are pre-registered: metric, slice,
+and minimum sample fixed BEFORE the data is examined. No conclusion is drawn, and no
+star cap is changed, until the stated sample is reached, walk-forward.
+
+### Study 1 — fate of DIVERGENCE_PERSISTED (SAME_PROPOSITION only)
+- **Population**: settled `dk_value`/`dk_prop_value` alerts with `comparison_status =
+  SAME_PROPOSITION` and `convergence = DIVERGENCE_PERSISTED` (gap neither closed nor
+  widened past ε; DK and reference both held).
+- **Metrics**: frozen-price ROI @ DK; calibration (Brier vs price-implied prob);
+  realized win rate vs price-implied; mean reference CLV; mean execution CLV.
+- **Pre-specified outcomes**: (a) zero CLV + zero excess return → noise (winners are
+  variance, e.g. Sullivan); (b) zero CLV + positive calibrated return → the reference
+  market systematically misses something; (c) return concentrated in a specific
+  sport/market → localized counterparty weakness, not a general edge.
+- **Minimum sample**: ≥ 30 settled, and treated cautiously if correlated (same slate).
+  No verdict before then; the report tags every under-floor row `descriptive-only`.
+
+### Study 2 — identification: which trigger-time features predict a real AND capturable discrepancy?
+- **Candidate predictors (fixed now, before slicing)**: initial same-line gap (pp);
+  claimed EV; book × market type; number of reference books; reference-market
+  agreement; time-to-event; capture cadence; observed quote-persistence interval;
+  convergence path; odds range; price-disagreement vs line-disagreement origin.
+- **Targets**: (i) reference CLV (real), (ii) frozen-price ROI among persisted quotes
+  (capturable). Reported as the three-verdict monotonicity table (signal /
+  tradability / decay) — the three are NOT required to agree; each combination has a
+  distinct pre-specified meaning (real-but-fleeting, execution-lost, false-discrepancy…).
+- **Discipline**: walk-forward only; interval-censored survival stratified by cadence
+  (never a mixed-cadence median); ratio nulled below `min_gap_for_ratio_pp`; absolute
+  pp movement always outranks the closure ratio.
+
+### Non-negotiables (inherited from the gameline/totals mirages)
+Convergence is a PATH classification, never a quality verdict. `REFERENCE_CONVERGED_
+TO_EXECUTION` is *evidence* DK may have led price discovery, not proof. Regrading under
+a later `grading_version` is legitimate; erasing which rule produced the original label
+is not. A memorable winner never promotes a signal — only repeated excess performance
+relative to the frozen odds does.
+

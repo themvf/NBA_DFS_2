@@ -1862,4 +1862,16 @@ INDEXES = [
     # consistent with DK's original price than the reference's — evidence DK
     # may have led price discovery, not proof.
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS grading_json JSONB",
+    # 2026-07-03: proposition comparability made EXPLICIT + queryable, not
+    # implicit in alert_type — so a future same-sounding alert type can't be
+    # silently routed into convergence with a reference prob about a DIFFERENT
+    # proposition (the Herrera lesson). comparison_status in
+    # {SAME_PROPOSITION, DIFFERENT_LINE, NO_REFERENCE, RULE_MISMATCH,
+    # INSUFFICIENT_CAPTURE}; NULL convergence on a non-SAME_PROPOSITION row is
+    # not-applicable-BY-DESIGN, never missing data. grading_version stamps the
+    # classifier (epsilon/eligibility/path logic) so rows regrade under a later
+    # method without erasing which rule produced the original label; the input
+    # capture series is reproducible from the append-only *_odds_history tables.
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS comparison_status TEXT",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS grading_version TEXT",
 ]
