@@ -522,10 +522,10 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
         db.execute(
             "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
             "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
-            "convergence = %s, dk_survival_min = %s, "
+            "convergence = %s, dk_survival_min = %s, grading_json = %s, "
             "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
             (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
-             g["convergence"], g["dk_survival_min"],
+             g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]),
              (int(a["home_games"]) + int(a["away_games"]))
              if a["home_games"] is not None and a["away_games"] is not None else None,
              a["id"]),
@@ -682,10 +682,10 @@ def settle_props_soccer(db: DatabaseManager) -> int:
         g = _grade_alert_prices(db, a)
         db.execute(
             "UPDATE line_alerts SET outcome = %s, dk_close_decimal = %s, dk_clv_pct = %s, "
-            "pin_close_prob = %s, convergence = %s, dk_survival_min = %s, "
+            "pin_close_prob = %s, convergence = %s, dk_survival_min = %s, grading_json = %s, "
             "settled_at = NOW() WHERE id = %s",
             ("won" if scored else "lost", g["dk_close_decimal"], g["dk_clv_pct"],
-             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], a["id"]),
+             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), a["id"]),
         )
         graded += 1
     if graded:
@@ -756,10 +756,10 @@ def settle_props(db: DatabaseManager) -> int:
         db.execute(
             "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
             "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
-            "convergence = %s, dk_survival_min = %s, "
+            "convergence = %s, dk_survival_min = %s, grading_json = %s, "
             "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
             (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
-             g["convergence"], g["dk_survival_min"], actual, a["id"]),
+             g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), actual, a["id"]),
         )
         graded += 1
     if graded:
@@ -814,21 +814,38 @@ def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
 
 
 _CONV_EPS = 0.005  # 0.5pp — smaller moves are quote noise, not convergence
+# Settled-count floor below which the report shows raw W-L-P + a
+# "descriptive-only" tag instead of a rate — never implying statistical
+# conclusions from single digits. A floor for INDEPENDENT bets; correlated
+# same-slate props carry less information than the count suggests.
+_MIN_SETTLED_FOR_CI = 30
 
 
 def _grade_alert_prices(db, a) -> dict:
     """Full price-context grading over the alert→close capture series.
 
-    Returns dk_close_decimal, dk_clv_pct (execution CLV: positive = the
-    recommended selection got more expensive at DK), pin_close_prob
-    (reference close as its own quantity), convergence (HOW the alert-time
-    DK-vs-Pinnacle gap closed — REFERENCE_CONVERGED_TO_EXECUTION is the
-    "DK's quote was information" pattern, not inferable from the two CLV
-    scalars), and dk_survival_min (minutes until DK's alerted price first
-    changed; NULL = survived to the close — the decay/availability measure).
+    Stores enough RAW price context to classify movement later rather than
+    collapsing it into one CLV scalar:
+      * dk_clv_pct     — execution CLV (positive = the recommended selection
+                         got more expensive at DK).
+      * pin_close_prob — the reference close as its own quantity.
+      * convergence    — a PATH classification (who moved), NOT a quality
+                         verdict. REFERENCE_CONVERGED_TO_EXECUTION means the
+                         sharp move was more consistent with DK's original
+                         price than the reference's — evidence DK may have led
+                         price discovery, not proof. DIVERGENCE_PERSISTED is
+                         explicitly neutral (a no-CLV bet can still win/lose on
+                         noise); its value is that it isolates a testable
+                         population, not that any single row was "good".
+      * grading_json   — movement MAGNITUDE alongside the label (gap initial/
+                         final/max-closure, gap_closure_ratio, per-book moves,
+                         epsilon, n_captures) + interval-censored survival
+                         bounds. The survival metric is OBSERVED QUOTE
+                         PERSISTENCE, not verified execution availability.
+      * dk_survival_min — the survival UPPER bound (back-compat scalar).
     """
-    out = {"dk_close_decimal": None, "dk_clv_pct": None,
-           "pin_close_prob": None, "convergence": None, "dk_survival_min": None}
+    out = {"dk_close_decimal": None, "dk_clv_pct": None, "pin_close_prob": None,
+           "convergence": None, "dk_survival_min": None, "grading_json": None}
     d = a["details_json"] or {}
     entry_dec = d.get("dk_decimal")
     if entry_dec is None:
@@ -865,13 +882,29 @@ def _grade_alert_prices(db, a) -> dict:
         if ts <= a["created_at"]:
             entry_idx = idx
     series = series[entry_idx:]
+    grading = {"n_captures": len(series), "epsilon_pp": _CONV_EPS * 100}
 
-    # Survival: first post-alert capture where DK's price differs (or is gone).
-    for ts, dk_dec, _pin in series[1:] if series else []:
+    # ── Observed quote persistence (interval-censored by capture cadence) ──
+    # The true change time lies in (last_same_at, first_changed_at]; we can only
+    # bound it. This is NOT verified execution availability — it only says the
+    # exact alerted quote was still observed at the last matching capture.
+    last_same_ts = series[0][0] if series else a["created_at"]
+    for ts, dk_dec, _pin in (series[1:] if series else []):
         if dk_dec is None or abs(dk_dec - entry_dec) > 1e-9:
-            out["dk_survival_min"] = round(
-                (ts - a["created_at"]).total_seconds() / 60, 1)
+            lower = round((last_same_ts - a["created_at"]).total_seconds() / 60, 1)
+            upper = round((ts - a["created_at"]).total_seconds() / 60, 1)
+            out["dk_survival_min"] = upper  # back-compat: the UPPER bound
+            grading.update(survival_lower_min=max(lower, 0.0), survival_upper_min=upper,
+                           last_same_at=last_same_ts.isoformat(),
+                           first_changed_at=ts.isoformat())
             break
+        last_same_ts = ts
+    else:
+        # Never observed to change — right-censored at the last capture.
+        grading.update(survival_lower_min=round(
+            (last_same_ts - a["created_at"]).total_seconds() / 60, 1),
+            survival_upper_min=None, last_same_at=last_same_ts.isoformat(),
+            first_changed_at=None)
 
     # Closes: last capture with a usable value for each side.
     dk_close = next((dk for _, dk, _p in reversed(series) if dk is not None), None)
@@ -882,11 +915,46 @@ def _grade_alert_prices(db, a) -> dict:
     if pin_close is not None:
         out["pin_close_prob"] = round(pin_close, 4)
 
-    # Convergence classification (needs both books at entry and close).
+    # ── Movement magnitude, stored ALONGSIDE the categorical label so
+    # near-boundary cases (a row that misses ε by 0.01pp) aren't treated as
+    # fundamentally different, and epsilon sensitivity is testable later. ──
+    # Gap is signed from the recommended side: gap = P_pinnacle_fair − P_dk_implied.
+    # For a value alert the entry gap is POSITIVE (Pinnacle rates the side higher
+    # than DK's price implies). Convergence = the gap shrinking toward zero.
+    # Convergence/gap math is only meaningful when DK and Pinnacle price the
+    # SAME proposition. prop_line_gap alerts are, by definition, DK and Pinnacle
+    # on DIFFERENT lines (sharp_prob is Pinnacle's fair at ITS line — not
+    # comparable to DK's line), and prop_outlier has no Pinnacle at all. For
+    # those we still record execution CLV + survival, but leave convergence and
+    # the gap magnitudes NULL rather than emit an apples-to-oranges label.
+    _same_prop = a["alert_type"] in ("dk_value", "dk_prop_value")
     pin_alert = a["sharp_prob"]
-    if dk_close and pin_close is not None and pin_alert is not None:
-        d_dk = (1 / dk_close) - (1 / entry_dec)     # + = DK made the side more expensive
-        d_pin = pin_close - float(pin_alert)        # + = sharp fair moved toward the side
+    if _same_prop and dk_close and pin_close is not None and pin_alert is not None:
+        pin_alert = float(pin_alert)
+        dk_impl_entry, dk_impl_close = 1 / entry_dec, 1 / dk_close
+        gap_initial = pin_alert - dk_impl_entry
+        gap_final = pin_close - dk_impl_close
+        d_dk = dk_impl_close - dk_impl_entry     # + = DK made the side more expensive
+        d_pin = pin_close - pin_alert            # + = sharp fair moved toward the side
+        # Max closure across the whole path (best convergence point, not just close).
+        min_abs_gap = abs(gap_initial)
+        for _ts, dk_dec_t, pin_t in series:
+            if dk_dec_t and pin_t is not None:
+                min_abs_gap = min(min_abs_gap, abs(pin_t - 1 / dk_dec_t))
+        gcr = ((abs(gap_initial) - abs(gap_final)) / abs(gap_initial)
+               if abs(gap_initial) > 1e-9 else None)
+        grading.update(
+            gap_initial_pp=round(gap_initial * 100, 3),
+            gap_final_pp=round(gap_final * 100, 3),
+            gap_max_closure_pp=round((abs(gap_initial) - min_abs_gap) * 100, 3),
+            gap_closure_ratio=round(gcr, 4) if gcr is not None else None,
+            d_dk_pp=round(d_dk * 100, 3),      # execution movement toward the bet
+            d_pin_pp=round(d_pin * 100, 3),    # reference movement toward the bet
+        )
+        # Convergence is a PATH classification (who moved), NOT a quality verdict.
+        # REFERENCE_CONVERGED_TO_EXECUTION = the sharp move was more consistent
+        # with DK's original price than the reference's — evidence DK may have
+        # led price discovery, not proof.
         dk_up, dk_down = d_dk > _CONV_EPS, d_dk < -_CONV_EPS
         pin_up, pin_down = d_pin > _CONV_EPS, d_pin < -_CONV_EPS
         if dk_up and pin_up:
@@ -899,6 +967,8 @@ def _grade_alert_prices(db, a) -> dict:
             out["convergence"] = "REFERENCE_CONVERGED_TO_EXECUTION"
         else:
             out["convergence"] = "DIVERGENCE_PERSISTED"
+
+    out["grading_json"] = grading
     return out
 
 
@@ -967,11 +1037,11 @@ def settle(db: DatabaseManager, sport: str) -> int:
         db.execute(
             "UPDATE line_alerts SET close_prob = %s, clv_pp = %s, outcome = %s, "
             "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
-            "convergence = %s, dk_survival_min = %s, "
+            "convergence = %s, dk_survival_min = %s, grading_json = %s, "
             "settled_at = CASE WHEN %s::text IS NOT NULL THEN NOW() ELSE settled_at END "
             "WHERE id = %s",
             (close_prob, clv_pp, outcome, g["dk_close_decimal"], g["dk_clv_pct"],
-             g["pin_close_prob"], g["convergence"], g["dk_survival_min"],
+             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]),
              outcome, a["id"]),
         )
         graded += 1
@@ -1033,6 +1103,9 @@ def report(db: DatabaseManager) -> None:
                MIN(ev) AS tier_min,
                COUNT(*) n,
                COUNT(*) FILTER (WHERE outcome IN ('won','lost')) n_out,
+               COUNT(*) FILTER (WHERE outcome = 'won') wins,
+               COUNT(*) FILTER (WHERE outcome = 'lost') losses,
+               COUNT(*) FILTER (WHERE outcome = 'void') pushes,
                ROUND(AVG((outcome = 'won')::int)
                      FILTER (WHERE outcome IN ('won','lost'))::numeric, 3) win_rate,
                ROUND(SUM(CASE WHEN outcome = 'won'
@@ -1057,27 +1130,37 @@ def report(db: DatabaseManager) -> None:
     )
     if tiers:
         print("\n  Claimed-EV tier calibration — three separate monotonicity verdicts:")
-        print("    signal (refCLV rises with tier) | tradability (ROI rises among survivors) | decay (survival falls with tier)")
+        print("    signal (refCLV rises w/ tier) | tradability (ROI rises among survivors) | decay (survival falls w/ tier)")
         for t in tiers:
             roi = (f"{float(t['units'])/t['n_out']*100:+.1f}%" if t["units"] is not None and t["n_out"] else "—")
             surv = f"{float(t['survived'])*100:.0f}%" if t["survived"] is not None else "—"
             med = f"{t['med_survival_min']}m" if t["med_survival_min"] is not None else "—"
-            print(f"    {t['tier']:<6} n={t['n']:>4} settled={t['n_out']:>3}  win={t['win_rate'] if t['win_rate'] is not None else '—'}  "
+            # Below the threshold, show raw counts + a DESCRIPTIVE-ONLY tag —
+            # never a rate that implies statistical conclusions from ~single
+            # digits. (30 is a floor for INDEPENDENT bets; correlated same-slate
+            # props carry less information, so treat even 30 cautiously.)
+            status = "descriptive-only" if t["n_out"] < _MIN_SETTLED_FOR_CI else "n≥floor"
+            print(f"    {t['tier']:<6} n={t['n']:>4} settled={t['n_out']:>3} "
+                  f"(W{t['wins']}-L{t['losses']}-P{t['pushes']})  "
+                  f"win={t['win_rate'] if t['win_rate'] is not None else '—'}  "
                   f"ROI@DK={roi}  refCLV={t['ref_clv_pp'] if t['ref_clv_pp'] is not None else '—'}pp  "
                   f"execCLV={t['avg_dk_clv'] if t['avg_dk_clv'] is not None else '—'}%  "
-                  f"survived={surv}  medDecay={med}")
+                  f"survived={surv}  medDecay={med}  [{status}]")
 
     conv = db.execute(
         """SELECT convergence, COUNT(*) n,
-              ROUND(AVG((outcome = 'won')::int)
-                    FILTER (WHERE outcome IN ('won','lost'))::numeric, 2) win_rate
+              COUNT(*) FILTER (WHERE outcome = 'won') wins,
+              COUNT(*) FILTER (WHERE outcome = 'lost') losses,
+              ROUND(AVG((grading_json->>'gap_closure_ratio')::numeric)::numeric, 2) avg_gcr
            FROM line_alerts WHERE convergence IS NOT NULL
            GROUP BY 1 ORDER BY n DESC"""
     )
     if conv:
-        print("\n  Gap-convergence patterns (REFERENCE_CONVERGED_TO_EXECUTION = DK's quote was information):")
+        print("\n  Gap-convergence PATH classification (who moved — not a quality verdict; each row is a")
+        print("  testable population, e.g. DIVERGENCE_PERSISTED is neutral until its ROI/calibration is measured):")
         for c in conv:
-            print(f"    {c['convergence']:<34} n={c['n']:>4}  win={c['win_rate'] if c['win_rate'] is not None else '—'}")
+            print(f"    {c['convergence']:<34} n={c['n']:>4}  W{c['wins']}-L{c['losses']}  "
+                  f"avgGapClosure={c['avg_gcr'] if c['avg_gcr'] is not None else '—'}  [descriptive-only]")
     print()
 
 
