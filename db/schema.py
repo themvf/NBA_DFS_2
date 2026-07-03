@@ -1874,4 +1874,26 @@ INDEXES = [
     # capture series is reproducible from the append-only *_odds_history tables.
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS comparison_status TEXT",
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS grading_version TEXT",
+    # 2026-07-03: APPEND-ONLY grade history. line_alerts holds the CURRENT
+    # grade for ordinary querying (denormalized); alert_grades preserves EVERY
+    # grade event immutably. Reproducibility (from the append-only *_odds_history
+    # captures) lets the old answer be RECREATED; this table PROVES what the old
+    # answer actually was — distinguishing what the system concluded at the
+    # time, what a later methodology concluded from the same evidence, and
+    # whether a change came from new captures, corrected data, or revised logic.
+    # is_current flags the latest grade per alert; never UPDATE a prior row's
+    # grade fields, only flip is_current.
+    """CREATE TABLE IF NOT EXISTS alert_grades (
+        id SERIAL PRIMARY KEY,
+        alert_id INTEGER NOT NULL REFERENCES line_alerts(id) ON DELETE CASCADE,
+        grading_version TEXT NOT NULL,
+        graded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        comparison_status TEXT,
+        convergence TEXT,
+        outcome TEXT,
+        dk_clv_pct DOUBLE PRECISION,
+        grading_json JSONB,
+        is_current BOOLEAN NOT NULL DEFAULT TRUE
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_alert_grades_current ON alert_grades(alert_id) WHERE is_current",
 ]

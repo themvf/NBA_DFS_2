@@ -530,6 +530,7 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
              if a["home_games"] is not None and a["away_games"] is not None else None,
              a["id"]),
         )
+        _append_grade_history(db, a["id"], g, outcome=outcome)
         graded += 1
     if graded:
         print(f"Tennis totals alerts: {graded} graded")
@@ -687,6 +688,7 @@ def settle_props_soccer(db: DatabaseManager) -> int:
             ("won" if scored else "lost", g["dk_close_decimal"], g["dk_clv_pct"],
              g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"], a["id"]),
         )
+        _append_grade_history(db, a["id"], g, outcome=("won" if scored else "lost"))
         graded += 1
     if graded:
         print(f"WC prop alerts: {graded} graded from the goal timeline")
@@ -761,6 +763,7 @@ def settle_props(db: DatabaseManager) -> int:
             (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
              g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"], actual, a["id"]),
         )
+        _append_grade_history(db, a["id"], g, outcome=outcome)
         graded += 1
     if graded:
         print(f"Prop alerts (mlb): {graded} graded from boxscores")
@@ -951,6 +954,19 @@ def _grade_alert_prices(db, a) -> dict:
     if pin_close is not None:
         out["pin_close_prob"] = round(pin_close, 4)
 
+    # close_status makes the persisted-to-close DENOMINATOR explicit — an alert
+    # without an observable, comparable close is NOT a failure to persist and
+    # must be reported separately, never flattered into the numerator:
+    #   OBSERVED         — a same-proposition DK quote existed at close.
+    #   MARKET_CHANGED   — DK still quoted the market at close but at a DIFFERENT
+    #                      line (a different proposition; no comparable close).
+    #   CLOSE_UNAVAILABLE— DK no longer quoted the selection at close.
+    if dk_close is not None:
+        grading["close_status"] = "OBSERVED"
+    else:
+        last_dk = (caps[-1]["books"] or {}).get(_DK_BOOK) if caps else None
+        grading["close_status"] = "MARKET_CHANGED" if last_dk else "CLOSE_UNAVAILABLE"
+
     # ── Movement magnitude, stored ALONGSIDE the categorical label so
     # near-boundary cases (a row that misses ε by 0.01pp) aren't treated as
     # fundamentally different, and epsilon sensitivity is testable later. ──
@@ -1008,6 +1024,33 @@ def _grade_alert_prices(db, a) -> dict:
 
     out["grading_json"] = grading
     return out
+
+
+def _append_grade_history(db, alert_id: int, g: dict, outcome=None) -> None:
+    """Immutably record this grade event: flip prior rows off is_current, insert
+    the new grade. Never UPDATEs a prior grade's fields — the ledger proves what
+    each methodology concluded, not just that a version existed. Idempotent per
+    (alert, version, outcome): re-running a settle pass under the same version
+    with the same outcome does not spam duplicate history rows."""
+    dup = db.execute_one(
+        """SELECT 1 FROM alert_grades WHERE alert_id = %s AND is_current
+             AND grading_version = %s AND convergence IS NOT DISTINCT FROM %s
+             AND comparison_status IS NOT DISTINCT FROM %s
+             AND outcome IS NOT DISTINCT FROM %s""",
+        (alert_id, g["grading_version"], g["convergence"], g["comparison_status"], outcome),
+    )
+    if dup:
+        return
+    db.execute("UPDATE alert_grades SET is_current = FALSE WHERE alert_id = %s AND is_current",
+               (alert_id,))
+    db.execute(
+        """INSERT INTO alert_grades
+             (alert_id, grading_version, comparison_status, convergence, outcome,
+              dk_clv_pct, grading_json, is_current)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)""",
+        (alert_id, g["grading_version"], g["comparison_status"], g["convergence"],
+         outcome, g["dk_clv_pct"], json.dumps(g["grading_json"])),
+    )
 
 
 def _dk_execution_clv(db, a) -> tuple[float | None, float | None]:
@@ -1082,6 +1125,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
              g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"],
              outcome, a["id"]),
         )
+        _append_grade_history(db, a["id"], g, outcome=outcome)
         graded += 1
     if graded:
         print(f"Line alerts ({sport}): {graded} graded")
@@ -1152,10 +1196,12 @@ def report(db: DatabaseManager) -> None:
                ROUND(AVG(dk_clv_pct)::numeric, 2) avg_dk_clv,
                ROUND(AVG((pin_close_prob - sharp_prob) * 100)
                      FILTER (WHERE pin_close_prob IS NOT NULL)::numeric, 2) ref_clv_pp,
-               ROUND(AVG((dk_survival_min IS NULL AND dk_close_decimal IS NOT NULL)::int)
-                     FILTER (WHERE settled_at IS NOT NULL)::numeric, 2) survived,
-               ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY dk_survival_min)
-                     ::numeric, 0) med_survival_min
+               -- persisted-to-close as an EXPLICIT numerator/denominator:
+               -- denominator = alerts with an OBSERVABLE comparable close only.
+               COUNT(*) FILTER (WHERE dk_close_decimal IS NOT NULL) n_obsclose,
+               COUNT(*) FILTER (WHERE dk_survival_min IS NULL AND dk_close_decimal IS NOT NULL) n_persist,
+               COUNT(*) FILTER (WHERE grading_json->>'close_status' = 'MARKET_CHANGED') n_mktchg,
+               COUNT(*) FILTER (WHERE grading_json->>'close_status' = 'CLOSE_UNAVAILABLE') n_noclose
         FROM (
             SELECT *, COALESCE((details_json->>'ev_pct')::numeric,
                                (details_json->>'edge_vs_median_pct')::numeric) AS ev
@@ -1171,11 +1217,17 @@ def report(db: DatabaseManager) -> None:
         print("    signal (refCLV rises w/ tier) | tradability (ROI rises among survivors) | decay (survival falls w/ tier)")
         for t in tiers:
             roi = (f"{float(t['units'])/t['n_out']*100:+.1f}%" if t["units"] is not None and t["n_out"] else "—")
-            # % right-censored (quote still present at close) — cadence-robust,
-            # unlike a median-minutes that mixes 30m/3h/6h schedules (dropped;
+            # Persisted-to-close as numerator/denominator (denominator = alerts
+            # with an OBSERVABLE comparable close). Alerts without one are shown
+            # separately, never flattered into the numerator or counted as
+            # failures to persist. Cadence-robust (no mixed-cadence median);
             # per-row interval bounds live in grading_json for stratified
-            # interval-censored survival analysis once the sample supports it).
-            surv = f"{float(t['survived'])*100:.0f}%" if t["survived"] is not None else "—"
+            # interval-censored survival analysis once the sample supports it.
+            persist = (f"{t['n_persist']}/{t['n_obsclose']}" if t["n_obsclose"] else "—")
+            excl = []
+            if t["n_mktchg"]:  excl.append(f"{t['n_mktchg']} line-moved")
+            if t["n_noclose"]: excl.append(f"{t['n_noclose']} close-unavail")
+            excl_s = f" (+{', '.join(excl)})" if excl else ""
             # Below the threshold, show raw counts + a DESCRIPTIVE-ONLY tag —
             # never a rate that implies statistical conclusions from ~single
             # digits. (30 is a floor for INDEPENDENT bets; correlated same-slate
@@ -1186,7 +1238,7 @@ def report(db: DatabaseManager) -> None:
                   f"win={t['win_rate'] if t['win_rate'] is not None else '—'}  "
                   f"ROI@DK={roi}  refCLV={t['ref_clv_pp'] if t['ref_clv_pp'] is not None else '—'}pp  "
                   f"execCLV={t['avg_dk_clv'] if t['avg_dk_clv'] is not None else '—'}%  "
-                  f"persisted-to-close={surv}  [{status}]")
+                  f"persisted={persist}{excl_s}  [{status}]")
 
     conv = db.execute(
         """SELECT convergence, COUNT(*) n,
