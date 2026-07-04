@@ -1,4 +1,10 @@
-import { getTennisBets, getTennisBetBacktest, getTennisFavoriteDogBreakdown } from "@/db/queries";
+import {
+  getTennisBets,
+  getTennisBetBacktest,
+  getTennisFavoriteDogBreakdown,
+  getTennisFavoriteLosses,
+  getTennisFavoriteCalibration,
+} from "@/db/queries";
 import WimbledonClient from "./wimbledon-client";
 
 // Dedicated Wimbledon-only view — the general /vegas?sport=tennis page covers
@@ -7,10 +13,20 @@ import WimbledonClient from "./wimbledon-client";
 const TOURNAMENT = "Wimbledon";
 
 export default async function WimbledonContent() {
-  const [bets, backtest, favoriteDog] = await Promise.all([
+  const [bets, backtest, favoriteDog, favoriteLosses, favoriteCalibration] = await Promise.all([
     getTennisBets(500, TOURNAMENT),
     getTennisBetBacktest(TOURNAMENT),
     getTennisFavoriteDogBreakdown(TOURNAMENT),
+    getTennisFavoriteLosses(TOURNAMENT),
+    getTennisFavoriteCalibration(TOURNAMENT),
   ]);
-  return <WimbledonClient bets={bets} backtest={backtest} favoriteDog={favoriteDog} />;
+  return (
+    <WimbledonClient
+      bets={bets}
+      backtest={backtest}
+      favoriteDog={favoriteDog}
+      favoriteLosses={favoriteLosses}
+      favoriteCalibration={favoriteCalibration}
+    />
+  );
 }

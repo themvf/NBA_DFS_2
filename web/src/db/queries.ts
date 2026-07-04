@@ -6470,6 +6470,108 @@ export async function getTennisFavoriteDogBreakdown(tournament?: string): Promis
   });
 }
 
+export type TennisFavoriteLossRow = {
+  matchId: number;
+  matchDate: string | null;
+  tour: string;
+  favorite: string;
+  marketProb: number | null;
+  marketOdds: number | null;
+  resultDetail: string | null;
+};
+
+// Every settled bet where the market favorite (market_prob >= 50%) actually
+// lost — the concrete "what happened" list behind the favorite/dog breakdown.
+// tournament: optional filter (e.g. "Wimbledon").
+export async function getTennisFavoriteLosses(tournament?: string): Promise<TennisFavoriteLossRow[]> {
+  const tournamentFilter = tournament ? sql`AND tm.tournament = ${tournament}` : sql``;
+  const rows = await db.execute(sql`
+    SELECT tb.match_id      AS "matchId",
+           tm.match_date    AS "matchDate",
+           tm.tour          AS "tour",
+           tb.selection_label AS "favorite",
+           tb.market_prob   AS "marketProb",
+           tb.market_odds   AS "marketOdds",
+           tb.result_detail AS "resultDetail"
+    FROM tennis_bets tb
+    JOIN tennis_matches tm ON tm.id = tb.match_id
+    WHERE tb.status = 'lost' AND tb.bet_type = 'moneyline' AND tb.market_prob >= 0.5
+      ${tournamentFilter}
+    ORDER BY tb.market_prob DESC
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+    matchId: Number(r.matchId),
+    matchDate: r.matchDate != null ? String(r.matchDate) : null,
+    tour: String(r.tour),
+    favorite: String(r.favorite),
+    marketProb: r.marketProb != null ? Number(r.marketProb) : null,
+    marketOdds: r.marketOdds != null ? Number(r.marketOdds) : null,
+    resultDetail: r.resultDetail != null ? String(r.resultDetail) : null,
+  }));
+}
+
+export type TennisFavoriteCalibrationRow = {
+  cut: "tier" | "tour";
+  label: string;   // tier: "50-60%" etc; tour: "ATP" | "WTA"
+  n: number;
+  wins: number;
+  losses: number;
+  winRate: number | null;
+  avgImplied: number | null;
+};
+
+// Where do favorite losses concentrate? Two cuts on the same settled favorite
+// bets (market_prob >= 50%): by implied-probability tier (are modest favorites
+// underperforming while big favorites hold?) and by tour (ATP best-of-5 vs
+// WTA best-of-3). tournament: optional filter (e.g. "Wimbledon").
+export async function getTennisFavoriteCalibration(tournament?: string): Promise<TennisFavoriteCalibrationRow[]> {
+  const tournamentFilter = tournament ? sql`AND tm.tournament = ${tournament}` : sql``;
+  const rows = await db.execute(sql`
+    SELECT 'tier' AS "cut",
+           CASE
+             WHEN tb.market_prob < 0.6 THEN '50-60%'
+             WHEN tb.market_prob < 0.7 THEN '60-70%'
+             WHEN tb.market_prob < 0.8 THEN '70-80%'
+             WHEN tb.market_prob < 0.9 THEN '80-90%'
+             ELSE '90-100%'
+           END AS "label",
+           COUNT(*)                                   AS "n",
+           COUNT(*) FILTER (WHERE tb.status = 'won')  AS "wins",
+           COUNT(*) FILTER (WHERE tb.status = 'lost') AS "losses",
+           AVG(tb.market_prob)                        AS "avgImplied"
+    FROM tennis_bets tb
+    JOIN tennis_matches tm ON tm.id = tb.match_id
+    WHERE tb.status IN ('won', 'lost') AND tb.bet_type = 'moneyline' AND tb.market_prob >= 0.5
+      ${tournamentFilter}
+    GROUP BY 2
+    UNION ALL
+    SELECT 'tour' AS "cut",
+           tm.tour AS "label",
+           COUNT(*)                                   AS "n",
+           COUNT(*) FILTER (WHERE tb.status = 'won')  AS "wins",
+           COUNT(*) FILTER (WHERE tb.status = 'lost') AS "losses",
+           AVG(tb.market_prob)                        AS "avgImplied"
+    FROM tennis_bets tb
+    JOIN tennis_matches tm ON tm.id = tb.match_id
+    WHERE tb.status IN ('won', 'lost') AND tb.bet_type = 'moneyline' AND tb.market_prob >= 0.5
+      ${tournamentFilter}
+    GROUP BY 2
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const wins = Number(r.wins);
+    const losses = Number(r.losses);
+    return {
+      cut: r.cut as "tier" | "tour",
+      label: String(r.label),
+      n: Number(r.n),
+      wins,
+      losses,
+      winRate: wins + losses > 0 ? wins / (wins + losses) : null,
+      avgImplied: r.avgImplied != null ? Number(r.avgImplied) : null,
+    };
+  });
+}
+
 // ── Soccer bet ledger + backtest ──────────────────────────────────────────────
 export type SoccerBetRow = {
   id: number;
