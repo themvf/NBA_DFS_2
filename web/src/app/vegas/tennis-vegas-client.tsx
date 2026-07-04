@@ -276,9 +276,12 @@ export default function TennisVegasClient({
         <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} />
       )}
 
-      {/* Top rated bets — the model's recommendations, best first */}
+      {/* Top rated bets — the model's recommendations, best first. Settled bets
+          (won/lost/void) are excluded even if high-starred: a bet from a since-
+          superseded model version whose match already happened is history, not
+          a live recommendation (see memory tennis-moneyline-no-edge). */}
       {bets.length > 0 && (() => {
-        const top = bets.filter((b) => b.stars >= 3 && (b.edge ?? 0) > 0).slice(0, 12);
+        const top = bets.filter((b) => b.status === "pending" && b.stars >= 3 && (b.edge ?? 0) > 0).slice(0, 12);
         if (top.length === 0) return null;
         return (
           <div>
