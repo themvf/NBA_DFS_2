@@ -73,6 +73,25 @@ def _commence(date_event: str | None, str_time: str | None):
         return None
 
 
+def _fetch_event(event_id) -> dict | None:
+    """Single-event v2 lookup (diagnostic use only so far)."""
+    if not event_id:
+        return None
+    try:
+        r = requests.get(
+            f"{TSDB_V2_BASE}/lookup/event/{event_id}",
+            headers=_TSDB_HEADERS,
+            timeout=20,
+        )
+        r.raise_for_status()
+        data = r.json() or {}
+        events = data.get("events") or data.get("event") or []
+        return events[0] if events else None
+    except (requests.RequestException, IndexError) as e:
+        logger.warning("TheSportsDB v2 event %s lookup failed: %s", event_id, e)
+        return None
+
+
 def _fetch_season(tour: str) -> list[dict]:
     """All events for one tour/season in a single v2 schedule call; [] on failure."""
     league_id = _LEAGUES[tour]
