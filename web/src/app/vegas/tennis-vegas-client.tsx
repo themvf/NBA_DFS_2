@@ -63,7 +63,7 @@ function StatusPill({ status }: { status: string }) {
 // Renders its full structure even before any bet is settled, so the analytics
 // surface exists from day one. Realized win%/ROI populate once the tennis-data.co.uk
 // settlement job grades bets (status won/lost).
-function TennisResults({ bets, backtest }: { bets: TennisBetRow[]; backtest: TennisBetBacktestRow[] }) {
+export function TennisResults({ bets, backtest }: { bets: TennisBetRow[]; backtest: TennisBetBacktestRow[] }) {
   const settled = bets.filter((b) => b.status === "won" || b.status === "lost");
   const won = settled.filter((b) => b.status === "won").length;
   const lost = settled.filter((b) => b.status === "lost").length;

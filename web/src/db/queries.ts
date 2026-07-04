@@ -6331,7 +6331,9 @@ export type TennisBetRow = {
 
 // Rated moneyline bets (pending + settled), best-rated first. Joins the match
 // for fixture context. ATP-only in V1 (WTA has no rating signal yet).
-export async function getTennisBets(limit = 100): Promise<TennisBetRow[]> {
+// tournament: optional filter (e.g. "Wimbledon") — undefined returns all tours/events.
+export async function getTennisBets(limit = 100, tournament?: string): Promise<TennisBetRow[]> {
+  const tournamentFilter = tournament ? sql`WHERE tm.tournament = ${tournament}` : sql``;
   const rows = await db.execute(sql`
     SELECT
       tb.id              AS "id",
@@ -6350,6 +6352,7 @@ export async function getTennisBets(limit = 100): Promise<TennisBetRow[]> {
       tm.home_player || ' vs ' || tm.away_player AS "fixture"
     FROM tennis_bets tb
     LEFT JOIN tennis_matches tm ON tm.id = tb.match_id
+    ${tournamentFilter}
     ORDER BY tb.stars DESC, tb.edge DESC NULLS LAST
     LIMIT ${limit}
   `);
@@ -6383,7 +6386,9 @@ export type TennisBetBacktestRow = {
 // Star-tier calibration on SETTLED tennis bets (won/lost). Empty until the
 // tennis-data.co.uk settlement job grades bets — the panel renders its structure regardless.
 // stars=0 is the client-aggregated 'All' rollup (computed in the component).
-export async function getTennisBetBacktest(): Promise<TennisBetBacktestRow[]> {
+// tournament: optional filter (e.g. "Wimbledon") — undefined returns all tours/events.
+export async function getTennisBetBacktest(tournament?: string): Promise<TennisBetBacktestRow[]> {
+  const tournamentFilter = tournament ? sql`AND tm.tournament = ${tournament}` : sql``;
   const rows = await db.execute(sql`
     SELECT
       tb.stars                                              AS "stars",
@@ -6395,7 +6400,9 @@ export async function getTennisBetBacktest(): Promise<TennisBetBacktestRow[]> {
                WHEN tb.status = 'won' THEN tb.market_decimal - 1 ELSE -1 END) AS "profitUnits",
       AVG(POWER((CASE WHEN tb.status = 'won' THEN 1.0 ELSE 0.0 END) - tb.our_prob, 2)) AS "brier"
     FROM tennis_bets tb
+    JOIN tennis_matches tm ON tm.id = tb.match_id
     WHERE tb.status IN ('won', 'lost') AND tb.bet_type = 'moneyline'
+      ${tournamentFilter}
     GROUP BY tb.stars
     ORDER BY tb.stars DESC
   `);
@@ -6409,6 +6416,56 @@ export async function getTennisBetBacktest(): Promise<TennisBetBacktestRow[]> {
       realizedWinRate: Number(r.realizedWinRate),
       roi: marketBets > 0 ? profit / marketBets : null,
       brier: r.brier != null ? Number(r.brier) : null,
+    };
+  });
+}
+
+export type TennisFavoriteDogRow = {
+  group: "market" | "picks";  // "market" = which side Vegas favored; "picks" = which side our_prob favored
+  side: "favorite" | "dog";
+  wins: number;
+  losses: number;
+  winRate: number | null;
+};
+
+// Two cuts on the same settled moneyline bets: (1) how often the market
+// favorite/dog actually won (pure market frequency), (2) how often OUR
+// favorite/dog SELECTION actually won. Since P3 proved our_prob == the market
+// consensus (tennis-moneyline-no-edge), these two cuts are expected to be
+// nearly identical right now — shown side by side so that's visible, not
+// asserted. tournament: optional filter (e.g. "Wimbledon").
+export async function getTennisFavoriteDogBreakdown(tournament?: string): Promise<TennisFavoriteDogRow[]> {
+  const tournamentFilter = tournament ? sql`AND tm.tournament = ${tournament}` : sql``;
+  const rows = await db.execute(sql`
+    SELECT 'market' AS "group",
+           CASE WHEN tb.market_prob >= 0.5 THEN 'favorite' ELSE 'dog' END AS "side",
+           COUNT(*) FILTER (WHERE tb.status = 'won')  AS "wins",
+           COUNT(*) FILTER (WHERE tb.status = 'lost') AS "losses"
+    FROM tennis_bets tb
+    JOIN tennis_matches tm ON tm.id = tb.match_id
+    WHERE tb.status IN ('won', 'lost') AND tb.bet_type = 'moneyline' AND tb.market_prob IS NOT NULL
+      ${tournamentFilter}
+    GROUP BY 1, 2
+    UNION ALL
+    SELECT 'picks' AS "group",
+           CASE WHEN tb.our_prob >= 0.5 THEN 'favorite' ELSE 'dog' END AS "side",
+           COUNT(*) FILTER (WHERE tb.status = 'won')  AS "wins",
+           COUNT(*) FILTER (WHERE tb.status = 'lost') AS "losses"
+    FROM tennis_bets tb
+    JOIN tennis_matches tm ON tm.id = tb.match_id
+    WHERE tb.status IN ('won', 'lost') AND tb.bet_type = 'moneyline'
+      ${tournamentFilter}
+    GROUP BY 1, 2
+  `);
+  return (rows.rows as Record<string, unknown>[]).map((r) => {
+    const wins = Number(r.wins);
+    const losses = Number(r.losses);
+    return {
+      group: r.group as "market" | "picks",
+      side: r.side as "favorite" | "dog",
+      wins,
+      losses,
+      winRate: wins + losses > 0 ? wins / (wins + losses) : null,
     };
   });
 }
