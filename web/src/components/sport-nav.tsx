@@ -18,7 +18,7 @@ const SPORTS: { sport: Sport; label: string; icon: string }[] = [
   { sport: "nba", label: "NBA", icon: "🏀" },
   { sport: "mlb", label: "MLB", icon: "⚾" },
   { sport: "soccer", label: "World Cup", icon: "⚽" },
-  { sport: "tennis", label: "Wimbledon", icon: "🎾" },
+  { sport: "tennis", label: "Tennis", icon: "🎾" },
 ];
 
 // Soccer currently only has the Vegas model wired up; DFS/analytics pages are
@@ -32,6 +32,7 @@ const PAGE_LINKS: Array<{
   { href: "/homerun", label: "Homeruns", sports: ["mlb"] },
   { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },
+  { href: "/vegas/wimbledon", label: "Wimbledon", sports: ["tennis"] },
   { href: "/elo", label: "Elo / Power", sports: ["soccer"] },
   { href: "/stats", label: "Team Stats", sports: ["nba", "mlb"] },
   { href: "/schedule", label: "Schedule", sports: ["nba", "mlb"] },
@@ -83,7 +84,12 @@ export function SportNav() {
         <nav className="flex items-center gap-1 text-sm">
           {visiblePageLinks.map((l) => {
             const href = `${l.href}?sport=${currentSport}`;
-            const isActive = pathname === l.href || pathname.startsWith(`${l.href}/`);
+            // Prefer the most specific matching href so nested routes (e.g.
+            // /vegas/wimbledon under /vegas) don't also highlight their parent.
+            const matches = (p: string) => pathname === p || pathname.startsWith(`${p}/`);
+            const isActive =
+              matches(l.href) &&
+              !visiblePageLinks.some((o) => o.href !== l.href && o.href.length > l.href.length && matches(o.href));
             return (
               <Link
                 key={l.href}
