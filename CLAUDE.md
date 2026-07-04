@@ -1161,3 +1161,165 @@ how much? was the original price still visible? did these bets pay over enough
 trials? does the evidence justify trusting the signal? It is an audit trail that
 separates **what was observed**, **what can be inferred**, and **what cannot yet be
 known**.
+
+---
+
+## Tennis Recency/Fatigue Model — Spec (2026-07-04)
+
+### Why this is a legitimate new test, not a fourth revision
+
+P3 (`model/tennis_model.py`) proved the market is sharp using exactly
+`FEATURE_COLS = ["market_fav_prob", "elo_diff", "grass_elo_diff"]` — a flat,
+full-history Elo (`ingest/tennis_history.py`, K=32, no time decay, one match =
+one equal-weight update since 2011) blended with the market. That result
+stands; tennis moneyline stays ≤2★ on those three features.
+
+What was **never** fit, and is sitting unused in sources we already ingest:
+
+| Field | Source | Currently | Status |
+|---|---|---|---|
+| `winner_rank`/`loser_rank`, `_rank_points`, `_seed` | TML-Database (ATP) | Not parsed by `tennis_history.py` at all | New |
+| `WRank`/`LRank`, `WPts`/`LPts` | tennis-data.co.uk (WTA) | Parsed into the training corpus (`ingest/tennis_training.py:192-201`, comment: "carried for future features") but **never added to `FEATURE_COLS`** | Captured, unused |
+| `minutes` (match duration) | TML-Database (ATP only) | Not parsed | New |
+| `round`, `best_of` | Both | Not parsed | New |
+| Recency weighting (EWMA / time-decay) on Elo itself | — | Doesn't exist — Elo is flat | New |
+
+So this spec covers two genuinely untested axes: (1) recency-weighted rating
+instead of flat Elo, (2) rank/points/fatigue features that were captured but
+never used. Confirming this before writing the spec — not assuming it — is
+the point: don't re-run a test already run.
+
+### Motivating observation (context, not proof)
+
+The Wimbledon favorite/dog drill-down (`/vegas/wimbledon`) found ATP favorites
+realizing 63.0% (n=27) against 70.6% implied vs. WTA favorites realizing 95.5%
+(n=22) against 75.5% implied — a ~28pp gap in over/under-performance between
+tours. n is small and this is **not** evidence of anything yet; it's the
+reason to test fatigue/round-depth features specifically for ATP (best-of-5 —
+more games, more cumulative fatigue across a 2-week draw) rather than a reason
+to believe the result.
+
+### Hypotheses (pre-registered — fixed before any data is touched)
+
+**H1 — Recency-weighted rating.** An EWMA-style Elo (recent matches weighted
+more than career-long ones) produces better-calibrated probabilities than the
+flat Elo specifically in matches where recency-weighted and flat ratings
+diverge (a "form gap" subset) — not across the whole population, since P3
+already shows no edge there.
+- Falsifiable prediction: in the top-quartile-by-|form_gap| subset, walk-forward
+  CLV and realized-vs-implied win rate for the recency-weighted signal beat the
+  flat-Elo signal in the same subset.
+- Kill criterion: if the form-gap subset shows no improvement over flat Elo,
+  stop — do not try a third Elo variant. This joins `tennis-moneyline-no-edge`.
+
+**H2 — Rank/points/fatigue features.** Adding `rank_diff`, `rank_points_diff`,
+`round_number`, and (ATP only) `cumulative_minutes_this_tournament` to
+`FEATURE_COLS` improves walk-forward logloss vs. the P3 three-feature model,
+and/or a fatigue feature specifically predicts the ATP favorite-loss gap
+(positive coefficient on `cumulative_minutes_this_tournament` × `best_of=5`
+interaction, walk-forward significant).
+- Falsifiable prediction: refit with the expanded feature set on the existing
+  66k-match corpus (`ingest/tennis_training.py`), walk-forward split by
+  tournament (never by random row — see Non-negotiables), logloss must beat
+  the P3 baseline by more than noise (bootstrap CI, not a point estimate).
+- Kill criterion: if the expanded model doesn't beat P3's logloss out of
+  sample, stop. Do not keep adding features to chase significance.
+
+H1 and H2 are separate, independently falsifiable tests — a positive H2 result
+does not retroactively justify skipping H1's kill criterion, and vice versa.
+
+### Data build-out
+
+1. **Extend `ingest/tennis_history.py`'s ATP parser** to carry `winner_rank`,
+   `loser_rank`, `winner_rank_points`, `loser_rank_points`, `minutes`, `round`,
+   `best_of` through `_run_elo`'s match dicts (currently discarded — only
+   `wkey/lkey/is_grass/serve` survive). WTA equivalent from tennis-data.co.uk's
+   `WRank`/`LRank`/`WPts`/`LPts`/`Round`/`Best of` columns (already fetched by
+   `tennis_training.py`, just needs the same fields plumbed to the Elo/history
+   layer, not only the training corpus).
+2. **Recency-weighted Elo variant**: a second engine alongside `_run_elo`
+   (don't replace it — flat Elo is still the calibration baseline), e.g.
+   `_run_elo_ewma(matches, half_life_days)`. Tennis players log far fewer
+   matches/year than NBA teams log games (≈60-90 tour matches/year for a top
+   player vs. 82 NBA games), so the decay constant must be tuned in **days**,
+   not match count, unlike the NBA's per-game α=0.25 — grid search half-life
+   candidates (e.g. 90/180/365 days) rather than assuming NBA's constant
+   transfers.
+3. **Layoff/uncertainty signal**: `days_since_last_match` per player at
+   prediction time — purely derived from existing match dates, no new source.
+   Widen predictive uncertainty (or regress the rating toward a population
+   prior) past some layoff threshold (e.g. 60+ days) rather than trusting a
+   stale rating at face value.
+4. **Fatigue signal (ATP-specific)**: cumulative `minutes` played by each
+   player already in the current tournament, updated match-by-match within a
+   draw. WTA lacks `minutes` in tennis-data.co.uk — either accept ATP-only for
+   this specific feature or find a supplementary WTA duration source before
+   claiming a cross-tour fatigue comparison.
+5. **Surface-transition signal**: days since each player's last grass-court
+   match (or count of grass matches in the last 60 days) — TML has `surface`
+   per match already; tennis-data.co.uk has a `Surface` column too. Directly
+   relevant to Wimbledon specifically (most of the tour arrives off clay/hard).
+6. Backfill all of the above into the existing training corpus
+   (`ingest/tennis_training.py`) as additional columns — reuse its point-in-time
+   replay discipline (features computed from state strictly *before* the match
+   being labeled, never leaking the outcome) rather than building a parallel
+   corpus.
+
+### Model architecture
+
+- Stay inside the existing pattern: `LogisticRegression` on standardized
+  features (`model/tennis_model.py`'s `_fit`), market-anchored blend (shrink
+  raw model probability toward the market by weight `w`, grid-searched
+  walk-forward — never let the fitted model fully replace the market line).
+- `FEATURE_COLS` candidates to test (added incrementally, each justified by its
+  own walk-forward logloss delta, not all six dumped in at once): `elo_diff`,
+  `grass_elo_diff` (existing) + `rank_diff`, `rank_points_diff` (log-scaled —
+  rank is heavily right-skewed), `recency_elo_diff`, `form_gap` (=
+  `recency_elo_diff − elo_diff`, the H1 test variable), `layoff_diff`,
+  `cumulative_minutes_diff` (ATP only, `best_of=5` matches only).
+- Fit ATP and WTA **separately** given the observed tour asymmetry — a pooled
+  fit could average away a real tour-specific effect (or manufacture a fake
+  pooled one). Report both tours' walk-forward metrics independently, same as
+  the favorite/dog breakdown already does.
+
+### Evaluation
+
+- **Walk-forward split by tournament, not by row.** Matches within a
+  tournament are correlated (same field, same conditions); a random row split
+  leaks tournament-level information across train/test.
+- **Minimum sample before any conclusion**: pre-register ≥200 matches in the
+  H1 form-gap top-quartile subset (use the 66k-match historical corpus for
+  this, not live Wimbledon bets alone — current live sample is ~49 total
+  favorite bets, nowhere near sufficient on its own).
+- **Metrics**: logloss delta vs. the P3 baseline (bootstrap CI, not a point
+  estimate), Brier score, and — once/if deployed live — CLV via
+  `model/clv_report.py` sliced by `form_gap` quartile and by tour.
+- **Report both tours separately, always.** A combined ATP+WTA number would
+  hide exactly the asymmetry that motivated this spec.
+
+### Phases
+
+| Phase | Scope | Gate to proceed |
+|---|---|---|
+| P1 | Extend `tennis_history.py` to carry rank/points/minutes/round/best_of (ATP + WTA); backfill into the training corpus | Data present, leak-free, point-in-time verified |
+| P2 | Build the EWMA-Elo variant (`_run_elo_ewma`) alongside flat Elo; grid-search half-life | H1's form-gap subset defined and frozen before any backtest is run |
+| P3 | Walk-forward backtest H1 (recency) and H2 (rank/fatigue) on the historical corpus — offline only, no live deployment | Both hypotheses' kill criteria evaluated honestly; ≥200-match minimum met before concluding |
+| P4 | **Only if** P3 shows a real out-of-sample edge in the qualifying subset: deploy as an anchor-shrunk signal gated to that subset only (not universally) in `model/tennis_predictions.py` | Live paper-trading period before any bet from this signal counts above 2★ |
+| P5 | Ongoing CLV monitoring via `model/clv_report.py`, sliced by `form_gap` quartile and tour, to confirm live performance tracks the backtest | Continuous — a live/backtest divergence pulls the signal back to ≤2★ |
+
+### Non-negotiables (inherited from every prior gameline/totals mirage)
+
+- Walk-forward or nothing — the corpus already exists; there's no excuse to
+  fit and grade on the same period.
+- No multiple-comparisons fishing: H1 and H2 are the two registered tests.
+  If both fail, tennis moneyline goes back to calibration-only across all
+  tested feature families, and the next idea (if any) gets its own spec with
+  its own pre-registered kill criterion — not a quiet third attempt bolted
+  onto this one.
+- A small-sample live result (e.g. this Wimbledon's 49 favorite bets) can
+  motivate a hypothesis; it can never confirm one. Confirmation requires the
+  historical corpus and the stated minimum sample.
+- If deployed, the signal only ever applies within the subset it was proven
+  on (the form-gap top quartile) — extending it to the general population
+  without re-testing there would repeat the exact mistake the 50/50 blend
+  made in P3.
