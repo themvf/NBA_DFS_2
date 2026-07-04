@@ -1124,22 +1124,22 @@ type BettingRow = {
   strongestEdge: number;
 };
 
-function getRecommendationBand(sport: Sport, market: RecommendationMarket): number {
-  if (sport === "nba") {
-    if (market === "ou") return 0.03;
-    return 0.04;
-  }
-  if (market === "ou") return 0.025;
-  return 0.03;
-}
-
+// No walk-forward backtest supports treating ML or spread/run-line scores as
+// actionable in this diagnostic table. Replicating the exact "ev-30" (3pp)
+// strategy this used to gate MLB ML against 459 real historical bets shows
+// -4.86% ROI (every threshold tested, -4.9% to -9.3% ROI) — the market is
+// efficient there. MLB run line has no backtest at all, and NBA's ML/O-U bands
+// are the same unvalidated formula removed from the "Qualified" panels (see
+// memory mlb-gameline-caps-odds-bug). The only evidence-backed actionable
+// signal in this table is MLB O/U, gated separately by isOuActionable's
+// mlbTotalEdge check below, which never calls this function. sport/market
+// params are unused but kept so existing call sites don't need to change.
 function isActionableScore(
   score: number | null | undefined,
-  sport: Sport,
-  market: RecommendationMarket,
+  _sport: Sport,
+  _market: RecommendationMarket,
 ): score is number {
-  if (score == null) return false;
-  return Math.abs(score - 0.5) >= getRecommendationBand(sport, market);
+  return false;
 }
 
 // Calibrated MLB O/U actionability. The walk-forward backtest
@@ -1668,9 +1668,9 @@ export default function VegasClient({
           <div>
             <h2 className="font-semibold">Betting Intelligence</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              {sport === "nba"
-                ? "NBA keeps ML value as the primary live signal and selected O/U leans as secondary context. Spread recommendations are suppressed because recent backtests did not support a stable edge."
-                : "Scores derived from historical O/U tiers, run line tiers, team implied accuracy, and ATS cover rates. O/U = lean over probability. Run line = home-covers probability. ML = adjusted win probability; price edge is tracked in the moneyline backtest."}
+              {sport === "mlb"
+                ? "Only the O/U column is backtest-gated (model disagrees with the line by ≥1.0 run — see the O/U Backtest panel). ML and Run Line scores are shown for context only: the moneyline backtest below shows every threshold tested here loses money (-4.9% to -9.3% ROI), and run line has no backtest at all, so neither is ever marked Actionable."
+                : "O/U, ML, and spread scores here are unvalidated context — none has backtest-confirmed edge for NBA, so none is ever marked Actionable. Spread is additionally suppressed outright."}
               {" "}
               Low-edge rows are suppressed as no-edge calls.
             </p>
