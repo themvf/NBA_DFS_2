@@ -1061,3 +1061,103 @@ a later `grading_version` is legitimate; erasing which rule produced the origina
 is not. A memorable winner never promotes a signal — only repeated excess performance
 relative to the frozen odds does.
 
+
+---
+
+## Plain-Language Guide — the alert attribution engine (what & why)
+
+Analogy: BettingPros says *"this bet is a bargain."* This system is the strict
+detective that asks *"was it really a bargain, was it still available, and who
+changed their mind afterward?"* Everything below is implemented in
+`model/line_alerts.py` (grading) + `db/schema.py` (`line_alerts`, `alert_grades`)
+and surfaced in `python -m model.line_alerts --report`.
+
+1. **Freezes the original bet.** On trigger, one immutable `line_alerts` row saves
+   DK's offered price, Pinnacle's fair value, claimed edge, exact time, eventual
+   result, and frozen-price profit. First-breach only — re-scans never rewrite it.
+   (Photograph the price tag before the store changes it.)
+
+2. **Saves Pinnacle's close separately.** `pin_close_prob` (reference close) is
+   stored as its own quantity, distinct from DK's close (`dk_close_decimal`) — so
+   "DK corrected", "Pinnacle moved toward DK", and "neither moved" are different
+   stories, not one blurred CLV number.
+
+3. **Watches who moved toward whom.** `convergence` classifies the full alert→close
+   price path: `EXECUTION_CONVERGED_TO_REFERENCE` (DK→Pinnacle),
+   `REFERENCE_CONVERGED_TO_EXECUTION` (Pinnacle→DK), `BOTH_MOVED_TOWARD_BET`,
+   `BOTH_MOVED_AGAINST_BET`, `DIVERGENCE_PERSISTED`. A PATH label (who moved), NOT
+   a quality verdict. `REFERENCE_CONVERGED_TO_EXECUTION` is *evidence* DK may have
+   led price discovery, not proof.
+
+4. **Measures how much the disagreement changed.** `grading_json` stores
+   `gap_initial_pp`, `gap_final_pp`, `gap_abs_closure_pp`, `gap_max_closure_pp`,
+   `d_dk_pp`, `d_pin_pp`, `n_captures`, and the **gap-closure ratio**
+   (`(|initial|−|final|)/|initial|`). Label says who moved; ratio says how much
+   disagreement disappeared.
+
+5. **Suppresses misleading ratios on tiny gaps.** Below `min_gap_for_ratio_pp`
+   (1.0pp, separate from the 0.5pp categorical `movement_epsilon_pp`) the ratio is
+   NULLed (`gap_closure_ratio_suppressed=true`) so 0.10→0.02pp doesn't read as 80%
+   closure. Absolute pp movement is always recorded and outranks the ratio.
+
+6. **Checks same-proposition before comparing.** `comparison_status` ∈
+   {`SAME_PROPOSITION`, `DIFFERENT_LINE`, `NO_REFERENCE`, `RULE_MISMATCH`,
+   `INSUFFICIENT_CAPTURE`}. Only `SAME_PROPOSITION` (same player/stat/line/side/
+   settlement) can receive convergence — Over 1.5 and Over 2.5 are not the same
+   bet. Prevents apples-to-oranges (the Herrera fix, made structural).
+
+7. **Admits when it didn't observe enough.** A single pre-game snapshot can't show
+   movement → `INSUFFICIENT_CAPTURE`, convergence NULL. The system says "I don't
+   know" instead of inventing a story (the Sullivan reclassification).
+
+8. **Measures whether DK's price survived** — "observed quote persistence"
+   (`dk_survival_min` + interval bounds), NOT verified availability. We poll; we do
+   not press the bet button. Honest, weaker, measurable.
+
+9. **Stores a survival RANGE, not a fake exact minute.** Interval-censored:
+   `survival_lower_min` / `survival_upper_min` / `last_same_at` /
+   `first_changed_at` in `grading_json`. The true change lies between two checks;
+   never summarized with a cadence-mixing median.
+
+10. **Three independent verdicts** in the tier table: **signal** (do larger claimed
+    edges produce better reference CLV?), **tradability** (frozen-price ROI among
+    surviving quotes), **decay** (do the biggest edges disappear faster?). They are
+    NOT required to agree — each combination has a distinct pre-specified meaning.
+
+11. **Reports small samples honestly.** Below `_MIN_SETTLED_FOR_CI` (30 independent
+    bets) the report shows raw W-L-P + profit + a `descriptive-only` tag, never a
+    rate implying a conclusion. Correlated same-slate props carry less information
+    than the count suggests.
+
+12. **Explicit persisted-to-close denominator.** Reported as `numerator/
+    denominator` where the denominator = alerts with an OBSERVABLE comparable close
+    (`close_status = OBSERVED`). `MARKET_CHANGED` (line moved) and
+    `CLOSE_UNAVAILABLE` are reported separately, never flattered into the numerator
+    or silently dropped.
+
+13. **Append-only grade history** (`alert_grades`): every grade event stored
+    permanently; a later method ADDS a grade rather than erasing the old one.
+    Answers: what did the system conclude then, what does the new method conclude,
+    did the change come from new data or new rules. (Keep every answer-key version.)
+
+14. **Every grade stamped with its rule version** (`grading_version =
+    "convergence_v2"`) so old/new grades compare fairly.
+
+15. **Regrading is idempotent** — `_append_grade_history` only writes a new row when
+    (version, comparison_status, convergence, outcome) meaningfully changed; a
+    re-run doesn't duplicate.
+
+16. **NULL carries information.** A blank convergence field shows its reason
+    (different line / no reference / rule mismatch / too few observations) — `NULL`
+    means "this conclusion is not permitted here", not "the software failed".
+
+17. **Research questions pre-registered** (see the section above): metrics, slices,
+    and minimum samples fixed BEFORE the data is examined, so a detailed database
+    doesn't become a machine for producing convincing stories from noise.
+
+**The shift:** the old system asked *"did this bet win?"* The new one asks, in
+order — are the two prices comparable? did we observe enough? which book moved? by
+how much? was the original price still visible? did these bets pay over enough
+trials? does the evidence justify trusting the signal? It is an audit trail that
+separates **what was observed**, **what can be inferred**, and **what cannot yet be
+known**.
