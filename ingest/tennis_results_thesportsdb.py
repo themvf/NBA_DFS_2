@@ -192,14 +192,13 @@ def _debug_dump() -> None:
     for tour in _LEAGUES:
         events = _fetch_season(tour)
         print(f"{tour}: {len(events)} raw events from schedule/league/{_LEAGUES[tour]}/{_SEASON}")
-        if events:
-            print(f"  FULL RAW SAMPLE (first event): {events[0]}")
-            print(f"  FULL RAW SAMPLE (last event): {events[-1]}")
-        for ev in events[-8:]:
-            print(f"  {ev.get('dateEvent')} {ev.get('strTime')} | "
-                  f"{ev.get('strHomeTeam')!r} vs {ev.get('strAwayTeam')!r} | "
-                  f"score={ev.get('intHomeScore')}-{ev.get('intAwayScore')} | "
-                  f"status={ev.get('strStatus')!r} | round={ev.get('intRound')}")
+        ft_events = [ev for ev in events if (ev.get("strStatus") or "").upper() == "FT"]
+        print(f"  {len(ft_events)} events with strStatus == 'FT'")
+        if ft_events:
+            last_ft = ft_events[-1]
+            print(f"  Last FT event (bulk): {last_ft}")
+            full = _fetch_event(last_ft.get("idEvent"))
+            print(f"  Same event via single-event lookup: {full}")
 
 
 if __name__ == "__main__":
