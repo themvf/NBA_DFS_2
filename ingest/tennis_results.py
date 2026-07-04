@@ -85,6 +85,17 @@ def settle_tour(db: DatabaseManager, tour: str, year: int) -> tuple[int, int]:
     Returns (matches_updated, bets_settled)."""
     import pandas as pd
 
+    # Index this tour's unsettled matches first — skip the ~230KB xlsx download
+    # entirely once nothing is pending (this now runs every 15 min via
+    # refresh_tennis_settlement.yml, so avoiding needless fetches matters).
+    rows = db.execute(
+        """SELECT id, match_date, home_player, away_player
+           FROM tennis_matches WHERE tour = %s AND winner IS NULL""",
+        (tour,),
+    )
+    if not rows:
+        return 0, 0
+
     url = _TOURS[tour].format(year=year)
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=90)
@@ -94,12 +105,6 @@ def settle_tour(db: DatabaseManager, tour: str, year: int) -> tuple[int, int]:
         logger.warning("tennis-data %s fetch failed: %s", tour, exc)
         return 0, 0
 
-    # Index this tour's unsettled matches by {playerkey, playerkey} for O(1) lookup.
-    rows = db.execute(
-        """SELECT id, match_date, home_player, away_player
-           FROM tennis_matches WHERE tour = %s AND winner IS NULL""",
-        (tour,),
-    )
     index: dict[frozenset, list[dict]] = {}
     for m in rows:
         kh, ka = _key_oddsapi(m["home_player"]), _key_oddsapi(m["away_player"])
