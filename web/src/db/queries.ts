@@ -6653,7 +6653,8 @@ export type SoccerKnockoutTieRow = {
   gameId: string;
   gameDate: string | null;
   commenceTime: string | null;
-  bracketSlot: number | null;   // 1..16 top→bottom; defines the tree adjacency
+  bracketSlot: number | null;   // slot WITHIN bracketRound; defines tree adjacency
+  bracketRound: string;         // 'r32' | 'r16' | 'qf' | 'sf' | 'final'
   homeTeam: string;
   awayTeam: string;
   homeLogo: string | null;
@@ -6718,6 +6719,7 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       sm.game_date AS "gameDate",
       sm.commence_time AS "commenceTime",
       sm.bracket_slot AS "bracketSlot",
+      COALESCE(sm.bracket_round, 'r32') AS "bracketRound",
       h.name AS "homeTeam", a.name AS "awayTeam",
       h.logo_url AS "homeLogo", a.logo_url AS "awayLogo",
       COALESCE(sm.our_prob_home + 0.5 * sm.our_prob_draw, 0) AS "ourHomeAdvance",
@@ -6745,7 +6747,10 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
     LEFT JOIN soccer_team_ratings reh ON reh.team_id = sm.home_team_id
     LEFT JOIN soccer_team_ratings rea ON rea.team_id = sm.away_team_id
     WHERE sm.bracket_slot IS NOT NULL
-    ORDER BY sm.bracket_slot ASC NULLS LAST, sm.commence_time ASC NULLS LAST, sm.id ASC
+    ORDER BY CASE COALESCE(sm.bracket_round, 'r32')
+               WHEN 'r32' THEN 0 WHEN 'r16' THEN 1 WHEN 'qf' THEN 2
+               WHEN 'sf' THEN 3 WHEN 'final' THEN 4 ELSE 5 END,
+             sm.bracket_slot ASC NULLS LAST, sm.commence_time ASC NULLS LAST, sm.id ASC
   `);
   return (rows.rows as Record<string, unknown>[]).map((r) => {
     const ourHomeAdvance = Number(r.ourHomeAdvance);
@@ -6757,6 +6762,7 @@ export async function getSoccerKnockoutAdvance(): Promise<SoccerKnockoutTieRow[]
       gameDate: r.gameDate != null ? String(r.gameDate) : null,
       commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
       bracketSlot: r.bracketSlot != null ? Number(r.bracketSlot) : null,
+      bracketRound: String(r.bracketRound ?? "r32"),
       homeTeam: String(r.homeTeam),
       awayTeam: String(r.awayTeam),
       homeLogo: r.homeLogo ? String(r.homeLogo) : null,

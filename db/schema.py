@@ -1719,6 +1719,16 @@ INDEXES = [
     # meet each round) instead of strength-seeded random re-pairing. Populated by
     # ingest/soccer_bracket.py from the published bracket. NULL outside knockouts.
     "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS bracket_slot INTEGER",
+    # 2026-07-04: bracket_round distinguishes WHICH knockout round bracket_slot
+    # numbers within (r32/r16/qf/sf/final) — bracket_slot alone was only ever
+    # populated for R32, so once R16 fixtures became known (real matchups with
+    # real odds already loaded in soccer_matchups) the bracket tree had no way
+    # to find them and fell back to a Monte-Carlo "who's still alive" proxy
+    # for the whole rest of the tree, showing 100% for every already-through
+    # team instead of the real upcoming match. NULL bracket_round on an
+    # existing bracket_slot row means 'r32' (back-compat for rows written
+    # before this column existed).
+    "ALTER TABLE soccer_matchups ADD COLUMN IF NOT EXISTS bracket_round TEXT",
     # 2026-06-29: Explicit winner for knockout ties. home_score/away_score capture
     # 90+ET goals but cannot encode penalty shootout results (no goals scored).
     # winner_team_id is written by soccer_results.resolve_knockout_winners:
