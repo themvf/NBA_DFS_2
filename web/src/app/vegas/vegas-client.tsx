@@ -749,10 +749,26 @@ function BetStatusPill({ status, locked }: { status: string; locked: boolean }) 
  * MLB rated bet ledger — parity with the soccer accountability framework.
  * Immutable, model_version-stamped, lock-at-first-pitch rows from mlb_bets.
  */
+// The current MLB gameline model (mlb_game_bets.py) hard-caps moneyline AND
+// totals at 2★ — walk-forward evidence showed neither market beats the price
+// (see model docstring). Any row above this in the ledger PREDATES that cap
+// (mostly mlb-gameline-v1, which had no market anchoring at all and produced
+// wildly overconfident probabilities on plus-money underdogs — our_prob 64%
+// against a ~15% market-implied price is the pattern). Locked/settled rows are
+// never rewritten (the frozen-closing-recommendation rule), so these persist
+// in the ledger as historical/audit evidence, not as live recommendations —
+// they are the DATA that justified the cap. Flagged as "Legacy", not deleted.
+const _MLB_GAMELINE_STAR_CAP = 2;
+
 function MlbBetLedgerPanel({ bets }: { bets: MlbBetRow[] }) {
-  const [minStars, setMinStars] = useState(3);
+  // Default 1★ (not 3★): the current model caps ML/totals at 2★, so with
+  // legacy rows hidden by default, a 3★+ default would show an empty table.
+  const [minStars, setMinStars] = useState(1);
+  const [hideLegacy, setHideLegacy] = useState(true);
   const fmtOdds = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
-  const shown = bets.filter((b) => b.stars >= minStars);
+  const isLegacy = (b: MlbBetRow) => b.stars > _MLB_GAMELINE_STAR_CAP;
+  const shown = bets.filter((b) => b.stars >= minStars && !(hideLegacy && isLegacy(b)));
+  const legacyHidden = bets.filter((b) => b.stars >= minStars && isLegacy(b)).length;
   const pending = bets.filter((b) => b.status === "pending").length;
 
   return (
@@ -763,6 +779,10 @@ function MlbBetLedgerPanel({ bets }: { bets: MlbBetRow[] }) {
         </h3>
         <div className="flex items-center gap-2 text-xs">
           {pending > 0 && <span className="text-gray-500">{pending} pending</span>}
+          <label className="flex items-center gap-1 text-gray-500" title="Rows above 2★ predate the current model's star cap (mlb-gameline-v1 / early v2, no market anchoring). Kept for the audit trail, never rewritten once locked.">
+            <input type="checkbox" checked={hideLegacy} onChange={(e) => setHideLegacy(e.target.checked)} />
+            Hide legacy (pre-cap)
+          </label>
           <label className="flex items-center gap-1">
             <span className="text-gray-500">Min ★</span>
             <select
@@ -779,11 +799,18 @@ function MlbBetLedgerPanel({ bets }: { bets: MlbBetRow[] }) {
         Every rated bet is logged immutably with its model version and{" "}
         <strong>locks at first pitch</strong>, so the backtest uses the number we
         actually committed to. Stars combine EV (vs the price) and edge (vs the
-        vig-free market). <strong>Totals</strong> stars are backtest-profitable
-        (2★+ all +ROI). <strong>Moneyline</strong> can rate high on plus-money
-        dogs, but the market is efficient and those stars are overconfident — for
-        ML, trust the Bet Ledger Backtest below, not the star.
+        vig-free market). The current model caps moneyline <strong>and</strong>{" "}
+        totals at 2★ — walk-forward showed neither beats the market (see the
+        Backtest panel below). Anything rated above 2★ here is a{" "}
+        <strong>legacy</strong> row from before that cap (mostly the
+        unanchored v1 model on plus-money underdogs) — real historical
+        evidence, kept for the audit, not a live recommendation.
       </p>
+      {legacyHidden > 0 && (
+        <p className="text-xs text-amber-600 mb-2">
+          {legacyHidden} legacy pre-cap row{legacyHidden === 1 ? "" : "s"} hidden — uncheck &ldquo;Hide legacy&rdquo; to view.
+        </p>
+      )}
       {shown.length === 0 ? (
         <p className="text-xs text-gray-400">No bets at {minStars}★+.</p>
       ) : (
@@ -801,22 +828,33 @@ function MlbBetLedgerPanel({ bets }: { bets: MlbBetRow[] }) {
               </tr>
             </thead>
             <tbody>
-              {shown.slice(0, 60).map((b) => (
-                <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="py-1.5"><StarChips n={b.stars} /></td>
-                  <td className="py-1.5 text-gray-500">{b.betType === "moneyline" ? "ML" : "O/U"}</td>
-                  <td className="py-1.5">
-                    <span className="font-medium">{b.selectionLabel}</span>
-                    {b.fixture && <span className="block text-[10px] text-gray-400">{b.fixture}</span>}
-                  </td>
-                  <td className="py-1.5 text-right tabular-nums">{(b.ourProb * 100).toFixed(0)}%</td>
-                  <td className="py-1.5 text-right tabular-nums">{fmtOdds(b.marketOdds)}</td>
-                  <td className={`py-1.5 text-right tabular-nums ${b.ev != null && b.ev > 0 ? "text-emerald-600" : "text-gray-500"}`}>
-                    {b.ev != null ? `${b.ev >= 0 ? "+" : ""}${(b.ev * 100).toFixed(0)}%` : "—"}
-                  </td>
-                  <td className="py-1.5 text-right"><BetStatusPill status={b.status} locked={b.locked} /></td>
-                </tr>
-              ))}
+              {shown.slice(0, 60).map((b) => {
+                const legacy = isLegacy(b);
+                return (
+                  <tr key={b.id} className={`border-b border-gray-50 hover:bg-gray-50 ${legacy ? "opacity-60" : ""}`}>
+                    <td className="py-1.5">
+                      <StarChips n={b.stars} />
+                      {legacy && (
+                        <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase text-amber-700"
+                              title="Predates the 2★ gameline cap — historical/audit row, not a live recommendation">
+                          Legacy
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1.5 text-gray-500">{b.betType === "moneyline" ? "ML" : "O/U"}</td>
+                    <td className="py-1.5">
+                      <span className="font-medium">{b.selectionLabel}</span>
+                      {b.fixture && <span className="block text-[10px] text-gray-400">{b.fixture}</span>}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{(b.ourProb * 100).toFixed(0)}%</td>
+                    <td className="py-1.5 text-right tabular-nums">{fmtOdds(b.marketOdds)}</td>
+                    <td className={`py-1.5 text-right tabular-nums ${b.ev != null && b.ev > 0 ? "text-emerald-600" : "text-gray-500"}`}>
+                      {b.ev != null ? `${b.ev >= 0 ? "+" : ""}${(b.ev * 100).toFixed(0)}%` : "—"}
+                    </td>
+                    <td className="py-1.5 text-right"><BetStatusPill status={b.status} locked={b.locked} /></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
