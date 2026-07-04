@@ -113,12 +113,6 @@ function blendSignals(signals: ScoreSignal[]): number | null {
   return signals.reduce((s, r) => s + r.value * r.weight, 0) / totalW;
 }
 
-function rawMoneylineBreakeven(ml: number | null | undefined): number | null {
-  if (ml == null || ml === 0) return null;
-  if (ml > 0) return 100 / (ml + 100);
-  return Math.abs(ml) / (Math.abs(ml) + 100);
-}
-
 const MLB_DEFAULT_OUTFIELD_BEARING = 45;
 const MLB_OUTFIELD_BEARINGS: Partial<Record<string, number>> = {
   BOS: 35,
@@ -1117,24 +1111,6 @@ type Props = {
 };
 
 type RecommendationMarket = "ou" | "spread" | "ml";
-type QualifiedMlPlay = {
-  matchupId: number;
-  matchupLabel: string;
-  side: string;
-  moneyline: number;
-  ourWinProb: number;
-  breakevenProb: number;
-  edge: number;
-  sideType: "Fav" | "Dog";
-};
-type QualifiedOuPlay = {
-  matchupId: number;
-  matchupLabel: string;
-  total: number;
-  side: "Over" | "Under";
-  score: number;
-  edge: number;
-};
 type BettingRow = {
   matchup: VegasMatchupRow;
   ou: ReturnType<typeof computeOuScore>;
@@ -1147,8 +1123,6 @@ type BettingRow = {
   actionableCount: number;
   strongestEdge: number;
 };
-
-const QUALIFIED_ML_EDGE_THRESHOLD = 0.03;
 
 function getRecommendationBand(sport: Sport, market: RecommendationMarket): number {
   if (sport === "nba") {
@@ -1212,75 +1186,6 @@ function renderRecommendationScore(
   return <ScoreBadge score={displayScore} label={label} signals={signals} />;
 }
 
-function getQualifiedMlPlay(
-  matchup: VegasMatchupRow,
-  teamInsights: TeamVegasInsightRow[],
-  sport: Sport,
-): QualifiedMlPlay | null {
-  const ml = computeMlScoreCalibrated(matchup, teamInsights, sport);
-  if (ml == null) return null;
-
-  const homeBreakeven = rawMoneylineBreakeven(matchup.homeMl);
-  const awayBreakeven = rawMoneylineBreakeven(matchup.awayMl);
-  const homeEdge = homeBreakeven != null ? ml.score - homeBreakeven : null;
-  const awayScore = 1 - ml.score;
-  const awayEdge = awayBreakeven != null ? awayScore - awayBreakeven : null;
-
-  if (homeEdge == null && awayEdge == null) return null;
-
-  const chooseHome = (homeEdge ?? Number.NEGATIVE_INFINITY) >= (awayEdge ?? Number.NEGATIVE_INFINITY);
-  if (chooseHome) {
-    if (matchup.homeMl == null || homeBreakeven == null || homeEdge == null) return null;
-    return {
-      matchupId: matchup.matchupId,
-      matchupLabel: `${matchup.awayAbbrev} @ ${matchup.homeAbbrev}`,
-      side: matchup.homeAbbrev,
-      moneyline: matchup.homeMl,
-      ourWinProb: ml.score,
-      breakevenProb: homeBreakeven,
-      edge: homeEdge,
-      sideType: matchup.homeMl < 0 ? "Fav" : "Dog",
-    };
-  }
-
-  if (matchup.awayMl == null || awayBreakeven == null || awayEdge == null) return null;
-  return {
-    matchupId: matchup.matchupId,
-    matchupLabel: `${matchup.awayAbbrev} @ ${matchup.homeAbbrev}`,
-    side: matchup.awayAbbrev,
-    moneyline: matchup.awayMl,
-    ourWinProb: awayScore,
-    breakevenProb: awayBreakeven,
-    edge: awayEdge,
-    sideType: matchup.awayMl < 0 ? "Fav" : "Dog",
-  };
-}
-
-function getQualifiedOuPlay(
-  matchup: VegasMatchupRow,
-  ouHitRate: OuHitRateRow[],
-  teamInsights: TeamVegasInsightRow[],
-  sport: Sport,
-): QualifiedOuPlay | null {
-  const ou = computeOuScore(matchup, ouHitRate, teamInsights, sport);
-  const score = ou?.score ?? null;
-  if (score == null || matchup.vegasTotal == null || !isOuActionable(matchup, score, sport)) {
-    return null;
-  }
-  // For MLB, the side + edge come from the calibrated model number; other
-  // sports use the blended score.
-  const mlbEdge = sport === "mlb" ? mlbTotalEdge(matchup) : null;
-  const isOver = mlbEdge != null ? mlbEdge > 0 : score >= 0.5;
-  return {
-    matchupId: matchup.matchupId,
-    matchupLabel: `${matchup.awayAbbrev} @ ${matchup.homeAbbrev}`,
-    total: matchup.vegasTotal,
-    side: isOver ? "Over" : "Under",
-    score: score >= 0.5 ? score : 1 - score,
-    edge: mlbEdge != null ? Math.abs(mlbEdge) : Math.abs(score - 0.5),
-  };
-}
-
 export default function VegasClient({
   matchups,
   ouHitRate,
@@ -1339,14 +1244,6 @@ export default function VegasClient({
     && mlbCoverageStatus?.historicalEndDate != null
     && !hasActionableBackfill
     && !hasProviderPartialOdds;
-  const qualifiedMlPlays = matchups
-    .map((matchup) => getQualifiedMlPlay(matchup, teamInsights, sport))
-    .filter((play): play is QualifiedMlPlay => play != null && play.edge >= QUALIFIED_ML_EDGE_THRESHOLD)
-    .sort((a, b) => b.edge - a.edge);
-  const qualifiedOuPlays = matchups
-    .map((matchup) => getQualifiedOuPlay(matchup, ouHitRate, teamInsights, sport))
-    .filter((play): play is QualifiedOuPlay => play != null)
-    .sort((a, b) => b.edge - a.edge);
   const bettingRows: BettingRow[] = matchups
     .map((matchup) => {
       const ou = computeOuScore(matchup, ouHitRate, teamInsights, sport);
@@ -1379,9 +1276,6 @@ export default function VegasClient({
       || b.strongestEdge - a.strongestEdge
       || a.matchup.homeAbbrev.localeCompare(b.matchup.homeAbbrev)
     );
-  const actionableBettingRows = bettingRows.filter((row) => row.actionableCount > 0);
-  const nbaHasQualifiedEdges = sport === "nba" && (qualifiedMlPlays.length > 0 || qualifiedOuPlays.length > 0);
-
   return (
     <div className="space-y-8 p-6 max-w-5xl mx-auto">
       {/* Header */}
@@ -1598,38 +1492,6 @@ export default function VegasClient({
         </div>
       )}
 
-      {sport === "nba" && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm space-y-3">
-          <div className="flex flex-wrap items-baseline gap-3">
-            <h2 className="font-semibold text-blue-900">NBA Edge Focus</h2>
-            <span className="text-xs text-blue-700">
-              ML value is the primary active market. O/U leans are secondary. Spread recommendations are intentionally suppressed.
-            </span>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded border border-blue-200 bg-white p-3">
-              <div className="text-[11px] uppercase tracking-wide text-blue-700">Qualified ML Plays</div>
-              <div className="mt-1 text-2xl font-bold text-blue-900">{qualifiedMlPlays.length}</div>
-              <div className="mt-1 text-xs text-slate-600">Value edge above +3.0pp</div>
-            </div>
-            <div className="rounded border border-blue-200 bg-white p-3">
-              <div className="text-[11px] uppercase tracking-wide text-blue-700">Qualified O/U Leans</div>
-              <div className="mt-1 text-2xl font-bold text-blue-900">{qualifiedOuPlays.length}</div>
-              <div className="mt-1 text-xs text-slate-600">Only totals outside the no-edge band</div>
-            </div>
-            <div className="rounded border border-blue-200 bg-white p-3">
-              <div className="text-[11px] uppercase tracking-wide text-blue-700">Actionable Matchups</div>
-              <div className="mt-1 text-2xl font-bold text-blue-900">{actionableBettingRows.length}</div>
-              <div className="mt-1 text-xs text-slate-600">Rows with at least one live NBA signal</div>
-            </div>
-          </div>
-          {!nbaHasQualifiedEdges && (
-            <p className="text-xs text-blue-800">
-              No qualified NBA edges today. Current lines look close to market-efficient thresholds.
-            </p>
-          )}
-        </div>
-      )}
 
       {/* ── Today's Matchups ─────────────────────────────────── */}
       {moneylineBacktest.completedGames > 0 && (
@@ -1708,94 +1570,6 @@ export default function VegasClient({
           </div>
         </div>
       )}
-
-      <div className="rounded-lg border bg-card p-4 text-sm">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="font-semibold">{sport === "nba" ? "Strongest NBA ML Value Plays" : "Qualified ML Value Plays"}</h2>
-          <span className="text-xs text-gray-500">
-            Upcoming sides where our ML probability clears market breakeven by at least {fmtSignedPp(QUALIFIED_ML_EDGE_THRESHOLD)}.
-          </span>
-        </div>
-        {qualifiedMlPlays.length === 0 ? (
-          <p className="mt-3 text-xs text-gray-500">
-            {sport === "nba"
-              ? "No qualified NBA ML value plays at +3.0pp for this date."
-              : "No qualified ML value plays at +3.0pp for this date."}
-          </p>
-        ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="border-b text-gray-500 text-right">
-                  <th className="py-1 text-left">Matchup</th>
-                  <th className="py-1 text-left">Side</th>
-                  <th className="py-1">ML</th>
-                  <th className="py-1">Our Win%</th>
-                  <th className="py-1">Breakeven%</th>
-                  <th className="py-1">Edge</th>
-                  <th className="py-1">Fav/Dog</th>
-                </tr>
-              </thead>
-              <tbody>
-                {qualifiedMlPlays.map((play) => (
-                  <tr key={play.matchupId} className="border-b border-gray-50">
-                    <td className="py-1.5 text-left font-medium">{play.matchupLabel}</td>
-                    <td className="py-1.5 text-left">{play.side}</td>
-                    <td className="py-1.5 text-right">{fmtMl(play.moneyline)}</td>
-                    <td className="py-1.5 text-right">{fmtPct(play.ourWinProb)}</td>
-                    <td className="py-1.5 text-right">{fmtPct(play.breakevenProb)}</td>
-                    <td className="py-1.5 text-right text-green-700 font-semibold">{fmtSignedPp(play.edge)}</td>
-                    <td className="py-1.5 text-right text-gray-500">{play.sideType}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-lg border bg-card p-4 text-sm">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="font-semibold">{sport === "nba" ? "Selected NBA O/U Leans" : "Qualified O/U Leans"}</h2>
-          <span className="text-xs text-gray-500">
-            Upcoming totals where the projected O/U lean clears the no-edge band for {sport.toUpperCase()}.
-          </span>
-        </div>
-        {qualifiedOuPlays.length === 0 ? (
-          <p className="mt-3 text-xs text-gray-500">
-            {sport === "nba"
-              ? "No qualified NBA O/U leans for this date."
-              : "No qualified O/U leans for this date."}
-          </p>
-        ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="border-b text-gray-500 text-right">
-                  <th className="py-1 text-left">Matchup</th>
-                  <th className="py-1">Total</th>
-                  <th className="py-1 text-left">Side</th>
-                  <th className="py-1">Score</th>
-                  <th className="py-1">Lean Edge</th>
-                </tr>
-              </thead>
-              <tbody>
-                {qualifiedOuPlays.map((play) => (
-                  <tr key={play.matchupId} className="border-b border-gray-50">
-                    <td className="py-1.5 text-left font-medium">{play.matchupLabel}</td>
-                    <td className="py-1.5 text-right">{fmt1(play.total)}</td>
-                    <td className="py-1.5 text-left">{play.side}</td>
-                    <td className="py-1.5 text-right">{fmtPct(play.score)}</td>
-                    <td className="py-1.5 text-right text-green-700 font-semibold">
-                      {sport === "mlb" ? `+${play.edge.toFixed(1)} runs` : fmtSignedPp(play.edge)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
 
       <div className="rounded-lg border bg-card p-4 text-sm">
         <h2 className="font-semibold mb-3">
