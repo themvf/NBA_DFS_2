@@ -87,7 +87,7 @@ def settle_tour(db: DatabaseManager, tour: str, year: int) -> tuple[int, int]:
 
     url = _TOURS[tour].format(year=year)
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=40)
+        resp = requests.get(url, headers=_HEADERS, timeout=90)
         resp.raise_for_status()
         df = pd.read_excel(io.BytesIO(resp.content))
     except Exception as exc:  # noqa: BLE001 — network/parse both non-fatal
