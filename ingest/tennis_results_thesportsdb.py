@@ -216,8 +216,14 @@ def _debug_dump() -> None:
         if ft_events:
             last_ft = ft_events[-1]
             print(f"  Last FT event (bulk): {last_ft}")
-            full = _fetch_event(last_ft.get("idEvent"))
-            print(f"  Same event via single-event lookup: {full}")
+            event_id = last_ft.get("idEvent")
+            try:
+                r = requests.get(
+                    f"{TSDB_V2_BASE}/lookup/event/{event_id}", headers=_TSDB_HEADERS, timeout=20,
+                )
+                print(f"  Single-event lookup RAW status={r.status_code} body={r.text[:1000]}")
+            except requests.RequestException as e:
+                print(f"  Single-event lookup RAW request failed: {e}")
 
 
 if __name__ == "__main__":
