@@ -213,6 +213,10 @@ def _debug_dump() -> None:
         print(f"{tour}: {len(events)} raw events from schedule/league/{_LEAGUES[tour]}/{_SEASON}")
         ft_events = [ev for ev in events if (ev.get("strStatus") or "").upper() == "FT"]
         print(f"  {len(ft_events)} events with strStatus == 'FT'")
+        wimb = [ev for ev in events if "wimbledon" in str(ev.get("strEvent", "")).lower()]
+        print(f"  {len(wimb)} events with 'Wimbledon' in strEvent")
+        for ev in wimb[:10]:
+            print(f"    {ev.get('dateEvent')} {ev.get('strEvent')} status={ev.get('strStatus')!r} round={ev.get('intRound')}")
         if ft_events:
             last_ft = ft_events[-1]
             print(f"  Last FT event (bulk): {last_ft}")
