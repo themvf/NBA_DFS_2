@@ -2053,15 +2053,76 @@ function PickCell({ pick }: { pick: BracketPick }) {
   );
 }
 
+// A real tie card for a future round (R16+) once BOTH occupants are confirmed
+// and the fixture is loaded — same visual language as the R32 column (team,
+// logo, Elo, live score once played, our advance% while pending), rather than
+// the argmax-reach projection. reach.r16=100% for an already-through team is
+// mathematically correct (it's a settled fact, not a forecast) but useless to
+// display next to itself; showing the REAL upcoming match here is the fix.
+function RealTieCard({ tie }: { tie: SoccerKnockoutTieRow }) {
+  const done = tie.homeScore != null && tie.awayScore != null;
+  const homeWon = done && (tie.winnerTeamId != null
+    ? tie.winnerTeamId === tie.homeTeamId
+    : tie.homeScore! > tie.awayScore!);
+  const awayWon = done && (tie.winnerTeamId != null
+    ? tie.winnerTeamId === tie.awayTeamId
+    : tie.awayScore! > tie.homeScore!);
+  const homeFav = !done && tie.ourHomeAdvance >= tie.ourAwayAdvance;
+  const scoreLabel = done
+    ? (tie.winnerTeamId == null && tie.homeScore === tie.awayScore
+        ? `${tie.homeScore}–${tie.awayScore} (pens)` : `${tie.homeScore}–${tie.awayScore}`)
+    : null;
+  return (
+    <div className={`rounded border bg-background p-1 ${done ? "opacity-80" : ""}`}>
+      <div className="flex items-center justify-between gap-1">
+        <span className={`flex items-center gap-1 truncate ${homeWon || (!done && homeFav) ? "font-semibold" : ""}`}>
+          {tie.homeLogo ? <img src={tie.homeLogo} alt="" className="h-3.5 w-3.5 rounded-sm object-contain" />
+            : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
+          <span className={`truncate text-[11px] ${done && !homeWon ? "text-muted-foreground" : ""}`}>{tie.homeTeam}</span>
+          {homeWon && <span className="text-[10px]">🏆</span>}
+          <EloChip elo={tie.homeElo} />
+        </span>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+          {done ? scoreLabel : `${Math.round(tie.ourHomeAdvance * 100)}%`}
+        </span>
+      </div>
+      <div className="mt-0.5 flex items-center justify-between gap-1">
+        <span className={`flex items-center gap-1 truncate ${awayWon || (!done && !homeFav) ? "font-semibold" : ""}`}>
+          {tie.awayLogo ? <img src={tie.awayLogo} alt="" className="h-3.5 w-3.5 rounded-sm object-contain" />
+            : <span className="inline-block h-3.5 w-3.5 rounded-sm bg-muted" />}
+          <span className={`truncate text-[11px] ${done && !awayWon ? "text-muted-foreground" : ""}`}>{tie.awayTeam}</span>
+          {awayWon && <span className="text-[10px]">🏆</span>}
+          <EloChip elo={tie.awayElo} />
+        </span>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+          {done ? "" : `${Math.round(tie.ourAwayAdvance * 100)}%`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
-  const slotted = ties.filter((t) => t.bracketSlot != null)
+  const slotted = ties.filter((t) => t.bracketRound === "r32" && t.bracketSlot != null)
     .sort((a, b) => (a.bracketSlot as number) - (b.bracketSlot as number));
   if (slotted.length === 0) return null;
+
+  // Real fixtures for future rounds, once both occupants are confirmed and the
+  // schedule ingest has loaded the matchup (ingest/soccer_bracket.py cascades
+  // bracket_round/bracket_slot forward as each round resolves). Keyed by
+  // "round-slot" so a node can look up whether a real tie exists yet.
+  const realByKey = new Map<string, SoccerKnockoutTieRow>();
+  for (const t of ties) {
+    if (t.bracketRound !== "r32" && t.bracketSlot != null) {
+      realByKey.set(`${t.bracketRound}-${t.bracketSlot}`, t);
+    }
+  }
 
   // Pad to 16 slots so projected-round math works even with a partial bracket.
   const total = Math.max(slotted.length, 16);
   // Future rounds: r=0 R16, 1 QF, 2 SF, 3 Final. Node covers 2^(r+1) ties, split
-  // into two child halves; each contributes its argmax-reach[round] team.
+  // into two child halves; each contributes its argmax-reach[round] team —
+  // used ONLY as a fallback when the real fixture for that slot isn't loaded yet.
   const ROUND_KEYS: (keyof SoccerReach)[] = ["r16", "qf", "sf", "final"];
   const rounds = ROUND_KEYS.map((key, r) => {
     const span = 2 ** (r + 1);
@@ -2135,17 +2196,26 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
             })}
             </div>
           </div>
-          {/* R16 → Final — projected */}
+          {/* R16 → Final — REAL fixture once both occupants are confirmed and
+              loaded (RealTieCard); falls back to the argmax-reach PROJECTION
+              (PickCell) only for slots whose real matchup isn't known yet. */}
           {rounds.map((nodes, r) => (
             <div key={r} className="flex min-w-[150px] flex-col">
               <div className="mb-1 shrink-0 text-center text-[10px] font-semibold uppercase text-muted-foreground">{COL_LABELS[r + 1]}</div>
               <div className="flex flex-1 flex-col justify-around gap-2">
-              {nodes.map((n, i) => (
-                <div key={i} className="space-y-1">
-                  <PickCell pick={n.top} />
-                  <PickCell pick={n.bottom} />
-                </div>
-              ))}
+              {nodes.map((n, i) => {
+                const real = realByKey.get(`${ROUND_KEYS[r]}-${i + 1}`);
+                return (
+                  <div key={i} className="space-y-1">
+                    {real ? <RealTieCard tie={real} /> : (
+                      <>
+                        <PickCell pick={n.top} />
+                        <PickCell pick={n.bottom} />
+                      </>
+                    )}
+                  </div>
+                );
+              })}
               </div>
             </div>
           ))}
@@ -2169,9 +2239,11 @@ function BracketTree({ ties }: { ties: SoccerKnockoutTieRow[] }) {
         </div>
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        R32 shows real ties + advance%. R16→Final show the <strong className="text-foreground">most likely</strong> team
-        to reach each slot (argmax P(reach round)) with its probability — a projection, not a fixed matchup.
-        Real bracket adjacency (consecutive slots meet each round).
+        Every round shows the <strong className="text-foreground">real fixture</strong> once both occupants are
+        confirmed (score once played, our advance% while pending) — a settled fact for teams already through, not a
+        forecast. A round still shows a <strong className="text-foreground">projected</strong> pick (argmax P(reach
+        round), lighter shading) only for slots whose real matchup isn&rsquo;t determined yet. Real bracket adjacency
+        (consecutive slots meet each round).
       </p>
     </div>
   );
