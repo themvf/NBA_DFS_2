@@ -192,6 +192,9 @@ def _debug_dump() -> None:
     for tour in _LEAGUES:
         events = _fetch_season(tour)
         print(f"{tour}: {len(events)} raw events from schedule/league/{_LEAGUES[tour]}/{_SEASON}")
+        if events:
+            print(f"  FULL RAW SAMPLE (first event): {events[0]}")
+            print(f"  FULL RAW SAMPLE (last event): {events[-1]}")
         for ev in events[-8:]:
             print(f"  {ev.get('dateEvent')} {ev.get('strTime')} | "
                   f"{ev.get('strHomeTeam')!r} vs {ev.get('strAwayTeam')!r} | "
