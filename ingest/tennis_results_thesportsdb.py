@@ -187,12 +187,29 @@ def settle(db: DatabaseManager) -> None:
     print(f"TheSportsDB tennis results: {total_m} matches resulted, {total_b} bets settled total")
 
 
+def _debug_dump() -> None:
+    """One-off diagnostic: print raw event counts/samples per tour, no DB writes."""
+    for tour in _LEAGUES:
+        events = _fetch_season(tour)
+        print(f"{tour}: {len(events)} raw events from schedule/league/{_LEAGUES[tour]}/{_SEASON}")
+        for ev in events[-8:]:
+            print(f"  {ev.get('dateEvent')} {ev.get('strTime')} | "
+                  f"{ev.get('strHomeTeam')!r} vs {ev.get('strAwayTeam')!r} | "
+                  f"score={ev.get('intHomeScore')}-{ev.get('intAwayScore')} | "
+                  f"status={ev.get('strStatus')!r} | round={ev.get('intRound')}")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description="Fallback: settle tennis bets from TheSportsDB when tennis-data.co.uk lags"
-    ).parse_args()
+    )
+    parser.add_argument("--debug", action="store_true", help="Dump raw events per tour, no DB writes")
+    args = parser.parse_args()
 
-    config = load_config()
-    db = DatabaseManager(config.database_url)
-    settle(db)
+    if args.debug:
+        _debug_dump()
+    else:
+        config = load_config()
+        db = DatabaseManager(config.database_url)
+        settle(db)
