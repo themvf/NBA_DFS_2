@@ -1,0 +1,53 @@
+name: Tennis Settlement (frequent)
+
+# Settlement-only, decoupled from refresh_tennis.yml's 6h odds/predictions
+# cycle so the ledger doesn't wait on that cadence. tennisexplorer.com is free
+# (no API key, no Odds-API credit cost) and carries same-day Wimbledon
+# results — verified 2026-07-04 (settled 130 of 166 pending bets correctly on
+# first run, after tennis-data.co.uk stalled 6+ days into the tournament and
+# TheSportsDB turned out to have zero Wimbledon events in its feed at all).
+# Runs all three settlement sources every 15 min; each is continue-on-error
+# and only touches matches still winner IS NULL, so running them repeatedly
+# and in combination with refresh_tennis.yml's own settlement steps is safe —
+# whichever source resolves a match first wins, nothing gets double-settled.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: tennis-settlement
+  cancel-in-progress: false
+
+jobs:
+  settle:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      THESPORTSDB_API_KEY: ${{ secrets.THESPORTSDB_API_KEY || '123' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Settle from tennisexplorer.com (same-day results, primary)
+        continue-on-error: true
+        run: python -m ingest.tennis_results_tennisexplorer
+
+      - name: Settle from tennis-data.co.uk (richer per-set data, when current)
+        continue-on-error: true
+        run: python -m ingest.tennis_results
+
+      - name: Settle from TheSportsDB (fallback)
+        continue-on-error: true
+        run: python -m ingest.tennis_results_thesportsdb

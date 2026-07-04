@@ -75,6 +75,17 @@ jobs:
         if: github.event.schedule == '0 6 * * 1' || inputs.rebuild_ratings == true
         run: python -m ingest.tennis_history
 
+      - name: Settle completed bets from tennisexplorer.com (same-day results)
+        # PRIMARY settlement source as of 2026-07-04: tennis-data.co.uk stalled
+        # 6+ days into Wimbledon 2026 and TheSportsDB has zero Wimbledon events
+        # in its feed at all. tennisexplorer.com's /results/ page is plain
+        # server-rendered HTML with same-day completed results — verified
+        # against 168 real Wimbledon matches, settled 130 bets correctly on
+        # first run. continue-on-error so a layout change never blocks the
+        # rest of the pipeline; the two sources below still run as backups.
+        continue-on-error: true
+        run: python -m ingest.tennis_results_tennisexplorer
+
       - name: Settle completed bets from tennis-data.co.uk results
         # Free results source (ATP+WTA, set/game scores). Updates near-daily during
         # a Slam but lags a few days for smaller events. continue-on-error so a
