@@ -1490,18 +1490,34 @@ function FirstScorerAnalysis({
 }
 
 // ── Bets panel ────────────────────────────────────────────────────────────────
+// Game-market bet types the current models hard-cap at 2★ (walk-forward showed
+// no edge — see CLAUDE.md). outright_winner/group_winner are DELIBERATELY
+// exempt: the futures Monte-Carlo sim is the one component with demonstrated
+// skill, so 4-5★ there is legitimate, not legacy. stars>2 on a capped type is
+// correct-by-construction evidence the row predates that cap (locked/settled
+// rows are never rewritten — the frozen-closing-recommendation rule; that
+// history is the audit evidence that justified the cap, not something to erase).
+const _SOCCER_CAPPED_TYPES = new Set(["moneyline", "total", "draw_no_bet", "first_scorer"]);
+const _SOCCER_GAMELINE_CAP = 2;
+
 function BetsPanel({ bets }: { bets: SoccerBetRow[] }) {
   const [minStars, setMinStars] = useState(4);
   const [betType, setBetType] = useState<string>("all");
-  const filtered = bets.filter(
-    (b) => b.stars >= minStars && (betType === "all" || b.betType === betType),
-  );
+  const [hideLegacy, setHideLegacy] = useState(true);
+  const isLegacy = (b: SoccerBetRow) => b.stars > _SOCCER_GAMELINE_CAP && _SOCCER_CAPPED_TYPES.has(b.betType);
+  const matchesFilter = (b: SoccerBetRow) => b.stars >= minStars && (betType === "all" || b.betType === betType);
+  const filtered = bets.filter((b) => matchesFilter(b) && !(hideLegacy && isLegacy(b)));
+  const legacyHidden = bets.filter((b) => matchesFilter(b) && isLegacy(b)).length;
 
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold">⭐ Star-Rated Bets</h2>
         <div className="flex items-center gap-3 text-xs">
+          <label className="flex items-center gap-1 text-muted-foreground" title="Rows above 2★ on moneyline/total/DNB/first-scorer predate the current model's star cap (walk-forward showed no edge on these markets). Kept for the audit trail, never rewritten once locked.">
+            <input type="checkbox" checked={hideLegacy} onChange={(e) => setHideLegacy(e.target.checked)} />
+            Hide legacy (pre-cap)
+          </label>
           <label className="flex items-center gap-1">
             <span className="text-muted-foreground">Min stars</span>
             <select
@@ -1537,9 +1553,17 @@ function BetsPanel({ bets }: { bets: SoccerBetRow[] }) {
         Every recommendation is logged to an auditable ledger with the model version and frozen
         inputs, and <strong className="text-foreground">locks at kickoff</strong> so the backtest
         uses the number we committed to. Stars combine EV (vs the offered price) and edge (vs the
-        vig-free market). 1★ = avoid/fade. Note: first-scorer markets carry huge vig, so the model
-        rates almost all of them 1★ — that &ldquo;don&rsquo;t bet&rdquo; signal is itself the value.
+        vig-free market). 1★ = avoid/fade. Moneyline / totals / DNB / first-scorer are capped at 2★
+        — walk-forward showed no edge on any of them; only <strong className="text-foreground">
+        outright/group winner</strong> futures can legitimately reach 4-5★. Anything above 2★ on a
+        capped market is a <strong className="text-foreground">legacy</strong> row from before that
+        cap — real historical evidence, kept for the audit, not a live recommendation.
       </p>
+      {legacyHidden > 0 && (
+        <p className="text-xs text-amber-500">
+          {legacyHidden} legacy pre-cap row{legacyHidden === 1 ? "" : "s"} hidden — uncheck &ldquo;Hide legacy&rdquo; to view.
+        </p>
+      )}
 
       {filtered.length === 0 ? (
         <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
@@ -1563,9 +1587,19 @@ function BetsPanel({ bets }: { bets: SoccerBetRow[] }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((b) => (
-                <tr key={b.id} className="border-b last:border-0 hover:bg-accent/40">
-                  <td className="px-3 py-2"><Stars n={b.stars} /></td>
+              {filtered.map((b) => {
+                const legacy = isLegacy(b);
+                return (
+                <tr key={b.id} className={`border-b last:border-0 hover:bg-accent/40 ${legacy ? "opacity-60" : ""}`}>
+                  <td className="px-3 py-2">
+                    <Stars n={b.stars} />
+                    {legacy && (
+                      <span className="ml-1 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-semibold uppercase text-amber-500"
+                            title="Predates the 2★ gameline cap — historical/audit row, not a live recommendation">
+                        Legacy
+                      </span>
+                    )}
+                  </td>
                   <td className="px-2 py-2 text-xs text-muted-foreground">
                     {BET_TYPE_LABEL[b.betType] ?? b.betType}
                     {b.scope.startsWith("Group ") && <span className="ml-1">({b.scope})</span>}
@@ -1590,7 +1624,8 @@ function BetsPanel({ bets }: { bets: SoccerBetRow[] }) {
                   </td>
                   <td className="px-2 py-2 text-center"><StatusPill status={b.status} /></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
