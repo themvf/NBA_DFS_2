@@ -27,6 +27,11 @@ on:
         required: false
         type: boolean
         default: false
+      debug_thesportsdb:
+        description: "Dump raw TheSportsDB events instead of settling (diagnostic, no DB writes)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: refresh-tennis
@@ -83,8 +88,13 @@ jobs:
         # no serve stats, but settlement only needs winner + sets. Only touches
         # matches the step above left unresolved; never overwrites tennis-data's
         # richer per-set data once it lands.
+        if: inputs.debug_thesportsdb != true
         continue-on-error: true
         run: python -m ingest.tennis_results_thesportsdb
+
+      - name: Debug — dump raw TheSportsDB events (no DB writes)
+        if: inputs.debug_thesportsdb == true
+        run: python -m ingest.tennis_results_thesportsdb --debug
 
       - name: Refresh Wimbledon odds (both tours)
         run: |
