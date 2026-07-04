@@ -1299,13 +1299,22 @@ does not retroactively justify skipping H1's kill criterion, and vice versa.
 
 ### Phases
 
-| Phase | Scope | Gate to proceed |
-|---|---|---|
-| P1 | Extend `tennis_history.py` to carry rank/points/minutes/round/best_of (ATP + WTA); backfill into the training corpus | Data present, leak-free, point-in-time verified |
-| P2 | Build the EWMA-Elo variant (`_run_elo_ewma`) alongside flat Elo; grid-search half-life | H1's form-gap subset defined and frozen before any backtest is run |
-| P3 | Walk-forward backtest H1 (recency) and H2 (rank/fatigue) on the historical corpus — offline only, no live deployment | Both hypotheses' kill criteria evaluated honestly; ≥200-match minimum met before concluding |
-| P4 | **Only if** P3 shows a real out-of-sample edge in the qualifying subset: deploy as an anchor-shrunk signal gated to that subset only (not universally) in `model/tennis_predictions.py` | Live paper-trading period before any bet from this signal counts above 2★ |
-| P5 | Ongoing CLV monitoring via `model/clv_report.py`, sliced by `form_gap` quartile and tour, to confirm live performance tracks the backtest | Continuous — a live/backtest divergence pulls the signal back to ≤2★ |
+| Phase | Scope | Gate to proceed | Status |
+|---|---|---|---|
+| P1 | Extend `ingest/tennis_training.py` (not `tennis_history.py` — the training corpus is this spec's actual backtest input, and it already carries rank/points/round/best_of; `tennis_history.py`'s production ratings are a separate, live-ratings concern) to add `round_num`, `rank_diff`, `pts_diff`, `matches_played_fav/dog` (fatigue proxy — no match-duration column exists in this source for either tour), `days_since_last_fav/dog` (layoff), and a new `_RecencyElo` engine (`recency_elo_diff`, `form_gap`) alongside the untouched flat Elo | Data present, leak-free, point-in-time verified | ✅ Done (2026-07-04) |
+| P2 | Grid-search the `_RecencyElo` half-life (currently a fixed, untuned 180 days); define and freeze H1's form-gap subset | H1's form-gap subset defined and frozen before any backtest is run | Planned |
+| P3 | Walk-forward backtest H1 (recency) and H2 (rank/fatigue) on the historical corpus — offline only, no live deployment | Both hypotheses' kill criteria evaluated honestly; ≥200-match minimum met before concluding | Planned |
+| P4 | **Only if** P3 shows a real out-of-sample edge in the qualifying subset: deploy as an anchor-shrunk signal gated to that subset only (not universally) in `model/tennis_predictions.py` | Live paper-trading period before any bet from this signal counts above 2★ | Gated on P3 |
+| P5 | Ongoing CLV monitoring via `model/clv_report.py`, sliced by `form_gap` quartile and tour, to confirm live performance tracks the backtest | Continuous — a live/backtest divergence pulls the signal back to ≤2★ | Gated on P4 |
+
+**Honest prior (set before P1 started, 2026-07-04):** the motivating ATP/WTA gap
+did not survive a significance check (z=-0.87 ATP, z=2.18 WTA — neither robust
+at n=27/22), and tennis moneyline at a Slam is about the least promising market
+to find public-data edge in — rank and recent form are exactly what
+professional oddsmakers already price first. Expected outcome of P2-P3 is a
+third "confirmed no edge, calibration-only" result, same as the original P3
+finding above; P1 was still worth doing for its own validation/calibration
+value regardless of whether P3 finds anything.
 
 ### Non-negotiables (inherited from every prior gameline/totals mirage)
 
