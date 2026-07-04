@@ -26,6 +26,26 @@ V1 fitted feature set (intersection of "in this corpus" AND "available live"):
 Rank/pts are carried but not fit in V1 (no live rankings ingest yet); serve is
 absent here (tennis-data has no serve stats) — an ATP-only enhancement for later.
 
+Phase 1 (2026-07-04, CLAUDE.md "Tennis Recency/Fatigue Model — Spec") adds four
+more point-in-time, leak-free columns for the H1/H2 backtest — NOT yet in
+FEATURE_COLS (that's P2/P3's job, after a walk-forward test justifies each):
+  - round_num          — ordinal encoding of the Round string (1=1st Round ... 7=Final)
+  - rank_diff, pts_diff — derived from the already-present fav/dog rank & pts
+  - matches_played_fav/dog — matches this player has already played in THIS
+    tournament instance (Tournament name + year) before this one — a fatigue
+    proxy. tennis-data.co.uk has no match-duration column for either tour (TML
+    does, for ATP only, but TML has no odds so it isn't this corpus's source
+    and isn't cheaply joinable without its own name-matching pass) — round-
+    depth is the fatigue signal this source can actually support.
+  - days_since_last_fav/dog — days since the player's previous match in the
+    corpus (any tournament) — a layoff/rustiness proxy. NaN for a player's
+    first-ever match in the corpus (no prior data, not "just played").
+  - recency_elo_diff, form_gap — an EWMA-style Elo that decays each player's
+    rating toward the base (1500) between matches (half-life configurable,
+    default 180 days) before applying the same update rule as the existing
+    flat Elo. form_gap = recency_elo_diff - elo_diff is the H1 test variable:
+    how much recent form disagrees with career-long rating.
+
 Usage:
     python -m ingest.tennis_training                 # both tours → data/ cache
     python -m ingest.tennis_training --tour WTA
@@ -57,14 +77,31 @@ _CACHE_DIR = Path(__file__).resolve().parent.parent / "data"
 # Odds columns in preference order (sharpest first). Each is (winner_col, loser_col).
 _ODDS_PREFERENCE = [("PSW", "PSL"), ("AvgW", "AvgL"), ("B365W", "B365L")]
 
+# Verified against live tennis-data.co.uk data (2026-07-04): identical small
+# vocabulary on both tours. "Round Robin" (ATP/WTA Finals group stage) doesn't
+# fit the knockout ordinal progression — mapped to 1 (first match of the event
+# for fatigue purposes; it's never followed by a 2nd/3rd round in this data).
+_ROUND_ORDER = {
+    "Round Robin": 1, "1st Round": 1, "2nd Round": 2, "3rd Round": 3,
+    "4th Round": 4, "Quarterfinals": 5, "Semifinals": 6, "The Final": 7,
+}
+
+# Recency-Elo half-life (days) for the pre-match rating decay toward base —
+# default for Phase 1 data generation; P2 grid-searches this, it is NOT tuned.
+_RECENCY_HALF_LIFE_DAYS = 180.0
+
 # The columns the corpus exposes (also the CSV header order).
 CORPUS_COLUMNS = [
-    "date", "tour", "tournament", "surface", "best_of", "round",
+    "date", "tour", "tournament", "surface", "best_of", "round", "round_num",
     "fav_name", "dog_name", "y",
     "market_fav_prob", "elo_diff", "grass_elo_diff",
     "fav_dec", "dog_dec",
-    "fav_rank", "dog_rank", "fav_pts", "dog_pts",
-    "fav_grass_matches", "dog_grass_matches", "odds_source",
+    "fav_rank", "dog_rank", "fav_pts", "dog_pts", "rank_diff", "pts_diff",
+    "fav_grass_matches", "dog_grass_matches",
+    "matches_played_fav", "matches_played_dog",
+    "days_since_last_fav", "days_since_last_dog",
+    "recency_elo_diff", "form_gap",
+    "odds_source",
 ]
 # Features the fitted model actually consumes in V1.
 FEATURE_COLS = ["market_fav_prob", "elo_diff", "grass_elo_diff"]
@@ -137,6 +174,52 @@ class _Elo:
             self.grass_n[lkey] = self.grass_n.get(lkey, 0) + 1
 
 
+class _RecencyElo:
+    """Elo variant that decays each player's rating toward _BASE_ELO between
+    matches (half-life in days) before applying the same update rule as the
+    flat Elo — H1's test signal (CLAUDE.md "Tennis Recency/Fatigue Model").
+
+    Also tracks last-match-date per player globally (any tournament), which
+    doubles as the days-since-last-match layoff feature — both this decay and
+    that feature need the same "when did this player last play" state, so
+    they're computed together rather than in two separate passes.
+    """
+
+    def __init__(self, half_life_days: float = _RECENCY_HALF_LIFE_DAYS):
+        self.rating: dict[str, float] = {}
+        self.last_played: dict[str, object] = {}   # key -> date of last match
+        self._half_life = half_life_days
+
+    def _decayed(self, key: str, as_of) -> float:
+        """This player's rating decayed toward base as of `as_of` (pre-match)."""
+        r = self.rating.get(key)
+        last = self.last_played.get(key)
+        if r is None or last is None:
+            return _BASE_ELO
+        days = (as_of - last).days
+        if days <= 0:
+            return r
+        decay = 0.5 ** (days / self._half_life)
+        return _BASE_ELO + (r - _BASE_ELO) * decay
+
+    def days_since(self, key: str, as_of) -> float | None:
+        last = self.last_played.get(key)
+        return (as_of - last).days if last is not None else None
+
+    def snapshot(self, key: str, as_of) -> float:
+        return self._decayed(key, as_of)
+
+    def update(self, wkey: str, lkey: str, as_of) -> None:
+        """Decay both players to `as_of`, apply the match result, store `as_of`
+        as each player's new last-played date. Call once per match, in order."""
+        dw, dl = self._decayed(wkey, as_of), self._decayed(lkey, as_of)
+        exp = _expected(dw, dl)
+        self.rating[wkey] = dw + _K * (1 - exp)
+        self.rating[lkey] = dl - _K * (1 - exp)
+        self.last_played[wkey] = as_of
+        self.last_played[lkey] = as_of
+
+
 def _build_tour(tour: str, from_year: int, this_year: int) -> list[dict]:
     """Chronological, leak-free labeled rows for one tour."""
     import pandas as pd
@@ -154,6 +237,9 @@ def _build_tour(tour: str, from_year: int, this_year: int) -> list[dict]:
     raw.sort(key=_date)
 
     elo = _Elo()
+    recency = _RecencyElo()
+    # (tournament name, year) -> {player_key: matches already played in this instance}
+    tourney_matches: dict[tuple[str, int], dict[str, int]] = {}
     out: list[dict] = []
     for m in raw:
         wname, lname = m.get("Winner"), m.get("Loser")
@@ -174,6 +260,22 @@ def _build_tour(tour: str, from_year: int, this_year: int) -> list[dict]:
         l_ov, l_gr, l_gn = elo.snapshot(lkey)
         elo.update(wkey, lkey, is_grass)
 
+        # Recency Elo + layoff: snapshot pre-match, THEN update.
+        w_rec, l_rec = recency.snapshot(wkey, d), recency.snapshot(lkey, d)
+        w_days_since, l_days_since = recency.days_since(wkey, d), recency.days_since(lkey, d)
+        recency.update(wkey, lkey, d)
+
+        # Fatigue proxy: matches already played in this tournament instance,
+        # THEN increment. (Tournament name, year) — majors don't span New
+        # Year's, so this is a safe per-edition key without a tournament ID.
+        tkey = (str(m.get("Tournament", "") or "").strip(), d.year)
+        tcount = tourney_matches.setdefault(tkey, {})
+        w_matches_played, l_matches_played = tcount.get(wkey, 0), tcount.get(lkey, 0)
+        tcount[wkey] = w_matches_played + 1
+        tcount[lkey] = l_matches_played + 1
+
+        round_num = _ROUND_ORDER.get(str(m.get("Round", "") or "").strip())
+
         odds = _pick_odds(m)
         if odds is None:
             continue  # no market anchor → unusable for a market-anchored model
@@ -191,6 +293,9 @@ def _build_tour(tour: str, from_year: int, this_year: int) -> list[dict]:
             fav_gn, dog_gn = w_gn, l_gn
             fav_rank, dog_rank = _num(m.get("WRank")), _num(m.get("LRank"))
             fav_pts, dog_pts = _num(m.get("WPts")), _num(m.get("LPts"))
+            fav_matches_played, dog_matches_played = w_matches_played, l_matches_played
+            fav_days_since, dog_days_since = w_days_since, l_days_since
+            recency_elo_diff = w_rec - l_rec
         else:
             fav_name, dog_name, y = str(lname).strip(), str(wname).strip(), 0
             market_fav_prob = 1.0 - p_winner
@@ -200,6 +305,12 @@ def _build_tour(tour: str, from_year: int, this_year: int) -> list[dict]:
             fav_gn, dog_gn = l_gn, w_gn
             fav_rank, dog_rank = _num(m.get("LRank")), _num(m.get("WRank"))
             fav_pts, dog_pts = _num(m.get("LPts")), _num(m.get("WPts"))
+            fav_matches_played, dog_matches_played = l_matches_played, w_matches_played
+            fav_days_since, dog_days_since = l_days_since, w_days_since
+            recency_elo_diff = l_rec - w_rec
+
+        rank_diff = (dog_rank - fav_rank) if (fav_rank is not None and dog_rank is not None) else None
+        pts_diff = (fav_pts - dog_pts) if (fav_pts is not None and dog_pts is not None) else None
 
         out.append({
             "date": d.date().isoformat(),
@@ -208,6 +319,7 @@ def _build_tour(tour: str, from_year: int, this_year: int) -> list[dict]:
             "surface": str(m.get("Surface", "") or "").strip(),
             "best_of": _num(m.get("Best of")),
             "round": str(m.get("Round", "") or "").strip(),
+            "round_num": round_num,
             "fav_name": fav_name,
             "dog_name": dog_name,
             "y": y,
@@ -220,8 +332,16 @@ def _build_tour(tour: str, from_year: int, this_year: int) -> list[dict]:
             "dog_rank": dog_rank,
             "fav_pts": fav_pts,
             "dog_pts": dog_pts,
+            "rank_diff": rank_diff,
+            "pts_diff": pts_diff,
             "fav_grass_matches": fav_gn,
             "dog_grass_matches": dog_gn,
+            "matches_played_fav": fav_matches_played,
+            "matches_played_dog": dog_matches_played,
+            "days_since_last_fav": fav_days_since,
+            "days_since_last_dog": dog_days_since,
+            "recency_elo_diff": round(recency_elo_diff, 1),
+            "form_gap": round(recency_elo_diff - elo_diff, 1),
             "odds_source": src,
         })
     return out
@@ -268,6 +388,20 @@ def _summary(df) -> None:
               f"grass={int((g['surface'] == 'Grass').sum())}  "
               f"odds={g['odds_source'].value_counts().to_dict()}")
     print(f"  date range: {df['date'].min()} to {df['date'].max()}")
+
+    # Phase 1 columns: NaN rate (coverage) + a plausibility spot-check per tour.
+    print("\n  Phase 1 columns (coverage + plausibility):")
+    for tour, g in df.groupby("tour"):
+        nan_pct = lambda col: f"{g[col].isna().mean() * 100:.1f}%"  # noqa: E731
+        print(f"  {tour}: round_num NaN={nan_pct('round_num')}  "
+              f"rank_diff NaN={nan_pct('rank_diff')}  pts_diff NaN={nan_pct('pts_diff')}  "
+              f"days_since_last_fav NaN={nan_pct('days_since_last_fav')} "
+              f"(expect >0% - a player's first corpus match has no prior date)")
+        print(f"       matches_played_fav mean={g['matches_played_fav'].mean():.2f} "
+              f"max={int(g['matches_played_fav'].max())}  "
+              f"recency_elo_diff vs elo_diff corr={g['recency_elo_diff'].corr(g['elo_diff']):.3f} "
+              f"(expect high but <1.0 - same signal, decayed)  "
+              f"form_gap std={g['form_gap'].std():.1f}")
 
 
 if __name__ == "__main__":
