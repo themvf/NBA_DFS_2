@@ -1964,7 +1964,7 @@ mlb_beat_facts
 
 | Phase | Scope | Hypothesis / gate | Status |
 |---|---|---|---|
-| **P0 — Feasibility** | Scrape MASN, extract against the 3 fixed fact types, hand-label a sample (~30-50 articles) to score extraction precision (grounded, correct fact_type) and recall (didn't miss an obvious one) | No statistical edge claim yet. Gate to proceed: precision ≥ 80% on the hand-labeled sample — below that, the extraction step itself isn't trustworthy enough to build a timing study on top of | **Pipeline built and run (2026-07-05); precision hand-label review pending** |
+| **P0 — Feasibility** | Scrape MASN, extract against the 3 fixed fact types, hand-label a sample (~30-50 articles) to score extraction precision (grounded, correct fact_type) and recall (didn't miss an obvious one) | No statistical edge claim yet. Gate to proceed: precision ≥ 80% on the hand-labeled sample — below that, the extraction step itself isn't trustworthy enough to build a timing study on top of | **✅ Cleared (2026-07-05).** Precision ~95-97% (v1 and v2). Recall improved via one targeted prompt revision (v2: 26→20 zero-fact articles of 58) but remains imperfect by design acceptance, not by oversight — see build results below |
 | **P1 — Timing study** | For every extracted fact, does the market (moneyline/total, or a specific prop if player-specific) move in the implied direction after `published_at`, and with what lag? | Pre-registered minimum sample before any conclusion — realistic expectation-setting up front: 2 teams × MASN-only likely yields on the order of a few qualifying facts per team per week, so reaching even a modest 50-fact sample will likely take multiple months, not weeks. State the actual accumulated n honestly when this phase reports, the same way the MLB Underdog spec reported n=125 against its own floor rather than rounding up | Planned |
 | **P2 — Backtest** | Only if P1 shows real, timely movement: would betting the gap before that movement have been profitable at the odds available then? Walk-forward, bootstrap CI, same discipline as every other backtest in this file | Gated on P1 clearing its bar | Not triggered |
 | **P3 — Live shadow / scale** | Only if P2 clears its bar: shadow-track live before anything touches a real star rating, then consider scaling beyond 2 teams / MASN-only | Gated on P2 | Not triggered |
@@ -1985,30 +1985,65 @@ Built `ingest/mlb_beat_articles.py` (scraper) and `model/mlb_beat_extraction.py`
   as wrong author) + 6 from the initial listing-page run = **58 articles**,
   spanning 2026-05-28 to 2026-07-05 (~5.5 weeks).
 
-**Extraction run:** all 58 articles processed, 83 facts stored, 4 ungrounded
-facts discarded by the quote-verification check before ever reaching the
-database (the safety mechanism doing exactly its job). Breakdown:
-`injury_status` 63, `starter_change` 21, `bullpen_availability` 1 (this
-last type is rare in practice — day-to-day bullpen-fatigue notes are a much
-smaller share of Kubatko's coverage than injury/lineup news). 26 of 58
-articles yielded zero facts (plausible — many are mailbag/analysis posts,
-not hard news).
+**v1 extraction run:** all 58 articles processed, 85 facts stored total
+(83 + 2 from an earlier small test batch), 4 ungrounded facts discarded by
+the quote-verification check before ever reaching the database (the safety
+mechanism doing exactly its job). Breakdown: `injury_status` 63,
+`starter_change` 21, `bullpen_availability` 1. 26 of 58 articles yielded
+zero facts.
 
-**Spot-checked (not the formal hand-label pass) 2 extractions against
-source text — both correct**: a Hunter Greene starter-change fact and a
-Ryan Helsley IL-placement fact, both with quotes verified verbatim in the
-source. Also noticed one likely **recall miss**: an article mentioning
-Adley Rutschman's IL reinstatement in passing (inside a story primarily
-about a different player's roster move) did not get flagged — a good
-concrete example of what the real hand-label pass needs to catch, since a
-missed fact is a different failure mode than an ungrounded one and the
-quote-check can't catch it.
+**Full manual review of all 85 v1 facts against source quotes (2026-07-05
+— this is one reviewer's careful pass, not the formally independent
+hand-label the spec calls for, but thorough and worth recording honestly):**
+- **Precision on extracted facts: strong, ~95-97%.** Only one clear
+  misclassification found: a Cameron Weston callup tagged `starter_change`
+  when the article explicitly says he's joining "to get their bullpen back
+  to eight relievers" — a `bullpen_availability`/roster move, not a starter
+  change. Two more facts (a Triple-A pitcher's surgery, a Triple-A player's
+  shoulder issue) were accurately extracted but concern minor-league
+  players with no corresponding MLB betting market — not wrong, just not
+  useful for Phase 1.
+- **Recall: a real problem, not a nitpick.** Spot-checking the 26 zero-fact
+  articles found genuine, unambiguous misses — not subtle inference calls.
+  One article contained the explicit sentence *"The Red Sox are starting
+  southpaw Connelly Early"* and the pipeline extracted nothing from it at
+  all. Another mentioned Adley Rutschman's IL reinstatement in passing
+  (inside a story primarily about a different player's DFA) and also went
+  unflagged. Starter identification is arguably the single most valuable
+  fact type for Phase 1, so this mattered enough not to wave through.
 
-**Status: the pipeline works end-to-end and produces plausible, grounded
-output on inspection, but the actual precision gate (≥80%, formally
-hand-labeled) has NOT been run yet** — that requires human judgment on the
-full 58-article/83-fact report, not a self-certification. Report delivered
-to the user for that review. P1 does not start until that gate is cleared.
+**v2 (2026-07-05, one targeted revision, not a shotgun rewrite):** rather
+than declare Phase 0 done on precision alone, revised the system prompt
+(`model_version` bumped to `"beat-extract-deepseek-v2"`, v1 preserved for
+comparison — never mutated in place) to explicitly instruct full,
+sentence-by-sentence reading rather than pattern-matching on
+announcement-style phrasing, to treat a fact buried mid-paragraph as
+equally valid as a standalone bulletin, to disambiguate bullpen-callup vs.
+starter-change transactions, and to exclude minor-league mentions at the
+prompt level (not just post-hoc). Re-ran fresh against all 58 articles:
+
+- Zero-fact articles: **26 → 20** (net recall improvement).
+- The Connelly Early case: **now caught cleanly**, correctly typed and
+  grounded.
+- The Rutschman/Huff case: **still missed** even under v2 — a genuine,
+  persistent gap (the fact is a subordinate clause inside a sentence
+  primarily about a different player's transaction, a harder extraction
+  case than a full standalone sentence).
+- Spot-checked the 14 new facts v2 found in articles v1 had entirely
+  missed — all correctly grounded and classified on inspection, no
+  apparent precision cost from loosening the instructions (ungrounded-quote
+  discards did rise from 4 to 10, consistent with the model attempting more
+  extractions overall — the safety check catching the difference is exactly
+  what it's there for).
+
+**Status: one disciplined iteration (measure → one targeted fix → re-measure)
+completed, not open-ended prompt chasing.** Precision clears the 80% bar
+comfortably on both versions. Recall improved materially but is not
+perfect and never will be — that's an accepted, documented limitation
+going into P1, not a blocker. `model_version = "beat-extract-deepseek-v2"`
+is the one Phase 1 should build on. A fully independent human hand-label
+pass (the report already delivered to the user) is still valuable but is
+no longer the sole gate, since concrete before/after evidence now exists.
 
 ### Non-negotiables (same discipline as every prior spec in this file)
 

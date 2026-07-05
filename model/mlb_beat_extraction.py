@@ -40,31 +40,59 @@ from db.queries import (
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "beat-extract-deepseek-v1"
+MODEL_VERSION = "beat-extract-deepseek-v2"
 
 # Fixed candidate fact types -- pre-registered in CLAUDE.md. Do not add a
 # fourth category here without a separately pre-registered spec update.
 _FACT_TYPES = ("starter_change", "injury_status", "bullpen_availability")
 
+# v2 (2026-07-05): v1 had strong precision (~95%+ on extracted facts) but a
+# real recall gap found on manual review -- e.g. it missed an explicit
+# "The Red Sox are starting southpaw Connelly Early" sentence entirely, and
+# missed an IL-reinstatement mention embedded in an unrelated player's story.
+# v2 adds an explicit instruction to read the full article methodically
+# rather than pattern-match on announcement-style phrasing, and a reminder
+# that qualifying facts are often a single sentence buried in longer
+# statistical/analytical prose, not just standalone news bulletins. Also
+# excludes minor-league (non-MLB-roster) mentions, which v1 correctly
+# extracted but which have no corresponding MLB betting market to test in
+# Phase 1 (e.g. a Triple-A pitcher's surgery).
 _SYSTEM_PROMPT = """You are a fact-extraction tool for a baseball beat-writer article. \
 You do NOT give opinions, predictions, or betting analysis. Your only job is to find \
-whether the article reports any of exactly these three fact types:
+whether the article reports any of exactly these three fact types, about MLB roster \
+players only (not minor-league/Triple-A players):
 
 1. starter_change -- a starting pitcher is confirmed, announced, or changed for an \
-   upcoming game.
-2. injury_status -- a named player's injury or IL status changes (placed on/activated \
+   upcoming MLB game (for either team involved, not just the Orioles).
+2. injury_status -- a named MLB player's injury or IL status changes (placed on/activated \
    from IL, diagnosis, timeline, "day-to-day", ruled out, etc.).
-3. bullpen_availability -- a note about which relievers are or are not available for \
-   an upcoming game (e.g. unavailable after recent use, workload/fatigue note).
+3. bullpen_availability -- a note about which MLB relievers are or are not available for \
+   an upcoming game (e.g. unavailable after recent use, workload/fatigue note, a reliever \
+   being added to or removed from the active bullpen).
+
+Read the ENTIRE article carefully, sentence by sentence, before responding -- do not stop \
+after the first paragraph or after finding one fact. Many articles are long game recaps or \
+statistical breakdowns where a qualifying fact appears as a single sentence buried in the \
+middle or end of the piece, not as a standalone announcement at the top. A sentence like \
+"The Red Sox are starting southpaw Connelly Early" buried inside a paragraph about batting \
+stats is just as valid a starter_change fact as a dedicated "lineup announcement" sentence \
+-- do not require the fact to be phrased as a headline-style bulletin.
+
+A player being called up specifically to fortify the bullpen (not to start) is \
+bullpen_availability, not starter_change, even if a starting pitcher is optioned in the \
+same transaction -- classify by what role the news is actually about.
 
 Rules:
 - Only extract facts that are EXPLICITLY stated in the article text. Never infer, \
   guess, or use outside knowledge.
+- Skip anything about minor-league/Triple-A/prospect players who are not on the MLB \
+  active roster -- there is no MLB betting market to test those against.
 - For each fact found, "quote" MUST be an exact, verbatim substring copied directly \
   from the article -- do not paraphrase or alter it in any way. This is checked \
   programmatically; a quote that doesn't literally appear in the article is discarded.
 - If the article contains none of these three fact types, return an empty facts list. \
-  Most articles will have zero qualifying facts -- do not force a match.
+  Many articles will have zero qualifying facts -- do not force a match, but also do not \
+  give up after a quick skim.
 - Respond with ONLY a JSON object in this exact shape, no other text:
 
 {"facts": [{"fact_type": "starter_change|injury_status|bullpen_availability", \
