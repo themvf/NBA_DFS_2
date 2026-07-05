@@ -86,9 +86,23 @@ _ROUND_ORDER = {
     "4th Round": 4, "Quarterfinals": 5, "Semifinals": 6, "The Final": 7,
 }
 
-# Recency-Elo half-life (days) for the pre-match rating decay toward base —
-# default for Phase 1 data generation; P2 grid-searches this, it is NOT tuned.
-_RECENCY_HALF_LIFE_DAYS = 180.0
+# Recency-Elo half-life (days) — chosen by P2's grid search
+# (model/tennis_recency_calibration.py) over candidates [60, 90, 180, 365, 730]
+# on the tuning period (matches before 2022-01-01) only. 730 won, but note
+# honestly: EVERY candidate underperformed flat Elo's own tuning-period
+# logloss (0.6323) as a standalone rating — 730d got closest (0.6347) because
+# it's the least-aggressive decay tested, not because recency-weighting beat
+# the full-history baseline. H1's actual claim is narrower (does the
+# form-gap subset disagree with the market in a way that pays off — that's
+# P3, not this). Frozen 2026-07-04; do not re-tune without a new P2 study.
+_RECENCY_HALF_LIFE_DAYS = 730.0
+
+# Frozen H1 subset definition (P2, same run): |form_gap| >= this Elo-point
+# threshold = the tuning period's 75th percentile of |form_gap| at the chosen
+# half-life. Reserved-period (>= 2022-01-01) matches meeting this are P3's
+# untouched test set — 8,150 qualify (3,796 ATP / 4,354 WTA), well past the
+# >=200 minimum. Do not recompute this threshold after seeing P3's result.
+FORM_GAP_FREEZE_THRESHOLD = 47.5
 
 # The columns the corpus exposes (also the CSV header order).
 CORPUS_COLUMNS = [

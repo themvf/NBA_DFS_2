@@ -1302,7 +1302,7 @@ does not retroactively justify skipping H1's kill criterion, and vice versa.
 | Phase | Scope | Gate to proceed | Status |
 |---|---|---|---|
 | P1 | Extend `ingest/tennis_training.py` (not `tennis_history.py` — the training corpus is this spec's actual backtest input, and it already carries rank/points/round/best_of; `tennis_history.py`'s production ratings are a separate, live-ratings concern) to add `round_num`, `rank_diff`, `pts_diff`, `matches_played_fav/dog` (fatigue proxy — no match-duration column exists in this source for either tour), `days_since_last_fav/dog` (layoff), and a new `_RecencyElo` engine (`recency_elo_diff`, `form_gap`) alongside the untouched flat Elo | Data present, leak-free, point-in-time verified | ✅ Done (2026-07-04) |
-| P2 | Grid-search the `_RecencyElo` half-life (currently a fixed, untuned 180 days); define and freeze H1's form-gap subset | H1's form-gap subset defined and frozen before any backtest is run | Planned |
+| P2 | Grid-search the `_RecencyElo` half-life (`model/tennis_recency_calibration.py`, candidates 60/90/180/365/730 days); define and freeze H1's form-gap subset | H1's form-gap subset defined and frozen before any backtest is run | ✅ Done (2026-07-04) |
 | P3 | Walk-forward backtest H1 (recency) and H2 (rank/fatigue) on the historical corpus — offline only, no live deployment | Both hypotheses' kill criteria evaluated honestly; ≥200-match minimum met before concluding | Planned |
 | P4 | **Only if** P3 shows a real out-of-sample edge in the qualifying subset: deploy as an anchor-shrunk signal gated to that subset only (not universally) in `model/tennis_predictions.py` | Live paper-trading period before any bet from this signal counts above 2★ | Gated on P3 |
 | P5 | Ongoing CLV monitoring via `model/clv_report.py`, sliced by `form_gap` quartile and tour, to confirm live performance tracks the backtest | Continuous — a live/backtest divergence pulls the signal back to ≤2★ | Gated on P4 |
@@ -1315,6 +1315,27 @@ professional oddsmakers already price first. Expected outcome of P2-P3 is a
 third "confirmed no edge, calibration-only" result, same as the original P3
 finding above; P1 was still worth doing for its own validation/calibration
 value regardless of whether P3 finds anything.
+
+**P2 result (2026-07-04) — a discouraging sign, reported honestly, not hidden.**
+Tuning-period-only grid search (matches before 2022-01-01; 2022-01-01+ held
+completely untouched for P3): **every recency half-life tested underperformed
+flat Elo's own standalone tuning-period logloss** (0.6323). Logloss improved
+monotonically as half-life grew (60d: 0.6660 → 90d: 0.6596 → 180d: 0.6492 →
+365d: 0.6404 → 730d: 0.6347), i.e. the least-aggressive decay tested came
+closest to flat Elo but never beat it — consistent with decay only ever
+discarding information in this dataset, not adding a compensating "recent
+form" signal strong enough to offset the loss. Chosen half-life = **730 days**
+per the pre-registered rule (best of the tested grid), not because it beat
+the baseline. Frozen H1 subset: `|form_gap| >= 47.5` Elo points (the tuning
+period's 75th percentile at 730d) — **8,150 reserved-period matches qualify**
+(3,796 ATP / 4,354 WTA, both tours well past the ≥200 minimum). This result
+doesn't kill H1 outright (H1's actual claim is about market disagreement in
+the qualifying subset, not standalone rating quality — a different, narrower
+test that's P3's job), but it's one more data point supporting the honest
+prior above. Script: `model/tennis_recency_calibration.py`. Constants frozen
+in `ingest/tennis_training.py`: `_RECENCY_HALF_LIFE_DAYS = 730.0`,
+`FORM_GAP_FREEZE_THRESHOLD = 47.5` — do not re-tune either without a new,
+separately pre-registered P2 study.
 
 ### Non-negotiables (inherited from every prior gameline/totals mirage)
 
