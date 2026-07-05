@@ -36,7 +36,7 @@ from youtube_transcript_api.proxies import GenericProxyConfig
 
 from config import load_config
 from db.database import DatabaseManager
-from db.queries import upsert_youtube_pick_video
+from db.queries import get_active_youtube_pick_channels, upsert_youtube_pick_channel, upsert_youtube_pick_video
 
 logger = logging.getLogger(__name__)
 
@@ -130,13 +130,39 @@ def fetch_new_pick_videos(
     return stored
 
 
+def _seed_default_channel_if_empty(db: DatabaseManager) -> None:
+    """One-time backfill: register BettingPros in youtube_pick_channels if
+    no channel has been added yet, so the pipeline keeps working exactly as
+    before for anyone who already had it running against the hardcoded
+    channel. New channels going forward are added via the web UI."""
+    existing = db.execute("SELECT id FROM youtube_pick_channels LIMIT 1")
+    if not existing:
+        upsert_youtube_pick_channel(db, channel_id=_CHANNEL_ID, channel_name=_CHANNEL_NAME, handle="@bettingpros")
+
+
+def fetch_new_videos_for_all_channels(db: DatabaseManager, limit: int = _DEFAULT_LIMIT) -> int:
+    """Run fetch_new_pick_videos() for every active channel in
+    youtube_pick_channels. Channels are added via the web UI's "Add
+    Channel" action; this just scrapes whatever's currently active."""
+    _seed_default_channel_if_empty(db)
+    channels = get_active_youtube_pick_channels(db)
+    if not channels:
+        print("YouTube picks: no active channels registered")
+        return 0
+
+    total = 0
+    for c in channels:
+        total += fetch_new_pick_videos(db, channel_id=c["channel_id"], channel_name=c["channel_name"], limit=limit)
+    return total
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="Scrape new videos from a betting-picks YouTube channel")
+    parser = argparse.ArgumentParser(description="Scrape new videos from tracked betting-picks YouTube channels")
     parser.add_argument("--limit", type=int, default=_DEFAULT_LIMIT,
-                         help="Max recent videos to check from the RSS feed (default 15)")
+                         help="Max recent videos to check per channel from the RSS feed (default 15)")
     args = parser.parse_args()
 
     config = load_config()
     db = DatabaseManager(config.database_url)
-    fetch_new_pick_videos(db, limit=args.limit)
+    fetch_new_videos_for_all_channels(db, limit=args.limit)

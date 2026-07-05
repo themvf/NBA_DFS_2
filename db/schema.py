@@ -578,9 +578,26 @@ TABLES = [
     """,
 
     # ── YouTube picks-channel pipeline (sport-agnostic) ────────
-    # Automated ingestion for a betting-picks YouTube channel: RSS-based new-
+    # Automated ingestion for betting-picks YouTube channels: RSS-based new-
     # video detection, proxied transcript fetch, DeepSeek structured pick
     # extraction. See CLAUDE.md "YouTube Picks Channel Tracking".
+    #
+    # youtube_pick_channels is written from the web app (adding a channel
+    # via the UI) and read by the Python ingest script (which channels to
+    # scrape) -- defined here too (not just in web/src/db/ensure-schema.ts)
+    # so it self-provisions regardless of which side runs first, same
+    # pattern already used for game_odds_history/player_prop_history.
+    """
+    CREATE TABLE IF NOT EXISTS youtube_pick_channels (
+        id SERIAL PRIMARY KEY,
+        channel_id TEXT NOT NULL UNIQUE,
+        channel_name TEXT NOT NULL,
+        handle TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        added_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
     """
     CREATE TABLE IF NOT EXISTS youtube_pick_videos (
         id SERIAL PRIMARY KEY,
@@ -1826,6 +1843,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_articles_team_date ON mlb_beat_articles(team_id, published_at)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_facts_article ON mlb_beat_facts(article_id)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_facts_type ON mlb_beat_facts(fact_type, team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_youtube_pick_channels_active ON youtube_pick_channels(active)",
     "CREATE INDEX IF NOT EXISTS idx_youtube_pick_videos_channel ON youtube_pick_videos(channel_id, published_at)",
     "CREATE INDEX IF NOT EXISTS idx_youtube_picks_video ON youtube_picks(video_id)",
     "CREATE INDEX IF NOT EXISTS idx_youtube_picks_sport_status ON youtube_picks(sport, status)",

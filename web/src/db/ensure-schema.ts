@@ -11,6 +11,7 @@ let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
 let ensureVideoAnalysisTablesPromise: Promise<void> | null = null;
+let ensureYoutubePickChannelsTablePromise: Promise<void> | null = null;
 
 // Columns added to dk_slates / dk_players after the initial table creation.
 // ALTER TABLE ... ADD COLUMN IF NOT EXISTS is idempotent — safe to run every deploy.
@@ -432,6 +433,36 @@ export async function ensureVideoAnalysisTables(): Promise<void> {
     });
   }
   await ensureVideoAnalysisTablesPromise;
+}
+
+// YouTube pick channels (2026-07-05): written from the web app's "Add
+// Channel" action, read by the Python ingest script to know what to scrape.
+// Also defined in db/schema.py so it self-provisions regardless of which
+// side runs first -- same pattern as game_odds_history/player_prop_history.
+const YOUTUBE_PICK_CHANNELS_DDLS = [
+  `CREATE TABLE IF NOT EXISTS youtube_pick_channels (
+      id SERIAL PRIMARY KEY,
+      channel_id TEXT NOT NULL UNIQUE,
+      channel_name TEXT NOT NULL,
+      handle TEXT,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      added_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_youtube_pick_channels_active ON youtube_pick_channels(active)`,
+];
+
+export async function ensureYoutubePickChannelsTable(): Promise<void> {
+  if (!ensureYoutubePickChannelsTablePromise) {
+    ensureYoutubePickChannelsTablePromise = (async () => {
+      for (const ddl of YOUTUBE_PICK_CHANNELS_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureYoutubePickChannelsTablePromise = null;
+      throw error;
+    });
+  }
+  await ensureYoutubePickChannelsTablePromise;
 }
 
 export async function ensureAnalyticsColumns(): Promise<void> {

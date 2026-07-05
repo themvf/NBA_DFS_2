@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { addYoutubeChannel } from "./actions";
 import type { YoutubePickRow } from "./queries";
+import type { YoutubePickChannel } from "@/db/schema";
 
 const SPORT_ICON: Record<string, string> = {
   nba: "🏀",
@@ -34,7 +36,104 @@ function fmtDate(d: Date | null): string {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export function YoutubePicksClient({ picks }: { picks: YoutubePickRow[] }) {
+function ManageChannels({
+  channels,
+  onAdded,
+}: {
+  channels: YoutubePickChannel[];
+  onAdded: (channel: YoutubePickChannel) => void;
+}) {
+  const [input, setInput] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [open, setOpen] = useState(false);
+
+  function handleAdd() {
+    if (!input.trim()) return;
+    startTransition(async () => {
+      setMessage(null);
+      const res = await addYoutubeChannel(input.trim());
+      setMessage({ ok: res.ok, text: res.message });
+      if (res.ok && res.channel) {
+        setInput("");
+        onAdded({
+          id: -Date.now(),
+          channelId: res.channel.channelId,
+          channelName: res.channel.channelName,
+          handle: null,
+          active: true,
+          addedAt: new Date(),
+        });
+      }
+    });
+  }
+
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-sm font-semibold"
+      >
+        <span>📺 Tracked Channels ({channels.length})</span>
+        <span className="text-xs text-muted-foreground">{open ? "hide" : "manage"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="@handle or youtube.com/@handle"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              className="min-w-[220px] flex-1 rounded border bg-background px-2 py-1.5 text-sm"
+            />
+            <button
+              onClick={handleAdd}
+              disabled={isPending || !input.trim()}
+              className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {isPending ? "Adding…" : "Add Channel"}
+            </button>
+          </div>
+
+          {message && (
+            <p className={`text-xs ${message.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+              {message.text}
+            </p>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            New channels are picked up by the scheduled scraper on its next run — adding one here
+            doesn&apos;t fetch videos immediately.
+          </p>
+
+          <ul className="space-y-1">
+            {channels.map((c) => (
+              <li key={c.channelId} className="flex items-center justify-between text-sm">
+                <span>{c.channelName}{c.handle ? ` (${c.handle})` : ""}</span>
+                <span className={`text-xs ${c.active ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                  {c.active ? "active" : "paused"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function YoutubePicksClient({
+  picks,
+  initialChannels,
+}: {
+  picks: YoutubePickRow[];
+  initialChannels: YoutubePickChannel[];
+}) {
+  const [channels, setChannels] = useState(initialChannels);
+  const [channelFilter, setChannelFilter] = useState("all");
   const [sport, setSport] = useState("all");
   const [betType, setBetType] = useState("all");
   const [search, setSearch] = useState("");
@@ -48,8 +147,13 @@ export function YoutubePicksClient({ picks }: { picks: YoutubePickRow[] }) {
     () => Array.from(new Set(picks.map((p) => p.betType))).sort(),
     [picks],
   );
+  const pickChannelNames = useMemo(
+    () => Array.from(new Set(picks.map((p) => p.channelName))).sort(),
+    [picks],
+  );
 
   const filtered = picks.filter((p) => {
+    if (channelFilter !== "all" && p.channelName !== channelFilter) return false;
     if (sport !== "all" && p.sport !== sport) return false;
     if (betType !== "all" && p.betType !== betType) return false;
     if (search) {
@@ -74,10 +178,15 @@ export function YoutubePicksClient({ picks }: { picks: YoutubePickRow[] }) {
       <div>
         <h1 className="text-xl font-bold">🎯 YouTube Picks Tracker</h1>
         <p className="text-sm text-muted-foreground">
-          Betting picks extracted from tracked YouTube channels (currently: BettingPros).
-          Every pick links back to its source quote and video.
+          Betting picks extracted from tracked YouTube channels. Every pick links back to its
+          source quote and video.
         </p>
       </div>
+
+      <ManageChannels
+        channels={channels}
+        onAdded={(c) => setChannels((prev) => [c, ...prev.filter((x) => x.channelId !== c.channelId)])}
+      />
 
       <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
         ⚠ Settlement isn&apos;t built yet — every pick shows as{" "}
@@ -93,6 +202,16 @@ export function YoutubePicksClient({ picks }: { picks: YoutubePickRow[] }) {
           onChange={(e) => setSearch(e.target.value)}
           className="rounded border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground w-52"
         />
+        {pickChannelNames.length > 1 && (
+          <label className="flex items-center gap-1">
+            <span className="text-muted-foreground">Channel</span>
+            <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}
+              className="rounded border bg-background px-1.5 py-1.5">
+              <option value="all">All</option>
+              {pickChannelNames.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+        )}
         <label className="flex items-center gap-1">
           <span className="text-muted-foreground">Sport</span>
           <select value={sport} onChange={(e) => setSport(e.target.value)}
@@ -159,6 +278,8 @@ export function YoutubePicksClient({ picks }: { picks: YoutubePickRow[] }) {
               </div>
 
               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-medium">{p.channelName}</span>
+                <span>·</span>
                 <span>{fmtDate(p.publishedAt)}</span>
                 <span>·</span>
                 <a
