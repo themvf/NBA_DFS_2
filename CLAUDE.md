@@ -1303,8 +1303,8 @@ does not retroactively justify skipping H1's kill criterion, and vice versa.
 |---|---|---|---|
 | P1 | Extend `ingest/tennis_training.py` (not `tennis_history.py` — the training corpus is this spec's actual backtest input, and it already carries rank/points/round/best_of; `tennis_history.py`'s production ratings are a separate, live-ratings concern) to add `round_num`, `rank_diff`, `pts_diff`, `matches_played_fav/dog` (fatigue proxy — no match-duration column exists in this source for either tour), `days_since_last_fav/dog` (layoff), and a new `_RecencyElo` engine (`recency_elo_diff`, `form_gap`) alongside the untouched flat Elo | Data present, leak-free, point-in-time verified | ✅ Done (2026-07-04) |
 | P2 | Grid-search the `_RecencyElo` half-life (`model/tennis_recency_calibration.py`, candidates 60/90/180/365/730 days); define and freeze H1's form-gap subset | H1's form-gap subset defined and frozen before any backtest is run | ✅ Done (2026-07-04) |
-| P3 | Walk-forward backtest H1 (recency) and H2 (rank/fatigue) on the historical corpus — offline only, no live deployment | Both hypotheses' kill criteria evaluated honestly; ≥200-match minimum met before concluding | Planned |
-| P4 | **Only if** P3 shows a real out-of-sample edge in the qualifying subset: deploy as an anchor-shrunk signal gated to that subset only (not universally) in `model/tennis_predictions.py` | Live paper-trading period before any bet from this signal counts above 2★ | Gated on P3 |
+| P3 | Walk-forward backtest H1 (recency) and H2 (rank/fatigue) on the historical corpus (`model/tennis_recency_fatigue_backtest.py`) — offline only, no live deployment | Both hypotheses' kill criteria evaluated honestly; ≥200-match minimum met before concluding | ✅ Done (2026-07-04) |
+| P4 | **Not triggered.** H1 failed cleanly; H2's only pass (WTA) is a marginal, likely-noise result that doesn't meet "a real out-of-sample edge" | Live paper-trading period before any bet from this signal counts above 2★ | Not triggered |
 | P5 | Ongoing CLV monitoring via `model/clv_report.py`, sliced by `form_gap` quartile and tour, to confirm live performance tracks the backtest | Continuous — a live/backtest divergence pulls the signal back to ≤2★ | Gated on P4 |
 
 **Honest prior (set before P1 started, 2026-07-04):** the motivating ATP/WTA gap
@@ -1336,6 +1336,48 @@ prior above. Script: `model/tennis_recency_calibration.py`. Constants frozen
 in `ingest/tennis_training.py`: `_RECENCY_HALF_LIFE_DAYS = 730.0`,
 `FORM_GAP_FREEZE_THRESHOLD = 47.5` — do not re-tune either without a new,
 separately pre-registered P2 study.
+
+**P3 result (2026-07-04) — both hypotheses graded against their pre-registered
+kill criteria on the reserved period (2022-01-01+), never touched before now.**
+
+*H1 (recency Elo, in the frozen `|form_gap| >= 47.5` subset):* **FAIL, both
+tours.** ATP n=4,024: bootstrap delta (flat − recency logloss) = +0.0018, 95%
+CI `[-0.0049, +0.0088]` — includes zero, no reliable improvement. WTA n=4,615:
+delta = **-0.0087**, 95% CI `[-0.0146, -0.0030]` — CI excludes zero, but in the
+WRONG direction: recency Elo is *reliably worse* than flat Elo in this subset,
+not better. H1 is dead — consistent with P2's own standalone finding.
+
+*H2 (rank/points/round/fatigue features, expanding-window walk-forward, OOS
+scored on 2022+ only):* ATP OOS n=9,476 — FAIL (delta +0.0004, CI
+`[-0.0002, +0.0011]`, includes zero). WTA OOS n=11,230 — technically PASSES
+the mechanical CI-excludes-zero rule (delta +0.0009, CI `[+0.0004, +0.0014]`),
+but **do not read this as confirmed edge**: the effect size is tiny (<0.001
+nats/match — no established practical significance), and 5 total comparisons
+were run across H1+H2+the sub-claim (2 tours × 2 hypotheses + 1 sub-claim);
+at nominal 95% CIs, P(≥1 false positive among 5 independent tests) ≈ 22.6%.
+One marginal pass out of five tests is exactly the pattern this spec's
+multiple-comparisons discipline exists to catch, not celebrate.
+
+*The original motivating sub-claim* (fatigue predicts ATP best-of-5 favorite
+losses — the thing that started this whole spec) **found nothing**:
+`fatigue_diff` coefficient on ATP best-of-5 matches (n=6,196) = -0.0057, 95%
+CI `[-0.1831, +0.0667]` — includes zero by a wide margin, not close to
+significant. The Wimbledon favorite/dog gap that motivated this entire spec
+remains what it looked like from the start: small-sample noise, now refuted
+directly rather than just statistically doubted.
+
+**Verdict: P4 is not triggered.** H1 failed cleanly in both tours. H2's only
+technical pass is a marginal, likely-noise result in one tour, occurring
+alongside a null result in the other tour AND a null result on the specific
+sub-claim that motivated the whole investigation — this does not meet the
+bar of "a real out-of-sample edge" the P4 gate requires. Tennis moneyline
+remains calibration-only across every feature family tested so far (market
+consensus, flat Elo, recency Elo, rank/points, round depth, fatigue-proxy) —
+a third confirmed no-edge result, exactly as the honest prior anticipated.
+Per the Non-negotiables below: no further recency-Elo variants and no further
+feature additions to this feature set without a new, separately pre-
+registered study — this one is closed. Script:
+`model/tennis_recency_fatigue_backtest.py`.
 
 ### Non-negotiables (inherited from every prior gameline/totals mirage)
 
