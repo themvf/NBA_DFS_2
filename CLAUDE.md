@@ -1872,18 +1872,23 @@ against real market data, exactly like every other backtest in this file.
 
 ### Scope (Phase 0/1)
 
-**Teams:** Washington Nationals + Baltimore Orioles only. Small and cheap
-enough to validate the mechanics before any conversation about scaling to
-30 teams.
+**Teams: Baltimore Orioles only (corrected 2026-07-05, before any code was
+written).** The original plan assumed MASN covers both Nationals and
+Orioles. Verified live before scraping anything — it doesn't: MASN's
+category sitemap has only `orioles`/`masn`/`uncategorized` (no `nationals`
+category exists), and none of its 9 listed authors is an active Nationals
+beat writer (the "Zuckerman" URL resolves but hasn't posted since 2022;
+other Nationals-tagged bylines are stale since 2023). Decision: build and
+validate the pipeline against Kubatko's very active, precisely-timestamped
+Orioles coverage first; add Nationals later once a viable free source is
+found (not MASN).
 
-**Source:** MASN Sports (masnsports.com) only — a free, non-paywalled
-regional broadcast site that happens to cover **both** requested teams
-through the same two long-tenured beat writers (Mark Zuckerman for the
-Nationals, Roch Kubatko for the Orioles). Washington Post and The Athletic
-were considered and dropped for this phase: both are subscription-gated,
-and scraping paywalled content raises real ToS questions this project
-hasn't needed to navigate before. Revisit only if MASN alone proves
-insufficient after Phase 0/1.
+**Source:** MASN Sports (masnsports.com), Roch Kubatko's Orioles blog only
+— free, non-paywalled, robots.txt fully permissive for the domain.
+Washington Post and The Athletic were considered and dropped for this
+phase regardless of team: both are subscription-gated, and scraping
+paywalled content raises real ToS questions this project hasn't needed to
+navigate before.
 
 **Channel:** published articles, not X/Twitter (explicit choice — avoids
 X's API paywall, at the honest cost of likely lagging real-time posts by
@@ -1959,10 +1964,51 @@ mlb_beat_facts
 
 | Phase | Scope | Hypothesis / gate | Status |
 |---|---|---|---|
-| **P0 — Feasibility** | Scrape MASN, extract against the 3 fixed fact types, hand-label a sample (~30-50 articles) to score extraction precision (grounded, correct fact_type) and recall (didn't miss an obvious one) | No statistical edge claim yet. Gate to proceed: precision ≥ 80% on the hand-labeled sample — below that, the extraction step itself isn't trustworthy enough to build a timing study on top of | Planned |
+| **P0 — Feasibility** | Scrape MASN, extract against the 3 fixed fact types, hand-label a sample (~30-50 articles) to score extraction precision (grounded, correct fact_type) and recall (didn't miss an obvious one) | No statistical edge claim yet. Gate to proceed: precision ≥ 80% on the hand-labeled sample — below that, the extraction step itself isn't trustworthy enough to build a timing study on top of | **Pipeline built and run (2026-07-05); precision hand-label review pending** |
 | **P1 — Timing study** | For every extracted fact, does the market (moneyline/total, or a specific prop if player-specific) move in the implied direction after `published_at`, and with what lag? | Pre-registered minimum sample before any conclusion — realistic expectation-setting up front: 2 teams × MASN-only likely yields on the order of a few qualifying facts per team per week, so reaching even a modest 50-fact sample will likely take multiple months, not weeks. State the actual accumulated n honestly when this phase reports, the same way the MLB Underdog spec reported n=125 against its own floor rather than rounding up | Planned |
 | **P2 — Backtest** | Only if P1 shows real, timely movement: would betting the gap before that movement have been profitable at the odds available then? Walk-forward, bootstrap CI, same discipline as every other backtest in this file | Gated on P1 clearing its bar | Not triggered |
 | **P3 — Live shadow / scale** | Only if P2 clears its bar: shadow-track live before anything touches a real star rating, then consider scaling beyond 2 teams / MASN-only | Gated on P2 | Not triggered |
+
+### P0 build results (2026-07-05)
+
+Built `ingest/mlb_beat_articles.py` (scraper) and `model/mlb_beat_extraction.py`
+(DeepSeek extraction, `model_version = "beat-extract-deepseek-v1"`).
+
+**Real-site findings, verified before/while building (not assumed):**
+- robots.txt is fully permissive for masnsports.com.
+- The listing page's own `<link rel="next">` pagination is broken — the
+  linked `/page/2/` URL 404s. Worked around via the site's own
+  `post-sitemap43.xml` (site-wide, all authors) to backfill history:
+  fetch each candidate, keep only ones actually bylined "Roch Kubatko",
+  discard the rest.
+- Backfill run: 60 sitemap candidates checked → 52 stored (8 filtered out
+  as wrong author) + 6 from the initial listing-page run = **58 articles**,
+  spanning 2026-05-28 to 2026-07-05 (~5.5 weeks).
+
+**Extraction run:** all 58 articles processed, 83 facts stored, 4 ungrounded
+facts discarded by the quote-verification check before ever reaching the
+database (the safety mechanism doing exactly its job). Breakdown:
+`injury_status` 63, `starter_change` 21, `bullpen_availability` 1 (this
+last type is rare in practice — day-to-day bullpen-fatigue notes are a much
+smaller share of Kubatko's coverage than injury/lineup news). 26 of 58
+articles yielded zero facts (plausible — many are mailbag/analysis posts,
+not hard news).
+
+**Spot-checked (not the formal hand-label pass) 2 extractions against
+source text — both correct**: a Hunter Greene starter-change fact and a
+Ryan Helsley IL-placement fact, both with quotes verified verbatim in the
+source. Also noticed one likely **recall miss**: an article mentioning
+Adley Rutschman's IL reinstatement in passing (inside a story primarily
+about a different player's roster move) did not get flagged — a good
+concrete example of what the real hand-label pass needs to catch, since a
+missed fact is a different failure mode than an ungrounded one and the
+quote-check can't catch it.
+
+**Status: the pipeline works end-to-end and produces plausible, grounded
+output on inspection, but the actual precision gate (≥80%, formally
+hand-labeled) has NOT been run yet** — that requires human judgment on the
+full 58-article/83-fact report, not a self-certification. Report delivered
+to the user for that review. P1 does not start until that gate is cleared.
 
 ### Non-negotiables (same discipline as every prior spec in this file)
 
