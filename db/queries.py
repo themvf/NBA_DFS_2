@@ -852,6 +852,98 @@ def insert_mlb_pitcher_stats_snapshot(
     )
 
 
+def upsert_mlb_beat_article(
+    db: DatabaseManager,
+    source: str,
+    team_id: int | None,
+    url: str,
+    title: str,
+    published_at: str | None,
+    raw_text: str,
+) -> int:
+    """Insert a scraped beat-writer article; returns its id.
+
+    Idempotent on url (UNIQUE) -- re-scraping the same listing page is safe.
+    published_at is the SITE'S OWN displayed timestamp, not scrape time --
+    see CLAUDE.md "MLB Beat-Writer Information-Latency Pilot" (2026-07-05).
+    """
+    return db.execute_insert(
+        """
+        INSERT INTO mlb_beat_articles (source, team_id, url, title, published_at, raw_text)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (url) DO UPDATE SET
+            title        = EXCLUDED.title,
+            published_at = EXCLUDED.published_at,
+            raw_text     = EXCLUDED.raw_text
+        RETURNING id
+        """,
+        (source, team_id, url, title, published_at, raw_text),
+    )
+
+
+def get_mlb_beat_articles_without_facts(db: DatabaseManager, model_version: str) -> list[dict]:
+    """Articles that have not yet been run through extraction for this model_version.
+
+    A prior model_version's extraction (if any) does not count -- bumping
+    model_version means every article is eligible for re-extraction under
+    the new version, same as the star-rating ledgers elsewhere in this project.
+    """
+    return db.execute(
+        """
+        SELECT a.id, a.source, a.team_id, a.url, a.title, a.published_at, a.raw_text
+        FROM mlb_beat_articles a
+        WHERE NOT EXISTS (
+            SELECT 1 FROM mlb_beat_facts f
+            WHERE f.article_id = a.id AND f.model_version = %s
+        )
+        ORDER BY a.published_at ASC NULLS LAST
+        """,
+        (model_version,),
+    )
+
+
+def insert_mlb_beat_fact(
+    db: DatabaseManager,
+    article_id: int,
+    fact_type: str,
+    team_id: int | None,
+    player_name: str | None,
+    description: str,
+    quote: str,
+    model_version: str,
+) -> None:
+    """Append one extracted fact. Not upserted -- an article can yield zero,
+    one, or several facts per extraction run, and re-running under a new
+    model_version should not silently overwrite the old version's rows."""
+    db.execute(
+        """
+        INSERT INTO mlb_beat_facts (
+            article_id, fact_type, team_id, player_name, description, quote, model_version
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        (article_id, fact_type, team_id, player_name, description, quote, model_version),
+    )
+
+
+def mark_mlb_beat_article_extracted_empty(db: DatabaseManager, article_id: int, model_version: str) -> None:
+    """Record that an article was processed and yielded zero facts.
+
+    Without this, get_mlb_beat_articles_without_facts() would re-select (and
+    re-pay DeepSeek for) the same fact-less article on every run, since a
+    NOT EXISTS check against zero rows can't distinguish "not yet processed"
+    from "processed, nothing found." Stored as a fact_type='_none' sentinel
+    row rather than a new table/column -- kept internal to this module.
+    """
+    db.execute(
+        """
+        INSERT INTO mlb_beat_facts (article_id, fact_type, team_id, description, quote, model_version)
+        VALUES (%s, '_none', NULL, 'no qualifying facts found', 'n/a', %s)
+        """,
+        (article_id, model_version),
+    )
+
+
 def upsert_mlb_matchup(
     db: DatabaseManager,
     game_date: str,

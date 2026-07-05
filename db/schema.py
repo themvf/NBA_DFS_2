@@ -21,6 +21,10 @@ Tables:
                        so betting models can join point-in-time ("as of this
                        game's date") instead of leaking the current-state
                        row into historical predictions.
+  - mlb_beat_articles, mlb_beat_facts
+                       Beat-writer information-latency pilot: raw scraped
+                       articles + DeepSeek-extracted structured facts
+                       (starter changes, injury status, bullpen notes).
 
   Shared:
   - dk_slates          DraftKings slate per date (sport column: 'nba' | 'mlb')
@@ -321,6 +325,44 @@ TABLES = [
         era DOUBLE PRECISION,
         fetched_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(player_id, season, snapshot_date)
+    )
+    """,
+
+    # ── MLB beat-writer articles (information-latency pilot) ──
+    # Raw scraped articles. published_at is the SITE'S OWN displayed publish
+    # timestamp (parsed from the page), not scrape time -- this is the whole
+    # point-in-time signal the pilot depends on. See CLAUDE.md "MLB
+    # Beat-Writer Information-Latency Pilot" (2026-07-05).
+    """
+    CREATE TABLE IF NOT EXISTS mlb_beat_articles (
+        id SERIAL PRIMARY KEY,
+        source TEXT NOT NULL,
+        team_id INTEGER REFERENCES mlb_teams(team_id),
+        url TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        published_at TIMESTAMPTZ,
+        raw_text TEXT,
+        scraped_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    # ── MLB beat-writer extracted facts (DeepSeek structured extraction) ──
+    # One row per extracted fact (or none, for most articles). quote is a
+    # mandatory verbatim substring of the source article's raw_text -- the
+    # grounding check against hallucination. model_version distinguishes
+    # prompt/model revisions so they never silently mix in the Phase 0/1
+    # feasibility + timing-study reports.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_beat_facts (
+        id SERIAL PRIMARY KEY,
+        article_id INTEGER NOT NULL REFERENCES mlb_beat_articles(id),
+        fact_type TEXT NOT NULL,
+        team_id INTEGER REFERENCES mlb_teams(team_id),
+        player_name TEXT,
+        description TEXT NOT NULL,
+        quote TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        extracted_at TIMESTAMPTZ DEFAULT NOW()
     )
     """,
 
@@ -1735,6 +1777,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_season ON mlb_team_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_history_asof ON mlb_team_stats_history(team_id, season, snapshot_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_history_asof ON mlb_pitcher_stats_history(player_id, season, snapshot_date)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_beat_articles_team_date ON mlb_beat_articles(team_id, published_at)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_beat_facts_article ON mlb_beat_facts(article_id)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_beat_facts_type ON mlb_beat_facts(fact_type, team_id)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_season_date ON mlb_homerun_training_games(season, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_hitter ON mlb_homerun_training_games(hitter_mlb_id, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_target ON mlb_homerun_training_games(season, hit_hr_1plus)",
