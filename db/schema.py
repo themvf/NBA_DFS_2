@@ -16,6 +16,11 @@ Tables:
   - mlb_batter_stats   Rolling per-game batting stats (15-game EWMA)
   - mlb_pitcher_stats  Rolling per-game pitching stats
   - mlb_team_stats     Team offensive + bullpen environment
+  - mlb_team_stats_history, mlb_pitcher_stats_history
+                       Append-only dated snapshots of the two tables above,
+                       so betting models can join point-in-time ("as of this
+                       game's date") instead of leaking the current-state
+                       row into historical predictions.
 
   Shared:
   - dk_slates          DraftKings slate per date (sport column: 'nba' | 'mlb')
@@ -300,6 +305,25 @@ TABLES = [
     )
     """,
 
+    # ── MLB pitcher stats — dated snapshots (point-in-time history) ──
+    # Same rationale as mlb_team_stats_history: mlb_pitcher_stats is a
+    # single current-state row per (player, season), overwritten daily.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_pitcher_stats_history (
+        id SERIAL PRIMARY KEY,
+        player_id INTEGER NOT NULL,
+        season TEXT NOT NULL,
+        snapshot_date DATE NOT NULL,
+        team_id INTEGER REFERENCES mlb_teams(team_id),
+        name TEXT NOT NULL,
+        k_per_9 DOUBLE PRECISION,
+        xfip DOUBLE PRECISION,
+        era DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(player_id, season, snapshot_date)
+    )
+    """,
+
     # ── MLB team offensive + bullpen environment ──────────────
     # team_wrc_plus: opposing lineup quality index (100 = avg).
     # team_k_pct: how often the team strikes out (scales pitcher K count).
@@ -320,6 +344,33 @@ TABLES = [
         staff_bb_pct DOUBLE PRECISION,
         fetched_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(team_id, season)
+    )
+    """,
+
+    # ── MLB team stats — dated snapshots (point-in-time history) ──
+    # mlb_team_stats above is a single current-state row per (team, season),
+    # overwritten daily — it cannot answer "what did we know on date X".
+    # This table is append-only (one row per team/season/day) so betting
+    # models can join "the latest snapshot at or before this game's date"
+    # instead of leaking future-season stats into past-game predictions.
+    # See CLAUDE.md "MLB Moneyline — Point-in-Time Leak Finding" (2026-07-05).
+    """
+    CREATE TABLE IF NOT EXISTS mlb_team_stats_history (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES mlb_teams(team_id),
+        season TEXT NOT NULL,
+        snapshot_date DATE NOT NULL,
+        team_wrc_plus DOUBLE PRECISION,
+        team_k_pct DOUBLE PRECISION,
+        team_bb_pct DOUBLE PRECISION,
+        team_iso DOUBLE PRECISION,
+        team_ops DOUBLE PRECISION,
+        bullpen_era DOUBLE PRECISION,
+        bullpen_fip DOUBLE PRECISION,
+        staff_k_pct DOUBLE PRECISION,
+        staff_bb_pct DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(team_id, season, snapshot_date)
     )
     """,
 
@@ -1682,6 +1733,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_team ON mlb_pitcher_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_player ON mlb_pitcher_stats(player_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_season ON mlb_team_stats(team_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_history_asof ON mlb_team_stats_history(team_id, season, snapshot_date)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_history_asof ON mlb_pitcher_stats_history(player_id, season, snapshot_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_season_date ON mlb_homerun_training_games(season, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_hitter ON mlb_homerun_training_games(hitter_mlb_id, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_target ON mlb_homerun_training_games(season, hit_hr_1plus)",

@@ -1742,3 +1742,98 @@ October, so there's real room before the sample window closes for the year.
   finding effort in this project (CLV harness, line alerts, tennis P4/P5)
   requires a live confirmation step before a backtest result touches
   anything a user-facing star rating depends on.
+
+---
+
+## MLB Moneyline — Point-in-Time Leak Finding + Edge Ideas (2026-07-05)
+
+### The leak
+
+`model/mlb_moneyline_model.py` (`mlb-ml-v1`) and `model/mlb_game_total_model.py`
+share `load_game_data()`, which joins `mlb_team_stats` and `mlb_pitcher_stats`
+by grabbing the **latest** row per team/pitcher (`ORDER BY season DESC,
+fetched_at DESC`). Both tables are `UNIQUE(team_id, season)` /
+`UNIQUE(player_id, season)` and refreshed **daily**
+(`.github/workflows/refresh_mlb_stats.yml`) via a true overwrite-in-place
+upsert (`ON CONFLICT ... DO UPDATE`, confirmed in `db/queries.py`'s
+`upsert_mlb_team_stats`/`upsert_mlb_pitcher_stats`) — no history is retained.
+
+`backfill_predictions()`'s "walk-forward" correctly restricts the *logistic
+regression's training labels* to `game_date < d`, but every non-market
+feature (`sp_xfip_adv`, `wrc_adv`, `iso_adv`, `bullpen_adv`) is pulled from
+these single current-state rows for **every** game regardless of date — a
+March prediction is partly built from June/July team stats. Same bug class
+already caught twice in this project (`mlb_matchups.our_prob_home`,
+`mlb_bets.event_commence` — see the MLB Underdog-Value spec above).
+
+**Which direction this cuts:** leakage inflates *apparent* backtest skill.
+The model still didn't beat the market even with that unfair advantage
+(`mlb_ml_v1_eval.json`: logloss .6772 vs market .6717) — so real, honestly-
+computed live skill is almost certainly worse than reported. This doesn't
+hide a hidden edge; if anything it makes the existing 2★ cap more clearly
+correct, not less. But it means no future feature work should be evaluated
+on top of this join until it's point-in-time safe.
+
+### Not-yet-tried feature ideas for MLB moneyline (ordered by plausibility)
+
+1. **Weather** — `weather_temp`/`wind_speed`/`wind_direction` already exist
+   as columns on `mlb_matchups` and are already captured, but aren't in
+   `FEATURE_COLS` at all. Zero new ingestion required — cheapest test.
+2. **Short-term bullpen fatigue** — relief innings thrown in the last 1-3
+   days. Current `bullpen_fip` is a season aggregate; day-to-day workload is
+   a real, well-known professional angle season stats can't see. Needs new
+   ingestion from free MLB boxscore data (already have API access).
+3. **Recency-weighted (EWMA) team stats** instead of season-to-date — same
+   test class as the tennis Elo work ([[tennis-moneyline-no-edge]]), which
+   found recency weighting reliably lost to flat ratings. Honest prior here
+   is also low, but MLB team strength streaks harder than a tennis rating,
+   so it isn't a pure repeat of that result.
+4. **Reverse line movement / public bet-% divergence** — a fundamentally
+   different strategy (follow sharp money instead of out-predicting it).
+   Needs a new data source not currently ingested (Action Network-style
+   bet-split feeds); the existing Pinnacle-vs-DK line-alerts infrastructure
+   is adjacent but isn't quite this.
+5. **Umpire assignment** — real, documented effect, but mostly a totals
+   lever (strike-zone size → run environment), weaker/noisier for
+   moneyline specifically. Needs new ingestion (crew assignments aren't in
+   the schema).
+
+Sequencing: fix the leak first (undermines confidence in every downstream
+test), then weather alone (near-zero cost), then bullpen fatigue if
+inconclusive — one pre-registered feature at a time, not a bundle, per the
+same multiple-comparisons discipline used everywhere else in this file.
+
+### Fix (implemented 2026-07-05)
+
+Added `mlb_team_stats_history` / `mlb_pitcher_stats_history` (`db/schema.py`,
+append-only, `UNIQUE(team_id/player_id, season, snapshot_date)`) populated
+daily in `ingest/mlb_stats.py` alongside the existing current-state upserts
+(via new `db/queries.py` helpers `insert_mlb_team_stats_snapshot`/
+`insert_mlb_pitcher_stats_snapshot`) — `mlb_team_stats`/`mlb_pitcher_stats`
+are untouched and still serve DFS projections and slate loads, which
+correctly want "current," not point-in-time, stats. `load_game_data()`
+(`model/mlb_game_total_model.py`, shared by the moneyline and totals models)
+now joins each side via a `LATERAL` "latest snapshot at or before
+`game_date`" lookup instead of the global-latest row.
+
+**Honest consequence, not a bug (corrected after testing against live data,
+2026-07-05):** no snapshot exists for any date before this shipped, so the
+LATERAL join correctly returns NULL for `home_sp_xfip`/`home_wrc`/`home_iso`/
+`home_bullpen_fip` (and the away side) on every historical game. Row COUNT
+is unaffected — `build_ml_features()`/`build_features()` already `.fillna()`
+each side with a league-average constant *before* computing the home/away
+differential, so a game with two NULL sides still produces a defined
+`sp_xfip_adv`/`wrc_adv`/etc. of **exactly 0** (informationless, not missing).
+Verified live: 1,309 rows still load, 1,305 pass the full-feature-non-null
+filter — same as before the fix. What actually changes is **information
+content, not availability**: `evaluate()`/`backfill_predictions()` will
+train and score on rows where every non-market feature is a neutral 0 until
+daily snapshots accumulate enough real point-in-time history (weeks), so any
+walk-forward result run before that depth exists is really testing
+`market_home_prob` alone, not the strength-differential features — an
+important thing to check before trusting a near-term eval as a real test of
+those features. This is still the correct trade for removing the leak; it's
+gentler than originally estimated, not harsher. Historical `our_prob_home`
+values already written before this fix are unaffected and remain what they
+were; they should be read as "computed under the old, leaky methodology,"
+not deleted or restated.
