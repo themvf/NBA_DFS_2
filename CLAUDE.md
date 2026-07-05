@@ -2332,3 +2332,27 @@ already set.
   NFL/WNBA/F1 picks are tracked but not graded until this project has
   the outcome data to grade them against — do not fake a settlement for
   a sport with no real result pipeline.
+
+### Web UI (2026-07-05)
+
+Added `/youtube-picks` — a feed of extracted picks (sport/bet-type filters,
+search, odds, confidence label, linked source video, expandable source
+quote), reading the same `youtube_pick_videos`/`youtube_picks` tables the
+Python pipeline writes (Drizzle definitions added to `web/src/db/
+schema.ts`, read-only from the web app — same "Python owns the table"
+pattern as `mlb_matchups`/`mlb_team_stats`, no `ensureSchema()` needed
+since the tables already exist via `db/schema.py`).
+
+**Deliberately does not show a leaderboard, accuracy rate, or "rate the
+YouTuber" view** — every pick is still `status='pending'` since
+settlement isn't built. A prominent banner says so explicitly rather than
+implying more confidence than the data supports. Once MLB/soccer
+settlement lands, this same page is where won/loss and accuracy should
+surface next — sequencing chosen explicitly (ship visibility now,
+extend with real grading later) rather than waiting for settlement to
+ship any UI at all.
+
+Verified against live data: 200 OK render, all 23 extracted picks display
+correctly (subject/opponent, selection, signed odds, confidence badges,
+linked video, expandable quote), sport filter verified narrowing 23→3 for
+WNBA exactly as expected from the underlying data.

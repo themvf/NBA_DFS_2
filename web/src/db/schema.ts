@@ -854,6 +854,42 @@ export const videoAnalysis = pgTable(
   (t) => [unique("video_analysis_video_id_key").on(t.videoId)]
 );
 
+// ── YouTube picks channel tracking (owned by the Python pipeline —
+// ingest/youtube_picks_videos.py + model/youtube_picks_extraction.py —
+// these tables already exist via db/schema.py; read-only from the web app,
+// same pattern as mlb_matchups/mlb_team_stats above) ──────────
+
+export const youtubePickVideos = pgTable("youtube_pick_videos", {
+  id: serial("id").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  channelName: text("channel_name").notNull(),
+  videoId: text("video_id").notNull(),
+  title: text("title").notNull(),
+  publishedAt: timestamp("published_at"),
+  transcriptText: text("transcript_text"),
+  scrapedAt: timestamp("scraped_at").defaultNow(),
+});
+
+export const youtubePicks = pgTable("youtube_picks", {
+  id: serial("id").primaryKey(),
+  videoId: integer("video_id")
+    .notNull()
+    .references(() => youtubePickVideos.id),
+  sport: text("sport").notNull(),
+  betType: text("bet_type").notNull(),
+  subject: text("subject").notNull(),
+  opponent: text("opponent"),
+  selection: text("selection").notNull(),
+  oddsAmerican: integer("odds_american"),
+  gameContext: text("game_context"),
+  confidenceLabel: text("confidence_label"),
+  quote: text("quote").notNull(),
+  modelVersion: text("model_version").notNull(),
+  status: text("status").notNull().default("pending"),
+  matchupRef: text("matchup_ref"),
+  extractedAt: timestamp("extracted_at").defaultNow(),
+});
+
 // ── Type inference ────────────────────────────────────────────
 
 export type Team = typeof teams.$inferSelect;
@@ -870,6 +906,8 @@ export type MlbPitcherStats = typeof mlbPitcherStats.$inferSelect;
 export type MlbTeamStats = typeof mlbTeamStats.$inferSelect;
 export type OddsSignalRun = typeof oddsSignalRuns.$inferSelect;
 export type VideoAnalysis = typeof videoAnalysis.$inferSelect;
+export type YoutubePickVideo = typeof youtubePickVideos.$inferSelect;
+export type YoutubePick = typeof youtubePicks.$inferSelect;
 export type DkSlate = typeof dkSlates.$inferSelect;
 export type DkPlayer = typeof dkPlayers.$inferSelect;
 export type DkLineup = typeof dkLineups.$inferSelect;
