@@ -1000,7 +1000,7 @@ information latency, and disciplined measurement. Priorities:
 | Priority | Initiative | Why | Status |
 |---|---|---|---|
 | **P1** | **CLV harness** (`model/clv_report.py`) + **per-book capture** (`game_odds_history.books` JSONB, Pinnacle via eu region for MLB) + **line movement** (`model/line_movement.py` CLI and Line Movement panels on the MLB, soccer, and tennis vegas views; soccer + tennis write the same per-book trail — 3h/6h cadence — and tennis gained bet snapshots so all three ledgers are CLV-measurable) | Closing Line Value converges ~10× faster than ROI (every bet scores, win or lose). For each bet: entry = first snapshot, close = last pre-kickoff snapshot; did the market move toward our number? Slices by sport/market/stars/model_version. The instrument every other idea is measured with. | ✅ Done (2026-07-02) |
-| **P2** | Pre-registered studies: (a) MLB underdog anomaly (post-repair 4-5★ tiers +22% ROI, ~2σ over just 65 bets / 4 calendar days — full spec below, "MLB Underdog-Value Investigation"); (b) opener-vs-closer (does our disagreement with the 13:10 open predict movement by close?) | Hypothesis + eval rules written BEFORE looking at data — the discipline that caught the soccer-totals mirage. Walk-forward only, post-odds-fix data only. | (a) Spec written 2026-07-05, backtest planned; (b) Planned |
+| **P2** | Pre-registered studies: (a) MLB underdog anomaly (65 stored 5★ bets span the whole season, not 4 days as first thought; 29% were stale pre-repair EV; honest n=125 shows a real win-rate gap but ROI/split-half/min-sample don't clear the bar — full result in "MLB Underdog-Value Investigation" below); (b) opener-vs-closer (does our disagreement with the 13:10 open predict movement by close?) | Hypothesis + eval rules written BEFORE looking at data — the discipline that caught the soccer-totals mirage. Walk-forward only, post-odds-fix data only. | (a) INCONCLUSIVE, cap stays, revisit at n≥200 (2026-07-05); (b) Planned |
 | **P3** | Soft markets: **MLB props live** (`ingest/mlb_prop_odds.py` — pitcher K + batter TB per-book 3×/day; `dk_prop_value` EV≥3% same-line + `prop_line_gap` ≥1.0 detectors into the alert ledger with ROI @ DK; settled from free MLB boxscores). First scan: 8 alerts vs 0 on game lines — DK's prop board is where it goes stale. WC anytime-scorer added same day: Pinnacle posts no WC player props, so the anchor is the overround-NORMALIZED market median (raw medians flagged 24% of the board — book-margin artifact; normalized flags ~4%); settles from the goal timeline, 90-minute rule, DNP-as-loss conservative bias documented. NBA props at season start. | ✅ MLB + WC (2026-07-02) |
 | **P2b** | **Sharp line alerts** (`model/line_alerts.py` + `line_alerts` table + Alerts panel on all three vegas views) | Pinnacle-divergence (≥2pp) and multi-book steam (≥3 books, ≥1.5pp) detectors run after every capture. Each alert is an IMMUTABLE ledger row frozen at trigger, then audited: clv_pp (did the market close toward the flagged side) + outcome (soccer graded on the 90' score). Telegram push if TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID secrets are set — the ledger never depends on delivery. An alert type with no positive CLV is noise; the backtest panel says so. | ✅ Done (2026-07-02) |
 | **P4** | Information latency (lineups, weather, injuries) — event-driven capture | Only if P1 shows we're directionally right but late. 30-min cron cadence cannot exploit minute-scale news. Don't build speculatively. | Gated on P1 |
@@ -1416,20 +1416,16 @@ gameline-v2` formula would have assigned before the 2★ cap silenced further
 high-star ratings) showed **+22% ROI over 65 settled 5★ bets**, with realized
 underdog win rate **33.8% vs 24.2% market-implied — a ~2σ gap**.
 
-**Verified before writing this spec, not assumed:** those 65 bets span
-**2026-06-28 to 2026-07-01 — four calendar days.** That is a materially
-thinner sample than "the open question" language in memory suggested at a
-glance. Four days of MLB is a small, serially correlated slice (same week's
-starting rotations, same hot/cold team stretches) — a 2σ result drawn from
-one arbitrarily-bounded four-day window, discovered by looking at exactly
-that window, is close to the textbook definition of a result that hasn't
-been tested yet, not one that has passed a test.
-
-The good news: **this doesn't require waiting for new data.** The current
-2026 season already has 1,318 completed games (2026-03-20 to 2026-07-04),
-1,177 with `our_prob_home` already computed — and only 65 of those bet-sides
-were ever looked at for this question. The other ~3.5 months are a genuine,
-already-existing, never-examined confirmation set.
+**Correction (2026-07-05, made while running P1 — see that section):** an
+earlier draft of this spec claimed those 65 bets span "2026-06-28 to
+2026-07-01 — four calendar days." That was wrong, caused by checking the
+date range on `mlb_bets.event_commence`, which is mostly `NULL` in this
+ledger — the MIN/MAX aggregate silently summarized only the ~6 rows that
+happened to have a non-null value, not all 65. Joined to
+`mlb_matchups.game_date` instead (populated on every row): **the 65 bets
+actually span 2026-03-31 to 2026-07-01 — essentially the whole season so
+far**, not four days. The underlying finding was never as thin a slice as
+first reported; see P1 below for what this changes and doesn't.
 
 ### Hypothesis (pre-registered — fixed before re-scoring any of that data)
 
@@ -1464,18 +1460,33 @@ data than discovered it, not to keep the original 65 as "confirmation."
 
 ### Data
 
-- Source: `mlb_matchups` (2026-03-20 through today), `home_ml`/`away_ml`,
-  `vegas_prob_home`, `our_prob_home`, `home_score`/`away_score` — all already
-  populated by the existing pipeline, all already using repaired (2026-07-02+)
-  consensus odds. No new ingest work required.
-- Re-derive per side: `_anchor(our_prob, market_prob, w=0.5)` (identical to
-  `model/mlb_game_bets.py`), then `rate_market(...)` from
-  `model/soccer_bet_rating.py` (the shared rubric: 5★ EV≥.20 & edge≥.04, 4★
-  EV≥.10 & edge≥.025, 3★ EV≥.03, longshot cap at 3★ for our_prob<.02) —
-  **without** the `max_stars=2` clamp, to see what the formula would have
-  actually flagged all season.
-- Exclude postponed/voided games (same `game_status` guard `mlb_game_bets.py`
-  already uses) and any row missing `our_prob_home` or final scores.
+**Corrected while building P1 (2026-07-05) — the first draft of this section
+was wrong, and the mistake is worth keeping on record:** it proposed
+re-deriving `our_prob`/ratings from `mlb_matchups` (`home_ml`/`away_ml`,
+`vegas_prob_home`, `our_prob_home`) back to season start. That doesn't work:
+`mlb_matchups.our_prob_home`/`vegas_prob_home` are **not a preserved
+historical record** — later pipeline runs overwrite them even for games that
+already happened, so querying that table for an old date returns whatever
+the model says about that game TODAY, not what it said at rating time. That
+would have silently broken the "point-in-time, leak-free" requirement this
+whole file's discipline depends on.
+
+The correct, actually-used source: **`mlb_bets` itself**, which already
+freezes `(our_prob, market_prob, market_decimal, edge, ev)` at the moment
+each `mlb-gameline-v2` bet locks (`model/mlb_game_bets.py`). No re-derivation
+of `our_prob` or the anchor happens anywhere in P1 — every input is read
+directly off the existing settled ledger, joined to `mlb_matchups.game_date`
+for reliable dating (not `mlb_bets.event_commence`, mostly `NULL` — see
+above) and to `mlb_teams` for the team-concentration check.
+
+Star tiers ARE recomputed (not read from the stored `stars` column), for two
+independent reasons, both real: (1) the 2★ cap (deployed 2026-07-02) clamps
+`stars` at INSERT time for every bet rated after that date, while
+`ev`/`edge` are stored uncapped regardless (`rate_market` computes all three
+together; only `stars` gets clamped afterward) — so calling `rate_market`
+again on the frozen inputs recovers the natural tier exactly. (2) **19 of
+the 65 stored 5★ bets (29%) turned out to be inflated by the same odds bug
+this project already fixed once** — see P1 below.
 
 ### Success metrics (fixed now, before re-scoring)
 
@@ -1522,11 +1533,73 @@ data than discovered it, not to keep the original 65 as "confirmation."
 
 | Phase | Scope | Gate to proceed | Status |
 |---|---|---|---|
-| P1 | Re-score all 2026-season moneyline sides with the existing v2 formula, uncapped; write results to a standalone offline table/CSV — no changes to the live `mlb_bets` ledger or its 2★ cap | Re-scored data reproduces the original 65-bet subset's numbers exactly (sanity check that the re-derivation matches what was actually rated) | Planned |
-| P2 | Compute all seven success metrics above on the full season; split-half stability check; per-team breakdown + leave-one-team-out check | Metrics computed honestly, both halves and the team breakdown reported separately, before any verdict is stated | Planned |
-| P3 | **Verdict.** PASS only if the kill criterion is cleared in full (CI excludes zero, both halves, ≥200 n) | If FAIL: 2★ cap stays, this joins tennis and soccer as a documented no-edge result. If PASS: proceed to P4, not straight to raising the live cap | Gated on P2 |
-| P4 | **Only if P3 passes**: shadow-track the signal live (rate uncapped in a research-only column/table, never surfacing above 2★ in the real ledger) for a full slate cycle, measuring real-time CLV via the existing `model/clv_report.py` infrastructure | Live shadow CLV must be positive and consistent with the offline backtest before the real ledger's cap is touched | Gated on P3 |
-| P5 | **Only if P4 confirms live**: raise the cap for this specific tier only (not moneyline broadly) in `model/mlb_game_bets.py`, with the exact qualifying criteria documented | Ongoing CLV monitoring, same as the tennis spec's P5 — a live/backtest divergence pulls it back to 2★ | Gated on P4 |
+| P1 | Recompute the natural (uncapped) star tier for every settled `mlb-gameline-v2` moneyline bet, from the frozen ledger inputs (`model/mlb_underdog_value_backtest.py`) | Recomputation reproduces the 65 stored-5★ bets exactly, OR every mismatch is independently explained (see result below) | ✅ Done (2026-07-05) |
+| P2 | Compute all seven success metrics on the qualifying tier; split-half stability; per-team breakdown + leave-one-team-out check | Metrics computed honestly, both halves and the team breakdown reported separately, before any verdict is stated | ✅ Done (2026-07-05) |
+| P3 | **Verdict.** PASS only if the kill criterion is cleared in full (CI excludes zero, both halves, ≥200 n) | If FAIL: 2★ cap stays. If INCONCLUSIVE (sample too small): cap stays, re-run later. If PASS: proceed to P4 | **INCONCLUSIVE — see result below. Cap stays; not a kill, not a pass.** |
+| P4 | **Only if P3 passes**: shadow-track the signal live (rate uncapped in a research-only column/table, never surfacing above 2★ in the real ledger) for a full slate cycle, measuring real-time CLV via the existing `model/clv_report.py` infrastructure | Live shadow CLV must be positive and consistent with the offline backtest before the real ledger's cap is touched | Not triggered — P3 inconclusive |
+| P5 | **Only if P4 confirms live**: raise the cap for this specific tier only (not moneyline broadly) in `model/mlb_game_bets.py`, with the exact qualifying criteria documented | Ongoing CLV monitoring, same as the tennis spec's P5 — a live/backtest divergence pulls it back to 2★ | Not triggered |
+
+### P1+P2 result (2026-07-05)
+
+Two data-quality issues were found and fixed *while building the backtest*,
+before any metric was computed — both are corrected above, restated here
+because they change what the result means:
+
+1. **The "four calendar days" claim was wrong** (see Context and Data above).
+   The 65 originally-flagged 5★ bets actually span 2026-03-31 to 2026-07-01
+   — essentially the whole season, not a cherry-picked week.
+2. **19 of those 65 bets (29%) were stale, not real.** Recomputing
+   `rate_market` on the frozen inputs reproduced 46/65 exactly; the other 19
+   all carry `inputs_json.odds_repaired = true` from the 2026-07-02 odds-bug
+   fix — their `market_decimal` was corrected in place, but `stars`/`ev` were
+   never retroactively recomputed from the corrected odds, so they were
+   still displaying 5★ ratings computed from the OLD, inflated, pre-repair
+   EV. Verified the recomputation logic itself is sound independently,
+   against 39 untouched (never-repaired) rows across all star tiers: 38
+   matched exactly, and the one "mismatch" was a genuinely-natural-5★ bet
+   correctly shown as capped-to-2★ post-2026-07-02 — exactly the kind of
+   row this investigation exists to surface, not a bug.
+
+**With the honest, corrected inputs, the natural 4-5★ tier across the whole
+season so far is n=125** (not 65 — the correct tier is broader once the cap
+is lifted from every dated bet, not just the ones that happened to still
+show 5★ despite the stale-EV bug):
+
+- **Win-rate gap**: realized 40.8% vs implied 30.9%, gap **+9.9pp, 95% CI
+  [+1.8pp, +17.8pp] — excludes zero.** This is the one genuinely encouraging
+  number.
+- **ROI**: +31.2%, 95% CI **[-3.1%, +66.0%] — includes zero.** Not
+  significant — the win-rate edge doesn't yet translate to a provable profit
+  once bet-to-bet odds variance is accounted for.
+- **Split-half stability: FAILS.** First half (n=95): gap +9.2pp, CI
+  [-0.0pp, +18.8pp]. Second half (n=30): gap +12.0pp, CI [-4.1pp, +28.6pp].
+  Both point estimates are positive and roughly consistent with each other —
+  this is NOT a sign-flip or a one-half-only pattern — but neither half
+  *individually* clears the CI-excludes-zero bar, mostly because splitting
+  n=125 into 95/30 leaves the second half underpowered. Per the
+  pre-registered rule this still counts as a fail, not a partial pass.
+- **Calibration by decile: mixed, not monotonic.** Most deciles show a
+  positive gap, but two (of ten) show a meaningful negative gap — not the
+  clean "biggest gap in the longest-odds decile" pattern a genuine
+  systematic underdog mispricing would produce most cleanly.
+- **Team concentration: PASSES.** 30 different teams represented; the
+  largest (COL) is 8.8% of the tier, well under the 25% bar. Leave-one-out
+  (excluding COL) still shows the gap excluding zero (+11.4pp, CI [+2.3pp,
+  +19.6pp]). The pattern is not one team's story.
+- **Minimum sample: FAILS.** n=125 < the pre-registered 200.
+
+**Verdict: INCONCLUSIVE, not PASS, not FAIL.** This is a real third outcome
+the original kill criterion didn't name, and it's the honest one: the signal
+survives the check it was most likely to fail (team concentration) and shows
+a statistically real win-rate gap, but ROI isn't significant, split-half
+stability isn't met, and the sample is still below the pre-registered floor.
+Per this file's standing rule ("no conclusion is drawn... until the stated
+sample is reached"), **the 2★ cap stays exactly as-is.** This is not ruled a
+dead hypothesis the way tennis's H1 was (which was reliably wrong-signed) —
+it is ruled *not yet decidable*. Re-run `model/mlb_underdog_value_backtest.py`
+once the season has produced enough further natural-4-5★ bets to clear
+n≥200, and grade again against the same frozen bars — do not lower the bar
+to manufacture a pass.
 
 ### Non-negotiables (same discipline as every prior spec in this file)
 
