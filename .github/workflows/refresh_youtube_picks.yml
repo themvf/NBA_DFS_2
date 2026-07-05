@@ -1,0 +1,41 @@
+name: Refresh YouTube Picks (BettingPros)
+
+# YouTube Picks Channel Tracking (CLAUDE.md, 2026-07-05).
+# Detects new BettingPros videos via the channel's RSS feed, fetches
+# transcripts through YOUTUBE_PROXY_URL (YouTube blocks transcript
+# requests from cloud/datacenter IPs -- confirmed live, a residential
+# proxy fixes it), then runs DeepSeek structured pick extraction.
+# Every 3 hours -- this channel posts multiple times a day (flagship show
+# + shorts).
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  refresh-youtube-picks:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      YOUTUBE_PROXY_URL: ${{ secrets.YOUTUBE_PROXY_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Scrape new BettingPros videos
+        run: python -m ingest.youtube_picks_videos
+
+      - name: Extract picks with DeepSeek
+        run: python -m model.youtube_picks_extraction

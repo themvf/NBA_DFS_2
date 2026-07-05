@@ -2200,3 +2200,135 @@ place this key now lives, distinct from the Python `.env` (local dev) and
 the GitHub Actions secret (`gh secret set DEEPSEEK_API_KEY`, for the MLB
 beat-writer pilot's scheduled workflow). Not yet confirmed set on Vercel
 as of this writing.
+
+---
+
+## YouTube Picks Channel Tracking — BettingPros Pilot (2026-07-05)
+
+Grew out of the "confirmations for parlay/prop edges" discussion: rather
+than another information-latency test, this pipeline tracks a specific
+betting-picks YouTube channel's actual track record over time — a
+structured, gradable extension of the general Video Analysis feature
+above, following this project's standard ledger-and-settle pattern
+(same shape as `mlb_bets`/`soccer_bets`/`tennis_bets`), not a new
+methodology.
+
+### Two real technical findings, verified before building on them
+
+1. **New-video detection needs no scraper.** Every YouTube channel has a
+   free, public, no-API-key RSS feed: `youtube.com/feeds/videos.xml?
+   channel_id=UC...`. Verified live — returns exact video ID, title, and
+   publish timestamp for the ~15 most recent uploads, no auth. This is a
+   documented, intentionally-public mechanism, unlike the transcript-fetch
+   technique, so it's far less likely to break. Resolving a channel's
+   `@handle` to its `channel_id` is a one-time lookup: fetch
+   `youtube.com/@handle` once and read `"externalId":"UC..."` from the
+   page (cross-checked against the `<link rel="canonical">` tag — matched).
+
+2. **Transcript fetching gets IP-blocked at volume — a proxy fixes it.**
+   Mid-testing, `youtube_transcript_api` started raising `RequestBlocked`
+   from this dev sandbox's IP, including on a video that had worked
+   minutes earlier — the same "cloud/datacenter IP" blocking class already
+   hit with FanGraphs and stats.nba.com elsewhere in this project. A
+   residential proxy (user-provided, already used for a separate project)
+   fixed it immediately — verified against the exact video that had just
+   been blocked (363 transcript segments fetched successfully through the
+   proxy). Wired in via `YOUTUBE_PROXY_URL` (`http://user:pass@host:port`),
+   read directly via `os.environ` in the ingest script — same one-off
+   secret pattern as `DNN_COOKIE` (no `config.py` dataclass needed for a
+   single-source proxy string).
+
+### Architecture
+
+```
+BettingPros channel RSS feed (youtube.com/feeds/videos.xml?channel_id=...)
+    → ingest/youtube_picks_videos.py   detect new videos, fetch transcript
+                                        (proxied via YOUTUBE_PROXY_URL)
+    → youtube_pick_videos table        raw transcript + metadata
+    → model/youtube_picks_extraction.py  DeepSeek structured pick extraction
+    → youtube_picks table              one row per pick, or none
+    (settlement against real outcomes — NOT YET BUILT, see below)
+```
+
+Channel: **BettingPros** (`@bettingpros`, channel_id
+`UC8hVLL1dC1NjEtL1208U--g`) — an extremely active multi-sport picks
+channel: a daily flagship "Daily Juice" show (Matt Perrault) plus many
+same-day #shorts, covering MLB, World Cup soccer, WNBA, NFL futures, F1,
+and novelty markets (e.g. Nathan's Hot Dog Eating Contest).
+
+### Extraction schema (fixed, pre-registered — same discipline as the MLB
+### beat-writer pilot)
+
+```
+youtube_picks
+  sport ('nba'|'mlb'|'nfl'|'nhl'|'wnba'|'soccer'|'tennis'|'f1'|'other')
+  bet_type ('moneyline'|'spread'|'total'|'prop'|'futures'|'other')
+  subject | opponent (nullable) | selection | odds_american (nullable int)
+  game_context (nullable) | confidence_label (nullable, e.g. "best bet")
+  quote (mandatory verbatim substring of the transcript — the grounding
+    check against hallucination, same as mlb_beat_facts)
+  model_version | status ('pending' — settlement not built yet)
+```
+
+Transcripts here are auto-generated ASR captions (no punctuation, run-on,
+occasional mishearings) — messier than the beat-writer pilot's clean
+written prose. The prompt explicitly tells the model to copy quotes
+exactly as they appear in the messy transcript rather than "cleaning up"
+grammar, so the grounding check still works against the raw text.
+
+### Build results (2026-07-05)
+
+Ran against the channel's 8 most recent videos (3 flagship episodes,
+5 shorts). **Extraction quality is strong on inspection**: 23 picks
+extracted (1 ungrounded pick correctly discarded by the quote check),
+every pick specific and gradable — e.g. "Guardians moneyline at -149",
+"Red Sox run line at +104", "Argentina to win the World Cup at 4 to 1"
+(correctly converted to `odds_american=400`), WNBA player props (Angel
+Reese under 12.5 rebounds), F1 top-N-finish props. `odds_american` is
+populated whenever a specific price is stated in the transcript and left
+null otherwise — added to the schema mid-build (before any commit, so no
+migration needed) specifically so settlement/ROI math doesn't need to
+re-parse odds out of free text later.
+
+Not yet independently hand-labeled (same caveat as the beat-writer pilot's
+own build-results section) — this is inspection-level confidence, not a
+formal precision gate.
+
+### What's NOT built yet: settlement
+
+Extracted picks currently sit at `status='pending'` forever — there is no
+mechanism yet to resolve a pick to a real game and grade it won/lost/push.
+This is a meaningfully harder problem than the single-sport MLB beat-writer
+pilot, because picks span **five-plus sports**, and this project currently
+only has real game-result infrastructure for MLB and soccer (World Cup) —
+there is no NFL, WNBA, or F1 results pipeline anywhere in this codebase.
+Honest scoping for the next phase: settlement should start with MLB and
+soccer picks only (where this project already has real outcome data and
+existing fuzzy team-name matching, e.g. `_levenshtein()`), and NFL/WNBA/F1
+picks will accumulate in the ledger unsettled until (if ever) this project
+builds those sports' result pipelines — a known, documented limitation,
+not an oversight.
+
+### Automated collection
+
+`.github/workflows/refresh_youtube_picks.yml` runs the scraper +
+extraction every 3 hours, mirroring the MLB beat-writer workflow's
+cadence (this channel posts multiple times a day). Requires
+`YOUTUBE_PROXY_URL` as a GitHub secret — **not yet set** as of this
+writing (only in local `.env`); `DATABASE_URL` and `DEEPSEEK_API_KEY` are
+already set.
+
+### Non-negotiables (same discipline as every prior spec in this file)
+
+- The extraction schema is fixed now, before settlement is designed. No
+  new field categories added mid-pilot without updating this section.
+- The LLM extracts picks; it never judges whether a pick is good. Rating
+  the channel's actual accuracy is a separate, later, numeric phase
+  against real settled outcomes — exactly like every other ledger in this
+  project.
+- No pick reaches `youtube_picks` without its `quote` being a verbatim,
+  checkable substring of the transcript.
+- Settlement scope stays honest: MLB/soccer first (real data exists);
+  NFL/WNBA/F1 picks are tracked but not graded until this project has
+  the outcome data to grade them against — do not fake a settlement for
+  a sport with no real result pipeline.

@@ -10,3 +10,4 @@ pybaseball>=2.2
 scikit-learn>=1.4,<2
 openpyxl>=3.1
 beautifulsoup4>=4.12,<5
+youtube-transcript-api>=1.0,<2

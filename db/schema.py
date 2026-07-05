@@ -30,6 +30,10 @@ Tables:
   - dk_slates          DraftKings slate per date (sport column: 'nba' | 'mlb')
   - dk_players         Player pool per slate (sport-agnostic structure)
   - dk_lineups         Generated lineups for strategy comparison
+  - youtube_pick_videos, youtube_picks
+                       Automated YouTube picks-channel pipeline: raw scraped
+                       videos/transcripts + DeepSeek-extracted structured
+                       picks (sport-agnostic, one channel's track record).
 """
 
 TABLES = [
@@ -570,6 +574,48 @@ TABLES = [
         actual_fpts REAL,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(slate_id, strategy, lineup_num)
+    )
+    """,
+
+    # ── YouTube picks-channel pipeline (sport-agnostic) ────────
+    # Automated ingestion for a betting-picks YouTube channel: RSS-based new-
+    # video detection, proxied transcript fetch, DeepSeek structured pick
+    # extraction. See CLAUDE.md "YouTube Picks Channel Tracking".
+    """
+    CREATE TABLE IF NOT EXISTS youtube_pick_videos (
+        id SERIAL PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        channel_name TEXT NOT NULL,
+        video_id TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        published_at TIMESTAMPTZ,
+        transcript_text TEXT,
+        scraped_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+
+    # One row per extracted pick (or none, for most non-picks videos). quote
+    # is a mandatory verbatim substring of the transcript -- same grounding
+    # discipline as mlb_beat_facts. status/matchup_ref are settlement fields,
+    # populated by a later phase (not built yet) -- pending means "extracted,
+    # not yet resolved to a real game or graded."
+    """
+    CREATE TABLE IF NOT EXISTS youtube_picks (
+        id SERIAL PRIMARY KEY,
+        video_id INTEGER NOT NULL REFERENCES youtube_pick_videos(id),
+        sport TEXT NOT NULL,
+        bet_type TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        opponent TEXT,
+        selection TEXT NOT NULL,
+        odds_american INTEGER,
+        game_context TEXT,
+        confidence_label TEXT,
+        quote TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        matchup_ref TEXT,
+        extracted_at TIMESTAMPTZ DEFAULT NOW()
     )
     """,
 
@@ -1780,6 +1826,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_articles_team_date ON mlb_beat_articles(team_id, published_at)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_facts_article ON mlb_beat_facts(article_id)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_facts_type ON mlb_beat_facts(fact_type, team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_youtube_pick_videos_channel ON youtube_pick_videos(channel_id, published_at)",
+    "CREATE INDEX IF NOT EXISTS idx_youtube_picks_video ON youtube_picks(video_id)",
+    "CREATE INDEX IF NOT EXISTS idx_youtube_picks_sport_status ON youtube_picks(sport, status)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_season_date ON mlb_homerun_training_games(season, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_hitter ON mlb_homerun_training_games(hitter_mlb_id, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_target ON mlb_homerun_training_games(season, hit_hr_1plus)",
