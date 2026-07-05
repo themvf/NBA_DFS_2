@@ -1020,6 +1020,35 @@ the same class of mistake this file's specs have already caught repeatedly
 comparisons risk). Status: discussion only — no implementation phase, spec,
 or kill criterion exists yet for any of the three.
 
+**Honest assessment of expected impact (2026-07-05):** none of the three
+ideas above are edge-discovery mechanisms — they are a precision/governance
+layer on top of whatever edge already exists, and this project's own
+settled-ledger history says that's very little (every tested game-line
+market — soccer ML/totals/first-scorer, MLB ML/totals, tennis ML — has
+independently confirmed no edge).
+
+- **Segment-aware caps**: nothing to promote today. The only candidate
+  segment in the pipeline (MLB underdog moneyline) is still INCONCLUSIVE
+  (n=125, needs ≥200). Realistic near-term deliverable: zero to one narrow
+  rule, not a general reopening of any capped market.
+- **Confidence-discounted edge**: makes the system MORE conservative, not
+  more profitable — it suppresses thin-sample false positives, so the
+  expected effect is FEWER 4-5★ ratings on early-season/small-sample
+  inputs, not more winning bets. Deliverable is a trust/quality signal
+  (a visible confidence measure per rating) and a tighter calibration
+  curve, not new picks.
+- **Calibration enforcement**: purely defensive — catches decay in weeks
+  instead of months (the failure mode that already happened twice: the
+  soccer totals mirage and the MLB odds-averaging bug). Deliverable is an
+  audit trail of automatic downgrades, not new profit.
+
+**Bottom line**: expected volume of new actionable bets from this work is
+low — plausibly zero to one narrow rule near-term. The Edge-Finding
+Roadmap already identified that soft/illiquid markets (MLB props,
+first-scorer) are where real signal has actually shown up (8 alerts vs. 0
+on game lines) — this rubric work is worth doing for rigor and to prevent
+repeat failures, but is not the highest-leverage path to finding new edge.
+
 ### Traceability / accountability design
 
 - **`soccer_bets`** — the running ledger. One row per (bet_type, scope, selection, model_version),
