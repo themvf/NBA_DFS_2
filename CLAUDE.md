@@ -963,6 +963,63 @@ one component with demonstrated out-of-sample skill (Elo + Monte Carlo,
 group-winner Brier .036 vs .188). Any 3★+ row on a capped market in the ledger
 predates that cap — legacy audit history, never a live recommendation.
 
+### Star rating improvement ideas — discussion only, not built (2026-07-05)
+
+The rubric above is deterministic but blunt: it treats every market as
+uniform, treats every edge estimate as equally reliable, and treats
+calibration as a read-only dashboard rather than a control system. Three
+improvements were discussed and are recorded here for later spec work — **no
+code has been written, and none of this is scheduled**:
+
+1. **Segment-aware caps (do first).** A whole-market cap (`max_stars=2`) is
+   safe but crude — it can't express "this market is capped except this
+   validated slice." The MLB Underdog-Value spec already showed why this
+   matters: the whole moneyline market shows no broad edge, but the
+   underdog side specifically showed a real win-rate gap the current
+   all-or-nothing cap can't act on without reopening the entire market. A
+   segment-aware cap (favorite/underdog, home/away, odds range, league)
+   would let a validated slice surface without exposing the rest of the
+   market to noise — generalizing the MLB spec's P5 idea ("raise the cap
+   for this specific tier only") directly into the rubric. **Guardrail:
+   every segment needs its own pre-registered minimum-sample floor before
+   it can carry a higher cap** — segmentation without a sample floor is
+   exactly how a false discovery gets manufactured from a slice, the same
+   failure mode the MLB spec's team-concentration check exists to catch.
+
+2. **Sample-size / confidence-aware edge (do second).** `edge = our_prob −
+   ref_prob` is currently a pure point estimate — a mature, thousands-of-
+   games Elo rating and a five-game prop line produce identically-treated
+   edges even though one is far more trustworthy. A confidence-discounted
+   edge (raw edge × a confidence factor from sample size/variance) would
+   shrink thin estimates toward zero before they can cross a 4-5★
+   threshold — the Bayesian-prior-updating Model Improvement Roadmap item,
+   applied to the star gate instead of only the projection layer. This
+   becomes more important, not less, once #1 ships: segmentation by
+   construction shrinks the sample behind each slice, which is exactly
+   where a thin, noisy edge is most likely to masquerade as a real one.
+
+3. **Calibration as an enforcement layer, not a dynamic threshold engine (do
+   third, only after #1-#2 exist).** The `/vegas` panels already compute
+   realized-vs-expected win rate and CLV per star tier, but it's purely
+   descriptive — the fixed EV cutoffs (.20/.10/.03) never respond to it.
+   Letting a market/segment's own calibration history auto-**downgrade** it
+   (N consecutive windows of a 4-5★ tier underperforming expected win rate
+   or CLV → auto-cap to 3★ until revalidated) is safe. Letting the system
+   auto-**uncap** or move thresholds upward on its own is not — that would
+   be reacting to short-term variance in exactly the way this file's
+   pre-registration discipline exists to prevent. Auto-cap-on-drift only;
+   uncapping or raising a threshold still requires a fresh, separately
+   pre-registered study, same as every other cap change recorded in this
+   file.
+
+**Sequencing matters**: #1 and #2 come before #3. A calibration-enforcement
+layer reacting to segments that were never sample-checked or confidence-
+discounted would let the enforcement layer chase noise instead of signal —
+the same class of mistake this file's specs have already caught repeatedly
+(soccer totals mirage, MLB odds-repair contamination, tennis multiple-
+comparisons risk). Status: discussion only — no implementation phase, spec,
+or kill criterion exists yet for any of the three.
+
 ### Traceability / accountability design
 
 - **`soccer_bets`** — the running ledger. One row per (bet_type, scope, selection, model_version),
