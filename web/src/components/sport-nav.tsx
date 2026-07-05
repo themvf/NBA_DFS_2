@@ -37,6 +37,7 @@ const PAGE_LINKS: Array<{
   { href: "/stats", label: "Team Stats", sports: ["nba", "mlb"] },
   { href: "/schedule", label: "Schedule", sports: ["nba", "mlb"] },
   { href: "/video-analysis", label: "Video Analysis" },
+  { href: "/youtube-picks", label: "YouTube Picks" },
 ];
 
 export function SportNav() {
