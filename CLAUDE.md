@@ -1443,14 +1443,18 @@ just the four days it was first noticed in.
 - Falsifiable prediction: re-scoring all 2026-season moneyline sides with the
   existing v2 formula (uncapped), the resulting 4-5★ tier shows (a) a
   realized-vs-implied win-rate gap whose 95% CI excludes zero, in the same
-  direction as the original four-day finding, and (b) positive ROI at actual
+  direction as the original four-day finding, (b) positive ROI at actual
   closing odds, **independently in both chronological halves of the season**
   (not just pooled) — a real signal shouldn't need cherry-picked date ranges
-  to appear.
+  to appear — and (c) that gap is **broadly distributed across teams, not
+  carried by 2-3 of them** (see Success Metric 7) — a real market-wide
+  mispricing shouldn't be one or two teams' surprising season in disguise.
 - Kill criterion: if the full-season CI includes zero, or the effect is
   positive in only one half of the season (concentrated, not distributed),
-  the +22%/2σ result is ruled a small-sample artifact of the four days it was
-  found in — H is dead, and the 2★ cap stays exactly as-is.
+  or the effect disappears once the single most-represented team is removed
+  (team-specific, not market-wide), the +22%/2σ result is ruled a small-
+  sample or team-concentration artifact — H is dead, and the 2★ cap stays
+  exactly as-is.
 
 No new hyperparameter is being introduced (unlike the tennis spec's `_K`/half-
 life), so there is no separate tuning phase — the formula is already fixed
@@ -1501,13 +1505,25 @@ data than discovered it, not to keep the original 65 as "confirmation."
 6. **Minimum sample**: pre-registered ≥200 qualifying (uncapped 4-5★)
    bet-sides across the full season before any conclusion is drawn — the
    original n=65 does not clear this on its own regardless of outcome.
+7. **Team concentration** (added 2026-07-05, before any backtest ran — same
+   pre-registration discipline as everything else here). `subject_team_id`
+   is already recorded per bet (`model/mlb_game_bets.py`), so this is cheap:
+   report the qualifying-bet count AND realized-vs-implied gap **per team**,
+   then (a) no single team may account for more than **25%** of the
+   qualifying bet-sides, and (b) the full-season CI must still exclude zero
+   with the single most-represented team **removed** (leave-one-team-out).
+   A real market-wide underdog mispricing should be broadly distributed
+   across many teams; if 2-3 teams are carrying the whole effect, that's a
+   specific team overperforming this season, not a general pricing edge —
+   a different, much narrower (and separately-nameable) finding that this
+   spec's broad "bet all qualifying underdogs" hypothesis does NOT cover.
 
 ### Phases
 
 | Phase | Scope | Gate to proceed | Status |
 |---|---|---|---|
 | P1 | Re-score all 2026-season moneyline sides with the existing v2 formula, uncapped; write results to a standalone offline table/CSV — no changes to the live `mlb_bets` ledger or its 2★ cap | Re-scored data reproduces the original 65-bet subset's numbers exactly (sanity check that the re-derivation matches what was actually rated) | Planned |
-| P2 | Compute all six success metrics above on the full season; split-half stability check | Metrics computed honestly, both halves reported separately, before any verdict is stated | Planned |
+| P2 | Compute all seven success metrics above on the full season; split-half stability check; per-team breakdown + leave-one-team-out check | Metrics computed honestly, both halves and the team breakdown reported separately, before any verdict is stated | Planned |
 | P3 | **Verdict.** PASS only if the kill criterion is cleared in full (CI excludes zero, both halves, ≥200 n) | If FAIL: 2★ cap stays, this joins tennis and soccer as a documented no-edge result. If PASS: proceed to P4, not straight to raising the live cap | Gated on P2 |
 | P4 | **Only if P3 passes**: shadow-track the signal live (rate uncapped in a research-only column/table, never surfacing above 2★ in the real ledger) for a full slate cycle, measuring real-time CLV via the existing `model/clv_report.py` infrastructure | Live shadow CLV must be positive and consistent with the offline backtest before the real ledger's cap is touched | Gated on P3 |
 | P5 | **Only if P4 confirms live**: raise the cap for this specific tier only (not moneyline broadly) in `model/mlb_game_bets.py`, with the exact qualifying criteria documented | Ongoing CLV monitoring, same as the tennis spec's P5 — a live/backtest divergence pulls it back to 2★ | Gated on P4 |
@@ -1521,6 +1537,10 @@ data than discovered it, not to keep the original 65 as "confirmation."
 - Split-half stability is not optional. A pattern that only appears in one
   half of the season is exactly what a four-day fluke inflated to season
   scale would look like.
+- Team concentration is not optional either. A pattern carried by 2-3 teams
+  is a team story, not a market-pricing story — report the per-team
+  breakdown regardless of how the pooled numbers look, not only if the
+  pooled result looks too good to be true.
 - No stacking exceptions: if H fails, the answer is "2★ cap confirmed
   correct," not "try a different anchor weight" or "try a different star
   threshold" as an immediate follow-up — that would be the same kind of
