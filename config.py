@@ -48,16 +48,32 @@ class OddsApiConfig:
 
 
 @dataclass
+class DeepSeekApiConfig:
+    api_key: str = ""
+    base_url: str = "https://api.deepseek.com/chat/completions"
+    model: str = "deepseek-chat"
+    timeout_seconds: int = 60
+    max_retries: int = 5
+    retry_backoff_seconds: float = 1.0
+
+    @classmethod
+    def from_env(cls) -> DeepSeekApiConfig:
+        return cls(api_key=os.getenv("DEEPSEEK_API_KEY", ""))
+
+
+@dataclass
 class AppConfig:
     nba_api: NbaApiConfig = field(default_factory=NbaApiConfig)
     mlb_api: MlbApiConfig = field(default_factory=MlbApiConfig)
     odds_api: OddsApiConfig = field(default_factory=OddsApiConfig)
+    deepseek_api: DeepSeekApiConfig = field(default_factory=DeepSeekApiConfig)
     database_url: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> AppConfig:
         return cls(
             odds_api=OddsApiConfig.from_env(),
+            deepseek_api=DeepSeekApiConfig.from_env(),
             database_url=os.getenv("DATABASE_URL"),
         )
 
