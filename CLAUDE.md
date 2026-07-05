@@ -1837,3 +1837,146 @@ gentler than originally estimated, not harsher. Historical `our_prob_home`
 values already written before this fix are unaffected and remain what they
 were; they should be read as "computed under the old, leaky methodology,"
 not deleted or restated.
+
+---
+
+## MLB Beat-Writer Information-Latency Pilot — Spec (2026-07-05)
+
+### Relation to the standing Edge-Finding Roadmap
+
+The Edge-Finding Roadmap already names this idea (P4 — information latency:
+lineups, weather, injuries) and explicitly gates it: "Only if P1 shows we're
+directionally right but late... Don't build speculatively." That gate has
+not been formally cleared. This pilot is deliberately scoped small enough
+(2 teams, one free source, extraction-feasibility first) to be a cheap,
+falsifiable probe rather than a violation of that discipline — if Phase 0
+fails, the cost is a few hours of scraping/prompting work, not a production
+system. Nothing here surfaces to the real bet ledger or star ratings until
+Phase 2 clears its own bar, same as every other spec in this file.
+
+### Why this is a different, weaker-by-default hypothesis than beat-writer
+### injury reporting sounded like at first
+
+Discussed and rejected first: an LLM "watches YouTube betting shows /
+reads betting-site articles and judges if there's an edge." Rejected
+because (a) that content is downstream commentary on the same public data
+this project already ingests, not new information, and (b) asking an LLM
+to freely judge "is there an edge" on unfalsifiable opinion content is the
+highest-risk version of this idea — LLMs reliably produce confident,
+narrative-consistent conclusions regardless of whether real signal exists,
+and there is no way to pre-register or backtest a "vibe check." The
+version below avoids both problems: the source is factual reporting (not
+opinion), and the LLM's only job is **structured fact extraction**, never
+edge-judgment — the actual edge test happens afterward, numerically,
+against real market data, exactly like every other backtest in this file.
+
+### Scope (Phase 0/1)
+
+**Teams:** Washington Nationals + Baltimore Orioles only. Small and cheap
+enough to validate the mechanics before any conversation about scaling to
+30 teams.
+
+**Source:** MASN Sports (masnsports.com) only — a free, non-paywalled
+regional broadcast site that happens to cover **both** requested teams
+through the same two long-tenured beat writers (Mark Zuckerman for the
+Nationals, Roch Kubatko for the Orioles). Washington Post and The Athletic
+were considered and dropped for this phase: both are subscription-gated,
+and scraping paywalled content raises real ToS questions this project
+hasn't needed to navigate before. Revisit only if MASN alone proves
+insufficient after Phase 0/1.
+
+**Channel:** published articles, not X/Twitter (explicit choice — avoids
+X's API paywall, at the honest cost of likely lagging real-time posts by
+hours on fast-moving news; Phase 0 should surface how large that lag is
+rather than assume it away).
+
+### Fixed candidate fact types (pre-registered — no others added mid-pilot)
+
+1. **Starting pitcher confirmed or changed**
+2. **Named player injury/IL status change**
+3. **Bullpen availability note** (e.g. "closer unavailable after 3 straight
+   days," a workload/fatigue signal — the same day-to-day bullpen-fatigue
+   idea already on the not-yet-tried list in the MLB Moneyline section
+   above, arriving here via a different channel)
+
+Anything else the model notices is discarded, not added as a fourth
+category mid-pilot — new fact types require a new, separately pre-
+registered extension, same non-negotiable as every other spec in this file.
+
+### Architecture
+
+```
+MASN article (masnsports.com)
+    → ingest/mlb_beat_articles.py   scrape + parse real publish timestamp
+                                     (not scrape time — point-in-time
+                                     correctness is the whole point)
+    → mlb_beat_articles table       raw text + metadata, append-only
+    → model/mlb_beat_extraction.py  DeepSeek structured-extraction call
+    → mlb_beat_facts table          one row per extracted fact, or none
+    → model/mlb_beat_timing_study.py (Phase 1)
+          joins facts to game_odds_history / mlb_matchups,
+          measures market movement timing relative to fact publish time
+```
+
+**LLM:** DeepSeek API, reusing the conventions already established in
+`Agents/deepseek_mcp/server.py` (`DEEPSEEK_API_URL =
+"https://api.deepseek.com/chat/completions"`, model `deepseek-chat`,
+`DEEPSEEK_API_KEY` from environment/GitHub Secrets — same secret-storage
+pattern as `ODDS_API_KEY`/`DNN_COOKIE`). The production ingestion path
+calls the API directly from `model/mlb_beat_extraction.py` (not through the
+MCP server, which is an interactive dev-tool interface, not a scheduled
+pipeline component) and reuses this project's `_call_with_retry()`
+exponential-backoff convention for resilience.
+
+**Extraction contract, to control hallucination risk:**
+- Structured JSON output only: `{"facts": [{"fact_type", "team", "player_name"
+  (nullable), "description", "quote"}]}` — empty `facts: []` is the expected,
+  common case (most articles won't contain any of the 3 fact types).
+- `quote` is mandatory and must be a **verbatim substring of the source
+  article** — this is the grounding check. Any extracted fact whose quote
+  doesn't literally appear in the source text is discarded as a likely
+  hallucination before it ever reaches `mlb_beat_facts`, no human review
+  needed for that specific failure mode.
+- Temperature low (0.1-0.2, matching the existing DeepSeek MCP convention)
+  since this is extraction, not creative generation.
+- `model_version` stamped on every row (e.g. `"beat-extract-deepseek-v1"`),
+  same non-negotiable as `soccer_bets`/`mlb_bets`/`tennis_bets` — a future
+  prompt or model change bumps the version rather than silently mixing.
+
+### Schema (new tables)
+
+```
+mlb_beat_articles
+  id | source ('masn_nationals' | 'masn_orioles') | team_id | url (UNIQUE)
+  | title | published_at TIMESTAMPTZ | raw_text | scraped_at
+
+mlb_beat_facts
+  id | article_id FK | fact_type | team_id | player_name (nullable)
+  | description | quote | model_version | extracted_at
+```
+
+### Phases
+
+| Phase | Scope | Hypothesis / gate | Status |
+|---|---|---|---|
+| **P0 — Feasibility** | Scrape MASN, extract against the 3 fixed fact types, hand-label a sample (~30-50 articles) to score extraction precision (grounded, correct fact_type) and recall (didn't miss an obvious one) | No statistical edge claim yet. Gate to proceed: precision ≥ 80% on the hand-labeled sample — below that, the extraction step itself isn't trustworthy enough to build a timing study on top of | Planned |
+| **P1 — Timing study** | For every extracted fact, does the market (moneyline/total, or a specific prop if player-specific) move in the implied direction after `published_at`, and with what lag? | Pre-registered minimum sample before any conclusion — realistic expectation-setting up front: 2 teams × MASN-only likely yields on the order of a few qualifying facts per team per week, so reaching even a modest 50-fact sample will likely take multiple months, not weeks. State the actual accumulated n honestly when this phase reports, the same way the MLB Underdog spec reported n=125 against its own floor rather than rounding up | Planned |
+| **P2 — Backtest** | Only if P1 shows real, timely movement: would betting the gap before that movement have been profitable at the odds available then? Walk-forward, bootstrap CI, same discipline as every other backtest in this file | Gated on P1 clearing its bar | Not triggered |
+| **P3 — Live shadow / scale** | Only if P2 clears its bar: shadow-track live before anything touches a real star rating, then consider scaling beyond 2 teams / MASN-only | Gated on P2 | Not triggered |
+
+### Non-negotiables (same discipline as every prior spec in this file)
+
+- The 3 fact types are fixed now, before any article is read. No new
+  category gets added mid-pilot without its own pre-registration.
+- The LLM extracts facts; it never judges whether a fact constitutes an
+  edge. That determination happens numerically in P1/P2 against real
+  market data, not as a model opinion.
+- No fact reaches `mlb_beat_facts` without its `quote` being a verbatim,
+  checkable substring of the source article.
+- P0's 80% precision gate is a hard stop, not a suggestion — a leaky
+  extraction step would corrupt every phase built on top of it, the same
+  lesson as the MLB odds-averaging bug and the point-in-time leak above.
+- Do not scale to more teams or add the X/Twitter channel until P0 and P1
+  both report honestly, including if the answer is "inconclusive" or
+  "no meaningful movement detected" — those are legitimate, recordable
+  outcomes in this file, not failures to hide.
