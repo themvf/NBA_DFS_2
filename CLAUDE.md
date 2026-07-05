@@ -1965,7 +1965,7 @@ mlb_beat_facts
 | Phase | Scope | Hypothesis / gate | Status |
 |---|---|---|---|
 | **P0 — Feasibility** | Scrape MASN, extract against the 3 fixed fact types, hand-label a sample (~30-50 articles) to score extraction precision (grounded, correct fact_type) and recall (didn't miss an obvious one) | No statistical edge claim yet. Gate to proceed: precision ≥ 80% on the hand-labeled sample — below that, the extraction step itself isn't trustworthy enough to build a timing study on top of | **✅ Cleared (2026-07-05).** Precision ~95-97% (v1 and v2). Recall improved via one targeted prompt revision (v2: 26→20 zero-fact articles of 58) but remains imperfect by design acceptance, not by oversight — see build results below |
-| **P1 — Timing study** | For every extracted fact, does the market (moneyline/total, or a specific prop if player-specific) move in the implied direction after `published_at`, and with what lag? | Pre-registered minimum sample before any conclusion — realistic expectation-setting up front: 2 teams × MASN-only likely yields on the order of a few qualifying facts per team per week, so reaching even a modest 50-fact sample will likely take multiple months, not weeks. State the actual accumulated n honestly when this phase reports, the same way the MLB Underdog spec reported n=125 against its own floor rather than rounding up | Planned |
+| **P1 — Timing study** | For every extracted fact, does the market (moneyline/total, or a specific prop if player-specific) move in the implied direction after `published_at`, and with what lag? | Pre-registered minimum sample before any conclusion — realistic expectation-setting up front: 2 teams × MASN-only likely yields on the order of a few qualifying facts per team per week, so reaching even a modest 50-fact sample will likely take multiple months, not weeks. State the actual accumulated n honestly when this phase reports, the same way the MLB Underdog spec reported n=125 against its own floor rather than rounding up | **Stage A built and run (2026-07-05) — mechanical check only, see below. Stage B (directional test) not started.** |
 | **P2 — Backtest** | Only if P1 shows real, timely movement: would betting the gap before that movement have been profitable at the odds available then? Walk-forward, bootstrap CI, same discipline as every other backtest in this file | Gated on P1 clearing its bar | Not triggered |
 | **P3 — Live shadow / scale** | Only if P2 clears its bar: shadow-track live before anything touches a real star rating, then consider scaling beyond 2 teams / MASN-only | Gated on P2 | Not triggered |
 
@@ -2044,6 +2044,48 @@ going into P1, not a blocker. `model_version = "beat-extract-deepseek-v2"`
 is the one Phase 1 should build on. A fully independent human hand-label
 pass (the report already delivered to the user) is still valuable but is
 no longer the sole gate, since concrete before/after evidence now exists.
+
+### P1 Stage A build results (2026-07-05)
+
+Built `model/mlb_beat_timing_study.py`. Rather than jump straight to the
+full P1 question ("did the market move in the *implied* direction"), which
+requires a per-fact expected-direction label (is this injury_status fact
+good or bad news for the team?) that hasn't been designed yet, this stage
+asks a narrower, already-answerable question first: **is there more market
+movement (either direction) around beat-writer-linked games than around a
+baseline of all other games in the same window?** Assigning directionality
+only after looking at movement data would be exactly the kind of
+after-the-fact rationalization this file's pre-registration discipline
+exists to prevent — so Stage A deliberately stops short of that, and Stage
+B (the real directional test) is not yet designed.
+
+**Mechanism:** for each `beat-extract-deepseek-v2` fact, find the team's
+next `mlb_matchups` game (skip if none within 7 days), then find the first
+`game_odds_history` snapshot at/after the fact's `published_at` ("entry")
+and the last snapshot for that matchup ("close") — same entry/close
+convention as `model/clv_report.py`. Compute movement in the fact's own
+team's implied win probability (flipping sign for away-team facts so
+home/away are comparable) and in the total.
+
+**Run result (mechanical check, not an analysis):** 61 of 111 facts linked
+to a measurable window; 28 baseline games in the same span. Avg
+|movement| on fact-linked games 15.6pp vs. 13.2pp baseline — directionally
+higher but the two samples are far too close and far too small (n=61/28)
+to distinguish from noise; no CI is computed here on purpose, since
+computing one would imply this is a real test rather than a plumbing
+check. Lag from publish to the first observable odds snapshot averaged
+2.5-6.4 hours across fact types, consistent with the roughly twice-daily
+capture cadence currently in place for MLB odds history — a real
+resolution limit worth naming: sub-day lag cannot currently be measured
+precisely.
+
+**Status: infrastructure works end-to-end.** No conclusion drawn — the
+sample is nowhere near the pre-registered minimum from the P1 phase
+definition above, and Stage B's direction-labeling design hasn't started.
+Next real steps, not yet begun: (1) design and pre-register the
+expected-direction rule per fact_type before looking at any more movement
+data, (2) let facts keep accumulating over the season, (3) revisit once
+volume clears a real minimum sample.
 
 ### Non-negotiables (same discipline as every prior spec in this file)
 
