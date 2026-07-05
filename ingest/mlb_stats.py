@@ -45,6 +45,8 @@ from config import load_config
 from db.database import DatabaseManager
 from db.queries import (
     build_mlb_team_abbrev_cache,
+    insert_mlb_pitcher_stats_snapshot,
+    insert_mlb_team_stats_snapshot,
     upsert_mlb_batter_stats,
     upsert_mlb_pitcher_stats,
     upsert_mlb_team_stats,
@@ -304,6 +306,17 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45, full_s
             win_pct=win_pct,
             qs_pct=qs_pct,
         )
+        insert_mlb_pitcher_stats_snapshot(
+            db,
+            player_id=player_id,
+            season=season,
+            snapshot_date=date.today().isoformat(),
+            team_id=team_id,
+            name=name,
+            k_per_9=_safe_float(row.get("K/9")),
+            xfip=_safe_float(row.get("xFIP")),
+            era=_safe_float(row.get("ERA")),
+        )
         updated += 1
 
     print(f"Pitcher stats: {updated} pitchers upserted for {season} ({source})")
@@ -358,6 +371,21 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
             db,
             team_id=team_id,
             season=season,
+            team_wrc_plus=_safe_float(row.get("wRC+")),
+            team_k_pct=_safe_float(row.get("K%")),
+            team_bb_pct=_safe_float(row.get("BB%")),
+            team_iso=_safe_float(row.get("ISO")),
+            team_ops=_safe_float(row.get("OPS")),
+            bullpen_era=_safe_float(pit.get("ERA")),
+            bullpen_fip=_safe_float(pit.get("FIP")),
+            staff_k_pct=_safe_float(pit.get("K%")),
+            staff_bb_pct=_safe_float(pit.get("BB%")),
+        )
+        insert_mlb_team_stats_snapshot(
+            db,
+            team_id=team_id,
+            season=season,
+            snapshot_date=date.today().isoformat(),
             team_wrc_plus=_safe_float(row.get("wRC+")),
             team_k_pct=_safe_float(row.get("K%")),
             team_bb_pct=_safe_float(row.get("BB%")),
@@ -549,6 +577,17 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
             fpts_std=fpts_std,
             win_pct=win_pct,
             qs_pct=qs_pct,
+        )
+        insert_mlb_pitcher_stats_snapshot(
+            db,
+            player_id=player_id,
+            season=season,
+            snapshot_date=date.today().isoformat(),
+            team_id=team_id,
+            name=name,
+            k_per_9=_safe_float(stat.get("strikeoutsPer9Inn")),
+            xfip=None,
+            era=_safe_float(stat.get("era")),
         )
         updated += 1
 

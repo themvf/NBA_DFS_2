@@ -84,25 +84,26 @@ def _season_of(game_date: str) -> str:
 
 
 def load_game_data(db: DatabaseManager) -> pd.DataFrame:
-    """Load all MLB matchups joined with the latest SP + team-stat context.
+    """Load all MLB matchups joined with SP + team-stat context AS OF each
+    game's own date.
 
     Returns both completed (home_score not null) and upcoming games so the
-    caller can split them.  Starter stats are joined by id with a name fallback;
-    team offense/bullpen come from mlb_team_stats for the game's season.
+    caller can split them.  Starter stats are joined by id with a name
+    fallback; team offense/bullpen come from mlb_team_stats_history.
+
+    Point-in-time note (fixed 2026-07-05): mlb_team_stats/mlb_pitcher_stats
+    are single current-state rows per (team/player, season), overwritten
+    daily — joining them directly leaks future-in-season stats into
+    predictions for earlier games (see CLAUDE.md "MLB Moneyline —
+    Point-in-Time Leak Finding"). This joins the append-only
+    mlb_team_stats_history/mlb_pitcher_stats_history tables via LATERAL,
+    picking the latest snapshot at or before the game's own date. No
+    snapshot exists for dates before the history tables started being
+    populated, so those rows correctly come back NULL rather than leaking.
     """
     rows = db.execute(
         """
-        WITH latest_pitcher AS (
-            SELECT DISTINCT ON (player_id) player_id, k_per_9, xfip, era
-            FROM mlb_pitcher_stats
-            ORDER BY player_id, season DESC, fetched_at DESC, id DESC
-        ),
-        latest_pitcher_by_name AS (
-            SELECT DISTINCT ON (LOWER(name)) LOWER(name) AS name_key, k_per_9, xfip, era
-            FROM mlb_pitcher_stats
-            ORDER BY LOWER(name), season DESC, fetched_at DESC, id DESC
-        ),
-        latest_park AS (
+        WITH latest_park AS (
             SELECT DISTINCT ON (team_id) team_id, runs_factor
             FROM mlb_park_factors
             ORDER BY team_id, season DESC, id DESC
@@ -135,15 +136,39 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
             hts.bullpen_fip            AS home_bullpen_fip,
             ats.bullpen_fip            AS away_bullpen_fip
         FROM mlb_matchups m
-        LEFT JOIN latest_pitcher hsp_id ON hsp_id.player_id = m.home_sp_id
-        LEFT JOIN latest_pitcher asp_id ON asp_id.player_id = m.away_sp_id
-        LEFT JOIN latest_pitcher_by_name hsp_nm ON hsp_nm.name_key = LOWER(m.home_sp_name)
-        LEFT JOIN latest_pitcher_by_name asp_nm ON asp_nm.name_key = LOWER(m.away_sp_name)
+        LEFT JOIN LATERAL (
+            SELECT k_per_9, xfip, era FROM mlb_pitcher_stats_history h
+            WHERE h.player_id = m.home_sp_id AND h.snapshot_date <= m.game_date
+            ORDER BY h.snapshot_date DESC LIMIT 1
+        ) hsp_id ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT k_per_9, xfip, era FROM mlb_pitcher_stats_history h
+            WHERE h.player_id = m.away_sp_id AND h.snapshot_date <= m.game_date
+            ORDER BY h.snapshot_date DESC LIMIT 1
+        ) asp_id ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT k_per_9, xfip, era FROM mlb_pitcher_stats_history h
+            WHERE LOWER(h.name) = LOWER(m.home_sp_name) AND h.snapshot_date <= m.game_date
+            ORDER BY h.snapshot_date DESC LIMIT 1
+        ) hsp_nm ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT k_per_9, xfip, era FROM mlb_pitcher_stats_history h
+            WHERE LOWER(h.name) = LOWER(m.away_sp_name) AND h.snapshot_date <= m.game_date
+            ORDER BY h.snapshot_date DESC LIMIT 1
+        ) asp_nm ON TRUE
         LEFT JOIN latest_park park ON park.team_id = m.home_team_id
-        LEFT JOIN mlb_team_stats hts
-               ON hts.team_id = m.home_team_id AND hts.season = LEFT(m.game_date::TEXT, 4)
-        LEFT JOIN mlb_team_stats ats
-               ON ats.team_id = m.away_team_id AND ats.season = LEFT(m.game_date::TEXT, 4)
+        LEFT JOIN LATERAL (
+            SELECT team_wrc_plus, team_iso, bullpen_fip FROM mlb_team_stats_history h
+            WHERE h.team_id = m.home_team_id AND h.season = LEFT(m.game_date::TEXT, 4)
+              AND h.snapshot_date <= m.game_date
+            ORDER BY h.snapshot_date DESC LIMIT 1
+        ) hts ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT team_wrc_plus, team_iso, bullpen_fip FROM mlb_team_stats_history h
+            WHERE h.team_id = m.away_team_id AND h.season = LEFT(m.game_date::TEXT, 4)
+              AND h.snapshot_date <= m.game_date
+            ORDER BY h.snapshot_date DESC LIMIT 1
+        ) ats ON TRUE
         WHERE m.vegas_total IS NOT NULL
         ORDER BY m.game_date ASC
         """,

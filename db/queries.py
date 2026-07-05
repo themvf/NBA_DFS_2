@@ -768,6 +768,90 @@ def upsert_mlb_pitcher_stats(
     )
 
 
+def insert_mlb_team_stats_snapshot(
+    db: DatabaseManager,
+    team_id: int,
+    season: str,
+    snapshot_date: str,
+    team_wrc_plus: float | None = None,
+    team_k_pct: float | None = None,
+    team_bb_pct: float | None = None,
+    team_iso: float | None = None,
+    team_ops: float | None = None,
+    bullpen_era: float | None = None,
+    bullpen_fip: float | None = None,
+    staff_k_pct: float | None = None,
+    staff_bb_pct: float | None = None,
+) -> None:
+    """Append a dated snapshot alongside the current-state mlb_team_stats row.
+
+    Point-in-time history for betting models — see CLAUDE.md "MLB Moneyline —
+    Point-in-Time Leak Finding" (2026-07-05). Idempotent per (team, season,
+    day): re-running the same day's refresh updates that day's row in place
+    rather than duplicating it.
+    """
+    db.execute(
+        """
+        INSERT INTO mlb_team_stats_history (
+            team_id, season, snapshot_date, team_wrc_plus, team_k_pct,
+            team_bb_pct, team_iso, team_ops, bullpen_era, bullpen_fip,
+            staff_k_pct, staff_bb_pct
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (team_id, season, snapshot_date) DO UPDATE SET
+            team_wrc_plus = EXCLUDED.team_wrc_plus,
+            team_k_pct    = EXCLUDED.team_k_pct,
+            team_bb_pct   = EXCLUDED.team_bb_pct,
+            team_iso      = EXCLUDED.team_iso,
+            team_ops      = EXCLUDED.team_ops,
+            bullpen_era   = EXCLUDED.bullpen_era,
+            bullpen_fip   = EXCLUDED.bullpen_fip,
+            staff_k_pct   = EXCLUDED.staff_k_pct,
+            staff_bb_pct  = EXCLUDED.staff_bb_pct,
+            fetched_at    = NOW()
+        """,
+        (
+            team_id, season, snapshot_date, team_wrc_plus, team_k_pct,
+            team_bb_pct, team_iso, team_ops, bullpen_era, bullpen_fip,
+            staff_k_pct, staff_bb_pct,
+        ),
+    )
+
+
+def insert_mlb_pitcher_stats_snapshot(
+    db: DatabaseManager,
+    player_id: int,
+    season: str,
+    snapshot_date: str,
+    team_id: int | None,
+    name: str,
+    k_per_9: float | None = None,
+    xfip: float | None = None,
+    era: float | None = None,
+) -> None:
+    """Append a dated snapshot alongside the current-state mlb_pitcher_stats
+    row. Only carries the fields model/mlb_moneyline_model.py actually reads
+    (k_per_9, xfip, era) — see CLAUDE.md "MLB Moneyline — Point-in-Time Leak
+    Finding" (2026-07-05).
+    """
+    db.execute(
+        """
+        INSERT INTO mlb_pitcher_stats_history (
+            player_id, season, snapshot_date, team_id, name, k_per_9, xfip, era
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (player_id, season, snapshot_date) DO UPDATE SET
+            team_id    = EXCLUDED.team_id,
+            name       = EXCLUDED.name,
+            k_per_9    = EXCLUDED.k_per_9,
+            xfip       = EXCLUDED.xfip,
+            era        = EXCLUDED.era,
+            fetched_at = NOW()
+        """,
+        (player_id, season, snapshot_date, team_id, name, k_per_9, xfip, era),
+    )
+
+
 def upsert_mlb_matchup(
     db: DatabaseManager,
     game_date: str,
