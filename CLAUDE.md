@@ -2087,6 +2087,26 @@ expected-direction rule per fact_type before looking at any more movement
 data, (2) let facts keep accumulating over the season, (3) revisit once
 volume clears a real minimum sample.
 
+### Automated collection (2026-07-05)
+
+Actual accumulation rate turned out faster than the spec's original
+worry (~11 linkable facts/week observed, not "a few per team per week") —
+reaching a real minimum sample (200, matching this file's usual bar) is
+~18 weeks away, not indefinite. Given that, and that the marginal cost of
+collection is near-zero, `.github/workflows/refresh_mlb_beat_articles.yml`
+now runs the scraper + extraction every 3 hours (Kubatko posts throughout
+the day, ~4am to ~9pm ET observed, and catching articles close to
+publication matters for this pilot's own latency measurement — a once-daily
+batch would blur exactly the timing this is trying to measure).
+`workflow_dispatch` is also enabled for manual runs. Requires the
+`DEEPSEEK_API_KEY` GitHub secret (not yet set as of this writing — `.env`
+has it for local runs, but the scheduled workflow needs it added
+separately via `gh secret set DEEPSEEK_API_KEY`).
+
+Stage B (the directional rule) and the real sample-size analysis remain
+deliberately deferred — collection running does not mean analysis is
+running. Revisit once volume is worth the design effort.
+
 ### Non-negotiables (same discipline as every prior spec in this file)
 
 - The 3 fact types are fixed now, before any article is read. No new

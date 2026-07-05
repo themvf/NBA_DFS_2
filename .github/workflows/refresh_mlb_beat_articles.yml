@@ -1,0 +1,41 @@
+name: Refresh MLB Beat-Writer Articles
+
+# MLB Beat-Writer Information-Latency Pilot (CLAUDE.md, 2026-07-05).
+# Scrapes new Roch Kubatko / MASN Orioles articles and runs DeepSeek fact
+# extraction against them. Every 3 hours -- Kubatko posts throughout the
+# day (observed publish times from ~4am to ~9pm ET), and part of the
+# pilot's own measurement (P1 Stage A) depends on catching articles close
+# to when they're actually published, not batched once a day. robots.txt
+# for masnsports.com is fully permissive; the scraper only fetches articles
+# not already stored, so a 3-hourly cadence costs very little.
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  refresh-beat-articles:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Scrape new MASN Orioles articles
+        run: python -m ingest.mlb_beat_articles
+
+      - name: Extract facts with DeepSeek
+        run: python -m model.mlb_beat_extraction
