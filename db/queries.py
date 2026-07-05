@@ -944,6 +944,37 @@ def mark_mlb_beat_article_extracted_empty(db: DatabaseManager, article_id: int, 
     )
 
 
+def get_active_youtube_pick_channels(db: DatabaseManager) -> list[dict]:
+    """Channels the pipeline should scrape. Written from the web app's
+    "Add Channel" action; read here by the ingest script each run."""
+    return db.execute(
+        "SELECT id, channel_id, channel_name, handle FROM youtube_pick_channels "
+        "WHERE active ORDER BY added_at ASC"
+    )
+
+
+def upsert_youtube_pick_channel(
+    db: DatabaseManager,
+    channel_id: str,
+    channel_name: str,
+    handle: str | None = None,
+) -> int:
+    """Register a channel for tracking; returns its id. Idempotent on
+    channel_id -- re-adding an existing channel just updates its name/handle
+    and leaves `active` alone."""
+    return db.execute_insert(
+        """
+        INSERT INTO youtube_pick_channels (channel_id, channel_name, handle)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (channel_id) DO UPDATE SET
+            channel_name = EXCLUDED.channel_name,
+            handle       = EXCLUDED.handle
+        RETURNING id
+        """,
+        (channel_id, channel_name, handle),
+    )
+
+
 def upsert_youtube_pick_video(
     db: DatabaseManager,
     channel_id: str,

@@ -854,10 +854,23 @@ export const videoAnalysis = pgTable(
   (t) => [unique("video_analysis_video_id_key").on(t.videoId)]
 );
 
-// ── YouTube picks channel tracking (owned by the Python pipeline —
-// ingest/youtube_picks_videos.py + model/youtube_picks_extraction.py —
-// these tables already exist via db/schema.py; read-only from the web app,
-// same pattern as mlb_matchups/mlb_team_stats above) ──────────
+// ── YouTube picks channel tracking ──────────────────────────
+// youtube_pick_channels is written from this web app (the "Add Channel"
+// action) and read by the Python ingest script to know what to scrape —
+// self-provisions via ensureYoutubePickChannelsTable(), also defined in
+// db/schema.py so either side can create it first.
+// youtube_pick_videos/youtube_picks are owned by the Python pipeline
+// (ingest/youtube_picks_videos.py + model/youtube_picks_extraction.py) —
+// read-only from the web app, same pattern as mlb_matchups/mlb_team_stats.
+
+export const youtubePickChannels = pgTable("youtube_pick_channels", {
+  id: serial("id").primaryKey(),
+  channelId: text("channel_id").notNull().unique(),
+  channelName: text("channel_name").notNull(),
+  handle: text("handle"),
+  active: boolean("active").notNull().default(true),
+  addedAt: timestamp("added_at").defaultNow(),
+});
 
 export const youtubePickVideos = pgTable("youtube_pick_videos", {
   id: serial("id").primaryKey(),
@@ -906,6 +919,7 @@ export type MlbPitcherStats = typeof mlbPitcherStats.$inferSelect;
 export type MlbTeamStats = typeof mlbTeamStats.$inferSelect;
 export type OddsSignalRun = typeof oddsSignalRuns.$inferSelect;
 export type VideoAnalysis = typeof videoAnalysis.$inferSelect;
+export type YoutubePickChannel = typeof youtubePickChannels.$inferSelect;
 export type YoutubePickVideo = typeof youtubePickVideos.$inferSelect;
 export type YoutubePick = typeof youtubePicks.$inferSelect;
 export type DkSlate = typeof dkSlates.$inferSelect;

@@ -2356,3 +2356,38 @@ Verified against live data: 200 OK render, all 23 extracted picks display
 correctly (subject/opponent, selection, signed odds, confidence badges,
 linked video, expandable quote), sport filter verified narrowing 23→3 for
 WNBA exactly as expected from the underlying data.
+
+### Channel management (2026-07-05)
+
+Added `youtube_pick_channels` — the one table in this pilot with genuinely
+shared ownership: **written from the web app** (the new "Add Channel" UI
+on `/youtube-picks`) and **read by the Python ingest script** (which
+channels to scrape each run). Defined in both `db/schema.py` and
+`web/src/db/ensure-schema.ts` (`ensureYoutubePickChannelsTable()`) so it
+self-provisions regardless of which side runs first — same precedent as
+`game_odds_history`/`player_prop_history`.
+
+**Resolution mechanism (web side, TypeScript):** `addYoutubeChannel()`
+accepts an `@handle` or a full channel URL, fetches the channel page, and
+extracts `"externalId":"UC..."` — the same technique already verified for
+`web/src/lib/youtube-transcript.ts` and the Python ingest script, ported a
+third time. New channels are picked up by the scheduled scraper on its
+next run; adding one does not fetch videos immediately (correctly
+communicated in the UI, not left ambiguous).
+
+**Python side:** `ingest/youtube_picks_videos.py`'s `fetch_new_pick_videos()`
+already took `channel_id`/`channel_name` as parameters — no change needed
+there. Added `fetch_new_videos_for_all_channels()`, which queries
+`get_active_youtube_pick_channels()` and loops, plus a one-time
+`_seed_default_channel_if_empty()` backfill so existing BettingPros
+tracking keeps working unchanged for anyone who already had this running
+against the old hardcoded constant. `__main__` now calls the
+all-channels function.
+
+**Verified end-to-end through the actual UI** (not just curl): added a
+real second channel (`@MrBeast`) via the browser, confirmed "Added
+MrBeast." success message, confirmed both channels appeared in the
+tracked-channels list, confirmed both rows persisted correctly in
+Postgres with the right `channel_id`/`handle`. Removed the test channel
+afterward — not something actually meant to be tracked, added purely to
+prove the resolve-and-register flow works live.
