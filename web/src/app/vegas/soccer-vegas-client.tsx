@@ -676,6 +676,8 @@ function ResultsPanel({
   const [tStatus, setTStatus] = useState("all");
   const [tMinStars, setTMinStars] = useState(1);
   const [tSearch, setTSearch] = useState("");
+  const [tPage, setTPage] = useState(0);
+  const TABLE_PAGE_SIZE = 50;
   // Backtest panel: which bet type's calibration to show. Default 'moneyline' —
   // the market that carries edge — so the panel opens on the meaningful view
   // rather than the blended 'all' rollup (spec §8 decision 2).
@@ -684,6 +686,7 @@ function ResultsPanel({
 
   function toggleSort(col: string) {
     setSort((s) => s.col === col ? { col, dir: s.dir === "desc" ? "asc" : "desc" } : { col, dir: "desc" });
+    setTPage(0);
   }
 
   const searchLower = tSearch.toLowerCase();
@@ -711,6 +714,13 @@ function ResultsPanel({
       return sort.dir === "desc" ? bv.localeCompare(av) : av.localeCompare(bv);
     return sort.dir === "desc" ? (bv as number) - (av as number) : (av as number) - (bv as number);
   });
+
+  const tableTotalPages = Math.max(1, Math.ceil(filteredBets.length / TABLE_PAGE_SIZE));
+  const tableSafePage = Math.min(tPage, tableTotalPages - 1);
+  const pagedBets = filteredBets.slice(
+    tableSafePage * TABLE_PAGE_SIZE,
+    tableSafePage * TABLE_PAGE_SIZE + TABLE_PAGE_SIZE,
+  );
 
   // ── Best-per-game: for multi-side markets (moneyline: 3 sides, total: 2 sides)
   // pick the highest-rated side per (betType, scope) so the KPI cards reflect
@@ -1028,126 +1038,6 @@ function ResultsPanel({
       {/* Bet Ledger Backtest — unified star-tier calibration, mirroring MLB panel */}
       <SoccerBetLedgerBacktestPanel rows={backtest} />
 
-      {/* Individual settled bets — filterable + sortable */}
-      <div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Settled bets ({filteredBets.length}{filteredBets.length !== bets.length ? ` of ${bets.length}` : ""})
-          </h3>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <input
-              type="text"
-              placeholder="Search team / selection…"
-              value={tSearch}
-              onChange={(e) => setTSearch(e.target.value)}
-              className="rounded border bg-background px-2 py-1 text-xs placeholder:text-muted-foreground w-44"
-            />
-            <label className="flex items-center gap-1">
-              <span className="text-muted-foreground">Type</span>
-              <select value={tType} onChange={(e) => setTType(e.target.value)}
-                className="rounded border bg-background px-1.5 py-1">
-                <option value="all">All</option>
-                <option value="moneyline">Moneyline</option>
-                <option value="total">Over/Under</option>
-                <option value="draw_no_bet">Win (DNB)</option>
-                <option value="outright_winner">Outright</option>
-                <option value="group_winner">Group Winner</option>
-                <option value="first_scorer">First Scorer</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1">
-              <span className="text-muted-foreground">Result</span>
-              <select value={tStatus} onChange={(e) => setTStatus(e.target.value)}
-                className="rounded border bg-background px-1.5 py-1">
-                <option value="all">All</option>
-                <option value="won">Won</option>
-                <option value="lost">Lost</option>
-                <option value="void">Push</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1">
-              <span className="text-muted-foreground">Min ★</span>
-              <select value={tMinStars} onChange={(e) => setTMinStars(Number(e.target.value))}
-                className="rounded border bg-background px-1.5 py-1">
-                {[1, 2, 3, 4, 5].map((s) => <option key={s} value={s}>{s}★+</option>)}
-              </select>
-            </label>
-          </div>
-        </div>
-
-        {filteredBets.length === 0 ? (
-          <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-            {bets.length === 0
-              ? "No settled bets yet — check back after group-stage matches complete."
-              : "No bets match these filters."}
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full min-w-[820px] text-sm">
-              <thead>
-                <tr className="border-b text-xs">
-                  <SortTh col="gameDate" label="Date" sort={sort} onSort={toggleSort} align="left" />
-                  <SortTh col="stars" label="Rating" sort={sort} onSort={toggleSort} align="left" />
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Type</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Selection</th>
-                  <SortTh col="ourProb" label="Our %" sort={sort} onSort={toggleSort} />
-                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Mkt %</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Odds</th>
-                  <SortTh col="ev" label="EV" sort={sort} onSort={toggleSort} />
-                  <SortTh col="edge" label="Edge" sort={sort} onSort={toggleSort} />
-                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Score</th>
-                  <SortTh col="status" label="Result" sort={sort} onSort={toggleSort} />
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBets.map((b) => (
-                  <tr key={b.id} className="border-b last:border-0 hover:bg-accent/40">
-                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                      {b.eventCommence || b.gameDate ? fmtBetDate(b.eventCommence, b.gameDate) : "—"}
-                    </td>
-                    <td className="px-3 py-2"><Stars n={b.stars} /></td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                      {BET_TYPE_LABEL[b.betType] ?? b.betType}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="font-medium leading-tight">{b.selectionLabel}</div>
-                      {b.fixture && (
-                        <div className="text-[10px] text-muted-foreground">{b.fixture}</div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-center tabular-nums">{fmtPct(b.ourProb)}</td>
-                    <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">
-                      {b.marketProb != null ? fmtPct(b.marketProb) : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-center tabular-nums">{fmtMl(b.marketOdds)}</td>
-                    <td className="px-3 py-2 text-center tabular-nums">
-                      {b.ev != null ? (
-                        <span className={b.ev > 0 ? "text-emerald-400" : "text-muted-foreground"}>
-                          {fmtSignedPp(b.ev)}
-                        </span>
-                      ) : <span className="text-muted-foreground">—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-center tabular-nums">
-                      {b.edge != null ? (
-                        <span className={b.edge > 0 ? "text-emerald-400" : "text-rose-400"}>
-                          {fmtSignedPp(b.edge)}
-                        </span>
-                      ) : <span className="text-muted-foreground">—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-center text-xs text-muted-foreground whitespace-nowrap">
-                      {b.resultDetail ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <StatusPill status={b.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       {/* Closing line value — leading indicator of real edge */}
       <ClvPanel clv={clv} />
 
@@ -1258,6 +1148,152 @@ function ResultsPanel({
         </div>
         );
       })()}
+
+      {/* Individual settled bets — filterable + sortable */}
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Settled bets ({filteredBets.length}{filteredBets.length !== bets.length ? ` of ${bets.length}` : ""})
+          </h3>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <input
+              type="text"
+              placeholder="Search team / selection…"
+              value={tSearch}
+              onChange={(e) => { setTSearch(e.target.value); setTPage(0); }}
+              className="rounded border bg-background px-2 py-1 text-xs placeholder:text-muted-foreground w-44"
+            />
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground">Type</span>
+              <select value={tType} onChange={(e) => { setTType(e.target.value); setTPage(0); }}
+                className="rounded border bg-background px-1.5 py-1">
+                <option value="all">All</option>
+                <option value="moneyline">Moneyline</option>
+                <option value="total">Over/Under</option>
+                <option value="draw_no_bet">Win (DNB)</option>
+                <option value="outright_winner">Outright</option>
+                <option value="group_winner">Group Winner</option>
+                <option value="first_scorer">First Scorer</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground">Result</span>
+              <select value={tStatus} onChange={(e) => { setTStatus(e.target.value); setTPage(0); }}
+                className="rounded border bg-background px-1.5 py-1">
+                <option value="all">All</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+                <option value="void">Push</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground">Min ★</span>
+              <select value={tMinStars} onChange={(e) => { setTMinStars(Number(e.target.value)); setTPage(0); }}
+                className="rounded border bg-background px-1.5 py-1">
+                {[1, 2, 3, 4, 5].map((s) => <option key={s} value={s}>{s}★+</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {filteredBets.length === 0 ? (
+          <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+            {bets.length === 0
+              ? "No settled bets yet — check back after group-stage matches complete."
+              : "No bets match these filters."}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead>
+                <tr className="border-b text-xs">
+                  <SortTh col="gameDate" label="Date" sort={sort} onSort={toggleSort} align="left" />
+                  <SortTh col="stars" label="Rating" sort={sort} onSort={toggleSort} align="left" />
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Type</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Selection</th>
+                  <SortTh col="ourProb" label="Our %" sort={sort} onSort={toggleSort} />
+                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Mkt %</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Odds</th>
+                  <SortTh col="ev" label="EV" sort={sort} onSort={toggleSort} />
+                  <SortTh col="edge" label="Edge" sort={sort} onSort={toggleSort} />
+                  <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Score</th>
+                  <SortTh col="status" label="Result" sort={sort} onSort={toggleSort} />
+                </tr>
+              </thead>
+              <tbody>
+                {pagedBets.map((b) => (
+                  <tr key={b.id} className="border-b last:border-0 hover:bg-accent/40">
+                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                      {b.eventCommence || b.gameDate ? fmtBetDate(b.eventCommence, b.gameDate) : "—"}
+                    </td>
+                    <td className="px-3 py-2"><Stars n={b.stars} /></td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                      {BET_TYPE_LABEL[b.betType] ?? b.betType}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="font-medium leading-tight">{b.selectionLabel}</div>
+                      {b.fixture && (
+                        <div className="text-[10px] text-muted-foreground">{b.fixture}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">{fmtPct(b.ourProb)}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">
+                      {b.marketProb != null ? fmtPct(b.marketProb) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">{fmtMl(b.marketOdds)}</td>
+                    <td className="px-3 py-2 text-center tabular-nums">
+                      {b.ev != null ? (
+                        <span className={b.ev > 0 ? "text-emerald-400" : "text-muted-foreground"}>
+                          {fmtSignedPp(b.ev)}
+                        </span>
+                      ) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">
+                      {b.edge != null ? (
+                        <span className={b.edge > 0 ? "text-emerald-400" : "text-rose-400"}>
+                          {fmtSignedPp(b.edge)}
+                        </span>
+                      ) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center text-xs text-muted-foreground whitespace-nowrap">
+                      {b.resultDetail ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <StatusPill status={b.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {filteredBets.length > TABLE_PAGE_SIZE && (
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>
+              Showing {tableSafePage * TABLE_PAGE_SIZE + 1}
+              –{Math.min(filteredBets.length, tableSafePage * TABLE_PAGE_SIZE + TABLE_PAGE_SIZE)} of {filteredBets.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setTPage((p) => Math.max(0, p - 1))}
+                disabled={tableSafePage === 0}
+                className="rounded border bg-background px-2 py-1 font-medium disabled:cursor-not-allowed disabled:opacity-40 hover:text-foreground"
+              >
+                ← Prev
+              </button>
+              <span>Page {tableSafePage + 1} of {tableTotalPages}</span>
+              <button
+                onClick={() => setTPage((p) => Math.min(tableTotalPages - 1, p + 1))}
+                disabled={tableSafePage >= tableTotalPages - 1}
+                className="rounded border bg-background px-2 py-1 font-medium disabled:cursor-not-allowed disabled:opacity-40 hover:text-foreground"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <FirstScorerAnalysis
         tiers={fscorerTiers}
