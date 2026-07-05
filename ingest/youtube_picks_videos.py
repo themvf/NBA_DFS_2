@@ -1,0 +1,142 @@
+"""Scrape new videos from a betting-picks YouTube channel for the picks
+tracking pipeline (CLAUDE.md, "YouTube Picks Channel Tracking").
+
+New-video detection uses the channel's free, no-API-key RSS feed
+(youtube.com/feeds/videos.xml?channel_id=...) -- a stable, documented,
+intentionally-public mechanism, unlike the transcript fetch below. Verified
+live before building: returns exact video IDs, titles, and publish
+timestamps with no auth.
+
+Transcript fetch reuses youtube_transcript_api (same technique documented
+in web/src/lib/youtube-transcript.ts -- innertube ANDROID client, avoids
+the web client's PO-token requirement). Routed through YOUTUBE_PROXY_URL
+if set: a live test against this exact channel showed YouTube blocks
+transcript requests from this dev sandbox's IP after a handful of calls
+(RequestBlocked, the same "cloud/datacenter IP" blocking class already hit
+with FanGraphs/stats.nba.com elsewhere in this project) -- a residential
+proxy fixed it, verified against the same video that had just failed.
+
+Usage:
+    python -m ingest.youtube_picks_videos                  # scrape + store new videos
+    python -m ingest.youtube_picks_videos --limit 5
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+import time
+import xml.etree.ElementTree as ET
+
+import requests
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import CouldNotRetrieveTranscript
+from youtube_transcript_api.proxies import GenericProxyConfig
+
+from config import load_config
+from db.database import DatabaseManager
+from db.queries import upsert_youtube_pick_video
+
+logger = logging.getLogger(__name__)
+
+_CHANNEL_ID = "UC8hVLL1dC1NjEtL1208U--g"
+_CHANNEL_NAME = "BettingPros"
+_RSS_NS = {
+    "atom": "http://www.w3.org/2005/Atom",
+    "yt": "http://www.youtube.com/xml/schemas/2015",
+}
+_DEFAULT_LIMIT = 15
+
+
+def _get_proxy_config() -> GenericProxyConfig | None:
+    proxy_url = os.environ.get("YOUTUBE_PROXY_URL", "")
+    if not proxy_url:
+        return None
+    return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+
+
+def _fetch_rss_entries(channel_id: str) -> list[dict]:
+    """Return [{"video_id", "title", "published_at"}, ...], most recent first."""
+    resp = requests.get(
+        f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}",
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    root = ET.fromstring(resp.text)
+    entries = []
+    for entry in root.findall("atom:entry", _RSS_NS):
+        video_id_el = entry.find("yt:videoId", _RSS_NS)
+        title_el = entry.find("atom:title", _RSS_NS)
+        published_el = entry.find("atom:published", _RSS_NS)
+        if video_id_el is None or title_el is None:
+            continue
+        entries.append({
+            "video_id": video_id_el.text,
+            "title": title_el.text,
+            "published_at": published_el.text if published_el is not None else None,
+        })
+    return entries
+
+
+def _fetch_transcript_text(video_id: str) -> str:
+    api = YouTubeTranscriptApi(proxy_config=_get_proxy_config())
+    result = api.fetch(video_id)
+    return " ".join(s.text for s in result)
+
+
+def fetch_new_pick_videos(
+    db: DatabaseManager,
+    channel_id: str = _CHANNEL_ID,
+    channel_name: str = _CHANNEL_NAME,
+    limit: int = _DEFAULT_LIMIT,
+) -> int:
+    """Check the channel's RSS feed, fetch transcripts for any video not
+    already stored. Returns the number of new videos stored."""
+    existing = db.execute(
+        "SELECT video_id FROM youtube_pick_videos WHERE channel_id = %s", (channel_id,)
+    )
+    known_ids = {r["video_id"] for r in existing}
+
+    entries = _fetch_rss_entries(channel_id)[:limit]
+    new_entries = [e for e in entries if e["video_id"] not in known_ids]
+
+    if not new_entries:
+        print(f"YouTube picks ({channel_name}): no new videos (checked {len(entries)}, all already stored)")
+        return 0
+
+    stored = 0
+    for e in new_entries:
+        time.sleep(1)
+        try:
+            transcript_text = _fetch_transcript_text(e["video_id"])
+        except CouldNotRetrieveTranscript as exc:
+            logger.warning("No transcript for %s (%r): %s", e["video_id"], e["title"], exc)
+            continue
+
+        upsert_youtube_pick_video(
+            db,
+            channel_id=channel_id,
+            channel_name=channel_name,
+            video_id=e["video_id"],
+            title=e["title"],
+            published_at=e["published_at"],
+            transcript_text=transcript_text,
+        )
+        stored += 1
+
+    print(f"YouTube picks ({channel_name}): stored {stored} new video(s) of {len(new_entries)} candidates")
+    return stored
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="Scrape new videos from a betting-picks YouTube channel")
+    parser.add_argument("--limit", type=int, default=_DEFAULT_LIMIT,
+                         help="Max recent videos to check from the RSS feed (default 15)")
+    args = parser.parse_args()
+
+    config = load_config()
+    db = DatabaseManager(config.database_url)
+    fetch_new_pick_videos(db, limit=args.limit)

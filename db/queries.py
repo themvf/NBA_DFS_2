@@ -944,6 +944,92 @@ def mark_mlb_beat_article_extracted_empty(db: DatabaseManager, article_id: int, 
     )
 
 
+def upsert_youtube_pick_video(
+    db: DatabaseManager,
+    channel_id: str,
+    channel_name: str,
+    video_id: str,
+    title: str,
+    published_at: str | None,
+    transcript_text: str,
+) -> int:
+    """Insert a scraped picks-channel video; returns its id.
+
+    Idempotent on video_id (UNIQUE) -- re-checking the RSS feed is safe.
+    """
+    return db.execute_insert(
+        """
+        INSERT INTO youtube_pick_videos (channel_id, channel_name, video_id, title, published_at, transcript_text)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (video_id) DO UPDATE SET
+            title           = EXCLUDED.title,
+            published_at    = EXCLUDED.published_at,
+            transcript_text = EXCLUDED.transcript_text
+        RETURNING id
+        """,
+        (channel_id, channel_name, video_id, title, published_at, transcript_text),
+    )
+
+
+def get_youtube_pick_videos_without_picks(db: DatabaseManager, model_version: str) -> list[dict]:
+    """Videos not yet run through pick extraction for this model_version."""
+    return db.execute(
+        """
+        SELECT id, channel_id, channel_name, video_id, title, published_at, transcript_text
+        FROM youtube_pick_videos v
+        WHERE transcript_text IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM youtube_picks p
+              WHERE p.video_id = v.id AND p.model_version = %s
+          )
+        ORDER BY published_at ASC NULLS LAST
+        """,
+        (model_version,),
+    )
+
+
+def insert_youtube_pick(
+    db: DatabaseManager,
+    video_id: int,
+    sport: str,
+    bet_type: str,
+    subject: str,
+    opponent: str | None,
+    selection: str,
+    odds_american: int | None,
+    game_context: str | None,
+    confidence_label: str | None,
+    quote: str,
+    model_version: str,
+) -> None:
+    """Append one extracted pick. Not upserted -- a video can yield zero,
+    one, or several picks per extraction run."""
+    db.execute(
+        """
+        INSERT INTO youtube_picks (
+            video_id, sport, bet_type, subject, opponent, selection,
+            odds_american, game_context, confidence_label, quote, model_version
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (video_id, sport, bet_type, subject, opponent, selection,
+         odds_american, game_context, confidence_label, quote, model_version),
+    )
+
+
+def mark_youtube_pick_video_extracted_empty(db: DatabaseManager, video_id: int, model_version: str) -> None:
+    """Record that a video was processed and yielded zero picks -- same
+    sentinel-row pattern as mark_mlb_beat_article_extracted_empty(), and for
+    the same reason (avoid re-paying DeepSeek for the same fact-less video)."""
+    db.execute(
+        """
+        INSERT INTO youtube_picks (video_id, sport, bet_type, subject, selection, quote, model_version, status)
+        VALUES (%s, '_none', '_none', 'n/a', 'n/a', 'n/a', %s, '_none')
+        """,
+        (video_id, model_version),
+    )
+
+
 def upsert_mlb_matchup(
     db: DatabaseManager,
     game_date: str,
