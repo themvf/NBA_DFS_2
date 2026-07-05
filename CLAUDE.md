@@ -1601,6 +1601,17 @@ once the season has produced enough further natural-4-5★ bets to clear
 n≥200, and grade again against the same frozen bars — do not lower the bar
 to manufacture a pass.
 
+**Rerun target: ~2026-08-30.** Computed from the actual accumulation rate,
+not guessed: 125 qualifying bets over the 95 days from 2026-03-31 to
+2026-07-04 is ~1.32 qualifying bets/day; reaching the n≥200 floor needs 75
+more, i.e. ~57 more days from 2026-07-04. This is a data-driven estimate, not
+a promise — the real qualifying rate can shift (roster changes, a hot/cold
+streak in which teams draw underdog-side bets, schedule density). Re-run the
+script itself at that point (or earlier, harmlessly — it just reports
+"FAILS the pre-registered minimum" again if n hasn't caught up) rather than
+trusting this projection blindly; the regular season runs into early
+October, so there's real room before the sample window closes for the year.
+
 ### Non-negotiables (same discipline as every prior spec in this file)
 
 - The original 65-bet, four-day observation is what motivated this
