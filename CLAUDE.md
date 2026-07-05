@@ -922,7 +922,11 @@ defensible; refine pairing when the full bracket is known. Group composition is 
 the loaded group-stage fixtures** (`soccer_groups`); group-winner bets activate only once a
 clean 4-team group is available (no fabricated groups).
 
-### Star rubric (deterministic → testable; constants in `model/soccer_bet_rating.py`)
+### Star rubric (deterministic → testable; shared engine, constants in `model/soccer_bet_rating.py`)
+
+`rate_market()` / `rate_no_market()` are a single shared implementation, not a
+per-sport reimplementation — soccer, MLB (`model/mlb_game_bets.py`), and tennis
+(`model/tennis_bets.py`) all call the same two functions.
 
 ```
 decimal_odds = full gross payout per 1 unit (incl. stake)
@@ -935,13 +939,29 @@ Market-based:                          No-market (e.g. group winner):
   3★: EV ≥ .03                          3★: edge ≥ .03
   2★: EV ≥ −.03                         2★: edge ≥ −.03
   1★: EV < −.03                         1★: edge < −.03
-Longshot guard: our_prob < .02 → cap at 3★ (tail calibration noise).
-Market-type caps (no walk-forward edge; rated for the ledger, never surfaced as plays):
-  totals ≤ 2★ (2026-06-28) · moneyline/DNB ≤ 2★ and first-scorer ≤ 2★ (2026-07-01 —
-  ML 2-3★ tiers ran −36% ROI over 221 bets across all three gameline versions; FS ≥2★
-  went 1/47). Only futures (outright/group winner) can still reach 4-5★ — the Elo+MC
-  sim is the one component with demonstrated skill (group-winner Brier .036 vs .188).
+
+Guards applied after tiering, in order:
+  1. Longshot floor: our_prob < .02 → cap at 3★ (tail calibration noise).
+  2. Longshot odds cap (single-game markets only, `longshot_odds_cap=True`):
+     decimal odds ≥ 21 → cap 2★; ≥ 11 → cap 3★ (stops a tiny edge on a huge
+     price manufacturing a fake 5★). Not applied to futures — longshots are
+     the legitimate value play there.
+  3. Per-market hard cap (`max_stars=`), set only after a walk-forward backtest
+     showed no edge — never a priori, always reversible per the pre-
+     registration discipline elsewhere in this file:
 ```
+| Sport | Market | Cap | Set | Why |
+|---|---|---|---|---|
+| Soccer | totals | 2★ | 2026-06-28 | no walk-forward edge |
+| Soccer | moneyline / DNB | 2★ | 2026-07-01 | −36% ROI over 221 bets, all 3 gameline versions |
+| Soccer | first-scorer | 2★ | 2026-07-01 | ≥2★ tier went 1/47 |
+| MLB | moneyline / totals | 2★ | 2026-07-02 | holdout eval: ML logloss .6772 vs market .6717; totals MAE 3.36 vs 3.31 (see MLB Underdog-Value spec for the pending re-test) |
+| Tennis | moneyline | self-capping | 2026-07-01 | `our_prob` set = market prob directly → edge≈0, no explicit `max_stars` constant needed |
+
+Only **futures** (soccer outright/group winner) currently reach 4-5★ live — the
+one component with demonstrated out-of-sample skill (Elo + Monte Carlo,
+group-winner Brier .036 vs .188). Any 3★+ row on a capped market in the ledger
+predates that cap — legacy audit history, never a live recommendation.
 
 ### Traceability / accountability design
 
