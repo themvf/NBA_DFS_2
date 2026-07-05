@@ -2123,3 +2123,80 @@ running. Revisit once volume is worth the design effort.
   both report honestly, including if the answer is "inconclusive" or
   "no meaningful movement detected" — those are legitimate, recordable
   outcomes in this file, not failures to hide.
+
+---
+
+## Video Analysis — General YouTube Summarization Feature (2026-07-05)
+
+A separate, sport-agnostic feature (not part of the MLB beat-writer pilot
+above, though it grew out of the same discussion): a web page where a user
+pastes any YouTube URL and gets a structured, per-team/per-player
+breakdown of what the video discusses. Unlike the beat-writer pilot, this
+makes no edge claim at all — it's a decision-support/summarization tool,
+so it doesn't carry the walk-forward/pre-registration discipline the rest
+of this file requires for betting-relevant claims.
+
+### Architecture
+
+Built as a Next.js feature (page + server action), not a Python script —
+the live site is Next.js/Vercel, which doesn't shell out to Python, and
+this needs to run synchronously from a website button.
+
+```
+YouTube URL
+    → web/src/lib/youtube-transcript.ts   fetch transcript, no API key
+    → web/src/app/video-analysis/actions.ts   DeepSeek structured summary
+    → video_analysis table (cached by video_id)
+    → web/src/app/video-analysis/{page,video-analysis-client}.tsx
+```
+
+**Transcript fetching (`youtube-transcript.ts`):** there is no official
+public API for this (Data API v3 caption download requires OAuth as the
+video owner). Uses the same technique as the widely-used
+`youtube-transcript-api` Python library: impersonate YouTube's internal
+"innertube" API as the ANDROID client, which returns caption track URLs
+that work without the bot-detection "PO token" the web client's caption
+URLs require. Verified against a live video before writing the TypeScript
+port (a naive web-client-based attempt failed with an empty response —
+the innertube/Android approach was the fix, confirmed by inspecting the
+actual `youtube-transcript-api` source rather than guessing). This is
+unofficial and could break if YouTube changes the innertube contract —
+accepted and documented, not hidden.
+
+**Analysis:** DeepSeek (`video-analysis-deepseek-v1`), sport-agnostic
+prompt — explicitly does not assume a single sport, since one video can
+span several. Asks for team/player name, type, best-guess sport, a
+plain-language summary of what was said, and an approximate timestamp
+grounded in the transcript's own timestamps. No verbatim-quote-grounding
+requirement like the beat-writer pilot (this is a summarization task, not
+a fact-extraction pipeline feeding a later numeric test), but timestamps
+are still tied to real transcript positions to keep it checkable.
+Transcript capped at 60K characters to stay safely under the model's
+context window — long videos get truncated, noted in the response
+message rather than silently dropped.
+
+**Caching:** results keyed by `video_id` (UNIQUE) — re-analyzing the same
+video returns the cached result instead of re-fetching/re-calling the LLM,
+unless the user explicitly clicks "re-analyze."
+
+### Verified (2026-07-05)
+
+Tested against the live dev server via direct HTTP calls (the browser
+preview tool itself was unresponsive this session — a tooling issue, not
+a code issue, confirmed by testing the exact same server-action code path
+directly): page renders (200 OK, `video_analysis` table self-provisions
+via `ensureVideoAnalysisTables()` on first request, same pattern as every
+other experimental table in `web/src/db/ensure-schema.ts`); full pipeline
+works end-to-end against a real video (transcript fetched, DeepSeek
+correctly returned zero subjects for a non-sports video rather than
+hallucinating fake ones); cache hit confirmed on a second call; both error
+paths (unparseable URL, unavailable video) return clean, specific
+messages instead of a generic failure.
+
+### Secrets
+
+Requires `DEEPSEEK_API_KEY` as a **Vercel environment variable** — a third
+place this key now lives, distinct from the Python `.env` (local dev) and
+the GitHub Actions secret (`gh secret set DEEPSEEK_API_KEY`, for the MLB
+beat-writer pilot's scheduled workflow). Not yet confirmed set on Vercel
+as of this writing.

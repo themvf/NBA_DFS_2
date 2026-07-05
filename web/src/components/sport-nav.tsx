@@ -36,6 +36,7 @@ const PAGE_LINKS: Array<{
   { href: "/elo", label: "Elo / Power", sports: ["soccer"] },
   { href: "/stats", label: "Team Stats", sports: ["nba", "mlb"] },
   { href: "/schedule", label: "Schedule", sports: ["nba", "mlb"] },
+  { href: "/video-analysis", label: "Video Analysis" },
 ];
 
 export function SportNav() {

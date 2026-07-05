@@ -832,6 +832,28 @@ export const optimizerJobLineups = pgTable(
   ]
 );
 
+// ── YouTube video analysis (sport-agnostic) ────────────────────
+// User pastes a video URL; we fetch its transcript and ask DeepSeek for a
+// structured, per-team/per-player breakdown of what was discussed. Not
+// tied to any one sport -- sport is a best-guess field per subject, not a
+// hard filter, since a single video can span multiple sports.
+
+export const videoAnalysis = pgTable(
+  "video_analysis",
+  {
+    id: serial("id").primaryKey(),
+    videoUrl: text("video_url").notNull(),
+    videoId: text("video_id").notNull(),
+    title: text("title"),
+    channelName: text("channel_name"),
+    transcriptText: text("transcript_text").notNull(),
+    analysisJson: jsonb("analysis_json").notNull(),
+    modelVersion: text("model_version").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [unique("video_analysis_video_id_key").on(t.videoId)]
+);
+
 // ── Type inference ────────────────────────────────────────────
 
 export type Team = typeof teams.$inferSelect;
@@ -847,6 +869,7 @@ export type MlbBatterStats = typeof mlbBatterStats.$inferSelect;
 export type MlbPitcherStats = typeof mlbPitcherStats.$inferSelect;
 export type MlbTeamStats = typeof mlbTeamStats.$inferSelect;
 export type OddsSignalRun = typeof oddsSignalRuns.$inferSelect;
+export type VideoAnalysis = typeof videoAnalysis.$inferSelect;
 export type DkSlate = typeof dkSlates.$inferSelect;
 export type DkPlayer = typeof dkPlayers.$inferSelect;
 export type DkLineup = typeof dkLineups.$inferSelect;

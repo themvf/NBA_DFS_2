@@ -10,6 +10,7 @@ let ensureMlbHomerunTrackingTablesPromise: Promise<void> | null = null;
 let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
+let ensureVideoAnalysisTablesPromise: Promise<void> | null = null;
 
 // Columns added to dk_slates / dk_players after the initial table creation.
 // ALTER TABLE ... ADD COLUMN IF NOT EXISTS is idempotent — safe to run every deploy.
@@ -399,6 +400,39 @@ const ANALYTICS_COLUMN_DDLS = [
   `ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS home_sp_name TEXT`,
   `ALTER TABLE mlb_matchups ADD COLUMN IF NOT EXISTS away_sp_name TEXT`,
 ];
+
+// Video Analysis feature (2026-07-05): user pastes a YouTube URL, we fetch
+// its transcript and ask DeepSeek for a per-team/per-player breakdown.
+// Sport-agnostic -- not scoped to nba/mlb like most tables here.
+const VIDEO_ANALYSIS_DDLS = [
+  `CREATE TABLE IF NOT EXISTS video_analysis (
+      id SERIAL PRIMARY KEY,
+      video_url TEXT NOT NULL,
+      video_id TEXT NOT NULL,
+      title TEXT,
+      channel_name TEXT,
+      transcript_text TEXT NOT NULL,
+      analysis_json JSONB NOT NULL,
+      model_version TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (video_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_video_analysis_created ON video_analysis(created_at DESC)`,
+];
+
+export async function ensureVideoAnalysisTables(): Promise<void> {
+  if (!ensureVideoAnalysisTablesPromise) {
+    ensureVideoAnalysisTablesPromise = (async () => {
+      for (const ddl of VIDEO_ANALYSIS_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureVideoAnalysisTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureVideoAnalysisTablesPromise;
+}
 
 export async function ensureAnalyticsColumns(): Promise<void> {
   if (!ensureAnalyticsColumnsPromise) {
