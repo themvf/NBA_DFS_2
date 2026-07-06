@@ -21,6 +21,7 @@ export interface YoutubePickRow {
   confidenceLabel: string | null;
   quote: string;
   status: string;
+  resultDetail: string | null;
 }
 
 /** Recent extracted picks, newest video first. Excludes the internal
@@ -44,6 +45,7 @@ export async function getRecentYoutubePicks(limit = 100): Promise<YoutubePickRow
       confidenceLabel: youtubePicks.confidenceLabel,
       quote: youtubePicks.quote,
       status: youtubePicks.status,
+      resultDetail: youtubePicks.resultDetail,
     })
     .from(youtubePicks)
     .innerJoin(youtubePickVideos, eq(youtubePickVideos.id, youtubePicks.videoId))

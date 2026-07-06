@@ -1061,6 +1061,61 @@ def mark_youtube_pick_video_extracted_empty(db: DatabaseManager, video_id: int, 
     )
 
 
+def mark_youtube_picks_unsettleable(db: DatabaseManager, sports: tuple, bet_types: tuple) -> int:
+    """One-time classification: picks outside the currently-supported
+    sport/bet_type combination are marked 'unsettleable' rather than left
+    ambiguously 'pending' forever -- see CLAUDE.md "YouTube Picks
+    Settlement". Only touches rows still 'pending' with no quote sentinel."""
+    rows = db.execute(
+        """
+        UPDATE youtube_picks
+        SET status = 'unsettleable'
+        WHERE status = 'pending'
+          AND sport != '_none'
+          AND (sport NOT IN %s OR bet_type NOT IN %s)
+        RETURNING id
+        """,
+        (sports, bet_types),
+    )
+    return len(rows)
+
+
+def get_resolvable_youtube_picks(db: DatabaseManager, sports: tuple, bet_types: tuple) -> list[dict]:
+    """Pending picks eligible for game resolution -- correct sport/bet_type,
+    no matchup_ref yet."""
+    return db.execute(
+        """
+        SELECT p.id, p.sport, p.bet_type, p.subject, p.opponent, p.selection, p.game_context,
+               v.published_at
+        FROM youtube_picks p
+        JOIN youtube_pick_videos v ON v.id = p.video_id
+        WHERE p.status = 'pending' AND p.matchup_ref IS NULL
+          AND p.sport IN %s AND p.bet_type IN %s
+        """,
+        (sports, bet_types),
+    )
+
+
+def set_youtube_pick_matchup_ref(db: DatabaseManager, pick_id: int, matchup_ref: str) -> None:
+    db.execute("UPDATE youtube_picks SET matchup_ref = %s WHERE id = %s", (matchup_ref, pick_id))
+
+
+def get_resolved_pending_youtube_picks(db: DatabaseManager) -> list[dict]:
+    """Pending picks that have already been resolved to a game -- candidates
+    for grading once that game is final."""
+    return db.execute(
+        "SELECT id, sport, bet_type, subject, selection, matchup_ref FROM youtube_picks "
+        "WHERE status = 'pending' AND matchup_ref IS NOT NULL"
+    )
+
+
+def settle_youtube_pick(db: DatabaseManager, pick_id: int, status: str, result_detail: str) -> None:
+    db.execute(
+        "UPDATE youtube_picks SET status = %s, result_detail = %s, settled_at = NOW() WHERE id = %s",
+        (status, result_detail, pick_id),
+    )
+
+
 def upsert_mlb_matchup(
     db: DatabaseManager,
     game_date: str,

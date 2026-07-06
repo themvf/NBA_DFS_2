@@ -26,6 +26,13 @@ const BET_TYPE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+const STATUS_STYLE: Record<string, string> = {
+  won: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  lost: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+  pending: "bg-muted text-muted-foreground",
+  unsettleable: "bg-muted text-muted-foreground/60",
+};
+
 function fmtOdds(odds: number | null): string {
   if (odds == null) return "—";
   return odds > 0 ? `+${odds}` : `${odds}`;
@@ -189,9 +196,10 @@ export function YoutubePicksClient({
       />
 
       <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-        ⚠ Settlement isn&apos;t built yet — every pick shows as{" "}
-        <span className="font-medium">pending</span>. There&apos;s no win/loss or accuracy
-        data here yet; this page is extraction visibility only.
+        ⚠ Settlement only covers <span className="font-medium">moneyline picks for MLB,
+        soccer, and tennis</span> so far — those grade automatically once the game finishes.
+        Spread/total bets and every other sport (WNBA, NFL, F1, etc.) show as{" "}
+        <span className="font-medium">unsettleable</span> for now, not silently ignored.
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -261,10 +269,14 @@ export function YoutubePicksClient({
                     </span>
                   )}
                 </div>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${STATUS_STYLE[p.status] ?? "bg-muted text-muted-foreground"}`}>
                   {p.status}
                 </span>
               </div>
+
+              {p.resultDetail && (
+                <p className="mt-1 text-xs text-muted-foreground">{p.resultDetail}</p>
+              )}
 
               <div className="mt-1 flex flex-wrap items-baseline gap-2">
                 <span className="text-sm">{p.selection}</span>
