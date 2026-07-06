@@ -80,10 +80,22 @@ def _fetch_rss_entries(channel_id: str) -> list[dict]:
     return entries
 
 
-def _fetch_transcript_text(video_id: str) -> str:
+def _fetch_transcript_text(video_id: str, attempts: int = 3) -> str:
+    """Fetch a transcript, retrying transient network failures. YouTube
+    (even through the residential proxy) intermittently resets the
+    connection mid-fetch (SSLError / ConnectionError) -- a short retry with
+    backoff clears most of those without failing the whole run."""
     api = YouTubeTranscriptApi(proxy_config=_get_proxy_config())
-    result = api.fetch(video_id)
-    return " ".join(s.text for s in result)
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            result = api.fetch(video_id)
+            return " ".join(s.text for s in result)
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(2 * (attempt + 1))
+    raise last_exc  # type: ignore[misc]
 
 
 def fetch_new_pick_videos(
@@ -111,8 +123,12 @@ def fetch_new_pick_videos(
         time.sleep(1)
         try:
             transcript_text = _fetch_transcript_text(e["video_id"])
-        except CouldNotRetrieveTranscript as exc:
-            logger.warning("No transcript for %s (%r): %s", e["video_id"], e["title"], exc)
+        except (CouldNotRetrieveTranscript, requests.exceptions.RequestException) as exc:
+            # A single video's transcript failing (no captions, or a
+            # transient proxy/network reset) must not crash the whole run --
+            # the extraction + settlement steps still need to execute, and a
+            # skipped video reappears as "new" on the next scheduled run.
+            logger.warning("Skipping %s (%r): %s", e["video_id"], e["title"], exc)
             continue
 
         upsert_youtube_pick_video(
