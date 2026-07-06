@@ -43,6 +43,82 @@ function fmtDate(d: Date | null): string {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+const TABLE_PAGE_SIZE = 20;
+
+function PicksTable({ picks }: { picks: YoutubePickRow[] }) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(picks.length / TABLE_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const rows = picks.slice((safePage - 1) * TABLE_PAGE_SIZE, safePage * TABLE_PAGE_SIZE);
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+            <th className="px-3 py-2 font-medium">Date</th>
+            <th className="px-3 py-2 font-medium">Sport</th>
+            <th className="px-3 py-2 font-medium">Bet</th>
+            <th className="px-3 py-2 font-medium">Won/Loss</th>
+            <th className="px-3 py-2 font-medium">Channel</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
+                No picks match these filters.
+              </td>
+            </tr>
+          ) : (
+            rows.map((p) => (
+              <tr key={p.id} className="border-b last:border-0">
+                <td className="whitespace-nowrap px-3 py-1.5">{fmtDate(p.publishedAt)}</td>
+                <td className="whitespace-nowrap px-3 py-1.5">
+                  {SPORT_ICON[p.sport] ?? "🎲"} {p.sport.toUpperCase()}
+                </td>
+                <td className="px-3 py-1.5">{p.selection}</td>
+                <td className="whitespace-nowrap px-3 py-1.5">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${
+                      STATUS_STYLE[p.status] ?? "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {p.status}
+                  </span>
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5">{p.channelName}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+
+      <div className="flex items-center justify-between border-t px-3 py-2 text-xs text-muted-foreground">
+        <span>
+          Page {safePage} of {totalPages} ({picks.length} picks)
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="rounded border px-2 py-1 disabled:opacity-40"
+          >
+            Prev
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="rounded border px-2 py-1 disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ManageChannels({
   channels,
   onAdded,
@@ -189,6 +265,8 @@ export function YoutubePicksClient({
           source quote and video.
         </p>
       </div>
+
+      <PicksTable picks={filtered} />
 
       <ManageChannels
         channels={channels}
