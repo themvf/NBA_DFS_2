@@ -202,16 +202,14 @@ export function YoutubePicksClient({
           onChange={(e) => setSearch(e.target.value)}
           className="rounded border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground w-52"
         />
-        {pickChannelNames.length > 1 && (
-          <label className="flex items-center gap-1">
-            <span className="text-muted-foreground">Channel</span>
-            <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}
-              className="rounded border bg-background px-1.5 py-1.5">
-              <option value="all">All</option>
-              {pickChannelNames.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </label>
-        )}
+        <label className="flex items-center gap-1">
+          <span className="text-muted-foreground">Channel</span>
+          <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}
+            className="rounded border bg-background px-1.5 py-1.5">
+            <option value="all">All</option>
+            {pickChannelNames.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
         <label className="flex items-center gap-1">
           <span className="text-muted-foreground">Sport</span>
           <select value={sport} onChange={(e) => setSport(e.target.value)}
