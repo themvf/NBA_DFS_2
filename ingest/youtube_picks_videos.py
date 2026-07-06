@@ -31,7 +31,7 @@ import xml.etree.ElementTree as ET
 
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import CouldNotRetrieveTranscript
+from youtube_transcript_api._errors import CouldNotRetrieveTranscript, IpBlocked, RequestBlocked
 from youtube_transcript_api.proxies import GenericProxyConfig
 
 from config import load_config
@@ -47,6 +47,11 @@ _RSS_NS = {
     "yt": "http://www.youtube.com/xml/schemas/2015",
 }
 _DEFAULT_LIMIT = 15
+# Don't ingest videos published before this date. The RSS feed only returns
+# the ~15 most recent uploads per channel, so we can't go back far anyway;
+# this floor keeps a newly-added channel from pulling in stale old videos
+# (games long finished) that happen to be in its recent feed.
+_EARLIEST_PUBLISH = "2026-06-01"
 
 
 def _get_proxy_config() -> GenericProxyConfig | None:
@@ -98,36 +103,54 @@ def _fetch_transcript_text(video_id: str, attempts: int = 3) -> str:
     raise last_exc  # type: ignore[misc]
 
 
+def _published_before_cutoff(published_at: str | None) -> bool:
+    """True if the video predates _EARLIEST_PUBLISH. published_at is an ISO
+    string (e.g. '2026-07-05T11:47:15+00:00'); a lexical compare of the
+    date prefix is correct for ISO. Unknown dates are kept (not skipped)."""
+    return bool(published_at) and published_at[:10] < _EARLIEST_PUBLISH
+
+
 def fetch_new_pick_videos(
     db: DatabaseManager,
     channel_id: str = _CHANNEL_ID,
     channel_name: str = _CHANNEL_NAME,
     limit: int = _DEFAULT_LIMIT,
-) -> int:
+) -> dict:
     """Check the channel's RSS feed, fetch transcripts for any video not
-    already stored. Returns the number of new videos stored."""
+    already stored and published on/after _EARLIEST_PUBLISH. Returns a stats
+    dict {stored, ip_blocked, other_failed, candidates}."""
     existing = db.execute(
         "SELECT video_id FROM youtube_pick_videos WHERE channel_id = %s", (channel_id,)
     )
     known_ids = {r["video_id"] for r in existing}
 
     entries = _fetch_rss_entries(channel_id)[:limit]
-    new_entries = [e for e in entries if e["video_id"] not in known_ids]
+    new_entries = [
+        e for e in entries
+        if e["video_id"] not in known_ids and not _published_before_cutoff(e["published_at"])
+    ]
 
+    stats = {"stored": 0, "ip_blocked": 0, "other_failed": 0, "candidates": len(new_entries)}
     if not new_entries:
-        print(f"YouTube picks ({channel_name}): no new videos (checked {len(entries)}, all already stored)")
-        return 0
+        print(f"YouTube picks ({channel_name}): no new videos since {_EARLIEST_PUBLISH} (checked {len(entries)})")
+        return stats
 
-    stored = 0
     for e in new_entries:
         time.sleep(1)
         try:
             transcript_text = _fetch_transcript_text(e["video_id"])
+        except (IpBlocked, RequestBlocked) as exc:
+            # YouTube blocking the request IP (the proxy is flagged/rotated,
+            # or missing) -- track separately so the run can surface it.
+            stats["ip_blocked"] += 1
+            logger.warning("IP-blocked on %s (%r): %s", e["video_id"], e["title"], exc)
+            continue
         except (CouldNotRetrieveTranscript, requests.exceptions.RequestException) as exc:
             # A single video's transcript failing (no captions, or a
             # transient proxy/network reset) must not crash the whole run --
             # the extraction + settlement steps still need to execute, and a
             # skipped video reappears as "new" on the next scheduled run.
+            stats["other_failed"] += 1
             logger.warning("Skipping %s (%r): %s", e["video_id"], e["title"], exc)
             continue
 
@@ -140,10 +163,11 @@ def fetch_new_pick_videos(
             published_at=e["published_at"],
             transcript_text=transcript_text,
         )
-        stored += 1
+        stats["stored"] += 1
 
-    print(f"YouTube picks ({channel_name}): stored {stored} new video(s) of {len(new_entries)} candidates")
-    return stored
+    print(f"YouTube picks ({channel_name}): stored {stats['stored']} of {len(new_entries)} "
+          f"({stats['ip_blocked']} IP-blocked, {stats['other_failed']} other failure(s))")
+    return stats
 
 
 def _seed_default_channel_if_empty(db: DatabaseManager) -> None:
@@ -156,6 +180,45 @@ def _seed_default_channel_if_empty(db: DatabaseManager) -> None:
         upsert_youtube_pick_channel(db, channel_id=_CHANNEL_ID, channel_name=_CHANNEL_NAME, handle="@bettingpros")
 
 
+def _notify(text: str) -> None:
+    """Best-effort push to Telegram/Discord if configured (same env vars as
+    model/line_alerts.py). No-op if neither is set -- the log/GHA annotation
+    is the always-on signal."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    discord = os.environ.get("DISCORD_WEBHOOK_URL")
+    if token and chat_id:
+        try:
+            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          json={"chat_id": chat_id, "text": text}, timeout=10)
+        except requests.RequestException as exc:
+            logger.warning("Telegram notify failed: %s", exc)
+    if discord:
+        try:
+            requests.post(discord, json={"content": text}, timeout=10)
+        except requests.RequestException as exc:
+            logger.warning("Discord notify failed: %s", exc)
+
+
+def _report_scrape_health(totals: dict, n_channels: int) -> None:
+    """Print a summary and, if YouTube blocked any transcript fetch, surface
+    it: a GitHub Actions annotation (visible on the run page without opening
+    logs) plus an optional Telegram/Discord push. `error` level (vs
+    `warning`) when nothing got through despite having candidates -- the
+    proxy is likely fully down/flagged."""
+    print(f"YouTube picks scrape: {totals['stored']} stored, {totals['ip_blocked']} IP-blocked, "
+          f"{totals['other_failed']} other failure(s) across {n_channels} channel(s)")
+    if totals["ip_blocked"] == 0:
+        return
+    hard_down = totals["stored"] == 0 and totals["candidates"] > 0
+    msg = (f"YouTube proxy/IP blocking: {totals['ip_blocked']} transcript fetch(es) blocked by "
+           f"YouTube (stored {totals['stored']} of {totals['candidates']} candidates). "
+           f"Check YOUTUBE_PROXY_URL -- the proxy IP may be flagged, rotated, or missing.")
+    # GitHub Actions annotation on the run summary page (::error:: / ::warning::)
+    print(f"::{'error' if hard_down else 'warning'}::{msg}")
+    _notify(("🔴 " if hard_down else "🟠 ") + msg)
+
+
 def fetch_new_videos_for_all_channels(db: DatabaseManager, limit: int = _DEFAULT_LIMIT) -> int:
     """Run fetch_new_pick_videos() for every active channel in
     youtube_pick_channels. Channels are added via the web UI's "Add
@@ -166,10 +229,13 @@ def fetch_new_videos_for_all_channels(db: DatabaseManager, limit: int = _DEFAULT
         print("YouTube picks: no active channels registered")
         return 0
 
-    total = 0
+    totals = {"stored": 0, "ip_blocked": 0, "other_failed": 0, "candidates": 0}
     for c in channels:
-        total += fetch_new_pick_videos(db, channel_id=c["channel_id"], channel_name=c["channel_name"], limit=limit)
-    return total
+        s = fetch_new_pick_videos(db, channel_id=c["channel_id"], channel_name=c["channel_name"], limit=limit)
+        for k in totals:
+            totals[k] += s[k]
+    _report_scrape_health(totals, len(channels))
+    return totals["stored"]
 
 
 if __name__ == "__main__":
