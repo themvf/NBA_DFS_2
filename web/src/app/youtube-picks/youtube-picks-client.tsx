@@ -58,6 +58,7 @@ function PicksTable({ picks }: { picks: YoutubePickRow[] }) {
           <tr className="border-b text-left text-xs uppercase text-muted-foreground">
             <th className="px-3 py-2 font-medium">Date</th>
             <th className="px-3 py-2 font-medium">Sport</th>
+            <th className="px-3 py-2 font-medium">Team / Game</th>
             <th className="px-3 py-2 font-medium">Bet</th>
             <th className="px-3 py-2 font-medium">Won/Loss</th>
             <th className="px-3 py-2 font-medium">Channel</th>
@@ -66,7 +67,7 @@ function PicksTable({ picks }: { picks: YoutubePickRow[] }) {
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
+              <td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">
                 No picks match these filters.
               </td>
             </tr>
@@ -76,6 +77,10 @@ function PicksTable({ picks }: { picks: YoutubePickRow[] }) {
                 <td className="whitespace-nowrap px-3 py-1.5">{fmtDate(p.publishedAt)}</td>
                 <td className="whitespace-nowrap px-3 py-1.5">
                   {SPORT_ICON[p.sport] ?? "🎲"} {p.sport.toUpperCase()}
+                </td>
+                <td className="px-3 py-1.5">
+                  {p.subject}
+                  {p.opponent ? ` vs ${p.opponent}` : ""}
                 </td>
                 <td className="px-3 py-1.5">{p.selection}</td>
                 <td className="whitespace-nowrap px-3 py-1.5">
