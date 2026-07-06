@@ -2467,10 +2467,98 @@ live data: 5 won (emerald), 3 lost (rose), 36 unsettleable (muted).
 settlement runs every 3 hours alongside scraping/extraction — no separate
 schedule needed.
 
-**How to apply:** if asked to extend settlement to spread/total bets,
-that requires a schema change first (a structured numeric line field,
-not free-text `selection` parsing) — don't attempt to regex-parse
-`selection` for this. If asked to grade WNBA/NFL/F1/other sports, this
+**How to apply:** if asked to grade WNBA/NFL/F1/other sports, this
 project has no result-data infrastructure for them at all — say so
 explicitly rather than attempting a fake settlement, same documented
 boundary as when the pilot was first scoped.
+
+### Settlement — extended to totals + spreads (2026-07-06)
+
+The original "moneyline only, schema change required first for
+totals/spreads" scoping (above) was **superseded the same day** at the
+user's explicit request ("grade based on all of the available settlement
+stats we have. Not just moneyline"). Rather than add a structured numeric
+`line` column + re-extract, the free-text `selection` is parsed at
+settlement time — a deliberate reversal of the earlier "don't regex-parse
+`selection`" note, justified by (a) the user's explicit call, and (b) a
+conservative parser that grades ONLY when the market parses unambiguously
+and refuses everything else, so nothing is faked.
+
+**Scope now:** `moneyline`, `total`, `spread` for **MLB and soccer**
+(both teams' numeric scores available: MLB runs, soccer 90-minute goals);
+**tennis stays moneyline-only** (we store a winner, not game counts, so
+tennis totals/spreads are intentionally out of scope). Encoded as an
+explicit `_ALLOWED_PAIRS` tuple of `(sport, bet_type)` — the classify
+query is now `(sport, bet_type) NOT IN %s`, not the old
+`sport NOT IN … OR bet_type NOT IN …` (which couldn't express per-sport
+bet-type support).
+
+**Parsers (`model/youtube_picks_settlement.py`):**
+- `_parse_total` → `(line, 'over'|'under', is_team_total)` from e.g.
+  "Over 9.5 runs", "Phillies team total over 4.5 runs". Team totals grade
+  on the subject's own score (via the resolved `side`); game totals sum
+  both.
+- `_parse_spread` → signed line relative to the subject, e.g.
+  "Braves -1.5 runs" → -1.5. Grades on `margin + line` (>0 win, =0 push,
+  <0 loss). Push verified live (Argentina -2 winning exactly 2-goal →
+  `push`).
+- Anything that doesn't parse to a line (bare "Over"/"Under" extraction
+  glitches, "Both teams to score") is **left `pending` and logged**, never
+  guessed — a known, tiny edge (~4 rows) accepted over faking a grade.
+
+**Two honesty guardrails added:**
+1. **Partial-game markets excluded** (`_SUBGAME_RE`): "first 5 innings" /
+   "F5" / "first five" / "first half" etc. are marked `unsettleable` — we
+   only store full-game finals, so an F5 line is ungradable. This also
+   **corrected a mis-grade**: the old moneyline-only pass had graded a
+   "Royals first 5 innings moneyline" on the full-game final; the
+   reclassifier re-checks already-settled won/lost rows too and reset it
+   to `unsettleable`.
+2. **Self-healing reclaim** (`reopen_in_scope_unsettleable`): the old
+   moneyline-only pass had marked ~200 totals/spreads `unsettleable`, and
+   resolve only looks at `pending`, so they were stranded. New step
+   re-opens `unsettleable` picks whose `(sport, bet_type)` is now in scope
+   (excluding partial-game markets) back to `pending`. Makes settlement
+   self-healing whenever scope widens, instead of stranding old rows. Runs
+   FIRST in `run()`, before classify/subgame/resolve/grade.
+
+**`push` status added** (ties/voids — integer totals landing on the line,
+spreads landing exactly on the number). New status string flows through
+`settle_youtube_pick` unchanged; web `STATUS_STYLE` gained a sky-blue
+`push` pill, and `pending` is now amber.
+
+**Performance:** resolve was loading the full team table *per pick*
+(N+1) — this is why the CI settlement step hung 20+ min on the big
+backlog. Now each sport's `{team_id: name}` map is loaded once per run
+(`_load_teams`).
+
+**Verified results (2026-07-06), across a ~660-pick backlog** (the
+pipeline had been silently failing on the missing-`httpx` bug — see
+below — so many videos accumulated, then all extracted at once once fixed):
+`won 218 / lost 197 / push 6`, `unsettleable 141`, `pending 98` (74
+resolved-but-pending = games not yet final). Graded-by-bet-type:
+moneyline 268, total 140, spread 13. Multiple totals and spreads
+hand-checked against real scores (e.g. "Under 8.5 runs" on 7-4 → total
+11 → lost; "Dodgers -1.5" on 15-3 → margin +12 → won; the Argentina -2
+push). `0 reopened` on the final run confirms no in-scope pick is wrongly
+stranded `unsettleable`.
+
+**New `db/queries.py` functions:** `get_youtube_picks_for_subgame_check`,
+`mark_youtube_pick_unsettleable`, `get_unsettleable_in_scope_youtube_picks`,
+`reopen_youtube_pick`. `mark_youtube_picks_unsettleable` /
+`get_resolvable_youtube_picks` signatures changed from `(sports, bet_types)`
+to `(allowed_pairs)`.
+
+**Unrelated bug found while verifying this (2026-07-06):** both scheduled
+DeepSeek workflows (`refresh_youtube_picks.yml`,
+`refresh_mlb_beat_articles.yml`) had failed on **every** run since they
+shipped — `model/youtube_picks_extraction.py` and
+`model/mlb_beat_extraction.py` both `import httpx`, which was never in
+`requirements.txt`, so CI's `pip install` never installed it
+(`ModuleNotFoundError`). Added `httpx>=0.27,<1`. Separately hardened the
+scraper: a single video's transcript SSL/connection reset (YouTube
+resetting even through the residential proxy) used to crash the whole run
+(skipping extraction + settlement); `_fetch_transcript_text` now retries
+transient `RequestException` 3× with backoff, and the per-video loop
+catches `RequestException` to skip one bad video (it reappears as "new"
+next run) instead of aborting.
