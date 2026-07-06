@@ -39,3 +39,6 @@ jobs:
 
       - name: Extract picks with DeepSeek
         run: python -m model.youtube_picks_extraction
+
+      - name: Settle moneyline picks (MLB/soccer/tennis)
+        run: python -m model.youtube_picks_settlement

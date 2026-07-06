@@ -632,7 +632,9 @@ TABLES = [
         model_version TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         matchup_ref TEXT,
-        extracted_at TIMESTAMPTZ DEFAULT NOW()
+        result_detail TEXT,
+        extracted_at TIMESTAMPTZ DEFAULT NOW(),
+        settled_at TIMESTAMPTZ
     )
     """,
 

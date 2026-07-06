@@ -2391,3 +2391,86 @@ tracked-channels list, confirmed both rows persisted correctly in
 Postgres with the right `channel_id`/`handle`. Removed the test channel
 afterward — not something actually meant to be tracked, added purely to
 prove the resolve-and-register flow works live.
+
+### Settlement (2026-07-06)
+
+**Scope, fixed before writing any grading logic:** moneyline picks only,
+for MLB/soccer/tennis — the three sports with real, already-built
+game-result infrastructure and existing fuzzy team-name matching
+(`_levenshtein()`/`rapidfuzz`). Spread/total grading needs a structured
+numeric line value the extraction schema doesn't capture yet (only
+free-text `selection`, e.g. "Braves -1.5 runs") — parsing that reliably
+enough to grade real money outcomes is deferred, not faked. Every other
+sport (WNBA, NFL, F1, other) and every other bet type is classified
+`unsettleable` up front rather than left ambiguously `pending` forever —
+the UI can now tell "waiting on a game" apart from "will never be
+graded," instead of implying more coverage than exists.
+
+**New file:** `model/youtube_picks_settlement.py` — three phases, run
+every time:
+1. **classify** — mark out-of-scope picks `unsettleable` (one-time per pick)
+2. **resolve** — fuzzy-match subject/opponent to a real game/match, freeze
+   `matchup_ref` (`"{sport}:{row_id}:{side}"`) so grading never re-runs
+   the fuzzy match
+3. **grade** — for resolved picks whose game is now final, compare the
+   picked side to the actual winner; status → `won`/`lost`
+
+**Schema additions:** `youtube_picks.result_detail TEXT` (human-readable
+final score/winner, e.g. `"Final 7-6"` or `"Final (90') 2-1"`),
+`youtube_picks.settled_at TIMESTAMPTZ`. Added to both `db/schema.py` and
+the Drizzle `web/src/db/schema.ts` (read-only from the web app — Python
+still owns writes to `youtube_picks`, same as extraction).
+
+**New `db/queries.py` functions:** `mark_youtube_picks_unsettleable()`,
+`get_resolvable_youtube_picks()`, `set_youtube_pick_matchup_ref()`,
+`get_resolved_pending_youtube_picks()`, `settle_youtube_pick()`.
+
+**Bug found and fixed during build:** the first resolution attempt used a
+fixed 2-day `BETWEEN` date window (publish day, publish day + 1) to find
+the game a pick referred to. This produced false ambiguity — 2 candidate
+games — for 4 MLB moneyline picks, because these were back-to-back series
+(same two teams playing on consecutive days). The resolver correctly
+refused to guess (`len(games) != 1` → `None`, left honestly `pending`),
+so this wasn't wrong output, but a real limitation. **Fixed** by trying
+the exact publish date first, only falling back to the next day if zero
+games match at the exact date (`_find_team_games()`/
+`_find_tennis_candidates()`). Verified: all 4 previously-stuck picks
+(Phillies/Pirates, Royals/Rays, Braves/Mets, Nationals/Pirates) resolved
+and graded correctly on the next run, each manually cross-checked against
+real `game_date`/scores in `mlb_matchups`.
+
+**Grading detail per sport:** MLB compares `home_score`/`away_score` from
+`mlb_matchups`. Soccer uses `reg_home_score`/`reg_away_score` (the
+90-minute regulation score, not an ET-inclusive final — same non-
+negotiable established after the Belgium-Senegal incident) from
+`soccer_matchups`, and supports a `draw` winner. Tennis compares against
+`tennis_matches.winner` (`home`/`away`).
+
+**Verified results (2026-07-06):** first run — 35 picks marked
+`unsettleable` (correct sport/bet-type scope), 4 resolved but stuck
+pending on the date-window bug above; after the exact-date-first fix,
+all 4 resolved and the full graded set was 5 `won` / 3 `lost`, every one
+manually cross-checked against real final scores as correct.
+
+**Web UI updated:** the `/youtube-picks` warning banner now reads
+"Settlement only covers moneyline picks for MLB, soccer, and tennis...
+grade automatically once the game finishes. Spread/total bets and every
+other sport... show as unsettleable for now, not silently ignored" —
+replacing the earlier "settlement isn't built yet" banner. Status badges
+are now color-coded (`STATUS_STYLE` map: won=emerald, lost=rose,
+unsettleable=muted, pending=amber) and each settled pick shows its
+`resultDetail` (final score) inline. Verified rendered correctly against
+live data: 5 won (emerald), 3 lost (rose), 36 unsettleable (muted).
+
+**Automation:** `.github/workflows/refresh_youtube_picks.yml` gained a
+`python -m model.youtube_picks_settlement` step after extraction, so
+settlement runs every 3 hours alongside scraping/extraction — no separate
+schedule needed.
+
+**How to apply:** if asked to extend settlement to spread/total bets,
+that requires a schema change first (a structured numeric line field,
+not free-text `selection` parsing) — don't attempt to regex-parse
+`selection` for this. If asked to grade WNBA/NFL/F1/other sports, this
+project has no result-data infrastructure for them at all — say so
+explicitly rather than attempting a fake settlement, same documented
+boundary as when the pilot was first scoped.

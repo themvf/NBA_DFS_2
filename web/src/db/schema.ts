@@ -900,7 +900,9 @@ export const youtubePicks = pgTable("youtube_picks", {
   modelVersion: text("model_version").notNull(),
   status: text("status").notNull().default("pending"),
   matchupRef: text("matchup_ref"),
+  resultDetail: text("result_detail"),
   extractedAt: timestamp("extracted_at").defaultNow(),
+  settledAt: timestamp("settled_at"),
 });
 
 // ── Type inference ────────────────────────────────────────────
