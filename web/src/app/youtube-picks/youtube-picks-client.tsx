@@ -44,7 +44,7 @@ function fmtDate(d: Date | null): string {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-const TABLE_PAGE_SIZE = 20;
+const TABLE_PAGE_SIZE = 50;
 
 function PicksTable({ picks }: { picks: YoutubePickRow[] }) {
   const [page, setPage] = useState(1);
@@ -358,12 +358,12 @@ export function YoutubePicksClient({
 
       <ChannelRecordsTable records={records} />
 
-      <PicksTable picks={filtered} />
-
       <ManageChannels
         channels={channels}
         onAdded={(c) => setChannels((prev) => [c, ...prev.filter((x) => x.channelId !== c.channelId)])}
       />
+
+      <PicksTable picks={filtered} />
 
       <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
         ⚠ Settlement covers <span className="font-medium">moneyline, total, and spread</span>{" "}
