@@ -1033,8 +1033,11 @@ def insert_youtube_pick(
     quote: str,
     model_version: str,
 ) -> None:
-    """Append one extracted pick. Not upserted -- a video can yield zero,
-    one, or several picks per extraction run."""
+    """Append one extracted pick. ON CONFLICT DO NOTHING against the
+    (video_id, sport, bet_type, subject, selection) unique index so two
+    overlapping extraction passes over the same not-yet-extracted video
+    can't double-insert the same pick (a real race that inflated records
+    2-4x before the index existed)."""
     db.execute(
         """
         INSERT INTO youtube_picks (
@@ -1042,6 +1045,7 @@ def insert_youtube_pick(
             odds_american, game_context, confidence_label, quote, model_version
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (video_id, sport, bet_type, subject, selection) DO NOTHING
         """,
         (video_id, sport, bet_type, subject, opponent, selection,
          odds_american, game_context, confidence_label, quote, model_version),
@@ -1056,6 +1060,7 @@ def mark_youtube_pick_video_extracted_empty(db: DatabaseManager, video_id: int, 
         """
         INSERT INTO youtube_picks (video_id, sport, bet_type, subject, selection, quote, model_version, status)
         VALUES (%s, '_none', '_none', 'n/a', 'n/a', 'n/a', %s, '_none')
+        ON CONFLICT (video_id, sport, bet_type, subject, selection) DO NOTHING
         """,
         (video_id, model_version),
     )
