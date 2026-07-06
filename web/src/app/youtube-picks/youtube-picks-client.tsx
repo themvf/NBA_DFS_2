@@ -29,7 +29,8 @@ const BET_TYPE_LABEL: Record<string, string> = {
 const STATUS_STYLE: Record<string, string> = {
   won: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   lost: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
-  pending: "bg-muted text-muted-foreground",
+  push: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  pending: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   unsettleable: "bg-muted text-muted-foreground/60",
 };
 
@@ -279,10 +280,12 @@ export function YoutubePicksClient({
       />
 
       <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-        ⚠ Settlement only covers <span className="font-medium">moneyline picks for MLB,
-        soccer, and tennis</span> so far — those grade automatically once the game finishes.
-        Spread/total bets and every other sport (WNBA, NFL, F1, etc.) show as{" "}
-        <span className="font-medium">unsettleable</span> for now, not silently ignored.
+        ⚠ Settlement covers <span className="font-medium">moneyline, total, and spread</span>{" "}
+        picks for <span className="font-medium">MLB and soccer</span>, plus{" "}
+        <span className="font-medium">tennis moneyline</span> — these grade automatically once
+        the game finishes. Partial-game markets (e.g. first-5-innings), props, futures, and
+        every other sport (WNBA, NFL, F1, etc.) show as{" "}
+        <span className="font-medium">unsettleable</span>, not silently ignored.
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">

@@ -1061,28 +1061,73 @@ def mark_youtube_pick_video_extracted_empty(db: DatabaseManager, video_id: int, 
     )
 
 
-def mark_youtube_picks_unsettleable(db: DatabaseManager, sports: tuple, bet_types: tuple) -> int:
-    """One-time classification: picks outside the currently-supported
-    sport/bet_type combination are marked 'unsettleable' rather than left
-    ambiguously 'pending' forever -- see CLAUDE.md "YouTube Picks
-    Settlement". Only touches rows still 'pending' with no quote sentinel."""
+def mark_youtube_picks_unsettleable(db: DatabaseManager, allowed_pairs: tuple) -> int:
+    """One-time classification: picks whose (sport, bet_type) is outside the
+    supported set are marked 'unsettleable' rather than left ambiguously
+    'pending' forever -- see CLAUDE.md "YouTube Picks Settlement". Only
+    touches rows still 'pending' (never the '_none' quote sentinel)."""
     rows = db.execute(
         """
         UPDATE youtube_picks
         SET status = 'unsettleable'
         WHERE status = 'pending'
           AND sport != '_none'
-          AND (sport NOT IN %s OR bet_type NOT IN %s)
+          AND (sport, bet_type) NOT IN %s
         RETURNING id
         """,
-        (sports, bet_types),
+        (allowed_pairs,),
     )
     return len(rows)
 
 
-def get_resolvable_youtube_picks(db: DatabaseManager, sports: tuple, bet_types: tuple) -> list[dict]:
-    """Pending picks eligible for game resolution -- correct sport/bet_type,
-    no matchup_ref yet."""
+def get_youtube_picks_for_subgame_check(db: DatabaseManager) -> list[dict]:
+    """Picks that could be a partial-game market (first 5 innings, first
+    half, etc.) which we have no data to grade -- returned for a Python-side
+    text check. Includes already-settled rows so a pick mis-graded under the
+    old moneyline-only logic (e.g. an F5 moneyline scored on the final) can
+    be corrected back to 'unsettleable'."""
+    return db.execute(
+        "SELECT id, selection, game_context, status FROM youtube_picks "
+        "WHERE status IN ('pending', 'won', 'lost', 'push')"
+    )
+
+
+def mark_youtube_pick_unsettleable(db: DatabaseManager, pick_id: int) -> None:
+    """Force a single pick to 'unsettleable', clearing any resolution/result
+    left over from a prior (incorrect) grade."""
+    db.execute(
+        "UPDATE youtube_picks SET status = 'unsettleable', matchup_ref = NULL, "
+        "result_detail = NULL, settled_at = NULL WHERE id = %s",
+        (pick_id,),
+    )
+
+
+def get_unsettleable_in_scope_youtube_picks(db: DatabaseManager, allowed_pairs: tuple) -> list[dict]:
+    """Picks marked 'unsettleable' whose (sport, bet_type) is actually in
+    scope now -- e.g. totals/spreads a previous, narrower settlement pass
+    (moneyline-only) wrote off. Returned so a Python-side check can re-open
+    the non-partial-game ones. Makes settlement self-healing when scope
+    widens instead of stranding old rows."""
+    return db.execute(
+        "SELECT id, selection, game_context FROM youtube_picks "
+        "WHERE status = 'unsettleable' AND (sport, bet_type) IN %s",
+        (allowed_pairs,),
+    )
+
+
+def reopen_youtube_pick(db: DatabaseManager, pick_id: int) -> None:
+    """Return a pick to 'pending' for (re)resolution + grading, clearing any
+    stale resolution/result."""
+    db.execute(
+        "UPDATE youtube_picks SET status = 'pending', matchup_ref = NULL, "
+        "result_detail = NULL, settled_at = NULL WHERE id = %s",
+        (pick_id,),
+    )
+
+
+def get_resolvable_youtube_picks(db: DatabaseManager, allowed_pairs: tuple) -> list[dict]:
+    """Pending picks eligible for game resolution -- supported (sport,
+    bet_type), no matchup_ref yet."""
     return db.execute(
         """
         SELECT p.id, p.sport, p.bet_type, p.subject, p.opponent, p.selection, p.game_context,
@@ -1090,9 +1135,9 @@ def get_resolvable_youtube_picks(db: DatabaseManager, sports: tuple, bet_types: 
         FROM youtube_picks p
         JOIN youtube_pick_videos v ON v.id = p.video_id
         WHERE p.status = 'pending' AND p.matchup_ref IS NULL
-          AND p.sport IN %s AND p.bet_type IN %s
+          AND (p.sport, p.bet_type) IN %s
         """,
-        (sports, bet_types),
+        (allowed_pairs,),
     )
 
 
