@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import { getTrackedYoutubeChannels } from "./actions";
-import { getRecentYoutubePicks } from "./queries";
+import { getChannelSportRecords, getRecentYoutubePicks } from "./queries";
 import { YoutubePicksClient } from "./youtube-picks-client";
 
 export const metadata: Metadata = {
@@ -11,9 +11,10 @@ export const metadata: Metadata = {
 };
 
 export default async function YoutubePicksPage() {
-  const [picks, channels] = await Promise.all([
+  const [picks, channels, records] = await Promise.all([
     getRecentYoutubePicks(200),
     getTrackedYoutubeChannels(),
+    getChannelSportRecords(),
   ]);
-  return <YoutubePicksClient picks={picks} initialChannels={channels} />;
+  return <YoutubePicksClient picks={picks} initialChannels={channels} records={records} />;
 }
