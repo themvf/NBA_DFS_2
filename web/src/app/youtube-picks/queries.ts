@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/db";
 import { youtubePicks, youtubePickVideos } from "@/db/schema";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 
 export interface YoutubePickRow {
   id: number;
@@ -52,6 +52,34 @@ export async function getRecentYoutubePicks(limit = 100): Promise<YoutubePickRow
     .where(and(ne(youtubePicks.sport, "_none"), ne(youtubePicks.status, "_none")))
     .orderBy(desc(youtubePickVideos.publishedAt), desc(youtubePicks.id))
     .limit(limit);
+
+  return rows;
+}
+
+export interface ChannelSportRecord {
+  channelName: string;
+  sport: string;
+  wins: number;
+  losses: number;
+  pushes: number;
+}
+
+/** Settled win-loss-push record per (channel, sport), across all picks --
+ * powers the channel-vs-sport scoreboard. Only counts graded outcomes
+ * (won/lost/push); pending/unsettleable are excluded. */
+export async function getChannelSportRecords(): Promise<ChannelSportRecord[]> {
+  const rows = await db
+    .select({
+      channelName: youtubePickVideos.channelName,
+      sport: youtubePicks.sport,
+      wins: sql<number>`count(*) filter (where ${youtubePicks.status} = 'won')`.mapWith(Number),
+      losses: sql<number>`count(*) filter (where ${youtubePicks.status} = 'lost')`.mapWith(Number),
+      pushes: sql<number>`count(*) filter (where ${youtubePicks.status} = 'push')`.mapWith(Number),
+    })
+    .from(youtubePicks)
+    .innerJoin(youtubePickVideos, eq(youtubePickVideos.id, youtubePicks.videoId))
+    .where(and(inArray(youtubePicks.status, ["won", "lost", "push"]), ne(youtubePicks.sport, "_none")))
+    .groupBy(youtubePickVideos.channelName, youtubePicks.sport);
 
   return rows;
 }

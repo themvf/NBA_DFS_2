@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { addYoutubeChannel } from "./actions";
-import type { YoutubePickRow } from "./queries";
+import type { ChannelSportRecord, YoutubePickRow } from "./queries";
 import type { YoutubePickChannel } from "@/db/schema";
 
 const SPORT_ICON: Record<string, string> = {
@@ -125,6 +125,88 @@ function PicksTable({ picks }: { picks: YoutubePickRow[] }) {
   );
 }
 
+const SPORT_ORDER = ["mlb", "soccer", "tennis", "nba", "nhl", "wnba", "nfl", "f1", "other"];
+
+function fmtRecord(w: number, l: number, p: number): string {
+  if (w + l + p === 0) return "—";
+  return p > 0 ? `${w}-${l}-${p}` : `${w}-${l}`;
+}
+
+function ChannelRecordsTable({ records }: { records: ChannelSportRecord[] }) {
+  if (records.length === 0) return null;
+
+  // sports present, in preferred order
+  const present = new Set(records.map((r) => r.sport));
+  const sports = SPORT_ORDER.filter((s) => present.has(s)).concat(
+    Array.from(present).filter((s) => !SPORT_ORDER.includes(s)).sort(),
+  );
+
+  // channel -> sport -> {w,l,p}
+  const byChannel = new Map<string, Map<string, { w: number; l: number; p: number }>>();
+  const totals = new Map<string, { w: number; l: number; p: number }>();
+  for (const r of records) {
+    if (!byChannel.has(r.channelName)) byChannel.set(r.channelName, new Map());
+    byChannel.get(r.channelName)!.set(r.sport, { w: r.wins, l: r.losses, p: r.pushes });
+    const t = totals.get(r.channelName) ?? { w: 0, l: 0, p: 0 };
+    t.w += r.wins;
+    t.l += r.losses;
+    t.p += r.pushes;
+    totals.set(r.channelName, t);
+  }
+
+  // channels sorted by total decided desc
+  const channels = Array.from(byChannel.keys()).sort((a, b) => {
+    const ta = totals.get(a)!;
+    const tb = totals.get(b)!;
+    return tb.w + tb.l + tb.p - (ta.w + ta.l + ta.p);
+  });
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <div className="border-b px-3 py-2 text-sm font-semibold">
+        📊 Channel Records <span className="font-normal text-muted-foreground">(settled picks · W-L)</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+              <th className="px-3 py-2 font-medium">Channel</th>
+              {sports.map((s) => (
+                <th key={s} className="px-3 py-2 text-center font-medium">
+                  {SPORT_ICON[s] ?? ""} {s.toUpperCase()}
+                </th>
+              ))}
+              <th className="px-3 py-2 text-center font-medium">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {channels.map((c) => {
+              const row = byChannel.get(c)!;
+              const t = totals.get(c)!;
+              return (
+                <tr key={c} className="border-b last:border-0">
+                  <td className="whitespace-nowrap px-3 py-1.5 font-medium">{c}</td>
+                  {sports.map((s) => {
+                    const rec = row.get(s);
+                    return (
+                      <td key={s} className="px-3 py-1.5 text-center tabular-nums">
+                        {rec ? fmtRecord(rec.w, rec.l, rec.p) : "—"}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-1.5 text-center font-medium tabular-nums">
+                    {fmtRecord(t.w, t.l, t.p)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ManageChannels({
   channels,
   onAdded,
@@ -217,9 +299,11 @@ function ManageChannels({
 export function YoutubePicksClient({
   picks,
   initialChannels,
+  records,
 }: {
   picks: YoutubePickRow[];
   initialChannels: YoutubePickChannel[];
+  records: ChannelSportRecord[];
 }) {
   const [channels, setChannels] = useState(initialChannels);
   const [channelFilter, setChannelFilter] = useState("all");
@@ -271,6 +355,8 @@ export function YoutubePicksClient({
           source quote and video.
         </p>
       </div>
+
+      <ChannelRecordsTable records={records} />
 
       <PicksTable picks={filtered} />
 
