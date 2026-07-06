@@ -9,12 +9,14 @@ timestamps with no auth.
 
 Transcript fetch reuses youtube_transcript_api (same technique documented
 in web/src/lib/youtube-transcript.ts -- innertube ANDROID client, avoids
-the web client's PO-token requirement). Routed through YOUTUBE_PROXY_URL
-if set: a live test against this exact channel showed YouTube blocks
-transcript requests from this dev sandbox's IP after a handful of calls
-(RequestBlocked, the same "cloud/datacenter IP" blocking class already hit
-with FanGraphs/stats.nba.com elsewhere in this project) -- a residential
-proxy fixed it, verified against the same video that had just failed.
+the web client's PO-token requirement). YouTube blocks transcript requests
+from datacenter AND most single proxy IPs (RequestBlocked/IpBlocked, the
+"cloud IP" blocking class also hit with FanGraphs/stats.nba.com). The fix
+is a ROTATING residential proxy -- a single fixed exit IP gets flagged
+(verified 0/8 on a fixed Webshare IP vs 8/8 on the rotating backbone).
+Preferred config: Webshare rotating-residential via WEBSHARE_PROXY_USERNAME
+/WEBSHARE_PROXY_PASSWORD (WebshareProxyConfig rotates + auto-retries on
+block); falls back to a plain YOUTUBE_PROXY_URL. See _get_proxy_config.
 
 Usage:
     python -m ingest.youtube_picks_videos                  # scrape + store new videos
@@ -32,7 +34,7 @@ import xml.etree.ElementTree as ET
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import CouldNotRetrieveTranscript, IpBlocked, RequestBlocked
-from youtube_transcript_api.proxies import GenericProxyConfig
+from youtube_transcript_api.proxies import GenericProxyConfig, WebshareProxyConfig
 
 from config import load_config
 from db.database import DatabaseManager
@@ -54,11 +56,24 @@ _DEFAULT_LIMIT = 15
 _EARLIEST_PUBLISH = "2026-06-01"
 
 
-def _get_proxy_config() -> GenericProxyConfig | None:
+def _get_proxy_config():
+    """Prefer Webshare's rotating-residential config when creds are set --
+    it uses the rotating backbone AND auto-retries through fresh residential
+    IPs on an IpBlocked, which is what YouTube's blocking actually requires
+    (a single fixed proxy IP gets flagged; verified 0/8 vs 8/8 for the
+    rotating backbone). Falls back to a plain YOUTUBE_PROXY_URL, then none.
+
+    Webshare setup: pass the ACCOUNT username (e.g. 'eewatahk'), NOT a
+    per-endpoint 'username-us-1' -- WebshareProxyConfig appends '-rotate' and
+    targets p.webshare.io itself."""
+    ws_user = os.environ.get("WEBSHARE_PROXY_USERNAME")
+    ws_pass = os.environ.get("WEBSHARE_PROXY_PASSWORD")
+    if ws_user and ws_pass:
+        return WebshareProxyConfig(proxy_username=ws_user, proxy_password=ws_pass)
     proxy_url = os.environ.get("YOUTUBE_PROXY_URL", "")
-    if not proxy_url:
-        return None
-    return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+    if proxy_url:
+        return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+    return None
 
 
 def _fetch_rss_entries(channel_id: str) -> list[dict]:
