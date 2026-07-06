@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default async function YoutubePicksPage() {
   const [picks, channels, records] = await Promise.all([
-    getRecentYoutubePicks(200),
+    getRecentYoutubePicks(5000),
     getTrackedYoutubeChannels(),
     getChannelSportRecords(),
   ]);

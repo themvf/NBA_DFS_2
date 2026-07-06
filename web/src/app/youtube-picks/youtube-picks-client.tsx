@@ -45,6 +45,9 @@ function fmtDate(d: Date | null): string {
 }
 
 const TABLE_PAGE_SIZE = 50;
+// Cap the detailed card feed so the live search stays responsive over a
+// large pool -- the paginated summary table above is the full browse.
+const CARD_RENDER_CAP = 200;
 
 function PicksTable({ picks }: { picks: YoutubePickRow[] }) {
   const [page, setPage] = useState(1);
@@ -423,7 +426,13 @@ export function YoutubePicksClient({
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((p) => (
+          {filtered.length > CARD_RENDER_CAP && (
+            <p className="text-xs text-muted-foreground">
+              Showing the first {CARD_RENDER_CAP} of {filtered.length} matching picks below —
+              narrow with the filters, or use the paginated table above to browse them all.
+            </p>
+          )}
+          {filtered.slice(0, CARD_RENDER_CAP).map((p) => (
             <div key={p.id} className="rounded-lg border bg-card p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
