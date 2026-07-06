@@ -1849,6 +1849,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_youtube_pick_videos_channel ON youtube_pick_videos(channel_id, published_at)",
     "CREATE INDEX IF NOT EXISTS idx_youtube_picks_video ON youtube_picks(video_id)",
     "CREATE INDEX IF NOT EXISTS idx_youtube_picks_sport_status ON youtube_picks(sport, status)",
+    # Dedup guard: one row per (video, sport, bet_type, subject, selection) so
+    # overlapping extraction passes can't double-insert the same pick.
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_youtube_picks_dedup ON youtube_picks(video_id, sport, bet_type, subject, selection)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_season_date ON mlb_homerun_training_games(season, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_hitter ON mlb_homerun_training_games(hitter_mlb_id, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_hr_training_target ON mlb_homerun_training_games(season, hit_hr_1plus)",
