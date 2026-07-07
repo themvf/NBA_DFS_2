@@ -8545,8 +8545,9 @@ export async function getLineMovement(
       LEFT JOIN ${sql.raw(LINE_MOVEMENT_MATCHUP_TABLE[sport])} m ON m.id = h.matchup_id
       WHERE h.sport = ${sport}
         AND h.game_date >= CURRENT_DATE - ${days}::int
+        AND m.commence_time > NOW()   -- live panel: UPCOMING (not-yet-started) games only
         AND h.vegas_prob_home IS NOT NULL
-        AND (m.commence_time IS NULL OR h.captured_at <= m.commence_time)
+        AND h.captured_at <= m.commence_time
     ),
     o AS (SELECT * FROM caps WHERE rf = 1 AND cnt >= 2),
     c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= 2),
@@ -8605,6 +8606,114 @@ export async function getLineMovement(
       maxJumpPp: Number(rec.maxJumpPp ?? 0),
       pinGapPp: rec.pinGapPp != null ? Number(rec.pinGapPp) : null,
       postFix: Boolean(rec.postFix),
+    };
+  });
+}
+
+export type LineMovementHistoryRow = {
+  matchupId: number;
+  gameDate: string;
+  matchup: string;
+  captures: number;
+  openProb: number;
+  closeProb: number;
+  openTotal: number | null;
+  totalMove: number | null;
+  winner: string | null;        // 'home' | 'away' | 'draw' | null (pending)
+  score: string | null;         // "away-home"; null for tennis / pending
+  movedToward: string | null;   // side the line drifted toward, or null if flat (<0.5pp)
+  movedSideWon: boolean | null; // did the moved-toward side win? null if flat / no result
+  postFix: boolean;
+  total: number;                // full row count (for pagination)
+};
+
+// Per-sport final-score / winner expressions for the history ledger. Soccer
+// uses the 90-minute regulation score (betting convention); tennis has a
+// winner column but no scoreline here.
+const HISTORY_OUTCOME: Record<string, { home: string; away: string; winner: string | null }> = {
+  mlb: { home: "m2.home_score", away: "m2.away_score", winner: null },
+  nba: { home: "m2.home_score", away: "m2.away_score", winner: null },
+  soccer: { home: "COALESCE(m2.reg_home_score, m2.home_score)",
+            away: "COALESCE(m2.reg_away_score, m2.away_score)", winner: null },
+  tennis: { home: "NULL", away: "NULL", winner: "m2.winner" },
+};
+
+/** Past (already-started) games' open→close movement + outcome, paginated —
+ * the browsable history ledger behind the live Line Movement panel. Each row
+ * shows which side the line moved toward and whether that side actually won. */
+export async function getLineMovementHistory(
+  sport: "mlb" | "nba" | "soccer" | "tennis",
+  page = 1,
+  pageSize = 50,
+): Promise<LineMovementHistoryRow[]> {
+  const oc = HISTORY_OUTCOME[sport];
+  const winnerExpr = oc.winner
+    ? sql.raw(oc.winner)
+    : sql.raw(`CASE WHEN ${oc.home} IS NULL OR ${oc.away} IS NULL THEN NULL
+                    WHEN ${oc.home} > ${oc.away} THEN 'home'
+                    WHEN ${oc.away} > ${oc.home} THEN 'away' ELSE 'draw' END`);
+  const scoreExpr = oc.winner
+    ? sql.raw("NULL")
+    : sql.raw(`CASE WHEN ${oc.home} IS NULL OR ${oc.away} IS NULL THEN NULL
+                    ELSE (${oc.away})::text || '-' || (${oc.home})::text END`);
+  const offset = (page - 1) * pageSize;
+  const rows = await db.execute(sql`
+    WITH caps AS (
+      SELECT h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
+             h.captured_at, h.vegas_prob_home,
+             COALESCE(h.vegas_total_raw, h.vegas_total) AS total,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at ASC)  AS rf,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at DESC) AS rl,
+             COUNT(*)    OVER (PARTITION BY h.matchup_id) AS cnt,
+             MIN(h.captured_at) OVER (PARTITION BY h.matchup_id) AS first_cap
+      FROM game_odds_history h
+      LEFT JOIN ${sql.raw(LINE_MOVEMENT_MATCHUP_TABLE[sport])} m ON m.id = h.matchup_id
+      WHERE h.sport = ${sport}
+        AND m.commence_time <= NOW()   -- history: games that have already started
+        AND h.vegas_prob_home IS NOT NULL
+        AND h.captured_at <= m.commence_time
+    ),
+    o AS (SELECT * FROM caps WHERE rf = 1 AND cnt >= 2),
+    c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= 2)
+    SELECT o.matchup_id AS "matchupId",
+           o.game_date::text AS "gameDate",
+           c.away_team_name || ' @ ' || c.home_team_name AS matchup,
+           o.cnt::int AS captures,
+           o.vegas_prob_home AS "openProb",
+           c.vegas_prob_home AS "closeProb",
+           o.total AS "openTotal",
+           (c.total - o.total) AS "totalMove",
+           ${winnerExpr} AS winner,
+           ${scoreExpr} AS score,
+           CASE WHEN ABS(c.vegas_prob_home - o.vegas_prob_home) < 0.005 THEN NULL
+                WHEN c.vegas_prob_home > o.vegas_prob_home THEN 'home' ELSE 'away' END AS "movedToward",
+           (o.first_cap >= '2026-07-02'::timestamptz) AS "postFix",
+           COUNT(*) OVER()::int AS total
+    FROM o
+    JOIN c USING (matchup_id)
+    JOIN ${sql.raw(LINE_MOVEMENT_MATCHUP_TABLE[sport])} m2 ON m2.id = o.matchup_id
+    ORDER BY m2.commence_time DESC NULLS LAST
+    OFFSET ${offset} LIMIT ${pageSize}
+  `);
+  return rows.rows.map((r) => {
+    const rec = r as Record<string, unknown>;
+    const winner = rec.winner != null ? String(rec.winner) : null;
+    const movedToward = rec.movedToward != null ? String(rec.movedToward) : null;
+    return {
+      matchupId: Number(rec.matchupId),
+      gameDate: String(rec.gameDate),
+      matchup: String(rec.matchup),
+      captures: Number(rec.captures),
+      openProb: Number(rec.openProb),
+      closeProb: Number(rec.closeProb),
+      openTotal: rec.openTotal != null ? Number(rec.openTotal) : null,
+      totalMove: rec.totalMove != null ? Number(rec.totalMove) : null,
+      winner,
+      score: rec.score != null ? String(rec.score) : null,
+      movedToward,
+      movedSideWon: winner == null ? null : winner === movedToward,
+      postFix: Boolean(rec.postFix),
+      total: Number(rec.total),
     };
   });
 }

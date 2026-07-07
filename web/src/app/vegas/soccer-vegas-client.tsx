@@ -30,11 +30,13 @@ import type {
   SoccerDeepRunRow,
   SoccerKnockoutAsOf,
   MlbLineMovementRow,
+  LineMovementHistoryRow,
   LineAlertRow,
   LineAlertBacktestRow,
 } from "@/db/queries";
 import LineMovementPanel from "./line-movement-panel";
 import LineAlertsPanel from "./line-alerts-panel";
+import MovementHistoryPanel from "./movement-history-panel";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
 const fmtPct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
@@ -2604,6 +2606,7 @@ export default function SoccerVegasClient({
   lineMovement,
   lineAlerts,
   lineAlertBacktest,
+  lineMovementHistory,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -2626,6 +2629,7 @@ export default function SoccerVegasClient({
   lineMovement: MlbLineMovementRow[];
   lineAlerts: LineAlertRow[];
   lineAlertBacktest: LineAlertBacktestRow[];
+  lineMovementHistory: LineMovementHistoryRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -2710,6 +2714,9 @@ export default function SoccerVegasClient({
           )}
           {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && (
             <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} />
+          )}
+          {lineMovementHistory.length > 0 && (
+            <MovementHistoryPanel rows={lineMovementHistory} cadenceNote="the 3-hourly odds captures" />
           )}
         </>
       )}

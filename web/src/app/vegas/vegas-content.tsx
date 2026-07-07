@@ -16,6 +16,7 @@ import {
   getMlbClv,
   getMlbLineMovement,
   getLineMovement,
+  getLineMovementHistory,
   getLineAlerts,
   getLineAlertBacktest,
   getMlbPipelineHealth,
@@ -67,7 +68,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
     const [matchups, bets, settledBets, backtest, firstScorers, matchGoals, playerStats,
            fscorerTiers, fscorerNearMisses, topPickAccuracy, clv, calibCuts, clvTrend,
            settlementHealth, knockoutTies, titleOdds, knockoutAsOf, soccerLineMovement,
-           soccerLineAlerts, soccerLineAlertBacktest] = await Promise.all([
+           soccerLineAlerts, soccerLineAlertBacktest, soccerLineMovementHistory] = await Promise.all([
       getSoccerVegasMatchups(date),
       getSoccerBets(1, 150),
       getSoccerSettledBets(),
@@ -88,6 +89,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getLineMovement("soccer"),
       getLineAlerts("soccer"),
       getLineAlertBacktest("soccer"),
+      getLineMovementHistory("soccer", 1, 250),
     ]);
     return (
       <SoccerVegasClient
@@ -111,12 +113,13 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
         lineMovement={soccerLineMovement}
         lineAlerts={soccerLineAlerts}
         lineAlertBacktest={soccerLineAlertBacktest}
+        lineMovementHistory={soccerLineMovementHistory}
         queryDate={date ?? null}
       />
     );
   }
 
-  const [sportData, mlbCoverageStatus, mlbTotalBacktest, mlbMoneylineBacktest, mlbBets, mlbBetBacktest, mlbBetBySide, mlbClv, mlbLineMovement, mlbLineAlerts, mlbLineAlertBacktest, mlbHealth, vegasSummary, biggestMisses, teamInsights, moneylineBacktest] = await Promise.all([
+  const [sportData, mlbCoverageStatus, mlbTotalBacktest, mlbMoneylineBacktest, mlbBets, mlbBetBacktest, mlbBetBySide, mlbClv, mlbLineMovement, mlbLineAlerts, mlbLineAlertBacktest, mlbHealth, vegasSummary, biggestMisses, teamInsights, moneylineBacktest, mlbLineMovementHistory] = await Promise.all([
     Promise.all(
       sport === "mlb"
         ? [getMlbVegasMatchups(date), getMlbOuHitRate(), getMlbTeamTotalAccuracy(), getMlbRunLineCoverage()]
@@ -137,6 +140,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
     getBiggestMisses(sport, 20),
     getTeamVegasInsights(sport),
     getMoneylineBacktest(sport),
+    sport === "mlb" ? getLineMovementHistory("mlb", 1, 250) : Promise.resolve(null),
   ]);
   const [matchups, ouHitRate, teamTotalAccuracy, spreadCoverage] = sportData;
 
@@ -156,6 +160,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       mlbLineMovement={mlbLineMovement}
       mlbLineAlerts={mlbLineAlerts}
       mlbLineAlertBacktest={mlbLineAlertBacktest}
+      mlbLineMovementHistory={mlbLineMovementHistory}
       mlbHealth={mlbHealth}
       vegasSummary={vegasSummary}
       biggestMisses={biggestMisses}
