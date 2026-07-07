@@ -140,8 +140,16 @@ def _build_fuzzy_lookup(stat_lookup: dict[str, dict]) -> dict[str, dict]:
             token_map.setdefault(f"{tokens[0]} {tokens[-1]}", []).append(row)
             token_map.setdefault(f"{tokens[0]} {tokens[-2]}", []).append(row)
 
-    # Only keep unambiguous entries (single match per key).
-    return {k: rows[0] for k, rows in token_map.items() if len(rows) == 1}
+    # Keep only keys that resolve to a single DISTINCT player. Dedup by row
+    # identity, not list length: for 3-token names the first+second-to-last
+    # key equals the contiguous first-two-token span, so the same row is added
+    # twice -- counting length would wrongly flag it "ambiguous" and drop a
+    # valid match (e.g. "Nahuel Molina Lucero").
+    return {
+        k: rows[0]
+        for k, rows in token_map.items()
+        if len({id(r) for r in rows}) == 1
+    }
 
 
 def _lookup_player(
