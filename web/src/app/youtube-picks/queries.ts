@@ -64,22 +64,36 @@ export interface ChannelSportRecord {
   pushes: number;
 }
 
-/** Settled win-loss-push record per (channel, sport), across all picks --
- * powers the channel-vs-sport scoreboard. Only counts graded outcomes
- * (won/lost/push); pending/unsettleable are excluded. */
+/** Settled win-loss-push record per (channel, sport) -- powers the
+ * channel-vs-sport scoreboard. Only counts graded outcomes (won/lost/push).
+ * Deduped to one row per UNIQUE POSITION (channel + resolved game +
+ * selection) so a capper repeating the same pick across multiple videos
+ * counts once, while genuinely different bets on different games (distinct
+ * matchup_ref) stay separate. */
 export async function getChannelSportRecords(): Promise<ChannelSportRecord[]> {
-  const rows = await db
-    .select({
+  const deduped = db
+    .selectDistinct({
       channelName: youtubePickVideos.channelName,
       sport: youtubePicks.sport,
-      wins: sql<number>`count(*) filter (where ${youtubePicks.status} = 'won')`.mapWith(Number),
-      losses: sql<number>`count(*) filter (where ${youtubePicks.status} = 'lost')`.mapWith(Number),
-      pushes: sql<number>`count(*) filter (where ${youtubePicks.status} = 'push')`.mapWith(Number),
+      matchupRef: youtubePicks.matchupRef,
+      selection: youtubePicks.selection,
+      status: youtubePicks.status,
     })
     .from(youtubePicks)
     .innerJoin(youtubePickVideos, eq(youtubePickVideos.id, youtubePicks.videoId))
     .where(and(inArray(youtubePicks.status, ["won", "lost", "push"]), ne(youtubePicks.sport, "_none")))
-    .groupBy(youtubePickVideos.channelName, youtubePicks.sport);
+    .as("deduped");
+
+  const rows = await db
+    .select({
+      channelName: deduped.channelName,
+      sport: deduped.sport,
+      wins: sql<number>`count(*) filter (where ${deduped.status} = 'won')`.mapWith(Number),
+      losses: sql<number>`count(*) filter (where ${deduped.status} = 'lost')`.mapWith(Number),
+      pushes: sql<number>`count(*) filter (where ${deduped.status} = 'push')`.mapWith(Number),
+    })
+    .from(deduped)
+    .groupBy(deduped.channelName, deduped.sport);
 
   return rows;
 }
