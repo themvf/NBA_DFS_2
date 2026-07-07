@@ -78,6 +78,17 @@ _SUBGAME_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Knockout PROGRESSION / tournament bets ("to advance", "to qualify", "to win
+# the group/tournament"). These are NOT match moneylines -- a team can advance
+# via extra time or penalties after a 90-minute draw/loss -- so grading them on
+# the 90' score is wrong. DeepSeek sometimes mislabels "X to advance" as a
+# moneyline; treat any such phrasing as ungradable regardless of bet_type.
+_PROGRESSION_RE = re.compile(
+    r"\b(to advance|advances?|to qualify|qualif\w*|to progress|to reach|"
+    r"to go through|to win (?:the )?(?:group|tournament|world cup|title|championship|final))\b",
+    re.IGNORECASE,
+)
+
 # Split a combined "Team A vs Team B" subject into its two sides.
 _VERSUS_RE = re.compile(r"\s+(?:vs\.?|v\.?|versus|and|@|/)\s+", re.IGNORECASE)
 
@@ -103,6 +114,14 @@ def _parse_spread(selection: str) -> float | None:
 
 def _is_subgame(*texts: str | None) -> bool:
     return any(t and _SUBGAME_RE.search(t) for t in texts)
+
+
+def _is_ungradable(selection: str | None, game_context: str | None) -> bool:
+    """Phrasing we cannot grade from a full-game final score: partial-game
+    markets, and knockout progression bets ('to advance'/'to qualify')."""
+    if _is_subgame(selection, game_context):
+        return True
+    return bool(selection and _PROGRESSION_RE.search(selection))
 
 
 # --------------------------------------------------------------------------
@@ -324,11 +343,12 @@ def grade_resolved_picks(db: DatabaseManager) -> int:
 def reopen_in_scope_unsettleable(db: DatabaseManager) -> int:
     """Re-open picks a narrower prior pass wrote off as 'unsettleable' but
     which are now in scope (e.g. totals/spreads after moneyline-only
-    settlement) -- except genuine partial-game markets, which stay
-    unsettleable. Makes settlement self-healing when scope widens."""
+    settlement) -- except genuinely ungradable phrasing (partial-game or
+    knockout progression), which stays unsettleable. Makes settlement
+    self-healing when scope widens without re-opening the ungradable ones."""
     reopened = 0
     for p in get_unsettleable_in_scope_youtube_picks(db, _ALLOWED_PAIRS):
-        if _is_subgame(p["selection"], p["game_context"]):
+        if _is_ungradable(p["selection"], p["game_context"]):
             continue
         reopen_youtube_pick(db, p["id"])
         reopened += 1
@@ -336,12 +356,14 @@ def reopen_in_scope_unsettleable(db: DatabaseManager) -> int:
 
 
 def reclassify_subgame_picks(db: DatabaseManager) -> int:
-    """Mark partial-game markets 'unsettleable' -- including any already
-    graded under the old moneyline-only logic (e.g. an F5 moneyline scored
-    on the full-game final), which is corrected back here."""
+    """Mark ungradable-phrasing picks 'unsettleable' -- partial-game markets
+    AND knockout progression bets ('to advance'/'to qualify'), including any
+    already graded under a looser pass (e.g. an F5 moneyline scored on the
+    full-game final, or a 'to advance' bet graded as a 90' moneyline), which
+    is corrected back here."""
     fixed = 0
     for p in get_youtube_picks_for_subgame_check(db):
-        if _is_subgame(p["selection"], p["game_context"]):
+        if _is_ungradable(p["selection"], p["game_context"]):
             mark_youtube_pick_unsettleable(db, p["id"])
             fixed += 1
     return fixed
