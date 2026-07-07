@@ -16,6 +16,12 @@ Argentina–Egypt slate; outputs change materially, hence the version bump
   3. NORMALIZATION — blended probabilities summed to ~1.15, inflating every
      selection. The full mutually-exclusive set (players + no-scorer) is now
      renormalized to sum to 1.
+  4. NO-DATA PLAYERS DEFER TO MARKET — a player absent from soccer_player_stats
+     (common for weaker sides, e.g. Egypt) used to get the flat position-
+     default xG blended 40/60 with the market, manufacturing a fake edge from
+     noise. Now such players defer entirely to the de-vigged market
+     (our_prob = market_fair, stat_prob = None), so our independent value/edge
+     is honestly N/A for them and only real where we have data.
 
 
 v1 used raw anytime market shares → deflated favorites due to longshot vig.
@@ -396,7 +402,14 @@ def predict_and_record(
         for npl, fs in player_items:
             if fs["best_odds"] is None:
                 continue
-            m_stat, m_market = stat_probs.get(npl), market_fair.get(npl)
+            m_market = market_fair.get(npl)
+            # Only claim an independent stat view for players we actually have
+            # data on. For an unknown player (e.g. an Egypt squad member absent
+            # from soccer_player_stats) DEFER to the market -- do NOT blend in
+            # the flat position default, which would manufacture a fake edge
+            # from noise. Our stat_prob/edge is then N/A for that player.
+            has_data = _lookup_player(npl, stat_lookup, fuzzy_lookup) is not None
+            m_stat = stat_probs.get(npl) if has_data else None
             if m_stat is None and m_market is None:
                 continue
             b = _blend(m_stat, m_market)
