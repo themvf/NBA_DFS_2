@@ -1,4 +1,22 @@
-"""First-goal-scorer model (firstscorer-v3) — stat-driven + market blend.
+"""First-goal-scorer model (firstscorer-v5) — stat-driven + market blend.
+
+v5 (2026-07-07) fixes three correctness bugs found while reviewing an
+Argentina–Egypt slate; outputs change materially, hence the version bump
+(keeps buggy-v4 rows out of the fixed model's calibration backtest):
+  1. NAME MATCHING — the fuzzy lookup only indexed contiguous token spans,
+     so display names that drop middle names ("Lionel Messi") never matched
+     legal names ("Lionel Andres Messi Cuccittini"), silently dropping stars
+     to the position default. Now also index first+last and first+second-to-
+     last (Latin double surnames put the common paternal name second-to-last).
+     Coverage on that slate went 32% -> 62%.
+  2. NO SCORER — the "no goalscorer" (0-0) outcome was being fed into the xG
+     share allocation as if it were a player (bogus ~2% instead of the correct
+     P(no goal)=e^(-Λ)≈9%, and it diluted every real player's share). It is now
+     separated out with stat prob = e^(-Λ).
+  3. NORMALIZATION — blended probabilities summed to ~1.15, inflating every
+     selection. The full mutually-exclusive set (players + no-scorer) is now
+     renormalized to sum to 1.
+
 
 v1 used raw anytime market shares → deflated favorites due to longshot vig.
 v2 (power de-vig) fixed calibration by solving k so Σ -ln(1-p^k) = Λ but
@@ -40,6 +58,7 @@ from __future__ import annotations
 import argparse
 import logging
 import math
+import re
 import unicodedata
 
 from config import load_config
@@ -50,7 +69,7 @@ from model.soccer_bet_rating import new_capture_key, record_bet
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "firstscorer-v4"
+MODEL_VERSION = "firstscorer-v5"
 DEFAULT_WINDOW_HOURS = 72
 _CLAMP_HI = 0.999
 _MIN_ANYTIME_PROB = 0.01
@@ -76,6 +95,11 @@ _UNKNOWN_XG_DEFAULT = 0.065  # fallback when position unknown
 # Adjustment is blended 50/50 with raw xg_per_90 to avoid over-fitting small samples.
 _EARLY_GOAL_BASELINE = 0.45
 _MIN_GOALS_FOR_EARLY_RATE = 3   # need at least 3 historical goals to apply adjustment
+
+# The "no goalscorer" (0-0) outcome in the first-scorer market. It is NOT a
+# player and must never enter the xG share allocation -- its probability is
+# P(no goal) = e^(-Λ), the Poisson zero. Matches "No Scorer"/"No Goalscorer".
+_NO_SCORER_RE = re.compile(r"\bno\b.*\b(?:goal)?scorer\b|\bno\s+goal\b", re.IGNORECASE)
 
 
 def _norm(name: str) -> str:
@@ -104,9 +128,17 @@ def _build_fuzzy_lookup(stat_lookup: dict[str, dict]) -> dict[str, dict]:
         for start in range(n):
             for end in range(start + 2, n + 1):
                 key = " ".join(tokens[start:end])
-                if key not in token_map:
-                    token_map[key] = []
-                token_map[key].append(row)
+                token_map.setdefault(key, []).append(row)
+        # First + a surname token -- catches display names that DROP middle
+        # names, which contiguous spans miss: "Lionel Messi" must map to
+        # "Lionel Andres Messi Cuccittini" ("lionel messi" is not a contiguous
+        # span). Index BOTH first+last and first+second-to-last, because Latin
+        # double surnames put the common paternal name second-to-last
+        # ("...Messi Cuccittini" -> display uses "Messi", the -2 token). This
+        # was silently dropping stars (Messi, Lautaro, etc.) to the default.
+        if n >= 3:
+            token_map.setdefault(f"{tokens[0]} {tokens[-1]}", []).append(row)
+            token_map.setdefault(f"{tokens[0]} {tokens[-2]}", []).append(row)
 
     # Only keep unambiguous entries (single match per key).
     return {k: rows[0] for k, rows in token_map.items() if len(rows) == 1}
@@ -285,33 +317,31 @@ def predict_and_record(
         away_xg = float(fx["our_away_xg"] or total_xg / 2)
         p_at_least_one = 1.0 - math.exp(-total_xg)
 
-        fs_items = [(npl, fs) for npl, fs in markets["first"].items() if fs.get("prob_raw")]
-        if not fs_items:
+        all_fs = [(npl, fs) for npl, fs in markets["first"].items() if fs.get("prob_raw")]
+        if not all_fs:
             continue
 
-        # ── Market de-vig (same as v2) ──
-        raw_list = [fs["prob_raw"] for _, fs in fs_items]
-        raw_list.append(markets.get("no_scorer_raw", 0.0) or 0.0)
-        devigged = power_devig_exclusive(raw_list)
-        market_fair: dict[str, float] = {
-            fs_items[i][0]: devigged[i]
-            for i in range(len(fs_items))
-        } if devigged else {}
+        # Separate the "no goalscorer" (0-0) outcome from real players -- it
+        # must NOT be treated as a player in the xG share allocation (that gave
+        # it a nonsense ~2% instead of the correct e^(-Λ) ≈ 9%, and diluted
+        # every real player's share).
+        player_items = [(n, fs) for n, fs in all_fs if not _NO_SCORER_RE.search(fs["name"])]
+        no_scorer_item = next((x for x in all_fs if _NO_SCORER_RE.search(x[1]["name"])), None)
 
-        # ── Stat-based model ──
-        # Identify which team each player belongs to by name matching (rough:
-        # home/away are team-level markets and the Odds API lists both teams
-        # together, so we allocate by checking the anytime market's team context
-        # or fall back to assigning all players to use the total match xG).
-        # Since we can't reliably split by team from the market alone, we use
-        # total_match_xg in the denominator and each player's share proportionally.
-        # This is equivalent to assuming the stat model knows the individual
-        # rates correctly relative to each other (which it does) — the absolute
-        # magnitude is set by total_xg anyway.
+        # ── Market de-vig over the full mutually-exclusive set (players + no-scorer) ──
+        devig_names = [n for n, _ in player_items]
+        raw_list = [fs["prob_raw"] for _, fs in player_items]
+        ns_raw = (no_scorer_item[1]["prob_raw"] if no_scorer_item
+                  else (markets.get("no_scorer_raw") or 0.0))
+        raw_list.append(ns_raw)
+        devigged = power_devig_exclusive(raw_list)
+        market_fair = {devig_names[i]: devigged[i] for i in range(len(devig_names))} if devigged else {}
+        market_fair_ns = devigged[-1] if devigged else None
+
+        # ── Stat-based model (players only) ──
         home_norm = _norm(fx["home"])
         away_norm = _norm(fx["away"])
 
-        # Try to assign players to home/away via team membership in stat_lookup.
         def team_xg_for(player_nname: str) -> float:
             row = stat_lookup.get(player_nname)
             if row:
@@ -322,8 +352,7 @@ def predict_and_record(
                     return away_xg
             return total_xg / 2  # unknown: assume half the match total
 
-        all_nnames = [npl for npl, _ in fs_items]
-        # Use total_xg context: compute per-team groups where possible.
+        all_nnames = [npl for npl, _ in player_items]
         home_players = [n for n in all_nnames if abs(team_xg_for(n) - home_xg) < 0.01]
         away_players = [n for n in all_nnames if abs(team_xg_for(n) - away_xg) < 0.01]
         other_players = [n for n in all_nnames if n not in home_players and n not in away_players]
@@ -338,35 +367,44 @@ def predict_and_record(
         if other_players:
             stat_probs.update(_compute_stat_first_probs(
                 other_players, total_xg / 2, total_xg, stat_lookup, fuzzy_lookup))
+        stat_prob_ns = math.exp(-total_xg)  # P(no goal) = Poisson zero
 
-        # Track stat coverage for reporting.
         for npl in all_nnames:
             if _lookup_player(npl, stat_lookup, fuzzy_lookup):
                 stat_hits += 1
             else:
                 stat_misses += 1
 
+        # ── Blend, then RENORMALIZE to a proper mutually-exclusive distribution
+        #    (players + no-scorer sum to 1) before recording. Blending two
+        #    distributions over slightly different support left the raw sum at
+        #    ~1.15, inflating every our_prob. ──
+        def _blend(m_stat, m_market):
+            if m_stat is not None and m_market is not None:
+                return _W_STAT * m_stat + (1 - _W_STAT) * m_market
+            return m_stat if m_stat is not None else m_market
+
+        candidates = []  # (fs, npl, m_stat, m_market, blended)
+        for npl, fs in player_items:
+            if fs["best_odds"] is None:
+                continue
+            m_stat, m_market = stat_probs.get(npl), market_fair.get(npl)
+            if m_stat is None and m_market is None:
+                continue
+            b = _blend(m_stat, m_market)
+            if b and b > 0:
+                candidates.append((fs, npl, m_stat, m_market, b))
+        if no_scorer_item and no_scorer_item[1]["best_odds"] is not None:
+            b = _blend(stat_prob_ns, market_fair_ns)
+            if b and b > 0:
+                candidates.append((no_scorer_item[1], None, stat_prob_ns, market_fair_ns, b))
+
+        total_blended = sum(c[4] for c in candidates) or 1.0
+
         with db.connect() as conn:
-            for npl, fs in fs_items:
-                if fs["best_odds"] is None:
-                    continue
-                m_stat = stat_probs.get(npl)
-                m_market = market_fair.get(npl)
-                if m_stat is None and m_market is None:
-                    continue
-
-                # Blend: stat model gets _W_STAT weight, de-vigged market gets rest.
-                if m_stat is not None and m_market is not None:
-                    our_prob = _W_STAT * m_stat + (1 - _W_STAT) * m_market
-                elif m_stat is not None:
-                    our_prob = m_stat
-                else:
-                    our_prob = m_market
-
+            for fs, npl, m_stat, m_market, b in candidates:
+                our_prob = b / total_blended  # normalized -> the set sums to 1
                 ref = m_market if m_market is not None else our_prob
-                if our_prob <= 0:
-                    continue
-
                 record_bet(
                     db,
                     model_version=MODEL_VERSION,
@@ -386,9 +424,11 @@ def predict_and_record(
                     inputs={
                         "stat_prob": round(m_stat, 4) if m_stat is not None else None,
                         "market_fair": round(m_market, 4) if m_market is not None else None,
-                        "blended": round(our_prob, 4),
+                        "blended_raw": round(b, 4),
+                        "our_prob": round(our_prob, 4),
                         "match_total_xg": round(total_xg, 4),
-                        "stat_hit": _lookup_player(npl, stat_lookup, fuzzy_lookup) is not None,
+                        "stat_hit": npl is not None and _lookup_player(npl, stat_lookup, fuzzy_lookup) is not None,
+                        "is_no_scorer": npl is None,
                         "book_count": fs["book_count"],
                         "fixture": f"{fx['home']} v {fx['away']}",
                     },
