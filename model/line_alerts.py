@@ -1,14 +1,21 @@
 """Sharp line-movement alerts — detect, notify, and AUDIT (Edge-Finding P2).
 
-Runs after every odds capture. Two detectors over game_odds_history:
+Runs after every odds capture. Three game-line detectors over
+game_odds_history (plus prop detectors below):
 
   * **pinnacle_divergence** — Pinnacle's vig-free probability sits >=
     _PIN_GAP_MIN_PP off the retail-consensus probability on some side of an
     upcoming game. Pinnacle is the sharp reference; the side it prices HIGHER
     than retail is the sharp side, and retail is offering a stale price on it.
+    (The "Sharp side" chip in the Line Movement panel.)
   * **steam** — between the last two captures, >= _STEAM_MIN_BOOKS books moved
     the same side by >= _STEAM_MIN_MOVE_PP. Synchronized moves are informed
-    money; solo moves are book position management.
+    money; solo moves are book position management. (Confirmed "Jump".)
+  * **walking** — the retail consensus has drifted >= _WALK_MIN_PP toward a
+    side since OPEN (the first capture of the fixture), a slow walk rather than
+    a single-interval jump. (The "Walking" chip in the Line Movement panel.)
+    First-breach: recorded once, at the first capture where the drift clears
+    the threshold, so its outcome/CLV audit is honest and pre-registered.
 
 Every alert is an IMMUTABLE ledger row frozen at trigger time (first breach
 only — re-scans never rewrite it), then graded by ``settle``:
@@ -53,6 +60,7 @@ logger = logging.getLogger(__name__)
 _PIN_GAP_MIN_PP = 2.0     # Pinnacle vs retail consensus, probability points
 _STEAM_MIN_BOOKS = 3      # books moving together between consecutive captures
 _STEAM_MIN_MOVE_PP = 1.5  # per-book move threshold, probability points
+_WALK_MIN_PP = 2.0        # consensus drift toward a side since open (slow walk)
 # dk_value: EV of DraftKings' OFFERED price judged by Pinnacle's vig-free fair
 # number — EV = pin_fair × dk_decimal − 1. Positive means DK is paying more
 # than sharp fair value: directly exploitable at the book the user bets at,
@@ -282,6 +290,34 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         alert_prob=retail, sharp_prob=pin_p,
                         details={"books_moved": len(movers),
                                  "avg_move_pp": round(sum(movers) / len(movers), 2)},
+                    ))
+        # ── Walking (slow consensus drift >= _WALK_MIN_PP toward a side since
+        #    OPEN — the first capture of this fixture, not the previous one). ──
+        first = db.execute_one(
+            """
+            SELECT books FROM game_odds_history
+            WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
+            ORDER BY captured_at ASC LIMIT 1
+            """,
+            (sport, r["matchup_id"]),
+        )
+        if first and first["books"]:
+            fb = first["books"]
+            for side in _sides(books):
+                p_open = _retail_fair_side(fb, side)
+                p_now = _retail_fair_side(books, side)
+                if p_open is None or p_now is None:
+                    continue
+                drift_pp = (p_now - p_open) * 100
+                if drift_pp >= _WALK_MIN_PP:
+                    pin_p = _book_fair_side(books["pinnacle"], side) if "pinnacle" in books else None
+                    new_alerts.extend(_insert(
+                        db, sport=sport, r=r, label=label,
+                        alert_type="walking", side=side,
+                        alert_prob=p_now, sharp_prob=pin_p,
+                        details={"open_pp": round(p_open * 100, 2),
+                                 "now_pp": round(p_now * 100, 2),
+                                 "drift_pp": round(drift_pp, 2)},
                     ))
     if new_alerts:
         print(f"Line alerts ({sport}): {len(new_alerts)} new — "
@@ -1069,7 +1105,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
     # (settle_props / settle_props_soccer / settle_tennis_totals).
     open_alerts = db.execute(
         "SELECT * FROM line_alerts WHERE sport = %s AND settled_at IS NULL "
-        "AND alert_type IN ('pinnacle_divergence', 'steam', 'dk_value') "
+        "AND alert_type IN ('pinnacle_divergence', 'steam', 'dk_value', 'walking') "
         "AND commence_time IS NOT NULL AND commence_time <= NOW()",
         (sport,),
     )

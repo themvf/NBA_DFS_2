@@ -125,6 +125,7 @@ export default function LineAlertsPanel({
   const typeLabel = (t: string) =>
     t === "pinnacle_divergence" ? "Pin divergence"
     : t === "steam" ? "Steam"
+    : t === "walking" ? "Walking"
     : t === "dk_value" ? "DK value"
     : t === "dk_prop_value" ? "DK prop value"
     : t === "prop_line_gap" ? "Prop line gap"
@@ -154,7 +155,7 @@ export default function LineAlertsPanel({
               <th className="py-1 text-right">n</th>
               <th className="py-1 text-right">Avg CLV</th>
               <th className="py-1 text-right">Beat close</th>
-              <th className="py-1 text-right">Outcomes</th>
+              <th className="py-1 text-right" title="Settled record of the flagged side: wins-losses-pushes">W-L-P</th>
               <th className="py-1 text-right">Win rate</th>
               <th className="py-1 text-right">Implied</th>
               <th className="py-1 text-right" title="dk_value only: cumulative units from staking 1u at DK's frozen price on every settled alert">ROI @ DK</th>
@@ -182,7 +183,9 @@ export default function LineAlertsPanel({
                     {b.nClv > 0 && b.avgClvPp != null ? pp(b.avgClvPp) : "—"}
                   </td>
                   <td className="py-1 text-right tabular-nums text-gray-500">{pct(b.beatClose)}</td>
-                  <td className="py-1 text-right text-gray-500">{b.nOutcomes}</td>
+                  <td className="py-1 text-right tabular-nums text-gray-600">
+                    {b.nOutcomes > 0 ? `${b.wins}-${b.losses}${b.pushes > 0 ? `-${b.pushes}` : ""}` : "—"}
+                  </td>
                   <td className="py-1 text-right tabular-nums">{pct(b.winRate)}</td>
                   <td className="py-1 text-right tabular-nums text-gray-400">{pct(b.impliedRate)}</td>
                   <td className={`py-1 text-right tabular-nums ${
