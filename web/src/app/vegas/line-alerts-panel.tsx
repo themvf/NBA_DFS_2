@@ -47,6 +47,9 @@ function ActionChip({ a }: { a: LineAlertRow }) {
     const marketLabel =
       d.market === "pitcher_strikeouts" ? "Strikeouts"
       : d.market === "batter_total_bases" ? "Total Bases"
+      : d.market === "pitcher_hits_allowed" ? "Hits Allowed"
+      : d.market === "pitcher_earned_runs" ? "Earned Runs"
+      : d.market === "pitcher_outs" ? "Outs Recorded"
       : d.market === "total_games" ? "Total Games"
       : d.market ?? "";
     if (a.alertType === "prop_line_gap") {
