@@ -162,7 +162,16 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
 
 
 def rate_slate(db: DatabaseManager, game_date: str | None = None) -> int:
+    # Pre-game only: a recommendation created after first pitch is not a
+    # recommendation (books void tickets placed post-start, and the 22:10 UTC
+    # cron's ~65-min runtime meant rate_slate executed AFTER evening first
+    # pitches, minting post-hoc "bets" nightly — 2026-07-08 incident; the
+    # worst were rated on in-play odds that had leaked into mlb_matchups,
+    # e.g. a +3300 in-play PHI line frozen as a 34.0-decimal "closing" price).
+    # NULL commence_time is kept (future games whose start time isn't known
+    # yet) — the odds-side guards protect those rows from in-play prices.
     where = "m.game_date = %s" if game_date else "m.game_date >= CURRENT_DATE"
+    where += " AND (m.commence_time IS NULL OR m.commence_time > NOW())"
     params: tuple = (game_date,) if game_date else ()
     fixtures = _fixtures(db, where, params)
     if not fixtures:

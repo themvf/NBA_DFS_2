@@ -425,6 +425,17 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             logger.debug("No matchup found for Odds API home team: %s", home_name)
             continue
 
+        # Belt + suspenders on the in-play guard: the event-commence check
+        # above trusts the FEED's commence_time, which the Odds API moves on
+        # rain delays — a delayed in-progress game can reappear with a future
+        # commence and sail past it, freezing in-play prices (e.g. -10000)
+        # into mlb_matchups as "closing" lines (2026-07-08 incident). OUR
+        # commence_time comes from the MLB statsapi schedule; if the game has
+        # started by OUR clock, never overwrite its odds.
+        if matchup.get("commence_time") is not None and matchup["commence_time"] <= now:
+            skipped_live += 1
+            continue
+
         # Consensus across ALL bookmakers for h2h and totals, plus the full
         # per-book detail — consensus averages away exactly the structure
         # sharp-movement detection needs (which book moved first, line vs

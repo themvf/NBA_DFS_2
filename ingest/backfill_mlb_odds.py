@@ -135,6 +135,16 @@ def _backfill_date(
             logger.debug("No matchup for %s on %s", home_name, game_date)
             continue
 
+        # In-play guard: the 20:00 UTC snapshot lands mid-game for afternoon
+        # starts, and the historical feed serves whatever the odds WERE at
+        # that timestamp — i.e. live prices. Never write those as pre-game
+        # lines (2026-07-08 incident class). Skip any game that had already
+        # started by the snapshot time.
+        snap_dt = datetime.fromisoformat(f"{game_date}T{SNAPSHOT_HOUR_UTC:02d}:00:00+00:00")
+        if matchup.get("commence_time") is not None and matchup["commence_time"] <= snap_dt:
+            logger.debug("Skipping in-play-at-snapshot game %s on %s", home_name, game_date)
+            continue
+
         away_name = g.get("away_team", "")
         home_prices: list[int] = []
         away_prices: list[int] = []
@@ -243,7 +253,7 @@ def backfill(
         rows = db.execute(
             """
             SELECT nm.id, nm.game_date::text, nm.home_team_id, nm.away_team_id,
-                   t.name AS home_name
+                   nm.commence_time, t.name AS home_name
             FROM mlb_matchups nm
             JOIN mlb_teams t ON t.team_id = nm.home_team_id
             WHERE nm.game_date = %s
