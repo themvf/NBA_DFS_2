@@ -165,6 +165,9 @@ def _notify(alerts: list[dict]) -> None:
         if a["alert_type"] in ("dk_prop_value", "prop_line_gap"):
             label = {"pitcher_strikeouts": "Strikeouts",
                      "batter_total_bases": "Total Bases",
+                     "pitcher_hits_allowed": "Hits Allowed",
+                     "pitcher_earned_runs": "Earned Runs",
+                     "pitcher_outs": "Outs Recorded",
                      "total_games": "Total Games"}.get(d.get("market", ""), d.get("market", ""))
             text = (f"💰 {a['sport'].upper()} PROP: {a['matchup']}\n"
                     f"{d.get('player')} {label} {d.get('bet')} {d.get('line')} "
@@ -357,7 +360,10 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
 #     lower line / Under at the higher), no distribution assumption needed.
 _PROP_VALUE_MIN_EV = 0.03
 _PROP_LINE_GAP_MIN = 1.0
-_PROP_MARKET_LABEL = {"pitcher_strikeouts": "K", "batter_total_bases": "TB"}
+_PROP_MARKET_LABEL = {
+    "pitcher_strikeouts": "K", "batter_total_bases": "TB",
+    "pitcher_hits_allowed": "H-allowed", "pitcher_earned_runs": "ER", "pitcher_outs": "Outs",
+}
 
 
 def _prop_pair(book: dict) -> tuple[float, float, float] | None:
@@ -731,8 +737,20 @@ def settle_props_soccer(db: DatabaseManager) -> int:
     return graded
 
 
+# Pitching-stat markets read directly off the boxscore's per-player pitching
+# dict -- verified against a real completed game's boxscore (2026-07-08):
+# 'outs' is a direct field (7.0 IP -> outs=21, 5.0 IP -> outs=15), no need to
+# parse the 'inningsPitched' string.
+_PITCHING_STAT_FIELD = {
+    "pitcher_strikeouts": "strikeOuts",
+    "pitcher_hits_allowed": "hits",
+    "pitcher_earned_runs": "earnedRuns",
+    "pitcher_outs": "outs",
+}
+
+
 def _mlb_boxscore_stat(game_pk: str, player: str, market: str) -> float | None:
-    """Actual K's (pitcher) or total bases (batter) from the free MLB boxscore."""
+    """Actual stat value (pitching or batter total bases) from the free MLB boxscore."""
     import unicodedata
 
     def norm(s: str) -> str:
@@ -751,8 +769,9 @@ def _mlb_boxscore_stat(game_pk: str, player: str, market: str) -> float | None:
             if norm(p.get("person", {}).get("fullName", "")) != target:
                 continue
             stats = p.get("stats", {})
-            if market == "pitcher_strikeouts":
-                v = (stats.get("pitching") or {}).get("strikeOuts")
+            pitch_field = _PITCHING_STAT_FIELD.get(market)
+            if pitch_field is not None:
+                v = (stats.get("pitching") or {}).get(pitch_field)
                 return float(v) if v is not None else None
             bat = stats.get("batting") or {}
             if not bat:
@@ -824,7 +843,8 @@ def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
             except (TypeError, ValueError):
                 pass
         # no Pinnacle for WC props — pin_fair stays None
-    elif market in ("pitcher_strikeouts", "batter_total_bases", "total_games"):
+    elif market in ("pitcher_strikeouts", "batter_total_bases", "total_games",
+                    "pitcher_hits_allowed", "pitcher_earned_runs", "pitcher_outs"):
         line_key = "total_line" if market == "total_games" else "line"
         bet = d.get("bet")
         if dk and dk.get(line_key) == d.get("line"):

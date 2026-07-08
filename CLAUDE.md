@@ -2698,7 +2698,7 @@ surface where edge exists before improving the accounting.
 
 | Order | ID | What | Why / evidence | Kill criterion | Effort |
 |---|---|---|---|---|---|
-| 1 | **D4** | **MLB prop-market expansion**: add more MLB prop markets to `ingest/mlb_prop_odds.py` capture + the dk_prop_value / prop_line_gap detectors (beyond pitcher K + batter TB — e.g. hits, runs, RBIs, HR, pitcher outs/ER, whichever the Odds API serves with a Pinnacle anchor); NBA props at season start | Soft markets are where signal showed up (P3: 8 alerts vs 0 game lines); Unabated segment logic | Each new market inherits the standing rule: no positive CLV over a real settled sample → retire that market's detector | Medium |
+| 1 | **D4** | **MLB prop-market expansion** ✅ shipped 2026-07-08 (see below): added pitcher_hits_allowed/earned_runs/outs; NBA props at season start still open | Soft markets are where signal showed up (P3: 8 alerts vs 0 game lines); Unabated segment logic | Each new market inherits the standing rule: no positive CLV over a real settled sample → retire that market's detector | Medium |
 | 2 | **D1** | **Best-price grading**: grade ledgers/studies at best captured per-book price instead of consensus/single-book (extend to the pending 8.0-totals and underdog re-runs) | +1–3%/bet with zero predictive skill; `market_maximum` convention; roadmap P5 | None — accounting correctness, not a hypothesis | Small |
 | 3 | **D2** | **Execution-timing study** (pre-register before building): on the existing 30-min capture trail, when did the best price for the flagged side occur, and how much EV does entry timing control? | Levine's salvageable idea done honestly; zero new data required | Median best-entry vs close price gap < 1% → timing doesn't matter, drop | Small–medium |
 | 4 | **D3** | **Opener-vs-closer study** (= roadmap P2b, pre-register): does our disagreement with the opener predict close-ward movement? | Beating the opener is a weaker benchmark than beating the close | No directional predictive value at n≥200 → calibration-only confirmed, done | Medium |
@@ -2707,6 +2707,85 @@ surface where edge exists before improving the accounting.
 **Standing (no new work until dates hit):** MLB underdog re-run at n≥200
 (~2026-08-30), 8.0-totals grading at prospective n≥200 (~season end) —
 grade against frozen bars, at best captured prices once D1 lands.
+
+### D4 — MLB prop-market expansion — Shipped (2026-07-08)
+
+**Market discovery (empirical, not documentation-assumed):** probed 12
+candidate MLB player-prop market keys against 5 real upcoming events,
+checking both DraftKings AND Pinnacle presence per market (Pinnacle alone
+can't anchor the DK-vs-Pinnacle detector). Result:
+
+| Market | DK | Pinnacle | Verdict |
+|---|---|---|---|
+| `pitcher_hits_allowed` | 5/5 | 4/5 | ✅ added |
+| `pitcher_earned_runs` | 5/5 | 4/5 | ✅ added |
+| `pitcher_outs` | 5/5 | 4/5 | ✅ added |
+| `batter_home_runs` | **0/5** | 4/5 | ❌ NOT added — DraftKings never posts this market key; Pinnacle-only can't feed the detector regardless of cost |
+| `batter_hits`, `batter_rbis`, `batter_runs_scored`, `batter_stolen_bases`, `batter_walks`, `batter_singles`, `batter_doubles`, `batter_triples`, `batter_hits_runs_rbis`, `pitcher_walks`, `pitcher_record_a_win` | mixed | **0/5** | ❌ NOT added — no Pinnacle anchor at all |
+
+**Cost discovery (from the Odds API's own `x-requests-last` response
+header, not assumed from docs):** the existing capture used
+`regions=us,eu`, priced at `markets × regions`. Switching to
+`bookmakers=draftkings,pinnacle` — the exact two books the detector
+reads, nothing else — prices at `markets × 1` regardless of book count:
+**4 credits/event → 2 credits/event for the original 2 markets (half
+price, identical data)**, and the 3-market expansion costs 5 credits/event
+total (not 10, which the old `regions` pattern would have required).
+Verified directly: 3 real API calls against the same event, reading
+`x-requests-last` — 4 → 2 → 5 credits respectively.
+
+**Budget check before deploying (quota is shared across every sport's
+odds capture on one key):** `x-requests-used`/`x-requests-remaining`
+summed to a round 20,000 (suggesting a 20k/month plan). Presented the
+cadence tradeoff to the user via AskUserQuestion rather than deciding
+unilaterally — a shared-quota exhaustion would silently degrade every
+sport's data capture, not just this feature. **User chose: keep 3×/day
+cadence, adopt the `bookmakers` param** (~225 credits/day for props, net
++45/day vs the old 2-market/regions setup — down from a would-be +270/day
+if the expansion had naively used `regions`).
+
+**Settlement — boxscore fields verified against real completed games**
+(not assumed): the free MLB boxscore's per-player `pitching` stats
+dict has direct fields for all 3 new markets — `hits` (hits allowed),
+`earnedRuns`, and critically `outs` as a **direct integer** (verified
+7.0 IP → outs=21, 5.0 IP → outs=15 on a real game), no need to parse the
+`inningsPitched` string. `_mlb_boxscore_stat()` in `model/line_alerts.py`
+generalized via a `_PITCHING_STAT_FIELD` market→field map instead of the
+old `if market == "pitcher_strikeouts"` special case.
+
+**Changes:**
+- `ingest/mlb_prop_odds.py`: `MARKETS` → 5 markets; `REGIONS` replaced
+  with `BOOKMAKERS = "draftkings,pinnacle"`.
+- `model/line_alerts.py`: `_PROP_MARKET_LABEL`, the Telegram/Discord
+  notify label dict, `_mlb_boxscore_stat`'s new `_PITCHING_STAT_FIELD`
+  map, and the same-line-price CLV grading market tuple in
+  `_grade_alert_prices` all extended to the 3 new markets. `scan_props()`
+  itself needed NO changes — it already reads `market`/`player` generically
+  from `prop_odds_history` rows.
+- `web/src/app/vegas/line-alerts-panel.tsx`: market label switch extended.
+- Confirmed unrelated: `web/src/app/dfs/actions.ts`'s
+  `MLB_PROP_MARKET_TO_STAT` (a separate DFS-projection prop-coverage audit
+  subsystem, not the alert detector) already listed `pitcher_outs` /
+  `pitcher_earned_runs` independently — left untouched, no overlap risk.
+
+**Verified end-to-end against real data (2026-07-08):** ran the actual
+capture — 336 prop rows written across 5 markets in one real pass (228
+batter_total_bases, 27 each of the 4 pitcher markets); 23/27 (85%) of each
+new pitcher market's rows carry both DK+Pinnacle, matching the 5-event
+probe. Ran the real detector (`scan_props`) against this live data: **16
+new alerts fired, including on all 3 new markets** (1 `pitcher_earned_runs`,
+3 `pitcher_outs`, 3 `pitcher_strikeouts` `prop_line_gap`s, 1
+`pitcher_hits_allowed` `dk_prop_value`) — confirms detector, ledger, and
+settlement path all work without any market-specific scan-side code.
+Quota after the real production run matched the ~5 credits/event
+projection (delta consistent with 15 events × 5 credits ≈ 75/run).
+
+**Standing rule inherited:** each new market's detector is subject to the
+same no-positive-CLV-over-a-real-sample retirement rule as every other
+signal in this file — this expansion is instrumentation, not a confirmed
+edge. Grade via the existing `line_alerts` backtest (`report()` / web
+`getLineAlertBacktest`), sliced by `details_json->>'market'`, once enough
+settled alerts accumulate on the 3 new markets specifically.
 
 **Expected-value statement (honest):** none of this is a get-rich path.
 D1 is guaranteed but small; D2/D3 test the one hypothesis class

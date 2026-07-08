@@ -1,7 +1,9 @@
-"""Capture MLB player-prop odds per book (pitcher strikeouts + batter total bases).
+"""Capture MLB player-prop odds per book (D4, MLB prop-market expansion).
 
-P0-verified (2026-07-02): both markets carry DraftKings AND Pinnacle in the
-Odds API's us,eu per-event feed (~8 books each). One row per (event, market,
+P0-verified (2026-07-02, pitcher_strikeouts + batter_total_bases; expanded
+2026-07-08): each market below was checked against 5 real upcoming events for
+BOTH DraftKings and Pinnacle presence (the detector requires both -- Pinnacle
+alone can't anchor a DK-vs-Pinnacle value scan). One row per (event, market,
 player, capture) with the full per-book detail:
 
     books = {book_key: {line, over, under, last_update}}
@@ -10,10 +12,25 @@ This feeds the dk_prop_value / prop_line_gap detectors in model/line_alerts.py
 — the props analog of the game-line DK-vs-Pinnacle value scan, where the edge
 thesis is strongest: prop lines are algorithmic, thin, and slow.
 
-Cost discipline: props are PER-EVENT calls (markets × regions credits — 4 per
-event here), so this runs on the 3×/day refresh_mlb_vegas cadence, NOT the
-30-minute game-line capture. Started games are skipped (closing snapshots
-freeze at first pitch, and the feed serves live props in-play).
+Markets (5, all DK+Pinnacle confirmed 4-5/5 events, 2026-07-08 probe):
+  pitcher_strikeouts, batter_total_bases (original)
+  pitcher_hits_allowed, pitcher_earned_runs, pitcher_outs (added)
+NOT added: batter_home_runs -- Pinnacle posts it but DraftKings does NOT
+(0/5 events), so it can never feed the DK-vs-Pinnacle detector regardless of
+cost. Capturing it would burn credits for an unusable signal.
+
+Cost discipline: props are PER-EVENT calls. Uses BOOKMAKERS=draftkings,pinnacle
+instead of REGIONS=us,eu (2026-07-08 change) -- the Odds API prices bookmakers
+requests at markets×1 credit regardless of book count, vs markets×regions for
+a regions request. Same two books (the only ones the detector reads), HALF
+the cost for the original 2 markets, and the 3-market expansion is markets×1
+instead of markets×2 (verified via the x-requests-last response header: 4
+credits/event old pattern -> 2 credits for identical 2-market data via
+bookmakers param -> 5 credits for all 5 markets). Runs on the 3×/day
+refresh_mlb_vegas cadence (user-approved net +45 credits/day for the
+expansion, 2026-07-08), NOT the 30-minute game-line capture. Started games
+are skipped (closing snapshots freeze at first pitch, and the feed serves
+live props in-play).
 
 Usage:
     python -m ingest.mlb_prop_odds
@@ -34,8 +51,14 @@ from db.database import DatabaseManager
 logger = logging.getLogger(__name__)
 
 ODDS_BASE = "https://api.the-odds-api.com/v4"
-MARKETS = "pitcher_strikeouts,batter_total_bases"
-REGIONS = "us,eu"  # us = DraftKings et al; eu = Pinnacle (the sharp anchor)
+MARKETS = (
+    "pitcher_strikeouts,batter_total_bases,"
+    "pitcher_hits_allowed,pitcher_earned_runs,pitcher_outs"
+)
+# The exact two books the detector reads. Costs markets×1 credit regardless of
+# book count -- strictly cheaper than the old regions=us,eu (markets×regions)
+# for identical data. Do not switch back to `regions` without re-checking cost.
+BOOKMAKERS = "draftkings,pinnacle"
 SLEEP_BETWEEN_CALLS = 0.5
 
 
@@ -93,7 +116,7 @@ def fetch_props(db: DatabaseManager, api_key: str) -> int:
         try:
             r2 = requests.get(
                 f"{ODDS_BASE}/sports/baseball_mlb/events/{ev['id']}/odds",
-                params={"apiKey": api_key, "regions": REGIONS, "markets": MARKETS,
+                params={"apiKey": api_key, "bookmakers": BOOKMAKERS, "markets": MARKETS,
                         "oddsFormat": "american", "dateFormat": "iso"},
                 timeout=25,
             )
