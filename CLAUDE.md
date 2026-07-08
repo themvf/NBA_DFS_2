@@ -2699,7 +2699,7 @@ surface where edge exists before improving the accounting.
 | Order | ID | What | Why / evidence | Kill criterion | Effort |
 |---|---|---|---|---|---|
 | 1 | **D4** | **MLB prop-market expansion** ✅ shipped 2026-07-08 (see below): added pitcher_hits_allowed/earned_runs/outs; NBA props at season start still open | Soft markets are where signal showed up (P3: 8 alerts vs 0 game lines); Unabated segment logic | Each new market inherits the standing rule: no positive CLV over a real settled sample → retire that market's detector | Medium |
-| 2 | **D1** | **Best-price grading**: grade ledgers/studies at best captured per-book price instead of consensus/single-book (extend to the pending 8.0-totals and underdog re-runs) | +1–3%/bet with zero predictive skill; `market_maximum` convention; roadmap P5 | None — accounting correctness, not a hypothesis | Small |
+| 2 | **D1** | **Best-price grading** ✅ shipped 2026-07-08 (see below): `model/best_price.py` overlay, US-retail + any-book tiers, exchanges excluded; surfaced + fixed the MLB in-play rating incident en route | +1–3%/bet with zero predictive skill; `market_maximum` convention; roadmap P5 — confirmed: median uplift +1.2–1.9%/bet, flips no verdicts | None — accounting correctness, not a hypothesis | Small |
 | 3 | **D2** | **Execution-timing study** (pre-register before building): on the existing 30-min capture trail, when did the best price for the flagged side occur, and how much EV does entry timing control? | Levine's salvageable idea done honestly; zero new data required | Median best-entry vs close price gap < 1% → timing doesn't matter, drop | Small–medium |
 | 4 | **D3** | **Opener-vs-closer study** (= roadmap P2b, pre-register): does our disagreement with the opener predict close-ward movement? | Beating the opener is a weaker benchmark than beating the close | No directional predictive value at n≥200 → calibration-only confirmed, done | Medium |
 | 5 | **D5** | **Confidence/segment layer** on star ratings (the rubric ideas #1–2 already recorded above) — governance, not edge-finding | Prevents the next mirage; prerequisite for ever uncapping | N/A (defensive) | Medium |
@@ -2793,3 +2793,93 @@ D1 is guaranteed but small; D2/D3 test the one hypothesis class
 where actual signal has appeared. Realistic ceiling = grind-level edges
 of a few percent in soft markets plus execution efficiency. Anything
 promising more is selling something.
+
+### MLB In-Play Rating Incident — found + fixed while building D1 (2026-07-08)
+
+D1's spot-checks surfaced ledger corruption before any conclusion could be
+drawn from it (the point of rigorous verification): an MLB bet frozen at
+**decimal 34.0** ("PHI ML +3300") turned out to be an IN-PLAY price — KC
+−10000 / PHI +3300 late in a blowout — written into `mlb_matchups` and
+then rated into the ledger as a "closing" recommendation.
+
+**Root causes (two distinct holes, both now guarded):**
+1. **Post-commence rating.** The 22:10 UTC `refresh_mlb_vegas` cron takes
+   ~65 min (weather geocoding), so `rate_slate` executed ~23:15 — AFTER
+   evening first pitches — minting post-commence "recommendations"
+   nightly. A recommendation created after the event starts is not a
+   recommendation (books void tickets placed post-start). Fix:
+   `rate_slate` now only rates fixtures with
+   `commence_time IS NULL OR commence_time > NOW()`.
+2. **In-play odds leaking into `mlb_matchups`.** `fetch_odds`' in-play
+   guard trusts the FEED's `commence_time`, which the Odds API moves on
+   rain delays — a delayed in-progress game can reappear with a future
+   commence and sail past the guard. Fix: a second guard on OUR
+   statsapi-sourced `matchup.commence_time <= now`. Same class of hole in
+   `ingest/backfill_mlb_odds.py`: its 20:00 UTC historical snapshot lands
+   mid-game for afternoon starts and the historical feed serves the LIVE
+   price at that timestamp — now skips games that had started by the
+   snapshot time.
+
+**Repair applied to the live DB (2026-07-08, documented not hidden):**
+- **58 `mlb_matchups` rows** (spanning 2026-06-26 → 07-06) held odds >10pp
+  off their own last clean pre-commence capture — restored from that
+  capture (`game_odds_history` consensus). This also cleans the
+  moneyline/totals models' training labels (`vegas_prob_home`), which had
+  been silently poisoned for those games. Era caveat: for pre-07-02 rows
+  the restore source is the as-recorded arithmetic-era consensus (per-book
+  data doesn't exist that far back) — still strictly better than in-play
+  prices.
+- **105 `mlb_bets` rows voided** (55 lost / 50 won — near-symmetric, i.e.
+  noise not signal) — every bet with `created_at > event_commence`, with
+  `result_detail` documenting the reason and
+  `inputs_json.voided_post_commence = true` for audit. The underdog-value
+  re-run (n≥200, ~2026-08-30) naturally excludes voids.
+
+**How to apply:** never trust a single upstream timestamp for an in-play
+guard — cross-check against our own statsapi-sourced commence. Any future
+"rated after commence" bet is a bug, not a feature; the guard makes it
+structurally impossible.
+
+### D1 — Best-price grading — Shipped (2026-07-08)
+
+**`model/best_price.py`** — a grading OVERLAY over the immutable ledgers
+(never mutates `market_decimal`): for each settled ML/total bet, finds the
+best same-proposition price across the captured per-book close
+(`game_odds_history.books`, last capture ≤ commence — same close
+convention as `model/clv_report.py`) and reports frozen-consensus ROI vs
+best-price ROI **on the same covered subset** (uncovered bets — pre-07-02
+captures, moved total lines, missing quotes — counted separately, never
+folded in).
+
+**Correctness rules learned/enforced while building:**
+- **Exchanges excluded everywhere** (matchbook/smarkets/betfair_ex): feed
+  odds exclude their 2-5% commission, so they masquerade as free value —
+  matchbook "won" 78/175 MLB bets in the naive version.
+- **Two tiers reported:** best **US-retail** (DK/FanDuel/BetMGM/Caesars/
+  BetRivers/Fanatics/…, the realistic execution set) as the primary, and
+  best any-book (excl. exchanges) as the upper bound. Offshore books
+  (onexbet etc.) only appear in the upper bound.
+- **Same-proposition only:** totals match at the exact captured line
+  (`total_line == bet line`) — the Herrera rule applied to pricing.
+- Deadlock-resilient: one bulk `DISTINCT ON` close-lookup per sport (the
+  per-matchup query loop deadlocked live against the 30-min capture
+  cron's transactions) + one retry.
+
+**First results (2026-07-08, post-repair ledger):**
+| Sport | n covered | Frozen ROI | US-retail ROI | Any-book ROI | Retail uplift (med) |
+|---|---|---|---|---|---|
+| MLB | 145 | −3.39%/bet | −3.73%/bet | −2.21%/bet | +1.34%/bet |
+| Soccer | 59 | −10.64%/bet | −9.52%/bet | −0.81%/bet | +1.19%/bet |
+| Tennis | 142 | −7.83%/bet | −5.37%/bet | −2.61%/bet | +1.94%/bet |
+
+**Honest read:** the ~1-2%/bet median execution uplift matches the
+literature's line-shopping estimate — real, free, and worth taking on any
+bet actually placed. But it does NOT flip any verdict: every tier stays
+net-negative, so best-price grading confirms (not rescues) the standing
+no-edge conclusions. MLB's negative MEAN uplift (−0.67%) vs positive
+median is itself informative: on a tail of bets the global consensus
+(which includes sharper EU books) beats the best US-retail price. The
+standing studies (underdog re-run, 8.0-totals) should report both frozen
+and best-price ROI when they grade, per their registered notes.
+
+Usage: `python -m model.best_price [--sport mlb|soccer|tennis|all] [--since]`
