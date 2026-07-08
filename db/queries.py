@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from db.database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 
 def _execute_values_batch(db: DatabaseManager, sql: str, rows: list[tuple], page_size: int = 1000) -> int:
@@ -1188,6 +1191,35 @@ def upsert_mlb_matchup(
     wind_direction: str | None = None,
     commence_time=None,
 ) -> int:
+    # Guard: a gamePk can reappear under a NEW (date, teams) slot — a makeup
+    # game rescheduled to another day (feed carries rescheduledFrom), often as
+    # part of a split doubleheader. The upsert's conflict key is
+    # (game_date, home, away), so the incoming row would INSERT (new slot) or
+    # UPDATE another row and either way violate the separate UNIQUE(game_id) —
+    # this killed every refresh on 2026-07-07 (gamePk 823062, STL/MIL makeup
+    # of the 05-05 postponement). If the gamePk is already owned by a row in a
+    # different slot, upsert WITHOUT the game_id rather than crash the whole
+    # pipeline. KNOWN LIMITATION: one row per (date, home, away) means game 2
+    # of a doubleheader is not separately tracked — a schema change
+    # (game_id-first identity) is the real fix, per the CLAUDE.md MLB issues
+    # table.
+    if game_id is not None:
+        owner = db.execute_one(
+            "SELECT id, game_date, home_team_id, away_team_id FROM mlb_matchups WHERE game_id = %s",
+            (game_id,),
+        )
+        if owner and (
+            str(owner["game_date"]) != str(game_date)
+            or owner["home_team_id"] != home_team_id
+            or owner["away_team_id"] != away_team_id
+        ):
+            logger.warning(
+                "mlb_matchups: gamePk %s already owned by row %s (%s) — upserting %s slot without game_id "
+                "(rescheduled/makeup game; doubleheader limitation)",
+                game_id, owner["id"], owner["game_date"], game_date,
+            )
+            game_id = None
+
     row = db.execute_one(
         """
         INSERT INTO mlb_matchups (
