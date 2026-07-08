@@ -2562,3 +2562,155 @@ resetting even through the residential proxy) used to crash the whole run
 transient `RequestException` 3× with backoff, and the per-video loop
 catches `RequestException` to skip one bad video (it reappears as "new"
 next run) instead of aborting.
+
+---
+
+## MLB Totals — 8.0-Line Under Bias — Pre-Registered Study (2026-07-08)
+
+### Origin
+
+The `/vegas` O/U-hit-rate-by-total-tier panel showed the `vegas_total = 8.0`
+tier at 37.8% over (93/246 games incl. 36 pushes) — the most under-leaning
+of 8 tiers scanned, motivated by eyeballing that table. Per this file's
+standing discipline, that observation is a hypothesis source, not evidence
+— it is examined here, not confirmed.
+
+### Two artifacts in the raw panel number (found before registering anything)
+
+1. **Pushes inflate the apparent skew.** 37.8% divides overs by ALL games
+   including 36 pushes (only integer lines can push — none of the other
+   listed tiers except 9.0/10.0 can). **Decided-only, 8.0 is 44.3% over /
+   55.7% under** (93/210) — still the most under-leaning tier, but far less
+   dramatic than the raw panel number.
+2. **"Avg actual > avg line" does not imply under-pricing.** Every tier in
+   the panel shows avg actual runs above the line, yet most tiers hit
+   ~50/50 or over-lean. This is ordinary right-skew (blowouts pull the MEAN
+   up; books set lines near the MEDIAN) — not evidence of systematic total
+   mispricing. Do not re-derive "book bias" from avg-error columns again.
+
+### Honest significance check (done before registering, not after)
+
+- z = −1.66 (p ≈ 0.10) vs 50% on the decided-only 210 games — NOT
+  significant alone, and this is the most extreme of 8 tiers scanned
+  (P(≥1 tier reaches |z|≥1.66 by chance) ≈ 55%). Same multiple-comparisons
+  trap as the original soccer-totals mirage.
+- Split-half (chronological, decided-only): half 1 = 41.9% over (44-61,
+  n=105), half 2 = 46.7% over (49-56, n=105). Same direction both halves
+  (mildly encouraging — no sign flip), but neither half individually clears
+  significance, and the more recent half drifted toward 50%.
+- **−110 breakeven (52.4%) is the WRONG bar.** Integer-total unders are
+  routinely juiced past −110 by books (line stays on the integer, price
+  shades instead) — `game_odds_history` already captures real per-book
+  under prices for every 8.0-line game, so the real test grades at ACTUAL
+  captured prices, never an assumed constant.
+
+### Hypothesis (fixed now, before any further data is examined)
+
+**H — MLB 8.0-total unders beat market-implied at real prices.** Games
+whose CLOSING consensus total is exactly 8.0 see the under win at a rate
+that produces positive ROI at the actual captured closing under price
+(`game_odds_history`, not an assumed −110).
+
+- Falsifiable prediction: PROSPECTIVE games only (commence date >
+  2026-07-08 — the 246-game discovery sample motivated this, it cannot
+  also confirm it, same rule as every other spec in this file), n ≥ 200
+  decided (push excluded from n, tracked separately), bootstrap CI on ROI
+  at real closing under prices excludes zero.
+- Kill criterion: CI includes zero at n=200 → dead, cap stays at whatever
+  the standing MLB totals cap is, no re-slicing to 7.5/8.5/9.0 as a
+  follow-up (that would be the exact multiple-comparisons drift this
+  file's discipline exists to prevent).
+
+### Minimum sample / timeline
+
+**246 games have accumulated at the 8.0 line over the season so far**
+(discovery sample, frozen — not part of the test population). New 8.0-line
+games arrive at roughly the same rate going forward (~1-2/day in season),
+so reaching a fresh, prospective n≥200 is a full-season-scale wait, not a
+quick check — same shape as the MLB Underdog-Value study's timeline.
+Re-run the query below periodically; do not shortcut the prospective-only
+rule by including any of the 246 discovery games in the test count.
+
+### Status
+
+**Registered, not started.** No code changes yet — this section exists so
+the hypothesis, slice, and minimum sample are frozen before the next
+batch of 8.0-line games is examined. When ready to grade: pull all
+`vegas_total = 8.0` games with `commence_time > '2026-07-08'`, join
+`game_odds_history` for the closing consensus (or per-book) under price,
+compute decided win rate + bootstrap ROI CI. Do not grade early on a
+partial sample and call it a trend.
+
+---
+
+## Literature Review & Strategy Confirmation — Development Plan D-series (2026-07-08)
+
+### Origin
+
+Reviewed six documents in `C:\Users\joshb\OneDrive\Documents\Sports
+Betting Modeling\` at the user's request to assess whether this project's
+modeling approach is correct. Full assessment delivered in-session;
+condensed here so the resulting plan is frozen like every other spec.
+
+### Documents reviewed (graded)
+
+| Document | Grade | One-line verdict |
+|---|---|---|
+| arXiv 2410.21484 — "Systematic Review of ML in Sports Betting" (2024) | B− survey / D as profit guide | Useful challenges/features catalog; uncritically repeats in-sample "99% accuracy" claims and never asks the only question that matters (accuracy vs the CLOSING LINE at real prices) |
+| Levine thesis — "Beating Vegas" (Reed, 2019) | C+ | One genuinely novel idea (model the LINE's trajectory → bet timing) buried under fatal flaws: k-fold on time series (leakage), EV estimates >0.2 (screaming miscalibration), Martingale seriously entertained, 2 seasons of data, 9 strategies compared post-hoc |
+| Unabated "Intro to Data Science Pt. 3" | B | Beginner content from a sharp source; correct segment logic — props/derivatives, not main lines |
+| `sports-betting` PyPI docs | B philosophy / C utility | Package inferior to our infra, but its `market_maximum` (best-price) backtest convention and its "estimate value bets, don't chase accuracy" line are both correct |
+| World Tennis Magazine "Risk Modelling" | F | Casino-affiliate SEO filler; zero technical content |
+| "How to Improve Sports Betting Odds" blog | D | Ridge-regression team ratings ("60% accuracy", "$20K" anecdote) — a strictly weaker version of ratings we already have and have PROVEN don't beat closing lines |
+
+### Verdict on our methodology
+
+**Confirmed correct — ahead of all six documents on every dimension that
+matters**: walk-forward-only validation (vs Levine's leaky k-fold), CLV +
+realized-vs-implied at real captured prices (vs accuracy metrics),
+probability-space de-vigging + per-book capture (vs assumed flat −110),
+pre-registration with frozen kill criteria (vs post-hoc strategy
+shopping), and published no-edge verdicts (vs "astronomical returns"
+claims). The documents, read critically, corroborate the standing
+three-sport conclusion: public-data models do not beat closing lines in
+major markets. The strategic question is not method — it is where the
+method points.
+
+### Standing DO-NOT-BUILD list (from this review)
+
+1. No new game-outcome model on public stats — not a fourth gameline
+   revision, not an NHL/any-sport ratings regression, not neural nets
+   chasing survey-paper accuracy numbers. Three settled-ledger verdicts
+   is the answer.
+2. No Martingale ever (guaranteed ruin). No Kelly sizing until a specific
+   market shows a CONFIRMED live edge — Kelly amplifies miscalibration
+   into ruin (Levine's own EV>0.2 cap is the live demonstration).
+3. No "betting portfolio" layer before there is more than one proven edge
+   to diversify across — portfolio math on zero-edge assets optimizes the
+   distribution of losses.
+
+### Development plan (D-series) — sequence set by user 2026-07-08
+
+User decision: **D4 first (MLB prop-market expansion), then D1
+(best-price grading)**, then D2/D3/D5. Rationale: props are where actual
+signal has appeared (8 alerts vs 0 on game lines, P3 finding); expand the
+surface where edge exists before improving the accounting.
+
+| Order | ID | What | Why / evidence | Kill criterion | Effort |
+|---|---|---|---|---|---|
+| 1 | **D4** | **MLB prop-market expansion**: add more MLB prop markets to `ingest/mlb_prop_odds.py` capture + the dk_prop_value / prop_line_gap detectors (beyond pitcher K + batter TB — e.g. hits, runs, RBIs, HR, pitcher outs/ER, whichever the Odds API serves with a Pinnacle anchor); NBA props at season start | Soft markets are where signal showed up (P3: 8 alerts vs 0 game lines); Unabated segment logic | Each new market inherits the standing rule: no positive CLV over a real settled sample → retire that market's detector | Medium |
+| 2 | **D1** | **Best-price grading**: grade ledgers/studies at best captured per-book price instead of consensus/single-book (extend to the pending 8.0-totals and underdog re-runs) | +1–3%/bet with zero predictive skill; `market_maximum` convention; roadmap P5 | None — accounting correctness, not a hypothesis | Small |
+| 3 | **D2** | **Execution-timing study** (pre-register before building): on the existing 30-min capture trail, when did the best price for the flagged side occur, and how much EV does entry timing control? | Levine's salvageable idea done honestly; zero new data required | Median best-entry vs close price gap < 1% → timing doesn't matter, drop | Small–medium |
+| 4 | **D3** | **Opener-vs-closer study** (= roadmap P2b, pre-register): does our disagreement with the opener predict close-ward movement? | Beating the opener is a weaker benchmark than beating the close | No directional predictive value at n≥200 → calibration-only confirmed, done | Medium |
+| 5 | **D5** | **Confidence/segment layer** on star ratings (the rubric ideas #1–2 already recorded above) — governance, not edge-finding | Prevents the next mirage; prerequisite for ever uncapping | N/A (defensive) | Medium |
+
+**Standing (no new work until dates hit):** MLB underdog re-run at n≥200
+(~2026-08-30), 8.0-totals grading at prospective n≥200 (~season end) —
+grade against frozen bars, at best captured prices once D1 lands.
+
+**Expected-value statement (honest):** none of this is a get-rich path.
+D1 is guaranteed but small; D2/D3 test the one hypothesis class
+(timing/execution) the no-edge verdicts haven't already killed; D4 is
+where actual signal has appeared. Realistic ceiling = grind-level edges
+of a few percent in soft markets plus execution efficiency. Anything
+promising more is selling something.
