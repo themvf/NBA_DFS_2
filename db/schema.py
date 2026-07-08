@@ -237,8 +237,12 @@ TABLES = [
         weather_temp INTEGER,
         wind_speed INTEGER,
         wind_direction TEXT,
-        fetched_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(game_date, home_team_id, away_team_id)
+        fetched_at TIMESTAMPTZ DEFAULT NOW()
+        -- NOTE: no UNIQUE(game_date, home_team_id, away_team_id). Row identity
+        -- is game_id-first (MLB gamePk, UNIQUE above): a split doubleheader is
+        -- two rows with the same (date, teams) and distinct gamePks, and a
+        -- rescheduled makeup game MOVES its row to the new date (2026-07-07
+        -- STL/MIL incident). Slot lookups use idx_mlb_matchups_slot.
     )
     """,
 
@@ -1205,6 +1209,19 @@ MIGRATIONS = [
             ALTER TABLE nba_matchups ADD COLUMN home_spread DOUBLE PRECISION;
         END IF;
     END $$""",
+    # 2026-07-07: Doubleheader support — drop the one-row-per-(date,teams)
+    # constraint; row identity is game_id-first (gamePk). A split DH is two
+    # rows with the same slot; a rescheduled makeup game moves its row.
+    """DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'mlb_matchups_game_date_home_team_id_away_team_id_key'
+        ) THEN
+            ALTER TABLE mlb_matchups
+                DROP CONSTRAINT mlb_matchups_game_date_home_team_id_away_team_id_key;
+        END IF;
+    END $$""",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_slot ON mlb_matchups(game_date, home_team_id, away_team_id)",
     # 2026-04-12: Add scores + run line to mlb_matchups for Vegas analysis
     """DO $$ BEGIN
         IF NOT EXISTS (

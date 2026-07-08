@@ -346,10 +346,13 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         logger.warning("Odds API request failed: %s", e)
         return 0
 
-    # Build lookup: home team name → matchup row for today's MLB games
+    # Build lookup: home team name → ALL matchup rows for that home team today.
+    # A split doubleheader is two rows with the same (date, teams) and distinct
+    # gamePks (game_id-first identity, 2026-07-07) — each Odds API event is
+    # resolved to the row whose commence_time is nearest the event's.
     rows = db.execute(
         """
-        SELECT nm.id, t_home.name AS home_name, t_away.name AS away_name
+        SELECT nm.id, nm.commence_time, t_home.name AS home_name, t_away.name AS away_name
         FROM mlb_matchups nm
         JOIN mlb_teams t_home ON t_home.team_id = nm.home_team_id
         JOIN mlb_teams t_away ON t_away.team_id = nm.away_team_id
@@ -357,7 +360,30 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         """,
         (target_date,),
     )
-    matchup_by_home: dict[str, dict] = {r["home_name"]: r for r in rows}
+    matchups_by_home: dict[str, list[dict]] = {}
+    for r in rows:
+        matchups_by_home.setdefault(r["home_name"], []).append(r)
+
+    def _resolve_matchup(home: str, event_commence_iso: str | None) -> dict | None:
+        cands = matchups_by_home.get(home)
+        if not cands:
+            return None
+        if len(cands) == 1:
+            return cands[0]
+        # Doubleheader: pick the row whose commence_time is nearest the event's.
+        ev_dt = None
+        if event_commence_iso:
+            try:
+                ev_dt = datetime.fromisoformat(event_commence_iso.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        if ev_dt is None:
+            logger.warning("Odds: %d rows for %s and no event commence — using first", len(cands), home)
+            return cands[0]
+        def _dist(c: dict) -> float:
+            ct = c["commence_time"]
+            return abs((ct - ev_dt).total_seconds()) if ct is not None else float("inf")
+        return min(cands, key=_dist)
     # Ensure h2h + totals + spreads (run line) are all fetched
     markets_to_fetch = "h2h,totals,spreads"
     captured_at = datetime.now(timezone.utc).replace(microsecond=0)
@@ -386,12 +412,12 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                 pass
 
         home_name = g.get("home_team", "")
-        matchup = matchup_by_home.get(home_name)
+        matchup = _resolve_matchup(home_name, commence_iso)
 
         # Handle Athletics name variants from the Odds API
         if not matchup and home_name in _OAK_ALIASES:
             for alias in _OAK_ALIASES:
-                matchup = matchup_by_home.get(alias)
+                matchup = _resolve_matchup(alias, commence_iso)
                 if matchup:
                     break
 
@@ -564,6 +590,15 @@ def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
             continue
         if detailed_state not in _FINAL_STATES:
             continue
+        # Stamp the final status too — a made-up game keeps its gamePk, and
+        # with game_id-first identity its row MOVES to the makeup date, so a
+        # stale 'Postponed' stamp from the original date must be cleared once
+        # the game actually completes (row 2061 / gamePk 823062 lesson).
+        db.execute(
+            "UPDATE mlb_matchups SET game_status = %s WHERE game_id = %s "
+            "AND game_status IS DISTINCT FROM %s",
+            (detailed_state, game_id, detailed_state),
+        )
         linescore = game.get("linescore", {})
         teams_ls = linescore.get("teams", {})
         home_runs = teams_ls.get("home", {}).get("runs")
