@@ -1191,35 +1191,111 @@ def upsert_mlb_matchup(
     wind_direction: str | None = None,
     commence_time=None,
 ) -> int:
-    # Guard: a gamePk can reappear under a NEW (date, teams) slot — a makeup
-    # game rescheduled to another day (feed carries rescheduledFrom), often as
-    # part of a split doubleheader. The upsert's conflict key is
-    # (game_date, home, away), so the incoming row would INSERT (new slot) or
-    # UPDATE another row and either way violate the separate UNIQUE(game_id) —
-    # this killed every refresh on 2026-07-07 (gamePk 823062, STL/MIL makeup
-    # of the 05-05 postponement). If the gamePk is already owned by a row in a
-    # different slot, upsert WITHOUT the game_id rather than crash the whole
-    # pipeline. KNOWN LIMITATION: one row per (date, home, away) means game 2
-    # of a doubleheader is not separately tracked — a schema change
-    # (game_id-first identity) is the real fix, per the CLAUDE.md MLB issues
-    # table.
-    if game_id is not None:
-        owner = db.execute_one(
-            "SELECT id, game_date, home_team_id, away_team_id FROM mlb_matchups WHERE game_id = %s",
-            (game_id,),
-        )
-        if owner and (
-            str(owner["game_date"]) != str(game_date)
-            or owner["home_team_id"] != home_team_id
-            or owner["away_team_id"] != away_team_id
-        ):
-            logger.warning(
-                "mlb_matchups: gamePk %s already owned by row %s (%s) — upserting %s slot without game_id "
-                "(rescheduled/makeup game; doubleheader limitation)",
-                game_id, owner["id"], owner["game_date"], game_date,
-            )
-            game_id = None
+    """Upsert with game_id-first row identity (2026-07-07 doubleheader fix).
 
+    One row per GAME (MLB gamePk), not per (date, teams) slot — the old
+    slot-unique constraint could not represent a split doubleheader (two games,
+    same date + teams) and crashed the whole pipeline when a postponed game's
+    gamePk reappeared on its makeup date (STL/MIL, gamePk 823062).
+
+    Resolution order:
+      1. gamePk already owned by a row → UPDATE it. game_date/commence_time
+         move WITH the game (a reschedule relocates the row); other fields
+         keep existing values when the incoming value is NULL.
+      2. No gamePk owner, but a single game_id-less "orphan" row occupies the
+         (date, teams) slot (created by the odds ingest, which has no gamePk)
+         → adopt it: attach the gamePk and update. With two feed games in one
+         slot (split DH), game 1 adopts the orphan and game 2 falls through
+         to INSERT — each game ends with its own row.
+      3. Otherwise INSERT a new row.
+    Callers without a game_id resolve to the single slot row when unambiguous
+    (or the orphan), and INSERT an orphan row when the slot is empty.
+    """
+    field_updates = """
+            home_sp_id     = COALESCE(%s, mlb_matchups.home_sp_id),
+            home_sp_name   = COALESCE(%s, mlb_matchups.home_sp_name),
+            away_sp_id     = COALESCE(%s, mlb_matchups.away_sp_id),
+            away_sp_name   = COALESCE(%s, mlb_matchups.away_sp_name),
+            vegas_total    = COALESCE(%s, mlb_matchups.vegas_total),
+            home_ml        = COALESCE(%s, mlb_matchups.home_ml),
+            away_ml        = COALESCE(%s, mlb_matchups.away_ml),
+            vegas_prob_home = COALESCE(%s, mlb_matchups.vegas_prob_home),
+            home_implied   = COALESCE(%s, mlb_matchups.home_implied),
+            away_implied   = COALESCE(%s, mlb_matchups.away_implied),
+            ballpark       = COALESCE(%s, mlb_matchups.ballpark),
+            weather_temp   = COALESCE(%s, mlb_matchups.weather_temp),
+            wind_speed     = COALESCE(%s, mlb_matchups.wind_speed),
+            wind_direction = COALESCE(%s, mlb_matchups.wind_direction),
+            commence_time  = COALESCE(%s, mlb_matchups.commence_time),
+            fetched_at     = NOW()
+    """
+    field_params = (
+        home_sp_id, home_sp_name, away_sp_id, away_sp_name,
+        vegas_total, home_ml, away_ml, vegas_prob_home,
+        home_implied, away_implied, ballpark,
+        weather_temp, wind_speed, wind_direction, commence_time,
+    )
+
+    if game_id is not None:
+        # 1. Own row by gamePk — the game itself may have moved dates.
+        owner = db.execute_one(
+            "SELECT id, game_date FROM mlb_matchups WHERE game_id = %s", (game_id,)
+        )
+        if owner:
+            if str(owner["game_date"]) != str(game_date):
+                logger.info(
+                    "mlb_matchups: gamePk %s moved %s -> %s (rescheduled/makeup game)",
+                    game_id, owner["game_date"], game_date,
+                )
+            row = db.execute_one(
+                f"""UPDATE mlb_matchups SET
+                    game_date = %s,
+                    home_team_id = COALESCE(%s, mlb_matchups.home_team_id),
+                    away_team_id = COALESCE(%s, mlb_matchups.away_team_id),
+                    {field_updates}
+                WHERE id = %s RETURNING id""",
+                (game_date, home_team_id, away_team_id, *field_params, owner["id"]),
+            )
+            return row["id"] if row else 0
+        # 2. Adopt a single game_id-less orphan in this slot (odds-ingest row).
+        orphans = db.execute(
+            "SELECT id FROM mlb_matchups WHERE game_date = %s AND home_team_id = %s "
+            "AND away_team_id = %s AND game_id IS NULL",
+            (game_date, home_team_id, away_team_id),
+        )
+        if len(orphans) == 1:
+            row = db.execute_one(
+                f"UPDATE mlb_matchups SET game_id = %s, {field_updates} WHERE id = %s RETURNING id",
+                (game_id, *field_params, orphans[0]["id"]),
+            )
+            return row["id"] if row else 0
+    else:
+        # No gamePk (odds-only caller): update the single slot row when
+        # unambiguous; prefer the orphan when a DH makes the slot ambiguous.
+        slot_rows = db.execute(
+            "SELECT id, game_id FROM mlb_matchups WHERE game_date = %s AND home_team_id = %s "
+            "AND away_team_id = %s ORDER BY commence_time NULLS LAST, id",
+            (game_date, home_team_id, away_team_id),
+        )
+        if len(slot_rows) == 1:
+            target = slot_rows[0]["id"]
+        elif len(slot_rows) > 1:
+            orphan = next((r for r in slot_rows if r["game_id"] is None), None)
+            target = orphan["id"] if orphan else slot_rows[0]["id"]
+            logger.warning(
+                "mlb_matchups: game_id-less upsert into a %d-row slot (%s doubleheader?) — "
+                "updating row %s", len(slot_rows), game_date, target,
+            )
+        else:
+            target = None
+        if target is not None:
+            row = db.execute_one(
+                f"UPDATE mlb_matchups SET {field_updates} WHERE id = %s RETURNING id",
+                (*field_params, target),
+            )
+            return row["id"] if row else 0
+
+    # 3. New game — INSERT (ON CONFLICT (game_id) as a concurrency backstop).
     row = db.execute_one(
         """
         INSERT INTO mlb_matchups (
@@ -1230,24 +1306,7 @@ def upsert_mlb_matchup(
             weather_temp, wind_speed, wind_direction, commence_time
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (game_date, home_team_id, away_team_id) DO UPDATE SET
-            game_id        = COALESCE(EXCLUDED.game_id, mlb_matchups.game_id),
-            home_sp_id     = COALESCE(EXCLUDED.home_sp_id, mlb_matchups.home_sp_id),
-            home_sp_name   = COALESCE(EXCLUDED.home_sp_name, mlb_matchups.home_sp_name),
-            away_sp_id     = COALESCE(EXCLUDED.away_sp_id, mlb_matchups.away_sp_id),
-            away_sp_name   = COALESCE(EXCLUDED.away_sp_name, mlb_matchups.away_sp_name),
-            vegas_total    = COALESCE(EXCLUDED.vegas_total, mlb_matchups.vegas_total),
-            home_ml        = COALESCE(EXCLUDED.home_ml, mlb_matchups.home_ml),
-            away_ml        = COALESCE(EXCLUDED.away_ml, mlb_matchups.away_ml),
-            vegas_prob_home = COALESCE(EXCLUDED.vegas_prob_home, mlb_matchups.vegas_prob_home),
-            home_implied   = COALESCE(EXCLUDED.home_implied, mlb_matchups.home_implied),
-            away_implied   = COALESCE(EXCLUDED.away_implied, mlb_matchups.away_implied),
-            ballpark       = COALESCE(EXCLUDED.ballpark, mlb_matchups.ballpark),
-            weather_temp   = COALESCE(EXCLUDED.weather_temp, mlb_matchups.weather_temp),
-            wind_speed     = COALESCE(EXCLUDED.wind_speed, mlb_matchups.wind_speed),
-            wind_direction = COALESCE(EXCLUDED.wind_direction, mlb_matchups.wind_direction),
-            commence_time  = COALESCE(EXCLUDED.commence_time, mlb_matchups.commence_time),
-            fetched_at     = NOW()
+        ON CONFLICT (game_id) DO UPDATE SET fetched_at = NOW()
         RETURNING id
         """,
         (

@@ -595,7 +595,7 @@ no_sp_stack: bool = True         # block pitcher-opponent batter combos
 | **Name matching — accents** | Normalize with `unicodedata.normalize('NFKD', ...)` before fuzzy matching (Acuña → Acuna) |
 | **DK team abbreviation overrides** | MLB has more non-standard DK abbrevs than NBA — build `MLB_DK_ABBREV_OVERRIDES` map |
 | **Park factors seasonality** | Update `mlb_park_factors` annually; Coors changes year-to-year based on humidor |
-| **Doubleheaders** | Two distinct gamePks — both appear in slate; UNIQUE on game_id handles it |
+| **Doubleheaders** | Two distinct gamePks — both appear in slate; UNIQUE on game_id handles it. **Implemented for real 2026-07-07** after a rescheduled STL/MIL makeup game crashed every pipeline run: `mlb_matchups` row identity is now **game_id-first** (the old `UNIQUE(game_date, home, away)` slot constraint was dropped — it couldn't represent a split DH at all). `upsert_mlb_matchup` resolves by gamePk (a reschedule MOVES the row to its makeup date), adopts a single game_id-less orphan in the slot (odds-ingest rows carry no gamePk), else inserts. Odds + prop events resolve to the row with the NEAREST commence_time when a home team has two games. `fetch_scores` stamps final statuses too, clearing a stale 'Postponed' once the makeup completes |
 | **pybaseball rate limiting** | Add sleep between calls; cache to local CSV before writing to Neon |
 | **Season format** | MLB uses `"2025"` not `"2025-26"` — new `MLB_SEASON` constant |
 | **DH slot** | All 30 teams use DH since 2022 — include DH in position list; DH maps to UTIL |

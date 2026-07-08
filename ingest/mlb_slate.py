@@ -674,7 +674,11 @@ def build_player_pool_mlb(
     """
     abbrev_cache = build_mlb_dk_abbrev_cache(db)
 
-    # Today's MLB matchups
+    # Today's MLB matchups. ORDER BY commence_time so that on a split-
+    # doubleheader day (two rows per team, game_id-first identity) the
+    # earlier game is written first and the later game wins the per-team
+    # slot — DK's main slates key on the later/evening games. Approximate:
+    # true per-game DFS context for DH days would need the DK game start.
     matchups = db.execute(
         """
         SELECT id, home_team_id, away_team_id,
@@ -684,6 +688,7 @@ def build_player_pool_mlb(
                weather_temp, wind_speed, wind_direction
         FROM mlb_matchups
         WHERE game_date = %s
+        ORDER BY commence_time NULLS FIRST, id
         """,
         (slate_date,),
     )

@@ -57,12 +57,26 @@ def fetch_props(db: DatabaseManager, api_key: str) -> int:
     captured_at = now.replace(microsecond=0)
     capture_key = captured_at.isoformat()
 
-    # event home-team name -> matchup id, for settlement joins (same matching
-    # rule as fetch_odds; the Athletics aliases matter less for props v1).
-    matchups = {r_["home_name"]: r_["id"] for r_ in db.execute(
-        """SELECT m.id, t.name AS home_name FROM mlb_matchups m
+    # event home-team name -> ALL matchup rows, for settlement joins. A split
+    # doubleheader is two rows for the same home team (game_id-first identity,
+    # 2026-07-07) — each event resolves to the row with the nearest commence.
+    matchups_by_home: dict[str, list[dict]] = {}
+    for r_ in db.execute(
+        """SELECT m.id, m.commence_time, t.name AS home_name FROM mlb_matchups m
            JOIN mlb_teams t ON t.team_id = m.home_team_id
-           WHERE m.game_date >= CURRENT_DATE - 1""")}
+           WHERE m.game_date >= CURRENT_DATE - 1"""):
+        matchups_by_home.setdefault(r_["home_name"], []).append(r_)
+
+    def _resolve_matchup_id(home: str, ev_dt: datetime) -> int | None:
+        cands = matchups_by_home.get(home)
+        if not cands:
+            return None
+        if len(cands) == 1:
+            return cands[0]["id"]
+        def _dist(c: dict) -> float:
+            ct = c["commence_time"]
+            return abs((ct - ev_dt).total_seconds()) if ct is not None else float("inf")
+        return min(cands, key=_dist)["id"]
 
     written = 0
     skipped_live = 0
@@ -105,7 +119,7 @@ def fetch_props(db: DatabaseManager, api_key: str) -> int:
                         book["line"] = float(o["point"])
                         book[side] = o.get("price")
 
-        matchup_id = matchups.get(ev.get("home_team", ""))
+        matchup_id = _resolve_matchup_id(ev.get("home_team", ""), commence_dt)
         game_date = commence_dt.astimezone(timezone.utc).date().isoformat()
         with db.connect() as conn:
             cur = conn.cursor()
