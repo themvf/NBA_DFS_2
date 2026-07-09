@@ -2701,7 +2701,7 @@ surface where edge exists before improving the accounting.
 | 1 | **D4** | **MLB prop-market expansion** ✅ shipped 2026-07-08 (see below): added pitcher_hits_allowed/earned_runs/outs; NBA props at season start still open | Soft markets are where signal showed up (P3: 8 alerts vs 0 game lines); Unabated segment logic | Each new market inherits the standing rule: no positive CLV over a real settled sample → retire that market's detector | Medium |
 | 2 | **D1** | **Best-price grading** ✅ shipped 2026-07-08 (see below): `model/best_price.py` overlay, US-retail + any-book tiers, exchanges excluded; surfaced + fixed the MLB in-play rating incident en route | +1–3%/bet with zero predictive skill; `market_maximum` convention; roadmap P5 — confirmed: median uplift +1.2–1.9%/bet, flips no verdicts | None — accounting correctness, not a hypothesis | Small |
 | 3 | **D2** | **Execution-timing study** ✅ shipped 2026-07-08 (see below): MLB not yet gradable (n=85 < 100 min, rerun pending); soccer/tennis M3 descriptive-null | Levine's salvageable idea done honestly; zero new data required | Median best-entry vs close price gap < 1% → timing doesn't matter, drop | Small–medium |
-| 4 | **D3** | **Opener-vs-closer study** — spec frozen 2026-07-09 (see below), script not yet built: does our RAW (unanchored) model disagreement with the market's open predict close-ward movement? | Beating the opener is a weaker benchmark than beating the close; distinct mechanism from D2 (signal content, not entry timing) | MLB ML/totals each independently dead if 95% CI of directional-agreement rate includes 50% AND correlation CI includes 0, at n≥150 each | Medium |
+| 4 | **D3** | **Opener-vs-closer study** ✅ shipped 2026-07-09 (see below): MLB not yet gradable (n=78 < 150 min each market, rerun ~07-16); soccer descriptive-only | Beating the opener is a weaker benchmark than beating the close; distinct mechanism from D2 (signal content, not entry timing) | MLB ML/totals each independently dead if 95% CI of directional-agreement rate includes 50% AND correlation CI includes 0, at n≥150 each | Medium |
 | 5 | **D5** | **Confidence/segment layer** on star ratings (the rubric ideas #1–2 already recorded above) — governance, not edge-finding | Prevents the next mirage; prerequisite for ever uncapping | N/A (defensive) | Medium |
 
 **Standing (no new work until dates hit):** MLB underdog re-run at n≥200
@@ -3081,5 +3081,37 @@ after this spec is committed.
   need a fixed, no-hindsight capture rule and live CLV confirmation before
   it touches any star rating.
 
-**Status: spec frozen. Analysis script (`model/opener_closer.py`) and
-first run not yet built — next step.**
+**Built + first run (2026-07-09), `model/opener_closer.py`.** One real bug
+caught before trusting the output: the query didn't filter `model_version`,
+so `mlb_bets`/`soccer_bets` — which hold superseded versions (`mlb-gameline-
+v1`; `gameline-v1`/`v2`) alongside the current ones — inflated the
+candidate count 4-7x (1229 vs the correct 167 for MLB ML). Fixed by
+filtering to the current version only (`mlb-gameline-v2` / `gameline-v3`),
+matching this project's own "bump the version, never silently mix" rule.
+Final qualifying counts were unaffected by the fix (same underlying raw
+value regardless of version tag) — only the reported candidate/exclusion
+denominators were wrong before the fix.
+
+```
+MLB moneyline : n=78/167  (< 150 min — NO VERDICT)   M1=46.2%  Pearson r=-0.05
+MLB total     : n=78/165  (< 150 min — NO VERDICT)   M1=52.6%  Pearson r=+0.30
+Soccer ML     : n=18/77   (descriptive only)          M1=38.9%  Pearson r=-0.14
+Soccer total  : n=18/77   (descriptive only)          M1=44.4%  Pearson r=+0.26
+```
+
+Both MLB markets are short of the pre-registered n≥150 floor — no verdict
+either way yet, per the spec's own rule. Descriptive read, not a
+conclusion: MLB ML's directional agreement (46.2%) is if anything *below*
+the 50% no-signal baseline; MLB totals shows a moderate positive
+correlation (+0.30) that would be worth watching, but n=78 is nowhere
+near enough to distinguish that from noise (a bootstrap CI wasn't even
+computed — the script correctly withholds it below the sample floor,
+same discipline as D2). Soccer stays descriptive-only per the spec at any
+n.
+
+**Rerun target:** ~11/day accrual observed (78 bets over the 7 days since
+the 2026-07-02 epoch) → ~6-7 more days to reach n=150, roughly
+**2026-07-16**. Stated as a rough projection, not a promise — D2's own
+~15/day estimate didn't hold up in practice (its MLB sample was flat at
+n=85 across a full day), so treat this the same way: re-run the script
+itself at that point rather than trusting the projection blindly.
