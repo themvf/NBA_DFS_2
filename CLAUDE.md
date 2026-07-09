@@ -2883,3 +2883,63 @@ standing studies (underdog re-run, 8.0-totals) should report both frozen
 and best-price ROI when they grade, per their registered notes.
 
 Usage: `python -m model.best_price [--sport mlb|soccer|tennis|all] [--since]`
+
+### D2 — Execution-Timing Study — Pre-Registered (2026-07-08)
+
+**Registered BEFORE any trail price path was examined.** D1 only ever read
+the single closing capture per game; the intraday price paths are
+unexamined as of this writing. The only data inspection performed before
+freezing this spec was STRUCTURAL (trail depth/columns, no prices): MLB has
+dense 30-min trails only since ~2026-07-02 (older history rows are single
+20:00Z backfill snapshots, and pre-07-02 consensus is arithmetic-era
+as-recorded); soccer has 18 games of 3-hourly trails; tennis 76 games of
+6-hourly trails.
+
+**Question (Levine's salvageable idea, done honestly):** for the sides our
+ledgers flagged, when in the pre-game window did the best price occur, and
+how much EV does entry timing control?
+
+**Population (frozen):** moneyline bets in `mlb_bets`/`soccer_bets`/
+`tennis_bets` (any status except `void`) whose matchup has **≥ 5
+pre-commence consensus captures** carrying a price for the bet's side, with
+captures restricted to **≥ 2026-07-02** (the odds-fix + dense-cadence
+epoch). Totals are EXCLUDED from the primary analysis — the line drifts
+intraday, so a cross-time same-proposition price comparison is unstable;
+they may be reported descriptively, clearly labeled.
+
+**Price basis (frozen):** the CONSENSUS American price for the bet's side
+at each capture, converted to decimal. Consensus-at-both-timestamps
+isolates TIMING; per-book shopping is D1's job and is deliberately kept
+out of this study's primary metrics.
+
+**Metrics (frozen):**
+- **M1 — oracle premium:** max side-decimal over the trail vs the closing
+  side-decimal (`best/close − 1`). Median + IQR per sport. This is an
+  UPPER BOUND — a hindsight max, never claimable as achievable EV.
+- **M2 — when:** distribution of where the trail max occurs (hours before
+  commence + normalized [0,1] trail position). Clustered-at-open vs
+  uniform distinguishes structural drift from noise.
+- **M3 — actionable fixed rules (no hindsight):** premium vs close of
+  betting at: first capture, T-24h, T-12h, T-6h, T-3h (nearest capture
+  at/before each horizon; a rule skips a bet when no capture exists in
+  its window).
+- **Slices:** sport; favorite vs underdog at the close (drift is
+  plausibly asymmetric).
+
+**Kill criterion (frozen, per the D-series table):** if MLB's **median M1
+oracle premium < 1%**, timing doesn't matter even WITH hindsight → D2 is
+dropped, no re-slicing rescue. Soccer/tennis are reported but not
+decisive (n far too small; soccer has 18 games total).
+
+**Minimum sample:** ≥ 100 qualifying MLB bets. If the current epoch hasn't
+accrued that yet, report the shortfall and wait — no conclusion on less.
+
+**Interpretation guardrails:** only M3's fixed rules are actionable, and a
+positive M3 rule is a MEASUREMENT, not a strategy — before it influences
+any behavior it must separately survive the standing CLV/walk-forward
+discipline (a rule fit on this window confirming itself on this window is
+the exact circularity this file exists to prevent). M1 exists to size the
+ceiling and trigger the kill criterion, nothing else.
+
+**Status: registered, not yet run.** `model/execution_timing.py` to be
+built after this section is committed.
