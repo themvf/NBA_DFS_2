@@ -2702,7 +2702,7 @@ surface where edge exists before improving the accounting.
 | 2 | **D1** | **Best-price grading** ✅ shipped 2026-07-08 (see below): `model/best_price.py` overlay, US-retail + any-book tiers, exchanges excluded; surfaced + fixed the MLB in-play rating incident en route | +1–3%/bet with zero predictive skill; `market_maximum` convention; roadmap P5 — confirmed: median uplift +1.2–1.9%/bet, flips no verdicts | None — accounting correctness, not a hypothesis | Small |
 | 3 | **D2** | **Execution-timing study** ✅ shipped 2026-07-08 (see below): MLB not yet gradable (n=85 < 100 min, rerun pending); soccer/tennis M3 descriptive-null | Levine's salvageable idea done honestly; zero new data required | Median best-entry vs close price gap < 1% → timing doesn't matter, drop | Small–medium |
 | 4 | **D3** | **Opener-vs-closer study** ✅ shipped 2026-07-09 (see below): MLB not yet gradable (n=78 < 150 min each market, rerun ~07-16); soccer descriptive-only | Beating the opener is a weaker benchmark than beating the close; distinct mechanism from D2 (signal content, not entry timing) | MLB ML/totals each independently dead if 95% CI of directional-agreement rate includes 50% AND correlation CI includes 0, at n≥150 each | Medium |
-| 5 | **D5** | **Confidence/segment layer** on star ratings (the rubric ideas #1–2 already recorded above) — governance, not edge-finding | Prevents the next mirage; prerequisite for ever uncapping | N/A (defensive) | Medium |
+| 5 | **D5** | **Confidence/segment layer** ✅ shipped 2026-07-09 (see below): #1/#2 have no ready data (checked, not assumed); built #3 only — calibration-drift auto-downgrade monitor, dormant (1 window, needs 3 to ever fire) | Prevents the next mirage; prerequisite for ever uncapping | N/A (defensive) | Medium |
 
 **Standing (no new work until dates hit):** MLB underdog re-run at n≥200
 (~2026-08-30), 8.0-totals grading at prospective n≥200 (~season end) —
@@ -3115,3 +3115,107 @@ the 2026-07-02 epoch) → ~6-7 more days to reach n=150, roughly
 ~15/day estimate didn't hold up in practice (its MLB sample was flat at
 n=85 across a full day), so treat this the same way: re-run the script
 itself at that point rather than trusting the projection blindly.
+
+---
+
+## D5 — Confidence/Segment Governance Layer — Pre-Registered (2026-07-09)
+
+### Feasibility check (done before writing any spec, per this file's standing
+### discipline — check the data before designing the mechanism)
+
+**Idea #1 (segment-aware caps):** the only candidate segment identified
+anywhere in this project is the MLB underdog-value moneyline slice — still
+INCONCLUSIVE (n=125 < 200), gated to ~2026-08-30. Nothing to promote
+today; revisit only if/when that re-run lands a PASS.
+
+**Idea #2 (confidence-discounted edge):** checked the one live market that
+would actually benefit — soccer futures, the only tier rated above the
+standing 2★ cap anywhere in the ledger — against its underlying signal's
+own sample-size column, `soccer_team_ratings.matches`. Real distribution
+across all 57 rated teams: min 243, median 663, max 1109 — every team
+already has hundreds of matches; there is no thin-vs-thick gradient left
+to discount. The idea's own motivating contrast ("a mature, thousands-of-
+games Elo rating and a five-game prop line") is a CROSS-market comparison
+(soccer Elo vs e.g. an MLB player prop), not something that varies
+meaningfully WITHIN soccer team ratings. No supporting signal exists today
+to build a confidence discount against, for the one market it could
+actually move.
+
+**Conclusion:** neither #1 nor #2 has real, checkable data behind it right
+now. Per this file's own prior honest assessment (2026-07-05, "Star rating
+improvement ideas"), that was the expected outcome, not a surprise.
+
+### What's actually buildable today: idea #3, scoped narrowly
+
+The only D5 idea with anything to build against right now is calibration-
+drift monitoring — and even that has a real constraint: it must monitor an
+ALREADY-vetted tier (soccer futures, validated via its own dedicated Monte
+Carlo backtest — group-winner Brier .036 vs .188), not a newly-discovered
+segment. This does not violate the "#1/#2 before #3" sequencing rule
+recorded above — that rule exists to stop #3 from being used to DISCOVER
+and validate new fragile segments in place of #1/#2's job. Applying it as
+a pure downgrade-monitor on the one tier already validated through its own
+dedicated process is a narrower, different claim.
+
+### Mechanism (`model/calibration_guard.py`)
+
+For each (sport, model_version, bet_type) combination currently rated
+ABOVE the standing 2★ cap anywhere in the ledger — today: soccer
+`futures-v1` `outright_winner`/`group_winner` only; every game-line market
+is already capped and this mechanism has nothing to add there — computed
+over settled (`won`/`lost`) bets only:
+
+```
+window = one distinct model_version run for that bet_type (the only
+          natural window boundary available for futures — there is no
+          per-slate cadence the way there is for daily game lines; a new
+          tournament cycle gets a new model_version per this file's
+          standing "bump the version" rule, which IS the window boundary)
+per window: realized_win_rate = wins / n        (won/lost only)
+            expected_win_rate = avg(our_prob) over the same bets
+            brier            = avg((our_prob - outcome)^2)
+
+trigger (auto-downgrade to 3★ pending revalidation — DOWNGRADE ONLY):
+    3 consecutive windows where realized_win_rate < expected_win_rate - 5pp
+    OR 3 consecutive windows where brier > 2x the validated baseline
+       (.036, the group-winner Brier recorded when futures was first cleared)
+```
+
+`N_CONSECUTIVE = 3` and the 5pp/2x thresholds are frozen now, before any
+second-window data exists to tune them against — deliberately conservative
+so a single bad tournament can't fire the trigger (one champion + one
+group-stage cycle is not enough evidence to distrust a Brier-.036-
+validated model). Per the standing rule elsewhere in this file, this
+mechanism can only ever downgrade — it can never auto-uncap or raise a
+threshold; only a fresh, separately pre-registered study can do that.
+
+### Minimum sample / honest expectation
+
+World Cup 2026 is the FIRST tournament run through this system, so there
+is currently exactly **1 window**. The trigger structurally cannot fire
+before at least 3 tournament cycles exist — realistically years away
+(World Cups are quadrennial). This is INFRASTRUCTURE laid down now, ready
+the moment enough windows exist — the same "build the harness before the
+data exists to use it" pattern as the CLV harness (Edge-Finding Roadmap
+P1), not a mechanism expected to do anything soon.
+
+### Non-negotiables (same discipline as every prior spec in this file)
+
+- Downgrade-only. Never auto-uncaps, never raises a threshold, never
+  applies to a market that hasn't already been separately validated.
+- The 3-window / 5pp / 2x constants are frozen now, before there is a
+  second window to tune them against — do not adjust them retroactively
+  once real drift data exists (that would be exactly the kind of
+  after-the-fact rationalization this file's discipline exists to block).
+- If a future idea #1/#2 candidate segment ever passes (e.g., the MLB
+  underdog re-run), this mechanism extends to it only via its own
+  explicit addition to the monitored-segment list — never silently.
+
+### Status
+
+**Built + first run (2026-07-09), `model/calibration_guard.py`.** Confirms
+1 window (`futures-v1`, the 2026 World Cup), reports realized-vs-expected
++ Brier for both bet types in that window, and correctly reports NOT
+TRIGGERED — insufficient windows (1 < 3) — rather than fabricating a
+verdict from a single cycle. No star rating changed. Re-run once a second
+global tournament's futures ledger exists.
