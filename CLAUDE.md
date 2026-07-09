@@ -2702,7 +2702,7 @@ surface where edge exists before improving the accounting.
 | 2 | **D1** | **Best-price grading** ✅ shipped 2026-07-08 (see below): `model/best_price.py` overlay, US-retail + any-book tiers, exchanges excluded; surfaced + fixed the MLB in-play rating incident en route | +1–3%/bet with zero predictive skill; `market_maximum` convention; roadmap P5 — confirmed: median uplift +1.2–1.9%/bet, flips no verdicts | None — accounting correctness, not a hypothesis | Small |
 | 3 | **D2** | **Execution-timing study** ✅ shipped 2026-07-08 (see below): MLB not yet gradable (n=85 < 100 min, rerun pending); soccer/tennis M3 descriptive-null | Levine's salvageable idea done honestly; zero new data required | Median best-entry vs close price gap < 1% → timing doesn't matter, drop | Small–medium |
 | 4 | **D3** | **Opener-vs-closer study** ✅ shipped 2026-07-09 (see below): MLB not yet gradable (n=78 < 150 min each market, rerun ~07-16); soccer descriptive-only | Beating the opener is a weaker benchmark than beating the close; distinct mechanism from D2 (signal content, not entry timing) | MLB ML/totals each independently dead if 95% CI of directional-agreement rate includes 50% AND correlation CI includes 0, at n≥150 each | Medium |
-| 5 | **D5** | **Confidence/segment layer** ✅ shipped 2026-07-09 (see below): #1/#2 have no ready data (checked, not assumed); built #3 only — calibration-drift auto-downgrade monitor, dormant (1 window, needs 3 to ever fire) | Prevents the next mirage; prerequisite for ever uncapping | N/A (defensive) | Medium |
+| 5 | **D5** | **Confidence/segment layer** ✅ shipped 2026-07-09 (see below): #1/#2 have no ready data (checked, not assumed); built #3 only — calibration-drift auto-downgrade monitor, dormant (outright_winner 0 windows/tournament unfinished, group_winner 1 window, both need 3 to ever fire) | Prevents the next mirage; prerequisite for ever uncapping | N/A (defensive) | Medium |
 
 **Standing (no new work until dates hit):** MLB underdog re-run at n≥200
 (~2026-08-30), 8.0-totals grading at prospective n≥200 (~season end) —
@@ -3213,9 +3213,17 @@ P1), not a mechanism expected to do anything soon.
 
 ### Status
 
-**Built + first run (2026-07-09), `model/calibration_guard.py`.** Confirms
-1 window (`futures-v1`, the 2026 World Cup), reports realized-vs-expected
-+ Brier for both bet types in that window, and correctly reports NOT
-TRIGGERED — insufficient windows (1 < 3) — rather than fabricating a
-verdict from a single cycle. No star rating changed. Re-run once a second
-global tournament's futures ledger exists.
+**Built + first run (2026-07-09), `model/calibration_guard.py`.** Real
+result, not identical for the two bet types: `outright_winner` shows **0
+windows** — all 48 bets are still `pending` (the 2026 World Cup hasn't
+concluded; the final hasn't been played yet), correctly reported as
+insufficient rather than assumed. `group_winner` shows **1 window**
+(`futures-v1`, n=48): realized 25.0% vs expected 24.9%, brier 0.0356 —
+both essentially matching the .036 baseline recorded when this tier was
+first validated, a good sign the calibration hasn't drifted, though 1
+window can't say anything about drift by construction. Both bet types
+correctly report NOT TRIGGERED — insufficient windows (0 or 1 < 3) —
+rather than fabricating a verdict from an incomplete or single cycle. No
+star rating changed. Re-run once the tournament concludes (for
+`outright_winner`'s first window) and again once a second global
+tournament's futures ledger exists (for either to ever reach 3).
