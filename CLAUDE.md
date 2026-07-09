@@ -2941,5 +2941,24 @@ discipline (a rule fit on this window confirming itself on this window is
 the exact circularity this file exists to prevent). M1 exists to size the
 ceiling and trigger the kill criterion, nothing else.
 
-**Status: registered, not yet run.** `model/execution_timing.py` to be
-built after this section is committed.
+**Status: first run 2026-07-08 (`model/execution_timing.py`) — NO VERDICT
+yet, trending toward kill.** Results against the frozen bars:
+
+| Sport | n (qual.) | M1 oracle median | M3 fixed rules (median vs close) |
+|---|---|---|---|
+| MLB | 85 (< 100 min → no verdict) | **+0.69%** (below the 1% kill line) | first/T-12h/T-6h/T-3h all **+0.00%** |
+| Soccer | 51 (not decisive) | +1.44% | first −0.49%; all horizons ~0.00% |
+| Tennis | 108 (not decisive) | +0.83% | first **−1.04%**; horizons −0.3%→0.00% |
+
+**Descriptive read (no verdict claimed):** the actionable metric (M3) is a
+clean null in all three sports — every fixed no-hindsight entry rule
+medians ≈ 0% vs the close with wide symmetric IQRs, i.e. intraday price
+movement is variance, not capturable drift. Tennis early entry is
+actually NEGATIVE (−1.04% at first capture), consistent with the flagged
+sides' known negative CLV. M1's oracle premium exists (+0.7–1.4%) but M3
+demonstrates no fixed rule captures it. MLB favorites show larger price
+swings (M1 +2.04% vs dogs +0.44%) — descriptive only.
+
+**Rerun when MLB n ≥ 100** (accruing ~15 qualifying bets/day under the
+dense capture cadence → ~2026-07-10). Grade the kill criterion then; do
+not act on any of the descriptive numbers above before that.
