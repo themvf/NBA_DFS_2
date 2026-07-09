@@ -2700,8 +2700,8 @@ surface where edge exists before improving the accounting.
 |---|---|---|---|---|---|
 | 1 | **D4** | **MLB prop-market expansion** ✅ shipped 2026-07-08 (see below): added pitcher_hits_allowed/earned_runs/outs; NBA props at season start still open | Soft markets are where signal showed up (P3: 8 alerts vs 0 game lines); Unabated segment logic | Each new market inherits the standing rule: no positive CLV over a real settled sample → retire that market's detector | Medium |
 | 2 | **D1** | **Best-price grading** ✅ shipped 2026-07-08 (see below): `model/best_price.py` overlay, US-retail + any-book tiers, exchanges excluded; surfaced + fixed the MLB in-play rating incident en route | +1–3%/bet with zero predictive skill; `market_maximum` convention; roadmap P5 — confirmed: median uplift +1.2–1.9%/bet, flips no verdicts | None — accounting correctness, not a hypothesis | Small |
-| 3 | **D2** | **Execution-timing study** (pre-register before building): on the existing 30-min capture trail, when did the best price for the flagged side occur, and how much EV does entry timing control? | Levine's salvageable idea done honestly; zero new data required | Median best-entry vs close price gap < 1% → timing doesn't matter, drop | Small–medium |
-| 4 | **D3** | **Opener-vs-closer study** (= roadmap P2b, pre-register): does our disagreement with the opener predict close-ward movement? | Beating the opener is a weaker benchmark than beating the close | No directional predictive value at n≥200 → calibration-only confirmed, done | Medium |
+| 3 | **D2** | **Execution-timing study** ✅ shipped 2026-07-08 (see below): MLB not yet gradable (n=85 < 100 min, rerun pending); soccer/tennis M3 descriptive-null | Levine's salvageable idea done honestly; zero new data required | Median best-entry vs close price gap < 1% → timing doesn't matter, drop | Small–medium |
+| 4 | **D3** | **Opener-vs-closer study** — spec frozen 2026-07-09 (see below), script not yet built: does our RAW (unanchored) model disagreement with the market's open predict close-ward movement? | Beating the opener is a weaker benchmark than beating the close; distinct mechanism from D2 (signal content, not entry timing) | MLB ML/totals each independently dead if 95% CI of directional-agreement rate includes 50% AND correlation CI includes 0, at n≥150 each | Medium |
 | 5 | **D5** | **Confidence/segment layer** on star ratings (the rubric ideas #1–2 already recorded above) — governance, not edge-finding | Prevents the next mirage; prerequisite for ever uncapping | N/A (defensive) | Medium |
 
 **Standing (no new work until dates hit):** MLB underdog re-run at n≥200
@@ -2962,3 +2962,124 @@ swings (M1 +2.04% vs dogs +0.44%) — descriptive only.
 **Rerun when MLB n ≥ 100** (accruing ~15 qualifying bets/day under the
 dense capture cadence → ~2026-07-10). Grade the kill criterion then; do
 not act on any of the descriptive numbers above before that.
+
+---
+
+## D3 — Opener-vs-Closer Study — Pre-Registered (2026-07-09)
+
+**Question (Edge-Finding Roadmap P2b):** does our model's disagreement
+with the market's *opening* line predict which way the market *moves* by
+close? This is a different mechanism than D2: D2 tested whether a fixed
+**entry time** beats the close (result: null, all three sports). D3 tests
+whether **our model's signal** leads price discovery — i.e., is the early
+market slow to price in something our model already sees, so it drifts
+toward our number by close? A positive result here would not re-open D2
+(timing-only entry rules already died); it would be a distinct claim
+about information content.
+
+### A mechanical confound found and designed around, before writing any
+### analysis code
+
+`mlb_bets`'s bet-facing `our_prob` field is **anchored**:
+`market_prob_at_lock + w×(raw_model − market_prob_at_lock)` (`model/
+mlb_game_bets.py::_anchor`, w=0.5), and lock happens near game time — i.e.
+close to the *close*, not the open. Testing "does the market move toward
+our_prob" using that anchored value would be circular: our_prob is
+already built from half of the closing price, so of course close is
+closer to it than open is. **Fix:** use the **raw, unanchored** model
+output instead, which every gameline bet already freezes separately in
+`inputs_json` for exactly this kind of reuse — `our_prob_home` (ML) and
+`our_total_pred` (totals) on both `model/mlb_game_bets.py` and `model/
+soccer_game_bets.py`. Verified present on both files before writing this
+spec (not assumed).
+
+### Population
+
+- `{mlb,soccer}_bets` rows: `bet_type IN ('moneyline','total')`,
+  `status != 'void'`, one per `(matchup_id, bet_type)` (`DISTINCT ON`,
+  latest `id` — same dedup convention as D1/D2).
+- Matchup has **≥ 2** pre-commence consensus `game_odds_history` captures
+  at/after epoch `2026-07-02` (the odds-fix + dense-cadence epoch already
+  used by D1/D2). **Deliberately 2, not D2's 5** — D2 needed a dense trail
+  to locate M2's timing and M3's fixed horizons; D3's metrics only need
+  the first and last pre-commence capture. This is a genuinely different,
+  more minimal data requirement dictated by the metric design, not a
+  loosened bar to manufacture a bigger sample — stated here so it reads as
+  principled, not as sample-shopping.
+- MLB is the primary, kill-criterion-gated sport (best volume, real prop
+  history). Soccer reported descriptively only, no kill test (low volume,
+  same treatment D2 gave it). **Tennis excluded entirely** — its raw
+  model-vs-market disagreement was already the exact subject of
+  [[tennis-moneyline-no-edge]] (H1/H2, both closed 2026-07-04); re-running
+  the same question in a different wrapper would be exactly the kind of
+  quiet re-litigation this file's multiple-comparisons discipline exists
+  to block.
+
+### Price/line basis (all values home-referenced or total-line-referenced
+### — never bet-selection-referenced, to avoid sign-flip bugs)
+
+- **ML**: `open_home_prob` / `close_home_prob` = raw implied probability
+  (`1/decimal`, no vig removal — a deliberate simplicity choice, stated
+  not hidden) from `game_odds_history.home_ml` at the first and last
+  pre-commence capture. `our_home_prob` = frozen `inputs_json.
+  our_prob_home` (already stored in home-team terms on both sports, no
+  side-flipping needed).
+- **Totals**: `open_line` / `close_line` = `game_odds_history.
+  vegas_total_raw` (unrounded consensus) at first/last capture, falling
+  back to `vegas_total` if raw is null. `our_total` = frozen `inputs_json.
+  our_total_pred` (MLB) / `lambda` (soccer).
+
+### Metrics (fixed now; M1/M2 are the only gating metrics)
+
+```
+edge_open = our_value − open_value        (home-prob or total-line units)
+movement  = close_value − open_value
+
+M1 — directional agreement rate:
+    fraction of bets where sign(movement) == sign(edge_open)
+    (ties at edge_open == 0 excluded from the denominator, count reported)
+    baseline under no signal = 50%
+
+M2 — correlation(edge_open, movement):
+    Pearson r AND Spearman rho (both pre-specified, not picked post hoc)
+```
+
+Reported separately per market (ML, totals) — never pooled, they're
+different quantities on different scales. Descriptive slices (not
+gating): favorite (`close_home_prob >= 0.5`) vs underdog, and soccer overall.
+
+### Kill criterion (evaluated independently per market — a market can die
+### while the other survives; no shared/blended verdict)
+
+MLB ML is dead if **both**: (a) the 95% bootstrap CI of M1 includes 50%,
+**and** (b) the 95% bootstrap CI of Pearson r includes 0. MLB totals
+graded identically and independently against the same bar. Bootstrap CI,
+not a point estimate — consistent with every other study in this file.
+
+### Minimum sample
+
+≥ 150 MLB ML bets **and** ≥ 150 MLB totals bets, evaluated separately, no
+conclusion before either individually clears its own floor. Chosen before
+querying the actual count (only the schema/logic was checked ahead of
+time, per this file's standing discipline) — the 2-capture floor (vs D2's
+5) is expected to clear D2's own 85-bet MLB ML shortfall, but that
+expectation is not itself evidence and the real number is checked only
+after this spec is committed.
+
+### Non-negotiables (same discipline as every prior spec in this file)
+
+- Raw (unanchored) model values only — never the bet ledger's anchored
+  `our_prob`, for the mechanical-confound reason above.
+- Bootstrap CI, walk-forward-safe data only (epoch ≥ 2026-07-02, the same
+  odds-fix boundary as D1/D2) — no pre-fix corrupted consensus prices.
+- Tennis is closed; do not re-add it to this study without a new,
+  separately pre-registered spec.
+- If MLB ML and MLB totals disagree (one dies, one doesn't), report both
+  independently — do not average them into a single "D3 verdict."
+- A positive M1/M2 result is a measurement of correlation, not a trading
+  rule — same guardrail as D2's M1 oracle premium: real edge would still
+  need a fixed, no-hindsight capture rule and live CLV confirmation before
+  it touches any star rating.
+
+**Status: spec frozen. Analysis script (`model/opener_closer.py`) and
+first run not yet built — next step.**
