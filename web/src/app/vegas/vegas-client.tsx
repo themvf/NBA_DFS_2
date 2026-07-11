@@ -29,6 +29,11 @@ import LineMovementPanel from "./line-movement-panel";
 import LineAlertsPanel from "./line-alerts-panel";
 import MovementHistoryPanel from "./movement-history-panel";
 import type { Sport } from "@/db/queries";
+import {
+  describeMlbTotalEdge,
+  isMlbGameLineActionable,
+  MLB_GAME_LINES_TRUST,
+} from "@/lib/mlb-vegas-trust";
 
 const fmt1 = (v: number | null | undefined) =>
   v == null ? "—" : v.toFixed(1);
@@ -504,52 +509,32 @@ function BiasChip({ bias }: { bias: number | null }) {
   );
 }
 
-/**
- * MLB "Our Total" cell — our model number plus a calibrated strength chip.
- * Tiers come straight from the walk-forward backtest:
- *   ≥1.5 run edge → Strong (≈56%, +7% ROI)
- *   ≥1.0 run edge → Lean   (≈56%, +7% ROI)   ← actionable threshold
- *   0.5–1.0       → sub-threshold (≈49–53%, skip)
- *   <0.5          → no lean
- */
+/** MLB model-vs-market total, displayed descriptively while in research mode. */
 function OurTotalCell({ edge, ourTotal }: { edge: number | null; ourTotal: number | null }) {
   if (edge == null || ourTotal == null) {
     return <span className="text-gray-400">—</span>;
   }
-  const abs = Math.abs(edge);
-  const side = edge > 0 ? "O" : "U";
-  const signed = `${edge > 0 ? "+" : ""}${edge.toFixed(1)}`;
-
-  let chip: { text: string; cls: string } | null = null;
-  if (abs >= 1.5) {
-    chip = { text: `Strong ${side}`, cls: "bg-emerald-600 text-white" };
-  } else if (abs >= MLB_TOTAL_ACTIONABLE_EDGE) {
-    chip = { text: `Lean ${side}`, cls: "bg-emerald-100 text-emerald-800 border border-emerald-300" };
-  } else if (abs >= 0.5) {
-    chip = { text: `${side} ${signed}`, cls: "bg-gray-100 text-gray-500" };
-  }
+  const display = describeMlbTotalEdge(edge);
 
   return (
     <span className="inline-flex items-center justify-end gap-1.5 tabular-nums">
       <span className="text-gray-700">{ourTotal.toFixed(1)}</span>
-      {chip ? (
+      {display ? (
         <span
-          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${chip.cls}`}
-          title={`Model ${edge > 0 ? "over" : "under"} by ${abs.toFixed(1)} runs`}
+          className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+          title={`Research only: our total is ${display.signed} runs versus the market`}
         >
-          {abs >= MLB_TOTAL_ACTIONABLE_EDGE ? `${chip.text} ${signed}` : chip.text}
+          {display.side} {display.signed}
         </span>
-      ) : (
-        <span className="text-[10px] text-gray-400">{signed}</span>
-      )}
+      ) : null}
     </span>
   );
 }
 
 /**
- * MLB total-model backtest panel — walk-forward calibration of our O/U number
- * vs the line, bucketed by edge magnitude. Makes the "trust the ≥1-run edges,
- * skip the small ones" finding legible at a glance.
+ * Historical total-model diagnostics. This remains visible for audit history,
+ * but it no longer controls actionability because the underlying matchup rows
+ * are mutable and mix pre/post point-in-time feature regimes.
  */
 function MlbTotalBacktestPanel({ backtest }: { backtest: MlbTotalBacktest }) {
   const { overall, tiers } = backtest;
@@ -557,7 +542,7 @@ function MlbTotalBacktestPanel({ backtest }: { backtest: MlbTotalBacktest }) {
     return (
       <div className="rounded-lg border bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
-          Model O/U Backtest
+          Historical O/U Diagnostic
         </h3>
         <p className="text-xs text-gray-500">
           No settled model predictions yet. Track record builds as games with{" "}
@@ -567,29 +552,33 @@ function MlbTotalBacktestPanel({ backtest }: { backtest: MlbTotalBacktest }) {
     );
   }
 
-  const BREAKEVEN = 0.5238; // −110 vig
   const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
   const roiStr = (v: number | null) =>
     v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
 
   return (
-    <div className="rounded-lg border bg-white p-4">
+    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
-        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-          Model O/U Backtest
-        </h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+            Historical O/U Diagnostic
+          </h3>
+          <span className="rounded border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+            NOT VALIDATED
+          </span>
+        </div>
         <span className="text-xs text-gray-500">
           {overall.wins}–{overall.losses} ({pct(overall.winRate)}),{" "}
-          <span className={overall.roi != null && overall.roi >= 0 ? "text-emerald-600" : "text-red-600"}>
+          <span className="text-slate-600">
             {roiStr(overall.roi)} ROI
           </span>{" "}
           on {overall.bets} graded bets
         </span>
       </div>
       <p className="text-xs text-gray-500 mb-3">
-        Walk-forward (train on prior games only). Our lean = side of the line our number takes;
-        graded vs the actual total. <strong>Edges ≥ 1 run are the actionable tier</strong> —
-        the page only flags those as O/U leans.
+        Audit history only. These rows mix mutable predictions and older data semantics, so no
+        edge tier on this panel is actionable. A replacement prospective backtest will use
+        immutable prediction and exact-price snapshots.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-xs border-collapse">
@@ -604,27 +593,18 @@ function MlbTotalBacktestPanel({ backtest }: { backtest: MlbTotalBacktest }) {
           </thead>
           <tbody>
             {tiers.map((t) => {
-              const actionable = t.tierMin != null && t.tierMin >= MLB_TOTAL_ACTIONABLE_EDGE;
-              const beatBreakeven = t.winRate != null && t.winRate >= BREAKEVEN;
               return (
                 <tr
                   key={t.tier}
-                  className={`border-b border-gray-50 ${actionable ? "bg-emerald-50/40" : ""}`}
+                  className="border-b border-slate-100"
                 >
-                  <td className="py-1.5">
-                    {t.tier}
-                    {actionable && (
-                      <span className="ml-1.5 rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold text-emerald-700">
-                        ACTIONABLE
-                      </span>
-                    )}
-                  </td>
+                  <td className="py-1.5">{t.tier}</td>
                   <td className="py-1.5 text-right text-gray-500">{t.bets}</td>
                   <td className="py-1.5 text-right tabular-nums">{t.wins}–{t.losses}</td>
-                  <td className={`py-1.5 text-right tabular-nums font-medium ${beatBreakeven ? "text-emerald-600" : "text-gray-500"}`}>
+                  <td className="py-1.5 text-right tabular-nums text-slate-600">
                     {pct(t.winRate)}
                   </td>
-                  <td className={`py-1.5 text-right tabular-nums ${t.roi != null && t.roi >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  <td className="py-1.5 text-right tabular-nums text-slate-600">
                     {roiStr(t.roi)}
                   </td>
                 </tr>
@@ -634,9 +614,9 @@ function MlbTotalBacktestPanel({ backtest }: { backtest: MlbTotalBacktest }) {
         </table>
       </div>
       <p className="mt-2 text-[11px] text-gray-400">
-        Win% ≥ 52.4% (green) clears the −110 breakeven. Settlement is automatic: the prediction
-        freezes pre-game in <code className="rounded bg-gray-100 px-1">mlb_matchups</code> and is
-        graded once the final score lands.
+        This panel is retained for transparency, not promotion. The current
+        <code className="mx-1 rounded bg-slate-100 px-1">mlb_matchups</code>
+        values are a latest-value cache and are not an immutable prediction record.
       </p>
     </div>
   );
@@ -1032,6 +1012,34 @@ function MlbPipelineHealthBanner({ issues }: { issues: MlbHealthIssue[] }) {
   );
 }
 
+function MlbResearchModeBanner({ issueCount }: { issueCount: number }) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50/80 p-4 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded border border-amber-400 bg-amber-100 px-2 py-0.5 text-[11px] font-bold tracking-wide text-amber-900">
+          RESEARCH MODE
+        </span>
+        <span className="font-semibold text-slate-900">MLB game lines are shadow signals</span>
+      </div>
+      <p className="mt-2 text-slate-700">{MLB_GAME_LINES_TRUST.description}</p>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <span className="rounded border border-slate-200 bg-white px-2 py-1 text-slate-700">
+          Moneyline: informational
+        </span>
+        <span className="rounded border border-slate-200 bg-white px-2 py-1 text-slate-700">
+          Totals: shadow tracking
+        </span>
+        <span className={`rounded border bg-white px-2 py-1 ${issueCount > 0 ? "border-red-300 text-red-700" : "border-slate-200 text-slate-600"}`}>
+          Basic pipeline checks: {issueCount > 0 ? `${issueCount} alert${issueCount === 1 ? "" : "s"}` : "no current alerts"}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-slate-600">
+        Model differences are shown to measure future performance. They are not betting recommendations.
+      </p>
+    </div>
+  );
+}
+
 // Closing Line Value (moneyline) — the sharpest small-sample edge signal: did
 // the market move toward our side between open and the last pre-kickoff snapshot?
 // Needs ≥2 snapshots per bet, so it reads "accruing" until the refresh cadence
@@ -1131,43 +1139,23 @@ type BettingRow = {
 // actionable in this diagnostic table. Replicating the exact "ev-30" (3pp)
 // strategy this used to gate MLB ML against 459 real historical bets shows
 // -4.86% ROI (every threshold tested, -4.9% to -9.3% ROI) — the market is
-// efficient there. MLB run line has no backtest at all, and NBA's ML/O-U bands
-// are the same unvalidated formula removed from the "Qualified" panels (see
-// memory mlb-gameline-caps-odds-bug). The only evidence-backed actionable
-// signal in this table is MLB O/U, gated separately by isOuActionable's
-// mlbTotalEdge check below, which never calls this function. sport/market
-// params are unused but kept so existing call sites don't need to change.
+// efficient there. MLB run line has no backtest at all, and the prior positive
+// O/U tier is now shadow-only pending prospective immutable validation. NBA's
+// ML/O-U bands are likewise unvalidated. sport/market params are unused but
+// kept so existing call sites don't need to change.
 function isActionableScore(
   score: number | null | undefined,
   _sport: Sport,
   _market: RecommendationMarket,
 ): score is number {
+  void _sport;
+  void _market;
   return false;
 }
-
-// Calibrated MLB O/U actionability. The walk-forward backtest
-// (getMlbTotalModelBacktest) shows our_total_pred edges < 1.0 run are
-// coin-flips (49–53%) while edges ≥ 1.0 run hit ~56% / +7% ROI. So a MLB O/U
-// lean is only "actionable" when the model disagrees with the line by ≥ 1 run.
-const MLB_TOTAL_ACTIONABLE_EDGE = 1.0;
 
 function mlbTotalEdge(m: VegasMatchupRow): number | null {
   if (m.ourTotalPred == null || m.vegasTotal == null) return null;
   return m.ourTotalPred - m.vegasTotal;
-}
-
-function isOuActionable(
-  m: VegasMatchupRow,
-  ouScore: number | null | undefined,
-  sport: Sport,
-): boolean {
-  if (sport === "mlb") {
-    const edge = mlbTotalEdge(m);
-    // With a model number, gate on the calibrated edge; otherwise fall back
-    // to the blended-score band (e.g. a game missing our_total_pred).
-    if (edge != null) return Math.abs(edge) >= MLB_TOTAL_ACTIONABLE_EDGE;
-  }
-  return isActionableScore(ouScore, sport, "ou");
 }
 
 function renderRecommendationScore(
@@ -1184,7 +1172,7 @@ function renderRecommendationScore(
   }
   const actionable = forceActionable ?? isActionableScore(score, sport, market);
   if (!actionable) {
-    return <span className="text-gray-400 text-xs">No edge</span>;
+    return <span className="text-gray-400 text-xs">{sport === "mlb" ? "Research only" : "No edge"}</span>;
   }
   return <ScoreBadge score={displayScore} label={label} signals={signals} />;
 }
@@ -1256,7 +1244,9 @@ export default function VegasClient({
       const ouScore = ou?.score ?? null;
       const spreadScore = spread?.score ?? null;
       const mlScore = ml?.score ?? null;
-      const ouActionable = isOuActionable(matchup, ouScore, sport);
+      const ouActionable = sport === "mlb"
+        ? isMlbGameLineActionable()
+        : isActionableScore(ouScore, sport, "ou");
       const actionableEdges = [
         ouActionable && ouScore != null ? Math.abs(ouScore - 0.5) : 0,
         isActionableScore(spreadScore, sport, "spread") ? Math.abs(spreadScore - 0.5) : 0,
@@ -1288,7 +1278,7 @@ export default function VegasClient({
           <h1 className="text-xl font-bold">Vegas Analysis — {sport.toUpperCase()}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {sport === "mlb"
-              ? "Matchup lines and historical O/U + run line calibration"
+              ? "Research-only model comparison, line history, and calibration audit"
               : "Matchup lines and historical O/U + spread calibration"}
           </p>
         </div>
@@ -1309,6 +1299,10 @@ export default function VegasClient({
           </button>
         </div>
       </div>
+
+      {sport === "mlb" && (
+        <MlbResearchModeBanner issueCount={mlbHealth?.length ?? 0} />
+      )}
 
       {/* ── Pipeline health (only renders when something is off) ── */}
       {sport === "mlb" && mlbHealth && mlbHealth.length > 0 && (
@@ -1666,17 +1660,15 @@ export default function VegasClient({
         )}
       </div>
 
-      {/* ── Betting Intelligence ─────────────────────────────── */}
+      {/* ── Model comparison / research status ───────────────── */}
       {matchups.length > 0 && hasScores && (
         <div className="rounded-lg border bg-card p-4 text-sm space-y-3">
           <div>
-            <h2 className="font-semibold">Betting Intelligence</h2>
+            <h2 className="font-semibold">Model Comparison — Research</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               {sport === "mlb"
-                ? "Only the O/U column is backtest-gated (model disagrees with the line by ≥1.0 run — see the O/U Backtest panel). ML and Run Line scores are shown for context only: the moneyline backtest below shows every threshold tested here loses money (-4.9% to -9.3% ROI), and run line has no backtest at all, so neither is ever marked Actionable."
-                : "O/U, ML, and spread scores here are unvalidated context — none has backtest-confirmed edge for NBA, so none is ever marked Actionable. Spread is additionally suppressed outright."}
-              {" "}
-              Low-edge rows are suppressed as no-edge calls.
+                ? "All MLB game-line outputs are shadow diagnostics. Our total and win probability remain visible so prospective performance can be measured, but no market is marked actionable."
+                : "O/U, ML, and spread scores here are unvalidated context — none has backtest-confirmed edge for NBA, so none is ever marked Actionable. Spread is additionally suppressed outright. Low-edge rows are suppressed as no-edge calls."}
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -1684,7 +1676,7 @@ export default function VegasClient({
               <thead>
                 <tr className="border-b text-gray-500">
                   <th className="py-1 text-left">Matchup</th>
-                  <th className="py-1 text-left">Actionable</th>
+                  <th className="py-1 text-left">{sport === "mlb" ? "Trust Status" : "Actionable"}</th>
                   <th className="py-1 text-right">Total</th>
                   {sport === "mlb" && <th className="py-1 text-right">Our Total</th>}
                   <th className="py-1 text-right">O/U Score</th>
@@ -1697,8 +1689,8 @@ export default function VegasClient({
                 {bettingRows.map((row) => {
                   const { matchup: m, ou, spread, ml, ouScore, spreadScore, mlScore, ouActionable } = row;
 
-                  // MLB O/U lean direction comes from the model edge (calibrated
-                  // ≥1-run gate); other sports/markets use the blended score.
+                  // MLB game lines are research-only. Other sports/markets use
+                  // their existing score display policies.
                   const mlbEdge = sport === "mlb" ? mlbTotalEdge(m) : null;
                   const ouLabel = ouActionable
                     ? sport === "mlb" && mlbEdge != null
@@ -1772,7 +1764,11 @@ export default function VegasClient({
                         )}
                       </td>
                       <td className="py-1.5">
-                        {actionableLabels.length > 0 ? (
+                        {sport === "mlb" ? (
+                          <span className="inline-flex rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                            Shadow only
+                          </span>
+                        ) : actionableLabels.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {actionableLabels.map((label) => (
                               <span
@@ -1879,7 +1875,7 @@ export default function VegasClient({
         </div>
       )}
 
-      {/* ── Model O/U Backtest (MLB) ──────────────────────────── */}
+      {/* ── Historical O/U diagnostic (MLB) ───────────────────── */}
       {sport === "mlb" && mlbTotalBacktest && (
         <MlbTotalBacktestPanel backtest={mlbTotalBacktest} />
       )}
