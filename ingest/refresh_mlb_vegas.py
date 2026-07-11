@@ -80,6 +80,13 @@ def _rate_and_settle_bets(db: DatabaseManager, refresh_date_iso: str) -> int:
     return rated
 
 
+def _settle_bets(db: DatabaseManager) -> int:
+    """Grade any pending bets whose scores arrived during a later stage."""
+    from model.mlb_game_bets import settle
+
+    return settle(db)
+
+
 def _rolling_backfill_window(target_date: date, days_back: int) -> tuple[str, str] | None:
     if days_back <= 0:
         return None
@@ -151,6 +158,15 @@ def run_refresh(
         else:
             print("mlb_odds_backfill: skipped (ODDS_API_KEY not set)")
             stages.append(("mlb_odds_backfill", True, "skipped"))
+
+    # The rolling schedule backfill is intentionally after today's rating pass,
+    # and it can add yesterday's final scores. Run settlement once more so those
+    # newly completed games do not remain pending until a future refresh.
+    ok, result = _run_refresh_stage(
+        "mlb_bet_settlement_final",
+        lambda: _settle_bets(db),
+    )
+    stages.append(("mlb_bet_settlement_final", ok, result))
 
     failures = [label for label, ok, _ in stages if not ok]
     if failures:
