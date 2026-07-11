@@ -3545,3 +3545,81 @@ Add golden and invariant tests for:
 9. one-observation-per-game backtest counts and date-clustered uncertainty;
 10. reproduction of the checked-in evaluation metrics from a frozen
     golden dataset.
+
+### UI implementation guidance for the remediation work (2026-07-11)
+
+The Vegas UI should evolve alongside P0-P3 so the user can understand the
+system's trust state without reading the database or this file. Prefer
+plain-language status, compact cards, small timelines, and expandable
+details over additional model jargon.
+
+#### Recommended visual hierarchy
+
+```
+System/model trust state
+        ↓
+Today's model number vs market
+        ↓
+Prediction inputs and pregame timeline
+        ↓
+Tracked results, uncertainty, and CLV
+        ↓
+Requirements remaining before validation
+```
+
+#### Components to add as their backing data becomes trustworthy
+
+1. **Model Status Banner** — one prominent state:
+   `RESEARCH MODE`, `SHADOW TRACKING`, or `VALIDATED`. Include a one-sentence
+   explanation and never infer `VALIDATED` from a point estimate alone.
+2. **Data Health Traffic Lights** — green/yellow/red checks for odds event
+   identity, commence-time coverage, team stats, pitcher stats, and
+   prediction freshness. Clicking a check should reveal the concrete issue
+   and affected-game count.
+3. **Model vs Market Card** — market line, our number, signed difference,
+   prediction time, reference source, and exact price/line when available.
+   During P0/P1 the difference is descriptive only: use neutral styling,
+   not `Strong`, `Lean`, `Qualified`, or `Actionable` language.
+4. **Live vs Backfill Badge** — every prediction/result clearly labeled
+   `LIVE` or `HISTORICAL BACKFILL`. Only live prospective rows contribute
+   to trusted performance panels.
+5. **Prediction Timeline** — a compact pregame line chart/timeline showing
+   market movement, model snapshots, selected side changes, and first
+   pitch. This should make post-commence writes and side flips visually
+   obvious.
+6. **One-Game/One-Market Ledger** — one expandable row per matchup/market,
+   with recommendation history nested below. Actual placed tickets, if
+   ever supported, render separately with book, line, price, and stake.
+7. **Performance Confidence Card** — record, ROI, unique-game sample size,
+   confidence interval, and CLV shown together. Never show ROI without the
+   denominator and uncertainty.
+8. **Validation Checklist** — e.g. `5 of 8 requirements passed`, driven by
+   the operational/statistical gates above. It explains exactly why a
+   market remains in research mode.
+9. **Integrity Alerts Panel** — plain-language failures such as
+   `12 games missing start times`, `pitcher history has not refreshed`, or
+   `2 odds events failed team matching`.
+10. **Blocked-State Explanation** — when a safe prediction cannot run,
+    show the reason rather than emitting a plausible neutral number.
+
+#### UI rollout aligned to implementation phases
+
+| Phase | UI change |
+|---|---|
+| P0 | Research-mode banner; neutral model-vs-market display; remove totals actionability; surface current pipeline-health failures |
+| P1 | Live/backfill badges; immutable prediction metadata; one-game/one-market expandable ledger; exact line/book/price display |
+| P2 | Performance confidence card; prospective-only filters; CLV/ROI uncertainty; validation checklist |
+| P3 | Model-version comparison and feature explanations, only after the underlying snapshots are reproducible |
+
+#### UI non-negotiables
+
+- Color must communicate trust state, not merely model direction. Green is
+  reserved for passed health/validation gates, not an Over lean.
+- Every performance number shows sample size and population type
+  (`prospective` vs `backfill`).
+- No action-oriented label appears until all applicable validation gates
+  pass.
+- Missing or stale inputs are visible; they are never silently presented as
+  league-average confidence.
+- Detailed provenance is expandable, while the default page remains easy
+  to scan.
