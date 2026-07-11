@@ -3227,3 +3227,321 @@ rather than fabricating a verdict from an incomplete or single cycle. No
 star rating changed. Re-run once the tournament concludes (for
 `outright_winner`'s first window) and again once a second global
 tournament's futures ledger exists (for either to ever reach 3).
+
+---
+
+## MLB Vegas Game-Line Model Audit — SWOT & Remediation Plan (2026-07-11)
+
+### Scope and standing decision
+
+This audit covers **MLB game moneylines and full-game totals only**. It
+does not cover DFS, player projections, or player-prop models. It reviews
+the complete game-line chain: odds ingestion, feature availability,
+moneyline/total models, prediction persistence, bet-ledger identity,
+settlement, CLV, and backtest reporting.
+
+**Standing decision:** the architecture is thoughtful, but the current
+MLB game-line backtest is **not decision-grade and does not demonstrate a
+bettable edge**.
+
+- **Moneyline:** informational / no-bet. Keep the 2-star cap.
+- **Totals:** shadow/research only. Keep the 2-star cap and remove the
+  `>= 1 run` **ACTIONABLE** UI treatment until a clean prospective test
+  passes the gates below.
+- **Underdog segment:** hypothesis-generating only. It is not confirmed by
+  a prospective sample, and the current audit script fails its own sanity
+  gate after later operational cleanup.
+- No segment may be uncapped from retrospective ROI, a mutable
+  `mlb_matchups` query, or a post-hoc edge slice.
+
+This section supersedes the older positive interpretation of the
+`>= 1 run` total tier. Earlier results remain in this file as an audit
+trail, but they are not current evidence of actionability.
+
+### Verified current-state snapshot
+
+Read-only checks against the live database plus fresh local evaluations
+on 2026-07-10 produced the following:
+
+| Check | Verified result | Interpretation |
+|---|---:|---|
+| `mlb_team_stats_history` | 0 rows | Point-in-time team strength is not operationally populated |
+| `mlb_pitcher_stats_history` | 0 rows | Point-in-time starter strength is not operationally populated |
+| Fresh totals holdout | n=271; our MAE 3.97 vs Vegas 3.91; side accuracy 48.1% | No current market-relative edge |
+| Fresh moneyline holdout | n=270; our Brier .2458 vs market .2454 | Slightly worse than market; all non-market coefficients were 0 |
+| `abs(our_total_pred - line) >= 1`, legacy dates | 264-208, 55.9% | Dominates the old positive UI claim; contaminated by older timing/data semantics |
+| Same total tier after the 2026-07-05 PIT fix | 15-17, 46.9% (n=32) | Too small to kill the idea, far too small to call actionable |
+| v2 duplicate decisions | 59 ML game-markets; 122 total game-markets | One matchup can contribute multiple/opposing ledger rows |
+| Odds-history away-team mismatch | 106 rows | Observed event-to-matchup identity failures, including next-series opponents |
+| Current matchup rows with impossible American prices | 200 | A writer can still reintroduce the pre-07-02 odds bug |
+| v2 bets with `event_commence IS NULL` | 2,038 / 2,649 | Most historical rows cannot prove a pregame lock time |
+| Settled v2 ML rows created >=7 days after game | 977 / 1,187 | Most underdog-study observations are retrospective backfills |
+
+The checked-in `mlb_total_v1_eval.json` and `mlb_ml_v1_eval.json` are
+therefore historical artifacts, not reproducible current baselines. They
+do not record a data cutoff, row population, feature-coverage counts,
+dependency versions, git SHA, or odds/prediction snapshot IDs.
+
+### SWOT
+
+#### Strengths
+
+1. **Correct market-aware prior.** Predicting `actual_total - vegas_total`
+   and anchoring moneyline probability to a vig-free market estimate are
+   more defensible than trying to out-predict a sharp MLB market from
+   scratch.
+2. **Chronological label discipline.** Both backfill trainers restrict
+   outcomes to dates strictly before the target date.
+3. **Appropriate benchmark metrics.** Totals compare MAE/bias with Vegas;
+   moneyline compares log loss and Brier with the market rather than
+   relying on raw accuracy.
+4. **Honest negative-result policy.** Both live game-line markets are
+   capped at 2 stars after failing their formal holdout checks.
+5. **Useful accountability infrastructure.** Model-version fields,
+   snapshots, settlement, score correction, CLV, best-price grading,
+   pre-registration, and explicit kill criteria are the right primitives.
+6. **Recent live-safety repairs are directionally correct.** The primary
+   Python odds path now uses probability-space moneyline consensus and
+   provider-plus-Stats-API commence guards.
+
+#### Weaknesses
+
+1. **The advertised baseball-strength features are currently dead.** The
+   point-in-time tables exist in schema/code but are empty in production.
+   Missing xFIP, K/9, wRC+, ISO, and bullpen values are silently replaced
+   with league averages, so row-count checks pass while the model carries
+   no player/team information. A green stats workflow can still write zero
+   usable rows.
+2. **The UI model backtests are mutable.** `our_total_pred`,
+   `our_prob_home`, and the reference odds live on `mlb_matchups`; rolling
+   backfill rewrites completed games, and the UI queries whatever values
+   happen to be present today. There is no immutable prediction-time line,
+   feature snapshot, generation timestamp, trained-through timestamp, or
+   artifact hash.
+3. **Prediction writers still lack a first-pitch guard.** The ledger
+   rating path now excludes started games, but the total/ML prediction
+   paths define “upcoming” as same-date plus not-final. Intraday refreshes
+   can rewrite an in-progress game's mutable prediction.
+4. **Odds ingestion has conflicting writers.** The primary Python path is
+   partially repaired, while `/vegas` and `/dfs` server actions can still
+   match by home team, arithmetic-average American prices, omit complete
+   event/commence identity, or update shared matchup odds outside the
+   canonical history path.
+5. **Odds event identity is not fail-closed.** Live fetching is not bounded
+   tightly enough to the target event, and historical backfill collapses
+   `home_name -> matchup`, which cannot represent a doubleheader. Both
+   teams plus event ID and commence proximity must agree before any write.
+6. **One game can create multiple/opposing “bets.”** Ledger uniqueness
+   includes `selection_label`. A home/away flip, Over/Under flip, or line
+   change inserts a second row rather than evolving one game-market
+   recommendation through snapshots. Settlement and generic calibration
+   then count every row.
+7. **Totals use non-executable price/probability math.** The ledger assumes
+   every total is -110 with a 0.5 market reference, even when real prices
+   are available. A rounded cross-book average line may not exist at any
+   book. Integer-line push probability is left out of binary EV, so
+   `p_win * decimal - 1` implicitly treats a push as a loss.
+8. **Historical samples mix incompatible regimes.** They combine US-only
+   historical snapshots with US+EU live consensus, fixed 20:00 UTC
+   historical captures with variable live closes, actual archived weather
+   with pregame forecasts, old leaky stats with neutral post-fix features,
+   and multiple rating semantics under unchanged model-version strings.
+9. **Confirmatory claims are not reproducible.** The underdog script now
+   stops because `_SANITY_EXPECTED_N=65` but cleanup leaves 63 stored
+   5-star rows. Repairs changed live rows in place without a checked-in,
+   versioned repair artifact.
+10. **Automated coverage is absent.** Existing tests do not exercise game
+    odds identity, consensus math, point-in-time joins, first-pitch
+    exclusion, side flips, pushes, settlement, immutable predictions, or
+    backtest population rules.
+
+#### Opportunities
+
+1. Build one canonical, event-ID-based odds and decision ledger, then use
+   it for both research and the UI.
+2. Fail closed on missing/constant features instead of silently degrading
+   a multivariate model into a market-only model.
+3. Separate a sharp reference close from an executable entry price; grade
+   every ticket at an exact book/line/price pair.
+4. Rebuild the evidence base from prospective immutable observations and
+   evaluate it with rolling-origin folds, date-block bootstrap intervals,
+   CLV, and real-price ROI.
+5. Once the data layer is trustworthy, improve ML with a fixed market-logit
+   offset and totals with an out-of-fold empirical residual or
+   negative-binomial distribution.
+6. Add genuinely time-sensitive baseball features only with point-in-time
+   provenance: reliever-only workload/FIP, confirmed starter/lineup,
+   handedness, roof state, forecast weather, and umpire assignment.
+
+#### Threats
+
+1. MLB closing moneylines and totals are highly efficient; public
+   season-aggregate features may never provide enough incremental signal
+   to clear vig.
+2. A wrong-game, stale, or in-play price can manufacture both apparent
+   model edge and fictional payout without throwing an exception.
+3. Longshot ROI, repeated threshold searches, and correlated series games
+   create a high false-discovery risk.
+4. Starter scratches, rain delays, shortened games, and book-specific
+   settlement rules can make a paper edge non-executable.
+5. Silent upstream degradation is more dangerous than choosing Ridge
+   versus another algorithm: plausible outputs continue even when all
+   advertised baseball features are constants.
+
+### Proposed fixes — implementation order
+
+#### P0 — Stop unsupported actionability and close integrity holes
+
+**Status: planned. Required before any further game-line model tuning.**
+
+1. **Remove MLB totals actionability from the UI.** In
+   `web/src/app/vegas/vegas-client.tsx`, remove the `>=1.0` actionable gate,
+   `ACTIONABLE` chip, and historical `~56% / +7% ROI` copy. Display
+   `our_total_pred` as a shadow diagnostic with an explicit no-validated-
+   edge label. Keep both game-line markets capped at 2 stars.
+2. **Canonicalize odds writes.** Move probability-space consensus,
+   event-resolution, pre-commence guards, and history insertion into one
+   shared service. Route or remove direct MLB odds updates in
+   `web/src/app/vegas/actions.ts` and `web/src/app/dfs/actions.ts`.
+3. **Make event resolution fail closed.** Bound the Odds API request to a
+   target commence window. Require provider event ID when available,
+   matching home AND away teams, and a maximum commence-time delta. Reject
+   ambiguity; never “use first.” Resolve doubleheaders by event/time rather
+   than a home-team dictionary.
+4. **Add hard odds invariants.** Reject American prices strictly inside
+   `(-100, +100)`, probabilities outside `[0,1]`, same-team matchups,
+   post-commence captures, and event/team mismatches. Add production health
+   queries/alerts and repair remaining invalid rows through a versioned,
+   repeatable script.
+5. **Require commence time.** Do not create a prediction or rated game-line
+   recommendation when `commence_time` is NULL. Add the same
+   `commence_time > NOW()` guard to `predict_and_write()` that exists in
+   `rate_slate()`.
+6. **Make stats refresh fail loudly.** The workflow must fail if team or
+   pitcher history writes zero rows, freshness exceeds the agreed SLA, or
+   required feature coverage/variance falls below threshold.
+
+#### P1 — Create immutable prediction and ticket accounting
+
+**Status: planned. Required before rebuilding the backtest.**
+
+1. Add `mlb_prediction_runs` and `mlb_game_prediction_snapshots` (names may
+   vary) with at least:
+
+   ```
+   run_id, matchup_id, generated_at, trained_through,
+   model_version, git_sha, dependency_lock_hash,
+   origin (prospective | retrospective_backfill),
+   odds_snapshot_id, book/reference_panel, market, line, price,
+   feature_available_at, feature_source/window/sample metadata,
+   feature_values + missingness flags,
+   raw_prediction, calibrated_probability
+   ```
+
+2. Predictions become append-only. Never overwrite the historical record
+   used for evaluation. `mlb_matchups.our_*` may remain a latest-value cache
+   for rendering, but it must not be a backtest source.
+3. Split **recommendations** from **placed tickets**. A recommendation has
+   one stable key per `(model_version, matchup_id, market, decision_phase)`
+   and evolves through snapshots. A ticket is an explicit immutable event
+   with book, exact line/price, stake, placed timestamp, and settlement
+   rules. Side/line changes must not accidentally create implied wagers.
+4. Store `p_win`, `p_push`, and `p_loss` for totals. Compute
+   `EV = p_win * (decimal - 1) - p_loss`; preserve `push` separately from
+   cancellations/postponements (`void`).
+5. Bump model/data-policy versions whenever point-in-time semantics,
+   anchoring, feature sources, pricing, or star caps change. Never repair a
+   versioned historical row in place without a separately versioned derived
+   record and reproducible migration.
+
+#### P2 — Rebuild a clean prospective backtest
+
+**Status: blocked on P0/P1.**
+
+1. Exclude retrospective backfills from accountability, CLV, and ROI
+   claims. They may be labeled and retained for exploratory research only.
+2. Use one independent observation per unique game/market/policy. Cluster
+   uncertainty by game date (and inspect team/series concentration).
+3. Use rolling-origin folds with an untouched final window. Hyperparameter
+   or threshold selection must occur inside earlier folds, not on the final
+   evaluation sample.
+4. Grade moneyline against market log loss/Brier and actual executable
+   ROI. Grade totals at the exact line and side price, with pushes and
+   turnover handled correctly. Report sharp-close CLV separately from
+   best-accessible-book execution.
+5. Pre-register the market, selection rule, sample floor, primary metric,
+   and kill criterion before examining outcomes. Do not rescue a failed
+   market by slicing adjacent totals/odds ranges after the fact.
+6. The existing underdog discovery population stays exploratory. Any
+   confirmation population must be prospective and independent, not the
+   old rows plus enough new rows to cross `n=200`.
+
+#### P3 — Improve the algorithms only after the data gates pass
+
+**Status: deferred.**
+
+1. **Moneyline:** use `logit(market_probability)` as a fixed offset and
+   learn only a regularized residual adjustment. This is a stronger market
+   anchor than fitting an unrestricted market coefficient and shrinking a
+   second time in the rating layer.
+2. **Totals:** estimate win/push/loss probabilities from out-of-fold
+   residuals by line/regime or a calibrated negative-binomial model rather
+   than applying a soccer Poisson distribution to a Ridge mean.
+3. Replace mislabeled `bullpen_fip` (currently staff pitching) with true
+   reliever-only quality plus 1-3 day workload. Add confirmed starters,
+   lineup strength/handedness, roof, forecast weather, and umpire only when
+   each has immutable `available_at < commence_time` provenance.
+4. Compare every feature addition incrementally against the same frozen
+   market-relative evaluation protocol. No bundled feature search and no
+   new live rating tier from in-sample lift.
+
+### Validation gates before any MLB game-line can be actionable
+
+All operational gates must pass continuously:
+
+- 0 invalid American prices and 0 event/team identity mismatches.
+- 100% non-null commence time for rated/predicted events.
+- 0 post-commence odds, prediction, recommendation, or ticket writes.
+- Point-in-time team/pitcher history fresh and populated; proposed minimum
+  feature coverage is >=95% of eligible games, with no required feature
+  silently constant because of fallback.
+- 0 duplicate active recommendations per game/market/policy.
+- Every evaluated prediction references an immutable odds snapshot,
+  feature snapshot, model version, and generation time.
+- Checked-in evaluation artifact reproduces from recorded row IDs and
+  includes data cutoff, git SHA, dependency versions, seed, feature
+  coverage, and exclusion counts.
+
+Then the statistical/economic gates must also pass on the separately
+pre-registered **prospective** population:
+
+- The pre-registered minimum number of **unique games** is reached; no
+  duplicate/opposing ledger rows count toward the floor.
+- Market-relative proper scoring is no worse than the reference market.
+- ROI at actual executable prices has a confidence interval whose lower
+  bound is above 0.
+- CLV against the chosen sharp close is positive and stable, not carried
+  by one team, month, odds tail, or half of the sample.
+- The result survives the untouched final window and all pre-registered
+  split/stability checks.
+
+Until every applicable gate passes, the only honest MLB game-line label is
+**shadow / no demonstrated edge**.
+
+### Required automated tests
+
+Add golden and invariant tests for:
+
+1. probability-space consensus across every ingestion surface;
+2. exact event/team/date/time matching, including a split doubleheader,
+   reschedule, and rain delay;
+3. rejection of invalid, stale, in-play, and NULL-commence odds;
+4. strict `available_at < commence_time` point-in-time feature joins;
+5. prediction immutability and reproducible artifact generation;
+6. home/away and Over/Under flips without duplicate recommendations;
+7. exact-line total pricing, push EV, cancellation voiding, and idempotent
+   score correction/re-settlement;
+8. prospective-versus-backfill population filters;
+9. one-observation-per-game backtest counts and date-clustered uncertainty;
+10. reproduction of the checked-in evaluation metrics from a frozen
+    golden dataset.
