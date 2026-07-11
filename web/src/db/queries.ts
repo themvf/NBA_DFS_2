@@ -8342,6 +8342,143 @@ export type MlbBetBacktestRow = {
   brier: number | null;
 };
 
+export type MlbActionabilityEvidenceRow = {
+  market: "moneyline" | "total";
+  modelVersion: string | null;
+  settledUniqueGames: number;
+  settledBets: number;
+  roi: number | null;
+  roiConfidenceLowerBound: number | null;
+  clvN: number;
+  avgClvPp: number | null;
+  exactPriceCoverage: number;
+  missingCommence: number;
+  postCommenceWrites: number;
+  invalidPrices: number;
+  duplicateActiveRecommendations: number;
+  prospectiveTrackingAvailable: boolean;
+  immutableFeatureSnapshotsAvailable: boolean;
+};
+
+/**
+ * Ledger-only facts consumed by the centralized MLB actionability policy.
+ * Missing prospective/feature-snapshot capabilities are explicit false gates;
+ * mutable mlb_matchups prediction fields are deliberately absent.
+ */
+export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvidenceRow[]> {
+  const rows = await db.execute(sql`
+    WITH latest AS (
+      SELECT model_version
+      FROM mlb_bets
+      GROUP BY model_version
+      ORDER BY MAX(created_at) DESC
+      LIMIT 1
+    ),
+    current_bets AS (
+      SELECT b.*
+      FROM mlb_bets b
+      WHERE b.model_version = (SELECT model_version FROM latest)
+        AND b.bet_type IN ('moneyline', 'total')
+    ),
+    duplicate_groups AS (
+      SELECT bet_type, COUNT(*)::int AS n
+      FROM (
+        SELECT bet_type, matchup_id
+        FROM current_bets
+        WHERE status = 'pending'
+        GROUP BY bet_type, matchup_id
+        HAVING COUNT(*) > 1
+      ) d
+      GROUP BY bet_type
+    ),
+    snaps AS (
+      SELECT s.bet_id, s.market_prob,
+        ROW_NUMBER() OVER (PARTITION BY s.bet_id ORDER BY s.captured_at ASC) AS first_rank,
+        ROW_NUMBER() OVER (PARTITION BY s.bet_id ORDER BY s.captured_at DESC) AS last_rank,
+        COUNT(*) OVER (PARTITION BY s.bet_id) AS snapshot_count
+      FROM mlb_bet_snapshots s
+      JOIN current_bets b ON b.id = s.bet_id
+      WHERE b.bet_type = 'moneyline' AND s.market_prob IS NOT NULL
+    ),
+    clv AS (
+      SELECT first.bet_id, (last.market_prob - first.market_prob) * 100.0 AS clv_pp
+      FROM snaps first
+      JOIN snaps last ON last.bet_id = first.bet_id
+      WHERE first.first_rank = 1 AND last.last_rank = 1
+        AND first.snapshot_count >= 2 AND last.snapshot_count >= 2
+    )
+    SELECT
+      b.bet_type AS market,
+      MAX(b.model_version) AS "modelVersion",
+      COUNT(DISTINCT b.matchup_id) FILTER (WHERE b.status IN ('won', 'lost'))::int AS "settledUniqueGames",
+      COUNT(*) FILTER (WHERE b.status IN ('won', 'lost'))::int AS "settledBets",
+      AVG(
+        CASE WHEN b.status = 'won' THEN b.market_decimal - 1.0 ELSE -1.0 END
+      ) FILTER (WHERE b.status IN ('won', 'lost') AND b.market_decimal IS NOT NULL) AS roi,
+      COUNT(DISTINCT c.bet_id)::int AS "clvN",
+      AVG(c.clv_pp) AS "avgClvPp",
+      COALESCE(
+        COUNT(*) FILTER (WHERE b.market_odds IS NOT NULL AND b.book IS NOT NULL)::float
+          / NULLIF(COUNT(*), 0),
+        0
+      ) AS "exactPriceCoverage",
+      COUNT(*) FILTER (WHERE b.event_commence IS NULL)::int AS "missingCommence",
+      COUNT(*) FILTER (
+        WHERE b.event_commence IS NOT NULL AND b.created_at >= b.event_commence
+      )::int AS "postCommenceWrites",
+      COUNT(*) FILTER (
+        WHERE b.market_odds IS NULL OR (b.market_odds > -100 AND b.market_odds < 100)
+      )::int AS "invalidPrices",
+      COALESCE(MAX(d.n), 0)::int AS "duplicateActiveRecommendations"
+    FROM current_bets b
+    LEFT JOIN clv c ON c.bet_id = b.id
+    LEFT JOIN duplicate_groups d ON d.bet_type = b.bet_type
+    GROUP BY b.bet_type
+    ORDER BY b.bet_type
+  `);
+
+  const mapped = (rows.rows as Record<string, unknown>[]).map((r) => ({
+    market: String(r.market) as "moneyline" | "total",
+    modelVersion: r.modelVersion != null ? String(r.modelVersion) : null,
+    settledUniqueGames: Number(r.settledUniqueGames ?? 0),
+    settledBets: Number(r.settledBets ?? 0),
+    roi: r.roi != null ? Number(r.roi) : null,
+    roiConfidenceLowerBound: null,
+    clvN: Number(r.clvN ?? 0),
+    avgClvPp: r.avgClvPp != null ? Number(r.avgClvPp) : null,
+    exactPriceCoverage: Number(r.exactPriceCoverage ?? 0),
+    missingCommence: Number(r.missingCommence ?? 0),
+    postCommenceWrites: Number(r.postCommenceWrites ?? 0),
+    invalidPrices: Number(r.invalidPrices ?? 0),
+    duplicateActiveRecommendations: Number(r.duplicateActiveRecommendations ?? 0),
+    // The current schema has no authoritative origin or immutable feature-run
+    // foreign key. Keep these gates false until P1 adds them; never infer them.
+    prospectiveTrackingAvailable: false,
+    immutableFeatureSnapshotsAvailable: false,
+  }));
+
+  return (["moneyline", "total"] as const).map(
+    (market) =>
+      mapped.find((row) => row.market === market) ?? {
+        market,
+        modelVersion: null,
+        settledUniqueGames: 0,
+        settledBets: 0,
+        roi: null,
+        roiConfidenceLowerBound: null,
+        clvN: 0,
+        avgClvPp: null,
+        exactPriceCoverage: 0,
+        missingCommence: 0,
+        postCommenceWrites: 0,
+        invalidPrices: 0,
+        duplicateActiveRecommendations: 0,
+        prospectiveTrackingAvailable: false,
+        immutableFeatureSnapshotsAvailable: false,
+      },
+  );
+}
+
 // ── MLB pipeline health (Tier 1: operational "something's off") ────────────────
 // Silent failure has been the recurring failure mode of this whole system (wrong
 // settlements, NULL commence_time, mixed model versions). This surfaces the

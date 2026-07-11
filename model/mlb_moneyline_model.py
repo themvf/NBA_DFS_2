@@ -34,6 +34,8 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
+from model.mlb_pregame import eligible_pregame_matchup_ids
+
 from config import load_config
 from db.database import DatabaseManager
 from model.mlb_game_total_model import (
@@ -121,7 +123,13 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
 
     feat_ok = df[FEATURE_COLS].notna().all(axis=1)
     completed = df[feat_ok & df["home_win"].notna()]
-    upcoming = df[feat_ok & df["home_win"].isna() & (df["game_date"] == target_date)]
+    eligible_ids = eligible_pregame_matchup_ids(db, target_date)
+    upcoming = df[
+        feat_ok
+        & df["home_win"].isna()
+        & (df["game_date"] == target_date)
+        & df["id"].isin(eligible_ids)
+    ]
 
     if len(completed) < _MIN_TRAIN_GAMES:
         logger.info("Only %d completed MLB games — too few to train moneyline", len(completed))

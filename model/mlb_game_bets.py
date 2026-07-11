@@ -168,10 +168,9 @@ def rate_slate(db: DatabaseManager, game_date: str | None = None) -> int:
     # pitches, minting post-hoc "bets" nightly — 2026-07-08 incident; the
     # worst were rated on in-play odds that had leaked into mlb_matchups,
     # e.g. a +3300 in-play PHI line frozen as a 34.0-decimal "closing" price).
-    # NULL commence_time is kept (future games whose start time isn't known
-    # yet) — the odds-side guards protect those rows from in-play prices.
     where = "m.game_date = %s" if game_date else "m.game_date >= CURRENT_DATE"
-    where += " AND (m.commence_time IS NULL OR m.commence_time > NOW())"
+    # Fail closed: unknown start times cannot prove a record is pregame.
+    where += " AND m.commence_time IS NOT NULL AND m.commence_time > NOW()"
     params: tuple = (game_date,) if game_date else ()
     fixtures = _fixtures(db, where, params)
     if not fixtures:

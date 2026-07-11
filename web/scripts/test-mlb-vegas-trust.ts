@@ -2,12 +2,56 @@ import assert from "node:assert/strict";
 
 import {
   describeMlbTotalEdge,
+  evaluateMlbActionability,
   isMlbGameLineActionable,
   MLB_GAME_LINES_TRUST,
 } from "../src/lib/mlb-vegas-trust";
 
 assert.equal(MLB_GAME_LINES_TRUST.state, "research");
 assert.equal(isMlbGameLineActionable(), false);
+
+const evidence = {
+  market: "moneyline" as const,
+  modelVersion: "test-v1",
+  settledUniqueGames: 150,
+  settledBets: 150,
+  roi: 0.03,
+  roiConfidenceLowerBound: 0.005,
+  clvN: 150,
+  avgClvPp: 1.2,
+  exactPriceCoverage: 1,
+  missingCommence: 0,
+  postCommenceWrites: 0,
+  invalidPrices: 0,
+  duplicateActiveRecommendations: 0,
+  prospectiveTrackingAvailable: true,
+  immutableFeatureSnapshotsAvailable: true,
+};
+
+const actionable = evaluateMlbActionability(evidence);
+assert.equal(actionable.state, "actionable");
+assert.equal(isMlbGameLineActionable(actionable), true);
+
+const research = evaluateMlbActionability({
+  ...evidence,
+  prospectiveTrackingAvailable: false,
+  immutableFeatureSnapshotsAvailable: false,
+});
+assert.equal(research.state, "research");
+assert.equal(isMlbGameLineActionable(research), false);
+
+const watch = evaluateMlbActionability({
+  ...evidence,
+  settledUniqueGames: 20,
+  roiConfidenceLowerBound: null,
+});
+assert.equal(watch.state, "watch");
+
+const blocked = evaluateMlbActionability({
+  ...evidence,
+  postCommenceWrites: 1,
+});
+assert.equal(blocked.state, "blocked");
 
 assert.deepEqual(describeMlbTotalEdge(1.24), {
   side: "Over",

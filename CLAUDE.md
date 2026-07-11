@@ -3392,7 +3392,7 @@ dependency versions, git SHA, or odds/prediction snapshot IDs.
 
 #### P0 — Stop unsupported actionability and close integrity holes
 
-**Status: planned. Required before any further game-line model tuning.**
+**Status: in progress. Required before any further game-line model tuning.**
 
 1. **Remove MLB totals actionability from the UI.** In
    `web/src/app/vegas/vegas-client.tsx`, remove the `>=1.0` actionable gate,
@@ -3623,3 +3623,115 @@ Requirements remaining before validation
   league-average confidence.
 - Detailed provenance is expandable, while the default page remains easy
   to scan.
+
+---
+
+## Permanent Delivery Contract — Evidence Before “Done” (2026-07-11)
+
+These instructions apply to every model, betting, analytics, ingestion, and
+UI change going forward. They are acceptance requirements, not optional
+documentation guidance.
+
+### Definition of done
+
+Every request must be translated into observable acceptance criteria before
+implementation. A feature is not complete merely because code exists. Report
+its state explicitly as one of:
+
+1. **Built** — implementation exists.
+2. **Tested** — required automated checks pass.
+3. **Backtested** — evaluated on historical data, clearly labeled with its
+   population and point-in-time limitations.
+4. **Prospectively validated** — passed pre-registered gates on newly captured,
+   immutable observations.
+5. **Production actionable** — prospectively validated and currently passing
+   every operational, statistical, and economic gate.
+
+Never collapse these states into a generic “done.”
+
+### Source-of-truth declaration
+
+Every material feature must document and enforce:
+
+- its canonical table/service and the exact fields consumed by the UI;
+- when records become immutable and which process may update them;
+- how corrections are represented without rewriting the audit trail;
+- which data is operational cache, diagnostic history, retrospective backfill,
+  prospective evidence, recommendation, or placed ticket;
+- the model/data-policy version and timestamp provenance.
+
+For MLB Vegas game lines, `mlb_bets` plus its associated snapshot/history
+records are the canonical decision ledger. `mlb_matchups.our_*` fields are a
+latest-value operational/rendering cache and must never independently confer
+actionability or serve as the trusted performance population.
+
+### Executable trust policy
+
+Actionability rules must exist in one tested policy module. UI components may
+render the returned decision but may not recreate thresholds, infer validation
+from star ratings, point estimates, or colors, or promote a diagnostic result.
+Every decision must be one of `blocked`, `research`, `watch`, `actionable`, or
+`retired`, with machine-readable passed/failed gates and plain-language reasons.
+
+Promotion gates must be written before examining the confirmation outcomes.
+Any change to sample floors, metrics, eligibility, prices, features, or kill
+criteria requires a new policy/model version. A failed study may not be rescued
+by post-hoc slicing and relabeling.
+
+### Required evidence handoff
+
+Every completed implementation must provide a requirement-to-evidence table:
+
+```
+Requirement | Canonical implementation | Automated test | Result | Limitation
+```
+
+The handoff must list commands run, pass/fail results, known exceptions, data
+cutoff, and whether external/live state was mutated. A limitation that blocks a
+required acceptance criterion means the feature is partial, not complete.
+
+### Required end-to-end protections
+
+Where applicable, tests must prove that:
+
+- post-event refreshes cannot alter a frozen decision;
+- stale, invalid, ambiguous, in-play, or missing-commence prices fail closed;
+- the UI cannot display `Actionable` unless every centralized policy gate passes;
+- mutable cache fields cannot change historical decision evidence;
+- displayed book/line/price equals the immutable decision record;
+- corrections are versioned/re-settled and idempotent;
+- scheduled workflows complete ingestion, settlement, and health verification in
+  the correct order;
+- prospective and retrospective populations cannot be mixed silently.
+
+### MLB Vegas implementation contract
+
+The remaining remediation work must follow this dependency order:
+
+1. Enforce one centralized ledger-backed actionability policy and surface its
+   checklist in the Vegas UI.
+2. Close P0 ingestion/event/commence/odds invariant gaps.
+3. Add immutable feature/prediction provenance missing from the current ledger.
+4. Build a prospective-only evaluation artifact with pre-registered gates.
+5. Promote markets individually only after their gates pass; add conservative
+   staking only after promotion.
+
+Until then, existing star ratings, EV fields, historical ROI, and model-versus-
+market differences remain evidence inputs—not permission to recommend a wager.
+
+### Implementation progress
+
+- **2026-07-11 — centralized enforcement started:**
+  `web/src/lib/mlb-vegas-trust.ts` now owns the versioned MLB game-line
+  actionability policy and its `blocked/research/watch/actionable/retired`
+  states. `getMlbActionabilityEvidence()` reads ledger/snapshot evidence only;
+  the Vegas UI renders its gate checklist and cannot infer validation from
+  `mlb_matchups.our_*` fields.
+- **2026-07-11 — live commence guard enforced:** live totals predictions,
+  moneyline predictions, and rated game-line records now require a non-null
+  `commence_time > NOW()` through shared pregame eligibility. Historical
+  backfills remain a separate explicitly non-live path.
+- Current policy remains blocked/research as appropriate. Existing historical
+  rows reveal missing commence provenance, post-commence writes, no exact-book
+  price coverage, incomplete prospective-origin separation, and missing
+  immutable feature-run references; none is silently treated as passed.

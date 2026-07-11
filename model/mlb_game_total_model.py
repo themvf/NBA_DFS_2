@@ -37,6 +37,8 @@ import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 
+from model.mlb_pregame import eligible_pregame_matchup_ids
+
 from config import load_config
 from db.database import DatabaseManager
 from model.mlb_projections import (
@@ -251,9 +253,11 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         return 0
 
     df = build_features(df)
+    eligible_ids = eligible_pregame_matchup_ids(db, target_date)
     completed = df.dropna(subset=["actual_total", "vegas_total"] + FEATURE_COLS)
     upcoming = df[
         (df["game_date"] == target_date)
+        & df["id"].isin(eligible_ids)
         & df["actual_total"].isna()
         & df[FEATURE_COLS].notna().all(axis=1)
     ]

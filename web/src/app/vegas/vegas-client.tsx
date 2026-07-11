@@ -17,6 +17,7 @@ import type {
   MlbBetRow,
   MlbBetBacktestRow,
   MlbBetSideRow,
+  MlbActionabilityEvidenceRow,
   MlbClvRow,
   MlbLineMovementRow,
   LineMovementHistoryRow,
@@ -31,7 +32,9 @@ import MovementHistoryPanel from "./movement-history-panel";
 import type { Sport } from "@/db/queries";
 import {
   describeMlbTotalEdge,
+  evaluateMlbActionability,
   isMlbGameLineActionable,
+  type MlbActionabilityDecision,
   MLB_GAME_LINES_TRUST,
 } from "@/lib/mlb-vegas-trust";
 
@@ -1012,7 +1015,15 @@ function MlbPipelineHealthBanner({ issues }: { issues: MlbHealthIssue[] }) {
   );
 }
 
-function MlbResearchModeBanner({ issueCount }: { issueCount: number }) {
+function MlbResearchModeBanner({
+  issueCount,
+  decisions,
+}: {
+  issueCount: number;
+  decisions: MlbActionabilityDecision[];
+}) {
+  const actionable = decisions.filter((decision) => decision.state === "actionable").length;
+  const blocked = decisions.filter((decision) => decision.state === "blocked").length;
   return (
     <div className="rounded-lg border border-amber-300 bg-amber-50/80 p-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -1032,10 +1043,61 @@ function MlbResearchModeBanner({ issueCount }: { issueCount: number }) {
         <span className={`rounded border bg-white px-2 py-1 ${issueCount > 0 ? "border-red-300 text-red-700" : "border-slate-200 text-slate-600"}`}>
           Basic pipeline checks: {issueCount > 0 ? `${issueCount} alert${issueCount === 1 ? "" : "s"}` : "no current alerts"}
         </span>
+        <span className={`rounded border bg-white px-2 py-1 ${actionable > 0 ? "border-emerald-300 text-emerald-700" : blocked > 0 ? "border-red-300 text-red-700" : "border-amber-300 text-amber-800"}`}>
+          Validation policy: {actionable > 0 ? `${actionable} actionable` : blocked > 0 ? `${blocked} blocked` : "collecting evidence"}
+        </span>
       </div>
       <p className="mt-2 text-xs text-slate-600">
         Model differences are shown to measure future performance. They are not betting recommendations.
       </p>
+    </div>
+  );
+}
+
+function MlbValidationChecklist({ decisions }: { decisions: MlbActionabilityDecision[] }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="font-semibold text-slate-900">Actionability validation</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Ledger-backed requirements. The UI cannot promote a market unless every gate passes.
+          </p>
+        </div>
+        <span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600">
+          {decisions[0]?.policyVersion ?? "policy unavailable"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {decisions.map((decision) => (
+          <details key={decision.market} className="rounded border border-slate-200 bg-slate-50 p-3" open>
+            <summary className="cursor-pointer list-none">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium capitalize text-slate-900">{decision.market}</span>
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${decision.state === "actionable" ? "bg-emerald-100 text-emerald-800" : decision.state === "blocked" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>
+                  {decision.state}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {decision.passed}/{decision.total} requirements passed · {decision.summary}
+              </div>
+            </summary>
+            <ul className="mt-3 space-y-1.5 text-xs">
+              {decision.gates.map((gate) => (
+                <li key={gate.key} className="flex items-start gap-2">
+                  <span className={gate.passed ? "text-emerald-600" : gate.blocking ? "text-red-600" : "text-amber-600"}>
+                    {gate.passed ? "✓" : "○"}
+                  </span>
+                  <span>
+                    <span className="font-medium text-slate-700">{gate.label}</span>
+                    <span className="block text-slate-500">{gate.detail}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1107,6 +1169,7 @@ type Props = {
   mlbBets: MlbBetRow[] | null;
   mlbBetBacktest: MlbBetBacktestRow[] | null;
   mlbBetBySide: MlbBetSideRow[] | null;
+  mlbActionabilityEvidence: MlbActionabilityEvidenceRow[] | null;
   mlbClv: MlbClvRow[] | null;
   mlbLineMovement: MlbLineMovementRow[] | null;
   mlbLineAlerts: LineAlertRow[] | null;
@@ -1188,6 +1251,7 @@ export default function VegasClient({
   mlbBets,
   mlbBetBacktest,
   mlbBetBySide,
+  mlbActionabilityEvidence,
   mlbClv,
   mlbLineMovement,
   mlbLineAlerts,
@@ -1203,6 +1267,9 @@ export default function VegasClient({
 }: Props) {
   const router = useRouter();
   const [dateInput, setDateInput] = useState(queryDate);
+  const mlbActionabilityDecisions = (mlbActionabilityEvidence ?? []).map(
+    evaluateMlbActionability,
+  );
   const [isPending, startTransition] = useTransition();
   const [fetchMsg, setFetchMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -1301,7 +1368,14 @@ export default function VegasClient({
       </div>
 
       {sport === "mlb" && (
-        <MlbResearchModeBanner issueCount={mlbHealth?.length ?? 0} />
+        <MlbResearchModeBanner
+          issueCount={mlbHealth?.length ?? 0}
+          decisions={mlbActionabilityDecisions}
+        />
+      )}
+
+      {sport === "mlb" && mlbActionabilityDecisions.length > 0 && (
+        <MlbValidationChecklist decisions={mlbActionabilityDecisions} />
       )}
 
       {/* ── Pipeline health (only renders when something is off) ── */}
