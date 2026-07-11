@@ -3761,3 +3761,13 @@ market differences remain evidence inputs—not permission to recommend a wager.
   prospective rows. End-to-end verification created 2 prospective runs, 14
   prediction snapshots (all linked to pregame odds), and 14 pending v3 ledger
   rows across 7 future games; all 14 bets reference a snapshot.
+- **2026-07-11 — coverage false-positive repair:** MLB backfill coverage now
+  evaluates only canonical `game_id IS NOT NULL` rows and excludes postponed or
+  cancelled games from score/odds completeness. Legacy game-id-less rows are
+  counted and surfaced separately instead of manufacturing missing-score dates.
+  “Complete through” was renamed “Latest complete date” to match the actual
+  statistic. The missing-only odds backfill now triggers when moneylines are
+  absent even if a total exists. May 31 was re-attempted after restoring MLB
+  schedule start times; the one remaining afternoon-game moneyline is correctly
+  classified as provider-partial because the available 20:00 UTC snapshot was
+  already in-play and was rejected.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   describeMlbTotalEdge,
@@ -74,5 +75,27 @@ assert.deepEqual(describeMlbTotalEdge(0), {
 });
 assert.equal(describeMlbTotalEdge(null), null);
 assert.equal(describeMlbTotalEdge(Number.NaN), null);
+
+const coverageQuerySource = readFileSync(
+  new URL("../src/db/queries.ts", import.meta.url),
+  "utf8",
+);
+assert.match(coverageQuerySource, /m\.game_id IS NOT NULL/);
+assert.match(
+  coverageQuerySource,
+  /COALESCE\(m\.game_status, ''\) NOT IN \('Postponed', 'Cancelled'\)/,
+);
+assert.match(coverageQuerySource, /orphanHistoricalRows/);
+assert.match(
+  coverageQuerySource,
+  /game_date < \(NOW\(\) AT TIME ZONE 'America\/New_York'\)::date/,
+);
+
+const vegasClientSource = readFileSync(
+  new URL("../src/app/vegas/vegas-client.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(vegasClientSource, /Latest complete date:/);
+assert.match(vegasClientSource, /Legacy orphan rows excluded:/);
 
 console.log("MLB Vegas trust-policy tests passed");

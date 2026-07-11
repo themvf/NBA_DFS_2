@@ -59,7 +59,7 @@ def _dates_with_games(db: DatabaseManager, start: str, end: str, missing_only: b
             SELECT DISTINCT game_date::text AS game_date
             FROM mlb_matchups
             WHERE game_date BETWEEN %s AND %s
-              AND vegas_total IS NULL
+              AND (vegas_total IS NULL OR home_ml IS NULL OR away_ml IS NULL)
             ORDER BY game_date
             """,
             (start, end),

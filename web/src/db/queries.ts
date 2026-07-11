@@ -9106,6 +9106,8 @@ export type MlbVegasCoverageStatus = {
   yesterdayHadGames: boolean;
   yesterdayScoresComplete: boolean | null;
   yesterdayOddsComplete: boolean | null;
+  orphanHistoricalRows: number;
+  orphanHistoricalDates: number;
 };
 
 function formatEtDate(date: Date): string {
@@ -9138,6 +9140,8 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
       yesterdayGames: number;
       yesterdayScoresComplete: number | null;
       yesterdayOddsComplete: number | null;
+      orphanHistoricalRows: number;
+      orphanHistoricalDates: number;
     }>(sql`
       WITH daily AS (
         SELECT
@@ -9147,6 +9151,8 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
           COUNT(*) FILTER (WHERE m.vegas_total IS NULL OR m.home_ml IS NULL OR m.away_ml IS NULL)::int AS missing_odds
         FROM mlb_matchups m
         WHERE m.game_date >= ${seasonStart}
+          AND m.game_id IS NOT NULL
+          AND COALESCE(m.game_status, '') NOT IN ('Postponed', 'Cancelled')
         GROUP BY m.game_date
       ),
       odds_history AS (
@@ -9191,7 +9197,17 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
             WHEN daily.game_date = ${yesterdayEt} THEN 0
             ELSE NULL
           END
-        ) AS "yesterdayOddsComplete"
+        ) AS "yesterdayOddsComplete",
+        (
+          SELECT COUNT(*)::int FROM mlb_matchups orphan
+          WHERE orphan.game_date BETWEEN ${seasonStart} AND ${yesterdayEt}
+            AND orphan.game_id IS NULL
+        ) AS "orphanHistoricalRows",
+        (
+          SELECT COUNT(DISTINCT orphan.game_date)::int FROM mlb_matchups orphan
+          WHERE orphan.game_date BETWEEN ${seasonStart} AND ${yesterdayEt}
+            AND orphan.game_id IS NULL
+        ) AS "orphanHistoricalDates"
       FROM daily
       LEFT JOIN odds_history ON odds_history.game_date = daily.game_date
     `),
@@ -9208,6 +9224,8 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
           COUNT(*) FILTER (WHERE m.vegas_total IS NULL OR m.home_ml IS NULL OR m.away_ml IS NULL)::int AS missing_odds
         FROM mlb_matchups m
         WHERE m.game_date >= ${seasonStart}
+          AND m.game_id IS NOT NULL
+          AND COALESCE(m.game_status, '') NOT IN ('Postponed', 'Cancelled')
         GROUP BY m.game_date
       ),
       odds_history AS (
@@ -9289,6 +9307,8 @@ export async function getMlbVegasCoverageStatus(): Promise<MlbVegasCoverageStatu
     yesterdayHadGames: Number(summary.yesterdayGames ?? 0) > 0,
     yesterdayScoresComplete: summary.yesterdayScoresComplete == null ? null : Number(summary.yesterdayScoresComplete) === 1,
     yesterdayOddsComplete: summary.yesterdayOddsComplete == null ? null : Number(summary.yesterdayOddsComplete) === 1,
+    orphanHistoricalRows: Number(summary.orphanHistoricalRows ?? 0),
+    orphanHistoricalDates: Number(summary.orphanHistoricalDates ?? 0),
   };
 }
 
@@ -9482,6 +9502,9 @@ async function loadPendingMoneylineCoverage(sport: Sport): Promise<{
         FROM mlb_matchups
         WHERE home_ml IS NOT NULL
           AND away_ml IS NOT NULL
+          AND game_id IS NOT NULL
+          AND COALESCE(game_status, '') NOT IN ('Postponed', 'Cancelled')
+          AND game_date < (NOW() AT TIME ZONE 'America/New_York')::date
           AND (home_score IS NULL OR away_score IS NULL)
       `)
     : await db.execute(sql`

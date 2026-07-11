@@ -1417,7 +1417,7 @@ export default function VegasClient({
             <div className="rounded border border-slate-200 bg-slate-50 p-3">
               <div className="text-[11px] uppercase tracking-wide text-slate-500">Scores</div>
               <div className="mt-1 text-sm font-medium text-slate-900">
-                Complete through {fmtDate(mlbCoverageStatus.latestScoreCompleteDate)}
+                Latest complete date: {fmtDate(mlbCoverageStatus.latestScoreCompleteDate)}
               </div>
               <div className="mt-1 text-xs text-slate-600">
                 {mlbCoverageStatus.firstMissingScoreDate
@@ -1428,13 +1428,20 @@ export default function VegasClient({
             <div className="rounded border border-slate-200 bg-slate-50 p-3">
               <div className="text-[11px] uppercase tracking-wide text-slate-500">Full Odds</div>
               <div className="mt-1 text-sm font-medium text-slate-900">
-                Complete through {fmtDate(mlbCoverageStatus.latestOddsCompleteDate)}
+                Latest complete date: {fmtDate(mlbCoverageStatus.latestOddsCompleteDate)}
               </div>
               <div className="mt-1 text-xs text-slate-600">
                 Attempted through {fmtDate(mlbCoverageStatus.oddsBackfillAttemptedThroughDate)}
               </div>
             </div>
           </div>
+
+          {mlbCoverageStatus.orphanHistoricalRows > 0 && (
+            <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <span className="font-semibold">Legacy orphan rows excluded:</span>{" "}
+              {mlbCoverageStatus.orphanHistoricalRows} row(s) across {mlbCoverageStatus.orphanHistoricalDates} historical date(s) have no MLB game ID. They are reported for cleanup but no longer create false score or odds backfill gaps.
+            </div>
+          )}
 
           <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
             <div className="font-medium text-slate-900">

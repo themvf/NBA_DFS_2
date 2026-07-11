@@ -166,3 +166,8 @@ def test_live_and_backfill_writers_use_canonical_policy() -> None:
         assert "validate_event_prices" in source
         assert "resolve_mlb_odds_event" in source
         assert "require_pregame_capture" in source
+
+
+def test_missing_only_backfill_includes_partial_moneyline_rows() -> None:
+    source = inspect.getsource(backfill_mlb_odds._dates_with_games)
+    assert "vegas_total IS NULL OR home_ml IS NULL OR away_ml IS NULL" in source
