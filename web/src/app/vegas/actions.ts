@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { nbaMatchups, mlbMatchups, teams, mlbTeams } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import type { Sport } from "@/db/queries";
+import { canWebSurfaceWriteMlbOdds } from "@/lib/mlb-odds-writer-policy";
 
 type OddsGame = {
   id: string;
@@ -50,7 +51,23 @@ export type FetchOddsResult = {
   updated: number;
 };
 
+function usesManagedMlbOddsPipeline(sport: Sport): boolean {
+  return sport === "mlb" && !canWebSurfaceWriteMlbOdds("vegas_action");
+}
+
 export async function fetchVegasOdds(date: string, sport: Sport = "nba"): Promise<FetchOddsResult> {
+  // MLB is intentionally single-writer. The Python refresh pipeline performs
+  // exact event/team/time resolution, pregame checks, consensus, and history
+  // capture atomically. Do not recreate a weaker odds writer in this action.
+  if (usesManagedMlbOddsPipeline(sport)) {
+    return {
+      ok: false,
+      message: "MLB lines are managed by the validated refresh pipeline.",
+      gamesFound: 0,
+      upserted: 0,
+      updated: 0,
+    };
+  }
   const oddsKey = process.env.ODDS_API_KEY;
   if (!oddsKey) {
     return { ok: false, message: "ODDS_API_KEY not configured", gamesFound: 0, upserted: 0, updated: 0 };

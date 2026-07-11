@@ -32,7 +32,7 @@ from model.soccer_game_bets import _over_under_probs  # Poisson P(over)/P(under)
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "mlb-gameline-v2"
+MODEL_VERSION = "mlb-gameline-v3"
 _STD_TOTAL_ODDS = -110          # MLB O/U is −110/−110; vig-free ref = 0.5
 _STD_TOTAL_REF = 0.5
 

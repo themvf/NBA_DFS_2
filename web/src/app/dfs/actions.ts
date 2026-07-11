@@ -15,6 +15,7 @@ import { db } from "@/db";
 import { ensureDkPlayerPropColumns, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureOwnershipExperimentTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, ownershipRuns, ownershipPlayerSnapshots, mlbBlowupRuns, mlbBlowupPlayerSnapshots, mlbHomerunRuns, mlbHomerunPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
+import { canWebSurfaceWriteMlbOdds } from "@/lib/mlb-odds-writer-policy";
 import { normalizeDkSlateTiming } from "@/lib/dk-slate-timing";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
@@ -6723,8 +6724,12 @@ async function ensureMatchupsForMlbSlate(
       .values(games.map((g) => ({ gameDate: slateDate, ...g })))
       .onConflictDoNothing();
   }
-  // Fetch Vegas odds if key available
-  const oddsKey = process.env.ODDS_API_KEY;
+  // MLB odds are single-writer: ingest.refresh_mlb_vegas owns validated event
+  // resolution and history capture. This legacy fallback remains disabled so a
+  // DFS slate load cannot overwrite canonical lines with home-name matching.
+  const oddsKey: string | undefined = canWebSurfaceWriteMlbOdds("dfs_slate_fallback")
+    ? process.env.ODDS_API_KEY
+    : undefined;
   if (oddsKey && games.length > 0) {
     try {
       const oddsUrl = new URL("https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/");

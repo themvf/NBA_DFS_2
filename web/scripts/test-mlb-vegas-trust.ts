@@ -6,9 +6,12 @@ import {
   isMlbGameLineActionable,
   MLB_GAME_LINES_TRUST,
 } from "../src/lib/mlb-vegas-trust";
+import { canWebSurfaceWriteMlbOdds } from "../src/lib/mlb-odds-writer-policy";
 
 assert.equal(MLB_GAME_LINES_TRUST.state, "research");
 assert.equal(isMlbGameLineActionable(), false);
+assert.equal(canWebSurfaceWriteMlbOdds("vegas_action"), false);
+assert.equal(canWebSurfaceWriteMlbOdds("dfs_slate_fallback"), false);
 
 const evidence = {
   market: "moneyline" as const,

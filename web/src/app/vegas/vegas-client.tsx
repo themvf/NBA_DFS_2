@@ -1359,10 +1359,17 @@ export default function VegasClient({
           />
           <button
             onClick={handleFetchLines}
-            disabled={isPending}
+            disabled={isPending || sport === "mlb"}
+            title={sport === "mlb" ? "MLB odds are refreshed by the validated pipeline" : undefined}
             className="rounded border px-3 py-1 text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isPending ? "Fetching…" : matchups.length === 0 ? "Fetch Lines" : "Refresh Lines"}
+            {sport === "mlb"
+              ? "Pipeline managed"
+              : isPending
+                ? "Fetching…"
+                : matchups.length === 0
+                  ? "Fetch Lines"
+                  : "Refresh Lines"}
           </button>
         </div>
       </div>

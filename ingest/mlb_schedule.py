@@ -24,6 +24,13 @@ import requests
 from config import load_config
 from db.database import DatabaseManager
 from db.queries import build_mlb_team_abbrev_cache, insert_game_odds_history_rows, upsert_mlb_matchup
+from ingest.mlb_odds_policy import (
+    MlbOddsPolicyError,
+    consensus_american,
+    require_pregame_capture,
+    resolve_mlb_odds_event,
+    validate_event_prices,
+)
 from ingest.mlb_teams import MLB_ID_TO_ABBREV
 from model.dfs_projections import compute_team_implied_total
 from model.soccer_bet_rating import american_to_prob, prob_to_american
@@ -360,30 +367,21 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         """,
         (target_date,),
     )
-    matchups_by_home: dict[str, list[dict]] = {}
-    for r in rows:
-        matchups_by_home.setdefault(r["home_name"], []).append(r)
-
-    def _resolve_matchup(home: str, event_commence_iso: str | None) -> dict | None:
-        cands = matchups_by_home.get(home)
-        if not cands:
-            return None
-        if len(cands) == 1:
-            return cands[0]
-        # Doubleheader: pick the row whose commence_time is nearest the event's.
-        ev_dt = None
-        if event_commence_iso:
-            try:
-                ev_dt = datetime.fromisoformat(event_commence_iso.replace("Z", "+00:00"))
-            except ValueError:
-                pass
-        if ev_dt is None:
-            logger.warning("Odds: %d rows for %s and no event commence — using first", len(cands), home)
-            return cands[0]
-        def _dist(c: dict) -> float:
-            ct = c["commence_time"]
-            return abs((ct - ev_dt).total_seconds()) if ct is not None else float("inf")
-        return min(cands, key=_dist)
+    known_event_rows = db.execute(
+        """
+        SELECT event_id, MIN(matchup_id)::int AS matchup_id
+        FROM game_odds_history
+        WHERE sport = 'mlb' AND game_date = %s AND event_id IS NOT NULL
+        GROUP BY event_id
+        HAVING COUNT(DISTINCT matchup_id) = 1
+        """,
+        (target_date,),
+    )
+    known_event_matchups = {
+        str(row["event_id"]): int(row["matchup_id"])
+        for row in known_event_rows
+    }
+    # Exact team/time matching is centralized in mlb_odds_policy.
     # Ensure h2h + totals + spreads (run line) are all fetched
     markets_to_fetch = "h2h,totals,spreads"
     captured_at = datetime.now(timezone.utc).replace(microsecond=0)
@@ -412,17 +410,20 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                 pass
 
         home_name = g.get("home_team", "")
-        matchup = _resolve_matchup(home_name, commence_iso)
-
-        # Handle Athletics name variants from the Odds API
-        if not matchup and home_name in _OAK_ALIASES:
-            for alias in _OAK_ALIASES:
-                matchup = _resolve_matchup(alias, commence_iso)
-                if matchup:
-                    break
-
-        if not matchup:
-            logger.debug("No matchup found for Odds API home team: %s", home_name)
+        try:
+            validate_event_prices(g)
+            matchup = resolve_mlb_odds_event(
+                g,
+                rows,
+                known_event_matchup_id=known_event_matchups.get(str(g.get("id") or "")),
+            )
+            require_pregame_capture(
+                event_commence=commence_iso,
+                matchup_commence=matchup.get("commence_time"),
+                captured_at=captured_at,
+            )
+        except MlbOddsPolicyError as exc:
+            logger.warning("Odds event %s rejected: %s", g.get("id"), exc)
             continue
 
         # Belt + suspenders on the in-play guard: the event-commence check
@@ -483,8 +484,8 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
                         book["spread_home"] = float(home_outcome["point"])
                         book["spread_price"] = home_outcome.get("price")
 
-        home_ml    = _consensus_american(home_prices)
-        away_ml    = _consensus_american(away_prices)
+        home_ml    = consensus_american(home_prices)
+        away_ml    = consensus_american(away_prices)
         vegas_total_raw = sum(total_points) / len(total_points) if total_points else None
         vegas_total = round(vegas_total_raw * 2) / 2 if vegas_total_raw is not None else None
         home_spread = round(sum(home_spreads) / len(home_spreads) * 2) / 2 if home_spreads else None

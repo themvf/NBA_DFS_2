@@ -3735,3 +3735,15 @@ market differences remain evidence inputs—not permission to recommend a wager.
   rows reveal missing commence provenance, post-commence writes, no exact-book
   price coverage, incomplete prospective-origin separation, and missing
   immutable feature-run references; none is silently treated as passed.
+- **2026-07-11 — canonical MLB odds policy:**
+  `ingest/mlb_odds_policy.py` is the required integrity layer for live and
+  historical game-line ingestion. It requires provider event ID, exact home and
+  away identity, timezone-aware provider and MLB commence times within six
+  hours, unambiguous nearest-time resolution for doubleheaders, valid American
+  prices, and capture before both start clocks. Known provider-event mappings
+  are reused but may not override a team/time mismatch. Historical history rows
+  now store the actual requested snapshot timestamp rather than backfill runtime.
+  The Vegas action and DFS slate fallback are forbidden from writing MLB odds by
+  `web/src/lib/mlb-odds-writer-policy.ts`; the Python refresh is the single
+  writer. The decision-ledger version is bumped to `mlb-gameline-v3` so these
+  observations cannot mix with legacy v2 integrity semantics.

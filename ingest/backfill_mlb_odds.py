@@ -15,14 +15,20 @@ from __future__ import annotations
 import argparse
 import logging
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 import requests
 
 from config import load_config
 from db.database import DatabaseManager
 from db.queries import insert_game_odds_history_rows
-from ingest.mlb_schedule import _consensus_american
+from ingest.mlb_odds_policy import (
+    MlbOddsPolicyError,
+    consensus_american,
+    require_pregame_capture,
+    resolve_mlb_odds_event,
+    validate_event_prices,
+)
 from model.dfs_projections import compute_team_implied_total
 
 logger = logging.getLogger(__name__)
@@ -99,7 +105,7 @@ def _backfill_date(
     db: DatabaseManager,
     api_key: str,
     game_date: str,
-    matchup_by_home: dict[str, dict],
+    matchup_candidates: list[dict],
     dry_run: bool,
 ) -> int:
     snapshot = f"{game_date}T{SNAPSHOT_HOUR_UTC:02d}:00:00Z"
@@ -114,7 +120,10 @@ def _backfill_date(
         logger.warning("Historical odds request failed for %s: %s", game_date, e)
         return 0
 
-    captured_at = datetime.now(timezone.utc).replace(microsecond=0)
+    snapshot_at = datetime.fromisoformat(
+        f"{game_date}T{SNAPSHOT_HOUR_UTC:02d}:00:00+00:00"
+    )
+    captured_at = snapshot_at
     capture_key = f"{game_date}T{SNAPSHOT_HOUR_UTC:02d}:00Z_backfill"
 
     updated = 0
@@ -122,17 +131,16 @@ def _backfill_date(
 
     for g in games:
         home_name = g.get("home_team", "")
-        matchup = matchup_by_home.get(home_name)
-
-        # Handle Athletics name variants
-        if not matchup and home_name in _OAK_ALIASES:
-            for alias in _OAK_ALIASES:
-                matchup = matchup_by_home.get(alias)
-                if matchup:
-                    break
-
-        if not matchup:
-            logger.debug("No matchup for %s on %s", home_name, game_date)
+        try:
+            validate_event_prices(g)
+            matchup = resolve_mlb_odds_event(g, matchup_candidates)
+            require_pregame_capture(
+                event_commence=g.get("commence_time"),
+                matchup_commence=matchup.get("commence_time"),
+                captured_at=snapshot_at,
+            )
+        except MlbOddsPolicyError as exc:
+            logger.warning("Historical odds event %s rejected: %s", g.get("id"), exc)
             continue
 
         # In-play guard: the 20:00 UTC snapshot lands mid-game for afternoon
@@ -140,11 +148,6 @@ def _backfill_date(
         # that timestamp — i.e. live prices. Never write those as pre-game
         # lines (2026-07-08 incident class). Skip any game that had already
         # started by the snapshot time.
-        snap_dt = datetime.fromisoformat(f"{game_date}T{SNAPSHOT_HOUR_UTC:02d}:00:00+00:00")
-        if matchup.get("commence_time") is not None and matchup["commence_time"] <= snap_dt:
-            logger.debug("Skipping in-play-at-snapshot game %s on %s", home_name, game_date)
-            continue
-
         away_name = g.get("away_team", "")
         home_prices: list[int] = []
         away_prices: list[int] = []
@@ -170,9 +173,9 @@ def _backfill_date(
                         home_spreads.append(float(home_outcome["point"]))
 
         # Probability-space consensus (arithmetic American averaging is invalid
-        # near even money — see _consensus_american in ingest.mlb_schedule).
-        home_ml = _consensus_american(home_prices)
-        away_ml = _consensus_american(away_prices)
+        # near even money — use the same canonical policy as live ingestion).
+        home_ml = consensus_american(home_prices)
+        away_ml = consensus_american(away_prices)
         vegas_total = round(sum(total_points) / len(total_points) * 2) / 2 if total_points else None
         home_spread = round(sum(home_spreads) / len(home_spreads) * 2) / 2 if home_spreads else None
         vegas_prob_home = _ml_to_prob(home_ml, away_ml) if home_ml and away_ml else None
@@ -223,7 +226,7 @@ def _backfill_date(
         insert_game_odds_history_rows(db, history_rows)
 
     remaining_str = f"  ({remaining} credits remaining)" if remaining is not None else ""
-    print(f"  {game_date}: {updated}/{len(matchup_by_home)} games updated{remaining_str}")
+    print(f"  {game_date}: {updated}/{len(matchup_candidates)} games updated{remaining_str}")
     return updated
 
 
@@ -253,16 +256,15 @@ def backfill(
         rows = db.execute(
             """
             SELECT nm.id, nm.game_date::text, nm.home_team_id, nm.away_team_id,
-                   nm.commence_time, t.name AS home_name
+                   nm.commence_time, ht.name AS home_name, at.name AS away_name
             FROM mlb_matchups nm
-            JOIN mlb_teams t ON t.team_id = nm.home_team_id
+            JOIN mlb_teams ht ON ht.team_id = nm.home_team_id
+            JOIN mlb_teams at ON at.team_id = nm.away_team_id
             WHERE nm.game_date = %s
             """,
             (game_date,),
         )
-        matchup_by_home = {r["home_name"]: r for r in rows}
-
-        n = _backfill_date(db, api_key, game_date, matchup_by_home, dry_run)
+        n = _backfill_date(db, api_key, game_date, rows, dry_run)
         total_updated += n
 
         if not dry_run and i < len(dates):
