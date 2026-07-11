@@ -16,6 +16,7 @@ assert.equal(canWebSurfaceWriteMlbOdds("dfs_slate_fallback"), false);
 const evidence = {
   market: "moneyline" as const,
   modelVersion: "test-v1",
+  ledgerRows: 150,
   settledUniqueGames: 150,
   settledBets: 150,
   roi: 0.03,

@@ -38,6 +38,11 @@ from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 
 from model.mlb_pregame import eligible_pregame_matchup_ids
+from model.mlb_prediction_provenance import (
+    PROSPECTIVE,
+    create_prediction_run,
+    record_prediction_snapshot,
+)
 
 from config import load_config
 from db.database import DatabaseManager
@@ -275,11 +280,33 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
     miss_pred = np.clip(model.predict(X_pred), -3.0, 3.0)
     our_totals = upcoming["vegas_total"].values.astype(float) + miss_pred
 
+    trained_through = str(completed["game_date"].max()) if not completed.empty else None
+    run_id = create_prediction_run(
+        db,
+        model_version=MODEL_VERSION,
+        trained_through=trained_through,
+        origin=PROSPECTIVE,
+        source="predict_and_write",
+        config={"features": FEATURE_COLS, "ridge_alpha": 2.0, "training_games": len(completed)},
+    )
     updated = 0
-    for matchup_id, pred in zip(upcoming["id"].values, our_totals):
+    for (_, feature_row), pred in zip(upcoming.iterrows(), our_totals):
+        matchup_id = int(feature_row["id"])
+        prediction = float(round(float(pred), 2))
+        record_prediction_snapshot(
+            db,
+            run_id=run_id,
+            matchup_id=matchup_id,
+            market="total",
+            feature_values={col: float(feature_row[col]) for col in FEATURE_COLS},
+            raw_prediction=prediction,
+            market_line=float(feature_row["vegas_total"]),
+            market_prob=0.5,
+            missingness={col: False for col in FEATURE_COLS},
+        )
         db.execute(
             "UPDATE mlb_matchups SET our_total_pred = %s WHERE id = %s",
-            (float(round(float(pred), 2)), int(matchup_id)),
+            (prediction, matchup_id),
         )
         updated += 1
 

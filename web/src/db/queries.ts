@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables } from "./ensure-schema";
+import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 const CURRENT_SEASON = "2025-26";
@@ -8345,6 +8345,7 @@ export type MlbBetBacktestRow = {
 export type MlbActionabilityEvidenceRow = {
   market: "moneyline" | "total";
   modelVersion: string | null;
+  ledgerRows: number;
   settledUniqueGames: number;
   settledBets: number;
   roi: number | null;
@@ -8366,10 +8367,12 @@ export type MlbActionabilityEvidenceRow = {
  * mutable mlb_matchups prediction fields are deliberately absent.
  */
 export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvidenceRow[]> {
+  await ensureMlbGamePredictionTables();
   const rows = await db.execute(sql`
     WITH latest AS (
       SELECT model_version
       FROM mlb_bets
+      WHERE origin = 'prospective'
       GROUP BY model_version
       ORDER BY MAX(created_at) DESC
       LIMIT 1
@@ -8379,6 +8382,7 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
       FROM mlb_bets b
       WHERE b.model_version = (SELECT model_version FROM latest)
         AND b.bet_type IN ('moneyline', 'total')
+        AND b.origin = 'prospective'
     ),
     duplicate_groups AS (
       SELECT bet_type, COUNT(*)::int AS n
@@ -8410,6 +8414,7 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
     SELECT
       b.bet_type AS market,
       MAX(b.model_version) AS "modelVersion",
+      COUNT(*)::int AS "ledgerRows",
       COUNT(DISTINCT b.matchup_id) FILTER (WHERE b.status IN ('won', 'lost'))::int AS "settledUniqueGames",
       COUNT(*) FILTER (WHERE b.status IN ('won', 'lost'))::int AS "settledBets",
       AVG(
@@ -8429,8 +8434,18 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
       COUNT(*) FILTER (
         WHERE b.market_odds IS NULL OR (b.market_odds > -100 AND b.market_odds < 100)
       )::int AS "invalidPrices",
+      COUNT(*) FILTER (
+        WHERE b.prediction_snapshot_id IS NULL OR ps.id IS NULL
+          OR ps.odds_snapshot_id IS NULL
+          OR ps.feature_values IS NULL OR ps.feature_values = '{}'::jsonb
+          OR ps.feature_available_at >= ps.event_commence
+          OR ps.event_commence IS DISTINCT FROM b.event_commence
+          OR pr.origin <> 'prospective'
+      )::int AS "missingPredictionSnapshots",
       COALESCE(MAX(d.n), 0)::int AS "duplicateActiveRecommendations"
     FROM current_bets b
+    LEFT JOIN mlb_game_prediction_snapshots ps ON ps.id = b.prediction_snapshot_id
+    LEFT JOIN mlb_prediction_runs pr ON pr.id = ps.run_id
     LEFT JOIN clv c ON c.bet_id = b.id
     LEFT JOIN duplicate_groups d ON d.bet_type = b.bet_type
     GROUP BY b.bet_type
@@ -8440,6 +8455,7 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
   const mapped = (rows.rows as Record<string, unknown>[]).map((r) => ({
     market: String(r.market) as "moneyline" | "total",
     modelVersion: r.modelVersion != null ? String(r.modelVersion) : null,
+    ledgerRows: Number(r.ledgerRows ?? 0),
     settledUniqueGames: Number(r.settledUniqueGames ?? 0),
     settledBets: Number(r.settledBets ?? 0),
     roi: r.roi != null ? Number(r.roi) : null,
@@ -8451,10 +8467,9 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
     postCommenceWrites: Number(r.postCommenceWrites ?? 0),
     invalidPrices: Number(r.invalidPrices ?? 0),
     duplicateActiveRecommendations: Number(r.duplicateActiveRecommendations ?? 0),
-    // The current schema has no authoritative origin or immutable feature-run
-    // foreign key. Keep these gates false until P1 adds them; never infer them.
-    prospectiveTrackingAvailable: false,
-    immutableFeatureSnapshotsAvailable: false,
+    prospectiveTrackingAvailable: true,
+    immutableFeatureSnapshotsAvailable:
+      Number(r.ledgerRows ?? 0) > 0 && Number(r.missingPredictionSnapshots ?? 0) === 0,
   }));
 
   return (["moneyline", "total"] as const).map(
@@ -8462,6 +8477,7 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
       mapped.find((row) => row.market === market) ?? {
         market,
         modelVersion: null,
+        ledgerRows: 0,
         settledUniqueGames: 0,
         settledBets: 0,
         roi: null,
@@ -8473,7 +8489,7 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
         postCommenceWrites: 0,
         invalidPrices: 0,
         duplicateActiveRecommendations: 0,
-        prospectiveTrackingAvailable: false,
+        prospectiveTrackingAvailable: true,
         immutableFeatureSnapshotsAvailable: false,
       },
   );

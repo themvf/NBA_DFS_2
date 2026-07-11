@@ -51,6 +51,8 @@ def record_bet(
     matchup_id: int | None = None,
     subject_team_id: int | None = None,
     event_commence: datetime | None = None,
+    prediction_snapshot_id: int | None = None,
+    origin: str = "legacy",
     inputs: dict | None = None,
     longshot_odds_cap: bool = False,
     max_stars: int | None = None,
@@ -61,6 +63,13 @@ def record_bet(
 
     Pass ``conn`` to batch many bets over one connection (fewer Neon round-trips).
     """
+    if origin == "prospective" and prediction_snapshot_id is None:
+        logger.warning(
+            "Refusing prospective MLB bet without immutable prediction snapshot: %s %s",
+            bet_type,
+            scope,
+        )
+        return None
     if market_odds is not None and market_prob is not None:
         decimal_odds = american_to_decimal(market_odds)
         stars, ev, edge = rate_market(our_prob, decimal_odds, market_prob, longshot_odds_cap)
@@ -77,6 +86,7 @@ def record_bet(
         model_version, bet_type, scope, matchup_id, subject_team_id,
         selection_label, market_odds, decimal_odds, market_prob, book,
         our_prob, edge, ev, stars, json.dumps(inputs or {}), event_commence, locked,
+        prediction_snapshot_id, origin,
     )
 
     def _do(cur) -> int | None:
@@ -85,9 +95,10 @@ def record_bet(
             INSERT INTO mlb_bets (
                 model_version, bet_type, scope, matchup_id, subject_team_id,
                 selection_label, market_odds, market_decimal, market_prob, book,
-                our_prob, edge, ev, stars, inputs_json, event_commence, locked, updated_at
+                our_prob, edge, ev, stars, inputs_json, event_commence, locked,
+                prediction_snapshot_id, origin, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (bet_type, scope, selection_label, model_version) DO UPDATE SET
                 matchup_id      = EXCLUDED.matchup_id,
                 subject_team_id = EXCLUDED.subject_team_id,
@@ -102,6 +113,8 @@ def record_bet(
                 inputs_json     = EXCLUDED.inputs_json,
                 event_commence  = EXCLUDED.event_commence,
                 locked          = EXCLUDED.locked,
+                prediction_snapshot_id = EXCLUDED.prediction_snapshot_id,
+                origin          = EXCLUDED.origin,
                 updated_at      = NOW()
             WHERE mlb_bets.locked = FALSE
               AND mlb_bets.status = 'pending'
@@ -116,10 +129,12 @@ def record_bet(
         cur.execute(
             """
             INSERT INTO mlb_bet_snapshots
-                (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars,
+                 prediction_snapshot_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars),
+            (bet_id, capture_key, our_prob, market_prob, market_odds, edge, ev, stars,
+             prediction_snapshot_id),
         )
         return bet_id
 

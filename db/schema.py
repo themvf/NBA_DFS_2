@@ -1820,6 +1820,57 @@ MIGRATIONS = [
         stars SMALLINT
     )
     """,
+    # 2026-07-11: immutable MLB game-line prediction provenance.
+    """CREATE TABLE IF NOT EXISTS mlb_prediction_runs (
+        id SERIAL PRIMARY KEY,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        trained_through DATE,
+        model_version TEXT NOT NULL,
+        git_sha TEXT,
+        origin TEXT NOT NULL CHECK (origin IN ('prospective', 'retrospective_backfill')),
+        source TEXT NOT NULL,
+        config_json JSONB NOT NULL DEFAULT '{}'::jsonb
+    )""",
+    """CREATE TABLE IF NOT EXISTS mlb_game_prediction_snapshots (
+        id SERIAL PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES mlb_prediction_runs(id),
+        matchup_id INTEGER NOT NULL REFERENCES mlb_matchups(id),
+        odds_snapshot_id INTEGER REFERENCES game_odds_history(id),
+        market TEXT NOT NULL CHECK (market IN ('moneyline', 'total')),
+        decision_phase TEXT NOT NULL DEFAULT 'pregame',
+        event_commence TIMESTAMPTZ NOT NULL,
+        feature_available_at TIMESTAMPTZ NOT NULL,
+        feature_values JSONB NOT NULL,
+        missingness_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        market_line DOUBLE PRECISION,
+        market_odds INTEGER,
+        market_prob DOUBLE PRECISION,
+        book TEXT,
+        raw_prediction DOUBLE PRECISION NOT NULL,
+        calibrated_probability DOUBLE PRECISION,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(run_id, matchup_id, market)
+    )""",
+    "ALTER TABLE mlb_bets ADD COLUMN IF NOT EXISTS prediction_snapshot_id INTEGER REFERENCES mlb_game_prediction_snapshots(id)",
+    "ALTER TABLE mlb_bets ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'legacy'",
+    "ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS prediction_snapshot_id INTEGER REFERENCES mlb_game_prediction_snapshots(id)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_prediction_runs_origin ON mlb_prediction_runs(origin, model_version, generated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_game_prediction_matchup ON mlb_game_prediction_snapshots(matchup_id, market, created_at DESC)",
+    """CREATE OR REPLACE FUNCTION reject_mlb_prediction_mutation()
+       RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         RAISE EXCEPTION 'MLB prediction provenance is append-only';
+       END $$""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'mlb_prediction_runs_immutable') THEN
+         CREATE TRIGGER mlb_prediction_runs_immutable BEFORE UPDATE OR DELETE
+         ON mlb_prediction_runs FOR EACH ROW EXECUTE FUNCTION reject_mlb_prediction_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'mlb_game_prediction_snapshots_immutable') THEN
+         CREATE TRIGGER mlb_game_prediction_snapshots_immutable BEFORE UPDATE OR DELETE
+         ON mlb_game_prediction_snapshots FOR EACH ROW EXECUTE FUNCTION reject_mlb_prediction_mutation();
+       END IF;
+    END $$""",
 ]
 
 INDEXES = [

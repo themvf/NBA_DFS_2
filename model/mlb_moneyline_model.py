@@ -35,6 +35,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
 from model.mlb_pregame import eligible_pregame_matchup_ids
+from model.mlb_prediction_provenance import (
+    PROSPECTIVE,
+    create_prediction_run,
+    record_prediction_snapshot,
+)
 
 from config import load_config
 from db.database import DatabaseManager
@@ -140,11 +145,35 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
 
     model, scaler = _fit(completed)
     probs = _predict_home_prob(model, scaler, upcoming)
+    trained_through = str(completed["game_date"].max()) if not completed.empty else None
+    run_id = create_prediction_run(
+        db,
+        model_version=MODEL_VERSION,
+        trained_through=trained_through,
+        origin=PROSPECTIVE,
+        source="predict_and_write",
+        config={"features": FEATURE_COLS, "logistic_c": 1.0, "training_games": len(completed)},
+    )
     updated = 0
-    for mid, p in zip(upcoming["id"].values, probs):
+    for (_, feature_row), p in zip(upcoming.iterrows(), probs):
+        mid = int(feature_row["id"])
+        prediction = float(round(float(p), 4))
+        home_ml = feature_row.get("home_ml")
+        record_prediction_snapshot(
+            db,
+            run_id=run_id,
+            matchup_id=mid,
+            market="moneyline",
+            feature_values={col: float(feature_row[col]) for col in FEATURE_COLS},
+            raw_prediction=prediction,
+            calibrated_probability=prediction,
+            market_odds=int(home_ml) if pd.notna(home_ml) else None,
+            market_prob=float(feature_row["vegas_prob_home"]),
+            missingness={col: False for col in FEATURE_COLS},
+        )
         db.execute(
             "UPDATE mlb_matchups SET our_prob_home = %s WHERE id = %s",
-            (float(round(float(p), 4)), int(mid)),
+            (prediction, mid),
         )
         updated += 1
 

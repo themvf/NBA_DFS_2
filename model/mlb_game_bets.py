@@ -28,6 +28,11 @@ import logging
 from config import load_config
 from db.database import DatabaseManager
 from model.mlb_bet_rating import new_capture_key, record_bet
+from model.mlb_prediction_provenance import (
+    PROSPECTIVE,
+    RETROSPECTIVE_BACKFILL,
+    latest_prediction_snapshot_id,
+)
 from model.soccer_game_bets import _over_under_probs  # Poisson P(over)/P(under)
 
 logger = logging.getLogger(__name__)
@@ -85,7 +90,7 @@ def _fixtures(db: DatabaseManager, where: str, params: tuple) -> list[dict]:
     )
 
 
-def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
+def _record_fixture(db, conn, fx: dict, capture_key: str, origin: str) -> int:
     written = 0
     scope = str(fx["id"])  # stable per-game key; matchup_id also stored as FK
     commence = fx["commence_time"]
@@ -101,7 +106,7 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
         bet_home = op >= mp
         side_raw = op if bet_home else 1.0 - op
         side_mkt = mp if bet_home else 1.0 - mp
-        record_bet(
+        bet_id = record_bet(
             db,
             model_version=MODEL_VERSION,
             bet_type="moneyline",
@@ -114,6 +119,10 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
             matchup_id=fx["id"],
             subject_team_id=fx["home_team_id"] if bet_home else fx["away_team_id"],
             event_commence=commence,
+            prediction_snapshot_id=latest_prediction_snapshot_id(
+                db, matchup_id=fx["id"], market="moneyline", origin=origin,
+            ),
+            origin=origin,
             longshot_odds_cap=True,
             max_stars=_GAMELINE_MAX_STARS,
             conn=conn,
@@ -123,7 +132,7 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
                     "stars_capped_at": _GAMELINE_MAX_STARS,
                     "edge_status": "no_walkforward_edge"},
         )
-        written += 1
+        written += int(bet_id is not None)
 
     # ── Total (O/U) ──
     line = fx["vegas_total"]
@@ -133,7 +142,7 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
         p_over, p_under = _over_under_probs(line, lam)
         is_over = lam > line
         side_raw = p_over if is_over else p_under
-        record_bet(
+        bet_id = record_bet(
             db,
             model_version=MODEL_VERSION,
             bet_type="total",
@@ -147,6 +156,10 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
             market_prob=_STD_TOTAL_REF,
             matchup_id=fx["id"],
             event_commence=commence,
+            prediction_snapshot_id=latest_prediction_snapshot_id(
+                db, matchup_id=fx["id"], market="total", origin=origin,
+            ),
+            origin=origin,
             longshot_odds_cap=True,
             max_stars=_GAMELINE_MAX_STARS,
             conn=conn,
@@ -156,7 +169,7 @@ def _record_fixture(db, conn, fx: dict, capture_key: str) -> int:
                     "stars_capped_at": _GAMELINE_MAX_STARS,
                     "edge_status": "no_walkforward_edge"},
         )
-        written += 1
+        written += int(bet_id is not None)
 
     return written
 
@@ -180,7 +193,7 @@ def rate_slate(db: DatabaseManager, game_date: str | None = None) -> int:
     written = 0
     with db.connect() as conn:
         for fx in fixtures:
-            written += _record_fixture(db, conn, fx, capture_key)
+            written += _record_fixture(db, conn, fx, capture_key, PROSPECTIVE)
     print(f"MLB bets: {written} moneyline/total bets rated across {len(fixtures)} fixtures")
     return written
 
@@ -198,7 +211,7 @@ def backfill(db: DatabaseManager, start_date: str, end_date: str) -> int:
     written = 0
     with db.connect() as conn:
         for fx in fixtures:
-            written += _record_fixture(db, conn, fx, capture_key)
+            written += _record_fixture(db, conn, fx, capture_key, RETROSPECTIVE_BACKFILL)
     print(f"MLB bets: backfilled {written} bets across {len(fixtures)} fixtures "
           f"({start_date} to {end_date})")
     return written

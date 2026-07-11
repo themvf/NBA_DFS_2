@@ -14,6 +14,7 @@ export type MlbTrustState = "blocked" | "research" | "watch" | "actionable" | "r
 export type MlbActionabilityEvidence = {
   market: MlbGameLineMarket;
   modelVersion: string | null;
+  ledgerRows: number;
   settledUniqueGames: number;
   settledBets: number;
   roi: number | null;
@@ -73,9 +74,13 @@ export function evaluateMlbActionability(
     {
       key: "prices",
       label: "All prices are valid and executable",
-      passed: evidence.invalidPrices === 0 && evidence.exactPriceCoverage === 1,
+      passed:
+        evidence.invalidPrices === 0 &&
+        (evidence.ledgerRows === 0 || evidence.exactPriceCoverage === 1),
       blocking: true,
-      detail: `${evidence.invalidPrices} invalid price(s); ${(evidence.exactPriceCoverage * 100).toFixed(0)}% exact book/price coverage`,
+      detail: evidence.ledgerRows === 0
+        ? "No prospective rows yet; exact-price coverage applies on first capture"
+        : `${evidence.invalidPrices} invalid price(s); ${(evidence.exactPriceCoverage * 100).toFixed(0)}% exact book/price coverage`,
     },
     {
       key: "duplicates",

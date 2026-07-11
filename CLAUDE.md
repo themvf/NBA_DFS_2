@@ -3423,7 +3423,7 @@ dependency versions, git SHA, or odds/prediction snapshot IDs.
 
 #### P1 — Create immutable prediction and ticket accounting
 
-**Status: planned. Required before rebuilding the backtest.**
+**Status: in progress. Required before rebuilding the backtest.**
 
 1. Add `mlb_prediction_runs` and `mlb_game_prediction_snapshots` (names may
    vary) with at least:
@@ -3747,3 +3747,17 @@ market differences remain evidence inputs—not permission to recommend a wager.
   `web/src/lib/mlb-odds-writer-policy.ts`; the Python refresh is the single
   writer. The decision-ledger version is bumped to `mlb-gameline-v3` so these
   observations cannot mix with legacy v2 integrity semantics.
+- **2026-07-11 — prospective prediction provenance:** added append-only
+  `mlb_prediction_runs` and `mlb_game_prediction_snapshots`. Each live totals
+  and moneyline prediction now freezes its origin, training cutoff, model
+  version, git SHA when available, feature vector, missingness, generation
+  time, event commence, market context, raw prediction, and latest eligible
+  pregame odds-history reference before updating the `mlb_matchups` display
+  cache. `mlb_bets.origin` separates prospective from retrospective/legacy
+  populations, and every prospective v3 bet must reference an immutable
+  prediction snapshot or it fails closed. PostgreSQL triggers reject UPDATE or
+  DELETE on both provenance tables; corrections require a new appended run.
+  The validation query now uses only
+  prospective rows. End-to-end verification created 2 prospective runs, 14
+  prediction snapshots (all linked to pregame odds), and 14 pending v3 ledger
+  rows across 7 future games; all 14 bets reference a snapshot.
