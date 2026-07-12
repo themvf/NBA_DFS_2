@@ -145,6 +145,7 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
 
     model, scaler = _fit(completed)
     probs = _predict_home_prob(model, scaler, upcoming)
+    scaled_upcoming = scaler.transform(upcoming[FEATURE_COLS].values.astype(float))
     trained_through = str(completed["game_date"].max()) if not completed.empty else None
     run_id = create_prediction_run(
         db,
@@ -152,24 +153,58 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         trained_through=trained_through,
         origin=PROSPECTIVE,
         source="predict_and_write",
-        config={"features": FEATURE_COLS, "logistic_c": 1.0, "training_games": len(completed)},
+        config={
+            "features": FEATURE_COLS,
+            "logistic_c": 1.0,
+            "training_games": len(completed),
+            "missingness_policy": "source-aware-v1",
+            "standardized_coefficients": dict(zip(FEATURE_COLS, model.coef_[0].tolist())),
+        },
     )
     updated = 0
-    for (_, feature_row), p in zip(upcoming.iterrows(), probs):
+    for (_, feature_row), p, scaled_row in zip(upcoming.iterrows(), probs, scaled_upcoming):
         mid = int(feature_row["id"])
         prediction = float(round(float(p), 4))
         home_ml = feature_row.get("home_ml")
+        missingness = {
+            "market_home_prob": bool(pd.isna(feature_row.get("vegas_prob_home"))),
+            "sp_xfip_adv": bool(
+                pd.isna(feature_row.get("home_sp_xfip"))
+                or pd.isna(feature_row.get("away_sp_xfip"))
+            ),
+            "sp_k9_adv": bool(
+                pd.isna(feature_row.get("home_sp_k9"))
+                or pd.isna(feature_row.get("away_sp_k9"))
+            ),
+            "wrc_adv": bool(
+                pd.isna(feature_row.get("home_wrc"))
+                or pd.isna(feature_row.get("away_wrc"))
+            ),
+            "iso_adv": bool(
+                pd.isna(feature_row.get("home_iso"))
+                or pd.isna(feature_row.get("away_iso"))
+            ),
+            "bullpen_adv": bool(
+                pd.isna(feature_row.get("home_bullpen_fip"))
+                or pd.isna(feature_row.get("away_bullpen_fip"))
+            ),
+        }
+        feature_values = {col: float(feature_row[col]) for col in FEATURE_COLS}
+        feature_values["contributions"] = {
+            col: float(coef * value)
+            for col, coef, value in zip(FEATURE_COLS, model.coef_[0], scaled_row)
+        }
         record_prediction_snapshot(
             db,
             run_id=run_id,
             matchup_id=mid,
             market="moneyline",
-            feature_values={col: float(feature_row[col]) for col in FEATURE_COLS},
+            feature_values=feature_values,
             raw_prediction=prediction,
             calibrated_probability=prediction,
             market_odds=int(home_ml) if pd.notna(home_ml) else None,
             market_prob=float(feature_row["vegas_prob_home"]),
-            missingness={col: False for col in FEATURE_COLS},
+            missingness=missingness,
         )
         db.execute(
             "UPDATE mlb_matchups SET our_prob_home = %s WHERE id = %s",

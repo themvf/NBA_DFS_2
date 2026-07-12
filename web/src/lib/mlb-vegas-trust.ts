@@ -41,6 +41,9 @@ export type MlbValidationGate = {
 export type MlbActionabilityDecision = {
   market: MlbGameLineMarket;
   policyVersion: string;
+  modelVersion: string | null;
+  canonicalHorizon: string | null;
+  trustEvaluationId: string;
   state: MlbTrustState;
   passed: number;
   total: number;
@@ -166,6 +169,16 @@ export function evaluateMlbActionability(
   return {
     market: evidence.market,
     policyVersion: MLB_ACTIONABILITY_POLICY_VERSION,
+    modelVersion: evidence.modelVersion,
+    // The legacy ledger has no canonical-horizon key. Keeping this explicit
+    // prevents evidence from one timing policy from promoting another.
+    canonicalHorizon: null,
+    trustEvaluationId: [
+      MLB_ACTIONABILITY_POLICY_VERSION,
+      evidence.market,
+      evidence.modelVersion ?? "unversioned",
+      "horizon-unavailable",
+    ].join(":"),
     state,
     passed,
     total: gates.length,

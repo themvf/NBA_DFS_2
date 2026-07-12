@@ -189,6 +189,15 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
 
     num = lambda c: pd.to_numeric(df[c], errors="coerce")
 
+    # Preserve source availability before deterministic research fallbacks are
+    # applied. Prediction snapshots use these flags so the decision UI cannot
+    # mistake a league-average substitute for observed pregame information.
+    df["_missing_home_implied"] = num("home_implied").isna()
+    df["_missing_away_implied"] = num("away_implied").isna()
+    df["_missing_home_spread"] = num("home_spread").isna()
+    df["_missing_home_win_prob"] = num("vegas_prob_home").isna()
+    df["_missing_park_runs_factor"] = num("park_runs_factor").isna()
+
     df["vegas_total"] = num("vegas_total")
     half = df["vegas_total"] / 2.0
     df["home_implied"] = num("home_implied").fillna(half)
@@ -287,22 +296,70 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         trained_through=trained_through,
         origin=PROSPECTIVE,
         source="predict_and_write",
-        config={"features": FEATURE_COLS, "ridge_alpha": 2.0, "training_games": len(completed)},
+        config={
+            "features": FEATURE_COLS,
+            "ridge_alpha": 2.0,
+            "training_games": len(completed),
+            "missingness_policy": "source-aware-v1",
+            "standardized_coefficients": dict(zip(FEATURE_COLS, model.coef_.tolist())),
+        },
     )
     updated = 0
-    for (_, feature_row), pred in zip(upcoming.iterrows(), our_totals):
+    for (_, feature_row), pred, scaled_row in zip(upcoming.iterrows(), our_totals, X_pred):
         matchup_id = int(feature_row["id"])
         prediction = float(round(float(pred), 2))
+        missingness = {
+            "vegas_total": bool(pd.isna(feature_row.get("vegas_total"))),
+            "home_implied": bool(feature_row.get("_missing_home_implied")),
+            "away_implied": bool(feature_row.get("_missing_away_implied")),
+            "abs_spread": bool(feature_row.get("_missing_home_spread")),
+            "home_win_prob": bool(feature_row.get("_missing_home_win_prob")),
+            "sp_xfip_avg": bool(
+                pd.isna(feature_row.get("home_sp_xfip"))
+                or pd.isna(feature_row.get("away_sp_xfip"))
+            ),
+            "sp_xfip_diff": bool(
+                pd.isna(feature_row.get("home_sp_xfip"))
+                or pd.isna(feature_row.get("away_sp_xfip"))
+            ),
+            "sp_k9_avg": bool(
+                pd.isna(feature_row.get("home_sp_k9"))
+                or pd.isna(feature_row.get("away_sp_k9"))
+            ),
+            "park_runs_factor": bool(feature_row.get("_missing_park_runs_factor")),
+            "temp_delta": bool(pd.isna(feature_row.get("weather_temp"))),
+            "wind_component": bool(
+                pd.isna(feature_row.get("wind_speed"))
+                or pd.isna(feature_row.get("wind_direction"))
+            ),
+            "wrc_avg": bool(
+                pd.isna(feature_row.get("home_wrc"))
+                or pd.isna(feature_row.get("away_wrc"))
+            ),
+            "iso_avg": bool(
+                pd.isna(feature_row.get("home_iso"))
+                or pd.isna(feature_row.get("away_iso"))
+            ),
+            "bullpen_fip_avg": bool(
+                pd.isna(feature_row.get("home_bullpen_fip"))
+                or pd.isna(feature_row.get("away_bullpen_fip"))
+            ),
+        }
+        feature_values = {col: float(feature_row[col]) for col in FEATURE_COLS}
+        feature_values["contributions"] = {
+            col: float(coef * value)
+            for col, coef, value in zip(FEATURE_COLS, model.coef_, scaled_row)
+        }
         record_prediction_snapshot(
             db,
             run_id=run_id,
             matchup_id=matchup_id,
             market="total",
-            feature_values={col: float(feature_row[col]) for col in FEATURE_COLS},
+            feature_values=feature_values,
             raw_prediction=prediction,
             market_line=float(feature_row["vegas_total"]),
             market_prob=0.5,
-            missingness={col: False for col in FEATURE_COLS},
+            missingness=missingness,
         )
         db.execute(
             "UPDATE mlb_matchups SET our_total_pred = %s WHERE id = %s",

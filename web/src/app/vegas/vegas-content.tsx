@@ -3,24 +3,10 @@ import {
   getOuHitRate,
   getTeamTotalAccuracy,
   getSpreadCoverage,
-  getMlbVegasMatchups,
-  getMlbOuHitRate,
-  getMlbTeamTotalAccuracy,
-  getMlbRunLineCoverage,
-  getMlbVegasCoverageStatus,
-  getMlbTotalModelBacktest,
-  getMlbMoneylineModelBacktest,
-  getMlbBets,
-  getMlbBetBacktest,
-  getMlbBetBacktestBySide,
-  getMlbActionabilityEvidence,
-  getMlbClv,
-  getMlbLineMovement,
   getLineMovement,
   getLineMovementHistory,
   getLineAlerts,
   getLineAlertBacktest,
-  getMlbPipelineHealth,
   getVegasSummaryStats,
   getBiggestMisses,
   getTeamVegasInsights,
@@ -48,8 +34,13 @@ import type { Sport } from "@/db/queries";
 import VegasClient from "./vegas-client";
 import SoccerVegasClient from "./soccer-vegas-client";
 import TennisVegasClient from "./tennis-vegas-client";
+import MlbVegasContent from "./mlb-vegas-content";
 
 export default async function VegasContent({ date, sport = "nba" }: { date?: string; sport?: Sport }) {
+  if (sport === "mlb") {
+    return <MlbVegasContent date={date} />;
+  }
+
   // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
     const [matchups, bets, backtest, lineMovement, lineAlerts, lineAlertBacktest] = await Promise.all([
@@ -120,29 +111,12 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
     );
   }
 
-  const [sportData, mlbCoverageStatus, mlbTotalBacktest, mlbMoneylineBacktest, mlbBets, mlbBetBacktest, mlbBetBySide, mlbActionabilityEvidence, mlbClv, mlbLineMovement, mlbLineAlerts, mlbLineAlertBacktest, mlbHealth, vegasSummary, biggestMisses, teamInsights, moneylineBacktest, mlbLineMovementHistory] = await Promise.all([
-    Promise.all(
-      sport === "mlb"
-        ? [getMlbVegasMatchups(date), getMlbOuHitRate(), getMlbTeamTotalAccuracy(), getMlbRunLineCoverage()]
-        : [getVegasMatchups(date), getOuHitRate(), getTeamTotalAccuracy(), getSpreadCoverage()],
-    ),
-    sport === "mlb" ? getMlbVegasCoverageStatus() : Promise.resolve(null),
-    sport === "mlb" ? getMlbTotalModelBacktest() : Promise.resolve(null),
-    sport === "mlb" ? getMlbMoneylineModelBacktest() : Promise.resolve(null),
-    sport === "mlb" ? getMlbBets(1, 200) : Promise.resolve(null),
-    sport === "mlb" ? getMlbBetBacktest() : Promise.resolve(null),
-    sport === "mlb" ? getMlbBetBacktestBySide() : Promise.resolve(null),
-    sport === "mlb" ? getMlbActionabilityEvidence() : Promise.resolve(null),
-    sport === "mlb" ? getMlbClv() : Promise.resolve(null),
-    sport === "mlb" ? getMlbLineMovement(7) : Promise.resolve(null),
-    sport === "mlb" ? getLineAlerts("mlb") : Promise.resolve(null),
-    sport === "mlb" ? getLineAlertBacktest("mlb") : Promise.resolve(null),
-    sport === "mlb" ? getMlbPipelineHealth() : Promise.resolve(null),
+  const [sportData, vegasSummary, biggestMisses, teamInsights, moneylineBacktest] = await Promise.all([
+    Promise.all([getVegasMatchups(date), getOuHitRate(), getTeamTotalAccuracy(), getSpreadCoverage()]),
     getVegasSummaryStats(sport),
     getBiggestMisses(sport, 20),
     getTeamVegasInsights(sport),
     getMoneylineBacktest(sport),
-    sport === "mlb" ? getLineMovementHistory("mlb", 1, 250) : Promise.resolve(null),
   ]);
   const [matchups, ouHitRate, teamTotalAccuracy, spreadCoverage] = sportData;
 
@@ -152,19 +126,19 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       ouHitRate={ouHitRate}
       teamTotalAccuracy={teamTotalAccuracy}
       spreadCoverage={spreadCoverage}
-      mlbCoverageStatus={mlbCoverageStatus}
-      mlbTotalBacktest={mlbTotalBacktest}
-      mlbMoneylineBacktest={mlbMoneylineBacktest}
-      mlbBets={mlbBets}
-      mlbBetBacktest={mlbBetBacktest}
-      mlbBetBySide={mlbBetBySide}
-      mlbActionabilityEvidence={mlbActionabilityEvidence}
-      mlbClv={mlbClv}
-      mlbLineMovement={mlbLineMovement}
-      mlbLineAlerts={mlbLineAlerts}
-      mlbLineAlertBacktest={mlbLineAlertBacktest}
-      mlbLineMovementHistory={mlbLineMovementHistory}
-      mlbHealth={mlbHealth}
+      mlbCoverageStatus={null}
+      mlbTotalBacktest={null}
+      mlbMoneylineBacktest={null}
+      mlbBets={null}
+      mlbBetBacktest={null}
+      mlbBetBySide={null}
+      mlbActionabilityEvidence={null}
+      mlbClv={null}
+      mlbLineMovement={null}
+      mlbLineAlerts={null}
+      mlbLineAlertBacktest={null}
+      mlbLineMovementHistory={null}
+      mlbHealth={null}
       vegasSummary={vegasSummary}
       biggestMisses={biggestMisses}
       teamInsights={teamInsights}

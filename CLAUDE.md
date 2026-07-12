@@ -3784,6 +3784,53 @@ claim it can beat Vegas. It may organize favorite parlays, but only as a
 transparent view of mutually supported favorites with exact available prices,
 not as a promise of profit.
 
+### Decision-engine constraint: no DeepSeek or LLM judgment
+
+DeepSeek, OpenAI models, and other LLMs must not select a side, assign a
+probability, set a decision threshold, construct a parlay, or promote a market's
+trust state. MLB Vegas decisions must be reproducible from versioned numerical
+inputs, deterministic statistical models, and the centralized tested trust
+policy.
+
+The existing DeepSeek beat-writer and video extraction utilities are outside the
+MLB Vegas decision path. They must remain disconnected from decision features
+for the initial implementation. A future proposal may use an LLM only to extract
+a candidate structured fact from text; that fact would still require source URL,
+publication/capture times, confidence, deterministic eligibility rules, and an
+independent prospective validation before it could become a model input. An LLM
+may never be the final decision-maker.
+
+The initial implementation therefore uses only:
+
+- MLB Stats API schedule, game identity, start time, starter, status, and result;
+- The Odds API event identity, book-specific line/price, and market history;
+- point-in-time statistical histories and park factors when their coverage and
+  variance health gates pass;
+- immutable model prediction snapshots and deterministic derived calculations;
+- a centralized decision policy returning `confirmation`, `contrarian`, or
+  `pass`, plus machine-readable reasons and trust state.
+
+#### Initial deterministic display policy (`mlb-decision-view-v1`)
+
+This is a research classification policy, not a betting or promotion threshold:
+Its fixed first-book rule is a display convenience only and is superseded by the
+v2 separation of reference market and best eligible execution quote below.
+
+- Use the first available book in this fixed US-retail order: DraftKings,
+  FanDuel, BetMGM, Caesars, Fanatics, BetRivers, ESPN BET, Hard Rock Bet.
+- Moneyline market probability is vig-free from that book's exact home/away
+  pair. `Confirmation` requires the model and book to favor the same winner and
+  the model to be at least 2 percentage points from 50%. `Contrarian` requires
+  opposing favored sides and at least a 3 percentage-point model/market gap.
+- Totals `Pass` when the model is less than 0.5 runs from the exact book line.
+  `Confirmation` requires at least a 0.5-run opening-to-current movement in the
+  same direction as the model difference. Other differences of at least 0.5
+  runs are `Contrarian` research observations.
+- Any missing immutable prediction, exact two-sided retail quote, source-aware
+  missingness metadata, or required observed input forces `Pass`.
+- All classifications retain `SHADOW / RESEARCH ONLY`; this policy cannot
+  promote the centralized actionability trust state.
+
 The system must distinguish three concepts:
 
 1. **Model view** - our frozen pregame probability or projected total.
@@ -3846,8 +3893,9 @@ The system must distinguish three concepts:
 ### Information-source and API readiness matrix
 
 Every displayed fact must record `source`, `source_record_id`, `captured_at`,
-`available_at`, and `freshness_state`. `available_at` must precede the game's
-commence time. If a required source is not configured, the component must show
+`available_at`, and `freshness_state`. At each immutable decision checkpoint,
+`available_at <= decision_at < commence_time`; merely preceding commence is not
+sufficient. If a required source is not configured, the component must show
 `Unavailable` or `Blocked`; league-average substitution may support an explicitly
 marked research estimate but may not support an explanation or action label.
 
@@ -3916,3 +3964,1221 @@ source chips, exact-price favorite filtering, a research-only parlay tray, and
 prospective tracking. Pitcher/team explanations remain blocked until history is
 populated; weather, confirmed game-line lineups, roof, injuries/news, and umpire
 factors remain visibly unavailable until their feeds and snapshots exist.
+
+### Implementation progress
+
+- **2026-07-11 - deterministic decision foundation:** implemented
+  `mlb-decision-view-v1`, backed by the latest immutable prospective prediction
+  snapshot and latest eligible pregame per-book odds capture. The Vegas query
+  now excludes game-ID-less legacy rows and postponed/cancelled games.
+- Model prediction writers now freeze an initial missingness map plus per-feature
+  standardized contributions. The v2 review found that source-row IDs, real
+  availability timestamps, required/optional semantics, and metric-fallback
+  identity are still incomplete; these snapshots are not yet full point-in-time
+  feature provenance.
+- The MLB Vegas UI now renders a three-column `Model + Market Agree`, `Model
+  Disagrees`, and `Pass / Missing Information` board with exact-book price,
+  model/market difference, reasons, missing inputs, and source timestamps.
+- Historical prediction snapshots created before `source-aware-v1` are
+  intentionally classified as `Pass`. A future pregame refresh creates the new
+  metadata; it does not rewrite old immutable snapshots.
+- Favorites parlays, fragility scoring, prospective decision-population tables,
+  team/pitcher history repair, reliever-only bullpen quality, and forecast
+  weather ingestion remain unimplemented.
+
+---
+
+## MLB Edge Hypothesis and Application Operating Contract v2 (2026-07-11)
+
+### Review conclusion
+
+The additional data does **not** create an edge by itself. Starting-pitcher,
+bullpen, lineup, and weather information is public and may already be reflected
+in the line. The defensible hypothesis is narrower: point-in-time baseball
+features may explain a small residual difference from a sharp market, timely
+updates may identify a change before every accessible book adjusts, and exact
+book selection may improve execution. Each mechanism must be measured
+prospectively and may prove to have no monetary value.
+
+This section corrects and completes the earlier conceptual explanation. It is
+the target contract for the next version; it does not declare the current
+`mlb-decision-view-v1` board validated or production actionable.
+
+### Errors and omissions corrected by this review
+
+1. **Agreement is not price value.** A book and model can both favor the same
+   team while the offered favorite price is still too expensive. The UI must
+   separately show `outcome agreement` and `price support`.
+2. **Reference probability and observed/access-eligible break-even probability
+   differ.** The
+   vig-free market probability is the benchmark for disagreement. The exact
+   selected book price, including vig, determines break-even and ticket EV.
+3. **A projected total difference is not a bet probability.** Totals require
+   `p_win`, `p_push`, and `p_loss` at the exact book line and side price. The
+   current hard-coded `-110` / `0.50` treatment and soccer Poisson conversion
+   cannot support actionability.
+4. **Line movement is context, not confirmation of value.** Movement in the
+   model's direction may mean the market has already incorporated the same
+   information. It must not be double-counted as an independent feature or
+   treated as proof of edge.
+5. **Illustrative bullpen weights are not learned effects.** Raw workload
+   measures should be frozen; coefficients or thresholds must be learned inside
+   chronological training folds or pre-registered before confirmation data.
+6. **Linear contribution bars are not causal explanations.** A standardized
+   coefficient times a feature value explains the fitted model calculation, not
+   why the real game outcome will occur.
+7. **Parlays amplify error as well as edge.** Multiplying leg probabilities is
+   valid only under independence. Cross-game correlation, shared weather,
+   common model error, stale quotes, and uncertainty require a joint or
+   conservatively penalized estimate.
+8. **Tracking only displayed selections creates selection bias.** Every eligible
+   game/market checkpoint, including `Pass`, must be frozen so selected cohorts
+   have an honest counterfactual population.
+9. **A minimum sample count is necessary but insufficient.** Evidence must also
+   beat the same-time market benchmark, survive an untouched window, use
+   date-clustered uncertainty, and remain stable across time and concentration
+   cuts.
+10. **Public packages are transport, not signal.** `pybaseball`, an MLB Stats API
+    wrapper, or a weather client can improve data reliability; none confers an
+    informational edge merely by being installed.
+11. **The current moneyline probability is internally inconsistent.** Current
+    code fits market probability as a freely estimated standardized feature,
+    stores that raw probability in the prediction snapshot/UI, and then shrinks
+    it toward market again in the ledger. V2 must define one calibrated decision
+    probability and remove the second, conflicting anchor.
+12. **The current board is not an immutable decision ledger.** It recomputes a
+    category from the latest prediction and an independently selected latest
+    odds snapshot. A later refresh can therefore change the displayed historical
+    category. Fixed-horizon decision observations are required for evaluation.
+13. **Current feature provenance is incomplete.** `feature_available_at` can
+    default to prediction-generation time rather than the source record's real
+    publication/availability time. Source row IDs are not frozen for each input,
+    and the current daily history upserts can update a same-date row. These rows
+    cannot prove point-in-time availability yet.
+14. **Date-only historical joins remain unsafe.** A condition such as
+    `snapshot_date <= game_date` can select a snapshot produced after first pitch
+    on the same date. All joins must use timestamp cutoffs. Park factors must be
+    joined by actual venue and season, not merely the latest factor for the home
+    team, to handle neutral venues and venue changes.
+15. **Board and ledger currently select sides differently.** The ledger chooses
+    the side with positive model-versus-market edge; the board chooses whichever
+    team the model puts above 50%. If model home is 45% and market home is 40%,
+    the ledger selects home while the board selects away. Current ledger
+    actionability evidence therefore cannot validate `mlb-decision-view-v1`.
+16. **Board and ledger totals use different propositions.** The board can show an
+    exact book line and price, while the current ledger records a consensus line
+    at synthetic `-110`. Existing ledger ROI/CLV cannot validate board totals or
+    future parlay legs.
+17. **`calibrated_probability` is not calibrated yet.** Current moneyline
+    snapshots copy the raw model output into that field. A chronological
+    out-of-fold calibrator and calibration artifact are required before the UI
+    may use calibrated/confidence language.
+18. **Metric fallbacks are mislabeled.** Current starter loading may coalesce
+    missing xFIP to ERA and subsequently present it as xFIP. Every value must
+    preserve `metric`, `source`, and fallback state; a different metric requires
+    a separately versioned model or an explicit missing value.
+19. **Schedule revisions can orphan valid-looking snapshots.** A postponed or
+    rescheduled game may retain predictions/odds tied to its old commence time.
+    Decision eligibility must bind to a schedule/event revision and require the
+    snapshot's event identity and commence to match the current canonical event,
+    otherwise supersede it visibly.
+20. **Observed is not necessarily executable.** An API quote is executable only
+    when the user-configured jurisdiction/book set includes that book and the
+    quote is sufficiently fresh. Without that configuration, UI copy must say
+    `observed quote`, not `executable price`.
+21. **Per-book JSON needs stronger provenance.** Quote eligibility requires
+    provider event ID, normalized outcome identity, exact total line for both
+    sides, valid prices, provider `last_update`, capture time, quote-age limit,
+    and pregame status. The immutable decision must freeze the normalized quote;
+    mutable JSON alone is insufficient evidence.
+22. **Contribution reproduction is incomplete.** Standardized coefficient-times-
+    value explanations also require intercept, scaler mean/scale, feature order,
+    artifact/training hash, and exact row values. They are associative model
+    calculations, never causal claims.
+23. **Required and optional inputs are not distinguished.** The model artifact
+    must declare each feature `required`, `optional`, or `not_used`. A missing
+    required feature forces `Pass`; an optional missing feature produces a
+    fragility warning. Treating every absent weather field as blocking would
+    conflict with the weather-free initial release.
+24. **Push and void are currently conflated.** Current total settlement can store
+    an exact-line push as `void`. V2 must preserve `win`, `loss`, `push`, and
+    true `void` separately; pushes contribute zero P&L inside the eligible ROI
+    denominator, while cancelled/postponed voids are excluded under the
+    versioned settlement policy.
+
+### Mathematical definitions
+
+#### 1. Exact market reference and executable price
+
+Convert an American price `o` to raw implied probability:
+
+```
+r(o) = -o / (-o + 100),  when o < 0
+r(o) = 100 / (o + 100),  when o > 0
+```
+
+For an exact two-sided moneyline pair at the pre-registered reference book or
+panel:
+
+```
+q_home = r(home_price) / (r(home_price) + r(away_price))
+q_away = 1 - q_home
+```
+
+`q` is the vig-free **reference** probability used to measure model-market
+disagreement. The no-vig method is itself versioned because proportional
+normalization does not remove every form of favorite-longshot shading.
+
+Reference and execution are separate policies:
+
+- The reference market is a fixed sharp book/panel and coherent timestamp used
+  for every game in the study.
+- The execution market is the best eligible accessible quote selected by a
+  pre-registered line-shopping rule at the decision cutoff.
+- Each no-vig pair uses both sides from the same book and capture. A best price
+  from one book cannot be paired with the opposite side from another.
+
+For the exact executable side price, convert to decimal `d`:
+
+```
+d(o) = 1 + 100 / abs(o),  when o < 0
+d(o) = 1 + o / 100,       when o > 0
+break_even = 1 / d
+```
+
+The application must never substitute consensus odds for the executable price,
+select a favorable book after the outcome, or mix capture times.
+
+#### 2. Moneyline residual model
+
+The target moneyline model uses the market as a fixed offset and learns only a
+regularized residual:
+
+```
+logit(p_home) = logit(q_home) + beta' * z
+```
+
+where `z` contains point-in-time standardized features and missingness flags.
+This differs from fitting an unrestricted market coefficient and then applying
+a second manual anchor. The residual formulation makes the scientific question
+explicit: do the baseball features add information after the market?
+
+For selected side `s`:
+
+```
+disagreement_delta = p_s - q_s
+price_margin        = p_s - break_even_s
+EV_per_dollar       = p_s * d_s - 1
+```
+
+`disagreement_delta` answers where we differ from the reference market.
+`price_margin` and EV answer whether the exact offered price would be supported
+if the model were calibrated. They are separate UI fields.
+
+The application stores three independent relationship axes:
+
+```
+outcome_relationship = same winner | opposite winner | unclear
+market_strength       = model stronger | model weaker | within agreement band
+price_value           = supported | too expensive | unavailable
+```
+
+For example, market 80% and model 52% is not a simple Confirmation. The outcome
+direction matches, but the model is 28 percentage points weaker and the price is
+almost certainly unsupported. The board may group cards for scanability, but it
+must render all three axes.
+
+#### 3. Uncertainty-aware price support
+
+A binary game has outcome randomness; it does not have a generic per-game "95%
+probability interval." Separately, the estimated probability has parameter,
+sampling, calibration, and feature uncertainty. Generate time-respecting
+bootstrap or ensemble probability draws `p^(b)` and report at least:
+
+```
+estimated_EV = mean_b(p^(b) * d - 1)
+P(EV > 0)    = mean_b(I[p^(b) > 1/d])
+```
+
+A pre-specified lower probability bound `p_lower` may be used as a conservative
+product gate. If adopted, research price support requires:
+
+```
+p_lower > break_even + execution_buffer
+```
+
+The execution buffer covers quote latency, rounding, and model degradation and
+must be fixed before the confirmation sample. This lower-bound rule is a
+conservative product choice, not a universal statistical theorem. Until
+uncertainty is calibrated, the application displays `Price support unavailable`,
+not a positive-EV badge.
+
+#### 4. Totals distribution and push-aware EV
+
+Let `T` be the model's calibrated full-game run distribution and `L` the exact
+book total. For an Over:
+
+```
+p_win  = P(T > L)
+p_push = P(T = L)  # non-zero only when the line can push
+p_loss = P(T < L)
+EV     = p_win * (d_over - 1) - p_loss
+```
+
+For an Under, reverse the win/loss inequalities. Estimate the distribution from
+out-of-fold empirical residuals by line/regime or a calibrated count model such
+as negative binomial. Do not import the soccer Poisson assumption. The exact
+Over and Under prices must also be de-vigged when comparing our probability with
+the market's probability at that same line.
+
+At an integer line, the de-vigged Over/Under quote represents a conditional
+no-push comparison:
+
+```
+q_over_cond  = r(over_price) / (r(over_price) + r(under_price))
+p_over_cond  = p_win / (p_win + p_loss)
+```
+
+Compare `p_over_cond` with `q_over_cond`; preserve `p_push` separately for EV,
+settlement, and calibration.
+
+For a line with push probability, positive EV is equivalently:
+
+```
+p_win / (p_win + p_loss) > 1 / d
+```
+
+This conditional-on-no-push comparison is required; comparing raw `p_win` with
+`1/d` is wrong when pushes are possible.
+
+#### 5. Closing-line value
+
+Moneyline CLV is measured from the selected side's pre-registered entry quote to
+the chosen sharp/reference close, preferably in vig-free probability or log-odds
+space. Positive CLV means the close assigned more probability to our selected
+side than the entry snapshot did. Totals CLV must jointly account for line and
+price; a half-run improvement and a price improvement are not interchangeable
+without an equivalence calculation. Missing reference close means `CLV
+unavailable`, never zero.
+
+One transparent price-based moneyline statistic is:
+
+```
+CLV_price = entry_decimal / close_decimal - 1
+```
+
+Positive CLV is useful evidence that the process obtained a better number than
+the close. It is not, by itself, proof of a profitable predictive edge.
+
+#### 6. Parlay math
+
+For genuinely independent legs and multiplied leg prices:
+
+```
+P_parlay = product(p_i)
+D_parlay = product(d_i)
+EV_parlay = P_parlay * D_parlay - 1
+```
+
+The economically correct general formula uses the direct same-book quote and a
+joint win probability:
+
+```
+EV_parlay = P(all legs win) * direct_quote_decimal - 1
+```
+
+The application may use `product(p_i)` only as an explicitly labeled
+independence estimate. A direct sportsbook quote overrides multiplied displayed
+prices. When dependence or joint uncertainty is not modeled, no parlay may be
+labeled positive EV. Same-game legs are blocked in the initial version, and the
+default remains two or three legs.
+
+### How each data group could add incremental information
+
+| Data | Frozen raw inputs | Hypothesized residual mechanism | Primary failure risk |
+|---|---|---|---|
+| Starting pitcher | confirmed/probable state, xFIP/FIP, K/BB, pitch count trend, expected innings | Market may not have fully adjusted to a late starter change or changed workload | Public starter quality is already priced; stale or wrong starter creates false edge |
+| Team offense | rolling and season-shrunk wRC+/OPS/ISO/K/BB, handedness split, confirmed lineup coverage | Lineup composition may differ from season team average | Current-form noise and post-lineup market adjustment |
+| Bullpen quality | reliever-only IP, ER, HR, BB, HBP, K, ERA/FIP | Relief strength matters after the starter exits | Whole-staff data mislabeled as bullpen; role and sample instability |
+| Bullpen workload | per-reliever pitches and appearances over 1/3/7 days, consecutive days, high-leverage-arm coverage | Recently used leverage relievers may be less available or effective | Arbitrary fatigue weights, incomplete usage data, manager discretion |
+| Park | season/versioned runs and HR factors | Same contact quality converts differently by venue | Annual noise and double-counting with market total |
+| Forecast weather | forecast timestamp/valid time, temperature, wind vector, precipitation, roof state | Late wind/temperature/roof changes can alter run environment | Observed weather substituted for forecast, uncertain roof, market reacts first |
+| Lineup | player IDs, order, handedness, confirmation timestamp | A confirmed lineup changes expected plate appearances and quality | Late posting, scratches, and treating absence of a lineup as confirmation |
+| Market path | same-book opening/current line and prices, sharp reference | Shows whether the disagreement is new, persistent, or already converged | Hindsight choice of opener/close and double-counting movement |
+
+Raw fields are preferred over a hand-built composite. For example, freeze
+`bullpen_pitches_1d`, `bullpen_pitches_3d`, `relievers_back_to_back`, and
+`high_leverage_coverage`; let the model or a pre-registered rule determine their
+effect. Any aggregation formula must be versioned.
+
+Reliever-only FIP can be derived transparently from completed relief
+appearances:
+
+```
+FIP_relief = (13*HR + 3*(BB + HBP) - 2*K) / IP + C_season
+```
+
+The season FIP constant `C_season`, innings, and component totals must all be
+available by the decision cutoff; intentional walks require a versioned handling
+rule. Starter appearances are excluded rather than blended into this metric.
+Expected bullpen exposure can use a frozen expected-starter-innings input, but
+its effect is learned in earlier folds rather than hard-coded.
+
+Early-season team/pitcher rates require shrinkage to prevent tiny samples from
+creating extreme residuals. One transparent form is:
+
+```
+shrunk_rate = w * current_rate + (1 - w) * prior_rate
+w = sample_size / (sample_size + k)
+```
+
+`k`, the prior population, and the relevant sample unit (PA, TBF, or IP) are
+trained or pre-registered inside earlier periods and stored in the model
+artifact.
+
+### Application operating flow
+
+The application operates as a series of append-only pregame checkpoints. No
+DeepSeek or other LLM participates.
+
+```
+MLB schedule/game feed
+        +
+point-in-time baseball/weather snapshots
+        +
+exact per-book Odds API snapshot
+        |
+        v
+pregame eligibility + data-health gates
+        |
+        v
+market-offset model + calibrated distribution
+        |
+        v
+immutable decision observation
+        |
+        +--> Decision Board
+        +--> Favorites Parlay research tray
+        +--> Prospective tracking and settlement
+```
+
+#### Stage A - ingest and freeze sources
+
+1. Append a schedule revision containing canonical MLB `gamePk`, both teams,
+   scheduled start, venue, status, probable starters and confirmation states.
+   Reschedules supersede a revision; they do not silently move its context.
+2. Capture each Odds API request as one immutable batch. Preserve the raw JSON,
+   then normalize provider event, book, market, outcome, exact line, American
+   and decimal price, bookmaker update time, capture time, and integrity state.
+   Batch identity is required for coherent same-capture parlay comparisons.
+3. Write immutable team and pitcher captures. Each source capture records
+   provider, endpoint/query, source record, `captured_at`, actual `available_at`,
+   `stats_through_at`, sample window/size, schema and transformation versions,
+   and raw checksum. `pybaseball` may supply advanced
+   FanGraphs/Statcast fields, but zero-row, schema-drift, stale, constant, or
+   low-coverage pulls fail health checks. A reduced MLB-official-stat fallback
+   must be a separately versioned model, not silent substitution.
+4. Derive reliever-only appearances and workload from MLB box scores. The first
+   game pitcher/starter identity is separated from subsequent relievers before
+   aggregation.
+5. If adopted, an hourly forecast client such as `openmeteo-requests` writes an
+   immutable forecast snapshot keyed by venue coordinates, forecast issue time,
+   valid time, and game. MLB game-reported conditions cannot masquerade as a
+   pregame forecast.
+
+Package policy: direct `requests` calls may remain the canonical MLB/Odds API
+transport; a package such as `mlbapi` is only an optional typed wrapper around
+the same MLB source. `pybaseball` remains advanced-stat enrichment with hard
+health checks. Adding a package never changes the source/provenance requirement.
+
+#### Stage B - run checkpoints
+
+Use fixed, configurable horizons rather than overwriting one row. Candidate
+research checkpoints are `OPEN`, `T-180`, and `T-60`; one horizon is declared
+the canonical accountability decision before collection. `CLOSE` is captured
+for evaluation only and may never enter an earlier prediction. Additional
+lineup checkpoints require a new policy version. Every phase must:
+
+- revalidate event identity and both commence clocks;
+- reject missing commence, ambiguity, stale/in-play odds, and started games;
+- join only source records whose `available_at <= decision_at < commence_time`;
+- record source coverage and missingness before applying research fallbacks;
+- append prediction and decision snapshots without altering earlier phases.
+
+A delayed or rescheduled game is re-resolved against the provider event and MLB
+clock; a future provider time alone may not reopen an event already started by
+the trusted MLB clock.
+
+#### Stage C - create the complete prospective population
+
+Create one immutable decision observation for every eligible
+`(policy_version, model_version, matchup_id, market, decision_phase)`, including
+`Pass`. It references:
+
+```
+prediction_snapshot_id, odds_snapshot_id, feature snapshot IDs,
+schedule_revision_id, model_artifact_id, input manifest,
+decision_at, event_commence, model/reference/observed-quote probabilities,
+book, exact line, exact prices, selection, p_win/p_push/p_loss,
+uncertainty method/draw summary, outcome_relationship, market_strength,
+price_support,
+decision_bucket, gate results, reason codes, origin
+```
+
+The current `mlb_bets` ledger remains part of the audit trail. A companion
+all-decision observation population is required so `Pass` and non-selected rows
+cannot disappear. Actual placed tickets, if ever supported, are a separate
+immutable entity and must not be inferred from a displayed model decision.
+
+The user-configured eligible book/jurisdiction set determines whether an
+observed quote may be called accessible. Without that configuration, the
+decision stores and displays it only as an observed quote.
+
+#### Required persistence model
+
+Names may vary, but the following normalized responsibilities are required:
+
+| Structure | Required role and key fields |
+|---|---|
+| `mlb_source_ingest_runs` | Provider/query, requested/captured times, status, row count, coverage, schema version, raw hash/URI, error |
+| immutable team/pitcher histories | Ingest run/source row IDs, captured/available/stats-through times, sample window and PA/IP/TBF, metric semantics/version, raw hash; no same-date update |
+| `mlb_schedule_revisions` | gamePk, revision, commence, venue, teams, starter IDs/status, available/captured times, superseded revision |
+| `mlb_relief_appearances` | Game/team/pitcher, actual starter/relief role, outs, pitches, BF, ER/HR/BB/IBB/HBP/K, final/source time |
+| `mlb_bullpen_snapshots` | Event revision/team/cutoff, reliever-only season/recent quality, pitches/BF/appearances 1d/3d/7d, consecutive-day and active-arm coverage, sample sizes, derivation version |
+| `mlb_weather_forecast_snapshots` | Event revision/venue coordinates, provider/model, issue/valid/capture times, temperature, wind vector, precipitation, humidity, roof capability/state/source |
+| `mlb_odds_capture_runs` + `mlb_market_quotes` | Batch/request, provider event, book, market/outcome, line, American/decimal price, bookmaker update/capture times, commence-at-capture and integrity flags; append-only |
+| `mlb_model_artifacts` | Feature schema/requiredness, training cutoff, required git SHA, dependency/data hashes, feature order, scaler mean/scale, coefficient/intercept, calibrator/distribution, seed and validation artifact |
+| extended prediction snapshots | Event revision/artifact/cutoff, reference quote IDs, exact source-row input manifest, raw score, calibrated probability or total distribution, uncertainty and health/completeness |
+| decision runs/snapshots | Policy/horizon/origin/cutoff/trust evaluation plus prediction, event revision, relationship axes, probability/price deltas, quote IDs, bucket/substate, missingness, reasons, fragility and parlay eligibility |
+| settlement events | Decision ID, distinct win/loss/push/void, rule version, final source/time/score, P&L, close quote and CLV, correction linkage |
+| parlay candidates/legs | Decision run/horizon, same book/batch, leg decision and quote IDs, estimated/direct payout, joint-probability method, fragility, deterministic selection/rank, result events |
+| `mlb_trust_evaluations` | Market + artifact + policy + horizon, evaluated time, gate evidence/metrics/sample/calendar span and state; central UI source |
+
+#### Stage D - centralized decision logic
+
+For moneylines, compute three independent labels:
+
+- `Outcome relationship`: same winner, opposite winner, or unclear.
+- `Market strength`: model stronger, model weaker, or within a pre-registered
+  probability agreement band.
+- `Price support`: the uncertainty-aware probability clears the exact book's
+  break-even probability plus the fixed execution buffer.
+
+Map these into the existing board without implying actionability:
+
+| Board column | Meaning |
+|---|---|
+| Model + Market Agree | Same likely winner **and** within the registered probability agreement band. Sub-badge says `price supported`, `too expensive`, or `price support unavailable`. Agreement alone never qualifies a parlay leg. |
+| Model Disagrees | Opposing likely winner or a probability-strength gap beyond the registered band, even if both remain above 50%. Show whether the exact price is supported; most disagreement can still be a Pass economically. |
+| Pass / Missing Information | Weak difference, incomplete/stale data, unavailable uncertainty, inaccessible/ineligible observed quote, or failed trust gate. |
+
+For totals, do not call line movement `agreement`. The card shows our calibrated
+Over/Under probabilities, the exact book's de-vigged probabilities, push risk,
+line/price movement as context, and price support. The current v1
+movement-alignment classification remains a research display artifact and must
+be replaced before totals can advance.
+
+#### Stage E - application presentation
+
+The MLB Vegas page should render in this order:
+
+1. **Research/validation status** - operational trust state and concise blocker
+   count.
+2. **Decision Board** - cards show model probability, vig-free reference,
+   observed/access-eligible break-even, exact book/price, relationship and
+   strength axes, uncertainty, price margin, source freshness, countdown, and
+   top model contributions. Market/horizon filters select the immutable decision
+   observation; a live/latest view cannot replace the canonical evaluation row.
+3. **What changed** - opening/current price, starter/lineup/weather changes, and
+   which immutable phase is displayed. Closed, rescheduled, invalidated, and
+   superseded observations have explicit states rather than disappearing.
+4. **Favorites Parlay tray** - only same-book, same-capture, unstarted moneyline
+   favorites with complete data. Until validation, it is research-only and
+   shows estimated payout rather than executable ticket language.
+5. **Fragility panel** - `Low`, `Medium`, `High`, or `Blocked`, driven by data
+   freshness, starter/lineup confirmation, uncertainty, price movement, weather,
+   concentration, and dependence. It is not a confidence or star rating.
+6. **Prospective evidence** - all decisions by bucket/phase with sample size,
+   calibration, CLV, ROI, confidence intervals, pushes/voids, and exclusions.
+7. **Detailed audit panels** - historical/backfill diagnostics remain below the
+   prospective product and are visibly segregated.
+
+Green is reserved for a passed trust or validation gate. Directional leans use
+neutral colors while the markets remain research-only. The word `edge` may
+describe a numeric difference, but `positive EV`, `actionable`, or staking copy
+is forbidden until the central policy passes.
+
+#### Stage F - favorites parlay and fragility rules
+
+A research parlay candidate must satisfy all of the following:
+
+- moneyline favorite at a named accessible book;
+- model and market outcome agreement;
+- exact two-sided price pair and fresh same-book quote for every leg;
+- same Odds API capture batch and current schedule/event revision for every leg;
+- immutable source-aware prediction with no blocking missing inputs;
+- no started, same-game, duplicate-team, or mutually exclusive legs;
+- block duplicate-team/doubleheader exposure in the initial policy;
+- two or three legs by default;
+- no claim of executable combined price without a direct book quote.
+
+After probability calibration exists, `price support` may become an additional
+eligibility requirement. Before that, the tray is an organizer of confirmations,
+not an edge or EV builder. The system freezes a deterministic ranked top-K
+candidate set separately from user-saved combinations so evaluation cannot
+cherry-pick after results. Fragility must increase for common model-version
+error, shared weather systems, same series/team exposure, uncertain starters,
+late movement, and wide probability intervals. Product probabilities are shown
+only as independence estimates until a joint simulation or empirically
+validated dependence adjustment exists.
+
+### Validation protocol for the edge hypothesis
+
+1. Define one primary market-relative endpoint before the confirmation window.
+   Moneyline primary: log loss or Brier difference versus the same-time vig-free
+   reference. Totals primary: proper scoring of the full outcome distribution or
+   exact-line log score, not mean MAE alone.
+2. Evaluate every eligible game, not only displayed selections. Use rolling
+   origin folds and an untouched final window.
+3. Add features one group at a time: market baseline; starters; offense;
+   reliever-only quality; bullpen workload; weather; lineup. Retain a group only
+   if it improves out-of-fold performance and does not destabilize calibration.
+4. Report access-eligible exact-price ROI as a secondary economic outcome with
+   pushes and voids. Use a date-clustered bootstrap so games on the same
+   day/series do not masquerade as independent evidence.
+5. Report CLV against a pre-designated reference close and a same-subset entry
+   comparison. Do not choose the favorable close or book after results.
+6. Control feature/threshold experimentation through pre-registration or
+   multiple-testing adjustment. A failed overall result cannot be rescued by a
+   post-hoc team, month, odds, or total slice.
+7. Evaluate and promote separately for each
+   `(market, model_artifact, decision_policy, canonical_horizon)`; a model or
+   threshold change begins a new evidence cohort.
+8. Require the existing operational gates plus an adequate unique-game sample,
+   no worse proper scoring than market, positive and stable CLV, and
+   access-eligible exact-price ROI whose confidence lower bound is above zero
+   before `actionable`.
+9. No Kelly sizing, automated stakes, or production wager language is permitted
+   before market-specific promotion. Even after promotion, stake policy requires
+   a separate bankroll and drawdown review.
+
+If a market is later promoted, the no-push full-Kelly reference is:
+
+```
+kelly_fraction = (p*d - 1) / (d - 1)
+```
+
+Production policy would use capped fractional Kelly plus portfolio limits by
+game, team, day, model, and embedded parlay-leg exposure. Independent Kelly
+calculations on correlated decisions are forbidden.
+
+### Current-versus-target boundary
+
+**Built now:** append-only prospective prediction records, canonical odds
+identity/commence guards, centralized trust policy, an initial missingness map
+for new model runs, exact observed retail-book comparison, and the research
+Decision Board. The review above limits what those records currently prove.
+
+**Still required for this v2 contract:** populated/healthy point-in-time team and
+pitcher histories; reliever-only quality/workload; calibrated moneyline
+uncertainty; a push-aware total distribution using exact prices; complete
+all-decision prospective observations; outcome-agreement versus price-support UI;
+same-book parlay candidates; dependence-aware fragility; and the prospective
+evaluation artifact. Until those are built and validated, the application
+provides structured research intelligence, not a demonstrated betting edge.
+
+---
+
+## MLB Single-User Bet Decision UX Contract v3 (2026-07-12)
+
+### UX objective
+
+The MLB Vegas experience must answer one question first:
+
+> Should I take this exact market, at this exact book/line/price, right now?
+
+Agreement/disagreement, model features, market movement, and validation evidence
+support that answer; they are not the primary navigation. Because this is a
+single-user application, optimize for fast personal decisions rather than
+onboarding, multi-user permissions, or generic education.
+
+Replace the current equal-width Agree/Disagree/Pass board and broad mode banners
+with a prioritized decision queue. The first visible section is `TAKE NOW`, then
+`WATCH`; the full slate appears below in a compact filterable table. Every
+negative or unavailable answer names the exact blocker and the next useful
+action.
+
+### Current UI migration map
+
+The first UI pass removes generic market-level badges and long defensive copy
+from the decision path. Replace them as follows:
+
+| Current surface | Replacement |
+|---|---|
+| Research/mode banner | Per-market control: `TAKE enabled` or `TAKE disabled - N gates open`, with a link to the exact gates |
+| Moneyline market-efficiency badge | A bet-level `PASS`, `WATCH`, or `BLOCKED` result with the exact team, book, price, and reason |
+| Shadow-signal heading | `Today's Decisions`, ordered by action and start urgency |
+| Equal Agree/Disagree/Pass columns | One prioritized `TAKE NOW`/`WATCH` queue plus the full-slate table |
+| Long backtest warning above the board | Compact trust status; full evidence moves to `Evidence and History` |
+| Model-edge percentage alone | Model probability, offered break-even, modeled ROI, price target, and resample stability together |
+| Generic refresh button | Staged refresh with Schedule/Quotes/Context/Prediction/Decision status and last-good timestamps |
+
+No market-level badge substitutes for a bet decision. If the moneyline model
+cannot qualify at a displayed price, the UI says `PASS` and why; if evidence or
+data prevents evaluation, it says `WATCH` or `BLOCKED` and gives the trigger or
+repair action.
+
+### Primary answer taxonomy
+
+The central decision service, not React components, returns one primary status:
+
+| Status | Direct meaning | When it is allowed |
+|---|---|---|
+| `TAKE NOW` | Take the exact displayed selection only at the displayed book/line/price or better, before expiry | The exact market/artifact/policy/horizon trust state is actionable; current event/quote/input identity passes; calibrated uncertainty exists; price and stability rules pass |
+| `WATCH` | Do not take it now; a named price, input, refresh, or validation trigger could make it qualify | The calculation is coherent and the next qualifying trigger is known, but at least one non-integrity condition is still open |
+| `PASS` | Do not take this market at the current snapshot and price | Complete, fresh evidence exists, but neither side clears the locked decision/price rules |
+| `BLOCKED` | The application cannot produce a trustworthy decision | Identity, provenance, required input, quote, distribution, calibration, or local integrity is missing/invalid |
+| `CLOSED` | No new pregame action is possible | Game started, market closed/suspended, event cancelled, or old revision was superseded |
+
+`PASS` is price- and snapshot-specific, not a claim that the team is bad.
+`WATCH` always includes the trigger and next check. `BLOCKED` always includes the
+failed gate and remedy when one exists.
+
+Global prospective validation and local calculation integrity remain separate:
+
+- If a complete local calculation would otherwise qualify but the prospective
+  cohort has not passed its promotion gates, use `WATCH` and name the failed
+  cohort gates.
+- If calibrated uncertainty, required provenance, or a valid paired quote does
+  not exist, use `BLOCKED`; the system cannot calculate a trustworthy answer.
+- The current MLB models cannot render `TAKE NOW` until the exact market cohort
+  passes centralized promotion.
+
+### Secondary evidence labels
+
+Every card also shows a separate market relationship label:
+
+```
+Agree - model stronger
+Agree - market stronger
+Disagree on winner
+At market
+```
+
+This prevents outcome direction from being confused with price value. For
+example, model 52% versus market 70% is `Agree - market stronger`, while the
+price status is likely `PASS`. `TAKE NOW` never means merely that model and
+market favor the same team.
+
+Additional compact fields remain separate:
+
+```
+Price support: passes | too expensive | unavailable
+Data completeness: complete | optional inputs missing | required input missing
+Fragility: low | medium | high | blocked
+Trust: take enabled | take disabled (N gates open)
+```
+
+### Proposed locked decision parameters
+
+These are proposed initial policy parameters, not discovered truths. Freeze them
+under a policy version before collecting their confirmation population; do not
+tune them in the UI:
+
+```
+minimum mean estimated ROI                 = +2.0%
+minimum model resamples with ROI > 0       = 80%
+maximum quote age                          = 10 minutes
+minimum manual-verification/start buffer   = 5 minutes
+WATCH price distance                       = within 2% of required decimal price
+```
+
+For a no-push market with model probability `p`, decimal price `D`, and minimum
+ROI `r`:
+
+```
+current_ROI = p*D - 1
+D_target    = (1 + r) / p
+```
+
+For a push-capable total:
+
+```
+current_ROI = p_win*(D - 1) - p_loss
+D_target    = 1 + (r + p_loss) / p_win
+```
+
+The displayed `take to` price is the nearest valid sportsbook tick that clears
+both the mean-ROI rule and the model-resample stability rule. A different total
+line is a different proposition: `Under 9 -110 or better` cannot silently become
+`Under 8.5`.
+
+### Exact status rules and message templates
+
+#### TAKE NOW
+
+Render only when all are true:
+
+1. Central trust state is `actionable` for the exact market, artifact, policy,
+   and canonical horizon.
+2. Decision snapshot matches the current schedule/event revision and future
+   commence time.
+3. Every required source record was available by the prediction cutoff.
+4. Calibrated probability/distribution and model-resample uncertainty exist.
+5. Quote is from a configured accessible book, contains the paired market, is no
+   more than 10 minutes old, and leaves at least five minutes to verify.
+6. Mean estimated ROI is at least +2.0%.
+7. At least 80% of model resamples have ROI above zero.
+8. No market-specific blocker remains.
+
+Message template:
+
+> TAKE ATL moneyline at DraftKings -125 or better. Model 58.4%; price requires
+> 55.6%; estimated return +5.1% per unit; 86% of model resamples remain positive.
+> Quote observed 2 minutes ago and expires at 6:40 PM ET.
+
+`TAKE NOW` is price-specific, not team-specific. Do not attach recommended stake
+sizing. The CTA is `Verify at DraftKings`; after the user verifies externally,
+`Mark Taken` records the actual book, line, price, time, and optional stake as a
+separate immutable ticket.
+
+#### WATCH
+
+Allowed only when the calculation is coherent but cannot currently receive
+`TAKE NOW`, including:
+
+- local price/uncertainty rules pass but prospective promotion is incomplete;
+- mean estimated ROI is positive but below +2.0%;
+- mean ROI passes but fewer than 80% of resamples remain positive;
+- the fully qualifying price is within 2% of the current decimal payout;
+- probable starter or lineup is pending and a defined checkpoint will rerun the
+  model;
+- a material input changed and a fresh decision is actively being calculated.
+
+Message templates:
+
+> WATCH - the current price clears the local rule, but TAKE is disabled: 42/150
+> prospective games and the positive-ROI resample gate remains open. Next evaluation:
+> T-60 at 5:10 PM ET.
+
+> WATCH for LAD -130 or better. Current -145 requires 59.2%; model estimate is
+> 58.0%. Alert when the observed price reaches the target.
+
+> WATCH - estimated return is +3.1%, but only 67% of model resamples remain
+> positive; policy requires 80%.
+
+> WATCH - confirmed starter is pending. The card will recalculate at T-60; the
+> prior decision is superseded and cannot be used.
+
+#### PASS
+
+Use when all data and quote checks are valid but no side clears `WATCH` or `TAKE
+NOW` rules. Evaluate both sides independently; a model favorite may still be too
+expensive, and an underdog may have the better price margin.
+
+Message templates:
+
+> PASS NYY at FanDuel -180. The model favors NYY, but the maximum supported price
+> is -150. Current estimated return is -4.2% per unit.
+
+> PASS - model 52.4%, reference market 51.8%, and neither offered side clears the
+> +2.0% price rule.
+
+> PASS Over 8.5 at -115. Win 49.0%, push 0.0%, loss 51.0%; estimated return is
+> -8.4% per unit.
+
+#### BLOCKED
+
+Use when no trustworthy current calculation is possible:
+
+- missing/mismatched MLB gamePk, provider event, schedule revision, or commence;
+- missing exact quote, paired opposing price, or configured accessible book;
+- mixed-book/mixed-capture pair, invalid price, stale/suspended quote;
+- started game or inside manual verification buffer;
+- missing required starter, feature, source availability, or artifact manifest;
+- required input became available only after prediction cutoff;
+- calibrated uncertainty or push-aware total distribution unavailable;
+- unknown settlement rule, post-commence write, or immutable provenance failure.
+
+Message templates:
+
+> BLOCKED - DraftKings quote is 18 minutes old; policy maximum is 10 minutes.
+> Refresh quotes before evaluating this market.
+
+> BLOCKED - starting pitcher is unconfirmed and is required by this artifact.
+> Next starter check: 4:30 PM ET.
+
+> BLOCKED - the game was rescheduled. Current prediction and quote belong to the
+> old 1:10 PM event revision and cannot be reused.
+
+> BLOCKED - this total model does not yet produce calibrated win/push/loss
+> probabilities, so the offered price cannot be evaluated.
+
+#### CLOSED
+
+Message templates:
+
+> CLOSED - game started at 7:10 PM ET. Canonical pregame decision: PASS at
+> DraftKings -145.
+
+> CLOSED / VOID - event was postponed. The makeup game will receive a new
+> schedule revision and decision.
+
+### Screen 1 - Today's Decisions (`/vegas?sport=mlb`)
+
+#### Header and controls
+
+- Date arrows/calendar and explicit ET clock.
+- `My Books` selector using the single local profile; only selected books may be
+  described as accessible.
+- `Moneyline`, `Totals`, and later `Parlays` tabs.
+- Last successful refresh, source age, next scheduled checkpoint, and one
+  `Refresh` control.
+- Refresh progress is explicit:
+
+  ```
+  Schedule -> Quotes -> Context -> Prediction -> Decisions
+  ```
+
+  A partial-stage failure names the failed stage and retains the last good card
+  as stale; it never displays a false success.
+- Per-market trust control: `TAKE enabled` or `TAKE disabled - N gates open`,
+  linking directly to the failed requirements.
+
+#### Decision summary strip
+
+Show counts for:
+
+```
+TAKE NOW | WATCH | PASS | BLOCKED | CLOSED
+```
+
+If no market is eligible for `TAKE NOW`, say why directly:
+
+> No bets qualify now. Moneyline has 5 open validation gates; totals lacks a
+> calibrated win/push/loss distribution. View gates.
+
+#### Prioritized queue
+
+Render full-width `TAKE NOW` cards first, then `WATCH`. Do not reserve empty
+equal-width columns. `PASS` and `BLOCKED` appear in the full-slate table and may
+be expanded. Sort by:
+
+1. primary status;
+2. evidence completeness;
+3. start urgency;
+4. price margin/stability;
+5. matchup.
+
+Do not automatically reorder while the user is reading. Show a transition toast
+and update the affected card in place until the user acknowledges or refreshes
+the queue.
+
+#### Compact decision card
+
+Every card shows above the fold:
+
+- primary status and one-sentence reason;
+- exact selection, line, American and decimal price, named book;
+- `take to` price when calculable;
+- quote capture time, bookmaker update time, age, expiry, and start countdown;
+- matchup, venue, Game 1/Game 2 for doubleheaders, event revision/status;
+- model probability; vig-free reference; offered break-even; signed price gap;
+- relationship label; price support; completeness; fragility;
+- canonical horizon, artifact, and policy version;
+- top two model associations with actual values and source ages;
+- `What changed` and `What is missing` rows.
+
+Card actions:
+
+```
+Details | Refresh/Watch | Alert at price | Add to parlay | Verify at book
+```
+
+`Add to parlay` is hidden/disabled unless the leg policy passes. `Verify at book`
+does not claim the API quote is still offered. `Mark Taken` appears only after
+manual verification and stores actual ticket terms separately from the model.
+
+#### Full-slate table
+
+Recommended desktop columns:
+
+| Column | Content |
+|---|---|
+| Start | ET time, countdown, Game 1/2, event state |
+| Matchup | Away @ home, starters, venue |
+| Market | ML or exact total side/line |
+| Answer | TAKE NOW / WATCH / PASS / BLOCKED / CLOSED |
+| Relationship | Agree-model stronger / Agree-market stronger / Disagree / At market |
+| Exact quote | Configured book, line, American price, age |
+| Model | Calibrated probability or win/push/loss |
+| Reference | Vig-free probability at the fixed reference |
+| Break-even | Exact offered price requirement |
+| Margin | Model minus break-even and estimated ROI |
+| Take to | Maximum/minimum qualifying price at the same proposition |
+| Stability | Positive-resample percentage and uncertainty range |
+| Fragility | Low/medium/high/blocked plus first reason |
+| Changed | Price, starter, lineup, weather, or status change |
+| Action | Details, alert, verify, parlay |
+
+Filters: answer, market, selected book, relationship, start window, changed
+since last view, and completeness. Compact/list toggle is stored locally.
+
+### Screen 2 - Game and Bet Detail
+
+Open as a drawer on desktop and a full screen on mobile. Keep the direct answer
+and exact ticket sticky at the top.
+
+1. **Exact quote panel** - selection, line, American/decimal price, observed and
+   bookmaker-update times, age, countdown, take-to price, `Verify at book`.
+2. **Model vs market panel** - probability bar with model, fixed reference,
+   offered break-even, price gap, estimated ROI, model-resample stability. Totals
+   show win/push/loss and resolved win rate.
+3. **Price shop table** - all configured books with exact line, both-side price,
+   update age, eligibility, and best observed quote. Reference market is visibly
+   separate from the selected book.
+4. **Why this answer** - top fitted-model associations, actual values, direction,
+   source, freshness, required/optional state. Copy says `association in this
+   model`, never that a feature caused the outcome.
+5. **Against this bet** - strongest counter-signals, uncertainty, missing
+   optional inputs, concentration, and fragility reasons.
+6. **What changed timeline** - schedule/starter revisions, opening/current line
+   and price, forecast/lineup changes, predictions, decisions, and superseded
+   snapshots at each horizon.
+7. **Provenance drawer** - source record IDs, real available-at times, artifact
+   and transformation hashes, quote/event identity, settlement rule.
+
+### Screen 3 - Favorites Parlay Builder
+
+Desktop uses a right-side tray; mobile uses a sticky bottom bar opening a full
+screen. The user chooses the sportsbook first.
+
+Initial leg eligibility:
+
+- two or three moneyline favorites by default;
+- same configured book and same Odds API capture batch;
+- current event/schedule revisions and future commence times;
+- no same game, duplicate team, doubleheader, or mutually exclusive exposure;
+- complete required inputs and eligible individual decision snapshots;
+- exact current leg quote and no stale/mixed prices.
+
+Each leg row shows matchup/start, team, exact ML, model/reference/break-even,
+primary answer, relationship, freshness, fragility, and remove control.
+
+Summary shows:
+
+| Field | Display rule |
+|---|---|
+| Observed multiplied payout | Label `estimated`; leg-price product is not a direct parlay quote |
+| Direct sportsbook quote | Show only after manually entered or retrieved from a supported source |
+| Raw book-implied joint | From the direct quote when available |
+| Vig-free market joint | Fixed reference method and timestamp |
+| Model joint | Name independence, simulation, or validated dependence method |
+| Stressed range | Shared model/calibration uncertainty and dependence stress |
+| Fragility | Concrete common risks, not a star rating |
+| Return calculator | User-entered stake only; no suggested stake |
+
+Initial CTA:
+
+> Verify parlay price at DraftKings.
+
+The user may enter the actual offered combined price and `Mark Taken`. Parlay
+`TAKE NOW` requires its own promoted artifact/policy/horizon cohort, a current
+direct quote, individually eligible legs, and a validated joint-probability
+method. Single-leg promotion cannot promote parlays.
+
+If prices change, invalidate the tray and show:
+
+> Prices changed. This combination must be recalculated. Accept new prices or
+> keep the prior combination closed for comparison.
+
+Freeze a deterministic ranked top-K candidate set separately from user-saved
+combinations so prospective evaluation cannot cherry-pick winners.
+
+### Screen 4 - Evidence and History
+
+Tabs:
+
+```
+Trust Gates | Prospective Decisions | My Taken Bets | Backtest Archive
+```
+
+`Trust Gates` is grouped by market, artifact, policy, and canonical horizon. It
+shows identity/timestamp integrity, exact-quote coverage, required-input
+coverage, calibration, benchmark proper score, unique games/calendar span,
+exact-price ROI with clustered interval, CLV, and version consistency. Each
+failed gate includes the concrete count and required remedy.
+
+Prospective summary:
+
+- unique games and date span;
+- counts by primary answer and relationship;
+- Brier/log loss versus same-time reference for moneyline;
+- total probability score/CRPS and push calibration;
+- calibration bins and model-resample coverage;
+- W/L/Push/Void and exact-price ROI interval;
+- CLV under the fixed reference/cutoff;
+- quote, feature, and decision coverage;
+- concentration by date/team/series.
+
+Prospective table columns:
+
+| Frozen at | Horizon | Game | Market | Answer | Relationship | Exact selection/book/line/price | Model/reference/break-even | Result | Close/CLV | P&L | Artifact/policy |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+
+Track the complete canonical population, including `PASS` and `BLOCKED`,
+separately from `My Taken Bets`. A version change starts a new cohort and leaves
+old evidence visible. A missing prospective sample reads `No settled prospective
+decisions yet`, never `0%`.
+
+### Change notifications and alerts
+
+Card transitions generate concise messages:
+
+> Price changed: TAKE NOW at -125 became PASS at -145. Model probability did not
+> change.
+
+> Starter changed from Smith to Jones. Prior decision superseded; recalculation
+> is running.
+
+> WATCH target reached: DraftKings moved to -130. Fresh decision required before
+> status can change.
+
+> Quote refresh failed at the Quotes stage. Last good DraftKings price is 14
+> minutes old and the market is BLOCKED.
+
+Alerts may trigger on target price, starter confirmation, lineup publication,
+fresh decision availability, or status transition. An alert never carries
+forward an old `TAKE NOW`; it requests a fresh immutable decision.
+
+### Empty, stale, and lifecycle states
+
+- No games: `No MLB games scheduled for this date.`
+- Schedule/no market: `Waiting for sportsbook markets. Next poll: 10:30 AM ET.`
+- No current prediction: `BLOCKED - no prediction matches the current event
+  revision.`
+- Stale/single-sided quote: `BLOCKED - refresh required`, showing age and limit.
+- Material input change: immediately supersede old answer and show
+  `Recalculating for [starter/lineup/event revision]`.
+- Partial API failure: retain last good snapshot as stale, name the failed source
+  and last successful time.
+- Started game: move to `CLOSED` without erasing the canonical pregame answer.
+- Postponed/cancelled: `CLOSED / VOID`; makeup receives a new revision.
+- Artifact/event/commence mismatch: hard `BLOCKED`.
+
+### Mobile behavior
+
+- Fixed bottom navigation: `Board`, `Parlay`, `Evidence`.
+- One-column queue; card summary contains answer, exact ticket, countdown,
+  price/model gap, and first blocker above the fold.
+- Tap expands reasons, source data, and price table; never depend on hover.
+- Parlay opens as a bottom sheet/full screen.
+- Tables become stacked cards with the same field labels.
+- Minimum 44px touch targets; colors always paired with words/icons.
+- Relative time opens absolute ET and UTC timestamps.
+- Do not reorder while reading; show a change toast and update in place.
+
+### Visual language
+
+- `TAKE NOW`: green, allowed only because all central trust and price gates pass.
+- `WATCH`: amber with clock icon and explicit trigger.
+- `PASS`: neutral slate with current-price reason.
+- `BLOCKED`: red with failed integrity/validation gate.
+- `CLOSED`: dark neutral with frozen pregame answer.
+- Agreement/disagreement uses blue/violet secondary chips, never the primary
+  action color.
+- Never use stars as a substitute for the primary answer.
+- Put the direct answer, exact quote, quote age, and first reason above the fold.
+
+### Central decision response contract
+
+The UI renders a server-produced immutable decision payload and does not recreate
+thresholds:
+
+```
+decision_snapshot_id
+event_revision_id
+market / selection / exact line
+primary_status: take_now | watch | pass | blocked | closed
+headline / primary_reason_code / primary_reason_text
+relationship / market_strength / price_support
+reference_quote_id / observed_quote_id / configured_book_eligible
+american_price / decimal_price / break_even
+model_probability or p_win/p_push/p_loss
+estimated_roi / resample_positive_rate / uncertainty_range
+take_to_price / valid_until / next_check_at / watch_trigger
+completeness / required_missing / optional_missing
+fragility / fragility_reasons
+top_associations / counter_signals / changed_since_prior
+artifact_version / policy_version / canonical_horizon / trust_evaluation_id
+parlay_eligible
+```
+
+The frontend may format numbers and responsive layout only. It cannot turn
+`WATCH` into `TAKE NOW`, recalculate a target price, infer trust from color, or
+reuse a status with a different quote.
+
+### Implementation order
+
+| Priority | UI/application work | Acceptance outcome |
+|---|---|---|
+| P0 | Central primary-status contract; reference versus observed-book separation; normalized immutable quotes; event revisions; fixed decision snapshots; stale/superseded handling | The same frozen decision drives card, ledger, settlement, and evidence; current markets cannot accidentally render TAKE NOW |
+| P1 | Today queue, direct messages, full-slate table, details drawer, My Books settings, staged refresh, alerts, Verify/Mark Taken, responsive cards | User can see what to take, watch, pass, or why evaluation is blocked in one scan |
+| P2 | Same-book/same-batch favorites tray, repricing, fragility, actual quote entry, deterministic candidate tracking | Parlays are coherent, auditable, and invalidated when any quote changes |
+| P3 | Evidence/History screens, canonical complete population, settlement corrections, calibration/ROI/CLV cohorts and gates | Every displayed decision maps to prospective evidence without board/ledger mismatch |
+| P4 | Weather/lineup/roof enrichment, richer timeline, source-driven alerts | Additional context appears only after P0-P3 decision integrity is proven |
+
+Do not add more decorative charts before P0-P3. The first successful UI milestone
+is not visual polish; it is one exact, immutable answer with a concrete price,
+expiry, reason, and next action.
+
+### Implementation status (2026-07-12)
+
+Built in this pass:
+
+- MLB now has a dedicated server/client route boundary. The NBA Vegas page is
+  no longer the execution path for MLB.
+- The server produces one deterministic decision payload per exact matchup,
+  market, sportsbook, observed odds snapshot, prediction snapshot, event
+  revision, and policy version. React filters and renders these payloads; it
+  does not calculate thresholds or promote statuses.
+- Moneyline evaluation checks both sides at each book and selects the stronger
+  price proposition. It no longer assumes the model favorite is the bet.
+- American-price validation, decimal conversion, two-sided vig removal, exact
+  break-even, ROI, qualifying-price rounding, quote age, bookmaker update time,
+  start buffer, event/commence matching, feature cutoff, and current-versus-
+  reference snapshot identity are centralized in
+  `web/src/lib/mlb-vegas-decisions.ts`.
+- Totals require a line-matched win/push/loss distribution and distribution
+  resamples. A mean total alone cannot produce a price decision.
+- Moneylines require a named out-of-fold calibration method and probability
+  resamples. A raw probability alone cannot produce a price decision.
+- The current models therefore fail closed: existing raw moneyline and mean-
+  total artifacts render a concrete `BLOCKED` reason rather than being promoted.
+- The new MLB page includes the `TAKE NOW`/`WATCH` queue, complete slate table,
+  My Books filtering, market and answer filters, exact-price cards, target-price
+  tracking on the local device, game/market detail drawer, per-book price-shop
+  table, model/counter-signal sections, snapshot identity, staged pipeline
+  output, favorites parlay screen, trust gates, coverage/health, historical
+  checks, prospective ledger, line movement, alerts, and audit history.
+- The favorites builder accepts only individually qualified same-book favorite
+  legs and keeps the combined status blocked until a separate parlay artifact,
+  dependence method, validation cohort, and direct combined quote exist.
+- The default MLB date is resolved in Eastern time, lifecycle rows are retained,
+  doubleheaders are numbered, and the MLB layout uses the wider decision-table
+  viewport without changing NBA, soccer, or tennis behavior.
+
+Still required before the first real `TAKE NOW` can appear:
+
+1. Persist normalized quote propositions and append-only decision snapshots
+   instead of relying only on deterministic IDs over immutable source rows.
+2. Add a genuine out-of-fold moneyline calibrator and probability-resample
+   artifact with its canonical horizon.
+3. Add a line-specific total distribution with win/push/loss resamples.
+4. Key prospective trust evidence by exact artifact, policy, and horizon, then
+   pass the locked promotion gates.
+5. Persist personal verified tickets and price alerts on the server; current
+   target tracking is intentionally device-local.
+6. Add the canonical refresh-job trigger and persisted stage/run status. The
+   current control reloads the latest output and does not create a second MLB
+   odds writer.

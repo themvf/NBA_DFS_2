@@ -6003,6 +6003,10 @@ export async function getProjectionSourceBreakdown(
 export type VegasMatchupRow = {
   matchupId: number;
   gameDate: string;
+  gameId: string | null;
+  gameStatus: string | null;
+  scheduleFetchedAt: string | null;
+  doubleheaderGameNumber: number | null;
   homeTeam: string;
   awayTeam: string;
   homeAbbrev: string;
@@ -6034,6 +6038,36 @@ export type VegasMatchupRow = {
   awaySpHand: string | null;
   awaySpXfip: number | null;
   awaySpKPer9: number | null;
+  // MLB-only immutable decision inputs. NBA rows return null for these fields.
+  commenceTime: string | null;
+  oddsSnapshotId: number | null;
+  oddsCaptureKey: string | null;
+  oddsCapturedAt: string | null;
+  oddsBooks: Record<string, Record<string, unknown>> | null;
+  openingOddsBooks: Record<string, Record<string, unknown>> | null;
+  moneylinePredictionSnapshotId: number | null;
+  moneylineReferenceOddsSnapshotId: number | null;
+  moneylinePredictionEventCommence: string | null;
+  moneylineFeatureAvailableAt: string | null;
+  moneylineReferenceMarketProbability: number | null;
+  moneylinePrediction: number | null;
+  moneylineCalibratedProbability: number | null;
+  moneylinePredictionAt: string | null;
+  moneylineModelVersion: string | null;
+  moneylineRunConfig: Record<string, unknown> | null;
+  moneylineFeatureValues: Record<string, unknown> | null;
+  moneylineMissingness: Record<string, boolean> | null;
+  totalPredictionSnapshotId: number | null;
+  totalReferenceOddsSnapshotId: number | null;
+  totalPredictionEventCommence: string | null;
+  totalFeatureAvailableAt: string | null;
+  totalReferenceMarketLine: number | null;
+  totalPrediction: number | null;
+  totalPredictionAt: string | null;
+  totalModelVersion: string | null;
+  totalRunConfig: Record<string, unknown> | null;
+  totalFeatureValues: Record<string, unknown> | null;
+  totalMissingness: Record<string, boolean> | null;
 };
 
 export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
@@ -6064,6 +6098,10 @@ export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupR
   return (rows.rows as VegasMatchupRow[]).map((r) => ({
     matchupId: Number(r.matchupId),
     gameDate: String(r.gameDate),
+    gameId: null,
+    gameStatus: null,
+    scheduleFetchedAt: null,
+    doubleheaderGameNumber: null,
     homeTeam: String(r.homeTeam ?? ""),
     awayTeam: String(r.awayTeam ?? ""),
     homeAbbrev: String(r.homeAbbrev ?? ""),
@@ -6092,6 +6130,35 @@ export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupR
     awaySpHand: null,
     awaySpXfip: null,
     awaySpKPer9: null,
+    commenceTime: null,
+    oddsSnapshotId: null,
+    oddsCaptureKey: null,
+    oddsCapturedAt: null,
+    oddsBooks: null,
+    openingOddsBooks: null,
+    moneylinePredictionSnapshotId: null,
+    moneylineReferenceOddsSnapshotId: null,
+    moneylinePredictionEventCommence: null,
+    moneylineFeatureAvailableAt: null,
+    moneylineReferenceMarketProbability: null,
+    moneylinePrediction: null,
+    moneylineCalibratedProbability: null,
+    moneylinePredictionAt: null,
+    moneylineModelVersion: null,
+    moneylineRunConfig: null,
+    moneylineFeatureValues: null,
+    moneylineMissingness: null,
+    totalPredictionSnapshotId: null,
+    totalReferenceOddsSnapshotId: null,
+    totalPredictionEventCommence: null,
+    totalFeatureAvailableAt: null,
+    totalReferenceMarketLine: null,
+    totalPrediction: null,
+    totalPredictionAt: null,
+    totalModelVersion: null,
+    totalRunConfig: null,
+    totalFeatureValues: null,
+    totalMissingness: null,
   }));
 }
 
@@ -7781,6 +7848,7 @@ export async function getSpreadCoverage(): Promise<SpreadCoverageRow[]> {
 export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
   const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
   await ensureAnalyticsColumns();
+  await ensureMlbGamePredictionTables();
   const rows = await db.execute(sql`
     WITH latest_pitcher AS (
       SELECT DISTINCT ON (player_id)
@@ -7808,6 +7876,19 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
     SELECT
       m.id             AS "matchupId",
       m.game_date      AS "gameDate",
+      m.game_id        AS "gameId",
+      m.game_status    AS "gameStatus",
+      m.fetched_at     AS "scheduleFetchedAt",
+      CASE
+        WHEN COUNT(*) OVER (
+          PARTITION BY m.game_date, m.home_team_id, m.away_team_id
+        ) > 1
+        THEN ROW_NUMBER() OVER (
+          PARTITION BY m.game_date, m.home_team_id, m.away_team_id
+          ORDER BY m.commence_time NULLS LAST, m.game_id, m.id
+        )::int
+        ELSE NULL
+      END AS "doubleheaderGameNumber",
       ht.name          AS "homeTeam",
       at.name          AS "awayTeam",
       ht.abbreviation  AS "homeAbbrev",
@@ -7835,7 +7916,36 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
       COALESCE(m.away_sp_name, asp_id.name, asp_name.name) AS "awaySpName",
       COALESCE(asp_id.hand, asp_name.hand) AS "awaySpHand",
       COALESCE(asp_id.xfip, asp_name.xfip) AS "awaySpXfip",
-      COALESCE(asp_id.k_per_9, asp_name.k_per_9) AS "awaySpKPer9"
+      COALESCE(asp_id.k_per_9, asp_name.k_per_9) AS "awaySpKPer9",
+      m.commence_time AS "commenceTime",
+      latest_odds.id AS "oddsSnapshotId",
+      latest_odds.capture_key AS "oddsCaptureKey",
+      latest_odds.captured_at AS "oddsCapturedAt",
+      latest_odds.books AS "oddsBooks",
+      opening_odds.books AS "openingOddsBooks",
+      ml_pred.id AS "moneylinePredictionSnapshotId",
+      ml_pred.odds_snapshot_id AS "moneylineReferenceOddsSnapshotId",
+      ml_pred.event_commence AS "moneylinePredictionEventCommence",
+      ml_pred.feature_available_at AS "moneylineFeatureAvailableAt",
+      ml_pred.market_prob AS "moneylineReferenceMarketProbability",
+      ml_pred.raw_prediction AS "moneylinePrediction",
+      ml_pred.calibrated_probability AS "moneylineCalibratedProbability",
+      ml_pred.created_at AS "moneylinePredictionAt",
+      ml_pred.model_version AS "moneylineModelVersion",
+      ml_pred.config_json AS "moneylineRunConfig",
+      ml_pred.feature_values AS "moneylineFeatureValues",
+      ml_pred.missingness_json AS "moneylineMissingness",
+      total_pred.id AS "totalPredictionSnapshotId",
+      total_pred.odds_snapshot_id AS "totalReferenceOddsSnapshotId",
+      total_pred.event_commence AS "totalPredictionEventCommence",
+      total_pred.feature_available_at AS "totalFeatureAvailableAt",
+      total_pred.market_line AS "totalReferenceMarketLine",
+      total_pred.raw_prediction AS "totalPrediction",
+      total_pred.created_at AS "totalPredictionAt",
+      total_pred.model_version AS "totalModelVersion",
+      total_pred.config_json AS "totalRunConfig",
+      total_pred.feature_values AS "totalFeatureValues",
+      total_pred.missingness_json AS "totalMissingness"
     FROM mlb_matchups m
     LEFT JOIN mlb_teams ht ON ht.team_id = m.home_team_id
     LEFT JOIN mlb_teams at ON at.team_id = m.away_team_id
@@ -7844,12 +7954,62 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
     LEFT JOIN latest_pitcher_by_name hsp_name ON hsp_name.name_key = LOWER(m.home_sp_name)
     LEFT JOIN latest_pitcher_by_name asp_name ON asp_name.name_key = LOWER(m.away_sp_name)
     LEFT JOIN latest_park park ON park.team_id = m.home_team_id
+    LEFT JOIN LATERAL (
+      SELECT h.id, h.capture_key, h.captured_at, h.books
+      FROM game_odds_history h
+      WHERE h.sport = 'mlb' AND h.matchup_id = m.id
+        AND h.books IS NOT NULL
+        AND m.commence_time IS NOT NULL
+        AND h.captured_at < m.commence_time
+      ORDER BY h.captured_at DESC, h.id DESC
+      LIMIT 1
+    ) latest_odds ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT h.books
+      FROM game_odds_history h
+      WHERE h.sport = 'mlb' AND h.matchup_id = m.id
+        AND h.books IS NOT NULL
+        AND m.commence_time IS NOT NULL
+        AND h.captured_at < m.commence_time
+      ORDER BY h.captured_at ASC, h.id ASC
+      LIMIT 1
+    ) opening_odds ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT s.id, s.odds_snapshot_id, s.event_commence, s.feature_available_at,
+             s.market_prob, s.raw_prediction, s.calibrated_probability,
+             s.created_at, s.feature_values, s.missingness_json,
+             r.model_version, r.config_json
+      FROM mlb_game_prediction_snapshots s
+      JOIN mlb_prediction_runs r ON r.id = s.run_id
+      WHERE s.matchup_id = m.id AND s.market = 'moneyline'
+        AND r.origin = 'prospective'
+        AND s.created_at < s.event_commence
+      ORDER BY s.created_at DESC, s.id DESC
+      LIMIT 1
+    ) ml_pred ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT s.id, s.odds_snapshot_id, s.event_commence, s.feature_available_at,
+             s.market_line, s.raw_prediction, s.created_at, s.feature_values,
+             s.missingness_json, r.model_version, r.config_json
+      FROM mlb_game_prediction_snapshots s
+      JOIN mlb_prediction_runs r ON r.id = s.run_id
+      WHERE s.matchup_id = m.id AND s.market = 'total'
+        AND r.origin = 'prospective'
+        AND s.created_at < s.event_commence
+      ORDER BY s.created_at DESC, s.id DESC
+      LIMIT 1
+    ) total_pred ON TRUE
     WHERE m.game_date = ${targetDate}
-    ORDER BY m.vegas_total DESC NULLS LAST
+      AND m.game_id IS NOT NULL
+    ORDER BY m.commence_time ASC NULLS LAST, m.id ASC
   `);
   return (rows.rows as VegasMatchupRow[]).map((r) => ({
     matchupId: Number(r.matchupId),
     gameDate: String(r.gameDate),
+    gameId: r.gameId != null ? String(r.gameId) : null,
+    gameStatus: r.gameStatus != null ? String(r.gameStatus) : null,
+    scheduleFetchedAt: r.scheduleFetchedAt != null ? String(r.scheduleFetchedAt) : null,
+    doubleheaderGameNumber: r.doubleheaderGameNumber != null ? Number(r.doubleheaderGameNumber) : null,
     homeTeam: String(r.homeTeam ?? ""),
     awayTeam: String(r.awayTeam ?? ""),
     homeAbbrev: String(r.homeAbbrev ?? ""),
@@ -7878,6 +8038,51 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
     awaySpHand: r.awaySpHand != null ? String(r.awaySpHand) : null,
     awaySpXfip: r.awaySpXfip != null ? Number(r.awaySpXfip) : null,
     awaySpKPer9: r.awaySpKPer9 != null ? Number(r.awaySpKPer9) : null,
+    commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+    oddsSnapshotId: r.oddsSnapshotId != null ? Number(r.oddsSnapshotId) : null,
+    oddsCaptureKey: r.oddsCaptureKey != null ? String(r.oddsCaptureKey) : null,
+    oddsCapturedAt: r.oddsCapturedAt != null ? String(r.oddsCapturedAt) : null,
+    oddsBooks: r.oddsBooks && typeof r.oddsBooks === "object"
+      ? r.oddsBooks as Record<string, Record<string, unknown>>
+      : null,
+    openingOddsBooks: r.openingOddsBooks && typeof r.openingOddsBooks === "object"
+      ? r.openingOddsBooks as Record<string, Record<string, unknown>>
+      : null,
+    moneylinePredictionSnapshotId: r.moneylinePredictionSnapshotId != null ? Number(r.moneylinePredictionSnapshotId) : null,
+    moneylineReferenceOddsSnapshotId: r.moneylineReferenceOddsSnapshotId != null ? Number(r.moneylineReferenceOddsSnapshotId) : null,
+    moneylinePredictionEventCommence: r.moneylinePredictionEventCommence != null ? String(r.moneylinePredictionEventCommence) : null,
+    moneylineFeatureAvailableAt: r.moneylineFeatureAvailableAt != null ? String(r.moneylineFeatureAvailableAt) : null,
+    moneylineReferenceMarketProbability: r.moneylineReferenceMarketProbability != null ? Number(r.moneylineReferenceMarketProbability) : null,
+    moneylinePrediction: r.moneylinePrediction != null ? Number(r.moneylinePrediction) : null,
+    moneylineCalibratedProbability: r.moneylineCalibratedProbability != null ? Number(r.moneylineCalibratedProbability) : null,
+    moneylinePredictionAt: r.moneylinePredictionAt != null ? String(r.moneylinePredictionAt) : null,
+    moneylineModelVersion: r.moneylineModelVersion != null ? String(r.moneylineModelVersion) : null,
+    moneylineRunConfig: r.moneylineRunConfig && typeof r.moneylineRunConfig === "object"
+      ? r.moneylineRunConfig as Record<string, unknown>
+      : null,
+    moneylineFeatureValues: r.moneylineFeatureValues && typeof r.moneylineFeatureValues === "object"
+      ? r.moneylineFeatureValues as Record<string, unknown>
+      : null,
+    moneylineMissingness: r.moneylineMissingness && typeof r.moneylineMissingness === "object"
+      ? r.moneylineMissingness as Record<string, boolean>
+      : null,
+    totalPredictionSnapshotId: r.totalPredictionSnapshotId != null ? Number(r.totalPredictionSnapshotId) : null,
+    totalReferenceOddsSnapshotId: r.totalReferenceOddsSnapshotId != null ? Number(r.totalReferenceOddsSnapshotId) : null,
+    totalPredictionEventCommence: r.totalPredictionEventCommence != null ? String(r.totalPredictionEventCommence) : null,
+    totalFeatureAvailableAt: r.totalFeatureAvailableAt != null ? String(r.totalFeatureAvailableAt) : null,
+    totalReferenceMarketLine: r.totalReferenceMarketLine != null ? Number(r.totalReferenceMarketLine) : null,
+    totalPrediction: r.totalPrediction != null ? Number(r.totalPrediction) : null,
+    totalPredictionAt: r.totalPredictionAt != null ? String(r.totalPredictionAt) : null,
+    totalModelVersion: r.totalModelVersion != null ? String(r.totalModelVersion) : null,
+    totalRunConfig: r.totalRunConfig && typeof r.totalRunConfig === "object"
+      ? r.totalRunConfig as Record<string, unknown>
+      : null,
+    totalFeatureValues: r.totalFeatureValues && typeof r.totalFeatureValues === "object"
+      ? r.totalFeatureValues as Record<string, unknown>
+      : null,
+    totalMissingness: r.totalMissingness && typeof r.totalMissingness === "object"
+      ? r.totalMissingness as Record<string, boolean>
+      : null,
   }));
 }
 
