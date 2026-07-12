@@ -3771,3 +3771,148 @@ market differences remain evidence inputs—not permission to recommend a wager.
   schedule start times; the one remaining afternoon-game moneyline is correctly
   classified as provider-partial because the available 20:00 UTC snapshot was
   already in-play and was rejected.
+
+---
+
+## MLB Actionable Intelligence Product Spec (2026-07-11)
+
+### Product objective
+
+Turn the MLB Vegas page into a decision-support system that explains where our
+model **agrees or disagrees with the market**. The product is not permitted to
+claim it can beat Vegas. It may organize favorite parlays, but only as a
+transparent view of mutually supported favorites with exact available prices,
+not as a promise of profit.
+
+The system must distinguish three concepts:
+
+1. **Model view** - our frozen pregame probability or projected total.
+2. **Market view** - the vig-free probability or total derived from a named,
+   timestamped market snapshot.
+3. **Decision state** - `confirmation`, `contrarian`, or `pass`, subject to the
+   centralized trust policy. A research-state model may describe disagreement
+   but cannot label a wager actionable.
+
+### Six product components
+
+1. **Agreement/Disagreement Score**
+   - Moneyline: compare our frozen probability with the vig-free market
+     probability. Show both percentage-point difference and direction.
+   - Total: compare our frozen run projection with the exact market line. Show
+     the run difference and Over/Under direction.
+   - Display a confidence band and data-completeness state. A large raw delta
+     with missing inputs is not a strong signal.
+
+2. **Why We Agree/Disagree**
+   - Attribute the difference to named, frozen inputs such as starting pitcher,
+     opposing offense/handedness, bullpen quality and workload, park, weather,
+     lineup confirmation, and market movement.
+   - Show the top three contributors in plain language. Do not display a reason
+     when its source is unavailable, stale, retrospective, or captured after
+     first pitch.
+
+3. **Favorites Parlay Builder**
+   - Candidate legs must be favorites at an exact book/price and must also be
+     supported by our model; a market favorite that our model opposes is
+     excluded by default.
+   - Show leg probability, model-market difference, exact price, combined
+     book-implied probability, model-estimated probability, and payout.
+   - Default to two or three legs. Never manufacture a parlay from consensus
+     prices that cannot all be executed at one named sportsbook.
+
+4. **Parlay Fragility Rating**
+   - Grade each leg and the combined parlay for uncertainty, price movement,
+     starter/lineup confirmation, weather risk, model calibration, stale data,
+     and concentration (same game, team, series, or shared weather exposure).
+   - Use `Low`, `Medium`, `High`, or `Blocked` fragility with the concrete reason;
+     do not convert fragility into a misleading star rating.
+
+5. **Confirmation / Contrarian / Pass Board**
+   - `Confirmation`: market and model support the same side.
+   - `Contrarian`: model opposes the market by a pre-registered threshold.
+   - `Pass`: insufficient difference, missing data, non-executable price, or a
+     failed trust gate.
+   - Sort by evidence quality first and magnitude second. Research rows retain a
+     visible `SHADOW` badge and cannot be promoted by UI copy or color.
+
+6. **Prospective Decision Tracking**
+   - Track confirmation, contrarian, pass, and parlay candidates separately.
+   - Report unique games, calibration, Brier/log loss, CLV, exact-price ROI,
+     pushes/voids, and confidence intervals. Backfills remain excluded from
+     prospective claims.
+   - The purpose is to learn which kinds of agreement and disagreement are
+     informative, not to search retrospectively for a profitable slice.
+
+### Information-source and API readiness matrix
+
+Every displayed fact must record `source`, `source_record_id`, `captured_at`,
+`available_at`, and `freshness_state`. `available_at` must precede the game's
+commence time. If a required source is not configured, the component must show
+`Unavailable` or `Blocked`; league-average substitution may support an explicitly
+marked research estimate but may not support an explanation or action label.
+
+| Information needed | Intended source | Current repository path / canonical storage | Readiness | Required fallback or next step |
+|---|---|---|---|---|
+| MLB schedule, game ID, teams, start time, status, final score | MLB Stats API (`statsapi.mlb.com`) | Schedule/score ingestion -> `mlb_matchups` | Available now | Fail closed when game ID or commence time is missing; never infer an event from home team alone |
+| Pregame probable/confirmed starting pitchers | MLB Stats API schedule/game feed | `mlb_matchups.home_sp_*`, `away_sp_*`; freeze into prediction snapshot | Partially available | Add coverage/freshness health check; label `Probable`, `Confirmed`, or `Unavailable`; block pitcher-based explanation when absent |
+| Moneyline and total lines, prices, books, event ID, market movement | The Odds API, `baseball_mlb` | Canonical Python ingestion -> append-only `game_odds_history.books`; linked `odds_snapshot_id` | Available now | Exact parlay construction requires all legs at the same named book and capture; otherwise show comparison only |
+| Vig-free market probability | Derived from the exact two-sided price pair | Compute from immutable odds snapshot under versioned pricing policy | Derivable now | Do not use a flat 50% total reference or arithmetic-average American odds |
+| Our pregame probability/total and uncertainty | Existing MLB game-line model | `mlb_prediction_runs` + `mlb_game_prediction_snapshots` | Mean prediction available; calibrated uncertainty not yet complete | Add out-of-fold probability/residual distribution before confidence or fragility may be called validated |
+| Team offense, handedness splits, starter quality | pybaseball/FanGraphs-derived ingestion plus MLB player/team identity | `mlb_team_stats_history`, `mlb_pitcher_stats_history`; freeze exact values/missingness | Schema exists; production history previously empty | Repair and monitor point-in-time population. Until coverage and variance gates pass, show input as unavailable and keep model in research mode |
+| Bullpen quality | FanGraphs/pybaseball-derived team pitching data | `mlb_team_stats_history.bullpen_*` | Field exists, but current value may represent staff rather than relievers | Replace with verified reliever-only calculation and rename/version semantics before using in explanations |
+| Bullpen recent workload/availability | MLB Stats API box scores/game logs, derived from reliever appearances and pitches over prior 1-3 days | New append-only team bullpen workload snapshot required | Not built; no dedicated API required initially | Derive only from games completed before prediction time; otherwise omit the factor. Optional news feed may later supplement, not overwrite, the calculation |
+| Confirmed batting lineups and batting order | MLB Stats API live game/boxscore feed when posted | New game-line lineup snapshot required; DFS `dk_players` fields are not the canonical Vegas source | Feed may expose it near game time; game-line capture not built | Poll before first pitch, timestamp every capture, and show `Unconfirmed` until complete. Do not make the Vegas model depend on DraftKings lineup metadata |
+| Park factors | Annual park-factor dataset, currently intended from FanGraphs/pybaseball | `mlb_park_factors`, versioned by season | Schema/source plan exists; operational freshness must be verified | Use a documented neutral factor only as a visible research fallback; never describe neutral fallback as park intelligence |
+| Pregame forecast: temperature, wind, precipitation, roof risk | New weather provider keyed by venue coordinates and event time | `mlb_matchups.weather_*` is only a cache; new immutable forecast snapshot required | No reliable pregame forecast API configured | Select and configure a weather API before implementation. MLB game data may describe conditions later but must not be treated as a prediction-time forecast |
+| Ballpark roof type/state | Static venue metadata plus team/venue announcement or weather/game feed | New venue table + immutable roof-state snapshot | Static roof capability can be curated; live state not configured | Show `Roof state unknown` when not confirmed; do not infer open/closed solely from weather |
+| Umpire assignment | MLB game/live feed when the crew is published; optional licensed lineup/umpire provider if timing is inadequate | New immutable umpire assignment snapshot required | Not implemented; availability timing uncertain | Treat as optional research input. Do not buy or integrate a provider until a prospective ablation study justifies it |
+| Injuries, scratches, roster moves | MLB Stats API transactions/rosters plus existing beat-fact extraction where provenance is auditable | New structured, append-only availability snapshot; existing extracted facts remain supplemental | Partially explored, not a trusted model feed | Start with official roster/transaction changes. Any news extraction must store URL/source, publication time, extraction time, and confidence; absence of news is not proof of availability |
+| Sharp/reference close for CLV | Last eligible pregame snapshot from a pre-designated reference book/panel in The Odds API | `game_odds_history.books` under versioned close policy | Data structure available; reference panel/cadence must be fixed | Pre-register reference book, fallback order, and cutoff; missing close means CLV unavailable, not zero |
+| Settlement and book-rule outcome | MLB Stats API final score/status plus versioned market settlement rules | `mlb_matchups` results -> `mlb_bets` settlement | Available now for standard full-game markets | Preserve `win/loss/push/void` separately; record special postponement/shortened-game handling and re-settle corrections idempotently |
+| Parlay combined price | Same-book leg prices from one eligible Odds API snapshot; preferably direct parlay quote if a future provider supports it | New derived parlay candidate record linked to each leg's odds snapshot | Straight multiplication is derivable; sportsbook parlay quote API not configured | Label multiplied decimal odds as `estimated payout`. Do not call it executable unless an actual same-book quote/acceptance is captured |
+
+### API procurement priorities
+
+Do not add providers merely because a field is interesting. Implement and test in
+this order:
+
+1. Use the already configured **MLB Stats API** and **The Odds API** for the
+   initial agreement board, exact-price favorite filters, market movement, game
+   identity, starters, scores, and settlement.
+2. Repair the existing **pybaseball/FanGraphs-derived point-in-time history**
+   before adding more model features. Zero-row or constant-feature refreshes are
+   hard failures.
+3. Add a **weather forecast API** only when immutable forecast snapshots and
+   venue coordinates are designed. This is the first clearly missing external
+   feed likely to improve understandable explanations.
+4. Derive **bullpen workload** from official MLB game logs before paying for a
+   separate feed.
+5. Treat **lineups, roof state, injuries/news, and umpires** as optional enrichment
+   until their availability timing and prospective incremental value are proven.
+
+### Easy-to-understand UI specification
+
+- **Three-column Decision Board:** `Model + Market Agree`, `Model Disagrees`, and
+  `Pass / Missing Information`. Each game card shows exact book/price, model
+  probability, vig-free market probability, difference, confidence/data state,
+  and the top reasons.
+- **Source chips:** every reason has a small source/freshness chip such as
+  `MLB Stats - 18 min ago`, `Odds API - DraftKings - 4 min ago`, or
+  `Weather unavailable`.
+- **Why card:** three horizontal contribution bars with expandable provenance.
+  Missing factors appear in a separate `What we do not know yet` row.
+- **Favorite parlay tray:** users add eligible confirmation legs; the tray shows
+  combined estimated probability, same-book estimated payout, and a fragility
+  checklist. Block the build if prices come from different books or captures.
+- **Evidence footer:** `Research`, `Prospective sample n`, and passed/failed trust
+  gates appear on every recommendation surface.
+
+### Initial delivery boundary
+
+The first release should use only data already available or directly derivable:
+MLB Stats API schedule/starters/results, The Odds API exact book prices and line
+history, immutable model predictions, and ledger outcomes. It can ship the board,
+source chips, exact-price favorite filtering, a research-only parlay tray, and
+prospective tracking. Pitcher/team explanations remain blocked until history is
+populated; weather, confirmed game-line lineups, roof, injuries/news, and umpire
+factors remain visibly unavailable until their feeds and snapshots exist.
