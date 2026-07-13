@@ -5320,3 +5320,130 @@ the data and provenance requirements supporting that UI are verified.
 - Static venue metadata may identify `open_air`, `retractable`, or `fixed`
   roof capability. Retractable roof state remains `unknown` until a sourced
   game-specific state is captured; weather alone never implies open or closed.
+
+## Tennis decision data contract — 2023+ (2026-07-13)
+
+This contract supersedes the old odds-only Tennis MVP architecture for all new
+work under Jira Epic `SCRUM-17`. It does not overturn the existing no-edge
+finding: Tennis stays market-equal and cannot emit a TAKE decision unless a new
+feature set passes the preregistered chronological market benchmark.
+
+### Historical scope and validation windows
+
+- The historical corpus starts `2023-01-01`. No pre-2023 match, rating, or
+  statistic may initialize or influence a new rating or feature.
+- 2023 is rating initialization/burn-in, 2024 is development, 2025 is
+  chronological validation, and 2026 is the untouched final test.
+- Every ATP/WTA year is an expected partition. A zero-row expected partition is
+  a hard failure, never a warning. The existing cached corpus has zero ATP 2025
+  rows because a source failure was silently accepted; that cache is invalid for
+  `SCRUM-17`/`SCRUM-27` until rebuilt.
+- Cached artifact names and manifests include start/end dates, tours, provider
+  versions/checksums, build version, row counts, and missingness. A cache built
+  for another date scope may not satisfy a 2023+ request.
+
+### Source decisions
+
+| Input | Primary | Supplement/fallback | Contract |
+|---|---|---|---|
+| Upcoming schedule, event ID, start time, current sportsbook quotes | The Odds API `/v4/sports` plus tournament `/odds` endpoints | None; stale stored state is display-only | API key required; capture pre-start `h2h`, `totals`, and `spreads`, provider event ID, bookmaker key/update time, provider capture time, and raw checksum. Never ingest in-play quotes. |
+| ATP historical chronology, surface, results, rank and representative closing odds, 2023+ | tennis-data ATP yearly XLSX | None for chronology | This is the canonical ATP calendar because the TML current-season file was observed stale in 2026 (137 rows versus 1,593 tennis-data rows). Retry/cache with checksum and never silently drop a year. |
+| ATP match performance supplement, 2023+ | TML-Database yearly Sackmann-format CSV | None until another performance source is approved | Preserve available raw serve statistics and join to tennis-data chronology by normalized players, tournament and a bounded date window. TML tournament dates are tournament-start dates, not match dates, and cannot define chronology. |
+| WTA historical matches, results, rank, points and representative closing odds, 2023+ | tennis-data WTA yearly XLSX | No approved performance-stat fallback | WTA serve/return fields remain NULL with `source_unavailable`; zero is not a substitute. |
+| Current results/retirements | TennisExplorer provisional result feed | tennis-data, then TheSportsDB; manual correction record for disputes | Store every provider observation. A result correction appends a revision. Walkovers never update Elo. Retirement/void settlement follows the exact book rule when available; otherwise the decision remains unresolved. |
+| Injuries/withdrawals | No approved reliable feed | Explicit manual/provenance event only | Do not infer health from odds or disappearance. Missing withdrawal state is surfaced and can block a decision under the policy. |
+| Player rankings/features | Point-in-time fields in TML/tennis-data | None until another source is approved | Store source availability and stats-through dates; never join today's rank to a historical match. |
+
+Free HTML/result feeds are operational observations, not silent authorities.
+Provider identity and confidence are stored with each result. When providers
+disagree, preserve both observations and require a documented resolution.
+
+### Canonical identity
+
+- `tennis_players` owns a stable internal player ID. Provider names live in a
+  separate alias table keyed by provider, tour, normalized name, and effective
+  dates. ATP and WTA namespaces remain separate.
+- Name normalization is Unicode NFKD, lowercase alphanumeric, with documented
+  suffix handling (`Jr`, `II`, etc.). Automated matching records method and
+  confidence. Ambiguous aliases fail closed and enter an identity review queue.
+- A canonical event is tour + canonical tournament + unordered canonical player
+  pair + scheduled window/round. Provider event IDs are aliases/revisions, not
+  the sole identity.
+- Selections attach to player IDs, not provider `home`/`away` order. A provider
+  player-order reversal therefore cannot reverse a bet.
+- Reschedules append an event revision with old/new start time and provider IDs.
+  Duplicate-name and same-day rematch cases require tournament/round/start-time
+  evidence rather than name-only matching.
+- Surface is normalized to `hard`, `clay`, or `grass`; `indoor_hard` is retained
+  only when the provider explicitly supplies indoor status. Unknown remains
+  unknown and cannot default to hard.
+
+### Immutable quote contract
+
+Each normalized quote stores: canonical event/revision, provider event ID,
+bookmaker, market, selection player/side, exact line, American/decimal price,
+the paired opposite selection/price, bookmaker `last_update`, provider
+availability time, our capture time, commence time at capture, region, source,
+raw payload checksum, and parser version.
+
+- Moneyline has a NULL line and a complete two-player price pair.
+- A total proposition is comparable only when event, book, total line, and
+  over/under pair match exactly.
+- A spread proposition is comparable only when event, book, selected player,
+  handicap, and opposite handicap/price pair match exactly.
+- Consensus/reference probability is a derived research value. It is never
+  presented as the executable sportsbook price.
+- Opening is the first valid, complete, pre-start capture for the exact
+  event/book/market/selection/line proposition.
+- Current is the latest such capture available at the decision cutoff.
+- Close is the final valid comparable capture whose bookmaker update and
+  provider capture are both pre-start.
+- A move at a different total or handicap is line movement, not price movement.
+  Price movement is calculated only at the identical line.
+- `source_available_at`/bookmaker update and `captured_at` are distinct. Backtest
+  features use the later time as the conservative availability boundary.
+
+Reject or quarantine incomplete pairs, invalid prices, post-start/in-play
+captures, event/selection ambiguity, bookmaker timestamps after start, stale
+quotes, and raw-checksum/parser conflicts. Never repair them by borrowing the
+opposite side from another book or capture.
+
+### Capture cadence and historical limits
+
+- Use adaptive prospective capture: at least every 6 hours outside 24 hours,
+  hourly from T-24h to T-6h, and every 15 minutes from T-6h to start when API
+  quota permits. Record the expected and achieved cadence.
+- Quota exhaustion, missing active tournament keys, or insufficient captures is
+  a visible data-health failure; it cannot be described as “no movement.”
+- Detailed per-book history begins in July 2026. Historical tennis-data prices
+  are representative closing observations and must never be described as
+  multi-year opening/current/closing sportsbook history.
+- Legacy July 2026 per-book JSON is normalized with source
+  `legacy_odds_history_reconstruction`. Moneyline and totals are retained only
+  when both exact prices exist. Older spreads lack the away price and remain
+  unavailable; they are never reconstructed from consensus or another book.
+
+### Required constraints and tests before dependent work
+
+- Unique provider alias `(provider, provider_event_id)` per event revision.
+- Unique normalized quote identity including event revision, book, market,
+  selection, line, bookmaker update time, capture time, and raw checksum.
+- Paired quote checks for moneyline, total, and spread propositions.
+- Idempotent raw ingestion and append-only correction/revision history.
+- Contract fixtures cover at least five real ATP/WTA events, player-order
+  reversal, reschedule, duplicate names, same-line price move, line move, stale
+  quote, incomplete pair, withdrawal/retirement, and post-start rejection.
+- Data-quality output is PASS/FAIL with partition counts, missingness,
+  duplicates, identity queue, source age, capture cadence, and an exact remedy.
+
+Jira dependency order is `SCRUM-18` → `SCRUM-19` → `SCRUM-20` → `SCRUM-27` →
+`SCRUM-21`/`SCRUM-22` → `SCRUM-23` → `SCRUM-24` → `SCRUM-25` → `SCRUM-26`.
+Documentation, schema columns, or compilation alone do not advance an issue to
+Done.
+
+Dependency boundary: `SCRUM-20` owns canonical identity, immutable raw history,
+event/quote revisions, provenance, partition coverage and fail-closed quality
+gates. `SCRUM-27` owns populated pre-match feature/Elo snapshots and their
+chronological leakage proof. `SCRUM-22` owns adaptive capture-cadence enforcement,
+opening/current/close derivation and movement coverage alerts. These dependent
+issues may not claim the empty snapshot/cadence state as verified functionality.

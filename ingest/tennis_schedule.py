@@ -39,6 +39,7 @@ import requests
 from config import load_config
 from db.database import DatabaseManager
 from db.queries import insert_game_odds_history_rows
+from ingest.tennis_foundation import ingest_live_event_quotes
 from model.soccer_bet_rating import american_to_prob, prob_to_american
 
 logger = logging.getLogger(__name__)
@@ -191,8 +192,11 @@ def fetch_tournament(db: DatabaseManager, api_key: str, tour_label: str, sport_k
                         hcap_home_prices.append(h["price"])
                         book["spread_home"] = float(h["point"])
                         book["spread_price"] = h.get("price")
+                        book["spread_home_price"] = h.get("price")
                         if a:
                             hcap_away_prices.append(a["price"])
+                            book["spread_away"] = float(a["point"]) if a.get("point") is not None else None
+                            book["spread_away_price"] = a.get("price")
 
         home_ml = _consensus_american(home_prices)
         away_ml = _consensus_american(away_prices)
@@ -240,6 +244,29 @@ def fetch_tournament(db: DatabaseManager, api_key: str, tour_label: str, sport_k
         )
         upserted += 1
         if row:
+            try:
+                canonical = ingest_live_event_quotes(
+                    db,
+                    tour=tour_label,
+                    tournament=tournament,
+                    raw_event=ev,
+                    captured_at=captured_at,
+                )
+                db.execute(
+                    """
+                    UPDATE tennis_matches SET
+                        canonical_event_id=%s, event_revision_id=%s,
+                        home_player_id=%s, away_player_id=%s
+                    WHERE id=%s
+                    """,
+                    (canonical["event_id"], canonical["event_revision_id"],
+                     canonical["home_player_id"], canonical["away_player_id"], row["id"]),
+                )
+            except Exception as exc:  # noqa: BLE001 -- legacy schedule remains available
+                logger.exception(
+                    "Canonical Tennis event/quote ingestion failed for %s (%s): %s",
+                    ev.get("id"), tournament, exc,
+                )
             history_rows.append(
                 {
                     "sport": "tennis",

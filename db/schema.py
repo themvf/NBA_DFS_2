@@ -1206,6 +1206,277 @@ TABLES = [
     # the odds-only MVP.  2-way market (no draw) → simpler than soccer.  game_id
     # is the Odds API event id.  Result columns are written later by the
     # tennis-data.co.uk settlement job (set/game scores → settle bets).
+    # Canonical Tennis identity and immutable source foundation (SCRUM-20).
+    # The legacy tennis_matches / tennis_player_ratings tables remain as
+    # compatibility caches while new ingestion writes point-in-time records.
+    """
+    CREATE TABLE IF NOT EXISTS tennis_players (
+        id BIGSERIAL PRIMARY KEY,
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        canonical_name TEXT NOT NULL,
+        norm_name TEXT NOT NULL,
+        birth_date DATE,
+        country_code TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (tour, norm_name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_player_aliases (
+        id BIGSERIAL PRIMARY KEY,
+        player_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        provider TEXT NOT NULL,
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        provider_player_id TEXT,
+        raw_name TEXT NOT NULL,
+        norm_name TEXT NOT NULL,
+        match_method TEXT NOT NULL DEFAULT 'exact_normalized',
+        match_confidence DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+        verified BOOLEAN NOT NULL DEFAULT FALSE,
+        effective_from DATE,
+        effective_to DATE,
+        source_available_at TIMESTAMPTZ,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        raw_checksum TEXT,
+        UNIQUE (provider, tour, norm_name, player_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_source_partitions (
+        id BIGSERIAL PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        dataset TEXT NOT NULL,
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        season INTEGER NOT NULL CHECK (season >= 2023),
+        source_url TEXT,
+        expected BOOLEAN NOT NULL DEFAULT TRUE,
+        status TEXT NOT NULL CHECK (status IN ('running', 'pass', 'fail', 'not_yet_available')),
+        row_count INTEGER NOT NULL DEFAULT 0,
+        accepted_count INTEGER NOT NULL DEFAULT 0,
+        rejected_count INTEGER NOT NULL DEFAULT 0,
+        min_match_date DATE,
+        max_match_date DATE,
+        missingness JSONB NOT NULL DEFAULT '{}'::jsonb,
+        raw_checksum TEXT,
+        parser_version TEXT NOT NULL,
+        source_available_at TIMESTAMPTZ,
+        retrieval_started_at TIMESTAMPTZ NOT NULL,
+        retrieval_completed_at TIMESTAMPTZ,
+        error_message TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (run_id, provider, dataset, tour, season)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_events (
+        id BIGSERIAL PRIMARY KEY,
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        canonical_tournament TEXT NOT NULL,
+        player_one_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        player_two_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        scheduled_at TIMESTAMPTZ,
+        round TEXT,
+        best_of SMALLINT,
+        surface TEXT CHECK (surface IN ('hard', 'clay', 'grass', 'indoor_hard') OR surface IS NULL),
+        indoor BOOLEAN,
+        status TEXT NOT NULL DEFAULT 'scheduled',
+        current_revision_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (player_one_id < player_two_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_event_revisions (
+        id BIGSERIAL PRIMARY KEY,
+        event_id BIGINT NOT NULL REFERENCES tennis_events(id),
+        revision_no INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        provider_event_id TEXT,
+        tournament_raw TEXT,
+        commence_time TIMESTAMPTZ,
+        player_one_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        player_two_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        surface TEXT,
+        indoor BOOLEAN,
+        round TEXT,
+        status TEXT,
+        source_available_at TIMESTAMPTZ,
+        captured_at TIMESTAMPTZ NOT NULL,
+        raw_checksum TEXT NOT NULL,
+        parser_version TEXT NOT NULL,
+        raw_payload JSONB,
+        supersedes_revision_id BIGINT REFERENCES tennis_event_revisions(id),
+        UNIQUE (event_id, revision_no),
+        UNIQUE (provider, provider_event_id, raw_checksum)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_event_aliases (
+        id BIGSERIAL PRIMARY KEY,
+        event_id BIGINT NOT NULL REFERENCES tennis_events(id),
+        event_revision_id BIGINT REFERENCES tennis_event_revisions(id),
+        provider TEXT NOT NULL,
+        provider_event_id TEXT NOT NULL,
+        first_seen_at TIMESTAMPTZ NOT NULL,
+        last_seen_at TIMESTAMPTZ NOT NULL,
+        raw_checksum TEXT,
+        UNIQUE (provider, provider_event_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_historical_matches (
+        id BIGSERIAL PRIMARY KEY,
+        source TEXT NOT NULL,
+        source_match_key TEXT NOT NULL,
+        source_partition_id BIGINT REFERENCES tennis_source_partitions(id),
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        season INTEGER NOT NULL CHECK (season >= 2023),
+        match_date DATE NOT NULL,
+        start_time TIMESTAMPTZ,
+        tournament TEXT NOT NULL,
+        round TEXT,
+        best_of SMALLINT,
+        surface TEXT CHECK (surface IN ('hard', 'clay', 'grass', 'indoor_hard') OR surface IS NULL),
+        indoor BOOLEAN,
+        winner_player_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        loser_player_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        score TEXT,
+        completion_status TEXT NOT NULL DEFAULT 'completed',
+        retired BOOLEAN NOT NULL DEFAULT FALSE,
+        walkover BOOLEAN NOT NULL DEFAULT FALSE,
+        winner_rank INTEGER,
+        loser_rank INTEGER,
+        winner_rank_points INTEGER,
+        loser_rank_points INTEGER,
+        winner_decimal_odds DOUBLE PRECISION,
+        loser_decimal_odds DOUBLE PRECISION,
+        odds_source TEXT,
+        odds_timing TEXT,
+        source_available_at TIMESTAMPTZ,
+        stats_through_at TIMESTAMPTZ,
+        captured_at TIMESTAMPTZ NOT NULL,
+        transformation_version TEXT NOT NULL,
+        raw_checksum TEXT NOT NULL,
+        raw_payload JSONB,
+        correction_of_id BIGINT REFERENCES tennis_historical_matches(id),
+        is_current BOOLEAN NOT NULL DEFAULT TRUE,
+        superseded_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (source, source_match_key, raw_checksum, transformation_version)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_player_match_stats (
+        id BIGSERIAL PRIMARY KEY,
+        historical_match_id BIGINT NOT NULL REFERENCES tennis_historical_matches(id),
+        player_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        opponent_player_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        is_winner BOOLEAN NOT NULL,
+        aces INTEGER,
+        double_faults INTEGER,
+        serve_points INTEGER,
+        first_serves_in INTEGER,
+        first_serve_points_won INTEGER,
+        second_serve_points_won INTEGER,
+        service_games INTEGER,
+        break_points_saved INTEGER,
+        break_points_faced INTEGER,
+        serve_points_won_pct DOUBLE PRECISION,
+        return_points_won_pct DOUBLE PRECISION,
+        stats_available BOOLEAN NOT NULL DEFAULT FALSE,
+        missing_reason TEXT,
+        formula_version TEXT,
+        sample_size INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (historical_match_id, player_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_exact_quotes (
+        id BIGSERIAL PRIMARY KEY,
+        event_id BIGINT NOT NULL REFERENCES tennis_events(id),
+        event_revision_id BIGINT NOT NULL REFERENCES tennis_event_revisions(id),
+        source TEXT NOT NULL,
+        provider_event_id TEXT NOT NULL,
+        bookmaker_key TEXT NOT NULL,
+        bookmaker_name TEXT,
+        region TEXT,
+        market TEXT NOT NULL CHECK (market IN ('moneyline', 'total', 'spread')),
+        selection_type TEXT NOT NULL,
+        selection_player_id BIGINT REFERENCES tennis_players(id),
+        selection_side TEXT,
+        line_value DOUBLE PRECISION,
+        price_american INTEGER NOT NULL,
+        price_decimal DOUBLE PRECISION NOT NULL,
+        paired_selection_type TEXT NOT NULL,
+        paired_player_id BIGINT REFERENCES tennis_players(id),
+        paired_side TEXT,
+        paired_line_value DOUBLE PRECISION,
+        paired_price_american INTEGER NOT NULL,
+        paired_price_decimal DOUBLE PRECISION NOT NULL,
+        bookmaker_updated_at TIMESTAMPTZ NOT NULL,
+        source_available_at TIMESTAMPTZ NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL,
+        commence_time_at_capture TIMESTAMPTZ NOT NULL,
+        is_prestart BOOLEAN NOT NULL,
+        validation_status TEXT NOT NULL DEFAULT 'valid',
+        rejection_reason TEXT,
+        capture_key TEXT NOT NULL,
+        raw_checksum TEXT NOT NULL,
+        parser_version TEXT NOT NULL,
+        raw_payload JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_identity_reviews (
+        id BIGSERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        raw_name TEXT NOT NULL,
+        norm_name TEXT NOT NULL,
+        context JSONB NOT NULL DEFAULT '{}'::jsonb,
+        candidates JSONB NOT NULL DEFAULT '[]'::jsonb,
+        reason TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        resolution_player_id BIGINT REFERENCES tennis_players(id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_player_feature_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        player_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        opponent_player_id BIGINT REFERENCES tennis_players(id),
+        historical_match_id BIGINT REFERENCES tennis_historical_matches(id),
+        event_id BIGINT REFERENCES tennis_events(id),
+        cutoff_at TIMESTAMPTZ NOT NULL,
+        stats_through_at TIMESTAMPTZ NOT NULL,
+        surface TEXT,
+        overall_elo DOUBLE PRECISION,
+        surface_elo DOUBLE PRECISION,
+        recent_form DOUBLE PRECISION,
+        rest_days DOUBLE PRECISION,
+        recent_match_load INTEGER,
+        serve_points_won_pct DOUBLE PRECISION,
+        return_points_won_pct DOUBLE PRECISION,
+        rank INTEGER,
+        rank_points INTEGER,
+        sample_size INTEGER NOT NULL DEFAULT 0,
+        feature_version TEXT NOT NULL,
+        source_availability JSONB NOT NULL DEFAULT '{}'::jsonb,
+        missingness JSONB NOT NULL DEFAULT '{}'::jsonb,
+        provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+        raw_checksum TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
     """
     CREATE TABLE IF NOT EXISTS tennis_matches (
         id SERIAL PRIMARY KEY,
@@ -1331,6 +1602,38 @@ TABLES = [
 ]
 
 MIGRATIONS = [
+    # 2026-07-13: link the canonical Tennis event/revision foundation after
+    # both base tables have been created; keep legacy tennis_matches readable.
+    """DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'tennis_events_current_revision_fk'
+        ) THEN
+            ALTER TABLE tennis_events
+                ADD CONSTRAINT tennis_events_current_revision_fk
+                FOREIGN KEY (current_revision_id) REFERENCES tennis_event_revisions(id);
+        END IF;
+    END $$""",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS canonical_event_id BIGINT REFERENCES tennis_events(id)",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS event_revision_id BIGINT REFERENCES tennis_event_revisions(id)",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS home_player_id BIGINT REFERENCES tennis_players(id)",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS away_player_id BIGINT REFERENCES tennis_players(id)",
+    "ALTER TABLE tennis_historical_matches ADD COLUMN IF NOT EXISTS is_current BOOLEAN NOT NULL DEFAULT TRUE",
+    "ALTER TABLE tennis_historical_matches ADD COLUMN IF NOT EXISTS superseded_at TIMESTAMPTZ",
+    "ALTER TABLE tennis_historical_matches DROP CONSTRAINT IF EXISTS tennis_historical_matches_source_source_match_key_raw_checksum_key",
+    "ALTER TABLE tennis_historical_matches DROP CONSTRAINT IF EXISTS tennis_historical_matches_source_source_match_key_raw_check_key",
+    """WITH duplicate_keys AS (
+        SELECT source, source_match_key
+        FROM tennis_historical_matches
+        WHERE is_current
+        GROUP BY source, source_match_key
+        HAVING COUNT(*) > 1
+    )
+    UPDATE tennis_historical_matches hm
+    SET is_current=FALSE, superseded_at=COALESCE(hm.superseded_at, NOW())
+    FROM duplicate_keys d
+    WHERE hm.source=d.source AND hm.source_match_key=d.source_match_key
+      AND hm.is_current""",
+
     # 2026-04-20: Persist actual home run outcomes for MLB HR model tracking
     """DO $$ BEGIN
         IF NOT EXISTS (
@@ -2131,6 +2434,23 @@ MIGRATIONS = [
 ]
 
 INDEXES = [
+    # Tennis canonical/history/quote foundation (SCRUM-20)
+    "CREATE INDEX IF NOT EXISTS idx_tennis_players_tour_name ON tennis_players(tour, norm_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_aliases_lookup ON tennis_player_aliases(provider, tour, norm_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_partitions_latest ON tennis_source_partitions(provider, dataset, tour, season, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_events_schedule ON tennis_events(tour, scheduled_at, canonical_tournament)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_event_revisions_event ON tennis_event_revisions(event_id, revision_no DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_history_date ON tennis_historical_matches(tour, match_date, surface)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_history_players ON tennis_historical_matches(winner_player_id, loser_player_id, match_date)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS tennis_history_one_current_source_key ON tennis_historical_matches(source, source_match_key) WHERE is_current",
+    "CREATE UNIQUE INDEX IF NOT EXISTS tennis_history_source_transform_key ON tennis_historical_matches(source, source_match_key, raw_checksum, transformation_version)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_match_stats_player ON tennis_player_match_stats(player_id, historical_match_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_quotes_lookup ON tennis_exact_quotes(event_id, bookmaker_key, market, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_quotes_selection ON tennis_exact_quotes(selection_player_id, market, captured_at DESC)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS tennis_exact_quotes_identity_key ON tennis_exact_quotes(event_revision_id, bookmaker_key, market, selection_type, COALESCE(selection_player_id, 0), COALESCE(selection_side, ''), COALESCE(line_value, -9999), bookmaker_updated_at, captured_at, raw_checksum)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_identity_reviews_open ON tennis_identity_reviews(status, tour, norm_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_feature_snapshots_cutoff ON tennis_player_feature_snapshots(player_id, cutoff_at DESC, feature_version)",
+
     "CREATE INDEX IF NOT EXISTS idx_nba_team_stats_season ON nba_team_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_nba_player_stats_team ON nba_player_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_nba_player_stats_player ON nba_player_stats(player_id, season)",

@@ -1,6 +1,7 @@
 import {
   pgTable,
   serial,
+  bigserial,
   text,
   integer,
   bigint,
@@ -838,6 +839,321 @@ export const optimizerJobLineups = pgTable(
 // tied to any one sport -- sport is a best-guess field per subject, not a
 // hard filter, since a single video can span multiple sports.
 
+// Canonical Tennis identity and immutable 2023+ source foundation (SCRUM-20).
+// The existing Tennis page still reads legacy raw SQL tables while the new
+// source-aware API is built in dependency order.
+export const tennisPlayers = pgTable(
+  "tennis_players",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    tour: text("tour").notNull(),
+    canonicalName: text("canonical_name").notNull(),
+    normName: text("norm_name").notNull(),
+    birthDate: date("birth_date"),
+    countryCode: text("country_code"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    unique("tennis_players_tour_norm_key").on(t.tour, t.normName),
+    index("idx_tennis_players_tour_name").on(t.tour, t.normName),
+  ],
+);
+
+export const tennisPlayerAliases = pgTable(
+  "tennis_player_aliases",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    provider: text("provider").notNull(),
+    tour: text("tour").notNull(),
+    providerPlayerId: text("provider_player_id"),
+    rawName: text("raw_name").notNull(),
+    normName: text("norm_name").notNull(),
+    matchMethod: text("match_method").notNull().default("exact_normalized"),
+    matchConfidence: doublePrecision("match_confidence").notNull().default(1),
+    verified: boolean("verified").notNull().default(false),
+    effectiveFrom: date("effective_from"),
+    effectiveTo: date("effective_to"),
+    sourceAvailableAt: timestamp("source_available_at", { withTimezone: true }),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).defaultNow(),
+    rawChecksum: text("raw_checksum"),
+  },
+  (t) => [
+    unique("tennis_alias_provider_tour_norm_player_key").on(t.provider, t.tour, t.normName, t.playerId),
+    index("idx_tennis_aliases_lookup").on(t.provider, t.tour, t.normName),
+  ],
+);
+
+export const tennisSourcePartitions = pgTable(
+  "tennis_source_partitions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    runId: text("run_id").notNull(),
+    provider: text("provider").notNull(),
+    dataset: text("dataset").notNull(),
+    tour: text("tour").notNull(),
+    season: integer("season").notNull(),
+    sourceUrl: text("source_url"),
+    expected: boolean("expected").notNull().default(true),
+    status: text("status").notNull(),
+    rowCount: integer("row_count").notNull().default(0),
+    acceptedCount: integer("accepted_count").notNull().default(0),
+    rejectedCount: integer("rejected_count").notNull().default(0),
+    minMatchDate: date("min_match_date"),
+    maxMatchDate: date("max_match_date"),
+    missingness: jsonb("missingness").notNull().default({}),
+    rawChecksum: text("raw_checksum"),
+    parserVersion: text("parser_version").notNull(),
+    sourceAvailableAt: timestamp("source_available_at", { withTimezone: true }),
+    retrievalStartedAt: timestamp("retrieval_started_at", { withTimezone: true }).notNull(),
+    retrievalCompletedAt: timestamp("retrieval_completed_at", { withTimezone: true }),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    unique("tennis_partition_run_source_key").on(t.runId, t.provider, t.dataset, t.tour, t.season),
+    index("idx_tennis_partitions_latest").on(t.provider, t.dataset, t.tour, t.season, t.createdAt),
+  ],
+);
+
+export const tennisEvents = pgTable(
+  "tennis_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    tour: text("tour").notNull(),
+    canonicalTournament: text("canonical_tournament").notNull(),
+    playerOneId: bigint("player_one_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    playerTwoId: bigint("player_two_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    round: text("round"),
+    bestOf: integer("best_of"),
+    surface: text("surface"),
+    indoor: boolean("indoor"),
+    status: text("status").notNull().default("scheduled"),
+    currentRevisionId: bigint("current_revision_id", { mode: "number" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("idx_tennis_events_schedule").on(t.tour, t.scheduledAt, t.canonicalTournament)],
+);
+
+export const tennisEventRevisions = pgTable(
+  "tennis_event_revisions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    eventId: bigint("event_id", { mode: "number" }).notNull().references(() => tennisEvents.id),
+    revisionNo: integer("revision_no").notNull(),
+    provider: text("provider").notNull(),
+    providerEventId: text("provider_event_id"),
+    tournamentRaw: text("tournament_raw"),
+    commenceTime: timestamp("commence_time", { withTimezone: true }),
+    playerOneId: bigint("player_one_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    playerTwoId: bigint("player_two_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    surface: text("surface"),
+    indoor: boolean("indoor"),
+    round: text("round"),
+    status: text("status"),
+    sourceAvailableAt: timestamp("source_available_at", { withTimezone: true }),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+    rawChecksum: text("raw_checksum").notNull(),
+    parserVersion: text("parser_version").notNull(),
+    rawPayload: jsonb("raw_payload"),
+    supersedesRevisionId: bigint("supersedes_revision_id", { mode: "number" }),
+  },
+  (t) => [
+    unique("tennis_event_revision_number_key").on(t.eventId, t.revisionNo),
+    unique("tennis_event_revision_provider_checksum_key").on(t.provider, t.providerEventId, t.rawChecksum),
+    index("idx_tennis_event_revisions_event").on(t.eventId, t.revisionNo),
+  ],
+);
+
+export const tennisEventAliases = pgTable(
+  "tennis_event_aliases",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    eventId: bigint("event_id", { mode: "number" }).notNull().references(() => tennisEvents.id),
+    eventRevisionId: bigint("event_revision_id", { mode: "number" }).references(() => tennisEventRevisions.id),
+    provider: text("provider").notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+    rawChecksum: text("raw_checksum"),
+  },
+  (t) => [unique("tennis_event_alias_provider_key").on(t.provider, t.providerEventId)],
+);
+
+export const tennisHistoricalMatches = pgTable(
+  "tennis_historical_matches",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    source: text("source").notNull(),
+    sourceMatchKey: text("source_match_key").notNull(),
+    sourcePartitionId: bigint("source_partition_id", { mode: "number" }).references(() => tennisSourcePartitions.id),
+    tour: text("tour").notNull(),
+    season: integer("season").notNull(),
+    matchDate: date("match_date").notNull(),
+    startTime: timestamp("start_time", { withTimezone: true }),
+    tournament: text("tournament").notNull(),
+    round: text("round"),
+    bestOf: integer("best_of"),
+    surface: text("surface"),
+    indoor: boolean("indoor"),
+    winnerPlayerId: bigint("winner_player_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    loserPlayerId: bigint("loser_player_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    score: text("score"),
+    completionStatus: text("completion_status").notNull().default("completed"),
+    retired: boolean("retired").notNull().default(false),
+    walkover: boolean("walkover").notNull().default(false),
+    winnerRank: integer("winner_rank"),
+    loserRank: integer("loser_rank"),
+    winnerRankPoints: integer("winner_rank_points"),
+    loserRankPoints: integer("loser_rank_points"),
+    winnerDecimalOdds: doublePrecision("winner_decimal_odds"),
+    loserDecimalOdds: doublePrecision("loser_decimal_odds"),
+    oddsSource: text("odds_source"),
+    oddsTiming: text("odds_timing"),
+    sourceAvailableAt: timestamp("source_available_at", { withTimezone: true }),
+    statsThroughAt: timestamp("stats_through_at", { withTimezone: true }),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+    transformationVersion: text("transformation_version").notNull(),
+    rawChecksum: text("raw_checksum").notNull(),
+    rawPayload: jsonb("raw_payload"),
+    correctionOfId: bigint("correction_of_id", { mode: "number" }),
+    isCurrent: boolean("is_current").notNull().default(true),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    unique("tennis_history_source_transform_key").on(
+      t.source,
+      t.sourceMatchKey,
+      t.rawChecksum,
+      t.transformationVersion,
+    ),
+    index("idx_tennis_history_date").on(t.tour, t.matchDate, t.surface),
+  ],
+);
+
+export const tennisPlayerMatchStats = pgTable(
+  "tennis_player_match_stats",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    historicalMatchId: bigint("historical_match_id", { mode: "number" }).notNull().references(() => tennisHistoricalMatches.id),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    opponentPlayerId: bigint("opponent_player_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    isWinner: boolean("is_winner").notNull(),
+    aces: integer("aces"),
+    doubleFaults: integer("double_faults"),
+    servePoints: integer("serve_points"),
+    firstServesIn: integer("first_serves_in"),
+    firstServePointsWon: integer("first_serve_points_won"),
+    secondServePointsWon: integer("second_serve_points_won"),
+    serviceGames: integer("service_games"),
+    breakPointsSaved: integer("break_points_saved"),
+    breakPointsFaced: integer("break_points_faced"),
+    servePointsWonPct: doublePrecision("serve_points_won_pct"),
+    returnPointsWonPct: doublePrecision("return_points_won_pct"),
+    statsAvailable: boolean("stats_available").notNull().default(false),
+    missingReason: text("missing_reason"),
+    formulaVersion: text("formula_version"),
+    sampleSize: integer("sample_size"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [unique("tennis_match_stats_match_player_key").on(t.historicalMatchId, t.playerId)],
+);
+
+export const tennisExactQuotes = pgTable(
+  "tennis_exact_quotes",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    eventId: bigint("event_id", { mode: "number" }).notNull().references(() => tennisEvents.id),
+    eventRevisionId: bigint("event_revision_id", { mode: "number" }).notNull().references(() => tennisEventRevisions.id),
+    source: text("source").notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    bookmakerKey: text("bookmaker_key").notNull(),
+    bookmakerName: text("bookmaker_name"),
+    region: text("region"),
+    market: text("market").notNull(),
+    selectionType: text("selection_type").notNull(),
+    selectionPlayerId: bigint("selection_player_id", { mode: "number" }).references(() => tennisPlayers.id),
+    selectionSide: text("selection_side"),
+    lineValue: doublePrecision("line_value"),
+    priceAmerican: integer("price_american").notNull(),
+    priceDecimal: doublePrecision("price_decimal").notNull(),
+    pairedSelectionType: text("paired_selection_type").notNull(),
+    pairedPlayerId: bigint("paired_player_id", { mode: "number" }).references(() => tennisPlayers.id),
+    pairedSide: text("paired_side"),
+    pairedLineValue: doublePrecision("paired_line_value"),
+    pairedPriceAmerican: integer("paired_price_american").notNull(),
+    pairedPriceDecimal: doublePrecision("paired_price_decimal").notNull(),
+    bookmakerUpdatedAt: timestamp("bookmaker_updated_at", { withTimezone: true }).notNull(),
+    sourceAvailableAt: timestamp("source_available_at", { withTimezone: true }).notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+    commenceTimeAtCapture: timestamp("commence_time_at_capture", { withTimezone: true }).notNull(),
+    isPrestart: boolean("is_prestart").notNull(),
+    validationStatus: text("validation_status").notNull().default("valid"),
+    rejectionReason: text("rejection_reason"),
+    captureKey: text("capture_key").notNull(),
+    rawChecksum: text("raw_checksum").notNull(),
+    parserVersion: text("parser_version").notNull(),
+    rawPayload: jsonb("raw_payload"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("idx_tennis_quotes_lookup").on(t.eventId, t.bookmakerKey, t.market, t.capturedAt)],
+);
+
+export const tennisIdentityReviews = pgTable(
+  "tennis_identity_reviews",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    provider: text("provider").notNull(),
+    tour: text("tour").notNull(),
+    rawName: text("raw_name").notNull(),
+    normName: text("norm_name").notNull(),
+    context: jsonb("context").notNull().default({}),
+    candidates: jsonb("candidates").notNull().default([]),
+    reason: text("reason").notNull(),
+    status: text("status").notNull().default("open"),
+    resolutionPlayerId: bigint("resolution_player_id", { mode: "number" }).references(() => tennisPlayers.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [index("idx_tennis_identity_reviews_open").on(t.status, t.tour, t.normName)],
+);
+
+export const tennisPlayerFeatureSnapshots = pgTable(
+  "tennis_player_feature_snapshots",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    opponentPlayerId: bigint("opponent_player_id", { mode: "number" }).references(() => tennisPlayers.id),
+    historicalMatchId: bigint("historical_match_id", { mode: "number" }).references(() => tennisHistoricalMatches.id),
+    eventId: bigint("event_id", { mode: "number" }).references(() => tennisEvents.id),
+    cutoffAt: timestamp("cutoff_at", { withTimezone: true }).notNull(),
+    statsThroughAt: timestamp("stats_through_at", { withTimezone: true }).notNull(),
+    surface: text("surface"),
+    overallElo: doublePrecision("overall_elo"),
+    surfaceElo: doublePrecision("surface_elo"),
+    recentForm: doublePrecision("recent_form"),
+    restDays: doublePrecision("rest_days"),
+    recentMatchLoad: integer("recent_match_load"),
+    servePointsWonPct: doublePrecision("serve_points_won_pct"),
+    returnPointsWonPct: doublePrecision("return_points_won_pct"),
+    rank: integer("rank"),
+    rankPoints: integer("rank_points"),
+    sampleSize: integer("sample_size").notNull().default(0),
+    featureVersion: text("feature_version").notNull(),
+    sourceAvailability: jsonb("source_availability").notNull().default({}),
+    missingness: jsonb("missingness").notNull().default({}),
+    provenance: jsonb("provenance").notNull().default({}),
+    rawChecksum: text("raw_checksum").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("idx_tennis_feature_snapshots_cutoff").on(t.playerId, t.cutoffAt, t.featureVersion)],
+);
+
 export const videoAnalysis = pgTable(
   "video_analysis",
   {
@@ -920,6 +1236,17 @@ export type MlbBatterStats = typeof mlbBatterStats.$inferSelect;
 export type MlbPitcherStats = typeof mlbPitcherStats.$inferSelect;
 export type MlbTeamStats = typeof mlbTeamStats.$inferSelect;
 export type OddsSignalRun = typeof oddsSignalRuns.$inferSelect;
+export type TennisPlayer = typeof tennisPlayers.$inferSelect;
+export type TennisPlayerAlias = typeof tennisPlayerAliases.$inferSelect;
+export type TennisSourcePartition = typeof tennisSourcePartitions.$inferSelect;
+export type TennisEvent = typeof tennisEvents.$inferSelect;
+export type TennisEventRevision = typeof tennisEventRevisions.$inferSelect;
+export type TennisEventAlias = typeof tennisEventAliases.$inferSelect;
+export type TennisHistoricalMatch = typeof tennisHistoricalMatches.$inferSelect;
+export type TennisPlayerMatchStat = typeof tennisPlayerMatchStats.$inferSelect;
+export type TennisExactQuote = typeof tennisExactQuotes.$inferSelect;
+export type TennisIdentityReview = typeof tennisIdentityReviews.$inferSelect;
+export type TennisPlayerFeatureSnapshot = typeof tennisPlayerFeatureSnapshots.$inferSelect;
 export type VideoAnalysis = typeof videoAnalysis.$inferSelect;
 export type YoutubePickChannel = typeof youtubePickChannels.$inferSelect;
 export type YoutubePickVideo = typeof youtubePickVideos.$inferSelect;
