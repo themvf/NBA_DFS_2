@@ -1387,6 +1387,53 @@ def insert_mlb_schedule_revision(
     return row["id"] if row else 0
 
 
+def insert_mlb_starter_workload_snapshot(
+    db: DatabaseManager,
+    *,
+    matchup_id: int,
+    side: str,
+    pitcher_id: int,
+    pitcher_name: str | None,
+    event_commence,
+    last_start_date: str | None,
+    days_rest: int | None,
+    starts_sample: int,
+    pitches_last_start: int | None,
+    avg_pitches_last_3: float | None,
+    avg_innings_last_3: float | None,
+    season_ip_per_start: float | None,
+    expected_innings: float | None,
+    stats_through_at,
+    available_at,
+    raw_checksum: str,
+    raw_json: dict,
+) -> int:
+    row = db.execute_one(
+        """
+        INSERT INTO mlb_starter_workload_snapshots (
+            matchup_id, side, pitcher_id, pitcher_name, event_commence,
+            last_start_date, days_rest, starts_sample, pitches_last_start,
+            avg_pitches_last_3, avg_innings_last_3, season_ip_per_start,
+            expected_innings, source, stats_through_at, available_at,
+            transformation_version, raw_checksum, raw_json
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                'mlb_stats_api_game_log', %s, %s, 'mlb-starter-workload-v1',
+                %s, %s::jsonb)
+        ON CONFLICT (matchup_id, side, raw_checksum) DO NOTHING
+        RETURNING id
+        """,
+        (
+            matchup_id, side, pitcher_id, pitcher_name, event_commence,
+            last_start_date, days_rest, starts_sample, pitches_last_start,
+            avg_pitches_last_3, avg_innings_last_3, season_ip_per_start,
+            expected_innings, stats_through_at, available_at, raw_checksum,
+            json.dumps(raw_json, sort_keys=True),
+        ),
+    )
+    return row["id"] if row else 0
+
+
 # ── Soccer / World Cup queries ─────────────────────────────────────────────────
 
 def build_soccer_team_name_cache(db: DatabaseManager) -> dict[str, int]:

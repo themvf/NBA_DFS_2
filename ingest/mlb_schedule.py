@@ -29,6 +29,7 @@ from db.queries import (
     build_mlb_team_abbrev_cache,
     insert_game_odds_history_rows,
     insert_mlb_schedule_revision,
+    insert_mlb_starter_workload_snapshot,
     upsert_mlb_matchup,
 )
 from ingest.mlb_odds_policy import (
@@ -85,6 +86,126 @@ def _fetch_confirmed_starters(game_id: str, game_start_iso: str, *, now: datetim
         game_start = datetime.fromisoformat(game_start_iso.replace("Z", "+00:00"))
     except (TypeError, ValueError):
         return None
+
+
+def _parse_innings(value: object) -> float | None:
+    try:
+        raw = str(value)
+        whole_text, _, outs_text = raw.partition(".")
+        whole = int(whole_text)
+        outs = int(outs_text or "0")
+        if outs not in (0, 1, 2):
+            return None
+        return whole + outs / 3.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _starter_workload_from_game_logs(
+    rows: list[dict], *, event_start: datetime, season_ip_per_start: float | None,
+) -> dict | None:
+    starts = []
+    for row in rows:
+        stat = row.get("stat") or {}
+        if int(stat.get("gamesStarted") or 0) < 1:
+            continue
+        game_date = row.get("date")
+        try:
+            played = datetime.fromisoformat(str(game_date)).date()
+        except ValueError:
+            continue
+        if played >= event_start.date():
+            continue
+        starts.append({
+            "date": played,
+            "pitches": int(stat["numberOfPitches"]) if stat.get("numberOfPitches") is not None else None,
+            "innings": _parse_innings(stat.get("inningsPitched")),
+            "raw": row,
+        })
+    starts.sort(key=lambda item: item["date"], reverse=True)
+    recent = starts[:3]
+    if not recent and season_ip_per_start is None:
+        return None
+    innings = [item["innings"] for item in recent if item["innings"] is not None]
+    pitches = [item["pitches"] for item in recent if item["pitches"] is not None]
+    recent_ip = sum(innings) / len(innings) if innings else None
+    if recent_ip is not None and season_ip_per_start is not None:
+        expected = 0.6 * recent_ip + 0.4 * season_ip_per_start
+    else:
+        expected = recent_ip if recent_ip is not None else season_ip_per_start
+    expected = min(7.0, max(3.0, expected)) if expected is not None else None
+    last = recent[0] if recent else None
+    return {
+        "last_start_date": last["date"].isoformat() if last else None,
+        "days_rest": (event_start.date() - last["date"]).days - 1 if last else None,
+        "starts_sample": len(recent),
+        "pitches_last_start": last["pitches"] if last else None,
+        "avg_pitches_last_3": sum(pitches) / len(pitches) if pitches else None,
+        "avg_innings_last_3": recent_ip,
+        "season_ip_per_start": season_ip_per_start,
+        "expected_innings": expected,
+        "raw_starts": [item["raw"] for item in recent],
+    }
+
+
+def _capture_starter_workload(
+    db: DatabaseManager, *, matchup_id: int, side: str, pitcher_id: int,
+    pitcher_name: str | None, event_commence: str, available_at: datetime,
+) -> int:
+    event_start = datetime.fromisoformat(event_commence.replace("Z", "+00:00"))
+    if event_start.tzinfo is None:
+        event_start = event_start.replace(tzinfo=timezone.utc)
+    if available_at >= event_start:
+        return 0
+    season_row = db.execute_one(
+        """
+        SELECT ip_per_start
+        FROM mlb_pitcher_stats_history
+        WHERE available_at <= %s AND (player_id = %s OR LOWER(name) = LOWER(%s))
+        ORDER BY (player_id = %s) DESC, available_at DESC, id DESC
+        LIMIT 1
+        """,
+        (available_at, pitcher_id, pitcher_name, pitcher_id),
+    ) or {}
+    season_ip_per_start = season_row.get("ip_per_start")
+    try:
+        response = requests.get(
+            f"{MLB_API_BASE}/people/{pitcher_id}/stats",
+            params={"stats": "gameLog", "group": "pitching", "season": event_start.year, "gameType": "R"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        groups = (response.json() or {}).get("stats") or []
+        rows = groups[0].get("splits") or [] if groups else []
+    except requests.RequestException as exc:
+        logger.debug("MLB starter workload failed for %s: %s", pitcher_id, exc)
+        return 0
+    workload = _starter_workload_from_game_logs(
+        rows, event_start=event_start,
+        season_ip_per_start=float(season_ip_per_start) if season_ip_per_start is not None else None,
+    )
+    if workload is None:
+        return 0
+    checksum_payload = {"pitcher_id": pitcher_id, "event": event_commence, **workload}
+    raw_checksum = hashlib.sha256(
+        json.dumps(checksum_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    stats_through_at = (
+        f"{workload['last_start_date']}T23:59:59Z"
+        if workload["last_start_date"] else available_at
+    )
+    return insert_mlb_starter_workload_snapshot(
+        db, matchup_id=matchup_id, side=side, pitcher_id=pitcher_id,
+        pitcher_name=pitcher_name, event_commence=event_commence,
+        last_start_date=workload["last_start_date"], days_rest=workload["days_rest"],
+        starts_sample=workload["starts_sample"], pitches_last_start=workload["pitches_last_start"],
+        avg_pitches_last_3=workload["avg_pitches_last_3"],
+        avg_innings_last_3=workload["avg_innings_last_3"],
+        season_ip_per_start=workload["season_ip_per_start"],
+        expected_innings=workload["expected_innings"], stats_through_at=stats_through_at,
+        available_at=available_at, raw_checksum=raw_checksum,
+        raw_json={"recent_starts": workload["raw_starts"]},
+    )
     if game_start.tzinfo is None:
         game_start = game_start.replace(tzinfo=timezone.utc)
     hours_to_start = (game_start - now).total_seconds() / 3600.0
@@ -398,6 +519,18 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
                 source_available_at=schedule_available_at,
                 raw_json=game,
             )
+            if home_sp_id and game_start:
+                _capture_starter_workload(
+                    db, matchup_id=mid, side="home", pitcher_id=int(home_sp_id),
+                    pitcher_name=home_sp_name, event_commence=game_start,
+                    available_at=schedule_available_at,
+                )
+            if away_sp_id and game_start:
+                _capture_starter_workload(
+                    db, matchup_id=mid, side="away", pitcher_id=int(away_sp_id),
+                    pitcher_name=away_sp_name, event_commence=game_start,
+                    available_at=schedule_available_at,
+                )
 
     msg = f"Schedule: {len(matchup_ids)} games upserted for {target_date}"
     skipped_parts = []

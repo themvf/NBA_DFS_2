@@ -49,6 +49,7 @@ from model.mlb_game_total_model import (
     MLB_LEAGUE_AVG_K9,
     MLB_LEAGUE_AVG_WRC,
     load_game_data,
+    snapshot_starter_context,
 )
 from model.mlb_projections import MLB_LEAGUE_AVG_XFIP
 
@@ -188,8 +189,13 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
                 pd.isna(feature_row.get("home_bullpen_fip"))
                 or pd.isna(feature_row.get("away_bullpen_fip"))
             ),
+            "starter_workload": bool(
+                pd.isna(feature_row.get("home_expected_innings"))
+                or pd.isna(feature_row.get("away_expected_innings"))
+            ),
         }
         feature_values = {col: float(feature_row[col]) for col in FEATURE_COLS}
+        feature_values["starter_context"] = snapshot_starter_context(feature_row)
         feature_values["contributions"] = {
             col: float(coef * value)
             for col, coef, value in zip(FEATURE_COLS, model.coef_[0], scaled_row)

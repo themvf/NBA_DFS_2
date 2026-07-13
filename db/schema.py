@@ -276,6 +276,32 @@ TABLES = [
     )
     """,
 
+    """
+    CREATE TABLE IF NOT EXISTS mlb_starter_workload_snapshots (
+        id SERIAL PRIMARY KEY,
+        matchup_id INTEGER NOT NULL REFERENCES mlb_matchups(id),
+        side TEXT NOT NULL CHECK (side IN ('home', 'away')),
+        pitcher_id INTEGER NOT NULL,
+        pitcher_name TEXT,
+        event_commence TIMESTAMPTZ NOT NULL,
+        last_start_date DATE,
+        days_rest INTEGER,
+        starts_sample INTEGER NOT NULL,
+        pitches_last_start INTEGER,
+        avg_pitches_last_3 DOUBLE PRECISION,
+        avg_innings_last_3 DOUBLE PRECISION,
+        season_ip_per_start DOUBLE PRECISION,
+        expected_innings DOUBLE PRECISION,
+        source TEXT NOT NULL,
+        stats_through_at TIMESTAMPTZ NOT NULL,
+        available_at TIMESTAMPTZ NOT NULL,
+        transformation_version TEXT NOT NULL,
+        raw_checksum TEXT NOT NULL,
+        raw_json JSONB NOT NULL,
+        UNIQUE(matchup_id, side, raw_checksum)
+    )
+    """,
+
     # ── MLB batter stats (15-game EWMA, same α=0.25 as NBA) ──
     # wrc_plus_vs_l / wrc_plus_vs_r: L/R split for pitcher matchup.
     # fpts_std: per-game FPTS standard deviation for Monte Carlo.
@@ -1974,6 +2000,10 @@ MIGRATIONS = [
     """CREATE TRIGGER mlb_schedule_revisions_immutable
     BEFORE UPDATE OR DELETE ON mlb_schedule_revisions
     FOR EACH ROW EXECUTE FUNCTION reject_mlb_schedule_revision_mutation()""",
+    "DROP TRIGGER IF EXISTS mlb_starter_workload_immutable ON mlb_starter_workload_snapshots",
+    """CREATE TRIGGER mlb_starter_workload_immutable
+    BEFORE UPDATE OR DELETE ON mlb_starter_workload_snapshots
+    FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
 ]
 
 INDEXES = [
@@ -2008,6 +2038,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_team ON mlb_batter_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_player ON mlb_batter_stats(player_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_team ON mlb_pitcher_stats(team_id, season)",

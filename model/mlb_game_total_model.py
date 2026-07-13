@@ -85,6 +85,22 @@ FEATURE_COLS = [
 _MIN_TRAIN_GAMES = 60
 
 
+def snapshot_starter_context(row: pd.Series) -> dict:
+    keys = (
+        "home_sp_hand", "away_sp_hand", "home_sp_bb9", "away_sp_bb9",
+        "home_season_ip_per_start", "away_season_ip_per_start",
+        "home_pitches_last_start", "away_pitches_last_start",
+        "home_avg_pitches_last_3", "away_avg_pitches_last_3",
+        "home_expected_innings", "away_expected_innings",
+        "home_starter_days_rest", "away_starter_days_rest",
+    )
+    result = {}
+    for key in keys:
+        value = row.get(key)
+        result[key] = None if value is None or pd.isna(value) else value
+    return result
+
+
 def _season_of(game_date: str) -> str:
     """MLB season is the calendar year."""
     return game_date[:4]
@@ -118,6 +134,7 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
         SELECT
             m.id,
             m.game_date::TEXT          AS game_date,
+            m.commence_time,
             m.vegas_total,
             m.home_implied,
             m.away_implied,
@@ -132,10 +149,24 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
             m.wind_speed,
             m.wind_direction,
             park.runs_factor           AS park_runs_factor,
-            COALESCE(hsp_id.xfip, hsp_nm.xfip, hsp_id.era, hsp_nm.era)       AS home_sp_xfip,
-            COALESCE(asp_id.xfip, asp_nm.xfip, asp_id.era, asp_nm.era)       AS away_sp_xfip,
+            COALESCE(hsp_id.xfip, hsp_nm.xfip)                               AS home_sp_xfip,
+            COALESCE(asp_id.xfip, asp_nm.xfip)                               AS away_sp_xfip,
             COALESCE(hsp_id.k_per_9, hsp_nm.k_per_9)                          AS home_sp_k9,
             COALESCE(asp_id.k_per_9, asp_nm.k_per_9)                          AS away_sp_k9,
+            COALESCE(hsp_id.bb_per_9, hsp_nm.bb_per_9)                        AS home_sp_bb9,
+            COALESCE(asp_id.bb_per_9, asp_nm.bb_per_9)                        AS away_sp_bb9,
+            COALESCE(hsp_id.hand, hsp_nm.hand)                                AS home_sp_hand,
+            COALESCE(asp_id.hand, asp_nm.hand)                                AS away_sp_hand,
+            COALESCE(hsp_id.ip_per_start, hsp_nm.ip_per_start)                AS home_season_ip_per_start,
+            COALESCE(asp_id.ip_per_start, asp_nm.ip_per_start)                AS away_season_ip_per_start,
+            hwl.pitches_last_start AS home_pitches_last_start,
+            awl.pitches_last_start AS away_pitches_last_start,
+            hwl.avg_pitches_last_3 AS home_avg_pitches_last_3,
+            awl.avg_pitches_last_3 AS away_avg_pitches_last_3,
+            hwl.expected_innings AS home_expected_innings,
+            awl.expected_innings AS away_expected_innings,
+            hwl.days_rest AS home_starter_days_rest,
+            awl.days_rest AS away_starter_days_rest,
             hts.team_wrc_plus          AS home_wrc,
             ats.team_wrc_plus          AS away_wrc,
             hts.team_iso               AS home_iso,
@@ -144,38 +175,54 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
             ats.bullpen_fip            AS away_bullpen_fip
         FROM mlb_matchups m
         LEFT JOIN LATERAL (
-            SELECT k_per_9, xfip, era FROM mlb_pitcher_stats_history h
-            WHERE h.player_id = m.home_sp_id AND h.snapshot_date <= m.game_date
-            ORDER BY h.snapshot_date DESC LIMIT 1
+            SELECT k_per_9, bb_per_9, xfip, hand, ip_per_start FROM mlb_pitcher_stats_history h
+            WHERE h.player_id = m.home_sp_id AND h.available_at < m.commence_time
+              AND h.stats_through_at < m.commence_time
+            ORDER BY h.available_at DESC, h.id DESC LIMIT 1
         ) hsp_id ON TRUE
         LEFT JOIN LATERAL (
-            SELECT k_per_9, xfip, era FROM mlb_pitcher_stats_history h
-            WHERE h.player_id = m.away_sp_id AND h.snapshot_date <= m.game_date
-            ORDER BY h.snapshot_date DESC LIMIT 1
+            SELECT k_per_9, bb_per_9, xfip, hand, ip_per_start FROM mlb_pitcher_stats_history h
+            WHERE h.player_id = m.away_sp_id AND h.available_at < m.commence_time
+              AND h.stats_through_at < m.commence_time
+            ORDER BY h.available_at DESC, h.id DESC LIMIT 1
         ) asp_id ON TRUE
         LEFT JOIN LATERAL (
-            SELECT k_per_9, xfip, era FROM mlb_pitcher_stats_history h
-            WHERE LOWER(h.name) = LOWER(m.home_sp_name) AND h.snapshot_date <= m.game_date
-            ORDER BY h.snapshot_date DESC LIMIT 1
+            SELECT k_per_9, bb_per_9, xfip, hand, ip_per_start FROM mlb_pitcher_stats_history h
+            WHERE LOWER(h.name) = LOWER(m.home_sp_name) AND h.available_at < m.commence_time
+              AND h.stats_through_at < m.commence_time
+            ORDER BY h.available_at DESC, h.id DESC LIMIT 1
         ) hsp_nm ON TRUE
         LEFT JOIN LATERAL (
-            SELECT k_per_9, xfip, era FROM mlb_pitcher_stats_history h
-            WHERE LOWER(h.name) = LOWER(m.away_sp_name) AND h.snapshot_date <= m.game_date
-            ORDER BY h.snapshot_date DESC LIMIT 1
+            SELECT k_per_9, bb_per_9, xfip, hand, ip_per_start FROM mlb_pitcher_stats_history h
+            WHERE LOWER(h.name) = LOWER(m.away_sp_name) AND h.available_at < m.commence_time
+              AND h.stats_through_at < m.commence_time
+            ORDER BY h.available_at DESC, h.id DESC LIMIT 1
         ) asp_nm ON TRUE
         LEFT JOIN latest_park park ON park.team_id = m.home_team_id
         LEFT JOIN LATERAL (
             SELECT team_wrc_plus, team_iso, bullpen_fip FROM mlb_team_stats_history h
             WHERE h.team_id = m.home_team_id AND h.season = LEFT(m.game_date::TEXT, 4)
-              AND h.snapshot_date <= m.game_date
-            ORDER BY h.snapshot_date DESC LIMIT 1
+              AND h.available_at < m.commence_time AND h.stats_through_at < m.commence_time
+            ORDER BY h.available_at DESC, h.id DESC LIMIT 1
         ) hts ON TRUE
         LEFT JOIN LATERAL (
             SELECT team_wrc_plus, team_iso, bullpen_fip FROM mlb_team_stats_history h
             WHERE h.team_id = m.away_team_id AND h.season = LEFT(m.game_date::TEXT, 4)
-              AND h.snapshot_date <= m.game_date
-            ORDER BY h.snapshot_date DESC LIMIT 1
+              AND h.available_at < m.commence_time AND h.stats_through_at < m.commence_time
+            ORDER BY h.available_at DESC, h.id DESC LIMIT 1
         ) ats ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT pitches_last_start, avg_pitches_last_3, expected_innings, days_rest
+            FROM mlb_starter_workload_snapshots w
+            WHERE w.matchup_id = m.id AND w.side = 'home' AND w.available_at < m.commence_time
+            ORDER BY w.available_at DESC, w.id DESC LIMIT 1
+        ) hwl ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT pitches_last_start, avg_pitches_last_3, expected_innings, days_rest
+            FROM mlb_starter_workload_snapshots w
+            WHERE w.matchup_id = m.id AND w.side = 'away' AND w.available_at < m.commence_time
+            ORDER BY w.available_at DESC, w.id DESC LIMIT 1
+        ) awl ON TRUE
         WHERE m.vegas_total IS NOT NULL
         ORDER BY m.game_date ASC
         """,
@@ -344,8 +391,13 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
                 pd.isna(feature_row.get("home_bullpen_fip"))
                 or pd.isna(feature_row.get("away_bullpen_fip"))
             ),
+            "starter_workload": bool(
+                pd.isna(feature_row.get("home_expected_innings"))
+                or pd.isna(feature_row.get("away_expected_innings"))
+            ),
         }
         feature_values = {col: float(feature_row[col]) for col in FEATURE_COLS}
+        feature_values["starter_context"] = snapshot_starter_context(feature_row)
         feature_values["contributions"] = {
             col: float(coef * value)
             for col, coef, value in zip(FEATURE_COLS, model.coef_, scaled_row)
