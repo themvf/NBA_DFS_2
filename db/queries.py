@@ -1472,6 +1472,55 @@ def insert_mlb_team_offense_split_snapshot(
     return row["id"] if row else 0
 
 
+def insert_mlb_weather_forecast_snapshot(
+    db: DatabaseManager,
+    *,
+    matchup_id: int,
+    event_commence,
+    venue_name: str | None,
+    latitude: float,
+    longitude: float,
+    provider: str,
+    provider_model: str | None,
+    provider_issued_at,
+    valid_at,
+    available_at,
+    temperature_f: float | None,
+    relative_humidity_pct: float | None,
+    precipitation_probability_pct: float | None,
+    wind_speed_mph: float | None,
+    wind_direction: str | None,
+    roof_capability: str,
+    roof_state: str,
+    roof_source: str,
+    source_status: str,
+    raw_checksum: str,
+    raw_json: dict,
+) -> int:
+    row = db.execute_one(
+        """
+        INSERT INTO mlb_weather_forecast_snapshots (
+          matchup_id, event_commence, venue_name, latitude, longitude, provider,
+          provider_model, provider_issued_at, valid_at, available_at,
+          temperature_f, relative_humidity_pct, precipitation_probability_pct,
+          wind_speed_mph, wind_direction, roof_capability, roof_state,
+          roof_source, source_status, raw_checksum, raw_json
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+        ON CONFLICT (matchup_id, provider, raw_checksum) DO NOTHING
+        RETURNING id
+        """,
+        (
+            matchup_id, event_commence, venue_name, latitude, longitude, provider,
+            provider_model, provider_issued_at, valid_at, available_at,
+            temperature_f, relative_humidity_pct, precipitation_probability_pct,
+            wind_speed_mph, wind_direction, roof_capability, roof_state,
+            roof_source, source_status, raw_checksum,
+            json.dumps(raw_json, sort_keys=True),
+        ),
+    )
+    return row["id"] if row else 0
+
+
 # ── Soccer / World Cup queries ─────────────────────────────────────────────────
 
 def build_soccer_team_name_cache(db: DatabaseManager) -> dict[str, int]:

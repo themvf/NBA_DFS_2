@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from ingest.mlb_schedule import _confirmed_starters_from_live_feed
+from ingest import mlb_schedule
 
 
 def test_live_feed_requires_both_official_lineups() -> None:
@@ -30,3 +33,14 @@ def test_live_feed_confirms_first_participating_pitcher_for_each_side() -> None:
         "home": {"id": 10, "name": "Home SP", "hand": "R", "status": "confirmed"},
         "away": {"id": 20, "name": "Away SP", "hand": "L", "status": "confirmed"},
     }
+
+
+def test_confirmation_fetch_does_not_call_live_feed_outside_window(monkeypatch) -> None:
+    monkeypatch.setattr(
+        mlb_schedule.requests, "get",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected request")),
+    )
+    assert mlb_schedule._fetch_confirmed_starters(
+        "123", "2026-07-17T23:00:00Z",
+        now=datetime(2026, 7, 13, 1, tzinfo=timezone.utc),
+    ) is None

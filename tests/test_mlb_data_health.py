@@ -4,17 +4,22 @@ from model.mlb_data_health import collect_mlb_data_health
 
 
 class FakeDb:
-    def __init__(self, *, stats: dict, schedule: dict, bullpen: dict | None = None) -> None:
+    def __init__(self, *, stats: dict, schedule: dict, bullpen: dict | None = None, weather: dict | None = None) -> None:
         self.stats = stats
         self.schedule = schedule
         self.bullpen = bullpen or {
             "relief_appearances": 100, "relief_missing_provenance": 0,
             "bullpen_snapshots": 30, "empty_quality": 0, "post_start_snapshots": 0,
         }
+        self.weather = weather or {
+            "forecasts": 15, "invalid_forecasts": 0,
+        }
 
     def execute_one(self, sql, params=None):
         if "mlb_bullpen_snapshots" in sql:
             return self.bullpen
+        if "mlb_weather_forecast_snapshots" in sql:
+            return self.weather
         return self.schedule if "FROM mlb_matchups" in sql else self.stats
 
 

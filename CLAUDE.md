@@ -5297,3 +5297,20 @@ Use `SCRUM-5` as the parent Epic. Begin with `SCRUM-15`: audit the existing
 implementation, establish the true status of `SCRUM-6` through `SCRUM-14`, and
 then execute the earliest unmet dependency. Do not start with UI polish until
 the data and provenance requirements supporting that UI are verified.
+
+### MLB forecast source contract (SCRUM-9)
+
+- U.S. venues use the National Weather Service (`api.weather.gov`) hourly
+  forecast as the primary source because it exposes provider generation time,
+  forecast valid time, temperature, humidity, precipitation probability, wind,
+  grid identity, and the raw source payload without an API key.
+- Forecast captures are immutable and must precede first pitch. Mutable
+  `mlb_matchups.weather_*` columns are compatibility caches, not prediction
+  provenance and are not used as historical model evidence.
+- Open-Meteo is a coverage fallback only. It is labeled
+  `provider_issue_time_unavailable` and cannot pass the complete forecast-
+  provenance gate because retrieval time is not misrepresented as provider
+  issue time.
+- Static venue metadata may identify `open_air`, `retractable`, or `fixed`
+  roof capability. Retractable roof state remains `unknown` until a sourced
+  game-specific state is captured; weather alone never implies open or closed.

@@ -382,6 +382,34 @@ TABLES = [
     )
     """,
 
+    """
+    CREATE TABLE IF NOT EXISTS mlb_weather_forecast_snapshots (
+        id SERIAL PRIMARY KEY,
+        matchup_id INTEGER NOT NULL REFERENCES mlb_matchups(id),
+        event_commence TIMESTAMPTZ NOT NULL,
+        venue_name TEXT,
+        latitude DOUBLE PRECISION NOT NULL,
+        longitude DOUBLE PRECISION NOT NULL,
+        provider TEXT NOT NULL,
+        provider_model TEXT,
+        provider_issued_at TIMESTAMPTZ,
+        valid_at TIMESTAMPTZ NOT NULL,
+        available_at TIMESTAMPTZ NOT NULL,
+        temperature_f DOUBLE PRECISION,
+        relative_humidity_pct DOUBLE PRECISION,
+        precipitation_probability_pct DOUBLE PRECISION,
+        wind_speed_mph DOUBLE PRECISION,
+        wind_direction TEXT,
+        roof_capability TEXT NOT NULL,
+        roof_state TEXT NOT NULL,
+        roof_source TEXT NOT NULL,
+        source_status TEXT NOT NULL,
+        raw_checksum TEXT NOT NULL,
+        raw_json JSONB NOT NULL,
+        UNIQUE(matchup_id, provider, raw_checksum)
+    )
+    """,
+
     # ── MLB batter stats (15-game EWMA, same α=0.25 as NBA) ──
     # wrc_plus_vs_l / wrc_plus_vs_r: L/R split for pitcher matchup.
     # fpts_std: per-game FPTS standard deviation for Monte Carlo.
@@ -2096,6 +2124,10 @@ MIGRATIONS = [
     """CREATE TRIGGER mlb_bullpen_snapshots_immutable
     BEFORE UPDATE OR DELETE ON mlb_bullpen_snapshots
     FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
+    "DROP TRIGGER IF EXISTS mlb_weather_forecasts_immutable ON mlb_weather_forecast_snapshots",
+    """CREATE TRIGGER mlb_weather_forecasts_immutable
+    BEFORE UPDATE OR DELETE ON mlb_weather_forecast_snapshots
+    FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
 ]
 
 INDEXES = [
@@ -2135,6 +2167,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_relief_appearances_team_date ON mlb_relief_appearances(team_id, game_date DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_relief_appearances_pitcher_date ON mlb_relief_appearances(pitcher_id, game_date DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_bullpen_snapshots_matchup ON mlb_bullpen_snapshots(matchup_id, team_id, available_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_weather_forecasts_matchup ON mlb_weather_forecast_snapshots(matchup_id, available_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_team ON mlb_batter_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_player ON mlb_batter_stats(player_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_team ON mlb_pitcher_stats(team_id, season)",

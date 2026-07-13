@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import logging
+import re
 from datetime import date, datetime, timezone
 
 import requests
@@ -30,6 +31,7 @@ from db.queries import (
     insert_game_odds_history_rows,
     insert_mlb_schedule_revision,
     insert_mlb_starter_workload_snapshot,
+    insert_mlb_weather_forecast_snapshot,
     upsert_mlb_matchup,
 )
 from ingest.mlb_odds_policy import (
@@ -51,6 +53,21 @@ OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 NON_PLAYED_STATES = {"Cancelled", "Postponed"}
 STARTER_CONFIRMATION_WINDOW_HOURS = 6
+NWS_POINTS_URL = "https://api.weather.gov/points/{latitude},{longitude}"
+_RETRACTABLE_ROOFS = {
+    "american family field", "chase field", "daikin park", "globe life field",
+    "loandepot park", "rogers centre", "t-mobile park",
+}
+_FIXED_ROOFS = {"tropicana field"}
+
+
+def _roof_capability(venue_name: str | None) -> str:
+    key = (venue_name or "").strip().lower()
+    if key in _RETRACTABLE_ROOFS:
+        return "retractable"
+    if key in _FIXED_ROOFS:
+        return "fixed"
+    return "open_air" if key else "unknown"
 
 
 def _confirmed_starters_from_live_feed(payload: dict) -> dict[str, dict] | None:
@@ -85,6 +102,21 @@ def _fetch_confirmed_starters(game_id: str, game_start_iso: str, *, now: datetim
     try:
         game_start = datetime.fromisoformat(game_start_iso.replace("Z", "+00:00"))
     except (TypeError, ValueError):
+        return None
+    if game_start.tzinfo is None:
+        game_start = game_start.replace(tzinfo=timezone.utc)
+    hours_to_start = (game_start - now).total_seconds() / 3600.0
+    if hours_to_start <= 0 or hours_to_start > STARTER_CONFIRMATION_WINDOW_HOURS:
+        return None
+    try:
+        response = requests.get(
+            f"https://statsapi.mlb.com/api/v1.1/game/{game_id}/feed/live",
+            timeout=20,
+        )
+        response.raise_for_status()
+        return _confirmed_starters_from_live_feed(response.json() or {})
+    except requests.RequestException as exc:
+        logger.debug("MLB confirmed-starter feed failed for %s: %s", game_id, exc)
         return None
 
 
@@ -206,21 +238,6 @@ def _capture_starter_workload(
         available_at=available_at, raw_checksum=raw_checksum,
         raw_json={"recent_starts": workload["raw_starts"]},
     )
-    if game_start.tzinfo is None:
-        game_start = game_start.replace(tzinfo=timezone.utc)
-    hours_to_start = (game_start - now).total_seconds() / 3600.0
-    if hours_to_start <= 0 or hours_to_start > STARTER_CONFIRMATION_WINDOW_HOURS:
-        return None
-    try:
-        response = requests.get(
-            f"https://statsapi.mlb.com/api/v1.1/game/{game_id}/feed/live",
-            timeout=20,
-        )
-        response.raise_for_status()
-        return _confirmed_starters_from_live_feed(response.json() or {})
-    except requests.RequestException as exc:
-        logger.debug("MLB confirmed-starter feed failed for %s: %s", game_id, exc)
-        return None
 
 
 def _build_mlb_team_context_cache(db: DatabaseManager) -> dict[int, dict[str, str | None]]:
@@ -341,6 +358,67 @@ def _fetch_weather_snapshot(
     return (temp, wind_speed, wind_direction)
 
 
+def _wind_mph(value: object) -> float | None:
+    numbers = [float(item) for item in re.findall(r"\d+(?:\.\d+)?", str(value or ""))]
+    return sum(numbers) / len(numbers) if numbers else None
+
+
+def _fetch_nws_forecast(
+    *, latitude: float, longitude: float, game_start_iso: str, timeout_seconds: int,
+) -> dict | None:
+    headers = {
+        "User-Agent": "DFSVegas/1.0 (MLB decision weather provenance)",
+        "Accept": "application/geo+json",
+    }
+    try:
+        point = requests.get(
+            NWS_POINTS_URL.format(latitude=round(latitude, 4), longitude=round(longitude, 4)),
+            headers=headers, timeout=timeout_seconds,
+        )
+        point.raise_for_status()
+        point_payload = point.json() or {}
+        point_props = point_payload.get("properties") or {}
+        hourly_url = point_props.get("forecastHourly")
+        if not hourly_url:
+            return None
+        forecast = requests.get(hourly_url, headers=headers, timeout=timeout_seconds)
+        forecast.raise_for_status()
+        payload = forecast.json() or {}
+        props = payload.get("properties") or {}
+        periods = props.get("periods") or []
+        target = datetime.fromisoformat(game_start_iso.replace("Z", "+00:00"))
+        candidates = []
+        for period in periods:
+            try:
+                valid = datetime.fromisoformat(str(period.get("startTime")))
+            except (TypeError, ValueError):
+                continue
+            candidates.append((abs((valid - target).total_seconds()), valid, period))
+        if not candidates:
+            return None
+        _, valid_at, period = min(candidates, key=lambda item: item[0])
+        humidity = (period.get("relativeHumidity") or {}).get("value")
+        precip = (period.get("probabilityOfPrecipitation") or {}).get("value")
+        return {
+            "provider": "weather_gov_nws",
+            "provider_model": "/".join(str(point_props.get(key) or "") for key in ("gridId", "gridX", "gridY")),
+            "provider_issued_at": props.get("generatedAt") or props.get("updateTime"),
+            "valid_at": valid_at.isoformat(),
+            "temperature_f": float(period["temperature"]) if period.get("temperature") is not None else None,
+            "relative_humidity_pct": float(humidity) if humidity is not None else None,
+            "precipitation_probability_pct": float(precip) if precip is not None else None,
+            "wind_speed_mph": _wind_mph(period.get("windSpeed")),
+            "wind_direction": period.get("windDirection"),
+            "source_status": "complete",
+            "raw_json": {"point": point_props, "forecast_metadata": {
+                "generatedAt": props.get("generatedAt"), "updateTime": props.get("updateTime")
+            }, "period": period},
+        }
+    except (requests.RequestException, ValueError) as exc:
+        logger.debug("NWS forecast failed for %.4f, %.4f: %s", latitude, longitude, exc)
+        return None
+
+
 def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[int]:
     """Fetch games for game_date (YYYY-MM-DD), upsert into mlb_matchups.
 
@@ -436,6 +514,8 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
         weather_temp: int | None = None
         wind_speed: int | None = None
         wind_direction: str | None = None
+        coords: tuple[float, float] | None = None
+        weather_forecast: dict | None = None
 
         if game_start and query_ballpark:
             geocode_queries = []
@@ -444,7 +524,6 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
                 geocode_queries.append(query_city)
             geocode_queries.append(query_ballpark)
 
-            coords = None
             for geocode_query in geocode_queries:
                 coords = _geocode_ballpark(
                     geocode_query,
@@ -454,12 +533,33 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
                 if coords is not None:
                     break
             if coords is not None:
-                weather_temp, wind_speed, wind_direction = _fetch_weather_snapshot(
-                    latitude=coords[0],
-                    longitude=coords[1],
-                    game_start_iso=game_start,
+                weather_forecast = _fetch_nws_forecast(
+                    latitude=coords[0], longitude=coords[1], game_start_iso=game_start,
                     timeout_seconds=weather_timeout,
                 )
+                if weather_forecast is not None:
+                    weather_temp = round(weather_forecast["temperature_f"]) if weather_forecast["temperature_f"] is not None else None
+                    wind_speed = round(weather_forecast["wind_speed_mph"]) if weather_forecast["wind_speed_mph"] is not None else None
+                    wind_direction = weather_forecast["wind_direction"]
+                else:
+                    weather_temp, wind_speed, wind_direction = _fetch_weather_snapshot(
+                        latitude=coords[0], longitude=coords[1], game_start_iso=game_start,
+                        timeout_seconds=weather_timeout,
+                    )
+                    if weather_temp is not None or wind_speed is not None:
+                        weather_forecast = {
+                            "provider": "open_meteo",
+                            "provider_model": "best_match",
+                            "provider_issued_at": None,
+                            "valid_at": game_start,
+                            "temperature_f": weather_temp,
+                            "relative_humidity_pct": None,
+                            "precipitation_probability_pct": None,
+                            "wind_speed_mph": wind_speed,
+                            "wind_direction": wind_direction,
+                            "source_status": "provider_issue_time_unavailable",
+                            "raw_json": {"fallback": "Open-Meteo compatibility cache"},
+                        }
 
         mid = upsert_mlb_matchup(
             db,
@@ -519,6 +619,39 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
                 source_available_at=schedule_available_at,
                 raw_json=game,
             )
+            if weather_forecast is not None and coords is not None and game_start:
+                roof_capability = _roof_capability(ballpark)
+                roof_state = (
+                    "closed" if roof_capability == "fixed"
+                    else "not_applicable" if roof_capability == "open_air"
+                    else "unknown"
+                )
+                roof_source = "static_venue_capability" if roof_capability != "unknown" else "unavailable"
+                forecast_payload = {
+                    "matchup_id": mid, "event_commence": game_start,
+                    "venue": ballpark, "coordinates": coords,
+                    **weather_forecast, "roof_capability": roof_capability,
+                    "roof_state": roof_state, "roof_source": roof_source,
+                }
+                forecast_hash = hashlib.sha256(
+                    json.dumps(forecast_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+                ).hexdigest()
+                insert_mlb_weather_forecast_snapshot(
+                    db, matchup_id=mid, event_commence=game_start, venue_name=ballpark,
+                    latitude=coords[0], longitude=coords[1],
+                    provider=weather_forecast["provider"],
+                    provider_model=weather_forecast["provider_model"],
+                    provider_issued_at=weather_forecast["provider_issued_at"],
+                    valid_at=weather_forecast["valid_at"], available_at=schedule_available_at,
+                    temperature_f=weather_forecast["temperature_f"],
+                    relative_humidity_pct=weather_forecast["relative_humidity_pct"],
+                    precipitation_probability_pct=weather_forecast["precipitation_probability_pct"],
+                    wind_speed_mph=weather_forecast["wind_speed_mph"],
+                    wind_direction=weather_forecast["wind_direction"],
+                    roof_capability=roof_capability, roof_state=roof_state,
+                    roof_source=roof_source, source_status=weather_forecast["source_status"],
+                    raw_checksum=forecast_hash, raw_json=weather_forecast["raw_json"],
+                )
             if home_sp_id and game_start:
                 _capture_starter_workload(
                     db, matchup_id=mid, side="home", pitcher_id=int(home_sp_id),

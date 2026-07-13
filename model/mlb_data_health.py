@@ -64,6 +64,22 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
         """,
         (target_date,),
     ) or {}
+    weather = db.execute_one(
+        """
+        SELECT COUNT(w.id) AS forecasts,
+          COUNT(*) FILTER (WHERE w.id IS NOT NULL AND (
+            w.available_at >= m.commence_time OR w.source_status <> 'complete'
+            OR w.provider_issued_at IS NULL OR w.valid_at IS NULL
+          )) AS invalid_forecasts
+        FROM mlb_matchups m
+        LEFT JOIN LATERAL (
+          SELECT f.* FROM mlb_weather_forecast_snapshots f
+          WHERE f.matchup_id = m.id ORDER BY f.available_at DESC, f.id DESC LIMIT 1
+        ) w ON TRUE
+        WHERE m.game_date = %s AND m.game_id IS NOT NULL
+        """,
+        (target_date,),
+    ) or {}
 
     def number(row: dict, key: str) -> float:
         value = row.get(key)
@@ -146,6 +162,20 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
         "bullpen_provenance", invalid_bullpen == 0,
         f"{invalid_bullpen} relief/snapshot rows have missing provenance, empty quality, or post-start capture",
         "Reject invalid bullpen rows and re-capture from official pregame-available boxscores.",
+    )
+    forecasts = int(number(weather, "forecasts"))
+    add(
+        "weather_forecasts", forecasts == games,
+        f"{forecasts}/{games} games have immutable pregame forecast snapshots on {target_date}",
+        f"Refresh schedule weather sources for {target_date}; do not substitute observed/postgame conditions.",
+    )
+    invalid_weather = int(
+        number(weather, "invalid_forecasts")
+    )
+    add(
+        "weather_provenance", invalid_weather == 0,
+        f"{invalid_weather} latest forecasts are incomplete, post-start, or missing issue/valid time",
+        "Use an issued official forecast for the venue or show weather as unavailable until one is captured.",
     )
 
     return {

@@ -51,6 +51,7 @@ from model.mlb_game_total_model import (
     load_game_data,
     snapshot_starter_context,
     snapshot_bullpen_context,
+    snapshot_weather_context,
 )
 from model.mlb_projections import MLB_LEAGUE_AVG_XFIP
 
@@ -198,6 +199,7 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         feature_values = {col: float(feature_row[col]) for col in FEATURE_COLS}
         feature_values["starter_context"] = snapshot_starter_context(feature_row)
         feature_values["bullpen_context"] = snapshot_bullpen_context(feature_row)
+        feature_values["weather_context"] = snapshot_weather_context(feature_row)
         feature_values["contributions"] = {
             col: float(coef * value)
             for col, coef, value in zip(FEATURE_COLS, model.coef_[0], scaled_row)

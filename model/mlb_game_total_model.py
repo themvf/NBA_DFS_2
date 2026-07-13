@@ -85,6 +85,16 @@ FEATURE_COLS = [
 _MIN_TRAIN_GAMES = 60
 
 
+def _snapshot_value(value):
+    if value is None or pd.isna(value):
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
 def snapshot_starter_context(row: pd.Series) -> dict:
     keys = (
         "home_sp_hand", "away_sp_hand", "home_sp_bb9", "away_sp_bb9",
@@ -98,7 +108,7 @@ def snapshot_starter_context(row: pd.Series) -> dict:
     result = {}
     for key in keys:
         value = row.get(key)
-        result[key] = None if value is None or pd.isna(value) else value
+        result[key] = _snapshot_value(value)
     return result
 
 
@@ -114,7 +124,21 @@ def snapshot_bullpen_context(row: pd.Series) -> dict:
     result = {}
     for key in keys:
         value = row.get(key)
-        result[key] = None if value is None or pd.isna(value) else value
+        result[key] = _snapshot_value(value)
+    return result
+
+
+def snapshot_weather_context(row: pd.Series) -> dict:
+    keys = (
+        "weather_provider", "weather_provider_issued_at", "weather_valid_at",
+        "weather_temp", "weather_humidity", "weather_precip_probability",
+        "wind_speed", "wind_direction", "roof_capability", "roof_state",
+        "roof_source", "weather_source_status",
+    )
+    result = {}
+    for key in keys:
+        value = row.get(key)
+        result[key] = _snapshot_value(value)
     return result
 
 
@@ -162,9 +186,18 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
             m.home_score,
             m.away_score,
             m.ballpark,
-            m.weather_temp,
-            m.wind_speed,
-            m.wind_direction,
+            wf.temperature_f AS weather_temp,
+            wf.relative_humidity_pct AS weather_humidity,
+            wf.precipitation_probability_pct AS weather_precip_probability,
+            wf.wind_speed_mph AS wind_speed,
+            wf.wind_direction,
+            wf.provider AS weather_provider,
+            wf.provider_issued_at AS weather_provider_issued_at,
+            wf.valid_at AS weather_valid_at,
+            wf.roof_capability,
+            wf.roof_state,
+            wf.roof_source,
+            wf.source_status AS weather_source_status,
             park.runs_factor           AS park_runs_factor,
             COALESCE(hsp_id.xfip, hsp_nm.xfip)                               AS home_sp_xfip,
             COALESCE(asp_id.xfip, asp_nm.xfip)                               AS away_sp_xfip,
@@ -296,6 +329,15 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
               AND b.available_at < m.commence_time
             ORDER BY b.available_at DESC, b.id DESC LIMIT 1
         ) abp ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT temperature_f, relative_humidity_pct, precipitation_probability_pct,
+                   wind_speed_mph, wind_direction, provider, provider_issued_at,
+                   valid_at, roof_capability, roof_state, roof_source, source_status
+            FROM mlb_weather_forecast_snapshots w
+            WHERE w.matchup_id = m.id AND w.available_at < m.commence_time
+              AND (w.provider_issued_at IS NULL OR w.provider_issued_at <= w.available_at)
+            ORDER BY w.available_at DESC, w.id DESC LIMIT 1
+        ) wf ON TRUE
         WHERE m.vegas_total IS NOT NULL
         ORDER BY m.game_date ASC
         """,
@@ -472,6 +514,7 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         feature_values = {col: float(feature_row[col]) for col in FEATURE_COLS}
         feature_values["starter_context"] = snapshot_starter_context(feature_row)
         feature_values["bullpen_context"] = snapshot_bullpen_context(feature_row)
+        feature_values["weather_context"] = snapshot_weather_context(feature_row)
         feature_values["contributions"] = {
             col: float(coef * value)
             for col, coef, value in zip(FEATURE_COLS, model.coef_, scaled_row)
