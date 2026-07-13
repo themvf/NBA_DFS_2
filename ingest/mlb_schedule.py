@@ -16,6 +16,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
 from datetime import date, datetime, timezone
 
@@ -23,7 +25,12 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
-from db.queries import build_mlb_team_abbrev_cache, insert_game_odds_history_rows, upsert_mlb_matchup
+from db.queries import (
+    build_mlb_team_abbrev_cache,
+    insert_game_odds_history_rows,
+    insert_mlb_schedule_revision,
+    upsert_mlb_matchup,
+)
 from ingest.mlb_odds_policy import (
     MlbOddsPolicyError,
     consensus_american,
@@ -199,6 +206,7 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
     team_context_cache = _build_mlb_team_context_cache(db)
     geocode_cache: dict[str, tuple[float, float] | None] = {}
     weather_timeout = load_config().mlb_api.timeout_seconds
+    schedule_available_at = datetime.now(timezone.utc)
 
     matchup_ids: list[int] = []
     skipped_non_played = 0
@@ -237,6 +245,7 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
         away_sp_id = away_info.get("probablePitcher", {}).get("id")
         away_sp_name = away_info.get("probablePitcher", {}).get("fullName")
         ballpark   = game.get("venue", {}).get("name")
+        venue_id = game.get("venue", {}).get("id")
         team_context = team_context_cache.get(home_team_id, {})
         query_ballpark = ballpark or team_context.get("ballpark")
         query_city = team_context.get("city")
@@ -286,6 +295,46 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
         )
         if mid:
             matchup_ids.append(mid)
+            revision_payload = {
+                "game_id": game_id,
+                "game_date": target_date,
+                "commence_time": game_start,
+                "home_team_id": home_team_id,
+                "away_team_id": away_team_id,
+                "venue_id": venue_id,
+                "venue_name": ballpark,
+                "home_sp_id": home_sp_id,
+                "home_sp_name": home_sp_name,
+                "home_sp_status": "probable" if home_sp_id else "unavailable",
+                "away_sp_id": away_sp_id,
+                "away_sp_name": away_sp_name,
+                "away_sp_status": "probable" if away_sp_id else "unavailable",
+                "game_status": detailed_state,
+            }
+            revision_hash = hashlib.sha256(
+                json.dumps(revision_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            ).hexdigest()
+            insert_mlb_schedule_revision(
+                db,
+                matchup_id=mid,
+                game_id=game_id,
+                revision_hash=revision_hash,
+                game_date=target_date,
+                commence_time=game_start,
+                home_team_id=home_team_id,
+                away_team_id=away_team_id,
+                venue_id=venue_id,
+                venue_name=ballpark,
+                home_sp_id=home_sp_id,
+                home_sp_name=home_sp_name,
+                home_sp_status="probable" if home_sp_id else "unavailable",
+                away_sp_id=away_sp_id,
+                away_sp_name=away_sp_name,
+                away_sp_status="probable" if away_sp_id else "unavailable",
+                game_status=detailed_state,
+                source_available_at=schedule_available_at,
+                raw_json=game,
+            )
 
     msg = f"Schedule: {len(matchup_ids)} games upserted for {target_date}"
     skipped_parts = []

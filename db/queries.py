@@ -785,38 +785,39 @@ def insert_mlb_team_stats_snapshot(
     bullpen_fip: float | None = None,
     staff_k_pct: float | None = None,
     staff_bb_pct: float | None = None,
+    source: str = "pybaseball_fangraphs",
+    available_at=None,
+    stats_through_at=None,
+    sample_size: int | None = None,
+    window_label: str | None = None,
+    transformation_version: str = "mlb-stats-history-v2",
+    raw_checksum: str | None = None,
 ) -> None:
     """Append a dated snapshot alongside the current-state mlb_team_stats row.
 
     Point-in-time history for betting models — see CLAUDE.md "MLB Moneyline —
     Point-in-Time Leak Finding" (2026-07-05). Idempotent per (team, season,
-    day): re-running the same day's refresh updates that day's row in place
-    rather than duplicating it.
+    Each source capture is inserted as a new immutable row. Re-runs never
+    rewrite what the system knew at an earlier availability timestamp.
     """
     db.execute(
         """
         INSERT INTO mlb_team_stats_history (
             team_id, season, snapshot_date, team_wrc_plus, team_k_pct,
             team_bb_pct, team_iso, team_ops, bullpen_era, bullpen_fip,
-            staff_k_pct, staff_bb_pct
+            staff_k_pct, staff_bb_pct, source, available_at,
+            stats_through_at, sample_size, window_label,
+            transformation_version, raw_checksum
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (team_id, season, snapshot_date) DO UPDATE SET
-            team_wrc_plus = EXCLUDED.team_wrc_plus,
-            team_k_pct    = EXCLUDED.team_k_pct,
-            team_bb_pct   = EXCLUDED.team_bb_pct,
-            team_iso      = EXCLUDED.team_iso,
-            team_ops      = EXCLUDED.team_ops,
-            bullpen_era   = EXCLUDED.bullpen_era,
-            bullpen_fip   = EXCLUDED.bullpen_fip,
-            staff_k_pct   = EXCLUDED.staff_k_pct,
-            staff_bb_pct  = EXCLUDED.staff_bb_pct,
-            fetched_at    = NOW()
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, COALESCE(%s, NOW()), %s, %s, %s, %s, %s)
         """,
         (
             team_id, season, snapshot_date, team_wrc_plus, team_k_pct,
             team_bb_pct, team_iso, team_ops, bullpen_era, bullpen_fip,
-            staff_k_pct, staff_bb_pct,
+            staff_k_pct, staff_bb_pct, source, available_at,
+            stats_through_at, sample_size, window_label,
+            transformation_version, raw_checksum,
         ),
     )
 
@@ -831,6 +832,13 @@ def insert_mlb_pitcher_stats_snapshot(
     k_per_9: float | None = None,
     xfip: float | None = None,
     era: float | None = None,
+    source: str = "pybaseball_fangraphs",
+    available_at=None,
+    stats_through_at=None,
+    sample_size: int | None = None,
+    window_label: str | None = None,
+    transformation_version: str = "mlb-stats-history-v2",
+    raw_checksum: str | None = None,
 ) -> None:
     """Append a dated snapshot alongside the current-state mlb_pitcher_stats
     row. Only carries the fields model/mlb_moneyline_model.py actually reads
@@ -840,18 +848,18 @@ def insert_mlb_pitcher_stats_snapshot(
     db.execute(
         """
         INSERT INTO mlb_pitcher_stats_history (
-            player_id, season, snapshot_date, team_id, name, k_per_9, xfip, era
+            player_id, season, snapshot_date, team_id, name, k_per_9, xfip, era,
+            source, available_at, stats_through_at, sample_size, window_label,
+            transformation_version, raw_checksum
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (player_id, season, snapshot_date) DO UPDATE SET
-            team_id    = EXCLUDED.team_id,
-            name       = EXCLUDED.name,
-            k_per_9    = EXCLUDED.k_per_9,
-            xfip       = EXCLUDED.xfip,
-            era        = EXCLUDED.era,
-            fetched_at = NOW()
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()),
+                %s, %s, %s, %s, %s)
         """,
-        (player_id, season, snapshot_date, team_id, name, k_per_9, xfip, era),
+        (
+            player_id, season, snapshot_date, team_id, name, k_per_9, xfip, era,
+            source, available_at, stats_through_at, sample_size, window_label,
+            transformation_version, raw_checksum,
+        ),
     )
 
 
@@ -1315,6 +1323,54 @@ def upsert_mlb_matchup(
             vegas_total, home_ml, away_ml, vegas_prob_home,
             home_implied, away_implied, ballpark,
             weather_temp, wind_speed, wind_direction, commence_time,
+        ),
+    )
+    return row["id"] if row else 0
+
+
+def insert_mlb_schedule_revision(
+    db: DatabaseManager,
+    *,
+    matchup_id: int,
+    game_id: str,
+    revision_hash: str,
+    game_date: str,
+    commence_time,
+    home_team_id: int,
+    away_team_id: int,
+    venue_id: int | None,
+    venue_name: str | None,
+    home_sp_id: int | None,
+    home_sp_name: str | None,
+    home_sp_status: str,
+    away_sp_id: int | None,
+    away_sp_name: str | None,
+    away_sp_status: str,
+    game_status: str | None,
+    source_available_at,
+    raw_json: dict,
+) -> int:
+    """Insert one immutable official-schedule revision, deduplicated by hash."""
+    row = db.execute_one(
+        """
+        INSERT INTO mlb_schedule_revisions (
+            matchup_id, game_id, revision_hash, game_date, commence_time,
+            home_team_id, away_team_id, venue_id, venue_name,
+            home_sp_id, home_sp_name, home_sp_status,
+            away_sp_id, away_sp_name, away_sp_status, game_status,
+            source, source_available_at, raw_json
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, 'mlb_stats_api_schedule', %s, %s::jsonb)
+        ON CONFLICT (game_id, revision_hash) DO NOTHING
+        RETURNING id
+        """,
+        (
+            matchup_id, game_id, revision_hash, game_date, commence_time,
+            home_team_id, away_team_id, venue_id, venue_name,
+            home_sp_id, home_sp_name, home_sp_status,
+            away_sp_id, away_sp_name, away_sp_status, game_status,
+            source_available_at, json.dumps(raw_json, sort_keys=True),
         ),
     )
     return row["id"] if row else 0

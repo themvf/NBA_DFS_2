@@ -59,7 +59,7 @@ _MATCHUP_TBL = {"mlb": "mlb_matchups", "soccer": "soccer_matchups"}
 # formula differs. Mixing versions would violate this project's own
 # "bump the version rather than silently mix" rule (see soccer_bets/
 # mlb_bets model_version convention throughout CLAUDE.md).
-_CURRENT_MODEL_VERSION = {"mlb": "mlb-gameline-v3", "soccer": "gameline-v3"}
+_CURRENT_MODEL_VERSION = {"mlb": "mlb-gameline-v4", "soccer": "gameline-v3"}
 
 
 def _load_bets(db: DatabaseManager, sport: str, bet_type: str) -> list[dict]:

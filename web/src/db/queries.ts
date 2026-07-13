@@ -8628,7 +8628,10 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
       COUNT(DISTINCT c.bet_id)::int AS "clvN",
       AVG(c.clv_pp) AS "avgClvPp",
       COALESCE(
-        COUNT(*) FILTER (WHERE b.market_odds IS NOT NULL AND b.book IS NOT NULL)::float
+        COUNT(*) FILTER (
+          WHERE b.market_odds IS NOT NULL AND b.book IS NOT NULL
+            AND b.odds_snapshot_id IS NOT NULL
+        )::float
           / NULLIF(COUNT(*), 0),
         0
       ) AS "exactPriceCoverage",
@@ -8641,6 +8644,8 @@ export async function getMlbActionabilityEvidence(): Promise<MlbActionabilityEvi
       )::int AS "invalidPrices",
       COUNT(*) FILTER (
         WHERE b.prediction_snapshot_id IS NULL OR ps.id IS NULL
+          OR b.odds_snapshot_id IS NULL
+          OR b.odds_snapshot_id IS DISTINCT FROM ps.odds_snapshot_id
           OR ps.odds_snapshot_id IS NULL
           OR ps.feature_values IS NULL OR ps.feature_values = '{}'::jsonb
           OR ps.feature_available_at >= ps.event_commence

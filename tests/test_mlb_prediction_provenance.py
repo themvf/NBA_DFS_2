@@ -110,7 +110,7 @@ def test_both_live_models_write_provenance_before_cache() -> None:
 def test_prospective_bet_without_prediction_snapshot_fails_closed() -> None:
     assert record_bet(
         object(),  # type: ignore[arg-type]
-        model_version="mlb-gameline-v3",
+        model_version="mlb-gameline-v4",
         bet_type="moneyline",
         scope="9",
         selection_label="NYM",
@@ -121,8 +121,27 @@ def test_prospective_bet_without_prediction_snapshot_fails_closed() -> None:
     ) is None
 
 
+def test_prospective_bet_without_exact_quote_provenance_fails_closed() -> None:
+    assert record_bet(
+        object(),  # type: ignore[arg-type]
+        model_version="mlb-gameline-v4",
+        bet_type="moneyline",
+        scope="9",
+        selection_label="NYM",
+        our_prob=0.55,
+        capture_key="test",
+        origin=PROSPECTIVE,
+        prediction_snapshot_id=91,
+        market_odds=-115,
+        book=None,
+        odds_snapshot_id=None,
+    ) is None
+
+
 def test_database_schema_enforces_append_only_provenance() -> None:
     migration_text = "\n".join(MIGRATIONS)
     assert "mlb_prediction_runs_immutable" in migration_text
     assert "mlb_game_prediction_snapshots_immutable" in migration_text
     assert "BEFORE UPDATE OR DELETE" in migration_text
+    assert "mlb_bets ADD COLUMN IF NOT EXISTS odds_snapshot_id" in migration_text
+    assert "mlb_bet_snapshots ADD COLUMN IF NOT EXISTS book" in migration_text

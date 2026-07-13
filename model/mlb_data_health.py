@@ -1,0 +1,135 @@
+"""Operational health checks for point-in-time MLB decision inputs."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import date
+
+from config import load_config
+from db.database import DatabaseManager
+
+
+def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
+    stats = db.execute_one(
+        """
+        SELECT
+          (SELECT COUNT(DISTINCT team_id) FROM mlb_team_stats_history) AS team_entities,
+          (SELECT COUNT(*) FROM mlb_team_stats_history) AS team_captures,
+          (SELECT COUNT(*) FROM mlb_pitcher_stats_history) AS pitcher_captures,
+          (SELECT COUNT(*) FROM mlb_team_stats_history
+             WHERE source IS NULL OR available_at IS NULL OR stats_through_at IS NULL
+                OR sample_size IS NULL OR transformation_version IS NULL OR raw_checksum IS NULL) AS team_missing_provenance,
+          (SELECT COUNT(*) FROM mlb_pitcher_stats_history
+             WHERE source IS NULL OR available_at IS NULL OR stats_through_at IS NULL
+                OR sample_size IS NULL OR transformation_version IS NULL OR raw_checksum IS NULL) AS pitcher_missing_provenance,
+          (SELECT COUNT(*) FROM mlb_team_stats_history WHERE stats_through_at > available_at) AS team_leakage,
+          (SELECT COUNT(*) FROM mlb_pitcher_stats_history WHERE stats_through_at > available_at) AS pitcher_leakage,
+          (SELECT EXTRACT(EPOCH FROM (NOW() - MAX(available_at))) / 3600.0 FROM mlb_team_stats_history) AS team_age_hours,
+          (SELECT EXTRACT(EPOCH FROM (NOW() - MAX(available_at))) / 3600.0 FROM mlb_pitcher_stats_history) AS pitcher_age_hours
+        """
+    ) or {}
+    schedule = db.execute_one(
+        """
+        SELECT
+          COUNT(*) AS games,
+          COUNT(m.commence_time) AS starts,
+          COUNT(r.id) AS revisions,
+          COUNT(*) FILTER (WHERE r.id IS NOT NULL AND r.source_available_at >= m.commence_time) AS post_start_revisions,
+          COUNT(*) FILTER (WHERE r.id IS NOT NULL AND (r.source IS NULL OR r.raw_json IS NULL)) AS revision_missing_provenance
+        FROM mlb_matchups m
+        LEFT JOIN LATERAL (
+          SELECT sr.id, sr.source, sr.source_available_at, sr.raw_json
+          FROM mlb_schedule_revisions sr
+          WHERE sr.matchup_id = m.id
+          ORDER BY sr.captured_at DESC, sr.id DESC
+          LIMIT 1
+        ) r ON TRUE
+        WHERE m.game_date = %s AND m.game_id IS NOT NULL
+        """,
+        (target_date,),
+    ) or {}
+
+    def number(row: dict, key: str) -> float:
+        value = row.get(key)
+        return float(value) if value is not None else 0.0
+
+    checks = []
+
+    def add(key: str, passed: bool, detail: str, remedy: str, severity: str = "error") -> None:
+        checks.append({
+            "key": key,
+            "status": "pass" if passed else "fail",
+            "severity": "ok" if passed else severity,
+            "detail": detail,
+            "remedy": None if passed else remedy,
+        })
+
+    team_entities = int(number(stats, "team_entities"))
+    team_captures = int(number(stats, "team_captures"))
+    pitcher_captures = int(number(stats, "pitcher_captures"))
+    add(
+        "team_history_population", team_entities == 30 and team_captures >= 30,
+        f"{team_captures} captures across {team_entities}/30 teams",
+        "Run python -m ingest.mlb_stats for the active season and investigate missing team identities.",
+    )
+    add(
+        "pitcher_history_population", pitcher_captures > 0,
+        f"{pitcher_captures} pitcher captures",
+        "Run the official MLB pitcher fallback and verify the active-season response.",
+    )
+    missing_provenance = int(number(stats, "team_missing_provenance") + number(stats, "pitcher_missing_provenance"))
+    add(
+        "stats_provenance", missing_provenance == 0,
+        f"{missing_provenance} stat captures missing required provenance",
+        "Re-capture from a named source with availability, cutoff, sample size, version and checksum.",
+    )
+    leakage = int(number(stats, "team_leakage") + number(stats, "pitcher_leakage"))
+    add(
+        "stats_cutoff", leakage == 0,
+        f"{leakage} captures have stats-through time after availability time",
+        "Reject and re-capture rows whose source cutoff is later than their availability timestamp.",
+    )
+    games = int(number(schedule, "games"))
+    starts = int(number(schedule, "starts"))
+    revisions = int(number(schedule, "revisions"))
+    add(
+        "schedule_starts", games == starts,
+        f"{starts}/{games} games have a start time on {target_date}",
+        f"Refresh the official MLB schedule for {target_date}; do not predict games with missing commence time.",
+    )
+    add(
+        "schedule_revisions", games == revisions,
+        f"{revisions}/{games} games have immutable schedule revisions on {target_date}",
+        f"Refresh the official MLB schedule for {target_date} and verify revision writes.",
+    )
+    invalid_revisions = int(number(schedule, "post_start_revisions") + number(schedule, "revision_missing_provenance"))
+    add(
+        "schedule_provenance", invalid_revisions == 0,
+        f"{invalid_revisions} latest revisions are post-start or missing source/raw provenance",
+        "Exclude post-start revisions from pregame use and re-capture missing official source payloads.",
+    )
+
+    return {
+        "target_date": target_date,
+        "status": "pass" if all(check["status"] == "pass" for check in checks) else "fail",
+        "checks": checks,
+        "observed": {
+            "team_age_hours": number(stats, "team_age_hours"),
+            "pitcher_age_hours": number(stats, "pitcher_age_hours"),
+        },
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Audit point-in-time MLB data health")
+    parser.add_argument("--date", default=date.today().isoformat())
+    args = parser.parse_args()
+    config = load_config()
+    report = collect_mlb_data_health(DatabaseManager(config.database_url), args.date)
+    print(json.dumps(report, indent=2, default=str))
+    return 0 if report["status"] == "pass" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

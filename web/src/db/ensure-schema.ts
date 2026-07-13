@@ -321,7 +321,12 @@ const MLB_GAME_PREDICTION_DDLS = [
     )`,
   `ALTER TABLE mlb_bets ADD COLUMN IF NOT EXISTS prediction_snapshot_id INTEGER REFERENCES mlb_game_prediction_snapshots(id)`,
   `ALTER TABLE mlb_bets ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'legacy'`,
+  `ALTER TABLE mlb_bets ADD COLUMN IF NOT EXISTS odds_snapshot_id INTEGER REFERENCES game_odds_history(id)`,
   `ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS prediction_snapshot_id INTEGER REFERENCES mlb_game_prediction_snapshots(id)`,
+  `ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS odds_snapshot_id INTEGER REFERENCES game_odds_history(id)`,
+  `ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS book TEXT`,
+  `ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS selection_label TEXT`,
+  `ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS market_line DOUBLE PRECISION`,
   `CREATE INDEX IF NOT EXISTS idx_mlb_prediction_runs_origin ON mlb_prediction_runs(origin, model_version, generated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_mlb_game_prediction_matchup ON mlb_game_prediction_snapshots(matchup_id, market, created_at DESC)`,
   `CREATE OR REPLACE FUNCTION reject_mlb_prediction_mutation()

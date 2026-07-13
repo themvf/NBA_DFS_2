@@ -23,11 +23,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import math
+import os
 
 from config import load_config
 from db.database import DatabaseManager
-from model.mlb_bet_rating import new_capture_key, record_bet
+from ingest.mlb_odds_policy import MlbOddsPolicyError, validate_american_price
+from model.mlb_bet_rating import american_to_prob, new_capture_key, record_bet
 from model.mlb_prediction_provenance import (
     PROSPECTIVE,
     RETROSPECTIVE_BACKFILL,
@@ -37,8 +41,17 @@ from model.soccer_game_bets import _over_under_probs  # Poisson P(over)/P(under)
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "mlb-gameline-v3"
-_STD_TOTAL_ODDS = -110          # MLB O/U is −110/−110; vig-free ref = 0.5
+MODEL_VERSION = "mlb-gameline-v4"
+
+_DEFAULT_EXECUTABLE_BOOKS = (
+    "draftkings",
+    "fanduel",
+    "betmgm",
+    "williamhill_us",
+    "fanatics",
+    "betrivers",
+)
+_STD_TOTAL_ODDS = -110  # retained only for the dead v3 comparison helper
 _STD_TOTAL_REF = 0.5
 
 # Hard star cap (2026-07-02) — same honesty rule as soccer game markets and
@@ -72,6 +85,133 @@ def _anchor(our_prob: float, market_prob: float, w: float = _MARKET_ANCHOR_W) ->
     return market_prob + w * (our_prob - market_prob)
 
 
+def _configured_books() -> tuple[str, ...]:
+    raw = os.getenv("MLB_EXECUTABLE_BOOKS", "")
+    configured = tuple(key.strip().lower() for key in raw.split(",") if key.strip())
+    return configured or _DEFAULT_EXECUTABLE_BOOKS
+
+
+def _decode_books(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        decoded = json.loads(value)
+        if isinstance(decoded, dict):
+            return decoded
+    return {}
+
+
+def _vig_free_probability(selected_price: int, paired_price: int) -> float:
+    selected_raw = american_to_prob(selected_price)
+    paired_raw = american_to_prob(paired_price)
+    return selected_raw / (selected_raw + paired_raw)
+
+
+def select_exact_moneyline_quote(
+    books: dict,
+    *,
+    side: str,
+    allowed_books: tuple[str, ...] | None = None,
+) -> dict | None:
+    """Choose the best exact paired moneyline quote from configured books."""
+    selected_key = "ml_home" if side == "home" else "ml_away"
+    paired_key = "ml_away" if side == "home" else "ml_home"
+    candidates = []
+    for book_key in allowed_books or _configured_books():
+        quote = books.get(book_key)
+        if not isinstance(quote, dict):
+            continue
+        try:
+            selected = validate_american_price(quote.get(selected_key))
+            paired = validate_american_price(quote.get(paired_key))
+        except MlbOddsPolicyError:
+            continue
+        candidates.append({
+            "book": book_key,
+            "price": selected,
+            "paired_price": paired,
+            "market_prob": _vig_free_probability(selected, paired),
+            "bookmaker_updated_at": quote.get("last_update"),
+        })
+    return max(candidates, key=lambda row: row["price"], default=None)
+
+
+def select_exact_total_quote(
+    books: dict,
+    *,
+    side: str,
+    line: float,
+    allowed_books: tuple[str, ...] | None = None,
+) -> dict | None:
+    """Choose the best paired total price at the exact frozen proposition."""
+    selected_key = "over" if side == "over" else "under"
+    paired_key = "under" if side == "over" else "over"
+    candidates = []
+    for book_key in allowed_books or _configured_books():
+        quote = books.get(book_key)
+        if not isinstance(quote, dict):
+            continue
+        quote_line = quote.get("total_line")
+        if not isinstance(quote_line, (int, float)) or not math.isfinite(float(quote_line)):
+            continue
+        if not math.isclose(float(quote_line), line, abs_tol=1e-9):
+            continue
+        try:
+            selected = validate_american_price(quote.get(selected_key))
+            paired = validate_american_price(quote.get(paired_key))
+        except MlbOddsPolicyError:
+            continue
+        candidates.append({
+            "book": book_key,
+            "price": selected,
+            "paired_price": paired,
+            "line": float(quote_line),
+            "market_prob": _vig_free_probability(selected, paired),
+            "bookmaker_updated_at": quote.get("last_update"),
+        })
+    return max(candidates, key=lambda row: row["price"], default=None)
+
+
+def _latest_prediction_quote_context(
+    conn,
+    *,
+    matchup_id: int,
+    market: str,
+    event_commence,
+    origin: str,
+) -> dict | None:
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT
+            s.id AS prediction_snapshot_id,
+            s.odds_snapshot_id,
+            s.raw_prediction,
+            s.market_prob,
+            s.market_line,
+            s.event_commence,
+            h.captured_at AS odds_captured_at,
+            h.books
+        FROM mlb_game_prediction_snapshots s
+        JOIN mlb_prediction_runs r ON r.id = s.run_id
+        JOIN game_odds_history h ON h.id = s.odds_snapshot_id
+        WHERE s.matchup_id = %s AND s.market = %s AND r.origin = %s
+          AND s.event_commence = %s
+          AND h.sport = 'mlb' AND h.matchup_id = s.matchup_id
+          AND h.captured_at < s.event_commence
+          AND s.created_at < s.event_commence
+        ORDER BY s.created_at DESC, s.id DESC
+        LIMIT 1
+        """,
+        (matchup_id, market, origin, event_commence),
+    )
+    row = cur.fetchone()
+    if row:
+        row = dict(row)
+        row["books"] = _decode_books(row.get("books"))
+    return row
+
+
 def _fixtures(db: DatabaseManager, where: str, params: tuple) -> list[dict]:
     return db.execute(
         f"""
@@ -90,7 +230,7 @@ def _fixtures(db: DatabaseManager, where: str, params: tuple) -> list[dict]:
     )
 
 
-def _record_fixture(db, conn, fx: dict, capture_key: str, origin: str) -> int:
+def _record_fixture_legacy(db, conn, fx: dict, capture_key: str, origin: str) -> int:
     written = 0
     scope = str(fx["id"])  # stable per-game key; matchup_id also stored as FK
     commence = fx["commence_time"]
@@ -170,6 +310,122 @@ def _record_fixture(db, conn, fx: dict, capture_key: str, origin: str) -> int:
                     "edge_status": "no_walkforward_edge"},
         )
         written += int(bet_id is not None)
+
+    return written
+
+
+def _record_fixture(db, conn, fx: dict, capture_key: str, origin: str) -> int:
+    """Write exact-book recommendations from their linked prediction snapshot."""
+    written = 0
+    scope = str(fx["id"])
+    commence = fx["commence_time"]
+    fixture_label = f"{fx['away']} @ {fx['home']}"
+
+    ml_context = _latest_prediction_quote_context(
+        conn, matchup_id=fx["id"], market="moneyline",
+        event_commence=commence, origin=origin,
+    )
+    if ml_context and ml_context["market_prob"] is not None:
+        op = float(ml_context["raw_prediction"])
+        mp = float(ml_context["market_prob"])
+        bet_home = op >= mp
+        side = "home" if bet_home else "away"
+        side_raw = op if bet_home else 1.0 - op
+        reference_side = mp if bet_home else 1.0 - mp
+        exact = select_exact_moneyline_quote(ml_context["books"], side=side)
+        if exact:
+            bet_id = record_bet(
+                db,
+                model_version=MODEL_VERSION,
+                bet_type="moneyline",
+                scope=scope,
+                selection_label=fx["home"] if bet_home else fx["away"],
+                our_prob=_anchor(side_raw, reference_side),
+                capture_key=capture_key,
+                market_odds=exact["price"],
+                market_prob=exact["market_prob"],
+                book=exact["book"],
+                odds_snapshot_id=ml_context["odds_snapshot_id"],
+                matchup_id=fx["id"],
+                subject_team_id=fx["home_team_id"] if bet_home else fx["away_team_id"],
+                event_commence=commence,
+                prediction_snapshot_id=ml_context["prediction_snapshot_id"],
+                origin=origin,
+                longshot_odds_cap=True,
+                max_stars=_GAMELINE_MAX_STARS,
+                conn=conn,
+                inputs={
+                    "side": side,
+                    "fixture": fixture_label,
+                    "our_prob_home": round(op, 4),
+                    "reference_market_prob_home": round(mp, 4),
+                    "observed_book": exact["book"],
+                    "observed_price": exact["price"],
+                    "paired_price": exact["paired_price"],
+                    "odds_snapshot_id": ml_context["odds_snapshot_id"],
+                    "odds_captured_at": str(ml_context["odds_captured_at"]),
+                    "bookmaker_updated_at": exact["bookmaker_updated_at"],
+                    "anchor_w": _MARKET_ANCHOR_W,
+                    "stars_capped_at": _GAMELINE_MAX_STARS,
+                    "edge_status": "no_walkforward_edge",
+                },
+            )
+            written += int(bet_id is not None)
+        else:
+            logger.warning("No exact paired moneyline quote for %s (%s)", fixture_label, side)
+
+    total_context = _latest_prediction_quote_context(
+        conn, matchup_id=fx["id"], market="total",
+        event_commence=commence, origin=origin,
+    )
+    if total_context and total_context["market_line"] is not None:
+        line = float(total_context["market_line"])
+        lam = float(total_context["raw_prediction"])
+        p_over, p_under = _over_under_probs(line, lam)
+        is_over = lam > line
+        side = "over" if is_over else "under"
+        side_raw = p_over if is_over else p_under
+        exact = select_exact_total_quote(total_context["books"], side=side, line=line)
+        if exact:
+            bet_id = record_bet(
+                db,
+                model_version=MODEL_VERSION,
+                bet_type="total",
+                scope=scope,
+                selection_label=f"Over {line}" if is_over else f"Under {line}",
+                our_prob=_anchor(side_raw, exact["market_prob"]),
+                capture_key=capture_key,
+                market_odds=exact["price"],
+                market_prob=exact["market_prob"],
+                book=exact["book"],
+                odds_snapshot_id=total_context["odds_snapshot_id"],
+                market_line=line,
+                matchup_id=fx["id"],
+                event_commence=commence,
+                prediction_snapshot_id=total_context["prediction_snapshot_id"],
+                origin=origin,
+                longshot_odds_cap=True,
+                max_stars=_GAMELINE_MAX_STARS,
+                conn=conn,
+                inputs={
+                    "line": line,
+                    "side": side,
+                    "our_total_pred": round(lam, 2),
+                    "fixture": fixture_label,
+                    "observed_book": exact["book"],
+                    "observed_price": exact["price"],
+                    "paired_price": exact["paired_price"],
+                    "odds_snapshot_id": total_context["odds_snapshot_id"],
+                    "odds_captured_at": str(total_context["odds_captured_at"]),
+                    "bookmaker_updated_at": exact["bookmaker_updated_at"],
+                    "anchor_w": _MARKET_ANCHOR_W,
+                    "stars_capped_at": _GAMELINE_MAX_STARS,
+                    "edge_status": "no_walkforward_edge",
+                },
+            )
+            written += int(bet_id is not None)
+        else:
+            logger.warning("No exact paired total quote for %s (%s %.1f)", fixture_label, side, line)
 
     return written
 

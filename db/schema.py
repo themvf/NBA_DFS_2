@@ -246,6 +246,36 @@ TABLES = [
     )
     """,
 
+    # Immutable revisions from the official MLB schedule feed. The mutable
+    # mlb_matchups row is a convenience cache; this table preserves what the
+    # application knew at each capture.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_schedule_revisions (
+        id SERIAL PRIMARY KEY,
+        matchup_id INTEGER NOT NULL REFERENCES mlb_matchups(id),
+        game_id TEXT NOT NULL,
+        revision_hash TEXT NOT NULL,
+        game_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ,
+        home_team_id INTEGER REFERENCES mlb_teams(team_id),
+        away_team_id INTEGER REFERENCES mlb_teams(team_id),
+        venue_id INTEGER,
+        venue_name TEXT,
+        home_sp_id INTEGER,
+        home_sp_name TEXT,
+        home_sp_status TEXT NOT NULL,
+        away_sp_id INTEGER,
+        away_sp_name TEXT,
+        away_sp_status TEXT NOT NULL,
+        game_status TEXT,
+        source TEXT NOT NULL,
+        source_available_at TIMESTAMPTZ NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        raw_json JSONB NOT NULL,
+        UNIQUE(game_id, revision_hash)
+    )
+    """,
+
     # ── MLB batter stats (15-game EWMA, same α=0.25 as NBA) ──
     # wrc_plus_vs_l / wrc_plus_vs_r: L/R split for pitcher matchup.
     # fpts_std: per-game FPTS standard deviation for Monte Carlo.
@@ -331,6 +361,13 @@ TABLES = [
         k_per_9 DOUBLE PRECISION,
         xfip DOUBLE PRECISION,
         era DOUBLE PRECISION,
+        source TEXT,
+        available_at TIMESTAMPTZ,
+        stats_through_at TIMESTAMPTZ,
+        sample_size INTEGER,
+        window_label TEXT,
+        transformation_version TEXT,
+        raw_checksum TEXT,
         fetched_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(player_id, season, snapshot_date)
     )
@@ -419,6 +456,13 @@ TABLES = [
         bullpen_fip DOUBLE PRECISION,
         staff_k_pct DOUBLE PRECISION,
         staff_bb_pct DOUBLE PRECISION,
+        source TEXT,
+        available_at TIMESTAMPTZ,
+        stats_through_at TIMESTAMPTZ,
+        sample_size INTEGER,
+        window_label TEXT,
+        transformation_version TEXT,
+        raw_checksum TEXT,
         fetched_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(team_id, season, snapshot_date)
     )
@@ -1853,7 +1897,12 @@ MIGRATIONS = [
     )""",
     "ALTER TABLE mlb_bets ADD COLUMN IF NOT EXISTS prediction_snapshot_id INTEGER REFERENCES mlb_game_prediction_snapshots(id)",
     "ALTER TABLE mlb_bets ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'legacy'",
+    "ALTER TABLE mlb_bets ADD COLUMN IF NOT EXISTS odds_snapshot_id INTEGER REFERENCES game_odds_history(id)",
     "ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS prediction_snapshot_id INTEGER REFERENCES mlb_game_prediction_snapshots(id)",
+    "ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS odds_snapshot_id INTEGER REFERENCES game_odds_history(id)",
+    "ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS book TEXT",
+    "ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS selection_label TEXT",
+    "ALTER TABLE mlb_bet_snapshots ADD COLUMN IF NOT EXISTS market_line DOUBLE PRECISION",
     "CREATE INDEX IF NOT EXISTS idx_mlb_prediction_runs_origin ON mlb_prediction_runs(origin, model_version, generated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_game_prediction_matchup ON mlb_game_prediction_snapshots(matchup_id, market, created_at DESC)",
     """CREATE OR REPLACE FUNCTION reject_mlb_prediction_mutation()
@@ -1871,6 +1920,46 @@ MIGRATIONS = [
          ON mlb_game_prediction_snapshots FOR EACH ROW EXECUTE FUNCTION reject_mlb_prediction_mutation();
        END IF;
     END $$""",
+    "ALTER TABLE mlb_team_stats_history ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE mlb_team_stats_history ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ",
+    "ALTER TABLE mlb_team_stats_history ADD COLUMN IF NOT EXISTS stats_through_at TIMESTAMPTZ",
+    "ALTER TABLE mlb_team_stats_history ADD COLUMN IF NOT EXISTS sample_size INTEGER",
+    "ALTER TABLE mlb_team_stats_history ADD COLUMN IF NOT EXISTS window_label TEXT",
+    "ALTER TABLE mlb_team_stats_history ADD COLUMN IF NOT EXISTS transformation_version TEXT",
+    "ALTER TABLE mlb_team_stats_history ADD COLUMN IF NOT EXISTS raw_checksum TEXT",
+    "ALTER TABLE mlb_pitcher_stats_history ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE mlb_pitcher_stats_history ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ",
+    "ALTER TABLE mlb_pitcher_stats_history ADD COLUMN IF NOT EXISTS stats_through_at TIMESTAMPTZ",
+    "ALTER TABLE mlb_pitcher_stats_history ADD COLUMN IF NOT EXISTS sample_size INTEGER",
+    "ALTER TABLE mlb_pitcher_stats_history ADD COLUMN IF NOT EXISTS window_label TEXT",
+    "ALTER TABLE mlb_pitcher_stats_history ADD COLUMN IF NOT EXISTS transformation_version TEXT",
+    "ALTER TABLE mlb_pitcher_stats_history ADD COLUMN IF NOT EXISTS raw_checksum TEXT",
+    "ALTER TABLE mlb_team_stats_history DROP CONSTRAINT IF EXISTS mlb_team_stats_history_team_id_season_snapshot_date_key",
+    "ALTER TABLE mlb_pitcher_stats_history DROP CONSTRAINT IF EXISTS mlb_pitcher_stats_history_player_id_season_snapshot_date_key",
+    """CREATE OR REPLACE FUNCTION reject_mlb_stats_history_mutation()
+    RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'MLB point-in-time stat history is append-only';
+    END;
+    $$ LANGUAGE plpgsql""",
+    "DROP TRIGGER IF EXISTS mlb_team_stats_history_immutable ON mlb_team_stats_history",
+    """CREATE TRIGGER mlb_team_stats_history_immutable
+    BEFORE UPDATE OR DELETE ON mlb_team_stats_history
+    FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
+    "DROP TRIGGER IF EXISTS mlb_pitcher_stats_history_immutable ON mlb_pitcher_stats_history",
+    """CREATE TRIGGER mlb_pitcher_stats_history_immutable
+    BEFORE UPDATE OR DELETE ON mlb_pitcher_stats_history
+    FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
+    """CREATE OR REPLACE FUNCTION reject_mlb_schedule_revision_mutation()
+    RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'MLB schedule revisions are append-only';
+    END;
+    $$ LANGUAGE plpgsql""",
+    "DROP TRIGGER IF EXISTS mlb_schedule_revisions_immutable ON mlb_schedule_revisions",
+    """CREATE TRIGGER mlb_schedule_revisions_immutable
+    BEFORE UPDATE OR DELETE ON mlb_schedule_revisions
+    FOR EACH ROW EXECUTE FUNCTION reject_mlb_schedule_revision_mutation()""",
 ]
 
 INDEXES = [
@@ -1903,6 +1992,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_homerun_snapshots_slate ON mlb_homerun_player_snapshots(slate_id, hr_prob_1plus DESC NULLS LAST)",
     # MLB indexes
     "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_team ON mlb_batter_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_player ON mlb_batter_stats(player_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_team ON mlb_pitcher_stats(team_id, season)",
@@ -1910,6 +2001,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_season ON mlb_team_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_history_asof ON mlb_team_stats_history(team_id, season, snapshot_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_history_asof ON mlb_pitcher_stats_history(player_id, season, snapshot_date)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_team_stats_history_available ON mlb_team_stats_history(team_id, season, available_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_history_available ON mlb_pitcher_stats_history(player_id, season, available_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_articles_team_date ON mlb_beat_articles(team_id, published_at)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_facts_article ON mlb_beat_facts(article_id)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_beat_facts_type ON mlb_beat_facts(fact_type, team_id)",

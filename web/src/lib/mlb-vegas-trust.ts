@@ -6,6 +6,7 @@ export const MLB_GAME_LINES_TRUST = {
 };
 
 export const MLB_ACTIONABILITY_POLICY_VERSION = "mlb-actionability-v1";
+export const MLB_EXACT_QUOTE_MODEL_VERSION = "mlb-gameline-v4";
 export const MLB_MIN_PROSPECTIVE_UNIQUE_GAMES = 150;
 
 export type MlbGameLineMarket = "moneyline" | "total";
@@ -83,6 +84,8 @@ export function evaluateMlbActionability(
       blocking: true,
       detail: evidence.ledgerRows === 0
         ? "No prospective rows yet; exact-price coverage applies on first capture"
+        : evidence.modelVersion !== MLB_EXACT_QUOTE_MODEL_VERSION
+          ? `Legacy ${evidence.modelVersion ?? "unknown"} rows did not store a named sportsbook. The v4 repair begins with the next future slate.`
         : `${evidence.invalidPrices} invalid price(s); ${(evidence.exactPriceCoverage * 100).toFixed(0)}% exact book/price coverage`,
     },
     {

@@ -35,8 +35,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 import pandas as pd
 import requests
@@ -80,6 +82,19 @@ _FG_TEAM_MAP: dict[str, str] = {
 # until current-season samples earn weight.
 _MIN_PA  = 1
 _MIN_IP  = 1.0
+_STATS_TRANSFORMATION_VERSION = "mlb-stats-history-v2"
+
+
+def _capture_times() -> tuple[datetime, datetime]:
+    """Return capture time and the exclusive stats cutoff for today's run."""
+    captured_at = datetime.now(timezone.utc)
+    stats_through_at = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+    return captured_at, stats_through_at
+
+
+def _raw_checksum(payload: dict) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # ── Public fetch functions ────────────────────────────────────────────────────
@@ -225,10 +240,16 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45, full_s
     df["_ip"] = df["IP"].apply(_parse_ip)
     df = df[df["_ip"] >= _MIN_IP].copy()
     if df.empty:
-        logger.warning("All pitchers filtered out (IP < %.1f)", _MIN_IP)
-        return 0
+        logger.warning(
+            "FanGraphs returned no qualifying pitchers (IP < %.1f); using official MLB stats",
+            _MIN_IP,
+        )
+        return fetch_pitcher_stats_from_mlb_api(db, season)
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
+    captured_at, stats_through_at = _capture_times()
+    source_name = f"pybaseball_fangraphs_{source}"
+    window_label = "season_to_date" if full_season else f"rolling_{days}d"
     updated = 0
 
     for _, row in df.iterrows():
@@ -316,6 +337,18 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45, full_s
             k_per_9=_safe_float(row.get("K/9")),
             xfip=_safe_float(row.get("xFIP")),
             era=_safe_float(row.get("ERA")),
+            source=source_name,
+            available_at=captured_at,
+            stats_through_at=stats_through_at,
+            sample_size=games,
+            window_label=window_label,
+            transformation_version=_STATS_TRANSFORMATION_VERSION,
+            raw_checksum=_raw_checksum({
+                "player_id": player_id, "season": season, "team_id": team_id,
+                "games": games, "k_per_9": _safe_float(row.get("K/9")),
+                "xfip": _safe_float(row.get("xFIP")),
+                "era": _safe_float(row.get("ERA")),
+            }),
         )
         updated += 1
 
@@ -340,14 +373,15 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
         bat_df: pd.DataFrame = team_batting(season_int)
         pit_df: pd.DataFrame = team_pitching(season_int)
     except Exception as exc:
-        logger.warning("pybaseball team stats failed: %s", exc)
-        return 0
+        logger.warning("pybaseball team stats failed: %s; using official MLB team stats", exc)
+        return fetch_team_stats_from_mlb_api(db, season)
 
     if bat_df is None or bat_df.empty:
         logger.warning("team_batting returned empty data for %s", season)
         return 0
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
+    captured_at, stats_through_at = _capture_times()
 
     # Index pitching rows by FG team code for O(1) lookup
     pit_by_team: dict[str, dict] = {}
@@ -395,10 +429,109 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
             bullpen_fip=_safe_float(pit.get("FIP")),
             staff_k_pct=_safe_float(pit.get("K%")),
             staff_bb_pct=_safe_float(pit.get("BB%")),
+            source="pybaseball_fangraphs_team_season",
+            available_at=captured_at,
+            stats_through_at=stats_through_at,
+            sample_size=_safe_int(row.get("G")),
+            window_label="season_to_date",
+            transformation_version=_STATS_TRANSFORMATION_VERSION,
+            raw_checksum=_raw_checksum({
+                "team_id": team_id, "season": season,
+                "games": _safe_int(row.get("G")),
+                "team_wrc_plus": _safe_float(row.get("wRC+")),
+                "team_k_pct": _safe_float(row.get("K%")),
+                "team_bb_pct": _safe_float(row.get("BB%")),
+                "team_iso": _safe_float(row.get("ISO")),
+                "team_ops": _safe_float(row.get("OPS")),
+                "staff_era": _safe_float(pit.get("ERA")),
+                "staff_fip": _safe_float(pit.get("FIP")),
+            }),
         )
         updated += 1
 
     print(f"Team stats: {updated}/30 teams updated for {season}")
+    return updated
+
+
+def fetch_team_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
+    """Capture source-aware team offense/staff stats from MLB's official API.
+
+    MLB does not publish wRC+ or FIP. Those fields remain NULL in this source
+    capture rather than being guessed or mislabeled. Whole-staff pitching is
+    stored only as staff rates; it is never written into bullpen_* fields.
+    """
+    teams = db.execute(
+        "SELECT team_id, mlb_id, abbreviation FROM mlb_teams WHERE mlb_id IS NOT NULL ORDER BY team_id"
+    )
+    captured_at, stats_through_at = _capture_times()
+    updated = 0
+    for team in teams:
+        mlb_id = _safe_int(team.get("mlb_id"))
+        if mlb_id is None:
+            continue
+        stats_by_group: dict[str, dict] = {}
+        for group in ("hitting", "pitching"):
+            try:
+                response = requests.get(
+                    f"{MLB_API_BASE}/teams/{mlb_id}/stats",
+                    params={"stats": "season", "group": group, "season": season},
+                    timeout=20,
+                )
+                response.raise_for_status()
+                stats = (response.json() or {}).get("stats") or []
+                splits = stats[0].get("splits") or [] if stats else []
+                stats_by_group[group] = splits[0].get("stat") or {} if splits else {}
+            except requests.RequestException as exc:
+                logger.warning("MLB team %s %s stats failed: %s", mlb_id, group, exc)
+                stats_by_group[group] = {}
+
+        hitting = stats_by_group.get("hitting") or {}
+        pitching = stats_by_group.get("pitching") or {}
+        if not hitting:
+            continue
+        pa = _safe_float(hitting.get("plateAppearances"))
+        bat_avg = _safe_float(hitting.get("avg"))
+        slugging = _safe_float(hitting.get("slg"))
+        team_iso = slugging - bat_avg if slugging is not None and bat_avg is not None else None
+        team_k_pct = _rate(hitting.get("strikeOuts"), pa)
+        team_bb_pct = _rate(hitting.get("baseOnBalls"), pa)
+        batters_faced = _safe_float(pitching.get("battersFaced"))
+        staff_k_pct = _rate(pitching.get("strikeOuts"), batters_faced)
+        staff_bb_pct = _rate(pitching.get("baseOnBalls"), batters_faced)
+        games = _safe_int(hitting.get("gamesPlayed"))
+        payload = {
+            "team_id": team["team_id"], "mlb_id": mlb_id, "season": season,
+            "games": games, "team_wrc_plus": None,
+            "team_k_pct": team_k_pct, "team_bb_pct": team_bb_pct,
+            "team_iso": team_iso, "team_ops": _safe_float(hitting.get("ops")),
+            "staff_era": _safe_float(pitching.get("era")),
+            "staff_k_pct": staff_k_pct, "staff_bb_pct": staff_bb_pct,
+        }
+        insert_mlb_team_stats_snapshot(
+            db,
+            team_id=int(team["team_id"]),
+            season=season,
+            snapshot_date=date.today().isoformat(),
+            team_wrc_plus=None,
+            team_k_pct=team_k_pct,
+            team_bb_pct=team_bb_pct,
+            team_iso=team_iso,
+            team_ops=_safe_float(hitting.get("ops")),
+            bullpen_era=None,
+            bullpen_fip=None,
+            staff_k_pct=staff_k_pct,
+            staff_bb_pct=staff_bb_pct,
+            source="mlb_stats_api_team_season",
+            available_at=captured_at,
+            stats_through_at=stats_through_at,
+            sample_size=games,
+            window_label="season_to_date",
+            transformation_version=_STATS_TRANSFORMATION_VERSION,
+            raw_checksum=_raw_checksum(payload),
+        )
+        updated += 1
+
+    print(f"Team stats history: {updated}/30 official MLB captures for {season}")
     return updated
 
 
@@ -514,6 +647,7 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
     existing_ids = _existing_player_id_lookup(db, season, "mlb_pitcher_stats")
+    captured_at, stats_through_at = _capture_times()
     updated = 0
     for row in rows:
         stat = row.get("stat") or {}
@@ -588,6 +722,18 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
             k_per_9=_safe_float(stat.get("strikeoutsPer9Inn")),
             xfip=None,
             era=_safe_float(stat.get("era")),
+            source="mlb_stats_api_season",
+            available_at=captured_at,
+            stats_through_at=stats_through_at,
+            sample_size=games,
+            window_label="season_to_date",
+            transformation_version=_STATS_TRANSFORMATION_VERSION,
+            raw_checksum=_raw_checksum({
+                "player_id": player_id, "season": season, "team_id": team_id,
+                "games": games,
+                "k_per_9": _safe_float(stat.get("strikeoutsPer9Inn")),
+                "xfip": None, "era": _safe_float(stat.get("era")),
+            }),
         )
         updated += 1
 
@@ -708,7 +854,7 @@ def _fetch_batting(
         qualified_count = int((df["PA"].fillna(0).astype(float) >= _MIN_PA).sum())
 
     if qualified_count >= 50:   # healthy mid-season data
-        return df, f"{start_dt} → {end_dt}"
+        return df, f"{start_dt} to {end_dt}"
 
     logger.info(
         "Rolling window sparse (%d qualified) — falling back to full season %s",
@@ -719,7 +865,7 @@ def _fetch_batting(
         return df, f"{season} full season"
     except Exception as exc:
         logger.warning("batting_stats(%s) failed: %s", season, exc)
-        return df, f"{start_dt} → {end_dt}"   # return sparse range data if all else fails
+        return df, f"{start_dt} to {end_dt}"   # return sparse range data if all else fails
 
 
 def _fetch_pitching(
@@ -745,7 +891,7 @@ def _fetch_pitching(
         qualified_count = int((ip_series >= _MIN_IP).sum())
 
     if qualified_count >= 30:   # healthy number of pitchers
-        return df, f"{start_dt} → {end_dt}"
+        return df, f"{start_dt} to {end_dt}"
 
     logger.info(
         "Rolling window sparse (%d qualified pitchers) — falling back to full season %s",
@@ -756,7 +902,7 @@ def _fetch_pitching(
         return df, f"{season} full season"
     except Exception as exc:
         logger.warning("pitching_stats(%s) failed: %s", season, exc)
-        return df, f"{start_dt} → {end_dt}"
+        return df, f"{start_dt} to {end_dt}"
 
 
 def _get_player_id(row: pd.Series) -> int | None:
