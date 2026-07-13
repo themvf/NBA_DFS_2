@@ -32,6 +32,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
+from sklearn.isotonic import IsotonicRegression
 from sklearn.preprocessing import StandardScaler
 
 from model.mlb_pregame import eligible_pregame_matchup_ids
@@ -70,6 +71,9 @@ FEATURE_COLS = [
 ]
 
 _MIN_TRAIN_GAMES = 80
+_CALIBRATION_MIN_TRAIN = 300
+_CALIBRATION_FOLDS = 5
+_CALIBRATION_BOOTSTRAPS = 200
 
 
 def build_ml_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -120,6 +124,42 @@ def _predict_home_prob(model, scaler, rows: pd.DataFrame) -> np.ndarray:
     return model.predict_proba(Xs)[:, 1]
 
 
+def rolling_origin_moneyline_calibration(data: pd.DataFrame) -> tuple[IsotonicRegression, np.ndarray, np.ndarray]:
+    """Fit isotonic calibration only on predictions made by prior-data folds."""
+    ordered = data.sort_values(["game_date", "id"]).reset_index(drop=True)
+    initial = max(_CALIBRATION_MIN_TRAIN, len(ordered) // 2)
+    if len(ordered) - initial < _CALIBRATION_FOLDS:
+        raise ValueError("insufficient chronological calibration population")
+    raw_parts, y_parts = [], []
+    for test_idx in np.array_split(np.arange(initial, len(ordered)), _CALIBRATION_FOLDS):
+        if len(test_idx) == 0:
+            continue
+        train = ordered.iloc[: int(test_idx[0])]
+        test = ordered.iloc[test_idx]
+        model, scaler = _fit(train)
+        raw_parts.append(_predict_home_prob(model, scaler, test))
+        y_parts.append(test["home_win"].values.astype(int))
+    raw = np.concatenate(raw_parts)
+    y = np.concatenate(y_parts)
+    calibrator = IsotonicRegression(out_of_bounds="clip", y_min=0.001, y_max=0.999)
+    calibrator.fit(raw, y)
+    return calibrator, raw, y
+
+
+def calibration_resamples(raw_oof: np.ndarray, y_oof: np.ndarray, raw_probability: float, *, seed: int) -> list[float]:
+    rng = np.random.default_rng(seed)
+    values = []
+    for _ in range(_CALIBRATION_BOOTSTRAPS):
+        idx = rng.integers(0, len(raw_oof), len(raw_oof))
+        sampled_raw, sampled_y = raw_oof[idx], y_oof[idx]
+        if len(np.unique(sampled_y)) < 2:
+            continue
+        calibrator = IsotonicRegression(out_of_bounds="clip", y_min=0.001, y_max=0.999)
+        calibrator.fit(sampled_raw, sampled_y)
+        values.append(float(calibrator.predict([raw_probability])[0]))
+    return values
+
+
 def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
     """Train on completed games; write our_prob_home for a date's upcoming games."""
     target_date = game_date or date.today().isoformat()
@@ -146,8 +186,10 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         logger.info("No upcoming MLB games to predict for %s", target_date)
         return 0
 
+    calibrator, oof_raw, oof_y = rolling_origin_moneyline_calibration(completed)
     model, scaler = _fit(completed)
-    probs = _predict_home_prob(model, scaler, upcoming)
+    raw_probs = _predict_home_prob(model, scaler, upcoming)
+    probs = calibrator.predict(raw_probs)
     scaled_upcoming = scaler.transform(upcoming[FEATURE_COLS].values.astype(float))
     trained_through = str(completed["game_date"].max()) if not completed.empty else None
     run_id = create_prediction_run(
@@ -161,11 +203,17 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
             "logistic_c": 1.0,
             "training_games": len(completed),
             "missingness_policy": "source-aware-v1",
+            "calibration_method": "rolling_origin_isotonic_v1",
+            "canonical_horizon": "latest_pregame_snapshot",
+            "resample_method": "oof_bootstrap_isotonic_v1",
+            "oof_games": len(oof_y),
+            "oof_raw_brier": float(np.mean((oof_raw - oof_y) ** 2)),
+            "oof_calibrated_brier": float(np.mean((calibrator.predict(oof_raw) - oof_y) ** 2)),
             "standardized_coefficients": dict(zip(FEATURE_COLS, model.coef_[0].tolist())),
         },
     )
     updated = 0
-    for (_, feature_row), p, scaled_row in zip(upcoming.iterrows(), probs, scaled_upcoming):
+    for (_, feature_row), raw_p, p, scaled_row in zip(upcoming.iterrows(), raw_probs, probs, scaled_upcoming):
         mid = int(feature_row["id"])
         prediction = float(round(float(p), 4))
         home_ml = feature_row.get("home_ml")
@@ -200,6 +248,9 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         feature_values["starter_context"] = snapshot_starter_context(feature_row)
         feature_values["bullpen_context"] = snapshot_bullpen_context(feature_row)
         feature_values["weather_context"] = snapshot_weather_context(feature_row)
+        feature_values["probability_resamples"] = calibration_resamples(
+            oof_raw, oof_y, float(raw_p), seed=mid,
+        )
         feature_values["contributions"] = {
             col: float(coef * value)
             for col, coef, value in zip(FEATURE_COLS, model.coef_[0], scaled_row)
@@ -210,7 +261,7 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
             matchup_id=mid,
             market="moneyline",
             feature_values=feature_values,
-            raw_prediction=prediction,
+            raw_prediction=float(round(float(raw_p), 4)),
             calibrated_probability=prediction,
             market_odds=int(home_ml) if pd.notna(home_ml) else None,
             market_prob=float(feature_row["vegas_prob_home"]),

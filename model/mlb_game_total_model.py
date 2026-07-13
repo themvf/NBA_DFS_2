@@ -83,6 +83,9 @@ FEATURE_COLS = [
 
 # Minimum completed games before we trust the model enough to write predictions.
 _MIN_TRAIN_GAMES = 60
+_DISTRIBUTION_MIN_TRAIN = 300
+_DISTRIBUTION_FOLDS = 5
+_DISTRIBUTION_BOOTSTRAPS = 200
 
 
 def _snapshot_value(value):
@@ -420,6 +423,48 @@ def _fit(completed: pd.DataFrame) -> tuple[Ridge, StandardScaler]:
     return model, scaler
 
 
+def rolling_origin_total_residuals(data: pd.DataFrame) -> np.ndarray:
+    """Actual-minus-predicted residuals from expanding prior-only folds."""
+    ordered = data.sort_values(["game_date", "id"]).reset_index(drop=True)
+    initial = max(_DISTRIBUTION_MIN_TRAIN, len(ordered) // 2)
+    if len(ordered) - initial < _DISTRIBUTION_FOLDS:
+        raise ValueError("insufficient chronological distribution population")
+    residual_parts = []
+    for test_idx in np.array_split(np.arange(initial, len(ordered)), _DISTRIBUTION_FOLDS):
+        if len(test_idx) == 0:
+            continue
+        train = ordered.iloc[: int(test_idx[0])]
+        test = ordered.iloc[test_idx]
+        model, scaler = _fit(train)
+        miss = np.clip(
+            model.predict(scaler.transform(test[FEATURE_COLS].values.astype(float))),
+            -3.0, 3.0,
+        )
+        predicted = test["vegas_total"].values.astype(float) + miss
+        residual_parts.append(test["actual_total"].values.astype(float) - predicted)
+    return np.concatenate(residual_parts)
+
+
+def total_distribution(mean_total: float, line: float, residuals: np.ndarray, *, seed: int) -> dict:
+    """Line-specific empirical predictive distribution with bootstrap stability."""
+    rng = np.random.default_rng(seed)
+
+    def probabilities(sampled_residuals: np.ndarray) -> dict:
+        totals = np.rint(np.maximum(0.0, mean_total + sampled_residuals))
+        return {
+            "p_over": float(np.mean(totals > line)),
+            "p_push": float(np.mean(totals == line)),
+            "p_under": float(np.mean(totals < line)),
+        }
+
+    main = probabilities(residuals)
+    resamples = []
+    for _ in range(_DISTRIBUTION_BOOTSTRAPS):
+        idx = rng.integers(0, len(residuals), len(residuals))
+        resamples.append(probabilities(residuals[idx]))
+    return {"line": float(line), **main, "resamples": resamples}
+
+
 def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
     """Train on completed games; write our_total_pred for upcoming games on a date."""
     target_date = game_date or date.today().isoformat()
@@ -445,6 +490,7 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         logger.info("No upcoming MLB games to predict for %s", target_date)
         return 0
 
+    residuals = rolling_origin_total_residuals(completed)
     model, scaler = _fit(completed)
     X_pred = scaler.transform(upcoming[FEATURE_COLS].values.astype(float))
     # Clamp the miss so a noisy feature row can't produce an absurd total.
@@ -463,6 +509,10 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
             "ridge_alpha": 2.0,
             "training_games": len(completed),
             "missingness_policy": "source-aware-v1",
+            "distribution_method": "rolling_origin_empirical_residual_v1",
+            "canonical_horizon": "latest_pregame_snapshot",
+            "distribution_oof_games": len(residuals),
+            "distribution_residual_mae": float(np.mean(np.abs(residuals))),
             "standardized_coefficients": dict(zip(FEATURE_COLS, model.coef_.tolist())),
         },
     )
@@ -515,6 +565,10 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         feature_values["starter_context"] = snapshot_starter_context(feature_row)
         feature_values["bullpen_context"] = snapshot_bullpen_context(feature_row)
         feature_values["weather_context"] = snapshot_weather_context(feature_row)
+        feature_values["total_distribution"] = total_distribution(
+            prediction, float(feature_row["vegas_total"]), residuals,
+            seed=matchup_id,
+        )
         feature_values["contributions"] = {
             col: float(coef * value)
             for col, coef, value in zip(FEATURE_COLS, model.coef_, scaled_row)
