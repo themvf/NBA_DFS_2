@@ -829,7 +829,14 @@ def insert_mlb_pitcher_stats_snapshot(
     snapshot_date: str,
     team_id: int | None,
     name: str,
+    hand: str | None = None,
+    games: int | None = None,
+    games_started: int | None = None,
+    innings_pitched: float | None = None,
+    ip_per_start: float | None = None,
     k_per_9: float | None = None,
+    bb_per_9: float | None = None,
+    fip: float | None = None,
     xfip: float | None = None,
     era: float | None = None,
     source: str = "pybaseball_fangraphs",
@@ -848,15 +855,19 @@ def insert_mlb_pitcher_stats_snapshot(
     db.execute(
         """
         INSERT INTO mlb_pitcher_stats_history (
-            player_id, season, snapshot_date, team_id, name, k_per_9, xfip, era,
+            player_id, season, snapshot_date, team_id, name, hand, games,
+            games_started, innings_pitched, ip_per_start, k_per_9, bb_per_9,
+            fip, xfip, era,
             source, available_at, stats_through_at, sample_size, window_label,
             transformation_version, raw_checksum
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()),
-                %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, COALESCE(%s, NOW()), %s, %s, %s, %s, %s)
         """,
         (
-            player_id, season, snapshot_date, team_id, name, k_per_9, xfip, era,
+            player_id, season, snapshot_date, team_id, name, hand, games,
+            games_started, innings_pitched, ip_per_start, k_per_9, bb_per_9,
+            fip, xfip, era,
             source, available_at, stats_through_at, sample_size, window_label,
             transformation_version, raw_checksum,
         ),

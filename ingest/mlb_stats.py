@@ -334,7 +334,14 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45, full_s
             snapshot_date=date.today().isoformat(),
             team_id=team_id,
             name=name,
+            hand=str(row.get("Throws") or "").upper()[:1] or None,
+            games=games,
+            games_started=int(gs),
+            innings_pitched=round(float(row["_ip"]), 3),
+            ip_per_start=round(float(row["_ip"]) / gs, 3) if gs > 0 else None,
             k_per_9=_safe_float(row.get("K/9")),
+            bb_per_9=_safe_float(row.get("BB/9")),
+            fip=_safe_float(row.get("FIP")),
             xfip=_safe_float(row.get("xFIP")),
             era=_safe_float(row.get("ERA")),
             source=source_name,
@@ -658,6 +665,10 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
             continue
 
         games = _safe_int(stat.get("gamesPitched")) or _safe_int(stat.get("gamesPlayed")) or 0
+        games_started = _safe_int(stat.get("gamesStarted")) or 0
+        innings_pitched = _parse_ip(stat.get("inningsPitched"))
+        ip_per_start = innings_pitched / games_started if games_started > 0 else None
+        hand = str((player.get("pitchHand") or {}).get("code") or "").upper()[:1] or None
         if games <= 0:
             continue
         ip_total = _parse_ip(stat.get("inningsPitched"))
@@ -695,6 +706,7 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
             season=season,
             team_id=team_id,
             name=name,
+            hand=hand,
             games=games,
             ip_pg=round(ip_pg, 3),
             era=_safe_float(stat.get("era")),
@@ -719,7 +731,14 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
             snapshot_date=date.today().isoformat(),
             team_id=team_id,
             name=name,
+            hand=hand,
+            games=games,
+            games_started=games_started,
+            innings_pitched=round(innings_pitched, 3),
+            ip_per_start=round(ip_per_start, 3) if ip_per_start is not None else None,
             k_per_9=_safe_float(stat.get("strikeoutsPer9Inn")),
+            bb_per_9=_safe_float(stat.get("walksPer9Inn")),
+            fip=None,
             xfip=None,
             era=_safe_float(stat.get("era")),
             source="mlb_stats_api_season",
@@ -731,6 +750,9 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
             raw_checksum=_raw_checksum({
                 "player_id": player_id, "season": season, "team_id": team_id,
                 "games": games,
+                "games_started": games_started,
+                "innings_pitched": innings_pitched,
+                "hand": hand,
                 "k_per_9": _safe_float(stat.get("strikeoutsPer9Inn")),
                 "xfip": None, "era": _safe_float(stat.get("era")),
             }),
@@ -995,6 +1017,7 @@ def _fetch_mlb_api_player_stats(season: str, group: str) -> list[dict]:
                 "playerPool": "all",
                 "sportIds": 1,
                 "gameType": "R",
+                "hydrate": "person",
                 "limit": 10000,
             },
             timeout=30,
