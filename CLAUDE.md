@@ -5436,6 +5436,51 @@ opposite side from another book or capture.
 - Data-quality output is PASS/FAIL with partition counts, missingness,
   duplicates, identity queue, source age, capture cadence, and an exact remedy.
 
+### Surface Elo v1 contract (frozen before population)
+
+- Algorithm version is `tennis-surface-elo-v1`; ATP and WTA are independent.
+  Every player begins at 1500 on 2023-01-01 or first appearance. No pre-2023
+  result or rating may seed the run.
+- Constant K=32 is retained from the legacy model for an auditable baseline.
+  Overall and the applicable surface rating update after each eligible result.
+  `indoor_hard` updates the hard bucket; it is not promoted as a separate rating
+  until validation supports that split.
+- Walkovers and retirements do not update Elo in v1. They still produce an
+  immutable excluded event with the reason and unchanged before/after ratings.
+- Annual sources are date-only. Matches sharing a player/date are evaluated from
+  the same start-of-day ratings and their deltas are applied as a batch. This
+  prevents an arbitrary file order from leaking one same-day result into another.
+  Events are stamped `date_only_batch`; exact future start times may support a
+  later, separately versioned chronological rule.
+- Surface reliability is `n_surface / (n_surface + 20)`. The conservative surface
+  rating used for the combined comparison is
+  `overall + reliability * (raw_surface - overall)`. Raw overall, raw surface,
+  and blended probabilities are all preserved; validation decides whether any
+  surface variant advances.
+- Reliability labels are `insufficient` for fewer than 5 prior surface matches,
+  `developing` for 5-19, and `established` for 20+. Inactivity days are recorded
+  but do not change ratings in v1.
+- Each match/player event stores before, expected probability, delta, batch-after,
+  sample counts, cutoff/stats-through timestamps, same-day ambiguity, K/prior/
+  shrinkage configuration, source checksum, event checksum, run, and algorithm
+  version. Rating events are append-only.
+- The first preregistered evaluation (`tennis-surface-elo-eval-v1`, run 1) did
+  not promote the surface adjustment. On the 2025 validation set, blended-minus-
+  overall log loss was +0.000571 for ATP (n=2,616; 95% tournament-cluster CI
+  -0.005077 to +0.006424) and +0.000730 for WTA (n=2,463; CI -0.004964 to
+  +0.005381). Both intervals cross zero. The encouraging negative 2026 deltas
+  are untouched final-test evidence and cannot be used to retune v1.
+- Consumers must join the latest `complete` Elo run and its matching evaluation
+  run. A populated rating is evidence, not automatic promotion: the API and UI
+  must return the ATP/WTA promotion gates with ratings, and the decision policy
+  must reject surface-only bets unless both required tour gates pass.
+- `/api/tennis/surface-evidence` is the source-aware evidence contract. It returns
+  current overall/raw-surface/blended ratings, surface delta, samples,
+  reliability, inactivity, form/load, ATP serve/return coverage, explicit WTA
+  missingness, algorithm/feature/source versions, promotion gates, and recent
+  immutable rating history. The Tennis page displays the same payload and names
+  the resulting action rather than hiding a failed gate.
+
 Jira dependency order is `SCRUM-18` → `SCRUM-19` → `SCRUM-20` → `SCRUM-27` →
 `SCRUM-21`/`SCRUM-22` → `SCRUM-23` → `SCRUM-24` → `SCRUM-25` → `SCRUM-26`.
 Documentation, schema columns, or compilation alone do not advance an issue to

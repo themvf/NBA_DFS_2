@@ -667,9 +667,16 @@ def _insert_historical_match(cur, *, source: str, partition_id: int, tour: str,
     surface = normalize_surface(raw_surface, raw_indoor)
     score = str(row.get("score") if source == ATP_PROVIDER else row.get("Score") or "").strip() or None
     score_upper = (score or "").upper()
-    walkover = "W/O" in score_upper or "WALKOVER" in score_upper
-    retired = "RET" in score_upper or "ABD" in score_upper
-    completion = "walkover" if walkover else "retired" if retired else "completed"
+    comment_upper = str(row.get("Comment") or "").strip().upper()
+    walkover = ("W/O" in score_upper or "WALKOVER" in score_upper
+                or "WALKOVER" in comment_upper)
+    retired = ("RET" in score_upper or "ABD" in score_upper
+               or "RETIR" in comment_upper)
+    awarded = "AWARDED" in comment_upper
+    completion = (
+        "walkover" if walkover else "retired" if retired
+        else "awarded" if awarded else "completed"
+    )
     odds_w, odds_l, odds_source = _market_odds(enrichment)
     if source == TENNIS_DATA_PROVIDER:
         odds_w, odds_l, odds_source = _market_odds(row)

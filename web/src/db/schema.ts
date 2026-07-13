@@ -1154,6 +1154,134 @@ export const tennisPlayerFeatureSnapshots = pgTable(
   (t) => [index("idx_tennis_feature_snapshots_cutoff").on(t.playerId, t.cutoffAt, t.featureVersion)],
 );
 
+export const tennisEloRuns = pgTable(
+  "tennis_elo_runs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    algorithmVersion: text("algorithm_version").notNull(),
+    sourceStartDate: date("source_start_date").notNull(),
+    sourceEndDate: date("source_end_date").notNull(),
+    sourceMatchCount: integer("source_match_count").notNull(),
+    sourceChecksum: text("source_checksum").notNull(),
+    config: jsonb("config").notNull(),
+    status: text("status").notNull().default("running"),
+    eligibleMatchCount: integer("eligible_match_count").notNull().default(0),
+    excludedMatchCount: integer("excluded_match_count").notNull().default(0),
+    eventCount: integer("event_count").notNull().default(0),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [unique("tennis_elo_run_source_key").on(t.algorithmVersion, t.sourceChecksum)],
+);
+
+export const tennisEloRatingEvents = pgTable(
+  "tennis_elo_rating_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    runId: bigint("run_id", { mode: "number" }).notNull().references(() => tennisEloRuns.id),
+    historicalMatchId: bigint("historical_match_id", { mode: "number" }).notNull().references(() => tennisHistoricalMatches.id),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    opponentPlayerId: bigint("opponent_player_id", { mode: "number" }).notNull().references(() => tennisPlayers.id),
+    tour: text("tour").notNull(),
+    matchDate: date("match_date").notNull(),
+    cutoffAt: timestamp("cutoff_at", { withTimezone: true }).notNull(),
+    statsThroughAt: timestamp("stats_through_at", { withTimezone: true }).notNull(),
+    surface: text("surface").notNull(),
+    surfaceBucket: text("surface_bucket").notNull(),
+    isWinner: boolean("is_winner").notNull(),
+    eligible: boolean("eligible").notNull(),
+    exclusionReason: text("exclusion_reason"),
+    overallBefore: doublePrecision("overall_before").notNull(),
+    overallDelta: doublePrecision("overall_delta").notNull(),
+    overallAfter: doublePrecision("overall_after").notNull(),
+    surfaceBefore: doublePrecision("surface_before").notNull(),
+    surfaceDelta: doublePrecision("surface_delta").notNull(),
+    surfaceAfter: doublePrecision("surface_after").notNull(),
+    blendedSurfaceBefore: doublePrecision("blended_surface_before").notNull(),
+    expectedOverall: doublePrecision("expected_overall").notNull(),
+    expectedSurface: doublePrecision("expected_surface").notNull(),
+    expectedBlended: doublePrecision("expected_blended").notNull(),
+    overallMatchesBefore: integer("overall_matches_before").notNull(),
+    overallMatchesAfter: integer("overall_matches_after").notNull(),
+    surfaceMatchesBefore: integer("surface_matches_before").notNull(),
+    surfaceMatchesAfter: integer("surface_matches_after").notNull(),
+    surfaceReliability: doublePrecision("surface_reliability").notNull(),
+    reliabilityLabel: text("reliability_label").notNull(),
+    lastEligibleMatchDate: date("last_eligible_match_date"),
+    inactivityDays: integer("inactivity_days"),
+    sameDayBatch: boolean("same_day_batch").notNull().default(true),
+    sameDayMatchCount: integer("same_day_match_count").notNull().default(1),
+    orderingStatus: text("ordering_status").notNull(),
+    priorRating: doublePrecision("prior_rating").notNull(),
+    kFactor: doublePrecision("k_factor").notNull(),
+    shrinkageMatches: doublePrecision("shrinkage_matches").notNull(),
+    algorithmVersion: text("algorithm_version").notNull(),
+    sourceRawChecksum: text("source_raw_checksum").notNull(),
+    eventChecksum: text("event_checksum").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    unique("tennis_elo_event_run_match_player_key").on(t.runId, t.historicalMatchId, t.playerId),
+    index("idx_tennis_elo_events_player_date").on(t.playerId, t.matchDate, t.algorithmVersion),
+  ],
+);
+
+export const tennisEloEvaluationRuns = pgTable(
+  "tennis_elo_evaluation_runs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    eloRunId: bigint("elo_run_id", { mode: "number" }).notNull().references(() => tennisEloRuns.id),
+    evaluationVersion: text("evaluation_version").notNull(),
+    config: jsonb("config").notNull(),
+    sourceChecksum: text("source_checksum").notNull(),
+    status: text("status").notNull().default("running"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    errorMessage: text("error_message"),
+  },
+  (t) => [unique("tennis_elo_eval_run_key").on(t.eloRunId, t.evaluationVersion)],
+);
+
+export const tennisEloEvaluationMetrics = pgTable(
+  "tennis_elo_evaluation_metrics",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    evaluationRunId: bigint("evaluation_run_id", { mode: "number" }).notNull().references(() => tennisEloEvaluationRuns.id),
+    tour: text("tour").notNull(),
+    period: text("period").notNull(),
+    surface: text("surface").notNull(),
+    model: text("model").notNull(),
+    sampleSize: integer("sample_size").notNull(),
+    brier: doublePrecision("brier"),
+    logLoss: doublePrecision("log_loss"),
+    calibrationError: doublePrecision("calibration_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [unique("tennis_elo_eval_metric_key").on(t.evaluationRunId, t.tour, t.period, t.surface, t.model)],
+);
+
+export const tennisEloPromotionGates = pgTable(
+  "tennis_elo_promotion_gates",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    evaluationRunId: bigint("evaluation_run_id", { mode: "number" }).notNull().references(() => tennisEloEvaluationRuns.id),
+    tour: text("tour").notNull(),
+    validationSampleSize: integer("validation_sample_size").notNull(),
+    validationLoglossDelta: doublePrecision("validation_logloss_delta"),
+    bootstrapCiLow: doublePrecision("bootstrap_ci_low"),
+    bootstrapCiHigh: doublePrecision("bootstrap_ci_high"),
+    validationEceDelta: doublePrecision("validation_ece_delta"),
+    finalTestSampleSize: integer("final_test_sample_size").notNull(),
+    finalLoglossDelta: doublePrecision("final_logloss_delta"),
+    finalEceDelta: doublePrecision("final_ece_delta"),
+    gateStatus: text("gate_status").notNull(),
+    reasons: jsonb("reasons").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [unique("tennis_elo_promotion_gate_key").on(t.evaluationRunId, t.tour)],
+);
+
 export const videoAnalysis = pgTable(
   "video_analysis",
   {
@@ -1247,6 +1375,11 @@ export type TennisPlayerMatchStat = typeof tennisPlayerMatchStats.$inferSelect;
 export type TennisExactQuote = typeof tennisExactQuotes.$inferSelect;
 export type TennisIdentityReview = typeof tennisIdentityReviews.$inferSelect;
 export type TennisPlayerFeatureSnapshot = typeof tennisPlayerFeatureSnapshots.$inferSelect;
+export type TennisEloRun = typeof tennisEloRuns.$inferSelect;
+export type TennisEloRatingEvent = typeof tennisEloRatingEvents.$inferSelect;
+export type TennisEloEvaluationRun = typeof tennisEloEvaluationRuns.$inferSelect;
+export type TennisEloEvaluationMetric = typeof tennisEloEvaluationMetrics.$inferSelect;
+export type TennisEloPromotionGate = typeof tennisEloPromotionGates.$inferSelect;
 export type VideoAnalysis = typeof videoAnalysis.$inferSelect;
 export type YoutubePickChannel = typeof youtubePickChannels.$inferSelect;
 export type YoutubePickVideo = typeof youtubePickVideos.$inferSelect;

@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { TennisMatchRow, TennisBetRow, TennisBetBacktestRow, MlbLineMovementRow, LineAlertRow, LineAlertBacktestRow } from "@/db/queries";
+import type { TennisMatchRow, TennisBetRow, TennisBetBacktestRow, TennisEloDashboard, MlbLineMovementRow, LineAlertRow, LineAlertBacktestRow } from "@/db/queries";
 import LineMovementPanel from "./line-movement-panel";
 import LineAlertsPanel from "./line-alerts-panel";
+import TennisSurfaceEvidence from "./tennis-surface-evidence";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
 const fmtPct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
@@ -223,6 +224,7 @@ export default function TennisVegasClient({
   lineMovement,
   lineAlerts,
   lineAlertBacktest,
+  eloDashboard,
   queryDate,
 }: {
   matchups: TennisMatchRow[];
@@ -231,6 +233,7 @@ export default function TennisVegasClient({
   lineMovement: MlbLineMovementRow[];
   lineAlerts: LineAlertRow[];
   lineAlertBacktest: LineAlertBacktestRow[];
+  eloDashboard: TennisEloDashboard;
   queryDate: string | null;
 }) {
   const [tour, setTour] = useState<"all" | "ATP" | "WTA">("all");
@@ -275,6 +278,8 @@ export default function TennisVegasClient({
       {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && (
         <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} />
       )}
+
+      <TennisSurfaceEvidence dashboard={eloDashboard} />
 
       {/* Top rated bets — the model's recommendations, best first. Settled bets
           (won/lost/void) are excluded even if high-starred: a bet from a since-

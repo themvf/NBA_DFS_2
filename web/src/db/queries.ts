@@ -6379,6 +6379,284 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
   }));
 }
 
+export type TennisEloHistoryPoint = {
+  matchDate: string;
+  tournament: string;
+  opponent: string;
+  won: boolean;
+  overallBefore: number;
+  overallAfter: number;
+  surfaceBefore: number;
+  surfaceAfter: number;
+  expectedProbability: number;
+};
+
+export type TennisEloEvidenceRow = {
+  playerId: number;
+  player: string;
+  tour: string;
+  surface: string;
+  overallElo: number;
+  surfaceElo: number;
+  blendedSurfaceElo: number;
+  surfaceDelta: number;
+  overallMatches: number;
+  surfaceMatches: number;
+  surfaceReliability: number;
+  reliabilityLabel: string;
+  lastEligibleMatchDate: string;
+  inactivityDays: number;
+  recentForm: number | null;
+  recentMatchLoad: number | null;
+  servePointsWonPct: number | null;
+  returnPointsWonPct: number | null;
+  performanceAvailability: string;
+  startTimeAvailability: string;
+  marketHistoryAvailability: string;
+  statsThroughAt: string | null;
+  algorithmVersion: string;
+  featureVersion: string | null;
+  sourceChecksum: string;
+  runCompletedAt: string | null;
+  history: TennisEloHistoryPoint[];
+};
+
+export type TennisEloGateRow = {
+  tour: string;
+  status: string;
+  validationSampleSize: number;
+  validationLogLossDelta: number | null;
+  bootstrapCiLow: number | null;
+  bootstrapCiHigh: number | null;
+  validationEceDelta: number | null;
+  finalSampleSize: number;
+  finalLogLossDelta: number | null;
+  finalEceDelta: number | null;
+  evaluationVersion: string;
+  evaluatedAt: string | null;
+};
+
+export type TennisEloDashboard = {
+  gates: TennisEloGateRow[];
+  evidence: TennisEloEvidenceRow[];
+};
+
+// SCRUM-27 evidence contract. This deliberately exposes the failed promotion
+// gate alongside the rating data so a consumer cannot mistake an auditable
+// surface rating for a promoted betting signal.
+export async function getTennisEloDashboard(): Promise<TennisEloDashboard> {
+  const [gateResult, evidenceResult] = await Promise.all([
+    db.execute(sql`
+      WITH current_run AS (
+        SELECT id
+        FROM tennis_elo_runs
+        WHERE status = 'complete'
+        ORDER BY completed_at DESC NULLS LAST, id DESC
+        LIMIT 1
+      ), latest_eval AS (
+        SELECT er.id, er.evaluation_version, er.completed_at
+        FROM tennis_elo_evaluation_runs er
+        JOIN current_run cr ON cr.id = er.elo_run_id
+        WHERE er.status = 'complete'
+        ORDER BY er.completed_at DESC NULLS LAST, er.id DESC
+        LIMIT 1
+      )
+      SELECT
+        g.tour AS "tour",
+        g.gate_status AS "status",
+        g.validation_sample_size AS "validationSampleSize",
+        g.validation_logloss_delta AS "validationLogLossDelta",
+        g.bootstrap_ci_low AS "bootstrapCiLow",
+        g.bootstrap_ci_high AS "bootstrapCiHigh",
+        g.validation_ece_delta AS "validationEceDelta",
+        g.final_test_sample_size AS "finalSampleSize",
+        g.final_logloss_delta AS "finalLogLossDelta",
+        g.final_ece_delta AS "finalEceDelta",
+        le.evaluation_version AS "evaluationVersion",
+        le.completed_at AS "evaluatedAt"
+      FROM tennis_elo_promotion_gates g
+      JOIN latest_eval le ON le.id = g.evaluation_run_id
+      ORDER BY g.tour
+    `),
+    db.execute(sql`
+      WITH current_run AS (
+        SELECT id, algorithm_version, source_checksum, completed_at
+        FROM tennis_elo_runs
+        WHERE status = 'complete'
+        ORDER BY completed_at DESC NULLS LAST, id DESC
+        LIMIT 1
+      ), latest_overall AS (
+        SELECT DISTINCT ON (e.player_id)
+          e.player_id, e.overall_after, e.overall_matches_after,
+          e.match_date AS last_match_date
+        FROM tennis_elo_rating_events e
+        JOIN current_run cr ON cr.id = e.run_id
+        WHERE e.eligible
+        ORDER BY e.player_id, e.match_date DESC, e.id DESC
+      ), latest_surface AS (
+        SELECT DISTINCT ON (e.player_id, e.surface_bucket)
+          e.run_id, e.player_id, e.tour, e.surface_bucket, e.surface_after,
+          e.surface_matches_after, e.match_date AS last_surface_match_date
+        FROM tennis_elo_rating_events e
+        JOIN current_run cr ON cr.id = e.run_id
+        WHERE e.eligible
+        ORDER BY e.player_id, e.surface_bucket, e.match_date DESC, e.id DESC
+      ), candidates AS (
+        SELECT
+          ls.*, lo.overall_after, lo.overall_matches_after, lo.last_match_date,
+          ROW_NUMBER() OVER (
+            PARTITION BY ls.tour, ls.surface_bucket
+            ORDER BY ls.surface_matches_after DESC, ls.last_surface_match_date DESC, ls.player_id
+          ) AS representative_rank
+        FROM latest_surface ls
+        JOIN latest_overall lo ON lo.player_id = ls.player_id
+      ), representatives AS (
+        SELECT * FROM candidates WHERE representative_rank = 1
+      )
+      SELECT
+        r.player_id AS "playerId",
+        p.canonical_name AS "player",
+        r.tour AS "tour",
+        r.surface_bucket AS "surface",
+        r.overall_after AS "overallElo",
+        r.surface_after AS "surfaceElo",
+        r.overall_after
+          + (r.surface_matches_after::double precision / (r.surface_matches_after + 20.0))
+          * (r.surface_after - r.overall_after) AS "blendedSurfaceElo",
+        r.surface_after - r.overall_after AS "surfaceDelta",
+        r.overall_matches_after AS "overallMatches",
+        r.surface_matches_after AS "surfaceMatches",
+        r.surface_matches_after::double precision / (r.surface_matches_after + 20.0)
+          AS "surfaceReliability",
+        CASE
+          WHEN r.surface_matches_after < 5 THEN 'insufficient'
+          WHEN r.surface_matches_after < 20 THEN 'developing'
+          ELSE 'established'
+        END AS "reliabilityLabel",
+        r.last_match_date AS "lastEligibleMatchDate",
+        CURRENT_DATE - r.last_match_date AS "inactivityDays",
+        f.recent_form AS "recentForm",
+        f.recent_match_load AS "recentMatchLoad",
+        f.serve_points_won_pct AS "servePointsWonPct",
+        f.return_points_won_pct AS "returnPointsWonPct",
+        COALESCE(f.source_availability ->> 'serve_return', 'not_captured')
+          AS "performanceAvailability",
+        COALESCE(f.source_availability ->> 'start_time', 'not_captured')
+          AS "startTimeAvailability",
+        COALESCE(f.source_availability ->> 'market_odds', 'not_captured')
+          AS "marketHistoryAvailability",
+        f.stats_through_at AS "statsThroughAt",
+        cr.algorithm_version AS "algorithmVersion",
+        f.feature_version AS "featureVersion",
+        cr.source_checksum AS "sourceChecksum",
+        cr.completed_at AS "runCompletedAt",
+        COALESCE(history.points, '[]'::jsonb) AS "history"
+      FROM representatives r
+      JOIN current_run cr ON cr.id = r.run_id
+      JOIN tennis_players p ON p.id = r.player_id
+      LEFT JOIN LATERAL (
+        SELECT fs.*
+        FROM tennis_player_feature_snapshots fs
+        WHERE fs.player_id = r.player_id
+          AND fs.surface = r.surface_bucket
+          AND fs.provenance ->> 'run_id' = r.run_id::text
+        ORDER BY fs.cutoff_at DESC, fs.id DESC
+        LIMIT 1
+      ) f ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'matchDate', h.match_date,
+            'tournament', h.tournament,
+            'opponent', h.opponent,
+            'won', h.is_winner,
+            'overallBefore', h.overall_before,
+            'overallAfter', h.overall_after,
+            'surfaceBefore', h.surface_before,
+            'surfaceAfter', h.surface_after,
+            'expectedProbability', h.expected_blended
+          ) ORDER BY h.match_date DESC, h.event_id DESC
+        ) AS points
+        FROM (
+          SELECT
+            e.id AS event_id, e.match_date, hm.tournament, opp.canonical_name AS opponent,
+            e.is_winner, e.overall_before, e.overall_after,
+            e.surface_before, e.surface_after, e.expected_blended
+          FROM tennis_elo_rating_events e
+          JOIN tennis_historical_matches hm ON hm.id = e.historical_match_id
+          JOIN tennis_players opp ON opp.id = e.opponent_player_id
+          WHERE e.run_id = r.run_id
+            AND e.player_id = r.player_id
+            AND e.surface_bucket = r.surface_bucket
+            AND e.eligible
+          ORDER BY e.match_date DESC, e.id DESC
+          LIMIT 5
+        ) h
+      ) history ON TRUE
+      ORDER BY r.tour, r.surface_bucket
+    `),
+  ]);
+
+  const gates = (gateResult.rows as Record<string, unknown>[]).map((r) => ({
+    tour: String(r.tour),
+    status: String(r.status),
+    validationSampleSize: Number(r.validationSampleSize),
+    validationLogLossDelta: r.validationLogLossDelta == null ? null : Number(r.validationLogLossDelta),
+    bootstrapCiLow: r.bootstrapCiLow == null ? null : Number(r.bootstrapCiLow),
+    bootstrapCiHigh: r.bootstrapCiHigh == null ? null : Number(r.bootstrapCiHigh),
+    validationEceDelta: r.validationEceDelta == null ? null : Number(r.validationEceDelta),
+    finalSampleSize: Number(r.finalSampleSize),
+    finalLogLossDelta: r.finalLogLossDelta == null ? null : Number(r.finalLogLossDelta),
+    finalEceDelta: r.finalEceDelta == null ? null : Number(r.finalEceDelta),
+    evaluationVersion: String(r.evaluationVersion),
+    evaluatedAt: r.evaluatedAt == null ? null : String(r.evaluatedAt),
+  }));
+
+  const evidence = (evidenceResult.rows as Record<string, unknown>[]).map((r) => ({
+    playerId: Number(r.playerId),
+    player: String(r.player),
+    tour: String(r.tour),
+    surface: String(r.surface),
+    overallElo: Number(r.overallElo),
+    surfaceElo: Number(r.surfaceElo),
+    blendedSurfaceElo: Number(r.blendedSurfaceElo),
+    surfaceDelta: Number(r.surfaceDelta),
+    overallMatches: Number(r.overallMatches),
+    surfaceMatches: Number(r.surfaceMatches),
+    surfaceReliability: Number(r.surfaceReliability),
+    reliabilityLabel: String(r.reliabilityLabel),
+    lastEligibleMatchDate: String(r.lastEligibleMatchDate),
+    inactivityDays: Number(r.inactivityDays),
+    recentForm: r.recentForm == null ? null : Number(r.recentForm),
+    recentMatchLoad: r.recentMatchLoad == null ? null : Number(r.recentMatchLoad),
+    servePointsWonPct: r.servePointsWonPct == null ? null : Number(r.servePointsWonPct),
+    returnPointsWonPct: r.returnPointsWonPct == null ? null : Number(r.returnPointsWonPct),
+    performanceAvailability: String(r.performanceAvailability),
+    startTimeAvailability: String(r.startTimeAvailability),
+    marketHistoryAvailability: String(r.marketHistoryAvailability),
+    statsThroughAt: r.statsThroughAt == null ? null : String(r.statsThroughAt),
+    algorithmVersion: String(r.algorithmVersion),
+    featureVersion: r.featureVersion == null ? null : String(r.featureVersion),
+    sourceChecksum: String(r.sourceChecksum),
+    runCompletedAt: r.runCompletedAt == null ? null : String(r.runCompletedAt),
+    history: Array.isArray(r.history)
+      ? (r.history as Record<string, unknown>[]).map((h) => ({
+          matchDate: String(h.matchDate),
+          tournament: String(h.tournament),
+          opponent: String(h.opponent),
+          won: Boolean(h.won),
+          overallBefore: Number(h.overallBefore),
+          overallAfter: Number(h.overallAfter),
+          surfaceBefore: Number(h.surfaceBefore),
+          surfaceAfter: Number(h.surfaceAfter),
+          expectedProbability: Number(h.expectedProbability),
+        }))
+      : [],
+  }));
+
+  return { gates, evidence };
+}
+
 export type TennisBetRow = {
   id: number;
   matchId: number | null;

@@ -1476,6 +1476,121 @@ TABLES = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_elo_runs (
+        id BIGSERIAL PRIMARY KEY,
+        algorithm_version TEXT NOT NULL,
+        source_start_date DATE NOT NULL,
+        source_end_date DATE NOT NULL,
+        source_match_count INTEGER NOT NULL,
+        source_checksum TEXT NOT NULL,
+        config JSONB NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running',
+        eligible_match_count INTEGER NOT NULL DEFAULT 0,
+        excluded_match_count INTEGER NOT NULL DEFAULT 0,
+        event_count INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ,
+        UNIQUE (algorithm_version, source_checksum)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_elo_rating_events (
+        id BIGSERIAL PRIMARY KEY,
+        run_id BIGINT NOT NULL REFERENCES tennis_elo_runs(id),
+        historical_match_id BIGINT NOT NULL REFERENCES tennis_historical_matches(id),
+        player_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        opponent_player_id BIGINT NOT NULL REFERENCES tennis_players(id),
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        match_date DATE NOT NULL CHECK (match_date >= DATE '2023-01-01'),
+        cutoff_at TIMESTAMPTZ NOT NULL,
+        stats_through_at TIMESTAMPTZ NOT NULL,
+        surface TEXT NOT NULL,
+        surface_bucket TEXT NOT NULL CHECK (surface_bucket IN ('hard', 'clay', 'grass')),
+        is_winner BOOLEAN NOT NULL,
+        eligible BOOLEAN NOT NULL,
+        exclusion_reason TEXT,
+        overall_before DOUBLE PRECISION NOT NULL,
+        overall_delta DOUBLE PRECISION NOT NULL,
+        overall_after DOUBLE PRECISION NOT NULL,
+        surface_before DOUBLE PRECISION NOT NULL,
+        surface_delta DOUBLE PRECISION NOT NULL,
+        surface_after DOUBLE PRECISION NOT NULL,
+        blended_surface_before DOUBLE PRECISION NOT NULL,
+        expected_overall DOUBLE PRECISION NOT NULL,
+        expected_surface DOUBLE PRECISION NOT NULL,
+        expected_blended DOUBLE PRECISION NOT NULL,
+        overall_matches_before INTEGER NOT NULL,
+        overall_matches_after INTEGER NOT NULL,
+        surface_matches_before INTEGER NOT NULL,
+        surface_matches_after INTEGER NOT NULL,
+        surface_reliability DOUBLE PRECISION NOT NULL,
+        reliability_label TEXT NOT NULL,
+        last_eligible_match_date DATE,
+        inactivity_days INTEGER,
+        same_day_batch BOOLEAN NOT NULL DEFAULT TRUE,
+        same_day_match_count INTEGER NOT NULL DEFAULT 1,
+        ordering_status TEXT NOT NULL,
+        prior_rating DOUBLE PRECISION NOT NULL,
+        k_factor DOUBLE PRECISION NOT NULL,
+        shrinkage_matches DOUBLE PRECISION NOT NULL,
+        algorithm_version TEXT NOT NULL,
+        source_raw_checksum TEXT NOT NULL,
+        event_checksum TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (run_id, historical_match_id, player_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_elo_evaluation_runs (
+        id BIGSERIAL PRIMARY KEY,
+        elo_run_id BIGINT NOT NULL REFERENCES tennis_elo_runs(id),
+        evaluation_version TEXT NOT NULL,
+        config JSONB NOT NULL,
+        source_checksum TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ,
+        error_message TEXT,
+        UNIQUE (elo_run_id, evaluation_version)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_elo_evaluation_metrics (
+        id BIGSERIAL PRIMARY KEY,
+        evaluation_run_id BIGINT NOT NULL REFERENCES tennis_elo_evaluation_runs(id),
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        period TEXT NOT NULL,
+        surface TEXT NOT NULL,
+        model TEXT NOT NULL CHECK (model IN ('market', 'overall_elo', 'surface_elo', 'blended_surface_elo')),
+        sample_size INTEGER NOT NULL,
+        brier DOUBLE PRECISION,
+        log_loss DOUBLE PRECISION,
+        calibration_error DOUBLE PRECISION,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (evaluation_run_id, tour, period, surface, model)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_elo_promotion_gates (
+        id BIGSERIAL PRIMARY KEY,
+        evaluation_run_id BIGINT NOT NULL REFERENCES tennis_elo_evaluation_runs(id),
+        tour TEXT NOT NULL CHECK (tour IN ('ATP', 'WTA')),
+        validation_sample_size INTEGER NOT NULL,
+        validation_logloss_delta DOUBLE PRECISION,
+        bootstrap_ci_low DOUBLE PRECISION,
+        bootstrap_ci_high DOUBLE PRECISION,
+        validation_ece_delta DOUBLE PRECISION,
+        final_test_sample_size INTEGER NOT NULL,
+        final_logloss_delta DOUBLE PRECISION,
+        final_ece_delta DOUBLE PRECISION,
+        gate_status TEXT NOT NULL,
+        reasons JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (evaluation_run_id, tour)
+    )
+    """,
 
     """
     CREATE TABLE IF NOT EXISTS tennis_matches (
@@ -1633,6 +1748,16 @@ MIGRATIONS = [
     FROM duplicate_keys d
     WHERE hm.source=d.source AND hm.source_match_key=d.source_match_key
       AND hm.is_current""",
+    """CREATE OR REPLACE FUNCTION reject_tennis_elo_event_mutation()
+    RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'Tennis Elo rating events are append-only';
+    END;
+    $$ LANGUAGE plpgsql""",
+    "DROP TRIGGER IF EXISTS tennis_elo_events_immutable ON tennis_elo_rating_events",
+    """CREATE TRIGGER tennis_elo_events_immutable
+    BEFORE UPDATE OR DELETE ON tennis_elo_rating_events
+    FOR EACH ROW EXECUTE FUNCTION reject_tennis_elo_event_mutation()""",
 
     # 2026-04-20: Persist actual home run outcomes for MLB HR model tracking
     """DO $$ BEGIN
@@ -2450,6 +2575,11 @@ INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS tennis_exact_quotes_identity_key ON tennis_exact_quotes(event_revision_id, bookmaker_key, market, selection_type, COALESCE(selection_player_id, 0), COALESCE(selection_side, ''), COALESCE(line_value, -9999), bookmaker_updated_at, captured_at, raw_checksum)",
     "CREATE INDEX IF NOT EXISTS idx_tennis_identity_reviews_open ON tennis_identity_reviews(status, tour, norm_name)",
     "CREATE INDEX IF NOT EXISTS idx_tennis_feature_snapshots_cutoff ON tennis_player_feature_snapshots(player_id, cutoff_at DESC, feature_version)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS tennis_feature_snapshot_match_version_key ON tennis_player_feature_snapshots(player_id, historical_match_id, feature_version) WHERE historical_match_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_elo_runs_version ON tennis_elo_runs(algorithm_version, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_elo_events_player_date ON tennis_elo_rating_events(player_id, match_date, algorithm_version)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_elo_events_match ON tennis_elo_rating_events(historical_match_id, algorithm_version)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_elo_eval_metrics ON tennis_elo_evaluation_metrics(evaluation_run_id, tour, period, surface)",
 
     "CREATE INDEX IF NOT EXISTS idx_nba_team_stats_season ON nba_team_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_nba_player_stats_team ON nba_player_stats(team_id, season)",
