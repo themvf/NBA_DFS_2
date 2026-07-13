@@ -5358,6 +5358,33 @@ Free HTML/result feeds are operational observations, not silent authorities.
 Provider identity and confidence are stored with each result. When providers
 disagree, preserve both observations and require a documented resolution.
 
+### Live odds scope and book roles (frozen 2026-07-13)
+
+- **The Odds API is the sole approved live Tennis odds source.** Its active
+  tournament discovery is not a complete ATP/WTA calendar. When a tournament is
+  absent from that provider, the application must record `provider_not_covered`,
+  skip quote capture, prediction, and decision creation for that tournament, and
+  explain that state to the user. It must not imply that no sportsbook has odds.
+- A failed `/v4/sports` request, stale capture, or quota exhaustion is a
+  **pipeline/data-health failure**. An otherwise healthy run with no active
+  provider tournament keys is a **provider-coverage limitation**. These states
+  are distinct in Jira evidence, operational health output, and the UI.
+- DraftKings' public Tennis page can list events that The Odds API does not
+  distribute. DraftKings' state-specific sportsbook content endpoints are not an
+  approved fallback: they are undocumented, state/geolocation dependent, and
+  returned `403 Access Denied` in the 2026-07-13 verification. Do not scrape or
+  depend on that private feed without an explicit source-contract decision.
+- **Pinnacle is the primary fair-price reference** when an eligible paired
+  Pinnacle quote exists. **DraftKings is the preferred exact execution price and
+  displayed fallback price** when it is present in The Odds API payload. A
+  DraftKings price cannot also be used as its own fair-price reference: without
+  Pinnacle (or another separately approved reference), the comparison is
+  `NO_PINNACLE_REFERENCE`/blocked rather than a fabricated zero-edge result.
+- Legacy consensus columns remain research/display compatibility fields. They
+  must never be substituted for an exact executable price or for the
+  Pinnacle-versus-DraftKings decision comparison. SCRUM-22/23/25 own the
+  implementation, policy, and user-facing proof of this rule.
+
 ### Canonical identity
 
 - `tennis_players` owns a stable internal player ID. Provider names live in a
@@ -5413,8 +5440,10 @@ opposite side from another book or capture.
 - Use adaptive prospective capture: at least every 6 hours outside 24 hours,
   hourly from T-24h to T-6h, and every 15 minutes from T-6h to start when API
   quota permits. Record the expected and achieved cadence.
-- Quota exhaustion, missing active tournament keys, or insufficient captures is
+- Quota exhaustion, discovery failure, or insufficient captures is
   a visible data-health failure; it cannot be described as “no movement.”
+- A tournament absent from The Odds API is `provider_not_covered`: skip it and
+  show the source limitation without presenting it as a pipeline outage.
 - Detailed per-book history begins in July 2026. Historical tennis-data prices
   are representative closing observations and must never be described as
   multi-year opening/current/closing sportsbook history.

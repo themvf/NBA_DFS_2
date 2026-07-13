@@ -13,6 +13,10 @@ markets, so one bulk call per tournament seeds both the schedule and the lines:
   * ``totals``  — total games O/U (e.g. 22.5).
   * ``spreads`` — game/set handicap for the favorite (e.g. -4.5 / -1.5).
 
+Exact decision policy must use the per-book quote trail: Pinnacle is the
+fair-price reference and DraftKings is the preferred execution price when both
+are present. Legacy match fields remain consensus compatibility fields only.
+
 Consensus is computed by averaging in IMPLIED-PROBABILITY space across all books
 (averaging American odds arithmetically is invalid).  Player names are stored
 inline from the feed — no separate players table for the odds-only MVP.
@@ -48,11 +52,18 @@ ODDS_BASE = "https://api.the-odds-api.com/v4"
 REGIONS = "us,uk,eu"
 
 
+class TennisOddsDiscoveryError(RuntimeError):
+    """The Odds API could not be queried to establish Tennis coverage."""
+
+
 def discover_tournaments(api_key: str) -> list[tuple[str, str, str]]:
     """Active tennis tournaments from the free /v4/sports endpoint.
 
-    Returns [(tour 'ATP'|'WTA', sport_key, tournament title), ...]. Empty on
-    API failure (the run degrades to a no-op rather than crashing the cron).
+    Returns [(tour 'ATP'|'WTA', sport_key, tournament title), ...]. An empty
+    result means no provider-covered active tournament was captured; it does not
+    establish that the real ATP/WTA calendar has no events. Raises
+    TennisOddsDiscoveryError on an API failure so callers do not mislabel an
+    unhealthy pipeline as missing provider coverage.
     """
     try:
         r = requests.get(f"{ODDS_BASE}/sports", params={"apiKey": api_key}, timeout=20)
@@ -60,7 +71,7 @@ def discover_tournaments(api_key: str) -> list[tuple[str, str, str]]:
         sports = r.json()
     except requests.RequestException as e:
         logger.warning("Odds API /sports discovery failed: %s", e)
-        return []
+        raise TennisOddsDiscoveryError("Odds API Tennis tournament discovery failed") from e
     out = []
     for s in sports:
         key = s.get("key", "")
@@ -301,11 +312,10 @@ def fetch_tournament(db: DatabaseManager, api_key: str, tour_label: str, sport_k
 def fetch_schedule_and_odds(db: DatabaseManager, api_key: str,
                             tour: str | None = None, game_date: str | None = None) -> int:
     if not api_key:
-        logger.warning("ODDS_API_KEY not set — cannot fetch tennis schedule")
-        return 0
+        raise TennisOddsDiscoveryError("ODDS_API_KEY not set; cannot fetch Tennis schedule")
     tournaments = discover_tournaments(api_key)
     if not tournaments:
-        print("Tennis: no active tournaments in the Odds API feed")
+        print("Tennis: provider_not_covered — no active tournaments in the Odds API feed")
         return 0
     want = {"atp": "ATP", "wta": "WTA"}.get(tour or "", None)
     total = 0
