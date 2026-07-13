@@ -49,6 +49,21 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
         """,
         (target_date,),
     ) or {}
+    bullpen = db.execute_one(
+        """
+        SELECT
+          (SELECT COUNT(*) FROM mlb_relief_appearances) AS relief_appearances,
+          (SELECT COUNT(*) FROM mlb_relief_appearances
+             WHERE source IS NULL OR source_available_at IS NULL OR raw_checksum IS NULL OR raw_json IS NULL) AS relief_missing_provenance,
+          COUNT(b.id) AS bullpen_snapshots,
+          COUNT(*) FILTER (WHERE b.id IS NOT NULL AND b.quality_outs <= 0) AS empty_quality,
+          COUNT(*) FILTER (WHERE b.id IS NOT NULL AND b.available_at >= m.commence_time) AS post_start_snapshots
+        FROM mlb_matchups m
+        LEFT JOIN mlb_bullpen_snapshots b ON b.matchup_id = m.id
+        WHERE m.game_date = %s AND m.game_id IS NOT NULL
+        """,
+        (target_date,),
+    ) or {}
 
     def number(row: dict, key: str) -> float:
         value = row.get(key)
@@ -108,6 +123,29 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
         "schedule_provenance", invalid_revisions == 0,
         f"{invalid_revisions} latest revisions are post-start or missing source/raw provenance",
         "Exclude post-start revisions from pregame use and re-capture missing official source payloads.",
+    )
+    relief_appearances = int(number(bullpen, "relief_appearances"))
+    add(
+        "reliever_appearances", relief_appearances > 0,
+        f"{relief_appearances} official reliever-only appearances available",
+        "Backfill official MLB boxscores before constructing bullpen quality or workload.",
+    )
+    expected_bullpen = games * 2
+    bullpen_snapshots = int(number(bullpen, "bullpen_snapshots"))
+    add(
+        "bullpen_snapshots", bullpen_snapshots == expected_bullpen,
+        f"{bullpen_snapshots}/{expected_bullpen} team-game bullpen snapshots on {target_date}",
+        f"Run python -m ingest.mlb_bullpen through the latest completed date for {target_date}.",
+    )
+    invalid_bullpen = int(
+        number(bullpen, "relief_missing_provenance")
+        + number(bullpen, "empty_quality")
+        + number(bullpen, "post_start_snapshots")
+    )
+    add(
+        "bullpen_provenance", invalid_bullpen == 0,
+        f"{invalid_bullpen} relief/snapshot rows have missing provenance, empty quality, or post-start capture",
+        "Reject invalid bullpen rows and re-capture from official pregame-available boxscores.",
     )
 
     return {

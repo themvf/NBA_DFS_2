@@ -102,6 +102,22 @@ def snapshot_starter_context(row: pd.Series) -> dict:
     return result
 
 
+def snapshot_bullpen_context(row: pd.Series) -> dict:
+    keys = (
+        "home_bullpen_era", "away_bullpen_era", "home_bullpen_fip", "away_bullpen_fip",
+        "home_bullpen_k_pct", "away_bullpen_k_pct", "home_bullpen_bb_pct", "away_bullpen_bb_pct",
+        "home_bullpen_pitches_1d", "away_bullpen_pitches_1d",
+        "home_bullpen_pitches_3d", "away_bullpen_pitches_3d",
+        "home_relievers_back_to_back", "away_relievers_back_to_back",
+        "home_bullpen_quality_outs", "away_bullpen_quality_outs",
+    )
+    result = {}
+    for key in keys:
+        value = row.get(key)
+        result[key] = None if value is None or pd.isna(value) else value
+    return result
+
+
 def _season_of(game_date: str) -> str:
     """MLB season is the calendar year."""
     return game_date[:4]
@@ -184,8 +200,22 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
               WHEN 'L' THEN aos.players_vs_l WHEN 'R' THEN aos.players_vs_r END AS away_offense_split_players,
             hts.team_iso               AS home_iso,
             ats.team_iso               AS away_iso,
-            hts.bullpen_fip            AS home_bullpen_fip,
-            ats.bullpen_fip            AS away_bullpen_fip
+            hbp.reliever_era AS home_bullpen_era,
+            abp.reliever_era AS away_bullpen_era,
+            hbp.reliever_fip AS home_bullpen_fip,
+            abp.reliever_fip AS away_bullpen_fip,
+            hbp.reliever_k_pct AS home_bullpen_k_pct,
+            abp.reliever_k_pct AS away_bullpen_k_pct,
+            hbp.reliever_bb_pct AS home_bullpen_bb_pct,
+            abp.reliever_bb_pct AS away_bullpen_bb_pct,
+            hbp.pitches_1d AS home_bullpen_pitches_1d,
+            abp.pitches_1d AS away_bullpen_pitches_1d,
+            hbp.pitches_3d AS home_bullpen_pitches_3d,
+            abp.pitches_3d AS away_bullpen_pitches_3d,
+            hbp.relievers_back_to_back AS home_relievers_back_to_back,
+            abp.relievers_back_to_back AS away_relievers_back_to_back,
+            hbp.quality_outs AS home_bullpen_quality_outs,
+            abp.quality_outs AS away_bullpen_quality_outs
         FROM mlb_matchups m
         LEFT JOIN LATERAL (
             SELECT k_per_9, bb_per_9, xfip, hand, ip_per_start FROM mlb_pitcher_stats_history h
@@ -250,6 +280,22 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
             WHERE w.matchup_id = m.id AND w.side = 'away' AND w.available_at < m.commence_time
             ORDER BY w.available_at DESC, w.id DESC LIMIT 1
         ) awl ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT reliever_era, reliever_fip, reliever_k_pct, reliever_bb_pct,
+                   pitches_1d, pitches_3d, relievers_back_to_back, quality_outs
+            FROM mlb_bullpen_snapshots b
+            WHERE b.matchup_id = m.id AND b.team_id = m.home_team_id
+              AND b.available_at < m.commence_time
+            ORDER BY b.available_at DESC, b.id DESC LIMIT 1
+        ) hbp ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT reliever_era, reliever_fip, reliever_k_pct, reliever_bb_pct,
+                   pitches_1d, pitches_3d, relievers_back_to_back, quality_outs
+            FROM mlb_bullpen_snapshots b
+            WHERE b.matchup_id = m.id AND b.team_id = m.away_team_id
+              AND b.available_at < m.commence_time
+            ORDER BY b.available_at DESC, b.id DESC LIMIT 1
+        ) abp ON TRUE
         WHERE m.vegas_total IS NOT NULL
         ORDER BY m.game_date ASC
         """,
@@ -425,6 +471,7 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         }
         feature_values = {col: float(feature_row[col]) for col in FEATURE_COLS}
         feature_values["starter_context"] = snapshot_starter_context(feature_row)
+        feature_values["bullpen_context"] = snapshot_bullpen_context(feature_row)
         feature_values["contributions"] = {
             col: float(coef * value)
             for col, coef, value in zip(FEATURE_COLS, model.coef_, scaled_row)

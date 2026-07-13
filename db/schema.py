@@ -322,6 +322,66 @@ TABLES = [
     )
     """,
 
+    """
+    CREATE TABLE IF NOT EXISTS mlb_relief_appearances (
+        id SERIAL PRIMARY KEY,
+        matchup_id INTEGER NOT NULL REFERENCES mlb_matchups(id),
+        game_id TEXT NOT NULL,
+        game_date DATE NOT NULL,
+        team_id INTEGER NOT NULL REFERENCES mlb_teams(team_id),
+        pitcher_id INTEGER NOT NULL,
+        pitcher_name TEXT NOT NULL,
+        appearance_order INTEGER NOT NULL,
+        outs INTEGER NOT NULL,
+        pitches INTEGER,
+        batters_faced INTEGER,
+        hits INTEGER,
+        earned_runs INTEGER,
+        home_runs INTEGER,
+        walks INTEGER,
+        intentional_walks INTEGER,
+        hit_batters INTEGER,
+        strikeouts INTEGER,
+        source TEXT NOT NULL,
+        source_available_at TIMESTAMPTZ NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        raw_checksum TEXT NOT NULL,
+        raw_json JSONB NOT NULL,
+        UNIQUE(game_id, team_id, pitcher_id, raw_checksum)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS mlb_bullpen_snapshots (
+        id SERIAL PRIMARY KEY,
+        matchup_id INTEGER NOT NULL REFERENCES mlb_matchups(id),
+        team_id INTEGER NOT NULL REFERENCES mlb_teams(team_id),
+        event_commence TIMESTAMPTZ NOT NULL,
+        cutoff_at TIMESTAMPTZ NOT NULL,
+        quality_window_days INTEGER NOT NULL,
+        quality_outs INTEGER NOT NULL,
+        quality_batters_faced INTEGER NOT NULL,
+        reliever_era DOUBLE PRECISION,
+        reliever_fip DOUBLE PRECISION,
+        reliever_k_pct DOUBLE PRECISION,
+        reliever_bb_pct DOUBLE PRECISION,
+        pitches_1d INTEGER NOT NULL,
+        pitches_3d INTEGER NOT NULL,
+        pitches_7d INTEGER NOT NULL,
+        appearances_1d INTEGER NOT NULL,
+        appearances_3d INTEGER NOT NULL,
+        appearances_7d INTEGER NOT NULL,
+        relievers_used_1d INTEGER NOT NULL,
+        relievers_used_3d INTEGER NOT NULL,
+        relievers_back_to_back INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        available_at TIMESTAMPTZ NOT NULL,
+        transformation_version TEXT NOT NULL,
+        raw_checksum TEXT NOT NULL,
+        UNIQUE(matchup_id, team_id, raw_checksum)
+    )
+    """,
+
     # ── MLB batter stats (15-game EWMA, same α=0.25 as NBA) ──
     # wrc_plus_vs_l / wrc_plus_vs_r: L/R split for pitcher matchup.
     # fpts_std: per-game FPTS standard deviation for Monte Carlo.
@@ -2028,6 +2088,14 @@ MIGRATIONS = [
     """CREATE TRIGGER mlb_team_offense_splits_immutable
     BEFORE UPDATE OR DELETE ON mlb_team_offense_split_snapshots
     FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
+    "DROP TRIGGER IF EXISTS mlb_relief_appearances_immutable ON mlb_relief_appearances",
+    """CREATE TRIGGER mlb_relief_appearances_immutable
+    BEFORE UPDATE OR DELETE ON mlb_relief_appearances
+    FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
+    "DROP TRIGGER IF EXISTS mlb_bullpen_snapshots_immutable ON mlb_bullpen_snapshots",
+    """CREATE TRIGGER mlb_bullpen_snapshots_immutable
+    BEFORE UPDATE OR DELETE ON mlb_bullpen_snapshots
+    FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
 ]
 
 INDEXES = [
@@ -2064,6 +2132,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_offense_splits_available ON mlb_team_offense_split_snapshots(team_id, season, available_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_relief_appearances_team_date ON mlb_relief_appearances(team_id, game_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_relief_appearances_pitcher_date ON mlb_relief_appearances(pitcher_id, game_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_bullpen_snapshots_matchup ON mlb_bullpen_snapshots(matchup_id, team_id, available_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_team ON mlb_batter_stats(team_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_batter_stats_player ON mlb_batter_stats(player_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_pitcher_stats_team ON mlb_pitcher_stats(team_id, season)",
