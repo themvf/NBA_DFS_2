@@ -49,6 +49,57 @@ NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 NON_PLAYED_STATES = {"Cancelled", "Postponed"}
+STARTER_CONFIRMATION_WINDOW_HOURS = 6
+
+
+def _confirmed_starters_from_live_feed(payload: dict) -> dict[str, dict] | None:
+    """Return official starters only after MLB posts participating lineups.
+
+    The schedule's probablePitcher field is not confirmation. A side becomes
+    confirmed only when the live boxscore has a batting order and at least one
+    participating pitcher; the first pitcher is the starter by boxscore order.
+    """
+    game_data = payload.get("gameData") or {}
+    players = game_data.get("players") or {}
+    boxscore_teams = ((payload.get("liveData") or {}).get("boxscore") or {}).get("teams") or {}
+    resolved: dict[str, dict] = {}
+    for side in ("home", "away"):
+        team = boxscore_teams.get(side) or {}
+        batting_order = team.get("battingOrder") or []
+        pitchers = team.get("pitchers") or []
+        if not batting_order or not pitchers:
+            return None
+        pitcher_id = int(pitchers[0])
+        person = players.get(f"ID{pitcher_id}") or {}
+        resolved[side] = {
+            "id": pitcher_id,
+            "name": person.get("fullName"),
+            "hand": (person.get("pitchHand") or {}).get("code"),
+            "status": "confirmed",
+        }
+    return resolved
+
+
+def _fetch_confirmed_starters(game_id: str, game_start_iso: str, *, now: datetime) -> dict[str, dict] | None:
+    try:
+        game_start = datetime.fromisoformat(game_start_iso.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if game_start.tzinfo is None:
+        game_start = game_start.replace(tzinfo=timezone.utc)
+    hours_to_start = (game_start - now).total_seconds() / 3600.0
+    if hours_to_start <= 0 or hours_to_start > STARTER_CONFIRMATION_WINDOW_HOURS:
+        return None
+    try:
+        response = requests.get(
+            f"https://statsapi.mlb.com/api/v1.1/game/{game_id}/feed/live",
+            timeout=20,
+        )
+        response.raise_for_status()
+        return _confirmed_starters_from_live_feed(response.json() or {})
+    except requests.RequestException as exc:
+        logger.debug("MLB confirmed-starter feed failed for %s: %s", game_id, exc)
+        return None
 
 
 def _build_mlb_team_context_cache(db: DatabaseManager) -> dict[int, dict[str, str | None]]:
@@ -244,6 +295,18 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
         home_sp_name = home_info.get("probablePitcher", {}).get("fullName")
         away_sp_id = away_info.get("probablePitcher", {}).get("id")
         away_sp_name = away_info.get("probablePitcher", {}).get("fullName")
+        home_sp_status = "probable" if home_sp_id else "unavailable"
+        away_sp_status = "probable" if away_sp_id else "unavailable"
+        confirmed = _fetch_confirmed_starters(
+            game_id, game_start, now=schedule_available_at,
+        ) if game_id and game_start else None
+        if confirmed:
+            home_sp_id = confirmed["home"]["id"]
+            home_sp_name = confirmed["home"]["name"] or home_sp_name
+            home_sp_status = "confirmed"
+            away_sp_id = confirmed["away"]["id"]
+            away_sp_name = confirmed["away"]["name"] or away_sp_name
+            away_sp_status = "confirmed"
         ballpark   = game.get("venue", {}).get("name")
         venue_id = game.get("venue", {}).get("id")
         team_context = team_context_cache.get(home_team_id, {})
@@ -305,10 +368,10 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
                 "venue_name": ballpark,
                 "home_sp_id": home_sp_id,
                 "home_sp_name": home_sp_name,
-                "home_sp_status": "probable" if home_sp_id else "unavailable",
+                "home_sp_status": home_sp_status,
                 "away_sp_id": away_sp_id,
                 "away_sp_name": away_sp_name,
-                "away_sp_status": "probable" if away_sp_id else "unavailable",
+                "away_sp_status": away_sp_status,
                 "game_status": detailed_state,
             }
             revision_hash = hashlib.sha256(
@@ -327,10 +390,10 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
                 venue_name=ballpark,
                 home_sp_id=home_sp_id,
                 home_sp_name=home_sp_name,
-                home_sp_status="probable" if home_sp_id else "unavailable",
+                home_sp_status=home_sp_status,
                 away_sp_id=away_sp_id,
                 away_sp_name=away_sp_name,
-                away_sp_status="probable" if away_sp_id else "unavailable",
+                away_sp_status=away_sp_status,
                 game_status=detailed_state,
                 source_available_at=schedule_available_at,
                 raw_json=game,
