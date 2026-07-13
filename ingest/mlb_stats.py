@@ -48,6 +48,7 @@ from db.database import DatabaseManager
 from db.queries import (
     build_mlb_team_abbrev_cache,
     insert_mlb_pitcher_stats_snapshot,
+    insert_mlb_team_offense_split_snapshot,
     insert_mlb_team_stats_snapshot,
     upsert_mlb_batter_stats,
     upsert_mlb_pitcher_stats,
@@ -848,7 +849,56 @@ def fetch_batter_splits(db: DatabaseManager, season: str) -> int:
         logger.warning("DB update for batter splits failed: %s", exc)
 
     print(f"Batter splits: {updated} players updated with L/R wRC+ for {season}")
+    captured = capture_team_offense_split_snapshots(db, season)
+    print(f"Team offense splits: {captured}/30 immutable captures for {season}")
     return updated
+
+
+def capture_team_offense_split_snapshots(db: DatabaseManager, season: str) -> int:
+    rows = db.execute(
+        """
+        SELECT team_id, player_id, name, pa_pg, wrc_plus_vs_l, wrc_plus_vs_r
+        FROM mlb_batter_stats
+        WHERE season = %s AND team_id IS NOT NULL
+          AND (wrc_plus_vs_l IS NOT NULL OR wrc_plus_vs_r IS NOT NULL)
+        ORDER BY team_id, player_id
+        """,
+        (season,),
+    )
+    by_team: dict[int, list[dict]] = {}
+    for row in rows:
+        by_team.setdefault(int(row["team_id"]), []).append(dict(row))
+    available_at, stats_through_at = _capture_times()
+    captured = 0
+    for team_id, players in by_team.items():
+        def weighted(hand_key: str) -> tuple[float | None, int, float]:
+            eligible = [p for p in players if _safe_float(p.get(hand_key)) is not None]
+            weights = [max(_safe_float(p.get("pa_pg")) or 0.0, 0.1) for p in eligible]
+            total_weight = sum(weights)
+            value = (
+                sum(float(p[hand_key]) * weight for p, weight in zip(eligible, weights)) / total_weight
+                if total_weight > 0 else None
+            )
+            return value, len(eligible), total_weight
+
+        vs_l, n_l, weight_l = weighted("wrc_plus_vs_l")
+        vs_r, n_r, weight_r = weighted("wrc_plus_vs_r")
+        payload = {
+            "team_id": team_id, "season": season,
+            "wrc_plus_vs_l": vs_l, "wrc_plus_vs_r": vs_r,
+            "players_vs_l": n_l, "players_vs_r": n_r,
+            "pa_weight_vs_l": weight_l, "pa_weight_vs_r": weight_r,
+            "player_ids": [p["player_id"] for p in players],
+        }
+        captured += int(insert_mlb_team_offense_split_snapshot(
+            db, team_id=team_id, season=season,
+            wrc_plus_vs_l=vs_l, wrc_plus_vs_r=vs_r,
+            players_vs_l=n_l, players_vs_r=n_r,
+            pa_weight_vs_l=weight_l, pa_weight_vs_r=weight_r,
+            stats_through_at=stats_through_at, available_at=available_at,
+            raw_checksum=_raw_checksum(payload),
+        ) > 0)
+    return captured
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

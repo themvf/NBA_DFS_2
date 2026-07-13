@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from db.queries import (
     insert_mlb_schedule_revision,
     insert_mlb_pitcher_stats_snapshot,
+    insert_mlb_team_offense_split_snapshot,
     insert_mlb_team_stats_snapshot,
 )
 from db.schema import MIGRATIONS
@@ -114,3 +115,27 @@ def test_schedule_revision_is_immutable_and_source_aware() -> None:
     schema_text = "\n".join(MIGRATIONS)
     assert "mlb_schedule_revisions_immutable" in schema_text
     assert "BEFORE UPDATE OR DELETE ON mlb_schedule_revisions" in schema_text
+
+
+def test_team_offense_split_snapshot_is_source_aware_and_deduplicated() -> None:
+    db = CaptureDb()
+    captured_at = datetime(2026, 7, 13, 1, tzinfo=timezone.utc)
+    snapshot_id = insert_mlb_team_offense_split_snapshot(
+        db,  # type: ignore[arg-type]
+        team_id=1,
+        season="2026",
+        wrc_plus_vs_l=105.0,
+        wrc_plus_vs_r=98.0,
+        players_vs_l=12,
+        players_vs_r=13,
+        pa_weight_vs_l=42.0,
+        pa_weight_vs_r=45.0,
+        stats_through_at=datetime(2026, 7, 13, tzinfo=timezone.utc),
+        available_at=captured_at,
+        raw_checksum="split-hash",
+    )
+    assert snapshot_id == 77
+    assert "INSERT INTO mlb_team_offense_split_snapshots" in db.sql
+    assert "fangraphs_batter_splits_weighted" in db.sql
+    assert "ON CONFLICT (team_id, season, raw_checksum) DO NOTHING" in db.sql
+    assert captured_at in db.params

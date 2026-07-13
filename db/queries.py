@@ -1434,6 +1434,44 @@ def insert_mlb_starter_workload_snapshot(
     return row["id"] if row else 0
 
 
+def insert_mlb_team_offense_split_snapshot(
+    db: DatabaseManager,
+    *,
+    team_id: int,
+    season: str,
+    wrc_plus_vs_l: float | None,
+    wrc_plus_vs_r: float | None,
+    players_vs_l: int,
+    players_vs_r: int,
+    pa_weight_vs_l: float | None,
+    pa_weight_vs_r: float | None,
+    stats_through_at,
+    available_at,
+    raw_checksum: str,
+) -> int:
+    row = db.execute_one(
+        """
+        INSERT INTO mlb_team_offense_split_snapshots (
+            team_id, season, wrc_plus_vs_l, wrc_plus_vs_r,
+            players_vs_l, players_vs_r, pa_weight_vs_l, pa_weight_vs_r,
+            source, stats_through_at, available_at, transformation_version,
+            raw_checksum
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s,
+                'fangraphs_batter_splits_weighted', %s, %s,
+                'mlb-team-offense-splits-v1', %s)
+        ON CONFLICT (team_id, season, raw_checksum) DO NOTHING
+        RETURNING id
+        """,
+        (
+            team_id, season, wrc_plus_vs_l, wrc_plus_vs_r,
+            players_vs_l, players_vs_r, pa_weight_vs_l, pa_weight_vs_r,
+            stats_through_at, available_at, raw_checksum,
+        ),
+    )
+    return row["id"] if row else 0
+
+
 # ── Soccer / World Cup queries ─────────────────────────────────────────────────
 
 def build_soccer_team_name_cache(db: DatabaseManager) -> dict[str, int]:

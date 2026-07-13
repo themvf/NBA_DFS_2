@@ -93,6 +93,7 @@ def snapshot_starter_context(row: pd.Series) -> dict:
         "home_avg_pitches_last_3", "away_avg_pitches_last_3",
         "home_expected_innings", "away_expected_innings",
         "home_starter_days_rest", "away_starter_days_rest",
+        "home_offense_split_players", "away_offense_split_players",
     )
     result = {}
     for key in keys:
@@ -167,8 +168,20 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
             awl.expected_innings AS away_expected_innings,
             hwl.days_rest AS home_starter_days_rest,
             awl.days_rest AS away_starter_days_rest,
-            hts.team_wrc_plus          AS home_wrc,
-            ats.team_wrc_plus          AS away_wrc,
+            COALESCE(
+              CASE COALESCE(asp_id.hand, asp_nm.hand)
+                WHEN 'L' THEN hos.wrc_plus_vs_l WHEN 'R' THEN hos.wrc_plus_vs_r END,
+              hts.team_wrc_plus
+            ) AS home_wrc,
+            COALESCE(
+              CASE COALESCE(hsp_id.hand, hsp_nm.hand)
+                WHEN 'L' THEN aos.wrc_plus_vs_l WHEN 'R' THEN aos.wrc_plus_vs_r END,
+              ats.team_wrc_plus
+            ) AS away_wrc,
+            CASE COALESCE(asp_id.hand, asp_nm.hand)
+              WHEN 'L' THEN hos.players_vs_l WHEN 'R' THEN hos.players_vs_r END AS home_offense_split_players,
+            CASE COALESCE(hsp_id.hand, hsp_nm.hand)
+              WHEN 'L' THEN aos.players_vs_l WHEN 'R' THEN aos.players_vs_r END AS away_offense_split_players,
             hts.team_iso               AS home_iso,
             ats.team_iso               AS away_iso,
             hts.bullpen_fip            AS home_bullpen_fip,
@@ -211,6 +224,20 @@ def load_game_data(db: DatabaseManager) -> pd.DataFrame:
               AND h.available_at < m.commence_time AND h.stats_through_at < m.commence_time
             ORDER BY h.available_at DESC, h.id DESC LIMIT 1
         ) ats ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT wrc_plus_vs_l, wrc_plus_vs_r, players_vs_l, players_vs_r
+            FROM mlb_team_offense_split_snapshots s
+            WHERE s.team_id = m.home_team_id AND s.season = LEFT(m.game_date::TEXT, 4)
+              AND s.available_at < m.commence_time AND s.stats_through_at < m.commence_time
+            ORDER BY s.available_at DESC, s.id DESC LIMIT 1
+        ) hos ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT wrc_plus_vs_l, wrc_plus_vs_r, players_vs_l, players_vs_r
+            FROM mlb_team_offense_split_snapshots s
+            WHERE s.team_id = m.away_team_id AND s.season = LEFT(m.game_date::TEXT, 4)
+              AND s.available_at < m.commence_time AND s.stats_through_at < m.commence_time
+            ORDER BY s.available_at DESC, s.id DESC LIMIT 1
+        ) aos ON TRUE
         LEFT JOIN LATERAL (
             SELECT pitches_last_start, avg_pitches_last_3, expected_innings, days_rest
             FROM mlb_starter_workload_snapshots w
