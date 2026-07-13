@@ -71,6 +71,43 @@ def _write_total_predictions(db: DatabaseManager, refresh_date_iso: str, days_ba
     return total_written
 
 
+def _refresh_bullpen_context(db: DatabaseManager, refresh_date_iso: str) -> dict:
+    """Refresh recent official relief appearances, then freeze today's context.
+
+    The first run seeds 30 days. Later runs revisit the last two observed dates
+    so corrected MLB boxscores can be captured without repeatedly downloading
+    the full window on every intraday odds pass.
+    """
+    from ingest.mlb_bullpen import build_bullpen_snapshots, ingest_relief_appearances
+
+    target = date.fromisoformat(refresh_date_iso)
+    end = target - timedelta(days=1)
+    latest_row = db.execute_one("SELECT MAX(game_date) AS latest FROM mlb_relief_appearances") or {}
+    latest = latest_row.get("latest")
+    if latest is None:
+        start = target - timedelta(days=30)
+    else:
+        latest_date = latest if isinstance(latest, date) else date.fromisoformat(str(latest))
+        start = max(target - timedelta(days=30), latest_date - timedelta(days=2))
+
+    appearances = 0
+    if start <= end:
+        appearances = ingest_relief_appearances(db, start.isoformat(), end.isoformat())
+    snapshots = build_bullpen_snapshots(db, refresh_date_iso)
+    return {
+        "appearance_start": start.isoformat(),
+        "appearance_end": end.isoformat(),
+        "appearances_observed": appearances,
+        "snapshots_written": snapshots,
+    }
+
+
+def _audit_data_health(db: DatabaseManager, refresh_date_iso: str) -> dict:
+    from model.mlb_data_health import collect_mlb_data_health
+
+    return collect_mlb_data_health(db, refresh_date_iso)
+
+
 def _rate_and_settle_bets(db: DatabaseManager, refresh_date_iso: str) -> int:
     """Rate today's slate into the bet ledger and settle any finals (parity with
     the soccer accountability framework). Runs after predictions are written."""
@@ -116,6 +153,25 @@ def run_refresh(
 
     ok, result = _run_refresh_stage("mlb_scores_today", lambda: fetch_scores(db, refresh_date_iso))
     stages.append(("mlb_scores_today", ok, result))
+
+    ok, result = _run_refresh_stage(
+        "mlb_bullpen_context",
+        lambda: _refresh_bullpen_context(db, refresh_date_iso),
+    )
+    stages.append(("mlb_bullpen_context", ok, result))
+
+    # Record the explicit pre-model data verdict. Research predictions still
+    # run with source-aware missingness, while the non-pass result makes the
+    # workflow fail visibly and prevents downstream policy from treating the
+    # slate as actionable.
+    ok, result = _run_refresh_stage(
+        "mlb_data_health",
+        lambda: _audit_data_health(db, refresh_date_iso),
+    )
+    if ok and isinstance(result, dict) and result.get("status") != "pass":
+        ok = False
+        print("mlb_data_health: FAILED (one or more point-in-time gates did not pass)")
+    stages.append(("mlb_data_health", ok, result))
 
     # Our independent O/U number — train on completed games, write our_total_pred
     # for today's slate. Runs after odds so today's vegas_total is present, and

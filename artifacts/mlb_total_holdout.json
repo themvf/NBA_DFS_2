@@ -1,0 +1,167 @@
+{
+  "artifact_version": "mlb-total-holdout-v1",
+  "model_version": "mlb-total-v1",
+  "canonical_horizon": "latest_pregame_snapshot",
+  "training_start": "2026-03-20",
+  "training_cutoff": "2026-06-19",
+  "final_window_start": "2026-06-20",
+  "final_window_end": "2026-07-12",
+  "test_fraction": 0.2,
+  "n_train": 1096,
+  "n_test": 301,
+  "vegas_mae": 3.719,
+  "our_mae": 3.781,
+  "mae_improvement": -0.062,
+  "vegas_bias": -0.54,
+  "our_bias": 0.048,
+  "ou_side_accuracy": 0.4642,
+  "distribution_method": "rolling_origin_empirical_residual_v1",
+  "distribution_oof_n": 585,
+  "decided_total_games": 293,
+  "market_side_brier": 0.25,
+  "our_side_brier": 0.2495,
+  "market_side_logloss": 0.6931,
+  "our_side_logloss": 0.6921,
+  "feature_group_retention": [
+    {
+      "group": "market_baseline",
+      "features": [
+        "vegas_total",
+        "home_implied",
+        "away_implied",
+        "abs_spread",
+        "home_win_prob"
+      ],
+      "status": "benchmark",
+      "retained": true,
+      "reason": "same-time market total and price context",
+      "constant_in_train": [],
+      "constant_in_final": []
+    },
+    {
+      "group": "starters",
+      "features": [
+        "sp_xfip_avg",
+        "sp_xfip_diff",
+        "sp_k9_avg"
+      ],
+      "status": "not_evaluable",
+      "retained": false,
+      "reason": "insufficient point-in-time variation in training or final window",
+      "constant_in_train": [
+        "sp_xfip_avg",
+        "sp_xfip_diff",
+        "sp_k9_avg"
+      ],
+      "constant_in_final": [
+        "sp_xfip_avg",
+        "sp_xfip_diff",
+        "sp_k9_avg"
+      ]
+    },
+    {
+      "group": "offense",
+      "features": [
+        "wrc_avg",
+        "iso_avg"
+      ],
+      "status": "not_evaluable",
+      "retained": false,
+      "reason": "insufficient point-in-time variation in training or final window",
+      "constant_in_train": [
+        "wrc_avg",
+        "iso_avg"
+      ],
+      "constant_in_final": [
+        "wrc_avg",
+        "iso_avg"
+      ]
+    },
+    {
+      "group": "bullpen_quality",
+      "features": [
+        "bullpen_fip_avg"
+      ],
+      "status": "not_evaluable",
+      "retained": false,
+      "reason": "insufficient point-in-time variation in training or final window",
+      "constant_in_train": [
+        "bullpen_fip_avg"
+      ],
+      "constant_in_final": [
+        "bullpen_fip_avg"
+      ]
+    },
+    {
+      "group": "workload",
+      "features": [],
+      "status": "not_evaluable",
+      "retained": false,
+      "reason": "feature calculation or point-in-time source is not implemented",
+      "constant_in_train": [],
+      "constant_in_final": []
+    },
+    {
+      "group": "park_weather",
+      "features": [
+        "park_runs_factor",
+        "temp_delta",
+        "wind_component"
+      ],
+      "status": "not_evaluable",
+      "retained": false,
+      "reason": "insufficient point-in-time variation in training or final window",
+      "constant_in_train": [
+        "temp_delta",
+        "wind_component"
+      ],
+      "constant_in_final": [
+        "temp_delta",
+        "wind_component"
+      ]
+    },
+    {
+      "group": "lineup",
+      "features": [],
+      "status": "not_evaluable",
+      "retained": false,
+      "reason": "feature calculation or point-in-time source is not implemented",
+      "constant_in_train": [],
+      "constant_in_final": []
+    }
+  ],
+  "top_features": [
+    {
+      "feature": "home_win_prob",
+      "coef": -0.5738
+    },
+    {
+      "feature": "away_implied",
+      "coef": -0.3127
+    },
+    {
+      "feature": "home_implied",
+      "coef": 0.2819
+    },
+    {
+      "feature": "abs_spread",
+      "coef": 0.1022
+    },
+    {
+      "feature": "vegas_total",
+      "coef": -0.0836
+    },
+    {
+      "feature": "park_runs_factor",
+      "coef": -0.0428
+    },
+    {
+      "feature": "sp_xfip_avg",
+      "coef": 0.0
+    },
+    {
+      "feature": "sp_xfip_diff",
+      "coef": 0.0
+    }
+  ]
+}

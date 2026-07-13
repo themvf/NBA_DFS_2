@@ -41,6 +41,7 @@ from model.mlb_prediction_provenance import (
     create_prediction_run,
     record_prediction_snapshot,
 )
+from model.mlb_validation import chronological_date_holdout, expanding_date_folds
 
 from config import load_config
 from db.database import DatabaseManager
@@ -70,10 +71,43 @@ FEATURE_COLS = [
     "bullpen_adv",        # away_bullpen_fip − home_bullpen_fip
 ]
 
+FEATURE_GROUPS = {
+    "market_baseline": ["market_home_prob"],
+    "starters": ["sp_xfip_adv", "sp_k9_adv"],
+    "offense": ["wrc_adv", "iso_adv"],
+    "bullpen_quality": ["bullpen_adv"],
+    "workload": [],
+    "park_weather": [],
+    "lineup": [],
+}
+
 _MIN_TRAIN_GAMES = 80
 _CALIBRATION_MIN_TRAIN = 300
 _CALIBRATION_FOLDS = 5
 _CALIBRATION_BOOTSTRAPS = 200
+
+
+def feature_group_availability(train: pd.DataFrame, final_test: pd.DataFrame) -> list[dict]:
+    """Expose whether a feature group can honestly enter retention testing."""
+    rows = []
+    for name, features in FEATURE_GROUPS.items():
+        missing = [feature for feature in features if feature not in train.columns]
+        train_constant = [feature for feature in features if feature in train and train[feature].nunique() <= 1]
+        test_constant = [feature for feature in features if feature in final_test and final_test[feature].nunique() <= 1]
+        if name == "market_baseline":
+            status, reason, retained = "benchmark", "same-time vig-free market anchor", True
+        elif not features or missing:
+            status, reason, retained = "not_evaluable", "feature calculation or point-in-time source is not implemented", False
+        elif train_constant or test_constant:
+            status, reason, retained = "not_evaluable", "insufficient point-in-time variation in training or final window", False
+        else:
+            status, reason, retained = "requires_incremental_test", "available but not retained without nested validation", False
+        rows.append({
+            "group": name, "features": features, "status": status,
+            "retained": retained, "reason": reason,
+            "constant_in_train": train_constant, "constant_in_final": test_constant,
+        })
+    return rows
 
 
 def build_ml_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -126,16 +160,10 @@ def _predict_home_prob(model, scaler, rows: pd.DataFrame) -> np.ndarray:
 
 def rolling_origin_moneyline_calibration(data: pd.DataFrame) -> tuple[IsotonicRegression, np.ndarray, np.ndarray]:
     """Fit isotonic calibration only on predictions made by prior-data folds."""
-    ordered = data.sort_values(["game_date", "id"]).reset_index(drop=True)
-    initial = max(_CALIBRATION_MIN_TRAIN, len(ordered) // 2)
-    if len(ordered) - initial < _CALIBRATION_FOLDS:
-        raise ValueError("insufficient chronological calibration population")
     raw_parts, y_parts = [], []
-    for test_idx in np.array_split(np.arange(initial, len(ordered)), _CALIBRATION_FOLDS):
-        if len(test_idx) == 0:
+    for train, test in expanding_date_folds(data, folds=_CALIBRATION_FOLDS):
+        if len(train) < _CALIBRATION_MIN_TRAIN:
             continue
-        train = ordered.iloc[: int(test_idx[0])]
-        test = ordered.iloc[test_idx]
         model, scaler = _fit(train)
         raw_parts.append(_predict_home_prob(model, scaler, test))
         y_parts.append(test["home_win"].values.astype(int))
@@ -317,11 +345,12 @@ def evaluate(db: DatabaseManager, test_fraction: float = 0.20) -> dict:
         print(f"Only {len(data)} complete MLB games — not enough for holdout.")
         return {}
 
-    split = int(len(data) * (1 - test_fraction))
-    train, test = data.iloc[:split], data.iloc[split:]
+    train, test = chronological_date_holdout(data, test_fraction)
+    calibrator, calibration_raw, calibration_y = rolling_origin_moneyline_calibration(train)
     model, scaler = _fit(train)
 
-    our = _predict_home_prob(model, scaler, test)
+    raw_our = _predict_home_prob(model, scaler, test)
+    our = calibrator.predict(raw_our)
     mkt = test["market_home_prob"].values.astype(float)
     y = test["home_win"].values.astype(int)
 
@@ -361,13 +390,25 @@ def evaluate(db: DatabaseManager, test_fraction: float = 0.20) -> dict:
         }
 
     result = {
+        "artifact_version": "mlb-moneyline-holdout-v1",
         "model_version": MODEL_VERSION,
+        "canonical_horizon": "latest_pregame_snapshot",
+        "training_start": str(train["game_date"].min()),
+        "training_cutoff": str(train["game_date"].max()),
+        "final_window_start": str(test["game_date"].min()),
+        "final_window_end": str(test["game_date"].max()),
+        "test_fraction": test_fraction,
         "n_train": int(len(train)),
         "n_test": int(len(test)),
         "market_logloss": round(log_loss(mkt, y), 4),
+        "raw_logloss": round(log_loss(raw_our, y), 4),
         "our_logloss": round(log_loss(our, y), 4),
         "market_brier": round(brier(mkt, y), 4),
+        "raw_brier": round(brier(raw_our, y), 4),
         "our_brier": round(brier(our, y), 4),
+        "calibration_method": "rolling_origin_isotonic_v1",
+        "calibration_oof_n": int(len(calibration_y)),
+        "feature_group_retention": feature_group_availability(train, test),
         "edge_sims": sims,
         "coefs": sorted(
             ({"feature": f, "coef": round(float(c), 4)} for f, c in zip(FEATURE_COLS, model.coef_[0])),
@@ -376,6 +417,7 @@ def evaluate(db: DatabaseManager, test_fraction: float = 0.20) -> dict:
     }
     print(f"\n-- MLB Moneyline Model ({MODEL_VERSION}) — holdout n={result['n_test']} --")
     print(f"  Market  logloss {result['market_logloss']:.4f}  brier {result['market_brier']:.4f}")
+    print(f"  Raw     logloss {result['raw_logloss']:.4f}  brier {result['raw_brier']:.4f}")
     print(f"  Our     logloss {result['our_logloss']:.4f}  brier {result['our_brier']:.4f}")
     print("  Edge-bet sims (bet side where our prob beats vig-free market):")
     for k, v in sims.items():
@@ -405,7 +447,9 @@ if __name__ == "__main__":
         res = evaluate(db)
         if args.output and res:
             from pathlib import Path
-            Path(args.output).write_text(json.dumps(res, indent=2))
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(res, indent=2))
             print(f"Wrote {args.output}")
     elif args.backfill:
         backfill_predictions(db, args.backfill[0], args.backfill[1])

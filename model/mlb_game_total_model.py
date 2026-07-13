@@ -43,6 +43,7 @@ from model.mlb_prediction_provenance import (
     create_prediction_run,
     record_prediction_snapshot,
 )
+from model.mlb_validation import chronological_date_holdout, expanding_date_folds
 
 from config import load_config
 from db.database import DatabaseManager
@@ -81,11 +82,44 @@ FEATURE_COLS = [
     "bullpen_fip_avg",
 ]
 
+FEATURE_GROUPS = {
+    "market_baseline": ["vegas_total", "home_implied", "away_implied", "abs_spread", "home_win_prob"],
+    "starters": ["sp_xfip_avg", "sp_xfip_diff", "sp_k9_avg"],
+    "offense": ["wrc_avg", "iso_avg"],
+    "bullpen_quality": ["bullpen_fip_avg"],
+    "workload": [],
+    "park_weather": ["park_runs_factor", "temp_delta", "wind_component"],
+    "lineup": [],
+}
+
 # Minimum completed games before we trust the model enough to write predictions.
 _MIN_TRAIN_GAMES = 60
 _DISTRIBUTION_MIN_TRAIN = 300
 _DISTRIBUTION_FOLDS = 5
 _DISTRIBUTION_BOOTSTRAPS = 200
+
+
+def feature_group_availability(train: pd.DataFrame, final_test: pd.DataFrame) -> list[dict]:
+    """Expose whether a feature group can honestly enter retention testing."""
+    rows = []
+    for name, features in FEATURE_GROUPS.items():
+        missing = [feature for feature in features if feature not in train.columns]
+        train_constant = [feature for feature in features if feature in train and train[feature].nunique() <= 1]
+        test_constant = [feature for feature in features if feature in final_test and final_test[feature].nunique() <= 1]
+        if name == "market_baseline":
+            status, reason, retained = "benchmark", "same-time market total and price context", True
+        elif not features or missing:
+            status, reason, retained = "not_evaluable", "feature calculation or point-in-time source is not implemented", False
+        elif train_constant or test_constant:
+            status, reason, retained = "not_evaluable", "insufficient point-in-time variation in training or final window", False
+        else:
+            status, reason, retained = "requires_incremental_test", "available but not retained without nested validation", False
+        rows.append({
+            "group": name, "features": features, "status": status,
+            "retained": retained, "reason": reason,
+            "constant_in_train": train_constant, "constant_in_final": test_constant,
+        })
+    return rows
 
 
 def _snapshot_value(value):
@@ -425,16 +459,10 @@ def _fit(completed: pd.DataFrame) -> tuple[Ridge, StandardScaler]:
 
 def rolling_origin_total_residuals(data: pd.DataFrame) -> np.ndarray:
     """Actual-minus-predicted residuals from expanding prior-only folds."""
-    ordered = data.sort_values(["game_date", "id"]).reset_index(drop=True)
-    initial = max(_DISTRIBUTION_MIN_TRAIN, len(ordered) // 2)
-    if len(ordered) - initial < _DISTRIBUTION_FOLDS:
-        raise ValueError("insufficient chronological distribution population")
     residual_parts = []
-    for test_idx in np.array_split(np.arange(initial, len(ordered)), _DISTRIBUTION_FOLDS):
-        if len(test_idx) == 0:
+    for train, test in expanding_date_folds(data, folds=_DISTRIBUTION_FOLDS):
+        if len(train) < _DISTRIBUTION_MIN_TRAIN:
             continue
-        train = ordered.iloc[: int(test_idx[0])]
-        test = ordered.iloc[test_idx]
         model, scaler = _fit(train)
         miss = np.clip(
             model.predict(scaler.transform(test[FEATURE_COLS].values.astype(float))),
@@ -445,23 +473,25 @@ def rolling_origin_total_residuals(data: pd.DataFrame) -> np.ndarray:
     return np.concatenate(residual_parts)
 
 
+def total_probabilities(mean_total: float, line: float, residuals: np.ndarray) -> dict:
+    """Return line-specific over/push/under probabilities from prior-only errors."""
+    totals = np.rint(np.maximum(0.0, mean_total + residuals))
+    return {
+        "p_over": float(np.mean(totals > line)),
+        "p_push": float(np.mean(totals == line)),
+        "p_under": float(np.mean(totals < line)),
+    }
+
+
 def total_distribution(mean_total: float, line: float, residuals: np.ndarray, *, seed: int) -> dict:
     """Line-specific empirical predictive distribution with bootstrap stability."""
     rng = np.random.default_rng(seed)
 
-    def probabilities(sampled_residuals: np.ndarray) -> dict:
-        totals = np.rint(np.maximum(0.0, mean_total + sampled_residuals))
-        return {
-            "p_over": float(np.mean(totals > line)),
-            "p_push": float(np.mean(totals == line)),
-            "p_under": float(np.mean(totals < line)),
-        }
-
-    main = probabilities(residuals)
+    main = total_probabilities(mean_total, line, residuals)
     resamples = []
     for _ in range(_DISTRIBUTION_BOOTSTRAPS):
         idx = rng.integers(0, len(residuals), len(residuals))
-        resamples.append(probabilities(residuals[idx]))
+        resamples.append(total_probabilities(mean_total, line, residuals[idx]))
     return {"line": float(line), **main, "resamples": resamples}
 
 
@@ -648,8 +678,8 @@ def evaluate(db: DatabaseManager, test_fraction: float = 0.20) -> dict:
         print(f"Only {len(data)} complete MLB games — not enough for holdout.")
         return {}
 
-    split = int(len(data) * (1 - test_fraction))
-    train, test = data.iloc[:split], data.iloc[split:]
+    train, test = chronological_date_holdout(data, test_fraction)
+    residuals = rolling_origin_total_residuals(train)
     model, scaler = _fit(train)
 
     y_te = test["actual_total"].values.astype(float)
@@ -663,9 +693,29 @@ def evaluate(db: DatabaseManager, test_fraction: float = 0.20) -> dict:
     actual_side = np.sign(y_te - v_te)
     decided = actual_side != 0
     ou_acc = float(np.mean(our_side[decided] == actual_side[decided])) if decided.any() else float("nan")
+    distributions = [
+        total_probabilities(float(mean), float(line), residuals)
+        for mean, line in zip(our, v_te)
+    ]
+    over_probs = np.asarray([d["p_over"] for d in distributions], dtype=float)
+    under_probs = np.asarray([d["p_under"] for d in distributions], dtype=float)
+    over_probs_no_push = over_probs / np.maximum(over_probs + under_probs, 1e-9)
+    side_y = (actual_side[decided] > 0).astype(float)
+    side_p = np.clip(over_probs_no_push[decided], 1e-6, 1 - 1e-6)
+    side_brier = float(np.mean((side_p - side_y) ** 2)) if decided.any() else float("nan")
+    side_logloss = float(-np.mean(
+        side_y * np.log(side_p) + (1 - side_y) * np.log(1 - side_p)
+    )) if decided.any() else float("nan")
 
     result = {
+        "artifact_version": "mlb-total-holdout-v1",
         "model_version": MODEL_VERSION,
+        "canonical_horizon": "latest_pregame_snapshot",
+        "training_start": str(train["game_date"].min()),
+        "training_cutoff": str(train["game_date"].max()),
+        "final_window_start": str(test["game_date"].min()),
+        "final_window_end": str(test["game_date"].max()),
+        "test_fraction": test_fraction,
         "n_train": int(len(train)),
         "n_test": int(len(test)),
         "vegas_mae": round(vegas_mae, 3),
@@ -674,6 +724,14 @@ def evaluate(db: DatabaseManager, test_fraction: float = 0.20) -> dict:
         "vegas_bias": round(float(np.mean(v_te - y_te)), 3),
         "our_bias": round(float(np.mean(our - y_te)), 3),
         "ou_side_accuracy": round(ou_acc, 4),
+        "distribution_method": "rolling_origin_empirical_residual_v1",
+        "distribution_oof_n": int(len(residuals)),
+        "decided_total_games": int(decided.sum()),
+        "market_side_brier": 0.25,
+        "our_side_brier": round(side_brier, 4),
+        "market_side_logloss": round(float(-np.log(0.5)), 4),
+        "our_side_logloss": round(side_logloss, 4),
+        "feature_group_retention": feature_group_availability(train, test),
         "top_features": sorted(
             ({"feature": f, "coef": round(float(c), 4)} for f, c in zip(FEATURE_COLS, model.coef_)),
             key=lambda d: abs(d["coef"]), reverse=True,
@@ -684,6 +742,8 @@ def evaluate(db: DatabaseManager, test_fraction: float = 0.20) -> dict:
     print(f"  Our model       MAE {result['our_mae']:.2f}  bias {result['our_bias']:+.2f}")
     print(f"  Improvement     {result['mae_improvement']:+.2f} runs/game")
     print(f"  O/U side accuracy: {result['ou_side_accuracy'] * 100:.1f}%  (>50% beats the line)")
+    print(f"  Side Brier      market {result['market_side_brier']:.4f}  our {result['our_side_brier']:.4f}")
+    print(f"  Side logloss    market {result['market_side_logloss']:.4f}  our {result['our_side_logloss']:.4f}")
     print("  Top features (Ridge coef):")
     for item in result["top_features"]:
         print(f"    {item['feature']:<18} {item['coef']:+.4f}")
@@ -707,7 +767,9 @@ if __name__ == "__main__":
         res = evaluate(db)
         if args.output and res:
             from pathlib import Path
-            Path(args.output).write_text(json.dumps(res, indent=2))
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(res, indent=2))
             print(f"Wrote {args.output}")
     elif args.backfill:
         backfill_predictions(db, args.backfill[0], args.backfill[1])
