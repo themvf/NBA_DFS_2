@@ -5182,3 +5182,118 @@ Still required before the first real `TAKE NOW` can appear:
 6. Add the canonical refresh-job trigger and persisted stage/run status. The
    current control reloads the latest output and does not create a second MLB
    odds writer.
+
+### Exact sportsbook-price repair (2026-07-12)
+
+- `mlb-gameline-v4` starts a clean prospective validation cohort. Historical
+  v3 rows with a consensus price but no named sportsbook remain historical and
+  cannot be relabeled as valid prospective evidence.
+- Every new recommendation must persist the exact sportsbook, American price,
+  immutable odds-snapshot ID, prediction-snapshot ID, selection, and total line
+  when applicable. Missing any required quote provenance fails closed.
+- The selected price comes from one configured executable sportsbook in the
+  same odds snapshot used by the prediction. Moneylines require both teams at
+  that book; totals require Over and Under at the exact frozen line. Vig-free
+  market probability is calculated from that paired quote.
+- Before first pitch, a changed recommendation updates the one active row for
+  that game and market while appending a new audit snapshot. Duplicate pending
+  rows are superseded. After first pitch, the recommendation is locked.
+- The Evidence gate counts exact-price coverage only when price, sportsbook,
+  and linked odds snapshot are all present, and it rejects a bet whose odds
+  snapshot differs from its prediction snapshot.
+
+---
+
+## Jira-First Delivery Contract
+
+The DFSVEGAS Jira project (`SCRUM`) is the operational source of truth. Read
+the parent Epic and every related issue, search for duplicates, and inspect the
+existing repository before creating additional work or writing code.
+
+### Planning requirements
+
+1. Convert the requested outcome into numbered, testable acceptance criteria.
+2. Build a dependency-ordered implementation plan.
+3. Classify every criterion as complete, partially complete, not started, or
+   blocked using direct evidence.
+4. Never infer completion from documentation, database columns, existing code,
+   passing compilation, or a merged commit alone.
+5. Update Jira with the plan, dependencies, blockers, and current evidence
+   before coding.
+
+### Required execution order
+
+Complete and verify work in this order unless Jira records a justified
+dependency change:
+
+1. Source selection and data contracts.
+2. Database schema and immutable provenance.
+3. Data ingestion and historical population.
+4. Data-quality, freshness, coverage, and leakage checks.
+5. Model features and calculations.
+6. Model calibration and chronological validation.
+7. Decision policy and exact-price handling.
+8. Backend queries and API payloads.
+9. User-facing UI components and messages.
+10. Automated unit, integration, and policy tests.
+11. Real-data pipeline execution.
+12. Visual verification of the application.
+13. Documentation, Jira evidence, commit, and deployment.
+
+Do not begin a dependent step until its prerequisites pass. If a prerequisite
+is blocked, record the exact blocker and continue only with genuinely
+independent work.
+
+### Status discipline
+
+Track each Jira issue through:
+
+`Planned -> Data Connected -> Backend Complete -> UI Complete -> Real-Data Verified -> Done`
+
+“Built,” “implemented,” and “complete” mean `Done`, not partially complete.
+
+### Definition of Done
+
+An issue may reach `Done` only when:
+
+- Every acceptance criterion passes.
+- Required data is populated, not merely defined in the schema.
+- Data provenance, freshness, missingness, and sample sizes are recorded.
+- Backend calculations use the intended data.
+- The feature is visible and understandable in the actual application.
+- Missing or stale information is clearly shown to the user.
+- Automated tests pass.
+- Representative real data has been processed.
+- The rendered application has been visually inspected.
+- Screenshots demonstrate each user-facing requirement.
+- Tested dates, examples, commands, and results are attached to Jira.
+- Relevant files and commits are linked.
+- No unresolved blocker or deferred acceptance criterion remains hidden.
+
+Before reporting completion, publish this criterion-level matrix:
+
+| Order | Jira issue | Acceptance criterion | Data | Backend | UI | Tests | Real-data verification | Screenshot | Result |
+|---:|---|---|---|---|---|---|---|---|---|
+
+Mark every row `PASS`, `FAIL`, or `BLOCKED`. Do not report an overall complete
+result while any required row is `FAIL` or `BLOCKED`.
+
+### Communication and documentation rules
+
+- Report material progress in Jira as work proceeds.
+- Never silently reduce scope.
+- Clearly distinguish planned, partially implemented, and verified work.
+- When implementation reveals missing work, create or update the appropriate
+  Jira issue and place it correctly in the dependency order.
+- Keep `CLAUDE.md` limited to durable architecture, model, data-source, and
+  operational decisions. Jira owns scope, progress, blockers, and completion
+  evidence.
+- Begin with the next unblocked issue in dependency order and continue until
+  the outcome is verified or a material decision requires user input.
+
+### Current MLB program
+
+Use `SCRUM-5` as the parent Epic. Begin with `SCRUM-15`: audit the existing
+implementation, establish the true status of `SCRUM-6` through `SCRUM-14`, and
+then execute the earliest unmet dependency. Do not start with UI polish until
+the data and provenance requirements supporting that UI are verified.
