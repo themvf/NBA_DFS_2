@@ -20,7 +20,9 @@ import hashlib
 import json
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from xml.etree import ElementTree
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -54,6 +56,8 @@ OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 NON_PLAYED_STATES = {"Cancelled", "Postponed"}
 STARTER_CONFIRMATION_WINDOW_HOURS = 6
 NWS_POINTS_URL = "https://api.weather.gov/points/{latitude},{longitude}"
+ENV_CANADA_CITYPAGE_ROOT = "https://dd.weather.gc.ca/today/citypage_weather"
+ENV_CANADA_TORONTO_SITE = "s0000458"
 _RETRACTABLE_ROOFS = {
     "american family field", "chase field", "daikin park", "globe life field",
     "loandepot park", "rogers centre", "t-mobile park",
@@ -419,6 +423,126 @@ def _fetch_nws_forecast(
         return None
 
 
+def _environment_canada_timestamp(node: ElementTree.Element | None) -> str | None:
+    stamp = node.findtext("timeStamp") if node is not None else None
+    if not stamp:
+        return None
+    try:
+        return datetime.strptime(stamp, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc).isoformat()
+    except ValueError:
+        return None
+
+
+def _parse_environment_canada_forecast(xml_content: bytes, game_start_iso: str) -> dict | None:
+    """Parse Toronto's official citypage feed without upgrading daily data."""
+    try:
+        root = ElementTree.fromstring(xml_content)
+        target = datetime.fromisoformat(game_start_iso.replace("Z", "+00:00"))
+    except (ElementTree.ParseError, ValueError):
+        return None
+    if target.tzinfo is None:
+        target = target.replace(tzinfo=timezone.utc)
+
+    forecast_group = root.find("forecastGroup")
+    hourly_group = root.find("hourlyForecastGroup")
+    if forecast_group is None:
+        return None
+    issue_node = forecast_group.find("dateTime[@name='forecastIssue'][@zone='UTC']")
+    issued_at = _environment_canada_timestamp(issue_node)
+    if not issued_at:
+        return None
+
+    daily_periods = {}
+    for forecast in forecast_group.findall("forecast"):
+        period = forecast.find("period")
+        name = period.get("textForecastName") if period is not None else None
+        if name:
+            daily_periods[name] = forecast
+
+    local = target.astimezone(ZoneInfo("America/Toronto"))
+    daily_name = local.strftime("%A") + (" night" if local.hour >= 18 else "")
+    daily = daily_periods.get(daily_name)
+    if daily is None:
+        daily = daily_periods.get(local.strftime("%A"))
+    daily_humidity = daily.findtext("relativeHumidity") if daily is not None else None
+
+    hourly_candidates = []
+    if hourly_group is not None:
+        for period in hourly_group.findall("hourlyForecast"):
+            stamp = period.get("dateTimeUTC")
+            try:
+                valid = datetime.strptime(stamp or "", "%Y%m%d%H%M").replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+            hourly_candidates.append((abs((valid - target).total_seconds()), valid, period))
+    if hourly_candidates:
+        delta, valid, period = min(hourly_candidates, key=lambda item: item[0])
+        if delta <= 90 * 60:
+            temp_c = period.findtext("temperature")
+            wind_kmh = period.findtext("wind/speed")
+            return {
+                "provider": "environment_canada_citypage",
+                "provider_model": "toronto_citypage_hourly",
+                "provider_issued_at": issued_at,
+                "valid_at": valid.isoformat(),
+                "temperature_f": (float(temp_c) * 9 / 5 + 32) if temp_c else None,
+                "relative_humidity_pct": float(daily_humidity) if daily_humidity else None,
+                "precipitation_probability_pct": float(period.findtext("lop")) if period.findtext("lop") else None,
+                "wind_speed_mph": float(wind_kmh) * 0.621371 if wind_kmh else None,
+                "wind_direction": period.findtext("wind/direction"),
+                "source_status": "complete",
+                "raw_json": {"resolution": "hourly", "period": ElementTree.tostring(period, encoding="unicode")},
+            }
+
+    if daily is None:
+        return None
+    temp_c = daily.findtext("temperatures/temperature")
+    pop = daily.findtext("abbreviatedForecast/pop")
+    return {
+        "provider": "environment_canada_citypage",
+        "provider_model": "toronto_citypage_daily",
+        "provider_issued_at": issued_at,
+        "valid_at": target.isoformat(),
+        "temperature_f": (float(temp_c) * 9 / 5 + 32) if temp_c else None,
+        "relative_humidity_pct": float(daily_humidity) if daily_humidity else None,
+        "precipitation_probability_pct": float(pop) if pop else None,
+        "wind_speed_mph": None,
+        "wind_direction": None,
+        "source_status": "partial_daily_resolution",
+        "raw_json": {"resolution": "daily", "period": ElementTree.tostring(daily, encoding="unicode")},
+    }
+
+
+def _fetch_environment_canada_forecast(
+    *, venue_name: str | None, game_start_iso: str, timeout_seconds: int,
+) -> dict | None:
+    if (venue_name or "").strip().lower() != "rogers centre":
+        return None
+    now = datetime.now(timezone.utc)
+    try:
+        for offset in range(6):
+            hour = (now - timedelta(hours=offset)).hour
+            directory = f"{ENV_CANADA_CITYPAGE_ROOT}/ON/{hour:02d}/"
+            listing = requests.get(directory, timeout=timeout_seconds)
+            listing.raise_for_status()
+            names = re.findall(
+                rf'href="([^"/]*{ENV_CANADA_TORONTO_SITE}_en\.xml)"',
+                listing.text,
+            )
+            if not names:
+                continue
+            filename = sorted(names)[-1]
+            response = requests.get(directory + filename, timeout=timeout_seconds)
+            response.raise_for_status()
+            result = _parse_environment_canada_forecast(response.content, game_start_iso)
+            if result is not None:
+                result["raw_json"]["source_url"] = directory + filename
+            return result
+    except requests.RequestException as exc:
+        logger.debug("Environment Canada Toronto forecast failed: %s", exc)
+    return None
+
+
 def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[int]:
     """Fetch games for game_date (YYYY-MM-DD), upsert into mlb_matchups.
 
@@ -533,10 +657,15 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
                 if coords is not None:
                     break
             if coords is not None:
-                weather_forecast = _fetch_nws_forecast(
-                    latitude=coords[0], longitude=coords[1], game_start_iso=game_start,
+                weather_forecast = _fetch_environment_canada_forecast(
+                    venue_name=ballpark, game_start_iso=game_start,
                     timeout_seconds=weather_timeout,
                 )
+                if weather_forecast is None:
+                    weather_forecast = _fetch_nws_forecast(
+                        latitude=coords[0], longitude=coords[1], game_start_iso=game_start,
+                        timeout_seconds=weather_timeout,
+                    )
                 if weather_forecast is not None:
                     weather_temp = round(weather_forecast["temperature_f"]) if weather_forecast["temperature_f"] is not None else None
                     wind_speed = round(weather_forecast["wind_speed_mph"]) if weather_forecast["wind_speed_mph"] is not None else None

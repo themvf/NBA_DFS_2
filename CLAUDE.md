@@ -5304,6 +5304,12 @@ the data and provenance requirements supporting that UI are verified.
   forecast as the primary source because it exposes provider generation time,
   forecast valid time, temperature, humidity, precipitation probability, wind,
   grid identity, and the raw source payload without an API key.
+- Rogers Centre uses Environment and Climate Change Canada's official Toronto
+  citypage feed (`dd.weather.gc.ca`, site `s0000458`). Hourly periods may pass
+  the complete gate when the issued forecast covers game time. Longer-range
+  daily periods are stored as `partial_daily_resolution`; they preserve the
+  official issue time, daily temperature/humidity/precipitation and raw XML,
+  but remain non-passing until game-time wind and hourly resolution exist.
 - Forecast captures are immutable and must precede first pitch. Mutable
   `mlb_matchups.weather_*` columns are compatibility caches, not prediction
   provenance and are not used as historical model evidence.
