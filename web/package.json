@@ -14,6 +14,7 @@
     "test:mlb-order": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-mlb-order-bonus.ts",
     "test:mlb-vegas-trust": "node --import tsx ./scripts/test-mlb-vegas-trust.ts",
     "test:mlb-vegas-decisions": "node --import tsx ./scripts/test-mlb-vegas-decisions.ts",
+    "test:mlb-movement-signals": "node --import tsx ./scripts/test-mlb-movement-signals.ts",
     "test:tennis-elo-policy": "node --import tsx ./scripts/test-tennis-elo-policy.ts",
     "bench:optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/benchmark-nba-optimizer.ts"
   },

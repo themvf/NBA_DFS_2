@@ -9144,6 +9144,8 @@ export type MlbLineMovementRow = {
   gameDate: string;
   matchup: string;
   captures: number;
+  openCapturedAt: string;
+  closeCapturedAt: string;
   openProb: number;
   closeProb: number;
   openTotal: number | null;
@@ -9198,6 +9200,8 @@ export async function getLineMovement(
            o.game_date::text AS "gameDate",
            c.away_team_name || ' @ ' || c.home_team_name AS matchup,
            o.cnt::int AS captures,
+           o.captured_at::text AS "openCapturedAt",
+           c.captured_at::text AS "closeCapturedAt",
            o.vegas_prob_home AS "openProb",
            c.vegas_prob_home AS "closeProb",
            o.total AS "openTotal",
@@ -9240,6 +9244,8 @@ export async function getLineMovement(
       gameDate: String(rec.gameDate),
       matchup: String(rec.matchup),
       captures: Number(rec.captures),
+      openCapturedAt: String(rec.openCapturedAt),
+      closeCapturedAt: String(rec.closeCapturedAt),
       openProb: Number(rec.openProb),
       closeProb: Number(rec.closeProb),
       openTotal: rec.openTotal != null ? Number(rec.openTotal) : null,
@@ -9360,6 +9366,7 @@ export async function getLineMovementHistory(
 }
 
 export type LineAlertRow = {
+  matchupId: number;
   createdAt: string;
   matchup: string;
   commenceTime: string | null;
@@ -9389,7 +9396,7 @@ export type LineAlertBacktestRow = {
 
 export async function getLineAlerts(sport: string, limit = 25): Promise<LineAlertRow[]> {
   const rows = await db.execute(sql`
-    SELECT created_at::text AS "createdAt", matchup,
+    SELECT matchup_id AS "matchupId", created_at::text AS "createdAt", matchup,
            commence_time::text AS "commenceTime",
            alert_type AS "alertType", side,
            alert_prob AS "alertProb", sharp_prob AS "sharpProb",
@@ -9400,6 +9407,7 @@ export async function getLineAlerts(sport: string, limit = 25): Promise<LineAler
   return rows.rows.map((r) => {
     const rec = r as Record<string, unknown>;
     return {
+      matchupId: Number(rec.matchupId),
       createdAt: String(rec.createdAt),
       matchup: String(rec.matchup ?? ""),
       commenceTime: rec.commenceTime != null ? String(rec.commenceTime) : null,

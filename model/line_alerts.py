@@ -61,6 +61,8 @@ _PIN_GAP_MIN_PP = 2.0     # Pinnacle vs retail consensus, probability points
 _STEAM_MIN_BOOKS = 3      # books moving together between consecutive captures
 _STEAM_MIN_MOVE_PP = 1.5  # per-book move threshold, probability points
 _WALK_MIN_PP = 2.0        # consensus drift toward a side since open (slow walk)
+_MODEL_NEUTRAL_GAP_PP = 0.5
+_MAX_MODEL_GAP_PP = 15.0
 # dk_value: EV of DraftKings' OFFERED price judged by Pinnacle's vig-free fair
 # number — EV = pin_fair × dk_decimal − 1. Positive means DK is paying more
 # than sharp fair value: directly exploitable at the book the user bets at,
@@ -329,8 +331,66 @@ def scan(db: DatabaseManager, sport: str) -> int:
     return len(new_alerts)
 
 
+def _mlb_model_signal_context(db, r, side: str, alert_prob: float | None) -> dict:
+    """Freeze the latest pre-trigger MLB model comparison with a line alert.
+
+    This makes the combined movement/model signal auditable later without
+    changing the generic alert columns or rewriting old first-breach rows.
+    """
+    if alert_prob is None or side not in ("home", "away"):
+        return {}
+    snapshot = db.execute_one(
+        """
+        SELECT s.raw_prediction, s.created_at, pr.model_version
+        FROM mlb_game_prediction_snapshots s
+        JOIN mlb_prediction_runs pr ON pr.id = s.run_id
+        WHERE s.matchup_id = %s AND s.market = 'moneyline'
+          AND pr.origin = 'prospective'
+          AND s.created_at <= %s
+        ORDER BY s.created_at DESC, s.id DESC
+        LIMIT 1
+        """,
+        (r["matchup_id"], r["captured_at"]),
+    )
+    if not snapshot or snapshot["raw_prediction"] is None:
+        return {}
+    home_probability = float(snapshot["raw_prediction"])
+    model_probability = home_probability if side == "home" else 1 - home_probability
+    if model_probability <= 0.02 or model_probability >= 0.98:
+        return {
+            "model_probability": round(model_probability, 6),
+            "model_agreement": "unavailable_extreme",
+            "model_version": snapshot["model_version"],
+            "model_kind": "raw_market_anchored",
+        }
+    model_gap_pp = (model_probability - float(alert_prob)) * 100
+    if abs(model_gap_pp) > _MAX_MODEL_GAP_PP:
+        return {
+            "model_probability": round(model_probability, 6),
+            "model_agreement": "unavailable_extreme_gap",
+            "model_version": snapshot["model_version"],
+            "model_kind": "raw_market_anchored",
+        }
+    agreement = (
+        "agree" if model_gap_pp > _MODEL_NEUTRAL_GAP_PP
+        else "disagree" if model_gap_pp < -_MODEL_NEUTRAL_GAP_PP
+        else "neutral"
+    )
+    snapshot_at = snapshot["created_at"]
+    return {
+        "model_probability": round(model_probability, 6),
+        "model_gap_pp": round(model_gap_pp, 2),
+        "model_agreement": agreement,
+        "model_version": snapshot["model_version"],
+        "model_snapshot_at": snapshot_at.isoformat() if hasattr(snapshot_at, "isoformat") else str(snapshot_at),
+        "model_kind": "raw_market_anchored",
+    }
+
+
 def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, details) -> list[dict]:
     """First-breach insert; returns [alert] only when a NEW row was created."""
+    if sport == "mlb":
+        details = {**details, **_mlb_model_signal_context(db, r, side, alert_prob)}
     rows = db.execute(
         """
         INSERT INTO line_alerts (sport, matchup_id, game_date, matchup, commence_time,
