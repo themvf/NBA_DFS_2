@@ -3,6 +3,10 @@ export const MLB_MODEL_NEUTRAL_GAP_PP = 0.5;
 export const MLB_MAX_DISPLAYABLE_MODEL_GAP_PP = 15;
 
 export type MlbMovementAgreement = "agree" | "neutral" | "disagree" | "unavailable";
+export type MlbModelSuppressionReason =
+  | "invalid_probability"
+  | "probability_out_of_range"
+  | "gap_exceeds_limit";
 
 export type MlbMovementSignal = {
   movementSide: "home" | "away" | null;
@@ -10,9 +14,12 @@ export type MlbMovementSignal = {
   openProbability: number | null;
   currentProbability: number | null;
   movementPp: number;
+  evaluatedModelProbability: number | null;
+  evaluatedModelGapPp: number | null;
   modelProbability: number | null;
   modelGapPp: number | null;
   agreement: MlbMovementAgreement;
+  suppressionReason: MlbModelSuppressionReason | null;
 };
 
 type MovementSignalInput = {
@@ -45,9 +52,12 @@ export function buildMlbMovementSignal(input: MovementSignalInput): MlbMovementS
       openProbability: null,
       currentProbability: null,
       movementPp: Math.abs(homeMovePp),
+      evaluatedModelProbability: null,
+      evaluatedModelGapPp: null,
       modelProbability: null,
       modelGapPp: null,
       agreement: "unavailable",
+      suppressionReason: null,
     };
   }
 
@@ -58,10 +68,19 @@ export function buildMlbMovementSignal(input: MovementSignalInput): MlbMovementS
   const currentProbability = movementSide === "home"
     ? input.currentHomeProbability
     : 1 - input.currentHomeProbability;
-  const modelProbability = validProbability(input.modelHomeProbability)
-    ? movementSide === "home" ? input.modelHomeProbability : 1 - input.modelHomeProbability
+  const finiteModelHomeProbability = input.modelHomeProbability != null
+    && Number.isFinite(input.modelHomeProbability)
+    ? input.modelHomeProbability
     : null;
-  const uncheckedModelGapPp = modelProbability == null ? null : (modelProbability - currentProbability) * 100;
+  const evaluatedModelProbability = finiteModelHomeProbability == null
+    ? null
+    : movementSide === "home" ? finiteModelHomeProbability : 1 - finiteModelHomeProbability;
+  const evaluatedModelGapPp = evaluatedModelProbability == null
+    ? null
+    : (evaluatedModelProbability - currentProbability) * 100;
+  const probabilityIsDisplayable = validProbability(input.modelHomeProbability);
+  const modelProbability = probabilityIsDisplayable ? evaluatedModelProbability : null;
+  const uncheckedModelGapPp = probabilityIsDisplayable ? evaluatedModelGapPp : null;
   const modelGapPp = uncheckedModelGapPp != null
     && Math.abs(uncheckedModelGapPp) <= MLB_MAX_DISPLAYABLE_MODEL_GAP_PP
     ? uncheckedModelGapPp
@@ -73,6 +92,13 @@ export function buildMlbMovementSignal(input: MovementSignalInput): MlbMovementS
       : modelGapPp < -MLB_MODEL_NEUTRAL_GAP_PP
         ? "disagree"
         : "neutral";
+  const suppressionReason: MlbModelSuppressionReason | null = finiteModelHomeProbability == null
+    ? input.modelHomeProbability == null ? null : "invalid_probability"
+    : !probabilityIsDisplayable
+      ? "probability_out_of_range"
+      : modelGapPp == null
+        ? "gap_exceeds_limit"
+        : null;
 
   return {
     movementSide,
@@ -80,8 +106,11 @@ export function buildMlbMovementSignal(input: MovementSignalInput): MlbMovementS
     openProbability,
     currentProbability,
     movementPp: Math.abs(homeMovePp),
+    evaluatedModelProbability,
+    evaluatedModelGapPp,
     modelProbability: modelGapPp == null ? null : modelProbability,
     modelGapPp,
     agreement,
+    suppressionReason,
   };
 }

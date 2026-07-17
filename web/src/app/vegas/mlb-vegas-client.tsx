@@ -47,6 +47,11 @@ type BoardRow = {
   modelSuppressed: boolean;
 };
 
+type ModelDiagnostic = {
+  check: string;
+  driver: string | null;
+};
+
 const GAME_LINE_ALERTS = new Set(["pinnacle_divergence", "steam", "walking", "dk_value"]);
 
 function pct(value: number | null, digits = 1): string {
@@ -55,6 +60,76 @@ function pct(value: number | null, digits = 1): string {
 
 function pp(value: number | null, digits = 1): string {
   return value == null || !Number.isFinite(value) ? "—" : `${value >= 0 ? "+" : ""}${value.toFixed(digits)}pp`;
+}
+
+const MONEYLINE_FEATURE_LABELS: Record<string, string> = {
+  market_home_prob: "market anchor",
+  sp_xfip_adv: "starting-pitcher xFIP advantage",
+  sp_k9_adv: "starting-pitcher K/9 advantage",
+  wrc_adv: "offense wRC+ advantage",
+  iso_adv: "offense ISO advantage",
+  bullpen_adv: "bullpen FIP advantage",
+};
+
+function numericRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, item]) => (
+      typeof item === "number" && Number.isFinite(item) ? [[key, item]] : []
+    )),
+  );
+}
+
+function formatFeatureValue(feature: string, value: number): string {
+  if (feature === "market_home_prob") return pct(value);
+  if (feature === "iso_adv") return value.toFixed(3);
+  return value.toFixed(2);
+}
+
+function getModelDiagnostic(matchup: VegasMatchupRow, signal: MlbMovementSignal | null): ModelDiagnostic | null {
+  if (!signal?.suppressionReason) return null;
+
+  const prediction = pct(signal.evaluatedModelProbability);
+  const market = pct(signal.currentProbability);
+  const gap = pp(signal.evaluatedModelGapPp);
+  const check = signal.suppressionReason === "probability_out_of_range"
+    ? `Model produced ${prediction}; outside the credible 2%–98% range.`
+    : signal.suppressionReason === "gap_exceeds_limit"
+      ? `Model produced ${prediction} versus ${market} market (${gap}); exceeds the 15pp gap limit.`
+      : "The model output was not a finite probability.";
+
+  const contributions = numericRecord(matchup.moneylineFeatureValues?.contributions);
+  const coefficients = numericRecord(matchup.moneylineRunConfig?.standardized_coefficients);
+  const standardizedValues = numericRecord(matchup.moneylineFeatureValues?.standardized_values);
+  const trainingMin = numericRecord(matchup.moneylineRunConfig?.training_feature_min);
+  const trainingMax = numericRecord(matchup.moneylineRunConfig?.training_feature_max);
+  const featureValues = numericRecord(matchup.moneylineFeatureValues);
+  const ranked = Object.entries(contributions).sort(([, left], [, right]) => Math.abs(right) - Math.abs(left));
+  const [feature, homeContribution] = ranked[0] ?? [];
+  if (!feature || homeContribution == null) return { check, driver: null };
+
+  const sideMultiplier = signal.movementSide === "away" ? -1 : 1;
+  const teamContribution = homeContribution * sideMultiplier;
+  const direction = teamContribution >= 0 ? `toward ${signal.movementTeam}` : `away from ${signal.movementTeam}`;
+  const coefficient = coefficients[feature];
+  const zScore = standardizedValues[feature] ?? (
+    coefficient != null && Math.abs(coefficient) > 1e-9
+      ? homeContribution / coefficient
+      : null
+  );
+  const rawValue = featureValues[feature];
+  const usedFallback = matchup.moneylineMissingness?.[feature] === true;
+  const trainedRange = trainingMin[feature] != null && trainingMax[feature] != null
+    ? `${formatFeatureValue(feature, trainingMin[feature])}–${formatFeatureValue(feature, trainingMax[feature])} trained range`
+    : null;
+  const details = [
+    rawValue != null ? `value ${formatFeatureValue(feature, rawValue)}` : null,
+    trainedRange,
+    zScore != null && Number.isFinite(zScore) ? `${Math.abs(zScore).toFixed(1)} standard deviations from training mean` : null,
+    usedFallback ? "league-average fallback used" : null,
+  ].filter(Boolean).join("; ");
+  const driver = `Largest recorded driver: ${MONEYLINE_FEATURE_LABELS[feature] ?? feature} (${direction}, ${Math.abs(teamContribution).toFixed(2)} log-odds${details ? `; ${details}` : ""}).`;
+  return { check, driver };
 }
 
 function fmtEt(value: string | null, withDate = false): string {
@@ -275,7 +350,7 @@ export default function MlbVegasClient({
           <p className="mt-1 text-sm text-slate-600">Difference = model probability minus current vig-free market probability for the team receiving movement. Percentage points are shown, not relative percent change.</p>
         </div>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-[1120px] w-full text-xs">
+          <table className="min-w-[1320px] w-full text-xs">
             <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500">
               <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Move</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3">Agreement</th><th className="px-3 py-3 text-right">Difference</th><th className="px-3 py-3">Updated</th></tr>
             </thead>
@@ -283,6 +358,7 @@ export default function MlbVegasClient({
               {rows.map(({ matchup, movement, signal, alerts, modelSuppressed }) => {
                 const age = captureAge(movement?.closeCapturedAt ?? null, nowIso);
                 const Icon = signal?.movementSide === "home" ? TrendingUp : signal?.movementSide === "away" ? TrendingDown : Activity;
+                const diagnostic = getModelDiagnostic(matchup, signal);
                 return (
                   <tr key={matchup.matchupId} className="border-t border-slate-100 align-top hover:bg-slate-50/80">
                     <td className="whitespace-nowrap px-3 py-3 text-slate-600">{fmtEt(matchup.commenceTime)}</td>
@@ -291,7 +367,15 @@ export default function MlbVegasClient({
                     <td className="whitespace-nowrap px-3 py-3 tabular-nums">{signal?.movementSide ? `${pct(signal.openProbability)} → ${pct(signal.currentProbability)}` : movement ? `${pct(movement.openProb)} → ${pct(movement.closeProb)}` : "Waiting for second capture"}</td>
                     <td className="px-3 py-3 text-right font-bold tabular-nums">{signal?.movementSide ? `+${signal.movementPp.toFixed(1)}pp` : "—"}</td>
                     <td className="max-w-[220px] px-3 py-3"><div className="flex flex-wrap gap-1">{alerts.map((alert) => <span key={`${alert.alertType}-${alert.side}`} className={`rounded-full border px-2 py-1 text-[10px] font-bold ${alertTone(alert.alertType)}`}>{alertLabel(alert, matchup)}</span>)}{alerts.length === 0 && movement && Math.abs(movement.pinGapPp ?? 0) >= 2 ? <span className="rounded-full border border-violet-200 bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-900">Pinnacle gap {pp(movement.pinGapPp)}</span> : null}{alerts.length === 0 && Math.abs(movement?.pinGapPp ?? 0) < 2 ? <span className="text-slate-400">None</span> : null}</div></td>
-                    <td className="px-3 py-3 text-right"><div className="font-bold tabular-nums">{modelSuppressed ? "Unavailable" : pct(signal?.modelProbability ?? null)}</div><div className={`mt-0.5 text-[10px] ${modelSuppressed ? "text-amber-700" : "text-slate-500"}`}>{modelSuppressed ? "Extreme output suppressed" : "Raw market-anchored"}</div></td>
+                    <td className="min-w-[300px] max-w-[340px] px-3 py-3 text-right">
+                      <div className="font-bold tabular-nums">{modelSuppressed ? "Invalid" : pct(signal?.modelProbability ?? null)}</div>
+                      {diagnostic ? (
+                        <details className="mt-1 text-left text-[10px] text-amber-800">
+                          <summary className="cursor-pointer font-bold underline decoration-dotted underline-offset-2">{diagnostic.check}</summary>
+                          {diagnostic.driver ? <p className="mt-1 rounded-md bg-amber-50 p-2 leading-relaxed">{diagnostic.driver}</p> : null}
+                        </details>
+                      ) : <div className="mt-0.5 text-[10px] text-slate-500">Raw market-anchored</div>}
+                    </td>
                     <td className="px-3 py-3"><AgreementBadge agreement={signal?.agreement ?? "unavailable"} /></td>
                     <td className={`px-3 py-3 text-right text-sm font-black tabular-nums ${(signal?.modelGapPp ?? 0) > 0.5 ? "text-emerald-700" : (signal?.modelGapPp ?? 0) < -0.5 ? "text-red-700" : "text-slate-500"}`}>{pp(signal?.modelGapPp ?? null)}</td>
                     <td className="px-3 py-3"><div>{fmtEt(movement?.closeCapturedAt ?? null)}</div><div className={`mt-0.5 text-[10px] font-semibold ${age.className}`}>{age.text}</div></td>

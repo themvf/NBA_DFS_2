@@ -238,6 +238,14 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
             "oof_raw_brier": float(np.mean((oof_raw - oof_y) ** 2)),
             "oof_calibrated_brier": float(np.mean((calibrator.predict(oof_raw) - oof_y) ** 2)),
             "standardized_coefficients": dict(zip(FEATURE_COLS, model.coef_[0].tolist())),
+            "scaler_means": dict(zip(FEATURE_COLS, scaler.mean_.tolist())),
+            "scaler_scales": dict(zip(FEATURE_COLS, scaler.scale_.tolist())),
+            "training_feature_min": {
+                col: float(completed[col].min()) for col in FEATURE_COLS
+            },
+            "training_feature_max": {
+                col: float(completed[col].max()) for col in FEATURE_COLS
+            },
         },
     )
     updated = 0
@@ -282,6 +290,9 @@ def predict_and_write(db: DatabaseManager, game_date: str | None = None) -> int:
         feature_values["contributions"] = {
             col: float(coef * value)
             for col, coef, value in zip(FEATURE_COLS, model.coef_[0], scaled_row)
+        }
+        feature_values["standardized_values"] = {
+            col: float(value) for col, value in zip(FEATURE_COLS, scaled_row)
         }
         record_prediction_snapshot(
             db,

@@ -54,6 +54,9 @@ const implausible = buildMlbMovementSignal({
 assert.equal(implausible.modelProbability, null);
 assert.equal(implausible.modelGapPp, null);
 assert.equal(implausible.agreement, "unavailable");
+assert.equal(implausible.suppressionReason, "probability_out_of_range");
+assert.equal(implausible.evaluatedModelProbability, 0.999);
+assert.ok(Math.abs((implausible.evaluatedModelGapPp ?? 0) - 45.9) < 1e-9);
 
 const implausibleGap = buildMlbMovementSignal({
   openHomeProbability: 0.49,
@@ -65,5 +68,8 @@ const implausibleGap = buildMlbMovementSignal({
 assert.equal(implausibleGap.modelProbability, null);
 assert.equal(implausibleGap.modelGapPp, null);
 assert.equal(implausibleGap.agreement, "unavailable");
+assert.equal(implausibleGap.suppressionReason, "gap_exceeds_limit");
+assert.equal(implausibleGap.evaluatedModelProbability, 0.8);
+assert.ok(Math.abs((implausibleGap.evaluatedModelGapPp ?? 0) - 30) < 1e-9);
 
 console.log("MLB movement signal tests passed");
