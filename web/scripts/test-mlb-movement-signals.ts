@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { buildMlbMovementSignal } from "../src/lib/mlb-movement-signals";
+import { classifyMlbMovementShape, findMovementStart } from "../src/lib/mlb-movement-shape";
 
 const homeMove = buildMlbMovementSignal({
   openHomeProbability: 0.51,
@@ -77,5 +78,34 @@ assert.equal(implausibleGap.combinedSignal, "market_only");
 assert.equal(implausibleGap.suppressionReason, "gap_exceeds_limit");
 assert.equal(implausibleGap.evaluatedModelProbability, 0.8);
 assert.ok(Math.abs((implausibleGap.evaluatedModelGapPp ?? 0) - 30) < 1e-9);
+
+const shapeBase = {
+  openProbability: 0.5,
+  currentProbability: 0.53,
+  maxJumpPp: 0.8,
+  confirmingBooks: 4,
+  trackedBooks: 5,
+  closeCapturedAt: "2026-07-17T20:30:00Z",
+  nowIso: "2026-07-17T20:40:00Z",
+  trail: [
+    { capturedAt: "2026-07-17T18:00:00Z", homeProb: 0.5 },
+    { capturedAt: "2026-07-17T18:30:00Z", homeProb: 0.506 },
+    { capturedAt: "2026-07-17T20:30:00Z", homeProb: 0.53 },
+  ],
+};
+assert.equal(classifyMlbMovementShape(shapeBase), "steady");
+assert.equal(findMovementStart(shapeBase), "2026-07-17T18:30:00Z");
+assert.equal(classifyMlbMovementShape({ ...shapeBase, maxJumpPp: 1.8 }), "steam");
+assert.equal(classifyMlbMovementShape({ ...shapeBase, confirmingBooks: 1 }), "one_book");
+assert.equal(classifyMlbMovementShape({
+  ...shapeBase,
+  trail: [
+    { capturedAt: "2026-07-17T18:00:00Z", homeProb: 0.5 },
+    { capturedAt: "2026-07-17T19:00:00Z", homeProb: 0.485 },
+    { capturedAt: "2026-07-17T20:30:00Z", homeProb: 0.53 },
+  ],
+}), "reversal");
+assert.equal(classifyMlbMovementShape({ ...shapeBase, currentProbability: 0.504 }), "quiet");
+assert.equal(classifyMlbMovementShape({ ...shapeBase, nowIso: "2026-07-17T22:00:00Z" }), "stale");
 
 console.log("MLB movement signal tests passed");

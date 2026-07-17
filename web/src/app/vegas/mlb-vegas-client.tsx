@@ -27,6 +27,11 @@ import {
   type MlbCombinedSignal,
   type MlbMovementSignal,
 } from "@/lib/mlb-movement-signals";
+import {
+  classifyMlbMovementShape,
+  findMovementStart,
+  type MlbMovementShape,
+} from "@/lib/mlb-movement-shape";
 
 type Props = {
   queryDate: string;
@@ -212,6 +217,69 @@ function CombinedSignalBadge({ signal }: { signal: MlbCombinedSignal }) {
   return <div><span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${meta.className}`}>{meta.label}</span><div className="mt-1 text-[10px] text-slate-500">{meta.detail}</div></div>;
 }
 
+const MOVEMENT_SHAPE_META: Record<MlbMovementShape, { label: string; className: string }> = {
+  steady: { label: "STEADY", className: "border-blue-200 bg-blue-50 text-blue-800" },
+  steam: { label: "STEAM", className: "border-orange-200 bg-orange-100 text-orange-900" },
+  reversal: { label: "REVERSAL", className: "border-fuchsia-200 bg-fuchsia-100 text-fuchsia-900" },
+  one_book: { label: "ONE-BOOK MOVE", className: "border-amber-200 bg-amber-100 text-amber-900" },
+  quiet: { label: "QUIET", className: "border-slate-200 bg-slate-50 text-slate-500" },
+  stale: { label: "STALE", className: "border-red-200 bg-red-50 text-red-800" },
+};
+
+function MovementSparkline({ movement, movementTeam }: { movement: MlbLineMovementRow; movementTeam: string | null }) {
+  if (movement.trail.length < 2) return null;
+  const towardAway = movement.closeProb < movement.openProb;
+  const values = movement.trail.map((point) => towardAway ? 1 - point.homeProb : point.homeProb);
+  const width = 96;
+  const height = 28;
+  const min = Math.min(...values) - 0.002;
+  const max = Math.max(...values) + 0.002;
+  const span = Math.max(max - min, 0.004);
+  const points = values.map((value, index) => {
+    const x = values.length === 1 ? width / 2 : index * width / (values.length - 1);
+    const y = height - ((value - min) / span) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const label = `${movement.captures} captures showing vig-free probability movement${movementTeam ? ` toward ${movementTeam}` : ""}`;
+  return (
+    <svg role="img" aria-label={label} viewBox={`0 0 ${width} ${height}`} className="h-7 w-24">
+      <title>{label}</title>
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      <circle cx={points.split(" ").at(-1)?.split(",")[0]} cy={points.split(" ").at(-1)?.split(",")[1]} r="2.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function MovementShapeCell({ movement, signal, nowIso }: { movement: MlbLineMovementRow | null; signal: MlbMovementSignal | null; nowIso: string }) {
+  if (!movement) return <span className="text-slate-400">Waiting for captures</span>;
+  const shape = classifyMlbMovementShape({
+    openProbability: movement.openProb,
+    currentProbability: movement.closeProb,
+    maxJumpPp: movement.maxJumpPp,
+    confirmingBooks: movement.confirmingBooks,
+    trackedBooks: movement.trackedBooks,
+    closeCapturedAt: movement.closeCapturedAt,
+    nowIso,
+    trail: movement.trail,
+  });
+  const startedAt = signal?.movementSide ? findMovementStart({
+    openProbability: movement.openProb,
+    currentProbability: movement.closeProb,
+    trail: movement.trail,
+  }) : null;
+  const meta = MOVEMENT_SHAPE_META[shape];
+  return (
+    <div className="flex min-w-[180px] items-center justify-end gap-2 text-blue-700">
+      <MovementSparkline movement={movement} movementTeam={signal?.movementTeam ?? null} />
+      <div className="text-right">
+        <div className="font-bold tabular-nums text-slate-950">{signal?.movementSide ? `+${signal.movementPp.toFixed(1)}pp` : "—"}</div>
+        <span className={`mt-1 inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${meta.className}`}>{meta.label}</span>
+        <div className="mt-1 whitespace-nowrap text-[9px] text-slate-500">Since {startedAt ? fmtEt(startedAt) : "—"} · Books {movement.trackedBooks > 0 ? `${movement.confirmingBooks}/${movement.trackedBooks}` : "—"}</div>
+      </div>
+    </div>
+  );
+}
+
 function AuditTable({ rows }: { rows: LineAlertBacktestRow[] }) {
   const gameRows = rows.filter((row) => GAME_LINE_ALERTS.has(row.alertType));
   return (
@@ -366,7 +434,7 @@ export default function MlbVegasClient({
                     <td className="px-3 py-3"><div className="font-bold text-slate-950">{matchup.awayAbbrev} @ {matchup.homeAbbrev}</div><div className="mt-0.5 text-[10px] text-slate-500">{matchup.awaySpName && matchup.homeSpName ? `${matchup.awaySpName} vs ${matchup.homeSpName}` : "Starters incomplete"}</div></td>
                     <td className="px-3 py-3">{signal?.movementTeam ? <div className="flex items-center gap-1.5 font-bold text-slate-900"><Icon className="h-4 w-4 text-blue-700" />{signal.movementTeam}</div> : <span className="text-slate-400">No clear move</span>}</td>
                     <td className="whitespace-nowrap px-3 py-3 tabular-nums">{signal?.movementSide ? `${pct(signal.openProbability)} → ${pct(signal.currentProbability)}` : movement ? `${pct(movement.openProb)} → ${pct(movement.closeProb)}` : "Waiting for second capture"}</td>
-                    <td className="px-3 py-3 text-right font-bold tabular-nums">{signal?.movementSide ? `+${signal.movementPp.toFixed(1)}pp` : "—"}</td>
+                    <td className="px-3 py-3 text-right"><MovementShapeCell movement={movement} signal={signal} nowIso={nowIso} /></td>
                     <td className="max-w-[220px] px-3 py-3"><div className="flex flex-wrap gap-1">{alerts.map((alert) => <span key={`${alert.alertType}-${alert.side}`} className={`rounded-full border px-2 py-1 text-[10px] font-bold ${alertTone(alert.alertType)}`}>{alertLabel(alert, matchup)}</span>)}{alerts.length === 0 && movement && Math.abs(movement.pinGapPp ?? 0) >= 2 ? <span className="rounded-full border border-violet-200 bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-900">Pinnacle gap {pp(movement.pinGapPp)}</span> : null}{alerts.length === 0 && Math.abs(movement?.pinGapPp ?? 0) < 2 ? <span className="text-slate-400">None</span> : null}</div></td>
                     <td className="min-w-[300px] max-w-[340px] px-3 py-3 text-right">
                       <div className="font-bold tabular-nums">{modelSuppressed ? "Invalid" : pct(signal?.modelProbability ?? null)}</div>

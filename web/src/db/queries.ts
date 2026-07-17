@@ -9153,7 +9153,53 @@ export type MlbLineMovementRow = {
   maxJumpPp: number;
   pinGapPp: number | null;
   postFix: boolean;
+  trail: Array<{ capturedAt: string; homeProb: number }>;
+  confirmingBooks: number;
+  trackedBooks: number;
 };
+
+function americanOddsProbability(value: unknown): number | null {
+  const odds = Number(value);
+  if (!Number.isFinite(odds) || odds === 0) return null;
+  return odds > 0 ? 100 / (odds + 100) : Math.abs(odds) / (Math.abs(odds) + 100);
+}
+
+function bookFairHomeProbability(value: unknown): number | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const book = value as Record<string, unknown>;
+  const home = americanOddsProbability(book.ml_home);
+  const away = americanOddsProbability(book.ml_away);
+  const draw = book.ml_draw == null ? 0 : americanOddsProbability(book.ml_draw);
+  if (home == null || away == null || draw == null || home + away + draw <= 0) return null;
+  return home / (home + away + draw);
+}
+
+function movementBookBreadth(
+  openBooks: unknown,
+  closeBooks: unknown,
+  consensusMove: number,
+): { confirmingBooks: number; trackedBooks: number } {
+  if (!openBooks || !closeBooks || typeof openBooks !== "object" || typeof closeBooks !== "object") {
+    return { confirmingBooks: 0, trackedBooks: 0 };
+  }
+  const opening = openBooks as Record<string, unknown>;
+  const closing = closeBooks as Record<string, unknown>;
+  const direction = Math.sign(consensusMove);
+  let confirmingBooks = 0;
+  let trackedBooks = 0;
+  for (const key of Object.keys(opening)) {
+    if (!(key in closing)) continue;
+    const openProbability = bookFairHomeProbability(opening[key]);
+    const closeProbability = bookFairHomeProbability(closing[key]);
+    if (openProbability == null || closeProbability == null) continue;
+    trackedBooks += 1;
+    const bookMove = closeProbability - openProbability;
+    if (direction !== 0 && Math.sign(bookMove) === direction && Math.abs(bookMove) >= 0.0025) {
+      confirmingBooks += 1;
+    }
+  }
+  return { confirmingBooks, trackedBooks };
+}
 
 const LINE_MOVEMENT_MATCHUP_TABLE: Record<string, string> = {
   mlb: "mlb_matchups",
@@ -9195,7 +9241,16 @@ export async function getLineMovement(
     o AS (SELECT * FROM caps WHERE rf = 1 AND cnt >= 2),
     c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= 2),
     j AS (SELECT matchup_id, MAX(jump) AS max_jump, MIN(captured_at) AS first_cap
-          FROM caps GROUP BY matchup_id)
+          FROM caps GROUP BY matchup_id),
+    trails AS (
+      SELECT matchup_id,
+             JSONB_AGG(JSONB_BUILD_OBJECT(
+               'capturedAt', captured_at::text,
+               'homeProb', vegas_prob_home
+             ) ORDER BY captured_at) AS trail
+      FROM caps
+      GROUP BY matchup_id
+    )
     SELECT o.matchup_id AS "matchupId",
            o.game_date::text AS "gameDate",
            c.away_team_name || ' @ ' || c.home_team_name AS matchup,
@@ -9210,10 +9265,14 @@ export async function getLineMovement(
            CASE WHEN pin_p.ph IS NOT NULL AND pin_p.pa IS NOT NULL AND pin_p.ph + pin_p.pa + pin_p.pd > 0
                 THEN (pin_p.ph / (pin_p.ph + pin_p.pa + pin_p.pd) - c.vegas_prob_home) * 100
            END AS "pinGapPp",
-           (j.first_cap >= '2026-07-02'::timestamptz) AS "postFix"
+           (j.first_cap >= '2026-07-02'::timestamptz) AS "postFix",
+           trails.trail,
+           o.books AS "openBooks",
+           c.books AS "closeBooks"
     FROM o
     JOIN c USING (matchup_id)
     JOIN j USING (matchup_id)
+    JOIN trails USING (matchup_id)
     CROSS JOIN LATERAL (
       SELECT (c.books->'pinnacle'->>'ml_home')::numeric AS mlh,
              (c.books->'pinnacle'->>'ml_away')::numeric AS mla,
@@ -9239,6 +9298,21 @@ export async function getLineMovement(
   `);
   return rows.rows.map((r) => {
     const rec = r as Record<string, unknown>;
+    const trail = Array.isArray(rec.trail)
+      ? rec.trail.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const point = item as Record<string, unknown>;
+          const homeProb = Number(point.homeProb);
+          return Number.isFinite(homeProb)
+            ? [{ capturedAt: String(point.capturedAt), homeProb }]
+            : [];
+        })
+      : [];
+    const breadth = movementBookBreadth(
+      rec.openBooks,
+      rec.closeBooks,
+      Number(rec.closeProb) - Number(rec.openProb),
+    );
     return {
       matchupId: Number(rec.matchupId),
       gameDate: String(rec.gameDate),
@@ -9253,6 +9327,8 @@ export async function getLineMovement(
       maxJumpPp: Number(rec.maxJumpPp ?? 0),
       pinGapPp: rec.pinGapPp != null ? Number(rec.pinGapPp) : null,
       postFix: Boolean(rec.postFix),
+      trail,
+      ...breadth,
     };
   });
 }
