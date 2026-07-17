@@ -24,7 +24,7 @@ import type {
 } from "@/db/queries";
 import {
   buildMlbMovementSignal,
-  type MlbMovementAgreement,
+  type MlbCombinedSignal,
   type MlbMovementSignal,
 } from "@/lib/mlb-movement-signals";
 
@@ -200,16 +200,16 @@ function alertTone(alertType: string): string {
   return "border-emerald-200 bg-emerald-100 text-emerald-900";
 }
 
-const AGREEMENT_META: Record<MlbMovementAgreement, { label: string; className: string }> = {
-  agree: { label: "AGREE — model stronger", className: "border-emerald-200 bg-emerald-100 text-emerald-900" },
-  neutral: { label: "NEUTRAL", className: "border-slate-200 bg-slate-100 text-slate-800" },
-  disagree: { label: "DISAGREE", className: "border-red-200 bg-red-100 text-red-900" },
-  unavailable: { label: "NO CLEAR SIGNAL", className: "border-slate-200 bg-white text-slate-500" },
+const COMBINED_SIGNAL_META: Record<MlbCombinedSignal, { label: string; detail: string; className: string }> = {
+  strong_confirmation: { label: "STRONG CONFIRMATION", detail: "Move + model agree", className: "border-emerald-200 bg-emerald-100 text-emerald-900" },
+  contrarian: { label: "CONTRARIAN", detail: "Move + model disagree", className: "border-red-200 bg-red-100 text-red-900" },
+  market_only: { label: "MARKET ONLY", detail: "Move without model support", className: "border-amber-200 bg-amber-100 text-amber-900" },
+  quiet: { label: "QUIET", detail: "No meaningful move", className: "border-slate-200 bg-white text-slate-500" },
 };
 
-function AgreementBadge({ agreement }: { agreement: MlbMovementAgreement }) {
-  const meta = AGREEMENT_META[agreement];
-  return <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${meta.className}`}>{meta.label}</span>;
+function CombinedSignalBadge({ signal }: { signal: MlbCombinedSignal }) {
+  const meta = COMBINED_SIGNAL_META[signal];
+  return <div><span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${meta.className}`}>{meta.label}</span><div className="mt-1 text-[10px] text-slate-500">{meta.detail}</div></div>;
 }
 
 function AuditTable({ rows }: { rows: LineAlertBacktestRow[] }) {
@@ -286,15 +286,16 @@ export default function MlbVegasClient({
     const modelSuppressed = modelHome != null && signal?.movementSide != null && signal.modelProbability == null;
     return { matchup, movement, signal, alerts: alertsByMatchup.get(matchup.matchupId) ?? [], modelSuppressed };
   }).sort((a, b) => {
-    const rank = (row: BoardRow) => row.signal?.agreement === "agree" ? 0 : row.signal?.agreement === "disagree" ? 1 : row.signal?.movementSide ? 2 : 3;
+    const signalRank: Record<MlbCombinedSignal, number> = { strong_confirmation: 0, contrarian: 1, market_only: 2, quiet: 3 };
+    const rank = (row: BoardRow) => signalRank[row.signal?.combinedSignal ?? "quiet"];
     return rank(a) - rank(b)
       || (b.signal?.movementPp ?? 0) - (a.signal?.movementPp ?? 0)
       || (Date.parse(a.matchup.commenceTime ?? "") || Infinity) - (Date.parse(b.matchup.commenceTime ?? "") || Infinity);
   }), [matchups, movementByMatchup, alertsByMatchup]);
 
-  const meaningful = rows.filter((row) => row.signal?.movementSide != null);
-  const agreementCount = meaningful.filter((row) => row.signal?.agreement === "agree").length;
-  const disagreementCount = meaningful.filter((row) => row.signal?.agreement === "disagree").length;
+  const confirmationCount = rows.filter((row) => row.signal?.combinedSignal === "strong_confirmation").length;
+  const contrarianCount = rows.filter((row) => row.signal?.combinedSignal === "contrarian").length;
+  const marketOnlyCount = rows.filter((row) => row.signal?.combinedSignal === "market_only").length;
   const sharpCount = rows.filter((row) => row.alerts.length > 0).length;
   const latestCapture = lineMovement.map((row) => Date.parse(row.closeCapturedAt)).filter(Number.isFinite).sort((a, b) => b - a)[0];
   const latestCaptureIso = latestCapture ? new Date(latestCapture).toISOString() : null;
@@ -309,7 +310,7 @@ export default function MlbVegasClient({
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-200"><Target className="h-4 w-4" aria-hidden="true" /> Vegas Analysis — MLB</div>
             <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">MLB Line Movement</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-300">See which team the moneyline is moving toward, whether our market-anchored model agrees, and the model gap versus the current market.</p>
+            <p className="mt-2 max-w-3xl text-sm text-slate-300">Compare market movement with our model edge, then use the combined signal to find confirmation, disagreement, or market-only action.</p>
           </div>
           <div className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-right">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Eastern time</div>
@@ -338,21 +339,21 @@ export default function MlbVegasClient({
       ) : null}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Meaningful moves</div><div className="mt-1 text-2xl font-black">{meaningful.length}</div><div className="mt-1 text-xs text-slate-500">At least 0.5pp since first capture</div></div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm"><div className="text-[10px] font-bold uppercase tracking-wide text-emerald-800">Model agrees</div><div className="mt-1 text-2xl font-black text-emerald-950">{agreementCount}</div><div className="mt-1 text-xs text-emerald-800">Model at least 0.5pp stronger</div></div>
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm"><div className="text-[10px] font-bold uppercase tracking-wide text-red-800">Model disagrees</div><div className="mt-1 text-2xl font-black text-red-950">{disagreementCount}</div><div className="mt-1 text-xs text-red-800">Market moved beyond model support</div></div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm"><div className="text-[10px] font-bold uppercase tracking-wide text-emerald-800">Strong confirmation</div><div className="mt-1 text-2xl font-black text-emerald-950">{confirmationCount}</div><div className="mt-1 text-xs text-emerald-800">Movement and model agree</div></div>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm"><div className="text-[10px] font-bold uppercase tracking-wide text-red-800">Contrarian</div><div className="mt-1 text-2xl font-black text-red-950">{contrarianCount}</div><div className="mt-1 text-xs text-red-800">Movement and model disagree</div></div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm"><div className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Market only</div><div className="mt-1 text-2xl font-black text-amber-950">{marketOnlyCount}</div><div className="mt-1 text-xs text-amber-800">Neutral or unavailable model</div></div>
         <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 shadow-sm"><div className="text-[10px] font-bold uppercase tracking-wide text-violet-800">Sharp signals</div><div className="mt-1 text-2xl font-black text-violet-950">{sharpCount}</div><div className="mt-1 text-xs text-violet-800">Pinnacle, steam, walking, or DK value</div></div>
       </section>
 
       <section>
         <div className="mb-3">
           <h2 className="text-lg font-bold text-slate-950">Today’s movement board</h2>
-          <p className="mt-1 text-sm text-slate-600">Difference = model probability minus current vig-free market probability for the team receiving movement. Percentage points are shown, not relative percent change.</p>
+          <p className="mt-1 text-sm text-slate-600">Movement measures open-to-current market change. Model edge measures model probability minus the current vig-free market probability. Both use percentage points.</p>
         </div>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-[1320px] w-full text-xs">
             <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500">
-              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Move</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3">Agreement</th><th className="px-3 py-3 text-right">Difference</th><th className="px-3 py-3">Updated</th></tr>
+              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
             </thead>
             <tbody>
               {rows.map(({ matchup, movement, signal, alerts, modelSuppressed }) => {
@@ -376,8 +377,8 @@ export default function MlbVegasClient({
                         </details>
                       ) : <div className="mt-0.5 text-[10px] text-slate-500">Raw market-anchored</div>}
                     </td>
-                    <td className="px-3 py-3"><AgreementBadge agreement={signal?.agreement ?? "unavailable"} /></td>
                     <td className={`px-3 py-3 text-right text-sm font-black tabular-nums ${(signal?.modelGapPp ?? 0) > 0.5 ? "text-emerald-700" : (signal?.modelGapPp ?? 0) < -0.5 ? "text-red-700" : "text-slate-500"}`}>{pp(signal?.modelGapPp ?? null)}</td>
+                    <td className="min-w-[150px] px-3 py-3"><CombinedSignalBadge signal={signal?.combinedSignal ?? "quiet"} /></td>
                     <td className="px-3 py-3"><div>{fmtEt(movement?.closeCapturedAt ?? null)}</div><div className={`mt-0.5 text-[10px] font-semibold ${age.className}`}>{age.text}</div></td>
                   </tr>
                 );

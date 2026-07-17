@@ -3,6 +3,7 @@ export const MLB_MODEL_NEUTRAL_GAP_PP = 0.5;
 export const MLB_MAX_DISPLAYABLE_MODEL_GAP_PP = 15;
 
 export type MlbMovementAgreement = "agree" | "neutral" | "disagree" | "unavailable";
+export type MlbCombinedSignal = "strong_confirmation" | "contrarian" | "market_only" | "quiet";
 export type MlbModelSuppressionReason =
   | "invalid_probability"
   | "probability_out_of_range"
@@ -19,6 +20,7 @@ export type MlbMovementSignal = {
   modelProbability: number | null;
   modelGapPp: number | null;
   agreement: MlbMovementAgreement;
+  combinedSignal: MlbCombinedSignal;
   suppressionReason: MlbModelSuppressionReason | null;
 };
 
@@ -57,6 +59,7 @@ export function buildMlbMovementSignal(input: MovementSignalInput): MlbMovementS
       modelProbability: null,
       modelGapPp: null,
       agreement: "unavailable",
+      combinedSignal: "quiet",
       suppressionReason: null,
     };
   }
@@ -99,6 +102,11 @@ export function buildMlbMovementSignal(input: MovementSignalInput): MlbMovementS
       : modelGapPp == null
         ? "gap_exceeds_limit"
         : null;
+  const combinedSignal: MlbCombinedSignal = agreement === "agree"
+    ? "strong_confirmation"
+    : agreement === "disagree"
+      ? "contrarian"
+      : "market_only";
 
   return {
     movementSide,
@@ -111,6 +119,7 @@ export function buildMlbMovementSignal(input: MovementSignalInput): MlbMovementS
     modelProbability: modelGapPp == null ? null : modelProbability,
     modelGapPp,
     agreement,
+    combinedSignal,
     suppressionReason,
   };
 }
