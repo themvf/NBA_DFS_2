@@ -351,6 +351,56 @@ TABLES = [
     )
     """,
 
+    # Immutable official game outcomes used to reconstruct point-in-time
+    # moneyline features. Retrospective rows never pretend they were captured
+    # prospectively; training code must shift outcomes by at least one game date.
+    """
+    CREATE TABLE IF NOT EXISTS mlb_team_game_outcomes (
+        id SERIAL PRIMARY KEY,
+        matchup_id INTEGER NOT NULL REFERENCES mlb_matchups(id),
+        game_id TEXT NOT NULL,
+        game_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ,
+        team_id INTEGER NOT NULL REFERENCES mlb_teams(team_id),
+        opponent_team_id INTEGER NOT NULL REFERENCES mlb_teams(team_id),
+        is_home BOOLEAN NOT NULL,
+        runs INTEGER NOT NULL,
+        hits INTEGER NOT NULL,
+        doubles INTEGER NOT NULL,
+        triples INTEGER NOT NULL,
+        home_runs INTEGER NOT NULL,
+        walks INTEGER NOT NULL,
+        hit_by_pitch INTEGER NOT NULL,
+        strikeouts INTEGER NOT NULL,
+        at_bats INTEGER NOT NULL,
+        plate_appearances INTEGER NOT NULL,
+        starter_id INTEGER,
+        starter_name TEXT,
+        starter_outs INTEGER NOT NULL,
+        starter_hits INTEGER NOT NULL,
+        starter_earned_runs INTEGER NOT NULL,
+        starter_home_runs INTEGER NOT NULL,
+        starter_walks INTEGER NOT NULL,
+        starter_hit_batters INTEGER NOT NULL,
+        starter_strikeouts INTEGER NOT NULL,
+        starter_air_outs INTEGER NOT NULL,
+        starter_ground_outs INTEGER NOT NULL,
+        team_pitching_outs INTEGER NOT NULL,
+        team_pitching_hits INTEGER NOT NULL,
+        team_pitching_earned_runs INTEGER NOT NULL,
+        team_pitching_home_runs INTEGER NOT NULL,
+        team_pitching_walks INTEGER NOT NULL,
+        team_pitching_hit_batters INTEGER NOT NULL,
+        team_pitching_strikeouts INTEGER NOT NULL,
+        origin TEXT NOT NULL CHECK (origin IN ('prospective', 'retrospective_backfill')),
+        source TEXT NOT NULL,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        raw_checksum TEXT NOT NULL,
+        raw_json JSONB NOT NULL,
+        UNIQUE(game_id, team_id, raw_checksum)
+    )
+    """,
+
     """
     CREATE TABLE IF NOT EXISTS mlb_bullpen_snapshots (
         id SERIAL PRIMARY KEY,
@@ -1717,6 +1767,9 @@ TABLES = [
 ]
 
 MIGRATIONS = [
+    # Older schedule backfills predate commence-time capture. Raw official
+    # outcomes remain usable with a strict prior-date feature cutoff.
+    "ALTER TABLE mlb_team_game_outcomes ALTER COLUMN commence_time DROP NOT NULL",
     # 2026-07-13: link the canonical Tennis event/revision foundation after
     # both base tables have been created; keep legacy tennis_matches readable.
     """DO $$ BEGIN
@@ -2548,6 +2601,10 @@ MIGRATIONS = [
     """CREATE TRIGGER mlb_relief_appearances_immutable
     BEFORE UPDATE OR DELETE ON mlb_relief_appearances
     FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
+    "DROP TRIGGER IF EXISTS mlb_team_game_outcomes_immutable ON mlb_team_game_outcomes",
+    """CREATE TRIGGER mlb_team_game_outcomes_immutable
+    BEFORE UPDATE OR DELETE ON mlb_team_game_outcomes
+    FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
     "DROP TRIGGER IF EXISTS mlb_bullpen_snapshots_immutable ON mlb_bullpen_snapshots",
     """CREATE TRIGGER mlb_bullpen_snapshots_immutable
     BEFORE UPDATE OR DELETE ON mlb_bullpen_snapshots
@@ -2613,6 +2670,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_team_game_outcomes_date ON mlb_team_game_outcomes(game_date, team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_mlb_team_game_outcomes_starter ON mlb_team_game_outcomes(starter_id, game_date)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_team_offense_splits_available ON mlb_team_offense_split_snapshots(team_id, season, available_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_relief_appearances_team_date ON mlb_relief_appearances(team_id, game_date DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_relief_appearances_pitcher_date ON mlb_relief_appearances(pitcher_id, game_date DESC)",

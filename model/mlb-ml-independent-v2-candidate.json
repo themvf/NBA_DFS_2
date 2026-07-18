@@ -1,0 +1,145 @@
+{
+  "model_version": "mlb-ml-independent-v2-candidate",
+  "origin": "retrospective_backfill",
+  "feature_cutoff": "strictly_prior_game_date",
+  "market_used_as_feature": false,
+  "training_start": "2026-03-20",
+  "training_cutoff": "2026-06-20",
+  "final_window_start": "2026-06-21",
+  "final_window_end": "2026-07-17",
+  "n_train": 1107,
+  "n_test": 289,
+  "calibration_oof_n": 586,
+  "market_logloss": 0.685976,
+  "model_logloss": 0.710451,
+  "market_brier": 0.24615,
+  "model_brier": 0.257875,
+  "missingness": {
+    "offense_woba_adv": 0.084527,
+    "offense_iso_adv": 0.084527,
+    "offense_k_adv": 0.084527,
+    "offense_bb_adv": 0.084527,
+    "runs_per_game_adv": 0.084527,
+    "starter_fip_adv": 0.378223,
+    "starter_k9_adv": 0.378223,
+    "starter_bb9_adv": 0.378223,
+    "bullpen_fip_adv": 0.084527,
+    "rest_days_adv": 0.005731
+  },
+  "variation": {
+    "offense_woba_adv": {
+      "non_missing": 1278,
+      "unique": 1276,
+      "std": 0.026631
+    },
+    "offense_iso_adv": {
+      "non_missing": 1278,
+      "unique": 1276,
+      "std": 0.032655
+    },
+    "offense_k_adv": {
+      "non_missing": 1278,
+      "unique": 1276,
+      "std": 0.02825
+    },
+    "offense_bb_adv": {
+      "non_missing": 1278,
+      "unique": 1276,
+      "std": 0.020873
+    },
+    "runs_per_game_adv": {
+      "non_missing": 1278,
+      "unique": 558,
+      "std": 0.896276
+    },
+    "starter_fip_adv": {
+      "non_missing": 868,
+      "unique": 868,
+      "std": 1.642231
+    },
+    "starter_k9_adv": {
+      "non_missing": 868,
+      "unique": 866,
+      "std": 2.665201
+    },
+    "starter_bb9_adv": {
+      "non_missing": 868,
+      "unique": 865,
+      "std": 2.005028
+    },
+    "bullpen_fip_adv": {
+      "non_missing": 1278,
+      "unique": 1276,
+      "std": 0.960331
+    },
+    "rest_days_adv": {
+      "non_missing": 1388,
+      "unique": 8,
+      "std": 0.391464
+    }
+  },
+  "feature_groups": {
+    "offense": [
+      "offense_woba_adv",
+      "offense_iso_adv",
+      "offense_k_adv",
+      "offense_bb_adv",
+      "runs_per_game_adv"
+    ],
+    "starters": [
+      "starter_fip_adv",
+      "starter_k9_adv",
+      "starter_bb9_adv"
+    ],
+    "bullpen": [
+      "bullpen_fip_adv"
+    ],
+    "rest": [
+      "rest_days_adv"
+    ]
+  },
+  "feature_group_selection": {
+    "baseline_cv_logloss": 0.692368,
+    "selected_cv_logloss": 0.690502,
+    "selected_groups": [
+      "bullpen"
+    ],
+    "selected_features": [
+      "bullpen_fip_adv"
+    ],
+    "audit": [
+      {
+        "group": "bullpen",
+        "candidate_cv_logloss": 0.690502,
+        "prior_cv_logloss": 0.692368,
+        "improvement": 0.001866,
+        "retained": true
+      },
+      {
+        "group": "starters",
+        "candidate_cv_logloss": 0.690141,
+        "prior_cv_logloss": 0.690502,
+        "improvement": 0.000361,
+        "retained": false
+      },
+      {
+        "group": "offense",
+        "candidate_cv_logloss": 0.697217,
+        "prior_cv_logloss": 0.690502,
+        "improvement": -0.006714,
+        "retained": false
+      },
+      {
+        "group": "rest",
+        "candidate_cv_logloss": 0.690516,
+        "prior_cv_logloss": 0.690502,
+        "improvement": -1.3e-05,
+        "retained": false
+      }
+    ],
+    "minimum_improvement": 0.0005
+  },
+  "promoted": false,
+  "promotion_policy": "beats same-time market on final-window log loss and Brier with n_test >= 200",
+  "reason": "candidate did not beat the market on both proper scoring rules"
+}
