@@ -6,6 +6,7 @@ All queries use %s placeholders (native PostgreSQL).
 
 from __future__ import annotations
 
+import time
 from contextlib import contextmanager
 
 from db.schema import TABLES, INDEXES, MIGRATIONS
@@ -74,12 +75,30 @@ class DatabaseManager:
 
         Order matters: TABLES first (base structure), MIGRATIONS second
         (column additions/changes), INDEXES last (may reference migrated columns).
+        Scheduled jobs all construct this manager, so schema work is serialized
+        to prevent incompatible DDL locks across concurrent workflows.
         """
-        with self.connect() as conn:
-            cur = conn.cursor()
-            for table_sql in TABLES:
-                cur.execute(table_sql)
-            for migration_sql in MIGRATIONS:
-                cur.execute(migration_sql)
-            for index_sql in INDEXES:
-                cur.execute(index_sql)
+        import psycopg2
+
+        retryable = (psycopg2.errors.DeadlockDetected, psycopg2.errors.LockNotAvailable)
+        attempts = 4
+        for attempt in range(attempts):
+            try:
+                with self.connect() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SET LOCAL lock_timeout = '30s'")
+                    cur.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                        ("nba_dfs_v2_schema_initialization",),
+                    )
+                    for table_sql in TABLES:
+                        cur.execute(table_sql)
+                    for migration_sql in MIGRATIONS:
+                        cur.execute(migration_sql)
+                    for index_sql in INDEXES:
+                        cur.execute(index_sql)
+                return
+            except retryable:
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(2 ** attempt)

@@ -2,14 +2,20 @@ name: Capture Odds History
 
 on:
   schedule:
-    # Every 30 minutes from noon ET through 11:30 PM ET.
-    - cron: "0,30 16-23,0-3 * * *"
+    # Extra dispatch opportunities from noon ET through 11:59 PM ET.
+    # Redundant off-boundary dispatches reduce GitHub scheduler delays while
+    # preserving the page's 30-minute freshness target.
+    - cron: "7,22,37,52 16-23,0-3 * * *"
   workflow_dispatch:
     inputs:
       date:
         description: "Game date YYYY-MM-DD (default: current America/New_York date)"
         required: false
         type: string
+
+concurrency:
+  group: capture-odds-history
+  cancel-in-progress: false
 
 jobs:
   capture-odds:
@@ -44,18 +50,20 @@ jobs:
 
       # MLB first: it's the in-season capture that feeds the CLV harness.
       - name: Capture MLB odds history
-        run: python -m ingest.mlb_schedule --date "$TARGET_DATE"
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            python -m ingest.mlb_schedule --date "$TARGET_DATE" && exit 0
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            delay=$((attempt * 15))
+            echo "MLB capture failed (attempt $attempt/3); retrying in ${delay}s"
+            sleep "$delay"
+          done
 
       - name: Scan + settle sharp line alerts (MLB)
         # Auditable alert ledger: Pinnacle divergence + multi-book steam,
         # graded on CLV + outcomes (model/line_alerts.py). Telegram push if
         # the optional secrets are set.
         run: python -m model.line_alerts --sport mlb
-
-      # stats.nba.com blocks GitHub runner IPs (ReadTimeout — the reason
-      # daily_stats.yml was removed), so this step fails routinely. It must
-      # never take the MLB capture down with it: continue-on-error, and it
-      # runs AFTER MLB. During the offseason it does nothing useful anyway.
-      - name: Capture NBA odds and props history
-        continue-on-error: true
-        run: python -m ingest.nba_schedule --date "$TARGET_DATE"
