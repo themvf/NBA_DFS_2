@@ -6,12 +6,6 @@ on:
     # Redundant off-boundary dispatches reduce GitHub scheduler delays while
     # preserving the page's 30-minute freshness target.
     - cron: "7,22,37,52 16-23,0-3 * * *"
-  workflow_dispatch:
-    inputs:
-      date:
-        description: "Game date YYYY-MM-DD (default: current America/New_York date)"
-        required: false
-        type: string
 
 concurrency:
   group: capture-odds-history
@@ -42,10 +36,7 @@ jobs:
 
       - name: Resolve target date
         run: |
-          TARGET_DATE="${{ inputs.date }}"
-          if [ -z "$TARGET_DATE" ]; then
-            TARGET_DATE="$(TZ=America/New_York date +%F)"
-          fi
+          TARGET_DATE="$(TZ=America/New_York date +%F)"
           echo "TARGET_DATE=$TARGET_DATE" >> "$GITHUB_ENV"
 
       # MLB first: it's the in-season capture that feeds the CLV harness.
@@ -53,7 +44,9 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            python -m ingest.mlb_schedule --date "$TARGET_DATE" && exit 0
+            python -m ingest.mlb_schedule \
+              --date "$TARGET_DATE" \
+              --require-fresh-upcoming-odds && exit 0
             if [ "$attempt" -eq 3 ]; then
               exit 1
             fi

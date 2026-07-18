@@ -325,6 +325,15 @@ export default function MlbVegasClient({
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        startRefresh(() => router.refresh());
+      }
+    }, 120_000);
+    return () => window.clearInterval(id);
+  }, [router]);
+
   const movementByMatchup = useMemo(
     () => new Map(lineMovement.map((row) => [row.matchupId, row])),
     [lineMovement],
@@ -394,7 +403,9 @@ export default function MlbVegasClient({
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300">
+          <span>Automatic capture and recovery</span>
           <span>Target: capture within 30 minutes</span>
+          <span>Page refreshes every 2 minutes</span>
           <span>Latest capture: <strong className="text-white">{fmtEt(latestCaptureIso, true)}</strong></span>
           <span className={latestAge.className}>{latestAge.text}</span>
         </div>

@@ -1152,6 +1152,66 @@ def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
     return updated
 
 
+def verify_fresh_upcoming_odds(
+    db: DatabaseManager,
+    game_date: str,
+    *,
+    max_age_minutes: int = 35,
+) -> bool:
+    """Confirm that a successful process actually wrote a current odds capture.
+
+    The Odds API and event-matching layer can fail softly and leave the command
+    with a zero exit status. Scheduled capture jobs use this check to turn that
+    silent no-write into a retry. Once every game has started, there is nothing
+    left to refresh and the check passes without requiring a new snapshot.
+    """
+    row = db.execute_one(
+        """
+        SELECT
+            COUNT(DISTINCT m.id) FILTER (
+                WHERE m.commence_time > NOW()
+                  AND COALESCE(m.game_status, '') NOT IN ('Postponed', 'Cancelled')
+            ) AS upcoming_games,
+            COUNT(DISTINCT m.id) FILTER (
+                WHERE m.commence_time > NOW()
+                  AND COALESCE(m.game_status, '') NOT IN ('Postponed', 'Cancelled')
+                  AND h.captured_at >= NOW() - (%s || ' minutes')::interval
+            ) AS fresh_games,
+            MAX(h.captured_at) FILTER (WHERE m.commence_time > NOW()) AS latest_capture
+        FROM mlb_matchups m
+        LEFT JOIN game_odds_history h
+          ON h.matchup_id = m.id
+         AND h.sport = 'mlb'
+        WHERE m.game_date = %s
+        """,
+        (max_age_minutes, game_date),
+    ) or {}
+
+    upcoming = int(row.get("upcoming_games") or 0)
+    fresh = int(row.get("fresh_games") or 0)
+    if upcoming == 0:
+        logger.info("Odds freshness check passed: no upcoming games remain for %s", game_date)
+        return True
+    if fresh < upcoming:
+        logger.error(
+            "Odds freshness check failed: %d/%d upcoming games have a capture within %d minutes "
+            "(latest=%s)",
+            fresh,
+            upcoming,
+            max_age_minutes,
+            row.get("latest_capture"),
+        )
+        return False
+
+    logger.info(
+        "Odds freshness check passed: %d/%d upcoming games captured within %d minutes",
+        fresh,
+        upcoming,
+        max_age_minutes,
+    )
+    return True
+
+
 def _ml_to_prob(home_ml: int, away_ml: int) -> float:
     """Convert American moneylines to vig-removed home win probability."""
     def _raw(ml: int) -> float:
@@ -1169,6 +1229,11 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Fetch MLB schedule + odds")
     parser.add_argument("--date", help="Game date YYYY-MM-DD (default: today)")
+    parser.add_argument(
+        "--require-fresh-upcoming-odds",
+        action="store_true",
+        help="Exit non-zero when upcoming games have no recently written odds capture",
+    )
     args = parser.parse_args()
 
     config = load_config()
@@ -1177,3 +1242,6 @@ if __name__ == "__main__":
     fetch_schedule(db, args.date)
     fetch_odds(db, config.odds_api.api_key, args.date)
     fetch_scores(db, args.date)
+    target_date = args.date or date.today().isoformat()
+    if args.require_fresh_upcoming_odds and not verify_fresh_upcoming_odds(db, target_date):
+        raise SystemExit(1)
