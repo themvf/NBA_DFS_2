@@ -50,6 +50,7 @@ from model.soccer_bet_rating import american_to_prob, prob_to_american
 logger = logging.getLogger(__name__)
 
 MLB_API_BASE = "https://statsapi.mlb.com/api/v1"
+MLB_ODDS_REGIONS = "us,eu,us_ex"
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -843,11 +844,9 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
             "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/",
             params={
                 "apiKey": api_key,
-                # us + eu: eu brings Pinnacle — the sharp reference book that
-                # per-book movement analysis (Edge-Finding P1/P2) anchors on.
-                # Doubles this call's Odds API credit cost (markets x regions);
-                # revert to "us" if quota becomes a problem.
-                "regions": "us,eu",
+                # eu brings Pinnacle; us_ex brings Polymarket. Both exact
+                # moneylines are retained for sharp-market delta tracking.
+                "regions": MLB_ODDS_REGIONS,
                 "markets": "h2h,totals,spreads",
                 "oddsFormat": "american",
                 "dateFormat": "iso",

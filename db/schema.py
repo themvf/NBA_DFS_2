@@ -246,6 +246,51 @@ TABLES = [
     )
     """,
 
+    # ── NFL teams + schedule ──────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS nfl_teams (
+        team_id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        abbreviation TEXT NOT NULL UNIQUE,
+        odds_api_name TEXT NOT NULL UNIQUE,
+        city TEXT,
+        conference TEXT,
+        division TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        logo_url TEXT DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS nfl_matchups (
+        id SERIAL PRIMARY KEY,
+        event_id TEXT NOT NULL UNIQUE,
+        season INTEGER,
+        season_type TEXT,
+        week INTEGER,
+        game_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ NOT NULL,
+        home_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        away_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        game_status TEXT,
+        completed BOOLEAN NOT NULL DEFAULT FALSE,
+        home_score INTEGER,
+        away_score INTEGER,
+        vegas_total DOUBLE PRECISION,
+        home_ml INTEGER,
+        away_ml INTEGER,
+        home_spread DOUBLE PRECISION,
+        vegas_prob_home DOUBLE PRECISION,
+        home_implied DOUBLE PRECISION,
+        away_implied DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        score_fetched_at TIMESTAMPTZ,
+        final_at TIMESTAMPTZ,
+        CHECK (home_team_id <> away_team_id)
+    )
+    """,
+
     # Immutable revisions from the official MLB schedule feed. The mutable
     # mlb_matchups row is a convenience cache; this table preserves what the
     # application knew at each capture.
@@ -2667,6 +2712,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_homerun_snapshots_slate ON mlb_homerun_player_snapshots(slate_id, hr_prob_1plus DESC NULLS LAST)",
     # MLB indexes
     "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_matchups_date ON nfl_matchups(game_date, commence_time)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_matchups_upcoming ON nfl_matchups(commence_time) WHERE completed = FALSE",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",

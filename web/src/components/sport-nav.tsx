@@ -17,6 +17,7 @@ import type { Sport } from "@/db/queries";
 const SPORTS: { sport: Sport; label: string; icon: string }[] = [
   { sport: "nba", label: "NBA", icon: "🏀" },
   { sport: "mlb", label: "MLB", icon: "⚾" },
+  { sport: "nfl", label: "NFL", icon: "🏈" },
   { sport: "soccer", label: "World Cup", icon: "⚽" },
   { sport: "tennis", label: "Tennis", icon: "🎾" },
 ];
@@ -29,6 +30,7 @@ const PAGE_LINKS: Array<{
   sports?: Sport[];
 }> = [
   { href: "/dfs", label: "DFS", sports: ["nba", "mlb"] },
+  { href: "/nfl", label: "NFL Board", sports: ["nfl"] },
   { href: "/homerun", label: "Homeruns", sports: ["mlb"] },
   { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },
@@ -43,7 +45,9 @@ const PAGE_LINKS: Array<{
 export function SportNav() {
   const pathname    = usePathname();
   const searchParams = useSearchParams();
-  const currentSport = (searchParams.get("sport") ?? "nba") as Sport;
+  const currentSport = (pathname === "/nfl" || pathname.startsWith("/nfl/")
+    ? "nfl"
+    : searchParams.get("sport") ?? "nba") as Sport;
   const visiblePageLinks = PAGE_LINKS.filter((link) => !link.sports || link.sports.includes(currentSport));
 
   return (
@@ -52,7 +56,7 @@ export function SportNav() {
 
         {/* Logo */}
         <Link
-          href={currentSport === "soccer" || currentSport === "tennis" ? `/vegas?sport=${currentSport}` : `/dfs?sport=${currentSport}`}
+          href={currentSport === "nfl" ? "/nfl" : currentSport === "soccer" || currentSport === "tennis" ? `/vegas?sport=${currentSport}` : `/dfs?sport=${currentSport}`}
           className="mr-3 shrink-0 font-bold text-lg tracking-tight"
         >
           DFS
@@ -65,7 +69,7 @@ export function SportNav() {
             return (
               <Link
                 key={sport}
-                href={`${pathname}?sport=${sport}`}
+                href={sport === "nfl" ? "/nfl" : currentSport === "nfl" ? `/vegas?sport=${sport}` : `${pathname}?sport=${sport}`}
                 className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
                     ? "bg-blue-600 text-white"
@@ -85,7 +89,7 @@ export function SportNav() {
         {/* Page links — carry current sport forward */}
         <nav className="flex items-center gap-1 text-sm">
           {visiblePageLinks.map((l) => {
-            const href = `${l.href}?sport=${currentSport}`;
+            const href = currentSport === "nfl" ? l.href : `${l.href}?sport=${currentSport}`;
             // Prefer the most specific matching href so nested routes (e.g.
             // /vegas/wimbledon under /vegas) don't also highlight their parent.
             const matches = (p: string) => pathname === p || pathname.startsWith(`${p}/`);

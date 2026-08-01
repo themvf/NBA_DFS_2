@@ -16,7 +16,7 @@ type SolverResult = Record<string, number> & { feasible: boolean; result: number
 
 // ── Sport discriminator ──────────────────────────────────────
 // Add new sports here as the project expands.
-export type Sport = "nba" | "mlb" | "soccer" | "tennis";
+export type Sport = "nba" | "mlb" | "nfl" | "soccer" | "tennis";
 
 // ── DFS Player Pool ──────────────────────────────────────────
 
@@ -6000,6 +6000,38 @@ export async function getProjectionSourceBreakdown(
 // Vegas Analysis
 // ---------------------------------------------------------------------------
 
+function americanImpliedProbability(value: unknown): number | null {
+  const odds = Number(value);
+  if (!Number.isFinite(odds) || odds === 0) return null;
+  return odds > 0 ? 100 / (odds + 100) : -odds / (-odds + 100);
+}
+
+function bookmakerFairHomeProbability(
+  books: Record<string, Record<string, unknown>> | null,
+  bookmaker: string,
+): number | null {
+  const book = books?.[bookmaker];
+  if (!book) return null;
+  const home = americanImpliedProbability(book.ml_home);
+  const away = americanImpliedProbability(book.ml_away);
+  const draw = book.ml_draw == null ? 0 : americanImpliedProbability(book.ml_draw);
+  if (home == null || away == null || draw == null) return null;
+  const total = home + away + draw;
+  return total > 0 ? home / total : null;
+}
+
+function sharpBookHomeComparison(books: Record<string, Record<string, unknown>> | null) {
+  const pinnacleHomeProb = bookmakerFairHomeProbability(books, "pinnacle");
+  const polymarketHomeProb = bookmakerFairHomeProbability(books, "polymarket");
+  return {
+    pinnacleHomeProb,
+    polymarketHomeProb,
+    pinnaclePolymarketDeltaPp: pinnacleHomeProb != null && polymarketHomeProb != null
+      ? (pinnacleHomeProb - polymarketHomeProb) * 100
+      : null,
+  };
+}
+
 export type VegasMatchupRow = {
   matchupId: number;
   gameDate: string;
@@ -6045,6 +6077,9 @@ export type VegasMatchupRow = {
   oddsCapturedAt: string | null;
   oddsBooks: Record<string, Record<string, unknown>> | null;
   openingOddsBooks: Record<string, Record<string, unknown>> | null;
+  pinnacleHomeProb: number | null;
+  polymarketHomeProb: number | null;
+  pinnaclePolymarketDeltaPp: number | null;
   moneylinePredictionSnapshotId: number | null;
   moneylineReferenceOddsSnapshotId: number | null;
   moneylinePredictionEventCommence: string | null;
@@ -6136,6 +6171,9 @@ export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupR
     oddsCapturedAt: null,
     oddsBooks: null,
     openingOddsBooks: null,
+    pinnacleHomeProb: null,
+    polymarketHomeProb: null,
+    pinnaclePolymarketDeltaPp: null,
     moneylinePredictionSnapshotId: null,
     moneylineReferenceOddsSnapshotId: null,
     moneylinePredictionEventCommence: null,
@@ -8123,6 +8161,225 @@ export async function getSpreadCoverage(): Promise<SpreadCoverageRow[]> {
 // MLB Vegas Analysis
 // ---------------------------------------------------------------------------
 
+export type NflVegasBoardRow = {
+  matchupId: number;
+  gameDate: string;
+  eventId: string | null;
+  seasonType: string | null;
+  commenceTime: string;
+  homeTeam: string;
+  awayTeam: string;
+  captures: number;
+  openHomeProb: number | null;
+  currentHomeProb: number | null;
+  movementPp: number | null;
+  homeMl: number | null;
+  awayMl: number | null;
+  homeSpread: number | null;
+  openHomeSpread: number | null;
+  spreadMove: number | null;
+  vegasTotal: number | null;
+  openTotal: number | null;
+  totalMove: number | null;
+  pinnacleHomeProb: number | null;
+  polymarketHomeProb: number | null;
+  pinnaclePolymarketDeltaPp: number | null;
+  latestCapturedAt: string | null;
+  trail: Array<{
+    capturedAt: string;
+    homeProb: number | null;
+    homeSpread: number | null;
+    total: number | null;
+  }>;
+};
+
+export type NflHealthIssue = {
+  severity: "error" | "warning";
+  code: string;
+  matchupId: number;
+  matchup: string;
+  detail: string;
+};
+
+export async function getNflPipelineHealth(gameDate: string): Promise<NflHealthIssue[]> {
+  await ensureOddsHistoryTables();
+  const rows = await db.execute(sql`
+    WITH latest AS (
+      SELECT matchup_id, MAX(captured_at) AS captured_at
+      FROM game_odds_history
+      WHERE sport = 'nfl'
+      GROUP BY matchup_id
+    ), base AS (
+      SELECT m.*, at.name || ' @ ' || ht.name AS matchup, l.captured_at AS latest_capture
+      FROM nfl_matchups m
+      JOIN nfl_teams ht ON ht.team_id = m.home_team_id
+      JOIN nfl_teams at ON at.team_id = m.away_team_id
+      LEFT JOIN latest l ON l.matchup_id = m.id
+      WHERE m.game_date = ${gameDate}::date
+    )
+    SELECT 'error' AS severity, 'missing_capture' AS code, id AS "matchupId", matchup,
+           'Upcoming game has no odds capture' AS detail
+    FROM base WHERE commence_time > NOW()
+      AND commence_time <= NOW() + INTERVAL '48 hours' AND latest_capture IS NULL
+    UNION ALL
+    SELECT 'error', 'stale_capture', id, matchup,
+           'Latest capture is older than 35 minutes'
+    FROM base WHERE commence_time > NOW()
+      AND commence_time <= NOW() + INTERVAL '48 hours'
+      AND latest_capture < NOW() - INTERVAL '35 minutes'
+    UNION ALL
+    SELECT 'error', 'post_kickoff_capture', b.id, b.matchup,
+           'Odds history contains a capture after kickoff'
+    FROM base b WHERE EXISTS (
+      SELECT 1 FROM game_odds_history h
+      WHERE h.sport = 'nfl' AND h.matchup_id = b.id AND h.captured_at > b.commence_time
+    )
+    UNION ALL
+    SELECT 'error', 'missing_final_score', id, matchup,
+           'Game started more than 24 hours ago without a final score'
+    FROM base
+    WHERE commence_time < NOW() - INTERVAL '24 hours'
+      AND (home_score IS NULL OR away_score IS NULL)
+    UNION ALL
+    SELECT 'warning', 'single_capture', id, matchup,
+           'Only one eligible pregame capture; movement is not available'
+    FROM base b
+    WHERE (SELECT COUNT(*) FROM game_odds_history h
+           WHERE h.sport = 'nfl' AND h.matchup_id = b.id
+             AND h.captured_at <= b.commence_time) = 1
+    UNION ALL
+    SELECT 'warning', 'unsettled_alert', b.id, b.matchup,
+           'Final score is available but one or more alerts remain unsettled'
+    FROM base b
+    WHERE b.home_score IS NOT NULL AND b.away_score IS NOT NULL
+      AND EXISTS (SELECT 1 FROM line_alerts a
+                  WHERE a.sport = 'nfl' AND a.matchup_id = b.id AND a.settled_at IS NULL)
+    ORDER BY severity, "matchupId", code
+  `);
+  return rows.rows.map((row) => {
+    const record = row as Record<string, unknown>;
+    return {
+      severity: record.severity === "error" ? "error" : "warning",
+      code: String(record.code),
+      matchupId: Number(record.matchupId),
+      matchup: String(record.matchup),
+      detail: String(record.detail),
+    };
+  });
+}
+
+/**
+ * NFL's dedicated page reads from the shared odds ledger so it does not
+ * pretend that the MLB matchup/model tables apply to football. Once the NFL
+ * capture job writes sport='nfl' rows, the page fills in without a UI change.
+ */
+export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoardRow[]> {
+  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  await ensureOddsHistoryTables();
+  const rows = await db.execute(sql`
+    WITH captures AS (
+      SELECT
+        h.*,
+        ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at ASC) AS first_rank,
+        ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at DESC) AS latest_rank,
+        COUNT(*) OVER (PARTITION BY h.matchup_id) AS capture_count
+      FROM game_odds_history h
+      JOIN nfl_matchups m ON m.id = h.matchup_id
+      WHERE h.sport = 'nfl' AND h.game_date = ${targetDate}::date
+        AND h.captured_at <= m.commence_time
+    ),
+    opening AS (SELECT * FROM captures WHERE first_rank = 1),
+    latest AS (SELECT * FROM captures WHERE latest_rank = 1),
+    trails AS (
+      SELECT matchup_id, JSONB_AGG(JSONB_BUILD_OBJECT(
+        'capturedAt', captured_at::text,
+        'homeProb', vegas_prob_home,
+        'homeSpread', home_spread,
+        'total', COALESCE(vegas_total_raw, vegas_total)
+      ) ORDER BY captured_at) AS trail
+      FROM captures GROUP BY matchup_id
+    )
+    SELECT
+      m.id AS "matchupId",
+      m.game_date::text AS "gameDate",
+      m.event_id AS "eventId",
+      m.season_type AS "seasonType",
+      m.commence_time::text AS "commenceTime",
+      ht.name AS "homeTeam",
+      at.name AS "awayTeam",
+      COALESCE(latest.capture_count, 0)::int AS captures,
+      opening.vegas_prob_home AS "openHomeProb",
+      latest.vegas_prob_home AS "currentHomeProb",
+      CASE
+        WHEN opening.vegas_prob_home IS NULL OR latest.vegas_prob_home IS NULL THEN NULL
+        ELSE (latest.vegas_prob_home - opening.vegas_prob_home) * 100
+      END AS "movementPp",
+      COALESCE(latest.home_ml, m.home_ml) AS "homeMl",
+      COALESCE(latest.away_ml, m.away_ml) AS "awayMl",
+      COALESCE(latest.home_spread, m.home_spread) AS "homeSpread",
+      opening.home_spread AS "openHomeSpread",
+      CASE WHEN opening.home_spread IS NULL OR latest.home_spread IS NULL
+        THEN NULL ELSE latest.home_spread - opening.home_spread END AS "spreadMove",
+      COALESCE(latest.vegas_total, m.vegas_total) AS "vegasTotal",
+      opening.vegas_total AS "openTotal",
+      CASE WHEN opening.vegas_total IS NULL OR latest.vegas_total IS NULL
+        THEN NULL ELSE latest.vegas_total - opening.vegas_total END AS "totalMove",
+      latest.books AS "oddsBooks",
+      latest.captured_at::text AS "latestCapturedAt",
+      COALESCE(trails.trail, '[]'::jsonb) AS trail
+    FROM nfl_matchups m
+    JOIN nfl_teams ht ON ht.team_id = m.home_team_id
+    JOIN nfl_teams at ON at.team_id = m.away_team_id
+    LEFT JOIN latest ON latest.matchup_id = m.id
+    LEFT JOIN opening ON opening.matchup_id = m.id
+    LEFT JOIN trails ON trails.matchup_id = m.id
+    WHERE m.game_date = ${targetDate}::date
+    ORDER BY ABS(COALESCE(latest.vegas_prob_home - opening.vegas_prob_home, 0)) DESC,
+             m.commence_time
+  `);
+  return rows.rows.map((row) => {
+    const record = row as Record<string, unknown>;
+    const trail = Array.isArray(record.trail) ? record.trail.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const point = item as Record<string, unknown>;
+      return [{
+        capturedAt: String(point.capturedAt),
+        homeProb: point.homeProb != null ? Number(point.homeProb) : null,
+        homeSpread: point.homeSpread != null ? Number(point.homeSpread) : null,
+        total: point.total != null ? Number(point.total) : null,
+      }];
+    }) : [];
+    return {
+      matchupId: Number(record.matchupId),
+      gameDate: String(record.gameDate),
+      eventId: record.eventId != null ? String(record.eventId) : null,
+      seasonType: record.seasonType != null ? String(record.seasonType) : null,
+      commenceTime: String(record.commenceTime),
+      homeTeam: String(record.homeTeam),
+      awayTeam: String(record.awayTeam),
+      captures: Number(record.captures),
+      openHomeProb: record.openHomeProb != null ? Number(record.openHomeProb) : null,
+      currentHomeProb: record.currentHomeProb != null ? Number(record.currentHomeProb) : null,
+      movementPp: record.movementPp != null ? Number(record.movementPp) : null,
+      homeMl: record.homeMl != null ? Number(record.homeMl) : null,
+      awayMl: record.awayMl != null ? Number(record.awayMl) : null,
+      homeSpread: record.homeSpread != null ? Number(record.homeSpread) : null,
+      openHomeSpread: record.openHomeSpread != null ? Number(record.openHomeSpread) : null,
+      spreadMove: record.spreadMove != null ? Number(record.spreadMove) : null,
+      vegasTotal: record.vegasTotal != null ? Number(record.vegasTotal) : null,
+      openTotal: record.openTotal != null ? Number(record.openTotal) : null,
+      totalMove: record.totalMove != null ? Number(record.totalMove) : null,
+      ...sharpBookHomeComparison(
+        record.oddsBooks && typeof record.oddsBooks === "object"
+          ? record.oddsBooks as Record<string, Record<string, unknown>>
+          : null,
+      ),
+      latestCapturedAt: record.latestCapturedAt != null ? String(record.latestCapturedAt) : null,
+      trail,
+    };
+  });
+}
+
 export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
   const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
   await ensureAnalyticsColumns();
@@ -8326,6 +8583,11 @@ export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatch
     openingOddsBooks: r.openingOddsBooks && typeof r.openingOddsBooks === "object"
       ? r.openingOddsBooks as Record<string, Record<string, unknown>>
       : null,
+    ...sharpBookHomeComparison(
+      r.oddsBooks && typeof r.oddsBooks === "object"
+        ? r.oddsBooks as Record<string, Record<string, unknown>>
+        : null,
+    ),
     moneylinePredictionSnapshotId: r.moneylinePredictionSnapshotId != null ? Number(r.moneylinePredictionSnapshotId) : null,
     moneylineReferenceOddsSnapshotId: r.moneylineReferenceOddsSnapshotId != null ? Number(r.moneylineReferenceOddsSnapshotId) : null,
     moneylinePredictionEventCommence: r.moneylinePredictionEventCommence != null ? String(r.moneylinePredictionEventCommence) : null,
@@ -9204,12 +9466,13 @@ function movementBookBreadth(
 const LINE_MOVEMENT_MATCHUP_TABLE: Record<string, string> = {
   mlb: "mlb_matchups",
   nba: "nba_matchups",
+  nfl: "nfl_matchups",
   soccer: "soccer_matchups",
   tennis: "tennis_matches",
 };
 
 export async function getLineMovement(
-  sport: "mlb" | "nba" | "soccer" | "tennis",
+  sport: "mlb" | "nba" | "nfl" | "soccer" | "tennis",
   days = 7,
 ): Promise<MlbLineMovementRow[]> {
   // Open -> close line movement per game from the 30-min game_odds_history
@@ -9356,6 +9619,7 @@ export type LineMovementHistoryRow = {
 const HISTORY_OUTCOME: Record<string, { home: string; away: string; winner: string | null }> = {
   mlb: { home: "m2.home_score", away: "m2.away_score", winner: null },
   nba: { home: "m2.home_score", away: "m2.away_score", winner: null },
+  nfl: { home: "m2.home_score", away: "m2.away_score", winner: null },
   soccer: { home: "COALESCE(m2.reg_home_score, m2.home_score)",
             away: "COALESCE(m2.reg_away_score, m2.away_score)", winner: null },
   tennis: { home: "NULL", away: "NULL", winner: "m2.winner" },
@@ -9365,7 +9629,7 @@ const HISTORY_OUTCOME: Record<string, { home: string; away: string; winner: stri
  * the browsable history ledger behind the live Line Movement panel. Each row
  * shows which side the line moved toward and whether that side actually won. */
 export async function getLineMovementHistory(
-  sport: "mlb" | "nba" | "soccer" | "tennis",
+  sport: "mlb" | "nba" | "nfl" | "soccer" | "tennis",
   page = 1,
   pageSize = 50,
 ): Promise<LineMovementHistoryRow[]> {
@@ -9504,9 +9768,10 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
   // its thresholds are noise — retire or retune, the ledger will say so.
   const rows = await db.execute(sql`
     SELECT alert_type AS "alertType", COUNT(*)::int AS n,
-           COUNT(*) FILTER (WHERE clv_pp IS NOT NULL)::int AS "nClv",
-           AVG(clv_pp) AS "avgClvPp",
-           AVG((clv_pp > 0)::int) FILTER (WHERE clv_pp IS NOT NULL) AS "beatClose",
+           COUNT(*) FILTER (WHERE COALESCE(clv_pp, (grading_json->>'line_clv')::numeric) IS NOT NULL)::int AS "nClv",
+           AVG(COALESCE(clv_pp, (grading_json->>'line_clv')::numeric)) AS "avgClvPp",
+           AVG((COALESCE(clv_pp, (grading_json->>'line_clv')::numeric) > 0)::int)
+             FILTER (WHERE COALESCE(clv_pp, (grading_json->>'line_clv')::numeric) IS NOT NULL) AS "beatClose",
            COUNT(*) FILTER (WHERE outcome IN ('won','lost'))::int AS "nOutcomes",
            COUNT(*) FILTER (WHERE outcome = 'won')::int AS "wins",
            COUNT(*) FILTER (WHERE outcome = 'lost')::int AS "losses",

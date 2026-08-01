@@ -197,6 +197,52 @@ export const mlbTeams = pgTable("mlb_teams", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const nflTeams = pgTable("nfl_teams", {
+  teamId: serial("team_id").primaryKey(),
+  name: text("name").notNull().unique(),
+  abbreviation: text("abbreviation").notNull().unique(),
+  oddsApiName: text("odds_api_name").notNull().unique(),
+  city: text("city"),
+  conference: text("conference"),
+  division: text("division"),
+  active: boolean("active").notNull().default(true),
+  logoUrl: text("logo_url").default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const nflMatchups = pgTable(
+  "nfl_matchups",
+  {
+    id: serial("id").primaryKey(),
+    eventId: text("event_id").notNull().unique(),
+    season: integer("season"),
+    seasonType: text("season_type"),
+    week: integer("week"),
+    gameDate: date("game_date").notNull(),
+    commenceTime: timestamp("commence_time", { withTimezone: true }).notNull(),
+    homeTeamId: integer("home_team_id").notNull().references(() => nflTeams.teamId),
+    awayTeamId: integer("away_team_id").notNull().references(() => nflTeams.teamId),
+    gameStatus: text("game_status"),
+    completed: boolean("completed").notNull().default(false),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
+    vegasTotal: doublePrecision("vegas_total"),
+    homeMl: integer("home_ml"),
+    awayMl: integer("away_ml"),
+    homeSpread: doublePrecision("home_spread"),
+    vegasProbHome: doublePrecision("vegas_prob_home"),
+    homeImplied: doublePrecision("home_implied"),
+    awayImplied: doublePrecision("away_implied"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    scoreFetchedAt: timestamp("score_fetched_at", { withTimezone: true }),
+    finalAt: timestamp("final_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("idx_nfl_matchups_date").on(t.gameDate, t.commenceTime),
+    index("idx_nfl_matchups_upcoming").on(t.commenceTime),
+  ],
+);
+
 export const mlbParkFactors = pgTable(
   "mlb_park_factors",
   {

@@ -507,6 +507,93 @@ def upsert_dk_player(db: DatabaseManager, slate_id: int, player: dict) -> None:
     )
 
 
+# ── NFL team + matchup helpers ───────────────────────────────────────────────
+
+def build_nfl_team_name_cache(db: DatabaseManager) -> dict[str, int]:
+    """Return exact Odds API team-name -> internal team ID."""
+    rows = db.execute("SELECT team_id, odds_api_name FROM nfl_teams WHERE active")
+    return {str(row["odds_api_name"]): int(row["team_id"]) for row in rows}
+
+
+def upsert_nfl_team(
+    db: DatabaseManager,
+    *,
+    name: str,
+    abbreviation: str,
+    odds_api_name: str,
+    city: str | None = None,
+    conference: str | None = None,
+    division: str | None = None,
+    active: bool = True,
+    logo_url: str = "",
+) -> int:
+    row = db.execute_one(
+        """
+        INSERT INTO nfl_teams (
+            name, abbreviation, odds_api_name, city, conference, division,
+            active, logo_url, updated_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (odds_api_name) DO UPDATE SET
+            name = EXCLUDED.name,
+            abbreviation = EXCLUDED.abbreviation,
+            city = EXCLUDED.city,
+            conference = EXCLUDED.conference,
+            division = EXCLUDED.division,
+            active = EXCLUDED.active,
+            logo_url = EXCLUDED.logo_url,
+            updated_at = NOW()
+        RETURNING team_id
+        """,
+        (name, abbreviation, odds_api_name, city, conference, division, active, logo_url),
+    )
+    return int(row["team_id"]) if row else 0
+
+
+def upsert_nfl_matchup(
+    db: DatabaseManager,
+    *,
+    event_id: str,
+    game_date: str,
+    commence_time,
+    home_team_id: int,
+    away_team_id: int,
+    season: int | None = None,
+    season_type: str | None = None,
+    week: int | None = None,
+    game_status: str | None = None,
+) -> int:
+    """Upsert an NFL event by provider event ID.
+
+    Schedule refreshes may move kickoff/date/team assignment for an upcoming
+    event, but must never erase scores or completion state already observed.
+    """
+    row = db.execute_one(
+        """
+        INSERT INTO nfl_matchups (
+            event_id, season, season_type, week, game_date, commence_time,
+            home_team_id, away_team_id, game_status, fetched_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (event_id) DO UPDATE SET
+            season = COALESCE(EXCLUDED.season, nfl_matchups.season),
+            season_type = COALESCE(EXCLUDED.season_type, nfl_matchups.season_type),
+            week = COALESCE(EXCLUDED.week, nfl_matchups.week),
+            game_date = EXCLUDED.game_date,
+            commence_time = EXCLUDED.commence_time,
+            home_team_id = EXCLUDED.home_team_id,
+            away_team_id = EXCLUDED.away_team_id,
+            game_status = CASE
+                WHEN nfl_matchups.completed THEN nfl_matchups.game_status
+                ELSE COALESCE(EXCLUDED.game_status, nfl_matchups.game_status)
+            END,
+            fetched_at = NOW()
+        RETURNING id
+        """,
+        (event_id, season, season_type, week, game_date, commence_time,
+         home_team_id, away_team_id, game_status),
+    )
+    return int(row["id"]) if row else 0
+
+
 # ── MLB team helpers ──────────────────────────────────────────────────────────
 
 def build_mlb_team_abbrev_cache(db: DatabaseManager) -> dict[str, int]:

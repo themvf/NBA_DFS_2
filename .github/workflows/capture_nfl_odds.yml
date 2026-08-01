@@ -1,0 +1,47 @@
+name: Capture NFL Odds
+
+on:
+  schedule:
+    # Redundant half-hour opportunities; the CLI skips the paid odds call when
+    # no NFL events are scheduled on the current Eastern date.
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: capture-nfl-odds
+  cancel-in-progress: false
+
+jobs:
+  capture-nfl-odds:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Resolve Eastern date
+        shell: bash
+        run: echo "NFL_TARGET_DATE=$(TZ=America/New_York date +%F)" >> "$GITHUB_ENV"
+      - name: Capture fresh NFL game lines
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            python -m ingest.nfl_schedule \
+              --monitoring-hours 48 \
+              --skip-scores \
+              --require-fresh-upcoming-odds && exit 0
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            delay=$((attempt * 15))
+            echo "NFL capture failed (attempt $attempt/3); retrying in ${delay}s"
+            sleep "$delay"
+          done
+      - name: Scan and settle NFL line alerts
+        run: python -m model.line_alerts --sport nfl

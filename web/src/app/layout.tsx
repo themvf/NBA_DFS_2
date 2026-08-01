@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "DFS Optimizer",
-  description: "DraftKings DFS optimizer and analytics — NBA, MLB",
+  description: "DraftKings DFS optimizer and analytics — NBA, MLB, NFL",
 };
 
 export default function RootLayout({

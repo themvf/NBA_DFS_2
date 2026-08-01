@@ -8,6 +8,8 @@ game_odds_history (plus prop detectors below):
     upcoming game. Pinnacle is the sharp reference; the side it prices HIGHER
     than retail is the sharp side, and retail is offering a stale price on it.
     (The "Sharp side" chip in the Line Movement panel.)
+  * **pinnacle_polymarket_delta** — Pinnacle's vig-free probability differs
+    from Polymarket by >= 2pp; the higher Pinnacle side is frozen for audit.
   * **steam** — between the last two captures, >= _STEAM_MIN_BOOKS books moved
     the same side by >= _STEAM_MIN_MOVE_PP. Synchronized moves are informed
     money; solo moves are book position management. (Confirmed "Jump".)
@@ -58,6 +60,7 @@ from model.soccer_bet_rating import american_to_decimal
 logger = logging.getLogger(__name__)
 
 _PIN_GAP_MIN_PP = 2.0     # Pinnacle vs retail consensus, probability points
+_PIN_POLY_GAP_MIN_PP = 2.0  # Pinnacle vs Polymarket, probability points
 _STEAM_MIN_BOOKS = 3      # books moving together between consecutive captures
 _STEAM_MIN_MOVE_PP = 1.5  # per-book move threshold, probability points
 _WALK_MIN_PP = 2.0        # consensus drift toward a side since open (slow walk)
@@ -77,11 +80,13 @@ _MAX_MODEL_GAP_PP = 15.0
 _DK_VALUE_MIN_EV = 0.02
 _DK_VALUE_MAX_DECIMAL = 11.0
 _DK_BOOK = "draftkings"
+_NFL_STEAM_LINE_MOVE = 0.5
+_NFL_WALK_LINE_MOVE = 1.0
 
 # Sports wired into the alert pipeline. NBA joins when the season resumes —
 # nba_matchups has no commence_time column yet, which scan()/settle()/dk_board
 # all join on.
-_ALERT_SPORTS = ("mlb", "soccer", "tennis")
+_ALERT_SPORTS = ("mlb", "nfl", "soccer", "tennis")
 
 # Grading sources per sport: (home score col, away score col). Soccer uses the
 # 90-minute regulation score — a knockout tie decided in extra time is a DRAW
@@ -89,8 +94,41 @@ _ALERT_SPORTS = ("mlb", "soccer", "tennis")
 _SCORE_COLS = {
     "mlb": ("home_score", "away_score"),
     "nba": ("home_score", "away_score"),
+    "nfl": ("home_score", "away_score"),
     "soccer": ("COALESCE(reg_home_score, home_score)", "COALESCE(reg_away_score, away_score)"),
 }
+
+
+def _game_side_outcome(sport: str, home_score: int, away_score: int, side: str) -> str:
+    """Grade a frozen home/away game-line selection from a final score."""
+    winner = "home" if home_score > away_score else "away" if away_score > home_score else "draw"
+    if sport == "nfl" and winner == "draw":
+        return "void"
+    return "won" if winner == side else "lost"
+
+
+def _nfl_line_outcome(
+    market: str, side: str, trigger_line: float, home_score: int, away_score: int,
+) -> str:
+    if market == "spread":
+        margin = home_score + trigger_line - away_score
+        selection_margin = margin if side == "home" else -margin
+    elif market == "total":
+        margin = home_score + away_score - trigger_line
+        selection_margin = margin if side == "over" else -margin
+    else:
+        raise ValueError(f"unsupported NFL line market: {market}")
+    if abs(selection_margin) < 1e-9:
+        return "void"
+    return "won" if selection_margin > 0 else "lost"
+
+
+def _nfl_line_clv(market: str, side: str, trigger_line: float, close_line: float) -> float:
+    if market == "spread":
+        return trigger_line - close_line if side == "home" else close_line - trigger_line
+    if market == "total":
+        return close_line - trigger_line if side == "over" else trigger_line - close_line
+    raise ValueError(f"unsupported NFL line market: {market}")
 
 
 def _book_fair_side(book: dict, side: str) -> float | None:
@@ -111,10 +149,37 @@ def _book_fair_side(book: dict, side: str) -> float | None:
 
 
 def _retail_fair_side(books: dict, side: str) -> float | None:
-    """Mean vig-free P(side) across all non-Pinnacle books."""
-    probs = [p for key, b in books.items() if key != "pinnacle"
+    """Mean vig-free P(side) across retail books, excluding sharp exchanges."""
+    probs = [p for key, b in books.items() if key not in {"pinnacle", "polymarket"}
              for p in [_book_fair_side(b, side)] if p is not None]
     return sum(probs) / len(probs) if probs else None
+
+
+def _pinnacle_polymarket_signals(books: dict) -> list[dict]:
+    """Return sides where Pinnacle prices meaningfully above Polymarket."""
+    pin = books.get("pinnacle")
+    poly = books.get("polymarket")
+    if not pin or not poly:
+        return []
+    signals = []
+    for side in _sides({"pinnacle": pin, "polymarket": poly}):
+        pin_prob = _book_fair_side(pin, side)
+        poly_prob = _book_fair_side(poly, side)
+        if pin_prob is None or poly_prob is None:
+            continue
+        gap_pp = (pin_prob - poly_prob) * 100
+        if gap_pp >= _PIN_POLY_GAP_MIN_PP:
+            signals.append({
+                "side": side,
+                "alert_prob": poly_prob,
+                "sharp_prob": pin_prob,
+                "details": {
+                    "gap_pp": round(gap_pp, 2),
+                    "pinnacle_prob": round(pin_prob, 6),
+                    "polymarket_prob": round(poly_prob, 6),
+                },
+            })
+    return signals
 
 
 _SIDE_KEY = {"home": "ml_home", "away": "ml_away", "draw": "ml_draw"}
@@ -147,6 +212,75 @@ def _dk_value_ev(pin: dict, dk: dict, side: str) -> float | None:
 def _sides(books: dict) -> list[str]:
     has_draw = any("ml_draw" in b for b in books.values())
     return ["home", "away", "draw"] if has_draw else ["home", "away"]
+
+
+def _consensus_book_line(books: dict, key: str) -> float | None:
+    values = []
+    for book in books.values():
+        try:
+            if book.get(key) is not None:
+                values.append(float(book[key]))
+        except (TypeError, ValueError):
+            continue
+    return sum(values) / len(values) if values else None
+
+
+def _nfl_market_signals(current: dict, previous: dict | None, opening: dict | None) -> list[dict]:
+    """Return NFL spread/total first-breach candidates from exact book lines."""
+    signals: list[dict] = []
+    for market, key, down_side, up_side in (
+        ("spread", "spread_home", "home", "away"),
+        ("total", "total_line", "under", "over"),
+    ):
+        current_line = _consensus_book_line(current, key)
+        if current_line is None:
+            continue
+        if previous:
+            moves = []
+            for book_key in set(previous) & set(current):
+                try:
+                    before = float(previous[book_key][key])
+                    after = float(current[book_key][key])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                moves.append(after - before)
+            down = [move for move in moves if move <= -_NFL_STEAM_LINE_MOVE]
+            up = [move for move in moves if move >= _NFL_STEAM_LINE_MOVE]
+            movers, side = (down, down_side) if len(down) >= len(up) else (up, up_side)
+            if len(movers) >= _STEAM_MIN_BOOKS:
+                signals.append({
+                    "alert_type": f"{market}_steam",
+                    "side": side,
+                    "details": {
+                        "market": market,
+                        "selection": side,
+                        "trigger_line": round(current_line, 3),
+                        "current_line": round(current_line, 3),
+                        "interval_delta": round(sum(movers) / len(movers), 3),
+                        "books_moved": len(movers),
+                        "grading_version": "nfl-lines-v1",
+                    },
+                })
+        if opening:
+            open_line = _consensus_book_line(opening, key)
+            if open_line is not None:
+                drift = current_line - open_line
+                if abs(drift) >= _NFL_WALK_LINE_MOVE:
+                    side = up_side if drift > 0 else down_side
+                    signals.append({
+                        "alert_type": f"{market}_walking",
+                        "side": side,
+                        "details": {
+                            "market": market,
+                            "selection": side,
+                            "trigger_line": round(current_line, 3),
+                            "open_line": round(open_line, 3),
+                            "current_line": round(current_line, 3),
+                            "delta": round(drift, 3),
+                            "grading_version": "nfl-lines-v1",
+                        },
+                    })
+    return signals
 
 
 def _notify(alerts: list[dict]) -> None:
@@ -244,6 +378,14 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         details={"gap_pp": round(gap_pp, 2),
                                  "n_books": len(books)},
                     ))
+        # ── Pinnacle vs Polymarket disagreement ──
+        for signal in _pinnacle_polymarket_signals(books):
+            new_alerts.extend(_insert(
+                db, sport=sport, r=r, label=label,
+                alert_type="pinnacle_polymarket_delta", side=signal["side"],
+                alert_prob=signal["alert_prob"], sharp_prob=signal["sharp_prob"],
+                details=signal["details"],
+            ))
         # ── DraftKings value (Pinnacle fair vs DK's offered price) ──
         dk = books.get(_DK_BOOK)
         if pin and dk:
@@ -324,6 +466,21 @@ def scan(db: DatabaseManager, sport: str) -> int:
                                  "now_pp": round(p_now * 100, 2),
                                  "drift_pp": round(drift_pp, 2)},
                     ))
+        if sport == "nfl":
+            previous_books = prev["books"] if prev and prev.get("books") else None
+            opening_books = first["books"] if first and first.get("books") else None
+            for signal in _nfl_market_signals(books, previous_books, opening_books):
+                new_alerts.extend(_insert(
+                    db,
+                    sport=sport,
+                    r=r,
+                    label=label,
+                    alert_type=signal["alert_type"],
+                    side=signal["side"],
+                    alert_prob=None,
+                    sharp_prob=None,
+                    details=signal["details"],
+                ))
     if new_alerts:
         print(f"Line alerts ({sport}): {len(new_alerts)} new — "
               + ", ".join(f"{a['alert_type']}:{a['matchup']}/{a['side']}" for a in new_alerts))
@@ -1185,7 +1342,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
     # (settle_props / settle_props_soccer / settle_tennis_totals).
     open_alerts = db.execute(
         "SELECT * FROM line_alerts WHERE sport = %s AND settled_at IS NULL "
-        "AND alert_type IN ('pinnacle_divergence', 'steam', 'dk_value', 'walking') "
+        "AND alert_type IN ('pinnacle_divergence', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking') "
         "AND commence_time IS NOT NULL AND commence_time <= NOW()",
         (sport,),
     )
@@ -1203,7 +1360,11 @@ def settle(db: DatabaseManager, sport: str) -> int:
         )
         close_prob = None
         if close and close["books"]:
-            close_prob = _retail_fair_side(close["books"], a["side"])
+            if a["alert_type"] == "pinnacle_polymarket_delta":
+                poly = close["books"].get("polymarket")
+                close_prob = _book_fair_side(poly, a["side"]) if poly else None
+            else:
+                close_prob = _retail_fair_side(close["books"], a["side"])
         clv_pp = ((close_prob - float(a["alert_prob"])) * 100
                   if close_prob is not None and a["alert_prob"] is not None else None)
 
@@ -1223,8 +1384,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
             )
             if m and m["hs"] is not None and m["as_"] is not None:
                 hs, as_ = int(m["hs"]), int(m["as_"])
-                winner = "home" if hs > as_ else "away" if as_ > hs else "draw"
-                outcome = "won" if winner == a["side"] else "lost"
+                outcome = _game_side_outcome(sport, hs, as_, a["side"])
 
         # Settle once we have at least the CLV grade; outcome may lag scores
         # and is filled in the same pass on a later run if still NULL then.
@@ -1243,8 +1403,82 @@ def settle(db: DatabaseManager, sport: str) -> int:
         )
         _append_grade_history(db, a["id"], g, outcome=outcome)
         graded += 1
+    if sport == "nfl":
+        graded += _settle_nfl_line_alerts(db)
     if graded:
         print(f"Line alerts ({sport}): {graded} graded")
+    return graded
+
+
+def _settle_nfl_line_alerts(db: DatabaseManager) -> int:
+    alerts = db.execute(
+        """
+        SELECT a.*, m.home_score, m.away_score
+        FROM line_alerts a
+        JOIN nfl_matchups m ON m.id = a.matchup_id
+        WHERE a.sport = 'nfl' AND a.settled_at IS NULL
+          AND a.alert_type IN ('spread_steam', 'spread_walking', 'total_steam', 'total_walking')
+          AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+        """
+    )
+    graded = 0
+    for alert in alerts:
+        details = alert["details_json"] or {}
+        market = details.get("market")
+        side = alert["side"]
+        try:
+            trigger_line = float(details["trigger_line"])
+        except (KeyError, TypeError, ValueError):
+            logger.error("NFL line alert %s is missing trigger_line", alert["id"])
+            continue
+        close = db.execute_one(
+            """
+            SELECT home_spread, COALESCE(vegas_total_raw, vegas_total) AS total
+            FROM game_odds_history
+            WHERE sport = 'nfl' AND matchup_id = %s AND captured_at <= %s
+            ORDER BY captured_at DESC LIMIT 1
+            """,
+            (alert["matchup_id"], alert["commence_time"]),
+        )
+        close_value = close.get("home_spread" if market == "spread" else "total") if close else None
+        if close_value is None:
+            continue
+        close_line = float(close_value)
+        outcome = _nfl_line_outcome(
+            market,
+            side,
+            trigger_line,
+            int(alert["home_score"]),
+            int(alert["away_score"]),
+        )
+        line_clv = _nfl_line_clv(market, side, trigger_line, close_line)
+        grading_json = {
+            "market": market,
+            "selection": side,
+            "trigger_line": trigger_line,
+            "close_line": close_line,
+            "line_clv": round(line_clv, 3),
+            "home_score": int(alert["home_score"]),
+            "away_score": int(alert["away_score"]),
+        }
+        grade = {
+            "grading_version": "nfl-lines-v1",
+            "comparison_status": "SAME_PROPOSITION",
+            "convergence": None,
+            "dk_clv_pct": None,
+            "grading_json": grading_json,
+        }
+        db.execute(
+            """
+            UPDATE line_alerts SET outcome = %s, settled_at = NOW(),
+                grading_json = %s, comparison_status = %s, grading_version = %s
+            WHERE id = %s
+            """,
+            (outcome, json.dumps(grading_json), grade["comparison_status"],
+             grade["grading_version"], alert["id"]),
+        )
+        _append_grade_history(db, alert["id"], grade, outcome=outcome)
+        graded += 1
     return graded
 
 

@@ -49,6 +49,7 @@ _STEAM_MIN_MOVE = 0.015  # >= 1.5 prob points per book, same direction
 _MATCHUP_TBL = {
     "mlb": "mlb_matchups",
     "nba": "nba_matchups",
+    "nfl": "nfl_matchups",
     "soccer": "soccer_matchups",
     "tennis": "tennis_matches",
 }
@@ -135,7 +136,8 @@ def report(db: DatabaseManager, sport: str, days: int, date_filter: str | None) 
         pin_gap = None
         if c["books"] and "pinnacle" in c["books"]:
             pin_fair = _book_fair_home(c["books"]["pinnacle"])
-            retail = [_book_fair_home(b) for k, b in c["books"].items() if k != "pinnacle"]
+            retail = [_book_fair_home(b) for k, b in c["books"].items()
+                      if k not in {"pinnacle", "polymarket"}]
             retail = [p for p in retail if p is not None]
             if pin_fair is not None and retail:
                 pin_gap = pin_fair - sum(retail) / len(retail)

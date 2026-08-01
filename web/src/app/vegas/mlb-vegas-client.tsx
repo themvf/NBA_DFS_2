@@ -57,7 +57,7 @@ type ModelDiagnostic = {
   driver: string | null;
 };
 
-const GAME_LINE_ALERTS = new Set(["pinnacle_divergence", "steam", "walking", "dk_value"]);
+const GAME_LINE_ALERTS = new Set(["pinnacle_divergence", "pinnacle_polymarket_delta", "steam", "walking", "dk_value"]);
 
 function pct(value: number | null, digits = 1): string {
   return value == null || !Number.isFinite(value) ? "—" : `${(value * 100).toFixed(digits)}%`;
@@ -191,6 +191,7 @@ function teamForSide(matchup: VegasMatchupRow, side: string): string {
 
 function alertLabel(alert: LineAlertRow, matchup: VegasMatchupRow): string {
   const team = teamForSide(matchup, alert.side);
+  if (alert.alertType === "pinnacle_polymarket_delta") return `Pin/Poly gap → ${team}`;
   if (alert.alertType === "pinnacle_divergence") return `Sharp side → ${team}`;
   if (alert.alertType === "steam") return `Steam → ${team}`;
   if (alert.alertType === "walking") return `Walking → ${team}`;
@@ -199,6 +200,7 @@ function alertLabel(alert: LineAlertRow, matchup: VegasMatchupRow): string {
 }
 
 function alertTone(alertType: string): string {
+  if (alertType === "pinnacle_polymarket_delta") return "border-fuchsia-200 bg-fuchsia-100 text-fuchsia-900";
   if (alertType === "pinnacle_divergence") return "border-violet-200 bg-violet-100 text-violet-900";
   if (alertType === "steam") return "border-orange-200 bg-orange-100 text-orange-900";
   if (alertType === "walking") return "border-blue-200 bg-blue-100 text-blue-900";
@@ -427,12 +429,12 @@ export default function MlbVegasClient({
       <section>
         <div className="mb-3">
           <h2 className="text-lg font-bold text-slate-950">Today’s movement board</h2>
-          <p className="mt-1 text-sm text-slate-600">Movement measures open-to-current market change. Model edge measures model probability minus the current vig-free market probability. Both use percentage points.</p>
+          <p className="mt-1 text-sm text-slate-600">Movement measures open-to-current market change. Pin−Poly is Pinnacle minus Polymarket on the home team; positive means Pinnacle is more bullish on the home side. All probabilities are vig-free.</p>
         </div>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-[1320px] w-full text-xs">
+          <table className="min-w-[1480px] w-full text-xs">
             <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500">
-              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
+              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th><th className="px-3 py-3 text-right">Pin vs Poly</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
             </thead>
             <tbody>
               {rows.map(({ matchup, movement, signal, alerts, modelSuppressed }) => {
@@ -446,6 +448,7 @@ export default function MlbVegasClient({
                     <td className="px-3 py-3">{signal?.movementTeam ? <div className="flex items-center gap-1.5 font-bold text-slate-900"><Icon className="h-4 w-4 text-blue-700" />{signal.movementTeam}</div> : <span className="text-slate-400">No clear move</span>}</td>
                     <td className="whitespace-nowrap px-3 py-3 tabular-nums">{signal?.movementSide ? `${pct(signal.openProbability)} → ${pct(signal.currentProbability)}` : movement ? `${pct(movement.openProb)} → ${pct(movement.closeProb)}` : "Waiting for second capture"}</td>
                     <td className="px-3 py-3 text-right"><MovementShapeCell movement={movement} signal={signal} nowIso={nowIso} /></td>
+                    <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums" title="Vig-free home win probabilities"><div>Pin {pct(matchup.pinnacleHomeProb)} · Poly {pct(matchup.polymarketHomeProb)}</div><div className={`mt-0.5 font-black ${(matchup.pinnaclePolymarketDeltaPp ?? 0) > 0 ? "text-violet-700" : (matchup.pinnaclePolymarketDeltaPp ?? 0) < 0 ? "text-fuchsia-700" : "text-slate-400"}`}>Δ {pp(matchup.pinnaclePolymarketDeltaPp)}</div></td>
                     <td className="max-w-[220px] px-3 py-3"><div className="flex flex-wrap gap-1">{alerts.map((alert) => <span key={`${alert.alertType}-${alert.side}`} className={`rounded-full border px-2 py-1 text-[10px] font-bold ${alertTone(alert.alertType)}`}>{alertLabel(alert, matchup)}</span>)}{alerts.length === 0 && movement && Math.abs(movement.pinGapPp ?? 0) >= 2 ? <span className="rounded-full border border-violet-200 bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-900">Pinnacle gap {pp(movement.pinGapPp)}</span> : null}{alerts.length === 0 && Math.abs(movement?.pinGapPp ?? 0) < 2 ? <span className="text-slate-400">None</span> : null}</div></td>
                     <td className="min-w-[300px] max-w-[340px] px-3 py-3 text-right">
                       <div className="font-bold tabular-nums">{modelSuppressed ? "Invalid" : pct(signal?.modelProbability ?? null)}</div>
