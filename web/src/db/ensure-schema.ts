@@ -13,6 +13,24 @@ let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
 let ensureVideoAnalysisTablesPromise: Promise<void> | null = null;
 let ensureYoutubePickChannelsTablePromise: Promise<void> | null = null;
 let ensureMlbGamePredictionTablesPromise: Promise<void> | null = null;
+let ensureFantasyFootballTablesPromise: Promise<void> | null = null;
+
+const FANTASY_FOOTBALL_DDLS = [
+  `CREATE TABLE IF NOT EXISTS ff_source_snapshots (id BIGSERIAL PRIMARY KEY, source TEXT NOT NULL, dataset TEXT NOT NULL, season INTEGER NOT NULL, scoring TEXT, ranking_type TEXT, request_params JSONB NOT NULL DEFAULT '{}'::jsonb, source_updated_at TIMESTAMPTZ, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), response_hash TEXT NOT NULL, row_count INTEGER NOT NULL, matched_count INTEGER NOT NULL DEFAULT 0, unmatched_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, error_summary TEXT, UNIQUE(source, dataset, response_hash))`,
+  `CREATE TABLE IF NOT EXISTS ff_players (id BIGSERIAL PRIMARY KEY, season INTEGER NOT NULL, canonical_name TEXT NOT NULL, normalized_name TEXT NOT NULL, position TEXT NOT NULL, nfl_team_id INTEGER REFERENCES nfl_teams(team_id), team_abbrev TEXT, fantasypros_player_id INTEGER, sleeper_player_id TEXT, gsis_id TEXT, espn_id TEXT, yahoo_id TEXT, mfl_id TEXT, draftkings_id TEXT, active BOOLEAN NOT NULL DEFAULT TRUE, rookie BOOLEAN NOT NULL DEFAULT FALSE, bye_week INTEGER, injury_status TEXT, metadata JSONB NOT NULL DEFAULT '{}'::jsonb, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(season, fantasypros_player_id))`,
+  `CREATE TABLE IF NOT EXISTS ff_ranking_sets (id BIGSERIAL PRIMARY KEY, season INTEGER NOT NULL, name TEXT NOT NULL, source TEXT NOT NULL, source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id), source_date DATE, scoring_profile JSONB NOT NULL, ranking_type TEXT NOT NULL DEFAULT 'DRAFT', is_baseline BOOLEAN NOT NULL DEFAULT FALSE, import_summary JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+  `CREATE TABLE IF NOT EXISTS ff_player_rankings (id BIGSERIAL PRIMARY KEY, ranking_set_id BIGINT NOT NULL REFERENCES ff_ranking_sets(id) ON DELETE CASCADE, player_id BIGINT NOT NULL REFERENCES ff_players(id), overall_rank INTEGER, position_rank INTEGER, tier INTEGER, adp DOUBLE PRECISION, projected_points DOUBLE PRECISION, projection_low DOUBLE PRECISION, projection_high DOUBLE PRECISION, projected_stats JSONB, rank_min DOUBLE PRECISION, rank_max DOUBLE PRECISION, rank_std DOUBLE PRECISION, our_rank INTEGER, our_projected_points DOUBLE PRECISION, expected_games DOUBLE PRECISION, confidence DOUBLE PRECISION, source_row JSONB, notes TEXT, UNIQUE(ranking_set_id, player_id))`,
+  `CREATE TABLE IF NOT EXISTS ff_player_season_features (id BIGSERIAL PRIMARY KEY, player_id BIGINT NOT NULL REFERENCES ff_players(id), season INTEGER NOT NULL, source TEXT NOT NULL, games INTEGER, fantasy_points_std DOUBLE PRECISION, fantasy_points_ppr DOUBLE PRECISION, targets DOUBLE PRECISION, receptions DOUBLE PRECISION, receiving_yards DOUBLE PRECISION, receiving_tds DOUBLE PRECISION, carries DOUBLE PRECISION, rushing_yards DOUBLE PRECISION, rushing_tds DOUBLE PRECISION, target_share DOUBLE PRECISION, rush_share DOUBLE PRECISION, team_target_rank INTEGER, team_rush_rank INTEGER, nfl_target_rank INTEGER, nfl_rush_td_rank INTEGER, source_row JSONB NOT NULL DEFAULT '{}'::jsonb, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(player_id, season, source))`,
+  `CREATE TABLE IF NOT EXISTS ff_player_indicators (id BIGSERIAL PRIMARY KEY, ranking_set_id BIGINT NOT NULL REFERENCES ff_ranking_sets(id) ON DELETE CASCADE, player_id BIGINT NOT NULL REFERENCES ff_players(id), indicator_code TEXT NOT NULL, indicator_class TEXT NOT NULL, label TEXT NOT NULL, metric_value DOUBLE PRECISION, league_rank INTEGER, percentile DOUBLE PRECISION, confidence DOUBLE PRECISION, season INTEGER, related_player_id BIGINT REFERENCES ff_players(id), evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(ranking_set_id, player_id, indicator_code))`,
+  `CREATE TABLE IF NOT EXISTS ff_draft_sessions (id UUID PRIMARY KEY, owner_key TEXT, name TEXT NOT NULL, season INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'ready', draft_type TEXT NOT NULL DEFAULT 'snake', team_count INTEGER NOT NULL, controlled_slot INTEGER NOT NULL, round_count INTEGER NOT NULL, roster_config JSONB NOT NULL, scoring_config JSONB NOT NULL, recommendation_config JSONB NOT NULL DEFAULT '{}'::jsonb, ranking_set_id BIGINT NOT NULL REFERENCES ff_ranking_sets(id), sleeper_draft_id TEXT, current_pick INTEGER NOT NULL DEFAULT 1, revision INTEGER NOT NULL DEFAULT 0, started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+  `CREATE TABLE IF NOT EXISTS ff_draft_teams (id BIGSERIAL PRIMARY KEY, draft_id UUID NOT NULL REFERENCES ff_draft_sessions(id) ON DELETE CASCADE, slot INTEGER NOT NULL, name TEXT NOT NULL, is_controlled BOOLEAN NOT NULL DEFAULT FALSE, external_roster_id TEXT, UNIQUE(draft_id, slot))`,
+  `CREATE TABLE IF NOT EXISTS ff_draft_slots (id BIGSERIAL PRIMARY KEY, draft_id UUID NOT NULL REFERENCES ff_draft_sessions(id) ON DELETE CASCADE, overall_pick INTEGER NOT NULL, round INTEGER NOT NULL, pick_in_round INTEGER NOT NULL, draft_team_id BIGINT NOT NULL REFERENCES ff_draft_teams(id), UNIQUE(draft_id, overall_pick))`,
+  `CREATE TABLE IF NOT EXISTS ff_draft_events (id BIGSERIAL PRIMARY KEY, draft_id UUID NOT NULL REFERENCES ff_draft_sessions(id) ON DELETE CASCADE, event_type TEXT NOT NULL, overall_pick INTEGER, player_id BIGINT REFERENCES ff_players(id), draft_team_id BIGINT REFERENCES ff_draft_teams(id), source TEXT NOT NULL, external_pick_id TEXT, reverses_event_id BIGINT REFERENCES ff_draft_events(id), payload JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+  `CREATE TABLE IF NOT EXISTS ff_draft_player_preferences (draft_id UUID NOT NULL REFERENCES ff_draft_sessions(id) ON DELETE CASCADE, player_id BIGINT NOT NULL REFERENCES ff_players(id), preference TEXT NOT NULL, note TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(draft_id, player_id))`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_rank_sets_latest ON ff_ranking_sets(season, ranking_type, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_rankings_board ON ff_player_rankings(ranking_set_id, COALESCE(our_rank, overall_rank))`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_drafts_recent ON ff_draft_sessions(updated_at DESC)`,
+];
 
 // Columns added to dk_slates / dk_players after the initial table creation.
 // ALTER TABLE ... ADD COLUMN IF NOT EXISTS is idempotent — safe to run every deploy.
@@ -593,4 +611,19 @@ export async function ensureAnalyticsColumns(): Promise<void> {
     });
   }
   await ensureAnalyticsColumnsPromise;
+}
+
+export async function ensureFantasyFootballTables(): Promise<void> {
+  if (!ensureFantasyFootballTablesPromise) {
+    ensureFantasyFootballTablesPromise = (async () => {
+      await ensureOddsHistoryTables();
+      for (const ddl of FANTASY_FOOTBALL_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureFantasyFootballTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureFantasyFootballTablesPromise;
 }

@@ -31,6 +31,7 @@ const PAGE_LINKS: Array<{
 }> = [
   { href: "/dfs", label: "DFS", sports: ["nba", "mlb"] },
   { href: "/nfl", label: "NFL Board", sports: ["nfl"] },
+  { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
   { href: "/homerun", label: "Homeruns", sports: ["mlb"] },
   { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },
@@ -45,7 +46,7 @@ const PAGE_LINKS: Array<{
 export function SportNav() {
   const pathname    = usePathname();
   const searchParams = useSearchParams();
-  const currentSport = (pathname === "/nfl" || pathname.startsWith("/nfl/")
+  const currentSport = (pathname === "/nfl" || pathname.startsWith("/nfl/") || pathname.startsWith("/fantasy-football")
     ? "nfl"
     : searchParams.get("sport") ?? "nba") as Sport;
   const visiblePageLinks = PAGE_LINKS.filter((link) => !link.sports || link.sports.includes(currentSport));

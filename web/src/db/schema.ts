@@ -11,6 +11,7 @@ import {
   date,
   timestamp,
   jsonb,
+  uuid,
   unique,
   index,
 } from "drizzle-orm/pg-core";
@@ -242,6 +243,214 @@ export const nflMatchups = pgTable(
     index("idx_nfl_matchups_upcoming").on(t.commenceTime),
   ],
 );
+
+// Fantasy Football draft assistant
+export const ffSourceSnapshots = pgTable("ff_source_snapshots", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  source: text("source").notNull(),
+  dataset: text("dataset").notNull(),
+  season: integer("season").notNull(),
+  scoring: text("scoring"),
+  rankingType: text("ranking_type"),
+  requestParams: jsonb("request_params").notNull().default({}),
+  sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  responseHash: text("response_hash").notNull(),
+  rowCount: integer("row_count").notNull(),
+  matchedCount: integer("matched_count").notNull().default(0),
+  unmatchedCount: integer("unmatched_count").notNull().default(0),
+  status: text("status").notNull(),
+  errorSummary: text("error_summary"),
+});
+
+export const ffPlayers = pgTable(
+  "ff_players",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    season: integer("season").notNull(),
+    canonicalName: text("canonical_name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    position: text("position").notNull(),
+    nflTeamId: integer("nfl_team_id").references(() => nflTeams.teamId),
+    teamAbbrev: text("team_abbrev"),
+    fantasyprosPlayerId: integer("fantasypros_player_id"),
+    sleeperPlayerId: text("sleeper_player_id"),
+    gsisId: text("gsis_id"),
+    espnId: text("espn_id"),
+    yahooId: text("yahoo_id"),
+    mflId: text("mfl_id"),
+    draftkingsId: text("draftkings_id"),
+    active: boolean("active").notNull().default(true),
+    rookie: boolean("rookie").notNull().default(false),
+    byeWeek: integer("bye_week"),
+    injuryStatus: text("injury_status"),
+    metadata: jsonb("metadata").notNull().default({}),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("ff_players_season_fp_key").on(t.season, t.fantasyprosPlayerId)],
+);
+
+export const ffRankingSets = pgTable("ff_ranking_sets", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  season: integer("season").notNull(),
+  name: text("name").notNull(),
+  source: text("source").notNull(),
+  sourceSnapshotId: bigint("source_snapshot_id", { mode: "number" }).references(() => ffSourceSnapshots.id),
+  sourceDate: date("source_date"),
+  scoringProfile: jsonb("scoring_profile").notNull(),
+  rankingType: text("ranking_type").notNull().default("DRAFT"),
+  isBaseline: boolean("is_baseline").notNull().default(false),
+  importSummary: jsonb("import_summary"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const ffPlayerRankings = pgTable(
+  "ff_player_rankings",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    rankingSetId: bigint("ranking_set_id", { mode: "number" }).notNull().references(() => ffRankingSets.id),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => ffPlayers.id),
+    overallRank: integer("overall_rank"),
+    positionRank: integer("position_rank"),
+    tier: integer("tier"),
+    adp: doublePrecision("adp"),
+    projectedPoints: doublePrecision("projected_points"),
+    projectionLow: doublePrecision("projection_low"),
+    projectionHigh: doublePrecision("projection_high"),
+    projectedStats: jsonb("projected_stats"),
+    rankMin: doublePrecision("rank_min"),
+    rankMax: doublePrecision("rank_max"),
+    rankStd: doublePrecision("rank_std"),
+    ourRank: integer("our_rank"),
+    ourProjectedPoints: doublePrecision("our_projected_points"),
+    expectedGames: doublePrecision("expected_games"),
+    confidence: doublePrecision("confidence"),
+    sourceRow: jsonb("source_row"),
+    notes: text("notes"),
+  },
+  (t) => [unique("ff_player_rankings_set_player_key").on(t.rankingSetId, t.playerId)],
+);
+
+export const ffPlayerSeasonFeatures = pgTable(
+  "ff_player_season_features",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => ffPlayers.id),
+    season: integer("season").notNull(),
+    source: text("source").notNull(),
+    games: integer("games"),
+    fantasyPointsStd: doublePrecision("fantasy_points_std"),
+    fantasyPointsPpr: doublePrecision("fantasy_points_ppr"),
+    targets: doublePrecision("targets"),
+    receptions: doublePrecision("receptions"),
+    receivingYards: doublePrecision("receiving_yards"),
+    receivingTds: doublePrecision("receiving_tds"),
+    carries: doublePrecision("carries"),
+    rushingYards: doublePrecision("rushing_yards"),
+    rushingTds: doublePrecision("rushing_tds"),
+    targetShare: doublePrecision("target_share"),
+    rushShare: doublePrecision("rush_share"),
+    teamTargetRank: integer("team_target_rank"),
+    teamRushRank: integer("team_rush_rank"),
+    nflTargetRank: integer("nfl_target_rank"),
+    nflRushTdRank: integer("nfl_rush_td_rank"),
+    sourceRow: jsonb("source_row").notNull().default({}),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("ff_player_features_player_season_source_key").on(t.playerId, t.season, t.source)],
+);
+
+export const ffPlayerIndicators = pgTable(
+  "ff_player_indicators",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    rankingSetId: bigint("ranking_set_id", { mode: "number" }).notNull().references(() => ffRankingSets.id),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => ffPlayers.id),
+    indicatorCode: text("indicator_code").notNull(),
+    indicatorClass: text("indicator_class").notNull(),
+    label: text("label").notNull(),
+    metricValue: doublePrecision("metric_value"),
+    leagueRank: integer("league_rank"),
+    percentile: doublePrecision("percentile"),
+    confidence: doublePrecision("confidence"),
+    season: integer("season"),
+    relatedPlayerId: bigint("related_player_id", { mode: "number" }).references(() => ffPlayers.id),
+    evidence: jsonb("evidence").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("ff_player_indicators_set_player_code_key").on(t.rankingSetId, t.playerId, t.indicatorCode)],
+);
+
+export const ffDraftSessions = pgTable("ff_draft_sessions", {
+  id: uuid("id").primaryKey(),
+  ownerKey: text("owner_key"),
+  name: text("name").notNull(),
+  season: integer("season").notNull(),
+  status: text("status").notNull().default("ready"),
+  draftType: text("draft_type").notNull().default("snake"),
+  teamCount: integer("team_count").notNull(),
+  controlledSlot: integer("controlled_slot").notNull(),
+  roundCount: integer("round_count").notNull(),
+  rosterConfig: jsonb("roster_config").notNull(),
+  scoringConfig: jsonb("scoring_config").notNull(),
+  recommendationConfig: jsonb("recommendation_config").notNull().default({}),
+  rankingSetId: bigint("ranking_set_id", { mode: "number" }).notNull().references(() => ffRankingSets.id),
+  sleeperDraftId: text("sleeper_draft_id"),
+  currentPick: integer("current_pick").notNull().default(1),
+  revision: integer("revision").notNull().default(0),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const ffDraftTeams = pgTable(
+  "ff_draft_teams",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    draftId: uuid("draft_id").notNull().references(() => ffDraftSessions.id),
+    slot: integer("slot").notNull(),
+    name: text("name").notNull(),
+    isControlled: boolean("is_controlled").notNull().default(false),
+    externalRosterId: text("external_roster_id"),
+  },
+  (t) => [unique("ff_draft_teams_draft_slot_key").on(t.draftId, t.slot)],
+);
+
+export const ffDraftSlots = pgTable(
+  "ff_draft_slots",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    draftId: uuid("draft_id").notNull().references(() => ffDraftSessions.id),
+    overallPick: integer("overall_pick").notNull(),
+    round: integer("round").notNull(),
+    pickInRound: integer("pick_in_round").notNull(),
+    draftTeamId: bigint("draft_team_id", { mode: "number" }).notNull().references(() => ffDraftTeams.id),
+  },
+  (t) => [unique("ff_draft_slots_draft_pick_key").on(t.draftId, t.overallPick)],
+);
+
+export const ffDraftEvents = pgTable("ff_draft_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  draftId: uuid("draft_id").notNull().references(() => ffDraftSessions.id),
+  eventType: text("event_type").notNull(),
+  overallPick: integer("overall_pick"),
+  playerId: bigint("player_id", { mode: "number" }).references(() => ffPlayers.id),
+  draftTeamId: bigint("draft_team_id", { mode: "number" }).references(() => ffDraftTeams.id),
+  source: text("source").notNull(),
+  externalPickId: text("external_pick_id"),
+  reversesEventId: bigint("reverses_event_id", { mode: "number" }),
+  payload: jsonb("payload").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const ffDraftPlayerPreferences = pgTable("ff_draft_player_preferences", {
+  draftId: uuid("draft_id").notNull().references(() => ffDraftSessions.id),
+  playerId: bigint("player_id", { mode: "number" }).notNull().references(() => ffPlayers.id),
+  preference: text("preference").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const mlbParkFactors = pgTable(
   "mlb_park_factors",
@@ -1430,6 +1639,11 @@ export type VideoAnalysis = typeof videoAnalysis.$inferSelect;
 export type YoutubePickChannel = typeof youtubePickChannels.$inferSelect;
 export type YoutubePickVideo = typeof youtubePickVideos.$inferSelect;
 export type YoutubePick = typeof youtubePicks.$inferSelect;
+export type FfPlayer = typeof ffPlayers.$inferSelect;
+export type FfRankingSet = typeof ffRankingSets.$inferSelect;
+export type FfPlayerRanking = typeof ffPlayerRankings.$inferSelect;
+export type FfPlayerIndicator = typeof ffPlayerIndicators.$inferSelect;
+export type FfDraftSession = typeof ffDraftSessions.$inferSelect;
 export type DkSlate = typeof dkSlates.$inferSelect;
 export type DkPlayer = typeof dkPlayers.$inferSelect;
 export type DkLineup = typeof dkLineups.$inferSelect;

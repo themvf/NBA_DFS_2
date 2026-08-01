@@ -1,0 +1,34 @@
+name: Refresh Fantasy Football Draft Data
+
+on:
+  schedule:
+    # Every six hours during the North American draft season. The ingestion
+    # script is snapshot-idempotent, and browser traffic never calls the API.
+    - cron: "17 1,7,13,19 * 7-9 *"
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "NFL season"
+        required: false
+        default: "2026"
+        type: string
+
+concurrency:
+  group: fantasy-football-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Refresh rankings, projections, injuries, and prior-season features
+        run: python -m ingest.ff_fantasypros --season "${{ inputs.season || '2026' }}"
