@@ -25,6 +25,7 @@ from typing import Any
 import pandas as pd
 import requests
 from psycopg2.extras import Json
+from psycopg2.extras import RealDictCursor
 
 from config import load_config
 from db.database import DatabaseManager
@@ -173,13 +174,46 @@ class FantasyProsClient:
         raise RuntimeError(f"FantasyPros request failed for {path}")
 
 
+class RefreshDatabase:
+    """One connection/transaction for an entire refresh.
+
+    DatabaseManager deliberately opens a connection per helper call, which is
+    convenient for ordinary jobs but far too slow for hundreds of player
+    upserts against Neon. This scoped adapter preserves the same tiny interface.
+    """
+
+    def __init__(self, database_url: str) -> None:
+        import psycopg2
+
+        self.conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+
+    def execute(self, statement: str, params: Any = None) -> list[dict[str, Any]]:
+        cursor = self.conn.cursor()
+        cursor.execute(statement, params or ())
+        try:
+            return list(cursor.fetchall())
+        except Exception:
+            return []
+
+    def execute_one(self, statement: str, params: Any = None) -> dict[str, Any] | None:
+        cursor = self.conn.cursor()
+        cursor.execute(statement, params or ())
+        return cursor.fetchone()
+
+    def close(self, error: bool = False) -> None:
+        try:
+            self.conn.rollback() if error else self.conn.commit()
+        finally:
+            self.conn.close()
+
+
 def response_hash(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def snapshot(
-    db: DatabaseManager,
+    db: DatabaseManager | RefreshDatabase,
     *,
     dataset: str,
     season: int,
@@ -214,7 +248,7 @@ def snapshot(
     return int(result["id"])
 
 
-def upsert_players(db: DatabaseManager, season: int, payload: dict[str, Any]) -> dict[int, int]:
+def upsert_players(db: DatabaseManager | RefreshDatabase, season: int, payload: dict[str, Any]) -> dict[int, int]:
     result: dict[int, int] = {}
     for row in payload.get("players", []):
         fp_id = as_int(row.get("player_id") or row.get("fpid"))
@@ -263,7 +297,7 @@ def upsert_players(db: DatabaseManager, season: int, payload: dict[str, Any]) ->
     return result
 
 
-def ingest_nflverse_history(db: DatabaseManager, season: int) -> dict[int, dict[str, Any]]:
+def ingest_nflverse_history(db: DatabaseManager | RefreshDatabase, season: int) -> dict[int, dict[str, Any]]:
     prior = season - 1
     url = f"https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_reg_{prior}.csv"
     frame = pd.read_csv(url)
@@ -334,7 +368,7 @@ def ingest_nflverse_history(db: DatabaseManager, season: int) -> dict[int, dict[
     return history
 
 
-def save_injuries(db: DatabaseManager, season: int, payload: dict[str, Any], fp_map: dict[int, int]) -> set[int]:
+def save_injuries(db: DatabaseManager | RefreshDatabase, season: int, payload: dict[str, Any], fp_map: dict[int, int]) -> set[int]:
     injured: set[int] = set()
     for row in payload.get("injuries", []):
         player_id = fp_map.get(as_int(row.get("player_id")) or -1)
@@ -348,7 +382,7 @@ def save_injuries(db: DatabaseManager, season: int, payload: dict[str, Any], fp_
 
 
 def create_indicators(
-    db: DatabaseManager,
+    db: DatabaseManager | RefreshDatabase,
     ranking_set_id: int,
     season: int,
     rows: list[dict[str, Any]],
@@ -401,7 +435,7 @@ def create_indicators(
             )
 
 
-def assign_our_ranks(db: DatabaseManager, ranking_set_id: int, rows: list[dict[str, Any]]) -> None:
+def assign_our_ranks(db: DatabaseManager | RefreshDatabase, ranking_set_id: int, rows: list[dict[str, Any]]) -> None:
     """Rank league-specific value above a default 12-team replacement baseline."""
     demand = {"QB": 12, "RB": 36, "WR": 48, "TE": 12, "K": 12, "DST": 12}
     replacements: dict[str, float] = {}
@@ -423,11 +457,7 @@ def assign_our_ranks(db: DatabaseManager, ranking_set_id: int, rows: list[dict[s
         )
 
 
-def run(season: int) -> dict[str, Any]:
-    config = load_config()
-    db = DatabaseManager(config.database_url)
-    client = FantasyProsClient(os.environ.get("FANTASYPROS_API_KEY", ""))
-
+def _run_ingestion(season: int, db: RefreshDatabase, client: FantasyProsClient) -> dict[str, Any]:
     players_params = {"ecr": "included", "show": "pos_rank", "external_ids": "yahoo:espn:cbs:nfl:mfl:draftkings"}
     players_payload = client.get("nfl/players", players_params)
     snapshot(db, dataset="players", season=season, payload=players_payload, params=players_params)
@@ -505,6 +535,19 @@ def run(season: int) -> dict[str, Any]:
         created_sets.append(ranking_set_id)
 
     return {"season": season, "players": len(fp_map), "ranking_sets": created_sets, "history_matches": len(history)}
+
+
+def run(season: int) -> dict[str, Any]:
+    config = load_config()
+    DatabaseManager(config.database_url)  # schema initialization and migrations
+    db = RefreshDatabase(config.database_url)
+    try:
+        result = _run_ingestion(season, db, FantasyProsClient(os.environ.get("FANTASYPROS_API_KEY", "")))
+        db.close()
+        return result
+    except Exception:
+        db.close(error=True)
+        raise
 
 
 if __name__ == "__main__":
