@@ -218,7 +218,7 @@ def upsert_players(db: DatabaseManager, season: int, payload: dict[str, Any]) ->
     result: dict[int, int] = {}
     for row in payload.get("players", []):
         fp_id = as_int(row.get("player_id") or row.get("fpid"))
-        position = str(row.get("position_id") or "").split(",")[0]
+        position = str(row.get("position_id") or row.get("player_position_id") or row.get("player_positions") or "").split(",")[0]
         if not fp_id or position not in POSITIONS:
             continue
         team = str(row.get("team_id") or row.get("player_team_id") or "") or None
@@ -436,6 +436,7 @@ def run(season: int) -> dict[str, Any]:
     projection_params = {"week": 0, "positions": "QB:RB:WR:TE:K:DST"}
     projections_payload = client.get(f"nfl/{season}/projections", projection_params)
     snapshot(db, dataset="projections", season=season, payload=projections_payload, params=projection_params)
+    fp_map.update(upsert_players(db, season, projections_payload))
     projections = {as_int(row.get("fpid")): projection_stats(row.get("stats")) for row in projections_payload.get("players", [])}
 
     injury_params = {"year": season, "week": 0, "include_probabilities": "true"}
@@ -454,19 +455,30 @@ def run(season: int) -> dict[str, Any]:
         adp_params = {"position": "ALL", "type": "ADP", "scoring": scoring, "week": 0}
         ecr_payload = client.get(f"nfl/{season}/consensus-rankings", ecr_params)
         adp_payload = client.get(f"nfl/{season}/consensus-rankings", adp_params)
+        fp_map.update(upsert_players(db, season, ecr_payload))
+        fp_map.update(upsert_players(db, season, adp_payload))
+        history.update(ingest_nflverse_history(db, season))
         snap_id = snapshot(db, dataset="consensus-rankings", season=season, payload=ecr_payload, params=ecr_params, scoring=scoring, ranking_type="DRAFT")
         snapshot(db, dataset="consensus-rankings", season=season, payload=adp_payload, params=adp_params, scoring=scoring, ranking_type="ADP")
-        existing = db.execute_one("SELECT id FROM ff_ranking_sets WHERE source_snapshot_id=%s AND ranking_type='DRAFT'", (snap_id,))
-        if existing:
+        existing = db.execute_one(
+            """SELECT rs.id,COUNT(pr.id)::int AS player_count FROM ff_ranking_sets rs
+               LEFT JOIN ff_player_rankings pr ON pr.ranking_set_id=rs.id
+               WHERE rs.source_snapshot_id=%s AND rs.ranking_type='DRAFT' GROUP BY rs.id""",
+            (snap_id,),
+        )
+        if existing and existing["player_count"] > 0:
             created_sets.append(int(existing["id"]))
             continue
-        set_row = db.execute_one(
-            """INSERT INTO ff_ranking_sets
-               (season,name,source,source_snapshot_id,source_date,scoring_profile,ranking_type,is_baseline,import_summary)
-               VALUES (%s,%s,'fantasypros+nflverse',%s,CURRENT_DATE,%s,'DRAFT',TRUE,%s) RETURNING id""",
-            (season, f"{season} FantasyPros + Our Model ({scoring})", snap_id, Json({"preset": scoring}), Json({"model_version": "ff-v1-market-history-blend"})),
-        )
-        ranking_set_id = int(set_row["id"])
+        if existing:
+            ranking_set_id = int(existing["id"])
+        else:
+            set_row = db.execute_one(
+                """INSERT INTO ff_ranking_sets
+                   (season,name,source,source_snapshot_id,source_date,scoring_profile,ranking_type,is_baseline,import_summary)
+                   VALUES (%s,%s,'fantasypros+nflverse',%s,CURRENT_DATE,%s,'DRAFT',TRUE,%s) RETURNING id""",
+                (season, f"{season} FantasyPros + Our Model ({scoring})", snap_id, Json({"preset": scoring}), Json({"model_version": "ff-v1-market-history-blend"})),
+            )
+            ranking_set_id = int(set_row["id"])
         adp = {as_int(row.get("player_id")): as_float(row.get("rank_ecr") or row.get("adp")) for row in adp_payload.get("players", [])}
         model_rows: list[dict[str, Any]] = []
         for raw in ecr_payload.get("players", []):
