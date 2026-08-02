@@ -465,7 +465,8 @@ def persist_fantasypros_projections(
 ) -> dict[str, int]:
     """Persist source-attributable projections without letting the source own the board."""
     players = db.execute(
-        """SELECT id,normalized_name,position,team_abbrev,fantasypros_player_id
+        """SELECT id,normalized_name,position,team_abbrev,fantasypros_player_id,
+                  sleeper_player_id,gsis_id
            FROM ff_players WHERE season=%s""",
         (season,),
     )
@@ -490,10 +491,15 @@ def persist_fantasypros_projections(
             unmatched_players += 1
             continue
         fp_id, name, position, team = _fantasypros_player_identity(source_row)
-        player = by_fp.get(fp_id or -1)
-        match_method = "fantasypros_player_id"
-        if player is None and name and position:
-            candidates = by_identity.get((name, position), [])
+        candidates = by_identity.get((name, position), []) if name and position else []
+        independent_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.get("sleeper_player_id") or candidate.get("gsis_id")
+        ]
+        player = independent_candidates[0] if len(independent_candidates) == 1 else by_fp.get(fp_id or -1)
+        match_method = "canonical_independent_identity" if len(independent_candidates) == 1 else "fantasypros_player_id"
+        if player is None and candidates:
             if team:
                 same_team = [candidate for candidate in candidates if candidate.get("team_abbrev") == team]
                 if len(same_team) == 1:

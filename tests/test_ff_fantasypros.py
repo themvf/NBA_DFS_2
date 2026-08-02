@@ -196,6 +196,38 @@ def test_fantasypros_projections_persist_separately_for_each_scoring_format() ->
     assert [params[4] for params in db.updates] == [310.0, 315.5, 321.0]
 
 
+def test_fantasypros_projection_prefers_independent_player_over_legacy_duplicate() -> None:
+    db = IdentityDatabase([
+        {
+            "id": 34,
+            "normalized_name": "pukanacua",
+            "position": "WR",
+            "team_abbrev": "LAR",
+            "fantasypros_player_id": 23180,
+            "sleeper_player_id": None,
+            "gsis_id": None,
+        },
+        {
+            "id": 560,
+            "normalized_name": "pukanacua",
+            "position": "WR",
+            "team_abbrev": "LAR",
+            "fantasypros_player_id": None,
+            "sleeper_player_id": "9493",
+            "gsis_id": "00-0039075",
+        },
+    ])
+    persist_fantasypros_projections(db, 2026, 115, {"players": [{
+        "fpid": 23180,
+        "name": "Puka Nacua",
+        "position_id": "WR",
+        "team_id": "LAR",
+        "stats": {"points": 222.8, "points_half": 281.3, "points_ppr": 339.8},
+    }]})  # type: ignore[arg-type]
+    assert {params[1] for params in db.updates} == {560}
+    assert {params[6] for params in db.updates} == {"canonical_independent_identity"}
+
+
 def test_position_rank_extracts_numeric_suffix() -> None:
     assert position_rank("WR12") == 12
     assert position_rank(None) is None
