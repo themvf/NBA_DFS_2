@@ -10,6 +10,7 @@ import { buildProjectionExplanation } from "../src/lib/fantasy-football/projecti
 import { buildBestBallDraftBoard, canAddBestBallPlayer, getBestBallRosterStatus, parseBestBallDraftState } from "../src/lib/fantasy-football/best-ball";
 import {
   bestBallAdvisorDraftSignature,
+  buildBestBallAdvisorProviderSnapshot,
   buildBestBallAdvisorSnapshot,
   enrichBestBallAdvisorResult,
   getValidatedBestBallAdvisorOutput,
@@ -126,9 +127,12 @@ assert.equal(advisorSnapshot.draft.picksUntilUser, 20);
 assert.deepEqual(advisorSnapshot.userRoster.map((player) => player.playerId), [2]);
 assert.deepEqual(advisorSnapshot.candidates.map((player) => player.playerId), [3, 4, 5]);
 assert.deepEqual(advisorSnapshot.candidates.map((player) => player.candidateKey), ["C01", "C02", "C03"]);
+const providerSnapshotJson = JSON.stringify(buildBestBallAdvisorProviderSnapshot(advisorSnapshot));
+assert.doesNotMatch(providerSnapshotJson, /"playerIds?"/);
+assert.match(providerSnapshotJson, /"candidateKey":"C01"/);
 assert.deepEqual(advisorSnapshot.userByeWeeks.QB, [8]);
 const advisorOutput = validateBestBallAdvisorOutput({
-  recommendedCandidateKey: "C01",
+  recommendedCandidateKey: " c01 ",
   confidence: 82,
   whyNow: "Best combination of projection and availability.",
   rosterFit: "Adds the first running back without duplicating the quarterback bye.",

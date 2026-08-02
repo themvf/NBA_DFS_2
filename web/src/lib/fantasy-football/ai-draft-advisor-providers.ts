@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   BEST_BALL_ADVISOR_JSON_SCHEMA,
+  buildBestBallAdvisorProviderSnapshot,
   type BestBallAdvisorCorrection,
   type BestBallAdvisorProvider,
   type BestBallAdvisorSnapshot,
@@ -25,7 +26,7 @@ Important controls:
 
 function providerInput(snapshot: BestBallAdvisorSnapshot, correction?: BestBallAdvisorCorrection): string {
   return JSON.stringify({
-    snapshot,
+    snapshot: buildBestBallAdvisorProviderSnapshot(snapshot),
     correction: correction ? {
       instruction: "Correct the previous output. Use only candidateKey values present in snapshot.candidates, with no duplicates.",
       validationError: correction.validationError,

@@ -156,6 +156,12 @@ export function bestBallAdvisorDraftSignature(input: Pick<BestBallAdvisorRequest
   return `${input.rankingSetId}:${input.userSlot}:${input.playerIds.join(",")}`;
 }
 
+export function buildBestBallAdvisorProviderSnapshot(snapshot: BestBallAdvisorSnapshot): unknown {
+  return JSON.parse(JSON.stringify(snapshot, (key, value) => (
+    key === "playerId" || key === "playerIds" ? undefined : value
+  )));
+}
+
 export function buildBestBallAdvisorSnapshot(
   rankings: FantasyRankingRow[],
   input: Pick<BestBallAdvisorRequest, "rankingSetId" | "userSlot" | "playerIds">,
@@ -286,7 +292,9 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("The advisor returned an invalid response.");
   const value = raw as Record<string, unknown>;
   const candidateByKey = new Map(snapshot.candidates.map((candidate) => [candidate.candidateKey, candidate]));
-  const recommendedCandidateKey = typeof value.recommendedCandidateKey === "string" ? value.recommendedCandidateKey : "";
+  const recommendedCandidateKey = typeof value.recommendedCandidateKey === "string"
+    ? value.recommendedCandidateKey.trim().toUpperCase()
+    : "";
   const recommendedCandidate = candidateByKey.get(recommendedCandidateKey);
   if (!recommendedCandidate) {
     throw new Error("The advisor recommended a player who is no longer legal or available.");
@@ -301,7 +309,9 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   const alternatives = value.alternatives.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("The advisor returned an invalid alternative.");
     const alternative = item as Record<string, unknown>;
-    const candidateKey = typeof alternative.candidateKey === "string" ? alternative.candidateKey : "";
+    const candidateKey = typeof alternative.candidateKey === "string"
+      ? alternative.candidateKey.trim().toUpperCase()
+      : "";
     const candidate = candidateByKey.get(candidateKey);
     if (!candidate || seen.has(candidateKey)) {
       throw new Error("The advisor returned a duplicate, unavailable, or illegal alternative.");
