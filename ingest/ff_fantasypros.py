@@ -16,10 +16,12 @@ import json
 import math
 import os
 import re
+import sys
 import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -33,6 +35,67 @@ from db.database import DatabaseManager
 BASE_URL = "https://api.fantasypros.com/public/v2/json"
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 SCORING_TYPES = ("STD", "HALF", "PPR")
+
+
+@dataclass(frozen=True)
+class FantasyProsEndpointContract:
+    dataset: str
+    path: str
+    params: dict[str, Any]
+    row_key: str
+    minimum_rows: int
+    required: bool = True
+
+
+def fantasypros_endpoint_contracts(season: int) -> list[FantasyProsEndpointContract]:
+    """Return the server-side FantasyPros datasets used by the draft product.
+
+    Minimums are deliberately conservative. Their purpose is to reject sample
+    responses (for example, a ten-player free-tier payload), not to enforce an
+    exact player count that could change during the offseason.
+    """
+    contracts = [
+        FantasyProsEndpointContract(
+            dataset="players",
+            path="nfl/players",
+            params={"ecr": "included", "show": "pos_rank", "external_ids": "yahoo:espn:cbs:nfl:mfl:draftkings"},
+            row_key="players",
+            minimum_rows=100,
+        ),
+        FantasyProsEndpointContract(
+            dataset="projections",
+            path=f"nfl/{season}/projections",
+            params={"week": 0, "positions": "QB:RB:WR:TE:K:DST"},
+            row_key="players",
+            minimum_rows=100,
+        ),
+        FantasyProsEndpointContract(
+            dataset="injuries",
+            path="nfl/injuries",
+            params={"year": season, "week": 0, "include_probabilities": "true"},
+            row_key="injuries",
+            minimum_rows=0,
+            required=False,
+        ),
+    ]
+    for scoring in SCORING_TYPES:
+        contracts.extend([
+            FantasyProsEndpointContract(
+                dataset=f"draft-rankings-{scoring.lower()}",
+                path=f"nfl/{season}/consensus-rankings",
+                params={"position": "ALL", "type": "DRAFT", "scoring": scoring, "week": 0},
+                row_key="players",
+                minimum_rows=100,
+            ),
+            FantasyProsEndpointContract(
+                dataset=f"adp-{scoring.lower()}",
+                path=f"nfl/{season}/consensus-rankings",
+                params={"position": "ALL", "type": "ADP", "scoring": scoring, "week": 0},
+                row_key="players",
+                minimum_rows=100,
+            ),
+        ])
+    return contracts
 
 
 def normalize_name(value: str) -> str:
@@ -172,6 +235,97 @@ class FantasyProsClient:
                 raise ValueError(f"Unexpected FantasyPros response for {path}")
             return payload
         raise RuntimeError(f"FantasyPros request failed for {path}")
+
+
+def audit_fantasypros_endpoints(
+    client: FantasyProsClient,
+    season: int,
+) -> dict[str, Any]:
+    """Verify entitlement and response shape without retaining player data.
+
+    The report is safe for a CI artifact: it contains request parameters,
+    counts, hashes, timestamps, and error classifications, but never the API
+    key or raw player records.
+    """
+    checked_at = datetime.now(timezone.utc).isoformat()
+    results: list[dict[str, Any]] = []
+    for contract in fantasypros_endpoint_contracts(season):
+        try:
+            payload = client.get(contract.path, contract.params)
+            rows = payload.get(contract.row_key)
+            row_count = len(rows) if isinstance(rows, list) else 0
+            passed = isinstance(rows, list) and row_count >= contract.minimum_rows
+            status = "pass" if passed else "partial" if row_count else "fail"
+            results.append({
+                "dataset": contract.dataset,
+                "path": contract.path,
+                "request_params": contract.params,
+                "row_key": contract.row_key,
+                "row_count": row_count,
+                "minimum_rows": contract.minimum_rows,
+                "required": contract.required,
+                "status": status,
+                "response_hash": response_hash(payload),
+                "source_updated_at": (
+                    datetime.fromtimestamp(payload["last_updated_ts"], tz=timezone.utc).isoformat()
+                    if as_int(payload.get("last_updated_ts"))
+                    else None
+                ),
+                "top_level_keys": sorted(str(key) for key in payload),
+                "error_type": None,
+                "http_status": None,
+            })
+        except requests.RequestException as exc:
+            response = getattr(exc, "response", None)
+            results.append({
+                "dataset": contract.dataset,
+                "path": contract.path,
+                "request_params": contract.params,
+                "row_key": contract.row_key,
+                "row_count": 0,
+                "minimum_rows": contract.minimum_rows,
+                "required": contract.required,
+                "status": "unavailable",
+                "response_hash": None,
+                "source_updated_at": None,
+                "top_level_keys": [],
+                "error_type": type(exc).__name__,
+                "http_status": getattr(response, "status_code", None),
+            })
+        except (TypeError, ValueError) as exc:
+            results.append({
+                "dataset": contract.dataset,
+                "path": contract.path,
+                "request_params": contract.params,
+                "row_key": contract.row_key,
+                "row_count": 0,
+                "minimum_rows": contract.minimum_rows,
+                "required": contract.required,
+                "status": "invalid",
+                "response_hash": None,
+                "source_updated_at": None,
+                "top_level_keys": [],
+                "error_type": type(exc).__name__,
+                "http_status": None,
+            })
+
+    required = [result for result in results if result["required"]]
+    return {
+        "source": "fantasypros",
+        "season": season,
+        "checked_at": checked_at,
+        "contracts": results,
+        "required_contracts": len(required),
+        "passed_required_contracts": sum(result["status"] == "pass" for result in required),
+        "all_required_contracts_pass": all(result["status"] == "pass" for result in required),
+    }
+
+
+def write_audit_report(report: dict[str, Any], output: str | None = None) -> None:
+    rendered = json.dumps(report, indent=2, sort_keys=True)
+    if output:
+        Path(output).write_text(rendered + "\n", encoding="utf-8")
+    print(rendered)
 
 
 class RefreshDatabase:
@@ -596,5 +750,28 @@ def run(season: int) -> dict[str, Any]:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument(
+        "--audit-only",
+        action="store_true",
+        help="Verify endpoint entitlement and payload contracts without writing player data",
+    )
+    parser.add_argument(
+        "--audit-output",
+        help="Optional path for the sanitized JSON endpoint-audit report",
+    )
+    parser.add_argument(
+        "--require-contracts",
+        action="store_true",
+        help="Exit non-zero unless every required endpoint returns a full-size payload",
+    )
     args = parser.parse_args()
-    print(json.dumps(run(args.season), indent=2))
+    if args.audit_only:
+        audit = audit_fantasypros_endpoints(
+            FantasyProsClient(os.environ.get("FANTASYPROS_API_KEY", "")),
+            args.season,
+        )
+        write_audit_report(audit, args.audit_output)
+        if args.require_contracts and not audit["all_required_contracts_pass"]:
+            sys.exit(2)
+    else:
+        print(json.dumps(run(args.season), indent=2))

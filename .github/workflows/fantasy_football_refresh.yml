@@ -31,3 +31,32 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Build independent rankings from Sleeper and nflverse
         run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
+      - name: Audit upgraded FantasyPros endpoint contracts
+        id: fantasypros-audit
+        continue-on-error: true
+        env:
+          FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+        run: >-
+          python -m ingest.ff_fantasypros
+          --season "${{ inputs.season || '2026' }}"
+          --audit-only
+          --require-contracts
+          --audit-output fantasypros-audit.json
+      - name: Upload sanitized FantasyPros audit
+        if: ${{ always() && hashFiles('fantasypros-audit.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fantasypros-endpoint-audit
+          path: fantasypros-audit.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Report FantasyPros soft-dependency state
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          if [[ "${{ steps.fantasypros-audit.outcome }}" == "success" ]]; then
+            echo "### FantasyPros: full required endpoint contracts passed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### FantasyPros: unavailable, invalid, or sample-sized" >> "$GITHUB_STEP_SUMMARY"
+            echo "The independent Sleeper/nflverse board completed and remains authoritative." >> "$GITHUB_STEP_SUMMARY"
+          fi

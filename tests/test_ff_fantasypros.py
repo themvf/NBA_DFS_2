@@ -1,6 +1,8 @@
 from ingest.ff_fantasypros import (
+    audit_fantasypros_endpoints,
     build_model_projection,
     create_indicators,
+    fantasypros_endpoint_contracts,
     normalize_name,
     position_rank,
     projection_stats,
@@ -15,6 +17,33 @@ class CaptureDatabase:
         self.params.append(params)
 
 
+class AuditClient:
+    def __init__(self, *, ranking_rows: int = 150, fail_injuries: bool = False) -> None:
+        self.ranking_rows = ranking_rows
+        self.fail_injuries = fail_injuries
+
+    def get(self, path: str, params: dict | None = None) -> dict:
+        import requests
+
+        params = params or {}
+        if path == "nfl/injuries":
+            if self.fail_injuries:
+                response = requests.Response()
+                response.status_code = 403
+                raise requests.HTTPError(response=response)
+            return {"injuries": [], "last_updated_ts": 1_700_000_000}
+        if path == "nfl/players":
+            return {"players": [{"player_id": index} for index in range(250)]}
+        if path.endswith("/projections"):
+            return {"players": [{"fpid": index} for index in range(220)]}
+        assert path.endswith("/consensus-rankings")
+        return {
+            "players": [{"player_id": index} for index in range(self.ranking_rows)],
+            "scoring": params.get("scoring"),
+            "type": params.get("type"),
+        }
+
+
 def test_normalize_name_handles_suffix_and_accents() -> None:
     assert normalize_name("Marvin Harrison Jr.") == "marvinharrison"
     assert normalize_name("José Núñez III") == "josenunez"
@@ -26,6 +55,46 @@ def test_projection_stats_accepts_object_and_list_shapes() -> None:
         "points": 100.0,
         "rec_rec": 45.5,
     }
+
+
+def test_endpoint_contracts_cover_separate_ecr_and_adp_datasets() -> None:
+    contracts = fantasypros_endpoint_contracts(2026)
+    assert len(contracts) == 9
+    assert {contract.dataset for contract in contracts} == {
+        "players",
+        "projections",
+        "injuries",
+        "draft-rankings-std",
+        "draft-rankings-half",
+        "draft-rankings-ppr",
+        "adp-std",
+        "adp-half",
+        "adp-ppr",
+    }
+
+
+def test_endpoint_audit_passes_full_entitlement_without_raw_player_data() -> None:
+    report = audit_fantasypros_endpoints(AuditClient(), 2026)  # type: ignore[arg-type]
+    assert report["all_required_contracts_pass"] is True
+    assert report["passed_required_contracts"] == 8
+    assert all(result["response_hash"] for result in report["contracts"])
+    assert "players" not in report["contracts"][0]
+
+
+def test_endpoint_audit_rejects_sample_sized_ranking_payloads() -> None:
+    report = audit_fantasypros_endpoints(AuditClient(ranking_rows=10), 2026)  # type: ignore[arg-type]
+    assert report["all_required_contracts_pass"] is False
+    partial = [result for result in report["contracts"] if result["status"] == "partial"]
+    assert len(partial) == 6
+    assert all(result["row_count"] == 10 for result in partial)
+
+
+def test_optional_injury_entitlement_does_not_fail_required_contracts() -> None:
+    report = audit_fantasypros_endpoints(AuditClient(fail_injuries=True), 2026)  # type: ignore[arg-type]
+    injury = next(result for result in report["contracts"] if result["dataset"] == "injuries")
+    assert injury["status"] == "unavailable"
+    assert injury["http_status"] == 403
+    assert report["all_required_contracts_pass"] is True
 
 
 def test_position_rank_extracts_numeric_suffix() -> None:
