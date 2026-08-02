@@ -1,19 +1,22 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { getFantasyRankings, getLatestRankingSet } from "@/db/queries-fantasy-football";
+import { getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet } from "@/db/queries-fantasy-football";
 import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import BestBallClient from "./best-ball-client";
 
 export default async function BestBallPage() {
   const set = await getLatestRankingSet("PPR");
-  const allRankings = set ? await getFantasyRankings(set.id) : [];
+  const [allRankings, fantasyProsHealth] = await Promise.all([
+    set ? getFantasyRankings(set.id) : Promise.resolve([]),
+    getFantasyProsSourceHealth(set?.season ?? 2026),
+  ]);
   const rankings = allRankings
     .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
     .slice(0, 260);
   return <div className="space-y-6">
     <header className="overflow-hidden rounded-3xl border bg-gradient-to-br from-blue-950 via-slate-950 to-indigo-950 p-7 text-white shadow-xl">
-      <div className="flex flex-wrap items-end justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-[0.28em] text-blue-300">DraftKings · NFL · Season Long</p><h1 className="mt-2 text-4xl font-black">Best Ball Draft Lab</h1><p className="mt-2 max-w-3xl text-slate-300">Build and validate a 20-player roster for automatic weekly optimization and the Weeks 15–17 tournament rounds.</p></div><nav className="flex gap-2"><Link href="/fantasy-football/rankings?scoring=PPR" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold">Redraft rankings</Link><span className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold">Best Ball</span></nav></div>
+      <div className="flex flex-wrap items-end justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-[0.28em] text-blue-300">DraftKings · NFL · Season Long</p><h1 className="mt-2 text-4xl font-black">Best Ball Draft Lab</h1><p className="mt-2 max-w-3xl text-slate-300">Build a 20-player roster whose highest-scoring legal lineup is counted automatically each week across Weeks 1–17.</p></div><nav className="flex gap-2"><Link href="/fantasy-football/rankings?scoring=PPR" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold">Redraft rankings</Link><span className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold">Best Ball</span></nav></div>
     </header>
 
     <div className="grid gap-3 md:grid-cols-3">
@@ -21,6 +24,25 @@ export default async function BestBallPage() {
       <div className="rounded-2xl border bg-card p-4"><p className="text-xs font-bold uppercase text-muted-foreground">Scoring</p><p className="mt-1 text-xl font-black">Full PPR + bonuses</p><p className="text-sm text-muted-foreground">+3 at 300 passing yards and 100 rushing/receiving yards.</p></div>
       <div className="rounded-2xl border bg-card p-4"><p className="text-xs font-bold uppercase text-muted-foreground">Entry action required</p><p className="mt-1 text-xl font-black">Edit, queue, or pick</p><p className="text-sm text-muted-foreground">Take at least one qualifying manual action in DraftKings.</p></div>
     </div>
+
+    <section className={`rounded-2xl border p-4 ${fantasyProsHealth.connected && !fantasyProsHealth.stale ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">FantasyPros market feed</p>
+          <p className="mt-1 text-lg font-black">
+            {fantasyProsHealth.connected ? (fantasyProsHealth.stale ? "Connected · stale" : "Connected") : "Incomplete"}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {fantasyProsHealth.availableRequiredDatasets}/{fantasyProsHealth.requiredDatasets} required datasets available. FantasyPros supplies market rankings, ADP, projections, and injury context; the independent nflverse/Sleeper board remains authoritative.
+          </p>
+        </div>
+        <div className="text-right text-xs text-muted-foreground">
+          <p>{fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "players")?.rowCount ?? 0} players</p>
+          <p>{fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "projections")?.rowCount ?? 0} projections</p>
+          <p>{fantasyProsHealth.latestFetchedAt ? `Checked ${new Date(fantasyProsHealth.latestFetchedAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET` : "No successful snapshot"}</p>
+        </div>
+      </div>
+    </section>
 
     <details className="rounded-2xl border bg-card p-5"><summary className="cursor-pointer text-lg font-black">DraftKings scoring and draft rules</summary><div className="mt-4 grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-4">
       <div><h2 className="font-bold">Passing</h2><p className="mt-2">TD +4 · 25 yards +1</p><p>300-yard game +3</p><p>Interception −1</p></div>

@@ -37,6 +37,36 @@ export type FantasyRankingSetSummary = {
   playerCount: number;
 };
 
+export type FantasySourceDatasetHealth = {
+  dataset: string;
+  status: string;
+  rowCount: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  fetchedAt: string;
+  sourceUpdatedAt: string | null;
+};
+
+export type FantasyProsSourceHealth = {
+  connected: boolean;
+  stale: boolean;
+  requiredDatasets: number;
+  availableRequiredDatasets: number;
+  latestFetchedAt: string | null;
+  datasets: FantasySourceDatasetHealth[];
+};
+
+const FANTASYPROS_REQUIRED_DATASETS = [
+  "players",
+  "projections",
+  "draft-rankings-std",
+  "draft-rankings-half",
+  "draft-rankings-ppr",
+  "adp-std",
+  "adp-half",
+  "adp-ppr",
+] as const;
+
 export type FantasyDraftSummary = {
   id: string;
   name: string;
@@ -94,6 +124,35 @@ export async function getLatestRankingSet(scoring = "PPR"): Promise<FantasyRanki
     WHERE COALESCE(rs.scoring_profile->>'preset','PPR')=${scoring}
     GROUP BY rs.id ORDER BY rs.created_at DESC LIMIT 1`);
   return queryRows<FantasyRankingSetSummary>(result)[0] ?? null;
+}
+
+export async function getFantasyProsSourceHealth(season: number): Promise<FantasyProsSourceHealth> {
+  await ensureFantasyFootballTables();
+  const result = await db.execute(sql`WITH latest AS (
+      SELECT DISTINCT ON (dataset) dataset,status,row_count::int AS "rowCount",
+        matched_count::int AS "matchedCount",unmatched_count::int AS "unmatchedCount",
+        fetched_at::text AS "fetchedAt",source_updated_at::text AS "sourceUpdatedAt"
+      FROM ff_source_snapshots
+      WHERE source='fantasypros' AND season=${season}
+      ORDER BY dataset,fetched_at DESC,id DESC
+    )
+    SELECT dataset,status,"rowCount","matchedCount","unmatchedCount","fetchedAt","sourceUpdatedAt"
+    FROM latest ORDER BY dataset`);
+  const datasets = queryRows<FantasySourceDatasetHealth>(result);
+  const available = new Set(
+    datasets.filter((row) => row.status === "success" && row.rowCount > 0).map((row) => row.dataset),
+  );
+  const availableRequiredDatasets = FANTASYPROS_REQUIRED_DATASETS.filter((dataset) => available.has(dataset)).length;
+  const timestamps = datasets.map((row) => Date.parse(row.fetchedAt)).filter(Number.isFinite);
+  const latestMillis = timestamps.length ? Math.max(...timestamps) : null;
+  return {
+    connected: availableRequiredDatasets === FANTASYPROS_REQUIRED_DATASETS.length,
+    stale: latestMillis === null || Date.now() - latestMillis > 12 * 60 * 60 * 1000,
+    requiredDatasets: FANTASYPROS_REQUIRED_DATASETS.length,
+    availableRequiredDatasets,
+    latestFetchedAt: latestMillis === null ? null : new Date(latestMillis).toISOString(),
+    datasets,
+  };
 }
 
 export async function getFantasyRankings(rankingSetId: number): Promise<FantasyRankingRow[]> {
