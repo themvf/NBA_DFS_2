@@ -159,6 +159,15 @@ assert.equal(validateBestBallAdvisorOutput({
     what_would_change: advisorOutput.whatWouldChange,
   },
 }, advisorSnapshot).recommendedPlayerId, 3);
+const looseAdvisorOutput = validateBestBallAdvisorOutput({
+  selection: { primary: "Available Runner" },
+  explanation: "Best available player for this pick.",
+  strategy: "Reassess after the next pick.",
+  caveats: "Role may change.",
+}, advisorSnapshot);
+assert.equal(looseAdvisorOutput.recommendedPlayerId, 3);
+assert.equal(looseAdvisorOutput.confidenceProvided, false);
+assert.equal(looseAdvisorOutput.alternatives.length, 2);
 assert.throws(() => validateBestBallAdvisorOutput({ recommendedCandidateKey: "C99" }, advisorSnapshot), /no longer legal or available/);
 async function testAdvisorCorrection() {
   let advisorAttempts = 0;
