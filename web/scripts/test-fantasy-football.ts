@@ -168,6 +168,13 @@ const looseAdvisorOutput = validateBestBallAdvisorOutput({
 assert.equal(looseAdvisorOutput.recommendedPlayerId, 3);
 assert.equal(looseAdvisorOutput.confidenceProvided, false);
 assert.equal(looseAdvisorOutput.alternatives.length, 2);
+assert.equal(validateBestBallAdvisorOutput({
+  recommendedPicks: [
+    { player_name: "Available Runner", rationale: "Best available player." },
+    { player_name: "Available Receiver" },
+    { player_name: "Available Tight End" },
+  ],
+}, advisorSnapshot).recommendedPlayerId, 3);
 assert.throws(() => validateBestBallAdvisorOutput({ recommendedCandidateKey: "C99" }, advisorSnapshot), /no longer legal or available/);
 async function testAdvisorCorrection() {
   let advisorAttempts = 0;

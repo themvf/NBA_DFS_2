@@ -296,7 +296,7 @@ function normalizedCandidateKey(raw: unknown, candidates: BestBallAdvisorCandida
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     return normalizedCandidateKey(candidateReference(raw as Record<string, unknown>, [
       "candidateKey", "candidate_key", "playerName", "player_name", "player", "name", "pick",
-      "primary", "recommendation", "recommended", "choice", "selection",
+      "primary", "recommendation", "recommended", "choice", "selection", "candidate", "key",
     ]), candidates);
   }
   if (typeof raw === "number" && Number.isInteger(raw) && raw > 0) {
@@ -321,7 +321,9 @@ function candidateReference(value: Record<string, unknown>, keys: string[]): unk
 }
 
 function nestedRecommendation(value: Record<string, unknown>): Record<string, unknown> {
-  const recommendation = value.recommendation ?? value.selection;
+  const recommendedPicks = value.recommendedPicks ?? value.recommended_picks;
+  const firstRecommendedPick = Array.isArray(recommendedPicks) ? recommendedPicks[0] : null;
+  const recommendation = value.recommendation ?? value.selection ?? firstRecommendedPick;
   return recommendation && typeof recommendation === "object" && !Array.isArray(recommendation)
     ? recommendation as Record<string, unknown>
     : {};
@@ -339,7 +341,7 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     value,
     [
       "recommendedCandidateKey", "recommended_candidate_key", "candidateKey", "candidate_key",
-      "recommendedPlayerName", "recommended_player_name", "recommendedPlayer", "recommended_player", "playerName", "player_name", "pick", "selection",
+      "recommendedPlayerName", "recommended_player_name", "recommendedPlayer", "recommended_player", "playerName", "player_name", "pick", "selection", "recommendedPicks", "recommended_picks",
     ],
   );
   const recommendedCandidateKey = normalizedCandidateKey(recommendedReference, snapshot.candidates) ?? "";
@@ -356,8 +358,11 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   if (!Number.isFinite(rawConfidence) || rawConfidence < 0 || rawConfidence > 100) throw new Error("The advisor returned invalid confidence.");
   const confidence = rawConfidence > 0 && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
   const suppliedAlternatives = advisorField(value, ["alternatives", "alternatePicks", "alternate_picks"]);
+  const recommendedPicks = value.recommendedPicks ?? value.recommended_picks;
   const rawAlternatives = Array.isArray(suppliedAlternatives)
     ? suppliedAlternatives.slice(0, 2)
+    : Array.isArray(recommendedPicks) && recommendedPicks.length >= 3
+      ? recommendedPicks.slice(1, 3)
     : snapshot.candidates.filter((candidate) => candidate.candidateKey !== recommendedCandidateKey).slice(0, 2).map((candidate) => candidate.candidateKey);
   if (rawAlternatives.length !== 2) {
     throw new Error("The advisor must return exactly two alternatives.");
