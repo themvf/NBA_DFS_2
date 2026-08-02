@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.1"
+MODEL_VERSION = "ff-independent-v1.2"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -42,6 +42,9 @@ NFLVERSE_STATS_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/stats_player/"
     "stats_player_reg_{season}.csv"
 )
+NFLVERSE_SCHEDULE_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
+FFC_ADP_URL = "https://fantasyfootballcalculator.com/api/v1/adp/{format}?teams=12&year={season}"
+FFC_FORMATS = {"STD": "standard", "HALF": "half-ppr", "PPR": "ppr"}
 
 SEASON_WEIGHTS = (0.15, 0.30, 0.55)
 POSITION_PRIOR_PPG = {
@@ -117,15 +120,17 @@ def _snapshot(
     digest: str,
     row_count: int,
     params: dict[str, Any],
+    scoring: str | None = None,
+    ranking_type: str | None = None,
 ) -> int:
     row = db.execute_one(
         """INSERT INTO ff_source_snapshots
-           (source,dataset,season,request_params,response_hash,row_count,status)
-           VALUES (%s,%s,%s,%s,%s,%s,'success')
+           (source,dataset,season,scoring,ranking_type,request_params,response_hash,row_count,status)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'success')
            ON CONFLICT(source,dataset,response_hash) DO UPDATE SET
              fetched_at=NOW(),row_count=EXCLUDED.row_count,status='success',error_summary=NULL
            RETURNING id""",
-        (source, dataset, season, Json(params), digest, row_count),
+        (source, dataset, season, scoring, ranking_type, Json(params), digest, row_count),
     )
     return int(row["id"])
 
@@ -160,6 +165,44 @@ def _normalized_external_id(value: Any) -> str | None:
 def normalize_team(value: Any) -> str:
     team = str(value or "").strip().upper()
     return TEAM_ABBREV_OVERRIDES.get(team, team)
+
+
+def compute_bye_weeks(schedule: pd.DataFrame, season: int) -> dict[str, int]:
+    regular = schedule[(schedule["season"] == season) & (schedule["game_type"] == "REG")].copy()
+    regular["home_team"] = regular["home_team"].map(normalize_team)
+    regular["away_team"] = regular["away_team"].map(normalize_team)
+    teams = {
+        normalize_team(team)
+        for team in pd.concat([regular["home_team"], regular["away_team"]]).dropna().unique()
+    }
+    bye_weeks: dict[str, int] = {}
+    for team in teams:
+        played = set(
+            regular.loc[
+                (regular["home_team"] == team) | (regular["away_team"] == team),
+                "week",
+            ].astype(int)
+        )
+        missing = sorted(set(range(1, 19)) - played)
+        if len(missing) == 1:
+            bye_weeks[team] = missing[0]
+    return bye_weeks
+
+
+def build_adp_lookup(payload: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    lookup: dict[tuple[str, str], dict[str, Any]] = {}
+    for raw in payload.get("players", []):
+        if not isinstance(raw, dict):
+            continue
+        source_position = str(raw.get("position") or "").upper()
+        position = "DST" if source_position in {"DEF", "DST"} else "K" if source_position in {"K", "PK"} else source_position
+        if position not in POSITIONS:
+            continue
+        team = normalize_team(raw.get("team"))
+        key = (team, "DST") if position == "DST" else (normalize_name(str(raw.get("name") or "")), position)
+        if key[0]:
+            lookup[key] = raw
+    return lookup
 
 
 def _upsert_player(db: RefreshDatabase, season: int, row: dict[str, Any], team_ids: dict[str, int]) -> int:
@@ -199,6 +242,7 @@ def _upsert_player(db: RefreshDatabase, season: int, row: dict[str, Any], team_i
         _normalized_external_id(row.get("espn_id")),
         _normalized_external_id(row.get("yahoo_id")),
         bool(row.get("rookie")),
+        as_int(row.get("bye_week")),
         row.get("injury_status"),
         metadata,
     )
@@ -208,7 +252,7 @@ def _upsert_player(db: RefreshDatabase, season: int, row: dict[str, Any], team_i
                  nfl_team_id=%s,team_abbrev=%s,sleeper_player_id=COALESCE(%s,sleeper_player_id),
                  gsis_id=COALESCE(%s,gsis_id),espn_id=COALESCE(%s,espn_id),
                  yahoo_id=COALESCE(%s,yahoo_id),active=TRUE,rookie=%s,
-                 injury_status=%s,metadata=metadata || %s::jsonb,fetched_at=NOW()
+                 bye_week=%s,injury_status=%s,metadata=metadata || %s::jsonb,fetched_at=NOW()
                WHERE id=%s""",
             (*params, int(existing["id"])),
         )
@@ -216,8 +260,8 @@ def _upsert_player(db: RefreshDatabase, season: int, row: dict[str, Any], team_i
     saved = db.execute_one(
         """INSERT INTO ff_players
            (season,canonical_name,normalized_name,position,nfl_team_id,team_abbrev,
-            sleeper_player_id,gsis_id,espn_id,yahoo_id,active,rookie,injury_status,metadata,fetched_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,%s,%s,%s,NOW()) RETURNING id""",
+            sleeper_player_id,gsis_id,espn_id,yahoo_id,active,rookie,bye_week,injury_status,metadata,fetched_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,%s,%s,%s,%s,NOW()) RETURNING id""",
         (season, *params),
     )
     return int(saved["id"])
@@ -228,6 +272,7 @@ def build_player_universe(
     season: int,
     roster: pd.DataFrame,
     sleeper_payload: dict[str, Any],
+    bye_weeks: dict[str, int],
 ) -> list[dict[str, Any]]:
     by_id, by_gsis, by_name_team = _sleeper_indexes(sleeper_payload)
     teams = db.execute("SELECT team_id,abbreviation,name FROM nfl_teams WHERE active")
@@ -259,6 +304,7 @@ def build_player_universe(
             "rookie": rookie_year == season or as_int(raw.get("years_exp")) == 0,
             "draft_number": draft_number,
             "depth_order": as_int(sleeper.get("depth_chart_order")),
+            "bye_week": bye_weeks.get(team),
             "injury_status": sleeper.get("injury_status"),
             "metadata": {"nflverse_roster": raw, "sleeper": sleeper, "source": "nflverse+sleeper"},
         }
@@ -283,6 +329,7 @@ def build_player_universe(
             "rookie": False,
             "draft_number": None,
             "depth_order": 1,
+            "bye_week": bye_weeks.get(team),
             "injury_status": None,
             "metadata": {"sleeper": sleeper, "source": "nflverse+sleeper", "team_defense": True},
         }
@@ -347,6 +394,10 @@ def save_history(
                 "fg_made": as_float(raw.get("fg_made")) or 0.0,
                 "pat_made": as_float(raw.get("pat_made")) or 0.0,
             }
+            if player["position"] == "K":
+                kicker_points = values["fg_made"] * 3.0 + values["pat_made"]
+                values["fantasy_points_std"] = kicker_points
+                values["fantasy_points_ppr"] = kicker_points
             db.execute(
                 """INSERT INTO ff_player_season_features
                    (player_id,season,source,games,fantasy_points_std,fantasy_points_ppr,
@@ -526,6 +577,7 @@ def create_ranking_set(
     source_snapshot_id: int,
     universe: list[dict[str, Any]],
     histories: dict[int, list[dict[str, Any]]],
+    adp_lookup: dict[tuple[str, str], dict[str, Any]],
 ) -> int:
     existing = db.execute_one(
         """SELECT rs.id,COUNT(pr.id)::int AS player_count FROM ff_ranking_sets rs
@@ -552,7 +604,12 @@ def create_ranking_set(
                 source_snapshot_id,
                 date.today(),
                 Json({"preset": scoring}),
-                Json({"model_version": MODEL_VERSION, "market_data_used": False, "board_size": BOARD_SIZE}),
+                Json({
+                    "model_version": MODEL_VERSION,
+                    "adp_source": "Fantasy Football Calculator",
+                    "adp_used_for_projection": False,
+                    "board_size": BOARD_SIZE,
+                }),
             ),
         )
         ranking_set_id = int(saved["id"])
@@ -560,6 +617,12 @@ def create_ranking_set(
     model_rows: list[dict[str, Any]] = []
     for player in universe:
         projection = project_player(player, histories.get(int(player["player_id"]), []), scoring, season)
+        adp_key = (
+            (str(player.get("team") or ""), "DST")
+            if player["position"] == "DST"
+            else (normalize_name(str(player["name"])), str(player["position"]))
+        )
+        adp_row = adp_lookup.get(adp_key)
         model_rows.append({
             **player,
             "our_projected_points": projection.points,
@@ -569,7 +632,8 @@ def create_ranking_set(
             "projection_high": projection.high,
             "explanation": projection.explanation,
             "overall_rank": None,
-            "adp": None,
+            "adp": as_float(adp_row.get("adp")) if adp_row else None,
+            "adp_source_row": adp_row,
         })
     board = rank_rows(model_rows)[:BOARD_SIZE]
     for row in board:
@@ -578,9 +642,9 @@ def create_ranking_set(
                (ranking_set_id,player_id,overall_rank,position_rank,tier,adp,
                 projected_points,projection_low,projection_high,projected_stats,
                 our_rank,our_projected_points,expected_games,confidence,source_row,notes)
-               VALUES (%s,%s,NULL,%s,%s,NULL,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               VALUES (%s,%s,NULL,%s,%s,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT(ranking_set_id,player_id) DO UPDATE SET
-                position_rank=EXCLUDED.position_rank,tier=EXCLUDED.tier,
+                position_rank=EXCLUDED.position_rank,tier=EXCLUDED.tier,adp=EXCLUDED.adp,
                 projection_low=EXCLUDED.projection_low,projection_high=EXCLUDED.projection_high,
                 projected_stats=EXCLUDED.projected_stats,our_rank=EXCLUDED.our_rank,
                 our_projected_points=EXCLUDED.our_projected_points,
@@ -588,10 +652,13 @@ def create_ranking_set(
                 source_row=EXCLUDED.source_row,notes=EXCLUDED.notes""",
             (
                 ranking_set_id, row["player_id"], row["position_rank"], row["tier"],
-                row["projection_low"], row["projection_high"], Json(row["explanation"]),
+                row["adp"], row["projection_low"], row["projection_high"], Json(row["explanation"]),
                 row["our_rank"], row["our_projected_points"], row["expected_games"],
-                row["confidence"], Json(_clean(row.get("metadata") or {})),
-                f"VOR={row['vor']:.2f}; model={MODEL_VERSION}; market_data_used=false",
+                row["confidence"], Json({
+                    "player": _clean(row.get("metadata") or {}),
+                    "adp": _clean(row.get("adp_source_row")),
+                }),
+                f"VOR={row['vor']:.2f}; model={MODEL_VERSION}; adp_used_for_projection=false",
             ),
         )
     latest_history = {
@@ -605,8 +672,12 @@ def create_ranking_set(
 def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     sleeper_payload, sleeper_digest = _fetch_json(SLEEPER_URL)
     roster, roster_digest = _fetch_csv(NFLVERSE_ROSTER_URL.format(season=season))
+    schedule, schedule_digest = _fetch_csv(NFLVERSE_SCHEDULE_URL)
     if len(sleeper_payload) < 1000 or len(roster) < 500:
         raise RuntimeError("Independent player-universe source returned suspiciously few rows")
+    bye_weeks = compute_bye_weeks(schedule, season)
+    if len(bye_weeks) != 32:
+        raise RuntimeError(f"Expected 32 schedule-derived bye weeks for {season}; found {len(bye_weeks)}")
     _snapshot(
         db, source="sleeper", dataset="players", season=season, digest=sleeper_digest,
         row_count=len(sleeper_payload), params={"url": SLEEPER_URL, "canonical": False},
@@ -615,10 +686,14 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         db, source="nflverse", dataset="weekly-roster", season=season, digest=roster_digest,
         row_count=len(roster), params={"url": NFLVERSE_ROSTER_URL.format(season=season), "canonical": True},
     )
-    universe = build_player_universe(db, season, roster, sleeper_payload)
+    _snapshot(
+        db, source="nflverse", dataset="schedule", season=season, digest=schedule_digest,
+        row_count=len(schedule), params={"url": NFLVERSE_SCHEDULE_URL, "use": "schedule-derived bye weeks"},
+    )
+    universe = build_player_universe(db, season, roster, sleeper_payload, bye_weeks)
 
     history_frames: dict[int, pd.DataFrame] = {}
-    source_digests = [sleeper_digest, roster_digest]
+    source_digests = [sleeper_digest, roster_digest, schedule_digest]
     for history_season in range(season - 3, season):
         url = NFLVERSE_STATS_URL.format(season=history_season)
         frame, digest = _fetch_csv(url)
@@ -631,6 +706,35 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
             digest=digest, row_count=len(frame), params={"url": url, "season_type": "REG"},
         )
     histories = save_history(db, season, universe, history_frames)
+
+    adp_lookups: dict[str, dict[tuple[str, str], dict[str, Any]]] = {}
+    adp_snapshot_ids: dict[str, int] = {}
+    for scoring, source_format in FFC_FORMATS.items():
+        url = FFC_ADP_URL.format(format=source_format, season=season)
+        payload, digest = _fetch_json(url)
+        player_rows = payload.get("players", [])
+        if not isinstance(player_rows, list) or len(player_rows) < 100:
+            raise RuntimeError(f"Fantasy Football Calculator {scoring} ADP returned suspiciously few rows")
+        lookup = build_adp_lookup(payload)
+        universe_keys = {
+            ((str(player.get("team") or ""), "DST") if player["position"] == "DST"
+             else (normalize_name(str(player["name"])), str(player["position"])))
+            for player in universe
+        }
+        matched = sum(1 for key in lookup if key in universe_keys)
+        snapshot_id = _snapshot(
+            db, source="fantasy-football-calculator", dataset="adp", season=season,
+            digest=digest, row_count=len(player_rows), scoring=scoring, ranking_type="ADP",
+            params={"url": url, "teams": 12, "format": source_format, "projection_input": False},
+        )
+        db.execute(
+            "UPDATE ff_source_snapshots SET matched_count=%s,unmatched_count=%s WHERE id=%s",
+            (matched, len(player_rows) - matched, snapshot_id),
+        )
+        adp_lookups[scoring] = lookup
+        adp_snapshot_ids[scoring] = snapshot_id
+        source_digests.append(digest)
+
     board_digest = _response_hash({
         "model_version": MODEL_VERSION,
         "season": season,
@@ -640,12 +744,18 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     board_snapshot_id = _snapshot(
         db, source="independent-model", dataset="draft-board-inputs", season=season,
         digest=board_digest, row_count=len(universe),
-        params={"model_version": MODEL_VERSION, "history_seasons": list(history_frames)},
+        params={
+            "model_version": MODEL_VERSION,
+            "history_seasons": list(history_frames),
+            "bye_source": "nflverse schedule",
+            "adp_snapshot_ids": adp_snapshot_ids,
+            "adp_used_for_projection": False,
+        },
     )
     ranking_sets = [
         create_ranking_set(
             db, season=season, scoring=scoring, source_snapshot_id=board_snapshot_id,
-            universe=universe, histories=histories,
+            universe=universe, histories=histories, adp_lookup=adp_lookups[scoring],
         )
         for scoring in SCORING_TYPES
     ]
@@ -656,7 +766,9 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         "history_matches": len(histories),
         "ranking_sets": ranking_sets,
         "players_per_board": BOARD_SIZE,
-        "market_data_used": False,
+        "bye_weeks": len(bye_weeks),
+        "adp_coverage": {scoring: len(lookup) for scoring, lookup in adp_lookups.items()},
+        "adp_used_for_projection": False,
     }
 
 

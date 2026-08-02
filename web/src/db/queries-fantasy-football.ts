@@ -20,6 +20,8 @@ export type FantasyRankingRow = {
   adp: number | null;
   projectedPoints: number | null;
   ourProjectedPoints: number | null;
+  games2025: number | null;
+  fantasyPoints2025: number | null;
   expectedGames: number | null;
   confidence: number | null;
   indicators: Array<{ code: string; class: string; label: string; value: number | null; evidence: Record<string, unknown> }>;
@@ -99,15 +101,22 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     p.position,p.team_abbrev AS team,p.rookie,p.bye_week AS "byeWeek",
     p.injury_status AS "injuryStatus",r.overall_rank AS ecr,r.position_rank AS "positionRank",
     r.our_rank AS "ourRank",r.tier,r.adp,r.projected_points AS "projectedPoints",
-    r.our_projected_points AS "ourProjectedPoints",r.expected_games AS "expectedGames",
+    r.our_projected_points AS "ourProjectedPoints",f.games AS "games2025",
+    CASE COALESCE(rs.scoring_profile->>'preset','PPR')
+      WHEN 'STD' THEN f.fantasy_points_std
+      WHEN 'HALF' THEN (f.fantasy_points_std+f.fantasy_points_ppr)/2.0
+      ELSE f.fantasy_points_ppr
+    END AS "fantasyPoints2025",r.expected_games AS "expectedGames",
     r.confidence,COALESCE(jsonb_agg(jsonb_build_object('code',i.indicator_code,
       'class',i.indicator_class,'label',i.label,'value',i.metric_value,'evidence',i.evidence)
       ORDER BY CASE i.indicator_class WHEN 'risk' THEN 1 WHEN 'role' THEN 2 WHEN 'model' THEN 3 ELSE 4 END)
       FILTER (WHERE i.id IS NOT NULL),'[]'::jsonb) AS indicators
     FROM ff_player_rankings r JOIN ff_players p ON p.id=r.player_id
+    JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
+    LEFT JOIN ff_player_season_features f ON f.player_id=p.id AND f.season=2025 AND f.source='nflverse'
     LEFT JOIN ff_player_indicators i ON i.ranking_set_id=r.ranking_set_id AND i.player_id=p.id
     WHERE r.ranking_set_id=${rankingSetId}
-    GROUP BY p.id,r.id ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
+    GROUP BY p.id,r.id,rs.id,f.id ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
   return queryRows<FantasyRankingRow>(result);
 }
 

@@ -1,10 +1,30 @@
-from ingest.ff_independent import normalize_team, project_player, rank_rows
+import pandas as pd
+
+from ingest.ff_independent import build_adp_lookup, compute_bye_weeks, normalize_team, project_player, rank_rows
 
 
 def test_team_abbreviations_match_application_canonicals() -> None:
     assert normalize_team("LA") == "LAR"
     assert normalize_team("WAS") == "WSH"
     assert normalize_team("BUF") == "BUF"
+
+
+def test_bye_weeks_are_derived_from_missing_regular_season_week() -> None:
+    rows = []
+    for week in range(1, 19):
+        if week != 11:
+            rows.append({"season": 2026, "game_type": "REG", "week": week, "home_team": "LA", "away_team": "ARI"})
+    result = compute_bye_weeks(pd.DataFrame(rows), 2026)
+    assert result["LAR"] == 11
+
+
+def test_adp_lookup_normalizes_positions_and_teams() -> None:
+    lookup = build_adp_lookup({"players": [
+        {"name": "Example Kicker", "position": "PK", "team": "WAS", "adp": 190.2},
+        {"name": "Washington Commanders", "position": "DEF", "team": "WAS", "adp": 175.0},
+    ]})
+    assert lookup[("examplekicker", "K")]["adp"] == 190.2
+    assert lookup[("WSH", "DST")]["adp"] == 175.0
 
 
 def test_recent_history_has_more_weight_than_old_history() -> None:

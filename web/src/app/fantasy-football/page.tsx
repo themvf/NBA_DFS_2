@@ -12,7 +12,7 @@ export default async function FantasyFootballPage() {
         <div className="mt-3 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
             <h1 className="text-4xl font-black tracking-tight">Fantasy Football Draft Lab</h1>
-            <p className="mt-3 max-w-3xl text-slate-300">Our board uses the current NFL roster, three seasons of production, depth order, availability, rookies, team movement, and transparent indicators. Market rankings can be added later without controlling our projections.</p>
+            <p className="mt-3 max-w-3xl text-slate-300">Our board uses the current NFL roster, three seasons of production, depth order, availability, rookies, team movement, and transparent indicators. Current ADP is shown for comparison without controlling our projections.</p>
           </div>
           <div className="flex gap-3">
             <Link href="/fantasy-football/rankings" className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Explore rankings</Link>
@@ -48,7 +48,7 @@ export default async function FantasyFootballPage() {
           )) : <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">Your saved drafts will appear here.</p>}</div>
         </section>
       </div>
-      <p className="text-center text-xs text-muted-foreground">Player and historical data from <a className="underline" href="https://docs.sleeper.com/" target="_blank" rel="noreferrer">Sleeper</a> and <a className="underline" href="https://github.com/nflverse/nflverse-data" target="_blank" rel="noreferrer">nflverse</a>. Rankings and projections are produced by this application.</p>
+      <p className="text-center text-xs text-muted-foreground">Player and historical data from <a className="underline" href="https://docs.sleeper.com/" target="_blank" rel="noreferrer">Sleeper</a> and <a className="underline" href="https://github.com/nflverse/nflverse-data" target="_blank" rel="noreferrer">nflverse</a>. Current 12-team ADP from <a className="underline" href="https://fantasyfootballcalculator.com/adp/ppr" target="_blank" rel="noreferrer">Fantasy Football Calculator</a>. Rankings and projections are produced by this application.</p>
     </div>
   );
 }

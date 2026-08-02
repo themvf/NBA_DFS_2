@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { queryRows } from "../src/db/query-result";
 import { buildSnakeSlots, nextControlledPick, picksUntilControlled } from "../src/lib/fantasy-football/draft-engine";
 import { recommendPlayers } from "../src/lib/fantasy-football/recommendations";
+import { fantasyBadgeClass } from "../src/lib/fantasy-football/badge-style";
 
 assert.deepEqual(queryRows<{ id: number }>({ rows: [{ id: 3 }] }), [{ id: 3 }]);
 assert.deepEqual(queryRows<{ id: number }>([{ id: 2 }]), [{ id: 2 }]);
@@ -18,4 +19,8 @@ const recommendations = recommendPlayers([
 ], ["QB"], 10);
 assert.equal(recommendations[0].playerId, 1);
 assert.equal(recommendations[0].adpDelta, 13);
+assert.match(fantasyBadgeClass({ code: "NFL_TOP_10_TARGETS", class: "fact" }), /blue/);
+assert.match(fantasyBadgeClass({ code: "NFL_TOP_10_RUSH_TDS", class: "fact" }), /orange/);
+assert.match(fantasyBadgeClass({ code: "TEAM_TARGET_LEADER", class: "fact" }), /cyan/);
+assert.match(fantasyBadgeClass({ code: "INJURY", class: "risk" }), /red/);
 console.log("fantasy-football tests passed");
