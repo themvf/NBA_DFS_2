@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { queryRows } from "../src/db/query-result";
 import { buildSnakeSlots, nextControlledPick, picksUntilControlled } from "../src/lib/fantasy-football/draft-engine";
 import { recommendPlayers } from "../src/lib/fantasy-football/recommendations";
+
+assert.deepEqual(queryRows<{ id: number }>({ rows: [{ id: 3 }] }), [{ id: 3 }]);
+assert.deepEqual(queryRows<{ id: number }>([{ id: 2 }]), [{ id: 2 }]);
+assert.deepEqual(queryRows<{ id: number }>({}), []);
 
 const slots = buildSnakeSlots(4, 3);
 assert.deepEqual(slots.map((slot) => slot.teamSlot), [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4]);

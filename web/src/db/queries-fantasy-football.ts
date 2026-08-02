@@ -3,6 +3,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from ".";
 import { ensureFantasyFootballTables } from "./ensure-schema";
+import { queryRows } from "./query-result";
 
 export type FantasyRankingRow = {
   playerId: number;
@@ -44,10 +45,6 @@ export type FantasyDraftSummary = {
   updatedAt: string;
 };
 
-function rows<T>(result: unknown): T[] {
-  return result as T[];
-}
-
 export async function getFantasyHomeData(): Promise<{
   rankingSets: FantasyRankingSetSummary[];
   drafts: FantasyDraftSummary[];
@@ -69,10 +66,10 @@ export async function getFantasyHomeData(): Promise<{
       COALESCE(MAX(fetched_at) < NOW()-INTERVAL '12 hours', TRUE) AS stale
       FROM ff_source_snapshots WHERE status='success'`),
   ]);
-  const health = rows<{ latest: string | null; stale: boolean }>(healthResult)[0];
+  const health = queryRows<{ latest: string | null; stale: boolean }>(healthResult)[0];
   return {
-    rankingSets: rows<FantasyRankingSetSummary>(setsResult),
-    drafts: rows<FantasyDraftSummary>(draftsResult),
+    rankingSets: queryRows<FantasyRankingSetSummary>(setsResult),
+    drafts: queryRows<FantasyDraftSummary>(draftsResult),
     latestSuccess: health?.latest ?? null,
     dataStale: health?.stale ?? true,
   };
@@ -86,7 +83,7 @@ export async function getLatestRankingSet(scoring = "PPR"): Promise<FantasyRanki
     FROM ff_ranking_sets rs LEFT JOIN ff_player_rankings pr ON pr.ranking_set_id=rs.id
     WHERE COALESCE(rs.scoring_profile->>'preset','PPR')=${scoring}
     GROUP BY rs.id ORDER BY rs.created_at DESC LIMIT 1`);
-  return rows<FantasyRankingSetSummary>(result)[0] ?? null;
+  return queryRows<FantasyRankingSetSummary>(result)[0] ?? null;
 }
 
 export async function getFantasyRankings(rankingSetId: number): Promise<FantasyRankingRow[]> {
@@ -104,7 +101,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     LEFT JOIN ff_player_indicators i ON i.ranking_set_id=r.ranking_set_id AND i.player_id=p.id
     WHERE r.ranking_set_id=${rankingSetId}
     GROUP BY p.id,r.id ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
-  return rows<FantasyRankingRow>(result);
+  return queryRows<FantasyRankingRow>(result);
 }
 
 export type DraftBoardSlot = {
@@ -138,7 +135,7 @@ export async function getFantasyDraftState(draftId: string): Promise<FantasyDraf
     controlled_slot AS "controlledSlot",round_count AS "roundCount",current_pick AS "currentPick",
     revision,ranking_set_id::int AS "rankingSetId",roster_config AS "rosterConfig",scoring_config AS "scoringConfig"
     FROM ff_draft_sessions WHERE id=${draftId}::uuid`);
-  const draft = rows<FantasyDraftState["draft"]>(draftResult)[0];
+  const draft = queryRows<FantasyDraftState["draft"]>(draftResult)[0];
   if (!draft) return null;
   const boardResult = await db.execute(sql`WITH active_picks AS (
       SELECT e.* FROM ff_draft_events e LEFT JOIN ff_draft_events reversal ON reversal.reverses_event_id=e.id
@@ -150,6 +147,6 @@ export async function getFantasyDraftState(draftId: string): Promise<FantasyDraf
       LEFT JOIN active_picks e ON e.overall_pick=s.overall_pick LEFT JOIN ff_players p ON p.id=e.player_id
       WHERE s.draft_id=${draftId}::uuid ORDER BY s.overall_pick`);
   const all = await getFantasyRankings(draft.rankingSetId);
-  const drafted = new Set(rows<DraftBoardSlot>(boardResult).flatMap((slot) => slot.playerId ? [slot.playerId] : []));
-  return { draft, board: rows<DraftBoardSlot>(boardResult), available: all.filter((player) => !drafted.has(player.playerId)) };
+  const drafted = new Set(queryRows<DraftBoardSlot>(boardResult).flatMap((slot) => slot.playerId ? [slot.playerId] : []));
+  return { draft, board: queryRows<DraftBoardSlot>(boardResult), available: all.filter((player) => !drafted.has(player.playerId)) };
 }
