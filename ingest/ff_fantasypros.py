@@ -256,6 +256,7 @@ def audit_fantasypros_endpoints(
             row_count = len(rows) if isinstance(rows, list) else 0
             passed = isinstance(rows, list) and row_count >= contract.minimum_rows
             status = "pass" if passed else "partial" if row_count else "fail"
+            row_dicts = [row for row in (rows or []) if isinstance(row, dict)] if isinstance(rows, list) else []
             results.append({
                 "dataset": contract.dataset,
                 "path": contract.path,
@@ -272,6 +273,11 @@ def audit_fantasypros_endpoints(
                     else None
                 ),
                 "top_level_keys": sorted(str(key) for key in payload),
+                "row_field_keys": sorted({str(key) for row in row_dicts[:25] for key in row}),
+                "identifier_field_counts": {
+                    key: sum(as_int(row.get(key)) is not None for row in row_dicts)
+                    for key in ("player_id", "fpid", "id")
+                },
                 "error_type": None,
                 "http_status": None,
             })
@@ -289,6 +295,8 @@ def audit_fantasypros_endpoints(
                 "response_hash": None,
                 "source_updated_at": None,
                 "top_level_keys": [],
+                "row_field_keys": [],
+                "identifier_field_counts": {},
                 "error_type": type(exc).__name__,
                 "http_status": getattr(response, "status_code", None),
             })
@@ -305,6 +313,8 @@ def audit_fantasypros_endpoints(
                 "response_hash": None,
                 "source_updated_at": None,
                 "top_level_keys": [],
+                "row_field_keys": [],
+                "identifier_field_counts": {},
                 "error_type": type(exc).__name__,
                 "http_status": None,
             })
