@@ -16,6 +16,7 @@ import {
 import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
 import BestBallDraftBoard from "./best-ball-draft-board";
 import BestBallPlayerBoard from "./best-ball-player-board";
+import BestBallAiAdvisor from "./best-ball-ai-advisor";
 
 const DRAFT_SLOTS = buildSnakeSlots(BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
 const EMPTY_DRAFT: BestBallDraftState = { userSlot: 1, playerIds: [] };
@@ -156,6 +157,14 @@ export default function BestBallClient({ rankings, rankingSetId }: { rankings: F
     {activeView === "results" ? (
       <BestBallDraftBoard rankings={rankings} playerIds={draft.playerIds} userSlot={draft.userSlot} />
     ) : <>
+
+    <BestBallAiAdvisor
+      key={`${rankingSetId}:${draft.userSlot}:${draft.playerIds.join(",")}`}
+      rankingSetId={rankingSetId}
+      userSlot={draft.userSlot}
+      playerIds={draft.playerIds}
+      onDraft={draftPlayer}
+    />
 
     <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <div className="rounded-2xl border bg-card p-5">

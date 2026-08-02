@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { queryRows } from "../src/db/query-result";
 import { buildSnakeSlots, nextControlledPick, picksUntilControlled } from "../src/lib/fantasy-football/draft-engine";
 import { recommendPlayers } from "../src/lib/fantasy-football/recommendations";
@@ -7,6 +8,12 @@ import { filterFantasyRankings } from "../src/lib/fantasy-football/ranking-filte
 import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 import { buildProjectionExplanation } from "../src/lib/fantasy-football/projection-explanation";
 import { buildBestBallDraftBoard, canAddBestBallPlayer, getBestBallRosterStatus, parseBestBallDraftState } from "../src/lib/fantasy-football/best-ball";
+import {
+  bestBallAdvisorDraftSignature,
+  buildBestBallAdvisorSnapshot,
+  enrichBestBallAdvisorResult,
+  validateBestBallAdvisorOutput,
+} from "../src/lib/fantasy-football/ai-draft-advisor";
 
 assert.deepEqual(queryRows<{ id: number }>({ rows: [{ id: 3 }] }), [{ id: 3 }]);
 assert.deepEqual(queryRows<{ id: number }>([{ id: 2 }]), [{ id: 2 }]);
@@ -93,4 +100,49 @@ assert.deepEqual(draftBoard[1][10], { round: 2, pickInRound: 2, teamSlot: 11, ov
 assert.equal(draftBoard[1][9].playerId, null);
 assert.deepEqual(parseBestBallDraftState('{"userSlot":7,"playerIds":[4,5,5,6]}'), { userSlot: 7, playerIds: [4,5,6] });
 assert.deepEqual(parseBestBallDraftState('bad-json'), { userSlot: 1, playerIds: [] });
+
+function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingRow, "playerId" | "name" | "position">): FantasyRankingRow {
+  return {
+    team: null, rookie: false, byeWeek: null, injuryStatus: null, ecr: null, positionRank: null,
+    ourRank: null, tier: null, adp: null, projectedPoints: null, fantasyProsProjectedPoints: null,
+    fantasyProsProjectionFetchedAt: null, fantasyProsProjectionUpdatedAt: null, ourProjectedPoints: null,
+    games2025: null, fantasyPoints2025: null, projectionDetails: null, expectedGames: null, confidence: null,
+    indicators: [], ...overrides,
+  };
+}
+const advisorRows = [
+  advisorRow({ playerId: 1, name: "Team One Pick", position: "WR", team: "BUF", byeWeek: 7, ourRank: 1, positionRank: 1, adp: 1, ourProjectedPoints: 300, fantasyProsProjectedPoints: 298, games2025: 17, fantasyPoints2025: 290, confidence: 0.9 }),
+  advisorRow({ playerId: 2, name: "My First Pick", position: "QB", team: "BAL", byeWeek: 8, ourRank: 2, positionRank: 1, adp: 2, ourProjectedPoints: 350, fantasyProsProjectedPoints: 340, games2025: 17, fantasyPoints2025: 345, confidence: 0.9 }),
+  advisorRow({ playerId: 3, name: "Available Runner", position: "RB", team: "ATL", byeWeek: 5, ourRank: 3, positionRank: 1, adp: 4, ourProjectedPoints: 280, fantasyProsProjectedPoints: 275, games2025: 17, fantasyPoints2025: 270, confidence: 0.8 }),
+  advisorRow({ playerId: 4, name: "Available Receiver", position: "WR", team: "LAR", byeWeek: 9, ourRank: 4, positionRank: 2, adp: 5, ourProjectedPoints: 270, fantasyProsProjectedPoints: 268, games2025: 16, fantasyPoints2025: 260, confidence: 0.8 }),
+  advisorRow({ playerId: 5, name: "Available Tight End", position: "TE", team: "KC", byeWeek: 10, ourRank: 5, positionRank: 1, adp: 6, ourProjectedPoints: 240, fantasyProsProjectedPoints: 235, games2025: 17, fantasyPoints2025: 230, confidence: 0.75 }),
+];
+const advisorSnapshot = buildBestBallAdvisorSnapshot(advisorRows, { rankingSetId: 42, userSlot: 2, playerIds: [1, 2] });
+assert.equal(advisorSnapshot.projectionModel, "ff-independent-v1.4");
+assert.equal(advisorSnapshot.draft.currentOverallPick, 3);
+assert.equal(advisorSnapshot.draft.targetOverallPick, 23);
+assert.equal(advisorSnapshot.draft.picksUntilUser, 20);
+assert.deepEqual(advisorSnapshot.userRoster.map((player) => player.playerId), [2]);
+assert.deepEqual(advisorSnapshot.candidates.map((player) => player.playerId), [3, 4, 5]);
+assert.deepEqual(advisorSnapshot.userByeWeeks.QB, [8]);
+const advisorOutput = validateBestBallAdvisorOutput({
+  recommendedPlayerId: 3,
+  confidence: 82,
+  whyNow: "Best combination of projection and availability.",
+  rosterFit: "Adds the first running back without duplicating the quarterback bye.",
+  evidence: ["V1.4 projects 280 points.", "ADP is 4."],
+  risks: ["Role uncertainty remains."],
+  alternatives: [{ playerId: 4, reason: "Receiver value." }, { playerId: 5, reason: "Tight-end value." }],
+  strategyUntilNextTurn: "Watch the running-back tier.",
+  whatWouldChange: "A confirmed role change.",
+}, advisorSnapshot);
+assert.equal(advisorOutput.recommendedPlayerId, 3);
+assert.equal(enrichBestBallAdvisorResult(advisorOutput, advisorSnapshot).recommendation.name, "Available Runner");
+assert.throws(() => validateBestBallAdvisorOutput({ ...advisorOutput, recommendedPlayerId: 2 }, advisorSnapshot), /no longer legal or available/);
+assert.notEqual(
+  bestBallAdvisorDraftSignature({ rankingSetId: 42, userSlot: 2, playerIds: [1, 2] }),
+  bestBallAdvisorDraftSignature({ rankingSetId: 42, userSlot: 2, playerIds: [1, 2, 3] }),
+);
+const advisorActionSource = readFileSync(new URL("../src/app/fantasy-football/best-ball/advisor-actions.ts", import.meta.url), "utf8");
+assert.doesNotMatch(advisorActionSource, /NEXT_PUBLIC_(OPENAI|DEEPSEEK)/);
 console.log("fantasy-football tests passed");
