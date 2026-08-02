@@ -311,13 +311,27 @@ function candidateReference(value: Record<string, unknown>, keys: string[]): unk
   return null;
 }
 
+function nestedRecommendation(value: Record<string, unknown>): Record<string, unknown> {
+  const recommendation = value.recommendation;
+  return recommendation && typeof recommendation === "object" && !Array.isArray(recommendation)
+    ? recommendation as Record<string, unknown>
+    : {};
+}
+
+function advisorField(value: Record<string, unknown>, keys: string[]): unknown {
+  return candidateReference(value, keys) ?? candidateReference(nestedRecommendation(value), keys);
+}
+
 export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAdvisorSnapshot): BestBallAdvisorModelOutput {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("The advisor returned an invalid response.");
   const value = raw as Record<string, unknown>;
   const candidateByKey = new Map(snapshot.candidates.map((candidate) => [candidate.candidateKey, candidate]));
-  const recommendedReference = candidateReference(
+  const recommendedReference = advisorField(
     value,
-    ["recommendedCandidateKey", "recommendedPlayerName", "recommendedPlayer", "playerName"],
+    [
+      "recommendedCandidateKey", "recommended_candidate_key", "candidateKey", "candidate_key",
+      "recommendedPlayerName", "recommended_player_name", "recommendedPlayer", "recommended_player", "playerName", "player_name",
+    ],
   );
   const recommendedCandidateKey = normalizedCandidateKey(recommendedReference, snapshot.candidates) ?? "";
   const recommendedCandidate = candidateByKey.get(recommendedCandidateKey);
@@ -326,18 +340,19 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     throw new Error(`The advisor recommended a player who is no longer legal or available (received ${received}).`);
   }
   const recommendedPlayerId = recommendedCandidate.playerId;
-  const rawConfidence = Number(value.confidence);
+  const rawConfidence = Number(advisorField(value, ["confidence"]));
   if (!Number.isFinite(rawConfidence) || rawConfidence < 0 || rawConfidence > 100) throw new Error("The advisor returned invalid confidence.");
   const confidence = rawConfidence > 0 && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
-  if (!Array.isArray(value.alternatives) || value.alternatives.length !== 2) {
+  const rawAlternatives = advisorField(value, ["alternatives"]);
+  if (!Array.isArray(rawAlternatives) || rawAlternatives.length !== 2) {
     throw new Error("The advisor must return exactly two alternatives.");
   }
   const seen = new Set([recommendedCandidateKey]);
-  const alternatives = value.alternatives.map((item) => {
+  const alternatives = rawAlternatives.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("The advisor returned an invalid alternative.");
     const alternative = item as Record<string, unknown>;
     const candidateKey = normalizedCandidateKey(
-      candidateReference(alternative, ["candidateKey", "playerName", "player"]),
+      candidateReference(alternative, ["candidateKey", "candidate_key", "playerName", "player_name", "player"]),
       snapshot.candidates,
     ) ?? "";
     const candidate = candidateByKey.get(candidateKey);
@@ -350,13 +365,13 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   return {
     recommendedPlayerId,
     confidence: Math.round(confidence),
-    whyNow: requireString(value.whyNow, "why-now explanation"),
-    rosterFit: requireString(value.rosterFit, "roster-fit explanation"),
-    evidence: requireStringArray(value.evidence, "evidence", 2, 5),
-    risks: requireStringArray(value.risks, "risk", 1, 4),
+    whyNow: requireString(advisorField(value, ["whyNow", "why_now"]), "why-now explanation"),
+    rosterFit: requireString(advisorField(value, ["rosterFit", "roster_fit"]), "roster-fit explanation"),
+    evidence: requireStringArray(advisorField(value, ["evidence"]), "evidence", 2, 5),
+    risks: requireStringArray(advisorField(value, ["risks", "risk"]), "risk", 1, 4),
     alternatives,
-    strategyUntilNextTurn: requireString(value.strategyUntilNextTurn, "next-turn strategy"),
-    whatWouldChange: requireString(value.whatWouldChange, "change condition"),
+    strategyUntilNextTurn: requireString(advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn"]), "next-turn strategy"),
+    whatWouldChange: requireString(advisorField(value, ["whatWouldChange", "what_would_change"]), "change condition"),
   };
 }
 
