@@ -12,6 +12,14 @@ on:
         required: false
         default: "2026"
         type: string
+      mode:
+        description: "Refresh scope"
+        required: false
+        default: "full"
+        type: choice
+        options:
+          - full
+          - fantasypros-audit
 
 concurrency:
   group: fantasy-football-refresh
@@ -30,6 +38,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Build independent rankings from Sleeper and nflverse
+        if: ${{ inputs.mode != 'fantasypros-audit' }}
         run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
       - name: Audit upgraded FantasyPros endpoint contracts
         id: fantasypros-audit
