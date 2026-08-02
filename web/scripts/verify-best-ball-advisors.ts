@@ -12,7 +12,9 @@ import {
 import { BEST_BALL_POSITIONS } from "../src/lib/fantasy-football/best-ball";
 
 async function main() {
-  const providers: BestBallAdvisorProvider[] = ["openai", "deepseek"];
+  const providerArg = process.argv.find((value) => value.startsWith("--provider="))?.split("=")[1];
+  if (providerArg && providerArg !== "openai" && providerArg !== "deepseek") throw new Error("--provider must be openai or deepseek.");
+  const providers: BestBallAdvisorProvider[] = providerArg ? [providerArg as BestBallAdvisorProvider] : ["openai", "deepseek"];
   const rankingSet = await getLatestRankingSet("PPR");
   if (!rankingSet) throw new Error("No PPR ranking set is available.");
   const rankings = (await getFantasyRankings(rankingSet.id))

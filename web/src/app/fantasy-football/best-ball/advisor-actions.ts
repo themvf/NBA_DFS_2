@@ -5,7 +5,7 @@ import { getFantasyRankings } from "@/db/queries-fantasy-football";
 import {
   buildBestBallAdvisorSnapshot,
   enrichBestBallAdvisorResult,
-  validateBestBallAdvisorOutput,
+  getValidatedBestBallAdvisorOutput,
   type BestBallAdvisorProvider,
   type BestBallAdvisorRequest,
   type BestBallAdvisorResult,
@@ -49,8 +49,10 @@ async function createRecommendation(
   hash: string,
 ): Promise<BestBallAdvisorResult> {
   enforceRateLimit(provider);
-  const raw = await callBestBallAdvisorProvider(provider, snapshot);
-  const output = validateBestBallAdvisorOutput(raw, snapshot);
+  const { output } = await getValidatedBestBallAdvisorOutput(
+    snapshot,
+    (correction) => callBestBallAdvisorProvider(provider, snapshot, correction),
+  );
   return {
     provider,
     providerLabel: provider === "openai" ? "OpenAI" : "DeepSeek",

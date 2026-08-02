@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
+import type { BestBallAdvisorProvider } from "@/lib/fantasy-football/ai-draft-advisor";
 import {
   BEST_BALL_POSITIONS,
   BEST_BALL_ROUNDS,
@@ -83,7 +84,7 @@ function useBestBallDraft(storageKey: string) {
   return { draft, updateDraft };
 }
 
-export default function BestBallClient({ rankings, rankingSetId }: { rankings: FantasyRankingRow[]; rankingSetId: number }) {
+export default function BestBallClient({ rankings, rankingSetId, advisorAvailability }: { rankings: FantasyRankingRow[]; rankingSetId: number; advisorAvailability: Record<BestBallAdvisorProvider, boolean> }) {
   const storageKey = `dfs-vegas:dk-best-ball-draft:v2:${rankingSetId}`;
   const [viewTeam, setViewTeam] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<"players" | "results">("players");
@@ -163,6 +164,7 @@ export default function BestBallClient({ rankings, rankingSetId }: { rankings: F
       rankingSetId={rankingSetId}
       userSlot={draft.userSlot}
       playerIds={draft.playerIds}
+      availability={advisorAvailability}
       onDraft={draftPlayer}
     />
 

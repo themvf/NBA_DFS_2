@@ -23,11 +23,13 @@ function formatProjection(value: number | null): string {
 function RecommendationCard({
   provider,
   state,
+  configured,
   onRequest,
   onDraft,
 }: {
   provider: BestBallAdvisorProvider;
   state: ProviderState;
+  configured: boolean;
   onRequest: (provider: BestBallAdvisorProvider) => void;
   onDraft: (playerId: number) => void;
 }) {
@@ -45,16 +47,17 @@ function RecommendationCard({
       </div>
       <button
         type="button"
-        disabled={state.loading}
+        disabled={state.loading || !configured}
         onClick={() => onRequest(provider)}
         className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-sm disabled:cursor-wait disabled:opacity-60"
       >
-        {state.loading ? "Analyzing…" : state.result ? `Ask ${label} again` : `Ask ${label}`}
+        {!configured ? "Connection needed" : state.loading ? "Analyzing…" : state.result ? `Ask ${label} again` : `Ask ${label}`}
       </button>
     </div>
 
-    {state.error && <div role="alert" className="mt-4 rounded-xl border border-red-300 bg-white/80 p-3 text-sm font-semibold text-red-800">{state.error}</div>}
-    {!state.loading && !state.error && !state.result && <p className="mt-5 rounded-xl bg-white/60 p-4 text-sm">Press the button when you want this model to evaluate your next pick.</p>}
+    {!configured && <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><b>{label} needs a one-time connection.</b><p className="mt-1">Add <code>{provider === "openai" ? "OPENAI_API_KEY" : "DEEPSEEK_API_KEY"}</code> to Vercel Production and Preview, then redeploy.</p></div>}
+    {configured && state.error && <div role="alert" className="mt-4 rounded-xl border border-red-300 bg-white/80 p-3 text-sm font-semibold text-red-800">{state.error}</div>}
+    {configured && !state.loading && !state.error && !state.result && <p className="mt-5 rounded-xl bg-white/60 p-4 text-sm">Press the button when you want this model to evaluate your next pick.</p>}
 
     {state.result && <div className="mt-5 space-y-4">
       <div className="rounded-2xl bg-white p-4 shadow-sm">
@@ -96,11 +99,13 @@ export default function BestBallAiAdvisor({
   rankingSetId,
   userSlot,
   playerIds,
+  availability,
   onDraft,
 }: {
   rankingSetId: number;
   userSlot: number;
   playerIds: number[];
+  availability: Record<BestBallAdvisorProvider, boolean>;
   onDraft: (playerId: number) => void;
 }) {
   const signature = bestBallAdvisorDraftSignature({ rankingSetId, userSlot, playerIds });
@@ -130,8 +135,8 @@ export default function BestBallAiAdvisor({
       <p className="mt-1 max-w-4xl text-sm text-muted-foreground">Both models receive the same rules, your draft slot and roster, every recorded pick, bye weeks, ADP, and the legal V1.4 projection board. Their answers stay separate so you can compare their reasoning.</p>
     </div>
     <div className="grid gap-4 xl:grid-cols-2">
-      <RecommendationCard provider="openai" state={states.openai} onRequest={onRequest} onDraft={onDraft} />
-      <RecommendationCard provider="deepseek" state={states.deepseek} onRequest={onRequest} onDraft={onDraft} />
+      <RecommendationCard provider="openai" state={states.openai} configured={availability.openai} onRequest={onRequest} onDraft={onDraft} />
+      <RecommendationCard provider="deepseek" state={states.deepseek} configured={availability.deepseek} onRequest={onRequest} onDraft={onDraft} />
     </div>
   </section>;
 }

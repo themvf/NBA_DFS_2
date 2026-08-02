@@ -12,6 +12,7 @@ import {
   bestBallAdvisorDraftSignature,
   buildBestBallAdvisorSnapshot,
   enrichBestBallAdvisorResult,
+  getValidatedBestBallAdvisorOutput,
   validateBestBallAdvisorOutput,
 } from "../src/lib/fantasy-football/ai-draft-advisor";
 
@@ -124,25 +125,50 @@ assert.equal(advisorSnapshot.draft.targetOverallPick, 23);
 assert.equal(advisorSnapshot.draft.picksUntilUser, 20);
 assert.deepEqual(advisorSnapshot.userRoster.map((player) => player.playerId), [2]);
 assert.deepEqual(advisorSnapshot.candidates.map((player) => player.playerId), [3, 4, 5]);
+assert.deepEqual(advisorSnapshot.candidates.map((player) => player.candidateKey), ["C01", "C02", "C03"]);
 assert.deepEqual(advisorSnapshot.userByeWeeks.QB, [8]);
 const advisorOutput = validateBestBallAdvisorOutput({
-  recommendedPlayerId: 3,
+  recommendedCandidateKey: "C01",
   confidence: 82,
   whyNow: "Best combination of projection and availability.",
   rosterFit: "Adds the first running back without duplicating the quarterback bye.",
   evidence: ["V1.4 projects 280 points.", "ADP is 4."],
   risks: ["Role uncertainty remains."],
-  alternatives: [{ playerId: 4, reason: "Receiver value." }, { playerId: 5, reason: "Tight-end value." }],
+  alternatives: [{ candidateKey: "C02", reason: "Receiver value." }, { candidateKey: "C03", reason: "Tight-end value." }],
   strategyUntilNextTurn: "Watch the running-back tier.",
   whatWouldChange: "A confirmed role change.",
 }, advisorSnapshot);
 assert.equal(advisorOutput.recommendedPlayerId, 3);
 assert.equal(enrichBestBallAdvisorResult(advisorOutput, advisorSnapshot).recommendation.name, "Available Runner");
-assert.throws(() => validateBestBallAdvisorOutput({ ...advisorOutput, recommendedPlayerId: 2 }, advisorSnapshot), /no longer legal or available/);
+assert.throws(() => validateBestBallAdvisorOutput({ recommendedCandidateKey: "C99" }, advisorSnapshot), /no longer legal or available/);
+async function testAdvisorCorrection() {
+  let advisorAttempts = 0;
+  const correctedAdvisor = await getValidatedBestBallAdvisorOutput(advisorSnapshot, async (correction) => {
+    advisorAttempts += 1;
+    if (!correction) return { recommendedCandidateKey: "C99" };
+    assert.match(correction.validationError, /no longer legal or available/);
+    return {
+      recommendedCandidateKey: "C01", confidence: 80, whyNow: "Corrected legal choice.",
+      rosterFit: "Adds a running back.", evidence: ["V1.4 points", "ADP"], risks: ["Role risk"],
+      alternatives: [{ candidateKey: "C02", reason: "Receiver." }, { candidateKey: "C03", reason: "Tight end." }],
+      strategyUntilNextTurn: "Watch tiers.", whatWouldChange: "New role data.",
+    };
+  });
+  assert.equal(advisorAttempts, 2);
+  assert.equal(correctedAdvisor.retried, true);
+  assert.equal(correctedAdvisor.output.recommendedPlayerId, 3);
+  await assert.rejects(
+    () => getValidatedBestBallAdvisorOutput(advisorSnapshot, async () => ({ recommendedCandidateKey: "C99" })),
+    /couldn't choose a valid available player after rechecking/,
+  );
+}
 assert.notEqual(
   bestBallAdvisorDraftSignature({ rankingSetId: 42, userSlot: 2, playerIds: [1, 2] }),
   bestBallAdvisorDraftSignature({ rankingSetId: 42, userSlot: 2, playerIds: [1, 2, 3] }),
 );
 const advisorActionSource = readFileSync(new URL("../src/app/fantasy-football/best-ball/advisor-actions.ts", import.meta.url), "utf8");
 assert.doesNotMatch(advisorActionSource, /NEXT_PUBLIC_(OPENAI|DEEPSEEK)/);
-console.log("fantasy-football tests passed");
+void testAdvisorCorrection().then(() => console.log("fantasy-football tests passed")).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

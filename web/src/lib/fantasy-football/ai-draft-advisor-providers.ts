@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   BEST_BALL_ADVISOR_JSON_SCHEMA,
+  type BestBallAdvisorCorrection,
   type BestBallAdvisorProvider,
   type BestBallAdvisorSnapshot,
 } from "./ai-draft-advisor";
@@ -19,8 +20,19 @@ Important controls:
 - Do not force a backup position solely because of a bye week when stronger value can reasonably be selected now and coverage can be found later.
 - Do not invent news, injuries, air yards, roles, schedules, correlations, or statistics absent from the snapshot.
 - V1.4 is the active projection model. Never describe this recommendation as using the unfinished V2 model.
-- Choose only playerId values from candidates. Return exactly two distinct legal alternatives.
+- Choose only candidateKey values from candidates. Copy the keys exactly and return exactly two distinct legal alternatives.
 - Return JSON matching the required schema and no prose outside the JSON.`;
+
+function providerInput(snapshot: BestBallAdvisorSnapshot, correction?: BestBallAdvisorCorrection): string {
+  return JSON.stringify({
+    snapshot,
+    correction: correction ? {
+      instruction: "Correct the previous output. Use only candidateKey values present in snapshot.candidates, with no duplicates.",
+      validationError: correction.validationError,
+      previousOutput: correction.previousOutput,
+    } : null,
+  });
+}
 
 function providerHttpError(provider: "OpenAI" | "DeepSeek", status: number): Error {
   if (status === 401 || status === 403) return new Error(`${provider} rejected the configured API key. Update the server credential and try again.`);
@@ -47,9 +59,9 @@ function extractOpenAIText(payload: unknown): string {
   throw new Error("OpenAI returned no recommendation.");
 }
 
-async function callOpenAI(snapshot: BestBallAdvisorSnapshot): Promise<unknown> {
+async function callOpenAI(snapshot: BestBallAdvisorSnapshot, correction?: BestBallAdvisorCorrection): Promise<unknown> {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OpenAI is not configured. Add OPENAI_API_KEY to the server environment.");
+  if (!apiKey) throw new Error("OpenAI isn't connected to this deployment yet. Add OPENAI_API_KEY in Vercel, then redeploy.");
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -60,7 +72,7 @@ async function callOpenAI(snapshot: BestBallAdvisorSnapshot): Promise<unknown> {
       reasoning: { effort: "low" },
       max_output_tokens: 1_800,
       instructions: SYSTEM_PROMPT,
-      input: JSON.stringify(snapshot),
+      input: providerInput(snapshot, correction),
       text: {
         format: {
           type: "json_schema",
@@ -75,7 +87,7 @@ async function callOpenAI(snapshot: BestBallAdvisorSnapshot): Promise<unknown> {
   return JSON.parse(extractOpenAIText(await response.json()));
 }
 
-async function callDeepSeek(snapshot: BestBallAdvisorSnapshot): Promise<unknown> {
+async function callDeepSeek(snapshot: BestBallAdvisorSnapshot, correction?: BestBallAdvisorCorrection): Promise<unknown> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error("DeepSeek is not configured. Add DEEPSEEK_API_KEY to the server environment.");
   const response = await fetch("https://api.deepseek.com/chat/completions", {
@@ -89,7 +101,7 @@ async function callDeepSeek(snapshot: BestBallAdvisorSnapshot): Promise<unknown>
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Evaluate this draft snapshot and return the required JSON recommendation:\n${JSON.stringify(snapshot)}` },
+        { role: "user", content: `Evaluate this draft snapshot and return the required JSON recommendation:\n${providerInput(snapshot, correction)}` },
       ],
     }),
   });
@@ -100,6 +112,10 @@ async function callDeepSeek(snapshot: BestBallAdvisorSnapshot): Promise<unknown>
   return JSON.parse(content);
 }
 
-export async function callBestBallAdvisorProvider(provider: BestBallAdvisorProvider, snapshot: BestBallAdvisorSnapshot): Promise<unknown> {
-  return provider === "openai" ? callOpenAI(snapshot) : callDeepSeek(snapshot);
+export async function callBestBallAdvisorProvider(
+  provider: BestBallAdvisorProvider,
+  snapshot: BestBallAdvisorSnapshot,
+  correction?: BestBallAdvisorCorrection,
+): Promise<unknown> {
+  return provider === "openai" ? callOpenAI(snapshot, correction) : callDeepSeek(snapshot, correction);
 }

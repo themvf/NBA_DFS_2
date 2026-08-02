@@ -22,6 +22,7 @@ export type BestBallAdvisorRequest = {
 };
 
 export type BestBallAdvisorCandidate = {
+  candidateKey: string | null;
   playerId: number;
   name: string;
   position: string;
@@ -96,6 +97,11 @@ export type BestBallAdvisorModelOutput = {
   whatWouldChange: string;
 };
 
+export type BestBallAdvisorCorrection = {
+  validationError: string;
+  previousOutput: unknown;
+};
+
 export type BestBallAdvisorPick = BestBallAdvisorCandidate & { reason?: string };
 
 export type BestBallAdvisorResult = {
@@ -127,6 +133,7 @@ function finiteOrNull(value: number | null): number | null {
 
 function advisorCandidate(player: FantasyRankingRow): BestBallAdvisorCandidate {
   return {
+    candidateKey: null,
     playerId: player.playerId,
     name: player.name,
     position: player.position,
@@ -194,7 +201,10 @@ export function buildBestBallAdvisorSnapshot(
   const candidates = rankings
     .filter((player) => !draftedSet.has(player.playerId) && canAddBestBallPlayer(userRosterRows, player))
     .slice(0, BEST_BALL_ADVISOR_CANDIDATE_LIMIT)
-    .map(advisorCandidate);
+    .map((player, index) => ({
+      ...advisorCandidate(player),
+      candidateKey: `C${String(index + 1).padStart(2, "0")}`,
+    }));
 
   const userByeWeeks: Partial<Record<BestBallPosition, number[]>> = {};
   for (const position of BEST_BALL_POSITIONS) {
@@ -255,7 +265,7 @@ export function buildBestBallAdvisorSnapshot(
       "Prioritize spike-week upside and paths to a weekly starting slot, but never invent air-yard, injury, role, matchup, or correlation evidence absent from this snapshot.",
       "Use ADP to judge whether a candidate is likely to survive until the user's following pick.",
       "The active point projection is V1.4. V2 opportunity and weekly-distribution modeling is not active.",
-      "Only recommend player IDs contained in candidates.",
+      "Select only candidateKey values contained in candidates. Candidate keys are the sole selection identifiers.",
     ],
   };
 }
@@ -275,26 +285,29 @@ function requireStringArray(value: unknown, field: string, min: number, max: num
 export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAdvisorSnapshot): BestBallAdvisorModelOutput {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("The advisor returned an invalid response.");
   const value = raw as Record<string, unknown>;
-  const candidateIds = new Set(snapshot.candidates.map((candidate) => candidate.playerId));
-  const recommendedPlayerId = Number(value.recommendedPlayerId);
-  if (!Number.isInteger(recommendedPlayerId) || !candidateIds.has(recommendedPlayerId)) {
+  const candidateByKey = new Map(snapshot.candidates.map((candidate) => [candidate.candidateKey, candidate]));
+  const recommendedCandidateKey = typeof value.recommendedCandidateKey === "string" ? value.recommendedCandidateKey : "";
+  const recommendedCandidate = candidateByKey.get(recommendedCandidateKey);
+  if (!recommendedCandidate) {
     throw new Error("The advisor recommended a player who is no longer legal or available.");
   }
+  const recommendedPlayerId = recommendedCandidate.playerId;
   const confidence = Number(value.confidence);
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 100) throw new Error("The advisor returned invalid confidence.");
   if (!Array.isArray(value.alternatives) || value.alternatives.length !== 2) {
     throw new Error("The advisor must return exactly two alternatives.");
   }
-  const seen = new Set([recommendedPlayerId]);
+  const seen = new Set([recommendedCandidateKey]);
   const alternatives = value.alternatives.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("The advisor returned an invalid alternative.");
     const alternative = item as Record<string, unknown>;
-    const playerId = Number(alternative.playerId);
-    if (!Number.isInteger(playerId) || !candidateIds.has(playerId) || seen.has(playerId)) {
+    const candidateKey = typeof alternative.candidateKey === "string" ? alternative.candidateKey : "";
+    const candidate = candidateByKey.get(candidateKey);
+    if (!candidate || seen.has(candidateKey)) {
       throw new Error("The advisor returned a duplicate, unavailable, or illegal alternative.");
     }
-    seen.add(playerId);
-    return { playerId, reason: requireString(alternative.reason, "alternative reason") };
+    seen.add(candidateKey);
+    return { playerId: candidate.playerId, reason: requireString(alternative.reason, "alternative reason") };
   });
   return {
     recommendedPlayerId,
@@ -307,6 +320,27 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     strategyUntilNextTurn: requireString(value.strategyUntilNextTurn, "next-turn strategy"),
     whatWouldChange: requireString(value.whatWouldChange, "change condition"),
   };
+}
+
+export async function getValidatedBestBallAdvisorOutput(
+  snapshot: BestBallAdvisorSnapshot,
+  getOutput: (correction?: BestBallAdvisorCorrection) => Promise<unknown>,
+): Promise<{ output: BestBallAdvisorModelOutput; retried: boolean }> {
+  const first = await getOutput();
+  try {
+    return { output: validateBestBallAdvisorOutput(first, snapshot), retried: false };
+  } catch (firstError) {
+    const correction: BestBallAdvisorCorrection = {
+      validationError: firstError instanceof Error ? firstError.message : "The first response failed validation.",
+      previousOutput: first,
+    };
+    const second = await getOutput(correction);
+    try {
+      return { output: validateBestBallAdvisorOutput(second, snapshot), retried: true };
+    } catch {
+      throw new Error("The advisor couldn't choose a valid available player after rechecking the live board. Confirm the latest picks and try again.");
+    }
+  }
 }
 
 export function enrichBestBallAdvisorResult(
@@ -338,7 +372,7 @@ export const BEST_BALL_ADVISOR_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    recommendedPlayerId: { type: "integer" },
+    recommendedCandidateKey: { type: "string" },
     confidence: { type: "number", minimum: 0, maximum: 100 },
     whyNow: { type: "string" },
     rosterFit: { type: "string" },
@@ -351,15 +385,15 @@ export const BEST_BALL_ADVISOR_JSON_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        properties: { playerId: { type: "integer" }, reason: { type: "string" } },
-        required: ["playerId", "reason"],
+        properties: { candidateKey: { type: "string" }, reason: { type: "string" } },
+        required: ["candidateKey", "reason"],
       },
     },
     strategyUntilNextTurn: { type: "string" },
     whatWouldChange: { type: "string" },
   },
   required: [
-    "recommendedPlayerId",
+    "recommendedCandidateKey",
     "confidence",
     "whyNow",
     "rosterFit",
