@@ -5,6 +5,7 @@ import { recommendPlayers } from "../src/lib/fantasy-football/recommendations";
 import { fantasyBadgeClass } from "../src/lib/fantasy-football/badge-style";
 import { filterFantasyRankings } from "../src/lib/fantasy-football/ranking-filters";
 import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
+import { buildProjectionExplanation } from "../src/lib/fantasy-football/projection-explanation";
 
 assert.deepEqual(queryRows<{ id: number }>({ rows: [{ id: 3 }] }), [{ id: 3 }]);
 assert.deepEqual(queryRows<{ id: number }>([{ id: 2 }]), [{ id: 2 }]);
@@ -32,4 +33,22 @@ const filterRows = [
 ] as FantasyRankingRow[];
 assert.deepEqual(filterFantasyRankings(filterRows, { name: "brown", position: "WR", team: "NE" }).map((row) => row.playerId), [1]);
 assert.equal(filterFantasyRankings(filterRows, { name: "", position: "RB", team: "" }).length, 1);
+const explanation = buildProjectionExplanation({
+  method: "history_regression",
+  season_inputs: [{ season: 2025, ppg: 20.61, weight: 0.55 }],
+  weighted_history_ppg: 17.79,
+  position_prior_ppg: 14,
+  regression_prior_games: 4,
+  regressed_ppg: 17.06,
+  expected_games_before_injury: 15.9,
+  role_factor: 1,
+  base_points_before_injury: 271.25,
+  injury_factor: 1,
+  final_points: 271.25,
+  not_modeled: ["current teammates", "future schedule"],
+});
+assert.equal(explanation.method, "Weighted history + regression");
+assert.ok(explanation.lines.includes("2025: 20.6 PPG × 55%"));
+assert.ok(explanation.lines.includes("17.06 PPG × 15.90 games × 1.00 role = 271.3"));
+assert.deepEqual(explanation.notModeled, ["current teammates", "future schedule"]);
 console.log("fantasy-football tests passed");

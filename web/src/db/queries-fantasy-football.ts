@@ -22,6 +22,7 @@ export type FantasyRankingRow = {
   ourProjectedPoints: number | null;
   games2025: number | null;
   fantasyPoints2025: number | null;
+  projectionDetails: Record<string, unknown> | null;
   expectedGames: number | null;
   confidence: number | null;
   indicators: Array<{ code: string; class: string; label: string; value: number | null; evidence: Record<string, unknown> }>;
@@ -106,7 +107,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
       WHEN 'STD' THEN f.fantasy_points_std
       WHEN 'HALF' THEN (f.fantasy_points_std+f.fantasy_points_ppr)/2.0
       ELSE f.fantasy_points_ppr
-    END AS "fantasyPoints2025",r.expected_games AS "expectedGames",
+    END AS "fantasyPoints2025",r.projected_stats AS "projectionDetails",r.expected_games AS "expectedGames",
     r.confidence,COALESCE(jsonb_agg(jsonb_build_object('code',i.indicator_code,
       'class',i.indicator_class,'label',i.label,'value',i.metric_value,'evidence',i.evidence)
       ORDER BY CASE WHEN i.indicator_code='NEW_TEAM' THEN 1

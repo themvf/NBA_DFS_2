@@ -37,12 +37,21 @@ def test_recent_history_has_more_weight_than_old_history() -> None:
     projection = project_player(player, histories, "PPR", 2026)
     assert projection.points > 200
     assert projection.explanation["market_data_used"] is False
+    assert projection.explanation["method"] == "history_regression"
+    assert [row["weight"] for row in projection.explanation["season_inputs"]] == [0.15, 0.30, 0.55]
+    assert projection.explanation["weighted_history_ppg"] is not None
+    assert projection.explanation["regressed_ppg"] is not None
+    assert projection.explanation["regression_prior_games"] == 4.0
+    assert projection.explanation["not_modeled"] == [
+        "current teammates", "offensive line", "coaching/play-caller", "future schedule",
+    ]
 
 
 def test_rookie_projection_uses_draft_capital_and_depth() -> None:
     starter = {"position": "RB", "rookie": True, "depth_order": 1, "injury_status": None, "draft_number": 25}
     backup = {"position": "RB", "rookie": True, "depth_order": 4, "injury_status": None, "draft_number": 180}
     assert project_player(starter, [], "PPR", 2026).points > project_player(backup, [], "PPR", 2026).points
+    assert project_player(starter, [], "PPR", 2026).explanation["method"] == "rookie_prior"
 
 
 def test_rank_rows_uses_value_over_replacement() -> None:
