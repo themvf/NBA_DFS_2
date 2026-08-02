@@ -53,11 +53,18 @@ export async function getFantasyHomeData(): Promise<{
 }> {
   await ensureFantasyFootballTables();
   const [setsResult, draftsResult, healthResult] = await Promise.all([
-    db.execute(sql`SELECT rs.id, rs.season, rs.name,
-      COALESCE(rs.scoring_profile->>'preset', 'PPR') AS scoring,
-      rs.created_at::text AS "createdAt", COUNT(pr.id)::int AS "playerCount"
+    db.execute(sql`WITH ranked_sets AS (
+      SELECT rs.id, rs.season, rs.name,
+        COALESCE(rs.scoring_profile->>'preset', 'PPR') AS scoring,
+        rs.created_at::text AS "createdAt", COUNT(pr.id)::int AS "playerCount",
+        ROW_NUMBER() OVER (
+          PARTITION BY COALESCE(rs.scoring_profile->>'preset', 'PPR')
+          ORDER BY rs.created_at DESC, rs.id DESC
+        ) AS recency
       FROM ff_ranking_sets rs LEFT JOIN ff_player_rankings pr ON pr.ranking_set_id=rs.id
-      GROUP BY rs.id ORDER BY rs.created_at DESC LIMIT 12`),
+      GROUP BY rs.id
+    ) SELECT id,season,name,scoring,"createdAt","playerCount"
+      FROM ranked_sets WHERE recency=1 ORDER BY "createdAt" DESC`),
     db.execute(sql`SELECT id::text, name, status, team_count AS "teamCount",
       controlled_slot AS "controlledSlot", current_pick AS "currentPick",
       (team_count*round_count)::int AS "totalPicks", updated_at::text AS "updatedAt"

@@ -22,7 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,5 +29,5 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Refresh rankings, projections, injuries, and prior-season features
-        run: python -m ingest.ff_fantasypros --season "${{ inputs.season || '2026' }}"
+      - name: Build independent rankings from Sleeper and nflverse
+        run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"

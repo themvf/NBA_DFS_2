@@ -12,7 +12,7 @@ export default async function FantasyFootballPage() {
         <div className="mt-3 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
             <h1 className="text-4xl font-black tracking-tight">Fantasy Football Draft Lab</h1>
-            <p className="mt-3 max-w-3xl text-slate-300">FantasyPros is the market baseline. Our model combines prior-season opportunity, availability, rookies, team movement, and transparent indicators to form an independent draft opinion.</p>
+            <p className="mt-3 max-w-3xl text-slate-300">Our board uses the current NFL roster, three seasons of production, depth order, availability, rookies, team movement, and transparent indicators. Market rankings can be added later without controlling our projections.</p>
           </div>
           <div className="flex gap-3">
             <Link href="/fantasy-football/rankings" className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Explore rankings</Link>
@@ -23,7 +23,7 @@ export default async function FantasyFootballPage() {
 
       <section className={`rounded-2xl border p-5 ${stale ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div><p className="font-bold">Draft data {stale ? "needs a refresh" : "is ready"}</p><p className="text-sm text-slate-600">Latest successful FantasyPros snapshot: {latestSuccess ? new Date(latestSuccess).toLocaleString() : "none yet"}</p></div>
+          <div><p className="font-bold">Draft data {stale ? "needs a refresh" : "is ready"}</p><p className="text-sm text-slate-600">Latest successful source refresh: {latestSuccess ? new Date(latestSuccess).toLocaleString() : "none yet"}</p></div>
           <span className={`rounded-full px-3 py-1 text-xs font-bold ${stale ? "bg-amber-200 text-amber-900" : "bg-emerald-200 text-emerald-900"}`}>{stale ? "STALE" : "HEALTHY"}</span>
         </div>
       </section>
@@ -48,7 +48,7 @@ export default async function FantasyFootballPage() {
           )) : <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">Your saved drafts will appear here.</p>}</div>
         </section>
       </div>
-      <p className="text-center text-xs text-muted-foreground">Rankings and projections powered by <a className="underline" href="https://www.fantasypros.com/" target="_blank" rel="noreferrer">FantasyPros</a>. Independent projections and indicators are produced by this application.</p>
+      <p className="text-center text-xs text-muted-foreground">Player and historical data from <a className="underline" href="https://docs.sleeper.com/" target="_blank" rel="noreferrer">Sleeper</a> and <a className="underline" href="https://github.com/nflverse/nflverse-data" target="_blank" rel="noreferrer">nflverse</a>. Rankings and projections are produced by this application.</p>
     </div>
   );
 }

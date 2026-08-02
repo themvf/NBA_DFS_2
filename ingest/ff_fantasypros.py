@@ -401,13 +401,13 @@ def create_indicators(
         codes: list[tuple[str, str, str, float | None, dict[str, Any]]] = []
         hist = history.get(row["player_id"], {})
         if row.get("rookie"):
-            codes.append(("ROOKIE", "fact", "ROOKIE", None, {"source": "FantasyPros"}))
+            codes.append(("ROOKIE", "fact", "ROOKIE", None, {"source": "player metadata"}))
         if row.get("injury_status"):
             codes.append(("INJURY", "risk", str(row["injury_status"]).upper(), None, {"status": row["injury_status"]}))
         role_rank = team_roles.get((str(row.get("team_abbrev") or ""), row["position"], row["player_id"]))
         if row["position"] in {"WR", "RB"} and role_rank and role_rank <= 2:
             label = f"TEAM {row['position']}{role_rank}"
-            codes.append((label.replace(" ", "_"), "role", label, None, {"basis": "FantasyPros positional order"}))
+            codes.append((label.replace(" ", "_"), "role", label, None, {"basis": "projected positional order"}))
         if row["position"] == "RB" and role_rank == 2:
             codes.append(("HANDCUFF_CANDIDATE", "role", "HANDCUFF CANDIDATE", None, {"requires_depth_chart_confirmation": True}))
         if hist.get("team_target_rank") == 1 and (hist.get("targets") or 0) >= 40:
@@ -418,11 +418,12 @@ def create_indicators(
             codes.append(("NFL_TOP_10_RUSH_TDS", "fact", f"NFL TOP-10 RUSH TDS {season-1}", hist.get("rushing_tds"), hist))
         if hist.get("prior_team") and row.get("team_abbrev") and hist["prior_team"] != row["team_abbrev"]:
             codes.append(("NEW_TEAM", "fact", "NEW TEAM", None, {"from": hist["prior_team"], "to": row["team_abbrev"]}))
-        delta = (row.get("adp") or 0) - (row.get("our_rank") or row.get("overall_rank") or 0)
-        if delta >= 12:
-            codes.append(("OUR_BUY", "model", "OUR BUY", delta, {"adp_delta": delta}))
-        elif delta <= -12:
-            codes.append(("OUR_FADE", "model", "OUR FADE", delta, {"adp_delta": delta}))
+        if row.get("adp") is not None:
+            delta = float(row["adp"]) - float(row.get("our_rank") or row.get("overall_rank") or 0)
+            if delta >= 12:
+                codes.append(("OUR_BUY", "model", "OUR BUY", delta, {"adp_delta": delta}))
+            elif delta <= -12:
+                codes.append(("OUR_FADE", "model", "OUR FADE", delta, {"adp_delta": delta}))
         for code, klass, label, value, evidence in codes:
             db.execute(
                 """INSERT INTO ff_player_indicators

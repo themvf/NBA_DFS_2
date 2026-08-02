@@ -5521,3 +5521,11 @@ gates. `SCRUM-27` owns populated pre-match feature/Elo snapshots and their
 chronological leakage proof. `SCRUM-22` owns adaptive capture-cadence enforcement,
 opening/current/close derivation and movement coverage alerts. These dependent
 issues may not claim the empty snapshot/cadence state as verified functionality.
+# Fantasy Football Draft Board
+
+- The required player universe is the current-season nflverse weekly roster, not FantasyPros.
+- Sleeper is a no-auth enrichment source for fantasy IDs, depth order, position metadata, and injury status; nflverse remains canonical for current roster membership so stale Sleeper records cannot enter the board.
+- Independent projections use the three completed seasons immediately preceding the target season. They weight recent per-game production, regress small samples toward position priors, adjust expected games for availability, and apply bounded depth/injury factors.
+- STD, HALF, and PPR are calculated independently. Draft order uses value over a 12-team replacement baseline. Rookies without NFL history use position and draft-capital priors with wider uncertainty.
+- FantasyPros is optional market enrichment. A sample/free response must never replace or suppress the independent board, and absent market data remains visibly blank rather than being inferred.
+- The scheduled `Refresh Fantasy Football Draft Data` workflow runs `python -m ingest.ff_independent`; source snapshots and ranking sets record versioned `ff-independent-v1.x` provenance.
