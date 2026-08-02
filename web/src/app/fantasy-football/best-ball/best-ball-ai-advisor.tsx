@@ -55,7 +55,7 @@ function RecommendationCard({
       </button>
     </div>
 
-    {!configured && <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><b>{label} needs a one-time connection.</b><p className="mt-1">Add <code>{provider === "openai" ? "OPENAI_API_KEY" : "DEEPSEEK_API_KEY"}</code> to Vercel Production and Preview, then redeploy.</p></div>}
+    {!configured && <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><b>{label} needs a one-time connection.</b><p className="mt-1">Add <code>{provider === "openai" ? "OPENAI_API_KEY (or OPENAI_API)" : "DEEPSEEK_API_KEY"}</code> to Vercel Production and Preview, then redeploy.</p></div>}
     {configured && state.error && <div role="alert" className="mt-4 rounded-xl border border-red-300 bg-white/80 p-3 text-sm font-semibold text-red-800">{state.error}</div>}
     {configured && !state.loading && !state.error && !state.result && <p className="mt-5 rounded-xl bg-white/60 p-4 text-sm">Press the button when you want this model to evaluate your next pick.</p>}
 

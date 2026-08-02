@@ -7,6 +7,7 @@ import {
   type BestBallAdvisorProvider,
   type BestBallAdvisorSnapshot,
 } from "./ai-draft-advisor";
+import { getOpenAIApiKey } from "./ai-draft-advisor-env";
 
 export const OPENAI_BEST_BALL_MODEL = "gpt-5.6-luna" as const;
 export const DEEPSEEK_BEST_BALL_MODEL = "deepseek-v4-flash" as const;
@@ -61,8 +62,8 @@ function extractOpenAIText(payload: unknown): string {
 }
 
 async function callOpenAI(snapshot: BestBallAdvisorSnapshot, correction?: BestBallAdvisorCorrection): Promise<unknown> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OpenAI isn't connected to this deployment yet. Add OPENAI_API_KEY in Vercel, then redeploy.");
+  const apiKey = getOpenAIApiKey();
+  if (!apiKey) throw new Error("OpenAI isn't connected to this deployment yet. Add OPENAI_API_KEY (or OPENAI_API) in Vercel, then redeploy.");
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },

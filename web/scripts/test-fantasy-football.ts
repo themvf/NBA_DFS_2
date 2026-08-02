@@ -207,6 +207,9 @@ assert.notEqual(
 );
 const advisorActionSource = readFileSync(new URL("../src/app/fantasy-football/best-ball/advisor-actions.ts", import.meta.url), "utf8");
 assert.doesNotMatch(advisorActionSource, /NEXT_PUBLIC_(OPENAI|DEEPSEEK)/);
+const advisorEnvSource = readFileSync(new URL("../src/lib/fantasy-football/ai-draft-advisor-env.ts", import.meta.url), "utf8");
+assert.match(advisorEnvSource, /OPENAI_API_KEY/);
+assert.match(advisorEnvSource, /OPENAI_API/);
 void testAdvisorCorrection().then(() => console.log("fantasy-football tests passed")).catch((error) => {
   console.error(error);
   process.exitCode = 1;

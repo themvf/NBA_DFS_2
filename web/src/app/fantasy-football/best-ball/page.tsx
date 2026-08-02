@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet } from "@/db/queries-fantasy-football";
 import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import BestBallClient from "./best-ball-client";
+import { getBestBallAdvisorAvailability } from "@/lib/fantasy-football/ai-draft-advisor-env";
 import ProjectionMethodExplainer from "./projection-method-explainer";
 
 export default async function BestBallPage() {
@@ -56,6 +57,6 @@ export default async function BestBallPage() {
       <div><h2 className="font-bold">Other and clock</h2><p className="mt-2">Return TD +6 · lost fumble −1</p><p>Offensive fumble-recovery TD +6</p><p>Fast pick: 30 sec · slow pick: up to 8 hr</p></div>
     </div></details>
 
-    {!set ? <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">No PPR ranking snapshot is available. Run the Fantasy Football refresh workflow.</div> : <BestBallClient rankings={rankings} rankingSetId={Number(set.id)} advisorAvailability={{ openai: Boolean(process.env.OPENAI_API_KEY), deepseek: Boolean(process.env.DEEPSEEK_API_KEY) }} />}
+    {!set ? <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">No PPR ranking snapshot is available. Run the Fantasy Football refresh workflow.</div> : <BestBallClient rankings={rankings} rankingSetId={Number(set.id)} advisorAvailability={getBestBallAdvisorAvailability()} />}
   </div>;
 }
