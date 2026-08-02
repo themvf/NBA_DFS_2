@@ -7,7 +7,7 @@ import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
 import { BEST_BALL_POSITIONS, type BestBallPosition } from "@/lib/fantasy-football/best-ball";
 import ProjectionNotation from "../rankings/projection-notation";
 
-const COLUMN_GRID = "grid-cols-[76px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_86px_96px_150px_76px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_86px_96px_150px_76px]";
 
 type BestBallPlayerBoardProps = {
   rankings: FantasyRankingRow[];
@@ -24,8 +24,10 @@ type PlayerRowProps = {
 };
 
 const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, canDraft, onDraft }: PlayerRowProps) {
+  const overallRank = player.ourRank ?? player.ecr ?? skillRank;
   return <>
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
+    <div role="cell" className="p-3"><p className="text-base font-black">#{overallRank}</p><p className="text-xs font-semibold text-muted-foreground">{player.position}{player.positionRank ?? "—"}</p></div>
     <div role="cell" className="p-3"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p></div>
     <div role="cell" className="max-w-[310px] p-3"><div className="flex flex-wrap gap-1">{player.indicators.slice(0, 3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}</div></div>
     <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
@@ -76,16 +78,16 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><p>{filtered.length} available players · drafted players are removed from the board</p><p>Fast list · only visible rows are rendered</p></div>
     <div ref={scrollRef} role="table" aria-rowcount={filtered.length + 1} className="h-[min(68vh,680px)] overflow-auto rounded-2xl border bg-card text-sm [contain:strict]">
-      <div role="rowgroup" className="sticky top-0 z-20 min-w-[1120px] bg-muted text-left text-xs uppercase text-muted-foreground">
-        <div role="row" className={`grid ${COLUMN_GRID}`}><div role="columnheader" className="p-3">Skill rank</div><div role="columnheader" className="p-3">Player</div><div role="columnheader" className="p-3">Signals</div><div role="columnheader" className="p-3">ADP</div><div role="columnheader" className="p-3">2025 GP</div><div role="columnheader" className="p-3">2025 FPTS</div><div role="columnheader" className="p-3">2026 PPR base</div><div role="columnheader" className="p-3">Draft</div></div>
+      <div role="rowgroup" className="sticky top-0 z-20 min-w-[1224px] bg-muted text-left text-xs uppercase text-muted-foreground">
+        <div role="row" className={`grid ${COLUMN_GRID}`}><div role="columnheader" className="p-3">Skill rank</div><div role="columnheader" className="p-3">Overall / Pos.</div><div role="columnheader" className="p-3">Player</div><div role="columnheader" className="p-3">Signals</div><div role="columnheader" className="p-3">ADP</div><div role="columnheader" className="p-3">2025 GP</div><div role="columnheader" className="p-3">2025 FPTS</div><div role="columnheader" className="p-3">2026 PPR base</div><div role="columnheader" className="p-3">Draft</div></div>
       </div>
-      <div role="rowgroup" className="relative min-w-[1120px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+      <div role="rowgroup" className="relative min-w-[1224px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const player = filtered[virtualRow.index];
           return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPosition[player.position as BestBallPosition]} onDraft={onDraft} /></div>;
         })}
       </div>
-      {filtered.length === 0 && <p className="min-w-[1120px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}
+      {filtered.length === 0 && <p className="min-w-[1224px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}
     </div>
   </section>;
 }
