@@ -328,6 +328,155 @@ def write_audit_report(report: dict[str, Any], output: str | None = None) -> Non
     print(rendered)
 
 
+def _fantasypros_player_identity(row: dict[str, Any]) -> tuple[int | None, str, str, str | None]:
+    fp_id = as_int(row.get("player_id") or row.get("fpid"))
+    name = normalize_name(str(row.get("player_name") or row.get("name") or ""))
+    position = str(
+        row.get("position_id")
+        or row.get("player_position_id")
+        or row.get("player_positions")
+        or ""
+    ).split(",")[0]
+    team = str(row.get("team_id") or row.get("player_team_id") or "") or None
+    return fp_id, name, position, team
+
+
+def link_fantasypros_players(
+    db: DatabaseManager | RefreshDatabase,
+    season: int,
+    payload: dict[str, Any],
+) -> dict[str, int]:
+    """Attach FantasyPros IDs to the independent canonical player rows.
+
+    No FantasyPros-only player row is inserted here. That boundary prevents a
+    partial or differently scoped vendor directory from replacing the
+    nflverse/Sleeper universe used by the Best Ball board.
+    """
+    existing = db.execute(
+        """SELECT id,normalized_name,position,team_abbrev,fantasypros_player_id
+           FROM ff_players WHERE season=%s""",
+        (season,),
+    )
+    by_fp = {
+        int(row["fantasypros_player_id"]): row
+        for row in existing
+        if as_int(row.get("fantasypros_player_id")) is not None
+    }
+    by_identity: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in existing:
+        by_identity.setdefault((str(row["normalized_name"]), str(row["position"])), []).append(row)
+
+    matched = 0
+    linked = 0
+    ambiguous = 0
+    unsupported = 0
+    seen_fp_ids: set[int] = set()
+    for source_row in payload.get("players", []):
+        if not isinstance(source_row, dict):
+            unsupported += 1
+            continue
+        fp_id, name, position, team = _fantasypros_player_identity(source_row)
+        if fp_id is None or not name or position not in POSITIONS:
+            unsupported += 1
+            continue
+        seen_fp_ids.add(fp_id)
+        if fp_id in by_fp:
+            matched += 1
+            continue
+        candidates = by_identity.get((name, position), [])
+        if team:
+            same_team = [row for row in candidates if row.get("team_abbrev") == team]
+            if len(same_team) == 1:
+                candidates = same_team
+        if len(candidates) != 1:
+            ambiguous += 1 if candidates else 0
+            continue
+        canonical = candidates[0]
+        db.execute(
+            """UPDATE ff_players SET fantasypros_player_id=%s,fetched_at=NOW()
+               WHERE id=%s AND fantasypros_player_id IS NULL""",
+            (fp_id, canonical["id"]),
+        )
+        canonical["fantasypros_player_id"] = fp_id
+        by_fp[fp_id] = canonical
+        matched += 1
+        linked += 1
+    return {
+        "source_rows": len(payload.get("players", [])),
+        "matched": matched,
+        "linked": linked,
+        "unmatched": max(0, len(seen_fp_ids) - matched),
+        "ambiguous": ambiguous,
+        "unsupported": unsupported,
+    }
+
+
+def snapshot_fantasypros_contracts(
+    db: DatabaseManager | RefreshDatabase,
+    client: FantasyProsClient,
+    season: int,
+) -> dict[str, Any]:
+    """Persist distinct immutable metadata for each verified vendor dataset."""
+    payloads: list[tuple[FantasyProsEndpointContract, dict[str, Any]]] = []
+    for contract in fantasypros_endpoint_contracts(season):
+        try:
+            payload = client.get(contract.path, contract.params)
+        except requests.RequestException:
+            if contract.required:
+                raise
+            continue
+        rows = payload.get(contract.row_key)
+        row_count = len(rows) if isinstance(rows, list) else 0
+        if contract.required and (not isinstance(rows, list) or row_count < contract.minimum_rows):
+            raise RuntimeError(
+                f"FantasyPros {contract.dataset} contract failed: "
+                f"received {row_count} rows; require at least {contract.minimum_rows}"
+            )
+        payloads.append((contract, payload))
+
+    player_payload = next(payload for contract, payload in payloads if contract.dataset == "players")
+    identity = link_fantasypros_players(db, season, player_payload)
+    known_ids = {
+        int(row["fantasypros_player_id"])
+        for row in db.execute(
+            "SELECT fantasypros_player_id FROM ff_players WHERE season=%s AND fantasypros_player_id IS NOT NULL",
+            (season,),
+        )
+    }
+
+    saved: list[dict[str, Any]] = []
+    for contract, payload in payloads:
+        rows = payload.get(contract.row_key)
+        source_ids = {
+            player_id
+            for row in rows if isinstance(row, dict)
+            if (player_id := as_int(row.get("player_id") or row.get("fpid"))) is not None
+        } if isinstance(rows, list) else set()
+        matched_count = len(source_ids & known_ids)
+        snapshot_id = snapshot(
+            db,
+            dataset=contract.dataset,
+            season=season,
+            payload=payload,
+            params=contract.params,
+            scoring=str(contract.params.get("scoring")) if contract.params.get("scoring") else None,
+            ranking_type=str(contract.params.get("type")) if contract.params.get("type") else None,
+        )
+        db.execute(
+            "UPDATE ff_source_snapshots SET matched_count=%s,unmatched_count=%s WHERE id=%s",
+            (matched_count, max(0, len(source_ids) - matched_count), snapshot_id),
+        )
+        saved.append({
+            "dataset": contract.dataset,
+            "snapshot_id": snapshot_id,
+            "row_count": len(rows) if isinstance(rows, list) else 0,
+            "matched_count": matched_count,
+            "unmatched_count": max(0, len(source_ids) - matched_count),
+            "response_hash": response_hash(payload),
+        })
+    return {"season": season, "identity": identity, "snapshots": saved}
+
+
 class RefreshDatabase:
     """One connection/transaction for an entire refresh.
 
@@ -747,6 +896,23 @@ def run(season: int) -> dict[str, Any]:
         raise
 
 
+def run_contract_snapshot(season: int) -> dict[str, Any]:
+    config = load_config()
+    DatabaseManager(config.database_url)
+    db = RefreshDatabase(config.database_url)
+    try:
+        result = snapshot_fantasypros_contracts(
+            db,
+            FantasyProsClient(os.environ.get("FANTASYPROS_API_KEY", "")),
+            season,
+        )
+        db.close()
+        return result
+    except Exception:
+        db.close(error=True)
+        raise
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--season", type=int, default=2026)
@@ -758,6 +924,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--audit-output",
         help="Optional path for the sanitized JSON endpoint-audit report",
+    )
+    parser.add_argument(
+        "--snapshot-contracts",
+        action="store_true",
+        help="Persist verified FantasyPros source snapshots without creating a vendor-controlled board",
     )
     parser.add_argument(
         "--require-contracts",
@@ -773,5 +944,7 @@ if __name__ == "__main__":
         write_audit_report(audit, args.audit_output)
         if args.require_contracts and not audit["all_required_contracts_pass"]:
             sys.exit(2)
+    elif args.snapshot_contracts:
+        print(json.dumps(run_contract_snapshot(args.season), indent=2))
     else:
         print(json.dumps(run(args.season), indent=2))

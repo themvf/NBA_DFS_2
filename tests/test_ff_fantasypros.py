@@ -3,6 +3,7 @@ from ingest.ff_fantasypros import (
     build_model_projection,
     create_indicators,
     fantasypros_endpoint_contracts,
+    link_fantasypros_players,
     normalize_name,
     position_rank,
     projection_stats,
@@ -42,6 +43,18 @@ class AuditClient:
             "scoring": params.get("scoring"),
             "type": params.get("type"),
         }
+
+
+class IdentityDatabase:
+    def __init__(self, players: list[dict]) -> None:
+        self.players = players
+        self.updates: list[tuple] = []
+
+    def execute(self, sql: str, params: tuple) -> list[dict]:
+        if sql.lstrip().startswith("SELECT"):
+            return self.players
+        self.updates.append(params)
+        return []
 
 
 def test_normalize_name_handles_suffix_and_accents() -> None:
@@ -95,6 +108,46 @@ def test_optional_injury_entitlement_does_not_fail_required_contracts() -> None:
     assert injury["status"] == "unavailable"
     assert injury["http_status"] == 403
     assert report["all_required_contracts_pass"] is True
+
+
+def test_fantasypros_identity_links_existing_independent_player_without_inserting() -> None:
+    db = IdentityDatabase([{
+        "id": 42,
+        "normalized_name": "lamarjackson",
+        "position": "QB",
+        "team_abbrev": "BAL",
+        "fantasypros_player_id": None,
+    }])
+    result = link_fantasypros_players(db, 2026, {"players": [{
+        "player_id": 1001,
+        "player_name": "Lamar Jackson",
+        "position_id": "QB",
+        "team_id": "BAL",
+    }]})  # type: ignore[arg-type]
+    assert result == {
+        "source_rows": 1,
+        "matched": 1,
+        "linked": 1,
+        "unmatched": 0,
+        "ambiguous": 0,
+        "unsupported": 0,
+    }
+    assert db.updates == [(1001, 42)]
+
+
+def test_fantasypros_identity_refuses_ambiguous_name_position_match() -> None:
+    db = IdentityDatabase([
+        {"id": 1, "normalized_name": "johnsmith", "position": "WR", "team_abbrev": None, "fantasypros_player_id": None},
+        {"id": 2, "normalized_name": "johnsmith", "position": "WR", "team_abbrev": None, "fantasypros_player_id": None},
+    ])
+    result = link_fantasypros_players(db, 2026, {"players": [{
+        "player_id": 2002,
+        "player_name": "John Smith",
+        "position_id": "WR",
+    }]})  # type: ignore[arg-type]
+    assert result["matched"] == 0
+    assert result["ambiguous"] == 1
+    assert db.updates == []
 
 
 def test_position_rank_extracts_numeric_suffix() -> None:

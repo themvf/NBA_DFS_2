@@ -20,6 +20,7 @@ on:
         options:
           - full
           - fantasypros-audit
+          - fantasypros-snapshot
 
 concurrency:
   group: fantasy-football-refresh
@@ -38,7 +39,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Build independent rankings from Sleeper and nflverse
-        if: ${{ inputs.mode != 'fantasypros-audit' }}
+        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
         run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
       - name: Audit upgraded FantasyPros endpoint contracts
         id: fantasypros-audit
@@ -51,6 +52,14 @@ jobs:
           --audit-only
           --require-contracts
           --audit-output fantasypros-audit.json
+      - name: Persist verified FantasyPros source snapshots
+        if: ${{ steps.fantasypros-audit.outcome == 'success' && inputs.mode != 'fantasypros-audit' }}
+        env:
+          FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+        run: >-
+          python -m ingest.ff_fantasypros
+          --season "${{ inputs.season || '2026' }}"
+          --snapshot-contracts
       - name: Upload sanitized FantasyPros audit
         if: ${{ always() && hashFiles('fantasypros-audit.json') != '' }}
         uses: actions/upload-artifact@v4
