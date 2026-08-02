@@ -146,6 +146,12 @@ assert.equal(advisorOutput.recommendedPlayerId, 3);
 assert.equal(advisorOutput.confidence, 82);
 assert.deepEqual(advisorOutput.risks, ["Role uncertainty remains."]);
 assert.equal(enrichBestBallAdvisorResult(advisorOutput, advisorSnapshot).recommendation.name, "Available Runner");
+assert.equal(validateBestBallAdvisorOutput({
+  ...advisorOutput,
+  recommendedPlayerName: "Available Runner",
+  recommendedPlayerId: undefined,
+  alternatives: [{ candidateKey: "candidate C2", reason: "Receiver value." }, { playerName: "Available Tight End", reason: "Tight-end value." }],
+}, advisorSnapshot).recommendedPlayerId, 3);
 assert.throws(() => validateBestBallAdvisorOutput({ recommendedCandidateKey: "C99" }, advisorSnapshot), /no longer legal or available/);
 async function testAdvisorCorrection() {
   let advisorAttempts = 0;

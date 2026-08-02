@@ -289,13 +289,36 @@ function requireStringArray(value: unknown, field: string, min: number, max: num
   return result;
 }
 
+function normalizedCandidateKey(raw: unknown, candidates: BestBallAdvisorCandidate[]): string | null {
+  if (typeof raw === "number" && Number.isInteger(raw) && raw > 0) {
+    return `C${String(raw).padStart(2, "0")}`;
+  }
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  const direct = candidates.find((candidate) => candidate.candidateKey?.toUpperCase() === trimmed.toUpperCase());
+  if (direct?.candidateKey) return direct.candidateKey;
+  const embeddedKey = trimmed.match(/\bC0?(\d{1,2})\b/i);
+  if (embeddedKey) return `C${embeddedKey[1].padStart(2, "0")}`;
+  const normalizedName = trimmed.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const byName = candidates.find((candidate) => candidate.name.toLowerCase().replace(/[^a-z0-9]/g, "") === normalizedName);
+  return byName?.candidateKey ?? null;
+}
+
+function candidateReference(value: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (value[key] !== undefined && value[key] !== null) return value[key];
+  }
+  return null;
+}
+
 export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAdvisorSnapshot): BestBallAdvisorModelOutput {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("The advisor returned an invalid response.");
   const value = raw as Record<string, unknown>;
   const candidateByKey = new Map(snapshot.candidates.map((candidate) => [candidate.candidateKey, candidate]));
-  const recommendedCandidateKey = typeof value.recommendedCandidateKey === "string"
-    ? value.recommendedCandidateKey.trim().toUpperCase()
-    : "";
+  const recommendedCandidateKey = normalizedCandidateKey(
+    candidateReference(value, ["recommendedCandidateKey", "recommendedPlayerName", "recommendedPlayer", "playerName"]),
+    snapshot.candidates,
+  ) ?? "";
   const recommendedCandidate = candidateByKey.get(recommendedCandidateKey);
   if (!recommendedCandidate) {
     throw new Error("The advisor recommended a player who is no longer legal or available.");
@@ -311,9 +334,10 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   const alternatives = value.alternatives.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("The advisor returned an invalid alternative.");
     const alternative = item as Record<string, unknown>;
-    const candidateKey = typeof alternative.candidateKey === "string"
-      ? alternative.candidateKey.trim().toUpperCase()
-      : "";
+    const candidateKey = normalizedCandidateKey(
+      candidateReference(alternative, ["candidateKey", "playerName", "player"]),
+      snapshot.candidates,
+    ) ?? "";
     const candidate = candidateByKey.get(candidateKey);
     if (!candidate || seen.has(candidateKey)) {
       throw new Error("The advisor returned a duplicate, unavailable, or illegal alternative.");
