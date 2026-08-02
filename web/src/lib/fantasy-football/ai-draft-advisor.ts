@@ -282,8 +282,9 @@ function requireString(value: unknown, field: string): string {
 }
 
 function requireStringArray(value: unknown, field: string, min: number, max: number): string[] {
-  if (!Array.isArray(value)) throw new Error(`The advisor response has invalid ${field}.`);
-  const result = value.map((item) => requireString(item, field)).slice(0, max);
+  const values = typeof value === "string" ? [value] : value;
+  if (!Array.isArray(values)) throw new Error(`The advisor response has invalid ${field}.`);
+  const result = values.map((item) => requireString(item, field)).slice(0, max);
   if (result.length < min) throw new Error(`The advisor response needs at least ${min} ${field} item(s).`);
   return result;
 }
@@ -300,8 +301,9 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     throw new Error("The advisor recommended a player who is no longer legal or available.");
   }
   const recommendedPlayerId = recommendedCandidate.playerId;
-  const confidence = Number(value.confidence);
-  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 100) throw new Error("The advisor returned invalid confidence.");
+  const rawConfidence = Number(value.confidence);
+  if (!Number.isFinite(rawConfidence) || rawConfidence < 0 || rawConfidence > 100) throw new Error("The advisor returned invalid confidence.");
+  const confidence = rawConfidence > 0 && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
   if (!Array.isArray(value.alternatives) || value.alternatives.length !== 2) {
     throw new Error("The advisor must return exactly two alternatives.");
   }

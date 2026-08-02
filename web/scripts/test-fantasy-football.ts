@@ -133,16 +133,18 @@ assert.match(providerSnapshotJson, /"candidateKey":"C01"/);
 assert.deepEqual(advisorSnapshot.userByeWeeks.QB, [8]);
 const advisorOutput = validateBestBallAdvisorOutput({
   recommendedCandidateKey: " c01 ",
-  confidence: 82,
+  confidence: 0.82,
   whyNow: "Best combination of projection and availability.",
   rosterFit: "Adds the first running back without duplicating the quarterback bye.",
   evidence: ["V1.4 projects 280 points.", "ADP is 4."],
-  risks: ["Role uncertainty remains."],
+  risks: "Role uncertainty remains.",
   alternatives: [{ candidateKey: "C02", reason: "Receiver value." }, { candidateKey: "C03", reason: "Tight-end value." }],
   strategyUntilNextTurn: "Watch the running-back tier.",
   whatWouldChange: "A confirmed role change.",
 }, advisorSnapshot);
 assert.equal(advisorOutput.recommendedPlayerId, 3);
+assert.equal(advisorOutput.confidence, 82);
+assert.deepEqual(advisorOutput.risks, ["Role uncertainty remains."]);
 assert.equal(enrichBestBallAdvisorResult(advisorOutput, advisorSnapshot).recommendation.name, "Available Runner");
 assert.throws(() => validateBestBallAdvisorOutput({ recommendedCandidateKey: "C99" }, advisorSnapshot), /no longer legal or available/);
 async function testAdvisorCorrection() {
