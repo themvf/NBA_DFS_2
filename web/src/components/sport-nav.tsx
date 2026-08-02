@@ -32,6 +32,7 @@ const PAGE_LINKS: Array<{
   { href: "/dfs", label: "DFS", sports: ["nba", "mlb"] },
   { href: "/nfl", label: "NFL Board", sports: ["nfl"] },
   { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
+  { href: "/fantasy-football/best-ball", label: "NFL Best Ball", sports: ["nfl"] },
   { href: "/homerun", label: "Homeruns", sports: ["mlb"] },
   { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },

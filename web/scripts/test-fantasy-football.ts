@@ -6,6 +6,7 @@ import { fantasyBadgeClass } from "../src/lib/fantasy-football/badge-style";
 import { filterFantasyRankings } from "../src/lib/fantasy-football/ranking-filters";
 import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 import { buildProjectionExplanation } from "../src/lib/fantasy-football/projection-explanation";
+import { canAddBestBallPlayer, getBestBallRosterStatus } from "../src/lib/fantasy-football/best-ball";
 
 assert.deepEqual(queryRows<{ id: number }>({ rows: [{ id: 3 }] }), [{ id: 3 }]);
 assert.deepEqual(queryRows<{ id: number }>([{ id: 2 }]), [{ id: 2 }]);
@@ -51,4 +52,14 @@ assert.equal(explanation.method, "Weighted history + regression");
 assert.ok(explanation.lines.includes("2025: 20.6 PPG × 55%"));
 assert.ok(explanation.lines.includes("17.06 PPG × 15.90 games × 1.00 role = 271.3"));
 assert.deepEqual(explanation.notModeled, ["current teammates", "future schedule"]);
+const validBestBallRoster = [
+  ...Array.from({ length: 3 }, (_, index) => ({ playerId: index + 1, position: "QB", team: index ? "BUF" : "NE" })),
+  ...Array.from({ length: 6 }, (_, index) => ({ playerId: index + 10, position: "RB", team: "ATL" })),
+  ...Array.from({ length: 8 }, (_, index) => ({ playerId: index + 20, position: "WR", team: "LAR" })),
+  ...Array.from({ length: 3 }, (_, index) => ({ playerId: index + 30, position: "TE", team: "KC" })),
+];
+assert.equal(getBestBallRosterStatus(validBestBallRoster).valid, true);
+assert.equal(getBestBallRosterStatus(validBestBallRoster.slice(0, 19)).valid, false);
+assert.equal(canAddBestBallPlayer(validBestBallRoster, { playerId: 99, position: "WR", team: "SEA" }), false);
+assert.equal(canAddBestBallPlayer([], { playerId: 100, position: "K", team: "DAL" }), false);
 console.log("fantasy-football tests passed");
