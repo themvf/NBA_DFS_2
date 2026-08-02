@@ -34,7 +34,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
     <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>
     <div role="cell" className="p-3">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
-    <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} /></div>
+    <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.4 projects" /></div>
     <div role="cell" className="p-3"><button disabled={!canDraft} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-35">Add</button></div>
   </>;
 });
@@ -80,7 +80,7 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><p>{filtered.length} available players · drafted players are removed from the board</p><p>Fast list · only visible rows are rendered</p></div>
     <div ref={scrollRef} role="table" aria-rowcount={filtered.length + 1} className="h-[min(68vh,680px)] overflow-auto rounded-2xl border bg-card text-sm [contain:strict]">
       <div role="rowgroup" className="sticky top-0 z-20 min-w-[1350px] bg-muted text-left text-xs uppercase text-muted-foreground">
-        <div role="row" className={`grid ${COLUMN_GRID}`}><div role="columnheader" className="p-3">Skill rank</div><div role="columnheader" className="p-3">Overall / Pos.</div><div role="columnheader" className="p-3">Player</div><div role="columnheader" className="p-3">Signals</div><div role="columnheader" className="p-3">ADP</div><div role="columnheader" className="p-3">2025 GP</div><div role="columnheader" className="p-3">2025 FPTS</div><div role="columnheader" className="p-3">FantasyPros PPR Proj.</div><div role="columnheader" className="p-3">Our 2026 PPR Base</div><div role="columnheader" className="p-3">Draft</div></div>
+        <div role="row" className={`grid ${COLUMN_GRID}`}><div role="columnheader" className="p-3">Skill rank</div><div role="columnheader" className="p-3">Overall / Pos.</div><div role="columnheader" className="p-3">Player</div><div role="columnheader" className="p-3">Signals</div><div role="columnheader" className="p-3">ADP</div><div role="columnheader" className="p-3">2025 GP</div><div role="columnheader" className="p-3">2025 FPTS</div><div role="columnheader" className="p-3">FantasyPros PPR Proj.</div><div role="columnheader" className="p-3">Our 2026 PPR Base (V1.4)</div><div role="columnheader" className="p-3">Draft</div></div>
       </div>
       <div role="rowgroup" className="relative min-w-[1350px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {

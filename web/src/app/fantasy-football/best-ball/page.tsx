@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet } from "@/db/queries-fantasy-football";
 import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import BestBallClient from "./best-ball-client";
+import ProjectionMethodExplainer from "./projection-method-explainer";
 
 export default async function BestBallPage() {
   const set = await getLatestRankingSet("PPR");
@@ -45,6 +46,8 @@ export default async function BestBallPage() {
         </div>
       </div>
     </section>
+
+    <ProjectionMethodExplainer />
 
     <details className="rounded-2xl border bg-card p-5"><summary className="cursor-pointer text-lg font-black">DraftKings scoring and draft rules</summary><div className="mt-4 grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-4">
       <div><h2 className="font-bold">Passing</h2><p className="mt-2">TD +4 · 25 yards +1</p><p>300-yard game +3</p><p>Interception −1</p></div>

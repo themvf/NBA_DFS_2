@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { buildProjectionExplanation } from "@/lib/fantasy-football/projection-explanation";
 
-export default function ProjectionNotation({ details }: { details: Record<string, unknown> | null }) {
+export default function ProjectionNotation({ details, label = "How projected" }: { details: Record<string, unknown> | null; label?: string }) {
   const [open, setOpen] = useState(false);
   return <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="mt-1 text-xs font-normal text-muted-foreground">
-    <summary className="cursor-pointer select-none font-semibold text-blue-700 hover:underline">How projected</summary>
+    <summary className="cursor-pointer select-none font-semibold text-blue-700 hover:underline">{label}</summary>
     {open && <ProjectionExplanation details={details} />}
   </details>;
 }
