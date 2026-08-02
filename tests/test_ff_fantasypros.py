@@ -1,15 +1,20 @@
 from ingest.ff_fantasypros import (
+    audit_fantasypros_history,
     audit_fantasypros_endpoints,
     build_model_projection,
     count_fantasypros_payload_matches,
     create_indicators,
     fantasypros_endpoint_contracts,
+    first_regular_season_cutoffs,
     link_fantasypros_players,
     normalize_name,
+    parse_season_range,
     persist_fantasypros_projections,
     position_rank,
     projection_stats,
 )
+
+import pandas as pd
 
 
 class CaptureDatabase:
@@ -21,9 +26,16 @@ class CaptureDatabase:
 
 
 class AuditClient:
-    def __init__(self, *, ranking_rows: int = 150, fail_injuries: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        ranking_rows: int = 150,
+        fail_injuries: bool = False,
+        ranking_updated_ts: int = 1_599_750_000,
+    ) -> None:
         self.ranking_rows = ranking_rows
         self.fail_injuries = fail_injuries
+        self.ranking_updated_ts = ranking_updated_ts
 
     def get(self, path: str, params: dict | None = None) -> dict:
         import requests
@@ -44,6 +56,7 @@ class AuditClient:
             "players": [{"player_id": index} for index in range(self.ranking_rows)],
             "scoring": params.get("scoring"),
             "type": params.get("type"),
+            "last_updated_ts": self.ranking_updated_ts,
         }
 
 
@@ -110,6 +123,47 @@ def test_optional_injury_entitlement_does_not_fail_required_contracts() -> None:
     assert injury["status"] == "unavailable"
     assert injury["http_status"] == 403
     assert report["all_required_contracts_pass"] is True
+
+
+def test_parse_season_range_accepts_range_and_list() -> None:
+    assert parse_season_range("2020:2022") == [2020, 2021, 2022]
+    assert parse_season_range("2022,2020,2022") == [2020, 2022]
+
+
+def test_first_regular_season_cutoff_uses_earliest_week_one_kickoff() -> None:
+    schedule = pd.DataFrame([
+        {"season": 2020, "game_type": "REG", "week": 1, "gameday": "2020-09-13", "gametime": "13:00"},
+        {"season": 2020, "game_type": "REG", "week": 1, "gameday": "2020-09-10", "gametime": "20:20"},
+        {"season": 2020, "game_type": "PRE", "week": 1, "gameday": "2020-08-01", "gametime": "20:00"},
+    ])
+    cutoff = first_regular_season_cutoffs(schedule, [2020])[2020]
+    assert cutoff.isoformat() == "2020-09-11T00:20:00+00:00"
+
+
+def test_historical_audit_requires_timestamped_ppr_adp_before_cutoff() -> None:
+    schedule = pd.DataFrame([
+        {"season": 2020, "game_type": "REG", "week": 1, "gameday": "2020-09-10", "gametime": "20:20"},
+    ])
+    report = audit_fantasypros_history(AuditClient(), [2020], schedule)  # type: ignore[arg-type]
+    season = report["season_reports"][0]
+    assert report["all_required_contracts_pass"] is True
+    assert report["all_ppr_adp_cutoffs_eligible"] is True
+    assert season["ppr_adp_rows"] == 150
+    assert season["ppr_adp_cutoff_eligible"] is True
+
+
+def test_historical_audit_rejects_post_cutoff_ppr_adp() -> None:
+    schedule = pd.DataFrame([
+        {"season": 2020, "game_type": "REG", "week": 1, "gameday": "2020-09-10", "gametime": "20:20"},
+    ])
+    report = audit_fantasypros_history(
+        AuditClient(ranking_updated_ts=1_600_000_000),
+        [2020],
+        schedule,
+    )  # type: ignore[arg-type]
+    assert report["all_required_contracts_pass"] is True
+    assert report["all_ppr_adp_cutoffs_eligible"] is False
+    assert report["season_reports"][0]["ppr_adp_cutoff_eligible"] is False
 
 
 def test_fantasypros_identity_links_existing_independent_player_without_inserting() -> None:

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -33,6 +34,7 @@ from config import load_config
 from db.database import DatabaseManager
 
 BASE_URL = "https://api.fantasypros.com/public/v2/json"
+NFLVERSE_SCHEDULE_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 SCORING_TYPES = ("STD", "HALF", "PPR")
 
@@ -328,6 +330,116 @@ def audit_fantasypros_endpoints(
         "required_contracts": len(required),
         "passed_required_contracts": sum(result["status"] == "pass" for result in required),
         "all_required_contracts_pass": all(result["status"] == "pass" for result in required),
+    }
+
+
+def parse_season_range(value: str) -> list[int]:
+    """Parse one season, a comma list, or an inclusive range."""
+    text = value.strip()
+    if not text:
+        raise ValueError("At least one historical season is required")
+    if ":" in text:
+        start_text, end_text = text.split(":", 1)
+        start, end = int(start_text), int(end_text)
+        if start > end:
+            raise ValueError("Historical season range must be ascending")
+        return list(range(start, end + 1))
+    seasons = sorted({int(item.strip()) for item in text.split(",") if item.strip()})
+    if not seasons:
+        raise ValueError("At least one historical season is required")
+    return seasons
+
+
+def first_regular_season_cutoffs(
+    schedule: pd.DataFrame,
+    seasons: list[int],
+) -> dict[int, datetime]:
+    """Return the first scheduled regular-season kickoff for each season.
+
+    nflverse publishes `gameday` and `gametime` in US Eastern time. The first
+    kickoff is the latest timestamp a preseason draft snapshot may use without
+    seeing regular-season results.
+    """
+    required = {"season", "game_type", "week", "gameday", "gametime"}
+    missing = required.difference(schedule.columns)
+    if missing:
+        raise ValueError(f"nflverse schedule missing fields: {sorted(missing)}")
+
+    eastern = ZoneInfo("America/New_York")
+    result: dict[int, datetime] = {}
+    for season in seasons:
+        rows = schedule[
+            (schedule["season"] == season)
+            & (schedule["game_type"] == "REG")
+            & (schedule["week"] == 1)
+        ]
+        kickoffs: list[datetime] = []
+        for row in rows.to_dict("records"):
+            gameday = str(row.get("gameday") or "")
+            gametime = str(row.get("gametime") or "")
+            if not gameday or not gametime or gametime.lower() == "nan":
+                continue
+            local = datetime.fromisoformat(f"{gameday}T{gametime}").replace(tzinfo=eastern)
+            kickoffs.append(local.astimezone(timezone.utc))
+        if not kickoffs:
+            raise ValueError(f"No dated Week 1 regular-season kickoff found for {season}")
+        result[season] = min(kickoffs)
+    return result
+
+
+def audit_fantasypros_history(
+    client: FantasyProsClient,
+    seasons: list[int],
+    schedule: pd.DataFrame,
+) -> dict[str, Any]:
+    """Audit historical contracts and enforce draft-time ADP eligibility.
+
+    Endpoint access and draft-time eligibility are intentionally separate.
+    A historical response can remain accessible today while its provider
+    timestamp is too late for a simulated preseason decision.
+    """
+    normalized_seasons = sorted(set(seasons))
+    cutoffs = first_regular_season_cutoffs(schedule, normalized_seasons)
+    reports: list[dict[str, Any]] = []
+    for season in normalized_seasons:
+        report = audit_fantasypros_endpoints(client, season)
+        adp = next(
+            (item for item in report["contracts"] if item["dataset"] == "adp-ppr"),
+            None,
+        )
+        source_updated_at = (
+            datetime.fromisoformat(adp["source_updated_at"])
+            if adp and adp.get("source_updated_at")
+            else None
+        )
+        cutoff = cutoffs[season]
+        adp_eligible = bool(
+            adp
+            and adp.get("status") == "pass"
+            and source_updated_at is not None
+            and source_updated_at <= cutoff
+        )
+        reports.append({
+            **report,
+            "decision_cutoff_at": cutoff.isoformat(),
+            "ppr_adp_source_updated_at": adp.get("source_updated_at") if adp else None,
+            "ppr_adp_rows": adp.get("row_count", 0) if adp else 0,
+            "ppr_adp_response_hash": adp.get("response_hash") if adp else None,
+            "ppr_adp_cutoff_eligible": adp_eligible,
+        })
+
+    return {
+        "source": "fantasypros",
+        "audit_type": "historical-draft-contracts",
+        "cutoff_policy": "first scheduled regular-season kickoff from nflverse schedule",
+        "seasons": normalized_seasons,
+        "season_reports": reports,
+        "all_required_contracts_pass": all(
+            report["all_required_contracts_pass"] for report in reports
+        ),
+        "all_ppr_adp_cutoffs_eligible": all(
+            report["ppr_adp_cutoff_eligible"] for report in reports
+        ),
     }
 
 
@@ -1053,6 +1165,10 @@ if __name__ == "__main__":
         help="Optional path for the sanitized JSON endpoint-audit report",
     )
     parser.add_argument(
+        "--audit-seasons",
+        help="Audit historical seasons as one season, comma list, or inclusive range (for example 2020:2025)",
+    )
+    parser.add_argument(
         "--snapshot-contracts",
         action="store_true",
         help="Persist verified FantasyPros source snapshots without creating a vendor-controlled board",
@@ -1064,12 +1180,18 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     if args.audit_only:
-        audit = audit_fantasypros_endpoints(
-            FantasyProsClient(os.environ.get("FANTASYPROS_API_KEY", "")),
-            args.season,
-        )
+        client = FantasyProsClient(os.environ.get("FANTASYPROS_API_KEY", ""))
+        if args.audit_seasons:
+            seasons = parse_season_range(args.audit_seasons)
+            schedule = pd.read_csv(NFLVERSE_SCHEDULE_URL)
+            audit = audit_fantasypros_history(client, seasons, schedule)
+        else:
+            audit = audit_fantasypros_endpoints(client, args.season)
         write_audit_report(audit, args.audit_output)
-        if args.require_contracts and not audit["all_required_contracts_pass"]:
+        if args.require_contracts and (
+            not audit["all_required_contracts_pass"]
+            or not audit.get("all_ppr_adp_cutoffs_eligible", True)
+        ):
             sys.exit(2)
     elif args.snapshot_contracts:
         print(json.dumps(run_contract_snapshot(args.season), indent=2))

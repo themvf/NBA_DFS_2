@@ -20,6 +20,7 @@ on:
         options:
           - full
           - fantasypros-audit
+          - fantasypros-history-audit
           - fantasypros-snapshot
 
 concurrency:
@@ -43,6 +44,7 @@ jobs:
         run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
       - name: Audit upgraded FantasyPros endpoint contracts
         id: fantasypros-audit
+        if: ${{ inputs.mode != 'fantasypros-history-audit' }}
         continue-on-error: true
         env:
           FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
@@ -52,8 +54,20 @@ jobs:
           --audit-only
           --require-contracts
           --audit-output fantasypros-audit.json
+      - name: Audit 2020-2025 FantasyPros historical contracts
+        id: fantasypros-history-audit
+        if: ${{ inputs.mode == 'fantasypros-history-audit' }}
+        continue-on-error: true
+        env:
+          FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+        run: >-
+          python -m ingest.ff_fantasypros
+          --audit-only
+          --audit-seasons "2020:2025"
+          --require-contracts
+          --audit-output fantasypros-audit.json
       - name: Persist verified FantasyPros source snapshots
-        if: ${{ steps.fantasypros-audit.outcome == 'success' && inputs.mode != 'fantasypros-audit' }}
+        if: ${{ steps.fantasypros-audit.outcome == 'success' && inputs.mode != 'fantasypros-audit' && inputs.mode != 'fantasypros-history-audit' }}
         env:
           FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
         run: >-
@@ -72,7 +86,7 @@ jobs:
         if: ${{ always() }}
         shell: bash
         run: |
-          if [[ "${{ steps.fantasypros-audit.outcome }}" == "success" ]]; then
+          if [[ "${{ steps.fantasypros-audit.outcome }}" == "success" || "${{ steps.fantasypros-history-audit.outcome }}" == "success" ]]; then
             echo "### FantasyPros: full required endpoint contracts passed" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### FantasyPros: unavailable, invalid, or sample-sized" >> "$GITHUB_STEP_SUMMARY"

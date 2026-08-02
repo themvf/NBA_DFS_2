@@ -1,6 +1,6 @@
 # NFL Best Ball Model Improvement Specification
 
-**Status:** Proposed specification only — implementation is not authorized by this document  
+**Status:** Approved working hypothesis — implementation authorized in Jira dependency order; V2 remains a challenger until promotion gates pass
 **Product:** DraftKings NFL Best Ball Draft Lab  
 **Route:** `/fantasy-football/best-ball`  
 **Date:** 2026-08-02
@@ -16,6 +16,21 @@ The target model is not intended to predict one exact season total. It should an
 > Given the current 12-team room, my roster, the current pick, the DraftKings scoring rules, and uncertainty in weekly outcomes, which available player adds the most points to my automatically selected lineup over the full Weeks 1–17 season?
 
 The model must remain independent and reproducible. ADP is a market comparison and draft-timing input, not a hidden component of the player performance projection.
+
+### 1.1 Approved V2 proposition
+
+V2 models running-back production through constrained team opportunity, role allocation, contextual efficiency, touchdown share, and weekly uncertainty. The architecture is intended to prevent projections from ignoring team changes or exceeding plausible team ceilings.
+
+This is a working hypothesis, not an outperformance claim. Coefficients and transition priors must be learned from leakage-safe historical data. V2 operates beside `ff-independent-v1.4` as a challenger until the final champion-versus-challenger gate returns `PROMOTE`.
+
+The following values are expressly prohibited as unverified production assumptions:
+
+- a fixed percentage of vacated opportunity that must transfer to one player;
+- a fixed workload-to-efficiency penalty;
+- a fixed same-team correlation coefficient;
+- an arbitrary player/league blend, team adjustment, or `n / 32` shrinkage rule presented as calibrated.
+
+Such values may exist only as named candidate hyperparameters inside the training and validation system. Their source, training window, uncertainty, and holdout result must be recorded.
 
 ## 2. Current-state audit
 
@@ -120,6 +135,7 @@ All inputs must be stored as immutable source snapshots with a source name, data
 | Play-by-play | nflverse play-by-play | New requirement | Team plays, pass rate, EPA, red zone, game environment | Weekly | Weekly stats with lower confidence |
 | Participation/snaps | nflverse participation data | New requirement | Routes, snaps, personnel usage, role stability | Weekly | Roster/depth plus weekly opportunities |
 | Current ADP | Fantasy Football Calculator 12-team feeds | Connected | Draft cost, value, next-pick survival | Every 6 hours | Last success, then no timing recommendation |
+| Historical PPR ADP | FantasyPros `type=ADP` historical consensus endpoint | 2020–2025 contracts verified | Draft-time market baseline | Immutable preseason snapshot | Dated FantasyPros ranking archive as ECR-only comparison; never silently relabel ECR as ADP |
 | DraftKings Best Ball scoring | Versioned application rules contract | Partially represented in UI | Simulation scoring and bonuses | On rule change | Block model promotion if unknown |
 | Injuries/PUP/suspensions | Existing player metadata plus verified injury source | Partial | Weekly availability and uncertainty | Daily; faster near draft | Status unknown, confidence reduction |
 | Transactions/team changes | Sleeper/nflverse roster history | Partial | Effective-dated team and role changes | Daily | Manual review queue |
@@ -134,6 +150,27 @@ All inputs must be stored as immutable source snapshots with a source name, data
 - Do not use an LLM call, including DeepSeek, to create numeric player projections.
 - Human notes may adjust scenario probabilities only through an effective-dated, attributable override with a reason and expiry.
 - Market rank and model rank must always remain separate fields.
+- Historical roster files with only season/week semantics may support week-level joins, but they may not be represented as arbitrary preseason draft-date snapshots.
+- A historical ADP row is eligible only when its provider timestamp is on or before the declared simulated draft cutoff.
+
+### 5.2 Verified historical-source checkpoint
+
+Real-data FantasyPros audits passed all eight required endpoint contracts in each historical season. PPR ADP coverage is:
+
+| Season | Rows | Provider updated (UTC) | Response SHA-256 | GitHub run |
+|---:|---:|---|---|---:|
+| 2020 | 583 | 2020-09-10 13:37:44 | `7ef1bfe597735ba66aff354ff060a22806eaf18f8982a2f62446f0de2711595a` | 30765418531 |
+| 2021 | 487 | 2021-09-09 12:37:00 | `87b14329bf577ac364cc97426638ebef2c7c8b65cae4d1b567b07b51558183de` | 30765717079 |
+| 2022 | 353 | 2022-09-08 13:12:00 | `1ed7580c700fc42f76a72974f54719a3d7373f00cc0ae42d2fbbfbcf784d029c` | 30765789358 |
+| 2023 | 593 | 2023-09-06 07:09:38 | `a44f504a3d74ebe7dd279438a5dd35f615e0eeb6eb4269ce9b02516b2f7b45a5` | 30765822087 |
+| 2024 | 948 | 2024-09-04 07:09:48 | `6756b293b7b990b0ef0934d39ddf9e3c3d0509d41ae5bbe7b81dc078e4966145` | 30765862022 |
+| 2025 | 985 | 2025-09-03 07:10:28 | `fc40f657e5dc6c2640d59744bdc3bd8aef6294c32f5a794efc4edf915f019afe` | 30765720804 |
+
+All six PPR ADP timestamps precede the first regular-season kickoff for their season. Endpoint accessibility and draft-time eligibility remain separate checks: for example, the currently returned 2023 PPR draft-ranking response is timestamped 2024-02-12 and is not eligible for a 2023 preseason decision, while the 2023 PPR ADP response is eligible.
+
+nflverse weekly roster partitions exist for every 2020–2025 season and contain `gsis_id`, but they do not publish a source-effective timestamp. They are therefore week-granular roster evidence, not proof of a roster state at every possible preseason draft timestamp.
+
+The DynastyProcess/nflverse FantasyPros ranking archive supplies dated ECR/ranking snapshots from 2019 onward. It is a secondary market-rank baseline. It is not the ADP baseline unless the source explicitly identifies the record as ADP.
 
 ## 6. Proposed data model
 
@@ -480,14 +517,7 @@ Every policy must have a backtestable definition and an explanation. No unexplai
 
 ### 9.1 Chronological design
 
-Use immutable as-of snapshots. A proposed initial evaluation structure is:
-
-- train feature priors on seasons before the evaluation year;
-- walk forward through historical preseason dates;
-- use 2024 as development validation where adequate sources exist;
-- freeze the model;
-- use 2025 as the primary holdout;
-- process 2026 prospectively without using results to tune preseason ranks.
+Use immutable as-of snapshots and rolling-origin evaluation across 2020–2025. For each evaluation season, train only on eligible records from prior seasons and freeze the model before scoring that season. The exact preseason decision cutoff for every season must be declared before fitting. Process 2026 prospectively without using results to tune preseason ranks.
 
 If a required historical source does not exist for an as-of date, exclude that feature from both training and comparison. Do not backfill today's depth chart into an old draft.
 
@@ -524,6 +554,18 @@ Roster and decision metrics:
 - top-N recommendation hit rate;
 - stack and roster-construction ablation lift.
 
+The definitive promotion set is:
+
+- season-total MAE and bias;
+- weekly CRPS or another preregistered proper scoring rule;
+- P10/P50/P90 empirical coverage and calibration error;
+- Top-12 precision and recall;
+- spike-week recall, where the spike definition is versioned and position-aware;
+- simulated Best Ball counted points;
+- draft-decision regret versus the declared market/baseline decision.
+
+Every comparison must include paired bootstrap confidence intervals, sample sizes, and the exact resampling unit. The season-total MAE improvement gate uses a preregistered paired-bootstrap significance threshold. Overall season-total bias must be within ±5 points and must also be reported by cohort.
+
 Report every metric overall and for QB/RB/WR/TE, rookies, changed-team players, injured players, and small-sample roles.
 
 ### 9.4 Promotion policy
@@ -536,6 +578,7 @@ The model may replace the current Best Ball rank only when:
 - all leakage and provenance checks pass;
 - the UI can explain the new rank;
 - a shadow-mode comparison has run on real 2026 draft snapshots.
+- the final decision is explicitly `PROMOTE`, `REVISE`, or `RETAIN V1.4`.
 
 Until then, show it as `Best Ball model — shadow` beside the existing baseline.
 
@@ -639,59 +682,54 @@ draft action and recommendation acceptance
 
 No implementation should begin until the preceding required phase passes.
 
-### Phase 0 — Acceptance criteria and evidence baseline
+### Phase 0 — Infrastructure
 
-- Convert this specification into Jira issues under the correct Best Ball Epic.
-- Record true current status for every criterion.
-- Capture baseline page behavior, model outputs, runtime, and current tests.
-- Document any source/licensing decision that requires user approval.
+- complete source contracts and immutable historical as-of snapshots;
+- populate 2020–2025 source partitions and effective-dated roster/team context;
+- freeze a reproducible `ff-independent-v1.4` baseline;
+- freeze a timestamped draft-time PPR ADP baseline.
 
-### Phase 1 — Source contracts and immutable provenance
+### Phase 1 — Validation framework
 
-- approve sources and licenses;
-- add immutable snapshot contracts;
-- establish player/team/game identity crosswalks;
-- verify historical as-of availability;
-- add freshness, coverage, and missingness reporting.
+- build the chronological 2020–2025 backtest engine;
+- implement the definitive metric suite and paired bootstrap intervals;
+- enforce rolling-origin splits, leakage checks, deterministic seeds, and reproducible run artifacts;
+- establish the champion-versus-challenger comparison protocol before fitting V2.
 
-### Phase 2 — Historical feature population
+### Phase 2 — Team opportunity forecast
 
-- ingest play-by-play, participation, schedule, roster, and weekly history;
-- populate required history before model development;
-- pass team/player reconciliation and leakage tests.
+- forecast team carries, team RB targets, and team touchdowns with uncertainty;
+- constrain every player allocation to reconciled team ceilings.
 
-### Phase 3 — Weekly player distributions
+### Phase 3 — Player allocation
 
-- build team environment;
-- build opportunity, efficiency, availability, rookie, and changed-team layers;
-- generate weekly distributions and DraftKings bonus probabilities;
-- calibrate chronologically.
+- learn historical transition priors for vacated opportunity;
+- allocate early-down, receiving, and goal-line roles;
+- model competition, changed-team, rookie, and injury scenarios.
 
-### Phase 4 — Correlated roster simulation
+### Phase 4 — Efficiency and touchdowns
 
-- estimate/shrink relationship correlations;
-- simulate correlated player weeks;
-- apply exact DraftKings scoring;
-- select automatic weekly lineups;
-- calculate bye-week coverage and spike-game capture;
-- produce the cumulative Weeks 1–17 counted-score distribution.
+- estimate contextual efficiency from eligible player and team evidence;
+- model touchdown share separately from volume and yardage;
+- do not impose an automatic workload penalty.
 
-### Phase 5 — Draft decision policy
+### Phase 5 — Weekly distributions and roster simulation
 
-- calculate candidate marginal roster utility;
-- estimate ADP return probability;
-- add roster construction, stack, fragility, and alternative-pick logic;
-- persist reproducible decision snapshots.
+- generate game-script and availability scenarios;
+- estimate relationship-type correlation priors with hierarchical shrinkage;
+- simulate player weeks, exact DraftKings scoring, automatic lineups, bye coverage, and spike capture.
 
-### Phase 6 — Backend and UI
+### Phase 6 — Validation gate
 
-- expose source-aware API/query payloads;
-- add board fields, recommendation panel, and evidence drawer;
-- show missing/stale inputs and confidence;
-- preserve browser virtualization and lazy detail rendering.
+- compare V2 with V1.4 and draft-time ADP using the preregistered metrics;
+- return `PROMOTE`, `REVISE`, or `RETAIN V1.4`;
+- keep V2 as challenger when evidence is inconclusive or any required gate fails.
 
-### Phase 7 — Verification and promotion
+### Phase 7 — Product delivery and verification
 
+- calculate candidate marginal roster utility and ADP return probability;
+- expose source-aware backend payloads and persist decision snapshots;
+- add the recommendation UI and evidence drawer without regressing browser performance;
 - run automated unit, integration, policy, and leakage tests;
 - process representative real 2026 data;
 - run shadow decisions in real draft rooms;
@@ -732,17 +770,17 @@ Required completion matrix:
 
 No overall `complete` result is permitted while a required row is FAIL, BLOCKED, or NOT STARTED.
 
-## 14. Decisions required before implementation
+## 14. Open source and engineering decisions
 
-1. Approve sources for participation, injuries, coaching/play caller, offensive line, and historical ADP snapshots.
-2. Confirm how much historical data is available with reliable preseason as-of timestamps.
+1. Approve sources for participation, injuries, coaching/play caller, and offensive line.
+2. Preserve the approved historical cutoff policy: the first scheduled regular-season kickoff from the nflverse schedule.
 3. Decide whether manual analyst scenario overrides are desired in the first release.
 4. Choose the simulation budget for interactive draft recommendations after benchmarking accuracy versus latency.
 5. Decide whether the initial model remains local/single-user or must support server-persisted multi-device draft sessions.
 
-## 15. Recommended first deliverable
+## 15. First deliverable
 
-The safest first release is a **shadow Best Ball model** that:
+The first release is a **shadow Best Ball challenger** that:
 
 - uses existing nflverse/Sleeper/FFC sources plus play-by-play and participation;
 - produces weekly DraftKings distributions;
