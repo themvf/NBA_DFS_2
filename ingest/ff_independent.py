@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.3"
+MODEL_VERSION = "ff-independent-v1.4"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -47,6 +47,8 @@ FFC_ADP_URL = "https://fantasyfootballcalculator.com/api/v1/adp/{format}?teams=1
 FFC_FORMATS = {"STD": "standard", "HALF": "half-ppr", "PPR": "ppr"}
 
 SEASON_WEIGHTS = (0.15, 0.30, 0.55)
+BASELINE_GAMES = 17.0
+REGRESSION_PRIOR_GAMES = 4.0
 POSITION_PRIOR_PPG = {
     "STD": {"QB": 14.0, "RB": 5.5, "WR": 5.5, "TE": 3.5, "K": 7.0, "DST": 6.2},
     "HALF": {"QB": 14.0, "RB": 6.8, "WR": 7.0, "TE": 4.7, "K": 7.0, "DST": 6.2},
@@ -477,7 +479,7 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
     if position == "DST":
         method = "position_baseline"
         base_points = 105.0
-        expected_games = 17.0
+        expected_games = BASELINE_GAMES
         confidence = 0.35
         history_games = 0
         role_factor = 1.0
@@ -489,7 +491,6 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
         }
         weighted_ppg = 0.0
         weight_total = 0.0
-        weighted_games = 0.0
         weighted_availability = 0.0
         history_games = 0
         for history in eligible_history:
@@ -500,8 +501,7 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             season_points = _season_points(history, position, scoring)
             season_ppg = season_points / games
             weighted_ppg += season_ppg * weight
-            weighted_games += min(games, 17) * weight
-            weighted_availability += min(games / 17.0, 1.0) * weight
+            weighted_availability += min(games / BASELINE_GAMES, 1.0) * weight
             weight_total += weight
             history_games += games
             season_inputs.append({
@@ -513,21 +513,22 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             })
         raw_ppg = weighted_ppg / weight_total if weight_total else 0.0
         weighted_history_ppg = raw_ppg
-        effective_games = weighted_games / weight_total if weight_total else 0.0
         prior_ppg = POSITION_PRIOR_PPG[scoring][position]
         position_prior_ppg = prior_ppg
-        regressed_ppg = (raw_ppg * effective_games + prior_ppg * 4.0) / (effective_games + 4.0)
+        regressed_ppg = (
+            raw_ppg * history_games + prior_ppg * REGRESSION_PRIOR_GAMES
+        ) / (history_games + REGRESSION_PRIOR_GAMES)
         availability = weighted_availability / weight_total if weight_total else 0.75
         expected_games = 13.5 + 2.5 * availability
         raw_role = _depth_factor(position, depth)
         role_factor = 0.75 + raw_role * 0.25
-        base_points = regressed_ppg * expected_games * role_factor
+        base_points = regressed_ppg * BASELINE_GAMES * role_factor
         confidence = min(0.86, 0.40 + min(history_games, 40) / 100.0 + (0.06 if depth else 0.0))
     else:
         method = "rookie_prior" if player.get("rookie") else "position_prior"
         rookie_prior_points = _rookie_points(position, as_int(player.get("draft_number")), scoring)
         base_points = rookie_prior_points
-        expected_games = 15.0 if player.get("rookie") else 13.5
+        expected_games = BASELINE_GAMES
         role_factor = _depth_factor(position, depth)
         base_points *= role_factor
         confidence = 0.38 if player.get("rookie") else 0.24
@@ -535,16 +536,18 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
 
     expected_games_before_injury = expected_games
     base_points_before_injury = base_points
-    injury_factor = 1.0
+    injury_availability_factor = 1.0
     if any(token in injury for token in ("IR", "PUP", "OUT")):
-        injury_factor = 0.80
+        injury_availability_factor = 0.80
         expected_games = max(8.0, expected_games - 3.0)
         confidence -= 0.10
     elif injury:
-        injury_factor = 0.96
+        injury_availability_factor = 0.96
         expected_games = max(10.0, expected_games - 0.5)
         confidence -= 0.04
-    points = max(0.0, base_points * injury_factor)
+    # This is an active-performance season baseline. Availability belongs in
+    # the weekly simulation and must not silently reduce the displayed score.
+    points = max(0.0, base_points)
     confidence = max(0.15, min(0.90, confidence))
     return IndependentProjection(
         points=round(points, 2),
@@ -562,16 +565,20 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             "season_inputs": season_inputs,
             "weighted_history_ppg": round(weighted_history_ppg, 3) if weighted_history_ppg is not None else None,
             "position_prior_ppg": position_prior_ppg,
-            "regression_prior_games": 4.0 if regressed_ppg is not None else None,
+            "regression_prior_games": REGRESSION_PRIOR_GAMES if regressed_ppg is not None else None,
+            "regression_sample_games": history_games if regressed_ppg is not None else None,
             "regressed_ppg": round(regressed_ppg, 3) if regressed_ppg is not None else None,
             "rookie_prior_points": round(rookie_prior_points, 2) if rookie_prior_points is not None else None,
+            "baseline_games": BASELINE_GAMES,
             "expected_games_before_injury": round(expected_games_before_injury, 2),
             "expected_games_after_injury": round(expected_games, 2),
             "base_points_before_injury": round(base_points_before_injury, 2),
             "final_points": round(points, 2),
             "depth_order": depth,
             "role_factor": round(role_factor, 3),
-            "injury_factor": injury_factor,
+            "injury_factor": 1.0,
+            "injury_availability_factor": injury_availability_factor,
+            "availability_adjustment_applied_to_baseline": False,
             "not_modeled": ["current teammates", "offensive line", "coaching/play-caller", "future schedule"],
             "market_data_used": False,
         },

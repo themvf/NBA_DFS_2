@@ -42,9 +42,32 @@ def test_recent_history_has_more_weight_than_old_history() -> None:
     assert projection.explanation["weighted_history_ppg"] is not None
     assert projection.explanation["regressed_ppg"] is not None
     assert projection.explanation["regression_prior_games"] == 4.0
+    assert projection.explanation["regression_sample_games"] == 51
+    assert projection.explanation["baseline_games"] == 17.0
+    assert projection.points == 224.89
     assert projection.explanation["not_modeled"] == [
         "current teammates", "offensive line", "coaching/play-caller", "future schedule",
     ]
+
+
+def test_small_sample_is_still_strongly_regressed() -> None:
+    player = {"position": "WR", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+    history = [{"season": 2025, "games": 1, "fantasy_points_std": 20, "fantasy_points_ppr": 30}]
+    projection = project_player(player, history, "PPR", 2026)
+    assert projection.explanation["regression_sample_games"] == 1
+    assert projection.explanation["regressed_ppg"] == 12.8
+    assert projection.points == 217.6
+
+
+def test_injury_changes_availability_but_not_seventeen_game_baseline() -> None:
+    history = [{"season": 2025, "games": 17, "fantasy_points_std": 170, "fantasy_points_ppr": 272}]
+    healthy = {"position": "WR", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+    injured = {**healthy, "injury_status": "OUT"}
+    healthy_projection = project_player(healthy, history, "PPR", 2026)
+    injured_projection = project_player(injured, history, "PPR", 2026)
+    assert injured_projection.points == healthy_projection.points
+    assert injured_projection.expected_games < healthy_projection.expected_games
+    assert injured_projection.explanation["availability_adjustment_applied_to_baseline"] is False
 
 
 def test_rookie_projection_uses_draft_capital_and_depth() -> None:

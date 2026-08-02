@@ -52,6 +52,24 @@ assert.equal(explanation.method, "Weighted history + regression");
 assert.ok(explanation.lines.includes("2025: 20.6 PPG × 55%"));
 assert.ok(explanation.lines.includes("17.06 PPG × 15.90 games × 1.00 role = 271.3"));
 assert.deepEqual(explanation.notModeled, ["current teammates", "future schedule"]);
+const baselineExplanation = buildProjectionExplanation({
+  method: "history_regression",
+  weighted_history_ppg: 20.2,
+  position_prior_ppg: 8,
+  regression_prior_games: 4,
+  regression_sample_games: 51,
+  regressed_ppg: 19.31,
+  baseline_games: 17,
+  expected_games_after_injury: 16,
+  role_factor: 1,
+  base_points_before_injury: 328.27,
+  final_points: 328.27,
+  injury_factor: 1,
+  availability_adjustment_applied_to_baseline: false,
+});
+assert.ok(baselineExplanation.lines.includes("Regression: 51 historical games + 4 position-prior games at 8.0 PPG → 19.3 PPG"));
+assert.ok(baselineExplanation.lines.includes("19.31 PPG × 17.00 games × 1.00 role = 328.3"));
+assert.ok(baselineExplanation.lines.includes("Availability estimate: 16.0 active games (modeled separately; not deducted from this baseline)"));
 const validBestBallRoster = [
   ...Array.from({ length: 3 }, (_, index) => ({ playerId: index + 1, position: "QB", team: index ? "BUF" : "NE" })),
   ...Array.from({ length: 6 }, (_, index) => ({ playerId: index + 10, position: "RB", team: "ATL" })),

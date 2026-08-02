@@ -32,9 +32,11 @@ export function buildProjectionExplanation(details: Record<string, unknown> | nu
     const weighted = fixed(details.weighted_history_ppg);
     const prior = fixed(details.position_prior_ppg);
     const priorGames = fixed(details.regression_prior_games, 0);
+    const sampleGames = fixed(details.regression_sample_games, 0);
     const regressed = fixed(details.regressed_ppg);
     if (weighted) lines.push(`Weighted history: ${weighted} PPG`);
-    if (prior && priorGames && regressed) lines.push(`Position prior: ${prior} PPG over ${priorGames} equivalent games → ${regressed} PPG`);
+    if (prior && priorGames && sampleGames && regressed) lines.push(`Regression: ${sampleGames} historical games + ${priorGames} position-prior games at ${prior} PPG → ${regressed} PPG`);
+    else if (prior && priorGames && regressed) lines.push(`Position prior: ${prior} PPG over ${priorGames} equivalent games → ${regressed} PPG`);
   } else if (method === "rookie_prior" || method === "position_prior") {
     const prior = fixed(details.rookie_prior_points);
     if (prior) lines.push(`${method === "rookie_prior" ? "Rookie/draft" : "Position"} prior: ${prior} points`);
@@ -44,10 +46,14 @@ export function buildProjectionExplanation(details: Record<string, unknown> | nu
   }
 
   const regressed = fixed(details.regressed_ppg, 2);
-  const games = fixed(details.expected_games_before_injury, 2);
+  const games = fixed(details.baseline_games ?? details.expected_games_before_injury, 2);
   const role = fixed(details.role_factor, 2);
   const base = fixed(details.base_points_before_injury);
   if (regressed && games && role && base) lines.push(`${regressed} PPG × ${games} games × ${role} role = ${base}`);
+  const availabilityGames = fixed(details.expected_games_after_injury, 1);
+  if (details.availability_adjustment_applied_to_baseline === false && availabilityGames) {
+    lines.push(`Availability estimate: ${availabilityGames} active games (modeled separately; not deducted from this baseline)`);
+  }
   const injury = fixed(details.injury_factor, 2);
   const final = fixed(details.final_points);
   if (injury && final && injury !== "1.00") lines.push(`${base ?? "Base"} × ${injury} injury factor = ${final}`);

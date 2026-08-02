@@ -26,13 +26,16 @@ The current independent projection pipeline in `ingest/ff_independent.py`:
 - uses up to three prior NFL seasons;
 - converts season totals to fantasy points per game;
 - applies fixed recency weights;
-- regresses points per game toward a position prior using four prior games;
-- estimates active games from recent availability;
-- applies depth-chart and injury multipliers;
+- regresses points per game toward a position prior using the player's actual eligible historical games plus four equivalent prior games;
+- converts the resulting active-game rate to a 17-game displayed season baseline;
+- estimates availability separately without deducting missed-game risk from that displayed baseline;
+- applies a bounded depth-chart role factor;
 - assigns a low/high range with fixed multipliers;
 - ranks players by season projection and position-level value over replacement;
 - stores current Fantasy Football Calculator ADP separately from the projection;
-- explains which seasons, weights, priors, depth order, and injury factor were used.
+- explains which seasons, weights, historical-game sample, priors, 17-game baseline, depth order, and separate availability estimate were used.
+
+The `ff-independent-v1.4` correction deliberately does not blend FantasyPros into our projection. FantasyPros remains a comparison benchmark used to reveal disagreement and evaluate calibration. The correction fixes an internal arithmetic error: established players had previously been shrunk as though their evidence sample were roughly one weighted season, and their active-game rate was then multiplied by fewer than 17 games.
 
 The Best Ball route then takes the top 260 QB/RB/WR/TE players from that PPR ranking set. The local draft simulator correctly handles 12 teams, 20 snake rounds, automatic pick advancement, roster validation, persistence, and draft-results tracking.
 
