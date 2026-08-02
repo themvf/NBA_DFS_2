@@ -1,5 +1,7 @@
 export const BEST_BALL_POSITIONS = ["QB", "RB", "WR", "TE"] as const;
 export type BestBallPosition = typeof BEST_BALL_POSITIONS[number];
+export const BEST_BALL_TEAM_COUNT = 12;
+export const BEST_BALL_ROUNDS = 20;
 
 export const BEST_BALL_TARGETS: Record<BestBallPosition, number> = {
   QB: 3,
@@ -34,6 +36,26 @@ export type BestBallRosterStatus = {
   valid: boolean;
   gates: BestBallGate[];
 };
+
+export type BestBallDraftState = {
+  userSlot: number;
+  playerIds: number[];
+};
+
+export function parseBestBallDraftState(value: string): BestBallDraftState {
+  try {
+    const parsed = JSON.parse(value) as Partial<BestBallDraftState>;
+    const userSlot = Number.isInteger(parsed.userSlot) && Number(parsed.userSlot) >= 1 && Number(parsed.userSlot) <= BEST_BALL_TEAM_COUNT
+      ? Number(parsed.userSlot)
+      : 1;
+    const playerIds = Array.isArray(parsed.playerIds)
+      ? parsed.playerIds.filter((id): id is number => Number.isInteger(id) && id > 0).slice(0, BEST_BALL_TEAM_COUNT * BEST_BALL_ROUNDS)
+      : [];
+    return { userSlot, playerIds: [...new Set(playerIds)] };
+  } catch {
+    return { userSlot: 1, playerIds: [] };
+  }
+}
 
 export function getBestBallRosterStatus(players: BestBallRosterPlayer[]): BestBallRosterStatus {
   const counts: Record<BestBallPosition, number> = { QB: 0, RB: 0, WR: 0, TE: 0 };
