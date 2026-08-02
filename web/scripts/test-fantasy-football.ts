@@ -3,6 +3,8 @@ import { queryRows } from "../src/db/query-result";
 import { buildSnakeSlots, nextControlledPick, picksUntilControlled } from "../src/lib/fantasy-football/draft-engine";
 import { recommendPlayers } from "../src/lib/fantasy-football/recommendations";
 import { fantasyBadgeClass } from "../src/lib/fantasy-football/badge-style";
+import { filterFantasyRankings } from "../src/lib/fantasy-football/ranking-filters";
+import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 
 assert.deepEqual(queryRows<{ id: number }>({ rows: [{ id: 3 }] }), [{ id: 3 }]);
 assert.deepEqual(queryRows<{ id: number }>([{ id: 2 }]), [{ id: 2 }]);
@@ -23,4 +25,10 @@ assert.match(fantasyBadgeClass({ code: "NFL_TOP_10_TARGETS", class: "fact" }), /
 assert.match(fantasyBadgeClass({ code: "NFL_TOP_10_RUSH_TDS", class: "fact" }), /orange/);
 assert.match(fantasyBadgeClass({ code: "TEAM_TARGET_LEADER", class: "fact" }), /cyan/);
 assert.match(fantasyBadgeClass({ code: "INJURY", class: "risk" }), /red/);
+const filterRows = [
+  { playerId: 1, name: "A.J. Brown", position: "WR", team: "NE" },
+  { playerId: 2, name: "Bijan Robinson", position: "RB", team: "ATL" },
+] as FantasyRankingRow[];
+assert.deepEqual(filterFantasyRankings(filterRows, { name: "brown", position: "WR", team: "NE" }).map((row) => row.playerId), [1]);
+assert.equal(filterFantasyRankings(filterRows, { name: "", position: "RB", team: "" }).length, 1);
 console.log("fantasy-football tests passed");

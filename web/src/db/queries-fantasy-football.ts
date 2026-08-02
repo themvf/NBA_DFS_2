@@ -109,7 +109,9 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     END AS "fantasyPoints2025",r.expected_games AS "expectedGames",
     r.confidence,COALESCE(jsonb_agg(jsonb_build_object('code',i.indicator_code,
       'class',i.indicator_class,'label',i.label,'value',i.metric_value,'evidence',i.evidence)
-      ORDER BY CASE i.indicator_class WHEN 'risk' THEN 1 WHEN 'role' THEN 2 WHEN 'model' THEN 3 ELSE 4 END)
+      ORDER BY CASE WHEN i.indicator_code='NEW_TEAM' THEN 1
+        WHEN i.indicator_class='risk' THEN 2 WHEN i.indicator_class='role' THEN 3
+        WHEN i.indicator_class='model' THEN 4 ELSE 5 END)
       FILTER (WHERE i.id IS NOT NULL),'[]'::jsonb) AS indicators
     FROM ff_player_rankings r JOIN ff_players p ON p.id=r.player_id
     JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id

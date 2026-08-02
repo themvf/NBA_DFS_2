@@ -388,11 +388,14 @@ def create_indicators(
     rows: list[dict[str, Any]],
     history: dict[int, dict[str, Any]],
 ) -> None:
+    def current_team(row: dict[str, Any]) -> str:
+        return str(row.get("team_abbrev") or row.get("team") or "")
+
     team_roles: dict[tuple[str, str, int], int] = {}
-    for team in {str(r.get("team_abbrev") or "") for r in rows}:
+    for team in {current_team(r) for r in rows}:
         for position in ("WR", "RB", "TE", "QB"):
             candidates = sorted(
-                [r for r in rows if r.get("team_abbrev") == team and r["position"] == position],
+                [r for r in rows if current_team(r) == team and r["position"] == position],
                 key=lambda r: r.get("our_rank") or r.get("overall_rank") or 9999,
             )
             for role_rank, candidate in enumerate(candidates, start=1):
@@ -400,11 +403,12 @@ def create_indicators(
     for row in rows:
         codes: list[tuple[str, str, str, float | None, dict[str, Any]]] = []
         hist = history.get(row["player_id"], {})
+        team = current_team(row)
         if row.get("rookie"):
             codes.append(("ROOKIE", "fact", "ROOKIE", None, {"source": "player metadata"}))
         if row.get("injury_status"):
             codes.append(("INJURY", "risk", str(row["injury_status"]).upper(), None, {"status": row["injury_status"]}))
-        role_rank = team_roles.get((str(row.get("team_abbrev") or ""), row["position"], row["player_id"]))
+        role_rank = team_roles.get((team, row["position"], row["player_id"]))
         if row["position"] in {"WR", "RB"} and role_rank and role_rank <= 2:
             label = f"TEAM {row['position']}{role_rank}"
             codes.append((label.replace(" ", "_"), "role", label, None, {"basis": "projected positional order"}))
@@ -416,8 +420,14 @@ def create_indicators(
             codes.append(("NFL_TOP_10_TARGETS", "fact", f"NFL TOP-10 TARGETS {season-1}", hist.get("targets"), hist))
         if (hist.get("nfl_rush_td_rank") or 999) <= 10:
             codes.append(("NFL_TOP_10_RUSH_TDS", "fact", f"NFL TOP-10 RUSH TDS {season-1}", hist.get("rushing_tds"), hist))
-        if hist.get("prior_team") and row.get("team_abbrev") and hist["prior_team"] != row["team_abbrev"]:
-            codes.append(("NEW_TEAM", "fact", "NEW TEAM", None, {"from": hist["prior_team"], "to": row["team_abbrev"]}))
+        if hist.get("prior_team") and team and hist["prior_team"] != team:
+            codes.append((
+                "NEW_TEAM",
+                "fact",
+                f"NEW TEAM: {hist['prior_team']} → {team}",
+                None,
+                {"from": hist["prior_team"], "to": team},
+            ))
         if row.get("adp") is not None:
             delta = float(row["adp"]) - float(row.get("our_rank") or row.get("overall_rank") or 0)
             if delta >= 12:
