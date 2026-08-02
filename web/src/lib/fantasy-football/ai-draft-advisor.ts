@@ -88,6 +88,7 @@ export type BestBallAdvisorSnapshot = {
 export type BestBallAdvisorModelOutput = {
   recommendedPlayerId: number;
   confidence: number;
+  confidenceProvided: boolean;
   whyNow: string;
   rosterFit: string;
   evidence: string[];
@@ -117,6 +118,7 @@ export type BestBallAdvisorResult = {
   recommendation: BestBallAdvisorPick;
   alternatives: BestBallAdvisorPick[];
   confidence: number;
+  confidenceProvided: boolean;
   whyNow: string;
   rosterFit: string;
   evidence: string[];
@@ -290,6 +292,11 @@ function requireStringArray(value: unknown, field: string, min: number, max: num
 }
 
 function normalizedCandidateKey(raw: unknown, candidates: BestBallAdvisorCandidate[]): string | null {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return normalizedCandidateKey(candidateReference(raw as Record<string, unknown>, [
+      "candidateKey", "candidate_key", "playerName", "player_name", "player", "name", "pick",
+    ]), candidates);
+  }
   if (typeof raw === "number" && Number.isInteger(raw) && raw > 0) {
     return `C${String(raw).padStart(2, "0")}`;
   }
@@ -330,7 +337,7 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     value,
     [
       "recommendedCandidateKey", "recommended_candidate_key", "candidateKey", "candidate_key",
-      "recommendedPlayerName", "recommended_player_name", "recommendedPlayer", "recommended_player", "playerName", "player_name",
+      "recommendedPlayerName", "recommended_player_name", "recommendedPlayer", "recommended_player", "playerName", "player_name", "pick",
     ],
   );
   const recommendedCandidateKey = normalizedCandidateKey(recommendedReference, snapshot.candidates) ?? "";
@@ -338,23 +345,24 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   if (!recommendedCandidate) {
     const received = JSON.stringify(recommendedReference)?.slice(0, 120) ?? "missing";
     const fields = Object.keys(value).slice(0, 12).join(", ") || "none";
-    const wrapperShape = JSON.stringify(value.recommendations ?? value.picks)?.slice(0, 700) ?? "missing";
-    throw new Error(`The advisor recommended a player who is no longer legal or available (received ${received}; fields: ${fields}; wrapper: ${wrapperShape}).`);
+    throw new Error(`The advisor recommended a player who is no longer legal or available (received ${received}; fields: ${fields}).`);
   }
   const recommendedPlayerId = recommendedCandidate.playerId;
-  const rawConfidence = Number(advisorField(value, ["confidence"]));
+  const confidenceValue = advisorField(value, ["confidence"]);
+  const confidenceProvided = confidenceValue !== null && confidenceValue !== undefined;
+  const rawConfidence = confidenceProvided ? Number(confidenceValue) : 0;
   if (!Number.isFinite(rawConfidence) || rawConfidence < 0 || rawConfidence > 100) throw new Error("The advisor returned invalid confidence.");
   const confidence = rawConfidence > 0 && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
-  const rawAlternatives = advisorField(value, ["alternatives"]);
+  const rawAlternatives = advisorField(value, ["alternatives", "alternatePicks", "alternate_picks"]);
   if (!Array.isArray(rawAlternatives) || rawAlternatives.length !== 2) {
     throw new Error("The advisor must return exactly two alternatives.");
   }
   const seen = new Set([recommendedCandidateKey]);
   const alternatives = rawAlternatives.map((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("The advisor returned an invalid alternative.");
-    const alternative = item as Record<string, unknown>;
+    if (!item || (typeof item !== "object" && typeof item !== "string")) throw new Error("The advisor returned an invalid alternative.");
+    const alternative = typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
     const candidateKey = normalizedCandidateKey(
-      candidateReference(alternative, ["candidateKey", "candidate_key", "playerName", "player_name", "player"]),
+      typeof item === "string" ? item : candidateReference(alternative, ["candidateKey", "candidate_key", "playerName", "player_name", "player", "name", "pick"]),
       snapshot.candidates,
     ) ?? "";
     const candidate = candidateByKey.get(candidateKey);
@@ -362,18 +370,41 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
       throw new Error("The advisor returned a duplicate, unavailable, or illegal alternative.");
     }
     seen.add(candidateKey);
-    return { playerId: candidate.playerId, reason: requireString(alternative.reason, "alternative reason") };
+    const reason = candidateReference(alternative, ["reason", "rationale", "why"]);
+    return {
+      playerId: candidate.playerId,
+      reason: typeof reason === "string" && reason.trim()
+        ? requireString(reason, "alternative reason")
+        : "DeepSeek listed this player as an alternative.",
+    };
   });
+  const rationale = advisorField(value, ["whyNow", "why_now", "rationale", "reason", "analysis"]);
+  const suppliedEvidence = advisorField(value, ["evidence"]);
+  const evidence = suppliedEvidence === null
+    ? [
+      `V1.4 projection: ${recommendedCandidate.ourProjectedPoints?.toFixed(1) ?? "not available"} PPR points.`,
+      `Current ADP: ${recommendedCandidate.adp?.toFixed(1) ?? "not available"}; our rank: ${recommendedCandidate.ourRank ?? "not available"}.`,
+    ]
+    : requireStringArray(suppliedEvidence, "evidence", 2, 5);
   return {
     recommendedPlayerId,
     confidence: Math.round(confidence),
-    whyNow: requireString(advisorField(value, ["whyNow", "why_now"]), "why-now explanation"),
-    rosterFit: requireString(advisorField(value, ["rosterFit", "roster_fit"]), "roster-fit explanation"),
-    evidence: requireStringArray(advisorField(value, ["evidence"]), "evidence", 2, 5),
-    risks: requireStringArray(advisorField(value, ["risks", "risk"]), "risk", 1, 4),
+    confidenceProvided,
+    whyNow: requireString(rationale, "why-now explanation"),
+    rosterFit: typeof advisorField(value, ["rosterFit", "roster_fit"]) === "string"
+      ? requireString(advisorField(value, ["rosterFit", "roster_fit"]), "roster-fit explanation")
+      : "DeepSeek did not provide a separate roster-fit explanation.",
+    evidence,
+    risks: advisorField(value, ["risks", "risk"]) === null
+      ? ["DeepSeek did not provide a separate risk statement."]
+      : requireStringArray(advisorField(value, ["risks", "risk"]), "risk", 1, 4),
     alternatives,
-    strategyUntilNextTurn: requireString(advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn"]), "next-turn strategy"),
-    whatWouldChange: requireString(advisorField(value, ["whatWouldChange", "what_would_change"]), "change condition"),
+    strategyUntilNextTurn: typeof advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn"]) === "string"
+      ? requireString(advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn"]), "next-turn strategy")
+      : "Re-run DeepSeek after the next recorded pick so it receives the updated legal board.",
+    whatWouldChange: typeof advisorField(value, ["whatWouldChange", "what_would_change"]) === "string"
+      ? requireString(advisorField(value, ["whatWouldChange", "what_would_change"]), "change condition")
+      : "A draft pick that removes this player or materially changes the available-player tier.",
   };
 }
 
@@ -415,6 +446,7 @@ export function enrichBestBallAdvisorResult(
       reason: alternative.reason,
     })),
     confidence: output.confidence,
+    confidenceProvided: output.confidenceProvided,
     whyNow: output.whyNow,
     rosterFit: output.rosterFit,
     evidence: output.evidence,

@@ -63,7 +63,7 @@ function RecommendationCard({
       <div className="rounded-2xl bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide opacity-60">Pick {state.result.targetOverallPick ?? "—"} · {state.result.confidence}% confidence</p>
+            <p className="text-xs font-bold uppercase tracking-wide opacity-60">Pick {state.result.targetOverallPick ?? "—"} · {state.result.confidenceProvided ? `${state.result.confidence}% confidence` : "confidence not stated"}</p>
             <p className="mt-1 text-2xl font-black">{state.result.recommendation.name}</p>
             <p className="text-sm opacity-75">{state.result.recommendation.position} · {state.result.recommendation.team ?? "FA"} · Bye {state.result.recommendation.byeWeek ?? "—"}</p>
           </div>
