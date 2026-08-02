@@ -97,4 +97,3 @@ Future changes to this page should preserve the following requirements:
 - `web/package.json`
 - `web/package-lock.json`
 - `CLAUDE.md`
-
