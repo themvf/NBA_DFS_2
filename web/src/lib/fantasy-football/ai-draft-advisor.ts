@@ -315,13 +315,15 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("The advisor returned an invalid response.");
   const value = raw as Record<string, unknown>;
   const candidateByKey = new Map(snapshot.candidates.map((candidate) => [candidate.candidateKey, candidate]));
-  const recommendedCandidateKey = normalizedCandidateKey(
-    candidateReference(value, ["recommendedCandidateKey", "recommendedPlayerName", "recommendedPlayer", "playerName"]),
-    snapshot.candidates,
-  ) ?? "";
+  const recommendedReference = candidateReference(
+    value,
+    ["recommendedCandidateKey", "recommendedPlayerName", "recommendedPlayer", "playerName"],
+  );
+  const recommendedCandidateKey = normalizedCandidateKey(recommendedReference, snapshot.candidates) ?? "";
   const recommendedCandidate = candidateByKey.get(recommendedCandidateKey);
   if (!recommendedCandidate) {
-    throw new Error("The advisor recommended a player who is no longer legal or available.");
+    const received = JSON.stringify(recommendedReference)?.slice(0, 120) ?? "missing";
+    throw new Error(`The advisor recommended a player who is no longer legal or available (received ${received}).`);
   }
   const recommendedPlayerId = recommendedCandidate.playerId;
   const rawConfidence = Number(value.confidence);
