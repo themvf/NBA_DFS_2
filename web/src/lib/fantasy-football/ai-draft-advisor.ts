@@ -313,6 +313,42 @@ function normalizedCandidateKey(raw: unknown, candidates: BestBallAdvisorCandida
   return byName?.candidateKey ?? null;
 }
 
+function collectCandidateKeys(raw: unknown, candidates: BestBallAdvisorCandidate[], depth = 0, found: string[] = []): string[] {
+  if (depth > 5 || raw === null || raw === undefined) return found;
+  const direct = normalizedCandidateKey(raw, candidates);
+  if (direct && !found.includes(direct)) found.push(direct);
+  if (Array.isArray(raw)) {
+    for (const item of raw) collectCandidateKeys(item, candidates, depth + 1, found);
+  } else if (typeof raw === "object") {
+    const record = raw as Record<string, unknown>;
+    const priorityKeys = ["winnerPick", "winner_pick", "primary", "recommendation", "recommended", "selection", "pick", "choice"];
+    for (const key of priorityKeys) if (key in record) collectCandidateKeys(record[key], candidates, depth + 1, found);
+    for (const [key, child] of Object.entries(record)) {
+      if (!priorityKeys.includes(key)) collectCandidateKeys(child, candidates, depth + 1, found);
+    }
+  }
+  return found;
+}
+
+function deepAdvisorField(raw: unknown, keys: string[], depth = 0): unknown {
+  if (depth > 5 || !raw || typeof raw !== "object") return null;
+  if (!Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    const direct = candidateReference(record, keys);
+    if (direct !== null) return direct;
+    for (const child of Object.values(record)) {
+      const nested = deepAdvisorField(child, keys, depth + 1);
+      if (nested !== null) return nested;
+    }
+  } else {
+    for (const child of raw) {
+      const nested = deepAdvisorField(child, keys, depth + 1);
+      if (nested !== null) return nested;
+    }
+  }
+  return null;
+}
+
 function candidateReference(value: Record<string, unknown>, keys: string[]): unknown {
   for (const key of keys) {
     if (value[key] !== undefined && value[key] !== null) return value[key];
@@ -323,7 +359,7 @@ function candidateReference(value: Record<string, unknown>, keys: string[]): unk
 function nestedRecommendation(value: Record<string, unknown>): Record<string, unknown> {
   const recommendedPicks = value.recommendedPicks ?? value.recommended_picks;
   const firstRecommendedPick = Array.isArray(recommendedPicks) ? recommendedPicks[0] : null;
-  const recommendation = value.recommendation ?? value.selection ?? firstRecommendedPick;
+  const recommendation = value.recommendation ?? value.selection ?? value.winnerPick ?? value.winner_pick ?? firstRecommendedPick;
   return recommendation && typeof recommendation === "object" && !Array.isArray(recommendation)
     ? recommendation as Record<string, unknown>
     : {};
@@ -341,10 +377,11 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     value,
     [
       "recommendedCandidateKey", "recommended_candidate_key", "candidateKey", "candidate_key",
-      "recommendedPlayerName", "recommended_player_name", "recommendedPlayer", "recommended_player", "playerName", "player_name", "pick", "selection", "recommendedPicks", "recommended_picks",
+      "winnerPick", "winner_pick", "recommendedPlayerName", "recommended_player_name", "recommendedPlayer", "recommended_player", "playerName", "player_name", "pick", "selection", "recommendedPicks", "recommended_picks",
     ],
   );
-  const recommendedCandidateKey = normalizedCandidateKey(recommendedReference, snapshot.candidates) ?? "";
+  const collectedCandidateKeys = collectCandidateKeys(value, snapshot.candidates);
+  const recommendedCandidateKey = normalizedCandidateKey(recommendedReference, snapshot.candidates) ?? collectedCandidateKeys[0] ?? "";
   const recommendedCandidate = candidateByKey.get(recommendedCandidateKey);
   if (!recommendedCandidate) {
     const received = JSON.stringify(recommendedReference)?.slice(0, 120) ?? "missing";
@@ -357,13 +394,15 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   const rawConfidence = confidenceProvided ? Number(confidenceValue) : 0;
   if (!Number.isFinite(rawConfidence) || rawConfidence < 0 || rawConfidence > 100) throw new Error("The advisor returned invalid confidence.");
   const confidence = rawConfidence > 0 && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
-  const suppliedAlternatives = advisorField(value, ["alternatives", "alternatePicks", "alternate_picks"]);
+  const suppliedAlternatives = advisorField(value, ["alternatives", "alternatePicks", "alternate_picks", "advisablePicks", "advisable_picks"]);
   const recommendedPicks = value.recommendedPicks ?? value.recommended_picks;
   const rawAlternatives = Array.isArray(suppliedAlternatives)
     ? suppliedAlternatives.slice(0, 2)
     : Array.isArray(recommendedPicks) && recommendedPicks.length >= 3
       ? recommendedPicks.slice(1, 3)
-    : snapshot.candidates.filter((candidate) => candidate.candidateKey !== recommendedCandidateKey).slice(0, 2).map((candidate) => candidate.candidateKey);
+    : collectedCandidateKeys.filter((candidateKey) => candidateKey !== recommendedCandidateKey).length >= 2
+      ? collectedCandidateKeys.filter((candidateKey) => candidateKey !== recommendedCandidateKey).slice(0, 2)
+      : snapshot.candidates.filter((candidate) => candidate.candidateKey !== recommendedCandidateKey).slice(0, 2).map((candidate) => candidate.candidateKey);
   if (rawAlternatives.length !== 2) {
     throw new Error("The advisor must return exactly two alternatives.");
   }
@@ -388,8 +427,9 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
         : "DeepSeek listed this player as an alternative.",
     };
   });
-  const rationale = advisorField(value, ["whyNow", "why_now", "rationale", "reason", "analysis", "explanation"]);
-  const suppliedEvidence = advisorField(value, ["evidence"]);
+  const rationale = advisorField(value, ["whyNow", "why_now", "rationale", "reason", "analysis", "explanation"])
+    ?? deepAdvisorField(value, ["whyNow", "why_now", "rationale", "reason", "analysis", "explanation"]);
+  const suppliedEvidence = advisorField(value, ["evidence"]) ?? deepAdvisorField(value, ["evidence"]);
   const evidence = suppliedEvidence === null
     ? [
       `V1.4 projection: ${recommendedCandidate.ourProjectedPoints?.toFixed(1) ?? "not available"} PPR points.`,
@@ -405,9 +445,9 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
       ? requireString(advisorField(value, ["rosterFit", "roster_fit"]), "roster-fit explanation")
       : "DeepSeek did not provide a separate roster-fit explanation.",
     evidence,
-    risks: advisorField(value, ["risks", "risk", "caveats"]) === null
+    risks: (advisorField(value, ["risks", "risk", "caveats"]) ?? deepAdvisorField(value, ["risks", "risk", "caveats"])) === null
       ? ["DeepSeek did not provide a separate risk statement."]
-      : requireStringArray(advisorField(value, ["risks", "risk", "caveats"]), "risk", 1, 4),
+      : requireStringArray(advisorField(value, ["risks", "risk", "caveats"]) ?? deepAdvisorField(value, ["risks", "risk", "caveats"]), "risk", 1, 4),
     alternatives,
     strategyUntilNextTurn: typeof advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn", "strategy"]) === "string"
       ? requireString(advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn", "strategy"]), "next-turn strategy")

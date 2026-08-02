@@ -159,6 +159,10 @@ assert.equal(validateBestBallAdvisorOutput({
     what_would_change: advisorOutput.whatWouldChange,
   },
 }, advisorSnapshot).recommendedPlayerId, 3);
+assert.equal(validateBestBallAdvisorOutput({
+  advisablePicks: [{ player: "Available Receiver", reason: "Strong value." }, { player: "Available Tight End", reason: "Position value." }],
+  winnerPick: { player: "Available Runner", explanation: "Best live-board fit." },
+}, advisorSnapshot).recommendedPlayerId, 3);
 const looseAdvisorOutput = validateBestBallAdvisorOutput({
   selection: { primary: "Available Runner" },
   explanation: "Best available player for this pick.",
