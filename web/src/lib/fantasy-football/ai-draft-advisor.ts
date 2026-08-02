@@ -349,8 +349,9 @@ export async function getValidatedBestBallAdvisorOutput(
     const second = await getOutput(correction);
     try {
       return { output: validateBestBallAdvisorOutput(second, snapshot), retried: true };
-    } catch {
-      throw new Error("The advisor couldn't choose a valid available player after rechecking the live board. Confirm the latest picks and try again.");
+    } catch (secondError) {
+      const reason = secondError instanceof Error ? secondError.message : "The corrected response was invalid.";
+      throw new Error(`The advisor rechecked the live board but its response still failed validation: ${reason}`);
     }
   }
 }

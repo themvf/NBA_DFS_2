@@ -165,7 +165,7 @@ async function testAdvisorCorrection() {
   assert.equal(correctedAdvisor.output.recommendedPlayerId, 3);
   await assert.rejects(
     () => getValidatedBestBallAdvisorOutput(advisorSnapshot, async () => ({ recommendedCandidateKey: "C99" })),
-    /couldn't choose a valid available player after rechecking/,
+    /rechecked the live board.*no longer legal or available/,
   );
 }
 assert.notEqual(
