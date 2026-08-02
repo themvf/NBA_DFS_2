@@ -1853,6 +1853,20 @@ TABLES = [
         UNIQUE(season, fantasypros_player_id),
         CHECK(position IN ('QB', 'RB', 'WR', 'TE', 'K', 'DST'))
     )""",
+    """CREATE TABLE IF NOT EXISTS ff_player_source_projections (
+        id BIGSERIAL PRIMARY KEY,
+        source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id) ON DELETE CASCADE,
+        player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE,
+        source TEXT NOT NULL,
+        season INTEGER NOT NULL,
+        scoring TEXT NOT NULL,
+        projected_points DOUBLE PRECISION,
+        projected_stats JSONB NOT NULL DEFAULT '{}'::jsonb,
+        match_method TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(source_snapshot_id, player_id, scoring),
+        CHECK(scoring IN ('STD', 'HALF', 'PPR'))
+    )""",
     """CREATE TABLE IF NOT EXISTS ff_ranking_sets (
         id BIGSERIAL PRIMARY KEY,
         season INTEGER NOT NULL,

@@ -6,6 +6,7 @@ from ingest.ff_fantasypros import (
     fantasypros_endpoint_contracts,
     link_fantasypros_players,
     normalize_name,
+    persist_fantasypros_projections,
     position_rank,
     projection_stats,
 )
@@ -166,6 +167,33 @@ def test_injury_payload_can_match_canonical_identity_when_vendor_id_is_absent_fr
         "team_id": "BAL",
     }])  # type: ignore[arg-type]
     assert matched == 1
+
+
+def test_fantasypros_projections_persist_separately_for_each_scoring_format() -> None:
+    db = IdentityDatabase([{
+        "id": 42,
+        "normalized_name": "lamarjackson",
+        "position": "QB",
+        "team_abbrev": "BAL",
+        "fantasypros_player_id": 1001,
+    }])
+    result = persist_fantasypros_projections(db, 2026, 115, {"players": [{
+        "fpid": 1001,
+        "player_name": "Lamar Jackson",
+        "position_id": "QB",
+        "team_id": "BAL",
+        "stats": {"points": 310.0, "points_half": 315.5, "points_ppr": 321.0},
+    }]})  # type: ignore[arg-type]
+    assert result == {
+        "matched_players": 1,
+        "unmatched_players": 0,
+        "values_written": 3,
+        "std_scores": 1,
+        "half_scores": 1,
+        "ppr_scores": 1,
+    }
+    assert [params[3] for params in db.updates] == ["STD", "HALF", "PPR"]
+    assert [params[4] for params in db.updates] == [310.0, 315.5, 321.0]
 
 
 def test_position_rank_extracts_numeric_suffix() -> None:

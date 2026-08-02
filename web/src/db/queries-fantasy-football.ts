@@ -19,6 +19,9 @@ export type FantasyRankingRow = {
   tier: number | null;
   adp: number | null;
   projectedPoints: number | null;
+  fantasyProsProjectedPoints: number | null;
+  fantasyProsProjectionFetchedAt: string | null;
+  fantasyProsProjectionUpdatedAt: string | null;
   ourProjectedPoints: number | null;
   games2025: number | null;
   fantasyPoints2025: number | null;
@@ -161,6 +164,9 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     p.position,p.team_abbrev AS team,p.rookie,p.bye_week AS "byeWeek",
     p.injury_status AS "injuryStatus",r.overall_rank AS ecr,r.position_rank AS "positionRank",
     r.our_rank AS "ourRank",r.tier,r.adp,r.projected_points AS "projectedPoints",
+    fp.projected_points AS "fantasyProsProjectedPoints",
+    fp.fetched_at::text AS "fantasyProsProjectionFetchedAt",
+    fp.source_updated_at::text AS "fantasyProsProjectionUpdatedAt",
     r.our_projected_points AS "ourProjectedPoints",f.games AS "games2025",
     CASE COALESCE(rs.scoring_profile->>'preset','PPR')
       WHEN 'STD' THEN f.fantasy_points_std
@@ -178,8 +184,18 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
     LEFT JOIN ff_player_season_features f ON f.player_id=p.id AND f.season=2025 AND f.source='nflverse'
     LEFT JOIN ff_player_indicators i ON i.ranking_set_id=r.ranking_set_id AND i.player_id=p.id
+    LEFT JOIN LATERAL (
+      SELECT v.projected_points,s.fetched_at,s.source_updated_at
+      FROM ff_player_source_projections v
+      JOIN ff_source_snapshots s ON s.id=v.source_snapshot_id
+      WHERE v.player_id=p.id AND v.source='fantasypros' AND v.season=rs.season
+        AND v.scoring=COALESCE(rs.scoring_profile->>'preset','PPR')
+        AND s.status='success' AND s.dataset='projections'
+      ORDER BY s.fetched_at DESC,s.id DESC LIMIT 1
+    ) fp ON TRUE
     WHERE r.ranking_set_id=${rankingSetId}
-    GROUP BY p.id,r.id,rs.id,f.id ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
+    GROUP BY p.id,r.id,rs.id,f.id,fp.projected_points,fp.fetched_at,fp.source_updated_at
+    ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
   return queryRows<FantasyRankingRow>(result);
 }
 

@@ -457,6 +457,85 @@ def count_fantasypros_payload_matches(
     return matched
 
 
+def persist_fantasypros_projections(
+    db: DatabaseManager | RefreshDatabase,
+    season: int,
+    snapshot_id: int,
+    payload: dict[str, Any],
+) -> dict[str, int]:
+    """Persist source-attributable projections without letting the source own the board."""
+    players = db.execute(
+        """SELECT id,normalized_name,position,team_abbrev,fantasypros_player_id
+           FROM ff_players WHERE season=%s""",
+        (season,),
+    )
+    by_fp = {
+        int(player["fantasypros_player_id"]): player
+        for player in players
+        if as_int(player.get("fantasypros_player_id")) is not None
+    }
+    by_identity: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for player in players:
+        by_identity.setdefault(
+            (str(player["normalized_name"]), str(player["position"])),
+            [],
+        ).append(player)
+
+    matched_players = 0
+    unmatched_players = 0
+    values_written = 0
+    score_counts = {scoring: 0 for scoring in SCORING_TYPES}
+    for source_row in payload.get("players", []):
+        if not isinstance(source_row, dict):
+            unmatched_players += 1
+            continue
+        fp_id, name, position, team = _fantasypros_player_identity(source_row)
+        player = by_fp.get(fp_id or -1)
+        match_method = "fantasypros_player_id"
+        if player is None and name and position:
+            candidates = by_identity.get((name, position), [])
+            if team:
+                same_team = [candidate for candidate in candidates if candidate.get("team_abbrev") == team]
+                if len(same_team) == 1:
+                    candidates = same_team
+            if len(candidates) == 1:
+                player = candidates[0]
+                match_method = "canonical_identity"
+        if player is None:
+            unmatched_players += 1
+            continue
+
+        matched_players += 1
+        stats = projection_stats(source_row.get("stats"))
+        for scoring in SCORING_TYPES:
+            points = source_points(stats, scoring)
+            db.execute(
+                """INSERT INTO ff_player_source_projections
+                   (source_snapshot_id,player_id,source,season,scoring,
+                    projected_points,projected_stats,match_method)
+                   VALUES (%s,%s,'fantasypros',%s,%s,%s,%s,%s)
+                   ON CONFLICT (source_snapshot_id,player_id,scoring) DO NOTHING""",
+                (
+                    snapshot_id,
+                    player["id"],
+                    season,
+                    scoring,
+                    points,
+                    Json(stats),
+                    match_method,
+                ),
+            )
+            values_written += 1
+            if points is not None:
+                score_counts[scoring] += 1
+    return {
+        "matched_players": matched_players,
+        "unmatched_players": unmatched_players,
+        "values_written": values_written,
+        **{f"{scoring.lower()}_scores": count for scoring, count in score_counts.items()},
+    }
+
+
 def snapshot_fantasypros_contracts(
     db: DatabaseManager | RefreshDatabase,
     client: FantasyProsClient,
@@ -500,14 +579,22 @@ def snapshot_fantasypros_contracts(
             "UPDATE ff_source_snapshots SET matched_count=%s,unmatched_count=%s WHERE id=%s",
             (matched_count, max(0, len(row_dicts) - matched_count), snapshot_id),
         )
-        saved.append({
+        saved_row: dict[str, Any] = {
             "dataset": contract.dataset,
             "snapshot_id": snapshot_id,
             "row_count": len(rows) if isinstance(rows, list) else 0,
             "matched_count": matched_count,
             "unmatched_count": max(0, len(row_dicts) - matched_count),
             "response_hash": response_hash(payload),
-        })
+        }
+        if contract.dataset == "projections":
+            saved_row["player_values"] = persist_fantasypros_projections(
+                db,
+                season,
+                snapshot_id,
+                payload,
+            )
+        saved.append(saved_row)
     return {"season": season, "identity": identity, "snapshots": saved}
 
 

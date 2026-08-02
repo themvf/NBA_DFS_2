@@ -14,6 +14,7 @@ export default async function BestBallPage() {
   const rankings = allRankings
     .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
     .slice(0, 260);
+  const fantasyProsProjectionDataset = fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "projections");
   return <div className="space-y-6">
     <header className="overflow-hidden rounded-3xl border bg-gradient-to-br from-blue-950 via-slate-950 to-indigo-950 p-7 text-white shadow-xl">
       <div className="flex flex-wrap items-end justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-[0.28em] text-blue-300">DraftKings · NFL · Season Long</p><h1 className="mt-2 text-4xl font-black">Best Ball Draft Lab</h1><p className="mt-2 max-w-3xl text-slate-300">Build a 20-player roster whose highest-scoring legal lineup is counted automatically each week across Weeks 1–17.</p></div><nav className="flex gap-2"><Link href="/fantasy-football/rankings?scoring=PPR" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold">Redraft rankings</Link><span className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold">Best Ball</span></nav></div>
@@ -38,7 +39,8 @@ export default async function BestBallPage() {
         </div>
         <div className="text-right text-xs text-muted-foreground">
           <p>{fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "players")?.rowCount ?? 0} players</p>
-          <p>{fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "projections")?.rowCount ?? 0} projections</p>
+          <p>{fantasyProsProjectionDataset?.rowCount ?? 0} projections · {fantasyProsProjectionDataset?.matchedCount ?? 0} players matched</p>
+          <p>{fantasyProsProjectionDataset?.sourceUpdatedAt ? `Projection source updated ${new Date(fantasyProsProjectionDataset.sourceUpdatedAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET` : "Projection source time unavailable"}</p>
           <p>{fantasyProsHealth.latestFetchedAt ? `Checked ${new Date(fantasyProsHealth.latestFetchedAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET` : "No successful snapshot"}</p>
         </div>
       </div>
