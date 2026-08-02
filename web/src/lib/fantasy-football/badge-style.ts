@@ -6,6 +6,7 @@ const codeStyles: Array<[string, string]> = [
   ["OUR_BUY", "bg-emerald-100 text-emerald-800 ring-emerald-200"],
   ["ROOKIE", "bg-lime-100 text-lime-800 ring-lime-200"],
   ["NEW_TEAM", "bg-amber-100 text-amber-900 ring-amber-200"],
+  ["TOP_3_POSITION_POINTS", "bg-yellow-100 text-yellow-900 ring-yellow-300"],
   ["TEAM_TARGET_LEADER", "bg-cyan-100 text-cyan-900 ring-cyan-200"],
   ["NFL_TOP_10_TARGETS", "bg-blue-100 text-blue-800 ring-blue-200"],
   ["NFL_TOP_10_RUSH_TDS", "bg-orange-100 text-orange-900 ring-orange-200"],

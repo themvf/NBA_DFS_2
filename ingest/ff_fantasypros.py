@@ -387,6 +387,7 @@ def create_indicators(
     season: int,
     rows: list[dict[str, Any]],
     history: dict[int, dict[str, Any]],
+    scoring: str = "PPR",
 ) -> None:
     def current_team(row: dict[str, Any]) -> str:
         return str(row.get("team_abbrev") or row.get("team") or "")
@@ -400,6 +401,27 @@ def create_indicators(
             )
             for role_rank, candidate in enumerate(candidates, start=1):
                 team_roles[(team, position, candidate["player_id"])] = role_rank
+
+    def history_points(hist: dict[str, Any]) -> float:
+        std = float(hist.get("fantasy_points_std") or 0.0)
+        ppr = float(hist.get("fantasy_points_ppr") or 0.0)
+        return std if scoring == "STD" else ppr if scoring == "PPR" else (std + ppr) / 2.0
+
+    point_leaders: dict[tuple[str, int], tuple[int, float]] = {}
+    for position in ("QB", "RB", "WR", "TE", "K", "DST"):
+        candidates = sorted(
+            (
+                (row["player_id"], history_points(history[row["player_id"]]))
+                for row in rows
+                if row["position"] == position
+                and row["player_id"] in history
+                and (history[row["player_id"]].get("games") or 0) > 0
+            ),
+            key=lambda item: (-item[1], item[0]),
+        )
+        for points_rank, (player_id, points) in enumerate(candidates[:3], start=1):
+            point_leaders[(position, player_id)] = (points_rank, points)
+
     for row in rows:
         codes: list[tuple[str, str, str, float | None, dict[str, Any]]] = []
         hist = history.get(row["player_id"], {})
@@ -408,6 +430,16 @@ def create_indicators(
             codes.append(("ROOKIE", "fact", "ROOKIE", None, {"source": "player metadata"}))
         if row.get("injury_status"):
             codes.append(("INJURY", "risk", str(row["injury_status"]).upper(), None, {"status": row["injury_status"]}))
+        points_leader = point_leaders.get((row["position"], row["player_id"]))
+        if points_leader:
+            points_rank, points = points_leader
+            codes.append((
+                "TOP_3_POSITION_POINTS",
+                "fact",
+                f"{season-1} {row['position']} FPTS #{points_rank}",
+                points,
+                {"season": season - 1, "scoring": scoring, "position": row["position"], "rank": points_rank, "points": points},
+            ))
         role_rank = team_roles.get((team, row["position"], row["player_id"]))
         if row["position"] in {"WR", "RB"} and role_rank and role_rank <= 2:
             label = f"TEAM {row['position']}{role_rank}"
@@ -542,7 +574,7 @@ def _run_ingestion(season: int, db: RefreshDatabase, client: FantasyProsClient) 
             )
             model_rows.append({"player_id": player_id, "position": player["position"], "rookie": player["rookie"], "injury_status": player["injury_status"], "team_abbrev": player["team_abbrev"], "overall_rank": overall, "our_rank": overall, "position_rank": position_rank(raw.get("pos_rank")), "adp": adp.get(fp_id), "confidence": model.confidence, "our_projected_points": model.points})
         assign_our_ranks(db, ranking_set_id, model_rows)
-        create_indicators(db, ranking_set_id, season, model_rows, history)
+        create_indicators(db, ranking_set_id, season, model_rows, history, scoring)
         created_sets.append(ranking_set_id)
 
     return {"season": season, "players": len(fp_map), "ranking_sets": created_sets, "history_matches": len(history)}

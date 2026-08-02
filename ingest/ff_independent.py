@@ -665,7 +665,7 @@ def create_ranking_set(
         player_id: max(player_history, key=lambda row: int(row["season"]))
         for player_id, player_history in histories.items() if player_history
     }
-    create_indicators(db, ranking_set_id, season, board, latest_history)
+    create_indicators(db, ranking_set_id, season, board, latest_history, scoring)
     return ranking_set_id
 
 

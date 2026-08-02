@@ -82,3 +82,23 @@ def test_indicators_detect_new_team_from_independent_team_key() -> None:
     new_team = next(params for params in db.params if params[2] == "NEW_TEAM")
     assert new_team[4] == "NEW TEAM: PHI → NE"
     assert new_team[8].adapted == {"from": "PHI", "to": "NE"}
+
+
+def test_indicators_add_scoring_aware_top_three_position_points() -> None:
+    db = CaptureDatabase()
+    rows = [
+        {"player_id": player_id, "position": "QB", "team": team, "our_rank": player_id,
+         "overall_rank": None, "rookie": False, "injury_status": None, "adp": None, "confidence": 0.8}
+        for player_id, team in ((1, "BUF"), (2, "NE"), (3, "LAR"), (4, "DAL"))
+    ]
+    history = {
+        1: {"games": 17, "fantasy_points_std": 360.0, "fantasy_points_ppr": 360.0},
+        2: {"games": 17, "fantasy_points_std": 355.0, "fantasy_points_ppr": 355.0},
+        3: {"games": 17, "fantasy_points_std": 350.0, "fantasy_points_ppr": 350.0},
+        4: {"games": 17, "fantasy_points_std": 345.0, "fantasy_points_ppr": 345.0},
+    }
+    create_indicators(db, 15, 2026, rows, history, "PPR")
+    leaders = [params for params in db.params if params[2] == "TOP_3_POSITION_POINTS"]
+    assert [params[1] for params in leaders] == [1, 2, 3]
+    assert leaders[2][4] == "2025 QB FPTS #3"
+    assert leaders[2][5] == 350.0

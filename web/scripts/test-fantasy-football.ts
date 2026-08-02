@@ -25,6 +25,7 @@ assert.match(fantasyBadgeClass({ code: "NFL_TOP_10_TARGETS", class: "fact" }), /
 assert.match(fantasyBadgeClass({ code: "NFL_TOP_10_RUSH_TDS", class: "fact" }), /orange/);
 assert.match(fantasyBadgeClass({ code: "TEAM_TARGET_LEADER", class: "fact" }), /cyan/);
 assert.match(fantasyBadgeClass({ code: "INJURY", class: "risk" }), /red/);
+assert.match(fantasyBadgeClass({ code: "TOP_3_POSITION_POINTS", class: "fact" }), /yellow/);
 const filterRows = [
   { playerId: 1, name: "A.J. Brown", position: "WR", team: "NE" },
   { playerId: 2, name: "Bijan Robinson", position: "RB", team: "ATL" },
