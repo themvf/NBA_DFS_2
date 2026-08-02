@@ -338,8 +338,8 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   if (!recommendedCandidate) {
     const received = JSON.stringify(recommendedReference)?.slice(0, 120) ?? "missing";
     const fields = Object.keys(value).slice(0, 12).join(", ") || "none";
-    const recommendationShape = JSON.stringify(value.recommendations)?.slice(0, 700) ?? "missing";
-    throw new Error(`The advisor recommended a player who is no longer legal or available (received ${received}; fields: ${fields}; recommendations: ${recommendationShape}).`);
+    const wrapperShape = JSON.stringify(value.recommendations ?? value.picks)?.slice(0, 700) ?? "missing";
+    throw new Error(`The advisor recommended a player who is no longer legal or available (received ${received}; fields: ${fields}; wrapper: ${wrapperShape}).`);
   }
   const recommendedPlayerId = recommendedCandidate.playerId;
   const rawConfidence = Number(advisorField(value, ["confidence"]));
