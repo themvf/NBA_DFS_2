@@ -1,3 +1,5 @@
+import { buildSnakeSlots } from "./draft-engine";
+
 export const BEST_BALL_POSITIONS = ["QB", "RB", "WR", "TE"] as const;
 export type BestBallPosition = typeof BEST_BALL_POSITIONS[number];
 export const BEST_BALL_TEAM_COUNT = 12;
@@ -41,6 +43,36 @@ export type BestBallDraftState = {
   userSlot: number;
   playerIds: number[];
 };
+
+export type BestBallDraftBoardCell = {
+  round: number;
+  pickInRound: number;
+  teamSlot: number;
+  overallPick: number;
+  playerId: number | null;
+};
+
+export function buildBestBallDraftBoard(playerIds: number[]): BestBallDraftBoardCell[][] {
+  const slots = buildSnakeSlots(BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
+  const byRoundAndTeam = new Map(
+    slots.map((slot) => [`${slot.round}:${slot.teamSlot}`, slot]),
+  );
+  return Array.from({ length: BEST_BALL_ROUNDS }, (_, roundIndex) => {
+    const round = roundIndex + 1;
+    return Array.from({ length: BEST_BALL_TEAM_COUNT }, (_, teamIndex) => {
+      const teamSlot = teamIndex + 1;
+      const slot = byRoundAndTeam.get(`${round}:${teamSlot}`);
+      if (!slot) throw new Error(`Missing draft slot for round ${round}, team ${teamSlot}`);
+      return {
+        round: slot.round,
+        pickInRound: slot.pickInRound,
+        teamSlot: slot.teamSlot,
+        overallPick: slot.overallPick,
+        playerId: playerIds[slot.overallPick - 1] ?? null,
+      };
+    });
+  });
+}
 
 export function parseBestBallDraftState(value: string): BestBallDraftState {
   try {

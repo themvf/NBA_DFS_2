@@ -15,6 +15,7 @@ import {
 } from "@/lib/fantasy-football/best-ball";
 import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
 import ProjectionNotation from "../rankings/projection-notation";
+import BestBallDraftBoard from "./best-ball-draft-board";
 
 const ROSTER_EVENT = "dfs-vegas-best-ball-draft";
 const DRAFT_SLOTS = buildSnakeSlots(BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
@@ -47,6 +48,7 @@ export default function BestBallClient({ rankings, rankingSetId }: { rankings: F
   const [position, setPosition] = useState("");
   const [team, setTeam] = useState("");
   const [viewTeam, setViewTeam] = useState<number | null>(null);
+  const [activeView, setActiveView] = useState<"players" | "results">("players");
   const getDraftSnapshot = useCallback(() => localStorage.getItem(storageKey) || emptyDraftSnapshot(), [storageKey]);
   const snapshot = useSyncExternalStore(subscribeToDraft, getDraftSnapshot, emptyDraftSnapshot);
   const draft = useMemo(() => parseBestBallDraftState(snapshot), [snapshot]);
@@ -131,6 +133,15 @@ export default function BestBallClient({ rankings, rankingSetId }: { rankings: F
       })}</div>
     </section>
 
+    <nav aria-label="Best Ball draft views" className="grid grid-cols-2 rounded-2xl border bg-card p-1.5 shadow-sm">
+      <button onClick={() => setActiveView("players")} aria-pressed={activeView === "players"} className={`rounded-xl px-4 py-3 text-sm font-black transition ${activeView === "players" ? "bg-slate-950 text-white shadow" : "text-muted-foreground hover:bg-muted"}`}>Player Selection</button>
+      <button onClick={() => setActiveView("results")} aria-pressed={activeView === "results"} className={`rounded-xl px-4 py-3 text-sm font-black transition ${activeView === "results" ? "bg-slate-950 text-white shadow" : "text-muted-foreground hover:bg-muted"}`}>Draft Results <span className="ml-1 text-xs font-semibold opacity-70">({draft.playerIds.length}/240)</span></button>
+    </nav>
+
+    {activeView === "results" ? (
+      <BestBallDraftBoard rankings={rankings} playerIds={draft.playerIds} userSlot={draft.userSlot} />
+    ) : <>
+
     <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <div className="rounded-2xl border bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-blue-700">{viewTeam === null ? "Following the clock" : "Roster review"}</p><h2 className="text-2xl font-black">{displayTeam === draft.userSlot ? "My Team" : `Team ${displayTeam}`} roster</h2></div><div className="flex items-center gap-2">{viewTeam !== null && <button onClick={() => setViewTeam(null)} className="rounded-lg border px-2 py-1 text-xs font-semibold">Follow clock</button>}<span className={`rounded-full px-3 py-1 text-xs font-bold ${displayStatus.valid ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>{displayStatus.valid ? "VALID" : `${displayStatus.size}/20`}</span></div></div>
@@ -150,5 +161,6 @@ export default function BestBallClient({ rankings, rankingSetId }: { rankings: F
       <p className="text-xs text-muted-foreground">{filtered.length} available players · drafted players are removed from the board</p>
       <div className="overflow-x-auto rounded-2xl border bg-card"><table className="w-full min-w-[1050px] text-sm"><thead className="bg-muted text-left text-xs uppercase text-muted-foreground"><tr><th className="p-3">Skill rank</th><th className="p-3">Player</th><th className="p-3">Signals</th><th className="p-3">ADP</th><th className="p-3">2025 FPTS</th><th className="p-3">2026 PPR base</th><th className="p-3">Draft</th></tr></thead><tbody>{filtered.map((player) => <BestBallBoardRow key={player.playerId} player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPosition[player.position as BestBallPosition]} onDraft={draftPlayer} />)}</tbody></table>{filtered.length === 0 && <p className="border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}</div>
     </section>
+    </>}
   </div>;
 }
