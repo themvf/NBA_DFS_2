@@ -421,6 +421,42 @@ def link_fantasypros_players(
     }
 
 
+def count_fantasypros_payload_matches(
+    db: DatabaseManager | RefreshDatabase,
+    season: int,
+    rows: list[dict[str, Any]],
+) -> int:
+    """Count source rows that resolve by vendor ID or canonical identity."""
+    players = db.execute(
+        """SELECT normalized_name,position,team_abbrev,fantasypros_player_id
+           FROM ff_players WHERE season=%s""",
+        (season,),
+    )
+    known_ids = {
+        int(player["fantasypros_player_id"])
+        for player in players
+        if as_int(player.get("fantasypros_player_id")) is not None
+    }
+    identities = {
+        (str(player["normalized_name"]), str(player["position"]), str(player.get("team_abbrev") or ""))
+        for player in players
+    }
+    identity_without_team: dict[tuple[str, str], int] = {}
+    for name, position, _team in identities:
+        identity_without_team[(name, position)] = identity_without_team.get((name, position), 0) + 1
+
+    matched = 0
+    for row in rows:
+        fp_id, name, position, team = _fantasypros_player_identity(row)
+        if fp_id is not None and fp_id in known_ids:
+            matched += 1
+        elif (name, position, str(team or "")) in identities:
+            matched += 1
+        elif name and position and identity_without_team.get((name, position)) == 1:
+            matched += 1
+    return matched
+
+
 def snapshot_fantasypros_contracts(
     db: DatabaseManager | RefreshDatabase,
     client: FantasyProsClient,
@@ -446,23 +482,11 @@ def snapshot_fantasypros_contracts(
 
     player_payload = next(payload for contract, payload in payloads if contract.dataset == "players")
     identity = link_fantasypros_players(db, season, player_payload)
-    known_ids = {
-        int(row["fantasypros_player_id"])
-        for row in db.execute(
-            "SELECT fantasypros_player_id FROM ff_players WHERE season=%s AND fantasypros_player_id IS NOT NULL",
-            (season,),
-        )
-    }
-
     saved: list[dict[str, Any]] = []
     for contract, payload in payloads:
         rows = payload.get(contract.row_key)
-        source_ids = {
-            player_id
-            for row in rows if isinstance(row, dict)
-            if (player_id := as_int(row.get("player_id") or row.get("fpid"))) is not None
-        } if isinstance(rows, list) else set()
-        matched_count = len(source_ids & known_ids)
+        row_dicts = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+        matched_count = count_fantasypros_payload_matches(db, season, row_dicts)
         snapshot_id = snapshot(
             db,
             dataset=contract.dataset,
@@ -474,14 +498,14 @@ def snapshot_fantasypros_contracts(
         )
         db.execute(
             "UPDATE ff_source_snapshots SET matched_count=%s,unmatched_count=%s WHERE id=%s",
-            (matched_count, max(0, len(source_ids) - matched_count), snapshot_id),
+            (matched_count, max(0, len(row_dicts) - matched_count), snapshot_id),
         )
         saved.append({
             "dataset": contract.dataset,
             "snapshot_id": snapshot_id,
             "row_count": len(rows) if isinstance(rows, list) else 0,
             "matched_count": matched_count,
-            "unmatched_count": max(0, len(source_ids) - matched_count),
+            "unmatched_count": max(0, len(row_dicts) - matched_count),
             "response_hash": response_hash(payload),
         })
     return {"season": season, "identity": identity, "snapshots": saved}

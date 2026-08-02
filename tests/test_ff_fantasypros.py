@@ -1,6 +1,7 @@
 from ingest.ff_fantasypros import (
     audit_fantasypros_endpoints,
     build_model_projection,
+    count_fantasypros_payload_matches,
     create_indicators,
     fantasypros_endpoint_contracts,
     link_fantasypros_players,
@@ -148,6 +149,23 @@ def test_fantasypros_identity_refuses_ambiguous_name_position_match() -> None:
     assert result["matched"] == 0
     assert result["ambiguous"] == 1
     assert db.updates == []
+
+
+def test_injury_payload_can_match_canonical_identity_when_vendor_id_is_absent_from_directory() -> None:
+    db = IdentityDatabase([{
+        "id": 42,
+        "normalized_name": "lamarjackson",
+        "position": "QB",
+        "team_abbrev": "BAL",
+        "fantasypros_player_id": None,
+    }])
+    matched = count_fantasypros_payload_matches(db, 2026, [{
+        "player_id": 987654,
+        "name": "Lamar Jackson",
+        "position_id": "QB",
+        "team_id": "BAL",
+    }])  # type: ignore[arg-type]
+    assert matched == 1
 
 
 def test_position_rank_extracts_numeric_suffix() -> None:
