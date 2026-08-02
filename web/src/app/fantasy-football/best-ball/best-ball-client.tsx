@@ -1,8 +1,7 @@
 "use client";
 
-import { memo, useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
-import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
 import {
   BEST_BALL_POSITIONS,
   BEST_BALL_ROUNDS,
@@ -11,57 +10,86 @@ import {
   canAddBestBallPlayer,
   getBestBallRosterStatus,
   parseBestBallDraftState,
+  type BestBallDraftState,
   type BestBallPosition,
 } from "@/lib/fantasy-football/best-ball";
 import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
-import ProjectionNotation from "../rankings/projection-notation";
 import BestBallDraftBoard from "./best-ball-draft-board";
+import BestBallPlayerBoard from "./best-ball-player-board";
 
-const ROSTER_EVENT = "dfs-vegas-best-ball-draft";
 const DRAFT_SLOTS = buildSnakeSlots(BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
+const EMPTY_DRAFT: BestBallDraftState = { userSlot: 1, playerIds: [] };
 
-function subscribeToDraft(onChange: () => void) {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(ROSTER_EVENT, onChange);
-  return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(ROSTER_EVENT, onChange);
-  };
+function useBestBallDraft(storageKey: string) {
+  const [draft, setDraft] = useState<BestBallDraftState>(EMPTY_DRAFT);
+  const pendingDraftRef = useRef<BestBallDraftState | null>(null);
+  const persistenceHandleRef = useRef<number | null>(null);
+  const persistenceModeRef = useRef<"idle" | "timeout" | null>(null);
+
+  const cancelPendingPersistence = useCallback(() => {
+    if (persistenceHandleRef.current === null) return;
+    const cancelIdle = (window as unknown as { cancelIdleCallback?: Window["cancelIdleCallback"] }).cancelIdleCallback;
+    if (persistenceModeRef.current === "idle" && cancelIdle) cancelIdle.call(window, persistenceHandleRef.current);
+    else window.clearTimeout(persistenceHandleRef.current);
+    persistenceHandleRef.current = null;
+    persistenceModeRef.current = null;
+  }, []);
+
+  const persistPendingDraft = useCallback(() => {
+    if (pendingDraftRef.current) localStorage.setItem(storageKey, JSON.stringify(pendingDraftRef.current));
+    pendingDraftRef.current = null;
+    persistenceHandleRef.current = null;
+    persistenceModeRef.current = null;
+  }, [storageKey]);
+
+  const schedulePersistence = useCallback((next: BestBallDraftState) => {
+    pendingDraftRef.current = next;
+    cancelPendingPersistence();
+    const requestIdle = (window as unknown as { requestIdleCallback?: Window["requestIdleCallback"] }).requestIdleCallback;
+    if (requestIdle) {
+      persistenceModeRef.current = "idle";
+      persistenceHandleRef.current = requestIdle.call(window, persistPendingDraft, { timeout: 400 });
+    } else {
+      persistenceModeRef.current = "timeout";
+      persistenceHandleRef.current = window.setTimeout(persistPendingDraft, 0);
+    }
+  }, [cancelPendingPersistence, persistPendingDraft]);
+
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => {
+      setDraft(parseBestBallDraftState(localStorage.getItem(storageKey) ?? ""));
+    }, 0);
+    const syncFromAnotherTab = (event: StorageEvent) => {
+      if (event.key === storageKey) setDraft(parseBestBallDraftState(event.newValue ?? ""));
+    };
+    window.addEventListener("storage", syncFromAnotherTab);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("storage", syncFromAnotherTab);
+      cancelPendingPersistence();
+      persistPendingDraft();
+    };
+  }, [cancelPendingPersistence, persistPendingDraft, storageKey]);
+
+  const updateDraft = useCallback((updater: (current: BestBallDraftState) => BestBallDraftState) => {
+    setDraft((current) => {
+      const next = updater(current);
+      if (next !== current) schedulePersistence(next);
+      return next;
+    });
+  }, [schedulePersistence]);
+
+  return { draft, updateDraft };
 }
-
-function emptyDraftSnapshot() { return JSON.stringify({ userSlot: 1, playerIds: [] }); }
-
-type BoardRowProps = {
-  player: FantasyRankingRow;
-  skillRank: number;
-  canDraft: boolean;
-  onDraft: (playerId: number) => void;
-};
-
-const BestBallBoardRow = memo(function BestBallBoardRow({ player, skillRank, canDraft, onDraft }: BoardRowProps) {
-  return <tr className="border-t align-top hover:bg-muted/40"><td className="p-3 text-lg font-black">{skillRank}</td><td className="p-3"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p></td><td className="max-w-[310px] p-3"><div className="flex flex-wrap gap-1">{player.indicators.slice(0,3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}</div></td><td className="p-3">{player.adp?.toFixed(1) ?? "—"}</td><td className="p-3">{player.games2025 ?? "—"}</td><td className="p-3">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</td><td className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} /></td><td className="p-3"><button disabled={!canDraft} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-35">Add</button></td></tr>;
-});
 
 export default function BestBallClient({ rankings, rankingSetId }: { rankings: FantasyRankingRow[]; rankingSetId: number }) {
   const storageKey = `dfs-vegas:dk-best-ball-draft:v2:${rankingSetId}`;
-  const [name, setName] = useState("");
-  const [position, setPosition] = useState("");
-  const [team, setTeam] = useState("");
   const [viewTeam, setViewTeam] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<"players" | "results">("players");
-  const getDraftSnapshot = useCallback(() => localStorage.getItem(storageKey) || emptyDraftSnapshot(), [storageKey]);
-  const snapshot = useSyncExternalStore(subscribeToDraft, getDraftSnapshot, emptyDraftSnapshot);
-  const draft = useMemo(() => parseBestBallDraftState(snapshot), [snapshot]);
+  const { draft, updateDraft } = useBestBallDraft(storageKey);
   const playerById = useMemo(() => new Map(rankings.map((player) => [player.playerId, player])), [rankings]);
-  const skillRankById = useMemo(() => new Map(rankings.map((player, index) => [player.playerId, index + 1])), [rankings]);
-  const draftedIds = useMemo(() => new Set(draft.playerIds), [draft.playerIds]);
   const currentSlot = DRAFT_SLOTS[draft.playerIds.length] ?? null;
   const currentTeamSlot = currentSlot?.teamSlot ?? null;
-
-  const writeDraft = useCallback((next: { userSlot: number; playerIds: number[] }) => {
-    localStorage.setItem(storageKey, JSON.stringify(next));
-    window.dispatchEvent(new Event(ROSTER_EVENT));
-  }, [storageKey]);
 
   const rosters = useMemo(() => {
     const result = new Map<number, FantasyRankingRow[]>();
@@ -79,24 +107,21 @@ export default function BestBallClient({ rankings, rankingSetId }: { rankings: F
   const displayTeam = viewTeam ?? currentTeamSlot ?? draft.userSlot;
   const displayRoster = useMemo(() => rosters.get(displayTeam) ?? [], [displayTeam, rosters]);
   const displayStatus = useMemo(() => getBestBallRosterStatus(displayRoster), [displayRoster]);
-  const teams = useMemo(() => [...new Set(rankings.flatMap((player) => player.team ? [player.team] : []))].sort(), [rankings]);
 
   const draftPlayer = useCallback((playerId: number) => {
-    const latest = parseBestBallDraftState(getDraftSnapshot());
-    if (latest.playerIds.includes(playerId) || latest.playerIds.length >= DRAFT_SLOTS.length) return;
-    const slot = DRAFT_SLOTS[latest.playerIds.length];
-    const roster = latest.playerIds.flatMap((id, index) => DRAFT_SLOTS[index]?.teamSlot === slot.teamSlot ? [playerById.get(id)] : []).filter((player): player is FantasyRankingRow => Boolean(player));
-    const player = playerById.get(playerId);
-    if (player && canAddBestBallPlayer(roster, player)) writeDraft({ ...latest, playerIds: [...latest.playerIds, playerId] });
-  }, [getDraftSnapshot, playerById, writeDraft]);
+    updateDraft((latest) => {
+      if (latest.playerIds.includes(playerId) || latest.playerIds.length >= DRAFT_SLOTS.length) return latest;
+      const slot = DRAFT_SLOTS[latest.playerIds.length];
+      const roster = latest.playerIds.flatMap((id, index) => DRAFT_SLOTS[index]?.teamSlot === slot.teamSlot ? [playerById.get(id)] : []).filter((player): player is FantasyRankingRow => Boolean(player));
+      const player = playerById.get(playerId);
+      return player && canAddBestBallPlayer(roster, player) ? { ...latest, playerIds: [...latest.playerIds, playerId] } : latest;
+    });
+  }, [playerById, updateDraft]);
 
-  const undoLastPick = () => {
-    const latest = parseBestBallDraftState(getDraftSnapshot());
-    writeDraft({ ...latest, playerIds: latest.playerIds.slice(0, -1) });
-  };
-  const resetDraft = () => writeDraft({ userSlot: draft.userSlot, playerIds: [] });
+  const undoLastPick = () => updateDraft((latest) => latest.playerIds.length ? { ...latest, playerIds: latest.playerIds.slice(0, -1) } : latest);
+  const resetDraft = () => updateDraft((latest) => latest.playerIds.length ? { userSlot: latest.userSlot, playerIds: [] } : latest);
   const setUserSlot = (userSlot: number) => {
-    writeDraft({ ...draft, userSlot });
+    updateDraft((latest) => latest.userSlot === userSlot ? latest : { ...latest, userSlot });
     setViewTeam(null);
   };
 
@@ -106,16 +131,6 @@ export default function BestBallClient({ rankings, rankingSetId }: { rankings: F
     WR: Boolean(currentSlot) && currentStatus.size < 20,
     TE: Boolean(currentSlot) && currentStatus.size < 20 && currentStatus.counts.TE < 5,
   }), [currentSlot, currentStatus]);
-
-  const filtered = useMemo(() => {
-    const search = name.trim().toLocaleLowerCase();
-    return rankings.filter((player) => (
-      !draftedIds.has(player.playerId)
-      && (!search || player.name.toLocaleLowerCase().includes(search))
-      && (!position || player.position === position)
-      && (!team || player.team === team)
-    ));
-  }, [rankings, draftedIds, name, position, team]);
 
   return <div className="space-y-6">
     <section className="rounded-2xl border bg-slate-950 p-5 text-white">
@@ -156,11 +171,7 @@ export default function BestBallClient({ rankings, rankingSetId }: { rankings: F
 
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><b>Current ranking basis:</b> the top 260 eligible players from our season-long PPR board plus current ADP. The DraftKings yardage bonuses, weekly spike distributions, player correlations, and Weeks 15–17 matchups are not yet incorporated into the rank.</section>
 
-    <section className="space-y-3">
-      <div className="grid gap-3 rounded-2xl border bg-card p-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto] lg:items-end"><label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Search player" className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground" /></label><label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Position<select value={position} onChange={(event) => setPosition(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All positions</option>{BEST_BALL_POSITIONS.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Team<select value={team} onChange={(event) => setTeam(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All teams</option>{teams.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><button onClick={() => { setName(""); setPosition(""); setTeam(""); }} className="rounded-lg border px-3 py-2 text-sm font-semibold">Clear filters</button></div>
-      <p className="text-xs text-muted-foreground">{filtered.length} available players · drafted players are removed from the board</p>
-      <div className="overflow-x-auto rounded-2xl border bg-card"><table className="w-full min-w-[1120px] text-sm"><thead className="bg-muted text-left text-xs uppercase text-muted-foreground"><tr><th className="p-3">Skill rank</th><th className="p-3">Player</th><th className="p-3">Signals</th><th className="p-3">ADP</th><th className="p-3">2025 GP</th><th className="p-3">2025 FPTS</th><th className="p-3">2026 PPR base</th><th className="p-3">Draft</th></tr></thead><tbody>{filtered.map((player) => <BestBallBoardRow key={player.playerId} player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPosition[player.position as BestBallPosition]} onDraft={draftPlayer} />)}</tbody></table>{filtered.length === 0 && <p className="border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}</div>
-    </section>
+    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPosition={canDraftPosition} onDraft={draftPlayer} />
     </>}
   </div>;
 }
