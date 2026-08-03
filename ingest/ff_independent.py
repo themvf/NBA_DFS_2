@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.5"
+MODEL_VERSION = "ff-independent-v1.6"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -64,6 +64,47 @@ DEPTH_FACTORS = {
 }
 REPLACEMENT_DEMAND = {"QB": 12, "RB": 36, "WR": 48, "TE": 12, "K": 12, "DST": 12}
 TEAM_ABBREV_OVERRIDES = {"LA": "LAR", "WAS": "WSH"}
+
+# Fitted from 195 true rookies across the 2023-2025 draft classes (nflverse
+# roster_weekly rookie_year==season, draft_number joined by gsis_id, actual
+# outcome from ff_player_season_features). Walk-forward validated (leave-one-
+# class-out): beats the flat pick-bucket table in _rookie_points() on every
+# RB/WR/TE fold (RB -26% MAE, WR -42% MAE, TE -32% MAE, n=53/84/37). QB showed
+# no improvement over the bucket table (matches the independent PFF/4for4
+# "no rookie model beats the draft for QB" finding) and stays on _rookie_points().
+# See model/ff_rookie_draft_curve.py for the fitting/validation script.
+ROOKIE_CURVE_POSITIONS = {"RB", "WR", "TE"}
+ROOKIE_DRAFT_CURVE = {
+    "RB": {"STD": {"floor": 39.44, "peak": 214.99, "decay": 42.56}, "PPR": {"floor": 48.60, "peak": 276.50, "decay": 42.58}},
+    "WR": {"STD": {"floor": 24.91, "peak": 158.57, "decay": 44.50}, "PPR": {"floor": 39.34, "peak": 245.14, "decay": 43.71}},
+    "TE": {"STD": {"floor": 19.84, "peak": 180.22, "decay": 27.92}, "PPR": {"floor": 33.57, "peak": 300.51, "decay": 28.01}},
+}
+# Empirical actual/predicted ratio at the 15th/85th percentile of the same
+# fitted sample -- replaces the flat 0.62x-1.42x rookie range with a
+# position-derived one. Genuinely this wide: rookie outcomes are bimodal
+# (role/competition resolution), not a tight band around the point estimate.
+ROOKIE_RANGE_RATIO = {
+    "RB": (0.11, 1.94),
+    "WR": (0.17, 2.02),
+    "TE": (0.19, 1.79),
+}
+
+
+def _rookie_curve_points(position: str, draft_number: int | None, scoring: str) -> float:
+    pick = float(draft_number or 999)
+    curve = ROOKIE_DRAFT_CURVE[position]
+
+    def _value(key: str) -> float:
+        params = curve[key]
+        return params["floor"] + (params["peak"] - params["floor"]) * math.exp(-pick / params["decay"])
+
+    std_value = _value("STD")
+    ppr_value = _value("PPR")
+    if scoring == "STD":
+        return std_value
+    if scoring == "PPR":
+        return ppr_value
+    return (std_value + ppr_value) / 2.0
 
 
 @dataclass(frozen=True)
@@ -475,6 +516,7 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
     position_prior_ppg: float | None = None
     regressed_ppg: float | None = None
     rookie_prior_points: float | None = None
+    role_floor_points: float | None = None
 
     if position == "DST":
         method = "position_baseline"
@@ -525,12 +567,33 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
         base_points = regressed_ppg * BASELINE_GAMES * role_factor
         confidence = min(0.86, 0.40 + min(history_games, 40) / 100.0 + (0.06 if depth else 0.0))
     else:
-        method = "rookie_prior" if player.get("rookie") else "position_prior"
-        rookie_prior_points = _rookie_points(position, as_int(player.get("draft_number")), scoring)
-        base_points = rookie_prior_points
-        expected_games = BASELINE_GAMES
+        is_rookie = bool(player.get("rookie"))
         role_factor = _depth_factor(position, depth)
-        base_points *= role_factor
+        role_floor_points = None
+        if is_rookie and position in ROOKIE_CURVE_POSITIONS:
+            method = "rookie_draft_curve"
+            rookie_prior_points = _rookie_curve_points(position, as_int(player.get("draft_number")), scoring)
+            capital_component = rookie_prior_points * role_factor
+            # Draft capital alone can crush a confirmed starter to near-zero at a
+            # late pick (e.g. pick #199 TE1 -> 34 pts, below an average TE1's 102).
+            # Unvalidated against real outcomes (Sleeper has no historical depth-
+            # chart snapshot to backtest against -- see model/ff_rookie_draft_curve.py
+            # notes) but structurally necessary: a CONFIRMED depth-chart role floors
+            # the projection at the position-average prior for that role, so role
+            # can lift a late pick but never drags an already-strong pick down.
+            # Requires depth to be actually known -- _depth_factor(pos, None) == 1.0
+            # (its "no discount" default for a discount-only design) must NOT also
+            # hand an unknown-role UDFA the full confirmed-starter floor.
+            if depth is not None:
+                role_floor_points = POSITION_PRIOR_PPG[scoring][position] * BASELINE_GAMES * role_factor
+                base_points = max(capital_component, role_floor_points)
+            else:
+                base_points = capital_component
+        else:
+            method = "rookie_prior" if is_rookie else "position_prior"
+            rookie_prior_points = _rookie_points(position, as_int(player.get("draft_number")), scoring)
+            base_points = rookie_prior_points * role_factor
+        expected_games = BASELINE_GAMES
         confidence = 0.38 if player.get("rookie") else 0.24
         history_games = 0
 
@@ -549,12 +612,18 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
     # the weekly simulation and must not silently reduce the displayed score.
     points = max(0.0, base_points)
     confidence = max(0.15, min(0.90, confidence))
+    if method == "rookie_draft_curve":
+        low_ratio, high_ratio = ROOKIE_RANGE_RATIO[position]
+    elif history_games:
+        low_ratio, high_ratio = 0.72, 1.28
+    else:
+        low_ratio, high_ratio = 0.62, 1.42
     return IndependentProjection(
         points=round(points, 2),
         expected_games=round(expected_games, 1),
         confidence=round(confidence, 3),
-        low=round(points * (0.72 if history_games else 0.62), 2),
-        high=round(points * (1.28 if history_games else 1.42), 2),
+        low=round(points * low_ratio, 2),
+        high=round(points * high_ratio, 2),
         explanation={
             "model": MODEL_VERSION,
             "sources": ["nflverse", "Sleeper"],
@@ -569,6 +638,10 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             "regression_sample_games": history_games if regressed_ppg is not None else None,
             "regressed_ppg": round(regressed_ppg, 3) if regressed_ppg is not None else None,
             "rookie_prior_points": round(rookie_prior_points, 2) if rookie_prior_points is not None else None,
+            "rookie_curve_params": ROOKIE_DRAFT_CURVE.get(position) if method == "rookie_draft_curve" else None,
+            "rookie_range_ratio": list(ROOKIE_RANGE_RATIO[position]) if method == "rookie_draft_curve" else None,
+            "rookie_role_floor_points": round(role_floor_points, 2) if role_floor_points is not None else None,
+            "rookie_role_floor_applied": bool(role_floor_points is not None and role_floor_points > rookie_prior_points * role_factor),
             "draft_number": as_int(player.get("draft_number")),
             "baseline_games": BASELINE_GAMES,
             "expected_games_before_injury": round(expected_games_before_injury, 2),
