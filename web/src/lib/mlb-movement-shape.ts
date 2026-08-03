@@ -18,7 +18,7 @@ type MovementShapeInput = {
   trail: MovementTrailPoint[];
 };
 
-const STALE_AFTER_MINUTES = 45;
+const STALE_AFTER_MINUTES = 35;
 const STEAM_JUMP_PP = 1.5;
 const STEAM_BOOKS = 3;
 const REVERSAL_PP = 0.5;
