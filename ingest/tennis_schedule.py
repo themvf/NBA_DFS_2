@@ -49,7 +49,9 @@ from model.soccer_bet_rating import american_to_prob, prob_to_american
 logger = logging.getLogger(__name__)
 
 ODDS_BASE = "https://api.the-odds-api.com/v4"
-REGIONS = "us,uk,eu"
+# us + uk + eu = DraftKings/FanDuel, UK books, Pinnacle (sharp reference).
+# us_ex = Polymarket — enables Pin/Poly delta alerts same as MLB/NFL.
+REGIONS = "us,uk,eu,us_ex"
 
 
 class TennisOddsDiscoveryError(RuntimeError):

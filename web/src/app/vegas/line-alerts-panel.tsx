@@ -104,6 +104,19 @@ function ActionChip({ a }: { a: LineAlertRow }) {
       </span>
     );
   }
+  if (a.alertType === "pinnacle_polymarket_delta") {
+    const gap = a.sharpProb != null && a.alertProb != null
+      ? ((a.sharpProb - a.alertProb) * 100).toFixed(1) : "?";
+    return (
+      <span
+        className="cursor-help rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-700 whitespace-nowrap"
+        title={`Pinnacle prices ${name} ${gap}pp above Polymarket — the prediction market disagrees with the sharpest sportsbook. ` +
+               `Polymarket is excluded from the retail consensus. This delta tracks whether Pinnacle or Polymarket is right more often.`}
+      >
+        Pin/Poly gap → {name}
+      </span>
+    );
+  }
   return (
     <span
       className="cursor-help rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 whitespace-nowrap"
@@ -127,6 +140,7 @@ export default function LineAlertsPanel({
   const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
   const typeLabel = (t: string) =>
     t === "pinnacle_divergence" ? "Pin divergence"
+    : t === "pinnacle_polymarket_delta" ? "Pin/Poly gap"
     : t === "steam" ? "Steam"
     : t === "walking" ? "Walking"
     : t === "dk_value" ? "DK value"
