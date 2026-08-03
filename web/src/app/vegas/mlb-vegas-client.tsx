@@ -185,6 +185,71 @@ function captureAge(value: string | null, nowIso: string): { text: string; class
   return { text: `${rounded}m old`, className: "text-emerald-700" };
 }
 
+// ── Fixed-time snapshot columns ──────────────────────────────────
+// Shows vig-free home probability at specific ET times throughout the day.
+// Finds the nearest capture within ±20 min of each target; null if none.
+const SNAPSHOT_TIMES_ET = [
+  { label: "9am", hour: 9, minute: 0 },
+  { label: "1:10p", hour: 13, minute: 10 },
+  { label: "6:20p", hour: 18, minute: 20 },
+  { label: "6:50p", hour: 18, minute: 50 },
+  { label: "7:30p", hour: 19, minute: 30 },
+  { label: "9:20p", hour: 21, minute: 20 },
+] as const;
+
+const MAX_SNAP_DISTANCE_MS = 20 * 60_000; // ±20 minutes
+
+function getSnapshotAtTime(
+  trail: Array<{ capturedAt: string; homeProb: number }>,
+  gameDate: string,
+  targetHour: number,
+  targetMinute: number,
+): number | null {
+  if (!trail || trail.length === 0) return null;
+  // Build target timestamp in ET (America/New_York)
+  // Use a simple approach: construct date string and parse
+  const targetStr = `${gameDate}T${String(targetHour).padStart(2, "0")}:${String(targetMinute).padStart(2, "0")}:00`;
+  // Convert ET target to UTC for comparison with trail timestamps
+  const etFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+  // Parse target in ET by computing offset: we find the capture closest to target
+  // We'll compare in raw ms. Build target as UTC approximation first, then adjust.
+  // Simpler: find the trail point closest to target ET using date parsing.
+  const targetDate = new Date(targetStr);
+  // targetStr is in local ambiguous format; we need to treat it as ET.
+  // Use the game date to find EDT/EST offset: during MLB season it's EDT (UTC-4).
+  const targetUtcMs = targetDate.getTime() + 4 * 3600_000; // EDT = UTC-4
+
+  let closest: { prob: number; distance: number } | null = null;
+  for (const point of trail) {
+    const capMs = Date.parse(point.capturedAt);
+    if (!Number.isFinite(capMs)) continue;
+    const dist = Math.abs(capMs - targetUtcMs);
+    if (dist <= MAX_SNAP_DISTANCE_MS && (closest == null || dist < closest.distance)) {
+      closest = { prob: point.homeProb, distance: dist };
+    }
+  }
+  return closest?.prob ?? null;
+}
+
+function SnapshotCells({ trail, gameDate }: { trail: Array<{ capturedAt: string; homeProb: number }>; gameDate: string }) {
+  return (
+    <>
+      {SNAPSHOT_TIMES_ET.map((t) => {
+        const prob = getSnapshotAtTime(trail, gameDate, t.hour, t.minute);
+        return (
+          <td key={t.label} className="whitespace-nowrap px-2 py-3 text-center tabular-nums text-slate-700">
+            {prob != null ? pct(prob) : <span className="text-slate-300">—</span>}
+          </td>
+        );
+      })}
+    </>
+  );
+}
+
 function teamForSide(matchup: VegasMatchupRow, side: string): string {
   return side === "home" ? matchup.homeAbbrev : side === "away" ? matchup.awayAbbrev : side;
 }
@@ -432,9 +497,9 @@ export default function MlbVegasClient({
           <p className="mt-1 text-sm text-slate-600">Movement measures open-to-current market change. Pin−Poly is Pinnacle minus Polymarket on the home team; positive means Pinnacle is more bullish on the home side. All probabilities are vig-free.</p>
         </div>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-[1480px] w-full text-xs">
+          <table className="min-w-[1820px] w-full text-xs">
             <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500">
-              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th><th className="px-3 py-3 text-right">Pin vs Poly</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
+              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th><th className="px-2 py-3 text-center">9am</th><th className="px-2 py-3 text-center">1:10p</th><th className="px-2 py-3 text-center">6:20p</th><th className="px-2 py-3 text-center">6:50p</th><th className="px-2 py-3 text-center">7:30p</th><th className="px-2 py-3 text-center">9:20p</th><th className="px-3 py-3 text-right">Pin vs Poly</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
             </thead>
             <tbody>
               {rows.map(({ matchup, movement, signal, alerts, modelSuppressed }) => {
@@ -448,6 +513,7 @@ export default function MlbVegasClient({
                     <td className="px-3 py-3">{signal?.movementTeam ? <div className="flex items-center gap-1.5 font-bold text-slate-900"><Icon className="h-4 w-4 text-blue-700" />{signal.movementTeam}</div> : <span className="text-slate-400">No clear move</span>}</td>
                     <td className="whitespace-nowrap px-3 py-3 tabular-nums">{signal?.movementSide ? `${pct(signal.openProbability)} → ${pct(signal.currentProbability)}` : movement ? `${pct(movement.openProb)} → ${pct(movement.closeProb)}` : "Waiting for second capture"}</td>
                     <td className="px-3 py-3 text-right"><MovementShapeCell movement={movement} signal={signal} nowIso={nowIso} /></td>
+                    <SnapshotCells trail={movement?.trail ?? []} gameDate={matchup.gameDate ?? queryDate} />
                     <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums" title="Vig-free home win probabilities"><div>Pin {pct(matchup.pinnacleHomeProb)} · Poly {pct(matchup.polymarketHomeProb)}</div><div className={`mt-0.5 font-black ${(matchup.pinnaclePolymarketDeltaPp ?? 0) > 0 ? "text-violet-700" : (matchup.pinnaclePolymarketDeltaPp ?? 0) < 0 ? "text-fuchsia-700" : "text-slate-400"}`}>Δ {pp(matchup.pinnaclePolymarketDeltaPp)}</div></td>
                     <td className="max-w-[220px] px-3 py-3"><div className="flex flex-wrap gap-1">{alerts.map((alert) => <span key={`${alert.alertType}-${alert.side}`} className={`rounded-full border px-2 py-1 text-[10px] font-bold ${alertTone(alert.alertType)}`}>{alertLabel(alert, matchup)}</span>)}{alerts.length === 0 && movement && Math.abs(movement.pinGapPp ?? 0) >= 2 ? <span className="rounded-full border border-violet-200 bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-900">Pinnacle gap {pp(movement.pinGapPp)}</span> : null}{alerts.length === 0 && Math.abs(movement?.pinGapPp ?? 0) < 2 ? <span className="text-slate-400">None</span> : null}</div></td>
                     <td className="min-w-[300px] max-w-[340px] px-3 py-3 text-right">
