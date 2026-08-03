@@ -38,13 +38,13 @@ def test_recent_history_has_more_weight_than_old_history() -> None:
     assert projection.points > 200
     assert projection.explanation["market_data_used"] is False
     assert projection.explanation["method"] == "history_regression"
-    assert [row["weight"] for row in projection.explanation["season_inputs"]] == [0.15, 0.30, 0.55]
+    assert [row["weight"] for row in projection.explanation["season_inputs"]] == [0.05, 0.20, 0.75]
     assert projection.explanation["weighted_history_ppg"] is not None
     assert projection.explanation["regressed_ppg"] is not None
     assert projection.explanation["regression_prior_games"] == 4.0
     assert projection.explanation["regression_sample_games"] == 51
     assert projection.explanation["baseline_games"] == 17.0
-    assert projection.points == 224.89
+    assert projection.points == 242.23
     assert projection.explanation["not_modeled"] == [
         "current teammates", "offensive line", "coaching/play-caller", "future schedule",
     ]
@@ -74,7 +74,14 @@ def test_rookie_projection_uses_draft_capital_and_depth() -> None:
     starter = {"position": "RB", "rookie": True, "depth_order": 1, "injury_status": None, "draft_number": 25}
     backup = {"position": "RB", "rookie": True, "depth_order": 4, "injury_status": None, "draft_number": 180}
     assert project_player(starter, [], "PPR", 2026).points > project_player(backup, [], "PPR", 2026).points
-    assert project_player(starter, [], "PPR", 2026).explanation["method"] == "rookie_prior"
+    starter_projection = project_player(starter, [], "PPR", 2026)
+    assert starter_projection.explanation["method"] == "rookie_prior"
+    assert starter_projection.explanation["model"] == "ff-independent-v1.5"
+    assert starter_projection.explanation["draft_number"] == 25
+    assert starter_projection.explanation["rookie_prior_points"] == 197.0
+    assert starter_projection.explanation["role_factor"] == 1.0
+    assert starter_projection.low == round(starter_projection.points * 0.62, 2)
+    assert starter_projection.high == round(starter_projection.points * 1.42, 2)
 
 
 def test_rank_rows_uses_value_over_replacement() -> None:

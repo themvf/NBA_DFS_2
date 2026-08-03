@@ -39,7 +39,12 @@ export function buildProjectionExplanation(details: Record<string, unknown> | nu
     else if (prior && priorGames && regressed) lines.push(`Position prior: ${prior} PPG over ${priorGames} equivalent games → ${regressed} PPG`);
   } else if (method === "rookie_prior" || method === "position_prior") {
     const prior = fixed(details.rookie_prior_points);
-    if (prior) lines.push(`${method === "rookie_prior" ? "Rookie/draft" : "Position"} prior: ${prior} points`);
+    const draftNumber = numberValue(details.draft_number);
+    const role = fixed(details.role_factor, 2);
+    const roleAdjusted = fixed(details.base_points_before_injury);
+    if (method === "rookie_prior" && draftNumber !== null) lines.push(`NFL draft selection: #${Math.round(draftNumber)}`);
+    if (prior) lines.push(`${method === "rookie_prior" ? "Position + draft-capital" : "Position"} prior: ${prior} points`);
+    if (prior && role && roleAdjusted) lines.push(`${prior} prior × ${role} depth-chart role = ${roleAdjusted}`);
   } else if (method === "position_baseline") {
     const base = fixed(details.base_points_before_injury);
     if (base) lines.push(`Position baseline: ${base} points`);

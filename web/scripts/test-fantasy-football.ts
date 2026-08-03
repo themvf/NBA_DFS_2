@@ -45,7 +45,7 @@ assert.deepEqual(filterFantasyRankings(filterRows, { name: "brown", position: "W
 assert.equal(filterFantasyRankings(filterRows, { name: "", position: "RB", team: "" }).length, 1);
 const explanation = buildProjectionExplanation({
   method: "history_regression",
-  season_inputs: [{ season: 2025, ppg: 20.61, weight: 0.55 }],
+  season_inputs: [{ season: 2025, ppg: 20.61, weight: 0.75 }],
   weighted_history_ppg: 17.79,
   position_prior_ppg: 14,
   regression_prior_games: 4,
@@ -58,7 +58,7 @@ const explanation = buildProjectionExplanation({
   not_modeled: ["current teammates", "future schedule"],
 });
 assert.equal(explanation.method, "Weighted history + regression");
-assert.ok(explanation.lines.includes("2025: 20.6 PPG × 55%"));
+assert.ok(explanation.lines.includes("2025: 20.6 PPG × 75%"));
 assert.ok(explanation.lines.includes("17.06 PPG × 15.90 games × 1.00 role = 271.3"));
 assert.deepEqual(explanation.notModeled, ["current teammates", "future schedule"]);
 const baselineExplanation = buildProjectionExplanation({
@@ -79,6 +79,20 @@ const baselineExplanation = buildProjectionExplanation({
 assert.ok(baselineExplanation.lines.includes("Regression: 51 historical games + 4 position-prior games at 8.0 PPG → 19.3 PPG"));
 assert.ok(baselineExplanation.lines.includes("19.31 PPG × 17.00 games × 1.00 role = 328.3"));
 assert.ok(baselineExplanation.lines.includes("Availability estimate: 16.0 active games (modeled separately; not deducted from this baseline)"));
+const rookieExplanation = buildProjectionExplanation({
+  method: "rookie_prior",
+  draft_number: 25,
+  rookie_prior_points: 197,
+  role_factor: 0.78,
+  base_points_before_injury: 153.66,
+  baseline_games: 17,
+  expected_games_after_injury: 17,
+  final_points: 153.66,
+  availability_adjustment_applied_to_baseline: false,
+});
+assert.ok(rookieExplanation.lines.includes("NFL draft selection: #25"));
+assert.ok(rookieExplanation.lines.includes("Position + draft-capital prior: 197.0 points"));
+assert.ok(rookieExplanation.lines.includes("197.0 prior × 0.78 depth-chart role = 153.7"));
 const validBestBallRoster = [
   ...Array.from({ length: 3 }, (_, index) => ({ playerId: index + 1, position: "QB", team: index ? "BUF" : "NE" })),
   ...Array.from({ length: 6 }, (_, index) => ({ playerId: index + 10, position: "RB", team: "ATL" })),
@@ -120,7 +134,7 @@ const advisorRows = [
   advisorRow({ playerId: 5, name: "Available Tight End", position: "TE", team: "KC", byeWeek: 10, ourRank: 5, positionRank: 1, adp: 6, ourProjectedPoints: 240, fantasyProsProjectedPoints: 235, games2025: 17, fantasyPoints2025: 230, confidence: 0.75 }),
 ];
 const advisorSnapshot = buildBestBallAdvisorSnapshot(advisorRows, { rankingSetId: 42, userSlot: 2, playerIds: [1, 2] });
-assert.equal(advisorSnapshot.projectionModel, "ff-independent-v1.4");
+assert.equal(advisorSnapshot.projectionModel, "ff-independent-v1.5");
 assert.equal(advisorSnapshot.draft.currentOverallPick, 3);
 assert.equal(advisorSnapshot.draft.targetOverallPick, 23);
 assert.equal(advisorSnapshot.draft.picksUntilUser, 20);
@@ -136,7 +150,7 @@ const advisorOutput = validateBestBallAdvisorOutput({
   confidence: 0.82,
   whyNow: "Best combination of projection and availability.",
   rosterFit: "Adds the first running back without duplicating the quarterback bye.",
-  evidence: ["V1.4 projects 280 points.", "ADP is 4."],
+  evidence: ["V1.5 projects 280 points.", "ADP is 4."],
   risks: "Role uncertainty remains.",
   alternatives: [{ candidateKey: "C02", reason: "Receiver value." }, { candidateKey: "C03", reason: "Tight-end value." }],
   strategyUntilNextTurn: "Watch the running-back tier.",
@@ -188,7 +202,7 @@ async function testAdvisorCorrection() {
     assert.match(correction.validationError, /no longer legal or available/);
     return {
       recommendedCandidateKey: "C01", confidence: 80, whyNow: "Corrected legal choice.",
-      rosterFit: "Adds a running back.", evidence: ["V1.4 points", "ADP"], risks: ["Role risk"],
+      rosterFit: "Adds a running back.", evidence: ["V1.5 points", "ADP"], risks: ["Role risk"],
       alternatives: [{ candidateKey: "C02", reason: "Receiver." }, { candidateKey: "C03", reason: "Tight end." }],
       strategyUntilNextTurn: "Watch tiers.", whatWouldChange: "New role data.",
     };

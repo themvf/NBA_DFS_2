@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.4"
+MODEL_VERSION = "ff-independent-v1.5"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -46,7 +46,7 @@ NFLVERSE_SCHEDULE_URL = "https://github.com/nflverse/nflverse-data/releases/down
 FFC_ADP_URL = "https://fantasyfootballcalculator.com/api/v1/adp/{format}?teams=12&year={season}"
 FFC_FORMATS = {"STD": "standard", "HALF": "half-ppr", "PPR": "ppr"}
 
-SEASON_WEIGHTS = (0.15, 0.30, 0.55)
+SEASON_WEIGHTS = (0.05, 0.20, 0.75)
 BASELINE_GAMES = 17.0
 REGRESSION_PRIOR_GAMES = 4.0
 POSITION_PRIOR_PPG = {
@@ -569,6 +569,7 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             "regression_sample_games": history_games if regressed_ppg is not None else None,
             "regressed_ppg": round(regressed_ppg, 3) if regressed_ppg is not None else None,
             "rookie_prior_points": round(rookie_prior_points, 2) if rookie_prior_points is not None else None,
+            "draft_number": as_int(player.get("draft_number")),
             "baseline_games": BASELINE_GAMES,
             "expected_games_before_injury": round(expected_games_before_injury, 2),
             "expected_games_after_injury": round(expected_games, 2),
