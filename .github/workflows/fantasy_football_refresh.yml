@@ -22,6 +22,7 @@ on:
           - fantasypros-audit
           - fantasypros-history-audit
           - fantasypros-snapshot
+          - fantasypros-rookie-check
 
 concurrency:
   group: fantasy-football-refresh
@@ -44,7 +45,7 @@ jobs:
         run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
       - name: Audit upgraded FantasyPros endpoint contracts
         id: fantasypros-audit
-        if: ${{ inputs.mode != 'fantasypros-history-audit' }}
+        if: ${{ inputs.mode != 'fantasypros-history-audit' && inputs.mode != 'fantasypros-rookie-check' }}
         continue-on-error: true
         env:
           FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
@@ -67,13 +68,24 @@ jobs:
           --require-contracts
           --audit-output fantasypros-audit.json
       - name: Persist verified FantasyPros source snapshots
-        if: ${{ steps.fantasypros-audit.outcome == 'success' && inputs.mode != 'fantasypros-audit' && inputs.mode != 'fantasypros-history-audit' }}
+        if: ${{ steps.fantasypros-audit.outcome == 'success' && inputs.mode != 'fantasypros-audit' && inputs.mode != 'fantasypros-history-audit' && inputs.mode != 'fantasypros-rookie-check' }}
         env:
           FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
         run: >-
           python -m ingest.ff_fantasypros
           --season "${{ inputs.season || '2026' }}"
           --snapshot-contracts
+      - name: "Read-only check: FantasyPros historical rookie projection accuracy"
+        id: fantasypros-rookie-check
+        if: ${{ inputs.mode == 'fantasypros-rookie-check' }}
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+        run: >-
+          python -m ingest.ff_fantasypros_rookie_check
+          --season "${{ inputs.season || '2025' }}"
+          --output fantasypros-audit.json
       - name: Upload sanitized FantasyPros audit
         if: ${{ always() && hashFiles('fantasypros-audit.json') != '' }}
         uses: actions/upload-artifact@v4

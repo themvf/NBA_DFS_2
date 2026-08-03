@@ -50,7 +50,7 @@ export default function ProjectionMethodExplainer() {
     </div>
 
     <div className="grid gap-3 border-t bg-muted/40 p-5 md:grid-cols-3">
-      <div className="rounded-xl border bg-card p-3"><p className="text-xs font-black uppercase tracking-wide text-blue-700">Our PPR base</p><p className="mt-1 text-sm">Our live independent V1.5 projection. Open <b>How V1.5 projects</b> on any player for the actual inputs and arithmetic. Rookies instead use a position-and-draft-capital prior adjusted by current depth-chart role.</p></div>
+      <div className="rounded-xl border bg-card p-3"><p className="text-xs font-black uppercase tracking-wide text-blue-700">Our PPR base</p><p className="mt-1 text-sm">Our live independent V1.5 projection. Open <b>How V1.5 projects</b> on any player for the actual inputs and arithmetic. RB/WR/TE rookies use a draft-pick value curve fit on 2023-2025 rookie outcomes, adjusted by current depth-chart role; QB/K/DST rookies use a position-and-draft-capital prior (a curve showed no improvement there).</p></div>
       <div className="rounded-xl border bg-card p-3"><p className="text-xs font-black uppercase tracking-wide text-violet-700">FantasyPros projection</p><p className="mt-1 text-sm">A separately sourced comparison. It is never blended into our projection.</p></div>
       <div className="rounded-xl border bg-card p-3"><p className="text-xs font-black uppercase tracking-wide text-emerald-700">ADP</p><p className="mt-1 text-sm">The market’s draft cost and timing signal. It does not manufacture player performance.</p></div>
     </div>
