@@ -84,6 +84,7 @@ const rookieExplanation = buildProjectionExplanation({
   draft_number: 25,
   rookie_prior_points: 197,
   role_factor: 0.78,
+  regressed_ppg: null,
   base_points_before_injury: 153.66,
   baseline_games: 17,
   expected_games_after_injury: 17,
@@ -93,6 +94,7 @@ const rookieExplanation = buildProjectionExplanation({
 assert.ok(rookieExplanation.lines.includes("NFL draft selection: #25"));
 assert.ok(rookieExplanation.lines.includes("Position + draft-capital prior: 197.0 points"));
 assert.ok(rookieExplanation.lines.includes("197.0 prior × 0.78 depth-chart role = 153.7"));
+assert.equal(rookieExplanation.lines.some((line) => line.includes("0.00 PPG")), false);
 const validBestBallRoster = [
   ...Array.from({ length: 3 }, (_, index) => ({ playerId: index + 1, position: "QB", team: index ? "BUF" : "NE" })),
   ...Array.from({ length: 6 }, (_, index) => ({ playerId: index + 10, position: "RB", team: "ATL" })),
