@@ -89,6 +89,19 @@ async function callOpenAI(snapshot: BestBallAdvisorSnapshot, correction?: BestBa
   return JSON.parse(extractOpenAIText(await response.json()));
 }
 
+// DeepSeek's Chat Completions API has no equivalent to OpenAI's strict structured
+// outputs -- response_format: json_object only guarantees syntactically valid JSON,
+// never which keys are present. OpenAI's field names (including the required
+// "whyNow" rationale) are therefore guaranteed by the API itself; DeepSeek's are
+// not, and live testing showed it will sometimes return a bare
+// {"pick": "C01", "backup": "C02"} with no rationale anywhere in the tree, which
+// the loose key-matching validator correctly rejects (no fallback is used for
+// whyNow specifically, since silently replacing an LLM's actual reasoning with
+// boilerplate would defeat the point of asking it). The fix is to make DeepSeek's
+// required shape unambiguous in the prompt itself, reusing the same schema OpenAI
+// is held to so the two providers can never silently drift apart.
+const DEEPSEEK_SCHEMA_INSTRUCTIONS = `Your JSON response MUST be a single object matching this exact JSON Schema -- every field in "required" must be present, using these exact key names (not synonyms, not nested under a different key):\n${JSON.stringify(BEST_BALL_ADVISOR_JSON_SCHEMA, null, 2)}`;
+
 async function callDeepSeek(snapshot: BestBallAdvisorSnapshot, correction?: BestBallAdvisorCorrection): Promise<unknown> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error("DeepSeek is not configured. Add DEEPSEEK_API_KEY to the server environment.");
@@ -102,7 +115,7 @@ async function callDeepSeek(snapshot: BestBallAdvisorSnapshot, correction?: Best
       max_tokens: 1_800,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: `${SYSTEM_PROMPT}\n\n${DEEPSEEK_SCHEMA_INSTRUCTIONS}` },
         { role: "user", content: `Evaluate this draft snapshot and return the required JSON recommendation:\n${providerInput(snapshot, correction)}` },
       ],
     }),
