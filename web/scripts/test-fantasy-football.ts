@@ -136,7 +136,7 @@ const advisorRows = [
   advisorRow({ playerId: 5, name: "Available Tight End", position: "TE", team: "KC", byeWeek: 10, ourRank: 5, positionRank: 1, adp: 6, ourProjectedPoints: 240, fantasyProsProjectedPoints: 235, games2025: 17, fantasyPoints2025: 230, confidence: 0.75 }),
 ];
 const advisorSnapshot = buildBestBallAdvisorSnapshot(advisorRows, { rankingSetId: 42, userSlot: 2, playerIds: [1, 2] });
-assert.equal(advisorSnapshot.projectionModel, "ff-independent-v1.5");
+assert.equal(advisorSnapshot.projectionModel, "ff-independent-v1.6");
 assert.equal(advisorSnapshot.draft.currentOverallPick, 3);
 assert.equal(advisorSnapshot.draft.targetOverallPick, 23);
 assert.equal(advisorSnapshot.draft.picksUntilUser, 20);
@@ -152,7 +152,7 @@ const advisorOutput = validateBestBallAdvisorOutput({
   confidence: 0.82,
   whyNow: "Best combination of projection and availability.",
   rosterFit: "Adds the first running back without duplicating the quarterback bye.",
-  evidence: ["V1.5 projects 280 points.", "ADP is 4."],
+  evidence: ["V1.6 projects 280 points.", "ADP is 4."],
   risks: "Role uncertainty remains.",
   alternatives: [{ candidateKey: "C02", reason: "Receiver value." }, { candidateKey: "C03", reason: "Tight-end value." }],
   strategyUntilNextTurn: "Watch the running-back tier.",
@@ -204,7 +204,7 @@ async function testAdvisorCorrection() {
     assert.match(correction.validationError, /no longer legal or available/);
     return {
       recommendedCandidateKey: "C01", confidence: 80, whyNow: "Corrected legal choice.",
-      rosterFit: "Adds a running back.", evidence: ["V1.5 points", "ADP"], risks: ["Role risk"],
+      rosterFit: "Adds a running back.", evidence: ["V1.6 points", "ADP"], risks: ["Role risk"],
       alternatives: [{ candidateKey: "C02", reason: "Receiver." }, { candidateKey: "C03", reason: "Tight end." }],
       strategyUntilNextTurn: "Watch tiers.", whatWouldChange: "New role data.",
     };

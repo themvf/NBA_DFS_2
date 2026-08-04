@@ -9,7 +9,7 @@ import {
 } from "./best-ball";
 import { buildSnakeSlots, nextControlledPick } from "./draft-engine";
 
-export const BEST_BALL_ADVISOR_PROJECTION_MODEL = "ff-independent-v1.5";
+export const BEST_BALL_ADVISOR_PROJECTION_MODEL = "ff-independent-v1.6";
 export const BEST_BALL_ADVISOR_CANDIDATE_LIMIT = 40;
 // News search only covers players actually under consideration for this pick, not
 // the full 40-candidate board -- keeps latency/cost bounded (OpenAI-only feature;
@@ -296,7 +296,7 @@ export function buildBestBallAdvisorSnapshot(
       "Balance best available value with roster construction; do not force immediate bye-week backup when later value is likely.",
       "Prioritize spike-week upside and paths to a weekly starting slot, but never invent air-yard, injury, role, matchup, or correlation evidence absent from this snapshot.",
       "Use ADP to judge whether a candidate is likely to survive until the user's following pick.",
-      "The active point projection is V1.5. V2 opportunity and weekly-distribution modeling is not active.",
+      "The active point projection is V1.6. V2 opportunity and weekly-distribution modeling is not active.",
       "Select only candidateKey values contained in candidates. Candidate keys are the sole selection identifiers.",
     ],
   };
@@ -481,7 +481,7 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   const suppliedEvidence = advisorField(value, ["evidence"]) ?? deepAdvisorField(value, ["evidence"]);
   const evidence = suppliedEvidence === null
     ? [
-      `V1.5 projection: ${recommendedCandidate.ourProjectedPoints?.toFixed(1) ?? "not available"} PPR points.`,
+      `V1.6 projection: ${recommendedCandidate.ourProjectedPoints?.toFixed(1) ?? "not available"} PPR points.`,
       `Current ADP: ${recommendedCandidate.adp?.toFixed(1) ?? "not available"}; our rank: ${recommendedCandidate.ourRank ?? "not available"}.`,
     ]
     : requireStringArray(suppliedEvidence, "evidence", 2, 5);

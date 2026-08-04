@@ -28,7 +28,7 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
         (id,name,season,status,team_count,controlled_slot,round_count,roster_config,scoring_config,recommendation_config,ranking_set_id)
       VALUES (${draftId}::uuid,${name},${season},'active',${teamCount},${controlledSlot},${rounds},
         ${JSON.stringify(DEFAULT_ROSTER)}::jsonb,${JSON.stringify({ preset: scoring })}::jsonb,
-        ${JSON.stringify({ model: "ff-independent-v1.5" })}::jsonb,${rankingSetId}) RETURNING id
+        ${JSON.stringify({ model: "ff-independent-v1.6" })}::jsonb,${rankingSetId}) RETURNING id
     ), teams AS (
       INSERT INTO ff_draft_teams(draft_id,slot,name,is_controlled)
       SELECT new_draft.id,slot,CASE WHEN slot=${controlledSlot} THEN 'My Team' ELSE 'Team '||slot END,slot=${controlledSlot}
