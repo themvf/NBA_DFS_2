@@ -62,3 +62,10 @@ jobs:
         # graded on CLV + outcomes (model/line_alerts.py). Telegram push if
         # the optional secrets are set.
         run: python -m model.line_alerts --sport mlb
+
+      - name: Capture Polymarket tennis match prices
+        # Free, no API key — polls Polymarket's Gamma API for short-lived
+        # match-winner markets. Writes to game_odds_history so the existing
+        # pinnacle_polymarket_delta detector picks them up automatically.
+        continue-on-error: true
+        run: python -m ingest.polymarket_tennis --matches-only

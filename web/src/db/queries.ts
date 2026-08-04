@@ -9734,7 +9734,14 @@ export type LineAlertBacktestRow = {
   dkUnits: number | null; // dk_value only: 1u staked at DK's frozen price per settled alert
 };
 
-export async function getLineAlerts(sport: string, limit = 25): Promise<LineAlertRow[]> {
+export async function getLineAlerts(
+  sport: string,
+  limit = 25,
+  alertTypes?: string[],
+): Promise<LineAlertRow[]> {
+  // alertTypes narrows at the SQL level (not just post-filtered in the UI) so
+  // a type-scoped view — e.g. MLB props — gets its own LIMIT worth of rows
+  // instead of being crowded out by game-line alerts within a shared limit.
   const rows = await db.execute(sql`
     SELECT matchup_id AS "matchupId", created_at::text AS "createdAt", matchup,
            commence_time::text AS "commenceTime",
@@ -9742,6 +9749,9 @@ export async function getLineAlerts(sport: string, limit = 25): Promise<LineAler
            alert_prob AS "alertProb", sharp_prob AS "sharpProb",
            details_json AS details, clv_pp AS "clvPp", outcome
     FROM line_alerts WHERE sport = ${sport}
+    ${alertTypes && alertTypes.length > 0
+      ? sql`AND alert_type IN (${sql.join(alertTypes.map((t) => sql`${t}`), sql`, `)})`
+      : sql``}
     ORDER BY created_at DESC LIMIT ${limit}
   `);
   return rows.rows.map((r) => {

@@ -247,7 +247,17 @@ export default function LineAlertsPanel({
               <tr key={i} className={`border-b border-gray-50 ${a.outcome == null && a.clvPp == null ? "bg-amber-50/40" : ""}`}>
                 <td className="py-1 text-gray-500 whitespace-nowrap">{a.createdAt.slice(5, 16)}</td>
                 <td className="py-1">{a.matchup}</td>
-                <td className="py-1"><ActionChip a={a} /></td>
+                <td className="py-1">
+                  <div className="flex items-center gap-1.5">
+                    <ActionChip a={a} />
+                    {(a.details as Record<string, unknown>)?.poly_confirmed === true && (
+                      <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700" title="Polymarket independently confirms this direction — its price already moved the same way before this alert fired">Poly ✓</span>
+                    )}
+                    {(a.details as Record<string, unknown>)?.poly_confirmed === false && (
+                      <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-gray-500" title="Polymarket does NOT confirm — its price disagrees with this alert's direction">Poly ✗</span>
+                    )}
+                  </div>
+                </td>
                 <td className="py-1 text-right tabular-nums"
                     title={`Retail consensus P(${sideName(a)}) when the alert fired`}>{pct(a.alertProb)}</td>
                 <td className="py-1 text-right tabular-nums text-indigo-600"
