@@ -278,6 +278,14 @@ export function buildBestBallAdvisorSnapshot(
   };
 }
 
+// A DeepSeek response can include a key with an empty string value (observed live,
+// e.g. strategyUntilNextTurn: "") -- typeof x === "string" is true for "" too, so a
+// naive typeof check would forward it into requireString() and throw instead of
+// falling back. Treat blank/whitespace-only strings the same as "field absent".
+function optionalNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`The advisor response is missing ${field}.`);
   return value.trim().slice(0, 1_200);
@@ -441,7 +449,7 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     confidence: Math.round(confidence),
     confidenceProvided,
     whyNow: requireString(rationale, "why-now explanation"),
-    rosterFit: typeof advisorField(value, ["rosterFit", "roster_fit"]) === "string"
+    rosterFit: optionalNonEmptyString(advisorField(value, ["rosterFit", "roster_fit"]))
       ? requireString(advisorField(value, ["rosterFit", "roster_fit"]), "roster-fit explanation")
       : "DeepSeek did not provide a separate roster-fit explanation.",
     evidence,
@@ -449,10 +457,10 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
       ? ["DeepSeek did not provide a separate risk statement."]
       : requireStringArray(advisorField(value, ["risks", "risk", "caveats"]) ?? deepAdvisorField(value, ["risks", "risk", "caveats"]), "risk", 1, 4),
     alternatives,
-    strategyUntilNextTurn: typeof advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn", "strategy"]) === "string"
+    strategyUntilNextTurn: optionalNonEmptyString(advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn", "strategy"]))
       ? requireString(advisorField(value, ["strategyUntilNextTurn", "strategy_until_next_turn", "strategy"]), "next-turn strategy")
       : "Re-run DeepSeek after the next recorded pick so it receives the updated legal board.",
-    whatWouldChange: typeof advisorField(value, ["whatWouldChange", "what_would_change"]) === "string"
+    whatWouldChange: optionalNonEmptyString(advisorField(value, ["whatWouldChange", "what_would_change"]))
       ? requireString(advisorField(value, ["whatWouldChange", "what_would_change"]), "change condition")
       : "A draft pick that removes this player or materially changes the available-player tier.",
   };
