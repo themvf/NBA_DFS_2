@@ -2,6 +2,8 @@ import "server-only";
 
 import {
   BEST_BALL_ADVISOR_JSON_SCHEMA,
+  BEST_BALL_ADVISOR_JSON_SCHEMA_WITH_NEWS,
+  bestBallAdvisorNewsCandidates,
   buildBestBallAdvisorProviderSnapshot,
   type BestBallAdvisorCorrection,
   type BestBallAdvisorProvider,
@@ -12,6 +14,9 @@ import { getOpenAIApiKey } from "./ai-draft-advisor-env";
 export const OPENAI_BEST_BALL_MODEL = "gpt-5.6-luna" as const;
 export const DEEPSEEK_BEST_BALL_MODEL = "deepseek-v4-flash" as const;
 const REQUEST_TIMEOUT_MS = 45_000;
+// Web search adds real latency on top of reasoning + structured output -- the base
+// 45s budget is too tight for a tool-augmented call.
+const NEWS_REQUEST_TIMEOUT_MS = 90_000;
 
 const SYSTEM_PROMPT = `You are an NFL DraftKings Best Ball draft advisor. Analyze only the JSON evidence snapshot supplied by the application.
 
@@ -89,6 +94,43 @@ async function callOpenAI(snapshot: BestBallAdvisorSnapshot, correction?: BestBa
   return JSON.parse(extractOpenAIText(await response.json()));
 }
 
+// OpenAI-only: DeepSeek's Chat Completions API has no equivalent built-in web-search
+// tool. Uses the Responses API's native web_search tool, scoped in the prompt to
+// only the top candidates actually under consideration for this pick (not the full
+// ~40-player board) to keep latency and cost bounded. Combining a tool with strict
+// structured outputs is a supported Responses API pattern: the model searches during
+// its reasoning turn, then must still emit JSON conforming to the schema.
+async function callOpenAIWithNews(snapshot: BestBallAdvisorSnapshot, correction?: BestBallAdvisorCorrection): Promise<unknown> {
+  const apiKey = getOpenAIApiKey();
+  if (!apiKey) throw new Error("OpenAI isn't connected to this deployment yet. Add OPENAI_API_KEY (or OPENAI_API) in Vercel, then redeploy.");
+  const newsCandidateNames = bestBallAdvisorNewsCandidates(snapshot).map((candidate) => candidate.name);
+  const newsInstructions = `Before answering, use web search to check for recent news (injuries, depth-chart/role changes, trades, suspensions) on these specific players only -- do not search for any other player: ${newsCandidateNames.join(", ")}. This is the only allowed use of web search; it must not change which scoring rules, roster rules, or snapshot evidence you rely on. For every news item you actually rely on, add an entry to newsSources with its real URL, a real title, and a real publish date if known -- never fabricate a URL, title, or date. If a player has no relevant recent news, do not invent any; simply omit them from newsSources. An empty newsSources array is a correct, honest result when nothing relevant was found.`;
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(NEWS_REQUEST_TIMEOUT_MS),
+    body: JSON.stringify({
+      model: OPENAI_BEST_BALL_MODEL,
+      store: false,
+      reasoning: { effort: "low" },
+      max_output_tokens: 2_600,
+      tools: [{ type: "web_search" }],
+      instructions: `${SYSTEM_PROMPT}\n\n${newsInstructions}`,
+      input: providerInput(snapshot, correction),
+      text: {
+        format: {
+          type: "json_schema",
+          name: "best_ball_draft_advice_with_news",
+          strict: true,
+          schema: BEST_BALL_ADVISOR_JSON_SCHEMA_WITH_NEWS,
+        },
+      },
+    }),
+  });
+  if (!response.ok) throw providerHttpError("OpenAI", response.status);
+  return JSON.parse(extractOpenAIText(await response.json()));
+}
+
 // DeepSeek's Chat Completions API has no equivalent to OpenAI's strict structured
 // outputs -- response_format: json_object only guarantees syntactically valid JSON,
 // never which keys are present. OpenAI's field names (including the required
@@ -131,6 +173,11 @@ export async function callBestBallAdvisorProvider(
   provider: BestBallAdvisorProvider,
   snapshot: BestBallAdvisorSnapshot,
   correction?: BestBallAdvisorCorrection,
+  withNews = false,
 ): Promise<unknown> {
+  if (withNews) {
+    if (provider !== "openai") throw new Error("News search is only available for OpenAI.");
+    return callOpenAIWithNews(snapshot, correction);
+  }
   return provider === "openai" ? callOpenAI(snapshot, correction) : callDeepSeek(snapshot, correction);
 }
