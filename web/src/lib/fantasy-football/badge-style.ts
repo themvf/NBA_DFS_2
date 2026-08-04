@@ -13,6 +13,8 @@ const codeStyles: Array<[string, string]> = [
   ["TEAM_WR", "bg-violet-100 text-violet-800 ring-violet-200"],
   ["TEAM_RB", "bg-purple-100 text-purple-800 ring-purple-200"],
   ["HANDCUFF", "bg-indigo-100 text-indigo-800 ring-indigo-200"],
+  ["TEAMMATE_STACK", "bg-teal-100 text-teal-900 ring-teal-300"],
+  ["TEAMMATE_OFFSET", "bg-fuchsia-100 text-fuchsia-900 ring-fuchsia-300"],
 ];
 
 const classStyles: Record<string, string> = {

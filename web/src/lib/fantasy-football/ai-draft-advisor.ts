@@ -29,6 +29,24 @@ export type BestBallAdvisorRequest = {
   withNews?: boolean;
 };
 
+export type BestBallAdvisorCorrelationPair = {
+  withPlayerId: number;
+  withName: string;
+  relationshipType: string;
+  shrunkCorrelation: number;
+  sampleWeeks: number;
+};
+
+// Duck-typed to match TeammateCorrelationRow in db/queries-fantasy-football.ts
+// without this lib module importing the db layer.
+export type BestBallAdvisorCorrelationInput = {
+  playerAId: number;
+  playerBId: number;
+  relationshipType: string;
+  sampleWeeks: number;
+  shrunkCorrelation: number;
+};
+
 export type BestBallAdvisorCandidate = {
   candidateKey: string | null;
   playerId: number;
@@ -46,6 +64,7 @@ export type BestBallAdvisorCandidate = {
   confidence: number | null;
   signals: string[];
   projectionDetails: Record<string, unknown> | null;
+  correlationsWithRoster: BestBallAdvisorCorrelationPair[];
 };
 
 export type BestBallAdvisorSnapshot = {
@@ -89,6 +108,7 @@ export type BestBallAdvisorSnapshot = {
   }>;
   userRoster: BestBallAdvisorCandidate[];
   userByeWeeks: Partial<Record<BestBallPosition, number[]>>;
+  rosterTeamConcentration: Record<string, number>;
   candidates: BestBallAdvisorCandidate[];
   instructions: string[];
 };
@@ -169,6 +189,7 @@ function advisorCandidate(player: FantasyRankingRow): BestBallAdvisorCandidate {
     confidence: finiteOrNull(player.confidence),
     signals: player.indicators.slice(0, 8).map((indicator) => indicator.label),
     projectionDetails: player.projectionDetails,
+    correlationsWithRoster: [],
   };
 }
 
@@ -191,6 +212,7 @@ export function buildBestBallAdvisorProviderSnapshot(snapshot: BestBallAdvisorSn
 export function buildBestBallAdvisorSnapshot(
   rankings: FantasyRankingRow[],
   input: Pick<BestBallAdvisorRequest, "rankingSetId" | "userSlot" | "playerIds">,
+  correlations: BestBallAdvisorCorrelationInput[] = [],
 ): BestBallAdvisorSnapshot {
   if (!Number.isInteger(input.rankingSetId) || input.rankingSetId <= 0) throw new Error("The ranking snapshot is invalid.");
   if (!Number.isInteger(input.userSlot) || input.userSlot < 1 || input.userSlot > BEST_BALL_TEAM_COUNT) {
@@ -230,13 +252,42 @@ export function buildBestBallAdvisorSnapshot(
     ? null
     : nextControlledPick(currentOverallPick, input.userSlot, BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
   const userRosterRows = rosterMap.get(input.userSlot) ?? [];
+  const rosterPlayerIds = new Set(userRosterRows.map((player) => player.playerId));
+  const rosterNameById = new Map(userRosterRows.map((player) => [player.playerId, player.name]));
+  const correlationByPair = new Map<string, BestBallAdvisorCorrelationInput>();
+  for (const row of correlations) {
+    correlationByPair.set(`${Math.min(row.playerAId, row.playerBId)}:${Math.max(row.playerAId, row.playerBId)}`, row);
+  }
+  const correlationsFor = (playerId: number): BestBallAdvisorCorrelationPair[] => {
+    const pairs: BestBallAdvisorCorrelationPair[] = [];
+    for (const rosterId of rosterPlayerIds) {
+      const row = correlationByPair.get(`${Math.min(playerId, rosterId)}:${Math.max(playerId, rosterId)}`);
+      if (row) {
+        pairs.push({
+          withPlayerId: rosterId,
+          withName: rosterNameById.get(rosterId) ?? `Player ${rosterId}`,
+          relationshipType: row.relationshipType,
+          shrunkCorrelation: row.shrunkCorrelation,
+          sampleWeeks: row.sampleWeeks,
+        });
+      }
+    }
+    return pairs;
+  };
   const candidates = rankings
     .filter((player) => !draftedSet.has(player.playerId) && canAddBestBallPlayer(userRosterRows, player))
     .slice(0, BEST_BALL_ADVISOR_CANDIDATE_LIMIT)
     .map((player, index) => ({
       ...advisorCandidate(player),
       candidateKey: `C${String(index + 1).padStart(2, "0")}`,
+      correlationsWithRoster: correlationsFor(player.playerId),
     }));
+
+  const rosterTeamConcentration: Record<string, number> = {};
+  for (const player of userRosterRows) {
+    if (!player.team) continue;
+    rosterTeamConcentration[player.team] = (rosterTeamConcentration[player.team] ?? 0) + 1;
+  }
 
   const userByeWeeks: Partial<Record<BestBallPosition, number[]>> = {};
   for (const position of BEST_BALL_POSITIONS) {
@@ -290,6 +341,7 @@ export function buildBestBallAdvisorSnapshot(
     }),
     userRoster: userRosterRows.map(advisorCandidate),
     userByeWeeks,
+    rosterTeamConcentration,
     candidates,
     instructions: [
       "Recommend for the user's target pick, not for the team currently on the clock.",
@@ -298,6 +350,9 @@ export function buildBestBallAdvisorSnapshot(
       "Use ADP to judge whether a candidate is likely to survive until the user's following pick.",
       "The active point projection is V1.6. V2 opportunity and weekly-distribution modeling is not active.",
       "Select only candidateKey values contained in candidates. Candidate keys are the sole selection identifiers.",
+      "Correlation is a variance lever, not an expected-points lever: it does not change a player's projected points, only how the roster's weekly total moves together. rules.tournament shows two different phases with opposite needs -- Weeks 1-14 is cumulative accumulation against a large field (favor diversification: uncorrelated players give the weekly-best-lineup selector more independent chances to pop), while Weeks 15-17 are single-week knockout rounds (favor 1-2 deliberate correlated stacks for ceiling, since a shared QB+WR spike is how an outlier single-week score gets made).",
+      "Use each candidate's correlationsWithRoster (shrunkCorrelation, already shrunk toward a league-wide prior by sample size -- do not treat a low-sample_weeks pair as equally reliable as a high one) to judge whether this pick would add a genuine stack, add unwanted concentration, or is unrelated to the current roster. Never invent a correlation value for a pair not present there.",
+      "Use rosterTeamConcentration to flag when a pick would be the 3rd+ player from one NFL team -- note explicitly whether that concentration looks like an intentional stack or an accidental one.",
     ],
   };
 }

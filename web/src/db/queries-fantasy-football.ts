@@ -199,6 +199,39 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
   return queryRows<FantasyRankingRow>(result);
 }
 
+export type TeammateCorrelationRow = {
+  playerAId: number;
+  playerBId: number;
+  relationshipType: string;
+  sampleWeeks: number;
+  shrunkCorrelation: number;
+};
+
+// Reflects real historical teammate history (see ingest/ff_teammate_correlation.py) --
+// a player who has since changed teams simply has no row with their new teammates.
+export async function getTeammateCorrelations(playerIds: number[]): Promise<TeammateCorrelationRow[]> {
+  if (playerIds.length < 2) return [];
+  await ensureFantasyFootballTables();
+  // drizzle's sql`` tag already wraps an interpolated array in its own "(...)"
+  // (renders "(${$1}, ${$2}, ...)"), valid for IN <array> -- an extra explicit
+  // "(...)" around it double-wraps into an invalid row-value comparison, and
+  // Postgres has no bare ANY(...) form for a plain param list either.
+  // DISTINCT ON collapses to the latest season per pair once multiple seasons exist.
+  // player_a_id/player_b_id are bigint columns -- raw sql`` execute (unlike the
+  // typed drizzle query builder) skips the schema's mode:"number" mapping, so
+  // the driver returns them as strings. Cast to int here so TeammateCorrelationRow's
+  // declared `number` type is honest at runtime (a prior version of this query
+  // returned strings here, which broke a strict === identity check downstream).
+  const result = await db.execute(sql`SELECT DISTINCT ON (player_a_id, player_b_id)
+    player_a_id::int AS "playerAId",player_b_id::int AS "playerBId",
+    relationship_type AS "relationshipType",sample_weeks AS "sampleWeeks",
+    shrunk_correlation AS "shrunkCorrelation"
+    FROM ff_teammate_correlations
+    WHERE player_a_id IN ${playerIds} AND player_b_id IN ${playerIds}
+    ORDER BY player_a_id, player_b_id, season DESC`);
+  return queryRows<TeammateCorrelationRow>(result);
+}
+
 export type DraftBoardSlot = {
   overallPick: number;
   round: number;
