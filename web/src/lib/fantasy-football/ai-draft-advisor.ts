@@ -11,6 +11,10 @@ import { buildSnakeSlots, nextControlledPick } from "./draft-engine";
 
 export const BEST_BALL_ADVISOR_PROJECTION_MODEL = "ff-independent-v1.5";
 export const BEST_BALL_ADVISOR_CANDIDATE_LIMIT = 40;
+// News search only covers players actually under consideration for this pick, not
+// the full 40-candidate board -- keeps latency/cost bounded (OpenAI-only feature;
+// DeepSeek's API has no equivalent web-search tool).
+export const BEST_BALL_ADVISOR_NEWS_CANDIDATE_LIMIT = 8;
 
 export type BestBallAdvisorProvider = "openai" | "deepseek";
 
@@ -19,6 +23,10 @@ export type BestBallAdvisorRequest = {
   rankingSetId: number;
   userSlot: number;
   playerIds: number[];
+  // OpenAI-only (validated server-side): search recent news for the top candidates
+  // under consideration before answering. Slower and costlier, so it's a distinct
+  // opt-in action rather than the default path.
+  withNews?: boolean;
 };
 
 export type BestBallAdvisorCandidate = {
@@ -85,6 +93,14 @@ export type BestBallAdvisorSnapshot = {
   instructions: string[];
 };
 
+export type BestBallAdvisorNewsSource = {
+  player: string;
+  url: string;
+  title: string;
+  publishedAt: string | null;
+  summary: string;
+};
+
 export type BestBallAdvisorModelOutput = {
   recommendedPlayerId: number;
   confidence: number;
@@ -96,6 +112,7 @@ export type BestBallAdvisorModelOutput = {
   alternatives: Array<{ playerId: number; reason: string }>;
   strategyUntilNextTurn: string;
   whatWouldChange: string;
+  newsSources: BestBallAdvisorNewsSource[];
 };
 
 export type BestBallAdvisorCorrection = {
@@ -125,6 +142,7 @@ export type BestBallAdvisorResult = {
   risks: string[];
   strategyUntilNextTurn: string;
   whatWouldChange: string;
+  newsSources: BestBallAdvisorNewsSource[];
 };
 
 const DRAFT_SLOTS = buildSnakeSlots(BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
@@ -156,6 +174,12 @@ function advisorCandidate(player: FantasyRankingRow): BestBallAdvisorCandidate {
 
 export function bestBallAdvisorDraftSignature(input: Pick<BestBallAdvisorRequest, "rankingSetId" | "userSlot" | "playerIds">): string {
   return `${input.rankingSetId}:${input.userSlot}:${input.playerIds.join(",")}`;
+}
+
+// The candidates actually worth searching news for -- top of the board, sorted by
+// ourRank ascending. snapshot.candidates is already ranked-order by construction.
+export function bestBallAdvisorNewsCandidates(snapshot: BestBallAdvisorSnapshot): BestBallAdvisorCandidate[] {
+  return snapshot.candidates.slice(0, BEST_BALL_ADVISOR_NEWS_CANDIDATE_LIMIT);
 }
 
 export function buildBestBallAdvisorProviderSnapshot(snapshot: BestBallAdvisorSnapshot): unknown {
@@ -437,6 +461,23 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   });
   const rationale = advisorField(value, ["whyNow", "why_now", "rationale", "reason", "analysis", "explanation"])
     ?? deepAdvisorField(value, ["whyNow", "why_now", "rationale", "reason", "analysis", "explanation"]);
+  // News grounding is best-effort and additive -- a missing or malformed
+  // newsSources entry never fails the whole recommendation (unlike whyNow).
+  // "No recent news found" is a legitimate, honest result, not an error.
+  const rawNewsSources = advisorField(value, ["newsSources", "news_sources", "news"]);
+  const newsSources: BestBallAdvisorNewsSource[] = Array.isArray(rawNewsSources)
+    ? rawNewsSources
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item))
+      .map((item) => ({
+        player: optionalNonEmptyString(item.player ?? item.playerName ?? item.player_name) ?? "",
+        url: optionalNonEmptyString(item.url ?? item.link) ?? "",
+        title: optionalNonEmptyString(item.title ?? item.headline) ?? "",
+        publishedAt: optionalNonEmptyString(item.publishedAt ?? item.published_at ?? item.date),
+        summary: optionalNonEmptyString(item.summary ?? item.description) ?? "",
+      }))
+      .filter((item) => item.url && item.title)
+      .slice(0, 10)
+    : [];
   const suppliedEvidence = advisorField(value, ["evidence"]) ?? deepAdvisorField(value, ["evidence"]);
   const evidence = suppliedEvidence === null
     ? [
@@ -463,6 +504,7 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     whatWouldChange: optionalNonEmptyString(advisorField(value, ["whatWouldChange", "what_would_change"]))
       ? requireString(advisorField(value, ["whatWouldChange", "what_would_change"]), "change condition")
       : "A draft pick that removes this player or materially changes the available-player tier.",
+    newsSources,
   };
 }
 
@@ -511,6 +553,7 @@ export function enrichBestBallAdvisorResult(
     risks: output.risks,
     strategyUntilNextTurn: output.strategyUntilNextTurn,
     whatWouldChange: output.whatWouldChange,
+    newsSources: output.newsSources,
   };
 }
 
@@ -549,4 +592,34 @@ export const BEST_BALL_ADVISOR_JSON_SCHEMA = {
     "strategyUntilNextTurn",
     "whatWouldChange",
   ],
+} as const;
+
+// News-augmented variant, used only for the OpenAI "with news" call. OpenAI's
+// strict structured-output mode requires every schema property to be listed in
+// required (no true optional fields), so this is a distinct schema rather than
+// making newsSources optional on the base one -- the base (no-news) call should
+// never be asked to produce a field it has no tool access to populate.
+export const BEST_BALL_ADVISOR_JSON_SCHEMA_WITH_NEWS = {
+  ...BEST_BALL_ADVISOR_JSON_SCHEMA,
+  properties: {
+    ...BEST_BALL_ADVISOR_JSON_SCHEMA.properties,
+    newsSources: {
+      type: "array",
+      minItems: 0,
+      maxItems: 10,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          player: { type: "string" },
+          url: { type: "string" },
+          title: { type: "string" },
+          publishedAt: { type: ["string", "null"] },
+          summary: { type: "string" },
+        },
+        required: ["player", "url", "title", "publishedAt", "summary"],
+      },
+    },
+  },
+  required: [...BEST_BALL_ADVISOR_JSON_SCHEMA.required, "newsSources"],
 } as const;

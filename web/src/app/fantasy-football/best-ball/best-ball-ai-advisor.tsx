@@ -10,27 +10,37 @@ import { requestBestBallAdvice } from "./advisor-actions";
 
 type ProviderState = {
   loading: boolean;
+  loadingMode: "base" | "news" | null;
   error: string | null;
   result: BestBallAdvisorResult | null;
+  resultUsedNews: boolean;
 };
 
-const EMPTY_STATE: ProviderState = { loading: false, error: null, result: null };
+const EMPTY_STATE: ProviderState = { loading: false, loadingMode: null, error: null, result: null, resultUsedNews: false };
 
 function formatProjection(value: number | null): string {
   return value === null ? "—" : value.toFixed(1);
+}
+
+function formatNewsDate(value: string | null): string {
+  if (!value) return "date unknown";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
 }
 
 function RecommendationCard({
   provider,
   state,
   configured,
+  showNewsButton,
   onRequest,
   onDraft,
 }: {
   provider: BestBallAdvisorProvider;
   state: ProviderState;
   configured: boolean;
-  onRequest: (provider: BestBallAdvisorProvider) => void;
+  showNewsButton: boolean;
+  onRequest: (provider: BestBallAdvisorProvider, withNews: boolean) => void;
   onDraft: (playerId: number) => void;
 }) {
   const label = provider === "openai" ? "OpenAI" : "DeepSeek";
@@ -45,19 +55,30 @@ function RecommendationCard({
         <h3 className="mt-1 text-xl font-black">{model}</h3>
         <p className="text-xs opacity-70">Independent analysis · V1.5 evidence</p>
       </div>
-      <button
-        type="button"
-        disabled={state.loading || !configured}
-        onClick={() => onRequest(provider)}
-        className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-sm disabled:cursor-wait disabled:opacity-60"
-      >
-        {!configured ? "Connection needed" : state.loading ? "Analyzing…" : state.result ? `Ask ${label} again` : `Ask ${label}`}
-      </button>
+      <div className="flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          disabled={state.loading || !configured}
+          onClick={() => onRequest(provider, false)}
+          className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-sm disabled:cursor-wait disabled:opacity-60"
+        >
+          {!configured ? "Connection needed" : state.loading && state.loadingMode === "base" ? "Analyzing…" : state.result && !showNewsButton ? `Ask ${label} again` : `Ask ${label}`}
+        </button>
+        {showNewsButton && <button
+          type="button"
+          disabled={state.loading || !configured}
+          onClick={() => onRequest(provider, true)}
+          title="Slower: checks recent news for the top candidates before answering"
+          className="rounded-xl border border-current/30 bg-white/60 px-4 py-2.5 text-sm font-black shadow-sm disabled:cursor-wait disabled:opacity-60"
+        >
+          {state.loading && state.loadingMode === "news" ? "Reading news…" : "Ask with news"}
+        </button>}
+      </div>
     </div>
 
     {!configured && <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><b>{label} needs a one-time connection.</b><p className="mt-1">Add <code>{provider === "openai" ? "OPENAI_API_KEY (or OPENAI_API)" : "DEEPSEEK_API_KEY"}</code> to Vercel Production and Preview, then redeploy.</p></div>}
     {configured && state.error && <div role="alert" className="mt-4 rounded-xl border border-red-300 bg-white/80 p-3 text-sm font-semibold text-red-800">{state.error}</div>}
-    {configured && !state.loading && !state.error && !state.result && <p className="mt-5 rounded-xl bg-white/60 p-4 text-sm">Press the button when you want this model to evaluate your next pick.</p>}
+    {configured && !state.loading && !state.error && !state.result && <p className="mt-5 rounded-xl bg-white/60 p-4 text-sm">Press a button when you want this model to evaluate your next pick.{showNewsButton && " \"Ask with news\" also checks recent news for the top candidates first, but takes longer."}</p>}
 
     {state.result && <div className="mt-5 space-y-4">
       <div className="rounded-2xl bg-white p-4 shadow-sm">
@@ -83,6 +104,17 @@ function RecommendationCard({
         <div className="rounded-xl bg-white/70 p-3"><p className="text-xs font-black uppercase opacity-60">Evidence used</p><ul className="mt-2 space-y-1 text-sm">{state.result.evidence.map((item) => <li key={item}>• {item}</li>)}</ul></div>
         <div className="rounded-xl bg-white/70 p-3"><p className="text-xs font-black uppercase opacity-60">Risks</p><ul className="mt-2 space-y-1 text-sm">{state.result.risks.map((item) => <li key={item}>• {item}</li>)}</ul></div>
       </div>
+
+      {state.resultUsedNews && <div className="rounded-xl bg-white/70 p-3">
+        <p className="text-xs font-black uppercase opacity-60">News checked</p>
+        {state.result.newsSources.length === 0
+          ? <p className="mt-2 text-sm opacity-80">Searched for recent news on the top candidates; nothing relevant was found.</p>
+          : <ul className="mt-2 space-y-2 text-sm">{state.result.newsSources.map((source) => <li key={source.url}>
+            <a href={source.url} target="_blank" rel="noopener noreferrer" className="font-semibold underline underline-offset-2">{source.title}</a>
+            <span className="ml-2 opacity-60">{source.player} · {formatNewsDate(source.publishedAt)}</span>
+            {source.summary && <p className="mt-0.5 opacity-80">{source.summary}</p>}
+          </li>)}</ul>}
+      </div>}
 
       <div>
         <p className="text-xs font-black uppercase tracking-wide opacity-60">If he goes, consider</p>
@@ -118,22 +150,23 @@ export default function BestBallAiAdvisor({
     deepseek: EMPTY_STATE,
   });
 
-  const onRequest = async (provider: BestBallAdvisorProvider) => {
+  const onRequest = async (provider: BestBallAdvisorProvider, withNews: boolean) => {
     const requestedSignature = signature;
-    setStates((current) => ({ ...current, [provider]: { ...current[provider], loading: true, error: null } }));
-    const response = await requestBestBallAdvice({ provider, rankingSetId, userSlot, playerIds });
+    const loadingMode = withNews ? "news" : "base";
+    setStates((current) => ({ ...current, [provider]: { ...current[provider], loading: true, loadingMode, error: null } }));
+    const response = await requestBestBallAdvice({ provider, rankingSetId, userSlot, playerIds, withNews });
     if (signatureRef.current !== requestedSignature) {
       // The draft moved on while this request was in flight -- discard the
       // now-stale response, but still clear loading so the button doesn't
       // stay stuck on "Analyzing..." forever.
-      setStates((current) => ({ ...current, [provider]: { ...current[provider], loading: false } }));
+      setStates((current) => ({ ...current, [provider]: { ...current[provider], loading: false, loadingMode: null } }));
       return;
     }
     setStates((current) => ({
       ...current,
       [provider]: response.ok
-        ? { loading: false, error: null, result: response.result }
-        : { loading: false, error: response.message, result: null },
+        ? { loading: false, loadingMode: null, error: null, result: response.result, resultUsedNews: withNews }
+        : { loading: false, loadingMode: null, error: response.message, result: null, resultUsedNews: false },
     }));
   };
 
@@ -141,11 +174,11 @@ export default function BestBallAiAdvisor({
     <div className="mb-5">
       <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-700">Your next pick</p>
       <h2 className="mt-1 text-2xl font-black">Ask two independent draft advisors</h2>
-      <p className="mt-1 max-w-4xl text-sm text-muted-foreground">Both models receive the same rules, your draft slot and roster, every recorded pick, bye weeks, ADP, and the legal V1.5 projection board. Their answers stay separate so you can compare their reasoning.</p>
+      <p className="mt-1 max-w-4xl text-sm text-muted-foreground">Both models receive the same rules, your draft slot and roster, every recorded pick, bye weeks, ADP, and the legal V1.5 projection board. Their answers stay separate so you can compare their reasoning. OpenAI can also optionally check recent news for the top candidates before answering; DeepSeek has no equivalent web-search capability.</p>
     </div>
     <div className="grid gap-4 xl:grid-cols-2">
-      <RecommendationCard provider="openai" state={states.openai} configured={availability.openai} onRequest={onRequest} onDraft={onDraft} />
-      <RecommendationCard provider="deepseek" state={states.deepseek} configured={availability.deepseek} onRequest={onRequest} onDraft={onDraft} />
+      <RecommendationCard provider="openai" state={states.openai} configured={availability.openai} showNewsButton onRequest={onRequest} onDraft={onDraft} />
+      <RecommendationCard provider="deepseek" state={states.deepseek} configured={availability.deepseek} showNewsButton={false} onRequest={onRequest} onDraft={onDraft} />
     </div>
   </section>;
 }

@@ -21,6 +21,9 @@ import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 const CACHE_TTL_MS = 5 * 60_000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT_PER_PROVIDER = 6;
+// News search is a slower, costlier OpenAI-only path (web search + reasoning +
+// structured output) -- throttled separately and more tightly than the base path.
+const RATE_LIMIT_NEWS = 3;
 
 type AdvisorActionResponse =
   | { ok: true; result: BestBallAdvisorResult }
@@ -29,29 +32,35 @@ type AdvisorActionResponse =
 type CachedResult = { expiresAt: number; result: BestBallAdvisorResult };
 const responseCache = new Map<string, CachedResult>();
 const inFlight = new Map<string, Promise<BestBallAdvisorResult>>();
-const rateBuckets = new Map<BestBallAdvisorProvider, number[]>();
+const rateBuckets = new Map<string, number[]>();
 
 function requestHash(snapshot: BestBallAdvisorSnapshot): string {
   return createHash("sha256").update(JSON.stringify(snapshot)).digest("hex").slice(0, 20);
 }
 
-function enforceRateLimit(provider: BestBallAdvisorProvider): void {
+function enforceRateLimit(provider: BestBallAdvisorProvider, withNews: boolean): void {
+  const key = withNews ? `${provider}:news` : provider;
+  const limit = withNews ? RATE_LIMIT_NEWS : RATE_LIMIT_PER_PROVIDER;
   const now = Date.now();
-  const recent = (rateBuckets.get(provider) ?? []).filter((timestamp) => now - timestamp < RATE_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT_PER_PROVIDER) throw new Error(`Please wait a minute before asking ${provider === "openai" ? "OpenAI" : "DeepSeek"} again.`);
+  const recent = (rateBuckets.get(key) ?? []).filter((timestamp) => now - timestamp < RATE_WINDOW_MS);
+  if (recent.length >= limit) {
+    const label = provider === "openai" ? (withNews ? "OpenAI with news" : "OpenAI") : "DeepSeek";
+    throw new Error(`Please wait a minute before asking ${label} again.`);
+  }
   recent.push(now);
-  rateBuckets.set(provider, recent);
+  rateBuckets.set(key, recent);
 }
 
 async function createRecommendation(
   provider: BestBallAdvisorProvider,
   snapshot: BestBallAdvisorSnapshot,
   hash: string,
+  withNews: boolean,
 ): Promise<BestBallAdvisorResult> {
-  enforceRateLimit(provider);
+  enforceRateLimit(provider, withNews);
   const { output } = await getValidatedBestBallAdvisorOutput(
     snapshot,
-    (correction) => callBestBallAdvisorProvider(provider, snapshot, correction),
+    (correction) => callBestBallAdvisorProvider(provider, snapshot, correction, withNews),
   );
   return {
     provider,
@@ -64,8 +73,10 @@ async function createRecommendation(
 }
 
 export async function requestBestBallAdvice(input: BestBallAdvisorRequest): Promise<AdvisorActionResponse> {
+  const withNews = input.withNews === true;
   try {
     if (input.provider !== "openai" && input.provider !== "deepseek") return { ok: false, message: "Choose OpenAI or DeepSeek." };
+    if (withNews && input.provider !== "openai") return { ok: false, message: "News search is only available for OpenAI." };
     const rankings = (await getFantasyRankings(Number(input.rankingSetId)))
       .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
       .slice(0, 260);
@@ -75,14 +86,14 @@ export async function requestBestBallAdvice(input: BestBallAdvisorRequest): Prom
     if (snapshot.candidates.length < 3) return { ok: false, message: "Fewer than three legal candidates remain." };
 
     const hash = requestHash(snapshot);
-    const cacheKey = `${input.provider}:${hash}`;
+    const cacheKey = `${input.provider}:${withNews ? "news:" : ""}${hash}`;
     const cached = responseCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return { ok: true, result: cached.result };
     if (cached) responseCache.delete(cacheKey);
 
     let pending = inFlight.get(cacheKey);
     if (!pending) {
-      pending = createRecommendation(input.provider, snapshot, hash);
+      pending = createRecommendation(input.provider, snapshot, hash, withNews);
       inFlight.set(cacheKey, pending);
     }
     try {
@@ -94,7 +105,8 @@ export async function requestBestBallAdvice(input: BestBallAdvisorRequest): Prom
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === "TimeoutError") {
-      return { ok: false, message: "The provider took longer than 45 seconds. Try again." };
+      const seconds = withNews ? 90 : 45;
+      return { ok: false, message: `The provider took longer than ${seconds} seconds. Try again.` };
     }
     if (error instanceof SyntaxError) return { ok: false, message: "The provider returned malformed JSON. Try again." };
     return { ok: false, message: error instanceof Error ? error.message : "The advisor request failed." };
