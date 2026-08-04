@@ -53,7 +53,7 @@ function RecommendationCard({
       <div>
         <p className="text-xs font-black uppercase tracking-widest opacity-70">{label} recommendation</p>
         <h3 className="mt-1 text-xl font-black">{model}</h3>
-        <p className="text-xs opacity-70">Independent analysis · V1.5 evidence</p>
+        <p className="text-xs opacity-70">Independent analysis · V1.6 evidence</p>
       </div>
       <div className="flex flex-wrap justify-end gap-2">
         <button
@@ -91,7 +91,7 @@ function RecommendationCard({
           <button type="button" onClick={() => onDraft(state.result!.recommendation.playerId)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white">Add this player</button>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-          <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">Our V1.5</span><b>{formatProjection(state.result.recommendation.ourProjectedPoints)}</b></div>
+          <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">Our V1.6</span><b>{formatProjection(state.result.recommendation.ourProjectedPoints)}</b></div>
           <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">FantasyPros</span><b>{formatProjection(state.result.recommendation.fantasyProsProjectedPoints)}</b></div>
           <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">ADP</span><b>{formatProjection(state.result.recommendation.adp)}</b></div>
         </div>
@@ -174,7 +174,7 @@ export default function BestBallAiAdvisor({
     <div className="mb-5">
       <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-700">Your next pick</p>
       <h2 className="mt-1 text-2xl font-black">Ask two independent draft advisors</h2>
-      <p className="mt-1 max-w-4xl text-sm text-muted-foreground">Both models receive the same rules, your draft slot and roster, every recorded pick, bye weeks, ADP, and the legal V1.5 projection board. Their answers stay separate so you can compare their reasoning. OpenAI can also optionally check recent news for the top candidates before answering; DeepSeek has no equivalent web-search capability.</p>
+      <p className="mt-1 max-w-4xl text-sm text-muted-foreground">Both models receive the same rules, your draft slot and roster, every recorded pick, bye weeks, ADP, and the legal V1.6 projection board. Their answers stay separate so you can compare their reasoning. OpenAI can also optionally check recent news for the top candidates before answering; DeepSeek has no equivalent web-search capability.</p>
     </div>
     <div className="grid gap-4 xl:grid-cols-2">
       <RecommendationCard provider="openai" state={states.openai} configured={availability.openai} showNewsButton onRequest={onRequest} onDraft={onDraft} />

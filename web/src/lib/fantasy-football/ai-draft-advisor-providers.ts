@@ -26,7 +26,7 @@ Important controls:
 - Use DraftKings full-PPR scoring, bonuses, weekly highest-scoring lineup, roster construction, bye coverage, ADP availability, and spike-week upside.
 - Do not force a backup position solely because of a bye week when stronger value can reasonably be selected now and coverage can be found later.
 - Do not invent news, injuries, air yards, roles, schedules, correlations, or statistics absent from the snapshot.
-- V1.5 is the active projection model. Never describe this recommendation as using the unfinished V2 model.
+- V1.6 is the active projection model. Never describe this recommendation as using the unfinished V2 model.
 - Choose only candidateKey values from candidates. Copy the keys exactly and return exactly two distinct legal alternatives.
 - Return JSON matching the required schema and no prose outside the JSON.`;
 
