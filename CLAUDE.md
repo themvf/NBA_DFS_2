@@ -151,6 +151,56 @@ Replacement:
 - Optional: `date_override` (YYYY-MM-DD), `season`
 - Uses `DNN_COOKIE` secret for LineStar — if missing/expired, LineStar projections will be NULL but the slate still loads
 
+### `capture_odds_history.yml` scheduling — Vercel Cron bridge (2026-08-04)
+
+**Problem found:** the MLB "Today's movement board" (`/vegas?sport=mlb`) showed every
+game STALE with empty fixed-time snapshot columns. Root cause verified via GitHub's
+own run-history API: `capture_odds_history.yml`'s native `schedule:` trigger was
+configured for every ~15 minutes, but GitHub was actually firing it every 60–95
+minutes during active hours and with 3–13 hour gaps overnight — a documented GitHub
+Actions platform limitation (sub-hourly `schedule:` triggers get silently
+delayed/dropped under load), not a bug in the workflow itself (28/30 sampled runs
+succeeded when they did fire).
+
+**Fix:** Vercel Cron (Pro plan — fires within the configured minute, unlike GitHub's
+best-effort scheduler) now owns the real cadence. `web/src/app/api/cron/mlb-odds-capture`
+is a thin route that Vercel invokes on the same `7,22,37,52 14-23,0-3 * * *` schedule
+(`web/vercel.json`) and does nothing but fire a `workflow_dispatch` REST call against
+`capture_odds_history.yml` — **no capture/business logic moved**; the single-writer
+Python odds pipeline (`ingest.mlb_schedule`, `model.line_alerts`) still runs entirely
+inside GitHub Actions, untouched. GitHub's own `schedule:` trigger was reduced to an
+hourly fallback (`12 14-23,0-3 * * *`) in case the Vercel→GitHub bridge itself breaks.
+
+Deliberately NOT ported to a Vercel Python Function: Vercel's Root Directory (`web/`)
+cannot access files outside itself (`..` is blocked), so a real port would mean either
+changing the Vercel project's Root Directory to the repo root (risky, dashboard-only,
+untested against the live Next.js deployment) or duplicating `ingest`/`model`/`db`
+logic into `web/` (violates the single-writer odds policy and this project's
+zero-duplication discipline). The dispatch-bridge approach avoids both.
+
+**Required Vercel project env vars** (Production + Preview) — not yet set as of this
+writing:
+- `CRON_SECRET` — random 16+ char string; Vercel sends it as `Authorization: Bearer
+  <value>` on every cron invocation, checked by the route to reject non-Vercel callers.
+- `GITHUB_DISPATCH_TOKEN` — a GitHub fine-grained PAT scoped to `themvf/NBA_DFS_2`
+  only, with **Actions: Read and write** repo permission (nothing else). Used solely
+  to POST to `/repos/themvf/NBA_DFS_2/actions/workflows/capture_odds_history.yml/dispatches`.
+
+**Cost:** $0 marginal — the account is already on Vercel Pro (required for sub-daily
+cron; Hobby caps at once/day with ±59min imprecision). The dispatch route itself is a
+single outbound HTTPS call (~1-2s), well under a cent/month even at ~90 invocations/day,
+fully absorbed by the $20/month usage credit already included with the Pro seat.
+
+**Known residual issue, not fixed here:** `db/database.py`'s `_ensure_schema()` runs
+schema DDL (with a 4-attempt/lock-timeout retry) on every single script invocation
+across every Python workflow in this repo; it occasionally hard-fails a job
+(`psycopg2.errors.LockNotAvailable`) when contending with another concurrent writer —
+observed once in the sampled runs above, after that run's actual odds capture had
+already committed. Low priority (doesn't touch the capture step itself, rare), but a
+real fix (schema init as a separate one-time migration rather than per-invocation)
+touches every Python entrypoint in the repo and deserves its own change, not a
+drive-by edit inside this fix.
+
 ## NBA Lineup Structure (DraftKings)
 ```
 PG / SG / SF / PF / C / G / F / UTIL  (8 players, $50,000 salary cap)
