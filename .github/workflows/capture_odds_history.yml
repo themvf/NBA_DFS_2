@@ -2,10 +2,12 @@ name: Capture Odds History
 
 on:
   schedule:
-    # Extra dispatch opportunities from noon ET through 11:59 PM ET.
-    # Redundant off-boundary dispatches reduce GitHub scheduler delays while
-    # preserving the page's 30-minute freshness target.
-    - cron: "7,22,37,52 16-23,0-3 * * *"
+    # Every ~15 min from 10 AM ET through 11:59 PM ET (14:00–03:59 UTC).
+    # Covers morning matinees (earliest MLB first pitch ~11:35 AM ET) and the
+    # pre-game window where the sharpest movement happens. Redundant
+    # off-boundary dispatches reduce GitHub scheduler jitter while preserving
+    # the page's 30-minute freshness target.
+    - cron: "7,22,37,52 14-23,0-3 * * *"
 
 concurrency:
   group: capture-odds-history
