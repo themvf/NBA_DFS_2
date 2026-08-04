@@ -1,13 +1,20 @@
 name: Capture Odds History
 
 on:
+  # Primary trigger is Vercel Cron (web/src/app/api/cron/mlb-odds-capture),
+  # which fires this via `workflow_dispatch` every ~15 min from 10 AM ET
+  # through 11:59 PM ET. GitHub's native `schedule:` trigger below is a
+  # fallback only — verified 2026-08-04 that GitHub silently delays/drops
+  # most firings of a 15-min schedule (observed real gaps of 60-95 min
+  # during active hours, 3-13h overnight), which was starving the MLB
+  # "Today's movement board" of fresh captures. Vercel Cron on Pro fires
+  # within the configured minute, so it now owns the real cadence.
+  workflow_dispatch:
   schedule:
-    # Every ~15 min from 10 AM ET through 11:59 PM ET (14:00–03:59 UTC).
-    # Covers morning matinees (earliest MLB first pitch ~11:35 AM ET) and the
-    # pre-game window where the sharpest movement happens. Redundant
-    # off-boundary dispatches reduce GitHub scheduler jitter while preserving
-    # the page's 30-minute freshness target.
-    - cron: "7,22,37,52 14-23,0-3 * * *"
+    # Hourly safety net only (same 10 AM–11:59 PM ET active window), in case
+    # the Vercel -> GitHub dispatch bridge breaks (expired token, Vercel
+    # outage, etc.). Not the primary cadence anymore - see note above.
+    - cron: "12 14-23,0-3 * * *"
 
 concurrency:
   group: capture-odds-history
