@@ -548,6 +548,27 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
     """First-breach insert; returns [alert] only when a NEW row was created."""
     if sport == "mlb":
         details = {**details, **_mlb_model_signal_context(db, r, side, alert_prob)}
+    # ── Polymarket-confirmed flag ──────────────────────────────────────────
+    # When Polymarket is present in the same capture AND its price for the
+    # alert's side agrees with the sharp reference (i.e., Poly already moved
+    # in the direction the alert says DK is stale), tag poly_confirmed=True.
+    # This is a confidence-grading attribute, not a standalone signal — it
+    # answers "does a different participant pool independently confirm this?"
+    books = r.get("books") or {}
+    poly = books.get("polymarket")
+    if poly and alert_type in ("dk_value", "dk_prop_value", "prop_line_gap",
+                               "pinnacle_divergence", "steam"):
+        poly_prob = _book_fair_side(poly, side)
+        if poly_prob is not None and sharp_prob is not None and alert_prob is not None:
+            # "Confirmed" = Poly's price for this side is ABOVE the retail
+            # consensus (same direction as the sharp book), suggesting the
+            # stale-line thesis has independent market support.
+            poly_agrees = poly_prob > alert_prob
+            details = {**details,
+                       "poly_confirmed": poly_agrees,
+                       "poly_prob": round(poly_prob, 4)}
+        elif poly_prob is not None:
+            details = {**details, "poly_confirmed": None, "poly_prob": round(poly_prob, 4)}
     rows = db.execute(
         """
         INSERT INTO line_alerts (sport, matchup_id, game_date, matchup, commence_time,
