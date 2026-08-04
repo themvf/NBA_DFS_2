@@ -5,15 +5,19 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
 import { BEST_BALL_POSITIONS, type BestBallPosition } from "@/lib/fantasy-football/best-ball";
+import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import ProjectionNotation from "../rankings/projection-notation";
 
-const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_86px_96px_126px_150px_76px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_92px_86px_96px_126px_150px_76px]";
 
 type BestBallPlayerBoardProps = {
   rankings: FantasyRankingRow[];
   draftedPlayerIds: number[];
   canDraftPosition: Record<BestBallPosition, boolean>;
   onDraft: (playerId: number) => void;
+  // P(still on the board at the user's next pick), keyed by playerId. Absent
+  // entries (draft complete, or FFC reported no variance) render as "—".
+  availabilityByPlayerId: Map<number, AvailabilityOdds | null>;
 };
 
 type PlayerRowProps = {
@@ -21,9 +25,21 @@ type PlayerRowProps = {
   skillRank: number;
   canDraft: boolean;
   onDraft: (playerId: number) => void;
+  odds: AvailabilityOdds | null | undefined;
 };
 
-const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, canDraft, onDraft }: PlayerRowProps) {
+function AvailabilityCell({ odds }: { odds: AvailabilityOdds | null | undefined }) {
+  if (!odds) return <span className="text-muted-foreground">—</span>;
+  const pct = Math.round(odds.probability * 100);
+  const tone = pct >= 66 ? "text-emerald-700" : pct >= 33 ? "text-amber-700" : "text-red-700";
+  return (
+    <span className={`font-semibold ${tone}`} title={`FFC ADP ${odds.adjustedAdp.toFixed(1)} ± ${odds.adjustedStdev.toFixed(1)} picks · ${odds.sampleSize ?? "few"} drafts sampled (${odds.confidence} confidence)`}>
+      {pct}%
+    </span>
+  );
+}
+
+const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, canDraft, onDraft, odds }: PlayerRowProps) {
   const overallRank = player.ourRank ?? player.ecr ?? skillRank;
   return <>
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
@@ -31,6 +47,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
     <div role="cell" className="p-3"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p></div>
     <div role="cell" className="max-w-[310px] p-3"><div className="flex flex-wrap gap-1">{player.indicators.slice(0, 3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}</div></div>
     <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3"><AvailabilityCell odds={odds} /></div>
     <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>
     <div role="cell" className="p-3">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
@@ -39,7 +56,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
   </>;
 });
 
-export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDraftPosition, onDraft }: BestBallPlayerBoardProps) {
+export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDraftPosition, onDraft, availabilityByPlayerId }: BestBallPlayerBoardProps) {
   const [name, setName] = useState("");
   const [position, setPosition] = useState("");
   const [team, setTeam] = useState("");
@@ -79,16 +96,16 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><p>{filtered.length} available players · drafted players are removed from the board</p><p>Fast list · only visible rows are rendered</p></div>
     <div ref={scrollRef} role="table" aria-rowcount={filtered.length + 1} className="h-[min(68vh,680px)] overflow-auto rounded-2xl border bg-card text-sm [contain:strict]">
-      <div role="rowgroup" className="sticky top-0 z-20 min-w-[1350px] bg-muted text-left text-xs uppercase text-muted-foreground">
-        <div role="row" className={`grid ${COLUMN_GRID}`}><div role="columnheader" className="p-3">Skill rank</div><div role="columnheader" className="p-3">Overall / Pos.</div><div role="columnheader" className="p-3">Player</div><div role="columnheader" className="p-3">Signals</div><div role="columnheader" className="p-3">ADP</div><div role="columnheader" className="p-3">2025 GP</div><div role="columnheader" className="p-3">2025 FPTS</div><div role="columnheader" className="p-3">FantasyPros PPR Proj.</div><div role="columnheader" className="p-3">Our 2026 PPR Base (V1.6)</div><div role="columnheader" className="p-3">Draft</div></div>
+      <div role="rowgroup" className="sticky top-0 z-20 min-w-[1442px] bg-muted text-left text-xs uppercase text-muted-foreground">
+        <div role="row" className={`grid ${COLUMN_GRID}`}><div role="columnheader" className="p-3">Skill rank</div><div role="columnheader" className="p-3">Overall / Pos.</div><div role="columnheader" className="p-3">Player</div><div role="columnheader" className="p-3">Signals</div><div role="columnheader" className="p-3">ADP</div><div role="columnheader" className="p-3" title="P(still available at your next pick), from FFC's observed ADP mean/variance/sample size">Avail.</div><div role="columnheader" className="p-3">2025 GP</div><div role="columnheader" className="p-3">2025 FPTS</div><div role="columnheader" className="p-3">FantasyPros PPR Proj.</div><div role="columnheader" className="p-3">Our 2026 PPR Base (V1.6)</div><div role="columnheader" className="p-3">Draft</div></div>
       </div>
-      <div role="rowgroup" className="relative min-w-[1350px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+      <div role="rowgroup" className="relative min-w-[1442px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const player = filtered[virtualRow.index];
-          return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPosition[player.position as BestBallPosition]} onDraft={onDraft} /></div>;
+          return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPosition[player.position as BestBallPosition]} onDraft={onDraft} odds={availabilityByPlayerId.get(player.playerId)} /></div>;
         })}
       </div>
-      {filtered.length === 0 && <p className="min-w-[1350px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}
+      {filtered.length === 0 && <p className="min-w-[1442px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}
     </div>
   </section>;
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { queryRows } from "../src/db/query-result";
 import { buildSnakeSlots, nextControlledPick, picksUntilControlled } from "../src/lib/fantasy-football/draft-engine";
+import { computeAvailabilityOdds } from "../src/lib/fantasy-football/availability-odds";
 import { recommendPlayers } from "../src/lib/fantasy-football/recommendations";
 import { fantasyBadgeClass } from "../src/lib/fantasy-football/badge-style";
 import { filterFantasyRankings } from "../src/lib/fantasy-football/ranking-filters";
@@ -32,6 +33,58 @@ const recommendations = recommendPlayers([
 ], ["QB"], 10);
 assert.equal(recommendations[0].playerId, 1);
 assert.equal(recommendations[0].adpDelta, 13);
+
+// availability-odds.ts -- computeAvailabilityOdds
+assert.equal(computeAvailabilityOdds({ adp: null, adpStdev: 2, adpSampleSize: 50 }, { currentPick: 1, targetPick: 10, teamCount: 12 }), null);
+assert.equal(computeAvailabilityOdds({ adp: 10, adpStdev: null, adpSampleSize: 50 }, { currentPick: 1, targetPick: 10, teamCount: 12 }), null);
+assert.equal(computeAvailabilityOdds({ adp: 10, adpStdev: 2, adpSampleSize: 50 }, { currentPick: 5, targetPick: 3, teamCount: 12 }), null);
+
+const wideSample = computeAvailabilityOdds({ adp: 10, adpStdev: 2, adpSampleSize: 100 }, { currentPick: 1, targetPick: 10, teamCount: 12 });
+assert.ok(wideSample);
+assert.equal(wideSample!.adjustedAdp, 10);
+assert.equal(wideSample!.adjustedStdev, 2);
+assert.equal(wideSample!.sampleSize, 100);
+assert.equal(wideSample!.confidence, "high");
+assert.ok(wideSample!.probability > 0.4 && wideSample!.probability < 0.65, `expected ~0.56, got ${wideSample!.probability}`);
+
+// Round-preserving rescale: adp=10/stdev=2 in a 12-team draft becomes
+// adp=5.5/stdev=1 in a 6-team draft (half the picks per round).
+const rescaled = computeAvailabilityOdds({ adp: 10, adpStdev: 2, adpSampleSize: 100 }, { currentPick: 1, targetPick: 6, teamCount: 6 });
+assert.ok(rescaled);
+assert.equal(rescaled!.adjustedAdp, 5.5);
+assert.equal(rescaled!.adjustedStdev, 1);
+
+// Thin real-draft samples widen the effective stdev instead of reporting FFC's raw (noisy) value.
+const thinSample = computeAvailabilityOdds({ adp: 10, adpStdev: 2, adpSampleSize: 5 }, { currentPick: 1, targetPick: 10, teamCount: 12 });
+assert.ok(thinSample);
+assert.ok(Math.abs(thinSample!.adjustedStdev - 4.898979485566356) < 1e-9);
+assert.equal(thinSample!.confidence, "low");
+
+const noSampleInfo = computeAvailabilityOdds({ adp: 10, adpStdev: 2, adpSampleSize: null }, { currentPick: 1, targetPick: 10, teamCount: 12 });
+assert.ok(noSampleInfo);
+assert.equal(noSampleInfo!.confidence, "low");
+assert.ok(Math.abs(noSampleInfo!.adjustedStdev - 3.2) < 1e-9);
+
+// Conditioning on "already survived to currentPick": asking about the
+// current pick itself is certainty.
+const sameTarget = computeAvailabilityOdds({ adp: 10, adpStdev: 2, adpSampleSize: 100 }, { currentPick: 10, targetPick: 10, teamCount: 12 });
+assert.ok(sameTarget);
+assert.equal(sameTarget!.probability, 1);
+
+// A top-4-ADP player is essentially certain to be gone by pick 40.
+const longGone = computeAvailabilityOdds({ adp: 2, adpStdev: 1, adpSampleSize: 100 }, { currentPick: 1, targetPick: 40, teamCount: 12 });
+assert.ok(longGone);
+assert.ok(longGone!.probability < 0.02);
+
+// recommendations.ts now scores urgency from real availability odds when supplied.
+const withLowRisk = recommendPlayers([
+  { playerId: 9, position: "RB", ourRank: 12, ecr: 15, adp: 25, projectedPoints: 250, tier: 2, confidence: 0.8, availabilityProbability: 0.95 },
+], [], 10)[0];
+const withHighRisk = recommendPlayers([
+  { playerId: 9, position: "RB", ourRank: 12, ecr: 15, adp: 25, projectedPoints: 250, tier: 2, confidence: 0.8, availabilityProbability: 0.05 },
+], [], 10)[0];
+assert.ok(withHighRisk.score > withLowRisk.score, "a player at greater risk of being lost should score higher urgency");
+assert.ok(withHighRisk.explanation.includes("5% available at your pick"));
 assert.match(fantasyBadgeClass({ code: "NFL_TOP_10_TARGETS", class: "fact" }), /blue/);
 assert.match(fantasyBadgeClass({ code: "NFL_TOP_10_RUSH_TDS", class: "fact" }), /orange/);
 assert.match(fantasyBadgeClass({ code: "TEAM_TARGET_LEADER", class: "fact" }), /cyan/);
@@ -122,7 +175,8 @@ assert.deepEqual(parseBestBallDraftState('bad-json'), { userSlot: 1, playerIds: 
 function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingRow, "playerId" | "name" | "position">): FantasyRankingRow {
   return {
     team: null, rookie: false, byeWeek: null, injuryStatus: null, ecr: null, positionRank: null,
-    ourRank: null, tier: null, adp: null, projectedPoints: null, fantasyProsProjectedPoints: null,
+    ourRank: null, tier: null, adp: null, adpStdev: null, adpHigh: null, adpLow: null, adpSampleSize: null,
+    projectedPoints: null, fantasyProsProjectedPoints: null,
     fantasyProsProjectionFetchedAt: null, fantasyProsProjectionUpdatedAt: null, ourProjectedPoints: null,
     games2025: null, fantasyPoints2025: null, projectionDetails: null, expectedGames: null, confidence: null,
     indicators: [], ...overrides,
@@ -131,7 +185,7 @@ function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingR
 const advisorRows = [
   advisorRow({ playerId: 1, name: "Team One Pick", position: "WR", team: "BUF", byeWeek: 7, ourRank: 1, positionRank: 1, adp: 1, ourProjectedPoints: 300, fantasyProsProjectedPoints: 298, games2025: 17, fantasyPoints2025: 290, confidence: 0.9 }),
   advisorRow({ playerId: 2, name: "My First Pick", position: "QB", team: "BAL", byeWeek: 8, ourRank: 2, positionRank: 1, adp: 2, ourProjectedPoints: 350, fantasyProsProjectedPoints: 340, games2025: 17, fantasyPoints2025: 345, confidence: 0.9 }),
-  advisorRow({ playerId: 3, name: "Available Runner", position: "RB", team: "ATL", byeWeek: 5, ourRank: 3, positionRank: 1, adp: 4, ourProjectedPoints: 280, fantasyProsProjectedPoints: 275, games2025: 17, fantasyPoints2025: 270, confidence: 0.8 }),
+  advisorRow({ playerId: 3, name: "Available Runner", position: "RB", team: "ATL", byeWeek: 5, ourRank: 3, positionRank: 1, adp: 4, adpStdev: 1.5, adpSampleSize: 40, ourProjectedPoints: 280, fantasyProsProjectedPoints: 275, games2025: 17, fantasyPoints2025: 270, confidence: 0.8 }),
   advisorRow({ playerId: 4, name: "Available Receiver", position: "WR", team: "LAR", byeWeek: 9, ourRank: 4, positionRank: 2, adp: 5, ourProjectedPoints: 270, fantasyProsProjectedPoints: 268, games2025: 16, fantasyPoints2025: 260, confidence: 0.8 }),
   advisorRow({ playerId: 5, name: "Available Tight End", position: "TE", team: "KC", byeWeek: 10, ourRank: 5, positionRank: 1, adp: 6, ourProjectedPoints: 240, fantasyProsProjectedPoints: 235, games2025: 17, fantasyPoints2025: 230, confidence: 0.75 }),
 ];
@@ -143,6 +197,14 @@ assert.equal(advisorSnapshot.draft.picksUntilUser, 20);
 assert.deepEqual(advisorSnapshot.userRoster.map((player) => player.playerId), [2]);
 assert.deepEqual(advisorSnapshot.candidates.map((player) => player.playerId), [3, 4, 5]);
 assert.deepEqual(advisorSnapshot.candidates.map((player) => player.candidateKey), ["C01", "C02", "C03"]);
+// Candidate 3 (adp=4, well ahead of the target pick 23) has real FFC
+// variance data -> a computed, near-zero survival probability. Candidates
+// 4/5 have no adpStdev in this fixture -> the field stays honestly null
+// rather than guessing.
+assert.equal(advisorSnapshot.candidates[0].availabilityAtNextPickPct, 0);
+assert.equal(advisorSnapshot.candidates[0].availabilitySampleSize, 40);
+assert.equal(advisorSnapshot.candidates[1].availabilityAtNextPickPct, null);
+assert.equal(advisorSnapshot.candidates[2].availabilityAtNextPickPct, null);
 const providerSnapshotJson = JSON.stringify(buildBestBallAdvisorProviderSnapshot(advisorSnapshot));
 assert.doesNotMatch(providerSnapshotJson, /"playerIds?"/);
 assert.match(providerSnapshotJson, /"candidateKey":"C01"/);

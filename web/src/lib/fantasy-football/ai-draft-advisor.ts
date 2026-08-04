@@ -8,6 +8,7 @@ import {
   type BestBallPosition,
 } from "./best-ball";
 import { buildSnakeSlots, nextControlledPick } from "./draft-engine";
+import { computeAvailabilityOdds } from "./availability-odds";
 
 export const BEST_BALL_ADVISOR_PROJECTION_MODEL = "ff-independent-v1.6";
 export const BEST_BALL_ADVISOR_CANDIDATE_LIMIT = 40;
@@ -46,6 +47,12 @@ export type BestBallAdvisorCandidate = {
   confidence: number | null;
   signals: string[];
   projectionDetails: Record<string, unknown> | null;
+  // P(still on the board at the user's next pick) from FFC's observed ADP
+  // mean/variance -- see availability-odds.ts. Null when the pick isn't yet
+  // known (draft complete) or FFC reported no variance for this player; the
+  // model should not guess a number when this is null.
+  availabilityAtNextPickPct: number | null;
+  availabilitySampleSize: number | null;
 };
 
 export type BestBallAdvisorSnapshot = {
@@ -151,7 +158,16 @@ function finiteOrNull(value: number | null): number | null {
   return typeof value === "number" && Number.isFinite(value) ? Number(value.toFixed(2)) : null;
 }
 
-function advisorCandidate(player: FantasyRankingRow): BestBallAdvisorCandidate {
+function advisorCandidate(
+  player: FantasyRankingRow,
+  availabilityContext: { currentPick: number; targetPick: number } | null = null,
+): BestBallAdvisorCandidate {
+  const odds = availabilityContext
+    ? computeAvailabilityOdds(
+      { adp: player.adp, adpStdev: player.adpStdev, adpSampleSize: player.adpSampleSize },
+      { currentPick: availabilityContext.currentPick, targetPick: availabilityContext.targetPick, teamCount: BEST_BALL_TEAM_COUNT },
+    )
+    : null;
   return {
     candidateKey: null,
     playerId: player.playerId,
@@ -169,6 +185,8 @@ function advisorCandidate(player: FantasyRankingRow): BestBallAdvisorCandidate {
     confidence: finiteOrNull(player.confidence),
     signals: player.indicators.slice(0, 8).map((indicator) => indicator.label),
     projectionDetails: player.projectionDetails,
+    availabilityAtNextPickPct: odds ? Math.round(odds.probability * 100) : null,
+    availabilitySampleSize: odds?.sampleSize ?? null,
   };
 }
 
@@ -230,11 +248,14 @@ export function buildBestBallAdvisorSnapshot(
     ? null
     : nextControlledPick(currentOverallPick, input.userSlot, BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
   const userRosterRows = rosterMap.get(input.userSlot) ?? [];
+  const availabilityContext = currentOverallPick !== null && targetOverallPick !== null
+    ? { currentPick: currentOverallPick, targetPick: targetOverallPick }
+    : null;
   const candidates = rankings
     .filter((player) => !draftedSet.has(player.playerId) && canAddBestBallPlayer(userRosterRows, player))
     .slice(0, BEST_BALL_ADVISOR_CANDIDATE_LIMIT)
     .map((player, index) => ({
-      ...advisorCandidate(player),
+      ...advisorCandidate(player, availabilityContext),
       candidateKey: `C${String(index + 1).padStart(2, "0")}`,
     }));
 
@@ -288,14 +309,14 @@ export function buildBestBallAdvisorSnapshot(
         counts: getBestBallRosterStatus(roster).counts,
       };
     }),
-    userRoster: userRosterRows.map(advisorCandidate),
+    userRoster: userRosterRows.map((player) => advisorCandidate(player)),
     userByeWeeks,
     candidates,
     instructions: [
       "Recommend for the user's target pick, not for the team currently on the clock.",
       "Balance best available value with roster construction; do not force immediate bye-week backup when later value is likely.",
       "Prioritize spike-week upside and paths to a weekly starting slot, but never invent air-yard, injury, role, matchup, or correlation evidence absent from this snapshot.",
-      "Use ADP to judge whether a candidate is likely to survive until the user's following pick.",
+      "Each candidate's availabilityAtNextPickPct is a computed probability (not a guess) that the player survives to the user's next pick, from Fantasy Football Calculator's observed ADP mean, variance, and sample size. Prefer it over inferring survival from adp/ourRank alone; a low sampleSize means the number is less trustworthy.",
       "The active point projection is V1.6. V2 opportunity and weekly-distribution modeling is not active.",
       "Select only candidateKey values contained in candidates. Candidate keys are the sole selection identifiers.",
     ],
@@ -483,6 +504,9 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
     ? [
       `V1.6 projection: ${recommendedCandidate.ourProjectedPoints?.toFixed(1) ?? "not available"} PPR points.`,
       `Current ADP: ${recommendedCandidate.adp?.toFixed(1) ?? "not available"}; our rank: ${recommendedCandidate.ourRank ?? "not available"}.`,
+      recommendedCandidate.availabilityAtNextPickPct === null
+        ? "Availability odds not available for this player."
+        : `${recommendedCandidate.availabilityAtNextPickPct}% likely available at the user's next pick (${recommendedCandidate.availabilitySampleSize ?? "few"} drafts sampled).`,
     ]
     : requireStringArray(suppliedEvidence, "evidence", 2, 5);
   return {

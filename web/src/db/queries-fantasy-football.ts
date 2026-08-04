@@ -18,6 +18,10 @@ export type FantasyRankingRow = {
   ourRank: number | null;
   tier: number | null;
   adp: number | null;
+  adpStdev: number | null;
+  adpHigh: number | null;
+  adpLow: number | null;
+  adpSampleSize: number | null;
   projectedPoints: number | null;
   fantasyProsProjectedPoints: number | null;
   fantasyProsProjectionFetchedAt: string | null;
@@ -163,7 +167,12 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
   const result = await db.execute(sql`SELECT p.id::int AS "playerId",p.canonical_name AS name,
     p.position,p.team_abbrev AS team,p.rookie,p.bye_week AS "byeWeek",
     p.injury_status AS "injuryStatus",r.overall_rank AS ecr,r.position_rank AS "positionRank",
-    r.our_rank AS "ourRank",r.tier,r.adp,r.projected_points AS "projectedPoints",
+    r.our_rank AS "ourRank",r.tier,r.adp,
+    (r.source_row->'adp'->>'stdev')::double precision AS "adpStdev",
+    (r.source_row->'adp'->>'high')::double precision AS "adpHigh",
+    (r.source_row->'adp'->>'low')::double precision AS "adpLow",
+    (r.source_row->'adp'->>'times_drafted')::int AS "adpSampleSize",
+    r.projected_points AS "projectedPoints",
     fp.projected_points AS "fantasyProsProjectedPoints",
     fp.fetched_at::text AS "fantasyProsProjectionFetchedAt",
     fp.source_updated_at::text AS "fantasyProsProjectionUpdatedAt",
