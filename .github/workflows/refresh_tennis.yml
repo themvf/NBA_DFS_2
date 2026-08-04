@@ -107,6 +107,15 @@ jobs:
         if: inputs.debug_thesportsdb == true
         run: python -m ingest.tennis_results_thesportsdb --debug
 
+      - name: Capture Polymarket tennis match prices
+        continue-on-error: true
+        run: python -m ingest.polymarket_tennis --matches-only
+
+      - name: Capture Polymarket tennis futures (weekly)
+        if: github.event.schedule == '0 6 * * 1' || inputs.rebuild_ratings == true
+        continue-on-error: true
+        run: python -m ingest.polymarket_tennis --futures-only
+
       - name: Refresh provider-covered Tennis odds (both tours)
         run: |
           if [ -n "${{ inputs.date }}" ]; then

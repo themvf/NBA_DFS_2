@@ -3055,6 +3055,28 @@ INDEXES = [
         stars SMALLINT
     )""",
     "CREATE INDEX IF NOT EXISTS idx_tennis_bet_snapshots_bet ON tennis_bet_snapshots(bet_id, captured_at DESC)",
+
+    # ── Polymarket tennis futures (tournament winners, year-end rankings) ──
+    # Captured from Polymarket's free Gamma API (no auth). Each row is one
+    # player's implied probability for a futures-type outcome (outright winner,
+    # ranking). Match-winner prices go into game_odds_history instead.
+    """
+    CREATE TABLE IF NOT EXISTS polymarket_tennis_futures (
+        id SERIAL PRIMARY KEY,
+        tour TEXT NOT NULL,
+        event_title TEXT NOT NULL,
+        event_slug TEXT NOT NULL,
+        market_question TEXT NOT NULL,
+        player_name TEXT NOT NULL,
+        poly_prob DOUBLE PRECISION NOT NULL,
+        poly_yes_price DOUBLE PRECISION,
+        poly_no_price DOUBLE PRECISION,
+        total_markets INTEGER,
+        captured_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(event_slug, player_name, captured_at)
+    )
+    """,
+
     # 2026-07-02: sharp line-movement ALERTS — an auditable ledger, not a toast.
     # Each row freezes the trigger-time market state (first breach only —
     # ON CONFLICT DO NOTHING; escalations never rewrite history), then gets
