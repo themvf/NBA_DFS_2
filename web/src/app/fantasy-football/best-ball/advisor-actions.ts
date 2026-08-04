@@ -1,7 +1,7 @@
 "use server";
 
 import { createHash } from "node:crypto";
-import { getFantasyRankings } from "@/db/queries-fantasy-football";
+import { getFantasyRankings, getTeammateCorrelations } from "@/db/queries-fantasy-football";
 import {
   buildBestBallAdvisorSnapshot,
   enrichBestBallAdvisorResult,
@@ -81,7 +81,8 @@ export async function requestBestBallAdvice(input: BestBallAdvisorRequest): Prom
       .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
       .slice(0, 260);
     if (!rankings.length) return { ok: false, message: "This ranking snapshot has no eligible Best Ball players." };
-    const snapshot = buildBestBallAdvisorSnapshot(rankings, input);
+    const correlations = await getTeammateCorrelations(rankings.map((player) => player.playerId));
+    const snapshot = buildBestBallAdvisorSnapshot(rankings, input, correlations);
     if (snapshot.draft.completed) return { ok: false, message: "The draft is complete." };
     if (snapshot.candidates.length < 3) return { ok: false, message: "Fewer than three legal candidates remain." };
 

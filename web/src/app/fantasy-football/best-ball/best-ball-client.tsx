@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
+import type { FantasyRankingRow, TeammateCorrelationRow } from "@/db/queries-fantasy-football";
 import type { BestBallAdvisorProvider } from "@/lib/fantasy-football/ai-draft-advisor";
+import { buildRosterCorrelationBadges } from "@/lib/fantasy-football/teammate-correlation-badge";
 import {
   BEST_BALL_POSITIONS,
   BEST_BALL_ROUNDS,
@@ -84,7 +85,7 @@ function useBestBallDraft(storageKey: string) {
   return { draft, updateDraft };
 }
 
-export default function BestBallClient({ rankings, rankingSetId, advisorAvailability }: { rankings: FantasyRankingRow[]; rankingSetId: number; advisorAvailability: Record<BestBallAdvisorProvider, boolean> }) {
+export default function BestBallClient({ rankings, rankingSetId, advisorAvailability, correlations }: { rankings: FantasyRankingRow[]; rankingSetId: number; advisorAvailability: Record<BestBallAdvisorProvider, boolean>; correlations: TeammateCorrelationRow[] }) {
   const storageKey = `dfs-vegas:dk-best-ball-draft:v2:${rankingSetId}`;
   const [viewTeam, setViewTeam] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<"players" | "results">("players");
@@ -126,6 +127,16 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
     updateDraft((latest) => latest.userSlot === userSlot ? latest : { ...latest, userSlot });
     setViewTeam(null);
   };
+
+  // Always the user's own roster (draft.userSlot), not whichever team is
+  // currently on the clock or being reviewed -- the chip is a hint for the
+  // user's own build, not an analysis of bot rosters.
+  const myRosterIds = useMemo(() => (rosters.get(draft.userSlot) ?? []).map((player) => player.playerId), [rosters, draft.userSlot]);
+  const nameById = useMemo(() => new Map(rankings.map((player) => [player.playerId, player.name])), [rankings]);
+  const correlationBadges = useMemo(
+    () => buildRosterCorrelationBadges(rankings, myRosterIds, correlations, nameById),
+    [rankings, myRosterIds, correlations, nameById],
+  );
 
   const canDraftPosition = useMemo<Record<BestBallPosition, boolean>>(() => ({
     QB: Boolean(currentSlot) && currentStatus.size < 20 && currentStatus.counts.QB < 5,
@@ -182,7 +193,7 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
 
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><b>Current ranking basis:</b> the top 260 eligible players from our season-long PPR board plus current ADP. The DraftKings yardage bonuses, weekly spike distributions, player correlations, and Weeks 15–17 matchups are not yet incorporated into the rank.</section>
 
-    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPosition={canDraftPosition} onDraft={draftPlayer} />
+    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPosition={canDraftPosition} onDraft={draftPlayer} correlationBadges={correlationBadges} />
     </>}
   </div>;
 }

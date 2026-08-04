@@ -1928,6 +1928,21 @@ TABLES = [
         fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(player_id, season, source)
     )""",
+    """CREATE TABLE IF NOT EXISTS ff_teammate_correlations (
+        id BIGSERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        player_a_id BIGINT NOT NULL REFERENCES ff_players(id),
+        player_b_id BIGINT NOT NULL REFERENCES ff_players(id),
+        team_abbrev TEXT NOT NULL,
+        relationship_type TEXT NOT NULL,
+        sample_weeks INTEGER NOT NULL,
+        raw_correlation DOUBLE PRECISION,
+        prior_correlation DOUBLE PRECISION NOT NULL,
+        shrunk_correlation DOUBLE PRECISION NOT NULL,
+        shrinkage_weight DOUBLE PRECISION NOT NULL,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season, player_a_id, player_b_id)
+    )""",
     """CREATE TABLE IF NOT EXISTS ff_player_indicators (
         id BIGSERIAL PRIMARY KEY,
         ranking_set_id BIGINT NOT NULL REFERENCES ff_ranking_sets(id) ON DELETE CASCADE,

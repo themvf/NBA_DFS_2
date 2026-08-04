@@ -8,6 +8,8 @@ import { filterFantasyRankings } from "../src/lib/fantasy-football/ranking-filte
 import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 import { buildProjectionExplanation } from "../src/lib/fantasy-football/projection-explanation";
 import { buildBestBallDraftBoard, canAddBestBallPlayer, getBestBallRosterStatus, parseBestBallDraftState } from "../src/lib/fantasy-football/best-ball";
+import { buildRosterCorrelationBadges } from "../src/lib/fantasy-football/teammate-correlation-badge";
+import type { TeammateCorrelationRow } from "../src/db/queries-fantasy-football";
 import {
   bestBallAdvisorDraftSignature,
   buildBestBallAdvisorProviderSnapshot,
@@ -221,6 +223,32 @@ assert.notEqual(
   bestBallAdvisorDraftSignature({ rankingSetId: 42, userSlot: 2, playerIds: [1, 2] }),
   bestBallAdvisorDraftSignature({ rankingSetId: 42, userSlot: 2, playerIds: [1, 2, 3] }),
 );
+const correlationRankings = [
+  { playerId: 1, name: "Josh Allen", position: "QB", team: "BUF" },
+  { playerId: 2, name: "Keon Coleman", position: "WR", team: "BUF" },
+  { playerId: 3, name: "Khalil Shakir", position: "WR", team: "BUF" },
+  { playerId: 4, name: "Bijan Robinson", position: "RB", team: "ATL" },
+] as FantasyRankingRow[];
+const correlationRows: TeammateCorrelationRow[] = [
+  { playerAId: 1, playerBId: 2, relationshipType: "QB_WR", sampleWeeks: 13, shrunkCorrelation: 0.38 },
+  { playerAId: 1, playerBId: 3, relationshipType: "QB_WR", sampleWeeks: 13, shrunkCorrelation: 0.05 },
+];
+const rosterBadges = buildRosterCorrelationBadges(correlationRankings, [1], correlationRows, new Map(correlationRankings.map((player) => [player.playerId, player.name])));
+assert.equal(rosterBadges.size, 1);
+assert.equal(rosterBadges.get(2)?.code, "TEAMMATE_STACK");
+assert.equal(rosterBadges.get(2)?.label, "+0.38 w/ Allen");
+assert.equal(rosterBadges.has(3), false); // 0.05 is below the 0.15 threshold
+assert.equal(rosterBadges.has(1), false); // never badges a player already on the roster
+assert.equal(buildRosterCorrelationBadges(correlationRankings, [], correlationRows, new Map()).size, 0);
+const negativeBadges = buildRosterCorrelationBadges(
+  correlationRankings,
+  [4],
+  [{ playerAId: 2, playerBId: 4, relationshipType: "RB_WR", sampleWeeks: 8, shrunkCorrelation: -0.22 }],
+  new Map(correlationRankings.map((player) => [player.playerId, player.name])),
+);
+assert.equal(negativeBadges.get(2)?.code, "TEAMMATE_OFFSET");
+assert.equal(negativeBadges.get(2)?.label, "-0.22 w/ Robinson");
+
 const advisorActionSource = readFileSync(new URL("../src/app/fantasy-football/best-ball/advisor-actions.ts", import.meta.url), "utf8");
 assert.doesNotMatch(advisorActionSource, /NEXT_PUBLIC_(OPENAI|DEEPSEEK)/);
 const advisorEnvSource = readFileSync(new URL("../src/lib/fantasy-football/ai-draft-advisor-env.ts", import.meta.url), "utf8");
