@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   bestBallAdvisorDraftSignature,
   type BestBallAdvisorProvider,
@@ -110,6 +110,9 @@ export default function BestBallAiAdvisor({
 }) {
   const signature = bestBallAdvisorDraftSignature({ rankingSetId, userSlot, playerIds });
   const signatureRef = useRef(signature);
+  useEffect(() => {
+    signatureRef.current = signature;
+  }, [signature]);
   const [states, setStates] = useState<Record<BestBallAdvisorProvider, ProviderState>>({
     openai: EMPTY_STATE,
     deepseek: EMPTY_STATE,
@@ -119,7 +122,13 @@ export default function BestBallAiAdvisor({
     const requestedSignature = signature;
     setStates((current) => ({ ...current, [provider]: { ...current[provider], loading: true, error: null } }));
     const response = await requestBestBallAdvice({ provider, rankingSetId, userSlot, playerIds });
-    if (signatureRef.current !== requestedSignature) return;
+    if (signatureRef.current !== requestedSignature) {
+      // The draft moved on while this request was in flight -- discard the
+      // now-stale response, but still clear loading so the button doesn't
+      // stay stuck on "Analyzing..." forever.
+      setStates((current) => ({ ...current, [provider]: { ...current[provider], loading: false } }));
+      return;
+    }
     setStates((current) => ({
       ...current,
       [provider]: response.ok
