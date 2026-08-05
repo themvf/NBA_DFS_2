@@ -208,6 +208,93 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
   return queryRows<FantasyRankingRow>(result);
 }
 
+export type FantasyAdpMover = {
+  playerId: number;
+  name: string;
+  position: string;
+  team: string | null;
+  currentAdp: number;
+  baselineAdp: number;
+  // positive = riser (ADP went down, i.e. drafted earlier / more valued now)
+  delta: number;
+  latestCapturedAt: string;
+  baselineCapturedAt: string;
+};
+
+export type FantasyAdpMovers = {
+  risers: FantasyAdpMover[];
+  fallers: FantasyAdpMover[];
+  sinceHours: number;
+  latestCapturedAt: string | null;
+  earliestCapturedAt: string | null;
+  hasEnoughHistory: boolean;
+};
+
+// Risers/fallers over `sinceHours` -- compares each player's latest captured
+// ADP against the closest snapshot at or before (now - sinceHours). Captures
+// come from ingest/ff_adp_snapshot.py on a 12-hour cadence
+// (.github/workflows/refresh_ff_adp_snapshot.yml); ff_player_rankings.adp
+// alone has no history, it's overwritten on every board rebuild.
+export async function getFantasyAdpMovers(
+  season: number,
+  scoring: string,
+  sinceHours: number,
+  limit = 15,
+): Promise<FantasyAdpMovers> {
+  await ensureFantasyFootballTables();
+  const cutoff = new Date(Date.now() - sinceHours * 60 * 60 * 1000).toISOString();
+  const [moversResult, rangeResult] = await Promise.all([
+    db.execute(sql`WITH latest AS (
+        SELECT DISTINCT ON (player_id) player_id, adp, captured_at
+        FROM ff_adp_snapshots
+        WHERE season=${season} AND scoring=${scoring}
+        ORDER BY player_id, captured_at DESC
+      ), baseline AS (
+        SELECT DISTINCT ON (player_id) player_id, adp AS baseline_adp, captured_at AS baseline_captured_at
+        FROM ff_adp_snapshots
+        WHERE season=${season} AND scoring=${scoring} AND captured_at <= ${cutoff}::timestamptz
+        ORDER BY player_id, captured_at DESC
+      )
+      SELECT p.id::int AS "playerId",p.canonical_name AS name,p.position,p.team_abbrev AS team,
+        l.adp AS "currentAdp",b.baseline_adp AS "baselineAdp",
+        (b.baseline_adp - l.adp) AS delta,
+        l.captured_at::text AS "latestCapturedAt",b.baseline_captured_at::text AS "baselineCapturedAt"
+      FROM latest l
+      JOIN baseline b ON b.player_id=l.player_id AND b.baseline_captured_at < l.captured_at
+      JOIN ff_players p ON p.id=l.player_id
+      ORDER BY delta DESC`),
+    db.execute(sql`SELECT MIN(captured_at)::text AS "earliestCapturedAt",MAX(captured_at)::text AS "latestCapturedAt"
+      FROM ff_adp_snapshots WHERE season=${season} AND scoring=${scoring}`),
+  ]);
+  const rows = queryRows<FantasyAdpMover>(moversResult);
+  const range = queryRows<{ earliestCapturedAt: string | null; latestCapturedAt: string | null }>(rangeResult)[0];
+  return {
+    risers: rows.filter((row) => row.delta > 0).slice(0, limit),
+    fallers: rows.filter((row) => row.delta < 0).slice(-limit).reverse(),
+    sinceHours,
+    latestCapturedAt: range?.latestCapturedAt ?? null,
+    earliestCapturedAt: range?.earliestCapturedAt ?? null,
+    hasEnoughHistory: rows.length > 0,
+  };
+}
+
+export type FantasyAdpSnapshotHealth = {
+  scoring: string;
+  snapshotRows: number;
+  captureRuns: number;
+  earliestCapturedAt: string | null;
+  latestCapturedAt: string | null;
+};
+
+export async function getFantasyAdpSnapshotHealth(season: number): Promise<FantasyAdpSnapshotHealth[]> {
+  await ensureFantasyFootballTables();
+  const result = await db.execute(sql`SELECT scoring,COUNT(*)::int AS "snapshotRows",
+      COUNT(DISTINCT captured_at)::int AS "captureRuns",
+      MIN(captured_at)::text AS "earliestCapturedAt",MAX(captured_at)::text AS "latestCapturedAt"
+    FROM ff_adp_snapshots WHERE season=${season} GROUP BY scoring ORDER BY scoring`);
+  return queryRows<FantasyAdpSnapshotHealth>(result);
+}
+
 export type DraftBoardSlot = {
   overallPick: number;
   round: number;

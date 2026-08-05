@@ -2013,6 +2013,27 @@ TABLES = [
         PRIMARY KEY(draft_id, player_id),
         CHECK(preference IN ('target', 'fade', 'exclude'))
     )""",
+    # Append-only ADP time series, captured independently of the full board
+    # rebuild (ingest/ff_adp_snapshot.py) on a 12-hour cadence so risers/fallers
+    # can be measured -- ff_player_rankings.adp is overwritten on every rebuild
+    # and was never a history. captured_at is floored to the nearest 12-hour
+    # UTC boundary so re-running within the same window is idempotent (upsert,
+    # not a new row) rather than accumulating near-duplicate timestamps.
+    """CREATE TABLE IF NOT EXISTS ff_adp_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE,
+        season INTEGER NOT NULL,
+        scoring TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL,
+        source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id),
+        adp DOUBLE PRECISION NOT NULL,
+        adp_stdev DOUBLE PRECISION,
+        adp_high DOUBLE PRECISION,
+        adp_low DOUBLE PRECISION,
+        times_drafted INTEGER,
+        UNIQUE(player_id, scoring, captured_at),
+        CHECK(scoring IN ('STD', 'HALF', 'PPR'))
+    )""",
 ]
 
 MIGRATIONS = [
@@ -2873,6 +2894,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_indicators_player ON ff_player_indicators(ranking_set_id, player_id)",
     "CREATE INDEX IF NOT EXISTS idx_ff_drafts_recent ON ff_draft_sessions(updated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_events_active ON ff_draft_events(draft_id, overall_pick, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_player ON ff_adp_snapshots(player_id, scoring, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_captured ON ff_adp_snapshots(season, scoring, captured_at DESC)",
     # Tennis canonical/history/quote foundation (SCRUM-20)
     "CREATE INDEX IF NOT EXISTS idx_tennis_players_tour_name ON tennis_players(tour, norm_name)",
     "CREATE INDEX IF NOT EXISTS idx_tennis_aliases_lookup ON tennis_player_aliases(provider, tour, norm_name)",
