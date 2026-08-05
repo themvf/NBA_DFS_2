@@ -28,9 +28,14 @@ const FANTASY_FOOTBALL_DDLS = [
   `CREATE TABLE IF NOT EXISTS ff_draft_slots (id BIGSERIAL PRIMARY KEY, draft_id UUID NOT NULL REFERENCES ff_draft_sessions(id) ON DELETE CASCADE, overall_pick INTEGER NOT NULL, round INTEGER NOT NULL, pick_in_round INTEGER NOT NULL, draft_team_id BIGINT NOT NULL REFERENCES ff_draft_teams(id), UNIQUE(draft_id, overall_pick))`,
   `CREATE TABLE IF NOT EXISTS ff_draft_events (id BIGSERIAL PRIMARY KEY, draft_id UUID NOT NULL REFERENCES ff_draft_sessions(id) ON DELETE CASCADE, event_type TEXT NOT NULL, overall_pick INTEGER, player_id BIGINT REFERENCES ff_players(id), draft_team_id BIGINT REFERENCES ff_draft_teams(id), source TEXT NOT NULL, external_pick_id TEXT, reverses_event_id BIGINT REFERENCES ff_draft_events(id), payload JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
   `CREATE TABLE IF NOT EXISTS ff_draft_player_preferences (draft_id UUID NOT NULL REFERENCES ff_draft_sessions(id) ON DELETE CASCADE, player_id BIGINT NOT NULL REFERENCES ff_players(id), preference TEXT NOT NULL, note TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(draft_id, player_id))`,
+  // Append-only ADP time series -- see db/schema.py for the canonical definition
+  // and ingest/ff_adp_snapshot.py for the 12-hour capture job.
+  `CREATE TABLE IF NOT EXISTS ff_adp_snapshots (id BIGSERIAL PRIMARY KEY, player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE, season INTEGER NOT NULL, scoring TEXT NOT NULL, captured_at TIMESTAMPTZ NOT NULL, source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id), adp DOUBLE PRECISION NOT NULL, adp_stdev DOUBLE PRECISION, adp_high DOUBLE PRECISION, adp_low DOUBLE PRECISION, times_drafted INTEGER, UNIQUE(player_id, scoring, captured_at))`,
   `CREATE INDEX IF NOT EXISTS idx_ff_rank_sets_latest ON ff_ranking_sets(season, ranking_type, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_rankings_board ON ff_player_rankings(ranking_set_id, COALESCE(our_rank, overall_rank))`,
   `CREATE INDEX IF NOT EXISTS idx_ff_drafts_recent ON ff_draft_sessions(updated_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_player ON ff_adp_snapshots(player_id, scoring, captured_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_captured ON ff_adp_snapshots(season, scoring, captured_at DESC)`,
 ];
 
 // Columns added to dk_slates / dk_players after the initial table creation.

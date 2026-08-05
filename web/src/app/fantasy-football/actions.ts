@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ensureFantasyFootballTables } from "@/db/ensure-schema";
 import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
+import { getFantasyPercentileProfile, type FantasyPercentileProfile } from "@/db/queries-fantasy-football";
 
 const DEFAULT_ROSTER = { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DST: 1, BN: 6 };
 
@@ -91,5 +92,22 @@ export async function undoFantasyPick(input: { draftId: string; revision: number
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Undo failed" };
+  }
+}
+
+// Fetched lazily when a percentile-profile chip is expanded, not baked into
+// every rankings-table row -- computing this against the full RB/WR/TE pool
+// is cheap per-call but unnecessary for players nobody looks at.
+export async function fetchFantasyPercentileProfile(
+  input: { playerId: number; season: number; scoring: string },
+): Promise<{ ok: true; profile: FantasyPercentileProfile } | { ok: false; error: string }> {
+  if (!Number.isInteger(input.playerId) || input.playerId <= 0) return { ok: false, error: "Invalid player." };
+  if (!Number.isInteger(input.season)) return { ok: false, error: "Invalid season." };
+  try {
+    const profile = await getFantasyPercentileProfile(input.playerId, input.season, input.scoring);
+    if (!profile) return { ok: false, error: "Player not found." };
+    return { ok: true, profile };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Failed to load percentile profile." };
   }
 }

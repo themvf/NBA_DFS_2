@@ -1,0 +1,34 @@
+name: Refresh Fantasy Football ADP Snapshot
+
+on:
+  schedule:
+    # Every 12 hours during the NFL draft season -- ADP-only, much lighter
+    # than the full board rebuild (fantasy_football_refresh.yml), so this can
+    # run independently on a tighter cadence to build real ADP history.
+    - cron: "7 0,12 * 7-9 *"
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "NFL season"
+        required: false
+        default: "2026"
+        type: string
+
+concurrency:
+  group: fantasy-football-adp-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Capture Fantasy Football Calculator ADP (STD/HALF/PPR)
+        run: python -m ingest.ff_adp_snapshot --season "${{ inputs.season || '2026' }}"

@@ -15,7 +15,8 @@ import {
   type BestBallDraftState,
   type BestBallPosition,
 } from "@/lib/fantasy-football/best-ball";
-import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
+import { buildSnakeSlots, nextControlledPick } from "@/lib/fantasy-football/draft-engine";
+import { computeAvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import BestBallDraftBoard from "./best-ball-draft-board";
 import BestBallPlayerBoard from "./best-ball-player-board";
 import BestBallAiAdvisor from "./best-ball-ai-advisor";
@@ -93,6 +94,21 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
   const playerById = useMemo(() => new Map(rankings.map((player) => [player.playerId, player])), [rankings]);
   const currentSlot = DRAFT_SLOTS[draft.playerIds.length] ?? null;
   const currentTeamSlot = currentSlot?.teamSlot ?? null;
+  const targetOverallPick = currentSlot
+    ? nextControlledPick(currentSlot.overallPick, draft.userSlot, BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS)
+    : null;
+  // Reference-only in this self-play room (the user picks for every team, so
+  // there's no real opponent uncertainty) -- still useful ADP context while
+  // drafting the other 11 teams, and it's the same signal the AI advisors use.
+  const availabilityByPlayerId = useMemo(() => new Map(rankings.map((player) => [
+    player.playerId,
+    currentSlot && targetOverallPick !== null
+      ? computeAvailabilityOdds(
+        { adp: player.adp, adpStdev: player.adpStdev, adpSampleSize: player.adpSampleSize },
+        { currentPick: currentSlot.overallPick, targetPick: targetOverallPick, teamCount: BEST_BALL_TEAM_COUNT },
+      )
+      : null,
+  ])), [rankings, currentSlot, targetOverallPick]);
 
   const rosters = useMemo(() => {
     const result = new Map<number, FantasyRankingRow[]>();
@@ -193,7 +209,7 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
 
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><b>Current ranking basis:</b> the top 260 eligible players from our season-long PPR board plus current ADP. The DraftKings yardage bonuses, weekly spike distributions, player correlations, and Weeks 15–17 matchups are not yet incorporated into the rank.</section>
 
-    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPosition={canDraftPosition} onDraft={draftPlayer} correlationBadges={correlationBadges} />
+    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPosition={canDraftPosition} onDraft={draftPlayer} availabilityByPlayerId={availabilityByPlayerId} correlationBadges={correlationBadges} />
     </>}
   </div>;
 }
