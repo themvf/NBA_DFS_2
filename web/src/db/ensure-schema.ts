@@ -31,11 +31,16 @@ const FANTASY_FOOTBALL_DDLS = [
   // Append-only ADP time series -- see db/schema.py for the canonical definition
   // and ingest/ff_adp_snapshot.py for the 12-hour capture job.
   `CREATE TABLE IF NOT EXISTS ff_adp_snapshots (id BIGSERIAL PRIMARY KEY, player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE, season INTEGER NOT NULL, scoring TEXT NOT NULL, captured_at TIMESTAMPTZ NOT NULL, source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id), adp DOUBLE PRECISION NOT NULL, adp_stdev DOUBLE PRECISION, adp_high DOUBLE PRECISION, adp_low DOUBLE PRECISION, times_drafted INTEGER, UNIQUE(player_id, scoring, captured_at))`,
+  // DraftKings' own Best Ball ADP -- manual, cookie-gated capture, see
+  // db/schema.py and ingest/ff_dk_bestball_adp.py for the full contract.
+  `CREATE TABLE IF NOT EXISTS ff_dk_bestball_adp (id BIGSERIAL PRIMARY KEY, draft_group_id INTEGER NOT NULL, season INTEGER NOT NULL, dk_player_id BIGINT NOT NULL, player_id BIGINT REFERENCES ff_players(id) ON DELETE SET NULL, display_name TEXT NOT NULL, dk_team_id INTEGER, average_draft_position DOUBLE PRECISION, draft_percentage DOUBLE PRECISION, rank INTEGER, is_available BOOLEAN NOT NULL DEFAULT TRUE, captured_at TIMESTAMPTZ NOT NULL, source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id), UNIQUE(draft_group_id, dk_player_id, captured_at))`,
   `CREATE INDEX IF NOT EXISTS idx_ff_rank_sets_latest ON ff_ranking_sets(season, ranking_type, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_rankings_board ON ff_player_rankings(ranking_set_id, COALESCE(our_rank, overall_rank))`,
   `CREATE INDEX IF NOT EXISTS idx_ff_drafts_recent ON ff_draft_sessions(updated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_player ON ff_adp_snapshots(player_id, scoring, captured_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_captured ON ff_adp_snapshots(season, scoring, captured_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_dk_bestball_adp_group ON ff_dk_bestball_adp(draft_group_id, captured_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_dk_bestball_adp_player ON ff_dk_bestball_adp(player_id, captured_at DESC)`,
 ];
 
 // Columns added to dk_slates / dk_players after the initial table creation.
