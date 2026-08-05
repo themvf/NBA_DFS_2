@@ -189,7 +189,10 @@ function captureAge(value: string | null, nowIso: string): { text: string; class
 // Shows vig-free home probability at specific ET times throughout the day.
 // Finds the nearest capture within ±20 min of each target; null if none.
 const SNAPSHOT_TIMES_ET = [
-  { label: "9am", hour: 9, minute: 0 },
+  // 10am, not 9am: the capture cron (.github/workflows/capture_odds_history.yml)
+  // deliberately starts at 10 AM ET (covers the earliest MLB first pitch,
+  // ~11:35 AM ET, with margin) — a 9am checkpoint could never populate.
+  { label: "10am", hour: 10, minute: 0 },
   { label: "1:10p", hour: 13, minute: 10 },
   { label: "6:20p", hour: 18, minute: 20 },
   { label: "6:50p", hour: 18, minute: 50 },
@@ -499,7 +502,7 @@ export default function MlbVegasClient({
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-[1820px] w-full text-xs">
             <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500">
-              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th><th className="px-2 py-3 text-center">9am</th><th className="px-2 py-3 text-center">1:10p</th><th className="px-2 py-3 text-center">6:20p</th><th className="px-2 py-3 text-center">6:50p</th><th className="px-2 py-3 text-center">7:30p</th><th className="px-2 py-3 text-center">9:20p</th><th className="px-3 py-3 text-right">Pin vs Poly</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
+              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th>{SNAPSHOT_TIMES_ET.map((t) => <th key={t.label} className="px-2 py-3 text-center">{t.label}</th>)}<th className="px-3 py-3 text-right">Pin vs Poly</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
             </thead>
             <tbody>
               {rows.map(({ matchup, movement, signal, alerts, modelSuppressed }) => {
