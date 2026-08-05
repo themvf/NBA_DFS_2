@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.6"
+MODEL_VERSION = "ff-independent-v1.7"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -88,6 +88,74 @@ ROOKIE_RANGE_RATIO = {
     "WR": (0.17, 2.02),
     "TE": (0.19, 1.79),
 }
+
+# --- Schedule-strength adjustment -------------------------------------------
+# Validated 2026-08-05 (see model/ff_schedule_strength_backtest.py): pooled
+# AR(1) fit of an opponent-adjusted defense-vs-position rating on itself one
+# season later, 2023->2024 and 2024->2025 transitions, bootstrap 95% CI on
+# the slope. Only RB cleared the pre-registered bar (CI [0.15, 0.54],
+# R^2=0.12). QB (CI [-0.21, 0.36]), WR (CI [-0.28, 0.15], negative point
+# estimate), and TE (CI [-0.13, 0.63]) showed no significant year-over-year
+# persistence and are deliberately NOT included -- see CLAUDE.md "Fantasy
+# Football Schedule Strength" for the full writeup and the honest
+# small-sample caveat (n=64 team-position pairs per position across only 2
+# transitions). Revisit with more seasons of data before adding a position
+# here -- do not re-slice a failed position to rescue it.
+SCHEDULE_AR1_COEFFICIENTS: dict[str, tuple[float, float]] = {"RB": (14.681, 0.335)}
+SCHEDULE_ADJUSTED_POSITIONS = set(SCHEDULE_AR1_COEFFICIENTS)
+# Derived from the real, observed 2026 factor distribution (0.983-1.015 once
+# AR(1)-shrunk) rather than hand-picked -- see the backtest history. A little
+# headroom beyond the observed range in case a future season's schedule
+# produces a wider spread than 2026's.
+SCHEDULE_FACTOR_MIN = 0.97
+SCHEDULE_FACTOR_MAX = 1.03
+
+
+def schedule_strength_factor(
+    team: str | None,
+    position: str,
+    scoring: str,
+    schedule_context: dict[str, Any] | None,
+) -> tuple[float, list[dict[str, Any]], str | None]:
+    """Multiplier on a player's projection from the AR(1)-projected quality
+    of the offenses their team's opponents will face them with in
+    `target_season`. Returns (factor, evidence, skip_reason) -- skip_reason
+    is None iff the factor was actually applied; every other return path
+    documents WHY it wasn't (never a silent neutral 1.0), matching this
+    project's "explanation must show its work" convention.
+    """
+    if position not in SCHEDULE_ADJUSTED_POSITIONS:
+        return 1.0, [], f"not_validated_for_{position.lower()}"
+    if not schedule_context or not team:
+        return 1.0, [], "no_schedule_context"
+    opponents = schedule_context.get("opponents", {}).get(team)
+    if not opponents:
+        return 1.0, [], "opponents_not_published"
+    predicted = schedule_context.get("predicted_rating", {})
+    league_avg = schedule_context.get("league_avg", {})
+    evidence: list[dict[str, Any]] = []
+    values: list[float] = []
+    for opponent in opponents:
+        row = predicted.get((opponent, position))
+        if row is None:
+            continue
+        value = row["STD"] if scoring == "STD" else row["PPR"] if scoring == "PPR" else (row["STD"] + row["PPR"]) / 2.0
+        evidence.append({"opponent": opponent, "predicted_fpts_allowed_pg": round(value, 2)})
+        values.append(value)
+    if not values:
+        return 1.0, [], "no_opponent_defense_data"
+    avg_allowed = sum(values) / len(values)
+    if scoring == "HALF":
+        std_denom = league_avg.get((position, "STD"))
+        ppr_denom = league_avg.get((position, "PPR"))
+        denom = (std_denom + ppr_denom) / 2.0 if std_denom and ppr_denom else None
+    else:
+        denom = league_avg.get((position, scoring))
+    if not denom:
+        return 1.0, [], "no_league_average"
+    factor = avg_allowed / denom
+    factor = max(SCHEDULE_FACTOR_MIN, min(SCHEDULE_FACTOR_MAX, factor))
+    return round(factor, 4), evidence, None
 
 
 def _rookie_curve_points(position: str, draft_number: int | None, scoring: str) -> float:
@@ -210,7 +278,13 @@ def normalize_team(value: Any) -> str:
     return TEAM_ABBREV_OVERRIDES.get(team, team)
 
 
-def compute_bye_weeks(schedule: pd.DataFrame, season: int) -> dict[str, int]:
+def build_schedule_context(schedule: pd.DataFrame, season: int) -> dict[str, Any]:
+    """Single source of truth for games played, opponents, and bye weeks --
+    one schedule parse shared by compute_bye_weeks() and the RB schedule-
+    strength feature (ingest/ff_defense_stats.py,
+    model/ff_schedule_strength_backtest.py) instead of two independent,
+    driftable implementations of the same "which weeks did this team play"
+    logic."""
     regular = schedule[(schedule["season"] == season) & (schedule["game_type"] == "REG")].copy()
     regular["home_team"] = regular["home_team"].map(normalize_team)
     regular["away_team"] = regular["away_team"].map(normalize_team)
@@ -218,18 +292,25 @@ def compute_bye_weeks(schedule: pd.DataFrame, season: int) -> dict[str, int]:
         normalize_team(team)
         for team in pd.concat([regular["home_team"], regular["away_team"]]).dropna().unique()
     }
+    games_played: dict[str, int] = {}
+    opponents: dict[str, list[str]] = {}
     bye_weeks: dict[str, int] = {}
     for team in teams:
-        played = set(
-            regular.loc[
-                (regular["home_team"] == team) | (regular["away_team"] == team),
-                "week",
-            ].astype(int)
-        )
+        rows = regular.loc[(regular["home_team"] == team) | (regular["away_team"] == team)]
+        played = set(rows["week"].astype(int))
+        games_played[team] = len(played)
+        opponents[team] = [
+            (row["away_team"] if row["home_team"] == team else row["home_team"])
+            for _, row in rows.iterrows()
+        ]
         missing = sorted(set(range(1, 19)) - played)
         if len(missing) == 1:
             bye_weeks[team] = missing[0]
-    return bye_weeks
+    return {"games_played": games_played, "opponents": opponents, "bye_weeks": bye_weeks}
+
+
+def compute_bye_weeks(schedule: pd.DataFrame, season: int) -> dict[str, int]:
+    return build_schedule_context(schedule, season)["bye_weeks"]
 
 
 def build_adp_lookup(payload: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -504,7 +585,13 @@ def _season_points(history: dict[str, Any], position: str, scoring: str) -> floa
     return std if scoring == "STD" else ppr if scoring == "PPR" else (std + ppr) / 2.0
 
 
-def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scoring: str, target_season: int) -> IndependentProjection:
+def project_player(
+    player: dict[str, Any],
+    histories: list[dict[str, Any]],
+    scoring: str,
+    target_season: int,
+    schedule_context: dict[str, Any] | None = None,
+) -> IndependentProjection:
     position = str(player["position"])
     injury = str(player.get("injury_status") or "").upper()
     depth = as_int(player.get("depth_order"))
@@ -597,6 +684,16 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
         confidence = 0.38 if player.get("rookie") else 0.24
         history_games = 0
 
+    # Schedule-strength applies uniformly across every base-points method
+    # (history regression, rookie curve, rookie/position prior) -- it's a
+    # fact about the TEAM's opponents, independent of whether this specific
+    # player has NFL history yet. Only DST is structurally excluded, since
+    # "DST" is never in SCHEDULE_ADJUSTED_POSITIONS.
+    schedule_factor, schedule_evidence, schedule_skip_reason = schedule_strength_factor(
+        player.get("team"), position, scoring, schedule_context
+    )
+    base_points = base_points * schedule_factor
+
     expected_games_before_injury = expected_games
     base_points_before_injury = base_points
     injury_availability_factor = 1.0
@@ -653,7 +750,14 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             "injury_factor": 1.0,
             "injury_availability_factor": injury_availability_factor,
             "availability_adjustment_applied_to_baseline": False,
-            "not_modeled": ["current teammates", "offensive line", "coaching/play-caller", "future schedule"],
+            "schedule_strength_factor": schedule_factor,
+            "schedule_strength_evidence": schedule_evidence,
+            "schedule_strength_skip_reason": schedule_skip_reason,
+            "schedule_strength_applied": schedule_skip_reason is None,
+            "not_modeled": [
+                "current teammates", "offensive line", "coaching/play-caller",
+                *(["future schedule"] if schedule_skip_reason is not None else []),
+            ],
             "market_data_used": False,
         },
     )
@@ -685,6 +789,52 @@ def rank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return ordered
 
 
+def build_schedule_strength_context(
+    db: RefreshDatabase, target_season: int, opponents: dict[str, list[str]],
+) -> dict[str, Any]:
+    """RB-only schedule-strength context: an AR(1)-projected defense rating
+    per team for `target_season`, derived from (target_season - 1)'s
+    opponent-adjusted rating via the frozen SCHEDULE_AR1_COEFFICIENTS (see
+    the constant's docstring-comment for the validation this is built on).
+
+    Returns {} -- feature silently disabled, never a fabricated neutral
+    factor -- if `ingest.ff_defense_stats` hasn't populated the source
+    season yet. schedule_strength_factor() handles an empty context by
+    skipping with reason="no_schedule_context"; it never guesses a value.
+    """
+    positions = list(SCHEDULE_ADJUSTED_POSITIONS)
+    if not positions:
+        return {}
+    rows = db.execute(
+        """SELECT team_abbrev, position, fpts_allowed_std_pg_adj, fpts_allowed_ppr_pg_adj
+           FROM nfl_defense_vs_position WHERE season=%s AND position = ANY(%s)""",
+        (target_season - 1, positions),
+    )
+    if not rows:
+        return {}
+    predicted: dict[tuple[str, str], dict[str, float]] = {}
+    for row in rows:
+        position = str(row["position"])
+        b0, b1 = SCHEDULE_AR1_COEFFICIENTS[position]
+        predicted[(str(row["team_abbrev"]), position)] = {
+            "STD": b0 + b1 * float(row["fpts_allowed_std_pg_adj"]),
+            "PPR": b0 + b1 * float(row["fpts_allowed_ppr_pg_adj"]),
+        }
+    league_avg: dict[tuple[str, str], float] = {}
+    for position in positions:
+        for key in ("STD", "PPR"):
+            values = [v[key] for (team, pos), v in predicted.items() if pos == position]
+            if values:
+                league_avg[(position, key)] = sum(values) / len(values)
+    return {
+        "opponents": opponents,
+        "predicted_rating": predicted,
+        "league_avg": league_avg,
+        "source_season": target_season - 1,
+        "teams_covered": len({team for team, _ in predicted}),
+    }
+
+
 def create_ranking_set(
     db: RefreshDatabase,
     *,
@@ -694,6 +844,7 @@ def create_ranking_set(
     universe: list[dict[str, Any]],
     histories: dict[int, list[dict[str, Any]]],
     adp_lookup: dict[tuple[str, str], dict[str, Any]],
+    schedule_context: dict[str, Any] | None = None,
 ) -> int:
     existing = db.execute_one(
         """SELECT rs.id,COUNT(pr.id)::int AS player_count FROM ff_ranking_sets rs
@@ -732,7 +883,9 @@ def create_ranking_set(
 
     model_rows: list[dict[str, Any]] = []
     for player in universe:
-        projection = project_player(player, histories.get(int(player["player_id"]), []), scoring, season)
+        projection = project_player(
+            player, histories.get(int(player["player_id"]), []), scoring, season, schedule_context,
+        )
         adp_key = (
             (str(player.get("team") or ""), "DST")
             if player["position"] == "DST"
@@ -791,9 +944,11 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     schedule, schedule_digest = _fetch_csv(NFLVERSE_SCHEDULE_URL)
     if len(sleeper_payload) < 1000 or len(roster) < 500:
         raise RuntimeError("Independent player-universe source returned suspiciously few rows")
-    bye_weeks = compute_bye_weeks(schedule, season)
+    schedule_ctx = build_schedule_context(schedule, season)
+    bye_weeks = schedule_ctx["bye_weeks"]
     if len(bye_weeks) != 32:
         raise RuntimeError(f"Expected 32 schedule-derived bye weeks for {season}; found {len(bye_weeks)}")
+    schedule_strength_context = build_schedule_strength_context(db, season, schedule_ctx["opponents"])
     _snapshot(
         db, source="sleeper", dataset="players", season=season, digest=sleeper_digest,
         row_count=len(sleeper_payload), params={"url": SLEEPER_URL, "canonical": False},
@@ -872,6 +1027,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         create_ranking_set(
             db, season=season, scoring=scoring, source_snapshot_id=board_snapshot_id,
             universe=universe, histories=histories, adp_lookup=adp_lookups[scoring],
+            schedule_context=schedule_strength_context,
         )
         for scoring in SCORING_TYPES
     ]
@@ -885,6 +1041,9 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         "bye_weeks": len(bye_weeks),
         "adp_coverage": {scoring: len(lookup) for scoring, lookup in adp_lookups.items()},
         "adp_used_for_projection": False,
+        "schedule_strength_positions": sorted(SCHEDULE_ADJUSTED_POSITIONS),
+        "schedule_strength_source_season": schedule_strength_context.get("source_season"),
+        "schedule_strength_teams_covered": schedule_strength_context.get("teams_covered", 0),
     }
 
 

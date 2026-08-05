@@ -1,0 +1,92 @@
+{
+  "transitions": [
+    "2023->2024",
+    "2024->2025"
+  ],
+  "min_ci_excludes_zero_required": true,
+  "positions": {
+    "QB": {
+      "raw": {
+        "b0": 15.7899,
+        "b1": 0.0468,
+        "r2": 0.0018,
+        "b1_ci_lo": -0.228,
+        "b1_ci_hi": 0.3839,
+        "n": 64,
+        "significant": false
+      },
+      "adjusted": {
+        "b0": 15.8964,
+        "b1": 0.0403,
+        "r2": 0.0013,
+        "b1_ci_lo": -0.2196,
+        "b1_ci_hi": 0.3622,
+        "n": 64,
+        "significant": false
+      }
+    },
+    "RB": {
+      "raw": {
+        "b0": 16.8313,
+        "b1": 0.2354,
+        "r2": 0.0596,
+        "b1_ci_lo": 0.045,
+        "b1_ci_hi": 0.4463,
+        "n": 64,
+        "significant": true
+      },
+      "adjusted": {
+        "b0": 14.681,
+        "b1": 0.3351,
+        "r2": 0.12,
+        "b1_ci_lo": 0.1452,
+        "b1_ci_hi": 0.5512,
+        "n": 64,
+        "significant": true
+      }
+    },
+    "WR": {
+      "raw": {
+        "b0": 33.5765,
+        "b1": -0.0446,
+        "r2": 0.0022,
+        "b1_ci_lo": -0.2863,
+        "b1_ci_hi": 0.175,
+        "n": 64,
+        "significant": false
+      },
+      "adjusted": {
+        "b0": 34.0759,
+        "b1": -0.0596,
+        "r2": 0.004,
+        "b1_ci_lo": -0.2865,
+        "b1_ci_hi": 0.1594,
+        "n": 64,
+        "significant": false
+      }
+    },
+    "TE": {
+      "raw": {
+        "b0": 9.0182,
+        "b1": 0.3085,
+        "r2": 0.0566,
+        "b1_ci_lo": -0.0748,
+        "b1_ci_hi": 0.6768,
+        "n": 64,
+        "significant": false
+      },
+      "adjusted": {
+        "b0": 9.7602,
+        "b1": 0.2471,
+        "r2": 0.0321,
+        "b1_ci_lo": -0.1206,
+        "b1_ci_hi": 0.6148,
+        "n": 64,
+        "significant": false
+      }
+    }
+  },
+  "applied_positions": [
+    "RB"
+  ]
+}

@@ -1,6 +1,14 @@
 import pandas as pd
 
-from ingest.ff_independent import build_adp_lookup, compute_bye_weeks, normalize_team, project_player, rank_rows
+from ingest.ff_independent import (
+    build_adp_lookup,
+    build_schedule_context,
+    compute_bye_weeks,
+    normalize_team,
+    project_player,
+    rank_rows,
+    schedule_strength_factor,
+)
 
 
 def test_team_abbreviations_match_application_canonicals() -> None:
@@ -82,6 +90,84 @@ def test_rookie_projection_uses_draft_capital_and_depth() -> None:
     assert starter_projection.explanation["role_factor"] == 1.0
     assert starter_projection.low == round(starter_projection.points * 0.62, 2)
     assert starter_projection.high == round(starter_projection.points * 1.42, 2)
+
+
+def _synthetic_schedule_context() -> dict:
+    """Two teams' worth of a schedule-strength context: DAL's RB opponents
+    face a generous predicted rating (25), NE's face a stingy one (15)."""
+    return {
+        "opponents": {"DAL": ["EASY1", "EASY2"], "NE": ["HARD1", "HARD2"]},
+        "predicted_rating": {
+            ("EASY1", "RB"): {"STD": 20.0, "PPR": 25.0},
+            ("EASY2", "RB"): {"STD": 20.0, "PPR": 25.0},
+            ("HARD1", "RB"): {"STD": 12.0, "PPR": 15.0},
+            ("HARD2", "RB"): {"STD": 12.0, "PPR": 15.0},
+        },
+        "league_avg": {("RB", "STD"): 16.0, ("RB", "PPR"): 20.0},
+    }
+
+
+def test_schedule_strength_factor_only_applies_to_rb() -> None:
+    ctx = _synthetic_schedule_context()
+    ctx["opponents"]["DAL"] = ["EASY1", "EASY2"]
+    for position in ("QB", "WR", "TE", "DST"):
+        factor, evidence, skip_reason = schedule_strength_factor("DAL", position, "PPR", ctx)
+        assert factor == 1.0
+        assert evidence == []
+        assert skip_reason == f"not_validated_for_{position.lower()}"
+    factor, evidence, skip_reason = schedule_strength_factor("DAL", "RB", "PPR", ctx)
+    assert skip_reason is None
+    assert len(evidence) == 2
+
+
+def test_schedule_strength_factor_direction_and_clamp() -> None:
+    ctx = _synthetic_schedule_context()
+    easy_factor, _, _ = schedule_strength_factor("DAL", "RB", "PPR", ctx)
+    hard_factor, _, _ = schedule_strength_factor("NE", "RB", "PPR", ctx)
+    assert easy_factor > 1.0 > hard_factor  # generous opponents -> factor above 1, stingy -> below
+    from ingest.ff_independent import SCHEDULE_FACTOR_MAX, SCHEDULE_FACTOR_MIN
+    assert SCHEDULE_FACTOR_MIN <= hard_factor <= easy_factor <= SCHEDULE_FACTOR_MAX
+
+
+def test_schedule_strength_factor_never_silently_defaults() -> None:
+    """Every non-applied path must name why, never a bare neutral 1.0."""
+    factor, evidence, skip_reason = schedule_strength_factor("DAL", "RB", "PPR", None)
+    assert (factor, evidence) == (1.0, [])
+    assert skip_reason == "no_schedule_context"
+    factor, evidence, skip_reason = schedule_strength_factor("UNKNOWN", "RB", "PPR", _synthetic_schedule_context())
+    assert skip_reason == "opponents_not_published"
+
+
+def test_project_player_applies_schedule_factor_for_rb_only() -> None:
+    ctx = _synthetic_schedule_context()
+    history = [{"season": 2025, "games": 17, "fantasy_points_std": 170, "fantasy_points_ppr": 272}]
+    rb = {"position": "RB", "team": "DAL", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+    wr = {"position": "WR", "team": "DAL", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+
+    rb_projection = project_player(rb, history, "PPR", 2026, ctx)
+    assert rb_projection.explanation["schedule_strength_applied"] is True
+    assert rb_projection.explanation["schedule_strength_factor"] > 1.0
+    assert "future schedule" not in rb_projection.explanation["not_modeled"]
+
+    wr_projection = project_player(wr, history, "PPR", 2026, ctx)
+    assert wr_projection.explanation["schedule_strength_applied"] is False
+    assert wr_projection.explanation["schedule_strength_skip_reason"] == "not_validated_for_wr"
+    assert wr_projection.explanation["schedule_strength_factor"] == 1.0
+    assert "future schedule" in wr_projection.explanation["not_modeled"]
+
+
+def test_build_schedule_context_matches_compute_bye_weeks() -> None:
+    """compute_bye_weeks() must keep its exact prior behavior after being
+    refactored to delegate to build_schedule_context()."""
+    rows = []
+    for week in range(1, 19):
+        if week != 11:
+            rows.append({"season": 2026, "game_type": "REG", "week": week, "home_team": "LA", "away_team": "ARI"})
+    schedule = pd.DataFrame(rows)
+    ctx = build_schedule_context(schedule, 2026)
+    assert ctx["bye_weeks"] == compute_bye_weeks(schedule, 2026)
+    assert ctx["games_played"]["LAR"] == 17
+    assert ctx["opponents"]["LAR"] == ["ARI"] * 17
 
 
 def test_rank_rows_uses_value_over_replacement() -> None:

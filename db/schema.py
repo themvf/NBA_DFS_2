@@ -1943,6 +1943,28 @@ TABLES = [
         computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(season, player_a_id, player_b_id)
     )""",
+    # Opponent-quality-adjusted defense-vs-position ratings. Populated for all
+    # 4 tracked positions (QB/RB/WR/TE) for future re-testing, but only RB is
+    # actually applied as a projection factor -- see ingest/ff_defense_stats.py
+    # and model/ff_schedule_strength_backtest.py for the validation. Rank 1 =
+    # allows the FEWEST points (stingiest defense / hardest matchup) --
+    # decided explicitly to avoid a sign-flip bug, never assumed.
+    """CREATE TABLE IF NOT EXISTS nfl_defense_vs_position (
+        id BIGSERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        team_abbrev TEXT NOT NULL,
+        position TEXT NOT NULL,
+        games INTEGER NOT NULL,
+        fpts_allowed_std_pg DOUBLE PRECISION NOT NULL,
+        fpts_allowed_ppr_pg DOUBLE PRECISION NOT NULL,
+        fpts_allowed_std_pg_adj DOUBLE PRECISION NOT NULL,
+        fpts_allowed_ppr_pg_adj DOUBLE PRECISION NOT NULL,
+        rank_std INTEGER NOT NULL,
+        rank_ppr INTEGER NOT NULL,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season, team_abbrev, position),
+        CHECK(position IN ('QB','RB','WR','TE'))
+    )""",
     """CREATE TABLE IF NOT EXISTS ff_player_indicators (
         id BIGSERIAL PRIMARY KEY,
         ranking_set_id BIGINT NOT NULL REFERENCES ff_ranking_sets(id) ON DELETE CASCADE,
