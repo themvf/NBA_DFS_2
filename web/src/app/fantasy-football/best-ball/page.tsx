@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet } from "@/db/queries-fantasy-football";
+import { getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet, getTeammateCorrelations } from "@/db/queries-fantasy-football";
 import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import BestBallClient from "./best-ball-client";
 import { getBestBallAdvisorAvailability } from "@/lib/fantasy-football/ai-draft-advisor-env";
@@ -16,6 +16,7 @@ export default async function BestBallPage() {
   const rankings = allRankings
     .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
     .slice(0, 260);
+  const correlations = await getTeammateCorrelations(rankings.map((player) => player.playerId));
   const fantasyProsProjectionDataset = fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "projections");
   return <div className="space-y-6">
     <header className="overflow-hidden rounded-3xl border bg-gradient-to-br from-blue-950 via-slate-950 to-indigo-950 p-7 text-white shadow-xl">
@@ -57,6 +58,6 @@ export default async function BestBallPage() {
       <div><h2 className="font-bold">Other and clock</h2><p className="mt-2">Return TD +6 · lost fumble −1</p><p>Offensive fumble-recovery TD +6</p><p>Fast pick: 30 sec · slow pick: up to 8 hr</p></div>
     </div></details>
 
-    {!set ? <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">No PPR ranking snapshot is available. Run the Fantasy Football refresh workflow.</div> : <BestBallClient rankings={rankings} rankingSetId={Number(set.id)} advisorAvailability={getBestBallAdvisorAvailability()} />}
+    {!set ? <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">No PPR ranking snapshot is available. Run the Fantasy Football refresh workflow.</div> : <BestBallClient rankings={rankings} rankingSetId={Number(set.id)} advisorAvailability={getBestBallAdvisorAvailability()} correlations={correlations} />}
   </div>;
 }

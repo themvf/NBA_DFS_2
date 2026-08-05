@@ -360,6 +360,26 @@ export const ffPlayerSeasonFeatures = pgTable(
   (t) => [unique("ff_player_features_player_season_source_key").on(t.playerId, t.season, t.source)],
 );
 
+// Python-owned (ingest/ff_teammate_correlation.py) -- read-only from the web app.
+export const ffTeammateCorrelations = pgTable(
+  "ff_teammate_correlations",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    season: integer("season").notNull(),
+    playerAId: bigint("player_a_id", { mode: "number" }).notNull().references(() => ffPlayers.id),
+    playerBId: bigint("player_b_id", { mode: "number" }).notNull().references(() => ffPlayers.id),
+    teamAbbrev: text("team_abbrev").notNull(),
+    relationshipType: text("relationship_type").notNull(),
+    sampleWeeks: integer("sample_weeks").notNull(),
+    rawCorrelation: doublePrecision("raw_correlation"),
+    priorCorrelation: doublePrecision("prior_correlation").notNull(),
+    shrunkCorrelation: doublePrecision("shrunk_correlation").notNull(),
+    shrinkageWeight: doublePrecision("shrinkage_weight").notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("ff_teammate_correlations_season_pair_key").on(t.season, t.playerAId, t.playerBId)],
+);
+
 export const ffPlayerIndicators = pgTable(
   "ff_player_indicators",
   {
