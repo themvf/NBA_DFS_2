@@ -311,10 +311,10 @@ export type FantasyPercentileProfile = {
   stats: Record<string, FantasyPercentileStat>;
 };
 
-// Positions this profile supports for v1. QB (passing stat groups) isn't
-// built yet -- callers should treat a request for any other position as
-// unsupported rather than silently returning an empty profile.
-const PERCENTILE_PROFILE_POSITIONS = ["RB", "WR", "TE"] as const;
+// Positions this profile supports. K/DST don't have a comparable stat model
+// -- callers should treat a request for either as unsupported rather than
+// silently returning an empty profile.
+const PERCENTILE_PROFILE_POSITIONS = ["QB", "RB", "WR", "TE"] as const;
 const PERCENTILE_MIN_GAMES = 4;
 
 // Per-game/ratio percentile profile (PlayerProfiler-style), computed live
@@ -336,7 +336,7 @@ export async function getFantasyPercentileProfile(
   if (!(PERCENTILE_PROFILE_POSITIONS as readonly string[]).includes(position)) {
     return {
       playerId, position, season, games: 0, positionPoolSize: 0, eligible: false,
-      reason: `Percentile profiles aren't built for ${position} yet -- only RB/WR/TE.`,
+      reason: `Percentile profiles aren't built for ${position} yet -- only QB/RB/WR/TE.`,
       stats: {},
     };
   }
@@ -357,10 +357,17 @@ export async function getFantasyPercentileProfile(
         CASE WHEN f.games>0 THEN (f.source_row->>'receiving_air_yards')::double precision/f.games END AS receiving_air_yards_pg,
         (f.source_row->>'air_yards_share')::double precision AS air_yards_share,
         (f.source_row->>'wopr')::double precision AS wopr,
-        (f.source_row->>'racr')::double precision AS racr
+        (f.source_row->>'racr')::double precision AS racr,
+        CASE WHEN f.games>0 THEN (f.source_row->>'attempts')::double precision/f.games END AS attempts_pg,
+        CASE WHEN f.games>0 THEN (f.source_row->>'completions')::double precision/f.games END AS completions_pg,
+        CASE WHEN f.games>0 THEN (f.source_row->>'passing_yards')::double precision/f.games END AS passing_yards_pg,
+        CASE WHEN f.games>0 THEN (f.source_row->>'passing_tds')::double precision/f.games END AS passing_tds_pg,
+        CASE WHEN f.games>0 THEN (f.source_row->>'passing_interceptions')::double precision/f.games END AS passing_interceptions_pg,
+        CASE WHEN f.games>0 THEN (f.source_row->>'passing_epa')::double precision/f.games END AS passing_epa_pg,
+        CASE WHEN f.games>0 THEN (f.source_row->>'passing_air_yards')::double precision/f.games END AS passing_air_yards_pg
       FROM ff_player_season_features f
       JOIN ff_players p ON p.id=f.player_id
-      WHERE f.season=${season} AND f.source='nflverse' AND p.position IN ('RB','WR','TE')
+      WHERE f.season=${season} AND f.source='nflverse' AND p.position IN ('QB','RB','WR','TE')
         AND f.games>=${PERCENTILE_MIN_GAMES}
     ), ranked AS (
       SELECT *,
@@ -379,7 +386,14 @@ export async function getFantasyPercentileProfile(
         ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY receiving_air_yards_pg))::numeric*100)::int AS receiving_air_yards_pctl,
         ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY air_yards_share))::numeric*100)::int AS air_yards_share_pctl,
         ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY wopr))::numeric*100)::int AS wopr_pctl,
-        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY racr))::numeric*100)::int AS racr_pctl
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY racr))::numeric*100)::int AS racr_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY attempts_pg))::numeric*100)::int AS attempts_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY completions_pg))::numeric*100)::int AS completions_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY passing_yards_pg))::numeric*100)::int AS passing_yards_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY passing_tds_pg))::numeric*100)::int AS passing_tds_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY passing_interceptions_pg))::numeric*100)::int AS passing_interceptions_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY passing_epa_pg))::numeric*100)::int AS passing_epa_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY passing_air_yards_pg))::numeric*100)::int AS passing_air_yards_pctl
       FROM pool
     )
     SELECT player_id AS "playerId",position,games,position_pool_size AS "positionPoolSize",
@@ -397,7 +411,14 @@ export async function getFantasyPercentileProfile(
       receiving_air_yards_pg AS "receivingAirYards",receiving_air_yards_pctl AS "receivingAirYardsPctl",
       air_yards_share AS "airYardsShare",air_yards_share_pctl AS "airYardsSharePctl",
       wopr AS "wopr",wopr_pctl AS "woprPctl",
-      racr AS "racr",racr_pctl AS "racrPctl"
+      racr AS "racr",racr_pctl AS "racrPctl",
+      attempts_pg AS "attempts",attempts_pctl AS "attemptsPctl",
+      completions_pg AS "completions",completions_pctl AS "completionsPctl",
+      passing_yards_pg AS "passingYards",passing_yards_pctl AS "passingYardsPctl",
+      passing_tds_pg AS "passingTds",passing_tds_pctl AS "passingTdsPctl",
+      passing_interceptions_pg AS "passingInterceptions",passing_interceptions_pctl AS "passingInterceptionsPctl",
+      passing_epa_pg AS "passingEpa",passing_epa_pctl AS "passingEpaPctl",
+      passing_air_yards_pg AS "passingAirYards",passing_air_yards_pctl AS "passingAirYardsPctl"
     FROM ranked WHERE player_id=${playerId}`);
   const row = queryRows<Record<string, number | string | null>>(result)[0];
   if (!row) {
@@ -411,6 +432,8 @@ export async function getFantasyPercentileProfile(
     "fantasyPoints", "carries", "rushingYards", "rushingTds", "rushingEpa",
     "targets", "receptions", "receivingYards", "receivingTds", "targetShare",
     "receivingEpa", "receivingAirYards", "airYardsShare", "wopr", "racr",
+    "attempts", "completions", "passingYards", "passingTds", "passingInterceptions",
+    "passingEpa", "passingAirYards",
   ];
   const stats: Record<string, FantasyPercentileStat> = {};
   for (const key of statKeys) {

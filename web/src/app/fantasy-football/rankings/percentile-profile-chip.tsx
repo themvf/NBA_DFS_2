@@ -29,7 +29,7 @@ export default function PercentileProfileChip({
 }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<LoadState>({ status: "idle" });
-  const groups = PERCENTILE_PROFILE_GROUPS[position as "RB" | "WR" | "TE"];
+  const groups = PERCENTILE_PROFILE_GROUPS[position as "QB" | "RB" | "WR" | "TE"];
   // QB/K/DST percentile profiles aren't built yet -- no chip at all rather
   // than a dead one that always says "unsupported."
   if (!groups) return null;
