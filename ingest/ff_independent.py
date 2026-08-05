@@ -441,6 +441,15 @@ def save_history(
                 kicker_points = values["fg_made"] * 3.0 + values["pat_made"]
                 values["fantasy_points_std"] = kicker_points
                 values["fantasy_points_ppr"] = kicker_points
+            # source_row stores the FULL raw nflverse row (raw), not just the
+            # curated `values` subset -- nflverse's stats_player_reg CSV already
+            # includes advanced columns (rushing_epa, receiving_epa,
+            # receiving_air_yards, air_yards_share, wopr, racr, passing_epa,
+            # passing_cpoe, ...) that were previously fetched and then discarded.
+            # Nothing reads source_row from this table yet, so this is a pure
+            # superset with no migration -- percentile-profile queries pull
+            # these via source_row->>'field'; the dedicated typed columns above
+            # remain the authoritative source for the stats they cover.
             db.execute(
                 """INSERT INTO ff_player_season_features
                    (player_id,season,source,games,fantasy_points_std,fantasy_points_ppr,
@@ -464,7 +473,7 @@ def save_history(
                     values["receiving_yards"], values["receiving_tds"], values["carries"],
                     values["rushing_yards"], values["rushing_tds"], values["target_share"],
                     values["rush_share"], values["team_target_rank"], values["team_rush_rank"],
-                    values["nfl_target_rank"], values["nfl_rush_td_rank"], Json(values),
+                    values["nfl_target_rank"], values["nfl_rush_td_rank"], Json(raw),
                 ),
             )
             result.setdefault(int(player["player_id"]), []).append(values)

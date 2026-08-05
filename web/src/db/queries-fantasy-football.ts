@@ -295,6 +295,150 @@ export async function getFantasyAdpSnapshotHealth(season: number): Promise<Fanta
   return queryRows<FantasyAdpSnapshotHealth>(result);
 }
 
+export type FantasyPercentileStat = {
+  value: number | null;
+  percentile: number | null;
+};
+
+export type FantasyPercentileProfile = {
+  playerId: number;
+  position: string;
+  season: number;
+  games: number;
+  positionPoolSize: number;
+  eligible: boolean;
+  reason: string | null;
+  stats: Record<string, FantasyPercentileStat>;
+};
+
+// Positions this profile supports for v1. QB (passing stat groups) isn't
+// built yet -- callers should treat a request for any other position as
+// unsupported rather than silently returning an empty profile.
+const PERCENTILE_PROFILE_POSITIONS = ["RB", "WR", "TE"] as const;
+const PERCENTILE_MIN_GAMES = 4;
+
+// Per-game/ratio percentile profile (PlayerProfiler-style), computed live
+// against every RB/WR/TE with >= PERCENTILE_MIN_GAMES that season -- not
+// precomputed/stored, so it's always consistent with whatever nflverse data
+// is currently loaded. Advanced fields (EPA, air yards, WOPR, RACR) come from
+// ff_player_season_features.source_row, which now stores the FULL raw
+// nflverse row (see ingest/ff_independent.py::save_history) instead of the
+// small curated subset the dedicated columns cover.
+export async function getFantasyPercentileProfile(
+  playerId: number,
+  season: number,
+  scoring: string,
+): Promise<FantasyPercentileProfile | null> {
+  await ensureFantasyFootballTables();
+  const positionResult = await db.execute(sql`SELECT position FROM ff_players WHERE id=${playerId}`);
+  const position = queryRows<{ position: string }>(positionResult)[0]?.position ?? null;
+  if (!position) return null;
+  if (!(PERCENTILE_PROFILE_POSITIONS as readonly string[]).includes(position)) {
+    return {
+      playerId, position, season, games: 0, positionPoolSize: 0, eligible: false,
+      reason: `Percentile profiles aren't built for ${position} yet -- only RB/WR/TE.`,
+      stats: {},
+    };
+  }
+  const points = sql`(CASE WHEN ${scoring}='STD' THEN f.fantasy_points_std WHEN ${scoring}='HALF' THEN (f.fantasy_points_std+f.fantasy_points_ppr)/2.0 ELSE f.fantasy_points_ppr END)`;
+  const result = await db.execute(sql`WITH pool AS (
+      SELECT p.id AS player_id, p.position, f.games,
+        CASE WHEN f.games>0 THEN ${points}/f.games END AS fantasy_points_pg,
+        CASE WHEN f.games>0 THEN f.carries/f.games END AS carries_pg,
+        CASE WHEN f.games>0 THEN f.rushing_yards/f.games END AS rushing_yards_pg,
+        CASE WHEN f.games>0 THEN f.rushing_tds/f.games END AS rushing_tds_pg,
+        CASE WHEN f.games>0 THEN (f.source_row->>'rushing_epa')::double precision/f.games END AS rushing_epa_pg,
+        CASE WHEN f.games>0 THEN f.targets/f.games END AS targets_pg,
+        CASE WHEN f.games>0 THEN f.receptions/f.games END AS receptions_pg,
+        CASE WHEN f.games>0 THEN f.receiving_yards/f.games END AS receiving_yards_pg,
+        CASE WHEN f.games>0 THEN f.receiving_tds/f.games END AS receiving_tds_pg,
+        f.target_share,
+        CASE WHEN f.games>0 THEN (f.source_row->>'receiving_epa')::double precision/f.games END AS receiving_epa_pg,
+        CASE WHEN f.games>0 THEN (f.source_row->>'receiving_air_yards')::double precision/f.games END AS receiving_air_yards_pg,
+        (f.source_row->>'air_yards_share')::double precision AS air_yards_share,
+        (f.source_row->>'wopr')::double precision AS wopr,
+        (f.source_row->>'racr')::double precision AS racr
+      FROM ff_player_season_features f
+      JOIN ff_players p ON p.id=f.player_id
+      WHERE f.season=${season} AND f.source='nflverse' AND p.position IN ('RB','WR','TE')
+        AND f.games>=${PERCENTILE_MIN_GAMES}
+    ), ranked AS (
+      SELECT *,
+        COUNT(*) OVER (PARTITION BY position) AS position_pool_size,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY fantasy_points_pg))::numeric*100)::int AS fantasy_points_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY carries_pg))::numeric*100)::int AS carries_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY rushing_yards_pg))::numeric*100)::int AS rushing_yards_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY rushing_tds_pg))::numeric*100)::int AS rushing_tds_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY rushing_epa_pg))::numeric*100)::int AS rushing_epa_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY targets_pg))::numeric*100)::int AS targets_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY receptions_pg))::numeric*100)::int AS receptions_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY receiving_yards_pg))::numeric*100)::int AS receiving_yards_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY receiving_tds_pg))::numeric*100)::int AS receiving_tds_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY target_share))::numeric*100)::int AS target_share_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY receiving_epa_pg))::numeric*100)::int AS receiving_epa_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY receiving_air_yards_pg))::numeric*100)::int AS receiving_air_yards_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY air_yards_share))::numeric*100)::int AS air_yards_share_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY wopr))::numeric*100)::int AS wopr_pctl,
+        ROUND((PERCENT_RANK() OVER (PARTITION BY position ORDER BY racr))::numeric*100)::int AS racr_pctl
+      FROM pool
+    )
+    SELECT player_id AS "playerId",position,games,position_pool_size AS "positionPoolSize",
+      fantasy_points_pg AS "fantasyPoints",fantasy_points_pctl AS "fantasyPointsPctl",
+      carries_pg AS "carries",carries_pctl AS "carriesPctl",
+      rushing_yards_pg AS "rushingYards",rushing_yards_pctl AS "rushingYardsPctl",
+      rushing_tds_pg AS "rushingTds",rushing_tds_pctl AS "rushingTdsPctl",
+      rushing_epa_pg AS "rushingEpa",rushing_epa_pctl AS "rushingEpaPctl",
+      targets_pg AS "targets",targets_pctl AS "targetsPctl",
+      receptions_pg AS "receptions",receptions_pctl AS "receptionsPctl",
+      receiving_yards_pg AS "receivingYards",receiving_yards_pctl AS "receivingYardsPctl",
+      receiving_tds_pg AS "receivingTds",receiving_tds_pctl AS "receivingTdsPctl",
+      target_share AS "targetShare",target_share_pctl AS "targetSharePctl",
+      receiving_epa_pg AS "receivingEpa",receiving_epa_pctl AS "receivingEpaPctl",
+      receiving_air_yards_pg AS "receivingAirYards",receiving_air_yards_pctl AS "receivingAirYardsPctl",
+      air_yards_share AS "airYardsShare",air_yards_share_pctl AS "airYardsSharePctl",
+      wopr AS "wopr",wopr_pctl AS "woprPctl",
+      racr AS "racr",racr_pctl AS "racrPctl"
+    FROM ranked WHERE player_id=${playerId}`);
+  const row = queryRows<Record<string, number | string | null>>(result)[0];
+  if (!row) {
+    return {
+      playerId, position, season, games: 0, positionPoolSize: 0, eligible: false,
+      reason: `No ${season} nflverse stats with at least ${PERCENTILE_MIN_GAMES} games for this player.`,
+      stats: {},
+    };
+  }
+  const statKeys = [
+    "fantasyPoints", "carries", "rushingYards", "rushingTds", "rushingEpa",
+    "targets", "receptions", "receivingYards", "receivingTds", "targetShare",
+    "receivingEpa", "receivingAirYards", "airYardsShare", "wopr", "racr",
+  ];
+  const stats: Record<string, FantasyPercentileStat> = {};
+  for (const key of statKeys) {
+    const rawValue = row[key];
+    const rawPercentile = row[`${key}Pctl`];
+    const value = typeof rawValue === "number" ? rawValue : rawValue === null ? null : Number(rawValue);
+    // PERCENT_RANK() still returns a number (0) when every row in the
+    // partition is NULL for this column -- e.g. before the next nflverse
+    // refresh backfills source_row for older seasons (see
+    // ingest/ff_independent.py::save_history). A percentile is only
+    // meaningful when we actually have this player's raw value; never show
+    // a computed percentile next to a missing value, since that reads as a
+    // real (and misleadingly bad) 0th-percentile result.
+    stats[key] = {
+      value,
+      percentile: value === null ? null : typeof rawPercentile === "number" ? rawPercentile : rawPercentile === null ? null : Number(rawPercentile),
+    };
+  }
+  return {
+    playerId, position, season,
+    games: Number(row.games ?? 0),
+    positionPoolSize: Number(row.positionPoolSize ?? 0),
+    eligible: true,
+    reason: null,
+    stats,
+  };
+}
+
 export type DraftBoardSlot = {
   overallPick: number;
   round: number;

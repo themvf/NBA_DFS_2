@@ -25,7 +25,7 @@ export default async function FantasyRankingsPage({ searchParams }: { searchPara
     </div>
     {!set ? <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">Run the <code>Refresh Fantasy Football Draft Data</code> GitHub workflow to populate this page.</div> : <>
     {movers && <AdpMoversPanel movers={movers} scoring={scoring} />}
-    <RankingsTable rankings={rankings} />
+    <RankingsTable rankings={rankings} season={set.season} scoring={scoring} />
     </>}
   </div>;
 }
