@@ -15,6 +15,7 @@
     "test:mlb-vegas-trust": "node --import tsx ./scripts/test-mlb-vegas-trust.ts",
     "test:mlb-vegas-decisions": "node --import tsx ./scripts/test-mlb-vegas-decisions.ts",
     "test:mlb-movement-signals": "node --import tsx ./scripts/test-mlb-movement-signals.ts",
+    "test:mlb-movement-snapshot": "node --import tsx ./scripts/test-mlb-movement-snapshot.ts",
     "test:tennis-elo-policy": "node --import tsx ./scripts/test-tennis-elo-policy.ts",
     "test:fantasy-football": "node --import tsx ./scripts/test-fantasy-football.ts",
     "verify:best-ball-advisors": "node --env-file=.env.local -r ./scripts/server-only-stub.cjs --import tsx ./scripts/verify-best-ball-advisors.ts",

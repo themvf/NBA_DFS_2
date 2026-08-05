@@ -32,6 +32,7 @@ import {
   findMovementStart,
   type MlbMovementShape,
 } from "@/lib/mlb-movement-shape";
+import { MLB_SNAPSHOT_TIMES_ET, getMlbSnapshotAtTime } from "@/lib/mlb-movement-snapshot";
 
 type Props = {
   queryDate: string;
@@ -185,64 +186,11 @@ function captureAge(value: string | null, nowIso: string): { text: string; class
   return { text: `${rounded}m old`, className: "text-emerald-700" };
 }
 
-// ── Fixed-time snapshot columns ──────────────────────────────────
-// Shows vig-free home probability at specific ET times throughout the day.
-// Finds the nearest capture within ±20 min of each target; null if none.
-const SNAPSHOT_TIMES_ET = [
-  // 10am, not 9am: the capture cron (.github/workflows/capture_odds_history.yml)
-  // deliberately starts at 10 AM ET (covers the earliest MLB first pitch,
-  // ~11:35 AM ET, with margin) — a 9am checkpoint could never populate.
-  { label: "10am", hour: 10, minute: 0 },
-  { label: "1:10p", hour: 13, minute: 10 },
-  { label: "6:20p", hour: 18, minute: 20 },
-  { label: "6:50p", hour: 18, minute: 50 },
-  { label: "7:30p", hour: 19, minute: 30 },
-  { label: "9:20p", hour: 21, minute: 20 },
-] as const;
-
-const MAX_SNAP_DISTANCE_MS = 20 * 60_000; // ±20 minutes
-
-function getSnapshotAtTime(
-  trail: Array<{ capturedAt: string; homeProb: number }>,
-  gameDate: string,
-  targetHour: number,
-  targetMinute: number,
-): number | null {
-  if (!trail || trail.length === 0) return null;
-  // Build target timestamp in ET (America/New_York)
-  // Use a simple approach: construct date string and parse
-  const targetStr = `${gameDate}T${String(targetHour).padStart(2, "0")}:${String(targetMinute).padStart(2, "0")}:00`;
-  // Convert ET target to UTC for comparison with trail timestamps
-  const etFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-  });
-  // Parse target in ET by computing offset: we find the capture closest to target
-  // We'll compare in raw ms. Build target as UTC approximation first, then adjust.
-  // Simpler: find the trail point closest to target ET using date parsing.
-  const targetDate = new Date(targetStr);
-  // targetStr is in local ambiguous format; we need to treat it as ET.
-  // Use the game date to find EDT/EST offset: during MLB season it's EDT (UTC-4).
-  const targetUtcMs = targetDate.getTime() + 4 * 3600_000; // EDT = UTC-4
-
-  let closest: { prob: number; distance: number } | null = null;
-  for (const point of trail) {
-    const capMs = Date.parse(point.capturedAt);
-    if (!Number.isFinite(capMs)) continue;
-    const dist = Math.abs(capMs - targetUtcMs);
-    if (dist <= MAX_SNAP_DISTANCE_MS && (closest == null || dist < closest.distance)) {
-      closest = { prob: point.homeProb, distance: dist };
-    }
-  }
-  return closest?.prob ?? null;
-}
-
 function SnapshotCells({ trail, gameDate }: { trail: Array<{ capturedAt: string; homeProb: number }>; gameDate: string }) {
   return (
     <>
-      {SNAPSHOT_TIMES_ET.map((t) => {
-        const prob = getSnapshotAtTime(trail, gameDate, t.hour, t.minute);
+      {MLB_SNAPSHOT_TIMES_ET.map((t) => {
+        const prob = getMlbSnapshotAtTime(trail, gameDate, t.hour, t.minute);
         return (
           <td key={t.label} className="whitespace-nowrap px-2 py-3 text-center tabular-nums text-slate-700">
             {prob != null ? pct(prob) : <span className="text-slate-300">—</span>}
@@ -502,7 +450,7 @@ export default function MlbVegasClient({
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-[1820px] w-full text-xs">
             <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500">
-              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th>{SNAPSHOT_TIMES_ET.map((t) => <th key={t.label} className="px-2 py-3 text-center">{t.label}</th>)}<th className="px-3 py-3 text-right">Pin vs Poly</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
+              <tr><th className="px-3 py-3">Start</th><th className="px-3 py-3">Game</th><th className="px-3 py-3">Moved toward</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th>{MLB_SNAPSHOT_TIMES_ET.map((t) => <th key={t.label} className="px-2 py-3 text-center">{t.label}</th>)}<th className="px-3 py-3 text-right">Pin vs Poly</th><th className="px-3 py-3">Sharp signal</th><th className="px-3 py-3 text-right">Our model</th><th className="px-3 py-3 text-right">Model edge</th><th className="px-3 py-3">Combined signal</th><th className="px-3 py-3">Updated</th></tr>
             </thead>
             <tbody>
               {rows.map(({ matchup, movement, signal, alerts, modelSuppressed }) => {
