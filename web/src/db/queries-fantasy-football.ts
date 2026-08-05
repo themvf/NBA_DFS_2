@@ -22,6 +22,14 @@ export type FantasyRankingRow = {
   adpHigh: number | null;
   adpLow: number | null;
   adpSampleSize: number | null;
+  // DraftKings' own Best Ball ADP -- a manual, cookie-gated capture (see
+  // ingest/ff_dk_bestball_adp.py), distinct from the FFC-derived `adp` above.
+  // Null for any player not captured in the most recent DK snapshot.
+  dkBestBallAdp: number | null;
+  dkBestBallRank: number | null;
+  dkBestBallDraftPct: number | null;
+  dkBestBallDraftGroupId: number | null;
+  dkBestBallCapturedAt: string | null;
   projectedPoints: number | null;
   fantasyProsProjectedPoints: number | null;
   fantasyProsProjectionFetchedAt: string | null;
@@ -172,6 +180,9 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     (r.source_row->'adp'->>'high')::double precision AS "adpHigh",
     (r.source_row->'adp'->>'low')::double precision AS "adpLow",
     (r.source_row->'adp'->>'times_drafted')::int AS "adpSampleSize",
+    dk.average_draft_position AS "dkBestBallAdp",dk.rank AS "dkBestBallRank",
+    dk.draft_percentage AS "dkBestBallDraftPct",dk.draft_group_id AS "dkBestBallDraftGroupId",
+    dk.captured_at::text AS "dkBestBallCapturedAt",
     r.projected_points AS "projectedPoints",
     fp.projected_points AS "fantasyProsProjectedPoints",
     fp.fetched_at::text AS "fantasyProsProjectionFetchedAt",
@@ -202,8 +213,15 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
         AND s.status='success' AND s.dataset='projections'
       ORDER BY s.fetched_at DESC,s.id DESC LIMIT 1
     ) fp ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT average_draft_position,rank,draft_percentage,draft_group_id,captured_at
+      FROM ff_dk_bestball_adp
+      WHERE player_id=p.id
+      ORDER BY captured_at DESC,id DESC LIMIT 1
+    ) dk ON TRUE
     WHERE r.ranking_set_id=${rankingSetId}
-    GROUP BY p.id,r.id,rs.id,f.id,fp.projected_points,fp.fetched_at,fp.source_updated_at
+    GROUP BY p.id,r.id,rs.id,f.id,fp.projected_points,fp.fetched_at,fp.source_updated_at,
+      dk.average_draft_position,dk.rank,dk.draft_percentage,dk.draft_group_id,dk.captured_at
     ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
   return queryRows<FantasyRankingRow>(result);
 }
@@ -293,6 +311,26 @@ export async function getFantasyAdpSnapshotHealth(season: number): Promise<Fanta
       MIN(captured_at)::text AS "earliestCapturedAt",MAX(captured_at)::text AS "latestCapturedAt"
     FROM ff_adp_snapshots WHERE season=${season} GROUP BY scoring ORDER BY scoring`);
   return queryRows<FantasyAdpSnapshotHealth>(result);
+}
+
+export type FantasyDkBestBallAdpHealth = {
+  draftGroupId: number;
+  playerCount: number;
+  matchedCount: number;
+  capturedAt: string;
+};
+
+// One row per DK draft-group capture (there is no automated cadence -- see
+// ingest/ff_dk_bestball_adp.py -- so this exists purely to show the user how
+// stale the most recent manual capture is, rather than implying live data.
+export async function getDkBestBallAdpHealth(season: number): Promise<FantasyDkBestBallAdpHealth[]> {
+  await ensureFantasyFootballTables();
+  const result = await db.execute(sql`SELECT draft_group_id AS "draftGroupId",
+      COUNT(*)::int AS "playerCount",COUNT(player_id)::int AS "matchedCount",
+      captured_at::text AS "capturedAt"
+    FROM ff_dk_bestball_adp WHERE season=${season}
+    GROUP BY draft_group_id,captured_at ORDER BY captured_at DESC LIMIT 10`);
+  return queryRows<FantasyDkBestBallAdpHealth>(result);
 }
 
 export type FantasyPercentileStat = {

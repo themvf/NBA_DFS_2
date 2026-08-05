@@ -2049,6 +2049,31 @@ TABLES = [
         UNIQUE(player_id, scoring, captured_at),
         CHECK(scoring IN ('STD', 'HALF', 'PPR'))
     )""",
+    # DraftKings' own Best Ball ADP/draft-percentage, distinct from Fantasy
+    # Football Calculator's general-market ADP above. Unlike ff_adp_snapshots,
+    # there is no automated capture path here: DK's playerpool endpoint
+    # requires an authenticated session cookie protected by Akamai bot
+    # detection (same class of constraint as LineStar's DNN_COOKIE), and that
+    # cookie is deliberately never stored in this repo or replayed from CI --
+    # see ingest/ff_dk_bestball_adp.py. Each row is therefore a manual,
+    # point-in-time capture; captured_at records the real capture time (not
+    # floored to a cadence boundary, since there is no guaranteed cadence).
+    """CREATE TABLE IF NOT EXISTS ff_dk_bestball_adp (
+        id BIGSERIAL PRIMARY KEY,
+        draft_group_id INTEGER NOT NULL,
+        season INTEGER NOT NULL,
+        dk_player_id BIGINT NOT NULL,
+        player_id BIGINT REFERENCES ff_players(id) ON DELETE SET NULL,
+        display_name TEXT NOT NULL,
+        dk_team_id INTEGER,
+        average_draft_position DOUBLE PRECISION,
+        draft_percentage DOUBLE PRECISION,
+        rank INTEGER,
+        is_available BOOLEAN NOT NULL DEFAULT TRUE,
+        captured_at TIMESTAMPTZ NOT NULL,
+        source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id),
+        UNIQUE(draft_group_id, dk_player_id, captured_at)
+    )""",
 ]
 
 MIGRATIONS = [
@@ -2911,6 +2936,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_events_active ON ff_draft_events(draft_id, overall_pick, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_player ON ff_adp_snapshots(player_id, scoring, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_captured ON ff_adp_snapshots(season, scoring, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_ff_dk_bestball_adp_group ON ff_dk_bestball_adp(draft_group_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_ff_dk_bestball_adp_player ON ff_dk_bestball_adp(player_id, captured_at DESC)",
     # Tennis canonical/history/quote foundation (SCRUM-20)
     "CREATE INDEX IF NOT EXISTS idx_tennis_players_tour_name ON tennis_players(tour, norm_name)",
     "CREATE INDEX IF NOT EXISTS idx_tennis_aliases_lookup ON tennis_player_aliases(provider, tour, norm_name)",

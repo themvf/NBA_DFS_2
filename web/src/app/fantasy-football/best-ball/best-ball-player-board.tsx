@@ -55,7 +55,17 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
       >{correlationBadge.value >= 0 ? "🔗" : "⇄"} {correlationBadge.label}</span>}
       {player.indicators.slice(0, correlationBadge ? 2 : 3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
     </div></div>
-    <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3">
+      <p>{player.adp?.toFixed(1) ?? "—"}</p>
+      {player.dkBestBallAdp != null && (
+        <p
+          className="text-xs font-semibold text-blue-700"
+          title={`DraftKings Best Ball ADP, draft group ${player.dkBestBallDraftGroupId ?? "?"}. ${player.dkBestBallDraftPct != null ? `Drafted in ${player.dkBestBallDraftPct.toFixed(1)}% of rosters. ` : ""}Manually captured ${player.dkBestBallCapturedAt ? new Date(player.dkBestBallCapturedAt).toLocaleString() : "—"} -- not a live feed, DK requires an authenticated session to refresh.`}
+        >
+          DK {player.dkBestBallAdp.toFixed(1)}
+        </p>
+      )}
+    </div>
     <div role="cell" className="p-3"><AvailabilityCell odds={odds} /></div>
     <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>
     <div role="cell" className="p-3">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
