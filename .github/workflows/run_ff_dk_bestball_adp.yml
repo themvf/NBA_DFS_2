@@ -6,6 +6,7 @@ on:
       draft_group_id:
         description: "DK draft group ID (from the DK Best Ball lobby URL)"
         required: true
+        default: "146136"
         type: string
       season:
         description: "NFL season"
@@ -15,7 +16,7 @@ on:
       file_path:
         description: "Repo-relative path to the saved playerpool JSON response body"
         required: false
-        default: "data/ff_dk_bestball_adp_capture.json"
+        default: "dk_bestball_adp_capture.json"
         type: string
 
 jobs:
