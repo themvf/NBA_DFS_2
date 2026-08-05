@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Redeploy trigger (2026-08-05): the Vercel env var was originally saved
+// misspelled as CRON_SECRECT. It has since been corrected to CRON_SECRET,
+// but Vercel bakes env vars in at build time, so the existing deployment
+// never picked up the fix. This no-op comment forces a fresh production
+// build against the current, correctly-named variable.
+
 // Vercel Cron -> GitHub Actions dispatch bridge.
 //
 // Why this exists: GitHub's native `schedule:` trigger for
