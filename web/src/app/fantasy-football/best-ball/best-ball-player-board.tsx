@@ -9,9 +9,9 @@ import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds"
 import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-correlation-badge";
 import ProjectionNotation from "../rankings/projection-notation";
 
-const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_82px_92px_86px_96px_126px_150px_76px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_82px_92px_86px_96px_126px_150px_100px_76px]";
 
-type SortKey = "skillRank" | "overallRank" | "name" | "adp" | "dkAdp" | "avail" | "gp2025" | "fpts2025" | "fpProj" | "ourProj";
+type SortKey = "skillRank" | "overallRank" | "name" | "adp" | "dkAdp" | "avail" | "gp2025" | "fpts2025" | "fpProj" | "ourProj" | "projDelta";
 type SortDir = "asc" | "desc";
 
 // Lower-is-better columns (rank/ADP-shaped) default to ascending on first
@@ -29,6 +29,12 @@ const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; ti
   { key: "fpts2025", label: "2025 FPTS", defaultDir: "desc" },
   { key: "fpProj", label: "FantasyPros PPR Proj.", defaultDir: "desc" },
   { key: "ourProj", label: "Our 2026 PPR Base (V1.6)", defaultDir: "desc" },
+  // Comparison only, per this repo's standing rule: FantasyPros never blends
+  // into or suppresses the independent board (CLAUDE.md) - this just surfaces
+  // where our projected points and FantasyPros' disagree. Deliberately NOT
+  // labeled "DK" (unlike the real "DK ADP" column above) to avoid implying
+  // this is DraftKings' own number - it's ours, compared against FantasyPros.
+  { key: "projDelta", label: "Our Δ FP", defaultDir: "desc", title: "Our 2026 PPR Base (V1.6) minus FantasyPros PPR Proj. Positive = we project this player higher than FantasyPros. Comparison only -- never blended into our board." },
 ];
 
 type BestBallPlayerBoardProps = {
@@ -64,6 +70,9 @@ function AvailabilityCell({ odds }: { odds: AvailabilityOdds | null | undefined 
 
 const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, canDraft, onDraft, odds, correlationBadge }: PlayerRowProps) {
   const overallRank = player.ourRank ?? player.ecr ?? skillRank;
+  const projDelta = player.ourProjectedPoints !== null && player.fantasyProsProjectedPoints !== null
+    ? player.ourProjectedPoints - player.fantasyProsProjectedPoints
+    : null;
   return <>
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
     <div role="cell" className="p-3"><p className="text-base font-black">#{overallRank}</p><p className="text-xs font-semibold text-muted-foreground">{player.position}{player.positionRank ?? "—"}</p></div>
@@ -91,6 +100,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
     <div role="cell" className="p-3">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.6 projects" /></div>
+    <div role="cell" className={`p-3 font-bold ${projDelta === null ? "text-muted-foreground" : projDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}>{projDelta === null ? "—" : `${projDelta >= 0 ? "+" : ""}${projDelta.toFixed(1)}`}</div>
     <div role="cell" className="p-3"><button disabled={!canDraft} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-35">Add</button></div>
   </>;
 });
@@ -112,6 +122,9 @@ function sortValue(
     case "fpts2025": return player.fantasyPoints2025;
     case "fpProj": return player.fantasyProsProjectedPoints;
     case "ourProj": return player.ourProjectedPoints;
+    case "projDelta": return player.ourProjectedPoints !== null && player.fantasyProsProjectedPoints !== null
+      ? player.ourProjectedPoints - player.fantasyProsProjectedPoints
+      : null;
   }
 }
 
@@ -201,7 +214,7 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
       <p>Click any column header to sort · fast list, only visible rows are rendered</p>
     </div>
     <div ref={scrollRef} role="table" aria-rowcount={filtered.length + 1} className="h-[min(68vh,680px)] overflow-auto rounded-2xl border bg-card text-sm [contain:strict]">
-      <div role="rowgroup" className="sticky top-0 z-20 min-w-[1524px] bg-muted text-left text-xs uppercase text-muted-foreground">
+      <div role="rowgroup" className="sticky top-0 z-20 min-w-[1624px] bg-muted text-left text-xs uppercase text-muted-foreground">
         <div role="row" className={`grid ${COLUMN_GRID}`}>
           {SORT_HEADERS.slice(0, 3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
           <div role="columnheader" className="p-3">Signals</div>
@@ -209,13 +222,13 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
           <div role="columnheader" className="p-3">Draft</div>
         </div>
       </div>
-      <div role="rowgroup" className="relative min-w-[1524px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+      <div role="rowgroup" className="relative min-w-[1624px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const player = filtered[virtualRow.index];
           return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPosition[player.position as BestBallPosition]} onDraft={onDraft} odds={availabilityByPlayerId.get(player.playerId)} correlationBadge={correlationBadges.get(player.playerId)} /></div>;
         })}
       </div>
-      {filtered.length === 0 && <p className="min-w-[1524px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}
+      {filtered.length === 0 && <p className="min-w-[1624px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}
     </div>
   </section>;
 }
