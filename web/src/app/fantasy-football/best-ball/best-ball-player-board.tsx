@@ -9,7 +9,27 @@ import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds"
 import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-correlation-badge";
 import ProjectionNotation from "../rankings/projection-notation";
 
-const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_92px_86px_96px_126px_150px_76px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_82px_92px_86px_96px_126px_150px_76px]";
+
+type SortKey = "skillRank" | "overallRank" | "name" | "adp" | "dkAdp" | "avail" | "gp2025" | "fpts2025" | "fpProj" | "ourProj";
+type SortDir = "asc" | "desc";
+
+// Lower-is-better columns (rank/ADP-shaped) default to ascending on first
+// click; higher-is-better columns (points/probability) default to descending
+// -- so the first click on any header always surfaces the "best" players
+// first, not just numerically smallest.
+const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; title?: string }> = [
+  { key: "skillRank", label: "Skill rank", defaultDir: "asc" },
+  { key: "overallRank", label: "Overall / Pos.", defaultDir: "asc" },
+  { key: "name", label: "Player", defaultDir: "asc" },
+  { key: "adp", label: "ADP", defaultDir: "asc" },
+  { key: "dkAdp", label: "DK ADP", defaultDir: "asc", title: "DraftKings' own Best Ball ADP -- a manual, point-in-time capture, not a live feed" },
+  { key: "avail", label: "Avail.", defaultDir: "desc", title: "P(still available at your next pick), from FFC's observed ADP mean/variance/sample size" },
+  { key: "gp2025", label: "2025 GP", defaultDir: "desc" },
+  { key: "fpts2025", label: "2025 FPTS", defaultDir: "desc" },
+  { key: "fpProj", label: "FantasyPros PPR Proj.", defaultDir: "desc" },
+  { key: "ourProj", label: "Our 2026 PPR Base (V1.6)", defaultDir: "desc" },
+];
 
 type BestBallPlayerBoardProps = {
   rankings: FantasyRankingRow[];
@@ -55,16 +75,16 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
       >{correlationBadge.value >= 0 ? "🔗" : "⇄"} {correlationBadge.label}</span>}
       {player.indicators.slice(0, correlationBadge ? 2 : 3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
     </div></div>
+    <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3">
-      <p>{player.adp?.toFixed(1) ?? "—"}</p>
-      {player.dkBestBallAdp != null && (
-        <p
-          className="text-xs font-semibold text-blue-700"
+      {player.dkBestBallAdp != null ? (
+        <span
+          className="font-semibold text-blue-700"
           title={`DraftKings Best Ball ADP, draft group ${player.dkBestBallDraftGroupId ?? "?"}. ${player.dkBestBallDraftPct != null ? `Drafted in ${player.dkBestBallDraftPct.toFixed(1)}% of rosters. ` : ""}Manually captured ${player.dkBestBallCapturedAt ? new Date(player.dkBestBallCapturedAt).toLocaleString() : "—"} -- not a live feed, DK requires an authenticated session to refresh.`}
         >
-          DK {player.dkBestBallAdp.toFixed(1)}
-        </p>
-      )}
+          {player.dkBestBallAdp.toFixed(1)}
+        </span>
+      ) : <span className="text-muted-foreground">—</span>}
     </div>
     <div role="cell" className="p-3"><AvailabilityCell odds={odds} /></div>
     <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>
@@ -75,23 +95,85 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
   </>;
 });
 
+function sortValue(
+  player: FantasyRankingRow,
+  key: SortKey,
+  skillRank: number,
+  availProbability: number | null,
+): number | string | null {
+  switch (key) {
+    case "skillRank": return skillRank;
+    case "overallRank": return player.ourRank ?? player.ecr ?? skillRank;
+    case "name": return player.name;
+    case "adp": return player.adp;
+    case "dkAdp": return player.dkBestBallAdp;
+    case "avail": return availProbability;
+    case "gp2025": return player.games2025;
+    case "fpts2025": return player.fantasyPoints2025;
+    case "fpProj": return player.fantasyProsProjectedPoints;
+    case "ourProj": return player.ourProjectedPoints;
+  }
+}
+
+function SortHeader({ config, active, dir, onSort }: { config: (typeof SORT_HEADERS)[number]; active: boolean; dir: SortDir; onSort: (key: SortKey, defaultDir: SortDir) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(config.key, config.defaultDir)}
+      title={config.title}
+      className={`flex w-full items-center gap-1 p-3 text-left hover:text-foreground ${active ? "text-foreground" : ""}`}
+    >
+      {config.label}
+      <span className="text-[10px]">{active ? (dir === "asc" ? "▲" : "▼") : ""}</span>
+    </button>
+  );
+}
+
 export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDraftPosition, onDraft, availabilityByPlayerId, correlationBadges }: BestBallPlayerBoardProps) {
   const [name, setName] = useState("");
   const [position, setPosition] = useState("");
   const [team, setTeam] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const scrollRef = useRef<HTMLDivElement>(null);
   const draftedIds = useMemo(() => new Set(draftedPlayerIds), [draftedPlayerIds]);
   const skillRankById = useMemo(() => new Map(rankings.map((player, index) => [player.playerId, index + 1])), [rankings]);
   const teams = useMemo(() => [...new Set(rankings.flatMap((player) => player.team ? [player.team] : []))].sort(), [rankings]);
+
+  const handleSort = (key: SortKey, defaultDir: SortDir) => {
+    if (sortKey === key) {
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(defaultDir);
+    }
+  };
+
   const filtered = useMemo(() => {
     const search = name.trim().toLocaleLowerCase();
-    return rankings.filter((player) => (
+    const rows = rankings.filter((player) => (
       !draftedIds.has(player.playerId)
       && (!search || player.name.toLocaleLowerCase().includes(search))
       && (!position || player.position === position)
       && (!team || player.team === team)
     ));
-  }, [rankings, draftedIds, name, position, team]);
+    if (!sortKey) return rows;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const aValue = sortValue(a, sortKey, skillRankById.get(a.playerId) ?? 999, availabilityByPlayerId.get(a.playerId)?.probability ?? null);
+      const bValue = sortValue(b, sortKey, skillRankById.get(b.playerId) ?? 999, availabilityByPlayerId.get(b.playerId)?.probability ?? null);
+      // Nulls always sort last, regardless of direction -- missing data
+      // shouldn't get to claim the "best" slot just because a null happens
+      // to compare as smaller than a number.
+      if (aValue === null && bValue === null) return 0;
+      if (aValue === null) return 1;
+      if (bValue === null) return -1;
+      if (typeof aValue === "string" || typeof bValue === "string") {
+        return String(aValue).localeCompare(String(bValue)) * dir;
+      }
+      return (aValue - bValue) * dir;
+    });
+  }, [rankings, draftedIds, name, position, team, sortKey, sortDir, skillRankById, availabilityByPlayerId]);
 
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual owns row windowing for this component.
   const rowVirtualizer = useVirtualizer({
@@ -104,31 +186,36 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
 
   useEffect(() => {
     rowVirtualizer.scrollToOffset(0);
-  }, [name, position, team, rowVirtualizer]);
+  }, [name, position, team, sortKey, sortDir, rowVirtualizer]);
 
   return <section className="space-y-3">
     <div className="grid gap-3 rounded-2xl border bg-card p-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto] lg:items-end">
       <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Search player" className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground" /></label>
       <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Position<select value={position} onChange={(event) => setPosition(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All positions</option>{BEST_BALL_POSITIONS.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Team<select value={team} onChange={(event) => setTeam(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All teams</option>{teams.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-      <button onClick={() => { setName(""); setPosition(""); setTeam(""); }} className="rounded-lg border px-3 py-2 text-sm font-semibold">Clear filters</button>
+      <button onClick={() => { setName(""); setPosition(""); setTeam(""); setSortKey(null); }} className="rounded-lg border px-3 py-2 text-sm font-semibold">Clear filters</button>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
       <p>{filtered.length} available players · drafted players are removed from the board</p>
       {correlationBadges.size > 0 && <p><span className="rounded-full bg-teal-100 px-1.5 py-0.5 font-bold text-teal-900">🔗 stacks</span> and <span className="rounded-full bg-fuchsia-100 px-1.5 py-0.5 font-bold text-fuchsia-900">⇄ trades off</span> with your roster</p>}
-      <p>Fast list · only visible rows are rendered</p>
+      <p>Click any column header to sort · fast list, only visible rows are rendered</p>
     </div>
     <div ref={scrollRef} role="table" aria-rowcount={filtered.length + 1} className="h-[min(68vh,680px)] overflow-auto rounded-2xl border bg-card text-sm [contain:strict]">
-      <div role="rowgroup" className="sticky top-0 z-20 min-w-[1442px] bg-muted text-left text-xs uppercase text-muted-foreground">
-        <div role="row" className={`grid ${COLUMN_GRID}`}><div role="columnheader" className="p-3">Skill rank</div><div role="columnheader" className="p-3">Overall / Pos.</div><div role="columnheader" className="p-3">Player</div><div role="columnheader" className="p-3">Signals</div><div role="columnheader" className="p-3">ADP</div><div role="columnheader" className="p-3" title="P(still available at your next pick), from FFC's observed ADP mean/variance/sample size">Avail.</div><div role="columnheader" className="p-3">2025 GP</div><div role="columnheader" className="p-3">2025 FPTS</div><div role="columnheader" className="p-3">FantasyPros PPR Proj.</div><div role="columnheader" className="p-3">Our 2026 PPR Base (V1.6)</div><div role="columnheader" className="p-3">Draft</div></div>
+      <div role="rowgroup" className="sticky top-0 z-20 min-w-[1524px] bg-muted text-left text-xs uppercase text-muted-foreground">
+        <div role="row" className={`grid ${COLUMN_GRID}`}>
+          {SORT_HEADERS.slice(0, 3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
+          <div role="columnheader" className="p-3">Signals</div>
+          {SORT_HEADERS.slice(3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
+          <div role="columnheader" className="p-3">Draft</div>
+        </div>
       </div>
-      <div role="rowgroup" className="relative min-w-[1442px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+      <div role="rowgroup" className="relative min-w-[1524px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const player = filtered[virtualRow.index];
           return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPosition[player.position as BestBallPosition]} onDraft={onDraft} odds={availabilityByPlayerId.get(player.playerId)} correlationBadge={correlationBadges.get(player.playerId)} /></div>;
         })}
       </div>
-      {filtered.length === 0 && <p className="min-w-[1442px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}
+      {filtered.length === 0 && <p className="min-w-[1524px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}
     </div>
   </section>;
 }
