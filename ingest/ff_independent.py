@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.6"
+MODEL_VERSION = "ff-independent-v1.7"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -43,8 +43,35 @@ NFLVERSE_STATS_URL = (
     "stats_player_reg_{season}.csv"
 )
 NFLVERSE_SCHEDULE_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
+NFLVERSE_TEAM_STATS_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/stats_team/"
+    "stats_team_reg_{season}.csv"
+)
 FFC_ADP_URL = "https://fantasyfootballcalculator.com/api/v1/adp/{format}?teams=12&year={season}"
 FFC_FORMATS = {"STD": "standard", "HALF": "half-ppr", "PPR": "ppr"}
+
+# Yahoo standard Team Defense/Special Teams scoring, verified 2026-08-07
+# against Yahoo's own live express-settings default page (not a secondary
+# source and not assumed -- this project's standing rule for any scoring
+# formula, see the DK soccer scoring note elsewhere in this codebase).
+# Scoring is identical across STD/HALF/PPR (DST has no reception bonus).
+YAHOO_DST_SACK_PTS = 1.0
+YAHOO_DST_INT_PTS = 2.0
+YAHOO_DST_FUMBLE_REC_PTS = 2.0
+YAHOO_DST_SAFETY_PTS = 2.0
+YAHOO_DST_TD_PTS = 6.0  # both defensive TDs and kickoff/punt return TDs
+# (max_points_in_tier, fantasy_points) -- checked in ascending order.
+YAHOO_DST_POINTS_ALLOWED_TIERS = (
+    (0, 10.0), (6, 7.0), (13, 4.0), (20, 1.0), (27, 0.0), (34, -1.0), (10_000, -4.0),
+)
+# Blocked kicks (+2) are deliberately NOT modeled: nflverse's team-stats
+# release only records kicks THIS team's OWN unit had blocked against it
+# (fg_blocked/pat_blocked/pt_blocked), not blocks credited to this team's
+# defense against an opponent -- crediting that correctly requires per-game
+# opponent cross-referencing this season-aggregate dataset doesn't provide.
+# Rare, low-magnitude category (~1-2 occurrences/team/season); same "too
+# rare to model, omit" judgment already applied elsewhere in this project
+# (DK soccer CG/CGSO/NH scoring). Documented in source_row, not hidden.
 
 SEASON_WEIGHTS = (0.05, 0.20, 0.75)
 BASELINE_GAMES = 17.0
@@ -480,6 +507,105 @@ def save_history(
     return result
 
 
+def _points_allowed_fpts(points_allowed: int) -> float:
+    """Yahoo's DST points-allowed tier, applied PER GAME (not season total)."""
+    for max_points, fpts in YAHOO_DST_POINTS_ALLOWED_TIERS:
+        if points_allowed <= max_points:
+            return fpts
+    return YAHOO_DST_POINTS_ALLOWED_TIERS[-1][1]
+
+
+def _team_points_allowed_fpts_by_season(schedule: pd.DataFrame, season: int) -> dict[str, float]:
+    """Sum each team's per-game points-allowed fantasy points for one season.
+
+    Reuses the same schedule frame already fetched for bye-week computation
+    (games.csv) -- no separate request needed. Games without a final score
+    yet (future/unplayed) are skipped rather than treated as 0 allowed.
+    """
+    regular = schedule[(schedule["season"] == season) & (schedule["game_type"] == "REG")]
+    allowed: dict[str, float] = {}
+    for _, game in regular.iterrows():
+        home_score = as_int(game.get("home_score"))
+        away_score = as_int(game.get("away_score"))
+        if home_score is None or away_score is None:
+            continue
+        home = normalize_team(game.get("home_team"))
+        away = normalize_team(game.get("away_team"))
+        allowed[home] = allowed.get(home, 0.0) + _points_allowed_fpts(away_score)
+        allowed[away] = allowed.get(away, 0.0) + _points_allowed_fpts(home_score)
+    return allowed
+
+
+def save_dst_history(
+    db: RefreshDatabase,
+    universe: list[dict[str, Any]],
+    dst_history_frames: dict[int, pd.DataFrame],
+    schedule: pd.DataFrame,
+) -> dict[int, list[dict[str, Any]]]:
+    """Real per-team-season DST history under Yahoo standard scoring.
+
+    Mirrors save_history()'s shape/conventions exactly (same
+    ff_player_season_features table, same fantasy_points_std/ppr columns --
+    identical value in both, since DST scoring has no reception bonus) so
+    project_player()'s existing history-regression path (weighted 3-year
+    blend, shrinkage toward the position prior, confidence-from-sample-depth)
+    applies to DST with no special-casing needed.
+    """
+    by_team = {row["team"]: row for row in universe if row["position"] == "DST"}
+    result: dict[int, list[dict[str, Any]]] = {}
+    for history_season, frame in dst_history_frames.items():
+        points_allowed = _team_points_allowed_fpts_by_season(schedule, history_season)
+        for _, series in frame.iterrows():
+            raw = _clean(series.to_dict())
+            team = normalize_team(raw.get("team"))
+            player = by_team.get(team)
+            if not player:
+                continue
+            sacks = as_float(raw.get("def_sacks")) or 0.0
+            interceptions = as_float(raw.get("def_interceptions")) or 0.0
+            fumble_recoveries = as_float(raw.get("fumble_recovery_opp")) or 0.0
+            safeties = as_float(raw.get("def_safeties")) or 0.0
+            defensive_tds = as_float(raw.get("def_tds")) or 0.0
+            return_tds = as_float(raw.get("special_teams_tds")) or 0.0
+            points_allowed_fpts = points_allowed.get(team, 0.0)
+            games = as_int(raw.get("games")) or 0
+            fpts = round(
+                sacks * YAHOO_DST_SACK_PTS
+                + interceptions * YAHOO_DST_INT_PTS
+                + fumble_recoveries * YAHOO_DST_FUMBLE_REC_PTS
+                + safeties * YAHOO_DST_SAFETY_PTS
+                + (defensive_tds + return_tds) * YAHOO_DST_TD_PTS
+                + points_allowed_fpts,
+                2,
+            )
+            values = {"season": history_season, "games": games, "fantasy_points_std": fpts, "fantasy_points_ppr": fpts}
+            db.execute(
+                """INSERT INTO ff_player_season_features
+                   (player_id,season,source,games,fantasy_points_std,fantasy_points_ppr,source_row,fetched_at)
+                   VALUES (%s,%s,'nflverse',%s,%s,%s,%s,NOW())
+                   ON CONFLICT(player_id,season,source) DO UPDATE SET
+                     games=EXCLUDED.games,fantasy_points_std=EXCLUDED.fantasy_points_std,
+                     fantasy_points_ppr=EXCLUDED.fantasy_points_ppr,source_row=EXCLUDED.source_row,fetched_at=NOW()""",
+                (
+                    player["player_id"], history_season, games, fpts, fpts,
+                    Json({
+                        "model": "yahoo-dst-scoring-v1",
+                        "sacks": sacks,
+                        "interceptions": interceptions,
+                        "fumble_recoveries_opp": fumble_recoveries,
+                        "safeties": safeties,
+                        "defensive_tds": defensive_tds,
+                        "special_teams_return_tds": return_tds,
+                        "points_allowed_fpts": round(points_allowed_fpts, 2),
+                        "blocked_kicks_modeled": False,
+                        "raw_team_stats": raw,
+                    }),
+                ),
+            )
+            result.setdefault(int(player["player_id"]), []).append(values)
+    return result
+
+
 def _depth_factor(position: str, depth_order: int | None) -> float:
     if not depth_order:
         return 1.0
@@ -527,14 +653,7 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
     rookie_prior_points: float | None = None
     role_floor_points: float | None = None
 
-    if position == "DST":
-        method = "position_baseline"
-        base_points = 105.0
-        expected_games = BASELINE_GAMES
-        confidence = 0.35
-        history_games = 0
-        role_factor = 1.0
-    elif eligible_history:
+    if eligible_history:
         weights_by_season = {
             target_season - 3: SEASON_WEIGHTS[0],
             target_season - 2: SEASON_WEIGHTS[1],
@@ -831,6 +950,24 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
             digest=digest, row_count=len(frame), params={"url": url, "season_type": "REG"},
         )
     histories = save_history(db, season, universe, history_frames)
+
+    dst_history_frames: dict[int, pd.DataFrame] = {}
+    for history_season in range(season - 3, season):
+        url = NFLVERSE_TEAM_STATS_URL.format(season=history_season)
+        frame, digest = _fetch_csv(url)
+        if len(frame) != 32:
+            raise RuntimeError(f"nflverse {history_season} team stats returned {len(frame)} rows; expected 32 teams")
+        dst_history_frames[history_season] = frame
+        source_digests.append(digest)
+        _snapshot(
+            db, source="nflverse", dataset="team-stats", season=history_season,
+            digest=digest, row_count=len(frame), params={"url": url, "season_type": "REG"},
+        )
+    # Reuses `schedule` (games.csv), already fetched above for bye weeks --
+    # points-allowed is derived from the same per-game home/away scores.
+    dst_histories = save_dst_history(db, universe, dst_history_frames, schedule)
+    for player_id, rows in dst_histories.items():
+        histories.setdefault(player_id, []).extend(rows)
 
     adp_lookups: dict[str, dict[tuple[str, str], dict[str, Any]]] = {}
     adp_snapshot_ids: dict[str, int] = {}
