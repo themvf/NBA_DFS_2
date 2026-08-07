@@ -1,6 +1,14 @@
 import pandas as pd
 
-from ingest.ff_independent import build_adp_lookup, compute_bye_weeks, normalize_team, project_player, rank_rows
+from ingest.ff_independent import (
+    _points_allowed_fpts,
+    _team_points_allowed_fpts_by_season,
+    build_adp_lookup,
+    compute_bye_weeks,
+    normalize_team,
+    project_player,
+    rank_rows,
+)
 
 
 def test_team_abbreviations_match_application_canonicals() -> None:
@@ -82,6 +90,76 @@ def test_rookie_projection_uses_draft_capital_and_depth() -> None:
     assert starter_projection.explanation["role_factor"] == 1.0
     assert starter_projection.low == round(starter_projection.points * 0.62, 2)
     assert starter_projection.high == round(starter_projection.points * 1.42, 2)
+
+
+def test_yahoo_points_allowed_tier_boundaries() -> None:
+    # Verified 2026-08-07 against Yahoo's own live express-settings default
+    # page -- exact tier edges are where an off-by-one is most likely.
+    assert _points_allowed_fpts(0) == 10.0
+    assert _points_allowed_fpts(1) == 7.0
+    assert _points_allowed_fpts(6) == 7.0
+    assert _points_allowed_fpts(7) == 4.0
+    assert _points_allowed_fpts(13) == 4.0
+    assert _points_allowed_fpts(14) == 1.0
+    assert _points_allowed_fpts(20) == 1.0
+    assert _points_allowed_fpts(21) == 0.0
+    assert _points_allowed_fpts(27) == 0.0
+    assert _points_allowed_fpts(28) == -1.0
+    assert _points_allowed_fpts(34) == -1.0
+    assert _points_allowed_fpts(35) == -4.0
+    assert _points_allowed_fpts(52) == -4.0
+
+
+def test_team_points_allowed_credits_the_opponents_score_not_own() -> None:
+    schedule = pd.DataFrame([
+        {"season": 2025, "game_type": "REG", "home_team": "KC", "away_team": "BUF", "home_score": 24, "away_score": 20},
+        {"season": 2025, "game_type": "REG", "home_team": "BUF", "away_team": "MIA", "home_score": 30, "away_score": 3},
+        # Future/unplayed game (no final score yet) must be skipped, not treated as 0 allowed.
+        {"season": 2025, "game_type": "REG", "home_team": "KC", "away_team": "MIA", "home_score": None, "away_score": None},
+    ])
+    allowed = _team_points_allowed_fpts_by_season(schedule, 2025)
+    # KC allowed 20 (BUF's score) -> tier 14-20 -> 1.0. Only one played game.
+    assert allowed["KC"] == 1.0
+    # BUF allowed 24 (vs KC, tier 21-27 -> 0.0) then 3 (vs MIA, tier 1-6 -> 7.0) = 7.0
+    assert allowed["BUF"] == 7.0
+    # MIA allowed 30 (BUF's score) -> tier 28-34 -> -1.0
+    assert allowed["MIA"] == -1.0
+
+
+def test_dst_uses_real_history_regression_not_a_flat_placeholder() -> None:
+    # Two teams with different real defensive performance must project
+    # differently -- the old model.py behavior (flat 105.0 for every team,
+    # regardless of input) is exactly what this guards against regressing to.
+    strong = {"position": "DST", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+    weak = {**strong}
+    strong_history = [
+        {"season": 2023, "games": 17, "fantasy_points_std": 140.0, "fantasy_points_ppr": 140.0},
+        {"season": 2024, "games": 17, "fantasy_points_std": 150.0, "fantasy_points_ppr": 150.0},
+        {"season": 2025, "games": 17, "fantasy_points_std": 160.0, "fantasy_points_ppr": 160.0},
+    ]
+    weak_history = [
+        {"season": 2023, "games": 17, "fantasy_points_std": 70.0, "fantasy_points_ppr": 70.0},
+        {"season": 2024, "games": 17, "fantasy_points_std": 65.0, "fantasy_points_ppr": 65.0},
+        {"season": 2025, "games": 17, "fantasy_points_std": 60.0, "fantasy_points_ppr": 60.0},
+    ]
+    strong_projection = project_player(strong, strong_history, "PPR", 2026)
+    weak_projection = project_player(weak, weak_history, "PPR", 2026)
+    assert strong_projection.explanation["method"] == "history_regression"
+    assert strong_projection.points > weak_projection.points
+    assert strong_projection.points != 105.0
+    assert weak_projection.points != 105.0
+    # Scoring is identical across STD/HALF/PPR (no reception bonus for DST).
+    assert project_player(strong, strong_history, "STD", 2026).points == strong_projection.points
+
+
+def test_dst_with_no_history_falls_back_to_flat_prior() -> None:
+    # A DST with no matched history (e.g. an ingestion hiccup) must not error
+    # or silently project zero -- it falls back to the same flat prior the
+    # old placeholder always returned.
+    no_history = {"position": "DST", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+    projection = project_player(no_history, [], "PPR", 2026)
+    assert projection.points == 105.0
+    assert projection.explanation["method"] == "position_prior"
 
 
 def test_rank_rows_uses_value_over_replacement() -> None:
