@@ -1,6 +1,8 @@
 import pandas as pd
 
 from ingest.ff_independent import (
+    MODEL_VERSION,
+    ROOKIE_RANGE_RATIO,
     _points_allowed_fpts,
     _team_points_allowed_fpts_by_season,
     build_adp_lookup,
@@ -83,13 +85,21 @@ def test_rookie_projection_uses_draft_capital_and_depth() -> None:
     backup = {"position": "RB", "rookie": True, "depth_order": 4, "injury_status": None, "draft_number": 180}
     assert project_player(starter, [], "PPR", 2026).points > project_player(backup, [], "PPR", 2026).points
     starter_projection = project_player(starter, [], "PPR", 2026)
-    assert starter_projection.explanation["method"] == "rookie_prior"
-    assert starter_projection.explanation["model"] == "ff-independent-v1.5"
+    # A drafted RB routes through the fitted draft-capital curve, not the flat
+    # pick-bucket table (ROOKIE_CURVE_POSITIONS). This assertion was stale --
+    # it still expected the pre-curve "rookie_prior" behavior and a pinned
+    # v1.5 model string, so it had been failing since the curve shipped.
+    assert starter_projection.explanation["method"] == "rookie_draft_curve"
+    assert starter_projection.explanation["model"] == MODEL_VERSION
     assert starter_projection.explanation["draft_number"] == 25
-    assert starter_projection.explanation["rookie_prior_points"] == 197.0
     assert starter_projection.explanation["role_factor"] == 1.0
-    assert starter_projection.low == round(starter_projection.points * 0.62, 2)
-    assert starter_projection.high == round(starter_projection.points * 1.42, 2)
+    # The low/high band comes from the position's fitted range ratio. Compared
+    # with a tolerance, not exact equality: the source derives the band from
+    # the UNROUNDED point estimate, so re-deriving it here from the rounded
+    # `.points` can differ by a cent.
+    low_ratio, high_ratio = ROOKIE_RANGE_RATIO["RB"]
+    assert abs(starter_projection.low - starter_projection.points * low_ratio) < 0.02
+    assert abs(starter_projection.high - starter_projection.points * high_ratio) < 0.02
 
 
 def test_yahoo_points_allowed_tier_boundaries() -> None:
@@ -126,12 +136,14 @@ def test_team_points_allowed_credits_the_opponents_score_not_own() -> None:
     assert allowed["MIA"] == -1.0
 
 
-def test_dst_uses_real_history_regression_not_a_flat_placeholder() -> None:
-    # Two teams with different real defensive performance must project
-    # differently -- the old model.py behavior (flat 105.0 for every team,
-    # regardless of input) is exactly what this guards against regressing to.
+def test_dst_projection_ignores_history_because_it_has_no_predictive_signal() -> None:
+    # Deliberately flat, and NOT for lack of data. v1.7 shipped a real DST
+    # history regression; model/ff_dst_projection_backtest.py then showed it
+    # made held-out accuracy WORSE than a flat constant (MAE 26.1 vs 24.8,
+    # n=96 walk-forward), because every Yahoo DST scoring component is
+    # near-noise year-over-year. This test pins the reverted behavior so the
+    # regression cannot be silently re-introduced without new evidence.
     strong = {"position": "DST", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
-    weak = {**strong}
     strong_history = [
         {"season": 2023, "games": 17, "fantasy_points_std": 140.0, "fantasy_points_ppr": 140.0},
         {"season": 2024, "games": 17, "fantasy_points_std": 150.0, "fantasy_points_ppr": 150.0},
@@ -143,23 +155,14 @@ def test_dst_uses_real_history_regression_not_a_flat_placeholder() -> None:
         {"season": 2025, "games": 17, "fantasy_points_std": 60.0, "fantasy_points_ppr": 60.0},
     ]
     strong_projection = project_player(strong, strong_history, "PPR", 2026)
-    weak_projection = project_player(weak, weak_history, "PPR", 2026)
-    assert strong_projection.explanation["method"] == "history_regression"
-    assert strong_projection.points > weak_projection.points
-    assert strong_projection.points != 105.0
-    assert weak_projection.points != 105.0
-    # Scoring is identical across STD/HALF/PPR (no reception bonus for DST).
-    assert project_player(strong, strong_history, "STD", 2026).points == strong_projection.points
+    weak_projection = project_player(strong, weak_history, "PPR", 2026)
+    no_history_projection = project_player(strong, [], "PPR", 2026)
 
-
-def test_dst_with_no_history_falls_back_to_flat_prior() -> None:
-    # A DST with no matched history (e.g. an ingestion hiccup) must not error
-    # or silently project zero -- it falls back to the same flat prior the
-    # old placeholder always returned.
-    no_history = {"position": "DST", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
-    projection = project_player(no_history, [], "PPR", 2026)
-    assert projection.points == 105.0
-    assert projection.explanation["method"] == "position_prior"
+    assert strong_projection.explanation["method"] == "position_baseline_no_predictive_signal"
+    # A wildly better defensive history must NOT move the projection.
+    assert strong_projection.points == weak_projection.points == no_history_projection.points == 105.4
+    # Identical across scoring formats (DST has no reception bonus).
+    assert project_player(strong, strong_history, "STD", 2026).points == 105.4
 
 
 def test_rank_rows_uses_value_over_replacement() -> None:

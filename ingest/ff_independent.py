@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.7"
+MODEL_VERSION = "ff-independent-v1.8"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -653,7 +653,37 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
     rookie_prior_points: float | None = None
     role_floor_points: float | None = None
 
-    if eligible_history:
+    if position == "DST":
+        # Deliberately flat, and NOT for lack of data -- save_dst_history()
+        # below computes real Yahoo-scored DST history for every team, and
+        # v1.7 briefly used it for a real history regression. It was reverted
+        # because model/ff_dst_projection_backtest.py showed it made accuracy
+        # WORSE: walk-forward on 2023/2024/2025 (n=96), tuned on 2023-24 and
+        # held out on 2025, the flat constant scored MAE 24.8 vs the history
+        # regression's 26.1, and the best shrinkage the tuning period would
+        # accept was lambda=0.05 -- i.e. "almost entirely ignore the history".
+        # Root cause: every Yahoo DST scoring component is near-noise
+        # year-over-year (sacks r=0.20, INTs r=0.11, fumble recoveries r=0.06,
+        # defensive TDs r=-0.03); the only component with real persistence is
+        # points allowed (r=0.31), and Yahoo's tiers make it just ~8% of total
+        # scoring. A per-component reliability-weighted model was also tested
+        # and also failed to beat flat.
+        #
+        # DST history is still ingested and still valuable -- it populates the
+        # board's real "prior-season FPTS" column for defenses (previously
+        # blank) so the user can see what a defense actually did, even though
+        # we cannot honestly project what it will do.
+        #
+        # Do NOT re-ship a history-based DST projection without a NEW data
+        # source (not prior-season box score) that clears the same held-out
+        # bar in model/ff_dst_projection_backtest.py.
+        method = "position_baseline_no_predictive_signal"
+        base_points = POSITION_PRIOR_PPG[scoring]["DST"] * BASELINE_GAMES
+        expected_games = BASELINE_GAMES
+        confidence = 0.35
+        history_games = 0
+        role_factor = 1.0
+    elif eligible_history:
         weights_by_season = {
             target_season - 3: SEASON_WEIGHTS[0],
             target_season - 2: SEASON_WEIGHTS[1],
