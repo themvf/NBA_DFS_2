@@ -17,6 +17,7 @@ export default async function FantasyFootballPage() {
           <div className="flex gap-3">
             <Link href="/fantasy-football/rankings" className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Explore rankings</Link>
             <Link href="/fantasy-football/best-ball" className="rounded-xl border border-blue-300/40 bg-blue-500/20 px-4 py-2 text-sm font-semibold text-blue-100 hover:bg-blue-500/30">NFL Best Ball</Link>
+            <Link href="/fantasy-football/redraft" className="rounded-xl border border-emerald-300/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30">Redraft Mock</Link>
             <Link href="/fantasy-football/draft/new" className="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-emerald-300">Start a draft</Link>
           </div>
         </div>
