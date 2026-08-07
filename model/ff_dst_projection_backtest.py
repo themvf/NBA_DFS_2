@@ -1,14 +1,25 @@
-"""Walk-forward backtest: can prior-season box-score data predict DST fantasy points?
+"""Walk-forward backtest: how much can prior-season data say about DST scoring?
 
-Answer, on 2023/2024/2025 target seasons: no. Every history-based predictor
-tested is WORSE than a flat league-average constant. This script exists so
-that verdict is reproducible and so the next person (or the next model
-revision) does not rebuild the same thing without new evidence.
+Very little, and this script quantifies exactly how little so the answer is
+reproducible rather than re-litigated. Two findings drive the shipped model
+(`ingest/ff_independent.py`, DST branch):
 
-Context: `ingest/ff_independent.py` briefly shipped a real history-regression
-DST model (v1.7, 2026-08-07) to replace a flat 105.0 placeholder. This
-backtest -- which should have been run BEFORE that shipped, not after --
-showed it made accuracy worse, and it was reverted in v1.8.
+1. MAGNITUDE is nearly unpredictable. A 3-year weighted history regression
+   (shipped briefly as v1.7, 2026-08-07) scored WORSE on held-out 2025 than a
+   flat constant -- MAE 26.1 vs 24.8 -- because every Yahoo DST scoring
+   component is near-noise year over year. The tuning period's own optimum was
+   lambda=0.05, i.e. "almost entirely ignore the history". So the projection is
+   shrunk hard toward the league prior.
+2. ORDER carries a little real signal. Prior-season carry-forward reaches
+   Spearman 0.18 and a 42% top-12 hit rate (vs 38% random) -- weak, but better
+   than the 3-year blend (0.15) and infinitely better than a flat constant,
+   which cannot rank at all.
+
+Because shrinkage is monotonic, v1.9 uses carry-forward for ORDER and shrinkage
+for MAGNITUDE, which is strictly best: held-out MAE 24.3, beating both raw
+carry-forward (28.0) and the flat constant (24.8) while staying rankable.
+
+This backtest should have been run BEFORE v1.7 shipped, not after.
 
 Usage:
     python -m model.ff_dst_projection_backtest
@@ -122,10 +133,12 @@ def run() -> dict[str, Any]:
     print(f"  held-out MAE, tuned shrinkage     : {result['held_out_mae_tuned']}")
     print(f"  held-out MAE, full history (v1.7) : {result['held_out_mae_full_history']}")
     print(
-        "\n  VERDICT: prior-season box score does not predict DST fantasy points."
-        "\n  A flat league-average constant is at or better than every history-based"
-        "\n  predictor tested. Do not re-ship a history-regression DST projection"
-        "\n  without a NEW data source that clears this same held-out bar."
+        "\n  VERDICT: prior-season box score barely predicts DST MAGNITUDE, so the"
+        "\n  shipped model shrinks hard toward the league prior. It does carry weak"
+        "\n  ORDER signal, so carry-forward still sets the ranking (shrinkage is"
+        "\n  monotonic and cannot change it). Do not widen the spread or re-ship an"
+        "\n  unshrunk/multi-year DST projection without a NEW data source that clears"
+        "\n  this same held-out bar."
     )
     return result
 

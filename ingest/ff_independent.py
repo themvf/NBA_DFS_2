@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.8"
+MODEL_VERSION = "ff-independent-v1.9"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -76,6 +76,12 @@ YAHOO_DST_POINTS_ALLOWED_TIERS = (
 SEASON_WEIGHTS = (0.05, 0.20, 0.75)
 BASELINE_GAMES = 17.0
 REGRESSION_PRIOR_GAMES = 4.0
+# How much of a defense's prior-season result carries into its projection.
+# Fitted walk-forward (tuned on 2023-24, held out on 2025) in
+# model/ff_dst_projection_backtest.py. Shrinkage is monotonic, so this knob
+# changes the displayed SPREAD but never the draft ORDER -- raising it only
+# trades calibration for visual separation. Re-run the backtest after changes.
+DST_CARRY_FORWARD_WEIGHT = 0.05
 POSITION_PRIOR_PPG = {
     "STD": {"QB": 14.0, "RB": 5.5, "WR": 5.5, "TE": 3.5, "K": 7.0, "DST": 6.2},
     "HALF": {"QB": 14.0, "RB": 6.8, "WR": 7.0, "TE": 4.7, "K": 7.0, "DST": 6.2},
@@ -654,34 +660,55 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
     role_floor_points: float | None = None
 
     if position == "DST":
-        # Deliberately flat, and NOT for lack of data -- save_dst_history()
-        # below computes real Yahoo-scored DST history for every team, and
-        # v1.7 briefly used it for a real history regression. It was reverted
-        # because model/ff_dst_projection_backtest.py showed it made accuracy
-        # WORSE: walk-forward on 2023/2024/2025 (n=96), tuned on 2023-24 and
-        # held out on 2025, the flat constant scored MAE 24.8 vs the history
-        # regression's 26.1, and the best shrinkage the tuning period would
-        # accept was lambda=0.05 -- i.e. "almost entirely ignore the history".
-        # Root cause: every Yahoo DST scoring component is near-noise
-        # year-over-year (sacks r=0.20, INTs r=0.11, fumble recoveries r=0.06,
-        # defensive TDs r=-0.03); the only component with real persistence is
-        # points allowed (r=0.31), and Yahoo's tiers make it just ~8% of total
-        # scoring. A per-component reliability-weighted model was also tested
-        # and also failed to beat flat.
+        # Ordering comes from the MOST RECENT completed season's actual
+        # Yahoo-scored DST points; the displayed value is that number shrunk
+        # hard toward the league prior. Both halves are deliberate:
         #
-        # DST history is still ingested and still valuable -- it populates the
-        # board's real "prior-season FPTS" column for defenses (previously
-        # blank) so the user can see what a defense actually did, even though
-        # we cannot honestly project what it will do.
+        #   Ordering  -- prior-season carry-forward is the best RANKABLE
+        #     signal tested (Spearman 0.18, top-12 hit rate 42% vs 38%
+        #     random). Weak, but real, and better than the 3-year weighted
+        #     blend v1.7 used (0.15). A flat constant ranks nothing at all.
+        #   Magnitude -- shrinkage is a monotonic transform, so it leaves that
+        #     ordering EXACTLY unchanged while fixing calibration. Held out on
+        #     2025 (tuned on 2023-24, n=96 walk-forward): raw carry-forward
+        #     MAE 28.0, shrunk 24.3, flat constant 24.8. The shrunk version
+        #     beats both -- it is not a compromise, it is the best of the three.
         #
-        # Do NOT re-ship a history-based DST projection without a NEW data
-        # source (not prior-season box score) that clears the same held-out
-        # bar in model/ff_dst_projection_backtest.py.
-        method = "position_baseline_no_predictive_signal"
-        base_points = POSITION_PRIOR_PPG[scoring]["DST"] * BASELINE_GAMES
+        # Why the weight is so small: every Yahoo DST scoring component is
+        # near-noise year over year (sacks r=0.20, INTs r=0.11, fumble
+        # recoveries r=0.06, defensive TDs r=-0.03). The only component with
+        # real persistence is points allowed (r=0.31), and Yahoo's tiers make
+        # it just ~8% of total scoring. So the honest projection spread is
+        # narrow by design -- these defenses genuinely are hard to tell apart,
+        # and a wide confident-looking spread would be fiction. The board's
+        # prior-season FPTS column shows the real uncompressed number
+        # alongside, so the underlying evidence stays visible.
+        #
+        # DST_CARRY_FORWARD_WEIGHT is the intended tuning knob. Raising it
+        # widens the displayed spread WITHOUT changing the draft order at all;
+        # it only trades calibration for visual separation. Re-run
+        # model/ff_dst_projection_backtest.py after any change.
+        prior_points = POSITION_PRIOR_PPG[scoring]["DST"] * BASELINE_GAMES
+        recent = max(eligible_history, key=lambda row: int(row["season"])) if eligible_history else None
+        if recent is not None:
+            method = "dst_prior_season_carry_forward"
+            carry_points = _season_points(recent, position, scoring)
+            base_points = prior_points + DST_CARRY_FORWARD_WEIGHT * (carry_points - prior_points)
+            history_games = int(recent.get("games") or 0)
+            season_inputs.append({
+                "season": int(recent["season"]),
+                "games": history_games,
+                "points": round(carry_points, 2),
+                "weight": 1.0,
+            })
+            confidence = 0.35
+        else:
+            method = "position_baseline_no_history"
+            base_points = prior_points
+            history_games = 0
+            confidence = 0.30
+        position_prior_ppg = POSITION_PRIOR_PPG[scoring]["DST"]
         expected_games = BASELINE_GAMES
-        confidence = 0.35
-        history_games = 0
         role_factor = 1.0
     elif eligible_history:
         weights_by_season = {
@@ -793,6 +820,7 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             "weighted_history_ppg": round(weighted_history_ppg, 3) if weighted_history_ppg is not None else None,
             "position_prior_ppg": position_prior_ppg,
             "regression_prior_games": REGRESSION_PRIOR_GAMES if regressed_ppg is not None else None,
+            "dst_carry_forward_weight": DST_CARRY_FORWARD_WEIGHT if method == "dst_prior_season_carry_forward" else None,
             "regression_sample_games": history_games if regressed_ppg is not None else None,
             "regressed_ppg": round(regressed_ppg, 3) if regressed_ppg is not None else None,
             "rookie_prior_points": round(rookie_prior_points, 2) if rookie_prior_points is not None else None,

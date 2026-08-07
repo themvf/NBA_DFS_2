@@ -1,6 +1,7 @@
 import pandas as pd
 
 from ingest.ff_independent import (
+    DST_CARRY_FORWARD_WEIGHT,
     MODEL_VERSION,
     ROOKIE_RANGE_RATIO,
     _points_allowed_fpts,
@@ -136,33 +137,53 @@ def test_team_points_allowed_credits_the_opponents_score_not_own() -> None:
     assert allowed["MIA"] == -1.0
 
 
-def test_dst_projection_ignores_history_because_it_has_no_predictive_signal() -> None:
-    # Deliberately flat, and NOT for lack of data. v1.7 shipped a real DST
-    # history regression; model/ff_dst_projection_backtest.py then showed it
-    # made held-out accuracy WORSE than a flat constant (MAE 26.1 vs 24.8,
-    # n=96 walk-forward), because every Yahoo DST scoring component is
-    # near-noise year-over-year. This test pins the reverted behavior so the
-    # regression cannot be silently re-introduced without new evidence.
-    strong = {"position": "DST", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
-    strong_history = [
-        {"season": 2023, "games": 17, "fantasy_points_std": 140.0, "fantasy_points_ppr": 140.0},
-        {"season": 2024, "games": 17, "fantasy_points_std": 150.0, "fantasy_points_ppr": 150.0},
-        {"season": 2025, "games": 17, "fantasy_points_std": 160.0, "fantasy_points_ppr": 160.0},
-    ]
-    weak_history = [
-        {"season": 2023, "games": 17, "fantasy_points_std": 70.0, "fantasy_points_ppr": 70.0},
-        {"season": 2024, "games": 17, "fantasy_points_std": 65.0, "fantasy_points_ppr": 65.0},
-        {"season": 2025, "games": 17, "fantasy_points_std": 60.0, "fantasy_points_ppr": 60.0},
-    ]
-    strong_projection = project_player(strong, strong_history, "PPR", 2026)
-    weak_projection = project_player(strong, weak_history, "PPR", 2026)
-    no_history_projection = project_player(strong, [], "PPR", 2026)
+DST = {"position": "DST", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
 
-    assert strong_projection.explanation["method"] == "position_baseline_no_predictive_signal"
-    # A wildly better defensive history must NOT move the projection.
-    assert strong_projection.points == weak_projection.points == no_history_projection.points == 105.4
+
+def _dst_history(by_season: dict[int, float]) -> list[dict[str, object]]:
+    return [
+        {"season": season, "games": 17, "fantasy_points_std": points, "fantasy_points_ppr": points}
+        for season, points in sorted(by_season.items())
+    ]
+
+
+def test_dst_ranks_on_prior_season_only_not_a_multi_year_blend() -> None:
+    # Ordering must follow the MOST RECENT season alone. Prior-season
+    # carry-forward ranked better in the backtest (Spearman 0.18) than the
+    # 3-year weighted blend v1.7 used (0.15), so a team that was bad for two
+    # years and then great last year must outrank the reverse.
+    improving = project_player(DST, _dst_history({2023: 60.0, 2024: 65.0, 2025: 160.0}), "PPR", 2026)
+    declining = project_player(DST, _dst_history({2023: 160.0, 2024: 155.0, 2025: 60.0}), "PPR", 2026)
+    assert improving.points > declining.points
+    assert improving.explanation["method"] == "dst_prior_season_carry_forward"
+    assert improving.explanation["season_inputs"][0]["season"] == 2025
+
+
+def test_dst_projection_is_shrunk_hard_toward_the_league_prior() -> None:
+    # Shrinkage is what makes carry-forward beat both raw carry-forward and a
+    # flat constant on held-out MAE. A 160-point defense must NOT project
+    # anywhere near 160 -- the year-over-year signal does not support it.
+    projection = project_player(DST, _dst_history({2023: 60.0, 2024: 65.0, 2025: 160.0}), "PPR", 2026)
+    assert projection.points == round(105.4 + DST_CARRY_FORWARD_WEIGHT * (160.0 - 105.4), 2)
+    assert 105.4 < projection.points < 110.0
+    assert projection.explanation["dst_carry_forward_weight"] == DST_CARRY_FORWARD_WEIGHT
     # Identical across scoring formats (DST has no reception bonus).
-    assert project_player(strong, strong_history, "STD", 2026).points == 105.4
+    assert project_player(DST, _dst_history({2025: 160.0}), "STD", 2026).points == projection.points
+
+
+def test_dst_shrinkage_preserves_order_exactly() -> None:
+    # The whole justification for shrinking is that it is monotonic: it
+    # changes the displayed spread but never the draft order. If this breaks,
+    # raising DST_CARRY_FORWARD_WEIGHT would silently reshuffle the board.
+    actuals = [158.0, 140.0, 130.0, 98.0, 67.0, 44.0]
+    projected = [project_player(DST, _dst_history({2025: value}), "PPR", 2026).points for value in actuals]
+    assert projected == sorted(projected, reverse=True)
+
+
+def test_dst_with_no_history_falls_back_to_the_flat_prior() -> None:
+    projection = project_player(DST, [], "PPR", 2026)
+    assert projection.points == 105.4
+    assert projection.explanation["method"] == "position_baseline_no_history"
 
 
 def test_rank_rows_uses_value_over_replacement() -> None:
