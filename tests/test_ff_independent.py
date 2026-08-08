@@ -3,6 +3,7 @@ import pandas as pd
 from ingest.ff_independent import (
     yahoo_kicker_points,
     DST_CARRY_FORWARD_WEIGHT,
+    K_CARRY_FORWARD_WEIGHT,
     MODEL_VERSION,
     ROOKIE_RANGE_RATIO,
     _points_allowed_fpts,
@@ -210,42 +211,56 @@ def test_kicker_scoring_falls_back_when_distance_buckets_are_absent() -> None:
     assert yahoo_kicker_points({"fg_made": 30, "pat_made": 40}) == 30 * 3 + 40
 
 
-def test_kicker_projection_is_shrunk_harder_than_a_skill_position() -> None:
-    # Kicker history IS predictive (unlike DST), so kickers keep the 3-year
-    # regression -- but the default 4-game prior leaves far too little
-    # shrinkage. model/ff_kicker_projection_backtest.py fits 37 prior games
-    # (effective lambda 0.58 at a 51-game sample), improving held-out MAE
-    # 23.2 -> 22.1.
-    kicker_history = [
-        {"season": season, "games": 17, "fg_made_40_49": 10, "fg_made_50_59": 6, "pat_made": 45}
-        for season in (2023, 2024, 2025)
-    ]
-    kicker = {"position": "K", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
-    projection = project_player(kicker, kicker_history, "PPR", 2026)
-    assert projection.explanation["method"] == "history_regression"
-    assert projection.explanation["regression_prior_games"] == 37.0
-    # A skill position keeps the light default prior.
-    receiver = {"position": "WR", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
-    receiver_history = [{"season": season, "games": 17, "fantasy_points_std": 150, "fantasy_points_ppr": 250} for season in (2023, 2024, 2025)]
-    assert project_player(receiver, receiver_history, "PPR", 2026).explanation["regression_prior_games"] == 4.0
+KICKER = {"position": "K", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
 
 
-def test_kicker_projection_still_uses_multi_year_history_not_carry_forward() -> None:
-    # The DST-style prior-season carry-forward was tested for kickers and lost
-    # (held-out MAE 23.1 vs 22.1). Older seasons must therefore still move a
-    # kicker's projection -- if they stop mattering, someone has wrongly
-    # applied the DST treatment here.
-    strong_recent_only = [
-        {"season": 2023, "games": 17, "fg_made_30_39": 5, "pat_made": 20},
-        {"season": 2024, "games": 17, "fg_made_30_39": 5, "pat_made": 20},
-        {"season": 2025, "games": 17, "fg_made_50_59": 20, "pat_made": 50},
-    ]
-    strong_throughout = [
-        {"season": season, "games": 17, "fg_made_50_59": 20, "pat_made": 50}
-        for season in (2023, 2024, 2025)
-    ]
-    kicker = {"position": "K", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
-    assert project_player(kicker, strong_throughout, "PPR", 2026).points > project_player(kicker, strong_recent_only, "PPR", 2026).points
+def _k_history(by_season: dict[int, float]) -> list[dict[str, object]]:
+    # pat_made-only rows exercise yahoo_kicker_points' flat fallback (no
+    # fg_made_* distance buckets present) so `points` lands exactly, mirroring
+    # _dst_history's use of fantasy_points_std/ppr as a direct points input.
+    return [{"season": season, "games": 17, "pat_made": points} for season, points in sorted(by_season.items())]
+
+
+def test_kicker_ranks_on_prior_season_only_not_a_multi_year_blend() -> None:
+    # v1.11: kickers were moved onto the same prior-season carry-forward
+    # pattern as DST, on explicit user instruction, even though
+    # model/ff_kicker_projection_backtest.py shows the 3-year weighted blend
+    # is MORE ACCURATE (held-out MAE 22.1 vs 23.1). A kicker who was weak for
+    # two years and great last year must outrank the reverse -- if older
+    # seasons start moving this again, the carry-forward switch regressed.
+    improving = project_player(KICKER, _k_history({2023: 60.0, 2024: 65.0, 2025: 160.0}), "PPR", 2026)
+    declining = project_player(KICKER, _k_history({2023: 160.0, 2024: 155.0, 2025: 60.0}), "PPR", 2026)
+    assert improving.points > declining.points
+    assert improving.explanation["method"] == "k_prior_season_carry_forward"
+    assert improving.explanation["season_inputs"][0]["season"] == 2025
+
+
+def test_kicker_projection_is_shrunk_hard_toward_the_league_prior() -> None:
+    # K_CARRY_FORWARD_WEIGHT (0.54) is the backtest-fitted "prior season only"
+    # shrinkage -- a knowing, informed tradeoff versus the more accurate
+    # 3-year blend. A 160-point kicker season must not project anywhere near
+    # 160; the prior season alone does not support that.
+    prior_points = 7.0 * 17.0  # POSITION_PRIOR_PPG["PPR"]["K"] * BASELINE_GAMES
+    projection = project_player(KICKER, _k_history({2023: 60.0, 2024: 65.0, 2025: 160.0}), "PPR", 2026)
+    assert projection.points == round(prior_points + K_CARRY_FORWARD_WEIGHT * (160.0 - prior_points), 2)
+    assert prior_points < projection.points < 160.0
+    assert projection.explanation["k_carry_forward_weight"] == K_CARRY_FORWARD_WEIGHT
+    assert project_player(KICKER, _k_history({2025: 160.0}), "PPR", 2026).points == projection.points
+
+
+def test_kicker_shrinkage_preserves_order_exactly() -> None:
+    # Shrinkage is monotonic: it changes the displayed spread but never the
+    # draft order. If this breaks, raising K_CARRY_FORWARD_WEIGHT would
+    # silently reshuffle the kicker board.
+    actuals = [158.0, 140.0, 130.0, 98.0, 67.0, 44.0]
+    projected = [project_player(KICKER, _k_history({2025: value}), "PPR", 2026).points for value in actuals]
+    assert projected == sorted(projected, reverse=True)
+
+
+def test_kicker_with_no_history_falls_back_to_the_flat_prior() -> None:
+    projection = project_player(KICKER, [], "PPR", 2026)
+    assert projection.points == 119.0  # POSITION_PRIOR_PPG["PPR"]["K"] (7.0) * BASELINE_GAMES (17.0)
+    assert projection.explanation["method"] == "position_baseline_no_history"
 
 
 def test_rank_rows_uses_value_over_replacement() -> None:

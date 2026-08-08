@@ -2,16 +2,32 @@
 
 Unlike DST (see model/ff_dst_projection_backtest.py, where history LOST to a
 flat constant), kicker history carries real signal -- both history methods beat
-a flat constant by a wide margin. Two findings drive the shipped model:
+a flat constant by a wide margin. This backtest establishes two findings; only
+the first was actually shipped as the ACCURACY-MAXIMIZING choice, and it was
+overridden anyway (see "v1.11 override" below):
 
 1. The 3-YEAR WEIGHTED BLEND BEATS PRIOR-SEASON-ONLY (held-out MAE 22.1 vs
-   23.1, pooled Spearman 0.18 vs 0.17). So kickers keep the standard multi-year
-   regression rather than the prior-season carry-forward used for DST.
+   23.1, pooled Spearman 0.18 vs 0.17). Left purely on accuracy, kickers
+   should keep the standard multi-year regression rather than the
+   prior-season carry-forward used for DST.
 2. The default shrinkage was too weak. Three full seasons against
    REGRESSION_PRIOR_GAMES=4 leaves an effective carry-forward weight of 0.93,
    but the tuning period fits 0.58. POSITION_REGRESSION_PRIOR_GAMES["K"]=37
    reproduces 0.58 at a 51-game sample; held out on 2025 that improves MAE
-   23.2 -> 22.1.
+   23.2 -> 22.1. (This constant is now dead code in production -- see below.)
+
+v1.11 OVERRIDE (2026-08-08): the user was shown this exact tradeoff --
+"3-year blend is more accurate, ~1 point of MAE better" -- and explicitly
+asked for kickers to rank on 2025 alone anyway, to match DST's pattern
+("I want 2025 for both kickers and defense"). ingest/ff_independent.py's
+project_player() therefore routes K through the SAME prior-season
+carry-forward branch as DST, using K_CARRY_FORWARD_WEIGHT=0.54 -- the
+"prior season only" row's fitted lambda from this backtest (held-out MAE
+23.1, rank rho 0.17), NOT the 0.58 effective weight the abandoned 3-year
+blend used. This is a knowingly-accepted accuracy cost, not a finding that
+carry-forward is better for kickers -- the numbers below still say otherwise.
+POSITION_REGRESSION_PRIOR_GAMES["K"] and the "3-year weighted (shipped)" row's
+name are now historical: nothing in production reads that path for K anymore.
 
 Scoring note: kicker points use Yahoo's DISTANCE-TIERED field goals (0-39 = 3,
 40-49 = 4, 50+ = 5, PAT = 1), verified against Yahoo's own express-settings
@@ -157,8 +173,13 @@ def run() -> dict[str, Any]:
     print(
         "\n  VERDICT: kicker history is genuinely predictive (both history methods"
         "\n  beat the flat constant), and the 3-year weighted blend beats"
-        "\n  prior-season-only. Kickers therefore keep the standard multi-year"
-        "\n  regression -- do NOT switch them to the DST-style carry-forward."
+        "\n  prior-season-only -- on accuracy alone, kickers should keep the"
+        "\n  standard multi-year regression, not the DST-style carry-forward."
+        "\n  SHIPPED ANYWAY (v1.11, 2026-08-08): the user was shown this exact"
+        "\n  tradeoff and explicitly asked for kickers to rank on 2025 alone,"
+        "\n  matching DST. Production uses the 'prior season only' row's fitted"
+        "\n  lambda above (K_CARRY_FORWARD_WEIGHT), an informed accuracy cost,"
+        "\n  not a reversal of this finding."
     )
     return result
 
