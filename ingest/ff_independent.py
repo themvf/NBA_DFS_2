@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.9"
+MODEL_VERSION = "ff-independent-v1.10"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -64,6 +64,14 @@ YAHOO_DST_TD_PTS = 6.0  # both defensive TDs and kickoff/punt return TDs
 YAHOO_DST_POINTS_ALLOWED_TIERS = (
     (0, 10.0), (6, 7.0), (13, 4.0), (20, 1.0), (27, 0.0), (34, -1.0), (10_000, -4.0),
 )
+# Yahoo standard Kicker scoring, verified 2026-08-07 against the same live
+# express-settings default page. Field goals are DISTANCE-TIERED, not a flat 3:
+# a 50-yarder is worth 5. Scoring is identical across STD/HALF/PPR.
+YAHOO_K_FG_0_39_PTS = 3.0
+YAHOO_K_FG_40_49_PTS = 4.0
+YAHOO_K_FG_50_PLUS_PTS = 5.0
+YAHOO_K_PAT_PTS = 1.0
+
 # Blocked kicks (+2) are deliberately NOT modeled: nflverse's team-stats
 # release only records kicks THIS team's OWN unit had blocked against it
 # (fg_blocked/pat_blocked/pt_blocked), not blocks credited to this team's
@@ -76,6 +84,13 @@ YAHOO_DST_POINTS_ALLOWED_TIERS = (
 SEASON_WEIGHTS = (0.05, 0.20, 0.75)
 BASELINE_GAMES = 17.0
 REGRESSION_PRIOR_GAMES = 4.0
+# Kickers need far more shrinkage than skill players. With 3 full seasons the
+# default prior (4 games vs 51 of history) leaves an effective carry-forward
+# weight of 0.93, but model/ff_kicker_projection_backtest.py fits 0.58 on the
+# tuning period -- 37 prior games reproduces that at a 51-game sample while
+# still shrinking a short-sample kicker harder. Held out on 2025 this improves
+# MAE 23.2 -> 22.1. Re-run that backtest after any change.
+POSITION_REGRESSION_PRIOR_GAMES = {"K": 37.0}
 # How much of a defense's prior-season result carries into its projection.
 # Fitted walk-forward (tuned on 2023-24, held out on 2025) in
 # model/ff_dst_projection_backtest.py. Shrinkage is monotonic, so this knob
@@ -469,9 +484,16 @@ def save_history(
                 "prior_team": normalize_team(raw.get("recent_team")),
                 "fg_made": as_float(raw.get("fg_made")) or 0.0,
                 "pat_made": as_float(raw.get("pat_made")) or 0.0,
+                # Per-distance buckets drive Yahoo's tiered kicker scoring. The
+                # flat fg_made above is kept only as a degraded fallback.
+                **{
+                    bucket: as_float(raw.get(bucket)) or 0.0
+                    for bucket in ("fg_made_0_19", "fg_made_20_29", "fg_made_30_39",
+                                   "fg_made_40_49", "fg_made_50_59", "fg_made_60_")
+                },
             }
             if player["position"] == "K":
-                kicker_points = values["fg_made"] * 3.0 + values["pat_made"]
+                kicker_points = yahoo_kicker_points(values)
                 values["fantasy_points_std"] = kicker_points
                 values["fantasy_points_ppr"] = kicker_points
             # source_row stores the FULL raw nflverse row (raw), not just the
@@ -637,9 +659,31 @@ def _rookie_points(position: str, draft_number: int | None, scoring: str) -> flo
     return std if scoring == "STD" else std + reception_bonus * (0.5 if scoring == "HALF" else 1.0)
 
 
+def yahoo_kicker_points(row: dict[str, Any]) -> float:
+    """Yahoo standard kicker scoring: 0-39 = 3, 40-49 = 4, 50+ = 5, PAT = 1.
+
+    Single source of truth for the formula, used by both the history ingest and
+    the projection path. Falls back to a flat 3 per field goal ONLY when the
+    per-distance buckets are absent (older rows written before this shipped),
+    so a stale row degrades instead of silently scoring zero.
+    """
+    value = lambda key: float(row.get(key) or 0.0)  # noqa: E731
+    buckets = ("fg_made_0_19", "fg_made_20_29", "fg_made_30_39", "fg_made_40_49", "fg_made_50_59", "fg_made_60_")
+    if not any(key in row for key in buckets):
+        return value("fg_made") * YAHOO_K_FG_0_39_PTS + value("pat_made") * YAHOO_K_PAT_PTS
+    short = value("fg_made_0_19") + value("fg_made_20_29") + value("fg_made_30_39")
+    long_range = value("fg_made_50_59") + value("fg_made_60_")
+    return (
+        short * YAHOO_K_FG_0_39_PTS
+        + value("fg_made_40_49") * YAHOO_K_FG_40_49_PTS
+        + long_range * YAHOO_K_FG_50_PLUS_PTS
+        + value("pat_made") * YAHOO_K_PAT_PTS
+    )
+
+
 def _season_points(history: dict[str, Any], position: str, scoring: str) -> float:
     if position == "K":
-        return float(history.get("fg_made") or 0.0) * 3.0 + float(history.get("pat_made") or 0.0)
+        return yahoo_kicker_points(history)
     std = float(history.get("fantasy_points_std") or 0.0)
     ppr = float(history.get("fantasy_points_ppr") or 0.0)
     return std if scoring == "STD" else ppr if scoring == "PPR" else (std + ppr) / 2.0
@@ -742,9 +786,10 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
         weighted_history_ppg = raw_ppg
         prior_ppg = POSITION_PRIOR_PPG[scoring][position]
         position_prior_ppg = prior_ppg
+        regression_prior_games = POSITION_REGRESSION_PRIOR_GAMES.get(position, REGRESSION_PRIOR_GAMES)
         regressed_ppg = (
-            raw_ppg * history_games + prior_ppg * REGRESSION_PRIOR_GAMES
-        ) / (history_games + REGRESSION_PRIOR_GAMES)
+            raw_ppg * history_games + prior_ppg * regression_prior_games
+        ) / (history_games + regression_prior_games)
         availability = weighted_availability / weight_total if weight_total else 0.75
         expected_games = 13.5 + 2.5 * availability
         raw_role = _depth_factor(position, depth)
@@ -819,7 +864,10 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             "season_inputs": season_inputs,
             "weighted_history_ppg": round(weighted_history_ppg, 3) if weighted_history_ppg is not None else None,
             "position_prior_ppg": position_prior_ppg,
-            "regression_prior_games": REGRESSION_PRIOR_GAMES if regressed_ppg is not None else None,
+            "regression_prior_games": (
+                POSITION_REGRESSION_PRIOR_GAMES.get(position, REGRESSION_PRIOR_GAMES)
+                if regressed_ppg is not None else None
+            ),
             "dst_carry_forward_weight": DST_CARRY_FORWARD_WEIGHT if method == "dst_prior_season_carry_forward" else None,
             "regression_sample_games": history_games if regressed_ppg is not None else None,
             "regressed_ppg": round(regressed_ppg, 3) if regressed_ppg is not None else None,

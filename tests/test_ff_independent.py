@@ -1,6 +1,7 @@
 import pandas as pd
 
 from ingest.ff_independent import (
+    yahoo_kicker_points,
     DST_CARRY_FORWARD_WEIGHT,
     MODEL_VERSION,
     ROOKIE_RANGE_RATIO,
@@ -184,6 +185,67 @@ def test_dst_with_no_history_falls_back_to_the_flat_prior() -> None:
     projection = project_player(DST, [], "PPR", 2026)
     assert projection.points == 105.4
     assert projection.explanation["method"] == "position_baseline_no_history"
+
+
+def test_yahoo_kicker_scoring_is_distance_tiered() -> None:
+    # Verified 2026-08-07 against Yahoo's own live express-settings default
+    # page: 0-39 = 3, 40-49 = 4, 50+ = 5, PAT = 1. The previous flat 3-per-FG
+    # formula undercounted kickers by ~15 points a season and reshuffled 22 of
+    # 42 kicker ranks, so the tier edges matter.
+    assert yahoo_kicker_points({"fg_made_30_39": 1}) == 3.0
+    assert yahoo_kicker_points({"fg_made_40_49": 1}) == 4.0
+    assert yahoo_kicker_points({"fg_made_50_59": 1}) == 5.0
+    assert yahoo_kicker_points({"fg_made_60_": 1}) == 5.0
+    assert yahoo_kicker_points({"pat_made": 1}) == 1.0
+    # A realistic season: 10 short, 8 mid, 5 long, 40 PATs.
+    assert yahoo_kicker_points({
+        "fg_made_0_19": 2, "fg_made_20_29": 3, "fg_made_30_39": 5,
+        "fg_made_40_49": 8, "fg_made_50_59": 4, "fg_made_60_": 1, "pat_made": 40,
+    }) == 2 * 3 + 3 * 3 + 5 * 3 + 8 * 4 + 4 * 5 + 1 * 5 + 40
+
+
+def test_kicker_scoring_falls_back_when_distance_buckets_are_absent() -> None:
+    # Rows written before the tiered buckets shipped must degrade to the old
+    # flat-3 formula rather than silently scoring zero.
+    assert yahoo_kicker_points({"fg_made": 30, "pat_made": 40}) == 30 * 3 + 40
+
+
+def test_kicker_projection_is_shrunk_harder_than_a_skill_position() -> None:
+    # Kicker history IS predictive (unlike DST), so kickers keep the 3-year
+    # regression -- but the default 4-game prior leaves far too little
+    # shrinkage. model/ff_kicker_projection_backtest.py fits 37 prior games
+    # (effective lambda 0.58 at a 51-game sample), improving held-out MAE
+    # 23.2 -> 22.1.
+    kicker_history = [
+        {"season": season, "games": 17, "fg_made_40_49": 10, "fg_made_50_59": 6, "pat_made": 45}
+        for season in (2023, 2024, 2025)
+    ]
+    kicker = {"position": "K", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+    projection = project_player(kicker, kicker_history, "PPR", 2026)
+    assert projection.explanation["method"] == "history_regression"
+    assert projection.explanation["regression_prior_games"] == 37.0
+    # A skill position keeps the light default prior.
+    receiver = {"position": "WR", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+    receiver_history = [{"season": season, "games": 17, "fantasy_points_std": 150, "fantasy_points_ppr": 250} for season in (2023, 2024, 2025)]
+    assert project_player(receiver, receiver_history, "PPR", 2026).explanation["regression_prior_games"] == 4.0
+
+
+def test_kicker_projection_still_uses_multi_year_history_not_carry_forward() -> None:
+    # The DST-style prior-season carry-forward was tested for kickers and lost
+    # (held-out MAE 23.1 vs 22.1). Older seasons must therefore still move a
+    # kicker's projection -- if they stop mattering, someone has wrongly
+    # applied the DST treatment here.
+    strong_recent_only = [
+        {"season": 2023, "games": 17, "fg_made_30_39": 5, "pat_made": 20},
+        {"season": 2024, "games": 17, "fg_made_30_39": 5, "pat_made": 20},
+        {"season": 2025, "games": 17, "fg_made_50_59": 20, "pat_made": 50},
+    ]
+    strong_throughout = [
+        {"season": season, "games": 17, "fg_made_50_59": 20, "pat_made": 50}
+        for season in (2023, 2024, 2025)
+    ]
+    kicker = {"position": "K", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
+    assert project_player(kicker, strong_throughout, "PPR", 2026).points > project_player(kicker, strong_recent_only, "PPR", 2026).points
 
 
 def test_rank_rows_uses_value_over_replacement() -> None:
