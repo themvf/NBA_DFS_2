@@ -28,7 +28,7 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.10"
+MODEL_VERSION = "ff-independent-v1.11"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -84,19 +84,30 @@ YAHOO_K_PAT_PTS = 1.0
 SEASON_WEIGHTS = (0.05, 0.20, 0.75)
 BASELINE_GAMES = 17.0
 REGRESSION_PRIOR_GAMES = 4.0
-# Kickers need far more shrinkage than skill players. With 3 full seasons the
-# default prior (4 games vs 51 of history) leaves an effective carry-forward
-# weight of 0.93, but model/ff_kicker_projection_backtest.py fits 0.58 on the
-# tuning period -- 37 prior games reproduces that at a 51-game sample while
-# still shrinking a short-sample kicker harder. Held out on 2025 this improves
-# MAE 23.2 -> 22.1. Re-run that backtest after any change.
+# Historical note, no longer live: this was the shrinkage used for kickers'
+# old 3-year weighted-blend path (37 prior games ~ effective weight 0.58 at a
+# 51-game sample, vs the 4-game default's 0.93). model/ff_kicker_projection_
+# backtest.py showed that blend was MORE ACCURATE than prior-season-only
+# (held-out MAE 22.1 vs 23.1) -- but v1.11 switched kickers to prior-season
+# carry-forward anyway, on explicit user instruction, to match DST's "rank on
+# last season" pattern. Kept here only as the backtest's comparison baseline;
+# no position routes through the eligible_history regression branch that
+# reads this map anymore as of v1.11 (K moved off it; DST never used it).
 POSITION_REGRESSION_PRIOR_GAMES = {"K": 37.0}
-# How much of a defense's prior-season result carries into its projection.
-# Fitted walk-forward (tuned on 2023-24, held out on 2025) in
-# model/ff_dst_projection_backtest.py. Shrinkage is monotonic, so this knob
-# changes the displayed SPREAD but never the draft ORDER -- raising it only
-# trades calibration for visual separation. Re-run the backtest after changes.
+# How much of a defense's / kicker's prior-season result carries into its
+# projection. DST_CARRY_FORWARD_WEIGHT fitted walk-forward (tuned on 2023-24,
+# held out on 2025) in model/ff_dst_projection_backtest.py.
+# K_CARRY_FORWARD_WEIGHT is the "prior season only" row fitted the same way in
+# model/ff_kicker_projection_backtest.py (0.54, held-out MAE 23.1, rank rho
+# 0.17) -- shipped even though that same backtest shows the 3-year weighted
+# blend is MORE ACCURATE (MAE 22.1, rho 0.18). This is a knowing, informed
+# tradeoff: the user explicitly asked for kickers to rank on 2025 alone, the
+# same way DST does, after being shown the ~1-point MAE cost. Shrinkage is
+# monotonic, so both knobs change the displayed SPREAD but never the draft
+# ORDER -- raising either only trades calibration for visual separation.
+# Re-run the relevant backtest after changing either constant.
 DST_CARRY_FORWARD_WEIGHT = 0.05
+K_CARRY_FORWARD_WEIGHT = 0.54
 POSITION_PRIOR_PPG = {
     "STD": {"QB": 14.0, "RB": 5.5, "WR": 5.5, "TE": 3.5, "K": 7.0, "DST": 6.2},
     "HALF": {"QB": 14.0, "RB": 6.8, "WR": 7.0, "TE": 4.7, "K": 7.0, "DST": 6.2},
@@ -703,22 +714,23 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
     rookie_prior_points: float | None = None
     role_floor_points: float | None = None
 
-    if position == "DST":
+    if position in ("DST", "K"):
         # Ordering comes from the MOST RECENT completed season's actual
-        # Yahoo-scored DST points; the displayed value is that number shrunk
-        # hard toward the league prior. Both halves are deliberate:
+        # Yahoo-scored points; the displayed value is that number shrunk hard
+        # toward the league prior. Both halves are deliberate:
         #
-        #   Ordering  -- prior-season carry-forward is the best RANKABLE
-        #     signal tested (Spearman 0.18, top-12 hit rate 42% vs 38%
-        #     random). Weak, but real, and better than the 3-year weighted
-        #     blend v1.7 used (0.15). A flat constant ranks nothing at all.
+        #   Ordering  -- for DST, prior-season carry-forward is the best
+        #     RANKABLE signal tested (Spearman 0.18, top-12 hit rate 42% vs
+        #     38% random) -- better than the 3-year weighted blend v1.7 used
+        #     (0.15), and a flat constant ranks nothing at all.
         #   Magnitude -- shrinkage is a monotonic transform, so it leaves that
-        #     ordering EXACTLY unchanged while fixing calibration. Held out on
-        #     2025 (tuned on 2023-24, n=96 walk-forward): raw carry-forward
-        #     MAE 28.0, shrunk 24.3, flat constant 24.8. The shrunk version
-        #     beats both -- it is not a compromise, it is the best of the three.
+        #     ordering EXACTLY unchanged while fixing calibration. For DST,
+        #     held out on 2025 (tuned on 2023-24, n=96 walk-forward): raw
+        #     carry-forward MAE 28.0, shrunk 24.3, flat constant 24.8. The
+        #     shrunk version beats both -- it is not a compromise, it is the
+        #     best of the three.
         #
-        # Why the weight is so small: every Yahoo DST scoring component is
+        # Why DST's weight is so small: every Yahoo DST scoring component is
         # near-noise year over year (sacks r=0.20, INTs r=0.11, fumble
         # recoveries r=0.06, defensive TDs r=-0.03). The only component with
         # real persistence is points allowed (r=0.31), and Yahoo's tiers make
@@ -728,16 +740,29 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
         # prior-season FPTS column shows the real uncompressed number
         # alongside, so the underlying evidence stays visible.
         #
-        # DST_CARRY_FORWARD_WEIGHT is the intended tuning knob. Raising it
-        # widens the displayed spread WITHOUT changing the draft order at all;
-        # it only trades calibration for visual separation. Re-run
-        # model/ff_dst_projection_backtest.py after any change.
-        prior_points = POSITION_PRIOR_PPG[scoring]["DST"] * BASELINE_GAMES
+        # Kickers (v1.11): unlike DST, model/ff_kicker_projection_backtest.py
+        # shows kicker history IS genuinely predictive and the 3-year
+        # weighted blend beats prior-season-only (held-out MAE 22.1 vs 23.1,
+        # rank rho 0.18 vs 0.17) -- the accuracy-maximizing choice would have
+        # kept kickers on the multi-year regression path below. Kickers were
+        # moved onto this carry-forward branch anyway on explicit, informed
+        # user instruction ("I want 2025 for both kickers and defense"),
+        # after that tradeoff was shown. K_CARRY_FORWARD_WEIGHT=0.54 is the
+        # backtest-fitted shrinkage for the "prior season only" predictor
+        # specifically -- it is not the same number as the abandoned 3-year
+        # blend's effective weight (0.58, via POSITION_REGRESSION_PRIOR_GAMES).
+        #
+        # *_CARRY_FORWARD_WEIGHT is the intended tuning knob for both
+        # positions. Raising it widens the displayed spread WITHOUT changing
+        # the draft order at all; it only trades calibration for visual
+        # separation. Re-run the matching backtest after any change.
+        weight = DST_CARRY_FORWARD_WEIGHT if position == "DST" else K_CARRY_FORWARD_WEIGHT
+        prior_points = POSITION_PRIOR_PPG[scoring][position] * BASELINE_GAMES
         recent = max(eligible_history, key=lambda row: int(row["season"])) if eligible_history else None
         if recent is not None:
-            method = "dst_prior_season_carry_forward"
+            method = "dst_prior_season_carry_forward" if position == "DST" else "k_prior_season_carry_forward"
             carry_points = _season_points(recent, position, scoring)
-            base_points = prior_points + DST_CARRY_FORWARD_WEIGHT * (carry_points - prior_points)
+            base_points = prior_points + weight * (carry_points - prior_points)
             history_games = int(recent.get("games") or 0)
             season_inputs.append({
                 "season": int(recent["season"]),
@@ -751,7 +776,7 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             base_points = prior_points
             history_games = 0
             confidence = 0.30
-        position_prior_ppg = POSITION_PRIOR_PPG[scoring]["DST"]
+        position_prior_ppg = POSITION_PRIOR_PPG[scoring][position]
         expected_games = BASELINE_GAMES
         role_factor = 1.0
     elif eligible_history:
@@ -869,6 +894,7 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
                 if regressed_ppg is not None else None
             ),
             "dst_carry_forward_weight": DST_CARRY_FORWARD_WEIGHT if method == "dst_prior_season_carry_forward" else None,
+            "k_carry_forward_weight": K_CARRY_FORWARD_WEIGHT if method == "k_prior_season_carry_forward" else None,
             "regression_sample_games": history_games if regressed_ppg is not None else None,
             "regressed_ppg": round(regressed_ppg, 3) if regressed_ppg is not None else None,
             "rookie_prior_points": round(rookie_prior_points, 2) if rookie_prior_points is not None else None,
