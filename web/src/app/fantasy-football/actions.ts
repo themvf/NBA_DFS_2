@@ -7,9 +7,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ensureFantasyFootballTables } from "@/db/ensure-schema";
 import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
+import { getRosterPreset, getScoringPreset } from "@/lib/fantasy-football/league-config";
 import { getFantasyPercentileProfile, type FantasyPercentileProfile } from "@/db/queries-fantasy-football";
-
-const DEFAULT_ROSTER = { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DST: 1, BN: 6 };
 
 export async function createFantasyDraft(formData: FormData): Promise<void> {
   await ensureFantasyFootballTables();
@@ -19,16 +18,23 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
   const controlledSlot = Number(formData.get("controlledSlot") || 1);
   const rounds = Number(formData.get("rounds") || 15);
   const season = Number(formData.get("season") || 2026);
-  const scoring = String(formData.get("scoring") || "PPR");
+  const scoringPreset = String(formData.get("scoring") || "HALF");
+  const rosterPreset = String(formData.get("roster") || "hood-rivals");
+  
   if (!Number.isInteger(rankingSetId) || rankingSetId <= 0) throw new Error("Choose a ranking set");
   buildSnakeSlots(teamCount, rounds);
   if (controlledSlot < 1 || controlledSlot > teamCount) throw new Error("Draft slot is outside the league");
+  
+  // Get preset configurations
+  const rosterConfig = getRosterPreset(rosterPreset);
+  const scoringConfig = getScoringPreset(scoringPreset);
+  
   const draftId = randomUUID();
   await db.execute(sql`WITH new_draft AS (
       INSERT INTO ff_draft_sessions
         (id,name,season,status,team_count,controlled_slot,round_count,roster_config,scoring_config,recommendation_config,ranking_set_id)
       VALUES (${draftId}::uuid,${name},${season},'active',${teamCount},${controlledSlot},${rounds},
-        ${JSON.stringify(DEFAULT_ROSTER)}::jsonb,${JSON.stringify({ preset: scoring })}::jsonb,
+        ${JSON.stringify(rosterConfig)}::jsonb,${JSON.stringify(scoringConfig)}::jsonb,
         ${JSON.stringify({ model: "ff-independent-v1.6" })}::jsonb,${rankingSetId}) RETURNING id
     ), teams AS (
       INSERT INTO ff_draft_teams(draft_id,slot,name,is_controlled)

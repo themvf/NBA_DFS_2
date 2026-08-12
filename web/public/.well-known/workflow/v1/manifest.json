@@ -1,17 +1,6 @@
 {
   "version": "1.0.0",
   "steps": {
-    "src/workflows/optimizer-job.ts": {
-      "buildOptimizerLineupStep": {
-        "stepId": "step//./src/workflows/optimizer-job//buildOptimizerLineupStep"
-      },
-      "finalizeOptimizerJobStep": {
-        "stepId": "step//./src/workflows/optimizer-job//finalizeOptimizerJobStep"
-      },
-      "prepareOptimizerJobStep": {
-        "stepId": "step//./src/workflows/optimizer-job//prepareOptimizerJobStep"
-      }
-    },
     "node_modules/workflow/dist/internal/builtins.js": {
       "__builtin_response_array_buffer": {
         "stepId": "__builtin_response_array_buffer"
@@ -21,6 +10,17 @@
       },
       "__builtin_response_text": {
         "stepId": "__builtin_response_text"
+      }
+    },
+    "src/workflows/optimizer-job.ts": {
+      "buildOptimizerLineupStep": {
+        "stepId": "step//./src/workflows/optimizer-job//buildOptimizerLineupStep"
+      },
+      "finalizeOptimizerJobStep": {
+        "stepId": "step//./src/workflows/optimizer-job//finalizeOptimizerJobStep"
+      },
+      "prepareOptimizerJobStep": {
+        "stepId": "step//./src/workflows/optimizer-job//prepareOptimizerJobStep"
       }
     }
   },

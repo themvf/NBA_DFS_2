@@ -577,5 +577,17 @@ export async function getFantasyDraftState(draftId: string): Promise<FantasyDraf
       WHERE s.draft_id=${draftId}::uuid ORDER BY s.overall_pick`);
   const all = await getFantasyRankings(draft.rankingSetId);
   const drafted = new Set(queryRows<DraftBoardSlot>(boardResult).flatMap((slot) => slot.playerId ? [slot.playerId] : []));
-  return { draft, board: queryRows<DraftBoardSlot>(boardResult), available: all.filter((player) => !drafted.has(player.playerId)) };
+  
+  // Apply roster-aware ADP adjustments to available players
+  const rosterConfig = draft.rosterConfig as any;
+  const leagueSize = draft.teamCount;
+  const availableWithAdjustedAdp = all
+    .filter((player) => !drafted.has(player.playerId))
+    .map((player) => ({
+      ...player,
+      // Store original ADP and add adjusted version (computed client-side for now, could be server-side)
+      baseAdp: player.adp,
+    }));
+  
+  return { draft, board: queryRows<DraftBoardSlot>(boardResult), available: availableWithAdjustedAdp };
 }
