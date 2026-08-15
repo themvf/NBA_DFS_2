@@ -2013,6 +2013,72 @@ Two open cautions, not yet resolved:
   prices may be suspended, limited, or gone on click. Observed quote
   persistence is polled, never verified.
 
+### Pre-registered measurement program — `mlb-prop-program-v1` (2026-08-15)
+
+Registered **before the v3 cohort had a single observation**.
+`model/mlb_prop_program.py` implements it; `tests/test_mlb_prop_program.py`
+makes every constant tamper-evident.
+
+**The question, narrowed honestly:** *does `dk_prop_value` produce capturable
+CLV at all?* NOT "which market is most exploitable" — projected season sample
+is ~180–220 effective observations TOTAL, which split four ways is 45–90 per
+cell, far below any defensible floor. So the four anchored markets are **ONE
+POOLED CELL and the test family is exactly 1.**
+
+| | |
+|---|---|
+| Markets | 4 anchored (the census set). Exploratory tranche **killed** — the 223-credit census answered its question better than a ~7,200/month program would |
+| Cost | 180 credits/day, ~5,400/30d (was 13,500 proposed) |
+| Test family | **1** — no multiplicity correction needed; count reported anyway so silent expansion is visible |
+| Primary metric | Mean reference CLV, date-clustered bootstrap |
+| Floors (conjunctive) | `n_eff ≥ (2.80 × SD ÷ 1.0)²` = **134** at SD 4.12pp · **≥25 distinct dates** · **≥30 settled** |
+| Day-14 gate | **2026-09-01**, blinded — nuisance parameters only |
+| Verdict | **2026-10-04**, computed once, frozen. No efficacy stopping; futility only |
+
+**MDE is 1.0pp, not the 0.5pp first drafted.** At $100/bet, +0.5pp CLV ≈ +1%
+ROI ≈ $650/yr, which does not exceed the cost of running the program. *An
+effect not worth acting on is not worth powering for.* Set on economics
+confirmed after the first design; it does not move again.
+
+**≥25 distinct dates cannot be bought with volume.** A date-clustered bootstrap
+resamples clusters, so 10 dates gives a meaningless CI at any n.
+
+**Execution-book concentration gates (C1–C4).** Uniform share across 6 books is
+16.7%, so the MLB-underdog spec's 25% team bar would be nearly non-binding. One
+book's pricing quirk is also more dangerous than one team's lucky season — it is
+a systematic artifact the book removes by limiting you.
+- **C1** >40% one book ⇒ headline reads `SINGLE-BOOK FINDING`. May not be called
+  a market edge, a detector edge, or "exploitable."
+- **C2** leave-one-book-out must keep CI excluding zero **and** ≥50% of the
+  point estimate.
+- **C3** at ~70% concentration LOBO is underpowered *by construction* ⇒
+  `SINGLE-BOOK — UNVERIFIABLE`. Blocks market-finding status; may promote only
+  as a **counterparty finding**, assumed to **decay, not compound**.
+- **C4** no per-book verdicts, ever. Book distribution is a covariate, never a
+  hypothesis family.
+
+**The control arm is load-bearing, not a museum piece.** `prop_line_gap` keeps
+its v1 trigger frozen and costs zero credits. Both arms share pipeline,
+grading, latency and voids, so the **difference** cancels systematic error we
+haven't thought of — an accidental placebo arm. Every verdict reports it. If it
+drifts from its −0.13pp baseline that is an **instrument alarm** (cadence,
+close definition, reference drift), not a finding. *First run reads −0.14pp —
+the instrument checks out.*
+
+**`books_qualifying`** is recorded with a fixed interpretation and **creates no
+stratum**: >90% at 1 strengthens the single-book classification. A
+consensus-confirmed subgroup becomes a separately registered study only if it
+independently reaches its own floor — never carved out after the fact.
+
+**Program-level kill, declared before the data:** if the live cell fails its
+verdict at floor — CLV CI includes or sits below zero — that is the **fifth
+confirmed negative and edge-finding terminates.** Declaring that in advance is
+what makes running it worth doing.
+
+Guaranteed 2026 deliverables regardless of how the gate resolves: SD̂, ρ̂,
+per-market coverage, alert rates, persistence distributions, and the quarterly
+census — i.e. the inputs to a correctly-powered 2027 cohort.
+
 ### Economics, stated plainly
 
 At **$100/bet** and ~650 bets/year, the CLV-implied edge range gives roughly

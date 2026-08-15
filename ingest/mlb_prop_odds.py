@@ -67,20 +67,30 @@ ODDS_BASE = "https://api.the-odds-api.com/v4"
 # (the earlier unpaired probe made them look available; they are not usable).
 # batter_strikeouts: no book posts it at all.
 MARKETS = ",".join((
-    # pitchers (~1.9 paired players/event)
-    "pitcher_strikeouts", "pitcher_outs", "pitcher_hits_allowed",
-    "pitcher_earned_runs", "pitcher_record_a_win", "pitcher_walks",
-    # batters (~18 paired players/event -- these dominate row volume, NOT cost;
-    # credits are per market per event regardless of how many players come back)
-    "batter_total_bases", "batter_hits", "batter_rbis", "batter_runs_scored",
-    "batter_hits_runs_rbis", "batter_singles", "batter_doubles",
-    "batter_walks", "batter_stolen_bases",
-    # Viable only once the book set widened: paired at espnbet/fliff/pinnacle
-    # (and betparx). The 8-book probe saw it as one-sided because none of those
-    # were in the list -- a reminder that "market unavailable" is always
-    # relative to the books you asked for.
-    "batter_home_runs",
+    "pitcher_strikeouts",    # Pinnacle same-line 100% of events
+    "batter_total_bases",    # 100%
+    "pitcher_outs",          #  93%
+    "pitcher_hits_allowed",  #  80%
 ))
+# ── Why only four (2026-08-15 anchor census, 16 markets x 15 events) ─────────
+# Both detectors need a SAME-LINE Pinnacle quote. Exactly four markets clear a
+# 60% coverage gate; the other twelve fail in three distinct ways:
+#   Pinnacle absent entirely  pitcher_earned_runs (was 98% in July, decayed
+#     98->51->1->0 over weeks), pitcher_walks, pitcher_record_a_win, and every
+#     batter market except total_bases.
+#   Anchor present, never comparable  batter_runs_scored -- Pinnacle posts 87%
+#     of the time but at a DIFFERENT line than DK every single time. An anchor
+#     that never matches the proposition is not an anchor.
+#   No execution side  batter_home_runs -- DraftKings posts 0% (Pinnacle 100%).
+#
+# Capturing an unanchored market buys rows that can never produce a verdict.
+# The census answered that question for 223 credits; a continuous exploratory
+# tranche would have cost ~7,200/month to answer it again. Coverage does move,
+# so re-run the census QUARTERLY (223 credits) -- a market that becomes
+# anchored is a legitimate future candidate and gets added then.
+#
+# Cost at four markets: 4 x ceil(10 books/10) x ~15 events x 3 passes/day
+#   = 180 credits/day = ~5,400/30d, against a ~20,000/month shared key.
 
 # ── Books (expanded 2026-08-15) ──────────────────────────────────────────────
 # COST RULE, measured not assumed (x-requests-last, one event, 4 markets):
