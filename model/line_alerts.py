@@ -214,6 +214,80 @@ def _sides(books: dict) -> list[str]:
     return ["home", "away", "draw"] if has_draw else ["home", "away"]
 
 
+def freeze_execution_price(books: dict, *, market: str, side: str) -> dict:
+    """Freeze the price this alert could actually have been taken at.
+
+    Without this an alert is ungradable economically -- you can count wins but
+    never compute ROI, and a win rate against an ASSUMED -110 is not a result.
+    77 of 80 settled NFL alerts had no frozen price before this existed.
+
+    SAME-PROPOSITION IS ENFORCED BY CONSTRUCTION. `_consensus_book_line` is a
+    MEAN across books, so it routinely lands on a number (2.83) that no book
+    offers -- pricing "at the consensus" would invent a bet. Instead the books
+    are grouped by the line they actually post, the MODAL line is taken (the
+    most widely available, therefore most genuinely bettable proposition), and
+    the best price is chosen among the books at that line only. A spread of
+    -2.5 and one of -3.0 are different bets and are never compared.
+
+    Returns {} when nothing is priceable, so the caller records the absence
+    rather than fabricating a number.
+    """
+    if market == "moneyline":
+        price_key, line_key = _SIDE_KEY.get(side, ""), None
+    elif market == "spread":
+        price_key = "spread_home_price" if side == "home" else "spread_away_price"
+        line_key = "spread_home" if side == "home" else "spread_away"
+    elif market == "total":
+        price_key, line_key = ("over" if side == "over" else "under"), "total_line"
+    else:
+        return {}
+
+    by_line: dict[float | None, list[tuple[str, int, float]]] = {}
+    for book_key in _EXECUTION_BOOKS:
+        quote = books.get(book_key)
+        if not isinstance(quote, dict):
+            continue
+        line = None
+        if line_key is not None:
+            raw = quote.get(line_key)
+            if raw is None:
+                continue
+            try:
+                line = float(raw)
+            except (TypeError, ValueError):
+                continue
+        price = quote.get(price_key)
+        if price is None:
+            continue
+        try:
+            dec = american_to_decimal(int(price))
+        except (TypeError, ValueError):
+            continue
+        by_line.setdefault(line, []).append((book_key, int(price), dec))
+    if not by_line:
+        return {"exec_price_available": False}
+
+    # Modal line, ties broken toward the better price for us.
+    line = max(by_line, key=lambda k: (len(by_line[k]), max(d for _, _, d in by_line[k])))
+    book_key, price, dec = max(by_line[line], key=lambda t: t[2])
+    out = {
+        "exec_book": book_key,
+        "exec_odds": price,
+        "exec_decimal": round(dec, 4),
+        "exec_books_at_line": len(by_line[line]),
+        "exec_price_available": True,
+        # Legacy key names: the ROI/backtest queries and _selection_prices read
+        # these. They hold the EXECUTION book's price, which is why the UI
+        # reports the distinct-book count instead of claiming "@ DK".
+        "dk_odds": price,
+        "dk_decimal": round(dec, 4),
+        "clv_book": book_key,
+    }
+    if line is not None:
+        out["exec_line"] = line
+    return out
+
+
 def _consensus_book_line(books: dict, key: str) -> float | None:
     values = []
     for book in books.values():
@@ -436,7 +510,10 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         alert_type="steam", side=side,
                         alert_prob=retail, sharp_prob=pin_p,
                         details={"books_moved": len(movers),
-                                 "avg_move_pp": round(sum(movers) / len(movers), 2)},
+                                 "avg_move_pp": round(sum(movers) / len(movers), 2),
+                                 "market": "moneyline",
+                                 **freeze_execution_price(books, market="moneyline",
+                                                          side=side)},
                     ))
         # ── Walking (slow consensus drift >= _WALK_MIN_PP toward a side since
         #    OPEN — the first capture of this fixture, not the previous one). ──
@@ -464,12 +541,20 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         alert_prob=p_now, sharp_prob=pin_p,
                         details={"open_pp": round(p_open * 100, 2),
                                  "now_pp": round(p_now * 100, 2),
-                                 "drift_pp": round(drift_pp, 2)},
+                                 "drift_pp": round(drift_pp, 2),
+                                 "market": "moneyline",
+                                 **freeze_execution_price(books, market="moneyline",
+                                                          side=side)},
                     ))
         if sport == "nfl":
             previous_books = prev["books"] if prev and prev.get("books") else None
             opening_books = first["books"] if first and first.get("books") else None
             for signal in _nfl_market_signals(books, previous_books, opening_books):
+                # Freeze the price at trigger. Without it these alerts can be
+                # counted but never graded economically -- the state 77 of 80
+                # settled NFL alerts were in before 2026-08-15.
+                priced = freeze_execution_price(
+                    books, market=signal["details"]["market"], side=signal["side"])
                 new_alerts.extend(_insert(
                     db,
                     sport=sport,
@@ -477,9 +562,10 @@ def scan(db: DatabaseManager, sport: str) -> int:
                     label=label,
                     alert_type=signal["alert_type"],
                     side=signal["side"],
-                    alert_prob=None,
+                    alert_prob=(1 / priced["exec_decimal"]
+                                if priced.get("exec_decimal") else None),
                     sharp_prob=None,
-                    details=signal["details"],
+                    details={**signal["details"], **priced},
                 ))
     if new_alerts:
         print(f"Line alerts ({sport}): {len(new_alerts)} new — "
@@ -607,13 +693,14 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
 # Reviving it as actionable requires a new, separately pre-registered study.
 _PROP_LINE_GAP_IS_CONTROL_ONLY = True
 
-# Books this user can actually place a bet at. A price at a book they cannot
+# Books this user can actually place a bet at. Used by EVERY market
+# (game lines and props) -- it is a jurisdiction fact, not a prop concern. A price at a book they cannot
 # reach is a reference, never a recommendation -- so ONLY these are eligible to
 # execute an alert. Pinnacle is deliberately absent: it is the fair-value
 # anchor and is not bettable in this jurisdiction. ESPN BET / Hard Rock / Fliff
 # post far more prop markets and are captured, but stay OUT until jurisdiction
 # is confirmed; adding one is a one-line change that bumps the detector version.
-_PROP_EXECUTION_BOOKS = (
+_EXECUTION_BOOKS = (
     "draftkings", "betmgm", "fanatics", "williamhill_us", "fanduel", "betrivers",
 )
 
@@ -741,7 +828,7 @@ def scan_props(db: DatabaseManager) -> int:
             # Runs only after selection, so it cannot influence what is flagged.
             book_key, price, dec = _DK_BOOK, int(dk_price), dk_dec
             n_qualifying = 0
-            for cand in _PROP_EXECUTION_BOOKS:
+            for cand in _EXECUTION_BOOKS:
                 bq = books.get(cand)
                 if not bq or bq.get("line") is None:
                     continue
