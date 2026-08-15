@@ -158,7 +158,9 @@ def settle_tour(db: DatabaseManager, tour: str, days_back: int) -> tuple[int, in
 
             db.execute(
                 """UPDATE tennis_matches
-                   SET home_sets=%s, away_sets=%s, winner=%s
+                   SET home_sets=%s, away_sets=%s, winner=%s,
+                       completion_status='completed', retired=FALSE, walkover=FALSE,
+                       result_source='tennisexplorer', result_comment=NULL
                    WHERE id=%s""",
                 (home_sets, away_sets, winner, match["id"]),
             )

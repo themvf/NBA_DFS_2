@@ -31,6 +31,7 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.tennis_result_semantics import classify_completion
 
 logger = logging.getLogger(__name__)
 
@@ -150,16 +151,16 @@ def settle_tour(db: DatabaseManager, tour: str, year: int) -> tuple[int, int]:
             home_sets, away_sets, home_games, away_games, winner = w_sets, l_sets, w_games, l_games, "home"
         else:
             home_sets, away_sets, home_games, away_games, winner = l_sets, w_sets, l_games, w_games, "away"
-        # Retirement/walkover: the advancer is still the Winner column, so
-        # moneyline settles normally by `winner`. Totals/handicap would void on a
-        # retirement — handled when those markets are rated (not yet).
-        _ = comment
+        completion_status, retired, walkover = classify_completion(comment)
 
         db.execute(
             """UPDATE tennis_matches
-               SET home_sets=%s, away_sets=%s, home_games=%s, away_games=%s, winner=%s
+               SET home_sets=%s, away_sets=%s, home_games=%s, away_games=%s, winner=%s,
+                   completion_status=%s, retired=%s, walkover=%s,
+                   result_source='tennis_data', result_comment=%s
                WHERE id=%s""",
-            (home_sets, away_sets, home_games, away_games, winner, match["id"]),
+            (home_sets, away_sets, home_games, away_games, winner,
+             completion_status, retired, walkover, comment or None, match["id"]),
         )
         matches_updated += 1
 

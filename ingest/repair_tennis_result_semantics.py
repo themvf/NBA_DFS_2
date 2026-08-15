@@ -6,19 +6,14 @@ import json
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.tennis_result_semantics import classify_completion
 
 TRANSFORMATION_VERSION = "tennis-result-semantics-v1"
 
 
 def _status(comment: str | None) -> tuple[str, bool, bool]:
-    normalized = str(comment or "").strip().lower()
-    if "walkover" in normalized:
-        return "walkover", False, True
-    if "retir" in normalized:
-        return "retired", True, False
-    if "awarded" in normalized:
-        return "awarded", False, False
-    return "completed", False, False
+    """Compatibility wrapper for the shared live/historical classifier."""
+    return classify_completion(comment)
 
 
 def run(db: DatabaseManager) -> dict:

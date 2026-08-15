@@ -1,12 +1,13 @@
 name: Refresh Tennis
 
-# Every 6h: refresh odds → write predictions → rate moneyline bets. Cadence is
+# Refresh odds → write predictions → rate moneyline bets. Cadence is
 # ACCOUNTABILITY-ONLY — P3 proved the market is sharp / no edge, so we sample the
-# closing line to keep the ledger + backtest honest, not to chase a bet; 6h (vs
-# the old 3h) halves Odds-API credit burn while staying <6h from any kickoff.
+# closing line to keep the ledger + backtest honest, not to chase a bet. The 2026
+# US Open window (Aug 24–Sep 13) runs every 3h; the rest of the calendar stays 6h
+# to avoid permanently doubling Odds API consumption.
 # Settlement (tennis-data.co.uk results) runs every cycle; continue-on-error
 # so a flaky download never blocks the odds + recommendations refresh.
-# Weekly (Mon 06:00 UTC): rebuild grass-Elo ratings for BOTH tours — ATP from
+# Weekly (Mon 05:00 UTC): rebuild grass-Elo ratings for BOTH tours — ATP from
 # TML-Database (with serve stats), WTA from tennis-data.co.uk (results only) —
 # folding completed results back into player strength (see memory
 # tennis-data-sources). Predictions/bets cover BOTH tours; our_prob = the
@@ -14,8 +15,13 @@ name: Refresh Tennis
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # odds + predictions + settle (accountability-only; see header)
-    - cron: "0 6 * * 1"     # weekly: rebuild player ratings (both tours)
+    # Normal 6h cadence, except during the fixed 2026 US Open window below.
+    - cron: "0 */6 * 1-7,10-12 *"
+    - cron: "0 */6 1-23 8 *"
+    - cron: "0 */3 24-31 8 *"  # US Open: Aug 24–31, 2026
+    - cron: "0 */3 1-13 9 *"   # US Open: Sep 1–13, 2026
+    - cron: "0 */6 14-30 9 *"
+    - cron: "0 5 * * 1"        # weekly: rebuild player ratings (both tours)
   workflow_dispatch:
     inputs:
       date:
@@ -72,7 +78,7 @@ jobs:
           fi
 
       - name: Rebuild ATP ratings (weekly or on demand)
-        if: github.event.schedule == '0 6 * * 1' || inputs.rebuild_ratings == true
+        if: github.event.schedule == '0 5 * * 1' || inputs.rebuild_ratings == true
         run: python -m ingest.tennis_history
 
       - name: Settle completed bets from tennisexplorer.com (same-day results)
@@ -112,7 +118,7 @@ jobs:
         run: python -m ingest.polymarket_tennis --matches-only
 
       - name: Capture Polymarket tennis futures (weekly)
-        if: github.event.schedule == '0 6 * * 1' || inputs.rebuild_ratings == true
+        if: github.event.schedule == '0 5 * * 1' || inputs.rebuild_ratings == true
         continue-on-error: true
         run: python -m ingest.polymarket_tennis --futures-only
 

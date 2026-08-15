@@ -268,8 +268,9 @@ export default function TennisVegasClient({
 
       <p className="text-sm text-muted-foreground">
         Live consensus odds from The Odds API across all books, vig removed in probability space.
-        Tournaments are auto-discovered from the feed (post-Wimbledon events included). The ledger
-        is calibration-only — walk-forward shows no moneyline edge, so ratings cap honestly low.
+        Tournaments are auto-discovered from the feed, including the US Open when provider coverage is live.
+        Moneyline is calibration-only and capped at 2★; total-games and handicap quotes are tracked for
+        alert research only, not promoted as rated picks.
       </p>
 
       {lineMovement.length > 0 && (

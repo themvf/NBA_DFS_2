@@ -1712,7 +1712,12 @@ TABLES = [
         away_sets INTEGER,
         home_games INTEGER,
         away_games INTEGER,
-        winner TEXT,                        -- 'home' | 'away' | 'retired'
+        winner TEXT,                        -- 'home' | 'away'; result semantics stay separate
+        completion_status TEXT NOT NULL DEFAULT 'scheduled',
+        retired BOOLEAN NOT NULL DEFAULT FALSE,
+        walkover BOOLEAN NOT NULL DEFAULT FALSE,
+        result_source TEXT,
+        result_comment TEXT,
         -- our model (Elo + market anchor); NULL until model/tennis_predictions runs
         our_prob_home DOUBLE PRECISION,
         our_prob_away DOUBLE PRECISION,
@@ -3045,6 +3050,14 @@ INDEXES = [
     "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS our_prob_home DOUBLE PRECISION",
     "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS our_prob_away DOUBLE PRECISION",
     "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS our_total_pred DOUBLE PRECISION",
+    # Explicit result semantics prevent a winner side from being misread as a
+    # completed match. Required to void derivative alerts on retirements and walkovers.
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS completion_status TEXT NOT NULL DEFAULT 'scheduled'",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS walkover BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS result_source TEXT",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS result_comment TEXT",
+    "UPDATE tennis_matches SET completion_status='completed' WHERE winner IS NOT NULL AND completion_status='scheduled'",
     # 2026-06-28: Draw No Bet market for knockout rounds — 2-way (void on draw).
     # dk_dnb_*_ml  = DraftKings' posted price (used for EV — the book the user bets at).
     # dnb_*_prob   = Pinnacle vig-free reference (or consensus 2-way if Pinnacle missing).

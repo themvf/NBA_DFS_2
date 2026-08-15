@@ -6311,7 +6311,7 @@ export async function getSoccerVegasMatchups(gameDate?: string): Promise<SoccerV
   }));
 }
 
-// ── Tennis (Wimbledon Vegas odds MVP) ─────────────────────────────────────────
+// ── Tennis (all provider-covered tournaments) ─────────────────────────────────
 export type TennisMatchRow = {
   id: number;
   gameId: string | null;
@@ -6332,6 +6332,7 @@ export type TennisMatchRow = {
   handicapAwayOdds: number | null;
   nBooks: number | null;
   winner: string | null;
+  completionStatus: string;
   ourProbHome: number | null;
   ourProbAway: number | null;
   homeElo: number | null;
@@ -6368,6 +6369,7 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
       tm.handicap_away_odds AS "handicapAwayOdds",
       tm.n_books            AS "nBooks",
       tm.winner             AS "winner",
+      tm.completion_status  AS "completionStatus",
       tm.our_prob_home      AS "ourProbHome",
       tm.our_prob_away      AS "ourProbAway",
       rh.overall_elo        AS "homeElo",
@@ -6406,6 +6408,7 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
     handicapAwayOdds: r.handicapAwayOdds != null ? Number(r.handicapAwayOdds) : null,
     nBooks: r.nBooks != null ? Number(r.nBooks) : null,
     winner: r.winner != null ? String(r.winner) : null,
+    completionStatus: String(r.completionStatus ?? "scheduled"),
     ourProbHome: r.ourProbHome != null ? Number(r.ourProbHome) : null,
     ourProbAway: r.ourProbAway != null ? Number(r.ourProbAway) : null,
     homeElo: r.homeElo != null ? Number(r.homeElo) : null,

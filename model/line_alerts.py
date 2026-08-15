@@ -54,6 +54,7 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.tennis_result_semantics import void_derivatives
 from model.line_movement import _MATCHUP_TBL, _book_fair_home
 from model.soccer_bet_rating import american_to_decimal
 
@@ -776,7 +777,7 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
     """Grade tennis totals alerts from final games; retirements void (book rule)."""
     open_alerts = db.execute(
         """
-        SELECT a.*, m.home_games, m.away_games, m.winner
+        SELECT a.*, m.home_games, m.away_games, m.winner, m.completion_status
         FROM line_alerts a JOIN tennis_matches m ON m.id = a.matchup_id
         WHERE a.sport = 'tennis' AND a.alert_type IN ('dk_prop_value', 'prop_line_gap')
           AND a.settled_at IS NULL AND m.winner IS NOT NULL
@@ -785,7 +786,7 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
     graded = 0
     for a in open_alerts:
         d = a["details_json"] or {}
-        if a["winner"] == "retired":
+        if void_derivatives(a["completion_status"]):
             outcome = "void"
         elif a["home_games"] is None or a["away_games"] is None:
             continue  # winner known but games not filled yet — next pass
@@ -1392,10 +1393,15 @@ def settle(db: DatabaseManager, sport: str) -> int:
         # Outcome from the final score / winner (soccer: 90' regulation score).
         outcome = None
         if sport == "tennis":
-            m = db.execute_one(f"SELECT winner FROM {matchup_tbl} WHERE id = %s", (a["matchup_id"],))
+            m = db.execute_one(
+                f"SELECT winner, completion_status FROM {matchup_tbl} WHERE id = %s",
+                (a["matchup_id"],),
+            )
+            # Tennis moneyline alerts follow the advancing-player result. A
+            # verified pre-match walkover has no advancing player and voids.
             if m and m["winner"] in ("home", "away"):
                 outcome = "won" if m["winner"] == a["side"] else "lost"
-            elif m and m["winner"] == "retired":
+            elif m and void_derivatives(m["completion_status"]):
                 outcome = "void"
         else:
             hs_col, as_col = _SCORE_COLS[sport]

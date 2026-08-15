@@ -14,7 +14,7 @@ export default async function VegasPage({
     sport === "mlb" ? "mlb" : sport === "soccer" ? "soccer" : sport === "tennis" ? "tennis" : "nba";
   const sportLabel =
     resolvedSport === "soccer" ? "WORLD CUP"
-    : resolvedSport === "tennis" ? "WIMBLEDON"
+    : resolvedSport === "tennis" ? "TENNIS"
     : resolvedSport.toUpperCase();
 
   return (
