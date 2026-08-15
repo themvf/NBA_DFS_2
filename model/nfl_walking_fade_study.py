@@ -183,13 +183,21 @@ def report(db: DatabaseManager) -> dict:
         return {"n": 0, "verdict": "not started"}
 
     if n < FLOOR_N or games < FLOOR_GAMES:
-        won = sum(1 for o in obs if o["outcome"] == "won")
-        lost = sum(1 for o in obs if o["outcome"] == "lost")
-        print("  DESCRIPTIVE ONLY - NOT A FINDING")
-        print(f"  n {n}/{FLOOR_N}  ·  games {games}/{FLOOR_GAMES}  ·  "
-              f"flagged-side record {won}W-{lost}L")
-        print("  No mean, no interval and no verdict may be computed below floor.")
-        return {"n": n, "games": games, "verdict": "descriptive-only"}
+        # BLIND. Accrual counts only — no outcome, no direction, no estimate.
+        #
+        # This branch previously printed the flagged side's W-L record. That
+        # was a leak: H says the flagged side OVERSHOOTS, so a losing flagged
+        # side is directionally consistent with H. Publishing it during the
+        # blind period is exactly what the seal exists to prevent — it lets a
+        # view form mid-study, which is how the soccer totals mirage survived.
+        # Removed 2026-08-15, before the confirmation window opened. The
+        # registered criteria (FLOOR_N, FLOOR_GAMES, ROI_CI_LOWER_BOUND, the
+        # kill rule) are untouched; only output formatting changed.
+        print("  BLIND - ACCRUAL ONLY")
+        print(f"  n {n}/{FLOOR_N}  ·  games {games}/{FLOOR_GAMES}")
+        print("  No outcome, direction, mean, interval or verdict is computed")
+        print("  below floor. Nothing directional is published while blind.")
+        return {"n": n, "games": games, "verdict": "blind-accrual"}
 
     vals = [o["fade_clv_points"] for o in obs]
     grp = [o["game"] for o in obs]

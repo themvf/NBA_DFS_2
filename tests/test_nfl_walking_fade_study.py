@@ -67,6 +67,27 @@ def test_cluster_bootstrap_resamples_games_not_alerts() -> None:
     )
 
 
+def test_blind_branch_publishes_nothing_directional() -> None:
+    """Below floor the study must emit accrual counts and nothing else.
+
+    The original version printed the FLAGGED side's W-L. H says the flagged
+    side overshoots, so a losing flagged side is directionally consistent with
+    H — publishing it mid-study lets a view form during the blind period, which
+    is precisely what the seal prevents.
+    """
+    src = open(S.__file__, encoding="utf-8").read()
+    blind = src.split("if n < FLOOR_N or games < FLOOR_GAMES:")[1].split("return")[0]
+    # Comments may discuss the leak; the executable lines may not contain it.
+    code = "\n".join(l for l in blind.splitlines() if not l.strip().startswith("#"))
+
+    assert '"outcome"' not in code, "blind branch must not read outcomes"
+    assert "fade_clv_points" not in code, "blind branch must not read the effect"
+    assert "statistics" not in code and "cluster_bootstrap" not in code, (
+        "no estimate of any kind may be computed while blind"
+    )
+    assert "BLIND - ACCRUAL ONLY" in code
+
+
 def test_verdict_requires_both_clv_and_roi() -> None:
     """A better NUMBER that still loses money is not an edge. The ROI gate is
     conjunctive, so it can only ever make the verdict harder."""
