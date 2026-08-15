@@ -9731,7 +9731,16 @@ export type LineAlertBacktestRow = {
   pushes: number;
   winRate: number | null;
   impliedRate: number | null;
-  dkUnits: number | null; // dk_value only: 1u staked at DK's frozen price per settled alert
+  /** Units from staking 1u at the price FROZEN on each settled alert. Every
+   *  alert type carrying a frozen price is included (not dk_value only). The
+   *  price was historically always DraftKings; `nExecBooks` reports how many
+   *  distinct books actually contributed, so a mixed-book figure can never be
+   *  presented as "@ DK". */
+  dkUnits: number | null;
+  /** Settled alerts that carry a frozen price — the denominator for dkUnits. */
+  nFrozenPrice: number;
+  /** Distinct execution books behind dkUnits. >1 means the ROI is mixed-book. */
+  nExecBooks: number;
 };
 
 export async function getLineAlerts(
@@ -9788,9 +9797,19 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
            COUNT(*) FILTER (WHERE outcome = 'void')::int AS "pushes",
            AVG((outcome = 'won')::int) FILTER (WHERE outcome IN ('won','lost')) AS "winRate",
            AVG(alert_prob) FILTER (WHERE outcome IN ('won','lost')) AS "impliedRate",
+           -- Units at the FROZEN price recorded on the alert. Historically that
+           -- price was always DraftKings (details_json.dk_decimal). Once the
+           -- detector prices at whichever book triggered, this becomes a
+           -- mixed-book figure, so it is reported as "frozen price" and the
+           -- distinct book count travels with it rather than a "@ DK" claim
+           -- that would silently become false.
            SUM(CASE WHEN outcome = 'won' THEN (details_json->>'dk_decimal')::numeric - 1
                     WHEN outcome = 'lost' THEN -1 END)
-             FILTER (WHERE details_json ? 'dk_decimal') AS "dkUnits"
+             FILTER (WHERE details_json ? 'dk_decimal') AS "dkUnits",
+           COUNT(*) FILTER (WHERE details_json ? 'dk_decimal' AND outcome IN ('won','lost'))::int
+             AS "nFrozenPrice",
+           COUNT(DISTINCT COALESCE(details_json->>'exec_book', 'draftkings'))
+             FILTER (WHERE details_json ? 'dk_decimal') AS "nExecBooks"
     FROM line_alerts WHERE sport = ${sport}
     GROUP BY alert_type ORDER BY alert_type
   `);
@@ -9809,6 +9828,8 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
       winRate: rec.winRate != null ? Number(rec.winRate) : null,
       impliedRate: rec.impliedRate != null ? Number(rec.impliedRate) : null,
       dkUnits: rec.dkUnits != null ? Number(rec.dkUnits) : null,
+      nFrozenPrice: Number(rec.nFrozenPrice ?? 0),
+      nExecBooks: Number(rec.nExecBooks ?? 0),
     };
   });
 }

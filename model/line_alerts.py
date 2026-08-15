@@ -596,6 +596,67 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
 #   prop_line_gap — DK's line sits ≥ 1.0 off Pinnacle's (K's 8.5 vs 9.5): the
 #     stale-line signature; the value side at DK is mechanical (Over at the
 #     lower line / Under at the higher), no distribution assumption needed.
+# prop_line_gap is DEMOTED to a measurement control (2026-08-15), not retired.
+# Same-book same-line CLV over n=439 settled: -0.13%, 95% CI [-0.25%, -0.04%] --
+# entirely below zero, i.e. DK's price moves AGAINST the flagged side by close.
+# Root cause is structural, not a threshold: a |line gap| says the two books
+# disagree but NOT which one is stale, so the direction is a coin flip.
+# It keeps scanning because detectors run on already-captured data and cost no
+# credits, and a known-negative signal is useful for validating the measurement
+# itself. It must never be surfaced as a play -- the UI renders it as CONTROL.
+# Reviving it as actionable requires a new, separately pre-registered study.
+_PROP_LINE_GAP_IS_CONTROL_ONLY = True
+
+# Books this user can actually place a bet at. A price at a book they cannot
+# reach is a reference, never a recommendation -- so ONLY these are eligible to
+# execute an alert. Pinnacle is deliberately absent: it is the fair-value
+# anchor and is not bettable in this jurisdiction. ESPN BET / Hard Rock / Fliff
+# post far more prop markets and are captured, but stay OUT until jurisdiction
+# is confirmed; adding one is a one-line change that bumps the detector version.
+_PROP_EXECUTION_BOOKS = (
+    "draftkings", "betmgm", "fanatics", "williamhill_us", "fanduel", "betrivers",
+)
+
+# v1 = DraftKings-only trigger (the 73 settled observations that measured
+# CLV +1.29%, 95% CI [+0.43%, +2.32%]; robust -- drop the top 10 and it is
+# still +0.27%, CI [+0.08%, +0.54%], so real but SMALLER than the headline).
+# v2 = best price across every executable book. Superseded after 10 rows, see
+# below; those rows stay as audit history and are excluded from every cohort.
+# v3 = v2 plus the model-disagreement gate.
+#
+# WHY v2 WAS WRONG: taking the max EV across N books while holding the
+# threshold fixed is a BIASED ESTIMATOR. It selects the book whose quote is
+# most erroneous in our favour, and quote error lives in the same tail as
+# genuine value -- so the observed 5x volume rise was partly a looser bar, not
+# more signal. Measured: every executable book's median EV is ~-6.5% (i.e.
+# exactly the two-way hold, 6.1-7.2%), so a +3% alert is a ~9.5pp tail outlier.
+# Raising the threshold does NOT fix it -- at 6.0% the best-of-6 rate is still
+# 15x the DraftKings-only rate at 3.0%, because the selection is over books,
+# not over the threshold.
+#
+# A REJECTED FIX, recorded so it is not retried: requiring the executing book's
+# OWN de-vigged fair to disagree with Pinnacle's. It rejected NOTHING on live
+# data, because it is arithmetically circular. Proportional de-vig forces a
+# book's two sides to sum to 1, so "posted price is generous" and "own fair
+# differs from Pinnacle" are the SAME statement. At 6-8% hold, EV >= 3% already
+# implies 1.7-6.9pp of apparent "disagreement" by construction. Separating
+# margin placement from genuine model disagreement needs an ASYMMETRIC de-vig
+# (Shin or power), which is a real change and is not attempted here.
+#
+# THE FIX ACTUALLY SHIPPED (v3): separate SELECTION from EXECUTION.
+#   selection  - trigger on DraftKings ALONE, exactly as v1 did. One book, no
+#                max-of-N, no selection bias, and it is the trigger whose CLV
+#                is validated (n=73, +1.29%, robust to dropping the top 10).
+#   execution  - having selected, take the best same-line price across the
+#                executable books. The choice was already made on unbiased
+#                evidence, so shopping the price afterwards is pure D1-style
+#                line-shopping gain (+1.2-1.9%/bet measured) and cannot bias
+#                which propositions get flagged.
+# CLV continuity is preserved: `dk_decimal` still holds DraftKings' price, so
+# entry-vs-close stays measured DK-against-DK and remains poolable with v1's 73
+# observations. The best-price execution is carried alongside as an overlay.
+_PROP_DETECTOR_VERSION = "prop-value-v3-dk-trigger-best-exec"
+
 _PROP_VALUE_MIN_EV = 0.03
 _PROP_LINE_GAP_MIN = 1.0
 _PROP_MARKET_LABEL = {
@@ -647,30 +708,90 @@ def scan_props(db: DatabaseManager) -> int:
         shim = {"matchup_id": r["matchup_id"], "game_date": r["game_date"],
                 "commence_time": r["commence_time"], "capture_key": r["capture_key"]}
 
-        # Same-line price value at DK.
-        if dk_line == pin_line:
-            for side, fair, price_key in (("Over", fair_over, "over"), ("Under", fair_under, "under")):
-                price = dk.get(price_key)
-                if price is None:
+        # ── Same-line price value, BEST EXECUTABLE BOOK (prop-value-v2) ──────
+        # v1 checked DraftKings only. v2 checks every executable book against
+        # the same Pinnacle fair value and fires ONE alert at the best price.
+        #
+        # One alert per proposition, not one per book, for two reasons:
+        #   economic  — you would only ever place the bet once, at the best price
+        #   statistical — six books quoting one player are ~one observation, and
+        #                 counting them as six would inflate n and shrink every
+        #                 confidence interval (the clustering trap).
+        # Dedup on (sport, matchup_id, alert_type, side) already collapses them,
+        # but relying on insert order would pick an arbitrary book, not the best.
+        for side, fair, price_key in (("Over", fair_over, "over"),
+                                      ("Under", fair_under, "under")):
+            # ── SELECTION: DraftKings alone. One book, no max-of-N. ──────────
+            if dk_line != pin_line:
+                continue              # different line = different proposition
+            dk_price = dk.get(price_key)
+            if dk_price is None:
+                continue
+            try:
+                dk_dec = american_to_decimal(int(dk_price))
+            except (TypeError, ValueError):
+                continue
+            if dk_dec >= _DK_VALUE_MAX_DECIMAL:
+                continue              # longshot: de-vig skew fakes EV in the tail
+            ev = fair * dk_dec - 1
+            if ev < _PROP_VALUE_MIN_EV:
+                continue
+
+            # ── EXECUTION: now shop the SAME proposition for the best price.
+            # Runs only after selection, so it cannot influence what is flagged.
+            book_key, price, dec = _DK_BOOK, int(dk_price), dk_dec
+            n_qualifying = 0
+            for cand in _PROP_EXECUTION_BOOKS:
+                bq = books.get(cand)
+                if not bq or bq.get("line") is None:
                     continue
-                dec = american_to_decimal(int(price))
-                if dec >= _DK_VALUE_MAX_DECIMAL:
+                if float(bq["line"]) != pin_line:
                     continue
-                ev = fair * dec - 1
-                if ev >= _PROP_VALUE_MIN_EV:
-                    new_alerts.extend(_insert(
-                        db, sport="mlb", r=shim, label=label,
-                        alert_type="dk_prop_value",
-                        side=f"{r['player']} {mk} {side[0]}{dk_line}",
-                        alert_prob=1 / dec, sharp_prob=fair,
-                        details={"market": r["market"], "player": r["player"],
-                                 "line": dk_line, "bet": side,
-                                 "dk_odds": int(price),
-                                 "dk_decimal": round(dec, 4),
-                                 "ev_pct": round(ev * 100, 2)},
-                    ))
-        # Stale-line gap (regardless of prices).
-        elif abs(dk_line - pin_line) >= _PROP_LINE_GAP_MIN:
+                cp = bq.get(price_key)
+                if cp is None:
+                    continue
+                try:
+                    cd = american_to_decimal(int(cp))
+                except (TypeError, ValueError):
+                    continue
+                n_qualifying += int(fair * cd - 1 >= _PROP_VALUE_MIN_EV)
+                if cd > dec:
+                    book_key, price, dec = cand, int(cp), cd
+            new_alerts.extend(_insert(
+                db, sport="mlb", r=shim, label=label,
+                alert_type="dk_prop_value",
+                side=f"{r['player']} {mk} {side[0]}{pin_line}",
+                alert_prob=1 / dec, sharp_prob=fair,
+                details={"market": r["market"], "player": r["player"],
+                         "line": pin_line, "bet": side,
+                         # canonical execution keys
+                         "exec_book": book_key,
+                         "exec_odds": price,
+                         "exec_decimal": round(dec, 4),
+                         "books_qualifying": n_qualifying,
+                         "detector_version": _PROP_DETECTOR_VERSION,
+                         # The book whose entry/close pair defines CLV. It is
+                         # the SELECTION book (DraftKings), not the execution
+                         # book -- `dk_decimal` below is DK's price, so grading
+                         # must read DK's close or it compares two books.
+                         "clv_book": _DK_BOOK,
+                         # Execution overlay: best same-line price found AFTER
+                         # selection. Reported separately so best-price ROI can
+                         # be measured without contaminating the trigger.
+                         "exec_gain_pct": round((dec / dk_dec - 1) * 100, 2),
+                         # dk_* remain DRAFTKINGS' price -- the selection book.
+                         # CLV is entry-vs-close at DK on both sides of the
+                         # comparison, so v3 stays poolable with v1's n=73.
+                         "dk_odds": int(dk_price),
+                         "dk_decimal": round(dk_dec, 4),
+                         "ev_pct": round(ev * 100, 2)},
+            ))
+        # ── Stale-line gap — CONTROL ONLY, DK-vs-Pinnacle, DELIBERATELY v1 ──
+        # Left exactly as it was (DraftKings only, no best-price selection) so
+        # it stays comparable with the 439 settled observations that measured
+        # its CLV at -0.13%, 95% CI [-0.25%, -0.04%]. Changing a control's
+        # trigger would destroy the baseline it exists to provide.
+        if dk_line != pin_line and abs(dk_line - pin_line) >= _PROP_LINE_GAP_MIN:
             bet = "Over" if dk_line < pin_line else "Under"
             price = dk.get("over" if bet == "Over" else "under")
             dec = american_to_decimal(int(price)) if price is not None else None
@@ -825,17 +946,42 @@ _SOCCER_OUTLIER_MIN_RATIO = 0.10   # DK decimal ≥ 10% above the median decimal
 _SOCCER_OUTLIER_MIN_BOOKS = 5      # need a real median, not a 2-book coin flip
 
 
-def scan_props_soccer(db: DatabaseManager) -> int:
-    """Flag WC anytime-scorer prices where DK is a fat outlier vs the median.
+# Retired 2026-08-13 — see scan_props_soccer.
+_SOCCER_PROP_OUTLIER_RETIRED = True
 
-    A raw price median is the WRONG anchor here: uk/eu books carry far heavier
-    ATGS margin than DK, so every DK price looks "long" against them and the
-    first raw scan flagged 24% of the board — book-style artifact, not edge.
-    Instead each book's implied probabilities are normalized by that book's
-    own total over all players in the game (its overround), making shares
-    comparable across margin structures; the flag fires only when DK prices a
-    player RELATIVELY longer than the median book does.
+
+def scan_props_soccer(db: DatabaseManager) -> int:
+    """RETIRED 2026-08-13 — confirmed loser, not merely unproven.
+
+    Flagged WC anytime-scorer prices where DK looked like a fat outlier against
+    the overround-normalized median book.  Settled record at frozen DK prices:
+
+        n=101, 6 won (5.9%), median DK decimal 8.00 (12.5% implied),
+        -65.0u, ROI -64.4%, date-clustered 95% CI [-85.6%, -44.7%]
+
+    The CI lies entirely below zero, so this is a CONFIRMED negative — the
+    standing rule ("an alert type with no positive CLV is noise") mandates
+    retirement rather than a threshold tweak.  The signal was backwards: when
+    DK priced a player longer than the normalized median, DK was right.
+
+    The documented DNP-as-loss conservative bias does NOT rescue it.  Books
+    void ATGS when the player never takes the field, and we have no lineup
+    feed; but breakeven would require 65 of the 101 flagged players (64%) to
+    have been no-shows, which is not credible for players priced at a median
+    12.5% to score.  At a generous 20-25% DNP rate the detector still runs
+    -52% to -56%.
+
+    Deliberately NOT deleted: the ledger is append-only and the 101 rows stay
+    as audit history.  ``settle_props_soccer`` still runs so anything already
+    open finishes grading.  Reviving this requires a new, separately
+    pre-registered study — not a parameter change to this function.
     """
+    logger.info("scan_props_soccer is retired (confirmed -64.4%% ROI over n=101) — no scan")
+    return 0
+
+
+def _scan_props_soccer_retired_impl(db: DatabaseManager) -> int:
+    """Preserved body of the retired detector. Not called. See scan_props_soccer."""
     from collections import defaultdict
     from model.soccer_bet_rating import american_to_prob
 
@@ -1064,11 +1210,20 @@ def settle_props(db: DatabaseManager) -> int:
 
 
 def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
-    """(dk_decimal, pinnacle_fair_prob) for THIS alert's exact selection from
-    one capture snapshot. Same-line only for props — a moved line is a
-    different proposition and grades as price-gone, not price-moved."""
+    """(execution_decimal, pinnacle_fair_prob) for THIS alert's exact selection
+    from one capture snapshot. Same-line only for props — a moved line is a
+    different proposition and grades as price-gone, not price-moved.
+
+    Which book's close to read, across three detector generations:
+      v3  `clv_book` = the SELECTION book (DraftKings). `dk_decimal` holds DK's
+          price, so CLV is DK-entry vs DK-close and stays poolable with v1.
+      v2  `exec_book` only -- that generation stored the execution book's price
+          in `dk_decimal`, so grading correctly follows `exec_book`.
+      v1  neither key -- DraftKings.
+    Reading the wrong one compares an entry at one book to a close at another.
+    """
     d = a["details_json"] or {}
-    dk = books.get(_DK_BOOK)
+    dk = books.get(d.get("clv_book") or d.get("exec_book") or _DK_BOOK)
     pin = books.get("pinnacle")
     dk_dec = None
     pin_fair = None
@@ -1081,8 +1236,9 @@ def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
             except (TypeError, ValueError):
                 pass
         # no Pinnacle for WC props — pin_fair stays None
-    elif market in ("pitcher_strikeouts", "batter_total_bases", "total_games",
-                    "pitcher_hits_allowed", "pitcher_earned_runs", "pitcher_outs"):
+    elif market:
+        # ANY over/under player-prop market (was a hardcoded 6-market list, which
+        # would silently fail to grade every market added after it was written).
         line_key = "total_line" if market == "total_games" else "line"
         bet = d.get("bet")
         if dk and dk.get(line_key) == d.get("line"):
@@ -1703,7 +1859,9 @@ if __name__ == "__main__":
             scan_props(db)
             settle_props(db)
         if args.sport == "soccer":
-            scan_props_soccer(db)
+            # scan_props_soccer is RETIRED (2026-08-13) — see its docstring.
+            # Settlement still runs so any alert already in the ledger finishes
+            # grading; the ledger is append-only and keeps the full history.
             settle_props_soccer(db)
         if args.sport == "tennis":
             scan_tennis_totals(db)

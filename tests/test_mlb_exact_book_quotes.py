@@ -55,5 +55,8 @@ def test_total_requires_the_exact_line_and_selects_best_price() -> None:
     assert quote["line"] == 8.5
 
 
-def test_exact_book_repair_starts_a_new_model_cohort() -> None:
-    assert MODEL_VERSION == "mlb-gameline-v4"
+def test_skew_aware_total_side_starts_a_new_model_cohort() -> None:
+    # v4 = exact-book repair cohort. v5 = totals side now comes from the
+    # empirical predictive distribution instead of `our_total_pred > line`,
+    # which is a decision-semantics change and must not mix with v4 evidence.
+    assert MODEL_VERSION == "mlb-gameline-v5"
