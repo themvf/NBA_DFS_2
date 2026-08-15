@@ -248,7 +248,7 @@ export interface LeagueFormatConfig {
   teams: number;
   rounds: number;
   playoffTeams: number;
-  playoffWeeks: number[];
+  playoffWeeks: readonly number[];
   waiverType: "FAB" | "rolling" | "reverse";
   tradeDeadline?: number;  // Week number
 }
