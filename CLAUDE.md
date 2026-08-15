@@ -1890,6 +1890,102 @@ not deleted or restated.
 
 ---
 
+## NFL `total_walking` Fade — Pre-Registered Study (registered 2026-08-15)
+
+**Registered BEFORE Week 1 (2026-09-09) so the regular season is a clean test.**
+Sealed while the only evidence was 14 preseason observations. Implemented in
+`model/nfl_walking_fade_study.py`.
+
+### Discovery sample — FROZEN, and it cannot confirm anything
+
+Preseason, 2026-08-06 → 2026-08-15. When `total_walking` fired and the flagged
+side was followed, the consensus total then moved **back against it**:
+
+```
+n=14 across 12 distinct games   (top game 14% of alerts — not concentrated)
+mean −0.85 points   game-clustered 95% CI [−1.114, −0.531]   excludes zero
+moved toward the flagged side: 1 of 14   (one-sided binomial p = 0.0009)
+sides mixed: 5 over / 9 under   settled record of flagged side 2W-5L
+```
+
+Confound checked and rejected: book coverage is stable open→close (median 20 →
+18.5 books quoting a total; only 1 of 18 games grew), so this is not consensus
+composition drift.
+
+**Three reasons this is a hunch, not a finding:**
+1. **Preseason is a different regime.** Starters rest; totals move on
+   playing-time news that has no regular-season analogue.
+2. **n=14.** A fortnight.
+3. **It is 1 of 8 detectors examined.** p=0.0009 × 8 ≈ 0.007 survives, but the
+   result was *found*, not predicted — and this project has been burned by
+   exactly that (the 9.5-line totals mirage; soccer ATGS's six memorable
+   winners inside a −64% ledger).
+
+**A mechanical alternative explanation that n=14 cannot rule out:** the
+detector is *defined* as "the line has wandered furthest from open." Selecting
+the extreme of a noisy series and then observing regression toward the mean is
+arithmetic, not inefficiency. On an efficient random-walk line the expected
+future move conditional on a large past move is zero — so measured reversion
+does suggest overshoot — but distinguishing overshoot from selection-on-noise
+needs the prospective sample.
+
+### Hypothesis (fixed now, before any regular-season data)
+
+**H — `total_walking` flags overshoot.** Taking the side OPPOSITE the flagged
+one, at trigger, obtains a better number than the closing line.
+
+- **Falsifiable prediction:** on regular-season games only, mean game-clustered
+  CLV on the **fade** side is positive and its 95% CI excludes zero.
+- **Kill criterion:** CI includes zero at n≥100 ⇒ **dead**. No re-slicing to
+  over-only/under-only, no threshold re-tuning, no migration to
+  `spread_walking`. A variant is a new study with its own registration.
+
+### Population (frozen)
+
+- `sport='nfl'`, `alert_type='total_walking'`, **`season_type='regular'`**,
+  commence ≥ **2026-09-09**. Preseason is excluded entirely — it is the
+  discovery set and a different regime.
+- Requires ≥2 pre-commence captures (trigger + a later close) with a consensus
+  total at both.
+
+### Metrics
+
+- **Primary:** fade-side CLV in **points** = (trigger consensus total − closing
+  consensus total), signed so positive = the line moved toward the fade side.
+  Game-clustered bootstrap CI.
+- **Conjunctive gate:** ROI at the frozen executable price (available from
+  2026-08-15 — see the NFL execution-price fix), CI lower bound > −5pp.
+  A better *number* that still loses money is not an edge.
+- **Reported always, gating nothing:** distinct games, DEFF, execution-book
+  distribution, over/under split, per-month breakdown.
+
+### Floors (conjunctive, frozen)
+
+`n ≥ 100` **and** `≥ 40 distinct games`. Expected accrual ≈ 0.88 alerts/game in
+preseason → ~240 over 272 regular-season games, so the floor should be reached
+around mid-season. **No verdict before both floors**, and no interim peeking
+that could stop the study early for efficacy — futility only.
+
+### Non-negotiables
+
+- The detector is **not changed** by this study. It keeps flagging the same
+  side; the study measures the opposite side. A passing result licenses a
+  *live shadow* period, never an immediate flip.
+- The 14 preseason observations are discovery only. They are never pooled into
+  the confirmation sample, not even as a "combined" secondary.
+- MDE and floors do not move. If accrual is slower than projected, the verdict
+  waits for 2027 rather than the bar dropping.
+
+### Honest prior
+
+Expected outcome is **no edge**. This system is 0-for-4 across sports on
+out-guessing closing lines, and the mechanical selection-on-noise explanation
+above is at least as plausible as overshoot. Even if real, ~240 alerts/season
+at $100/bet and ~0.85 points of CLV is a few hundred dollars — worth measuring
+because it is now nearly free, not worth restructuring around.
+
+---
+
 ## MLB Prop Detectors — CLV Split + Multi-Book Rebuild (2026-08-15)
 
 ### The measurement that split them
