@@ -12,25 +12,27 @@ This feeds the dk_prop_value / prop_line_gap detectors in model/line_alerts.py
 — the props analog of the game-line DK-vs-Pinnacle value scan, where the edge
 thesis is strongest: prop lines are algorithmic, thin, and slow.
 
-Markets (5, all DK+Pinnacle confirmed 4-5/5 events, 2026-07-08 probe):
-  pitcher_strikeouts, batter_total_bases (original)
-  pitcher_hits_allowed, pitcher_earned_runs, pitcher_outs (added)
-NOT added: batter_home_runs -- Pinnacle posts it but DraftKings does NOT
-(0/5 events), so it can never feed the DK-vs-Pinnacle detector regardless of
-cost. Capturing it would burn credits for an unusable signal.
+Markets: 16 (see MARKETS). Books: 10 (see BOOKMAKERS). Both were re-derived
+empirically on 2026-08-15 -- see those constants for the full coverage matrix
+and the reason each slot exists.
 
-Cost discipline: props are PER-EVENT calls. Uses BOOKMAKERS=draftkings,pinnacle
-instead of REGIONS=us,eu (2026-07-08 change) -- the Odds API prices bookmakers
-requests at markets×1 credit regardless of book count, vs markets×regions for
-a regions request. Same two books (the only ones the detector reads), HALF
-the cost for the original 2 markets, and the 3-market expansion is markets×1
-instead of markets×2 (verified via the x-requests-last response header: 4
-credits/event old pattern -> 2 credits for identical 2-market data via
-bookmakers param -> 5 credits for all 5 markets). Runs on the 3×/day
-refresh_mlb_vegas cadence (user-approved net +45 credits/day for the
-expansion, 2026-07-08), NOT the 30-minute game-line capture. Started games
-are skipped (closing snapshots freeze at first pitch, and the feed serves
-live props in-play).
+Cost discipline: props are PER-EVENT calls priced at
+
+    credits = n_markets x ceil(n_books / 10)
+
+MEASURED on 2026-08-15, not taken from docs: 8/9/10 books all cost markets x 1,
+while 11/12/16 books cost markets x 2. This corrects the earlier note here that
+book count was free "regardless" -- it is free only to 10, and the 11th book
+doubles the bill. Hence exactly 10 books. Never use REGIONS= (markets x
+n_regions, strictly worse).
+
+At 16 markets x 10 books x ~15 events x 3 captures/day this is ~720 credits/day
+(~21.6k/30d) on a shared key -- budget it deliberately; exhaustion silently
+degrades every other sport's capture too.
+
+Runs on the 3x/day refresh_mlb_vegas cadence, NOT the 30-minute game-line
+capture. Started games are skipped (closing snapshots freeze at first pitch,
+and the feed serves live props in-play).
 
 Usage:
     python -m ingest.mlb_prop_odds
@@ -51,14 +53,98 @@ from db.database import DatabaseManager
 logger = logging.getLogger(__name__)
 
 ODDS_BASE = "https://api.the-odds-api.com/v4"
-MARKETS = (
-    "pitcher_strikeouts,batter_total_bases,"
-    "pitcher_hits_allowed,pitcher_earned_runs,pitcher_outs"
-)
-# The exact two books the detector reads. Costs markets×1 credit regardless of
-# book count -- strictly cheaper than the old regions=us,eu (markets×regions)
-# for identical data. Do not switch back to `regions` without re-checking cost.
-BOOKMAKERS = "draftkings,pinnacle"
+# ── Markets (expanded 2026-08-15) ────────────────────────────────────────────
+# Re-probed empirically against ALL 15 upcoming events x 8 books (234 credits),
+# counting only PAIRED quotes (a player+point with BOTH over and under), since
+# a one-sided quote cannot anchor a same-proposition comparison.
+#
+# Kept: every market with >=1 BETTABLE book posting paired quotes on >=50% of
+# events. "Bettable" excludes pinnacle (sharp reference, user's jurisdiction
+# cannot bet it) and polymarket (prediction market, different settlement).
+#
+# NOT added: batter_home_runs / batter_first_home_run -- these are one-sided
+# "to hit a HR" (yes-only) markets, so no bettable book offers a paired quote
+# (the earlier unpaired probe made them look available; they are not usable).
+# batter_strikeouts: no book posts it at all.
+MARKETS = ",".join((
+    # pitchers (~1.9 paired players/event)
+    "pitcher_strikeouts", "pitcher_outs", "pitcher_hits_allowed",
+    "pitcher_earned_runs", "pitcher_record_a_win", "pitcher_walks",
+    # batters (~18 paired players/event -- these dominate row volume, NOT cost;
+    # credits are per market per event regardless of how many players come back)
+    "batter_total_bases", "batter_hits", "batter_rbis", "batter_runs_scored",
+    "batter_hits_runs_rbis", "batter_singles", "batter_doubles",
+    "batter_walks", "batter_stolen_bases",
+    # Viable only once the book set widened: paired at espnbet/fliff/pinnacle
+    # (and betparx). The 8-book probe saw it as one-sided because none of those
+    # were in the list -- a reminder that "market unavailable" is always
+    # relative to the books you asked for.
+    "batter_home_runs",
+))
+
+# ── Books (expanded 2026-08-15) ──────────────────────────────────────────────
+# COST RULE, measured not assumed (x-requests-last, one event, 4 markets):
+#     books  8 -> 4 credits    books 11 -> 8 credits
+#     books  9 -> 4 credits    books 12 -> 8 credits
+#     books 10 -> 4 credits    books 16 -> 8 credits
+#   => cost = markets x ceil(n_books / 10)
+#
+# This CORRECTS the earlier note (and CLAUDE.md) claiming book count is free
+# "regardless" -- it is free only up to 10. The 11th book DOUBLES the bill.
+# So the book list is capped at exactly 10 and every slot has to earn itself.
+# Never switch back to `regions=` (markets x n_regions, strictly worse).
+#
+# Roles differ and the consumer MUST respect them -- a price at a book the user
+# cannot bet is a reference, never a recommendation:
+#   execution  draftkings betmgm fanatics williamhill_us fanduel betrivers
+#   reference  pinnacle, and (until jurisdiction is confirmed) espnbet
+#              hardrockbet fliff
+#
+# 2026-08-15 coverage probe, share of 15 events with a paired quote:
+#   pitcher_strikeouts     DK 100 FD 100 MGM 80 BR 87 FAN 100 | PIN 67
+#   pitcher_outs           DK 100 FD  93 MGM100 CZR100 FAN 100 | PIN  0
+#   pitcher_hits_allowed   DK  80        MGM 67       FAN 100 | PIN  0
+#   pitcher_earned_runs    DK  80        MGM100       FAN 100 | PIN  0
+#   batter_total_bases     DK 100        MGM 80 CZR100 FAN 100 | PIN 67
+#   batter_hits/rbis/1B    DK 100        MGM 80       FAN 100 | PIN  0
+#
+# NOTE the Pinnacle column: it has COLLAPSED on the pitcher markets. Stored
+# history shows pitcher_earned_runs going 98% -> 51% -> 1% -> 0% across recent
+# weeks, and a direct 6-event check found 0/6 for outs/hits_allowed/earned_runs.
+# Both detectors in model/line_alerts.py anchor on Pinnacle, so those markets
+# now produce NO alerts. Expanding the book set is what makes a replacement
+# anchor (bettable-book consensus) possible -- see CLAUDE.md.
+#
+# Full-market survey 2026-08-15 (17 markets x 3 events x regions=us,us2,eu,uk,
+# 204 credits) found 15 books posting MLB props. Paired-market coverage:
+#   draftkings 15 | fliff 15 | espnbet 13 | hardrockbet 13 | hardrockbet_oh 12
+#   betmgm 12 | fanatics 11 | bovada 7 | betparx 6 | pinnacle 5
+#   betonlineag 4 | williamhill_us 4 | fanduel 2 | betrivers 1 | ballybet 0
+#
+# The 10 slots, and why each is here:
+#   6 currently-executable books (draftkings betmgm fanatics williamhill_us
+#     fanduel betrivers) -- needed for best-price execution even where their
+#     market coverage is thin, because a price you cannot bet is not a price.
+#   pinnacle -- the fair-value REFERENCE. Not bettable in this jurisdiction;
+#     both detectors anchor on it, so it is non-negotiable despite 5 markets.
+#   espnbet, hardrockbet, fliff -- the three highest-coverage books not already
+#     included (13/13/15 markets). Whether they are EXECUTABLE depends on the
+#     user's jurisdiction; until confirmed they are reference-only and must not
+#     be offered as a bet (see the execution/reference split in CLAUDE.md).
+#
+# Cut, with reasons: hardrockbet_oh (Ohio-only duplicate of hardrockbet),
+# bovada + betonlineag (offshore), betparx (regional, 6 markets),
+# ballybet (one-sided quotes only), polymarket (posts ZERO MLB player props --
+# 0/15 events across all 16 markets on the 2026-08-15 probe).
+BOOKMAKERS = ",".join((
+    # executable
+    "draftkings", "betmgm", "fanatics", "williamhill_us", "fanduel", "betrivers",
+    # reference (NOT bettable here)
+    "pinnacle",
+    # high-coverage; executability unconfirmed -> treat as reference until known
+    "espnbet", "hardrockbet", "fliff",
+))
+assert len(BOOKMAKERS.split(",")) <= 10, "11th book doubles the credit cost"
 SLEEP_BETWEEN_CALLS = 0.5
 
 

@@ -28,13 +28,13 @@ function ActionChip({ a }: { a: LineAlertRow }) {
     const odds = d.dk_odds != null ? (d.dk_odds > 0 ? `+${d.dk_odds}` : `${d.dk_odds}`) : "?";
     return (
       <span
-        className="cursor-help rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap"
-        title={`DraftKings pays ${odds} on ${d.player} to score anytime — ${d.edge_vs_median_pct}% above the median of ` +
-               `${(d.n_books ?? 1) - 1} other books (Pinnacle posts no WC player props, so the median is the anchor). ` +
-               `Settles on the 90-minute match only. Conservative audit: a player who doesn't enter grades as a loss here ` +
-               `where DK would void, so measured ROI understates. Verify DK still shows this price before betting.`}
+        className="cursor-help rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600 line-through decoration-gray-400 whitespace-nowrap"
+        title={`RETIRED 2026-08-13 — this detector is a confirmed loser and no longer fires. Settled record at frozen ` +
+               `DK prices: n=101, 6 won (5.9%), -65.0u, ROI -64.4%, 95% CI [-85.6%, -44.7%] (entirely below zero). ` +
+               `When DK priced a player longer than the normalized median book, DK was right. Historical rows are kept ` +
+               `as audit history. Do not act on this chip.`}
       >
-        Bet {d.player} to score @ DK {odds} · +{d.edge_vs_median_pct}% vs market
+        RETIRED · DK {odds} on {d.player} ATGS · +{d.edge_vs_median_pct}% vs median
       </span>
     );
   }
@@ -55,23 +55,27 @@ function ActionChip({ a }: { a: LineAlertRow }) {
     if (a.alertType === "prop_line_gap") {
       return (
         <span
-          className="cursor-help rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-700 whitespace-nowrap"
-          title={`DK's ${marketLabel} line (${d.line}) sits ${d.gap} off Pinnacle's (${d.pin_line}) — the stale-line signature. ` +
-                 `${d.bet} ${d.line} at DK is the mechanically favored side: you're getting the sharp book's number ` +
-                 `${d.gap} ${(d.gap ?? 0) >= 1 ? "full units" : "units"} better. ROI @ DK in the audit tracks whether these pay.`}
+          className="cursor-help rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600 whitespace-nowrap"
+          title={`DEMOTED 2026-08-15 — CONTROL ONLY, DO NOT BET. Same-book same-line CLV over n=439 settled: ` +
+                 `-0.13%, 95% CI [-0.25%, -0.04%] — entirely below zero. DraftKings' price moves AGAINST this side ` +
+                 `by close, reliably. The detector cannot tell WHICH book is stale, so a large |line gap| carries no ` +
+                 `directional information. Still computed and graded as a measurement control (it costs nothing — it ` +
+                 `runs on already-captured data), never as a play. LINE disagreement, not a price comparison: DK's ` +
+                 `${marketLabel} line (${d.line}) vs Pinnacle's (${d.pin_line}) are DIFFERENT propositions.`}
         >
-          Stale line: {d.player} {marketLabel} {d.bet} {d.line} @ DK {odds}
+          CONTROL · line gap: {d.player} {marketLabel} — DK {d.line} vs Pinnacle {d.pin_line}
         </span>
       );
     }
     return (
       <span
-        className="cursor-help rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap"
-        title={`Same line at both books, but DK's price on ${d.player} ${marketLabel} ${d.bet} ${d.line} beats Pinnacle's vig-free ` +
-               `fair value by ${d.ev_pct}%. No model involved — DK's prop algorithm is lagging the sharp book. ` +
-               `The ROI @ DK column above is the running verdict on betting every one of these.`}
+        className="cursor-help rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 whitespace-nowrap"
+        title={`PRICE disagreement at the same line (${d.line}) — a valid same-proposition comparison. DK's price on ` +
+               `${d.player} ${marketLabel} ${d.bet} is ${d.ev_pct}% above Pinnacle's vig-free fair value (threshold ≥3%). ` +
+               `No model involved. UNPROVEN SIGNAL — pooled MLB prop ROI is +3.46% over n=558 with a 95% CI of ` +
+               `[-3.98%, +11.19%], which includes zero. Watch, do not treat as a recommendation.`}
       >
-        Bet {d.player} {marketLabel} {d.bet} {d.line} @ DK {odds} · EV +{d.ev_pct}%
+        DK {odds} · {d.player} {marketLabel} {d.bet} {d.line} · +{d.ev_pct}% vs fair
       </span>
     );
   }
@@ -80,13 +84,13 @@ function ActionChip({ a }: { a: LineAlertRow }) {
     const odds = d.dk_odds != null ? (d.dk_odds > 0 ? `+${d.dk_odds}` : `${d.dk_odds}`) : "?";
     return (
       <span
-        className="cursor-help rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap"
-        title={`DraftKings is paying ${odds} on ${name} — ${d.ev_pct ?? "?"}% better than Pinnacle's vig-free fair value. ` +
-               `This is the most direct signal in the system: no model, no prediction — DK's line lags the sharp book. ` +
-               `The ROI column in the audit above tracks whether betting every one of these at DK has actually been profitable. ` +
-               `Longshots (decimal ≥ 11) are excluded: de-vig skew fakes EV in the tail.`}
+        className="cursor-help rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 whitespace-nowrap"
+        title={`DraftKings is paying ${odds} on ${name} — ${d.ev_pct ?? "?"}% above Pinnacle's vig-free fair value ` +
+               `(threshold ≥2%). No model, no prediction: DK's line lags the sharp book. Longshots (decimal ≥ 11) are ` +
+               `excluded because de-vig skew fakes EV in the tail. UNPROVEN SIGNAL — the audit table above is the running ` +
+               `verdict; it has not cleared a positive-return bar. Watch, do not treat as a recommendation.`}
       >
-        Bet {name} @ DK {odds} · EV +{d.ev_pct ?? "?"}%
+        DK {odds} · {name} · +{d.ev_pct ?? "?"}% vs fair
       </span>
     );
   }
@@ -155,13 +159,19 @@ export default function LineAlertsPanel({
         Sharp Line Alerts
       </h3>
       <p className="text-xs text-gray-500 mb-2">
-        <span className="font-medium">DK value</span> = DraftKings&rsquo; offered price beats Pinnacle&rsquo;s
-        vig-free fair value by ≥2% EV — the most direct signal here (no prediction involved; longshots excluded).
+        <span className="rounded bg-amber-100 px-1 font-semibold text-amber-800">UNPROVEN — RESEARCH ONLY</span>{" "}
+        Nothing in this table is a recommendation to bet. Pooled MLB prop performance is +3.46% over n=558 settled with
+        a 95% CI of [−3.98%, +11.19%] — it includes zero, so no detector here has demonstrated an edge.
+        <br />
+        <span className="font-medium">DK value</span> = DraftKings&rsquo; price beats Pinnacle&rsquo;s vig-free fair
+        value by ≥2% EV on game lines, ≥3% on player props (longshots excluded; no prediction involved).{" "}
+        <span className="font-medium">Line gap</span> = DK&rsquo;s prop line differs from Pinnacle&rsquo;s by ≥1.0 —
+        a <em>different proposition</em>, so no price edge is computed for it.
         Alerts freeze the market state at trigger time and are audited below: <span className="font-medium">CLV</span> =
-        did the market keep moving toward the flagged team after the alert (positive = the alert was early enough to act
-        on), <span className="font-medium">win rate vs implied</span> = did flagged teams win more often than their price
-        said. An alert type with no positive CLV is noise — this table will say so. Hover any Action chip for exactly
-        what to do with it.
+        did the market keep moving toward the flagged side after the alert (positive = the alert was early),{" "}
+        <span className="font-medium">win rate vs implied</span> = did flagged sides win more often than their price
+        said. An alert type with no positive CLV is noise — this table will say so, and that detector becomes a
+        retirement candidate. Verdicts are withheld below 30 graded alerts.
       </p>
 
       {backtest.length > 0 && (
@@ -175,21 +185,32 @@ export default function LineAlertsPanel({
               <th className="py-1 text-right" title="Settled record of the flagged side: wins-losses-pushes">W-L-P</th>
               <th className="py-1 text-right">Win rate</th>
               <th className="py-1 text-right">Implied</th>
-              <th className="py-1 text-right" title="dk_value only: cumulative units from staking 1u at DK's frozen price on every settled alert">ROI @ DK</th>
+              <th className="py-1 text-right" title="Cumulative units from staking 1u at the price FROZEN on each settled alert, for every alert type that carries one. Denominator is settled-alerts-with-a-frozen-price, shown as n. If more than one execution book contributed, the column says so — it is never labelled '@ DK' once it is mixed.">ROI @ frozen price</th>
               <th className="py-1 text-right">Verdict</th>
             </tr>
           </thead>
           <tbody>
             {backtest.map((b) => {
+              // Sample floor MUST match the Python report's _MIN_SETTLED_FOR_CI
+              // (30) in model/line_alerts.py. The old floor of 10 let this table
+              // publish an emerald "has signal" verdict on samples the Python
+              // side would tag `descriptive-only`, and expanding markets/books
+              // multiplies the slices that can trip it.
+              const MIN_SETTLED_FOR_CI = 30;
               const verdict =
-                b.nClv < 10
-                  ? { label: "accruing", cls: "bg-gray-100 text-gray-500",
-                      tip: `Needs ~10+ graded alerts before the CLV average means anything (${b.nClv} so far).` }
+                b.nClv < MIN_SETTLED_FOR_CI
+                  ? { label: "descriptive-only", cls: "bg-gray-100 text-gray-500",
+                      tip: `${b.nClv} graded alert(s). Below the ${MIN_SETTLED_FOR_CI}-alert floor used by `
+                         + `model/line_alerts.py, so no verdict is drawn — raw counts only. Same-slate alerts are `
+                         + `correlated and carry less information than the count suggests.` }
                   : (b.avgClvPp ?? 0) > 0.5
-                    ? { label: "has signal", cls: "bg-emerald-100 text-emerald-700",
-                        tip: "Alerts have been early — the market kept moving toward the flagged side after we fired. Worth acting on." }
-                    : { label: "noise so far", cls: "bg-red-100 text-red-600",
-                        tip: "The move was already absorbed by the time we detected it. Thresholds or capture cadence need work before betting this." };
+                    ? { label: "positive CLV", cls: "bg-amber-100 text-amber-800",
+                        tip: "The market kept moving toward the flagged side after we fired, over a sample past the "
+                           + "floor. That is evidence the detector is early — NOT a validated edge, and not a "
+                           + "recommendation to bet. No detector here has cleared a positive-return bar." }
+                    : { label: "no CLV", cls: "bg-red-100 text-red-600",
+                        tip: "The move was already absorbed by the time we detected it. Per the standing rule, an "
+                           + "alert type with no positive CLV is noise and is a retirement candidate." };
               return (
                 <tr key={b.alertType} className="border-b border-gray-50">
                   <td className="py-1 font-medium">{typeLabel(b.alertType)}</td>
@@ -205,11 +226,22 @@ export default function LineAlertsPanel({
                   </td>
                   <td className="py-1 text-right tabular-nums">{pct(b.winRate)}</td>
                   <td className="py-1 text-right tabular-nums text-gray-400">{pct(b.impliedRate)}</td>
+                  {/* Denominator MUST be nFrozenPrice (settled alerts carrying a
+                      frozen price), not nOutcomes (all settled alerts) — dkUnits
+                      is filtered to the former, so nOutcomes understates ROI
+                      whenever any settled alert lacks a price. Positive is NOT
+                      green: green is reserved for passed validation gates, and
+                      no detector here has cleared one. */}
                   <td className={`py-1 text-right tabular-nums ${
-                    b.dkUnits == null ? "text-gray-300" : b.dkUnits > 0 ? "text-emerald-600 font-medium" : "text-red-500"
-                  }`}>
-                    {b.dkUnits != null && b.nOutcomes > 0
-                      ? `${b.dkUnits >= 0 ? "+" : ""}${b.dkUnits.toFixed(1)}u (${((b.dkUnits / b.nOutcomes) * 100).toFixed(0)}%)`
+                    b.dkUnits == null ? "text-gray-300" : b.dkUnits < 0 ? "text-red-500" : "text-gray-900 font-medium"
+                  }`}
+                      title={b.nExecBooks > 1
+                        ? `Mixed-book: ${b.nExecBooks} different execution books contributed. Not a single-book ROI.`
+                        : undefined}>
+                    {b.dkUnits != null && b.nFrozenPrice > 0
+                      ? `${b.dkUnits >= 0 ? "+" : ""}${b.dkUnits.toFixed(1)}u `
+                        + `(${((b.dkUnits / b.nFrozenPrice) * 100).toFixed(0)}%, n=${b.nFrozenPrice}`
+                        + `${b.nExecBooks > 1 ? `, ${b.nExecBooks} books` : ""})`
                       : "—"}
                   </td>
                   <td className="py-1 text-right">

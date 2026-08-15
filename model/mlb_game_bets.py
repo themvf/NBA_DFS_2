@@ -9,9 +9,18 @@ model) and records one rated, lock-at-first-pitch bet per market into
   * **Moneyline** — bet the side our win-prob favours vs the vig-free line; odds
     = home_ml/away_ml.  (The market is efficient, so most rate 1–2★ — that fade
     is the honest signal, exactly like soccer first-scorer.)
-  * **Total (O/U)** — bet Over/Under per our_total_pred vs the line; our_prob via
-    Poisson(our_total_pred); priced at the standard −110.  Calibrated: ~1-run
-    edges land 3★, big edges 5★.
+  * **Total (O/U)** — the side comes from the model's own skew-aware predictive
+    distribution (``p_over`` vs ``p_under``, frozen in the prediction snapshot),
+    priced at an exact paired book quote.
+
+    NEVER pick the side with ``our_total_pred > line``.  The totals model
+    regresses ``actual_total − vegas_total`` under squared-error loss, so it
+    predicts the conditional **mean**; books set the line at the **median**.
+    League-wide those differ by half a run (mean miss +0.51, median miss 0.00 —
+    right skew from blowouts), so a point comparison says Over on 74–87% of all
+    games forever, and Over only hits 46.5% vs a ~52.4% breakeven.  That single
+    category error cost −41.9u of v4's −50.3u.  See CLAUDE.md, "MLB totals
+    mean-vs-median".
 
 Usage:
     python -m model.mlb_game_bets                       # rate today's slate
@@ -37,11 +46,10 @@ from model.mlb_prediction_provenance import (
     RETROSPECTIVE_BACKFILL,
     latest_prediction_snapshot_id,
 )
-from model.soccer_game_bets import _over_under_probs  # Poisson P(over)/P(under)
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "mlb-gameline-v4"
+MODEL_VERSION = "mlb-gameline-v5"
 
 _DEFAULT_EXECUTABLE_BOOKS = (
     "draftkings",
@@ -51,9 +59,6 @@ _DEFAULT_EXECUTABLE_BOOKS = (
     "fanatics",
     "betrivers",
 )
-_STD_TOTAL_ODDS = -110  # retained only for the dead v3 comparison helper
-_STD_TOTAL_REF = 0.5
-
 # Hard star cap (2026-07-02) — same honesty rule as soccer game markets and
 # tennis ML. The models' own holdout evals show neither beats the market:
 #   moneyline (mlb_ml_v1_eval.json):  our logloss .6772 vs market .6717,
@@ -189,6 +194,7 @@ def _latest_prediction_quote_context(
             s.raw_prediction,
             s.market_prob,
             s.market_line,
+            s.feature_values,
             s.event_commence,
             h.captured_at AS odds_captured_at,
             h.books
@@ -209,7 +215,33 @@ def _latest_prediction_quote_context(
     if row:
         row = dict(row)
         row["books"] = _decode_books(row.get("books"))
+        row["feature_values"] = _decode_books(row.get("feature_values"))
     return row
+
+
+def frozen_total_distribution(feature_values: dict, line: float) -> dict | None:
+    """Return the snapshot's skew-aware O/U distribution for this exact line.
+
+    Fails closed (``None``) rather than falling back to a symmetric parametric
+    distribution: a Poisson/normal treats mean == median, which is precisely the
+    assumption that produced the permanent Over tilt.  A snapshot without a
+    usable distribution is a bet we decline, not a bet we guess.
+    """
+    dist = feature_values.get("total_distribution")
+    if not isinstance(dist, dict):
+        return None
+    if not math.isclose(float(dist.get("line", float("nan"))), line, abs_tol=1e-9):
+        return None  # distribution was built at a different proposition
+    try:
+        p_over = float(dist["p_over"])
+        p_under = float(dist["p_under"])
+        p_push = float(dist.get("p_push", 0.0))
+    except (KeyError, TypeError, ValueError):
+        return None
+    decided = p_over + p_under
+    if decided <= 0.0:
+        return None
+    return {"p_over": p_over, "p_under": p_under, "p_push": p_push, "decided": decided}
 
 
 def _fixtures(db: DatabaseManager, where: str, params: tuple) -> list[dict]:
@@ -228,90 +260,6 @@ def _fixtures(db: DatabaseManager, where: str, params: tuple) -> list[dict]:
         """,
         params,
     )
-
-
-def _record_fixture_legacy(db, conn, fx: dict, capture_key: str, origin: str) -> int:
-    written = 0
-    scope = str(fx["id"])  # stable per-game key; matchup_id also stored as FK
-    commence = fx["commence_time"]
-    fixture_label = f"{fx['away']} @ {fx['home']}"
-
-    # ── Moneyline ──
-    op = fx["our_prob_home"]
-    mp = fx["vegas_prob_home"]
-    if op is not None and mp is not None and fx["home_ml"] is not None and fx["away_ml"] is not None:
-        op, mp = float(op), float(mp)
-        # Pick the side on the RAW model edge, then anchor the bet probability
-        # toward the (vig-free) market for that side before rating.
-        bet_home = op >= mp
-        side_raw = op if bet_home else 1.0 - op
-        side_mkt = mp if bet_home else 1.0 - mp
-        bet_id = record_bet(
-            db,
-            model_version=MODEL_VERSION,
-            bet_type="moneyline",
-            scope=scope,
-            selection_label=fx["home"] if bet_home else fx["away"],
-            our_prob=_anchor(side_raw, side_mkt),
-            capture_key=capture_key,
-            market_odds=int(fx["home_ml"] if bet_home else fx["away_ml"]),
-            market_prob=side_mkt,
-            matchup_id=fx["id"],
-            subject_team_id=fx["home_team_id"] if bet_home else fx["away_team_id"],
-            event_commence=commence,
-            prediction_snapshot_id=latest_prediction_snapshot_id(
-                db, matchup_id=fx["id"], market="moneyline", origin=origin,
-            ),
-            origin=origin,
-            longshot_odds_cap=True,
-            max_stars=_GAMELINE_MAX_STARS,
-            conn=conn,
-            inputs={"side": "home" if bet_home else "away", "fixture": fixture_label,
-                    "our_prob_home": round(op, 4), "market_prob_home": round(mp, 4),
-                    "anchor_w": _MARKET_ANCHOR_W,
-                    "stars_capped_at": _GAMELINE_MAX_STARS,
-                    "edge_status": "no_walkforward_edge"},
-        )
-        written += int(bet_id is not None)
-
-    # ── Total (O/U) ──
-    line = fx["vegas_total"]
-    lam = fx["our_total_pred"]
-    if line is not None and lam is not None:
-        line, lam = float(line), float(lam)
-        p_over, p_under = _over_under_probs(line, lam)
-        is_over = lam > line
-        side_raw = p_over if is_over else p_under
-        bet_id = record_bet(
-            db,
-            model_version=MODEL_VERSION,
-            bet_type="total",
-            scope=scope,
-            selection_label=f"Over {line}" if is_over else f"Under {line}",
-            # Anchor toward the −110 vig-free coin-flip — tempers the totals
-            # model's strong overconfidence (v1 5★ claimed 70%, hit 54%).
-            our_prob=_anchor(side_raw, _STD_TOTAL_REF),
-            capture_key=capture_key,
-            market_odds=_STD_TOTAL_ODDS,
-            market_prob=_STD_TOTAL_REF,
-            matchup_id=fx["id"],
-            event_commence=commence,
-            prediction_snapshot_id=latest_prediction_snapshot_id(
-                db, matchup_id=fx["id"], market="total", origin=origin,
-            ),
-            origin=origin,
-            longshot_odds_cap=True,
-            max_stars=_GAMELINE_MAX_STARS,
-            conn=conn,
-            inputs={"line": line, "side": "over" if is_over else "under",
-                    "our_total_pred": round(lam, 2), "fixture": fixture_label,
-                    "anchor_w": _MARKET_ANCHOR_W,
-                    "stars_capped_at": _GAMELINE_MAX_STARS,
-                    "edge_status": "no_walkforward_edge"},
-        )
-        written += int(bet_id is not None)
-
-    return written
 
 
 def _record_fixture(db, conn, fx: dict, capture_key: str, origin: str) -> int:
@@ -381,10 +329,22 @@ def _record_fixture(db, conn, fx: dict, capture_key: str, origin: str) -> int:
     if total_context and total_context["market_line"] is not None:
         line = float(total_context["market_line"])
         lam = float(total_context["raw_prediction"])
-        p_over, p_under = _over_under_probs(line, lam)
-        is_over = lam > line
+        dist = frozen_total_distribution(total_context["feature_values"], line)
+    else:
+        dist = None
+    if total_context and dist is None:
+        logger.warning(
+            "No skew-aware total distribution for %s at %.1f — declining the total "
+            "(refusing the mean-vs-median point comparison)",
+            fixture_label, float(total_context["market_line"] or 0.0),
+        )
+    if total_context and dist is not None:
+        # Side comes from the predictive DISTRIBUTION, never `lam > line`.
+        is_over = dist["p_over"] > dist["p_under"]
         side = "over" if is_over else "under"
-        side_raw = p_over if is_over else p_under
+        # Conditional-on-no-push, so it is directly comparable to the two-sided
+        # vig-free book quote (which also excludes the push).
+        side_raw = (dist["p_over"] if is_over else dist["p_under"]) / dist["decided"]
         exact = select_exact_total_quote(total_context["books"], side=side, line=line)
         if exact:
             bet_id = record_bet(
@@ -411,6 +371,10 @@ def _record_fixture(db, conn, fx: dict, capture_key: str, origin: str) -> int:
                     "line": line,
                     "side": side,
                     "our_total_pred": round(lam, 2),
+                    "p_over": round(dist["p_over"], 4),
+                    "p_under": round(dist["p_under"], 4),
+                    "p_push": round(dist["p_push"], 4),
+                    "side_selection": "empirical_distribution_v1",
                     "fixture": fixture_label,
                     "observed_book": exact["book"],
                     "observed_price": exact["price"],

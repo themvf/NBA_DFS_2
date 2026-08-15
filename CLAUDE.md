@@ -1157,7 +1157,7 @@ information latency, and disciplined measurement. Priorities:
 |---|---|---|---|
 | **P1** | **CLV harness** (`model/clv_report.py`) + **per-book capture** (`game_odds_history.books` JSONB, Pinnacle via eu region for MLB) + **line movement** (`model/line_movement.py` CLI and Line Movement panels on the MLB, soccer, and tennis vegas views; soccer + tennis write the same per-book trail — 3h/6h cadence — and tennis gained bet snapshots so all three ledgers are CLV-measurable) | Closing Line Value converges ~10× faster than ROI (every bet scores, win or lose). For each bet: entry = first snapshot, close = last pre-kickoff snapshot; did the market move toward our number? Slices by sport/market/stars/model_version. The instrument every other idea is measured with. | ✅ Done (2026-07-02) |
 | **P2** | Pre-registered studies: (a) MLB underdog anomaly (65 stored 5★ bets span the whole season, not 4 days as first thought; 29% were stale pre-repair EV; honest n=125 shows a real win-rate gap but ROI/split-half/min-sample don't clear the bar — full result in "MLB Underdog-Value Investigation" below); (b) opener-vs-closer (does our disagreement with the 13:10 open predict movement by close?) | Hypothesis + eval rules written BEFORE looking at data — the discipline that caught the soccer-totals mirage. Walk-forward only, post-odds-fix data only. | (a) INCONCLUSIVE, cap stays, revisit at n≥200 (2026-07-05); (b) Planned |
-| **P3** | Soft markets: **MLB props live** (`ingest/mlb_prop_odds.py` — pitcher K + batter TB per-book 3×/day; `dk_prop_value` EV≥3% same-line + `prop_line_gap` ≥1.0 detectors into the alert ledger with ROI @ DK; settled from free MLB boxscores). First scan: 8 alerts vs 0 on game lines — DK's prop board is where it goes stale. WC anytime-scorer added same day: Pinnacle posts no WC player props, so the anchor is the overround-NORMALIZED market median (raw medians flagged 24% of the board — book-margin artifact; normalized flags ~4%); settles from the goal timeline, 90-minute rule, DNP-as-loss conservative bias documented. NBA props at season start. | ✅ MLB + WC (2026-07-02) |
+| **P3** | Soft markets: **MLB props live** (`ingest/mlb_prop_odds.py` — pitcher K + batter TB per-book 3×/day; `dk_prop_value` EV≥3% same-line + `prop_line_gap` ≥1.0 detectors into the alert ledger with ROI @ DK; settled from free MLB boxscores). First scan: 8 alerts vs 0 on game lines — DK's prop board is where it goes stale. WC anytime-scorer added same day: Pinnacle posts no WC player props, so the anchor is the overround-NORMALIZED market median (raw medians flagged 24% of the board — book-margin artifact; normalized flags ~4%); settles from the goal timeline, 90-minute rule, DNP-as-loss conservative bias documented. NBA props at season start. **WC anytime-scorer RETIRED 2026-08-13** — confirmed loser, see "Soccer Anytime-Scorer Detector — Retired". | ✅ MLB (2026-07-02); WC retired |
 | **P2b** | **Sharp line alerts** (`model/line_alerts.py` + `line_alerts` table + Alerts panel on all three vegas views) | Pinnacle-divergence (≥2pp) and multi-book steam (≥3 books, ≥1.5pp) detectors run after every capture. Each alert is an IMMUTABLE ledger row frozen at trigger, then audited: clv_pp (did the market close toward the flagged side) + outcome (soccer graded on the 90' score). Telegram push if TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID secrets are set — the ledger never depends on delivery. An alert type with no positive CLV is noise; the backtest panel says so. | ✅ Done (2026-07-02) |
 | **P4** | Information latency (lineups, weather, injuries) — event-driven capture | Only if P1 shows we're directionally right but late. 30-min cron cadence cannot exploit minute-scale news. Don't build speculatively. | Gated on P1 |
 | **P5** | Execution: best-price line shopping across books in every ledger | Worth 1–3%/bet with zero predictive skill; first-scorer already uses best offered price. Makes every edge study realistic. | Planned |
@@ -1887,6 +1887,294 @@ gentler than originally estimated, not harsher. Historical `our_prob_home`
 values already written before this fix are unaffected and remain what they
 were; they should be read as "computed under the old, leaky methodology,"
 not deleted or restated.
+
+---
+
+## MLB Prop Detectors — CLV Split + Multi-Book Rebuild (2026-08-15)
+
+### The measurement that split them
+
+Pooled MLB prop ROI (+3.46%, n=558, CI includes zero) was hiding two detectors
+pointing in OPPOSITE directions. Same-book same-line CLV — entry price vs
+DraftKings' own last pre-commence close on the identical proposition, 512
+comparable settled alerts, date-clustered bootstrap — separated them in one pass:
+
+| detector | n | mean CLV | 95% CI | verdict |
+|---|---:|---:|---|---|
+| `prop_line_gap` | 439 | **−0.13%** | [−0.25%, −0.04%] | **negative, excludes zero** |
+| `dk_prop_value` | 73 | **+1.29%** | [+0.43%, +2.32%] | **positive, excludes zero** |
+
+CLV resolved at n=439/73 what ROI could not: per-bet ROI SD is ~89–114pp, so an
+ROI verdict needs ~1,000–2,500 settled bets per cell. **Grade prop detectors on
+same-book same-line CLV first, ROI second, and never pool detectors.**
+
+### `prop_line_gap` — DEMOTED to control, not retired
+
+Its trigger is a LINE disagreement, which says the two books differ but not
+WHICH is stale — so direction is a coin flip, and the ledger confirms it. It
+keeps scanning (detectors run on already-captured data and cost no credits) and
+its trigger is **frozen at v1** so it stays comparable to those 439
+observations. It renders as a grey `CONTROL` chip with "DO NOT BET". Reviving it
+as actionable requires a new, separately pre-registered study.
+
+### Same-line anchor census (16 markets × 15 events, 223 credits)
+
+Both detectors need a **same-line** Pinnacle quote. Only **4 markets** clear it:
+
+```
+pitcher_strikeouts 100%   batter_total_bases 100%
+pitcher_outs        93%   pitcher_hits_allowed 80%
+```
+
+Three distinct failure modes, all worth recording:
+- **Pinnacle posts 0%** — `pitcher_earned_runs` (was 98% in July; 98→51→1→0
+  across recent weeks), `pitcher_walks`, `pitcher_record_a_win`, and every
+  batter market except total_bases.
+- **`batter_runs_scored`: Pinnacle 87%, same-line 0%** — it quotes a different
+  number than DK every time. An anchor that never matches the proposition is
+  not an anchor. The Herrera rule, biting at census level.
+- **`batter_home_runs`: DK posts 0%** (Pinnacle 100%). Briefly added on the
+  strength of espnbet/fliff/pinnacle coverage — wrong, the detector executes at
+  DK. **Market availability is always relative to the books you asked for.**
+
+### `dk_prop_value` v2 — multi-book best price
+
+v1 checked DraftKings only. v2 checks all six executable books against the same
+Pinnacle fair value and fires **ONE alert per proposition at the best price**.
+
+One per proposition, not one per book, on two grounds: economically you place
+the bet once; statistically six books quoting one player is ~one observation,
+and counting six would inflate n and shrink every CI (the clustering trap).
+
+Stamped `detector_version = "prop-value-v2-multibook"`. **The trigger changed,
+so v1's 73 observations CANNOT pool with v2 — v2 starts at n=0.** Canonical keys
+are `exec_book`/`exec_odds`/`exec_decimal`/`books_qualifying`; legacy
+`dk_odds`/`dk_decimal` are still written (holding the executed book's price) so
+settlement/grading/ROI queries keep working, and the UI reports the distinct
+execution-book count rather than claiming "@ DK".
+
+**Two bugs found while wiring it, both silent-failure class:**
+1. `_selection_prices` hardcoded DraftKings, so a FanDuel alert would have had
+   its CLV graded against DraftKings' close — a price we never had. Now follows
+   `exec_book`; legacy rows fall back to DK.
+2. The same function carried a **hardcoded 6-market list**, so every market
+   added after it was written would silently fail to grade. Now generic across
+   any over/under prop — which mattered immediately at 5 → 16 markets.
+
+**v2 was wrong and was superseded the same day, after 10 rows.** Its "5× volume
+at the same 3% bar" was **max-of-N selection bias**, not signal: taking the best
+EV across six books while holding the threshold fixed selects whichever quote
+is most erroneous in our favour, and quote error shares a tail with genuine
+value. Measured — every executable book's median EV is **≈ −6.5%**, i.e.
+exactly the two-way hold (6.1–7.2%), so a +3% alert is a ~9.5pp tail outlier.
+**Raising the threshold does not fix it**: at 6.0% the best-of-6 rate was still
+15× the DraftKings-only rate at 3.0%, because the selection is over *books*,
+not over the threshold.
+
+A "model disagreement" gate (require the executing book's own de-vigged fair to
+differ from Pinnacle's) was written, measured, and **rejected as circular** —
+it rejected nothing on live data. Proportional de-vig forces a book's two sides
+to sum to 1, so "posted price is generous" and "own fair differs from Pinnacle"
+are the same statement; at 6–8% hold an EV ≥ 3% already implies 1.7–6.9pp of
+apparent disagreement by construction. Separating margin placement from genuine
+model disagreement needs an **asymmetric (Shin/power) de-vig** — not attempted.
+**Do not re-add the symmetric version as a filter.**
+
+### `dk_prop_value` v3 — selection and execution separated (shipped)
+
+- **Selection: DraftKings alone**, exactly as v1. One book, no max-of-N, no
+  selection bias — and it is the trigger whose CLV is validated.
+- **Execution: best same-line price across the executable books**, applied
+  *after* selection, so it cannot influence which propositions are flagged.
+  Pure D1-style line-shopping gain (+1.2–1.9%/bet measured), carried as
+  `exec_book` / `exec_gain_pct`.
+- **CLV continuity preserved**: `dk_decimal` still holds DraftKings' price and
+  `clv_book` names it, so entry-vs-close stays DK-against-DK and v3 remains
+  **poolable with v1's n=73**. `_selection_prices` resolves
+  `clv_book → exec_book → draftkings`, covering all three generations.
+
+**v1's CLV is robust, and smaller than the headline.** Dropping the top
+observations: top-3 → +0.87% [+0.38, +1.45]; top-5 → +0.62% [+0.26, +1.07];
+**top-10 → +0.27% [+0.08, +0.54], still excluding zero at n=63.** It degrades
+gracefully and never collapses — a real, small, broadly-distributed effect.
+Plan against **0.3–0.6%**, not 1.29%.
+
+`books_qualifying = 1` on 10/10 v2 alerts is **not a finding** — at ~7% hold,
+two books clearing +3% on the same side would require near-zero margin, so 1 is
+the arithmetically expected result. If anything it corroborates single-book
+pricing quirks rather than market-wide staleness.
+
+Two open cautions, not yet resolved:
+- **Execution-book concentration.** If v2's CLV comes back positive but is 70%
+  one soft counterparty, that is a single-book finding, not a market edge. It
+  needs a pre-registered concentration gate analogous to the MLB Underdog
+  spec's team-concentration check, plus leave-one-book-out robustness.
+- **Stale ≠ available.** A slow-updating book looks mispriced constantly; those
+  prices may be suspended, limited, or gone on click. Observed quote
+  persistence is polled, never verified.
+
+### Economics, stated plainly
+
+At **$100/bet** and ~650 bets/year, the CLV-implied edge range gives roughly
+**$700–$3,700/year**. The instrumentation to *prove* it plausibly costs more
+effort than the edge returns. Any decision to keep building this should be made
+against that number, not against the +15.2% ROI point estimate (n=73, CI
+through zero) that it is tempting to quote instead.
+
+---
+
+## Soccer Anytime-Scorer Detector — Retired (2026-08-13)
+
+`scan_props_soccer` (`prop_outlier`, WC `player_goal_scorer_anytime`) is the
+**first detector retired under the standing "an alert type with no positive CLV
+is noise" rule.** It is a CONFIRMED negative, not an unproven one.
+
+Settled record at frozen DK prices (the book actually bettable here):
+
+```
+n=101   6 won (5.9%)   median DK decimal 8.00 (12.5% implied)
+-65.0u  ROI -64.4%     date-clustered 95% CI [-85.6%, -44.7%]
+```
+
+The CI lies **entirely below zero**. The signal ran backwards: when DK priced a
+player longer than the overround-normalized median book, DK was right. This is
+not a threshold-tuning problem — the normalization fix documented in the P3
+roadmap row already solved the book-margin artifact, and what remained still
+lost.
+
+**The documented DNP-as-loss conservative bias does not rescue it.** Books void
+ATGS when a player never takes the field and we have no lineup feed, so some
+losses should be voids. But breakeven requires **65 of 101 flagged players
+(64%) to have been no-shows**, which is not credible for players priced at a
+median 12.5% to score. At a generous 20-25% DNP rate the detector still runs
+-52% to -56%.
+
+**Retirement mechanics (the pattern for future retirements):**
+- The scan function is inert — it logs and returns 0. Its body is preserved as
+  `_scan_props_soccer_retired_impl` (uncalled) so the logic stays auditable.
+- `settle_props_soccer` **still runs**, so anything already open finishes
+  grading.
+- The 101 ledger rows are **not deleted**. The ledger is append-only; they are
+  audit history and the evidence for this decision.
+- Reviving it requires a new, separately pre-registered study — never a
+  parameter change to the retired function.
+
+**Contrast, so this is not over-generalized:** MLB props pooled over the same
+period are n=558, ROI **+3.46%**, CI [-3.98%, +11.19%] — includes zero, so
+**unproven, not confirmed either way**, and they stay live and accumulating.
+Retiring soccer ATGS is not a verdict on props generally; it is a verdict on
+one detector whose CI cleared the bar in the wrong direction.
+
+---
+
+## MLB Totals — Mean-vs-Median Side-Selection Bug — Found + Fixed (2026-08-12)
+
+### The finding
+
+Reviewing why the MLB ledger loses, the totals side-selection rule was found to
+commit a category error that accounts for essentially the entire loss. It is not
+a modelling judgement call and it is not "no edge" — it is arithmetic.
+
+**The totals model predicts the conditional MEAN; books set the line at the
+MEDIAN.** `model/mlb_game_total_model.py` fits `y = actual_total − vegas_total`
+with Ridge (squared-error loss ⇒ conditional mean). League-wide across 1,757
+completed 2026 games:
+
+```
+mean(actual − vegas_total)   = +0.511
+median(actual − vegas_total) =  0.000     ← the book is dead-on
+mean total 8.98  vs  median total 8.00    ← right skew, from blowouts
+league Over hit rate 46.5%   (breakeven at −110 = 52.4%)
+```
+
+So the model correctly learns ≈ +0.5, which is the *mean*, and is then compared
+to a *median*-set line. Three layers each pushed the same way:
+
+1. `mlb_game_total_model.py:452` — squared-error fit ⇒ predicts the mean.
+2. `mlb_game_bets.py` — `is_over = lam > line`, a mean-vs-median point
+   comparison ⇒ says Over on **74–87% of all games, every single month**.
+3. `mlb_game_bets.py` — `from model.soccer_game_bets import _over_under_probs`
+   (Poisson, mean ≈ median) converted that structural +0.5 gap into a fake
+   ~55–58% P(over). The 2026-07-11 audit already said "do not import the soccer
+   Poisson assumption"; it was still imported.
+
+### Measured cost
+
+| Cohort | Real book prices? | Units | ROI |
+|---|---|---|---|
+| v1 (Mar 29–Jun 26) | no (`book` NULL, totals synthetic −110) | +39.9 | +1.88% |
+| v2 (Mar 29–Jul 11) | no | +52.3 | +2.11% |
+| v4 (Jul 16–Aug 11) | **yes** (6 books) | **−50.3** | **−7.58%** |
+
+v4 totals Over alone: 227 bets, 42.3% win, **−41.9u of the −50.3u**.
+
+**v1/v2's apparent profit was never real.** All 5,469 pre-v4 bets carry
+`book = NULL`; totals were booked at a synthetic −110 that existed at no book,
+and the entire v1/v2 moneyline profit came from ~125 longshot rows priced at
+9.1% implied but realizing 19.2% — the in-play contamination repaired
+2026-07-08. Strip that bucket and v1/v2 moneyline is negative too; favorites
+lost outright in both (−62.8u).
+
+### The fix (shipped, `mlb-gameline-v5`)
+
+The side now comes from the model's own **skew-aware empirical predictive
+distribution** — `total_distribution()` / `total_probabilities()`, built from
+rolling-origin prior-only residuals and already frozen in every prediction
+snapshot's `feature_values.total_distribution` since 2026-07-11. It was written
+but never wired into the bet path.
+
+- `is_over = p_over > p_under` — **never** `lam > line`. New helper
+  `frozen_total_distribution()` reads the snapshot and validates the
+  distribution was built at the *same* line (a different line is a different
+  proposition).
+- `our_prob` is **conditional on no push** (`p_win / (p_win + p_loss)`), so it
+  is directly comparable to the two-sided vig-free book quote, which also
+  excludes the push. Integer lines carry real push mass (~8%).
+- **Fails closed**: no usable distribution ⇒ decline the bet and log. It never
+  falls back to a symmetric parametric distribution, because "mean == median"
+  is precisely the assumption that caused this.
+- The soccer Poisson import and the dead `_record_fixture_legacy` (never called;
+  it carried a second copy of the buggy path) are removed.
+- Version bumped **v4 → v5** per the standing rule: decision semantics changed,
+  so the evidence must not mix with v4's.
+
+### Replay at exact recorded book prices (n=325 settled v4 totals)
+
+| | Over share | Record | Units | ROI |
+|---|---|---|---|---|
+| OLD (`lam > line` + Poisson) | 69.8% | 144-181 (44.3%) | −46.7 | −14.38% |
+| NEW (empirical distribution) | 25.2% | 159-166 (48.9%) | −21.1 | **−6.49%** |
+
+The side flips on 145 of 325 (44.6%). Prices are the real recorded ones — where
+the side flips, the bet is graded at the stored `paired_price` for that exact
+line and book.
+
+**Read this honestly: the fix removes a structural loss, it does not create an
+edge.** −6.49% is still a loss, and this is a *replay* on the same data that
+diagnosed the problem, not a validated forward result. Totals MAE is worse than
+Vegas in 5 of 6 months (e.g. 3.93 vs 3.75 in July) and moneyline Brier is worse
+than market in 5 of 6, so the honest expectation after the fix is
+roughly breakeven-minus-vig. **The 2★ cap on both MLB game markets stays.** v5
+is the clean prospective cohort that will actually test this; do not read the
++25.6u replay delta as demonstrated edge.
+
+Note the post-fix board now leans Under (~25% Over). That is not an
+over-correction: the league Over rate genuinely is 46.5%, so "Under is more
+likely" is true in most games. Being on the more-probable side is not the same
+as having value — the book prices it accordingly, which is exactly why the
+replay still loses.
+
+### Standing rules from this
+
+- **Never derive a bet side from `prediction > line` on a skewed market.**
+  Derive it from P(over) vs P(under) under the model's own predictive
+  distribution. Covered by `tests/test_mlb_total_side_selection.py`, which
+  asserts on the AST that no mean-vs-line comparison exists in the bet path.
+- Before trusting any residual-over-market model, check `mean(actual − line)`
+  against `median(actual − line)`. If they differ, a point comparison is a
+  permanent tilt toward one side.
+- Any new sport/market that regresses `actual − line` inherits this bug the
+  moment a point comparison picks the side.
 
 ---
 
