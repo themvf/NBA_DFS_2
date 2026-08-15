@@ -46,12 +46,20 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.tennis_result_settlement import (
+    ResultObservation,
+    fail_provider_run_if_open,
+    finish_provider_run,
+    record_observation_and_settle,
+    start_provider_run,
+)
 
 logger = logging.getLogger(__name__)
 
 _TSDB_KEY = os.getenv("THESPORTSDB_API_KEY", "123")
 TSDB_V2_BASE = "https://www.thesportsdb.com/api/v2/json"
 _TSDB_HEADERS = {"X-API-KEY": _TSDB_KEY}
+_PARSER_VERSION = "thesportsdb-v2"
 
 # TheSportsDB league IDs (verified 2026-06-30 — see memory thesportsdb-premium-api).
 _LEAGUES = {"ATP": 4464, "WTA": 4517}
@@ -88,8 +96,7 @@ def _fetch_season(tour: str) -> list[dict]:
         data = r.json() or {}
         return data.get("schedule") or data.get("events") or []
     except requests.RequestException as e:
-        logger.warning("TheSportsDB v2 schedule fetch failed for %s: %s", tour, e)
-        return []
+        raise RuntimeError(f"TheSportsDB v2 schedule fetch failed for {tour}: {e}") from e
 
 
 def _fetch_event(event_id) -> dict | None:
@@ -126,86 +133,103 @@ def _parse_result(str_result: str | None) -> tuple[str, str, int, int] | None:
 
 
 def settle_tour(db: DatabaseManager, tour: str) -> tuple[int, int]:
-    """Settle this tour's still-pending tennis_matches from TheSportsDB.
-    Returns (matches_updated, bets_settled)."""
+    """Append fallback observations; ambiguous surname matches fail closed."""
+    run_id = start_provider_run(db, "thesportsdb", tour, _PARSER_VERSION)
+    try:
+        return _settle_tour(db, tour, run_id)
+    except Exception as exc:
+        fail_provider_run_if_open(db, run_id, exc, status="parse_error")
+        raise
+
+
+def _settle_tour(db: DatabaseManager, tour: str, run_id: int) -> tuple[int, int]:
     rows = db.execute(
         """SELECT id, match_date, home_player, away_player
-           FROM tennis_matches WHERE tour = %s AND winner IS NULL""",
+           FROM tennis_matches WHERE tour=%s AND winner IS NULL""",
         (tour,),
     )
     if not rows:
+        finish_provider_run(db, run_id, status="empty")
         return 0, 0
-    pending_dates = {m["match_date"] for m in rows}
-    date_lo, date_hi = min(pending_dates) - timedelta(days=2), max(pending_dates) + timedelta(days=2)
+    pending_dates = {match["match_date"] for match in rows}
+    date_lo = min(pending_dates) - timedelta(days=2)
+    date_hi = max(pending_dates) + timedelta(days=2)
+
+    try:
+        events = _fetch_season(tour)
+    except Exception as exc:
+        finish_provider_run(
+            db, run_id, status="fetch_error",
+            http_status=getattr(getattr(exc.__cause__, "response", None), "status_code", None),
+            error=str(exc),
+        )
+        raise
 
     now = datetime.now(timezone.utc)
-    matches_updated = bets_settled = 0
-    for ev in _fetch_season(tour):
-        ev_date = ev.get("dateEvent")
+    matches_updated = bets_settled = parsed = ambiguous = 0
+    processed_ids: set[int] = set()
+    for event in events:
+        event_date = event.get("dateEvent")
         try:
-            ev_date_d = datetime.strptime(ev_date, "%Y-%m-%d").date()
+            result_date = datetime.strptime(event_date, "%Y-%m-%d").date()
         except (TypeError, ValueError):
             continue
-        # Bound single-event lookups to the window our pending matches actually
-        # span — the full FT event count (1000+/tour) is too many calls otherwise.
-        if not (date_lo <= ev_date_d <= date_hi):
+        if not (date_lo <= result_date <= date_hi):
             continue
-        status = (ev.get("strStatus") or "").strip().upper()
-        commence = datetime.strptime(ev_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        status = (event.get("strStatus") or "").strip().upper()
+        commence = datetime.strptime(event_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         if status not in ("FT", "AET") and now - commence < _MIN_ELAPSED:
-            continue  # not confirmed finished and not old enough to assume so
-
-        full = _fetch_event(ev.get("idEvent"))
-        if not full:
             continue
-        parsed = _parse_result(full.get("strResult"))
-        if not parsed:
+        full = _fetch_event(event.get("idEvent"))
+        parsed_result = _parse_result(full.get("strResult") if full else None)
+        if not parsed_result:
             continue
-        winner_name, loser_name, wsets, lsets = parsed
-        kw, kl = _norm(winner_name), _norm(loser_name)
-        if not kw or not kl:
-            continue
-
-        # Surname substring match (TheSportsDB gives no first initial, unlike
-        # tennis-data.co.uk) against our full stored player names, within the
-        # ±2 day window per pair to avoid cross-tournament collisions.
-        cands = [
-            m for m in rows
-            if abs((m["match_date"] - ev_date_d).days) <= 2
-            and ((kw in _norm(m["home_player"]) and kl in _norm(m["away_player"]))
-                 or (kw in _norm(m["away_player"]) and kl in _norm(m["home_player"])))
+        parsed += 1
+        winner_name, loser_name, winner_sets, loser_sets = parsed_result
+        winner_key, loser_key = _norm(winner_name), _norm(loser_name)
+        candidates = [
+            match for match in rows
+            if match["id"] not in processed_ids
+            and abs((match["match_date"] - result_date).days) <= 2
+            and ((winner_key in _norm(match["home_player"]) and loser_key in _norm(match["away_player"]))
+                 or (winner_key in _norm(match["away_player"]) and loser_key in _norm(match["home_player"])))
         ]
-        if not cands:
+        if not candidates:
             continue
-        match = min(cands, key=lambda m: abs((m["match_date"] - ev_date_d).days))
+        min_distance = min(abs((match["match_date"] - result_date).days) for match in candidates)
+        best = [match for match in candidates
+                if abs((match["match_date"] - result_date).days) == min_distance]
+        if len(best) != 1:
+            ambiguous += 1
+            continue
+        match = best[0]
+        home_winner = winner_key in _norm(match["home_player"])
+        away_winner = winner_key in _norm(match["away_player"])
+        if home_winner == away_winner:
+            ambiguous += 1
+            continue
+        winner_side = "home" if home_winner else "away"
+        home_sets, away_sets = ((winner_sets, loser_sets) if home_winner
+                                else (loser_sets, winner_sets))
+        result = record_observation_and_settle(db, ResultObservation(
+            match_id=match["id"], provider="thesportsdb", winner_side=winner_side,
+            completion_status="unknown", status_evidence=False,
+            observed_match_date=result_date, home_sets=home_sets, away_sets=away_sets,
+            provider_event_id=str(event.get("idEvent") or "") or None,
+            source_url=(f"{TSDB_V2_BASE}/lookup/event/{event.get('idEvent')}"),
+            parser_version=_PARSER_VERSION, raw_payload=full or {},
+            match_method="surname_substring_date", match_confidence=0.75,
+            reason="Advancing player observed; completion semantics not supplied",
+        ))
+        if result["state"] == "resolved":
+            matches_updated += 1
+            bets_settled += int(result["bets"])
+            processed_ids.add(match["id"])
 
-        winner_is_home = kw in _norm(match["home_player"])
-        winner_side = "home" if winner_is_home else "away"
-        home_sets, away_sets = (wsets, lsets) if winner_is_home else (lsets, wsets)
-
-        db.execute(
-            """UPDATE tennis_matches
-               SET home_sets=%s, away_sets=%s, winner=%s,
-                   completion_status='completed', retired=FALSE, walkover=FALSE,
-                   result_source='thesportsdb', result_comment=NULL
-               WHERE id=%s""",
-            (home_sets, away_sets, winner_side, match["id"]),
-        )
-        matches_updated += 1
-
-        bets = db.execute(
-            "SELECT id, side FROM tennis_bets WHERE match_id=%s AND status='pending' AND bet_type='moneyline'",
-            (match["id"],),
-        )
-        for b in bets:
-            bet_status = "won" if b["side"] == winner_side else "lost"
-            detail = f"{winner_name} d. {loser_name} {wsets}-{lsets} (TheSportsDB)"
-            db.execute(
-                "UPDATE tennis_bets SET status=%s, result_detail=%s, settled_at=NOW() WHERE id=%s",
-                (bet_status, detail, b["id"]),
-            )
-            bets_settled += 1
-
+    finish_provider_run(
+        db, run_id, status="success" if parsed else "empty", fetched=len(events),
+        parsed=parsed, matched=matches_updated, ambiguous=ambiguous,
+    )
     return matches_updated, bets_settled
 
 

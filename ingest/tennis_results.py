@@ -32,10 +32,18 @@ import requests
 from config import load_config
 from db.database import DatabaseManager
 from ingest.tennis_result_semantics import classify_completion
+from ingest.tennis_result_settlement import (
+    ResultObservation,
+    fail_provider_run_if_open,
+    finish_provider_run,
+    record_observation_and_settle,
+    start_provider_run,
+)
 
 logger = logging.getLogger(__name__)
 
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
+_PARSER_VERSION = "tennis-data-v2"
 # (tour, url-template). WTA lives under /{year}w/.
 _TOURS = {
     "ATP": "http://www.tennis-data.co.uk/{year}/{year}.xlsx",
@@ -94,115 +102,119 @@ def _games(row, prefix: str, best_of: int) -> int:
 
 
 def settle_tour(db: DatabaseManager, tour: str, year: int) -> tuple[int, int]:
-    """Fetch one tour's results, write match results + settle moneyline bets.
-    Returns (matches_updated, bets_settled)."""
+    """Append structured results and atomically publish accepted resolutions."""
+    run_id = start_provider_run(db, "tennis_data", tour, _PARSER_VERSION)
+    try:
+        return _settle_tour(db, tour, year, run_id)
+    except Exception as exc:
+        fail_provider_run_if_open(db, run_id, exc, status="parse_error")
+        raise
+
+
+def _settle_tour(
+    db: DatabaseManager, tour: str, year: int, run_id: int,
+) -> tuple[int, int]:
     import pandas as pd
 
-    # Index this tour's unsettled matches first — skip the ~230KB xlsx download
-    # entirely once nothing is pending (this now runs every 15 min via
-    # refresh_tennis_settlement.yml, so avoiding needless fetches matters).
     rows = db.execute(
-        """SELECT id, match_date, home_player, away_player
-           FROM tennis_matches WHERE tour = %s AND winner IS NULL""",
-        (tour,),
+        """SELECT id, match_date, home_player, away_player, winner,
+                  completion_status, home_games, away_games
+           FROM tennis_matches
+           WHERE tour=%s AND EXTRACT(YEAR FROM match_date)=%s
+             AND (winner IS NULL OR completion_status IN ('scheduled','unknown')
+                  OR home_games IS NULL OR away_games IS NULL)""",
+        (tour, year),
     )
     if not rows:
+        finish_provider_run(db, run_id, status="empty")
         return 0, 0
 
     url = _TOURS[tour].format(year=year)
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=90)
-        resp.raise_for_status()
-        df = pd.read_excel(io.BytesIO(resp.content))
-    except Exception as exc:  # noqa: BLE001 — network/parse both non-fatal
-        logger.warning("tennis-data %s fetch failed: %s", tour, exc)
-        return 0, 0
+        response = requests.get(url, headers=_HEADERS, timeout=90)
+        response.raise_for_status()
+        frame = pd.read_excel(io.BytesIO(response.content))
+    except Exception as exc:  # noqa: BLE001 - persisted and re-raised for health visibility
+        status = "fetch_error" if isinstance(exc, requests.RequestException) else "parse_error"
+        finish_provider_run(
+            db, run_id, status=status,
+            http_status=getattr(getattr(exc, "response", None), "status_code", None),
+            error=str(exc),
+        )
+        raise
 
     index: dict[frozenset, list[dict]] = {}
-    for m in rows:
-        home_keys = _keys_oddsapi(m["home_player"])
-        away_keys = _keys_oddsapi(m["away_player"])
-        for kh in home_keys:
-            for ka in away_keys:
-                index.setdefault(frozenset((kh, ka)), []).append(m)
+    for match in rows:
+        for home_key in _keys_oddsapi(match["home_player"]):
+            for away_key in _keys_oddsapi(match["away_player"]):
+                index.setdefault(frozenset((home_key, away_key)), []).append(match)
 
-    matches_updated = bets_settled = 0
-    for _, r in df.iterrows():
-        if not str(r.get("Tournament", "")).strip():
+    matches_updated = bets_settled = parsed = ambiguous = 0
+    for _, source_row in frame.iterrows():
+        if not str(source_row.get("Tournament", "")).strip():
             continue
-        winner_keys = _keys_tennisdata(r.get("Winner"))
-        loser_keys = _keys_tennisdata(r.get("Loser"))
+        result_date = source_row.get("Date")
+        result_date = result_date.date() if isinstance(result_date, datetime) else result_date
+        if not isinstance(result_date, date):
+            continue
+        winner_keys = _keys_tennisdata(source_row.get("Winner"))
+        loser_keys = _keys_tennisdata(source_row.get("Loser"))
         if not winner_keys or not loser_keys:
             continue
-        cands_by_id: dict[int, dict] = {}
-        for kw in winner_keys:
-            for kl in loser_keys:
-                for candidate in index.get(frozenset((kw, kl)), []):
-                    cands_by_id[candidate["id"]] = candidate
-        cands = list(cands_by_id.values())
-        if not cands:
+        parsed += 1
+        candidates: dict[int, dict] = {}
+        for winner_key in winner_keys:
+            for loser_key in loser_keys:
+                for candidate in index.get(frozenset((winner_key, loser_key)), []):
+                    if abs((candidate["match_date"] - result_date).days) <= 2:
+                        candidates[candidate["id"]] = candidate
+        if not candidates:
             continue
-
-        # HARD date window — not just disambiguation. The same two players meet
-        # across tournaments (Bencic–Kalinskaya at Eastbourne one week, Wimbledon
-        # the next), and the results file carries the whole season: without this
-        # guard a single-candidate pair match grabbed a WEEKS-OLD result and
-        # wrote a winner onto a match that hadn't been played yet (2026-07-02).
-        # A result may only settle a match dated within ±2 days of it; undated
-        # result rows are skipped entirely.
-        rd = r.get("Date")
-        rd = rd.date() if isinstance(rd, datetime) else rd
-        if not isinstance(rd, date):
+        min_distance = min(abs((m["match_date"] - result_date).days)
+                           for m in candidates.values())
+        best = [m for m in candidates.values()
+                if abs((m["match_date"] - result_date).days) == min_distance]
+        if len(best) != 1:
+            ambiguous += 1
             continue
-        cands = [m for m in cands if abs((m["match_date"] - rd).days) <= 2]
-        if not cands:
-            continue
-        match = min(cands, key=lambda m: abs((m["match_date"] - rd).days))
-
-        # Orientation: is the home player the recorded winner? Both player
-        # aliases must not resolve to the same side before writing a result.
+        match = best[0]
         home_is_winner = bool(_keys_oddsapi(match["home_player"]) & winner_keys)
         away_is_winner = bool(_keys_oddsapi(match["away_player"]) & winner_keys)
         if home_is_winner == away_is_winner:
-            logger.warning("Skipping ambiguous tennis-data result orientation for id=%s", match["id"])
+            ambiguous += 1
             continue
-        best_of = _int_or_zero(r.get("Best of")) or 3
-        w_sets, l_sets = _int_or_zero(r.get("Wsets")), _int_or_zero(r.get("Lsets"))
-        w_games, l_games = _games(r, "W", best_of), _games(r, "L", best_of)
-        comment = str(r.get("Comment", "") or "")
 
-        if home_is_winner:
-            home_sets, away_sets, home_games, away_games, winner = w_sets, l_sets, w_games, l_games, "home"
-        else:
-            home_sets, away_sets, home_games, away_games, winner = l_sets, w_sets, l_games, w_games, "away"
-        completion_status, retired, walkover = classify_completion(comment)
+        winner_sets = _int_or_zero(source_row.get("Wsets"))
+        loser_sets = _int_or_zero(source_row.get("Lsets"))
+        winner_games = _games(source_row, "W", _int_or_zero(source_row.get("Best of")) or 3)
+        loser_games = _games(source_row, "L", _int_or_zero(source_row.get("Best of")) or 3)
+        comment = str(source_row.get("Comment", "") or "")
+        completion_status, _retired, _walkover = classify_completion(comment)
+        home_sets, away_sets = ((winner_sets, loser_sets) if home_is_winner
+                                else (loser_sets, winner_sets))
+        home_games, away_games = ((winner_games, loser_games) if home_is_winner
+                                  else (loser_games, winner_games))
+        winner_side = "home" if home_is_winner else "away"
+        result = record_observation_and_settle(db, ResultObservation(
+            match_id=match["id"], provider="tennis_data", winner_side=winner_side,
+            completion_status=completion_status, status_evidence=True,
+            observed_match_date=result_date, home_sets=home_sets, away_sets=away_sets,
+            home_games=home_games, away_games=away_games, source_url=url,
+            parser_version=_PARSER_VERSION,
+            raw_payload={key: (None if value != value else value)
+                         for key, value in source_row.to_dict().items()},
+            match_method="surname_initial_date", match_confidence=0.98,
+            reason=comment or "Structured tennis-data result",
+        ))
+        if result["state"] == "resolved":
+            matches_updated += 1
+            bets_settled += int(result["bets"])
 
-        db.execute(
-            """UPDATE tennis_matches
-               SET home_sets=%s, away_sets=%s, home_games=%s, away_games=%s, winner=%s,
-                   completion_status=%s, retired=%s, walkover=%s,
-                   result_source='tennis_data', result_comment=%s
-               WHERE id=%s""",
-            (home_sets, away_sets, home_games, away_games, winner,
-             completion_status, retired, walkover, comment or None, match["id"]),
-        )
-        matches_updated += 1
-
-        # Settle pending moneyline bets on this match.
-        bets = db.execute(
-            "SELECT id, side FROM tennis_bets WHERE match_id=%s AND status='pending' AND bet_type='moneyline'",
-            (match["id"],),
-        )
-        for b in bets:
-            status = "won" if b["side"] == winner else "lost"
-            detail = f"{r.get('Winner')} d. {r.get('Loser')} {w_sets}-{l_sets}"
-            db.execute(
-                "UPDATE tennis_bets SET status=%s, result_detail=%s, settled_at=NOW() WHERE id=%s",
-                (status, detail, b["id"]),
-            )
-            bets_settled += 1
-
-    print(f"Tennis {tour}: {matches_updated} matches resulted, {bets_settled} moneyline bets settled")
+    finish_provider_run(
+        db, run_id, status="success" if parsed else "empty", fetched=len(frame),
+        parsed=parsed, matched=matches_updated, ambiguous=ambiguous,
+    )
+    print(f"Tennis {tour}: {matches_updated} matches published, {bets_settled} moneyline bets settled")
     return matches_updated, bets_settled
 
 

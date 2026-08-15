@@ -921,19 +921,24 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
             else:
                 outcome = "lost"
         g = _grade_alert_prices(db, a)
-        db.execute(
-            "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
-            "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
-            "convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
-            "details_json = details_json || jsonb_build_object('actual', %s) WHERE id = %s",
-            (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
-             g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"],
-             (int(a["home_games"]) + int(a["away_games"]))
-             if a["home_games"] is not None and a["away_games"] is not None else None,
-             a["id"]),
-        )
-        _append_grade_history(db, a["id"], g, outcome=outcome)
-        graded += 1
+        with db.connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE line_alerts SET outcome = %s, settled_at = NOW(), "
+                "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
+                "convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
+                "details_json = details_json || jsonb_build_object('actual', %s) "
+                "WHERE id = %s AND settled_at IS NULL",
+                (outcome, g["dk_close_decimal"], g["dk_clv_pct"], g["pin_close_prob"],
+                 g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]),
+                 g["comparison_status"], g["grading_version"],
+                 (int(a["home_games"]) + int(a["away_games"]))
+                 if a["home_games"] is not None and a["away_games"] is not None else None,
+                 a["id"]),
+            )
+            if cur.rowcount:
+                _append_grade_history_cur(cur, a["id"], g, outcome=outcome)
+                graded += 1
     if graded:
         print(f"Tennis totals alerts: {graded} graded")
     return graded
@@ -1477,24 +1482,20 @@ def _grade_alert_prices(db, a) -> dict:
     return out
 
 
-def _append_grade_history(db, alert_id: int, g: dict, outcome=None) -> None:
-    """Immutably record this grade event: flip prior rows off is_current, insert
-    the new grade. Never UPDATEs a prior grade's fields — the ledger proves what
-    each methodology concluded, not just that a version existed. Idempotent per
-    (alert, version, outcome): re-running a settle pass under the same version
-    with the same outcome does not spam duplicate history rows."""
-    dup = db.execute_one(
+def _append_grade_history_cur(cur, alert_id: int, g: dict, outcome=None) -> None:
+    """Append one idempotent grade using the caller's transaction."""
+    cur.execute(
         """SELECT 1 FROM alert_grades WHERE alert_id = %s AND is_current
              AND grading_version = %s AND convergence IS NOT DISTINCT FROM %s
              AND comparison_status IS NOT DISTINCT FROM %s
              AND outcome IS NOT DISTINCT FROM %s""",
         (alert_id, g["grading_version"], g["convergence"], g["comparison_status"], outcome),
     )
-    if dup:
+    if cur.fetchone():
         return
-    db.execute("UPDATE alert_grades SET is_current = FALSE WHERE alert_id = %s AND is_current",
-               (alert_id,))
-    db.execute(
+    cur.execute("UPDATE alert_grades SET is_current = FALSE WHERE alert_id = %s AND is_current",
+                (alert_id,))
+    cur.execute(
         """INSERT INTO alert_grades
              (alert_id, grading_version, comparison_status, convergence, outcome,
               dk_clv_pct, grading_json, is_current)
@@ -1502,6 +1503,12 @@ def _append_grade_history(db, alert_id: int, g: dict, outcome=None) -> None:
         (alert_id, g["grading_version"], g["comparison_status"], g["convergence"],
          outcome, g["dk_clv_pct"], json.dumps(g["grading_json"])),
     )
+
+
+def _append_grade_history(db, alert_id: int, g: dict, outcome=None) -> None:
+    """Backward-compatible transactional grade append."""
+    with db.connect() as conn:
+        _append_grade_history_cur(conn.cursor(), alert_id, g, outcome)
 
 
 def _dk_execution_clv(db, a) -> tuple[float | None, float | None]:
@@ -1574,17 +1581,20 @@ def settle(db: DatabaseManager, sport: str) -> int:
         if clv_pp is None and outcome is None:
             continue
         g = _grade_alert_prices(db, a)
-        db.execute(
-            "UPDATE line_alerts SET close_prob = %s, clv_pp = %s, outcome = %s, "
-            "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
-            "convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
-            "settled_at = CASE WHEN %s::text IS NOT NULL THEN NOW() ELSE settled_at END "
-            "WHERE id = %s",
-            (close_prob, clv_pp, outcome, g["dk_close_decimal"], g["dk_clv_pct"],
-             g["pin_close_prob"], g["convergence"], g["dk_survival_min"], json.dumps(g["grading_json"]), g["comparison_status"], g["grading_version"],
-             outcome, a["id"]),
-        )
-        _append_grade_history(db, a["id"], g, outcome=outcome)
+        with db.connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE line_alerts SET close_prob = %s, clv_pp = %s, outcome = %s, "
+                "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
+                "convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
+                "settled_at = CASE WHEN %s::text IS NOT NULL THEN NOW() ELSE settled_at END "
+                "WHERE id = %s",
+                (close_prob, clv_pp, outcome, g["dk_close_decimal"], g["dk_clv_pct"],
+                 g["pin_close_prob"], g["convergence"], g["dk_survival_min"],
+                 json.dumps(g["grading_json"]), g["comparison_status"],
+                 g["grading_version"], outcome, a["id"]),
+            )
+            _append_grade_history_cur(cur, a["id"], g, outcome=outcome)
         graded += 1
     if sport == "nfl":
         graded += _settle_nfl_line_alerts(db)

@@ -1785,6 +1785,88 @@ TABLES = [
     )
     """,
 
+    # Immutable live result evidence. Providers append what they actually
+    # observed; they never silently overwrite another provider's account.
+    """
+    CREATE TABLE IF NOT EXISTS tennis_result_observations (
+        id BIGSERIAL PRIMARY KEY,
+        match_id INTEGER NOT NULL REFERENCES tennis_matches(id),
+        provider TEXT NOT NULL,
+        provider_event_id TEXT,
+        observed_match_date DATE,
+        winner_side TEXT CHECK (winner_side IN ('home', 'away') OR winner_side IS NULL),
+        home_sets INTEGER,
+        away_sets INTEGER,
+        home_games INTEGER,
+        away_games INTEGER,
+        completion_status TEXT NOT NULL DEFAULT 'unknown'
+            CHECK (completion_status IN ('unknown', 'completed', 'retired', 'walkover', 'awarded', 'cancelled')),
+        status_evidence BOOLEAN NOT NULL DEFAULT FALSE,
+        source_url TEXT,
+        source_available_at TIMESTAMPTZ,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        parser_version TEXT NOT NULL,
+        raw_checksum TEXT NOT NULL,
+        raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        match_method TEXT NOT NULL,
+        match_confidence DOUBLE PRECISION NOT NULL,
+        UNIQUE (provider, match_id, raw_checksum, parser_version)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_result_resolutions (
+        id BIGSERIAL PRIMARY KEY,
+        match_id INTEGER NOT NULL REFERENCES tennis_matches(id),
+        observation_id BIGINT REFERENCES tennis_result_observations(id),
+        state TEXT NOT NULL CHECK (state IN ('resolved', 'unresolved', 'disputed', 'void')),
+        winner_side TEXT CHECK (winner_side IN ('home', 'away') OR winner_side IS NULL),
+        completion_status TEXT NOT NULL,
+        home_sets INTEGER,
+        away_sets INTEGER,
+        home_games INTEGER,
+        away_games INTEGER,
+        policy_version TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        evidence_url TEXT,
+        correction_of_id BIGINT REFERENCES tennis_result_resolutions(id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_settlement_audit (
+        id BIGSERIAL PRIMARY KEY,
+        resolution_id BIGINT NOT NULL REFERENCES tennis_result_resolutions(id),
+        target_type TEXT NOT NULL CHECK (target_type IN ('match', 'bet', 'alert')),
+        target_id BIGINT NOT NULL,
+        action TEXT NOT NULL,
+        prior_state JSONB NOT NULL,
+        new_state JSONB NOT NULL,
+        policy_version TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (resolution_id, target_type, target_id, action)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tennis_provider_runs (
+        id BIGSERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        tour TEXT,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        finished_at TIMESTAMPTZ,
+        status TEXT NOT NULL DEFAULT 'running'
+            CHECK (status IN ('running', 'success', 'empty', 'fetch_error', 'parse_error', 'coverage_gap')),
+        http_status INTEGER,
+        fetched_count INTEGER NOT NULL DEFAULT 0,
+        parsed_count INTEGER NOT NULL DEFAULT 0,
+        matched_count INTEGER NOT NULL DEFAULT 0,
+        ambiguous_count INTEGER NOT NULL DEFAULT 0,
+        source_available_at TIMESTAMPTZ,
+        parser_version TEXT NOT NULL,
+        error_message TEXT
+    )
+    """,
+
     # ── Player-level historical stats for the stat-based first-scorer model ──
     # Aggregated from StatsBomb open data (WC 2018 + 2022 + continental tourneys).
     # xg_per_90 is the primary input to firstscorer-v3.  normalized_name is the
@@ -3046,6 +3128,11 @@ INDEXES = [
     # Tennis (Wimbledon MVP)
     "CREATE INDEX IF NOT EXISTS idx_tennis_matches_date ON tennis_matches(match_date, tour)",
     "CREATE INDEX IF NOT EXISTS idx_tennis_bets_type_status ON tennis_bets(bet_type, status, stars)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_result_observations_match ON tennis_result_observations(match_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_result_resolutions_match ON tennis_result_resolutions(match_id, created_at DESC)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS tennis_resolution_observation_policy_key ON tennis_result_resolutions(observation_id, policy_version) WHERE observation_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_provider_runs_health ON tennis_provider_runs(provider, started_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_tennis_settlement_audit_resolution ON tennis_settlement_audit(resolution_id, created_at)",
     # Prediction columns added after the odds-only MVP table already existed.
     "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS our_prob_home DOUBLE PRECISION",
     "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS our_prob_away DOUBLE PRECISION",
@@ -3057,6 +3144,7 @@ INDEXES = [
     "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS walkover BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS result_source TEXT",
     "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS result_comment TEXT",
+    "ALTER TABLE tennis_matches ADD COLUMN IF NOT EXISTS result_resolution_id BIGINT REFERENCES tennis_result_resolutions(id)",
     "UPDATE tennis_matches SET completion_status='completed' WHERE winner IS NOT NULL AND completion_status='scheduled'",
     # 2026-06-28: Draw No Bet market for knockout rounds — 2-way (void on draw).
     # dk_dnb_*_ml  = DraftKings' posted price (used for EV — the book the user bets at).

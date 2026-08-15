@@ -89,7 +89,11 @@ def _record(cur, *, match_id, side, label, our_prob, market_odds, market_prob,
 
 def rate_and_write(db: DatabaseManager, match_date: str | None = None) -> int:
     """Rate moneyline for both tours (our_prob = market → honest ≤2★). Returns bets written."""
-    where = "WHERE match_date = %s" if match_date else "WHERE match_date >= CURRENT_DATE"
+    where = (
+        "WHERE match_date = %s AND (commence_time IS NULL OR commence_time > NOW())"
+        if match_date else
+        "WHERE match_date >= CURRENT_DATE AND (commence_time IS NULL OR commence_time > NOW())"
+    )
     params = (match_date,) if match_date else ()
     matches = db.execute(
         f"""SELECT id, tour, commence_time, home_player, away_player,

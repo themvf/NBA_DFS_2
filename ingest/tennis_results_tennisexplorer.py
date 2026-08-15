@@ -36,12 +36,20 @@ from bs4 import BeautifulSoup
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.tennis_result_settlement import (
+    ResultObservation,
+    fail_provider_run_if_open,
+    finish_provider_run,
+    record_observation_and_settle,
+    start_provider_run,
+)
 
 logger = logging.getLogger(__name__)
 
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 _TOUR_TYPE = {"ATP": "atp-single", "WTA": "wta-single"}
 _DEFAULT_DAYS_BACK = 7
+_PARSER_VERSION = "tennisexplorer-v3"
 
 
 def _norm(text: str) -> str:
@@ -93,8 +101,7 @@ def _fetch_day(tour: str, d: date) -> list[dict]:
         resp = requests.get(url, headers=_HEADERS, timeout=30)
         resp.raise_for_status()
     except requests.RequestException as e:
-        logger.warning("tennisexplorer %s %s fetch failed: %s", tour, d, e)
-        return []
+        raise RuntimeError(f"tennisexplorer {tour} {d} fetch failed: {e}") from e
 
     soup = BeautifulSoup(resp.text, "html.parser")
     matches: list[dict] = []
@@ -133,73 +140,104 @@ def _fetch_day(tour: str, d: date) -> list[dict]:
 
 
 def settle_tour(db: DatabaseManager, tour: str, days_back: int) -> tuple[int, int]:
+    run_id = start_provider_run(db, "tennisexplorer", tour, _PARSER_VERSION)
+    try:
+        return _settle_tour(db, tour, days_back, run_id)
+    except Exception as exc:
+        fail_provider_run_if_open(db, run_id, exc, status="parse_error")
+        raise
+
+
+def _settle_tour(
+    db: DatabaseManager, tour: str, days_back: int, run_id: int,
+) -> tuple[int, int]:
     rows = db.execute(
         """SELECT id, match_date, home_player, away_player
-           FROM tennis_matches WHERE tour = %s AND winner IS NULL""",
+           FROM tennis_matches
+           WHERE tour=%s AND winner IS NULL AND match_date <= CURRENT_DATE""",
         (tour,),
     )
     if not rows:
+        finish_provider_run(db, run_id, status="empty")
         return 0, 0
+
     index: dict[frozenset, list[dict]] = {}
-    for m in rows:
-        home_keys = _keys_full_name(m["home_player"])
-        away_keys = _keys_full_name(m["away_player"])
-        for kh in home_keys:
-            for ka in away_keys:
-                index.setdefault(frozenset((kh, ka)), []).append(m)
-    if not index:
-        return 0, 0
+    for match in rows:
+        for home_key in _keys_full_name(match["home_player"]):
+            for away_key in _keys_full_name(match["away_player"]):
+                index.setdefault(frozenset((home_key, away_key)), []).append(match)
 
     today = date.today()
-    matches_updated = bets_settled = 0
-    for offset in range(days_back + 1):
-        d = today - timedelta(days=offset)
-        for scraped in _fetch_day(tour, d):
-            cands_by_id: dict[int, dict] = {}
-            for ka in scraped["a_keys"]:
-                for kb in scraped["b_keys"]:
-                    for candidate in index.get(frozenset((ka, kb)), []):
-                        cands_by_id[candidate["id"]] = candidate
-            cands = [m for m in cands_by_id.values()
-                     if abs((m["match_date"] - d).days) <= 2]
-            if not cands:
-                continue
-            match = min(cands, key=lambda m: abs((m["match_date"] - d).days))
-
-            home_is_a = bool(_keys_full_name(match["home_player"]) & scraped["a_keys"])
-            away_is_a = bool(_keys_full_name(match["away_player"]) & scraped["a_keys"])
-            if home_is_a == away_is_a:
-                logger.warning("Skipping ambiguous tennisexplorer match orientation for id=%s", match["id"])
-                continue
-            home_sets, away_sets = (
-                (scraped["a_sets"], scraped["b_sets"]) if home_is_a
-                else (scraped["b_sets"], scraped["a_sets"])
-            )
-            winner = "home" if home_sets > away_sets else "away"
-
-            db.execute(
-                """UPDATE tennis_matches
-                   SET home_sets=%s, away_sets=%s, winner=%s,
-                       completion_status='completed', retired=FALSE, walkover=FALSE,
-                       result_source='tennisexplorer', result_comment=NULL
-                   WHERE id=%s""",
-                (home_sets, away_sets, winner, match["id"]),
-            )
-            matches_updated += 1
-
-            bets = db.execute(
-                "SELECT id, side FROM tennis_bets WHERE match_id=%s AND status='pending' AND bet_type='moneyline'",
-                (match["id"],),
-            )
-            for b in bets:
-                bet_status = "won" if b["side"] == winner else "lost"
-                detail = f"{match['home_player']} {home_sets}-{away_sets} {match['away_player']} (tennisexplorer)"
-                db.execute(
-                    "UPDATE tennis_bets SET status=%s, result_detail=%s, settled_at=NOW() WHERE id=%s",
-                    (bet_status, detail, b["id"]),
+    recent_dates = {today - timedelta(days=offset) for offset in range(days_back + 1)}
+    stale_dates = {row["match_date"] for row in rows}
+    scan_dates = sorted(recent_dates | stale_dates, reverse=True)[:45]
+    matches_updated = bets_settled = parsed = ambiguous = fetched = 0
+    processed_ids: set[int] = set()
+    try:
+        for result_date in scan_dates:
+            scraped_rows = _fetch_day(tour, result_date)
+            fetched += 1
+            parsed += len(scraped_rows)
+            for scraped in scraped_rows:
+                candidates: dict[int, dict] = {}
+                for key_a in scraped["a_keys"]:
+                    for key_b in scraped["b_keys"]:
+                        for candidate in index.get(frozenset((key_a, key_b)), []):
+                            if abs((candidate["match_date"] - result_date).days) <= 2:
+                                candidates[candidate["id"]] = candidate
+                if not candidates:
+                    continue
+                min_distance = min(abs((m["match_date"] - result_date).days)
+                                   for m in candidates.values())
+                best = [m for m in candidates.values()
+                        if abs((m["match_date"] - result_date).days) == min_distance]
+                if len(best) != 1 or best[0]["id"] in processed_ids:
+                    ambiguous += len(best) != 1
+                    continue
+                match = best[0]
+                home_is_a = bool(_keys_full_name(match["home_player"]) & scraped["a_keys"])
+                away_is_a = bool(_keys_full_name(match["away_player"]) & scraped["a_keys"])
+                if home_is_a == away_is_a:
+                    ambiguous += 1
+                    continue
+                home_sets, away_sets = (
+                    (scraped["a_sets"], scraped["b_sets"]) if home_is_a
+                    else (scraped["b_sets"], scraped["a_sets"])
                 )
-                bets_settled += 1
-
+                winner = "home" if home_sets > away_sets else "away"
+                result = record_observation_and_settle(db, ResultObservation(
+                    match_id=match["id"], provider="tennisexplorer",
+                    winner_side=winner, completion_status="unknown",
+                    status_evidence=False, observed_match_date=result_date,
+                    home_sets=home_sets, away_sets=away_sets,
+                    source_url=(f"https://www.tennisexplorer.com/results/?type={_TOUR_TYPE[tour]}"
+                                f"&year={result_date.year}&month={result_date.month}&day={result_date.day}"),
+                    parser_version=_PARSER_VERSION,
+                    raw_payload={"a_keys": sorted(scraped["a_keys"]),
+                                 "a_sets": scraped["a_sets"],
+                                 "b_keys": sorted(scraped["b_keys"]),
+                                 "b_sets": scraped["b_sets"]},
+                    match_method="surname_initial_date", match_confidence=0.9,
+                    reason="Advancing player observed; completion semantics not supplied",
+                ))
+                if result["state"] == "resolved":
+                    matches_updated += 1
+                    bets_settled += int(result["bets"])
+                    processed_ids.add(match["id"])
+        finish_provider_run(
+            db, run_id, status="success" if parsed else "empty", fetched=fetched,
+            parsed=parsed, matched=matches_updated, ambiguous=ambiguous,
+        )
+    except Exception as exc:
+        cause = getattr(exc, "__cause__", None)
+        status = "fetch_error" if isinstance(exc, requests.RequestException) or isinstance(
+            cause, requests.RequestException
+        ) else "parse_error"
+        fail_provider_run_if_open(
+            db, run_id, exc, status=status, fetched=fetched, parsed=parsed,
+            matched=matches_updated, ambiguous=ambiguous,
+        )
+        raise
     return matches_updated, bets_settled
 
 

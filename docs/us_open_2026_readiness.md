@@ -19,10 +19,35 @@ The report must show active ATP and WTA US Open provider keys before the schedul
 3. If verified, void the stored match explicitly; this command refuses a started or already settled match:
 
 ```powershell
-python -m ingest.tennis_withdrawals --match-id <id> --reason "Official US Open withdrawal notice"
+python -m ingest.tennis_withdrawals --match-id <id> `
+  --reason "Official US Open withdrawal notice" `
+  --evidence-url "https://official-source.example/notice" `
+  --actor "$env:USERNAME"
 ```
 
 4. Do not treat total-games or handicap quotes as rated recommendations. Only the existing total-games alert ledger is active research instrumentation.
+5. Review the settlement gate when any provider fails or a result remains stale:
+
+```powershell
+python -m ingest.tennis_reconciliation --fail-on-unhealthy
+```
+
+The gate reports provider freshness, stranded provider runs, unresolved disputes,
+stale matches, match/bet/alert outcome consistency, and current alert-grade history.
+Never clear it by guessing an outcome or loosening identity matching; ambiguous
+cases require verified evidence and an audited resolution. Use the manual
+resolution command only with an official evidence URL and an identified actor:
+
+```powershell
+python -m ingest.tennis_resolve_result --match-id <id> `
+  --winner home --completion-status completed `
+  --reason "Official result" --evidence-url "https://official-source.example/result" `
+  --actor "$env:USERNAME"
+```
+
+A verified no-contest walkover/cancellation may omit `--winner`. Reversing any
+published result additionally requires `--correct-published-result`; the prior
+observation, resolution, ledger state, and alert grade remain in the audit trail.
 
 ## Settlement policy
 

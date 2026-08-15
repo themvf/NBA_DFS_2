@@ -6,10 +6,11 @@ name: Tennis Settlement (frequent)
 # results — verified 2026-07-04 (settled 130 of 166 pending bets correctly on
 # first run, after tennis-data.co.uk stalled 6+ days into the tournament and
 # TheSportsDB turned out to have zero Wimbledon events in its feed at all).
-# Runs all three settlement sources every 15 min; each is continue-on-error
-# and only touches matches still winner IS NULL, so running them repeatedly
-# and in combination with refresh_tennis.yml's own settlement steps is safe —
-# whichever source resolves a match first wins, nothing gets double-settled.
+# Runs all three providers every 15 min. Individual sources remain
+# best-effort, but every observation is immutable and accepted resolutions
+# publish match + moneyline state in one row-locked transaction. The final
+# reconciliation gate exposes all-provider failure, stale results, disputes,
+# and ledger invariant violations.
 
 on:
   schedule:
@@ -17,7 +18,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: tennis-settlement
+  group: tennis-pipeline
   cancel-in-progress: false
 
 jobs:
@@ -51,3 +52,6 @@ jobs:
       - name: Settle from TheSportsDB (fallback)
         continue-on-error: true
         run: python -m ingest.tennis_results_thesportsdb
+
+      - name: Reconcile and gate Tennis settlement health
+        run: python -m ingest.tennis_reconciliation --fail-on-unhealthy
