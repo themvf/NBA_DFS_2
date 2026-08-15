@@ -49,29 +49,44 @@ def _norm(text: str) -> str:
     return "".join(ch for ch in t.lower() if ch.isalnum())
 
 
-def _key_surname_initial(name: str) -> tuple[str, str] | None:
-    """(surname_norm, first_initial) from tennisexplorer's "Surname [Parts] I." format."""
-    parts = [p for p in str(name or "").split() if p]
-    if len(parts) < 2:
-        return None
-    initial = _norm(parts[-1])[:1]
-    surname = _norm("".join(parts[:-1]))
-    return (surname, initial) if surname and initial else None
+def _surname_keys(parts: list[str], initial: str) -> set[tuple[str, str]]:
+    """Return compound-surname and last-token variants for one player."""
+    if not parts or not initial:
+        return set()
+    surnames = {_norm("".join(parts)), _norm(parts[-1])}
+    return {(surname, initial) for surname in surnames if surname}
 
 
-def _key_full_name(name: str) -> tuple[str, str] | None:
-    """(surname_norm, first_initial) from our stored "First [Middle] Last" home_player/away_player."""
+def _keys_surname_initial(name: str) -> set[tuple[str, str]]:
+    """Keys from tennisexplorer's ``Surname [Parts] I.`` player format.
+
+    The final-token variant covers feeds that abbreviate a compound surname;
+    the full variant preserves matching for names such as Davidovich Fokina.
+    """
     parts = [p for p in str(name or "").split() if p]
     if len(parts) < 2:
-        return None
-    initial = _norm(parts[0])[:1]
-    surname = _norm("".join(parts[1:]))
-    return (surname, initial) if surname and initial else None
+        return set()
+    return _surname_keys(parts[:-1], _norm(parts[-1])[:1])
+
+
+def _keys_full_name(name: str) -> set[tuple[str, str]]:
+    """Keys from stored ``First [Middle] Last`` player names.
+
+    The last-token fallback matches sources which omit a middle given name
+    (``Thiago Agustin Tirante`` → ``Tirante T.``), while the compound form
+    remains available for genuine compound surnames.
+    """
+    parts = [p for p in str(name or "").split() if p]
+    if len(parts) < 2:
+        return set()
+    return _surname_keys(parts[1:], _norm(parts[0])[:1])
 
 
 def _fetch_day(tour: str, d: date) -> list[dict]:
-    """Completed Wimbledon matches on tennisexplorer's results page for one day.
-    Returns [{a_key, a_sets, b_key, b_sets}], winner = whichever side has more sets."""
+    """Completed singles matches on tennisexplorer's results page for one day.
+    Returns player-key variants and set scores for each completed match; the
+    winner is whichever side has more sets.
+    """
     url = (f"https://www.tennisexplorer.com/results/?type={_TOUR_TYPE[tour]}"
            f"&year={d.year}&month={d.month}&day={d.day}")
     try:
@@ -83,14 +98,11 @@ def _fetch_day(tour: str, d: date) -> list[dict]:
 
     soup = BeautifulSoup(resp.text, "html.parser")
     matches: list[dict] = []
-    current_tournament: str | None = None
     pending: tuple[str, int] | None = None
 
     for tr in soup.find_all("tr"):
         classes = tr.get("class") or []
         if "head" in classes and "flags" in classes:
-            a = tr.select_one("td.t-name a")
-            current_tournament = a.get_text(strip=True) if a else None
             pending = None
             continue
 
@@ -108,10 +120,12 @@ def _fetch_day(tour: str, d: date) -> list[dict]:
         if row_id.endswith("b") and pending is not None:
             a_name, a_sets = pending
             pending = None
-            if current_tournament and "wimbledon" in current_tournament.lower() and a_sets != result:
-                ka, kb = _key_surname_initial(a_name), _key_surname_initial(name)
-                if ka and kb:
-                    matches.append({"a_key": ka, "a_sets": a_sets, "b_key": kb, "b_sets": result})
+            if a_sets != result:
+                a_keys = _keys_surname_initial(a_name)
+                b_keys = _keys_surname_initial(name)
+                if a_keys and b_keys:
+                    matches.append({"a_keys": a_keys, "a_sets": a_sets,
+                                    "b_keys": b_keys, "b_sets": result})
         else:
             pending = (name, result)
 
@@ -128,10 +142,11 @@ def settle_tour(db: DatabaseManager, tour: str, days_back: int) -> tuple[int, in
         return 0, 0
     index: dict[frozenset, list[dict]] = {}
     for m in rows:
-        kh, ka = _key_full_name(m["home_player"]), _key_full_name(m["away_player"])
-        if not kh or not ka:
-            continue
-        index.setdefault(frozenset((kh, ka)), []).append(m)
+        home_keys = _keys_full_name(m["home_player"])
+        away_keys = _keys_full_name(m["away_player"])
+        for kh in home_keys:
+            for ka in away_keys:
+                index.setdefault(frozenset((kh, ka)), []).append(m)
     if not index:
         return 0, 0
 
@@ -140,16 +155,22 @@ def settle_tour(db: DatabaseManager, tour: str, days_back: int) -> tuple[int, in
     for offset in range(days_back + 1):
         d = today - timedelta(days=offset)
         for scraped in _fetch_day(tour, d):
-            ka, kb = scraped["a_key"], scraped["b_key"]
-            cands = index.get(frozenset((ka, kb)))
-            if not cands:
-                continue
-            cands = [m for m in cands if abs((m["match_date"] - d).days) <= 2]
+            cands_by_id: dict[int, dict] = {}
+            for ka in scraped["a_keys"]:
+                for kb in scraped["b_keys"]:
+                    for candidate in index.get(frozenset((ka, kb)), []):
+                        cands_by_id[candidate["id"]] = candidate
+            cands = [m for m in cands_by_id.values()
+                     if abs((m["match_date"] - d).days) <= 2]
             if not cands:
                 continue
             match = min(cands, key=lambda m: abs((m["match_date"] - d).days))
 
-            home_is_a = _key_full_name(match["home_player"]) == ka
+            home_is_a = bool(_keys_full_name(match["home_player"]) & scraped["a_keys"])
+            away_is_a = bool(_keys_full_name(match["away_player"]) & scraped["a_keys"])
+            if home_is_a == away_is_a:
+                logger.warning("Skipping ambiguous tennisexplorer match orientation for id=%s", match["id"])
+                continue
             home_sets, away_sets = (
                 (scraped["a_sets"], scraped["b_sets"]) if home_is_a
                 else (scraped["b_sets"], scraped["a_sets"])

@@ -48,24 +48,36 @@ def _norm(text: str) -> str:
     return "".join(ch for ch in t.lower() if ch.isalnum())
 
 
-def _key_oddsapi(name: str) -> tuple[str, str] | None:
-    """(surname_norm, first_initial) from an Odds-API "First [Middle] Last" name."""
-    parts = [p for p in str(name or "").split() if p]
-    if len(parts) < 2:
-        return None
-    initial = _norm(parts[0])[:1]
-    surname = _norm("".join(parts[1:]))
-    return (surname, initial) if surname and initial else None
+def _surname_keys(parts: list[str], initial: str) -> set[tuple[str, str]]:
+    """Return compound-surname and last-token variants for one player."""
+    if not parts or not initial:
+        return set()
+    surnames = {_norm("".join(parts)), _norm(parts[-1])}
+    return {(surname, initial) for surname in surnames if surname}
 
 
-def _key_tennisdata(name: str) -> tuple[str, str] | None:
-    """(surname_norm, first_initial) from a tennis-data "Surname [Parts] X." name."""
+def _keys_oddsapi(name: str) -> set[tuple[str, str]]:
+    """Keys from an Odds-API ``First [Middle] Last`` player name."""
     parts = [p for p in str(name or "").split() if p]
     if len(parts) < 2:
-        return None
-    initial = _norm(parts[-1])[:1]            # trailing "F." → f
-    surname = _norm("".join(parts[:-1]))
-    return (surname, initial) if surname and initial else None
+        return set()
+    return _surname_keys(parts[1:], _norm(parts[0])[:1])
+
+
+def _keys_tennisdata(name: str) -> set[tuple[str, str]]:
+    """Keys from tennis-data's ``Surname [Parts] X.`` player name."""
+    parts = [p for p in str(name or "").split() if p]
+    if len(parts) < 2:
+        return set()
+    return _surname_keys(parts[:-1], _norm(parts[-1])[:1])
+
+
+def _int_or_zero(value) -> int:
+    """Convert numeric result fields while treating blanks/NaN as an absent score."""
+    try:
+        return int(value) if value is not None and value == value else 0
+    except (TypeError, ValueError, OverflowError):
+        return 0
 
 
 def _games(row, prefix: str, best_of: int) -> int:
@@ -108,19 +120,26 @@ def settle_tour(db: DatabaseManager, tour: str, year: int) -> tuple[int, int]:
 
     index: dict[frozenset, list[dict]] = {}
     for m in rows:
-        kh, ka = _key_oddsapi(m["home_player"]), _key_oddsapi(m["away_player"])
-        if not kh or not ka:
-            continue
-        index.setdefault(frozenset((kh, ka)), []).append(m)
+        home_keys = _keys_oddsapi(m["home_player"])
+        away_keys = _keys_oddsapi(m["away_player"])
+        for kh in home_keys:
+            for ka in away_keys:
+                index.setdefault(frozenset((kh, ka)), []).append(m)
 
     matches_updated = bets_settled = 0
     for _, r in df.iterrows():
         if not str(r.get("Tournament", "")).strip():
             continue
-        kw, kl = _key_tennisdata(r.get("Winner")), _key_tennisdata(r.get("Loser"))
-        if not kw or not kl:
+        winner_keys = _keys_tennisdata(r.get("Winner"))
+        loser_keys = _keys_tennisdata(r.get("Loser"))
+        if not winner_keys or not loser_keys:
             continue
-        cands = index.get(frozenset((kw, kl)))
+        cands_by_id: dict[int, dict] = {}
+        for kw in winner_keys:
+            for kl in loser_keys:
+                for candidate in index.get(frozenset((kw, kl)), []):
+                    cands_by_id[candidate["id"]] = candidate
+        cands = list(cands_by_id.values())
         if not cands:
             continue
 
@@ -140,10 +159,15 @@ def settle_tour(db: DatabaseManager, tour: str, year: int) -> tuple[int, int]:
             continue
         match = min(cands, key=lambda m: abs((m["match_date"] - rd).days))
 
-        # Orientation: is the home_player the Winner?
-        home_is_winner = _key_oddsapi(match["home_player"]) == kw
-        best_of = int(r.get("Best of") or 3)
-        w_sets, l_sets = int(r.get("Wsets") or 0), int(r.get("Lsets") or 0)
+        # Orientation: is the home player the recorded winner? Both player
+        # aliases must not resolve to the same side before writing a result.
+        home_is_winner = bool(_keys_oddsapi(match["home_player"]) & winner_keys)
+        away_is_winner = bool(_keys_oddsapi(match["away_player"]) & winner_keys)
+        if home_is_winner == away_is_winner:
+            logger.warning("Skipping ambiguous tennis-data result orientation for id=%s", match["id"])
+            continue
+        best_of = _int_or_zero(r.get("Best of")) or 3
+        w_sets, l_sets = _int_or_zero(r.get("Wsets")), _int_or_zero(r.get("Lsets"))
         w_games, l_games = _games(r, "W", best_of), _games(r, "L", best_of)
         comment = str(r.get("Comment", "") or "")
 
