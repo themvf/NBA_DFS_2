@@ -4,7 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
-import { BEST_BALL_POSITIONS, type BestBallPosition } from "@/lib/fantasy-football/best-ball";
+import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-correlation-badge";
 import ProjectionNotation from "../rankings/projection-notation";
@@ -48,10 +48,11 @@ const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; ti
 type BestBallPlayerBoardProps = {
   rankings: FantasyRankingRow[];
   draftedPlayerIds: number[];
-  canDraftPosition: Record<BestBallPosition, boolean>;
+  canDraftPlayerById: Map<number, boolean>;
   onDraft: (playerId: number) => void;
-  // P(still on the board at the user's next pick), keyed by playerId. Absent
-  // entries (draft complete, or FFC reported no variance) render as "—".
+  // P(still on the board at the user's next controlled pick), keyed by
+  // playerId. While the user is on the clock, this means the following turn.
+  // Absent entries (draft complete, or no FFC variance) render as "—".
   availabilityByPlayerId: Map<number, AvailabilityOdds | null>;
   correlationBadges: Map<number, RosterCorrelationBadge>;
 };
@@ -113,7 +114,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.6 projects" /></div>
     <div role="cell" className={`p-3 font-bold ${projDelta === null ? "text-muted-foreground" : projDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}>{projDelta === null ? "—" : `${projDelta >= 0 ? "+" : ""}${projDelta.toFixed(1)}`}</div>
-    <div role="cell" className="p-3"><button disabled={!canDraft} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-35">Add</button></div>
+    <div role="cell" className="p-3"><button disabled={!canDraft} title={canDraft ? "Add this player for the team currently on the clock" : "Blocked: this pick would violate roster limits or leave too few slots to complete a legal 20-player roster"} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-35">Add</button></div>
   </>;
 });
 
@@ -157,7 +158,7 @@ function SortHeader({ config, active, dir, onSort }: { config: (typeof SORT_HEAD
   );
 }
 
-export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDraftPosition, onDraft, availabilityByPlayerId, correlationBadges }: BestBallPlayerBoardProps) {
+export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDraftPlayerById, onDraft, availabilityByPlayerId, correlationBadges }: BestBallPlayerBoardProps) {
   const [name, setName] = useState("");
   const [position, setPosition] = useState("");
   const [team, setTeam] = useState("");
@@ -224,7 +225,7 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
       <button onClick={() => { setName(""); setPosition(""); setTeam(""); setSortKey(null); }} className="rounded-lg border px-3 py-2 text-sm font-semibold">Clear filters</button>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-      <p>{filtered.length} available players · drafted players are removed from the board</p>
+      <p>{filtered.length} available players · drafted players are removed · disabled Add buttons would make the current roster illegal or impossible to complete</p>
       {correlationBadges.size > 0 && <p><span className="rounded-full bg-teal-100 px-1.5 py-0.5 font-bold text-teal-900">🔗 stacks</span> and <span className="rounded-full bg-fuchsia-100 px-1.5 py-0.5 font-bold text-fuchsia-900">⇄ trades off</span> with your roster</p>}
       <p>Click any column header to sort · fast list, only visible rows are rendered</p>
     </div>
@@ -240,7 +241,7 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
       <div role="rowgroup" className="relative min-w-[1716px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const player = filtered[virtualRow.index];
-          return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPosition[player.position as BestBallPosition]} onDraft={onDraft} odds={availabilityByPlayerId.get(player.playerId)} correlationBadge={correlationBadges.get(player.playerId)} /></div>;
+          return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPlayerById.get(player.playerId) === true} onDraft={onDraft} odds={availabilityByPlayerId.get(player.playerId)} correlationBadge={correlationBadges.get(player.playerId)} /></div>;
         })}
       </div>
       {filtered.length === 0 && <p className="min-w-[1716px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}

@@ -3,7 +3,7 @@ import {
   BEST_BALL_POSITIONS,
   BEST_BALL_ROUNDS,
   BEST_BALL_TEAM_COUNT,
-  canAddBestBallPlayer,
+  canAddCompletableBestBallPlayer,
   getBestBallRosterStatus,
   type BestBallPosition,
 } from "./best-ball";
@@ -65,10 +65,11 @@ export type BestBallAdvisorCandidate = {
   confidence: number | null;
   signals: string[];
   projectionDetails: Record<string, unknown> | null;
-  // P(still on the board at the user's next pick) from FFC's observed ADP
-  // mean/variance -- see availability-odds.ts. Null when the pick isn't yet
-  // known (draft complete) or FFC reported no variance for this player; the
-  // model should not guess a number when this is null.
+  // P(still on the board at draft.availabilityTargetOverallPick) from FFC's
+  // observed ADP mean/variance. During opponent turns this is the upcoming
+  // controlled pick; on the user's clock it is the following controlled turn.
+  // Null when that pick isn't known or FFC reported no variance for this player;
+  // the model should not guess a number when this is null.
   availabilityAtNextPickPct: number | null;
   availabilitySampleSize: number | null;
   correlationsWithRoster: BestBallAdvisorCorrelationPair[];
@@ -93,6 +94,7 @@ export type BestBallAdvisorSnapshot = {
     currentRound: number | null;
     currentTeamSlot: number | null;
     targetOverallPick: number | null;
+    availabilityTargetOverallPick: number | null;
     picksUntilUser: number | null;
     isUserOnClock: boolean;
     draftedCount: number;
@@ -269,9 +271,15 @@ export function buildBestBallAdvisorSnapshot(
   const targetOverallPick = currentOverallPick === null
     ? null
     : nextControlledPick(currentOverallPick, input.userSlot, BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
+  const isUserOnClock = currentSlot?.teamSlot === input.userSlot;
+  const availabilityTargetOverallPick = currentOverallPick === null
+    ? null
+    : isUserOnClock
+      ? nextControlledPick(currentOverallPick + 1, input.userSlot, BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS)
+      : targetOverallPick;
   const userRosterRows = rosterMap.get(input.userSlot) ?? [];
-  const availabilityContext = currentOverallPick !== null && targetOverallPick !== null
-    ? { currentPick: currentOverallPick, targetPick: targetOverallPick }
+  const availabilityContext = currentOverallPick !== null && availabilityTargetOverallPick !== null
+    ? { currentPick: currentOverallPick, targetPick: availabilityTargetOverallPick }
     : null;
   const rosterPlayerIds = new Set(userRosterRows.map((player) => player.playerId));
   const rosterNameById = new Map(userRosterRows.map((player) => [player.playerId, player.name]));
@@ -296,7 +304,7 @@ export function buildBestBallAdvisorSnapshot(
     return pairs;
   };
   const candidates = rankings
-    .filter((player) => !draftedSet.has(player.playerId) && canAddBestBallPlayer(userRosterRows, player))
+    .filter((player) => !draftedSet.has(player.playerId) && canAddCompletableBestBallPlayer(userRosterRows, player))
     .slice(0, BEST_BALL_ADVISOR_CANDIDATE_LIMIT)
     .map((player, index) => ({
       ...advisorCandidate(player, availabilityContext),
@@ -344,8 +352,9 @@ export function buildBestBallAdvisorSnapshot(
       currentRound: currentSlot?.round ?? null,
       currentTeamSlot: currentSlot?.teamSlot ?? null,
       targetOverallPick,
+      availabilityTargetOverallPick,
       picksUntilUser: currentOverallPick === null || targetOverallPick === null ? null : targetOverallPick - currentOverallPick,
-      isUserOnClock: currentSlot?.teamSlot === input.userSlot,
+      isUserOnClock,
       draftedCount: input.playerIds.length,
       completed: currentSlot === null,
     },
@@ -366,9 +375,10 @@ export function buildBestBallAdvisorSnapshot(
     candidates,
     instructions: [
       "Recommend for the user's target pick, not for the team currently on the clock.",
+      "Every candidate already passed immediate roster legality and the 20-player completion-feasibility check. Treat 3 QB / 6 RB / 8 WR / 3 TE as advisory construction targets, not hard minimums.",
       "Balance best available value with roster construction; do not force immediate bye-week backup when later value is likely.",
       "Prioritize spike-week upside and paths to a weekly starting slot, but never invent air-yard, injury, role, matchup, or correlation evidence absent from this snapshot.",
-      "Each candidate's availabilityAtNextPickPct is a computed probability (not a guess) that the player survives to the user's next pick, from Fantasy Football Calculator's observed ADP mean, variance, and sample size. Prefer it over inferring survival from adp/ourRank alone; a low sampleSize means the number is less trustworthy.",
+      "Each candidate's availabilityAtNextPickPct is a computed probability (not a guess) that the player survives to draft.availabilityTargetOverallPick. During an opponent turn that is the user's upcoming controlled pick; while the user is on the clock it is the following controlled turn. It comes from Fantasy Football Calculator's observed ADP mean, variance, and sample size. Prefer it over inferring survival from adp/ourRank alone; a low sampleSize means the number is less trustworthy.",
       "The active point projection is V1.6. V2 opportunity and weekly-distribution modeling is not active.",
       "Select only candidateKey values contained in candidates. Candidate keys are the sole selection identifiers.",
       "Correlation is a variance lever, not an expected-points lever: it does not change a player's projected points, only how the roster's weekly total moves together. rules.tournament shows two different phases with opposite needs -- Weeks 1-14 is cumulative accumulation against a large field (favor diversification: uncorrelated players give the weekly-best-lineup selector more independent chances to pop), while Weeks 15-17 are single-week knockout rounds (favor 1-2 deliberate correlated stacks for ceiling, since a shared QB+WR spike is how an outlier single-week score gets made).",
@@ -561,7 +571,7 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
       `Current ADP: ${recommendedCandidate.adp?.toFixed(1) ?? "not available"}; our rank: ${recommendedCandidate.ourRank ?? "not available"}.`,
       recommendedCandidate.availabilityAtNextPickPct === null
         ? "Availability odds not available for this player."
-        : `${recommendedCandidate.availabilityAtNextPickPct}% likely available at the user's next pick (${recommendedCandidate.availabilitySampleSize ?? "few"} drafts sampled).`,
+        : `${recommendedCandidate.availabilityAtNextPickPct}% likely available at controlled pick #${snapshot.draft.availabilityTargetOverallPick ?? "unknown"} (${recommendedCandidate.availabilitySampleSize ?? "few"} drafts sampled).`,
     ]
     : requireStringArray(suppliedEvidence, "evidence", 2, 5);
   return {

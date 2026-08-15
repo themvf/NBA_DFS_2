@@ -9,20 +9,22 @@ import {
   BEST_BALL_ROUNDS,
   BEST_BALL_TARGETS,
   BEST_BALL_TEAM_COUNT,
-  canAddBestBallPlayer,
+  canAddCompletableBestBallPlayer,
   getBestBallRosterStatus,
   parseBestBallDraftState,
   type BestBallDraftState,
-  type BestBallPosition,
 } from "@/lib/fantasy-football/best-ball";
 import { buildSnakeSlots, nextControlledPick } from "@/lib/fantasy-football/draft-engine";
 import { computeAvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
+import { buildBestBallDraftPlan, describeBestBallRosterImpact } from "@/lib/fantasy-football/best-ball-draft-plan";
 import BestBallDraftBoard from "./best-ball-draft-board";
 import BestBallPlayerBoard from "./best-ball-player-board";
 import BestBallAiAdvisor from "./best-ball-ai-advisor";
+import { BestBallDecisionDesk, type BestBallPickReceipt } from "./best-ball-decision-desk";
 
 const DRAFT_SLOTS = buildSnakeSlots(BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
 const EMPTY_DRAFT: BestBallDraftState = { userSlot: 1, playerIds: [] };
+type PendingBestBallReceipt = { playerId: number; expectedLength: number; receipt: BestBallPickReceipt };
 
 function useBestBallDraft(storageKey: string) {
   const [draft, setDraft] = useState<BestBallDraftState>(EMPTY_DRAFT);
@@ -90,13 +92,33 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
   const storageKey = `dfs-vegas:dk-best-ball-draft:v2:${rankingSetId}`;
   const [viewTeam, setViewTeam] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<"players" | "results">("players");
+  const [receipt, setReceipt] = useState<BestBallPickReceipt | null>(null);
+  const pendingReceiptRef = useRef<PendingBestBallReceipt | null>(null);
   const { draft, updateDraft } = useBestBallDraft(storageKey);
   const playerById = useMemo(() => new Map(rankings.map((player) => [player.playerId, player])), [rankings]);
+
+  useEffect(() => {
+    const pending = pendingReceiptRef.current;
+    if (!pending) return;
+    const confirmed = draft.playerIds.length === pending.expectedLength
+      && draft.playerIds[pending.expectedLength - 1] === pending.playerId;
+    if (confirmed) {
+      pendingReceiptRef.current = null;
+      setReceipt(pending.receipt);
+    } else if (draft.playerIds.length >= pending.expectedLength) {
+      pendingReceiptRef.current = null;
+    }
+  }, [draft.playerIds]);
+
   const currentSlot = DRAFT_SLOTS[draft.playerIds.length] ?? null;
   const currentTeamSlot = currentSlot?.teamSlot ?? null;
   const targetOverallPick = currentSlot
     ? nextControlledPick(currentSlot.overallPick, draft.userSlot, BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS)
     : null;
+  const futureOverallPick = targetOverallPick === null
+    ? null
+    : nextControlledPick(targetOverallPick + 1, draft.userSlot, BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
+  const isUserOnClock = currentTeamSlot === draft.userSlot;
   // Reference-only in this self-play room (the user picks for every team, so
   // there's no real opponent uncertainty) -- still useful ADP context while
   // drafting the other 11 teams, and it's the same signal the AI advisors use.
@@ -109,6 +131,15 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
       )
       : null,
   ])), [rankings, currentSlot, targetOverallPick]);
+  const futureAvailabilityByPlayerId = useMemo(() => new Map(rankings.map((player) => [
+    player.playerId,
+    currentSlot && futureOverallPick !== null
+      ? computeAvailabilityOdds(
+        { adp: player.adp, adpStdev: player.adpStdev, adpSampleSize: player.adpSampleSize },
+        { currentPick: currentSlot.overallPick, targetPick: futureOverallPick, teamCount: BEST_BALL_TEAM_COUNT },
+      )
+      : null,
+  ])), [rankings, currentSlot, futureOverallPick]);
 
   const rosters = useMemo(() => {
     const result = new Map<number, FantasyRankingRow[]>();
@@ -123,23 +154,79 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
 
   const currentRoster = useMemo(() => currentTeamSlot ? rosters.get(currentTeamSlot) ?? [] : [], [currentTeamSlot, rosters]);
   const currentStatus = useMemo(() => getBestBallRosterStatus(currentRoster), [currentRoster]);
+  const userRoster = useMemo(() => rosters.get(draft.userSlot) ?? [], [rosters, draft.userSlot]);
   const displayTeam = viewTeam ?? currentTeamSlot ?? draft.userSlot;
   const displayRoster = useMemo(() => rosters.get(displayTeam) ?? [], [displayTeam, rosters]);
   const displayStatus = useMemo(() => getBestBallRosterStatus(displayRoster), [displayRoster]);
+  const draftedPlayerIds = useMemo(() => new Set(draft.playerIds), [draft.playerIds]);
+  const decisionPlan = useMemo(() => buildBestBallDraftPlan({
+    players: rankings.filter((player) => !draftedPlayerIds.has(player.playerId)).map((player) => ({
+      playerId: player.playerId, name: player.name, position: player.position, team: player.team,
+      ourRank: player.ourRank, ecr: player.ecr, adp: player.adp, projectedPoints: player.ourProjectedPoints,
+      projectionLow: player.projectionLow, projectionHigh: player.projectionHigh, tier: player.tier, confidence: player.confidence,
+      availabilityAtTarget: availabilityByPlayerId.get(player.playerId) ?? null,
+      availabilityAtFuture: futureAvailabilityByPlayerId.get(player.playerId) ?? null,
+    })),
+    roster: userRoster, isUserOnClock, targetPick: targetOverallPick, futurePick: futureOverallPick,
+  }), [rankings, draftedPlayerIds, availabilityByPlayerId, futureAvailabilityByPlayerId, userRoster, isUserOnClock, targetOverallPick, futureOverallPick]);
 
-  const draftPlayer = useCallback((playerId: number) => {
+  const draftPlayer = useCallback((playerId: number, source: BestBallPickReceipt["source"] = "manual") => {
+    const player = playerById.get(playerId);
+    if (!player) return;
     updateDraft((latest) => {
-      if (latest.playerIds.includes(playerId) || latest.playerIds.length >= DRAFT_SLOTS.length) return latest;
-      const slot = DRAFT_SLOTS[latest.playerIds.length];
-      const roster = latest.playerIds.flatMap((id, index) => DRAFT_SLOTS[index]?.teamSlot === slot.teamSlot ? [playerById.get(id)] : []).filter((player): player is FantasyRankingRow => Boolean(player));
-      const player = playerById.get(playerId);
-      return player && canAddBestBallPlayer(roster, player) ? { ...latest, playerIds: [...latest.playerIds, playerId] } : latest;
+      const latestSlot = DRAFT_SLOTS[latest.playerIds.length] ?? null;
+      if (!latestSlot || latest.playerIds.includes(playerId)) return latest;
+      const isUserPick = latestSlot.teamSlot === latest.userSlot;
+      if (source !== "manual" && !isUserPick) return latest;
+
+      const latestRoster = latest.playerIds.flatMap((draftedPlayerId, index) => {
+        if (DRAFT_SLOTS[index]?.teamSlot !== latestSlot.teamSlot) return [];
+        const draftedPlayer = playerById.get(draftedPlayerId);
+        return draftedPlayer ? [draftedPlayer] : [];
+      });
+      const expectedRosterSize = latest.playerIds.reduce(
+        (count, _draftedPlayerId, index) => count + (DRAFT_SLOTS[index]?.teamSlot === latestSlot.teamSlot ? 1 : 0),
+        0,
+      );
+      if (latestRoster.length !== expectedRosterSize || !canAddCompletableBestBallPlayer(latestRoster, player)) return latest;
+
+      const nextPick = nextControlledPick(
+        latestSlot.overallPick + 1,
+        latest.userSlot,
+        BEST_BALL_TEAM_COUNT,
+        BEST_BALL_ROUNDS,
+      );
+      pendingReceiptRef.current = {
+        playerId,
+        expectedLength: latest.playerIds.length + 1,
+        receipt: {
+          playerName: player.name,
+          position: player.position,
+          overallPick: latestSlot.overallPick,
+          teamSlot: latestSlot.teamSlot,
+          isUserPick,
+          source,
+          impactLabel: isUserPick ? describeBestBallRosterImpact(latestRoster, player) : "opponent selection recorded",
+          nextPick,
+        },
+      };
+      return { ...latest, playerIds: [...latest.playerIds, playerId] };
     });
   }, [playerById, updateDraft]);
 
-  const undoLastPick = () => updateDraft((latest) => latest.playerIds.length ? { ...latest, playerIds: latest.playerIds.slice(0, -1) } : latest);
-  const resetDraft = () => updateDraft((latest) => latest.playerIds.length ? { userSlot: latest.userSlot, playerIds: [] } : latest);
+  const undoLastPick = () => {
+    pendingReceiptRef.current = null;
+    setReceipt(null);
+    updateDraft((latest) => latest.playerIds.length ? { ...latest, playerIds: latest.playerIds.slice(0, -1) } : latest);
+  };
+  const resetDraft = () => {
+    pendingReceiptRef.current = null;
+    setReceipt(null);
+    updateDraft((latest) => latest.playerIds.length ? { userSlot: latest.userSlot, playerIds: [] } : latest);
+  };
   const setUserSlot = (userSlot: number) => {
+    pendingReceiptRef.current = null;
+    setReceipt(null);
     updateDraft((latest) => latest.userSlot === userSlot ? latest : { ...latest, userSlot });
     setViewTeam(null);
   };
@@ -147,19 +234,20 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
   // Always the user's own roster (draft.userSlot), not whichever team is
   // currently on the clock or being reviewed -- the chip is a hint for the
   // user's own build, not an analysis of bot rosters.
-  const myRosterIds = useMemo(() => (rosters.get(draft.userSlot) ?? []).map((player) => player.playerId), [rosters, draft.userSlot]);
+  const myRosterIds = useMemo(() => userRoster.map((player) => player.playerId), [userRoster]);
   const nameById = useMemo(() => new Map(rankings.map((player) => [player.playerId, player.name])), [rankings]);
   const correlationBadges = useMemo(
     () => buildRosterCorrelationBadges(rankings, myRosterIds, correlations, nameById),
     [rankings, myRosterIds, correlations, nameById],
   );
 
-  const canDraftPosition = useMemo<Record<BestBallPosition, boolean>>(() => ({
-    QB: Boolean(currentSlot) && currentStatus.size < 20 && currentStatus.counts.QB < 5,
-    RB: Boolean(currentSlot) && currentStatus.size < 20,
-    WR: Boolean(currentSlot) && currentStatus.size < 20,
-    TE: Boolean(currentSlot) && currentStatus.size < 20 && currentStatus.counts.TE < 5,
-  }), [currentSlot, currentStatus]);
+  const canDraftPlayerById = useMemo(() => new Map(rankings.map((player) => [
+    player.playerId,
+    Boolean(currentSlot) && canAddCompletableBestBallPlayer(currentRoster, player),
+  ])), [rankings, currentSlot, currentRoster]);
+  const playerBoardAvailabilityByPlayerId = isUserOnClock
+    ? futureAvailabilityByPlayerId
+    : availabilityByPlayerId;
 
   return <div className="space-y-6">
     <section className="rounded-2xl border bg-slate-950 p-5 text-white">
@@ -186,13 +274,22 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
       <BestBallDraftBoard rankings={rankings} playerIds={draft.playerIds} userSlot={draft.userSlot} />
     ) : <>
 
+    <BestBallDecisionDesk
+      plan={decisionPlan}
+      canDraftRecommendation={isUserOnClock}
+      receipt={receipt}
+      onDraft={(playerId) => draftPlayer(playerId, "decision-desk")}
+      onDismissReceipt={() => setReceipt(null)}
+    />
+
     <BestBallAiAdvisor
       key={`${rankingSetId}:${draft.userSlot}:${draft.playerIds.join(",")}`}
       rankingSetId={rankingSetId}
       userSlot={draft.userSlot}
       playerIds={draft.playerIds}
       availability={advisorAvailability}
-      onDraft={draftPlayer}
+      canDraftRecommendation={isUserOnClock}
+      onDraft={(playerId) => draftPlayer(playerId, "ai")}
     />
 
     <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
@@ -209,7 +306,7 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
 
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><b>Current ranking basis:</b> the top 260 eligible players from our season-long PPR board plus current ADP. The DraftKings yardage bonuses, weekly spike distributions, player correlations, and Weeks 15–17 matchups are not yet incorporated into the rank.</section>
 
-    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPosition={canDraftPosition} onDraft={draftPlayer} availabilityByPlayerId={availabilityByPlayerId} correlationBadges={correlationBadges} />
+    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPlayerById={canDraftPlayerById} onDraft={draftPlayer} availabilityByPlayerId={playerBoardAvailabilityByPlayerId} correlationBadges={correlationBadges} />
     </>}
   </div>;
 }

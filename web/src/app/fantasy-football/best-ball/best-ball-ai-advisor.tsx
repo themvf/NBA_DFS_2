@@ -35,6 +35,7 @@ function RecommendationCard({
   showNewsButton,
   onRequest,
   onDraft,
+  canDraftRecommendation,
 }: {
   provider: BestBallAdvisorProvider;
   state: ProviderState;
@@ -42,6 +43,7 @@ function RecommendationCard({
   showNewsButton: boolean;
   onRequest: (provider: BestBallAdvisorProvider, withNews: boolean) => void;
   onDraft: (playerId: number) => void;
+  canDraftRecommendation: boolean;
 }) {
   const label = provider === "openai" ? "OpenAI" : "DeepSeek";
   const model = provider === "openai" ? "GPT-5.6 Luna" : "DeepSeek V4 Flash";
@@ -88,7 +90,7 @@ function RecommendationCard({
             <p className="mt-1 text-2xl font-black">{state.result.recommendation.name}</p>
             <p className="text-sm opacity-75">{state.result.recommendation.position} · {state.result.recommendation.team ?? "FA"} · Bye {state.result.recommendation.byeWeek ?? "—"}</p>
           </div>
-          <button type="button" onClick={() => onDraft(state.result!.recommendation.playerId)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white">Add this player</button>
+          <button type="button" disabled={!canDraftRecommendation} onClick={() => onDraft(state.result!.recommendation.playerId)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{canDraftRecommendation ? "Add this player" : "Waiting for your pick"}</button>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
           <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">Our V1.6</span><b>{formatProjection(state.result.recommendation.ourProjectedPoints)}</b></div>
@@ -133,12 +135,14 @@ export default function BestBallAiAdvisor({
   playerIds,
   availability,
   onDraft,
+  canDraftRecommendation,
 }: {
   rankingSetId: number;
   userSlot: number;
   playerIds: number[];
   availability: Record<BestBallAdvisorProvider, boolean>;
   onDraft: (playerId: number) => void;
+  canDraftRecommendation: boolean;
 }) {
   const signature = bestBallAdvisorDraftSignature({ rankingSetId, userSlot, playerIds });
   const signatureRef = useRef(signature);
@@ -177,8 +181,8 @@ export default function BestBallAiAdvisor({
       <p className="mt-1 max-w-4xl text-sm text-muted-foreground">Both models receive the same rules, your draft slot and roster, every recorded pick, bye weeks, ADP, and the legal V1.6 projection board. Their answers stay separate so you can compare their reasoning. OpenAI can also optionally check recent news for the top candidates before answering; DeepSeek has no equivalent web-search capability.</p>
     </div>
     <div className="grid gap-4 xl:grid-cols-2">
-      <RecommendationCard provider="openai" state={states.openai} configured={availability.openai} showNewsButton onRequest={onRequest} onDraft={onDraft} />
-      <RecommendationCard provider="deepseek" state={states.deepseek} configured={availability.deepseek} showNewsButton={false} onRequest={onRequest} onDraft={onDraft} />
+      <RecommendationCard provider="openai" state={states.openai} configured={availability.openai} showNewsButton onRequest={onRequest} onDraft={onDraft} canDraftRecommendation={canDraftRecommendation} />
+      <RecommendationCard provider="deepseek" state={states.deepseek} configured={availability.deepseek} showNewsButton={false} onRequest={onRequest} onDraft={onDraft} canDraftRecommendation={canDraftRecommendation} />
     </div>
   </section>;
 }

@@ -4,6 +4,7 @@ export const BEST_BALL_POSITIONS = ["QB", "RB", "WR", "TE"] as const;
 export type BestBallPosition = typeof BEST_BALL_POSITIONS[number];
 export const BEST_BALL_TEAM_COUNT = 12;
 export const BEST_BALL_ROUNDS = 20;
+export const BEST_BALL_ROSTER_SIZE = 20;
 
 export const BEST_BALL_TARGETS: Record<BestBallPosition, number> = {
   QB: 3,
@@ -115,11 +116,47 @@ export function getBestBallRosterStatus(players: BestBallRosterPlayer[]): BestBa
   return { size: players.length, counts, nflTeams, valid: gates.every((gate) => gate.pass), gates };
 }
 
+export type BestBallCompletionStatus = {
+  remainingSlots: number;
+  positionalMinimumsMissing: number;
+  teamDiversityMissing: number;
+  minimumPicksRequired: number;
+  completable: boolean;
+};
+
+export function getBestBallCompletionStatus(players: BestBallRosterPlayer[]): BestBallCompletionStatus {
+  const status = getBestBallRosterStatus(players);
+  const remainingSlots = Math.max(0, BEST_BALL_ROSTER_SIZE - status.size);
+  const positionalMinimumsMissing = BEST_BALL_POSITIONS.reduce(
+    (sum, position) => sum + Math.max(0, BEST_BALL_MINIMUMS[position] - status.counts[position]),
+    0,
+  );
+  const teamDiversityMissing = Math.max(0, 2 - status.nflTeams);
+  const minimumPicksRequired = Math.max(positionalMinimumsMissing, teamDiversityMissing);
+  const immediatelyLegal = status.size <= BEST_BALL_ROSTER_SIZE
+    && new Set(players.map((player) => player.playerId)).size === players.length
+    && players.every((player) => BEST_BALL_POSITIONS.includes(player.position as BestBallPosition))
+    && status.counts.QB <= 5
+    && status.counts.TE <= 5;
+  return {
+    remainingSlots,
+    positionalMinimumsMissing,
+    teamDiversityMissing,
+    minimumPicksRequired,
+    completable: immediatelyLegal && minimumPicksRequired <= remainingSlots,
+  };
+}
+
 export function canAddBestBallPlayer(players: BestBallRosterPlayer[], candidate: BestBallRosterPlayer): boolean {
-  if (players.length >= 20 || players.some((player) => player.playerId === candidate.playerId)) return false;
+  if (players.length >= BEST_BALL_ROSTER_SIZE || players.some((player) => player.playerId === candidate.playerId)) return false;
   if (!BEST_BALL_POSITIONS.includes(candidate.position as BestBallPosition)) return false;
   const status = getBestBallRosterStatus(players);
   if (candidate.position === "QB" && status.counts.QB >= 5) return false;
   if (candidate.position === "TE" && status.counts.TE >= 5) return false;
   return true;
+}
+
+export function canAddCompletableBestBallPlayer(players: BestBallRosterPlayer[], candidate: BestBallRosterPlayer): boolean {
+  return canAddBestBallPlayer(players, candidate)
+    && getBestBallCompletionStatus([...players, candidate]).completable;
 }
