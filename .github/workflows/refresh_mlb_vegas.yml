@@ -81,10 +81,19 @@ jobs:
             --date "$MLB_REFRESH_DATE" \
             --days-back "$MLB_REFRESH_DAYS_BACK"
 
-      - name: Capture MLB player-prop odds (K + total bases, per-book)
-        # Per-event calls (4 credits each) — 3x/day here, never on the 30-min
-        # game-line cadence. Feeds dk_prop_value / prop_line_gap detectors.
+      - name: Capture MLB player-prop odds (4 anchored markets, 10 books)
+        # Per-event calls. Cost = markets × ceil(books/10), so 4 credits/event
+        # here — books are free to 10, the 11th doubles it. 3x/day, never on
+        # the 30-min game-line cadence. Only the 4 markets with a same-line
+        # Pinnacle anchor are funded; the rest cannot produce a verdict.
         run: python -m ingest.mlb_prop_odds
 
       - name: Scan + settle sharp line alerts (game lines + props)
         run: python -m model.line_alerts --sport mlb
+
+      - name: MLB prop-value program status (pre-registered, read-only)
+        # Reports accrual against the frozen floors. Withholds any rate,
+        # interval or verdict below floor — raw counts only. Never fails the
+        # workflow: it is a report, not a gate.
+        continue-on-error: true
+        run: python -m model.mlb_prop_program
