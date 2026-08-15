@@ -7,8 +7,9 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ensureFantasyFootballTables } from "@/db/ensure-schema";
 import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
-import { getRosterPreset, getScoringPreset } from "@/lib/fantasy-football/league-config";
+import { calculateRosterSize, getRosterPreset, getScoringPreset, ROSTER_PRESETS, SCORING_PRESETS } from "@/lib/fantasy-football/league-config";
 import { getFantasyPercentileProfile, type FantasyPercentileProfile } from "@/db/queries-fantasy-football";
+import { queryRows } from "@/db/query-result";
 
 export async function createFantasyDraft(formData: FormData): Promise<void> {
   await ensureFantasyFootballTables();
@@ -22,11 +23,24 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
   const rosterPreset = String(formData.get("roster") || "hood-rivals");
   
   if (!Number.isInteger(rankingSetId) || rankingSetId <= 0) throw new Error("Choose a ranking set");
+  if (!(scoringPreset in SCORING_PRESETS)) throw new Error("Choose a valid scoring format");
+  if (!(rosterPreset in ROSTER_PRESETS)) throw new Error("Choose a valid roster format");
+
+  const rosterConfig = getRosterPreset(rosterPreset);
+  const expectedRounds = calculateRosterSize(rosterConfig);
+  if (rounds !== expectedRounds) throw new Error(`This roster format requires ${expectedRounds} draft rounds`);
   buildSnakeSlots(teamCount, rounds);
   if (controlledSlot < 1 || controlledSlot > teamCount) throw new Error("Draft slot is outside the league");
+
+  const rankingSetResult = await db.execute(sql`SELECT season,COALESCE(scoring_profile->>'preset', 'PPR') AS scoring
+    FROM ff_ranking_sets WHERE id=${rankingSetId}`);
+  const rankingSet = queryRows<{ season: number; scoring: string }>(rankingSetResult)[0];
+  if (!rankingSet) throw new Error("The selected ranking snapshot no longer exists");
+  if (rankingSet.season !== season) throw new Error(`Choose a ${season} ranking snapshot`);
+  if (rankingSet.scoring !== scoringPreset) {
+    throw new Error(`Choose a ${SCORING_PRESETS[scoringPreset as keyof typeof SCORING_PRESETS].name} ranking snapshot`);
+  }
   
-  // Get preset configurations
-  const rosterConfig = getRosterPreset(rosterPreset);
   const scoringConfig = getScoringPreset(scoringPreset);
   
   const draftId = randomUUID();

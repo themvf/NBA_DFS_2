@@ -44,12 +44,6 @@ export const ROSTER_PRESETS = {
     description: "Deeper rosters: 1 QB, 2 RB, 3 WR, 1 TE, 2 FLEX, 1 K, 1 DST",
     config: { QB: 1, RB: 2, WR: 3, TE: 1, FLEX: 2, K: 1, DST: 1, BN: 8 },
   },
-  "superflex": {
-    name: "Superflex",
-    description: "Superflex format: 1 QB, 2 RB, 2 WR, 1 TE, 1 FLEX, 1 SUPERFLEX, 1 K, 1 DST",
-    config: { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DST: 1, BN: 6 },
-    // Note: SUPERFLEX would need special handling as it allows QB
-  },
 } as const;
 
 // ============================================================================
@@ -280,7 +274,7 @@ export const LEAGUE_FORMAT_PRESETS = {
     name: "Hood Rivals (Yahoo)",
     config: {
       teams: 10,
-      rounds: 15,
+      rounds: 17,
       playoffTeams: 4,
       playoffWeeks: [16, 17],
       waiverType: "FAB" as const,
