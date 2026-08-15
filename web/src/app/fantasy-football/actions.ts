@@ -9,6 +9,7 @@ import { ensureFantasyFootballTables } from "@/db/ensure-schema";
 import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
 import { calculateRosterSize, getRosterPreset, getScoringPreset, ROSTER_PRESETS, SCORING_PRESETS } from "@/lib/fantasy-football/league-config";
 import { getFantasyPercentileProfile, type FantasyPercentileProfile } from "@/db/queries-fantasy-football";
+import { DRAFT_STRATEGIES, isDraftStrategy } from "@/lib/fantasy-football/draft-strategy";
 import { queryRows } from "@/db/query-result";
 
 export async function createFantasyDraft(formData: FormData): Promise<void> {
@@ -21,8 +22,10 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
   const season = Number(formData.get("season") || 2026);
   const scoringPreset = String(formData.get("scoring") || "HALF");
   const rosterPreset = String(formData.get("roster") || "hood-rivals");
+  const strategyMode = String(formData.get("strategyMode") || "balanced");
   
   if (!Number.isInteger(rankingSetId) || rankingSetId <= 0) throw new Error("Choose a ranking set");
+  if (!isDraftStrategy(strategyMode)) throw new Error("Choose a valid draft strategy");
   if (!(scoringPreset in SCORING_PRESETS)) throw new Error("Choose a valid scoring format");
   if (!(rosterPreset in ROSTER_PRESETS)) throw new Error("Choose a valid roster format");
 
@@ -49,7 +52,7 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
         (id,name,season,status,team_count,controlled_slot,round_count,roster_config,scoring_config,recommendation_config,ranking_set_id)
       VALUES (${draftId}::uuid,${name},${season},'active',${teamCount},${controlledSlot},${rounds},
         ${JSON.stringify(rosterConfig)}::jsonb,${JSON.stringify(scoringConfig)}::jsonb,
-        ${JSON.stringify({ model: "ff-independent-v1.6" })}::jsonb,${rankingSetId}) RETURNING id
+        ${JSON.stringify({ model: "ff-independent-v1.6", strategy: strategyMode })}::jsonb,${rankingSetId}) RETURNING id
     ), teams AS (
       INSERT INTO ff_draft_teams(draft_id,slot,name,is_controlled)
       SELECT new_draft.id,slot,CASE WHEN slot=${controlledSlot} THEN 'My Team' ELSE 'Team '||slot END,slot=${controlledSlot}
@@ -64,7 +67,7 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
   redirect(`/fantasy-football/draft/${draftId}`);
 }
 
-export async function recordFantasyPick(input: { draftId: string; playerId: number; revision: number }): Promise<{ ok: boolean; error?: string }> {
+export async function recordFantasyPick(input: { draftId: string; playerId: number; revision: number; decision?: { strategy: string; impactLabel: string; nextPick: number; score?: number } }): Promise<{ ok: boolean; error?: string }> {
   await ensureFantasyFootballTables();
   try {
     const result = await db.execute(sql`WITH claimed AS (
@@ -76,8 +79,8 @@ export async function recordFantasyPick(input: { draftId: string; playerId: numb
             WHERE pick.draft_id=d.id AND pick.player_id=${input.playerId} AND pick.event_type='pick_made' AND reversal.id IS NULL)
         RETURNING d.id,d.current_pick-1 AS overall_pick
       ), inserted AS (
-        INSERT INTO ff_draft_events(draft_id,event_type,overall_pick,player_id,draft_team_id,source)
-        SELECT claimed.id,'pick_made',claimed.overall_pick,${input.playerId},slot.draft_team_id,'manual'
+        INSERT INTO ff_draft_events(draft_id,event_type,overall_pick,player_id,draft_team_id,source,payload)
+        SELECT claimed.id,'pick_made',claimed.overall_pick,${input.playerId},slot.draft_team_id,'manual',${JSON.stringify(input.decision ?? {})}::jsonb
         FROM claimed JOIN ff_draft_slots slot ON slot.draft_id=claimed.id AND slot.overall_pick=claimed.overall_pick RETURNING id
       ) SELECT COUNT(*)::int AS count FROM inserted`);
     if (Number((result as unknown as Array<{ count: number }>)[0]?.count) !== 1) {

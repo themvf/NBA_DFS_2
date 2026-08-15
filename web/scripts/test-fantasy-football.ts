@@ -178,6 +178,7 @@ function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingR
   return {
     team: null, rookie: false, byeWeek: null, injuryStatus: null, ecr: null, positionRank: null,
     ourRank: null, tier: null, adp: null, adpStdev: null, adpHigh: null, adpLow: null, adpSampleSize: null,
+    projectionLow: null, projectionHigh: null, rankMin: null, rankMax: null, rankStd: null,
     dkBestBallAdp: null, dkBestBallRank: null, dkBestBallDraftPct: null, dkBestBallDraftGroupId: null,
     dkBestBallCapturedAt: null,
     projectedPoints: null, fantasyProsProjectedPoints: null,

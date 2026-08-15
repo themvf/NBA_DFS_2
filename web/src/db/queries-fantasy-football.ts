@@ -30,6 +30,11 @@ export type FantasyRankingRow = {
   dkBestBallDraftPct: number | null;
   dkBestBallDraftGroupId: number | null;
   dkBestBallCapturedAt: string | null;
+  projectionLow: number | null;
+  projectionHigh: number | null;
+  rankMin: number | null;
+  rankMax: number | null;
+  rankStd: number | null;
   projectedPoints: number | null;
   fantasyProsProjectedPoints: number | null;
   fantasyProsProjectionFetchedAt: string | null;
@@ -183,7 +188,8 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     dk.average_draft_position AS "dkBestBallAdp",dk.rank AS "dkBestBallRank",
     dk.draft_percentage AS "dkBestBallDraftPct",dk.draft_group_id AS "dkBestBallDraftGroupId",
     dk.captured_at::text AS "dkBestBallCapturedAt",
-    r.projected_points AS "projectedPoints",
+    r.projected_points AS "projectedPoints",r.projection_low AS "projectionLow",r.projection_high AS "projectionHigh",
+    r.rank_min AS "rankMin",r.rank_max AS "rankMax",r.rank_std AS "rankStd",
     fp.projected_points AS "fantasyProsProjectedPoints",
     fp.fetched_at::text AS "fantasyProsProjectionFetchedAt",
     fp.source_updated_at::text AS "fantasyProsProjectionUpdatedAt",
@@ -546,6 +552,9 @@ export type DraftBoardSlot = {
   playerName: string | null;
   position: string | null;
   nflTeam: string | null;
+  ourProjectedPoints: number | null;
+  projectionLow: number | null;
+  projectionHigh: number | null;
 };
 
 export type FantasyDraftState = {
@@ -553,6 +562,7 @@ export type FantasyDraftState = {
     id: string; name: string; season: number; status: string; teamCount: number;
     controlledSlot: number; roundCount: number; currentPick: number; revision: number;
     rankingSetId: number; rosterConfig: Record<string, number>; scoringConfig: Record<string, number | string>;
+    recommendationConfig: Record<string, unknown>;
   };
   board: DraftBoardSlot[];
   available: FantasyRankingRow[];
@@ -562,7 +572,8 @@ export async function getFantasyDraftState(draftId: string): Promise<FantasyDraf
   await ensureFantasyFootballTables();
   const draftResult = await db.execute(sql`SELECT id::text,name,season,status,team_count AS "teamCount",
     controlled_slot AS "controlledSlot",round_count AS "roundCount",current_pick AS "currentPick",
-    revision,ranking_set_id::int AS "rankingSetId",roster_config AS "rosterConfig",scoring_config AS "scoringConfig"
+    revision,ranking_set_id::int AS "rankingSetId",roster_config AS "rosterConfig",scoring_config AS "scoringConfig",
+    recommendation_config AS "recommendationConfig"
     FROM ff_draft_sessions WHERE id=${draftId}::uuid`);
   const draft = queryRows<FantasyDraftState["draft"]>(draftResult)[0];
   if (!draft) return null;
@@ -572,8 +583,12 @@ export async function getFantasyDraftState(draftId: string): Promise<FantasyDraf
     ) SELECT s.overall_pick AS "overallPick",s.round,s.pick_in_round AS "pickInRound",
       t.id::int AS "teamId",t.slot AS "teamSlot",t.name AS "teamName",t.is_controlled AS "isControlled",
       e.id::int AS "eventId",p.id::int AS "playerId",p.canonical_name AS "playerName",p.position,
-      p.team_abbrev AS "nflTeam" FROM ff_draft_slots s JOIN ff_draft_teams t ON t.id=s.draft_team_id
+      p.team_abbrev AS "nflTeam",r.our_projected_points AS "ourProjectedPoints",
+      r.projection_low AS "projectionLow",r.projection_high AS "projectionHigh"
+      FROM ff_draft_slots s JOIN ff_draft_teams t ON t.id=s.draft_team_id
+      JOIN ff_draft_sessions d ON d.id=s.draft_id
       LEFT JOIN active_picks e ON e.overall_pick=s.overall_pick LEFT JOIN ff_players p ON p.id=e.player_id
+      LEFT JOIN ff_player_rankings r ON r.ranking_set_id=d.ranking_set_id AND r.player_id=p.id
       WHERE s.draft_id=${draftId}::uuid ORDER BY s.overall_pick`);
   const all = await getFantasyRankings(draft.rankingSetId);
   const drafted = new Set(queryRows<DraftBoardSlot>(boardResult).flatMap((slot) => slot.playerId ? [slot.playerId] : []));

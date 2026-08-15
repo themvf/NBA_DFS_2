@@ -33,10 +33,6 @@ Each roster preset defines the number of players at each position:
   - 8 Bench
   - For larger rosters / deeper leagues
 
-- **`superflex`**
-  - Includes QB/SUPERFLEX format
-  - (Note: SUPERFLEX requires special handling for QB eligibility)
-
 ### Scoring Presets
 
 Three main scoring formats based on reception scoring:
