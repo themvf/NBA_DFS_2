@@ -9,7 +9,7 @@ import { ensureFantasyFootballTables } from "@/db/ensure-schema";
 import { buildSnakeSlots } from "@/lib/fantasy-football/draft-engine";
 import { calculateRosterSize, getRosterPreset, getScoringPreset, ROSTER_PRESETS, SCORING_PRESETS } from "@/lib/fantasy-football/league-config";
 import { getFantasyPercentileProfile, type FantasyPercentileProfile } from "@/db/queries-fantasy-football";
-import { DRAFT_STRATEGIES, isDraftStrategy } from "@/lib/fantasy-football/draft-strategy";
+import { isDraftStrategy } from "@/lib/fantasy-football/draft-strategy";
 import { queryRows } from "@/db/query-result";
 
 export async function createFantasyDraft(formData: FormData): Promise<void> {
@@ -67,7 +67,7 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
   redirect(`/fantasy-football/draft/${draftId}`);
 }
 
-export async function recordFantasyPick(input: { draftId: string; playerId: number; revision: number; decision?: { strategy: string; impactLabel: string; nextPick: number; score?: number } }): Promise<{ ok: boolean; error?: string }> {
+export async function recordFantasyPick(input: { draftId: string; playerId: number; revision: number; decision?: { strategy: string; impactLabel: string; nextPick: number | null; score?: number } }): Promise<{ ok: boolean; error?: string }> {
   await ensureFantasyFootballTables();
   try {
     const result = await db.execute(sql`WITH claimed AS (
