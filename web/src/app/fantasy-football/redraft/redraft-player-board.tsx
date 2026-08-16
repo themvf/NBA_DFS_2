@@ -8,7 +8,7 @@ import { REDRAFT_FLEX_POSITIONS, REDRAFT_POSITIONS, REDRAFT_POSITION_LABEL, type
 import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import ProjectionNotation from "../rankings/projection-notation";
 
-const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(260px,1.3fr)_78px_92px_86px_96px_126px_150px_100px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(260px,1.3fr)_150px_126px_96px_78px_92px_86px_100px]";
 const TABLE_MIN_WIDTH = "min-w-[1500px]";
 const FLEX_POSITIONS = new Set<string>(REDRAFT_FLEX_POSITIONS);
 
@@ -22,12 +22,12 @@ const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; ti
   { key: "skillRank", label: "Rank", defaultDir: "asc" },
   { key: "overallRank", label: "Overall / Pos.", defaultDir: "asc" },
   { key: "name", label: "Player", defaultDir: "asc" },
+  { key: "ourProj", label: "Our 2026 PPR Base", defaultDir: "desc" },
+  { key: "fpProj", label: "FantasyPros PPR Proj.", defaultDir: "desc" },
+  { key: "fpts2025", label: "2025 FPTS", defaultDir: "desc", title: "Actual 2025 PPR fantasy points. For DEF this is real Yahoo-scored team-defense scoring." },
   { key: "adp", label: "ADP", defaultDir: "asc", title: "12-team ADP from Fantasy Football Calculator. Comparison data only -- never changes our rank or projection." },
   { key: "avail", label: "Avail.", defaultDir: "desc", title: "P(still available at your next pick), from FFC's observed ADP mean/variance/sample size" },
   { key: "gp2025", label: "2025 GP", defaultDir: "desc" },
-  { key: "fpts2025", label: "2025 FPTS", defaultDir: "desc", title: "Actual 2025 PPR fantasy points. For DEF this is real Yahoo-scored team-defense scoring." },
-  { key: "fpProj", label: "FantasyPros PPR Proj.", defaultDir: "desc" },
-  { key: "ourProj", label: "Our 2026 PPR Base", defaultDir: "desc" },
   { key: "projDelta", label: "Our Δ FP", defaultDir: "desc", title: "Our projection minus FantasyPros'. Positive = we project this player higher. Comparison only -- never blended into our board." },
 ];
 
@@ -76,11 +76,6 @@ const RedraftPlayerRow = memo(function RedraftPlayerRow({ player, skillRank, can
     <div role="cell" className="max-w-[290px] p-3"><div className="flex flex-wrap gap-1">
       {player.indicators.slice(0, 3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
     </div></div>
-    <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
-    <div role="cell" className="p-3"><AvailabilityCell odds={odds} /></div>
-    <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>
-    <div role="cell" className="p-3 font-semibold">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
-    <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3 font-semibold">
       {player.ourProjectedPoints?.toFixed(1) ?? "—"}
       {/* Defenses are deliberately compressed into a narrow band -- prior-season
@@ -91,6 +86,11 @@ const RedraftPlayerRow = memo(function RedraftPlayerRow({ player, skillRank, can
         ? <span className="ml-1 text-[10px] font-semibold text-amber-700" title="DEF ordering comes from 2025 results, but the projected total is shrunk toward the league average: year-over-year defensive signal is weak (Spearman 0.18). See the 2025 FPTS column for the real number.">ranked on 2025</span>
         : <ProjectionNotation details={player.projectionDetails} label="How projected" />}
     </div>
+    <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3 font-semibold">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3"><AvailabilityCell odds={odds} /></div>
+    <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>
     <div role="cell" className={`p-3 font-bold ${projDelta === null ? "text-muted-foreground" : projDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}>{projDelta === null ? "—" : `${projDelta >= 0 ? "+" : ""}${projDelta.toFixed(1)}`}</div>
   </>;
 });

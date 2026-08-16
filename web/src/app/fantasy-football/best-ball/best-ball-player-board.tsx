@@ -9,7 +9,7 @@ import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds"
 import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-correlation-badge";
 import ProjectionNotation from "../rankings/projection-notation";
 
-const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(280px,1.35fr)_78px_82px_92px_92px_86px_96px_126px_150px_100px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(280px,1.35fr)_150px_126px_96px_78px_82px_92px_92px_86px_100px]";
 const FLEX_POSITIONS = new Set(["RB", "WR", "TE"]);
 
 type SortKey = "skillRank" | "overallRank" | "name" | "adp" | "dkAdp" | "adpDelta" | "avail" | "gp2025" | "fpts2025" | "fpProj" | "ourProj" | "projDelta";
@@ -23,6 +23,9 @@ const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; ti
   { key: "skillRank", label: "Skill rank", defaultDir: "asc" },
   { key: "overallRank", label: "Overall / Pos.", defaultDir: "asc" },
   { key: "name", label: "Player", defaultDir: "asc" },
+  { key: "ourProj", label: "Our 2026 PPR Base (V1.6)", defaultDir: "desc" },
+  { key: "fpProj", label: "FantasyPros PPR Proj.", defaultDir: "desc" },
+  { key: "fpts2025", label: "2025 FPTS", defaultDir: "desc" },
   { key: "adp", label: "ADP", defaultDir: "asc" },
   { key: "dkAdp", label: "DK ADP", defaultDir: "asc", title: "DraftKings' own Best Ball ADP -- a manual, point-in-time capture, not a live feed" },
   // DK ADP minus FFC ADP. Positive = DK drafters take this player LATER than
@@ -35,9 +38,6 @@ const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; ti
   { key: "adpDelta", label: "DK Δ ADP", defaultDir: "desc", title: "DK ADP minus FFC ADP. Positive = DK drafters take this player later than the FFC market (possible value on DK). Negative = DK drafters take them earlier (caution on DK). Comparison only." },
   { key: "avail", label: "Avail.", defaultDir: "desc", title: "P(still available at your next pick), from FFC's observed ADP mean/variance/sample size" },
   { key: "gp2025", label: "2025 GP", defaultDir: "desc" },
-  { key: "fpts2025", label: "2025 FPTS", defaultDir: "desc" },
-  { key: "fpProj", label: "FantasyPros PPR Proj.", defaultDir: "desc" },
-  { key: "ourProj", label: "Our 2026 PPR Base (V1.6)", defaultDir: "desc" },
   // Comparison only, per this repo's standing rule: FantasyPros never blends
   // into or suppresses the independent board (CLAUDE.md) - this just surfaces
   // where our projected points and FantasyPros' disagree. Deliberately NOT
@@ -98,6 +98,9 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
       >{correlationBadge.value >= 0 ? "🔗" : "⇄"} {correlationBadge.label}</span>}
       {player.indicators.slice(0, correlationBadge ? 2 : 3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
     </div></div>
+    <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.6 projects" /></div>
+    <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3">
       {player.dkBestBallAdp != null ? (
@@ -112,9 +115,6 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
     <div role="cell" className={`p-3 font-bold ${adpDelta === null ? "text-muted-foreground" : adpDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}>{adpDelta === null ? "—" : `${adpDelta >= 0 ? "+" : ""}${adpDelta.toFixed(1)}`}</div>
     <div role="cell" className="p-3"><AvailabilityCell odds={odds} /></div>
     <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>
-    <div role="cell" className="p-3">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
-    <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
-    <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.6 projects" /></div>
     <div role="cell" className={`p-3 font-bold ${projDelta === null ? "text-muted-foreground" : projDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}>{projDelta === null ? "—" : `${projDelta >= 0 ? "+" : ""}${projDelta.toFixed(1)}`}</div>
   </>;
 });
