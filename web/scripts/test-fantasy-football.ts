@@ -183,7 +183,8 @@ function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingR
     dkBestBallCapturedAt: null,
     projectedPoints: null, fantasyProsProjectedPoints: null,
     fantasyProsProjectionFetchedAt: null, fantasyProsProjectionUpdatedAt: null, ourProjectedPoints: null,
-    games2025: null, fantasyPoints2025: null, projectionDetails: null, expectedGames: null, confidence: null,
+    games2025: null, fantasyPoints2025: null, positionFinish2025: null,
+    positionFinishTieCount2025: null, projectionDetails: null, expectedGames: null, confidence: null,
     indicators: [], ...overrides,
   };
 }

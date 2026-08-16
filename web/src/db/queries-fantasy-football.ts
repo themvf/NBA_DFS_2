@@ -42,6 +42,8 @@ export type FantasyRankingRow = {
   ourProjectedPoints: number | null;
   games2025: number | null;
   fantasyPoints2025: number | null;
+  positionFinish2025: number | null;
+  positionFinishTieCount2025: number | null;
   projectionDetails: Record<string, unknown> | null;
   expectedGames: number | null;
   confidence: number | null;
@@ -177,7 +179,27 @@ export async function getFantasyProsSourceHealth(season: number): Promise<Fantas
 
 export async function getFantasyRankings(rankingSetId: number): Promise<FantasyRankingRow[]> {
   await ensureFantasyFootballTables();
-  const result = await db.execute(sql`SELECT p.id::int AS "playerId",p.canonical_name AS name,
+  const result = await db.execute(sql`WITH scoring_context AS (
+      SELECT COALESCE(scoring_profile->>'preset','PPR') AS scoring
+      FROM ff_ranking_sets WHERE id=${rankingSetId}
+    ), prior_points AS (
+      SELECT sf.player_id,prior_player.position,
+        CASE sc.scoring
+          WHEN 'STD' THEN sf.fantasy_points_std
+          WHEN 'HALF' THEN (sf.fantasy_points_std+sf.fantasy_points_ppr)/2.0
+          ELSE sf.fantasy_points_ppr
+        END AS fantasy_points
+      FROM ff_player_season_features sf
+      JOIN ff_players prior_player ON prior_player.id=sf.player_id
+      CROSS JOIN scoring_context sc
+      WHERE sf.season=2025 AND sf.source='nflverse'
+    ), prior_position_finishes AS (
+      SELECT player_id,
+        RANK() OVER (PARTITION BY position ORDER BY fantasy_points DESC)::int AS position_finish,
+        COUNT(*) OVER (PARTITION BY position,fantasy_points)::int AS position_finish_tie_count
+      FROM prior_points WHERE fantasy_points IS NOT NULL
+    )
+    SELECT p.id::int AS "playerId",p.canonical_name AS name,
     p.position,p.team_abbrev AS team,p.rookie,p.bye_week AS "byeWeek",
     p.injury_status AS "injuryStatus",r.overall_rank AS ecr,r.position_rank AS "positionRank",
     r.our_rank AS "ourRank",r.tier,r.adp,
@@ -198,7 +220,9 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
       WHEN 'STD' THEN f.fantasy_points_std
       WHEN 'HALF' THEN (f.fantasy_points_std+f.fantasy_points_ppr)/2.0
       ELSE f.fantasy_points_ppr
-    END AS "fantasyPoints2025",r.projected_stats AS "projectionDetails",r.expected_games AS "expectedGames",
+    END AS "fantasyPoints2025",prior.position_finish AS "positionFinish2025",
+    prior.position_finish_tie_count AS "positionFinishTieCount2025",
+    r.projected_stats AS "projectionDetails",r.expected_games AS "expectedGames",
     r.confidence,COALESCE(jsonb_agg(jsonb_build_object('code',i.indicator_code,
       'class',i.indicator_class,'label',i.label,'value',i.metric_value,'evidence',i.evidence)
       ORDER BY CASE WHEN i.indicator_code='NEW_TEAM' THEN 1
@@ -209,6 +233,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     FROM ff_player_rankings r JOIN ff_players p ON p.id=r.player_id
     JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
     LEFT JOIN ff_player_season_features f ON f.player_id=p.id AND f.season=2025 AND f.source='nflverse'
+    LEFT JOIN prior_position_finishes prior ON prior.player_id=p.id
     LEFT JOIN ff_player_indicators i ON i.ranking_set_id=r.ranking_set_id AND i.player_id=p.id
     LEFT JOIN LATERAL (
       SELECT v.projected_points,s.fetched_at,s.source_updated_at
@@ -226,7 +251,8 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
       ORDER BY captured_at DESC,id DESC LIMIT 1
     ) dk ON TRUE
     WHERE r.ranking_set_id=${rankingSetId}
-    GROUP BY p.id,r.id,rs.id,f.id,fp.projected_points,fp.fetched_at,fp.source_updated_at,
+    GROUP BY p.id,r.id,rs.id,f.id,prior.position_finish,prior.position_finish_tie_count,
+      fp.projected_points,fp.fetched_at,fp.source_updated_at,
       dk.average_draft_position,dk.rank,dk.draft_percentage,dk.draft_group_id,dk.captured_at
     ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
   return queryRows<FantasyRankingRow>(result);
