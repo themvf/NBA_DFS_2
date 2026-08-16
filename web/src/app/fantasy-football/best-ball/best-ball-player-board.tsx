@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
+import { formatPriorSeasonFantasyPoints } from "@/lib/fantasy-football/prior-season-finish";
 import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-correlation-badge";
@@ -100,7 +101,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
     </div></div>
     <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.6 projects" /></div>
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
-    <div role="cell" className="p-3">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3">{formatPriorSeasonFantasyPoints(player.fantasyPoints2025, player.positionFinish2025, player.positionFinishTieCount2025)}</div>
     <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3">
       {player.dkBestBallAdp != null ? (

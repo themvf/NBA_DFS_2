@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
+import { formatPriorSeasonFantasyPoints } from "@/lib/fantasy-football/prior-season-finish";
 import { REDRAFT_FLEX_POSITIONS, REDRAFT_POSITIONS, REDRAFT_POSITION_LABEL, type RedraftPosition } from "@/lib/fantasy-football/redraft";
 import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import ProjectionNotation from "../rankings/projection-notation";
@@ -87,7 +88,7 @@ const RedraftPlayerRow = memo(function RedraftPlayerRow({ player, skillRank, can
         : <ProjectionNotation details={player.projectionDetails} label="How projected" />}
     </div>
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
-    <div role="cell" className="p-3 font-semibold">{player.fantasyPoints2025?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3 font-semibold">{formatPriorSeasonFantasyPoints(player.fantasyPoints2025, player.positionFinish2025, player.positionFinishTieCount2025)}</div>
     <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3"><AvailabilityCell odds={odds} /></div>
     <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>

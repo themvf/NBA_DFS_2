@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
+import { formatPriorSeasonFantasyPoints } from "@/lib/fantasy-football/prior-season-finish";
 import ProjectionNotation from "../rankings/projection-notation";
 
 const POSITION_GROUPS = [
@@ -48,12 +49,7 @@ function PositionTable({
             <td className="max-w-[300px] p-3"><div className="flex flex-wrap gap-1">{player.indicators.slice(0, 3).map((badge) => <span key={badge.code} title={JSON.stringify(badge.evidence)} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}</div></td>
             <td className="p-3 font-black">{number(player.ourProjectedPoints)}<ProjectionNotation details={player.projectionDetails} label="Projection details" /></td>
             <td className="p-3 font-semibold">{number(player.fantasyProsProjectedPoints)}</td>
-            <td className="p-3 font-semibold">
-              {number(player.fantasyPoints2025)}
-              {player.fantasyPoints2025 !== null && player.positionFinish2025 !== null
-                ? ` (${(player.positionFinishTieCount2025 ?? 0) > 1 ? "T" : ""}${player.positionFinish2025})`
-                : ""}
-            </td>
+            <td className="p-3 font-semibold">{formatPriorSeasonFantasyPoints(player.fantasyPoints2025, player.positionFinish2025, player.positionFinishTieCount2025)}</td>
             <td className="p-3">{number(player.adp)}{player.dkBestBallAdp !== null && <span className="block text-xs font-semibold text-blue-700">DK {player.dkBestBallAdp.toFixed(1)}</span>}</td>
             <td className="p-3">{player.games2025 ?? "—"}</td>
             <td className="p-3">{number(player.expectedGames)}</td>

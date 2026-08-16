@@ -6,6 +6,7 @@ import { computeAvailabilityOdds } from "../src/lib/fantasy-football/availabilit
 import { recommendPlayers } from "../src/lib/fantasy-football/recommendations";
 import { fantasyBadgeClass } from "../src/lib/fantasy-football/badge-style";
 import { filterFantasyRankings } from "../src/lib/fantasy-football/ranking-filters";
+import { formatPriorSeasonFantasyPoints } from "../src/lib/fantasy-football/prior-season-finish";
 import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 import { buildProjectionExplanation } from "../src/lib/fantasy-football/projection-explanation";
 import { buildBestBallDraftBoard, canAddBestBallPlayer, getBestBallRosterStatus, parseBestBallDraftState } from "../src/lib/fantasy-football/best-ball";
@@ -23,6 +24,10 @@ import {
 assert.deepEqual(queryRows<{ id: number }>({ rows: [{ id: 3 }] }), [{ id: 3 }]);
 assert.deepEqual(queryRows<{ id: number }>([{ id: 2 }]), [{ id: 2 }]);
 assert.deepEqual(queryRows<{ id: number }>({}), []);
+assert.equal(formatPriorSeasonFantasyPoints(241.6, 3, 1), "241.6 (3)");
+assert.equal(formatPriorSeasonFantasyPoints(118.5, 7, 2), "118.5 (T7)");
+assert.equal(formatPriorSeasonFantasyPoints(90, null, null), "90.0");
+assert.equal(formatPriorSeasonFantasyPoints(null, 1, 1), "—");
 
 const slots = buildSnakeSlots(4, 3);
 assert.deepEqual(slots.map((slot) => slot.teamSlot), [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4]);
