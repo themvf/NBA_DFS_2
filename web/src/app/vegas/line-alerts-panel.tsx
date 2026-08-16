@@ -1,6 +1,7 @@
 "use client";
 
 import type { LineAlertRow, LineAlertBacktestRow } from "@/db/queries";
+import { verdict as auditVerdict } from "@/lib/alert-audit-policy";
 
 // Sharp line-movement alerts feed + its running audit (shared across the
 // MLB / soccer / tennis vegas views). Every alert is an immutable ledger row
@@ -191,26 +192,12 @@ export default function LineAlertsPanel({
           </thead>
           <tbody>
             {backtest.map((b) => {
-              // Sample floor MUST match the Python report's _MIN_SETTLED_FOR_CI
-              // (30) in model/line_alerts.py. The old floor of 10 let this table
-              // publish an emerald "has signal" verdict on samples the Python
-              // side would tag `descriptive-only`, and expanding markets/books
-              // multiplies the slices that can trip it.
-              const MIN_SETTLED_FOR_CI = 30;
-              const verdict =
-                b.nClv < MIN_SETTLED_FOR_CI
-                  ? { label: "descriptive-only", cls: "bg-gray-100 text-gray-500",
-                      tip: `${b.nClv} graded alert(s). Below the ${MIN_SETTLED_FOR_CI}-alert floor used by `
-                         + `model/line_alerts.py, so no verdict is drawn — raw counts only. Same-slate alerts are `
-                         + `correlated and carry less information than the count suggests.` }
-                  : (b.avgClvPp ?? 0) > 0.5
-                    ? { label: "positive CLV", cls: "bg-amber-100 text-amber-800",
-                        tip: "The market kept moving toward the flagged side after we fired, over a sample past the "
-                           + "floor. That is evidence the detector is early — NOT a validated edge, and not a "
-                           + "recommendation to bet. No detector here has cleared a positive-return bar." }
-                    : { label: "no CLV", cls: "bg-red-100 text-red-600",
-                        tip: "The move was already absorbed by the time we detected it. Per the standing rule, an "
-                           + "alert type with no positive CLV is noise and is a retirement candidate." };
+              // Floor and verdict come from @/lib/alert-audit-policy — the
+              // same module the NFL table uses. They previously disagreed:
+              // this panel enforced a floor, the NFL page's own inline copy
+              // enforced none and published a rate off a 2-6 record. The
+              // policy is no longer inlined anywhere, so they cannot diverge.
+              const verdict = auditVerdict(b);
               return (
                 <tr key={b.alertType} className="border-b border-gray-50">
                   <td className="py-1 font-medium">{typeLabel(b.alertType)}</td>
