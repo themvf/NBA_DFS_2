@@ -21,6 +21,12 @@ import type {
   NflHealthIssue,
   NflVegasBoardRow,
 } from "@/db/queries";
+import {
+  MIN_SETTLED_FOR_CI,
+  disclosure,
+  multiplicityNote,
+  verdict,
+} from "@/lib/alert-audit-policy";
 
 type Props = {
   queryDate: string;
@@ -159,8 +165,16 @@ export default function NflVegasClient({ queryDate, evaluatedAt, matchups, lineA
       </section>
 
       <section>
-        <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-950">Sharp-signal tracking</h2><p className="mt-1 text-sm text-slate-600">NFL alerts use the same frozen-at-breach audit ledger as the MLB page.</p></div><ShieldCheck className="h-5 w-5 text-slate-400" /></div>
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><table className="min-w-[760px] w-full text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Signal</th><th className="px-3 py-3 text-right">Tracked</th><th className="px-3 py-3 text-right">Avg CLV</th><th className="px-3 py-3 text-right">Beat close</th><th className="px-3 py-3 text-right">W-L-P</th><th className="px-3 py-3 text-right">Win rate</th></tr></thead><tbody>{lineAlertBacktest.map((row) => { const isLine = row.alertType.startsWith("spread_") || row.alertType.startsWith("total_"); return <tr key={row.alertType} className="border-t border-slate-100"><td className="px-3 py-3 font-semibold capitalize">{row.alertType.replaceAll("_", " ")}</td><td className="px-3 py-3 text-right">{row.n}</td><td className="px-3 py-3 text-right">{signed(row.avgClvPp, isLine ? " pts" : "pp")}</td><td className="px-3 py-3 text-right">{pct(row.beatClose)}</td><td className="px-3 py-3 text-right">{row.wins}-{row.losses}-{row.pushes}</td><td className="px-3 py-3 text-right">{pct(row.winRate)}</td></tr>; })}</tbody></table>{lineAlertBacktest.length === 0 ? <div className="px-4 py-10 text-center text-sm text-slate-500">No settled NFL alert rows yet.</div> : null}</div>
+        <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-950">Sharp-signal accrual</h2><p className="mt-1 text-sm text-slate-600">NFL alerts use the same frozen-at-breach audit ledger as the MLB page, and the same {MIN_SETTLED_FOR_CI}-alert disclosure floor.</p></div><ShieldCheck className="h-5 w-5 text-slate-400" /></div>
+        {multiplicityNote(lineAlertBacktest.length) ? <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-900">{multiplicityNote(lineAlertBacktest.length)}</p> : null}
+        {/* Rates, CLV and beat-close are WITHHELD below the floor — rendered as a
+            lock, never as a greyed number. A greyed percentage is still a
+            percentage; the eye reads it and it gets quoted back later. Raw
+            W-L-P is always shown: "2-6" is an observation, "25.0%" is an
+            inference the sample cannot support. Fixed sort order — sorting by
+            performance is a false-discovery machine, it mechanically puts the
+            luckiest detector on top and frames it as a ranking. */}
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><table className="min-w-[760px] w-full text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Signal</th><th className="px-3 py-3 text-right">Fired</th><th className="px-3 py-3 text-right">Graded</th><th className="px-3 py-3 text-right">Priced</th><th className="px-3 py-3 text-right">W-L-P</th><th className="px-3 py-3 text-right">Avg CLV</th><th className="px-3 py-3 text-right">Beat close</th><th className="px-3 py-3 text-right">Win rate</th><th className="px-3 py-3 text-right">Status</th></tr></thead><tbody>{lineAlertBacktest.map((row) => { const isLine = row.alertType.startsWith("spread_") || row.alertType.startsWith("total_"); const d = disclosure(row); const v = verdict(row); const lock = <span className="cursor-help text-slate-400" title={d.reason}>🔒 {d.lockLabel}</span>; return <tr key={row.alertType} className="border-t border-slate-100"><td className="px-3 py-3 font-semibold capitalize">{row.alertType.replaceAll("_", " ")}</td><td className="px-3 py-3 text-right">{row.n}</td><td className="px-3 py-3 text-right">{row.nClv}</td><td className="px-3 py-3 text-right" title="Alerts carrying a frozen executable price. Price freezing shipped 2026-08-15; earlier alerts are structurally unpriced.">{row.nFrozenPrice}{row.nExecBooks > 1 ? <span className="text-slate-400"> · {row.nExecBooks} books</span> : null}</td><td className="px-3 py-3 text-right tabular-nums">{row.wins}-{row.losses}-{row.pushes}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? signed(row.avgClvPp, isLine ? " pts" : "pp") : lock}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? pct(row.beatClose) : lock}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? pct(row.winRate) : lock}</td><td className="px-3 py-3 text-right"><span className={`cursor-help rounded-full px-2 py-0.5 text-[10px] font-semibold ${v.cls}`} title={v.tip}>{v.label}</span></td></tr>; })}</tbody></table>{lineAlertBacktest.length === 0 ? <div className="px-4 py-10 text-center text-sm text-slate-500">No settled NFL alert rows yet.</div> : null}</div>
       </section>
 
       <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
