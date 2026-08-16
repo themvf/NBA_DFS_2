@@ -89,7 +89,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
   return <>
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
     <div role="cell" className="p-3"><p className="text-base font-black">#{overallRank}</p><p className="text-xs font-semibold text-muted-foreground">{player.position}{player.positionRank ?? "—"}</p></div>
-    <div role="cell" className="p-3"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p></div>
+    <div role="cell" className="sticky left-0 z-10 border-r bg-card p-3 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.45)]"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p></div>
     <div role="cell" className="p-3"><button disabled={!canDraft} title={canDraft ? "Add this player for the team currently on the clock" : "Blocked: this pick would violate roster limits or leave too few slots to complete a legal 20-player roster"} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-35">Add</button></div>
     <div role="cell" className="max-w-[310px] p-3"><div className="flex flex-wrap gap-1">
       {correlationBadge && <span
@@ -233,7 +233,7 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
     <div ref={scrollRef} role="table" aria-rowcount={filtered.length + 1} className="h-[min(68vh,680px)] overflow-auto rounded-2xl border bg-card text-sm [contain:strict]">
       <div role="rowgroup" className="sticky top-0 z-20 min-w-[1716px] bg-muted text-left text-xs uppercase text-muted-foreground">
         <div role="row" className={`grid ${COLUMN_GRID}`}>
-          {SORT_HEADERS.slice(0, 3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
+          {SORT_HEADERS.slice(0, 3).map((config) => <div key={config.key} role="columnheader" className={config.key === "name" ? "sticky left-0 z-30 border-r bg-muted shadow-[4px_0_8px_-6px_rgba(15,23,42,0.45)]" : undefined}><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
           <div role="columnheader" className="p-3">Draft</div>
           <div role="columnheader" className="p-3">Signals</div>
           {SORT_HEADERS.slice(3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
