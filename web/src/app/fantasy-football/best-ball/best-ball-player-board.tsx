@@ -9,7 +9,8 @@ import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds"
 import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-correlation-badge";
 import ProjectionNotation from "../rankings/projection-notation";
 
-const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(280px,1.35fr)_78px_82px_92px_92px_86px_96px_126px_150px_100px_76px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(280px,1.35fr)_78px_82px_92px_92px_86px_96px_126px_150px_100px]";
+const FLEX_POSITIONS = new Set(["RB", "WR", "TE"]);
 
 type SortKey = "skillRank" | "overallRank" | "name" | "adp" | "dkAdp" | "adpDelta" | "avail" | "gp2025" | "fpts2025" | "fpProj" | "ourProj" | "projDelta";
 type SortDir = "asc" | "desc";
@@ -89,6 +90,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
     <div role="cell" className="p-3"><p className="text-base font-black">#{overallRank}</p><p className="text-xs font-semibold text-muted-foreground">{player.position}{player.positionRank ?? "—"}</p></div>
     <div role="cell" className="p-3"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p></div>
+    <div role="cell" className="p-3"><button disabled={!canDraft} title={canDraft ? "Add this player for the team currently on the clock" : "Blocked: this pick would violate roster limits or leave too few slots to complete a legal 20-player roster"} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-35">Add</button></div>
     <div role="cell" className="max-w-[310px] p-3"><div className="flex flex-wrap gap-1">
       {correlationBadge && <span
         title={`${correlationBadge.value >= 0 ? "Stacks with" : "Trades off with"} ${correlationBadge.evidence.withName} (${correlationBadge.evidence.relationshipType}, shrunk r=${correlationBadge.value.toFixed(2)}, ${correlationBadge.evidence.sampleWeeks} shared weeks in 2025). Correlation changes variance, not expected points -- a plus stacks ceiling for Weeks 15-17, a minus diversifies floor for Weeks 1-14.`}
@@ -114,7 +116,6 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.6 projects" /></div>
     <div role="cell" className={`p-3 font-bold ${projDelta === null ? "text-muted-foreground" : projDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}>{projDelta === null ? "—" : `${projDelta >= 0 ? "+" : ""}${projDelta.toFixed(1)}`}</div>
-    <div role="cell" className="p-3"><button disabled={!canDraft} title={canDraft ? "Add this player for the team currently on the clock" : "Blocked: this pick would violate roster limits or leave too few slots to complete a legal 20-player roster"} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-35">Add</button></div>
   </>;
 });
 
@@ -183,7 +184,7 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
     const rows = rankings.filter((player) => (
       !draftedIds.has(player.playerId)
       && (!search || player.name.toLocaleLowerCase().includes(search))
-      && (!position || player.position === position)
+      && (!position || (position === "FLEX" ? FLEX_POSITIONS.has(player.position) : player.position === position))
       && (!team || player.team === team)
     ));
     if (!sortKey) return rows;
@@ -220,7 +221,7 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
   return <section className="space-y-3">
     <div className="grid gap-3 rounded-2xl border bg-card p-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto] lg:items-end">
       <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Search player" className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground" /></label>
-      <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Position<select value={position} onChange={(event) => setPosition(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All positions</option>{BEST_BALL_POSITIONS.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+      <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Position<select value={position} onChange={(event) => setPosition(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All positions</option><option value="FLEX">FLEX (RB/WR/TE)</option>{BEST_BALL_POSITIONS.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Team<select value={team} onChange={(event) => setTeam(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All teams</option>{teams.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <button onClick={() => { setName(""); setPosition(""); setTeam(""); setSortKey(null); }} className="rounded-lg border px-3 py-2 text-sm font-semibold">Clear filters</button>
     </div>
@@ -233,9 +234,9 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
       <div role="rowgroup" className="sticky top-0 z-20 min-w-[1716px] bg-muted text-left text-xs uppercase text-muted-foreground">
         <div role="row" className={`grid ${COLUMN_GRID}`}>
           {SORT_HEADERS.slice(0, 3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
+          <div role="columnheader" className="p-3">Draft</div>
           <div role="columnheader" className="p-3">Signals</div>
           {SORT_HEADERS.slice(3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
-          <div role="columnheader" className="p-3">Draft</div>
         </div>
       </div>
       <div role="rowgroup" className="relative min-w-[1716px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>

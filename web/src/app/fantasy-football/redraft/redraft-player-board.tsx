@@ -4,12 +4,13 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
-import { REDRAFT_POSITIONS, REDRAFT_POSITION_LABEL, type RedraftPosition } from "@/lib/fantasy-football/redraft";
+import { REDRAFT_FLEX_POSITIONS, REDRAFT_POSITIONS, REDRAFT_POSITION_LABEL, type RedraftPosition } from "@/lib/fantasy-football/redraft";
 import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import ProjectionNotation from "../rankings/projection-notation";
 
-const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_minmax(260px,1.3fr)_78px_92px_86px_96px_126px_150px_100px_76px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(260px,1.3fr)_78px_92px_86px_96px_126px_150px_100px]";
 const TABLE_MIN_WIDTH = "min-w-[1500px]";
+const FLEX_POSITIONS = new Set<string>(REDRAFT_FLEX_POSITIONS);
 
 type SortKey = "skillRank" | "overallRank" | "name" | "adp" | "avail" | "gp2025" | "fpts2025" | "fpProj" | "ourProj" | "projDelta";
 type SortDir = "asc" | "desc";
@@ -71,6 +72,7 @@ const RedraftPlayerRow = memo(function RedraftPlayerRow({ player, skillRank, can
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
     <div role="cell" className="p-3"><p className="text-base font-black">#{overallRank}</p><p className="text-xs font-semibold text-muted-foreground">{displayPosition(player.position)}{player.positionRank ?? "—"}</p></div>
     <div role="cell" className="p-3"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{displayPosition(player.position)} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p></div>
+    <div role="cell" className="p-3"><button disabled={!canDraft} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-35">Draft</button></div>
     <div role="cell" className="max-w-[290px] p-3"><div className="flex flex-wrap gap-1">
       {player.indicators.slice(0, 3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
     </div></div>
@@ -90,7 +92,6 @@ const RedraftPlayerRow = memo(function RedraftPlayerRow({ player, skillRank, can
         : <ProjectionNotation details={player.projectionDetails} label="How projected" />}
     </div>
     <div role="cell" className={`p-3 font-bold ${projDelta === null ? "text-muted-foreground" : projDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}>{projDelta === null ? "—" : `${projDelta >= 0 ? "+" : ""}${projDelta.toFixed(1)}`}</div>
-    <div role="cell" className="p-3"><button disabled={!canDraft} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-35">Draft</button></div>
   </>;
 });
 
@@ -146,7 +147,7 @@ export default function RedraftPlayerBoard({ rankings, draftedPlayerIds, canDraf
     const rows = rankings.filter((player) => (
       !draftedIds.has(player.playerId)
       && (!search || player.name.toLocaleLowerCase().includes(search))
-      && (!position || player.position === position)
+      && (!position || (position === "FLEX" ? FLEX_POSITIONS.has(player.position) : player.position === position))
       && (!team || player.team === team)
     ));
     if (!sortKey) return rows;
@@ -180,7 +181,7 @@ export default function RedraftPlayerBoard({ rankings, draftedPlayerIds, canDraf
   return <section className="space-y-3">
     <div className="grid gap-3 rounded-2xl border bg-card p-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto] lg:items-end">
       <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Search player" className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground" /></label>
-      <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Position<select value={position} onChange={(event) => setPosition(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All positions</option>{REDRAFT_POSITIONS.map((value) => <option key={value} value={value}>{REDRAFT_POSITION_LABEL[value]}</option>)}</select></label>
+      <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Position<select value={position} onChange={(event) => setPosition(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All positions</option><option value="FLEX">FLEX (RB/WR/TE)</option>{REDRAFT_POSITIONS.map((value) => <option key={value} value={value}>{REDRAFT_POSITION_LABEL[value]}</option>)}</select></label>
       <label className="space-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Team<select value={team} onChange={(event) => setTeam(event.target.value)} className="block w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground"><option value="">All teams</option>{teams.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <button onClick={() => { setName(""); setPosition(""); setTeam(""); setSortKey(null); }} className="rounded-lg border px-3 py-2 text-sm font-semibold">Clear filters</button>
     </div>
@@ -192,9 +193,9 @@ export default function RedraftPlayerBoard({ rankings, draftedPlayerIds, canDraf
       <div role="rowgroup" className={`sticky top-0 z-20 ${TABLE_MIN_WIDTH} bg-muted text-left text-xs uppercase text-muted-foreground`}>
         <div role="row" className={`grid ${COLUMN_GRID}`}>
           {SORT_HEADERS.slice(0, 3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
+          <div role="columnheader" className="p-3">Draft</div>
           <div role="columnheader" className="p-3">Signals</div>
           {SORT_HEADERS.slice(3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
-          <div role="columnheader" className="p-3">Draft</div>
         </div>
       </div>
       <div role="rowgroup" className={`relative ${TABLE_MIN_WIDTH}`} style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
