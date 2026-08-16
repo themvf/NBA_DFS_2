@@ -14,7 +14,8 @@ export default async function FantasyFootballPage() {
             <h1 className="text-4xl font-black tracking-tight">Fantasy Football Draft Lab</h1>
             <p className="mt-3 max-w-3xl text-slate-300">Our board uses the current NFL roster, three seasons of production, depth order, availability, rookies, team movement, and transparent indicators. Current ADP is shown for comparison without controlling our projections.</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <Link href="/fantasy-football/nfl" className="rounded-xl border border-violet-300/40 bg-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-500/30">NFL Teams</Link>
             <Link href="/fantasy-football/rankings" className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Explore rankings</Link>
             <Link href="/fantasy-football/best-ball" className="rounded-xl border border-blue-300/40 bg-blue-500/20 px-4 py-2 text-sm font-semibold text-blue-100 hover:bg-blue-500/30">NFL Best Ball</Link>
             <Link href="/fantasy-football/redraft" className="rounded-xl border border-emerald-300/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30">Redraft Mock</Link>
