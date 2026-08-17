@@ -28,7 +28,21 @@ from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
-MODEL_VERSION = "ff-independent-v1.11"
+# v1.12 (2026-08-16): board no longer silently drops a team's presumptive
+# starter or curated RB handcuff when they miss the top-BOARD_SIZE VOR cut
+# (see _must_include_ids/RB_HANDCUFFS below) -- all 4 Browns QBs and 10 other
+# real depth-chart players across the league were previously invisible
+# everywhere in the app (rankings table, Best Ball board, draft room). Also
+# fixes the "AZ"/"JAC" TEAM_ABBREV_OVERRIDES gap (nfl_team_id/bye_week were
+# silently NULL for the entire Cardinals offense).
+# v1.13 (2026-08-16): v1.12 guaranteed only the #1 QB per team by our own
+# projection, which turned out to still exclude Shedeur Sanders on Cleveland
+# -- our model (and Sleeper's own depth_chart_order) has Watson above him,
+# while the public ECR depth chart that prompted this fix has it reversed.
+# QB now guarantees the top 2 per team instead of adjudicating the
+# competition (GUARANTEE_COUNT). Bumped because board membership changed --
+# board_digest hashes MODEL_VERSION, forcing a fresh build.
+MODEL_VERSION = "ff-independent-v1.13"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -122,7 +136,63 @@ DEPTH_FACTORS = {
     "DST": {1: 1.00},
 }
 REPLACEMENT_DEMAND = {"QB": 12, "RB": 36, "WR": 48, "TE": 12, "K": 12, "DST": 12}
-TEAM_ABBREV_OVERRIDES = {"LA": "LAR", "WAS": "WSH"}
+# "AZ"/"JAC" added 2026-08-16: nflverse's weekly roster feed codes Arizona as
+# "AZ" (not "ARI", nfl_teams' canonical abbreviation) for every Cardinals
+# offensive player, and a legacy ingestion run left one Jaguars row on "JAC".
+# Without the override, normalize_team() passed those strings through
+# unchanged, team_ids.get(team) (keyed by nfl_teams.abbreviation) missed, and
+# every affected player silently got nfl_team_id=NULL and bye_week=NULL
+# (bye_weeks is also keyed by the normalized abbreviation) -- found while
+# building RB_HANDCUFFS below, which needs a consistent canonical abbreviation
+# to key off. Live rows already written under "AZ"/"JAC" were repaired
+# out-of-band (one-time UPDATE); this override prevents recurrence.
+TEAM_ABBREV_OVERRIDES = {"LA": "LAR", "WAS": "WSH", "AZ": "ARI", "JAC": "JAX"}
+
+# Real depth-chart RB handcuffs (starter's presumed backup, i.e. who inherits
+# the bell-cow role on injury) for all 32 teams, captured from public
+# consensus ECR/ADP 2026-08-16. Keyed by nfl_teams.abbreviation. This exists
+# because the fallback heuristic (role_rank==2 -- just the 2nd-highest-VOR RB
+# on the roster by our own model) can pick a passing-down complement back
+# instead of the real bell-cow backup; every name below was cross-checked
+# against the live 2026 roster (ff_players) before being hardcoded. Names use
+# our DB's canonical_name where it differs from common usage (e.g.
+# "Kenneth Gainwell", not "Kenny") so normalize_name() matching in
+# create_indicators() resolves on the first try.
+RB_HANDCUFFS: dict[str, str] = {
+    "ARI": "Tyler Allgeier",
+    "ATL": "Brian Robinson Jr.",
+    "BAL": "Justice Hill",
+    "BUF": "Ray Davis",
+    "CAR": "Jonathon Brooks",
+    "CHI": "Kyle Monangai",
+    "CIN": "Samaje Perine",
+    "CLE": "Dylan Sampson",
+    "DAL": "Jaydon Blue",
+    "DEN": "RJ Harvey",
+    "DET": "Isiah Pacheco",
+    "GB": "MarShawn Lloyd",
+    "HOU": "Woody Marks",
+    "IND": "Seth McGowan",
+    "JAX": "Chris Rodriguez Jr.",
+    "KC": "Emmett Johnson",
+    "LAC": "Kimani Vidal",
+    "LAR": "Blake Corum",
+    "LV": "Mike Washington Jr.",
+    "MIA": "Ollie Gordon II",
+    "MIN": "Aaron Jones Sr.",
+    "NE": "Rhamondre Stevenson",
+    "NO": "Alvin Kamara",
+    "NYG": "Tyrone Tracy Jr.",
+    "NYJ": "Braelon Allen",
+    "PHI": "Tank Bigsby",
+    "PIT": "Jaylen Warren",
+    "SEA": "Emanuel Wilson",
+    "SF": "Kaelon Black",
+    "TB": "Kenneth Gainwell",
+    "TEN": "Tyjae Spears",
+    "WSH": "Jacory Croskey-Merritt",
+}
+STARTER_POSITIONS = ("QB", "RB", "WR", "TE")
 
 # Fitted from 195 true rookies across the 2023-2025 draft classes (nflverse
 # roster_weekly rookie_year==season, draft_number joined by gsis_id, actual
@@ -945,6 +1015,56 @@ def rank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return ordered
 
 
+# How many of a team's top-our_projected_points players at each position are
+# force-included regardless of the VOR cut. QB gets 2, not 1: a live,
+# genuinely disputed QB competition (verified 2026-08-16 on Cleveland --
+# Sleeper's own depth_chart_order has Watson QB1/Sanders QB2, while public
+# ECR-based depth charts had it reversed) means picking only our model's #1
+# QB can still exclude the real starter if our source disagrees with the
+# depth chart a user is looking at. Guaranteeing both sidesteps having to
+# adjudicate which source is right. RB/WR/TE keep 1 -- true committees are
+# rarer there, and RB_HANDCUFFS below already covers the "real backup, not
+# whichever RB our model likes 2nd-best" case explicitly.
+GUARANTEE_COUNT = {"QB": 2, "RB": 1, "WR": 1, "TE": 1}
+
+
+def _must_include_ids(rows: list[dict[str, Any]]) -> set[int]:
+    """Players who must always get an ff_player_rankings row regardless of the
+    top-BOARD_SIZE VOR cut: each team's top GUARANTEE_COUNT[position] players
+    by our_projected_points at QB/RB/WR/TE (the presumptive starter(s) a
+    drafter would look for), plus each team's curated RB_HANDCUFFS entry. All
+    of these can rank well outside the top 400 (a backup QB, a zero-touch
+    handcuff) and were previously invisible on the rankings table, the Best
+    Ball board, and the draft room -- all three only ever query
+    ff_player_rankings, so a player who missed the VOR cut simply didn't
+    exist there even though they're on the roster. `rows` must already have
+    position_rank/our_rank/vor assigned (i.e. be rank_rows()'s output).
+    """
+    must_include: set[int] = set()
+    by_team_position: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        team = str(row.get("team_abbrev") or row.get("team") or "")
+        if not team or row["position"] not in STARTER_POSITIONS:
+            continue
+        by_team_position.setdefault((team, row["position"]), []).append(row)
+
+    for (team, position), team_rows in by_team_position.items():
+        ranked = sorted(team_rows, key=lambda r: -float(r["our_projected_points"]))
+        for candidate in ranked[: GUARANTEE_COUNT[position]]:
+            must_include.add(int(candidate["player_id"]))
+        if position == "RB":
+            handcuff_name = RB_HANDCUFFS.get(team)
+            if handcuff_name:
+                target = normalize_name(handcuff_name)
+                match = next(
+                    (r for r in team_rows if normalize_name(str(r["name"])) == target),
+                    None,
+                )
+                if match:
+                    must_include.add(int(match["player_id"]))
+    return must_include
+
+
 def create_ranking_set(
     db: RefreshDatabase,
     *,
@@ -985,6 +1105,8 @@ def create_ranking_set(
                     "adp_source": "Fantasy Football Calculator",
                     "adp_used_for_projection": False,
                     "board_size": BOARD_SIZE,
+                    "must_include_positions": list(STARTER_POSITIONS),
+                    "rb_handcuffs_captured": "2026-08-16",
                 }),
             ),
         )
@@ -1011,7 +1133,15 @@ def create_ranking_set(
             "adp": as_float(adp_row.get("adp")) if adp_row else None,
             "adp_source_row": adp_row,
         })
-    board = rank_rows(model_rows)[:BOARD_SIZE]
+    ranked_all = rank_rows(model_rows)
+    board = ranked_all[:BOARD_SIZE]
+    board_ids = {int(row["player_id"]) for row in board}
+    must_include = _must_include_ids(ranked_all)
+    extra_rows = [
+        row for row in ranked_all
+        if int(row["player_id"]) in must_include and int(row["player_id"]) not in board_ids
+    ]
+    board = board + extra_rows
     for row in board:
         db.execute(
             """INSERT INTO ff_player_rankings
@@ -1041,7 +1171,7 @@ def create_ranking_set(
         player_id: max(player_history, key=lambda row: int(row["season"]))
         for player_id, player_history in histories.items() if player_history
     }
-    create_indicators(db, ranking_set_id, season, board, latest_history, scoring)
+    create_indicators(db, ranking_set_id, season, board, latest_history, scoring, rb_handcuffs=RB_HANDCUFFS)
     return ranking_set_id
 
 
