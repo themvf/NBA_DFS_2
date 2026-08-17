@@ -930,6 +930,7 @@ def create_indicators(
     rows: list[dict[str, Any]],
     history: dict[int, dict[str, Any]],
     scoring: str = "PPR",
+    rb_handcuffs: dict[str, str] | None = None,
 ) -> None:
     def current_team(row: dict[str, Any]) -> str:
         return str(row.get("team_abbrev") or row.get("team") or "")
@@ -943,6 +944,33 @@ def create_indicators(
             )
             for role_rank, candidate in enumerate(candidates, start=1):
                 team_roles[(team, position, candidate["player_id"])] = role_rank
+
+    # Curated real-world handcuffs (team_abbrev -> handcuff name) take priority
+    # over the role_rank==2 heuristic below, which just grabs the 2nd-highest
+    # -VOR RB on the roster -- often a passing-down complement, not the back
+    # who'd actually inherit bell-cow work. Resolved once per team so the main
+    # loop below only needs a set-membership check. A team present in the map
+    # whose named player isn't found in `rows` (traded/cut/out of the board)
+    # falls back to the role_rank heuristic for that team only.
+    handcuff_ids: set[int] = set()
+    handcuff_covered_teams: set[str] = set()
+    if rb_handcuffs:
+        for team in {current_team(r) for r in rows}:
+            handcuff_name = rb_handcuffs.get(team)
+            if not handcuff_name:
+                continue
+            target = normalize_name(handcuff_name)
+            match = next(
+                (
+                    r for r in rows
+                    if current_team(r) == team and r["position"] == "RB"
+                    and normalize_name(str(r["name"])) == target
+                ),
+                None,
+            )
+            if match:
+                handcuff_ids.add(match["player_id"])
+                handcuff_covered_teams.add(team)
 
     def history_points(hist: dict[str, Any]) -> float:
         std = float(hist.get("fantasy_points_std") or 0.0)
@@ -986,8 +1014,14 @@ def create_indicators(
         if row["position"] in {"WR", "RB"} and role_rank and role_rank <= 2:
             label = f"TEAM {row['position']}{role_rank}"
             codes.append((label.replace(" ", "_"), "role", label, None, {"basis": "projected positional order"}))
-        if row["position"] == "RB" and role_rank == 2:
-            codes.append(("HANDCUFF_CANDIDATE", "role", "HANDCUFF CANDIDATE", None, {"requires_depth_chart_confirmation": True}))
+        if row["position"] == "RB":
+            if row["player_id"] in handcuff_ids:
+                codes.append(("HANDCUFF_CANDIDATE", "role", "HANDCUFF CANDIDATE", None, {
+                    "basis": "curated depth chart (starter/handcuff pair)",
+                    "requires_depth_chart_confirmation": False,
+                }))
+            elif role_rank == 2 and team not in handcuff_covered_teams:
+                codes.append(("HANDCUFF_CANDIDATE", "role", "HANDCUFF CANDIDATE", None, {"requires_depth_chart_confirmation": True}))
         if hist.get("team_target_rank") == 1 and (hist.get("targets") or 0) >= 40:
             codes.append(("TEAM_TARGET_LEADER", "fact", f"{hist.get('prior_team') or 'TEAM'} TARGET LEADER {season-1}", hist.get("targets"), hist))
         if (hist.get("nfl_target_rank") or 999) <= 10:
