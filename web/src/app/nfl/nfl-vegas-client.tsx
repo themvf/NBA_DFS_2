@@ -20,6 +20,7 @@ import type {
   LineMovementHistoryRow,
   NflHealthIssue,
   NflVegasBoardRow,
+  DetectorHealthRow,
 } from "@/db/queries";
 import {
   MIN_SETTLED_FOR_CI,
@@ -27,6 +28,7 @@ import {
   multiplicityNote,
   verdict,
 } from "@/lib/alert-audit-policy";
+import DetectorHealthPanel from "../vegas/detector-health-panel";
 
 type Props = {
   queryDate: string;
@@ -36,6 +38,7 @@ type Props = {
   lineAlertBacktest: LineAlertBacktestRow[];
   lineMovementHistory: LineMovementHistoryRow[];
   health: NflHealthIssue[];
+  detectorHealth: DetectorHealthRow[];
 };
 
 function pct(value: number | null): string {
@@ -98,7 +101,7 @@ function MovementSparkline({ trail }: { trail: NflVegasBoardRow["trail"] }) {
   return <svg role="img" aria-label="Home win probability movement" viewBox={`0 0 ${width} ${height}`} className="h-6 w-20 text-emerald-700"><polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg>;
 }
 
-export default function NflVegasClient({ queryDate, evaluatedAt, matchups, lineAlerts, lineAlertBacktest, lineMovementHistory, health }: Props) {
+export default function NflVegasClient({ queryDate, evaluatedAt, matchups, lineAlerts, lineAlertBacktest, lineMovementHistory, health, detectorHealth }: Props) {
   const router = useRouter();
   const [isRefreshing, startRefresh] = useTransition();
   const navigateDate = (date: string) => router.push(`/nfl?date=${date}`);
@@ -176,6 +179,8 @@ export default function NflVegasClient({ queryDate, evaluatedAt, matchups, lineA
             luckiest detector on top and frames it as a ranking. */}
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><table className="min-w-[760px] w-full text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Signal</th><th className="px-3 py-3 text-right">Fired</th><th className="px-3 py-3 text-right">Graded</th><th className="px-3 py-3 text-right">Priced</th><th className="px-3 py-3 text-right">W-L-P</th><th className="px-3 py-3 text-right">Avg CLV</th><th className="px-3 py-3 text-right">Beat close</th><th className="px-3 py-3 text-right">Win rate</th><th className="px-3 py-3 text-right">Status</th></tr></thead><tbody>{lineAlertBacktest.map((row) => { const isLine = row.alertType.startsWith("spread_") || row.alertType.startsWith("total_"); const d = disclosure(row); const v = verdict(row); const lock = <span className="cursor-help text-slate-400" title={d.reason}>🔒 {d.lockLabel}</span>; return <tr key={row.alertType} className="border-t border-slate-100"><td className="px-3 py-3 font-semibold capitalize">{row.alertType.replaceAll("_", " ")}</td><td className="px-3 py-3 text-right">{row.n}</td><td className="px-3 py-3 text-right">{row.nClv}</td><td className="px-3 py-3 text-right" title="Alerts carrying a frozen executable price. Price freezing shipped 2026-08-15; earlier alerts are structurally unpriced.">{row.nFrozenPrice}{row.nExecBooks > 1 ? <span className="text-slate-400"> · {row.nExecBooks} books</span> : null}</td><td className="px-3 py-3 text-right tabular-nums">{row.wins}-{row.losses}-{row.pushes}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? signed(row.avgClvPp, isLine ? " pts" : "pp") : lock}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? pct(row.beatClose) : lock}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? pct(row.winRate) : lock}</td><td className="px-3 py-3 text-right"><span className={`cursor-help rounded-full px-2 py-0.5 text-[10px] font-semibold ${v.cls}`} title={v.tip}>{v.label}</span></td></tr>; })}</tbody></table>{lineAlertBacktest.length === 0 ? <div className="px-4 py-10 text-center text-sm text-slate-500">No settled NFL alert rows yet.</div> : null}</div>
       </section>
+
+      <DetectorHealthPanel health={detectorHealth} />
 
       <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <summary className="cursor-pointer font-bold text-slate-950">Recent NFL open-to-close results ({lineMovementHistory.length})</summary>

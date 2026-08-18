@@ -7,6 +7,7 @@ import {
   getLineMovementHistory,
   getLineAlerts,
   getLineAlertBacktest,
+  getDetectorHealth,
   getVegasSummaryStats,
   getBiggestMisses,
   getTeamVegasInsights,
@@ -43,7 +44,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
 
   // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
-    const [matchups, bets, backtest, lineMovement, lineAlerts, lineAlertBacktest, eloDashboard] = await Promise.all([
+    const [matchups, bets, backtest, lineMovement, lineAlerts, lineAlertBacktest, eloDashboard, detectorHealth] = await Promise.all([
       getTennisVegasMatchups(date),
       getTennisBets(300),
       getTennisBetBacktest(),
@@ -51,8 +52,9 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getLineAlerts("tennis"),
       getLineAlertBacktest("tennis"),
       getTennisEloDashboard(),
+      getDetectorHealth("tennis"),
     ]);
-    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} lineMovement={lineMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} eloDashboard={eloDashboard} queryDate={date ?? null} />;
+    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} lineMovement={lineMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} eloDashboard={eloDashboard} detectorHealth={detectorHealth} queryDate={date ?? null} />;
   }
 
   // Soccer: focused fixtures view + star-rated bet ledger + backtest, rather
@@ -61,7 +63,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
     const [matchups, bets, settledBets, backtest, firstScorers, matchGoals, playerStats,
            fscorerTiers, fscorerNearMisses, topPickAccuracy, clv, calibCuts, clvTrend,
            settlementHealth, knockoutTies, titleOdds, knockoutAsOf, soccerLineMovement,
-           soccerLineAlerts, soccerLineAlertBacktest, soccerLineMovementHistory] = await Promise.all([
+           soccerLineAlerts, soccerLineAlertBacktest, soccerLineMovementHistory, soccerDetectorHealth] = await Promise.all([
       getSoccerVegasMatchups(date),
       getSoccerBets(1, 150),
       getSoccerSettledBets(),
@@ -83,6 +85,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getLineAlerts("soccer"),
       getLineAlertBacktest("soccer"),
       getLineMovementHistory("soccer", 1, 250),
+      getDetectorHealth("soccer"),
     ]);
     return (
       <SoccerVegasClient
@@ -107,6 +110,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
         lineAlerts={soccerLineAlerts}
         lineAlertBacktest={soccerLineAlertBacktest}
         lineMovementHistory={soccerLineMovementHistory}
+        detectorHealth={soccerDetectorHealth}
         queryDate={date ?? null}
       />
     );

@@ -33,9 +33,11 @@ import type {
   LineMovementHistoryRow,
   LineAlertRow,
   LineAlertBacktestRow,
+  DetectorHealthRow,
 } from "@/db/queries";
 import LineMovementPanel from "./line-movement-panel";
 import LineAlertsPanel from "./line-alerts-panel";
+import DetectorHealthPanel from "./detector-health-panel";
 import MovementHistoryPanel from "./movement-history-panel";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -2607,6 +2609,7 @@ export default function SoccerVegasClient({
   lineAlerts,
   lineAlertBacktest,
   lineMovementHistory,
+  detectorHealth,
   queryDate,
 }: {
   matchups: SoccerVegasMatchupRow[];
@@ -2630,6 +2633,7 @@ export default function SoccerVegasClient({
   lineAlerts: LineAlertRow[];
   lineAlertBacktest: LineAlertBacktestRow[];
   lineMovementHistory: LineMovementHistoryRow[];
+  detectorHealth: DetectorHealthRow[];
   queryDate: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("bets");
@@ -2715,6 +2719,7 @@ export default function SoccerVegasClient({
           {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && (
             <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} />
           )}
+          <DetectorHealthPanel health={detectorHealth} />
           {lineMovementHistory.length > 0 && (
             <MovementHistoryPanel rows={lineMovementHistory} cadenceNote="the 3-hourly odds captures" />
           )}

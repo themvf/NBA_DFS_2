@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { TennisMatchRow, TennisBetRow, TennisBetBacktestRow, TennisEloDashboard, MlbLineMovementRow, LineAlertRow, LineAlertBacktestRow } from "@/db/queries";
+import type { TennisMatchRow, TennisBetRow, TennisBetBacktestRow, TennisEloDashboard, MlbLineMovementRow, LineAlertRow, LineAlertBacktestRow, DetectorHealthRow } from "@/db/queries";
 import LineMovementPanel from "./line-movement-panel";
 import LineAlertsPanel from "./line-alerts-panel";
+import DetectorHealthPanel from "./detector-health-panel";
 import TennisSurfaceEvidence from "./tennis-surface-evidence";
 
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
@@ -225,6 +226,7 @@ export default function TennisVegasClient({
   lineAlerts,
   lineAlertBacktest,
   eloDashboard,
+  detectorHealth,
   queryDate,
 }: {
   matchups: TennisMatchRow[];
@@ -234,6 +236,7 @@ export default function TennisVegasClient({
   lineAlerts: LineAlertRow[];
   lineAlertBacktest: LineAlertBacktestRow[];
   eloDashboard: TennisEloDashboard;
+  detectorHealth: DetectorHealthRow[];
   queryDate: string | null;
 }) {
   const [tour, setTour] = useState<"all" | "ATP" | "WTA">("all");
@@ -279,6 +282,7 @@ export default function TennisVegasClient({
       {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && (
         <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} />
       )}
+      <DetectorHealthPanel health={detectorHealth} />
 
       <TennisSurfaceEvidence dashboard={eloDashboard} />
 

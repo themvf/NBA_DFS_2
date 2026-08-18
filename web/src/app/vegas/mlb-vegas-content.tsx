@@ -5,6 +5,7 @@ import {
   getMlbLineMovement,
   getMlbPipelineHealth,
   getMlbVegasMatchups,
+  getDetectorHealth,
 } from "@/db/queries";
 import MlbVegasClient from "./mlb-vegas-client";
 
@@ -22,13 +23,14 @@ function easternDate(value: Date): string {
 export default async function MlbVegasContent({ date }: { date?: string }) {
   const evaluatedAt = new Date().toISOString();
   const queryDate = date ?? easternDate(new Date(evaluatedAt));
-  const [matchups, health, lineMovement, lineAlerts, lineAlertBacktest, lineMovementHistory] = await Promise.all([
+  const [matchups, health, lineMovement, lineAlerts, lineAlertBacktest, lineMovementHistory, detectorHealth] = await Promise.all([
     getMlbVegasMatchups(queryDate),
     getMlbPipelineHealth(),
     getMlbLineMovement(7),
     getLineAlerts("mlb", 100),
     getLineAlertBacktest("mlb"),
     getLineMovementHistory("mlb", 1, 100),
+    getDetectorHealth("mlb"),
   ]);
 
   return (
@@ -41,6 +43,7 @@ export default async function MlbVegasContent({ date }: { date?: string }) {
       lineAlerts={lineAlerts}
       lineAlertBacktest={lineAlertBacktest}
       lineMovementHistory={lineMovementHistory}
+      detectorHealth={detectorHealth}
     />
   );
 }

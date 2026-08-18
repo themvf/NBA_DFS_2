@@ -6,6 +6,7 @@ import {
   getLineMovementHistory,
   getNflPipelineHealth,
   getNflVegasBoard,
+  getDetectorHealth,
 } from "@/db/queries";
 import NflVegasClient from "./nfl-vegas-client";
 
@@ -29,11 +30,12 @@ export default async function NflPage({
   const evaluatedAt = new Date().toISOString();
   const queryDate = date ?? easternDate(new Date(evaluatedAt));
   const matchups = await getNflVegasBoard(queryDate);
-  const [lineAlerts, lineAlertBacktest, lineMovementHistory, health] = await Promise.all([
+  const [lineAlerts, lineAlertBacktest, lineMovementHistory, health, detectorHealth] = await Promise.all([
     getLineAlerts("nfl", 100),
     getLineAlertBacktest("nfl"),
     getLineMovementHistory("nfl", 1, 100),
     getNflPipelineHealth(queryDate),
+    getDetectorHealth("nfl"),
   ]);
 
   return (
@@ -45,6 +47,7 @@ export default async function NflPage({
       lineAlertBacktest={lineAlertBacktest}
       lineMovementHistory={lineMovementHistory}
       health={health}
+      detectorHealth={detectorHealth}
     />
   );
 }

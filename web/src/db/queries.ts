@@ -9837,6 +9837,135 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
   });
 }
 
+// ── Detector health ────────────────────────────────────────────────────────
+// Mirrors DETECTOR_REGISTRY / check_detector_health() in model/line_alerts.py
+// — same dates, same thresholds, same "dead" definition. Keep both in sync by
+// hand; there is no shared source of truth across the Python/TS boundary.
+// Found via manual DB audit (2026-08-17): scan_tennis_totals had run every
+// cycle since it shipped and produced ZERO alerts, ever — a "ran fine, found
+// nothing" cycle and a "ran fine, is structurally incapable of finding
+// anything" cycle look identical in logs, so this makes that distinction
+// visible instead of relying on someone stumbling onto it by hand.
+export type DetectorHealthRow = {
+  sport: string;
+  alertType: string;
+  deployedAt: string;
+  daysDeployed: number;
+  alertsEver: number;
+  lastAlertAt: string | null;
+  opportunityDays: number;
+  status: "too_new" | "no_opportunity" | "dead" | "active";
+};
+
+const DETECTOR_HEALTH_MIN_DAYS = 14;
+const DETECTOR_HEALTH_OPPORTUNITY_DAYS = 14;
+
+const DETECTOR_REGISTRY: { sport: string; alertType: string; deployedAt: string }[] = [
+  { sport: "mlb", alertType: "pinnacle_divergence", deployedAt: "2026-07-02" },
+  { sport: "mlb", alertType: "dk_value", deployedAt: "2026-07-02" },
+  { sport: "mlb", alertType: "steam", deployedAt: "2026-07-02" },
+  { sport: "mlb", alertType: "walking", deployedAt: "2026-07-07" },
+  { sport: "mlb", alertType: "pinnacle_polymarket_delta", deployedAt: "2026-08-01" },
+  { sport: "soccer", alertType: "pinnacle_divergence", deployedAt: "2026-07-02" },
+  { sport: "soccer", alertType: "dk_value", deployedAt: "2026-07-02" },
+  { sport: "soccer", alertType: "steam", deployedAt: "2026-07-02" },
+  { sport: "soccer", alertType: "walking", deployedAt: "2026-07-07" },
+  { sport: "soccer", alertType: "pinnacle_polymarket_delta", deployedAt: "2026-08-01" },
+  { sport: "tennis", alertType: "pinnacle_divergence", deployedAt: "2026-07-02" },
+  { sport: "tennis", alertType: "dk_value", deployedAt: "2026-07-02" },
+  { sport: "tennis", alertType: "steam", deployedAt: "2026-07-02" },
+  { sport: "tennis", alertType: "walking", deployedAt: "2026-07-07" },
+  { sport: "tennis", alertType: "pinnacle_polymarket_delta", deployedAt: "2026-08-01" },
+  { sport: "nfl", alertType: "pinnacle_divergence", deployedAt: "2026-08-01" },
+  { sport: "nfl", alertType: "dk_value", deployedAt: "2026-08-01" },
+  { sport: "nfl", alertType: "steam", deployedAt: "2026-08-01" },
+  { sport: "nfl", alertType: "walking", deployedAt: "2026-08-01" },
+  { sport: "nfl", alertType: "pinnacle_polymarket_delta", deployedAt: "2026-08-01" },
+  { sport: "mlb", alertType: "dk_prop_value", deployedAt: "2026-07-02" },
+  { sport: "mlb", alertType: "prop_line_gap", deployedAt: "2026-07-02" },
+  { sport: "tennis", alertType: "dk_prop_value", deployedAt: "2026-07-02" },
+  { sport: "tennis", alertType: "prop_line_gap", deployedAt: "2026-07-02" },
+  { sport: "nfl", alertType: "total_steam", deployedAt: "2026-08-01" },
+  { sport: "nfl", alertType: "spread_steam", deployedAt: "2026-08-01" },
+  { sport: "nfl", alertType: "total_walking", deployedAt: "2026-08-01" },
+  { sport: "nfl", alertType: "spread_walking", deployedAt: "2026-08-01" },
+  // soccer's prop_outlier (ATGS) intentionally excluded: RETIRED 2026-08-13
+  // as a confirmed loser, not dead — it's supposed to be silent.
+];
+
+/** Shared by getDetectorHealth (one sport) and getAllDetectorHealth (every
+ *  sport, for the cross-sport status page) so the classification logic can't
+ *  drift between the two call sites. */
+async function computeHealthForSport(
+  sport: string,
+  entries: { sport: string; alertType: string; deployedAt: string }[],
+): Promise<DetectorHealthRow[]> {
+  if (entries.length === 0) return [];
+  const alertTypes = entries.map((e) => e.alertType);
+  const [counts, opp] = await Promise.all([
+    db.execute(sql`
+      SELECT alert_type AS "alertType", COUNT(*)::int AS n, MAX(created_at)::text AS "lastAt"
+      FROM line_alerts
+      WHERE sport = ${sport} AND alert_type IN (${sql.join(alertTypes.map((t) => sql`${t}`), sql`, `)})
+      GROUP BY alert_type
+    `),
+    db.execute(sql`
+      SELECT COUNT(DISTINCT date_trunc('day', captured_at))::int AS days
+      FROM game_odds_history
+      WHERE sport = ${sport} AND captured_at >= NOW() - (${DETECTOR_HEALTH_OPPORTUNITY_DAYS} || ' days')::interval
+    `),
+  ]);
+  const countByType = new Map<string, { n: number; lastAt: string | null }>();
+  for (const r of counts.rows) {
+    const rec = r as Record<string, unknown>;
+    countByType.set(String(rec.alertType), {
+      n: Number(rec.n ?? 0),
+      lastAt: rec.lastAt != null ? String(rec.lastAt) : null,
+    });
+  }
+  const opportunityDays = Number((opp.rows[0] as Record<string, unknown> | undefined)?.days ?? 0);
+  const today = new Date();
+  return entries.map((entry) => {
+    const deployedAt = new Date(`${entry.deployedAt}T00:00:00Z`);
+    const daysDeployed = Math.floor((today.getTime() - deployedAt.getTime()) / 86_400_000);
+    const found = countByType.get(entry.alertType);
+    const alertsEver = found?.n ?? 0;
+    const lastAlertAt = found?.lastAt ?? null;
+    let status: DetectorHealthRow["status"];
+    if (daysDeployed < DETECTOR_HEALTH_MIN_DAYS) status = "too_new";
+    else if (opportunityDays === 0) status = "no_opportunity";
+    else if (alertsEver === 0) status = "dead";
+    else status = "active";
+    return {
+      sport: entry.sport,
+      alertType: entry.alertType,
+      deployedAt: entry.deployedAt,
+      daysDeployed,
+      alertsEver,
+      lastAlertAt,
+      opportunityDays,
+      status,
+    };
+  });
+}
+
+/** Detector health for one sport — only the rows relevant to the page calling it. */
+export async function getDetectorHealth(sport: string): Promise<DetectorHealthRow[]> {
+  return computeHealthForSport(sport, DETECTOR_REGISTRY.filter((e) => e.sport === sport));
+}
+
+/** Detector health across every registered sport, for the cross-sport status
+ *  page (/vegas/detectors) — one query pair per sport, not one per detector. */
+export async function getAllDetectorHealth(): Promise<DetectorHealthRow[]> {
+  const sports = Array.from(new Set(DETECTOR_REGISTRY.map((e) => e.sport)));
+  const bySport = await Promise.all(
+    sports.map((sport) =>
+      computeHealthForSport(sport, DETECTOR_REGISTRY.filter((e) => e.sport === sport)),
+    ),
+  );
+  return bySport.flat();
+}
+
 export function getMlbLineMovement(days = 7): Promise<MlbLineMovementRow[]> {
   return getLineMovement("mlb", days);
 }
