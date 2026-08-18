@@ -1173,6 +1173,87 @@ information latency, and disciplined measurement. Priorities:
 
 ---
 
+## Detector Health Check — dead-detector auto-flagging (2026-08-17)
+
+**Why this exists.** Manually auditing tennis's win-rate table surfaced that
+`scan_tennis_totals` had run every cycle since it shipped 2026-07-02 and
+produced **zero alerts, ever** — 0 of 2,891 DraftKings captures for tennis
+have ever carried a `total_line` (DK only quotes tennis moneyline; totals/
+spreads there come from Pinnacle + ~25 other books, never DK). The detector's
+own guard (`if dk.get("total_line") is None: continue`) skipped silently,
+forever. A "ran fine, found nothing today" cycle and a "ran fine, is
+structurally incapable of ever finding anything" cycle are indistinguishable
+in logs — same exit code, same "0 new alerts" line — which is exactly the
+same failure class as several other bugs in this project's history (the
+`AZ`/`ARI` team-abbreviation gap, `_selection_prices` hardcoded to
+DraftKings, the DeepSeek workflows missing `httpx` and failing every
+scheduled run): an untested assumption from one context (DK covers this
+market) silently carried into a new one (tennis) that never actually held.
+
+**What it does.** `check_detector_health()` in `model/line_alerts.py`
+classifies every registered `(sport, alert_type)` as:
+- `too_new` — deployed < 14 days ago, not enough time to judge yet.
+- `no_opportunity` — the sport has had zero eligible game captures in the
+  last 14 days (e.g. soccer between World Cups) — a dormant sport is never
+  mistaken for a broken detector.
+- `dead` — deployed ≥ 14 days ago, the sport HAS had games in the last 14
+  days, and the detector has produced **zero alerts, ever**. This is
+  precisely the `scan_tennis_totals` shape.
+- `active` — has fired at least once.
+
+`DETECTOR_REGISTRY` pins `deployed_at` to the date the CODE shipped (read
+from git history), not the date of the first alert — using first-alert-date
+as a proxy would systematically make every detector look newer than it is
+and under-flag real bugs; a detector that took 12 days to find its first
+legitimate signal is healthy, one that never has isn't, and only a code-ship
+date tells them apart.
+
+**First real run found 4 dead detectors**, not just the one that motivated
+this: `tennis/dk_prop_value`, `tennis/prop_line_gap` (the known
+`scan_tennis_totals` bug, 46 days), plus **`tennis/pinnacle_polymarket_delta`
+and `nfl/pinnacle_polymarket_delta`** (both 0 alerts ever, 16-17 days
+deployed) — Polymarket has never appeared in a single tennis capture (0 of
+3,192) or fired for NFL either; only MLB's Pin/Poly delta has ever produced
+alerts (n=7). Correctly did NOT flag soccer's detectors, which are legitimately
+quiet post-World-Cup (`no_opportunity`), proving the eligibility gate works.
+
+**Delivery: web UI only**, per explicit user choice — a `Detector Health`
+panel (`web/src/app/vegas/detector-health-panel.tsx`) on all four
+vegas-family pages (`/vegas?sport=tennis`, `/vegas?sport=soccer`,
+`/vegas?sport=mlb`, `/nfl`), reading `getDetectorHealth(sport)` in
+`web/src/db/queries.ts`. Telegram push was considered and declined —
+`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` aren't configured as GitHub secrets,
+so a push channel would ship silently non-functional. `report()`'s CLI
+output (`python -m model.line_alerts --report`) also prints a Detector
+Health section first, above the existing CLV/win-rate tables.
+
+**Maintenance note:** `DETECTOR_REGISTRY` is duplicated between
+`model/line_alerts.py` (Python, source of truth for `report()`) and
+`web/src/db/queries.ts` (TypeScript, source of truth for the web panel) —
+same dates, same thresholds, kept in sync by hand, no shared source of truth
+across that language boundary. Adding a new detector requires updating both.
+
+**Cross-sport status page — `/vegas/detectors` (2026-08-17).** The four
+per-sport panels solved "is this specific detector dead" but not "is
+anything dead, anywhere" — that still required visiting all four Vegas
+pages in rotation. `getAllDetectorHealth()` (queries.ts) computes health for
+every registered `(sport, alert_type)` in one pass (one query pair per
+sport, not per detector) and `/vegas/detectors` renders it as a single
+scannable status grid, dead detectors surfaced first under "Needs
+attention," grouped by sport below that. Deliberately **three colors, not a
+literal red/green binary** — red (dead), green (active), gray (too_new /
+no_opportunity) — collapsing the two gray cases into either red or green
+would throw away the exact distinction `check_detector_health()` exists to
+make (a young detector or a dormant sport is not the same as a broken one).
+The per-sport panels stay; this page is the "check this first" entry point,
+not a replacement — the per-sport panels sit next to the actual alerts/
+backtest for that sport, which is real context this page doesn't have.
+Linked from the nav (`sport-nav.tsx`, no `sports` filter so it's visible
+regardless of the active sport tab). Verified live: 4 dead / 19 active / 5
+not-yet-judged, matching the CLI report exactly.
+
+---
+
 ## Pre-Registered Studies — line_alerts attribution engine (2026-07-03)
 
 The alert ledger is now a market-disagreement attribution engine (instrumentation

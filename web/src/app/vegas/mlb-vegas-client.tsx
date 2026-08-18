@@ -21,7 +21,9 @@ import type {
   MlbHealthIssue,
   MlbLineMovementRow,
   VegasMatchupRow,
+  DetectorHealthRow,
 } from "@/db/queries";
+import DetectorHealthPanel from "./detector-health-panel";
 import {
   buildMlbMovementSignal,
   type MlbCombinedSignal,
@@ -43,6 +45,7 @@ type Props = {
   lineAlerts: LineAlertRow[];
   lineAlertBacktest: LineAlertBacktestRow[];
   lineMovementHistory: LineMovementHistoryRow[];
+  detectorHealth: DetectorHealthRow[];
 };
 
 type BoardRow = {
@@ -333,6 +336,7 @@ export default function MlbVegasClient({
   lineAlerts,
   lineAlertBacktest,
   lineMovementHistory,
+  detectorHealth,
 }: Props) {
   const router = useRouter();
   const [isRefreshing, startRefresh] = useTransition();
@@ -492,6 +496,8 @@ export default function MlbVegasClient({
         <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-950">Sharp-signal tracking</h2><p className="mt-1 text-sm text-slate-600">Signals are frozen at first breach and graded against the final pregame close and game result. No notifications are included in this release.</p></div><CheckCircle2 className="h-5 w-5 text-slate-400" /></div>
         <AuditTable rows={lineAlertBacktest} />
       </section>
+
+      <DetectorHealthPanel health={detectorHealth} />
 
       <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <summary className="cursor-pointer font-bold text-slate-950">Recent open-to-close results ({lineMovementHistory.length})</summary>

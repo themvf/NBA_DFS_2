@@ -48,7 +48,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import requests
 
@@ -88,6 +88,113 @@ _NFL_WALK_LINE_MOVE = 1.0
 # nba_matchups has no commence_time column yet, which scan()/settle()/dk_board
 # all join on.
 _ALERT_SPORTS = ("mlb", "nfl", "soccer", "tennis")
+
+# ── Detector health ──────────────────────────────────────────────────────
+# Found via manual DB audit (2026-08-17): scan_tennis_totals had run every
+# cycle since it shipped on 2026-07-02 and produced ZERO alerts, ever — 0 of
+# 2,891 DraftKings captures for tennis have ever carried a total_line, so
+# `if dk.get("total_line") is None: continue` fired silently, forever. A
+# "ran fine, found nothing" cycle and a "ran fine, is structurally incapable
+# of ever finding anything" cycle look identical in logs — same exit code,
+# same "0 new alerts" line. This registry makes that distinction explicit
+# instead of relying on someone stumbling onto it by hand again.
+#
+# `deployed_at` is the date the CODE shipped (from git history), not the date
+# of the first alert. Using first-alert-date as a proxy would systematically
+# make every detector look newer than it is and under-flag real bugs — a
+# detector that took 12 days to find its first legitimate signal is healthy;
+# one that never has isn't, and only a code-ship date tells them apart.
+_HEALTH_MIN_DAYS = 14          # don't judge a detector before it's had this long
+_HEALTH_OPPORTUNITY_DAYS = 14  # "has this sport had eligible games recently"
+
+DETECTOR_REGISTRY: list[dict] = [
+    # Generic scan() detectors (moneyline-based, reused across every sport).
+    # pinnacle_divergence/dk_value/steam shipped 2026-07-02 (263ec4d/6d6fe75);
+    # walking followed 2026-07-07 (c889b1d); NFL joined _ALERT_SPORTS and
+    # pinnacle_polymarket_delta shipped for ALL sports together on 2026-08-01
+    # (c65fdcc) — so mlb/soccer/tennis's Pin/Poly delta is dated 08-01 too,
+    # not 07-02, even though those sports' other detectors are older.
+    {"sport": "mlb", "alert_type": "pinnacle_divergence", "deployed_at": date(2026, 7, 2)},
+    {"sport": "mlb", "alert_type": "dk_value", "deployed_at": date(2026, 7, 2)},
+    {"sport": "mlb", "alert_type": "steam", "deployed_at": date(2026, 7, 2)},
+    {"sport": "mlb", "alert_type": "walking", "deployed_at": date(2026, 7, 7)},
+    {"sport": "mlb", "alert_type": "pinnacle_polymarket_delta", "deployed_at": date(2026, 8, 1)},
+    {"sport": "soccer", "alert_type": "pinnacle_divergence", "deployed_at": date(2026, 7, 2)},
+    {"sport": "soccer", "alert_type": "dk_value", "deployed_at": date(2026, 7, 2)},
+    {"sport": "soccer", "alert_type": "steam", "deployed_at": date(2026, 7, 2)},
+    {"sport": "soccer", "alert_type": "walking", "deployed_at": date(2026, 7, 7)},
+    {"sport": "soccer", "alert_type": "pinnacle_polymarket_delta", "deployed_at": date(2026, 8, 1)},
+    {"sport": "tennis", "alert_type": "pinnacle_divergence", "deployed_at": date(2026, 7, 2)},
+    {"sport": "tennis", "alert_type": "dk_value", "deployed_at": date(2026, 7, 2)},
+    {"sport": "tennis", "alert_type": "steam", "deployed_at": date(2026, 7, 2)},
+    {"sport": "tennis", "alert_type": "walking", "deployed_at": date(2026, 7, 7)},
+    {"sport": "tennis", "alert_type": "pinnacle_polymarket_delta", "deployed_at": date(2026, 8, 1)},
+    {"sport": "nfl", "alert_type": "pinnacle_divergence", "deployed_at": date(2026, 8, 1)},
+    {"sport": "nfl", "alert_type": "dk_value", "deployed_at": date(2026, 8, 1)},
+    {"sport": "nfl", "alert_type": "steam", "deployed_at": date(2026, 8, 1)},
+    {"sport": "nfl", "alert_type": "walking", "deployed_at": date(2026, 8, 1)},
+    {"sport": "nfl", "alert_type": "pinnacle_polymarket_delta", "deployed_at": date(2026, 8, 1)},
+    # Prop/derivative detectors (own scan functions, own alert_type strings).
+    {"sport": "mlb", "alert_type": "dk_prop_value", "deployed_at": date(2026, 7, 2)},
+    {"sport": "mlb", "alert_type": "prop_line_gap", "deployed_at": date(2026, 7, 2)},
+    {"sport": "tennis", "alert_type": "dk_prop_value", "deployed_at": date(2026, 7, 2)},
+    {"sport": "tennis", "alert_type": "prop_line_gap", "deployed_at": date(2026, 7, 2)},
+    {"sport": "nfl", "alert_type": "total_steam", "deployed_at": date(2026, 8, 1)},
+    {"sport": "nfl", "alert_type": "spread_steam", "deployed_at": date(2026, 8, 1)},
+    {"sport": "nfl", "alert_type": "total_walking", "deployed_at": date(2026, 8, 1)},
+    {"sport": "nfl", "alert_type": "spread_walking", "deployed_at": date(2026, 8, 1)},
+    # soccer's prop_outlier (ATGS) is intentionally excluded: RETIRED
+    # 2026-08-13 as a confirmed loser, not dead — it's supposed to be silent.
+]
+
+
+def check_detector_health(db: DatabaseManager) -> list[dict]:
+    """Classify every registered (sport, alert_type) as too_new / no_opportunity
+    / dead / active.
+
+    "dead" requires ALL of: deployed >= _HEALTH_MIN_DAYS ago (enough time to
+    judge), the sport has had eligible game data in the last
+    _HEALTH_OPPORTUNITY_DAYS days (so a dormant sport, e.g. soccer between
+    World Cups, isn't mistaken for a broken detector), and zero alerts have
+    EVER fired. That's precisely the shape of the scan_tennis_totals bug.
+    """
+    today = date.today()
+    results: list[dict] = []
+    for entry in DETECTOR_REGISTRY:
+        sport, alert_type, deployed_at = entry["sport"], entry["alert_type"], entry["deployed_at"]
+        days_deployed = (today - deployed_at).days
+        counted = db.execute_one(
+            "SELECT COUNT(*)::int AS n, MAX(created_at) AS last_at "
+            "FROM line_alerts WHERE sport=%s AND alert_type=%s",
+            (sport, alert_type),
+        )
+        alerts_ever = int(counted["n"]) if counted else 0
+        last_alert_at = counted["last_at"] if counted else None
+        opp = db.execute_one(
+            "SELECT COUNT(DISTINCT date_trunc('day', captured_at))::int AS days "
+            "FROM game_odds_history WHERE sport=%s AND captured_at >= NOW() - (%s || ' days')::interval",
+            (sport, _HEALTH_OPPORTUNITY_DAYS),
+        )
+        opportunity_days = int(opp["days"]) if opp else 0
+        if days_deployed < _HEALTH_MIN_DAYS:
+            status = "too_new"
+        elif opportunity_days == 0:
+            status = "no_opportunity"
+        elif alerts_ever == 0:
+            status = "dead"
+        else:
+            status = "active"
+        results.append({
+            "sport": sport,
+            "alert_type": alert_type,
+            "deployed_at": deployed_at.isoformat(),
+            "days_deployed": days_deployed,
+            "alerts_ever": alerts_ever,
+            "last_alert_at": last_alert_at.isoformat() if last_alert_at else None,
+            "opportunity_days": opportunity_days,
+            "status": status,
+        })
+    return results
 
 # Grading sources per sport: (home score col, away score col). Soccer uses the
 # 90-minute regulation score — a knockout tie decided in extra time is a DRAW
@@ -1768,6 +1875,23 @@ def report(db: DatabaseManager) -> None:
     dk_value additionally gets true ROI: 1 unit staked at DK's frozen price per
     settled alert — the direct answer to "is betting these lines profitable".
     """
+    health = check_detector_health(db)
+    dead = [h for h in health if h["status"] == "dead"]
+    print("=== Detector health — has each detector EVER fired since it shipped? ===")
+    if dead:
+        for h in dead:
+            print(f"  DEAD  {h['sport']:<8}{h['alert_type']:<22} deployed={h['deployed_at']} "
+                  f"({h['days_deployed']}d ago) — 0 alerts, {h['opportunity_days']}d of eligible "
+                  f"games in the last {_HEALTH_OPPORTUNITY_DAYS}d. Check the field/market this detector "
+                  f"reads actually exists in the captured books.")
+    else:
+        print("  none dead — every detector past its judging window has fired at least once")
+    quiet = [h for h in health if h["status"] in ("too_new", "no_opportunity")]
+    if quiet:
+        print("  (" + "; ".join(
+            f"{h['sport']}/{h['alert_type']}: {h['status']}" for h in quiet) + ")")
+    print()
+
     rows = db.execute(
         """
         SELECT sport, alert_type, COUNT(*) n,
