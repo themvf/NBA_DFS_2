@@ -1,4 +1,5 @@
 import { buildSnakeSlots } from "./draft-engine";
+import type { RosterConfig } from "./league-config";
 
 export const BEST_BALL_POSITIONS = ["QB", "RB", "WR", "TE"] as const;
 export type BestBallPosition = typeof BEST_BALL_POSITIONS[number];
@@ -43,6 +44,29 @@ export type BestBallRosterStatus = {
 export type BestBallDraftState = {
   userSlot: number;
   playerIds: number[];
+  /** CPU opponents draft the other 11 teams via `local-auto-draft.ts`. Off by default -- existing self-play behavior is unchanged unless a user opts in. */
+  cpuEnabled: boolean;
+};
+
+/**
+ * A synthetic "roster config" that lets the shared CPU engine
+ * (`auto-draft.ts`'s `selectComputerPick`, built around slot-based leagues
+ * with FLEX/K/DST) drive a Best Ball bot. Best Ball has no fixed lineup --
+ * DraftKings' own auto-draft guardrails (`BEST_BALL_TARGETS`) are the
+ * closest thing to "required slots," so they're treated as the direct
+ * position requirements, with FLEX/K/DST zeroed out (no flex spot, and K/DST
+ * aren't draftable in this format at all). Derived from `BEST_BALL_TARGETS`
+ * so the two can't drift apart.
+ */
+export const BEST_BALL_AUTO_DRAFT_ROSTER_CONFIG: RosterConfig = {
+  QB: BEST_BALL_TARGETS.QB,
+  RB: BEST_BALL_TARGETS.RB,
+  WR: BEST_BALL_TARGETS.WR,
+  TE: BEST_BALL_TARGETS.TE,
+  FLEX: 0,
+  K: 0,
+  DST: 0,
+  BN: 0,
 };
 
 export type BestBallDraftBoardCell = {
@@ -84,9 +108,10 @@ export function parseBestBallDraftState(value: string): BestBallDraftState {
     const playerIds = Array.isArray(parsed.playerIds)
       ? parsed.playerIds.filter((id): id is number => Number.isInteger(id) && id > 0).slice(0, BEST_BALL_TEAM_COUNT * BEST_BALL_ROUNDS)
       : [];
-    return { userSlot, playerIds: [...new Set(playerIds)] };
+    const cpuEnabled = typeof parsed.cpuEnabled === "boolean" ? parsed.cpuEnabled : false;
+    return { userSlot, playerIds: [...new Set(playerIds)], cpuEnabled };
   } catch {
-    return { userSlot: 1, playerIds: [] };
+    return { userSlot: 1, playerIds: [], cpuEnabled: false };
   }
 }
 

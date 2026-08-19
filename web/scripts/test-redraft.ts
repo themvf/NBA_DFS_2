@@ -65,8 +65,11 @@ assert.equal(canAddRedraftPlayer(full, player(99, "RB")), false, "full roster mu
 assert.equal(canAddRedraftPlayer([], player(1, "P")), false);
 
 // Corrupt/hostile localStorage must never crash the room.
-assert.deepEqual(parseRedraftState("not json"), { userSlot: 1, playerIds: [] });
-assert.deepEqual(parseRedraftState(JSON.stringify({ userSlot: 99, playerIds: [3, 3, -1, "x"] })), { userSlot: 1, playerIds: [3] });
-assert.deepEqual(parseRedraftState(JSON.stringify({ userSlot: 7, playerIds: [5, 6] })), { userSlot: 7, playerIds: [5, 6] });
+assert.deepEqual(parseRedraftState("not json"), { userSlot: 1, playerIds: [], cpuEnabled: false });
+assert.deepEqual(parseRedraftState(JSON.stringify({ userSlot: 99, playerIds: [3, 3, -1, "x"] })), { userSlot: 1, playerIds: [3], cpuEnabled: false });
+assert.deepEqual(parseRedraftState(JSON.stringify({ userSlot: 7, playerIds: [5, 6] })), { userSlot: 7, playerIds: [5, 6], cpuEnabled: false });
+// cpuEnabled round-trips, and non-boolean values fall back to off rather than crashing.
+assert.deepEqual(parseRedraftState(JSON.stringify({ userSlot: 3, playerIds: [], cpuEnabled: true })), { userSlot: 3, playerIds: [], cpuEnabled: true });
+assert.deepEqual(parseRedraftState(JSON.stringify({ userSlot: 3, playerIds: [], cpuEnabled: "yes" })), { userSlot: 3, playerIds: [], cpuEnabled: false });
 
 console.log("redraft tests passed");

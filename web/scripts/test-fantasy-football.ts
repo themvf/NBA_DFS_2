@@ -176,8 +176,11 @@ assert.deepEqual(draftBoard[0][0], { round: 1, pickInRound: 1, teamSlot: 1, over
 assert.deepEqual(draftBoard[1][11], { round: 2, pickInRound: 1, teamSlot: 12, overallPick: 13, playerId: 1013 });
 assert.deepEqual(draftBoard[1][10], { round: 2, pickInRound: 2, teamSlot: 11, overallPick: 14, playerId: 1014 });
 assert.equal(draftBoard[1][9].playerId, null);
-assert.deepEqual(parseBestBallDraftState('{"userSlot":7,"playerIds":[4,5,5,6]}'), { userSlot: 7, playerIds: [4,5,6] });
-assert.deepEqual(parseBestBallDraftState('bad-json'), { userSlot: 1, playerIds: [] });
+assert.deepEqual(parseBestBallDraftState('{"userSlot":7,"playerIds":[4,5,5,6]}'), { userSlot: 7, playerIds: [4,5,6], cpuEnabled: false });
+assert.deepEqual(parseBestBallDraftState('bad-json'), { userSlot: 1, playerIds: [], cpuEnabled: false });
+// cpuEnabled round-trips, and non-boolean values fall back to off rather than crashing.
+assert.deepEqual(parseBestBallDraftState('{"userSlot":2,"playerIds":[],"cpuEnabled":true}'), { userSlot: 2, playerIds: [], cpuEnabled: true });
+assert.deepEqual(parseBestBallDraftState('{"userSlot":2,"playerIds":[],"cpuEnabled":1}'), { userSlot: 2, playerIds: [], cpuEnabled: false });
 
 function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingRow, "playerId" | "name" | "position">): FantasyRankingRow {
   return {

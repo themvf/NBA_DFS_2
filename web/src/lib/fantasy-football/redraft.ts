@@ -1,4 +1,5 @@
 import { buildSnakeSlots } from "./draft-engine";
+import type { RosterConfig } from "./league-config";
 
 // Yahoo standard redraft league, verified 2026-08-07 against Yahoo's own live
 // express-settings default page (same discipline as the DST scoring constants
@@ -54,6 +55,8 @@ export type RedraftRosterStatus = {
 export type RedraftDraftState = {
   userSlot: number;
   playerIds: number[];
+  /** CPU opponents draft the other teams via `local-auto-draft.ts`. Off by default -- existing self-play behavior is unchanged unless a user opts in. */
+  cpuEnabled: boolean;
 };
 
 export function parseRedraftState(value: string): RedraftDraftState {
@@ -66,11 +69,29 @@ export function parseRedraftState(value: string): RedraftDraftState {
         .filter((id): id is number => Number.isInteger(id) && id > 0)
         .slice(0, REDRAFT_TEAM_COUNT * REDRAFT_ROUNDS)
       : [];
-    return { userSlot, playerIds: [...new Set(playerIds)] };
+    const cpuEnabled = typeof parsed.cpuEnabled === "boolean" ? parsed.cpuEnabled : false;
+    return { userSlot, playerIds: [...new Set(playerIds)], cpuEnabled };
   } catch {
-    return { userSlot: 1, playerIds: [] };
+    return { userSlot: 1, playerIds: [], cpuEnabled: false };
   }
 }
+
+/**
+ * Direct mapping of this room's own starter/flex/bench constants into the
+ * shared CPU engine's `RosterConfig` shape -- derived, not duplicated, so it
+ * can't silently drift from `REDRAFT_STARTER_SLOTS`/`REDRAFT_FLEX_SLOTS`/
+ * `REDRAFT_BENCH_SLOTS` if this league's roster ever changes.
+ */
+export const REDRAFT_AUTO_DRAFT_ROSTER_CONFIG: RosterConfig = {
+  QB: REDRAFT_STARTER_SLOTS.QB,
+  RB: REDRAFT_STARTER_SLOTS.RB,
+  WR: REDRAFT_STARTER_SLOTS.WR,
+  TE: REDRAFT_STARTER_SLOTS.TE,
+  FLEX: REDRAFT_FLEX_SLOTS,
+  K: REDRAFT_STARTER_SLOTS.K,
+  DST: REDRAFT_STARTER_SLOTS.DST,
+  BN: REDRAFT_BENCH_SLOTS,
+};
 
 /**
  * How many starting slots this roster can fill, filling dedicated slots first

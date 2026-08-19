@@ -5,6 +5,7 @@ import type { FantasyRankingRow, TeammateCorrelationRow } from "@/db/queries-fan
 import type { BestBallAdvisorProvider } from "@/lib/fantasy-football/ai-draft-advisor";
 import { buildRosterCorrelationBadges } from "@/lib/fantasy-football/teammate-correlation-badge";
 import {
+  BEST_BALL_AUTO_DRAFT_ROSTER_CONFIG,
   BEST_BALL_POSITIONS,
   BEST_BALL_ROUNDS,
   BEST_BALL_TARGETS,
@@ -15,6 +16,7 @@ import {
   type BestBallDraftState,
 } from "@/lib/fantasy-football/best-ball";
 import { buildSnakeSlots, nextControlledPick } from "@/lib/fantasy-football/draft-engine";
+import { computeCpuDraftBatch, localAutoDraftSeed, mapRankingsToAutoDraftPlayers } from "@/lib/fantasy-football/local-auto-draft";
 import { computeAvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import { buildBestBallDraftPlan, describeBestBallRosterImpact } from "@/lib/fantasy-football/best-ball-draft-plan";
 import BestBallDraftBoard from "./best-ball-draft-board";
@@ -23,7 +25,7 @@ import BestBallAiAdvisor from "./best-ball-ai-advisor";
 import { BestBallDecisionDesk, type BestBallPickReceipt } from "./best-ball-decision-desk";
 
 const DRAFT_SLOTS = buildSnakeSlots(BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
-const EMPTY_DRAFT: BestBallDraftState = { userSlot: 1, playerIds: [] };
+const EMPTY_DRAFT: BestBallDraftState = { userSlot: 1, playerIds: [], cpuEnabled: false };
 type PendingBestBallReceipt = { playerId: number; expectedLength: number; receipt: BestBallPickReceipt };
 
 function useBestBallDraft(storageKey: string) {
@@ -96,6 +98,33 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
   const pendingReceiptRef = useRef<PendingBestBallReceipt | null>(null);
   const { draft, updateDraft } = useBestBallDraft(storageKey);
   const playerById = useMemo(() => new Map(rankings.map((player) => [player.playerId, player])), [rankings]);
+  const autoDraftPlayers = useMemo(() => mapRankingsToAutoDraftPlayers(rankings), [rankings]);
+  const cpuSeed = useMemo(() => localAutoDraftSeed(storageKey, rankingSetId, draft.userSlot), [storageKey, rankingSetId, draft.userSlot]);
+
+  // CPU opponents: whenever it isn't the user's turn and CPU mode is on,
+  // compute and apply the whole run of consecutive CPU picks in one shot
+  // (same "atomic batch" property as the persisted Draft Lab simulator) so
+  // the board never shows a half-advanced draft.
+  useEffect(() => {
+    if (!draft.cpuEnabled) return;
+    const onClockSlot = DRAFT_SLOTS[draft.playerIds.length];
+    if (!onClockSlot || onClockSlot.teamSlot === draft.userSlot) return;
+    const batch = computeCpuDraftBatch({
+      slots: DRAFT_SLOTS,
+      players: autoDraftPlayers,
+      playerIds: draft.playerIds,
+      userSlot: draft.userSlot,
+      teamCount: BEST_BALL_TEAM_COUNT,
+      rosterConfig: BEST_BALL_AUTO_DRAFT_ROSTER_CONFIG,
+      seed: cpuSeed,
+    });
+    if (!batch.length) return;
+    const basePlayerIds = draft.playerIds;
+    updateDraft((latest) => latest.playerIds.length === basePlayerIds.length
+      && basePlayerIds.every((id, index) => latest.playerIds[index] === id)
+      ? { ...latest, playerIds: [...latest.playerIds, ...batch] }
+      : latest);
+  }, [draft.cpuEnabled, draft.playerIds, draft.userSlot, autoDraftPlayers, cpuSeed, updateDraft]);
 
   useEffect(() => {
     const pending = pendingReceiptRef.current;
@@ -217,18 +246,32 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
   const undoLastPick = () => {
     pendingReceiptRef.current = null;
     setReceipt(null);
-    updateDraft((latest) => latest.playerIds.length ? { ...latest, playerIds: latest.playerIds.slice(0, -1) } : latest);
+    updateDraft((latest) => {
+      if (!latest.playerIds.length) return latest;
+      if (!latest.cpuEnabled) return { ...latest, playerIds: latest.playerIds.slice(0, -1) };
+      // CPU mode: a single pop would remove one CPU pick that the effect
+      // above immediately (and deterministically) re-drafts, making undo
+      // look like a no-op. Instead roll back to right before the user's own
+      // most recent pick, taking every later CPU pick with it -- same
+      // grouped-undo behavior as the persisted Draft Lab simulator.
+      let cutIndex = latest.playerIds.length - 1;
+      while (cutIndex >= 0 && DRAFT_SLOTS[cutIndex]?.teamSlot !== latest.userSlot) cutIndex -= 1;
+      return cutIndex < 0 ? latest : { ...latest, playerIds: latest.playerIds.slice(0, cutIndex) };
+    });
   };
   const resetDraft = () => {
     pendingReceiptRef.current = null;
     setReceipt(null);
-    updateDraft((latest) => latest.playerIds.length ? { userSlot: latest.userSlot, playerIds: [] } : latest);
+    updateDraft((latest) => latest.playerIds.length ? { userSlot: latest.userSlot, cpuEnabled: latest.cpuEnabled, playerIds: [] } : latest);
   };
   const setUserSlot = (userSlot: number) => {
     pendingReceiptRef.current = null;
     setReceipt(null);
     updateDraft((latest) => latest.userSlot === userSlot ? latest : { ...latest, userSlot });
     setViewTeam(null);
+  };
+  const setCpuEnabled = (cpuEnabled: boolean) => {
+    updateDraft((latest) => latest.cpuEnabled === cpuEnabled ? latest : { ...latest, cpuEnabled });
   };
 
   // Always the user's own roster (draft.userSlot), not whichever team is
@@ -243,8 +286,8 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
 
   const canDraftPlayerById = useMemo(() => new Map(rankings.map((player) => [
     player.playerId,
-    Boolean(currentSlot) && canAddCompletableBestBallPlayer(currentRoster, player),
-  ])), [rankings, currentSlot, currentRoster]);
+    Boolean(currentSlot) && (!draft.cpuEnabled || isUserOnClock) && canAddCompletableBestBallPlayer(currentRoster, player),
+  ])), [rankings, currentSlot, currentRoster, draft.cpuEnabled, isUserOnClock]);
   const playerBoardAvailabilityByPlayerId = isUserOnClock
     ? futureAvailabilityByPlayerId
     : availabilityByPlayerId;
@@ -252,10 +295,13 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
   return <div className="space-y-6">
     <section className="rounded-2xl border bg-slate-950 p-5 text-white">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div><p className="text-xs font-bold uppercase tracking-widest text-blue-300">12-team · 20-round snake</p><h2 className="mt-1 text-2xl font-black">User-controlled draft room</h2><p className="mt-1 text-sm text-slate-300">Every Add records the current team&apos;s pick and advances the snake automatically.</p></div>
-        <label className="text-xs font-bold uppercase tracking-wide text-slate-300">My draft position<select value={draft.userSlot} onChange={(event) => setUserSlot(Number(event.target.value))} className="mt-1 block rounded-lg border border-white/20 bg-slate-900 px-3 py-2 text-sm font-bold text-white">{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>Slot {index + 1}</option>)}</select></label>
+        <div><p className="text-xs font-bold uppercase tracking-widest text-blue-300">12-team · 20-round snake</p><h2 className="mt-1 text-2xl font-black">{draft.cpuEnabled ? "Mock vs CPU" : "User-controlled draft room"}</h2><p className="mt-1 text-sm text-slate-300">{draft.cpuEnabled ? "Computer opponents draft automatically, seeded and ADP/roster-aware, until your team is on the clock." : "Every Add records the current team's pick and advances the snake automatically."}</p></div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs font-bold uppercase tracking-wide text-slate-300">Opponents<span className="mt-1 flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-3 py-2"><input type="checkbox" checked={draft.cpuEnabled} onChange={(event) => setCpuEnabled(event.target.checked)} className="h-4 w-4" /><span className="text-sm font-bold text-white">CPU auto-draft</span></span></label>
+          <label className="text-xs font-bold uppercase tracking-wide text-slate-300">My draft position<select value={draft.userSlot} onChange={(event) => setUserSlot(Number(event.target.value))} className="mt-1 block rounded-lg border border-white/20 bg-slate-900 px-3 py-2 text-sm font-bold text-white">{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>Slot {index + 1}</option>)}</select></label>
+        </div>
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-center"><div>{currentSlot ? <><p className="text-sm text-slate-300">On the clock</p><p className="text-3xl font-black">{currentSlot.teamSlot === draft.userSlot ? "My Team" : `Team ${currentSlot.teamSlot}`} <span className="text-lg text-blue-300">· Pick {currentSlot.overallPick}/240 · Round {currentSlot.round}</span></p></> : <><p className="text-sm text-emerald-300">Draft complete</p><p className="text-3xl font-black">240 picks recorded</p></>}</div><div className="flex gap-2"><button disabled={!draft.playerIds.length} onClick={undoLastPick} className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold disabled:opacity-30">Undo last pick</button><button disabled={!draft.playerIds.length} onClick={resetDraft} className="rounded-lg border border-red-400/40 px-3 py-2 text-sm font-semibold text-red-200 disabled:opacity-30">Reset draft</button></div></div>
+      <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-center"><div>{currentSlot ? <><p className="text-sm text-slate-300">On the clock</p><p className="text-3xl font-black">{currentSlot.teamSlot === draft.userSlot ? "My Team" : `Team ${currentSlot.teamSlot}${draft.cpuEnabled ? " (CPU)" : ""}`} <span className="text-lg text-blue-300">· Pick {currentSlot.overallPick}/240 · Round {currentSlot.round}</span></p></> : <><p className="text-sm text-emerald-300">Draft complete</p><p className="text-3xl font-black">240 picks recorded</p></>}</div><div className="flex gap-2"><button disabled={!draft.playerIds.length} onClick={undoLastPick} className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold disabled:opacity-30">Undo last pick</button><button disabled={!draft.playerIds.length} onClick={resetDraft} className="rounded-lg border border-red-400/40 px-3 py-2 text-sm font-semibold text-red-200 disabled:opacity-30">Reset draft</button></div></div>
       <div className="mt-5 grid grid-cols-3 gap-2 md:grid-cols-6 xl:grid-cols-12">{Array.from({ length: 12 }, (_, index) => {
         const slot = index + 1;
         const count = rosters.get(slot)?.length ?? 0;

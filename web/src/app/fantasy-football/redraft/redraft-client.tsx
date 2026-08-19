@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 import {
+  REDRAFT_AUTO_DRAFT_ROSTER_CONFIG,
   REDRAFT_BENCH_SLOTS,
   REDRAFT_FLEX_SLOTS,
   REDRAFT_POSITIONS,
@@ -20,10 +21,11 @@ import {
 } from "@/lib/fantasy-football/redraft";
 import { nextControlledPick } from "@/lib/fantasy-football/draft-engine";
 import { computeAvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
+import { computeCpuDraftBatch, localAutoDraftSeed, mapRankingsToAutoDraftPlayers } from "@/lib/fantasy-football/local-auto-draft";
 import RedraftPlayerBoard from "./redraft-player-board";
 
 const TOTAL_PICKS = REDRAFT_TEAM_COUNT * REDRAFT_ROUNDS;
-const EMPTY_DRAFT: RedraftDraftState = { userSlot: 1, playerIds: [] };
+const EMPTY_DRAFT: RedraftDraftState = { userSlot: 1, playerIds: [], cpuEnabled: false };
 
 /** Local-only draft persistence, deferred to idle time (same pattern as Best Ball). */
 function useRedraftDraft(storageKey: string) {
@@ -93,6 +95,32 @@ export default function RedraftClient({ rankings, rankingSetId }: { rankings: Fa
   const [viewTeam, setViewTeam] = useState<number | null>(null);
   const { draft, updateDraft } = useRedraftDraft(storageKey);
   const playerById = useMemo(() => new Map(rankings.map((player) => [player.playerId, player])), [rankings]);
+  const autoDraftPlayers = useMemo(() => mapRankingsToAutoDraftPlayers(rankings), [rankings]);
+  const cpuSeed = useMemo(() => localAutoDraftSeed(storageKey, rankingSetId, draft.userSlot), [storageKey, rankingSetId, draft.userSlot]);
+
+  // CPU opponents: same atomic-batch pattern as the Best Ball room -- apply
+  // the whole run of consecutive CPU picks in one update, never a partial one.
+  useEffect(() => {
+    if (!draft.cpuEnabled) return;
+    const onClockSlot = REDRAFT_SLOTS[draft.playerIds.length];
+    if (!onClockSlot || onClockSlot.teamSlot === draft.userSlot) return;
+    const batch = computeCpuDraftBatch({
+      slots: REDRAFT_SLOTS,
+      players: autoDraftPlayers,
+      playerIds: draft.playerIds,
+      userSlot: draft.userSlot,
+      teamCount: REDRAFT_TEAM_COUNT,
+      rosterConfig: REDRAFT_AUTO_DRAFT_ROSTER_CONFIG,
+      seed: cpuSeed,
+    });
+    if (!batch.length) return;
+    const basePlayerIds = draft.playerIds;
+    updateDraft((latest) => latest.playerIds.length === basePlayerIds.length
+      && basePlayerIds.every((id, index) => latest.playerIds[index] === id)
+      ? { ...latest, playerIds: [...latest.playerIds, ...batch] }
+      : latest);
+  }, [draft.cpuEnabled, draft.playerIds, draft.userSlot, autoDraftPlayers, cpuSeed, updateDraft]);
+
   const currentSlot = REDRAFT_SLOTS[draft.playerIds.length] ?? null;
   const currentTeamSlot = currentSlot?.teamSlot ?? null;
   const targetOverallPick = currentSlot
@@ -137,27 +165,40 @@ export default function RedraftClient({ rankings, rankingSetId }: { rankings: Fa
     });
   }, [playerById, updateDraft]);
 
-  const undoLastPick = () => updateDraft((latest) => latest.playerIds.length ? { ...latest, playerIds: latest.playerIds.slice(0, -1) } : latest);
-  const resetDraft = () => updateDraft((latest) => latest.playerIds.length ? { userSlot: latest.userSlot, playerIds: [] } : latest);
+  const undoLastPick = () => updateDraft((latest) => {
+    if (!latest.playerIds.length) return latest;
+    if (!latest.cpuEnabled) return { ...latest, playerIds: latest.playerIds.slice(0, -1) };
+    // CPU mode: roll back to right before the user's own most recent pick,
+    // taking every later (deterministic, otherwise instantly re-drafted) CPU
+    // pick with it -- same grouped-undo behavior as the Best Ball room.
+    let cutIndex = latest.playerIds.length - 1;
+    while (cutIndex >= 0 && REDRAFT_SLOTS[cutIndex]?.teamSlot !== latest.userSlot) cutIndex -= 1;
+    return cutIndex < 0 ? latest : { ...latest, playerIds: latest.playerIds.slice(0, cutIndex) };
+  });
+  const resetDraft = () => updateDraft((latest) => latest.playerIds.length ? { userSlot: latest.userSlot, cpuEnabled: latest.cpuEnabled, playerIds: [] } : latest);
   const setUserSlot = (userSlot: number) => {
     updateDraft((latest) => latest.userSlot === userSlot ? latest : { ...latest, userSlot });
     setViewTeam(null);
   };
+  const setCpuEnabled = (cpuEnabled: boolean) => updateDraft((latest) => latest.cpuEnabled === cpuEnabled ? latest : { ...latest, cpuEnabled });
 
   return <div className="space-y-6">
     <section className="rounded-2xl border bg-slate-950 p-5 text-white">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-emerald-300">{REDRAFT_TEAM_COUNT}-team · {REDRAFT_ROUNDS}-round snake · PPR</p>
-          <h2 className="mt-1 text-2xl font-black">Mock draft room</h2>
-          <p className="mt-1 text-sm text-slate-300">You control all {REDRAFT_TEAM_COUNT} teams. Every Draft records the current team&apos;s pick and advances the snake.</p>
+          <h2 className="mt-1 text-2xl font-black">{draft.cpuEnabled ? "Mock vs CPU" : "Mock draft room"}</h2>
+          <p className="mt-1 text-sm text-slate-300">{draft.cpuEnabled ? "Computer opponents draft automatically, seeded and ADP/roster-aware, until your team is on the clock." : `You control all ${REDRAFT_TEAM_COUNT} teams. Every Draft records the current team's pick and advances the snake.`}</p>
         </div>
-        <label className="text-xs font-bold uppercase tracking-wide text-slate-300">My draft position<select value={draft.userSlot} onChange={(event) => setUserSlot(Number(event.target.value))} className="mt-1 block rounded-lg border border-white/20 bg-slate-900 px-3 py-2 text-sm font-bold text-white">{Array.from({ length: REDRAFT_TEAM_COUNT }, (_, index) => <option key={index + 1} value={index + 1}>Slot {index + 1}</option>)}</select></label>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs font-bold uppercase tracking-wide text-slate-300">Opponents<span className="mt-1 flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900 px-3 py-2"><input type="checkbox" checked={draft.cpuEnabled} onChange={(event) => setCpuEnabled(event.target.checked)} className="h-4 w-4" /><span className="text-sm font-bold text-white">CPU auto-draft</span></span></label>
+          <label className="text-xs font-bold uppercase tracking-wide text-slate-300">My draft position<select value={draft.userSlot} onChange={(event) => setUserSlot(Number(event.target.value))} className="mt-1 block rounded-lg border border-white/20 bg-slate-900 px-3 py-2 text-sm font-bold text-white">{Array.from({ length: REDRAFT_TEAM_COUNT }, (_, index) => <option key={index + 1} value={index + 1}>Slot {index + 1}</option>)}</select></label>
+        </div>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
         <div>{currentSlot ? <>
           <p className="text-sm text-slate-300">On the clock</p>
-          <p className="text-3xl font-black">{currentSlot.teamSlot === draft.userSlot ? "My Team" : `Team ${currentSlot.teamSlot}`} <span className="text-lg text-emerald-300">· Pick {currentSlot.overallPick}/{TOTAL_PICKS} · Round {currentSlot.round}</span></p>
+          <p className="text-3xl font-black">{currentSlot.teamSlot === draft.userSlot ? "My Team" : `Team ${currentSlot.teamSlot}${draft.cpuEnabled ? " (CPU)" : ""}`} <span className="text-lg text-emerald-300">· Pick {currentSlot.overallPick}/{TOTAL_PICKS} · Round {currentSlot.round}</span></p>
         </> : <>
           <p className="text-sm text-emerald-300">Draft complete</p>
           <p className="text-3xl font-black">{TOTAL_PICKS} picks recorded</p>
@@ -208,7 +249,7 @@ export default function RedraftClient({ rankings, rankingSetId }: { rankings: Fa
     <RedraftPlayerBoard
       rankings={rankings}
       draftedPlayerIds={draft.playerIds}
-      canDraft={Boolean(currentSlot) && currentStatus.size < REDRAFT_ROSTER_SIZE}
+      canDraft={Boolean(currentSlot) && currentStatus.size < REDRAFT_ROSTER_SIZE && (!draft.cpuEnabled || currentTeamSlot === draft.userSlot)}
       onDraft={draftPlayer}
       availabilityByPlayerId={availabilityByPlayerId}
     />
