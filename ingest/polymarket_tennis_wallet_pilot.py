@@ -53,9 +53,11 @@ from ingest.polymarket_wallet_pilot_common import (
     derive_archetype_bands,
     fetch_wallet_open_positions,
     paginate_events,
-    partition_by_date,
     print_leaderboard,
+    print_roi_leaderboard,
     rank_wallets,
+    rank_wallets_by_roi,
+    select_balanced_dev_holdout,
 )
 
 # Real match events are slugged "atp-<players>-<date>" / "wta-..." for
@@ -94,8 +96,11 @@ def _singles_tour(slug: str) -> Optional[str]:
     return m.group(1).upper() if m else None
 
 
-def fetch_resolved_match_markets(max_markets: int) -> List[Dict[str, Any]]:
-    """Top-volume resolved ATP/WTA singles match-winner markets."""
+def fetch_all_resolved_match_markets() -> List[Dict[str, Any]]:
+    """ALL discoverable resolved ATP/WTA singles match-winner markets (no
+    volume truncation -- selection happens afterward, per-half, via
+    select_balanced_dev_holdout so the dev/holdout split doesn't bias which
+    markets survive it)."""
     events = paginate_events(SINGLES_TAG_ID, closed="true", max_pages=20)  # ~2000 events safe ceiling
     markets: List[Dict[str, Any]] = []
     for event in events:
@@ -124,8 +129,7 @@ def fetch_resolved_match_markets(max_markets: int) -> List[Dict[str, Any]]:
                 "volume": float(market.get("volume") or 0),
                 "end_date": str(event.get("endDate") or ""),
             })
-    markets.sort(key=lambda m: -m["volume"])
-    return markets[:max_markets]
+    return markets
 
 
 def fetch_open_match_markets() -> Dict[str, Dict[str, str]]:
@@ -154,21 +158,28 @@ def _label(market: Dict[str, Any]) -> str:
 
 
 def run(max_markets: int, min_markets: int, tour_filter: Optional[str]) -> Dict[str, Any]:
-    markets = fetch_resolved_match_markets(max_markets * 3 if tour_filter else max_markets)
+    all_markets = fetch_all_resolved_match_markets()
     if tour_filter:
-        markets = [m for m in markets if m["tour"] == tour_filter]
-    markets = markets[:max_markets]
-    print(f"resolved singles match markets selected: {len(markets)}", file=sys.stderr)
+        all_markets = [m for m in all_markets if m["tour"] == tour_filter]
+    print(f"resolved singles match markets discovered: {len(all_markets)}", file=sys.stderr)
 
-    # ── Full-sample leaderboard (same as v1) ────────────────────────────────
+    # Split the FULL pool by date first, then take top-volume per half --
+    # see select_balanced_dev_holdout's docstring for why (fixes the MLB
+    # coverage bug from the 2026-08-19 run).
+    markets, dev_ids, holdout_ids, dev_range, holdout_range, excluded_undated = select_balanced_dev_holdout(
+        all_markets, max_markets
+    )
+    print(f"selected for analysis: {len(markets)} ({len(dev_ids)} dev + {len(holdout_ids)} holdout)", file=sys.stderr)
+
+    # ── Full-sample leaderboard (dev+holdout combined) ──────────────────────
     wallet_stats, total_fills = analyze_resolved_markets(markets, _label)
     qualified = rank_wallets(wallet_stats, min_markets)
     bands = derive_archetype_bands(qualified)
     for row in qualified:
         row["archetype"] = classify_with_bands(row, bands)
+    roi_leaderboard = rank_wallets_by_roi(qualified)
 
     # ── Walk-forward: does dev-period edge persist into holdout? ───────────
-    dev_ids, holdout_ids, dev_range, holdout_range, excluded_undated = partition_by_date(markets)
     walkforward: Dict[str, Any] = {"status": "skipped", "reason": "not enough dated markets to split"}
     if dev_ids and holdout_ids:
         dev_stats, holdout_stats, wf_fills = analyze_and_partition(markets, dev_ids, holdout_ids, _label)
@@ -207,6 +218,7 @@ def run(max_markets: int, min_markets: int, tour_filter: Optional[str]) -> Dict[
         "archetype_bands": bands,
         "open_match_markets": len(open_markets),
         "leaderboard": qualified[:50],
+        "roi_leaderboard": roi_leaderboard[:50],
         "walkforward": walkforward,
     }
 
@@ -224,7 +236,8 @@ def main() -> int:
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(output, handle, indent=1)
 
-    print_leaderboard(f"Tennis match-market wallet leaderboard (min {args.min_markets} markets)", output["leaderboard"])
+    print_leaderboard(f"Tennis match-market wallet leaderboard by PnL (min {args.min_markets} markets)", output["leaderboard"])
+    print_roi_leaderboard("Tennis match-market wallet leaderboard by ROI (min $1000 cost)", output["roi_leaderboard"])
 
     wf = output["walkforward"]
     print(f"\n=== Walk-forward persistence check ===")

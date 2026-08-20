@@ -186,14 +186,14 @@ def analyze_resolved_markets(
     return wallet_stats, total_fills
 
 
-def partition_by_date(
-    markets: List[Dict[str, Any]], date_key: str = "end_date", min_dated: int = 20
-) -> Tuple[Set[str], Set[str], Optional[Tuple[str, str]], Optional[Tuple[str, str]], int]:
-    """Chronological median split into (dev_ids, holdout_ids). Markets with
-    no usable date are EXCLUDED from both halves and counted, never guessed
-    into one. Returns empty sets (caller must handle) if fewer than
-    min_dated markets have a usable date -- too few to split honestly."""
-    dated: List[Tuple[datetime, str]] = []
+def _split_dated_markets_by_median(
+    markets: List[Dict[str, Any]], date_key: str, min_dated: int
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Optional[Tuple[str, str]], Optional[Tuple[str, str]], int]:
+    """Chronological median split of a market pool into (dev_pool,
+    holdout_pool) market-dict lists (not ids -- callers decide what to keep
+    from each half). Markets with no usable date are EXCLUDED from both
+    halves and counted, never guessed into one."""
+    dated: List[Tuple[datetime, Dict[str, Any]]] = []
     excluded = 0
     for m in markets:
         raw = m.get(date_key)
@@ -205,17 +205,52 @@ def partition_by_date(
         except ValueError:
             excluded += 1
             continue
-        dated.append((dt, m["condition_id"]))
+        dated.append((dt, m))
     if len(dated) < min_dated:
-        return set(), set(), None, None, excluded
+        return [], [], None, None, excluded
     dated.sort(key=lambda x: x[0])
     mid = len(dated) // 2
-    dev, holdout = dated[:mid], dated[mid:]
-    dev_ids = {cid for _, cid in dev}
-    holdout_ids = {cid for _, cid in holdout}
+    dev = dated[:mid]
+    holdout = dated[mid:]
     dev_range = (dev[0][0].date().isoformat(), dev[-1][0].date().isoformat())
     holdout_range = (holdout[0][0].date().isoformat(), holdout[-1][0].date().isoformat())
-    return dev_ids, holdout_ids, dev_range, holdout_range, excluded
+    return [m for _, m in dev], [m for _, m in holdout], dev_range, holdout_range, excluded
+
+
+def select_balanced_dev_holdout(
+    all_markets: List[Dict[str, Any]], max_markets: int, date_key: str = "end_date", min_dated: int = 20
+) -> Tuple[List[Dict[str, Any]], Set[str], Set[str], Optional[Tuple[str, str]], Optional[Tuple[str, str]], int]:
+    """Split the FULL discovered market pool chronologically FIRST, then
+    take the top-volume markets independently within each half.
+
+    This replaces the earlier (and wrong) approach of picking one global
+    top-N-by-volume set and only THEN splitting it by date. For a daily
+    sport like MLB that produced a real bug, not just a suboptimal design:
+    the 2026-08-19 pilot run picked its 400 markets by volume across the
+    WHOLE history first, and because MLB volume isn't spread evenly across
+    a season, the chronological split of that pre-filtered set left the two
+    halves with almost no shared wallet population -- only 3 of the top 30
+    dev-period wallets by PnL had traded in ANY of the 200 holdout-half
+    markets at all. Splitting the full pool by date before selecting by
+    volume guarantees both halves independently prioritize their own best
+    markets, so wallet overlap reflects real repeat behavior instead of an
+    artifact of which markets happened to survive one global volume cut.
+
+    Returns (selected_markets, dev_ids, holdout_ids, dev_range,
+    holdout_range, excluded_undated_count). selected_markets is
+    dev_selected + holdout_selected, sized up to max_markets total
+    (max_markets // 2 from each half)."""
+    dev_pool, holdout_pool, dev_range, holdout_range, excluded = _split_dated_markets_by_median(
+        all_markets, date_key, min_dated
+    )
+    if not dev_pool or not holdout_pool:
+        return [], set(), set(), None, None, excluded
+    half = max_markets // 2
+    dev_selected = sorted(dev_pool, key=lambda m: -m["volume"])[:half]
+    holdout_selected = sorted(holdout_pool, key=lambda m: -m["volume"])[:half]
+    dev_ids = {m["condition_id"] for m in dev_selected}
+    holdout_ids = {m["condition_id"] for m in holdout_selected}
+    return dev_selected + holdout_selected, dev_ids, holdout_ids, dev_range, holdout_range, excluded
 
 
 def analyze_and_partition(
@@ -393,6 +428,30 @@ def compare_dev_holdout(
         for arch, b in by_archetype.items()
     }
     return {"wallets": rows, "by_archetype": archetype_summary}
+
+
+def rank_wallets_by_roi(qualified: List[Dict[str, Any]], min_cost: float = 1000.0) -> List[Dict[str, Any]]:
+    """Same qualified rows, re-sorted by ROI instead of raw PnL.
+
+    Raw PnL rewards bet SIZE, not skill -- a wallet that put $2M on one
+    -105 favorite and won looks identical to a genuinely sharp wallet on
+    the PnL leaderboard. ROI is closer to a size-independent skill proxy,
+    but only once a minimum total cost floor keeps a $10 lucky trade from
+    producing a meaningless 2000% ROI headline (already observed in v1/v2
+    output, e.g. a single tiny fill posting roi=2697.03)."""
+    eligible = [r for r in qualified if r.get("roi") is not None and r["cost_usd"] >= min_cost]
+    return sorted(eligible, key=lambda r: -r["roi"])
+
+
+def print_roi_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 20) -> None:
+    print(f"\n=== {title} ===")
+    print(f"{'wallet/name':<28} {'mkts':>4} {'win%':>5} {'cost $':>10} {'pnl $':>10} {'roi':>7} {'archetype':<12}")
+    for row in rows[:limit]:
+        label = (row["name"] or row["wallet"][:10] + "...")[:27]
+        print(
+            f"{label:<28} {row['markets']:>4} {row['win_rate']*100:>4.0f}% "
+            f"{row['cost_usd']:>10.2f} {row['pnl_usd']:>10.2f} {row['roi']:>7.2f} {row.get('archetype', '-'):<12}"
+        )
 
 
 def fetch_wallet_open_positions(wallet: str, open_markets: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:

@@ -59,9 +59,11 @@ from ingest.polymarket_wallet_pilot_common import (
     derive_archetype_bands,
     fetch_wallet_open_positions,
     paginate_events,
-    partition_by_date,
     print_leaderboard,
+    print_roi_leaderboard,
     rank_wallets,
+    rank_wallets_by_roi,
+    select_balanced_dev_holdout,
 )
 
 MLB_TAG_ID = 100381
@@ -88,8 +90,10 @@ def _is_game_market(names: List[str]) -> bool:
     return len(names) == 2 and all(n.strip().lower() not in {"yes", "no"} for n in names)
 
 
-def fetch_resolved_game_markets(max_markets: int) -> List[Dict[str, Any]]:
-    """Top-volume resolved MLB game (moneyline) markets."""
+def fetch_all_resolved_game_markets() -> List[Dict[str, Any]]:
+    """ALL discoverable resolved MLB game (moneyline/spread/total) markets
+    (no volume truncation -- selection happens afterward, per-half, via
+    select_balanced_dev_holdout)."""
     events = paginate_events(MLB_TAG_ID, closed="true", max_pages=20)  # ~2000-event safe ceiling
     markets: List[Dict[str, Any]] = []
     for event in events:
@@ -116,8 +120,7 @@ def fetch_resolved_game_markets(max_markets: int) -> List[Dict[str, Any]]:
                 "volume": float(market.get("volume") or 0),
                 "end_date": str(event.get("endDate") or ""),
             })
-    markets.sort(key=lambda m: -m["volume"])
-    return markets[:max_markets]
+    return markets
 
 
 def fetch_open_game_markets() -> Dict[str, Dict[str, str]]:
@@ -142,16 +145,28 @@ def _label(market: Dict[str, Any]) -> str:
 
 
 def run(max_markets: int, min_markets: int) -> Dict[str, Any]:
-    markets = fetch_resolved_game_markets(max_markets)
-    print(f"resolved MLB game markets selected: {len(markets)}", file=sys.stderr)
+    all_markets = fetch_all_resolved_game_markets()
+    print(f"resolved MLB game markets discovered: {len(all_markets)}", file=sys.stderr)
+
+    # Split the FULL pool by date first, then take top-volume per half --
+    # see select_balanced_dev_holdout's docstring. This specifically fixes
+    # the 2026-08-19 run's bug: picking one global top-400-by-volume set
+    # BEFORE splitting by date left only 3 of the top 30 dev-period wallets
+    # with any activity at all in the holdout half, because MLB volume is
+    # concentrated in specific high-profile games rather than spread evenly
+    # across the season -- a coverage artifact, not a persistence finding.
+    markets, dev_ids, holdout_ids, dev_range, holdout_range, excluded_undated = select_balanced_dev_holdout(
+        all_markets, max_markets
+    )
+    print(f"selected for analysis: {len(markets)} ({len(dev_ids)} dev + {len(holdout_ids)} holdout)", file=sys.stderr)
 
     wallet_stats, total_fills = analyze_resolved_markets(markets, _label)
     qualified = rank_wallets(wallet_stats, min_markets)
     bands = derive_archetype_bands(qualified)
     for row in qualified:
         row["archetype"] = classify_with_bands(row, bands)
+    roi_leaderboard = rank_wallets_by_roi(qualified)
 
-    dev_ids, holdout_ids, dev_range, holdout_range, excluded_undated = partition_by_date(markets)
     walkforward: Dict[str, Any] = {"status": "skipped", "reason": "not enough dated markets to split"}
     if dev_ids and holdout_ids:
         dev_stats, holdout_stats, wf_fills = analyze_and_partition(markets, dev_ids, holdout_ids, _label)
@@ -187,6 +202,7 @@ def run(max_markets: int, min_markets: int) -> Dict[str, Any]:
         "archetype_bands": bands,
         "open_game_markets": len(open_markets),
         "leaderboard": qualified[:50],
+        "roi_leaderboard": roi_leaderboard[:50],
         "walkforward": walkforward,
     }
 
@@ -202,7 +218,8 @@ def main() -> int:
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(output, handle, indent=1)
 
-    print_leaderboard(f"MLB game-market wallet leaderboard (min {args.min_markets} markets)", output["leaderboard"])
+    print_leaderboard(f"MLB game-market wallet leaderboard by PnL (min {args.min_markets} markets)", output["leaderboard"])
+    print_roi_leaderboard("MLB game-market wallet leaderboard by ROI (min $1000 cost)", output["roi_leaderboard"])
 
     wf = output["walkforward"]
     print(f"\n=== Walk-forward persistence check ===")
