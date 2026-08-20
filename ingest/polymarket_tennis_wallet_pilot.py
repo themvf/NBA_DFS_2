@@ -53,9 +53,11 @@ from ingest.polymarket_wallet_pilot_common import (
     derive_archetype_bands,
     fetch_wallet_open_positions,
     paginate_events,
+    print_confidence_leaderboard,
     print_leaderboard,
     print_roi_leaderboard,
     rank_wallets,
+    rank_wallets_by_confidence,
     rank_wallets_by_roi,
     select_balanced_dev_holdout,
 )
@@ -178,6 +180,7 @@ def run(max_markets: int, min_markets: int, tour_filter: Optional[str]) -> Dict[
     for row in qualified:
         row["archetype"] = classify_with_bands(row, bands)
     roi_leaderboard = rank_wallets_by_roi(qualified)
+    confidence_leaderboard = rank_wallets_by_confidence(qualified)
 
     # ── Walk-forward: does dev-period edge persist into holdout? ───────────
     walkforward: Dict[str, Any] = {"status": "skipped", "reason": "not enough dated markets to split"}
@@ -219,6 +222,7 @@ def run(max_markets: int, min_markets: int, tour_filter: Optional[str]) -> Dict[
         "open_match_markets": len(open_markets),
         "leaderboard": qualified[:50],
         "roi_leaderboard": roi_leaderboard[:50],
+        "confidence_leaderboard": confidence_leaderboard[:50],
         "walkforward": walkforward,
     }
 
@@ -236,6 +240,10 @@ def main() -> int:
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(output, handle, indent=1)
 
+    print_confidence_leaderboard(
+        f"Tennis match-market wallet leaderboard by Wilson-confident win rate (min {args.min_markets} markets)",
+        output["confidence_leaderboard"],
+    )
     print_leaderboard(f"Tennis match-market wallet leaderboard by PnL (min {args.min_markets} markets)", output["leaderboard"])
     print_roi_leaderboard("Tennis match-market wallet leaderboard by ROI (min $1000 cost)", output["roi_leaderboard"])
 

@@ -454,6 +454,59 @@ def print_roi_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 2
         )
 
 
+def wilson_lower_bound(wins: int, n: int, z: float = 1.96) -> float:
+    """95% Wilson score interval LOWER bound on a win rate.
+
+    Neither raw PnL nor raw win% is a sound skill ranking on its own, and
+    they fail in opposite directions: PnL rewards one huge bet regardless
+    of accuracy ("bet size"), raw win% rewards a tiny sample that got lucky
+    and stopped ("5-for-5 beats 200-for-280" -- observed live in this
+    pilot's own output: with ~20k qualified wallets, dozens will hit a
+    5-for-5 streak on pure chance at ARCH_MIN_MARKETS-floor sample sizes).
+    Wilson's lower bound answers "what win rate can I be 95% confident this
+    wallet is AT LEAST this good, given how many bets it's actually
+    placed" -- it converges toward the raw win rate as n grows and shrinks
+    toward 50% as n shrinks, so a 5-for-5 wallet (lower bound ~0.57 -- a
+    coin flip is well within its plausible range) no longer outranks a
+    200-for-280 wallet (lower bound ~0.66, genuinely, provably good). This
+    is the same family of fix
+    as the "confidence-discounted edge" idea already discussed elsewhere in
+    this project (shrink thin estimates before trusting them), applied
+    here to a ranking metric instead of a star-rating gate."""
+    if n <= 0:
+        return 0.0
+    phat = wins / n
+    denom = 1 + z * z / n
+    center = phat + z * z / (2 * n)
+    margin = z * ((phat * (1 - phat) + z * z / (4 * n)) / n) ** 0.5
+    return max(0.0, (center - margin) / denom)
+
+
+def rank_wallets_by_confidence(qualified: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """All qualified wallets, ranked by Wilson-lower-bound win rate instead
+    of raw PnL or raw win%. This is the primary skill-shaped ranking; PnL
+    and ROI leaderboards remain useful for other questions (who's moving
+    real money, who's capital-efficient) but neither is a trustworthy
+    "who's actually good" ranking on its own."""
+    ranked = []
+    for row in qualified:
+        wlb = wilson_lower_bound(row["wins"], row["markets"])
+        ranked.append({**row, "wilson_lower_bound": round(wlb, 4)})
+    ranked.sort(key=lambda r: -r["wilson_lower_bound"])
+    return ranked
+
+
+def print_confidence_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 20) -> None:
+    print(f"\n=== {title} ===")
+    print(f"{'wallet/name':<28} {'mkts':>4} {'wins':>4} {'win%':>5} {'wilson_lb':>9} {'pnl $':>10} {'archetype':<12}")
+    for row in rows[:limit]:
+        label = (row["name"] or row["wallet"][:10] + "...")[:27]
+        print(
+            f"{label:<28} {row['markets']:>4} {row['wins']:>4} {row['win_rate']*100:>4.0f}% "
+            f"{row['wilson_lower_bound']*100:>8.1f}% {row['pnl_usd']:>10.2f} {row.get('archetype', '-'):<12}"
+        )
+
+
 def fetch_wallet_open_positions(wallet: str, open_markets: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Net stance per currently-open market from the wallet's recent fills."""
     try:
