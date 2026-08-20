@@ -1,0 +1,434 @@
+"""Shared Polymarket wallet-intelligence pilot engine -- read-only, no DB, no UI.
+
+Sport-agnostic core reused by ingest/polymarket_tennis_wallet_pilot.py and
+ingest/polymarket_mlb_wallet_pilot.py:
+
+  1. Outcome-verified per-wallet P&L reconstruction, ported from themvf/
+     Speeches' polymarket_pilot.py (the SEC-25 earnings-market pilot). Per
+     wallet per market: net position + cash flow per outcome from fills
+     (BUY: +size, -size*price cash; SELL: -size, +size*price cash); at
+     resolution the winning outcome's tokens redeem at $1, losers at $0, so
+     pnl = cash + max(net_winner, 0). Negative net positions (possible via
+     on-chain split/merge, invisible in the fill tape) clamp to 0 payout --
+     a small, documented approximation carried over unchanged.
+  2. A chronological walk-forward split: does a wallet that looked skilled
+     in an earlier "development" window still look skilled in a later
+     "holdout" window it never trained on? Same discipline this whole repo
+     applies everywhere else (never trust a same-sample result).
+  3. Archetype bands derived empirically from each sport's OWN qualified-
+     wallet distribution (percentiles of entry price / win rate), instead
+     of reusing the earnings pilot's fixed numeric bands verbatim. Still a
+     first-pass, descriptive calibration -- not a validated predictive
+     rule until it's tested on its own held-out sample.
+  4. Generic Gamma /events pagination, including a live-verified quirk:
+     both the tennis (tag=864) and MLB (tag=100381) tags return a
+     malformed {"type":"error",...} object (not a list) once the offset
+     passes ~2100 -- treated as "end of data", not a crash.
+
+Every sport-specific module supplies only discovery: a function returning
+resolved markets shaped {"condition_id","question","winner","volume",
+"end_date", ...} and one returning currently-open markets shaped
+{condition_id: {...}}. Everything downstream -- fills, settlement, ranking,
+walk-forward, bands -- lives here so it's written and reviewed once.
+
+Read-only against public, no-auth Polymarket endpoints (gamma-api.
+polymarket.com, data-api.polymarket.com). No DB, no UI. Research context
+only -- not investment or betting advice.
+"""
+
+from __future__ import annotations
+
+import sys
+import time
+from collections import defaultdict
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+
+import requests
+
+GAMMA = "https://gamma-api.polymarket.com"
+DATA = "https://data-api.polymarket.com"
+THROTTLE_S = 0.15
+TRADES_PAGE = 500
+MAX_TRADES_PER_MARKET = 6000
+
+session = requests.Session()
+session.headers["User-Agent"] = "NBADFS-polymarket-wallet-pilot/1.0 (research)"
+
+
+def api_get(url: str, params: Dict[str, Any]) -> Any:
+    time.sleep(THROTTLE_S)
+    resp = session.get(url, params=params, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def paginate_events(
+    tag_id: int, closed: str, order: str = "volume", ascending: str = "false", max_pages: int = 20
+) -> List[Dict[str, Any]]:
+    """Generic /events pager. Stops cleanly (not a crash) on empty results
+    OR the malformed non-list response Gamma returns past its own
+    ~2100-offset ceiling -- verified live 2026-08-19 for both the tennis and
+    MLB tags, so treated as a platform quirk, not sport-specific."""
+    events: List[Dict[str, Any]] = []
+    for page in range(max_pages):
+        data = api_get(f"{GAMMA}/events", {
+            "tag_id": tag_id, "closed": closed, "order": order,
+            "ascending": ascending, "limit": 100, "offset": page * 100,
+        })
+        if not isinstance(data, list) or not data:
+            break
+        events.extend(data)
+    return events
+
+
+def fetch_market_fills(condition_id: str) -> List[Dict[str, Any]]:
+    """Newest-first fill tape; the Data API 400s past offset ~3500 -- keep
+    the partial tape rather than discarding the market (documented caveat
+    carried over from the source earnings pilot: on the highest-volume
+    markets the earliest fills are unreachable via this endpoint, which
+    biases "early entry price" toward more-recent trades)."""
+    fills: List[Dict[str, Any]] = []
+    offset = 0
+    while offset < MAX_TRADES_PER_MARKET:
+        try:
+            page = api_get(f"{DATA}/trades", {
+                "market": condition_id, "limit": TRADES_PAGE, "offset": offset,
+                "takerOnly": "false",
+            })
+        except requests.HTTPError:
+            break  # offset ceiling reached -- return what we have
+        if not isinstance(page, list) or not page:
+            break
+        fills.extend(page)
+        if len(page) < TRADES_PAGE:
+            break
+        offset += TRADES_PAGE
+    return fills
+
+
+def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[str, Any]]:
+    """Per-wallet P&L for one resolved market. Outcome-name agnostic --
+    works identically for tennis player names, MLB team names, or an
+    earnings ticker's Yes/No -- no sport-specific change needed."""
+    positions: Dict[str, Dict[str, float]] = defaultdict(
+        lambda: {"cash": 0.0, "cost": 0.0, "net_win": 0.0, "win_buy_size": 0.0, "win_buy_cash": 0.0}
+    )
+    names: Dict[str, str] = {}
+    for fill in fills:
+        wallet = str(fill.get("proxyWallet") or "")
+        outcome = str(fill.get("outcome") or "")
+        side = str(fill.get("side") or "").upper()
+        try:
+            size = float(fill.get("size") or 0)
+            price = float(fill.get("price") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not wallet or size <= 0 or side not in ("BUY", "SELL"):
+            continue
+        pos = positions[wallet]
+        name = str(fill.get("name") or fill.get("pseudonym") or "")
+        if name:
+            names[wallet] = name
+        signed = size if side == "BUY" else -size
+        cash = -size * price if side == "BUY" else size * price
+        pos["cash"] += cash
+        if side == "BUY":
+            pos["cost"] += size * price
+        if outcome == winner:
+            pos["net_win"] += signed
+            if side == "BUY":
+                pos["win_buy_size"] += size
+                pos["win_buy_cash"] += size * price
+    out: Dict[str, Dict[str, Any]] = {}
+    for wallet, pos in positions.items():
+        payout = max(pos["net_win"], 0.0)
+        out[wallet] = {
+            "pnl": pos["cash"] + payout,
+            "cost": pos["cost"],
+            "win_entry_avg": (pos["win_buy_cash"] / pos["win_buy_size"]) if pos["win_buy_size"] > 0 else None,
+            "name": names.get(wallet, ""),
+        }
+    return out
+
+
+def _new_agg() -> Dict[str, Any]:
+    return {"markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "win_entries": [], "name": ""}
+
+
+def analyze_resolved_markets(
+    markets: List[Dict[str, Any]], label_market: Callable[[Dict[str, Any]], str]
+) -> Tuple[Dict[str, Any], int]:
+    """Single-sample-set version (no walk-forward split)."""
+    wallet_stats: Dict[str, Any] = defaultdict(_new_agg)
+    total_fills = 0
+    for i, market in enumerate(markets, 1):
+        try:
+            fills = fetch_market_fills(market["condition_id"])
+        except Exception as exc:
+            print(f"  ! {label_market(market)}: {exc}", file=sys.stderr)
+            continue
+        total_fills += len(fills)
+        settled = settle_market(fills, market["winner"])
+        for wallet, stats in settled.items():
+            agg = wallet_stats[wallet]
+            agg["markets"] += 1
+            agg["pnl"] += stats["pnl"]
+            agg["cost"] += stats["cost"]
+            if stats["pnl"] > 0:
+                agg["wins"] += 1
+            if stats["win_entry_avg"] is not None:
+                agg["win_entries"].append(stats["win_entry_avg"])
+            if stats["name"]:
+                agg["name"] = stats["name"]
+        if i % 25 == 0:
+            print(f"  processed {i}/{len(markets)} markets ({total_fills} fills)", file=sys.stderr)
+    return wallet_stats, total_fills
+
+
+def partition_by_date(
+    markets: List[Dict[str, Any]], date_key: str = "end_date", min_dated: int = 20
+) -> Tuple[Set[str], Set[str], Optional[Tuple[str, str]], Optional[Tuple[str, str]], int]:
+    """Chronological median split into (dev_ids, holdout_ids). Markets with
+    no usable date are EXCLUDED from both halves and counted, never guessed
+    into one. Returns empty sets (caller must handle) if fewer than
+    min_dated markets have a usable date -- too few to split honestly."""
+    dated: List[Tuple[datetime, str]] = []
+    excluded = 0
+    for m in markets:
+        raw = m.get(date_key)
+        if not raw:
+            excluded += 1
+            continue
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            excluded += 1
+            continue
+        dated.append((dt, m["condition_id"]))
+    if len(dated) < min_dated:
+        return set(), set(), None, None, excluded
+    dated.sort(key=lambda x: x[0])
+    mid = len(dated) // 2
+    dev, holdout = dated[:mid], dated[mid:]
+    dev_ids = {cid for _, cid in dev}
+    holdout_ids = {cid for _, cid in holdout}
+    dev_range = (dev[0][0].date().isoformat(), dev[-1][0].date().isoformat())
+    holdout_range = (holdout[0][0].date().isoformat(), holdout[-1][0].date().isoformat())
+    return dev_ids, holdout_ids, dev_range, holdout_range, excluded
+
+
+def analyze_and_partition(
+    markets: List[Dict[str, Any]],
+    dev_ids: Set[str],
+    holdout_ids: Set[str],
+    label_market: Callable[[Dict[str, Any]], str],
+) -> Tuple[Dict[str, Any], Dict[str, Any], int]:
+    """One fetch pass: each market's fills are pulled exactly once and its
+    settled per-wallet result routed into dev_stats or holdout_stats
+    depending on which half its market landed in (markets outside both
+    halves -- the ones partition_by_date excluded -- are skipped)."""
+    dev_stats: Dict[str, Any] = defaultdict(_new_agg)
+    holdout_stats: Dict[str, Any] = defaultdict(_new_agg)
+    total_fills = 0
+    for i, market in enumerate(markets, 1):
+        cid = market["condition_id"]
+        if cid in dev_ids:
+            target = dev_stats
+        elif cid in holdout_ids:
+            target = holdout_stats
+        else:
+            continue
+        try:
+            fills = fetch_market_fills(cid)
+        except Exception as exc:
+            print(f"  ! {label_market(market)}: {exc}", file=sys.stderr)
+            continue
+        total_fills += len(fills)
+        settled = settle_market(fills, market["winner"])
+        for wallet, stats in settled.items():
+            agg = target[wallet]
+            agg["markets"] += 1
+            agg["pnl"] += stats["pnl"]
+            agg["cost"] += stats["cost"]
+            if stats["pnl"] > 0:
+                agg["wins"] += 1
+            if stats["win_entry_avg"] is not None:
+                agg["win_entries"].append(stats["win_entry_avg"])
+            if stats["name"]:
+                agg["name"] = stats["name"]
+        if i % 25 == 0:
+            print(f"  processed {i}/{len(markets)} markets ({total_fills} fills)", file=sys.stderr)
+    return dev_stats, holdout_stats, total_fills
+
+
+def rank_wallets(wallet_stats: Dict[str, Any], min_markets: int) -> List[Dict[str, Any]]:
+    """Qualified (>=min_markets) wallets as ranked rows, PnL desc. No
+    archetype attached here -- bands are sport-specific and derived
+    separately (see derive_archetype_bands), then applied with
+    classify_with_bands."""
+    qualified = []
+    for wallet, agg in wallet_stats.items():
+        if agg["markets"] < min_markets:
+            continue
+        qualified.append({
+            "wallet": wallet,
+            "name": agg["name"],
+            "markets": agg["markets"],
+            "wins": agg["wins"],
+            "win_rate": round(agg["wins"] / agg["markets"], 3),
+            "pnl_usd": round(agg["pnl"], 2),
+            "cost_usd": round(agg["cost"], 2),
+            "roi": round(agg["pnl"] / agg["cost"], 3) if agg["cost"] > 0 else None,
+            "avg_winner_entry_price": (
+                round(sum(agg["win_entries"]) / len(agg["win_entries"]), 3)
+                if agg["win_entries"] else None
+            ),
+        })
+    qualified.sort(key=lambda w: -w["pnl_usd"])
+    return qualified
+
+
+# Sample-size guard: one lucky market must not mint a "sharp" wallet. Same
+# constant and rationale as the earnings pilot's ARCH_MIN_MARKETS.
+ARCH_MIN_MARKETS = 8
+
+
+def derive_archetype_bands(qualified: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Terciles of avg_winner_entry_price and win_rate among wallets that
+    clear ARCH_MIN_MARKETS, computed from THIS sport's own qualified-wallet
+    sample. Empirical, first-pass, descriptive -- NOT validated as
+    predictive until tested on its own held-out sample (that's what
+    compare_dev_holdout's by_archetype breakdown is a first look at).
+    Returns {} if there aren't enough eligible wallets to derive bands
+    honestly (min 9, so each tercile has >=3)."""
+    eligible = [r for r in qualified if r["markets"] >= ARCH_MIN_MARKETS and r["avg_winner_entry_price"] is not None]
+    if len(eligible) < 9:
+        return {}
+    entries = sorted(r["avg_winner_entry_price"] for r in eligible)
+    win_rates = sorted(r["win_rate"] for r in eligible)
+
+    def pct(seq: List[float], p: float) -> float:
+        idx = min(len(seq) - 1, max(0, round(p * (len(seq) - 1))))
+        return seq[idx]
+
+    return {
+        "entry_p33": round(pct(entries, 0.33), 3),
+        "entry_p67": round(pct(entries, 0.67), 3),
+        "win_p33": round(pct(win_rates, 0.33), 3),
+        "win_p67": round(pct(win_rates, 0.67), 3),
+        "n_eligible": len(eligible),
+    }
+
+
+def classify_with_bands(row: Dict[str, Any], bands: Dict[str, float]) -> str:
+    """early_sharp / late_closer / longshot / unclassified, using bands
+    derived from THIS sport's own distribution (see derive_archetype_bands)
+    rather than the earnings pilot's fixed numbers."""
+    if not bands or row["markets"] < ARCH_MIN_MARKETS:
+        return "unclassified"
+    entry = row.get("avg_winner_entry_price")
+    if entry is None:
+        return "unclassified"
+    win = row["win_rate"]
+    roi = row.get("roi")
+    if entry <= bands["entry_p33"] and win >= bands["win_p67"] and row["pnl_usd"] > 0:
+        return "early_sharp"
+    if entry >= bands["entry_p67"] and win >= bands["win_p67"]:
+        return "late_closer"
+    if entry <= bands["entry_p33"] and win <= bands["win_p33"] and roi is not None and roi > 1:
+        return "longshot"
+    return "unclassified"
+
+
+def compare_dev_holdout(
+    dev_qualified: List[Dict[str, Any]], holdout_stats: Dict[str, Any], top_n: int = 30
+) -> Dict[str, Any]:
+    """For the top-N dev-period wallets by PnL (each already tagged with an
+    'archetype' key by the caller), check whether their edge persisted into
+    the holdout period. Also buckets by dev-period archetype label against
+    mean holdout PnL/win-rate -- a first, purely descriptive look at
+    whether the label carries any out-of-sample information. Small samples
+    are expected and reported honestly, not hidden."""
+    rows = []
+    for row in dev_qualified[:top_n]:
+        wallet = row["wallet"]
+        h = holdout_stats.get(wallet)
+        entry = {
+            "wallet": wallet, "name": row["name"], "archetype": row.get("archetype", "unclassified"),
+            "dev_markets": row["markets"], "dev_win_rate": row["win_rate"], "dev_pnl": row["pnl_usd"],
+        }
+        if h is None or h["markets"] == 0:
+            entry["holdout_status"] = "no_holdout_activity"
+        else:
+            holdout_win_rate = round(h["wins"] / h["markets"], 3)
+            holdout_pnl = round(h["pnl"], 2)
+            persisted = holdout_pnl > 0 and holdout_win_rate >= 0.5
+            entry.update({
+                "holdout_status": "persisted" if persisted else "reversed",
+                "holdout_markets": h["markets"],
+                "holdout_win_rate": holdout_win_rate,
+                "holdout_pnl": holdout_pnl,
+            })
+        rows.append(entry)
+
+    by_archetype: Dict[str, Dict[str, Any]] = {}
+    for entry in rows:
+        if entry["holdout_status"] == "no_holdout_activity":
+            continue
+        bucket = by_archetype.setdefault(
+            entry["archetype"], {"n": 0, "pnl_sum": 0.0, "win_rate_sum": 0.0, "persisted": 0}
+        )
+        bucket["n"] += 1
+        bucket["pnl_sum"] += entry["holdout_pnl"]
+        bucket["win_rate_sum"] += entry["holdout_win_rate"]
+        bucket["persisted"] += 1 if entry["holdout_status"] == "persisted" else 0
+    archetype_summary = {
+        arch: {
+            "n_with_holdout_activity": b["n"],
+            "avg_holdout_pnl": round(b["pnl_sum"] / b["n"], 2),
+            "avg_holdout_win_rate": round(b["win_rate_sum"] / b["n"], 3),
+            "persisted_count": b["persisted"],
+        }
+        for arch, b in by_archetype.items()
+    }
+    return {"wallets": rows, "by_archetype": archetype_summary}
+
+
+def fetch_wallet_open_positions(wallet: str, open_markets: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Net stance per currently-open market from the wallet's recent fills."""
+    try:
+        fills = api_get(f"{DATA}/trades", {"user": wallet, "limit": 500, "takerOnly": "false"})
+    except Exception:
+        return []
+    stance: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    for fill in fills or []:
+        condition_id = str(fill.get("conditionId") or "")
+        if condition_id not in open_markets:
+            continue
+        outcome = str(fill.get("outcome") or "")
+        side = str(fill.get("side") or "").upper()
+        try:
+            size = float(fill.get("size") or 0)
+        except (TypeError, ValueError):
+            continue
+        stance[condition_id][outcome] += size if side == "BUY" else -size
+    out = []
+    for condition_id, outcomes in stance.items():
+        held = {o: round(v, 2) for o, v in outcomes.items() if abs(v) > 0.5}
+        if held:
+            out.append({**open_markets[condition_id], "net_shares": held})
+    return out
+
+
+def print_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 20) -> None:
+    print(f"\n=== {title} ===")
+    print(f"{'wallet/name':<28} {'mkts':>4} {'win%':>5} {'pnl $':>10} {'roi':>6} {'entry':>6} {'archetype':<12}")
+    for row in rows[:limit]:
+        label = (row["name"] or row["wallet"][:10] + "...")[:27]
+        roi = f"{row['roi']:.2f}" if row.get("roi") is not None else "-"
+        entry = f"{row['avg_winner_entry_price']:.2f}" if row.get("avg_winner_entry_price") is not None else "-"
+        print(
+            f"{label:<28} {row['markets']:>4} {row['win_rate']*100:>4.0f}% "
+            f"{row['pnl_usd']:>10.2f} {roi:>6} {entry:>6} {row.get('archetype', '-'):<12}"
+        )

@@ -9,9 +9,23 @@ Polymarket surfaces two valuable tennis signal types:
 2. **Futures markets** (long-lived): tournament winners, year-end rankings with
    many player sub-markets. Stored in polymarket_tennis_futures for tracking.
 
-Discovery uses the Gamma API tag system:
-  - ATP tag_id = 101232
-  - WTA tag_id = 102123
+Discovery uses the Gamma API tag system -- and the two capture paths use
+DIFFERENT tags, verified live 2026-08-19 (see MATCH_TAG_ID below for why):
+  - Match markets: MATCH_TAG_ID = 864 (generic "Tennis"), tour inferred from
+    the event slug ("atp-..." / "wta-...").
+  - Futures markets: ATP_TAG_ID = 101232 / WTA_TAG_ID = 102123 (unchanged --
+    these ARE where tournament futures/props live).
+
+Bug fixed 2026-08-19: capture_matches() previously queried ATP_TAG_ID /
+WTA_TAG_ID for match discovery too. Live verification found those two tags
+are almost entirely tournament futures/props (scanning 500 closed ATP-tag
+events by volume surfaced exactly 1 real head-to-head match) and had ZERO
+live match events at verification time, despite real matches actively
+trading on Polymarket. This is the most likely root cause of
+pinnacle_polymarket_delta firing zero tennis alerts ever (see memory:
+detector-health-check.md) -- capture_matches() was querying an
+essentially-empty tag. See ingest/polymarket_tennis_wallet_pilot.py's
+discovery comment for the investigation that found this.
 
 Usage:
     python -m ingest.polymarket_tennis                    # both match + futures
@@ -40,10 +54,22 @@ from model.soccer_bet_rating import prob_to_american
 logger = logging.getLogger(__name__)
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
+# Futures/outrights only -- see the module docstring for why match discovery
+# does NOT use these two.
 ATP_TAG_ID = 101232
 WTA_TAG_ID = 102123
+# Real head-to-head match events live here (generic "Tennis" tag). Verified
+# live 2026-08-19: 99.6% match-event density (498/500 closed events sampled)
+# vs ~0.2% under the tour tags above.
+MATCH_TAG_ID = 864
 # Patterns to identify match events (2-player head-to-head)
 _VS_PATTERN = re.compile(r"\bvs\.?\b|:", re.IGNORECASE)
+# Singles match event slugs are "atp-<players>-<date>" / "wta-...";
+# "atp-doubles-..." is doubles (out of this project's tennis scope --
+# tennis_matches only carries ATP/WTA singles) and everything else under
+# MATCH_TAG_ID that isn't slugged this way is a futures/prop event that
+# slipped in under the same generic tag.
+_SINGLES_SLUG_RE = re.compile(r"^(atp|wta)-(?!doubles-)")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -196,88 +222,92 @@ def capture_matches(db: DatabaseManager) -> int:
     matched = 0
     unmatched = 0
 
-    for tag_id, tour in [(ATP_TAG_ID, "ATP"), (WTA_TAG_ID, "WTA")]:
-        events = _fetch_events(tag_id)
-        logger.info("Polymarket %s: %d events fetched", tour, len(events))
+    events = _fetch_events(MATCH_TAG_ID)
+    logger.info("Polymarket tennis matches (tag=%s): %d events fetched", MATCH_TAG_ID, len(events))
 
-        for event in events:
-            if not _is_match_event(event):
-                continue
+    for event in events:
+        slug_match = _SINGLES_SLUG_RE.match(event.get("slug", "") or "")
+        if not slug_match:
+            continue  # doubles / ITF / futures-under-same-tag -- out of scope
+        tour = slug_match.group(1).upper()
 
-            market = _find_match_market(event)
-            if not market:
-                continue
+        if not _is_match_event(event):
+            continue
 
-            parsed = _parse_outcomes(market)
-            if not parsed:
-                continue
+        market = _find_match_market(event)
+        if not market:
+            continue
 
-            names, prices = parsed
-            if len(names) != 2 or len(prices) != 2:
-                continue
+        parsed = _parse_outcomes(market)
+        if not parsed:
+            continue
 
-            # Player 1 = first listed (home), Player 2 = second (away)
-            player1, player2 = names[0], names[1]
-            prob1, prob2 = prices[0], prices[1]
+        names, prices = parsed
+        if len(names) != 2 or len(prices) != 2:
+            continue
 
-            # Skip markets with zero or near-zero prices (stale/resolved)
-            if prob1 < 0.01 or prob2 < 0.01:
-                continue
+        # Player 1 = first listed (home), Player 2 = second (away)
+        player1, player2 = names[0], names[1]
+        prob1, prob2 = prices[0], prices[1]
 
-            # Convert probabilities to American odds
-            try:
-                ml_home = prob_to_american(prob1)
-                ml_away = prob_to_american(prob2)
-            except (ValueError, ZeroDivisionError):
-                continue
+        # Skip markets with zero or near-zero prices (stale/resolved)
+        if prob1 < 0.01 or prob2 < 0.01:
+            continue
 
-            # Try to match to an existing tennis_matches row
-            match_row = _fuzzy_match_to_tennis_matches(db, player1, player2, tour)
+        # Convert probabilities to American odds
+        try:
+            ml_home = prob_to_american(prob1)
+            ml_away = prob_to_american(prob2)
+        except (ValueError, ZeroDivisionError):
+            continue
 
-            if match_row:
-                # Determine which Polymarket player maps to home/away
-                home_norm = _normalize_poly_name(match_row["home_player"])
-                p1_norm = _normalize_poly_name(player1)
+        # Try to match to an existing tennis_matches row
+        match_row = _fuzzy_match_to_tennis_matches(db, player1, player2, tour)
 
-                if p1_norm == home_norm or _name_contains(home_norm, p1_norm):
-                    home_ml, away_ml = ml_home, ml_away
-                    home_prob, away_prob = prob1, prob2
-                else:
-                    # Swap: player1 is actually the away player
-                    home_ml, away_ml = ml_away, ml_home
-                    home_prob, away_prob = prob2, prob1
+        if match_row:
+            # Determine which Polymarket player maps to home/away
+            home_norm = _normalize_poly_name(match_row["home_player"])
+            p1_norm = _normalize_poly_name(player1)
 
-                history_rows.append({
-                    "sport": "tennis",
-                    "matchup_id": match_row["id"],
-                    "event_id": match_row.get("game_id"),
-                    "game_date": str(match_row["match_date"]),
-                    "home_team_name": match_row["home_player"],
-                    "away_team_name": match_row["away_player"],
-                    "bookmaker_count": 1,
-                    "home_ml": home_ml,
-                    "away_ml": away_ml,
-                    "vegas_prob_home": round(home_prob, 4),
-                    "capture_key": capture_key,
-                    "captured_at": captured_at,
-                    "books": {
-                        "polymarket": {
-                            "ml_home": home_ml,
-                            "ml_away": away_ml,
-                        }
-                    },
-                })
-                matched += 1
-                logger.debug(
-                    "Matched: %s vs %s → tennis_matches id=%d (%s)",
-                    player1, player2, match_row["id"], tour,
-                )
+            if p1_norm == home_norm or _name_contains(home_norm, p1_norm):
+                home_ml, away_ml = ml_home, ml_away
+                home_prob, away_prob = prob1, prob2
             else:
-                unmatched += 1
-                logger.warning(
-                    "Polymarket match not found in tennis_matches: %s vs %s (%s)",
-                    player1, player2, tour,
-                )
+                # Swap: player1 is actually the away player
+                home_ml, away_ml = ml_away, ml_home
+                home_prob, away_prob = prob2, prob1
+
+            history_rows.append({
+                "sport": "tennis",
+                "matchup_id": match_row["id"],
+                "event_id": match_row.get("game_id"),
+                "game_date": str(match_row["match_date"]),
+                "home_team_name": match_row["home_player"],
+                "away_team_name": match_row["away_player"],
+                "bookmaker_count": 1,
+                "home_ml": home_ml,
+                "away_ml": away_ml,
+                "vegas_prob_home": round(home_prob, 4),
+                "capture_key": capture_key,
+                "captured_at": captured_at,
+                "books": {
+                    "polymarket": {
+                        "ml_home": home_ml,
+                        "ml_away": away_ml,
+                    }
+                },
+            })
+            matched += 1
+            logger.debug(
+                "Matched: %s vs %s → tennis_matches id=%d (%s)",
+                player1, player2, match_row["id"], tour,
+            )
+        else:
+            unmatched += 1
+            logger.warning(
+                "Polymarket match not found in tennis_matches: %s vs %s (%s)",
+                player1, player2, tour,
+            )
 
     if history_rows:
         insert_game_odds_history_rows(db, history_rows)
