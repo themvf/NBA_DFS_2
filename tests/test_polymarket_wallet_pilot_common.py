@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from ingest.polymarket_wallet_pilot_common import wilson_lower_bound
+from ingest.polymarket_wallet_pilot_common import (
+    rank_wallets_by_edge,
+    settle_market,
+    wilson_lower_bound,
+)
 
 
 def test_wilson_lower_bound_penalizes_small_samples_over_large_ones():
@@ -35,3 +39,42 @@ def test_wilson_lower_bound_handles_zero_markets():
 
 def test_wilson_lower_bound_monotonic_in_win_rate_at_fixed_n():
     assert wilson_lower_bound(9, 10) > wilson_lower_bound(5, 10) > wilson_lower_bound(1, 10)
+
+
+def test_settle_market_entry_avg_uses_all_buys_not_just_winners():
+    # Regression test for the 2026-08-19 finding: win_entry_avg (winning
+    # buys only) is a biased proxy that hides what a wallet paid on its
+    # LOSING buys. entry_avg (all buys) must reflect both.
+    fills = [
+        {"proxyWallet": "w1", "outcome": "A", "side": "BUY", "size": "10", "price": "0.9"},   # wins
+        {"proxyWallet": "w1", "outcome": "B", "side": "BUY", "size": "10", "price": "0.5"},   # loses
+    ]
+    settled = settle_market(fills, winner="A")
+    row = settled["w1"]
+    assert row["win_entry_avg"] == 0.9          # only the winning buy
+    assert row["entry_avg"] == 0.7               # both buys, size-weighted: (9+5)/20
+
+
+def test_rank_wallets_by_edge_penalizes_favorite_only_betting():
+    # The core finding this metric exists to fix: a wallet with a very
+    # high win rate but an equally high entry price (buying near-certain
+    # favorites at near-certain prices) has ~zero real edge, and must not
+    # outrank a wallet with a lower win rate but a much cheaper entry price
+    # and therefore genuine edge over what it paid.
+    favorite_bettor = {
+        "wallet": "w1", "name": "FavBettor", "markets": 100, "wins": 99,
+        "win_rate": 0.99, "pnl_usd": 10.0, "cost_usd": 100000.0, "roi": 0.0001,
+        "avg_entry_price": 0.99, "avg_winner_entry_price": 0.99,
+    }
+    edge_bettor = {
+        "wallet": "w2", "name": "EdgeBettor", "markets": 100, "wins": 65,
+        "win_rate": 0.65, "pnl_usd": 5000.0, "cost_usd": 50000.0, "roi": 0.1,
+        "avg_entry_price": 0.55, "avg_winner_entry_price": 0.55,
+    }
+    ranked = rank_wallets_by_edge([favorite_bettor, edge_bettor])
+    assert ranked[0]["wallet"] == "w2"
+    assert ranked[0]["edge_lower_bound"] > ranked[1]["edge_lower_bound"]
+    # The favorite-only bettor's edge should be small (near zero), not negative-huge
+    # or falsely large -- it's genuinely close to fairly priced.
+    fav_row = next(r for r in ranked if r["wallet"] == "w1")
+    assert -0.1 < fav_row["edge_lower_bound"] < 0.1

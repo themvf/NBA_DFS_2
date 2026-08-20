@@ -110,9 +110,30 @@ def fetch_market_fills(condition_id: str) -> List[Dict[str, Any]]:
 def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[str, Any]]:
     """Per-wallet P&L for one resolved market. Outcome-name agnostic --
     works identically for tennis player names, MLB team names, or an
-    earnings ticker's Yes/No -- no sport-specific change needed."""
+    earnings ticker's Yes/No -- no sport-specific change needed.
+
+    Tracks TWO separate entry-price averages, and the distinction matters:
+    `entry_avg` (all buys, any outcome) is the wallet's real average price
+    paid in this market -- the correct break-even bar for judging whether
+    a high win rate reflects skill or just paying full price for
+    near-certainty. `win_entry_avg` (winning buys only) is kept for
+    backward-compat display but is a biased, optimistic proxy -- it's
+    silent on what a wallet paid for the bets it LOST, so a wallet that
+    lost occasionally at a different price than it won at would look
+    better on win_entry_avg than it should. Found live 2026-08-19: sorting
+    purely by win-rate confidence surfaced wallets with ~99-100% win rates
+    and near-zero-to-NEGATIVE PnL on hundreds of thousands to millions of
+    dollars in cost (e.g. one wallet: 101 markets, 100% win, $7.5M cost,
+    $8,103 profit) -- entry_avg for those wallets sits at 0.99+, i.e. they
+    were simply buying near-certain favorites at near-certain prices. A
+    high win rate is not skill unless it exceeds what the price paid
+    already implied."""
     positions: Dict[str, Dict[str, float]] = defaultdict(
-        lambda: {"cash": 0.0, "cost": 0.0, "net_win": 0.0, "win_buy_size": 0.0, "win_buy_cash": 0.0}
+        lambda: {
+            "cash": 0.0, "cost": 0.0, "net_win": 0.0,
+            "buy_size": 0.0, "buy_cash": 0.0,
+            "win_buy_size": 0.0, "win_buy_cash": 0.0,
+        }
     )
     names: Dict[str, str] = {}
     for fill in fills:
@@ -135,6 +156,8 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
         pos["cash"] += cash
         if side == "BUY":
             pos["cost"] += size * price
+            pos["buy_size"] += size
+            pos["buy_cash"] += size * price
         if outcome == winner:
             pos["net_win"] += signed
             if side == "BUY":
@@ -146,6 +169,7 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
         out[wallet] = {
             "pnl": pos["cash"] + payout,
             "cost": pos["cost"],
+            "entry_avg": (pos["buy_cash"] / pos["buy_size"]) if pos["buy_size"] > 0 else None,
             "win_entry_avg": (pos["win_buy_cash"] / pos["win_buy_size"]) if pos["win_buy_size"] > 0 else None,
             "name": names.get(wallet, ""),
         }
@@ -153,7 +177,7 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
 
 
 def _new_agg() -> Dict[str, Any]:
-    return {"markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "win_entries": [], "name": ""}
+    return {"markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "entries": [], "win_entries": [], "name": ""}
 
 
 def analyze_resolved_markets(
@@ -177,6 +201,8 @@ def analyze_resolved_markets(
             agg["cost"] += stats["cost"]
             if stats["pnl"] > 0:
                 agg["wins"] += 1
+            if stats["entry_avg"] is not None:
+                agg["entries"].append(stats["entry_avg"])
             if stats["win_entry_avg"] is not None:
                 agg["win_entries"].append(stats["win_entry_avg"])
             if stats["name"]:
@@ -288,6 +314,8 @@ def analyze_and_partition(
             agg["cost"] += stats["cost"]
             if stats["pnl"] > 0:
                 agg["wins"] += 1
+            if stats["entry_avg"] is not None:
+                agg["entries"].append(stats["entry_avg"])
             if stats["win_entry_avg"] is not None:
                 agg["win_entries"].append(stats["win_entry_avg"])
             if stats["name"]:
@@ -315,6 +343,10 @@ def rank_wallets(wallet_stats: Dict[str, Any], min_markets: int) -> List[Dict[st
             "pnl_usd": round(agg["pnl"], 2),
             "cost_usd": round(agg["cost"], 2),
             "roi": round(agg["pnl"] / agg["cost"], 3) if agg["cost"] > 0 else None,
+            "avg_entry_price": (
+                round(sum(agg["entries"]) / len(agg["entries"]), 4)
+                if agg["entries"] else None
+            ),
             "avg_winner_entry_price": (
                 round(sum(agg["win_entries"]) / len(agg["win_entries"]), 3)
                 if agg["win_entries"] else None
@@ -330,17 +362,20 @@ ARCH_MIN_MARKETS = 8
 
 
 def derive_archetype_bands(qualified: List[Dict[str, Any]]) -> Dict[str, float]:
-    """Terciles of avg_winner_entry_price and win_rate among wallets that
-    clear ARCH_MIN_MARKETS, computed from THIS sport's own qualified-wallet
-    sample. Empirical, first-pass, descriptive -- NOT validated as
+    """Terciles of avg_entry_price and win_rate among wallets that clear
+    ARCH_MIN_MARKETS, computed from THIS sport's own qualified-wallet
+    sample. Uses avg_entry_price (all buys), NOT avg_winner_entry_price
+    (winning buys only, a biased proxy -- see settle_market's docstring for
+    why) -- switched 2026-08-19 alongside rank_wallets_by_edge for the same
+    reason. Empirical, first-pass, descriptive -- NOT validated as
     predictive until tested on its own held-out sample (that's what
     compare_dev_holdout's by_archetype breakdown is a first look at).
     Returns {} if there aren't enough eligible wallets to derive bands
     honestly (min 9, so each tercile has >=3)."""
-    eligible = [r for r in qualified if r["markets"] >= ARCH_MIN_MARKETS and r["avg_winner_entry_price"] is not None]
+    eligible = [r for r in qualified if r["markets"] >= ARCH_MIN_MARKETS and r.get("avg_entry_price") is not None]
     if len(eligible) < 9:
         return {}
-    entries = sorted(r["avg_winner_entry_price"] for r in eligible)
+    entries = sorted(r["avg_entry_price"] for r in eligible)
     win_rates = sorted(r["win_rate"] for r in eligible)
 
     def pct(seq: List[float], p: float) -> float:
@@ -362,7 +397,7 @@ def classify_with_bands(row: Dict[str, Any], bands: Dict[str, float]) -> str:
     rather than the earnings pilot's fixed numbers."""
     if not bands or row["markets"] < ARCH_MIN_MARKETS:
         return "unclassified"
-    entry = row.get("avg_winner_entry_price")
+    entry = row.get("avg_entry_price")
     if entry is None:
         return "unclassified"
     win = row["win_rate"]
@@ -484,10 +519,21 @@ def wilson_lower_bound(wins: int, n: int, z: float = 1.96) -> float:
 
 def rank_wallets_by_confidence(qualified: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """All qualified wallets, ranked by Wilson-lower-bound win rate instead
-    of raw PnL or raw win%. This is the primary skill-shaped ranking; PnL
-    and ROI leaderboards remain useful for other questions (who's moving
-    real money, who's capital-efficient) but neither is a trustworthy
-    "who's actually good" ranking on its own."""
+    of raw PnL or raw win%.
+
+    IMPORTANT, found live 2026-08-19: this fixes the small-sample problem
+    (a 5-for-5 wallet no longer outranks a 200-for-280 one) but is NOT a
+    skill ranking on its own -- it says nothing about the PRICE paid for
+    those wins. Sorting MLB wallets by this alone surfaced several with
+    ~99-100% win rates and 40-287 markets whose PnL was near zero or
+    NEGATIVE on huge cost (e.g. 101 markets, 100% win, $7.5M cost, $8,103
+    profit) -- they were simply buying near-certain favorites at
+    near-certain prices (avg entry ~0.99+). A high win rate earned by
+    paying full price for it is not edge. Use rank_wallets_by_edge for the
+    actual skill-shaped ranking; this function is kept because "who wins
+    almost every bet" is still a legitimate, distinct question (e.g.
+    identifying favorite-only bettors) -- it just isn't the same question
+    as "who has an edge"."""
     ranked = []
     for row in qualified:
         wlb = wilson_lower_bound(row["wins"], row["markets"])
@@ -504,6 +550,46 @@ def print_confidence_leaderboard(title: str, rows: List[Dict[str, Any]], limit: 
         print(
             f"{label:<28} {row['markets']:>4} {row['wins']:>4} {row['win_rate']*100:>4.0f}% "
             f"{row['wilson_lower_bound']*100:>8.1f}% {row['pnl_usd']:>10.2f} {row.get('archetype', '-'):<12}"
+        )
+
+
+def rank_wallets_by_edge(qualified: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """All qualified wallets with a usable entry price, ranked by
+    edge_lower_bound = Wilson-lower-bound(win rate) - avg_entry_price.
+
+    This is the actual skill-shaped ranking, and the reason both prior
+    metrics needed it: PnL rewards bet SIZE, raw/confidence-adjusted win
+    rate rewards betting only cheap favorites-into-certainty. Comparing a
+    CONSERVATIVE win-rate estimate against the AVERAGE PRICE PAID (not just
+    the price paid on winners -- see settle_market's entry_avg vs
+    win_entry_avg distinction) answers the actual question: even being
+    skeptical about this wallet's win rate, does it still beat what the
+    market was charging it? Same edge = our_prob - reference_prob
+    convention used throughout this project's bet-rating code
+    (model/soccer_bet_rating.py etc.), applied here with the wallet's own
+    historical entry price as the reference. A wallet buying at 0.99 and
+    winning 99% of the time has edge ~0; a wallet buying at 0.55 and
+    winning 70% of the time (even at its conservative Wilson floor of,
+    say, 63%) has real edge (~8pp)."""
+    eligible = [r for r in qualified if r.get("avg_entry_price") is not None]
+    ranked = []
+    for row in eligible:
+        wlb = wilson_lower_bound(row["wins"], row["markets"])
+        edge = wlb - row["avg_entry_price"]
+        ranked.append({**row, "wilson_lower_bound": round(wlb, 4), "edge_lower_bound": round(edge, 4)})
+    ranked.sort(key=lambda r: -r["edge_lower_bound"])
+    return ranked
+
+
+def print_edge_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 20) -> None:
+    print(f"\n=== {title} ===")
+    print(f"{'wallet/name':<28} {'mkts':>4} {'win%':>5} {'avg entry':>9} {'wilson_lb':>9} {'edge_lb':>8} {'pnl $':>10} {'archetype':<12}")
+    for row in rows[:limit]:
+        label = (row["name"] or row["wallet"][:10] + "...")[:27]
+        print(
+            f"{label:<28} {row['markets']:>4} {row['win_rate']*100:>4.0f}% "
+            f"{row['avg_entry_price']*100:>8.1f}% {row['wilson_lower_bound']*100:>8.1f}% "
+            f"{row['edge_lower_bound']*100:>+7.1f}% {row['pnl_usd']:>10.2f} {row.get('archetype', '-'):<12}"
         )
 
 

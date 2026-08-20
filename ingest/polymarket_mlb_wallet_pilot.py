@@ -60,10 +60,12 @@ from ingest.polymarket_wallet_pilot_common import (
     fetch_wallet_open_positions,
     paginate_events,
     print_confidence_leaderboard,
+    print_edge_leaderboard,
     print_leaderboard,
     print_roi_leaderboard,
     rank_wallets,
     rank_wallets_by_confidence,
+    rank_wallets_by_edge,
     rank_wallets_by_roi,
     select_balanced_dev_holdout,
 )
@@ -169,6 +171,7 @@ def run(max_markets: int, min_markets: int) -> Dict[str, Any]:
         row["archetype"] = classify_with_bands(row, bands)
     roi_leaderboard = rank_wallets_by_roi(qualified)
     confidence_leaderboard = rank_wallets_by_confidence(qualified)
+    edge_leaderboard = rank_wallets_by_edge(qualified)
 
     walkforward: Dict[str, Any] = {"status": "skipped", "reason": "not enough dated markets to split"}
     if dev_ids and holdout_ids:
@@ -207,6 +210,7 @@ def run(max_markets: int, min_markets: int) -> Dict[str, Any]:
         "leaderboard": qualified[:50],
         "roi_leaderboard": roi_leaderboard[:50],
         "confidence_leaderboard": confidence_leaderboard[:50],
+        "edge_leaderboard": edge_leaderboard[:50],
         "walkforward": walkforward,
     }
 
@@ -222,8 +226,12 @@ def main() -> int:
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(output, handle, indent=1)
 
+    print_edge_leaderboard(
+        f"MLB game-market wallet leaderboard by EDGE (Wilson win-rate floor minus avg entry price) (min {args.min_markets} markets)",
+        output["edge_leaderboard"],
+    )
     print_confidence_leaderboard(
-        f"MLB game-market wallet leaderboard by Wilson-confident win rate (min {args.min_markets} markets)",
+        f"MLB game-market wallet leaderboard by Wilson-confident win rate ONLY (not price-adjusted -- see edge above) (min {args.min_markets} markets)",
         output["confidence_leaderboard"],
     )
     print_leaderboard(f"MLB game-market wallet leaderboard by PnL (min {args.min_markets} markets)", output["leaderboard"])
