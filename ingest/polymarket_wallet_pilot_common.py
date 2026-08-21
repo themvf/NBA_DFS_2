@@ -169,15 +169,29 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
         out[wallet] = {
             "pnl": pos["cash"] + payout,
             "cost": pos["cost"],
-            "entry_avg": (pos["buy_cash"] / pos["buy_size"]) if pos["buy_size"] > 0 else None,
-            "win_entry_avg": (pos["win_buy_cash"] / pos["win_buy_size"]) if pos["win_buy_size"] > 0 else None,
+            # Raw totals (not yet divided) -- the caller must SUM these
+            # across markets before dividing, never average the per-market
+            # ratios. Dividing here and averaging ratios later was a real
+            # bug, caught live 2026-08-19: it weights every market equally
+            # regardless of stake, so one wallet with a single $2,000 bet
+            # in one market and 140 one-dollar bets in 140 others showed an
+            # "average entry price" near the tiny bets' price, wildly
+            # understating what they actually, mostly, paid.
+            "buy_size": pos["buy_size"],
+            "buy_cash": pos["buy_cash"],
+            "win_buy_size": pos["win_buy_size"],
+            "win_buy_cash": pos["win_buy_cash"],
             "name": names.get(wallet, ""),
         }
     return out
 
 
 def _new_agg() -> Dict[str, Any]:
-    return {"markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0, "entries": [], "win_entries": [], "name": ""}
+    return {
+        "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0,
+        "buy_size": 0.0, "buy_cash": 0.0, "win_buy_size": 0.0, "win_buy_cash": 0.0,
+        "name": "",
+    }
 
 
 def analyze_resolved_markets(
@@ -201,10 +215,10 @@ def analyze_resolved_markets(
             agg["cost"] += stats["cost"]
             if stats["pnl"] > 0:
                 agg["wins"] += 1
-            if stats["entry_avg"] is not None:
-                agg["entries"].append(stats["entry_avg"])
-            if stats["win_entry_avg"] is not None:
-                agg["win_entries"].append(stats["win_entry_avg"])
+            agg["buy_size"] += stats["buy_size"]
+            agg["buy_cash"] += stats["buy_cash"]
+            agg["win_buy_size"] += stats["win_buy_size"]
+            agg["win_buy_cash"] += stats["win_buy_cash"]
             if stats["name"]:
                 agg["name"] = stats["name"]
         if i % 25 == 0:
@@ -314,10 +328,10 @@ def analyze_and_partition(
             agg["cost"] += stats["cost"]
             if stats["pnl"] > 0:
                 agg["wins"] += 1
-            if stats["entry_avg"] is not None:
-                agg["entries"].append(stats["entry_avg"])
-            if stats["win_entry_avg"] is not None:
-                agg["win_entries"].append(stats["win_entry_avg"])
+            agg["buy_size"] += stats["buy_size"]
+            agg["buy_cash"] += stats["buy_cash"]
+            agg["win_buy_size"] += stats["win_buy_size"]
+            agg["win_buy_cash"] += stats["win_buy_cash"]
             if stats["name"]:
                 agg["name"] = stats["name"]
         if i % 25 == 0:
@@ -343,13 +357,17 @@ def rank_wallets(wallet_stats: Dict[str, Any], min_markets: int) -> List[Dict[st
             "pnl_usd": round(agg["pnl"], 2),
             "cost_usd": round(agg["cost"], 2),
             "roi": round(agg["pnl"] / agg["cost"], 3) if agg["cost"] > 0 else None,
+            # Size-weighted (dollars-in) across ALL of the wallet's markets,
+            # NOT an average of per-market ratios -- averaging ratios gives
+            # a $2 bet the same weight as a $2,000 bet and was a real bug
+            # (caught live 2026-08-19: a wallet with one large normally-
+            # priced position and many tiny longshot bets showed an
+            # "average entry price" near the tiny bets' price).
             "avg_entry_price": (
-                round(sum(agg["entries"]) / len(agg["entries"]), 4)
-                if agg["entries"] else None
+                round(agg["buy_cash"] / agg["buy_size"], 4) if agg["buy_size"] > 0 else None
             ),
             "avg_winner_entry_price": (
-                round(sum(agg["win_entries"]) / len(agg["win_entries"]), 3)
-                if agg["win_entries"] else None
+                round(agg["win_buy_cash"] / agg["win_buy_size"], 3) if agg["win_buy_size"] > 0 else None
             ),
         })
     qualified.sort(key=lambda w: -w["pnl_usd"])

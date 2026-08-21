@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from ingest.polymarket_wallet_pilot_common import (
+    _new_agg,
+    rank_wallets,
     rank_wallets_by_edge,
     settle_market,
     wilson_lower_bound,
@@ -41,18 +43,48 @@ def test_wilson_lower_bound_monotonic_in_win_rate_at_fixed_n():
     assert wilson_lower_bound(9, 10) > wilson_lower_bound(5, 10) > wilson_lower_bound(1, 10)
 
 
-def test_settle_market_entry_avg_uses_all_buys_not_just_winners():
-    # Regression test for the 2026-08-19 finding: win_entry_avg (winning
-    # buys only) is a biased proxy that hides what a wallet paid on its
-    # LOSING buys. entry_avg (all buys) must reflect both.
+def test_settle_market_tracks_all_buys_separately_from_winning_buys():
+    # Regression test for the 2026-08-19 finding: a "winning buys only"
+    # average is a biased proxy that hides what a wallet paid on its
+    # LOSING buys. settle_market returns raw (size, cash) totals for both
+    # -- the caller sums these across markets before dividing (see
+    # test_rank_wallets_weights_entry_price_by_dollars_not_by_market_count
+    # for why dividing per-market and then averaging ratios is wrong).
     fills = [
         {"proxyWallet": "w1", "outcome": "A", "side": "BUY", "size": "10", "price": "0.9"},   # wins
         {"proxyWallet": "w1", "outcome": "B", "side": "BUY", "size": "10", "price": "0.5"},   # loses
     ]
     settled = settle_market(fills, winner="A")
     row = settled["w1"]
-    assert row["win_entry_avg"] == 0.9          # only the winning buy
-    assert row["entry_avg"] == 0.7               # both buys, size-weighted: (9+5)/20
+    assert row["win_buy_size"] == 10 and row["win_buy_cash"] == 9.0   # only the winning buy
+    assert row["buy_size"] == 20 and row["buy_cash"] == 14.0          # both buys
+
+
+def test_rank_wallets_weights_entry_price_by_dollars_not_by_market_count():
+    # Regression test for a real bug caught live 2026-08-19: a wallet with
+    # ONE $2,000 bet at a normal price and 140 one-dollar longshot bets
+    # showed an "average entry price" near the tiny bets' price when
+    # per-market ratios were averaged unweighted -- massively understating
+    # what the wallet actually, mostly, paid. The correct average sums
+    # dollars-in and shares-in across ALL markets first, then divides once.
+    agg = _new_agg()
+    agg["markets"] = 2
+    agg["wins"] = 1
+    agg["pnl"] = 0.0
+    agg["cost"] = 2001.0
+    # Market 1: a real $2,000 position at price 0.50 (1000 shares)
+    agg["buy_size"] += 4000  # 2000/0.50
+    agg["buy_cash"] += 2000.0
+    # Market 2: a $1 longshot bet at price 0.02 (50 shares)
+    agg["buy_size"] += 50
+    agg["buy_cash"] += 1.0
+    wallet_stats = {"w1": agg}
+    qualified = rank_wallets(wallet_stats, min_markets=2)
+    row = qualified[0]
+    # Dollar-weighted average should sit close to 0.50 (the real position),
+    # not collapse toward 0.02 the way an unweighted mean of [0.50, 0.02]
+    # would (~0.26).
+    assert row["avg_entry_price"] > 0.45
 
 
 def test_rank_wallets_by_edge_penalizes_favorite_only_betting():
