@@ -78,3 +78,26 @@ def test_rank_wallets_by_edge_penalizes_favorite_only_betting():
     # or falsely large -- it's genuinely close to fairly priced.
     fav_row = next(r for r in ranked if r["wallet"] == "w1")
     assert -0.1 < fav_row["edge_lower_bound"] < 0.1
+
+
+def test_rank_wallets_by_edge_filters_out_tiny_stake_lottery_tickets():
+    # Regression test for a real bug caught live 2026-08-19: without a
+    # min_cost floor, the #1 MLB wallet by edge had 51 markets, 96% win
+    # rate, and $29.95 total cost -- a deep-longshot lottery-ticket buyer
+    # whose tiny average entry price makes any win at all look like a huge
+    # numeric edge. Same failure mode the ROI leaderboard's min_cost floor
+    # already guards against.
+    lottery_ticket_buyer = {
+        "wallet": "w1", "name": "TinyStakes", "markets": 51, "wins": 49,
+        "win_rate": 0.96, "pnl_usd": 28.13, "cost_usd": 29.95, "roi": 0.94,
+        "avg_entry_price": 0.02, "avg_winner_entry_price": 0.02,
+    }
+    real_wallet = {
+        "wallet": "w2", "name": "RealStakes", "markets": 100, "wins": 65,
+        "win_rate": 0.65, "pnl_usd": 5000.0, "cost_usd": 50000.0, "roi": 0.1,
+        "avg_entry_price": 0.55, "avg_winner_entry_price": 0.55,
+    }
+    ranked = rank_wallets_by_edge([lottery_ticket_buyer, real_wallet])
+    wallets = [r["wallet"] for r in ranked]
+    assert "w1" not in wallets
+    assert wallets == ["w2"]

@@ -553,9 +553,10 @@ def print_confidence_leaderboard(title: str, rows: List[Dict[str, Any]], limit: 
         )
 
 
-def rank_wallets_by_edge(qualified: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """All qualified wallets with a usable entry price, ranked by
-    edge_lower_bound = Wilson-lower-bound(win rate) - avg_entry_price.
+def rank_wallets_by_edge(qualified: List[Dict[str, Any]], min_cost: float = 1000.0) -> List[Dict[str, Any]]:
+    """All qualified wallets with a usable entry price and at least
+    min_cost total stake, ranked by edge_lower_bound =
+    Wilson-lower-bound(win rate) - avg_entry_price.
 
     This is the actual skill-shaped ranking, and the reason both prior
     metrics needed it: PnL rewards bet SIZE, raw/confidence-adjusted win
@@ -570,8 +571,17 @@ def rank_wallets_by_edge(qualified: List[Dict[str, Any]]) -> List[Dict[str, Any]
     historical entry price as the reference. A wallet buying at 0.99 and
     winning 99% of the time has edge ~0; a wallet buying at 0.55 and
     winning 70% of the time (even at its conservative Wilson floor of,
-    say, 63%) has real edge (~8pp)."""
-    eligible = [r for r in qualified if r.get("avg_entry_price") is not None]
+    say, 63%) has real edge (~8pp).
+
+    min_cost matters here for the SAME reason it matters for ROI (see
+    rank_wallets_by_roi), and this function initially shipped without it --
+    a real bug, caught live 2026-08-19: the unfiltered version's #1 MLB
+    wallet had 51 markets, a 96% win rate, and a $29.95 total cost. Deep-
+    longshot lottery-ticket buyers (average entry price a few cents, so ANY
+    win at all produces a large numeric edge) dominate the unfiltered
+    ranking exactly the way a $10 lucky trade dominated the unfiltered ROI
+    leaderboard before that fix."""
+    eligible = [r for r in qualified if r.get("avg_entry_price") is not None and r["cost_usd"] >= min_cost]
     ranked = []
     for row in eligible:
         wlb = wilson_lower_bound(row["wins"], row["markets"])
