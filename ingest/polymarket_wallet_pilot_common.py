@@ -127,11 +127,23 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
     $8,103 profit) -- entry_avg for those wallets sits at 0.99+, i.e. they
     were simply buying near-certain favorites at near-certain prices. A
     high win rate is not skill unless it exceeds what the price paid
-    already implied."""
+    already implied.
+
+    Also tracks sell_size/sell_cash -- NOT to compute an exit price (this
+    pilot doesn't model that), but because entry_avg is meaningless for a
+    wallet whose activity is mostly SELLING, not buying. Found live
+    2026-08-20 by pulling one top-"edge" wallet's actual trade history: it
+    was a market-making bot selling tiny fragmented lots (0.01, 30.88, 58
+    shares) of the underdog side across MLB games AND an unrelated Bitcoin-
+    price market, 279 sells vs 221 buys -- entry_avg, built only from its
+    incidental buy fills, described a wallet that doesn't really exist.
+    rank_wallets_by_edge filters on buy dominance (see that function) using
+    these totals."""
     positions: Dict[str, Dict[str, float]] = defaultdict(
         lambda: {
             "cash": 0.0, "cost": 0.0, "net_win": 0.0,
             "buy_size": 0.0, "buy_cash": 0.0,
+            "sell_size": 0.0, "sell_cash": 0.0,
             "win_buy_size": 0.0, "win_buy_cash": 0.0,
         }
     )
@@ -158,6 +170,9 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
             pos["cost"] += size * price
             pos["buy_size"] += size
             pos["buy_cash"] += size * price
+        else:
+            pos["sell_size"] += size
+            pos["sell_cash"] += size * price
         if outcome == winner:
             pos["net_win"] += signed
             if side == "BUY":
@@ -179,6 +194,8 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
             # understating what they actually, mostly, paid.
             "buy_size": pos["buy_size"],
             "buy_cash": pos["buy_cash"],
+            "sell_size": pos["sell_size"],
+            "sell_cash": pos["sell_cash"],
             "win_buy_size": pos["win_buy_size"],
             "win_buy_cash": pos["win_buy_cash"],
             "name": names.get(wallet, ""),
@@ -189,7 +206,8 @@ def settle_market(fills: List[Dict[str, Any]], winner: str) -> Dict[str, Dict[st
 def _new_agg() -> Dict[str, Any]:
     return {
         "markets": 0, "wins": 0, "pnl": 0.0, "cost": 0.0,
-        "buy_size": 0.0, "buy_cash": 0.0, "win_buy_size": 0.0, "win_buy_cash": 0.0,
+        "buy_size": 0.0, "buy_cash": 0.0, "sell_size": 0.0, "sell_cash": 0.0,
+        "win_buy_size": 0.0, "win_buy_cash": 0.0,
         "name": "",
     }
 
@@ -217,6 +235,8 @@ def analyze_resolved_markets(
                 agg["wins"] += 1
             agg["buy_size"] += stats["buy_size"]
             agg["buy_cash"] += stats["buy_cash"]
+            agg["sell_size"] += stats["sell_size"]
+            agg["sell_cash"] += stats["sell_cash"]
             agg["win_buy_size"] += stats["win_buy_size"]
             agg["win_buy_cash"] += stats["win_buy_cash"]
             if stats["name"]:
@@ -330,6 +350,8 @@ def analyze_and_partition(
                 agg["wins"] += 1
             agg["buy_size"] += stats["buy_size"]
             agg["buy_cash"] += stats["buy_cash"]
+            agg["sell_size"] += stats["sell_size"]
+            agg["sell_cash"] += stats["sell_cash"]
             agg["win_buy_size"] += stats["win_buy_size"]
             agg["win_buy_cash"] += stats["win_buy_cash"]
             if stats["name"]:
@@ -368,6 +390,16 @@ def rank_wallets(wallet_stats: Dict[str, Any], min_markets: int) -> List[Dict[st
             ),
             "avg_winner_entry_price": (
                 round(agg["win_buy_cash"] / agg["win_buy_size"], 3) if agg["win_buy_size"] > 0 else None
+            ),
+            # Fraction of this wallet's total dollar volume (buy+sell) that
+            # was BUYING. Low values mean a market-maker/liquidity-provider
+            # pattern, not a directional bettor -- avg_entry_price (built
+            # only from buy fills) doesn't describe such a wallet's real
+            # strategy at all (see settle_market's docstring for the
+            # concrete case that surfaced this).
+            "buy_dominance": (
+                round(agg["buy_cash"] / (agg["buy_cash"] + agg["sell_cash"]), 3)
+                if (agg["buy_cash"] + agg["sell_cash"]) > 0 else None
             ),
         })
     qualified.sort(key=lambda w: -w["pnl_usd"])
@@ -571,10 +603,12 @@ def print_confidence_leaderboard(title: str, rows: List[Dict[str, Any]], limit: 
         )
 
 
-def rank_wallets_by_edge(qualified: List[Dict[str, Any]], min_cost: float = 1000.0) -> List[Dict[str, Any]]:
-    """All qualified wallets with a usable entry price and at least
-    min_cost total stake, ranked by edge_lower_bound =
-    Wilson-lower-bound(win rate) - avg_entry_price.
+def rank_wallets_by_edge(
+    qualified: List[Dict[str, Any]], min_cost: float = 1000.0, min_buy_dominance: float = 0.6
+) -> List[Dict[str, Any]]:
+    """All qualified DIRECTIONAL-BUYER wallets with at least min_cost total
+    stake, ranked by edge_lower_bound = Wilson-lower-bound(win rate) -
+    avg_entry_price.
 
     This is the actual skill-shaped ranking, and the reason both prior
     metrics needed it: PnL rewards bet SIZE, raw/confidence-adjusted win
@@ -598,8 +632,24 @@ def rank_wallets_by_edge(qualified: List[Dict[str, Any]], min_cost: float = 1000
     longshot lottery-ticket buyers (average entry price a few cents, so ANY
     win at all produces a large numeric edge) dominate the unfiltered
     ranking exactly the way a $10 lucky trade dominated the unfiltered ROI
-    leaderboard before that fix."""
-    eligible = [r for r in qualified if r.get("avg_entry_price") is not None and r["cost_usd"] >= min_cost]
+    leaderboard before that fix.
+
+    min_buy_dominance excludes market-maker/liquidity-provider wallets --
+    another real bug, caught live 2026-08-20 by pulling one top-"edge"
+    wallet's actual trade history: it was a bot selling tiny fragmented
+    lots of the underdog side (279 sells vs 221 buys) across MLB games AND
+    an unrelated Bitcoin-price market. avg_entry_price is built only from
+    buy fills, so for a wallet whose real activity is mostly selling, it
+    describes a strategy the wallet isn't actually running. Requiring buy
+    dollars to be the clear majority (default 60%) of total (buy+sell)
+    dollar volume keeps this ranking to wallets it can actually describe."""
+    eligible = [
+        r for r in qualified
+        if r.get("avg_entry_price") is not None
+        and r["cost_usd"] >= min_cost
+        and r.get("buy_dominance") is not None
+        and r["buy_dominance"] >= min_buy_dominance
+    ]
     ranked = []
     for row in eligible:
         wlb = wilson_lower_bound(row["wins"], row["markets"])
@@ -611,13 +661,15 @@ def rank_wallets_by_edge(qualified: List[Dict[str, Any]], min_cost: float = 1000
 
 def print_edge_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 20) -> None:
     print(f"\n=== {title} ===")
-    print(f"{'wallet/name':<28} {'mkts':>4} {'win%':>5} {'avg entry':>9} {'wilson_lb':>9} {'edge_lb':>8} {'pnl $':>10} {'archetype':<12}")
+    print(f"{'wallet/name':<28} {'mkts':>4} {'win%':>5} {'avg entry':>9} {'wilson_lb':>9} {'edge_lb':>8} {'buy%':>5} {'pnl $':>10} {'archetype':<12}")
     for row in rows[:limit]:
         label = (row["name"] or row["wallet"][:10] + "...")[:27]
+        buy_dom = row.get("buy_dominance")
         print(
             f"{label:<28} {row['markets']:>4} {row['win_rate']*100:>4.0f}% "
             f"{row['avg_entry_price']*100:>8.1f}% {row['wilson_lower_bound']*100:>8.1f}% "
-            f"{row['edge_lower_bound']*100:>+7.1f}% {row['pnl_usd']:>10.2f} {row.get('archetype', '-'):<12}"
+            f"{row['edge_lower_bound']*100:>+7.1f}% {(buy_dom*100 if buy_dom is not None else 0):>4.0f}% "
+            f"{row['pnl_usd']:>10.2f} {row.get('archetype', '-'):<12}"
         )
 
 

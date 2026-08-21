@@ -96,12 +96,12 @@ def test_rank_wallets_by_edge_penalizes_favorite_only_betting():
     favorite_bettor = {
         "wallet": "w1", "name": "FavBettor", "markets": 100, "wins": 99,
         "win_rate": 0.99, "pnl_usd": 10.0, "cost_usd": 100000.0, "roi": 0.0001,
-        "avg_entry_price": 0.99, "avg_winner_entry_price": 0.99,
+        "avg_entry_price": 0.99, "avg_winner_entry_price": 0.99, "buy_dominance": 1.0,
     }
     edge_bettor = {
         "wallet": "w2", "name": "EdgeBettor", "markets": 100, "wins": 65,
         "win_rate": 0.65, "pnl_usd": 5000.0, "cost_usd": 50000.0, "roi": 0.1,
-        "avg_entry_price": 0.55, "avg_winner_entry_price": 0.55,
+        "avg_entry_price": 0.55, "avg_winner_entry_price": 0.55, "buy_dominance": 1.0,
     }
     ranked = rank_wallets_by_edge([favorite_bettor, edge_bettor])
     assert ranked[0]["wallet"] == "w2"
@@ -122,14 +122,54 @@ def test_rank_wallets_by_edge_filters_out_tiny_stake_lottery_tickets():
     lottery_ticket_buyer = {
         "wallet": "w1", "name": "TinyStakes", "markets": 51, "wins": 49,
         "win_rate": 0.96, "pnl_usd": 28.13, "cost_usd": 29.95, "roi": 0.94,
-        "avg_entry_price": 0.02, "avg_winner_entry_price": 0.02,
+        "avg_entry_price": 0.02, "avg_winner_entry_price": 0.02, "buy_dominance": 1.0,
     }
     real_wallet = {
         "wallet": "w2", "name": "RealStakes", "markets": 100, "wins": 65,
         "win_rate": 0.65, "pnl_usd": 5000.0, "cost_usd": 50000.0, "roi": 0.1,
-        "avg_entry_price": 0.55, "avg_winner_entry_price": 0.55,
+        "avg_entry_price": 0.55, "avg_winner_entry_price": 0.55, "buy_dominance": 1.0,
     }
     ranked = rank_wallets_by_edge([lottery_ticket_buyer, real_wallet])
     wallets = [r["wallet"] for r in ranked]
     assert "w1" not in wallets
     assert wallets == ["w2"]
+
+
+def test_rank_wallets_by_edge_excludes_market_maker_bots():
+    # Regression test for a real bug caught live 2026-08-20: a top-"edge"
+    # wallet turned out to be a market-making bot whose activity was
+    # mostly SELLING (279 sells vs 221 buys, tiny fragmented lots), across
+    # MLB games and an unrelated Bitcoin-price market. avg_entry_price,
+    # built only from buy fills, describes a strategy such a wallet isn't
+    # actually running -- it must be excluded from a ranking that assumes
+    # directional buy-and-hold behavior.
+    market_maker = {
+        "wallet": "w1", "name": "BotWallet", "markets": 100, "wins": 60,
+        "win_rate": 0.6, "pnl_usd": 500.0, "cost_usd": 5000.0, "roi": 0.1,
+        "avg_entry_price": 0.03, "avg_winner_entry_price": 0.03,
+        "buy_dominance": 0.35,  # mostly selling
+    }
+    real_wallet = {
+        "wallet": "w2", "name": "RealStakes", "markets": 100, "wins": 65,
+        "win_rate": 0.65, "pnl_usd": 5000.0, "cost_usd": 50000.0, "roi": 0.1,
+        "avg_entry_price": 0.55, "avg_winner_entry_price": 0.55,
+        "buy_dominance": 0.95,  # genuinely a directional buyer
+    }
+    ranked = rank_wallets_by_edge([market_maker, real_wallet])
+    wallets = [r["wallet"] for r in ranked]
+    assert "w1" not in wallets
+    assert wallets == ["w2"]
+
+
+def test_rank_wallets_computes_buy_dominance_from_totals():
+    agg = _new_agg()
+    agg["markets"] = 5
+    agg["wins"] = 3
+    agg["pnl"] = 10.0
+    agg["cost"] = 100.0
+    agg["buy_size"] = 100
+    agg["buy_cash"] = 40.0   # $40 bought
+    agg["sell_size"] = 50
+    agg["sell_cash"] = 60.0  # $60 sold -- mostly a seller
+    row = rank_wallets({"w1": agg}, min_markets=5)[0]
+    assert row["buy_dominance"] == 0.4  # 40 / (40 + 60)
