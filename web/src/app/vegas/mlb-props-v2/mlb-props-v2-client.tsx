@@ -16,6 +16,7 @@ import type {
   MlbPropProgramRow,
 } from "@/db/queries";
 import { disclosure, verdict as auditVerdict, multiplicityNote } from "@/lib/alert-audit-policy";
+import MlbVegasTabs from "../mlb-tabs";
 import {
   ENROLLED_DETECTOR_VERSION,
   LIVE_ARM_MIN_EV_PCT,
@@ -694,20 +695,12 @@ export default function MlbPropsV2Client({
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
+      <MlbVegasTabs active="props" />
       <header>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">MLB Prop Board</h1>
-          <a href="/vegas/mlb-props" className="text-xs text-gray-500 underline hover:text-gray-700">
-            compare with the original page →
-          </a>
-        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">MLB Prop Board</h1>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-600">
           Pitcher strikeouts, outs, hits allowed, earned runs and batter total bases — DraftKings
-          versus Pinnacle. Game-line alerts stay on the{" "}
-          <a href="/vegas?sport=mlb" className="underline">
-            MLB Vegas board
-          </a>
-          .
+          versus Pinnacle. Game-line alerts live on the Line Movement tab.
         </p>
         <p className="mt-2 text-[11px] text-gray-400">
           Evaluated {evaluatedAt.slice(0, 16).replace("T", " ")} UTC · live/started split is computed

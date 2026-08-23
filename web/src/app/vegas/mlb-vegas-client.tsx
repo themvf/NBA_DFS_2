@@ -35,6 +35,7 @@ import {
   type MlbMovementShape,
 } from "@/lib/mlb-movement-shape";
 import { MLB_SNAPSHOT_TIMES_ET, getMlbSnapshotAtTime } from "@/lib/mlb-movement-snapshot";
+import MlbVegasTabs from "./mlb-tabs";
 
 type Props = {
   queryDate: string;
@@ -404,6 +405,7 @@ export default function MlbVegasClient({
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
+      <MlbVegasTabs active="board" />
       <header className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-5 text-white shadow-lg sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div>

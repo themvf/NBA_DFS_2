@@ -39,8 +39,9 @@ const PAGE_LINKS: Array<{
   { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },
   { href: "/vegas/detectors", label: "Detectors" },
-  { href: "/vegas/mlb-props", label: "Vegas Props", sports: ["mlb"] },
-  { href: "/vegas/mlb-props-v2", label: "Prop Board (v2)", sports: ["mlb"] },
+  // One entry, not three: the MLB Vegas views (line movement, props, the
+  // original props table) are reachable from the tab strip on each of them.
+  { href: "/vegas/mlb-props-v2", label: "Vegas Props", sports: ["mlb"] },
   { href: "/vegas/wimbledon", label: "Wimbledon", sports: ["tennis"] },
   { href: "/elo", label: "Elo / Power", sports: ["soccer"] },
   { href: "/stats", label: "Team Stats", sports: ["nba", "mlb"] },
