@@ -40,6 +40,7 @@ const PAGE_LINKS: Array<{
   { href: "/vegas", label: "Vegas" },
   { href: "/vegas/detectors", label: "Detectors" },
   { href: "/vegas/mlb-props", label: "Vegas Props", sports: ["mlb"] },
+  { href: "/vegas/mlb-props-v2", label: "Prop Board (v2)", sports: ["mlb"] },
   { href: "/vegas/wimbledon", label: "Wimbledon", sports: ["tennis"] },
   { href: "/elo", label: "Elo / Power", sports: ["soccer"] },
   { href: "/stats", label: "Team Stats", sports: ["nba", "mlb"] },

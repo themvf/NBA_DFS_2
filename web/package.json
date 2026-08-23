@@ -18,6 +18,7 @@
     "test:redraft": "node --import tsx ./scripts/test-redraft.ts",
     "test:auto-draft": "node --import tsx ./scripts/test-auto-draft.ts",
     "test:local-auto-draft": "node --import tsx ./scripts/test-local-auto-draft.ts",
+    "test:mlb-prop-board": "node --import tsx ./scripts/test-mlb-prop-board.ts",
     "test:mlb-movement-snapshot": "node --import tsx ./scripts/test-mlb-movement-snapshot.ts",
     "test:tennis-elo-policy": "node --import tsx ./scripts/test-tennis-elo-policy.ts",
     "test:fantasy-football": "node --import tsx ./scripts/test-fantasy-football.ts",

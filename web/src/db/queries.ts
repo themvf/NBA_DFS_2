@@ -12348,3 +12348,81 @@ export async function getSoccerGroupFixtures(): Promise<SoccerGroupFixtureRow[]>
     awayName: String(r.awayName),
   }));
 }
+
+// ── MLB prop measurement-program enrollment ────────────────────────────────
+// Progress toward the FROZEN floors of `mlb-prop-program-v1` (registered
+// 2026-08-15, verdict 2026-10-04). Counts only.
+//
+// This deliberately does NOT recompute mean CLV or its date-clustered CI. That
+// metric is frozen at registration and implemented once, in
+// `model/mlb_prop_program.py::load_clv_observations` — it needs a same-book
+// same-line join against `prop_odds_history` and drops any alert whose line
+// moved (the Herrera rule). Reimplementing it in TypeScript would put a
+// pre-registered primary metric behind two independent implementations that
+// can silently disagree, which is the drift hazard already documented for
+// DETECTOR_REGISTRY. The page shows enrollment, and names the CLI as the
+// source of the estimate.
+
+export type MlbPropProgramRow = {
+  /** Alerts fired by the enrolled live-arm detector version. */
+  liveTotal: number;
+  /** Of those, graded won/lost — the settled floor's numerator. */
+  liveSettled: number;
+  /** Distinct game dates among settled live-arm alerts — bootstrap clusters. */
+  liveSettledDates: number;
+  /** Control-arm (`prop_line_gap`) volume, for the instrument check. */
+  controlTotal: number;
+  controlSettled: number;
+  /** Execution-book split among settled live-arm alerts, largest first. */
+  execBooks: { book: string; n: number }[];
+  /** Most recent live-arm alert, ISO, or null. */
+  lastAlertAt: string | null;
+};
+
+export async function getMlbPropProgram(
+  enrolledDetectorVersion: string,
+): Promise<MlbPropProgramRow> {
+  const rows = await db.execute(sql`
+    WITH live AS (
+      SELECT game_date, outcome,
+             COALESCE(details_json->>'exec_book', 'draftkings') AS exec_book,
+             created_at
+      FROM line_alerts
+      WHERE sport = 'mlb' AND alert_type = 'dk_prop_value'
+        AND details_json->>'detector_version' = ${enrolledDetectorVersion}
+    ),
+    ctl AS (
+      SELECT outcome FROM line_alerts
+      WHERE sport = 'mlb' AND alert_type = 'prop_line_gap'
+    )
+    SELECT
+      (SELECT COUNT(*) FROM live) AS "liveTotal",
+      (SELECT COUNT(*) FROM live WHERE outcome IN ('won','lost')) AS "liveSettled",
+      (SELECT COUNT(DISTINCT game_date) FROM live
+        WHERE outcome IN ('won','lost') AND game_date IS NOT NULL) AS "liveSettledDates",
+      (SELECT COUNT(*) FROM ctl) AS "controlTotal",
+      (SELECT COUNT(*) FROM ctl WHERE outcome IN ('won','lost')) AS "controlSettled",
+      (SELECT MAX(created_at)::text FROM live) AS "lastAlertAt",
+      (SELECT COALESCE(json_agg(x ORDER BY x.n DESC), '[]'::json) FROM (
+         SELECT exec_book AS book, COUNT(*)::int AS n
+         FROM live WHERE outcome IN ('won','lost')
+         GROUP BY exec_book
+       ) x) AS "execBooks"
+  `);
+  const r = (rows.rows[0] ?? {}) as Record<string, unknown>;
+  const books = r.execBooks;
+  return {
+    liveTotal: Number(r.liveTotal ?? 0),
+    liveSettled: Number(r.liveSettled ?? 0),
+    liveSettledDates: Number(r.liveSettledDates ?? 0),
+    controlTotal: Number(r.controlTotal ?? 0),
+    controlSettled: Number(r.controlSettled ?? 0),
+    execBooks: Array.isArray(books)
+      ? (books as { book: string; n: number }[]).map((b) => ({
+          book: String(b.book),
+          n: Number(b.n),
+        }))
+      : [],
+    lastAlertAt: r.lastAlertAt != null ? String(r.lastAlertAt) : null,
+  };
+}
