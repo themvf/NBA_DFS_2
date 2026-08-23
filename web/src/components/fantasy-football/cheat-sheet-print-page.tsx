@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getFantasyRankings, getLatestRankingSet } from "@/db/queries-fantasy-football";
 import { CHEAT_SHEET_VARIANTS, type CheatSheetVariant } from "@/lib/fantasy-football/cheat-sheet";
 import CheatSheetView from "./cheat-sheet-view";
+import PrintButton from "./print-button";
 
 /**
  * Shared shell for every printable cheat sheet.
@@ -42,8 +43,8 @@ export default async function CheatSheetPrintPage({
       <div>
         <p className="text-sm font-bold">{config.label}</p>
         <p className="text-xs text-muted-foreground">
-          {config.context}. Print in <strong>landscape</strong> with background
-          graphics off — fits one page.
+          {config.context}. Press <strong>Print</strong>, then choose{" "}
+          <strong>landscape</strong> — fits one page.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -59,6 +60,7 @@ export default async function CheatSheetPrintPage({
         <Link href={backHref} className="rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-muted">
           {backLabel}
         </Link>
+        <PrintButton />
       </div>
     </div>
 
