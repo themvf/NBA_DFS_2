@@ -6713,6 +6713,7 @@ export type TennisBetRow = {
   ev: number | null;
   stars: number;
   status: string;
+  modelVersion: string;
 };
 
 // Rated moneyline bets (pending + settled), best-rated first. Joins the match
@@ -6733,6 +6734,7 @@ export async function getTennisBets(limit = 100, tournament?: string): Promise<T
       tb.ev              AS "ev",
       tb.stars           AS "stars",
       tb.status          AS "status",
+      tb.model_version   AS "modelVersion",
       tm.match_date      AS "matchDate",
       tm.commence_time   AS "commenceTime",
       tm.home_player || ' vs ' || tm.away_player AS "fixture"
@@ -6757,6 +6759,7 @@ export async function getTennisBets(limit = 100, tournament?: string): Promise<T
     ev: r.ev != null ? Number(r.ev) : null,
     stars: Number(r.stars),
     status: String(r.status ?? "pending"),
+    modelVersion: String(r.modelVersion ?? ""),
   }));
 }
 
@@ -6773,9 +6776,33 @@ export type TennisBetBacktestRow = {
 // tennis-data.co.uk settlement job grades bets — the panel renders its structure regardless.
 // stars=0 is the client-aggregated 'All' rollup (computed in the component).
 // tournament: optional filter (e.g. "Wimbledon") — undefined returns all tours/events.
+// Found live 2026-08-23: this query used to pool EVERY model_version ever
+// written into the same star buckets -- mixing the superseded "tennis-ml-v1"
+// Elo-blend methodology (real, sometimes-large edge) with the current
+// "tennis-ml-v2" self-capping methodology (our_prob = market, edge ~= 0 by
+// construction) under one "5 stars" row. That's exactly the mixing this
+// project's own standing rule forbids everywhere else ("model_version
+// stamped on every row so a model change never silently mixes old and new
+// recommendations in the backtest" -- see model/tennis_bets.py, soccer_bet_
+// rating.py). It produced a 5-star row with expected/realized win% both
+// ~50% and ROI -6.9% -- exactly what "old high-star calls" pooled with "new
+// vig-priced calls mislabeled by frozen historical stars" would look like,
+// and is undiagnosable as a calibration signal. Filtered to the latest
+// model_version only, same `latest` CTE pattern already used for MLB
+// (getMlbActionabilityEvidence et al). Older, locked/settled rows remain in
+// the full ledger (getTennisBets) as an intentional immutable audit trail --
+// this filter only affects the CALIBRATION rollup, which must not blur two
+// different rating methodologies together.
 export async function getTennisBetBacktest(tournament?: string): Promise<TennisBetBacktestRow[]> {
   const tournamentFilter = tournament ? sql`AND tm.tournament = ${tournament}` : sql``;
   const rows = await db.execute(sql`
+    WITH latest AS (
+      SELECT model_version FROM tennis_bets
+      WHERE bet_type = 'moneyline'
+      GROUP BY model_version
+      ORDER BY MAX(created_at) DESC
+      LIMIT 1
+    )
     SELECT
       tb.stars                                              AS "stars",
       COUNT(*)                                              AS "n",
@@ -6788,6 +6815,7 @@ export async function getTennisBetBacktest(tournament?: string): Promise<TennisB
     FROM tennis_bets tb
     JOIN tennis_matches tm ON tm.id = tb.match_id
     WHERE tb.status IN ('won', 'lost') AND tb.bet_type = 'moneyline'
+      AND tb.model_version = (SELECT model_version FROM latest)
       ${tournamentFilter}
     GROUP BY tb.stars
     ORDER BY tb.stars DESC
@@ -6804,6 +6832,43 @@ export async function getTennisBetBacktest(tournament?: string): Promise<TennisB
       brier: r.brier != null ? Number(r.brier) : null,
     };
   });
+}
+
+export type TennisLegacyBetSummary = {
+  currentModelVersion: string | null;
+  legacySettledCount: number;
+};
+
+// How many SETTLED moneyline bets are excluded from getTennisBetBacktest
+// because they were rated under a superseded model_version. Surfaced in the
+// UI so the exclusion is visible, not silent (same "report exclusions,
+// never drop them quietly" discipline as every other ledger in this project).
+export async function getTennisLegacyBetSummary(tournament?: string): Promise<TennisLegacyBetSummary> {
+  const tournamentFilter = tournament ? sql`AND tm.tournament = ${tournament}` : sql``;
+  const rows = await db.execute(sql`
+    WITH latest AS (
+      SELECT model_version FROM tennis_bets
+      WHERE bet_type = 'moneyline'
+      GROUP BY model_version
+      ORDER BY MAX(created_at) DESC
+      LIMIT 1
+    )
+    SELECT
+      (SELECT model_version FROM latest) AS "currentModelVersion",
+      COUNT(*) FILTER (
+        WHERE tb.status IN ('won', 'lost')
+          AND tb.model_version <> (SELECT model_version FROM latest)
+      ) AS "legacySettledCount"
+    FROM tennis_bets tb
+    JOIN tennis_matches tm ON tm.id = tb.match_id
+    WHERE tb.bet_type = 'moneyline'
+      ${tournamentFilter}
+  `);
+  const r = (rows.rows as Record<string, unknown>[])[0];
+  return {
+    currentModelVersion: r?.currentModelVersion != null ? String(r.currentModelVersion) : null,
+    legacySettledCount: r?.legacySettledCount != null ? Number(r.legacySettledCount) : 0,
+  };
 }
 
 export type TennisFavoriteDogRow = {
