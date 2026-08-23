@@ -2,7 +2,7 @@
 
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { TennisMatchRow, TennisBetRow, TennisBetBacktestRow, TennisEloDashboard, MlbLineMovementRow, LineAlertRow, LineAlertBacktestRow, DetectorHealthRow } from "@/db/queries";
+import type { TennisMatchRow, TennisBetRow, TennisBetBacktestRow, TennisLegacyBetSummary, TennisEloDashboard, MlbLineMovementRow, LineAlertRow, LineAlertBacktestRow, DetectorHealthRow } from "@/db/queries";
 import LineMovementPanel from "./line-movement-panel";
 import LineAlertsPanel from "./line-alerts-panel";
 import DetectorHealthPanel from "./detector-health-panel";
@@ -162,7 +162,17 @@ function StatusPill({ status }: { status: string }) {
 // Renders its full structure even before any bet is settled, so the analytics
 // surface exists from day one. Realized win%/ROI populate once the tennis-data.co.uk
 // settlement job grades bets (status won/lost).
-export function TennisResults({ bets, backtest }: { bets: TennisBetRow[]; backtest: TennisBetBacktestRow[] }) {
+export function TennisResults({
+  bets,
+  backtest,
+  legacyBetSummary,
+}: {
+  bets: TennisBetRow[];
+  backtest: TennisBetBacktestRow[];
+  legacyBetSummary: TennisLegacyBetSummary;
+}) {
+  const isLegacy = (b: TennisBetRow) =>
+    legacyBetSummary.currentModelVersion != null && b.modelVersion !== legacyBetSummary.currentModelVersion;
   const settled = bets.filter((b) => b.status === "won" || b.status === "lost");
   const won = settled.filter((b) => b.status === "won").length;
   const lost = settled.filter((b) => b.status === "lost").length;
@@ -226,6 +236,13 @@ export function TennisResults({ bets, backtest }: { bets: TennisBetRow[]; backte
           Calibration on settled bets: realized win% should meet or beat expected (our_prob) in each
           star tier. ROI is priced at each bet&rsquo;s true odds. Populates once tennis-data.co.uk results grade the bets.
         </p>
+        {legacyBetSummary.legacySettledCount > 0 && (
+          <p className="text-[11px] text-amber-500 mb-2">
+            Filtered to {legacyBetSummary.currentModelVersion} (current methodology). {legacyBetSummary.legacySettledCount} settled
+            bet{legacyBetSummary.legacySettledCount === 1 ? "" : "s"} from a superseded model version — pooling those in would
+            blur two different rating methodologies together — are excluded here but still shown, marked, in the full ledger below.
+          </p>
+        )}
         {backtest.length === 0 ? (
           <div className="rounded border border-dashed bg-muted/20 p-4 text-center text-xs text-muted-foreground">
             No settled bets yet. The {pending} pending recommendations grade automatically once the
@@ -289,23 +306,36 @@ export function TennisResults({ bets, backtest }: { bets: TennisBetRow[]; backte
                 </tr>
               </thead>
               <tbody>
-                {bets.map((b) => (
-                  <tr key={b.id} className="border-b last:border-0 hover:bg-accent/40">
-                    <td className="px-3 py-2"><Stars n={b.stars} /></td>
-                    <td className="px-3 py-2 font-medium">{b.selectionLabel}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">{b.fixture}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmtPct(b.ourProb)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{fmtPct(b.marketProb)}</td>
-                    <td className={`px-2 py-2 text-center tabular-nums ${(b.edge ?? 0) > 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                      {fmtSignedPp(b.edge)}
-                    </td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmtMl(b.marketOdds)}</td>
-                    <td className={`px-2 py-2 text-center tabular-nums ${(b.ev ?? 0) > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
-                      {fmtSignedPp(b.ev)}
-                    </td>
-                    <td className="px-2 py-2 text-center"><StatusPill status={b.status} /></td>
-                  </tr>
-                ))}
+                {bets.map((b) => {
+                  const legacy = isLegacy(b);
+                  return (
+                    <tr key={b.id} className={`border-b last:border-0 hover:bg-accent/40 ${legacy ? "opacity-60" : ""}`}>
+                      <td className="px-3 py-2">
+                        <Stars n={b.stars} />
+                        {legacy && (
+                          <span
+                            className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[9px] font-medium uppercase text-muted-foreground"
+                            title={`Rated under ${b.modelVersion}, a superseded methodology — not comparable to current ${legacyBetSummary.currentModelVersion} ratings`}
+                          >
+                            legacy
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 font-medium">{b.selectionLabel}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{b.fixture}</td>
+                      <td className="px-2 py-2 text-center tabular-nums">{fmtPct(b.ourProb)}</td>
+                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{fmtPct(b.marketProb)}</td>
+                      <td className={`px-2 py-2 text-center tabular-nums ${legacy ? "text-muted-foreground" : (b.edge ?? 0) > 0 ? "text-amber-500" : "text-muted-foreground"}`}>
+                        {fmtSignedPp(b.edge)}
+                      </td>
+                      <td className="px-2 py-2 text-center tabular-nums">{fmtMl(b.marketOdds)}</td>
+                      <td className={`px-2 py-2 text-center tabular-nums ${legacy ? "text-muted-foreground" : (b.ev ?? 0) > 0 ? "text-amber-500" : "text-muted-foreground"}`}>
+                        {fmtSignedPp(b.ev)}
+                      </td>
+                      <td className="px-2 py-2 text-center"><StatusPill status={b.status} /></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -319,6 +349,7 @@ export default function TennisVegasClient({
   matchups,
   bets,
   backtest,
+  legacyBetSummary,
   lineMovement,
   lineAlerts,
   lineAlertBacktest,
@@ -329,6 +360,7 @@ export default function TennisVegasClient({
   matchups: TennisMatchRow[];
   bets: TennisBetRow[];
   backtest: TennisBetBacktestRow[];
+  legacyBetSummary: TennisLegacyBetSummary;
   lineMovement: MlbLineMovementRow[];
   lineAlerts: LineAlertRow[];
   lineAlertBacktest: LineAlertBacktestRow[];
@@ -488,7 +520,7 @@ export default function TennisVegasClient({
       })}
 
       {/* Results & calibration — renders structure even with zero settled bets */}
-      <TennisResults bets={bets} backtest={backtest} />
+      <TennisResults bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} />
     </div>
   );
 }

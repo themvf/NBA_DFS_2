@@ -3,6 +3,7 @@
 import type {
   TennisBetRow,
   TennisBetBacktestRow,
+  TennisLegacyBetSummary,
   TennisFavoriteDogRow,
   TennisFavoriteLossRow,
   TennisFavoriteCalibrationRow,
@@ -194,12 +195,14 @@ function FavoriteLossesPanel({ rows }: { rows: TennisFavoriteLossRow[] }) {
 export default function WimbledonClient({
   bets,
   backtest,
+  legacyBetSummary,
   favoriteDog,
   favoriteLosses,
   favoriteCalibration,
 }: {
   bets: TennisBetRow[];
   backtest: TennisBetBacktestRow[];
+  legacyBetSummary: TennisLegacyBetSummary;
   favoriteDog: TennisFavoriteDogRow[];
   favoriteLosses: TennisFavoriteLossRow[];
   favoriteCalibration: TennisFavoriteCalibrationRow[];
@@ -213,7 +216,7 @@ export default function WimbledonClient({
       <FavoriteDogPanel rows={favoriteDog} />
       <FavoriteCalibrationPanel rows={favoriteCalibration} />
       <FavoriteLossesPanel rows={favoriteLosses} />
-      <TennisResults bets={bets} backtest={backtest} />
+      <TennisResults bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} />
     </div>
   );
 }

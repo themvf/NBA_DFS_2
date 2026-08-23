@@ -1,6 +1,7 @@
 import {
   getTennisBets,
   getTennisBetBacktest,
+  getTennisLegacyBetSummary,
   getTennisFavoriteDogBreakdown,
   getTennisFavoriteLosses,
   getTennisFavoriteCalibration,
@@ -13,9 +14,10 @@ import WimbledonClient from "./wimbledon-client";
 const TOURNAMENT = "Wimbledon";
 
 export default async function WimbledonContent() {
-  const [bets, backtest, favoriteDog, favoriteLosses, favoriteCalibration] = await Promise.all([
+  const [bets, backtest, legacyBetSummary, favoriteDog, favoriteLosses, favoriteCalibration] = await Promise.all([
     getTennisBets(500, TOURNAMENT),
     getTennisBetBacktest(TOURNAMENT),
+    getTennisLegacyBetSummary(TOURNAMENT),
     getTennisFavoriteDogBreakdown(TOURNAMENT),
     getTennisFavoriteLosses(TOURNAMENT),
     getTennisFavoriteCalibration(TOURNAMENT),
@@ -24,6 +26,7 @@ export default async function WimbledonContent() {
     <WimbledonClient
       bets={bets}
       backtest={backtest}
+      legacyBetSummary={legacyBetSummary}
       favoriteDog={favoriteDog}
       favoriteLosses={favoriteLosses}
       favoriteCalibration={favoriteCalibration}
