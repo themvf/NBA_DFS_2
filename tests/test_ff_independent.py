@@ -54,22 +54,64 @@ def test_recent_history_has_more_weight_than_old_history() -> None:
     assert [row["weight"] for row in projection.explanation["season_inputs"]] == [0.05, 0.20, 0.75]
     assert projection.explanation["weighted_history_ppg"] is not None
     assert projection.explanation["regressed_ppg"] is not None
-    assert projection.explanation["regression_prior_games"] == 4.0
+    # WR shrinkage is 2.0, not the 4.0 global default, fitted walk-forward in
+    # model/ff_skill_constant_screen.py (v1.14). WR's season WEIGHTS came back
+    # identical to the default, so only the shrinkage moved.
+    assert projection.explanation["regression_prior_games"] == 2.0
     assert projection.explanation["regression_sample_games"] == 51
     assert projection.explanation["baseline_games"] == 17.0
-    assert projection.points == 242.23
+    assert projection.points == 245.92
     assert projection.explanation["not_modeled"] == [
         "current teammates", "offensive line", "coaching/play-caller", "future schedule",
     ]
+
+
+def test_history_weights_and_shrinkage_are_per_position() -> None:
+    """v1.14: RB/TE want a flatter blend; QB was measured but deliberately not shipped."""
+    histories = [
+        {"season": 2023, "games": 17, "fantasy_points_std": 85, "fantasy_points_ppr": 170},
+        {"season": 2024, "games": 17, "fantasy_points_std": 102, "fantasy_points_ppr": 187},
+        {"season": 2025, "games": 17, "fantasy_points_std": 170, "fantasy_points_ppr": 272},
+    ]
+
+    def explain(position: str) -> dict:
+        player = {"position": position, "rookie": False, "depth_order": 1,
+                  "injury_status": None, "draft_number": None}
+        return project_player(player, histories, "PPR", 2026).explanation
+
+    # RB and TE were fitted to a flatter blend -- more weight on older seasons.
+    for position in ("RB", "TE"):
+        weights = [row["weight"] for row in explain(position)["season_inputs"]]
+        assert weights == [0.15, 0.25, 0.60], position
+        assert explain(position)["regression_prior_games"] == 2.0, position
+
+    # WR keeps the global weights (its fit matched them) but the fitted shrinkage.
+    wr = explain("WR")
+    assert [row["weight"] for row in wr["season_inputs"]] == [0.05, 0.20, 0.75]
+    assert wr["regression_prior_games"] == 2.0
+
+    # QB is UNCHANGED on purpose. Its fitted constants had the largest apparent
+    # gain of any position but a bootstrap CI spanning zero on only 36 held-out
+    # quarterbacks, so v1.14 left it on the global default rather than ship a
+    # point estimate. Changing this without re-running the screen would undo a
+    # deliberate decision, not fix an oversight.
+    qb = explain("QB")
+    assert [row["weight"] for row in qb["season_inputs"]] == [0.05, 0.20, 0.75]
+    assert qb["regression_prior_games"] == 4.0
 
 
 def test_small_sample_is_still_strongly_regressed() -> None:
     player = {"position": "WR", "rookie": False, "depth_order": 1, "injury_status": None, "draft_number": None}
     history = [{"season": 2025, "games": 1, "fantasy_points_std": 20, "fantasy_points_ppr": 30}]
     projection = project_player(player, history, "PPR", 2026)
+    # One game of history against a 2.0-game prior: raw 30.0 PPG is still pulled
+    # most of the way back to the 8.5 WR prior (30*1 + 8.5*2)/3 = 15.667. The
+    # pull is lighter than under the old 4.0 default (which gave 12.8) because
+    # v1.14 fitted less shrinkage for WR, but a one-game sample is still
+    # regressed by roughly half.
     assert projection.explanation["regression_sample_games"] == 1
-    assert projection.explanation["regressed_ppg"] == 12.8
-    assert projection.points == 217.6
+    assert projection.explanation["regressed_ppg"] == 15.667
+    assert projection.points == 266.33
 
 
 def test_injury_changes_availability_but_not_seventeen_game_baseline() -> None:

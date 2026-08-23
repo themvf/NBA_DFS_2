@@ -931,6 +931,7 @@ def create_indicators(
     history: dict[int, dict[str, Any]],
     scoring: str = "PPR",
     rb_handcuffs: dict[str, str] | None = None,
+    playoff_sos: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> None:
     def current_team(row: dict[str, Any]) -> str:
         return str(row.get("team_abbrev") or row.get("team") or "")
@@ -1000,6 +1001,24 @@ def create_indicators(
             codes.append(("ROOKIE", "fact", "ROOKIE", None, {"source": "player metadata"}))
         if row.get("injury_status"):
             codes.append(("INJURY", "risk", str(row["injury_status"]).upper(), None, {"status": row["injury_status"]}))
+        # Fantasy-playoff (weeks 15-17) slate. Only the top/bottom quartile is
+        # flagged, and only as an indicator -- the underlying carryover is weak
+        # enough that folding it into a projection would overstate it. See
+        # ingest/ff_playoff_sos.py for the measurements behind that choice.
+        sos = (playoff_sos or {}).get((team, row["position"]))
+        if sos and sos.get("flag"):
+            soft = sos["flag"] == "soft"
+            codes.append((
+                "PLAYOFF_SOS_SOFT" if soft else "PLAYOFF_SOS_TOUGH",
+                # "fact", not "model": this is a property of the published
+                # schedule and last season's results, not an opinion our
+                # projection formed. (indicator_class is CHECK-constrained to
+                # fact/role/risk/model.)
+                "fact",
+                "PLAYOFF SOS +" if soft else "PLAYOFF SOS -",
+                float(sos["rating"]),
+                sos,
+            ))
         points_leader = point_leaders.get((row["position"], row["player_id"]))
         if points_leader:
             points_rank, points = points_leader
