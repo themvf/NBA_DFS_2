@@ -29,17 +29,68 @@
 
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 
-/** How deep each position prints. Sized so the whole sheet fits one landscape page. */
-export const CHEAT_SHEET_DEPTH: Record<string, number> = {
-  QB: 24,
-  RB: 45,
-  WR: 60,
-  TE: 24,
-  K: 12,
-  DST: 32,
+export type CheatSheetVariant = "rankings" | "bestball" | "redraft";
+
+export type CheatSheetVariantConfig = {
+  /** Printed in the sheet header so a sheet on the table identifies itself. */
+  label: string;
+  /** Draft context line -- teams, rounds, and what the depth is sized against. */
+  context: string;
+  positions: readonly string[];
+  /** How deep each position prints. */
+  depth: Record<string, number>;
+  /**
+   * Display overrides. Yahoo's UI calls the DST slot "DEF"; the redraft board
+   * already shows that term (REDRAFT_POSITION_LABEL), and the printed sheet has
+   * to match what is on screen on draft day. The underlying position code stays
+   * "DST" everywhere -- this is presentation only.
+   */
+  positionLabel?: Record<string, string>;
+  /**
+   * Rows before a position spills into a continuation column. Best Ball drafts
+   * 96 receivers deep, which cannot fit in a single printed column, so a deep
+   * position spans several.
+   */
+  maxRowsPerColumn: number;
 };
 
-export const CHEAT_SHEET_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"] as const;
+/**
+ * Depths are sized against the real draft each variant serves, not picked to
+ * look tidy: total rows are roughly (teams x rounds) split by the positional mix
+ * that format actually drafts, so the sheet does not run out before the last
+ * round does.
+ */
+export const CHEAT_SHEET_VARIANTS: Record<CheatSheetVariant, CheatSheetVariantConfig> = {
+  // The general board: every position, sized to the meaningful part of a
+  // typical 12-team draft rather than to any one league's roster.
+  rankings: {
+    label: "Draft Cheat Sheet",
+    context: "All positions",
+    positions: ["QB", "RB", "WR", "TE", "K", "DST"],
+    depth: { QB: 24, RB: 45, WR: 60, TE: 24, K: 12, DST: 32 },
+    maxRowsPerColumn: 60,
+  },
+  // DraftKings Best Ball: 12 x 20 = 240 picks, QB/RB/WR/TE only (kickers and
+  // defenses are not draftable in this format at all). Depth follows
+  // BEST_BALL_TARGETS (QB3/RB6/WR8/TE3) x 12 teams = 36/72/96/36 = 240.
+  bestball: {
+    label: "Best Ball Cheat Sheet",
+    context: "DraftKings · 12 teams · 20 rounds · QB/RB/WR/TE only",
+    positions: ["QB", "RB", "WR", "TE"],
+    depth: { QB: 36, RB: 72, WR: 96, TE: 36 },
+    maxRowsPerColumn: 48,
+  },
+  // Yahoo redraft: 10 x 15 = 150 picks, and K/DEF are real roster slots here.
+  // Shallower than Best Ball because it is a 10-team league with 15 rounds.
+  redraft: {
+    label: "Redraft Cheat Sheet",
+    context: "Yahoo · 10 teams · 15 rounds · full PPR",
+    positions: ["QB", "RB", "WR", "TE", "K", "DST"],
+    depth: { QB: 20, RB: 40, WR: 50, TE: 18, K: 12, DST: 15 },
+    positionLabel: { DST: "DEF" },
+    maxRowsPerColumn: 50,
+  },
+};
 
 /** Positions whose tier column is meaningful. DST is excluded -- see file header. */
 export const TIERED_POSITIONS = new Set(["QB", "RB", "WR", "TE", "K"]);
@@ -123,22 +174,35 @@ function rankOf(row: FantasyRankingRow): number {
 
 export type CheatSheetColumn = {
   position: string;
+  /** What to print at the top of the column (e.g. "DEF" for Yahoo redraft). */
+  label: string;
   entries: CheatSheetEntry[];
   /** True when this position's tier column is suppressed (DST). */
   tiersSuppressed: boolean;
+  /** True when this column continues a position that spilled from the previous one. */
+  continued: boolean;
 };
 
-export function buildCheatSheet(rankings: FantasyRankingRow[]): CheatSheetColumn[] {
-  return CHEAT_SHEET_POSITIONS.map((position) => {
+export function buildCheatSheet(
+  rankings: FantasyRankingRow[],
+  variant: CheatSheetVariant = "rankings",
+): CheatSheetColumn[] {
+  const config = CHEAT_SHEET_VARIANTS[variant];
+  const columns: CheatSheetColumn[] = [];
+
+  for (const position of config.positions) {
     const pool = rankings
       .filter((row) => row.position === position)
       .sort((a, b) => rankOf(a) - rankOf(b));
+    // FantasyPros ranks are computed over the WHOLE position pool, before the
+    // print depth cut. Ranking only the printed subset would silently reshuffle
+    // their order and make the delta wrong.
     const comparison = position === "DST" ? fantasyProsRanks(pool) : new Map<number, number>();
-    const depth = CHEAT_SHEET_DEPTH[position] ?? 24;
     const tiersSuppressed = !TIERED_POSITIONS.has(position);
+    const label = config.positionLabel?.[position] ?? position;
 
     let previousTier: number | null = null;
-    const entries = pool.slice(0, depth).map((row, index) => {
+    const entries = pool.slice(0, config.depth[position] ?? 24).map((row, index) => {
       const positionRank = index + 1;
       const tier = tiersSuppressed ? null : row.tier;
       const startsNewTier = tier !== null && previousTier !== null && tier !== previousTier;
@@ -161,6 +225,21 @@ export function buildCheatSheet(rankings: FantasyRankingRow[]): CheatSheetColumn
         signal: pickSignal(row),
       };
     });
-    return { position, entries, tiersSuppressed };
-  });
+
+    // Spill a deep position across however many columns it needs. An empty pool
+    // still emits one column so the printed grid never silently loses a
+    // position the format actually drafts.
+    const perColumn = Math.max(1, config.maxRowsPerColumn);
+    const chunkCount = Math.max(1, Math.ceil(entries.length / perColumn));
+    for (let chunk = 0; chunk < chunkCount; chunk += 1) {
+      columns.push({
+        position,
+        label,
+        entries: entries.slice(chunk * perColumn, (chunk + 1) * perColumn),
+        tiersSuppressed,
+        continued: chunk > 0,
+      });
+    }
+  }
+  return columns;
 }

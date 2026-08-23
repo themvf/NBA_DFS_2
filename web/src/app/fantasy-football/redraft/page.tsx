@@ -38,6 +38,7 @@ export default async function RedraftPage() {
         </div>
         <nav className="flex gap-2">
           <Link href="/fantasy-football/rankings?scoring=PPR" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold">Rankings</Link>
+          <Link href="/fantasy-football/redraft/print?scoring=PPR" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold">Print sheet</Link>
           <Link href="/fantasy-football/best-ball" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold">Best Ball</Link>
           <span className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-bold">Redraft</span>
         </nav>

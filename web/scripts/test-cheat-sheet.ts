@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import {
   buildCheatSheet,
-  CHEAT_SHEET_DEPTH,
+  CHEAT_SHEET_VARIANTS,
   TIERED_POSITIONS,
 } from "../src/lib/fantasy-football/cheat-sheet";
+import { BEST_BALL_ROUNDS, BEST_BALL_TEAM_COUNT } from "../src/lib/fantasy-football/best-ball";
+import { REDRAFT_POSITION_LABEL, REDRAFT_ROUNDS, REDRAFT_TEAM_COUNT } from "../src/lib/fantasy-football/redraft";
 import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 
 let nextId = 1;
@@ -56,6 +58,11 @@ function column(sheet: ReturnType<typeof buildCheatSheet>, position: string) {
   const found = sheet.find((entry) => entry.position === position);
   assert.ok(found, `expected a ${position} column`);
   return found;
+}
+
+/** All entries for a position, re-joined across any continuation columns. */
+function allEntries(sheet: ReturnType<typeof buildCheatSheet>, position: string) {
+  return sheet.filter((col) => col.position === position).flatMap((col) => col.entries);
 }
 
 // --- DST: the whole point of this sheet's departure from the web board ------
@@ -125,7 +132,7 @@ function column(sheet: ReturnType<typeof buildCheatSheet>, position: string) {
   const receivers = Array.from({ length: 200 }, (_, index) =>
     row({ position: "WR", ourRank: index + 1, tier: 1 }));
   const wr = column(buildCheatSheet(receivers), "WR");
-  assert.equal(wr.entries.length, CHEAT_SHEET_DEPTH.WR);
+  assert.equal(wr.entries.length, CHEAT_SHEET_VARIANTS.rankings.depth.WR);
   assert.deepEqual(wr.entries.map((entry) => entry.positionRank).slice(0, 3), [1, 2, 3],
     "position rank is the printed 1..N order, not the overall board rank");
 }
@@ -149,6 +156,77 @@ function column(sheet: ReturnType<typeof buildCheatSheet>, position: string) {
   const sheet = buildCheatSheet([]);
   assert.deepEqual(sheet.map((entry) => entry.position), ["QB", "RB", "WR", "TE", "K", "DST"]);
   assert.ok(sheet.every((entry) => entry.entries.length === 0));
+}
+
+// --- format-specific variants ----------------------------------------------
+
+// Best Ball drafts QB/RB/WR/TE only -- kickers and defenses are not in the pool
+// at all, so printing them would put un-draftable players on the sheet.
+{
+  const pool = [
+    ...Array.from({ length: 40 }, (_, i) => row({ position: "QB", ourRank: i + 1 })),
+    ...Array.from({ length: 80 }, (_, i) => row({ position: "RB", ourRank: i + 100 })),
+    ...Array.from({ length: 100 }, (_, i) => row({ position: "WR", ourRank: i + 200 })),
+    ...Array.from({ length: 40 }, (_, i) => row({ position: "TE", ourRank: i + 400 })),
+    ...Array.from({ length: 32 }, (_, i) => row({ position: "DST", ourRank: i + 500 })),
+    ...Array.from({ length: 20 }, (_, i) => row({ position: "K", ourRank: i + 600 })),
+  ];
+  const sheet = buildCheatSheet(pool, "bestball");
+  const positions = new Set(sheet.map((col) => col.position));
+  assert.deepEqual([...positions], ["QB", "RB", "WR", "TE"], "Best Ball prints only draftable positions");
+  assert.equal(sheet.some((col) => col.position === "K" || col.position === "DST"), false);
+
+  // Depth must cover the whole draft: 12 teams x 20 rounds = 240 picks.
+  const printed = sheet.reduce((total, col) => total + col.entries.length, 0);
+  assert.equal(printed, BEST_BALL_TEAM_COUNT * BEST_BALL_ROUNDS,
+    "Best Ball sheet must not run out before the last round does");
+
+  // 96 receivers cannot fit one printed column, so the position spans several
+  // and the continuation is flagged rather than silently truncated.
+  const wrColumns = sheet.filter((col) => col.position === "WR");
+  assert.ok(wrColumns.length > 1, "a deep position spills into continuation columns");
+  assert.equal(wrColumns[0].continued, false);
+  assert.ok(wrColumns.slice(1).every((col) => col.continued), "spilled columns are marked continued");
+  assert.ok(sheet.every((col) => col.entries.length <= CHEAT_SHEET_VARIANTS.bestball.maxRowsPerColumn));
+
+  // Position rank must run 1..N unbroken ACROSS the split, not restart per column.
+  const wr = allEntries(sheet, "WR");
+  assert.deepEqual(wr.map((e) => e.positionRank), wr.map((_, i) => i + 1),
+    "position rank is continuous across a column split");
+}
+
+// Redraft is a 10-team/15-round Yahoo league that DOES roster K and DEF.
+{
+  const pool = [
+    ...Array.from({ length: 40 }, (_, i) => row({ position: "QB", ourRank: i + 1 })),
+    ...Array.from({ length: 60 }, (_, i) => row({ position: "RB", ourRank: i + 100 })),
+    ...Array.from({ length: 60 }, (_, i) => row({ position: "WR", ourRank: i + 200 })),
+    ...Array.from({ length: 30 }, (_, i) => row({ position: "TE", ourRank: i + 400 })),
+    ...Array.from({ length: 32 }, (_, i) => row({ position: "DST", ourRank: i + 500 })),
+    ...Array.from({ length: 20 }, (_, i) => row({ position: "K", ourRank: i + 600 })),
+  ];
+  const sheet = buildCheatSheet(pool, "redraft");
+  const positions = sheet.map((col) => col.position);
+  assert.ok(positions.includes("K") && positions.includes("DST"), "redraft rosters K and DEF");
+
+  // Yahoo's UI calls the slot DEF; the printed sheet has to match the screen.
+  assert.equal(column(sheet, "DST").label, REDRAFT_POSITION_LABEL.DST);
+  assert.equal(column(sheet, "DST").label, "DEF");
+  assert.equal(column(sheet, "QB").label, "QB", "only DST is relabelled");
+
+  // Still no DST tiers, and still an FP delta -- the format changes the roster,
+  // not what our defensive projections can support.
+  assert.equal(column(sheet, "DST").tiersSuppressed, true);
+
+  const printed = sheet.reduce((total, col) => total + col.entries.length, 0);
+  assert.ok(printed >= REDRAFT_TEAM_COUNT * REDRAFT_ROUNDS,
+    `redraft sheet covers all ${REDRAFT_TEAM_COUNT * REDRAFT_ROUNDS} picks`);
+}
+
+// The default argument keeps the original general board behaviour.
+{
+  const pool = Array.from({ length: 10 }, () => row({ position: "WR" }));
+  assert.deepEqual(buildCheatSheet(pool), buildCheatSheet(pool, "rankings"));
 }
 
 console.log("cheat sheet: all assertions passed");

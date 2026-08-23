@@ -1,9 +1,11 @@
 import {
   buildCheatSheet,
+  CHEAT_SHEET_VARIANTS,
   SIGNAL_GLYPH,
   SIGNAL_LABEL,
   type CheatSheetColumn,
   type CheatSheetEntry,
+  type CheatSheetVariant,
 } from "@/lib/fantasy-football/cheat-sheet";
 import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 
@@ -41,7 +43,9 @@ function Column({ column }: { column: CheatSheetColumn }) {
   const showComparison = column.position === "DST";
   return <section className="break-inside-avoid">
     <h2 className="mb-0.5 flex items-baseline justify-between border-b-2 border-slate-900 pb-0.5">
-      <span className="text-[11px] font-black uppercase tracking-wide">{column.position}</span>
+      <span className="text-[11px] font-black uppercase tracking-wide">
+        {column.label}{column.continued && <span className="font-semibold text-slate-500"> cont.</span>}
+      </span>
       <span className="text-[7px] font-semibold uppercase text-slate-500">
         {showComparison ? "vs FP" : "vs ADP"}
       </span>
@@ -53,7 +57,7 @@ function Column({ column }: { column: CheatSheetColumn }) {
         ))}
       </tbody>
     </table>
-    {column.tiersSuppressed && <p className="mt-1 text-[6.5px] leading-tight text-slate-500">
+    {column.tiersSuppressed && !column.continued && <p className="mt-1 text-[6.5px] leading-tight text-slate-500">
       No tiers: our defensive projections are shrunk hard toward the league
       prior, so all 32 fall in one tier. The ORDER is real (2025 actuals carried
       forward) but weak. &ldquo;vs FP&rdquo; = FantasyPros&rsquo; projection rank minus ours;
@@ -68,27 +72,35 @@ export default function CheatSheetView({
   createdAt,
   scoring,
   season,
+  variant = "rankings",
 }: {
   rankings: FantasyRankingRow[];
   setName: string;
   createdAt: string;
   scoring: string;
   season: number;
+  variant?: CheatSheetVariant;
 }) {
-  const columns = buildCheatSheet(rankings);
+  const config = CHEAT_SHEET_VARIANTS[variant];
+  const columns = buildCheatSheet(rankings, variant);
   return <div className="cheat-sheet bg-white text-slate-900">
     <header className="mb-1.5 flex items-baseline justify-between border-b-2 border-slate-900 pb-1">
       <h1 className="text-sm font-black uppercase tracking-tight">
-        {season} Draft Cheat Sheet · {scoring}
+        {season} {config.label} · {scoring}
       </h1>
       <p className="text-[7px] text-slate-600">
-        {setName} · generated {new Date(createdAt).toLocaleString()} · proj = our
-        model; bye = week off
+        {config.context} · {setName} · generated{" "}
+        {new Date(createdAt).toLocaleString()} · proj = our model; bye = week off
       </p>
     </header>
 
-    <div className="grid grid-cols-6 gap-x-2.5">
-      {columns.map((column) => <Column key={column.position} column={column} />)}
+    <div
+      className="grid gap-x-2.5"
+      style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
+    >
+      {columns.map((column, index) => (
+        <Column key={`${column.position}-${index}`} column={column} />
+      ))}
     </div>
 
     <footer className="mt-1.5 border-t border-slate-300 pt-1 text-[6.5px] text-slate-600">
