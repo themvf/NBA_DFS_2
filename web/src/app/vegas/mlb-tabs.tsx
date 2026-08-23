@@ -15,8 +15,10 @@ import Link from "next/link";
  * board tab lives at /vegas?sport=mlb — a pathname shared with three other
  * sports — so pathname alone cannot identify it.
  */
-export type MlbVegasTab = "board" | "props" | "props-original";
+export type MlbVegasTab = "board" | "props" | "props-2";
 
+// Order and labels mirror the global sport nav exactly, so "Vegas Props" and
+// "Vegas Prop 2" mean the same page whichever way a user arrives.
 const TABS: { id: MlbVegasTab; href: string; label: string; hint: string }[] = [
   {
     id: "board",
@@ -26,15 +28,15 @@ const TABS: { id: MlbVegasTab; href: string; label: string; hint: string }[] = [
   },
   {
     id: "props",
-    href: "/vegas/mlb-props-v2",
-    label: "Props",
-    hint: "Player props — live board, measurement program, running audit",
+    href: "/vegas/mlb-props",
+    label: "Vegas Props",
+    hint: "The original prop alerts table",
   },
   {
-    id: "props-original",
-    href: "/vegas/mlb-props",
-    label: "Props (original)",
-    hint: "The previous prop alerts table, kept for side-by-side comparison",
+    id: "props-2",
+    href: "/vegas/mlb-props-v2",
+    label: "Vegas Prop 2",
+    hint: "Redesigned prop board — live board, measurement program, running audit",
   },
 ];
 

@@ -13,7 +13,7 @@ export default function MlbPropsClient({
 }) {
   return (
     <div className="space-y-4 p-6 max-w-5xl mx-auto">
-      <MlbVegasTabs active="props-original" />
+      <MlbVegasTabs active="props" />
       <div>
         <h1 className="text-xl font-bold">MLB Vegas Props</h1>
         <p className="text-sm text-gray-500 mt-1">

@@ -695,7 +695,7 @@ export default function MlbPropsV2Client({
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
-      <MlbVegasTabs active="props" />
+      <MlbVegasTabs active="props-2" />
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">MLB Prop Board</h1>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-600">
