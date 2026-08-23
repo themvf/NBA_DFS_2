@@ -82,3 +82,39 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans, sans-serif);
 }
+
+/* ---------------------------------------------------------------------------
+   Printable draft cheat sheet (/fantasy-football/rankings/print).
+   Scoped to .cheat-sheet so no other page's print behaviour changes. The app
+   chrome (sticky nav) and the scoring/print controls are screen-only; the
+   sheet itself is sized to one landscape page.
+   --------------------------------------------------------------------------- */
+@media print {
+  @page {
+    size: letter landscape;
+    margin: 0.35in;
+  }
+
+  /* Root layout renders a sticky <header> nav and pads <main>; neither belongs
+     on paper, and main's max-width would waste half the page. */
+  body:has(.cheat-sheet) > header,
+  .no-print {
+    display: none !important;
+  }
+
+  body:has(.cheat-sheet) > main {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .cheat-sheet {
+    color: #000;
+    background: #fff;
+  }
+
+  /* Keep a position column from splitting across pages if depth is increased. */
+  .cheat-sheet section {
+    break-inside: avoid;
+  }
+}
