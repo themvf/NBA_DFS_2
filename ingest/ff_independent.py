@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import io
 import json
+import warnings
 import math
 from dataclasses import dataclass
 from datetime import date
@@ -25,6 +26,7 @@ from psycopg2.extras import Json
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.ff_playoff_sos import compute_playoff_sos
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 
 
@@ -42,7 +44,7 @@ from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indi
 # QB now guarantees the top 2 per team instead of adjudicating the
 # competition (GUARANTEE_COUNT). Bumped because board membership changed --
 # board_digest hashes MODEL_VERSION, forcing a fresh build.
-MODEL_VERSION = "ff-independent-v1.13"
+MODEL_VERSION = "ff-independent-v1.14"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -96,18 +98,51 @@ YAHOO_K_PAT_PTS = 1.0
 # (DK soccer CG/CGSO/NH scoring). Documented in source_row, not hidden.
 
 SEASON_WEIGHTS = (0.05, 0.20, 0.75)
+# Per-position overrides fitted walk-forward in model/ff_skill_constant_screen.py
+# (tuned on 2022-24 targets, graded once on a held-out 2025, PPR points per game,
+# role_factor pinned to 1.0 so only the history blend is under test).
+#
+# RB and TE both want a FLATTER blend than the global default -- more weight on
+# two and three seasons back, less on last season alone. Held out on 2025 that
+# improves MAE 2.900 -> 2.762 for RB (95% CI [-0.261, -0.014]) and
+# 2.039 -> 1.947 for TE (CI [-0.173, -0.006]); rank correlation improves too
+# (RB 0.795 -> 0.804, TE 0.744 -> 0.754).
+#
+# WR is NOT here on purpose: the fitted weights came back identical to the
+# global default, so only its shrinkage changed (below).
+#
+# QB is NOT here either, and that one is a near miss worth recording. Its fitted
+# weights (0.20/0.30/0.50, prior_games=12) had the LARGEST apparent gain of any
+# position, MAE 3.095 -> 2.826 -- but on only 36 held-out quarterbacks, and the
+# bootstrap CI on that delta is [-0.637, +0.105], which spans zero. A 90-point
+# grid searched against 36 rows can find that much by luck. Directionally it
+# suggests QBs want more history and heavier shrinkage than the default, which
+# is plausible (QB is the most stable position), but "plausible and not
+# significant" is how v1.7's DST regression shipped. Re-run the screen once more
+# seasons exist rather than shipping this on the point estimate.
+POSITION_SEASON_WEIGHTS = {
+    "RB": (0.15, 0.25, 0.60),
+    "TE": (0.15, 0.25, 0.60),
+}
 BASELINE_GAMES = 17.0
 REGRESSION_PRIOR_GAMES = 4.0
-# Historical note, no longer live: this was the shrinkage used for kickers'
-# old 3-year weighted-blend path (37 prior games ~ effective weight 0.58 at a
+# How hard each position's weighted history is pulled toward the position prior,
+# expressed as "equivalent prior games". Higher = more shrinkage.
+#
+# RB/WR/TE fitted walk-forward in model/ff_skill_constant_screen.py. All three
+# came back at 2.0, i.e. LESS shrinkage than the 4.0 default: a skill player with
+# real snap history is a better guide to himself than the position average is.
+#
+# K is historical and no longer live. It was the shrinkage for kickers' old
+# 3-year weighted-blend path (37 prior games ~ effective weight 0.58 at a
 # 51-game sample, vs the 4-game default's 0.93). model/ff_kicker_projection_
 # backtest.py showed that blend was MORE ACCURATE than prior-season-only
 # (held-out MAE 22.1 vs 23.1) -- but v1.11 switched kickers to prior-season
 # carry-forward anyway, on explicit user instruction, to match DST's "rank on
-# last season" pattern. Kept here only as the backtest's comparison baseline;
-# no position routes through the eligible_history regression branch that
-# reads this map anymore as of v1.11 (K moved off it; DST never used it).
-POSITION_REGRESSION_PRIOR_GAMES = {"K": 37.0}
+# last season" pattern. Kept as that backtest's comparison baseline; K no longer
+# routes through the eligible_history branch that reads this map, and DST never
+# did. (Before v1.14 no live position read this map at all; RB/WR/TE now do.)
+POSITION_REGRESSION_PRIOR_GAMES = {"K": 37.0, "RB": 2.0, "WR": 2.0, "TE": 2.0}
 # How much of a defense's / kicker's prior-season result carries into its
 # projection. DST_CARRY_FORWARD_WEIGHT fitted walk-forward (tuned on 2023-24,
 # held out on 2025) in model/ff_dst_projection_backtest.py.
@@ -850,10 +885,11 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
         expected_games = BASELINE_GAMES
         role_factor = 1.0
     elif eligible_history:
+        season_weights = POSITION_SEASON_WEIGHTS.get(position, SEASON_WEIGHTS)
         weights_by_season = {
-            target_season - 3: SEASON_WEIGHTS[0],
-            target_season - 2: SEASON_WEIGHTS[1],
-            target_season - 1: SEASON_WEIGHTS[2],
+            target_season - 3: season_weights[0],
+            target_season - 2: season_weights[1],
+            target_season - 1: season_weights[2],
         }
         weighted_ppg = 0.0
         weight_total = 0.0
@@ -1074,6 +1110,7 @@ def create_ranking_set(
     universe: list[dict[str, Any]],
     histories: dict[int, list[dict[str, Any]]],
     adp_lookup: dict[tuple[str, str], dict[str, Any]],
+    playoff_sos: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> int:
     existing = db.execute_one(
         """SELECT rs.id,COUNT(pr.id)::int AS player_count FROM ff_ranking_sets rs
@@ -1171,7 +1208,8 @@ def create_ranking_set(
         player_id: max(player_history, key=lambda row: int(row["season"]))
         for player_id, player_history in histories.items() if player_history
     }
-    create_indicators(db, ranking_set_id, season, board, latest_history, scoring, rb_handcuffs=RB_HANDCUFFS)
+    create_indicators(db, ranking_set_id, season, board, latest_history, scoring,
+                      rb_handcuffs=RB_HANDCUFFS, playoff_sos=playoff_sos or {})
     return ranking_set_id
 
 
@@ -1276,10 +1314,24 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
             "adp_used_for_projection": False,
         },
     )
+    # Fantasy-playoff (weeks 15-17) slate difficulty, from the prior season's
+    # defenses against this season's schedule. Computed once and reused across
+    # all three scoring boards -- it depends only on schedule and defense, not
+    # on scoring. Surfaced as an indicator, never as a projection input.
+    #
+    # Fails soft on purpose: this is a tie-breaker signal, and a missing or
+    # renamed nflverse team-week file must not take down an entire board
+    # refresh for it.
+    try:
+        playoff_sos = compute_playoff_sos(schedule, season)
+    except Exception as exc:  # noqa: BLE001 - advisory signal, never fatal
+        warnings.warn(f"playoff SOS unavailable, continuing without it: {exc}", stacklevel=2)
+        playoff_sos = {}
     ranking_sets = [
         create_ranking_set(
             db, season=season, scoring=scoring, source_snapshot_id=board_snapshot_id,
             universe=universe, histories=histories, adp_lookup=adp_lookups[scoring],
+            playoff_sos=playoff_sos,
         )
         for scoring in SCORING_TYPES
     ]

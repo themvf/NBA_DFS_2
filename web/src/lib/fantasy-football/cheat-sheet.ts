@@ -60,6 +60,33 @@ export type CheatSheetVariantConfig = {
  * that format actually drafts, so the sheet does not run out before the last
  * round does.
  */
+/**
+ * Which sheets show the weeks 15-17 slate marker.
+ *
+ * Best Ball only, and that is a substantive restriction rather than an
+ * oversight. DraftKings Best Ball scores Weeks 15, 16 and 17 as three separate
+ * tournament rounds, so playoff-week matchups are a real part of that format's
+ * scoring. A season-long redraft league does not weight those weeks at draft
+ * time in the same way, and the underlying signal is far too weak to justify
+ * putting a marker on a board where it is not decision-relevant.
+ *
+ * Even on Best Ball this is a TIE-BREAKER, not a projection input: the
+ * defensive ratings it derives from carry only ~0.18 year over year (see
+ * ingest/ff_playoff_sos.py), which supports "these two receivers are close,
+ * take the one with the softer playoff slate" and nothing stronger.
+ */
+export const PLAYOFF_SLATE_VARIANTS = new Set<CheatSheetVariant>(["bestball"]);
+
+export const PLAYOFF_SLATE_GLYPH: Record<PlayoffSlate, string> = {
+  soft: "▲",
+  tough: "▼",
+};
+
+export const PLAYOFF_SLATE_LABEL: Record<PlayoffSlate, string> = {
+  soft: "soft wk 15-17 slate",
+  tough: "tough wk 15-17 slate",
+};
+
 export const CHEAT_SHEET_VARIANTS: Record<CheatSheetVariant, CheatSheetVariantConfig> = {
   // The general board: every position, sized to the meaningful part of a
   // typical 12-team draft rather than to any one league's roster.
@@ -108,6 +135,12 @@ export type CheatSheetEntry = {
   adpDelta: number | null;
   /** DST only: FantasyPros' rank at this position minus ours. Positive = we are higher on him. */
   comparisonDelta: number | null;
+  /**
+   * Fantasy-playoff (weeks 15-17) slate, top/bottom quartile only. Populated
+   * only for variants that actually score those weeks separately -- see
+   * PLAYOFF_SLATE_VARIANTS.
+   */
+  playoffSlate: PlayoffSlate | null;
   /** Tier break BEFORE this entry, for drawing a rule. Never set for DST. */
   startsNewTier: boolean;
   tier: number | null;
@@ -115,6 +148,9 @@ export type CheatSheetEntry = {
 };
 
 export type CheatSheetSignal = "buy" | "fade" | "injury" | "rookie";
+
+/** Weeks 15-17 slate, shown only where those weeks are scored separately. */
+export type PlayoffSlate = "soft" | "tough";
 
 /**
  * One glyph per row, at most. The board carries indicators on 313 of 442
@@ -142,6 +178,13 @@ export const SIGNAL_LABEL: Record<CheatSheetSignal, string> = {
   injury: "injury designation",
   rookie: "rookie",
 };
+
+function pickPlayoffSlate(row: FantasyRankingRow): PlayoffSlate | null {
+  const codes = new Set(row.indicators.map((indicator) => indicator.code));
+  if (codes.has("PLAYOFF_SOS_SOFT")) return "soft";
+  if (codes.has("PLAYOFF_SOS_TOUGH")) return "tough";
+  return null;
+}
 
 function pickSignal(row: FantasyRankingRow): CheatSheetSignal | null {
   const codes = new Set(row.indicators.map((indicator) => indicator.code));
@@ -188,6 +231,7 @@ export function buildCheatSheet(
   variant: CheatSheetVariant = "rankings",
 ): CheatSheetColumn[] {
   const config = CHEAT_SHEET_VARIANTS[variant];
+  const showPlayoffSlate = PLAYOFF_SLATE_VARIANTS.has(variant);
   const columns: CheatSheetColumn[] = [];
 
   for (const position of config.positions) {
@@ -220,6 +264,7 @@ export function buildCheatSheet(
         adp: row.adp,
         adpDelta: row.adp !== null && overall !== null ? row.adp - overall : null,
         comparisonDelta: fpRank !== null ? fpRank - positionRank : null,
+        playoffSlate: showPlayoffSlate ? pickPlayoffSlate(row) : null,
         startsNewTier,
         tier,
         signal: pickSignal(row),

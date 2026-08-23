@@ -1,6 +1,9 @@
 import {
   buildCheatSheet,
   CHEAT_SHEET_VARIANTS,
+  PLAYOFF_SLATE_GLYPH,
+  PLAYOFF_SLATE_LABEL,
+  PLAYOFF_SLATE_VARIANTS,
   SIGNAL_GLYPH,
   SIGNAL_LABEL,
   type CheatSheetColumn,
@@ -23,7 +26,13 @@ function signed(value: number | null) {
 function Row({ entry, showComparison }: { entry: CheatSheetEntry; showComparison: boolean }) {
   return <tr className={entry.startsNewTier ? "border-t-2 border-slate-900" : ""}>
     <td className="pr-1 text-right tabular-nums text-slate-500">{entry.positionRank}</td>
-    <td className="max-w-[9rem] truncate pr-1 font-semibold">{entry.name}</td>
+    <td className="max-w-[9rem] truncate pr-1 font-semibold">
+      {entry.name}
+      {entry.playoffSlate && <span
+        title={PLAYOFF_SLATE_LABEL[entry.playoffSlate]}
+        className={entry.playoffSlate === "soft" ? "ml-0.5 text-emerald-700" : "ml-0.5 text-rose-700"}
+      >{PLAYOFF_SLATE_GLYPH[entry.playoffSlate]}</span>}
+    </td>
     <td className="pr-1 text-slate-600">{entry.team ?? "FA"}</td>
     <td className="pr-1 text-right tabular-nums text-slate-600">{entry.byeWeek ?? "—"}</td>
     <td className="pr-1 text-right tabular-nums">{num(entry.projectedPoints)}</td>
@@ -109,6 +118,12 @@ export default function CheatSheetView({
           <strong>{glyph}</strong> {SIGNAL_LABEL[signal as keyof typeof SIGNAL_LABEL]}
         </span>
       ))}
+      {PLAYOFF_SLATE_VARIANTS.has(variant) && <span className="mr-3">
+        <strong className="text-emerald-700">{PLAYOFF_SLATE_GLYPH.soft}</strong>
+        {" / "}
+        <strong className="text-rose-700">{PLAYOFF_SLATE_GLYPH.tough}</strong>
+        {" "}soft / tough wk 15-17 slate (tie-breaker only)
+      </span>}
       <span className="mr-3">Horizontal rule = tier break.</span>
       <span>
         FantasyPros is comparison data only and never feeds our projections.

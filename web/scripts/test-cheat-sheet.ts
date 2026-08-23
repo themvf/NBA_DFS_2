@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   buildCheatSheet,
   CHEAT_SHEET_VARIANTS,
+  PLAYOFF_SLATE_VARIANTS,
   TIERED_POSITIONS,
 } from "../src/lib/fantasy-football/cheat-sheet";
 import { BEST_BALL_ROUNDS, BEST_BALL_TEAM_COUNT } from "../src/lib/fantasy-football/best-ball";
@@ -227,6 +228,53 @@ function allEntries(sheet: ReturnType<typeof buildCheatSheet>, position: string)
 {
   const pool = Array.from({ length: 10 }, () => row({ position: "WR" }));
   assert.deepEqual(buildCheatSheet(pool), buildCheatSheet(pool, "rankings"));
+}
+
+// --- weeks 15-17 playoff slate marker --------------------------------------
+
+function withSlate(position: string, code: string) {
+  return row({
+    position,
+    indicators: [{ code, class: "context", label: code, value: null, evidence: {} }],
+  });
+}
+
+// Best Ball scores weeks 15/16/17 as separate tournament rounds, so the marker
+// belongs there.
+{
+  const sheet = buildCheatSheet([
+    withSlate("WR", "PLAYOFF_SOS_SOFT"),
+    withSlate("WR", "PLAYOFF_SOS_TOUGH"),
+    withSlate("WR", "ROOKIE"),
+  ], "bestball");
+  const wr = sheet.filter((col) => col.position === "WR").flatMap((col) => col.entries);
+  assert.deepEqual(wr.map((e) => e.playoffSlate), ["soft", "tough", null]);
+  assert.equal(PLAYOFF_SLATE_VARIANTS.has("bestball"), true);
+}
+
+// It must NOT appear on the other sheets. A season-long league does not weight
+// those weeks at draft time, and the signal is far too weak to put a marker on
+// a board where it is not decision-relevant.
+for (const variant of ["rankings", "redraft"] as const) {
+  const sheet = buildCheatSheet([withSlate("WR", "PLAYOFF_SOS_SOFT")], variant);
+  const wr = sheet.filter((col) => col.position === "WR").flatMap((col) => col.entries);
+  assert.equal(wr[0].playoffSlate, null, `${variant} must not show the playoff slate marker`);
+  assert.equal(PLAYOFF_SLATE_VARIANTS.has(variant), false);
+}
+
+// The slate marker is separate from the one-glyph signal, so a flagged player
+// can still carry an injury/buy/fade mark without either displacing the other.
+{
+  const player = row({
+    position: "RB",
+    indicators: [
+      { code: "PLAYOFF_SOS_SOFT", class: "context", label: "SOS", value: null, evidence: {} },
+      { code: "INJURY", class: "risk", label: "Q", value: null, evidence: {} },
+    ],
+  });
+  const rb = buildCheatSheet([player], "bestball").find((col) => col.position === "RB")!;
+  assert.equal(rb.entries[0].playoffSlate, "soft");
+  assert.equal(rb.entries[0].signal, "injury");
 }
 
 console.log("cheat sheet: all assertions passed");
