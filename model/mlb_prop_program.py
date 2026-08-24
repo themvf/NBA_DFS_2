@@ -351,8 +351,13 @@ def day14_gate(db: DatabaseManager) -> dict:
     print(f"  SD {sd:.2f}pp   DEFF {deff:.2f}   rate {rate:.1f}/day   "
           f"dates {dates}")
     print(f"  projected n {projected:.0f} -> n_eff {n_eff_proj:.0f}  vs floor {floor}")
-    print(f"  DECISION: {'EVALUATE IN 2026' if ok else 'DEFER - 2027 COHORT, '
-                          '2026 becomes parameter-estimation only'}")
+    # Hoisted out of the f-string: an implicit string concatenation split across
+    # lines INSIDE a replacement field is a SyntaxError before Python 3.12 (PEP
+    # 701 legalised it later), and CI pins 3.11 -- so this module could never be
+    # imported and the program's own status reporter had never once run.
+    decision = ("EVALUATE IN 2026" if ok else
+                "DEFER - 2027 COHORT, 2026 becomes parameter-estimation only")
+    print(f"  DECISION: {decision}")
     print("  Decided once, on nuisance parameters only. Not revisited.\n")
     return {"decision": "2026" if ok else "2027", "sd_pp": sd,
             "n_eff_projected": n_eff_proj, "floor": floor}
