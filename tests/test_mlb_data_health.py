@@ -34,7 +34,7 @@ def test_health_passes_only_with_population_provenance_and_revisions() -> None:
             },
             schedule={
                 "games": 15, "starts": 15, "revisions": 15,
-                "post_start_revisions": 0, "revision_missing_provenance": 0,
+                "revision_missing_provenance": 0,
             },
         ),  # type: ignore[arg-type]
         "2026-07-17",
@@ -53,7 +53,7 @@ def test_health_fails_with_exact_remedies() -> None:
             },
             schedule={
                 "games": 15, "starts": 14, "revisions": 0,
-                "post_start_revisions": 0, "revision_missing_provenance": 0,
+                "revision_missing_provenance": 0,
             },
         ),  # type: ignore[arg-type]
         "2026-07-17",
@@ -75,7 +75,7 @@ def _health(bullpen: dict):
             },
             schedule={
                 "games": 15, "starts": 15, "revisions": 15,
-                "post_start_revisions": 0, "revision_missing_provenance": 0,
+                "revision_missing_provenance": 0,
             },
             bullpen=bullpen,
         ),  # type: ignore[arg-type]
@@ -126,3 +126,76 @@ def test_bullpen_provenance_still_scans_every_row_not_just_the_latest() -> None:
     })
     assert _check(report, "bullpen_snapshots")["status"] == "pass"
     assert _check(report, "bullpen_provenance")["status"] == "fail"
+
+
+def _health_sched(schedule: dict, weather: dict | None = None):
+    return collect_mlb_data_health(
+        FakeDb(
+            stats={
+                "team_entities": 30, "team_captures": 30, "pitcher_captures": 735,
+                "team_missing_provenance": 0, "pitcher_missing_provenance": 0,
+                "team_leakage": 0, "pitcher_leakage": 0,
+                "team_age_hours": 1, "pitcher_age_hours": 1,
+            },
+            schedule=schedule,
+            weather=weather,
+        ),  # type: ignore[arg-type]
+        "2026-08-22",
+    )
+
+
+def test_post_start_captures_on_in_progress_games_do_not_fail_the_day() -> None:
+    """The second bug that starved the prop board (22:10 UTC slot, 0/10 runs).
+
+    The evening refresh re-captures schedule and weather for EVERY game on the
+    date, including ones already in progress, so the globally-latest revision
+    for those is legitimately post-start. The gates took that row, correctly
+    judged it unusable pregame, and failed the whole run -- which skipped prop
+    capture for the games that had NOT started.
+
+    The queries now select the latest capture before each game's OWN commence,
+    so a post-start row cannot be selected at all. Every game here has a good
+    pregame revision and forecast, so the day is healthy.
+    """
+    report = _health_sched(
+        {"games": 15, "starts": 15, "revisions": 15, "revision_missing_provenance": 0},
+        {"forecasts": 15, "invalid_forecasts": 0},
+    )
+    assert _check(report, "schedule_revisions")["status"] == "pass"
+    assert _check(report, "schedule_provenance")["status"] == "pass"
+    assert _check(report, "weather_forecasts")["status"] == "pass"
+    assert _check(report, "weather_provenance")["status"] == "pass"
+
+
+def test_a_game_with_no_pregame_capture_at_all_still_fails() -> None:
+    """The rescoping must not blunt the gate. A game whose only revision or
+    forecast landed AFTER first pitch has no usable pregame input, and that is
+    the real defect the check exists to catch."""
+    sched = _health_sched(
+        {"games": 16, "starts": 16, "revisions": 15, "revision_missing_provenance": 0},
+        {"forecasts": 15, "invalid_forecasts": 0},
+    )
+    assert _check(sched, "schedule_revisions")["status"] == "fail"
+    assert "15/16" in _check(sched, "schedule_revisions")["detail"]
+    assert _check(sched, "weather_forecasts")["status"] == "fail"
+
+
+def test_pregame_revision_missing_provenance_still_fails() -> None:
+    report = _health_sched(
+        {"games": 15, "starts": 15, "revisions": 15, "revision_missing_provenance": 1},
+        {"forecasts": 15, "invalid_forecasts": 0},
+    )
+    assert _check(report, "schedule_provenance")["status"] == "fail"
+
+
+def test_missing_commence_time_is_reported_once_not_twice() -> None:
+    """A game with no start time cannot be judged pregame at all. schedule_starts
+    owns that defect; the provenance gates must not also count it, or one problem
+    reads as three."""
+    report = _health_sched(
+        {"games": 16, "starts": 15, "revisions": 15, "revision_missing_provenance": 0},
+        {"forecasts": 15, "invalid_forecasts": 0},
+    )
+    assert _check(report, "schedule_starts")["status"] == "fail"
+    assert _check(report, "schedule_revisions")["status"] == "pass"
+    assert _check(report, "weather_forecasts")["status"] == "pass"

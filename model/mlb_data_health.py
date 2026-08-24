@@ -34,15 +34,24 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
         SELECT
           COUNT(*) AS games,
           COUNT(m.commence_time) AS starts,
-          COUNT(r.id) AS revisions,
-          COUNT(*) FILTER (WHERE r.id IS NOT NULL AND r.source_available_at >= m.commence_time) AS post_start_revisions,
+          -- Games with a known start that HAVE a usable pregame revision.
+          COUNT(*) FILTER (WHERE m.commence_time IS NOT NULL AND r.id IS NOT NULL) AS revisions,
           COUNT(*) FILTER (WHERE r.id IS NOT NULL AND (r.source IS NULL OR r.raw_json IS NULL)) AS revision_missing_provenance
         FROM mlb_matchups m
+        -- Latest revision available BEFORE THIS GAME'S OWN first pitch, not the
+        -- latest revision full stop. The evening refresh re-captures schedule
+        -- for every game on the date, including ones already in progress, so
+        -- the globally-latest revision for those is legitimately post-start.
+        -- Judging on it failed the whole run -- and skipped prop capture for the
+        -- games that had NOT started. A post-start revision existing is not a
+        -- defect; a decision built on one would be, and this cannot select one.
         LEFT JOIN LATERAL (
           SELECT sr.id, sr.source, sr.source_available_at, sr.raw_json
           FROM mlb_schedule_revisions sr
           WHERE sr.matchup_id = m.id
-          ORDER BY sr.captured_at DESC, sr.id DESC
+            AND m.commence_time IS NOT NULL
+            AND sr.source_available_at < m.commence_time
+          ORDER BY sr.source_available_at DESC, sr.id DESC
           LIMIT 1
         ) r ON TRUE
         WHERE m.game_date = %s AND m.game_id IS NOT NULL
@@ -76,15 +85,24 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
     ) or {}
     weather = db.execute_one(
         """
-        SELECT COUNT(w.id) AS forecasts,
+        SELECT
+          COUNT(*) FILTER (WHERE m.commence_time IS NOT NULL AND w.id IS NOT NULL) AS forecasts,
+          -- The post-start clause is gone: the LATERAL below cannot return one.
+          -- What remains is the real question -- is the PREGAME forecast usable?
           COUNT(*) FILTER (WHERE w.id IS NOT NULL AND (
-            w.available_at >= m.commence_time OR w.source_status <> 'complete'
+            w.source_status <> 'complete'
             OR w.provider_issued_at IS NULL OR w.valid_at IS NULL
           )) AS invalid_forecasts
         FROM mlb_matchups m
+        -- Same rule as schedule revisions above: latest forecast issued before
+        -- THIS GAME'S first pitch. A forecast captured for a game already in
+        -- progress says nothing about a pregame decision either way.
         LEFT JOIN LATERAL (
           SELECT f.* FROM mlb_weather_forecast_snapshots f
-          WHERE f.matchup_id = m.id ORDER BY f.available_at DESC, f.id DESC LIMIT 1
+          WHERE f.matchup_id = m.id
+            AND m.commence_time IS NOT NULL
+            AND f.available_at < m.commence_time
+          ORDER BY f.available_at DESC, f.id DESC LIMIT 1
         ) w ON TRUE
         WHERE m.game_date = %s AND m.game_id IS NOT NULL
         """,
@@ -139,15 +157,18 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
         f"{starts}/{games} games have a start time on {target_date}",
         f"Refresh the official MLB schedule for {target_date}; do not predict games with missing commence time.",
     )
+    # Denominator is `starts`, not `games`: a game with no commence time cannot
+    # be judged pregame at all, and is already owned by schedule_starts above.
+    # Counting it here too would report one defect as two.
     add(
-        "schedule_revisions", games == revisions,
-        f"{revisions}/{games} games have immutable schedule revisions on {target_date}",
-        f"Refresh the official MLB schedule for {target_date} and verify revision writes.",
+        "schedule_revisions", revisions == starts,
+        f"{revisions}/{starts} games with a known start have a pregame schedule revision on {target_date}",
+        f"Refresh the official MLB schedule for {target_date} and verify revision writes land before first pitch.",
     )
-    invalid_revisions = int(number(schedule, "post_start_revisions") + number(schedule, "revision_missing_provenance"))
+    invalid_revisions = int(number(schedule, "revision_missing_provenance"))
     add(
         "schedule_provenance", invalid_revisions == 0,
-        f"{invalid_revisions} latest revisions are post-start or missing source/raw provenance",
+        f"{invalid_revisions} pregame revisions are missing source/raw provenance",
         "Exclude post-start revisions from pregame use and re-capture missing official source payloads.",
     )
     relief_appearances = int(number(bullpen, "relief_appearances"))
@@ -179,8 +200,8 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
     )
     forecasts = int(number(weather, "forecasts"))
     add(
-        "weather_forecasts", forecasts == games,
-        f"{forecasts}/{games} games have immutable pregame forecast snapshots on {target_date}",
+        "weather_forecasts", forecasts == starts,
+        f"{forecasts}/{starts} games with a known start have a pregame forecast snapshot on {target_date}",
         f"Refresh schedule weather sources for {target_date}; do not substitute observed/postgame conditions.",
     )
     invalid_weather = int(
@@ -188,7 +209,7 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
     )
     add(
         "weather_provenance", invalid_weather == 0,
-        f"{invalid_weather} latest forecasts are incomplete, post-start, or missing issue/valid time",
+        f"{invalid_weather} pregame forecasts are incomplete or missing issue/valid time",
         "Use an issued official forecast for the venue or show weather as unavailable until one is captured.",
     )
 

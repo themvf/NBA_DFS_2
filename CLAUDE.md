@@ -1254,7 +1254,7 @@ not-yet-judged, matching the CLI report exactly.
 
 ---
 
-## MLB Health Gates Starved the Prop Pipeline — Found, Partly Fixed (2026-08-24)
+## MLB Health Gates Starved the Prop Pipeline — Found + Fixed (2026-08-24)
 
 **Symptom:** the MLB prop board showed no live plays. The old prop page hid
 this — it renders every alert it fetches with no notion of whether the game has
@@ -1312,15 +1312,15 @@ only the mocked unit tests: reproduced production's exact `31/30`, confirmed the
 fix yields `30/30`, confirmed a genuinely uncovered team-game still fails, and
 confirmed the zero-snapshot date returns 0 rather than 1.
 
-**Root cause #2 — post-start provenance (NOT fixed). The 22:10 slot is a
-separate bug and the bullpen fix does not restore it.**
+**Root cause #2 — post-start provenance (FIXED, separately). The 22:10 slot was
+a second, independent bug; the bullpen fix alone did not restore it.**
 Stated plainly because the first version of this note implied otherwise. That
 run fails three gates, not one:
 
 ```
-bullpen_snapshots     FAIL  36/30 team-game bullpen snapshots   <- fixed here
-schedule_provenance   FAIL  4 latest revisions are post-start   <- NOT fixed
-weather_provenance    FAIL  4 latest forecasts are post-start   <- NOT fixed
+bullpen_snapshots     FAIL  36/30 team-game bullpen snapshots   <- root cause #1
+schedule_provenance   FAIL  4 latest revisions are post-start   <- root cause #2
+weather_provenance    FAIL  4 latest forecasts are post-start   <- root cause #2
 ```
 
 The cause is structural. At 22:36 UTC it is 6:36pm ET and games are underway —
@@ -1334,11 +1334,28 @@ started yet. Same class as the bullpen bug (a gate blocking unrelated downstream
 work), different mechanism: not a miscount, but failing the day's health over
 data that only ever concerned games already gone.
 
-The likely correct scoping — NOT implemented, because changing a provenance
-gate's semantics is a bigger decision than fixing a miscount — is to judge each
-game on the latest revision/forecast available **before its own commence time**,
-and fail only when no pre-start capture exists at all. A post-start row existing
-is not a defect; a decision built on one would be.
+**The fix** judges each game on the latest revision/forecast available **before
+its own commence time**: both `LEFT JOIN LATERAL`s now carry
+`AND <capture>.available_at < m.commence_time`, so a post-start row cannot be
+selected at all. A post-start row existing is not a defect; a decision built on
+one would be, and the query can no longer build one. The real failure — no
+pregame capture exists for a game — moves to `schedule_revisions` /
+`weather_forecasts`, which now read `revisions == starts` rather than
+`== games`.
+
+Denominator is `starts`, not `games`, deliberately: a game with no commence time
+cannot be judged pregame at all and is already owned by `schedule_starts`.
+Counting it in the provenance gates too would report one defect as three. The
+now-impossible post-start clause was dropped from `invalid_forecasts`; the
+completeness checks (`source_status`, `provider_issued_at`, `valid_at`,
+`source`/`raw_json`) are untouched and still enforced on the pregame row.
+
+Verified against a real PostgreSQL 16 instance, again rather than only the
+mocked tests: reproduced production's exact "4 latest revisions are post-start"
+under the OLD query, confirmed the new query returns 15/15 with 0 invalid on the
+same fixture, confirmed a game whose ONLY capture is post-start still fails
+15/16, confirmed a pregame revision missing `raw_json` still fails, and confirmed
+a NULL-commence game fails `schedule_starts` alone without double-reporting.
 
 **Cadence: do NOT increase it (decided 2026-08-24).** The question came up
 naturally — three captures a day looks thin. Reasons it is the wrong lever now:
@@ -1366,10 +1383,12 @@ naturally — three captures a day looks thin. Reasons it is the wrong lever now
    "stale != available" caveat recorded elsewhere in this file. That data
    answers the question empirically once the pipeline actually runs.
 
-**Higher-value than any cadence increase: fix the 22:10 slot.** It is the
-capture closest to first pitch, when prop boards are fullest, and it has
-produced nothing at all. Going 2 -> 3 working captures a day by repairing the
-post-start gates beats going 3 -> 6 nominal captures that fail the same way.
+**Higher-value than any cadence increase: fixing the 22:10 slot** — done above.
+It is the capture closest to first pitch, when prop boards are fullest, and it
+had produced nothing at all. Going 2 -> 3 working captures a day by repairing the
+post-start gates beats going 3 -> 6 nominal captures that fail the same way. Once
+three real captures a day have actually run for a while, re-ask the cadence
+question against observed quote persistence — not before.
 
 **Standing rules from this:**
 - **Never gate on `COUNT(rows)` from an append-only table.** Count the entities
@@ -1387,11 +1406,16 @@ post-start gates beats going 3 -> 6 nominal captures that fail the same way.
   independent gates (bullpen count, post-start provenance), which is the
   argument for decoupling rather than for fixing gates one at a time.
 - **Fixing the failure you found is not the same as fixing the outage.** The
-  bullpen miscount was real and is fixed, but it accounted for the 17:10 slot
-  only; the 22:10 slot was dead for a different reason and stayed dead. Before
-  declaring a scheduled job restored, check a failing run **from each slot** —
-  the slots fail at different times of day and therefore under different data
-  conditions.
+  bullpen miscount was real, but it accounted for the 17:10 slot only; the 22:10
+  slot was dead for an entirely different reason and stayed dead until root
+  cause #2 was fixed separately. Before declaring a scheduled job restored,
+  check a failing run **from each slot** — the slots fail at different times of
+  day and therefore under different data conditions.
+- **A pregame gate must ask "before THIS event", not "latest row".** Both bugs
+  here reduce to a query answering a subtly different question than the check
+  claimed. Any gate over a table that keeps accumulating rows through the day
+  needs an explicit per-entity time bound, or it will eventually judge a pregame
+  decision on data that postdates the event.
 - **A UI that hides staleness hides outages.** The failure was weeks old and
   invisible because the original prop page could not distinguish a live alert
   from a finished one. The empty board was the redesign working.
