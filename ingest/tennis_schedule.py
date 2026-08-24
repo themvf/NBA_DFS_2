@@ -86,6 +86,35 @@ def discover_tournaments(api_key: str) -> list[tuple[str, str, str]]:
     return out
 
 
+def _debug_dump_discovery(api_key: str) -> None:
+    """One-off diagnostic: print EVERY /v4/sports entry whose key or title
+    mentions tennis, regardless of the tennis_atp_*/tennis_wta_* prefix
+    filter or active flag discover_tournaments() applies. No DB writes.
+
+    Exists to answer a real question raised live 2026-08-24: is a tennis
+    tournament genuinely missing from The Odds API's feed, or is our own
+    prefix/active filter silently dropping something the provider actually
+    offers? discover_tournaments() already queries ALL of /v4/sports (no
+    server-side sport filter) and filters client-side -- this dump shows
+    that same raw response unfiltered, so the two are directly comparable."""
+    r = requests.get(f"{ODDS_BASE}/sports", params={"apiKey": api_key}, timeout=20)
+    r.raise_for_status()
+    sports = r.json()
+    print(f"/v4/sports: {len(sports)} total entries (all sports, not just tennis)")
+    tennis_like = [
+        s for s in sports
+        if "tennis" in str(s.get("key", "")).lower() or "tennis" in str(s.get("title", "")).lower()
+    ]
+    print(f"{len(tennis_like)} entries mentioning 'tennis' (key or title), any active state:")
+    for s in tennis_like:
+        matches_filter = str(s.get("key", "")).startswith(("tennis_atp_", "tennis_wta_"))
+        print(
+            f"  key={s.get('key')!r} title={s.get('title')!r} "
+            f"active={s.get('active')} group={s.get('group')!r} "
+            f"matches_our_prefix_filter={matches_filter}"
+        )
+
+
 def _consensus_american(prices: list[int]) -> int | None:
     """Consensus American odds by averaging in implied-probability space."""
     if not prices:
@@ -333,8 +362,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch tennis schedules + odds (auto-discovered tournaments)")
     parser.add_argument("--tour", choices=["atp", "wta"], help="One tour only (default: both)")
     parser.add_argument("--date", help="Kickoff date YYYY-MM-DD (UTC). Default: all upcoming")
+    parser.add_argument(
+        "--debug-discovery", action="store_true",
+        help="Dump every /v4/sports entry mentioning tennis, unfiltered (diagnostic, no DB writes)",
+    )
     args = parser.parse_args()
 
     config = load_config()
-    db = DatabaseManager(config.database_url)
-    fetch_schedule_and_odds(db, config.odds_api.api_key, args.tour, args.date)
+
+    if args.debug_discovery:
+        _debug_dump_discovery(config.odds_api.api_key)
+    else:
+        db = DatabaseManager(config.database_url)
+        fetch_schedule_and_odds(db, config.odds_api.api_key, args.tour, args.date)

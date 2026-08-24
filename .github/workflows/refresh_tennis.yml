@@ -39,6 +39,11 @@ on:
         required: false
         type: boolean
         default: false
+      debug_discovery:
+        description: "Dump every Odds API /v4/sports entry mentioning tennis, unfiltered (diagnostic, no DB writes)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: tennis-pipeline
@@ -99,7 +104,12 @@ jobs:
         continue-on-error: true
         run: python -m ingest.polymarket_tennis --futures-only
 
+      - name: Debug — dump raw Odds API tennis discovery (no DB writes)
+        if: inputs.debug_discovery == true
+        run: python -m ingest.tennis_schedule --debug-discovery
+
       - name: Refresh provider-covered Tennis odds (both tours)
+        if: inputs.debug_discovery != true
         run: |
           if [ -n "${{ inputs.date }}" ]; then
             python -m ingest.tennis_schedule --date "${{ inputs.date }}"
