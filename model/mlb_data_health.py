@@ -55,7 +55,17 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
           (SELECT COUNT(*) FROM mlb_relief_appearances) AS relief_appearances,
           (SELECT COUNT(*) FROM mlb_relief_appearances
              WHERE source IS NULL OR source_available_at IS NULL OR raw_checksum IS NULL OR raw_json IS NULL) AS relief_missing_provenance,
-          COUNT(b.id) AS bullpen_snapshots,
+          -- COVERAGE, not row count. mlb_bullpen_snapshots is append-only and
+          -- UNIQUE(matchup_id, team_id, raw_checksum), so one team-game legitimately
+          -- accumulates a new row every time the underlying relief data revises.
+          -- COUNT(b.id) therefore grew past games*2 on any date whose bullpen was
+          -- re-ingested, and the `== expected` gate below hard-failed the whole MLB
+          -- refresh -- which SKIPS prop capture and the alert scan, silently starving
+          -- the prop board. The sibling schedule and weather checks already collapse
+          -- to one row per game via LEFT JOIN LATERAL ... LIMIT 1; this one did not.
+          -- Counting distinct team-games asks the question the label always claimed.
+          COUNT(DISTINCT (b.matchup_id, b.team_id)) FILTER (WHERE b.id IS NOT NULL)
+            AS bullpen_team_games,
           COUNT(*) FILTER (WHERE b.id IS NOT NULL AND b.quality_outs <= 0) AS empty_quality,
           COUNT(*) FILTER (WHERE b.id IS NOT NULL AND b.available_at >= m.commence_time) AS post_start_snapshots
         FROM mlb_matchups m
@@ -147,10 +157,14 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
         "Backfill official MLB boxscores before constructing bullpen quality or workload.",
     )
     expected_bullpen = games * 2
-    bullpen_snapshots = int(number(bullpen, "bullpen_snapshots"))
+    bullpen_team_games = int(number(bullpen, "bullpen_team_games"))
+    # Coverage is the question: does every team-game have a snapshot? Extra
+    # revisions of an existing team-game are correct behaviour, not a defect --
+    # any BAD row is still caught by the bullpen_provenance check below, which
+    # deliberately keeps scanning every row rather than only the latest.
     add(
-        "bullpen_snapshots", bullpen_snapshots == expected_bullpen,
-        f"{bullpen_snapshots}/{expected_bullpen} team-game bullpen snapshots on {target_date}",
+        "bullpen_snapshots", bullpen_team_games == expected_bullpen,
+        f"{bullpen_team_games}/{expected_bullpen} team-games have a bullpen snapshot on {target_date}",
         f"Run python -m ingest.mlb_bullpen through the latest completed date for {target_date}.",
     )
     invalid_bullpen = int(

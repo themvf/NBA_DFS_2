@@ -1254,6 +1254,74 @@ not-yet-judged, matching the CLI report exactly.
 
 ---
 
+## MLB Health Gate Starved the Prop Pipeline — Found + Fixed (2026-08-24)
+
+**Symptom:** the MLB prop board showed no live plays. The old prop page hid
+this — it renders every alert it fetches with no notion of whether the game has
+started, so a wall of finished-game rows read as a populated board. The
+redesigned board filters on `commence_time` and therefore reported the truth:
+nothing was live, because almost nothing was being captured.
+
+**Root cause, one line.** `model/mlb_data_health.py`'s `bullpen_snapshots` gate
+counted `COUNT(b.id)` over a plain `LEFT JOIN mlb_bullpen_snapshots` and
+demanded **exact equality** with `games * 2`. But that table is append-only with
+`UNIQUE(matchup_id, team_id, raw_checksum)` — a team-game legitimately gains a
+new row every time the underlying relief data revises. One extra append made it
+`31/30` and hard-failed.
+
+**Why that killed props.** `refresh_mlb_vegas` exits non-zero on any health
+failure, and the next steps carry no `if:`, so they inherit `success()`:
+
+```
+6  Refresh MLB Vegas schedule, scores, and odds   FAILURE
+7  Capture MLB player-prop odds                   SKIPPED
+8  Scan + settle sharp line alerts                SKIPPED
+9  MLB prop-value program status                  SKIPPED
+```
+
+**7 of the last 12 scheduled runs** failed this way. The pattern was diagnostic:
+the 13:10 UTC run is the day's first, writes the initial 30, and passes; the
+17:10 and 22:10 runs come after an extra append and fail. So prop odds were
+captured at most **once a day, at 9:10am ET** — the thinnest hour for player-prop
+coverage, since books post most prop markets closer to first pitch. The two
+captures that would see a real prop board were exactly the two being skipped.
+
+**The fix** counts coverage, not rows:
+`COUNT(DISTINCT (b.matchup_id, b.team_id)) FILTER (WHERE b.id IS NOT NULL)`.
+This is not a loosened gate — it makes the check measure what its own message
+always claimed ("team-game bullpen snapshots"), and it brings the check in line
+with its two siblings: the schedule and weather gates already collapse to one
+row per game via `LEFT JOIN LATERAL ... LIMIT 1`. Bullpen was the only one of
+the three that counted raw rows. Validity is untouched: `empty_quality` and
+`post_start_snapshots` still scan **every** row, so a bad appended revision
+cannot hide behind a covered team-game.
+
+The `FILTER` is load-bearing. Without it Postgres counts `ROW(NULL, NULL)` from
+the unmatched side of the LEFT JOIN as a distinct value and reports 1 for a date
+with no snapshots at all. Verified against a real PostgreSQL 16 instance, not
+only the mocked unit tests: reproduced production's exact `31/30`, confirmed the
+fix yields `30/30`, confirmed a genuinely uncovered team-game still fails, and
+confirmed the zero-snapshot date returns 0 rather than 1.
+
+**Standing rules from this:**
+- **Never gate on `COUNT(rows)` from an append-only table.** Count the entities
+  the check claims to be about. Every provenance table in this repo
+  (`mlb_bullpen_snapshots`, `mlb_weather_forecast_snapshots`,
+  `mlb_schedule_revisions`, `mlb_prediction_runs`, `line_alerts`) grows by
+  design; an equality gate over one is a time bomb that fires the first time the
+  data legitimately revises.
+- **A health gate that blocks unrelated downstream work is a second bug.** Prop
+  capture does not read bullpen data, yet a bullpen gate silently disabled it
+  for weeks. Decoupling steps 7-8 from the game-line refresh is a real remaining
+  question and is deliberately NOT changed here — running the prop scan on a
+  slate whose odds failed to refresh has its own risk, and that is a judgment
+  call, not a bug fix.
+- **A UI that hides staleness hides outages.** The failure was weeks old and
+  invisible because the original prop page could not distinguish a live alert
+  from a finished one. The empty board was the redesign working.
+
+---
+
 ## Pre-Registered Studies — line_alerts attribution engine (2026-07-03)
 
 The alert ledger is now a market-disagreement attribution engine (instrumentation
