@@ -1254,7 +1254,7 @@ not-yet-judged, matching the CLI report exactly.
 
 ---
 
-## MLB Health Gate Starved the Prop Pipeline — Found + Fixed (2026-08-24)
+## MLB Health Gates Starved the Prop Pipeline — Found, Partly Fixed (2026-08-24)
 
 **Symptom:** the MLB prop board showed no live plays. The old prop page hid
 this — it renders every alert it fetches with no notion of whether the game has
@@ -1262,7 +1262,7 @@ started, so a wall of finished-game rows read as a populated board. The
 redesigned board filters on `commence_time` and therefore reported the truth:
 nothing was live, because almost nothing was being captured.
 
-**Root cause, one line.** `model/mlb_data_health.py`'s `bullpen_snapshots` gate
+**Root cause #1 — the bullpen miscount (fixed).** `model/mlb_data_health.py`'s `bullpen_snapshots` gate
 counted `COUNT(b.id)` over a plain `LEFT JOIN mlb_bullpen_snapshots` and
 demanded **exact equality** with `games * 2`. But that table is append-only with
 `UNIQUE(matchup_id, team_id, raw_checksum)` — a team-game legitimately gains a
@@ -1279,12 +1279,21 @@ failure, and the next steps carry no `if:`, so they inherit `success()`:
 9  MLB prop-value program status                  SKIPPED
 ```
 
-**7 of the last 12 scheduled runs** failed this way. The pattern was diagnostic:
-the 13:10 UTC run is the day's first, writes the initial 30, and passes; the
-17:10 and 22:10 runs come after an extra append and fail. So prop odds were
-captured at most **once a day, at 9:10am ET** — the thinnest hour for player-prop
-coverage, since books post most prop markets closer to first pitch. The two
-captures that would see a real prop board were exactly the two being skipped.
+**19 of the last 30 scheduled runs** failed, going back to 2026-08-13. Broken
+out by cron slot, the pattern is diagnostic — and shows the bullpen miscount is
+only part of it:
+
+```
+cron slot      pass  fail
+  13:10 UTC      8     2     first run of the day: writes the initial 30, passes
+  17:10 UTC      3     7     an extra append has landed -> 31/30 -> fails
+  22:10 UTC      0    10     never once succeeded
+```
+
+So the registered 3x/day cadence has in practice been **~1.1 captures/day, at
+9:10am ET** — the thinnest hour for player-prop coverage, since books post most
+prop markets closer to first pitch. The two captures that would see a real prop
+board are the two being skipped.
 
 **The fix** counts coverage, not rows:
 `COUNT(DISTINCT (b.matchup_id, b.team_id)) FILTER (WHERE b.id IS NOT NULL)`.
@@ -1303,6 +1312,65 @@ only the mocked unit tests: reproduced production's exact `31/30`, confirmed the
 fix yields `30/30`, confirmed a genuinely uncovered team-game still fails, and
 confirmed the zero-snapshot date returns 0 rather than 1.
 
+**Root cause #2 — post-start provenance (NOT fixed). The 22:10 slot is a
+separate bug and the bullpen fix does not restore it.**
+Stated plainly because the first version of this note implied otherwise. That
+run fails three gates, not one:
+
+```
+bullpen_snapshots     FAIL  36/30 team-game bullpen snapshots   <- fixed here
+schedule_provenance   FAIL  4 latest revisions are post-start   <- NOT fixed
+weather_provenance    FAIL  4 latest forecasts are post-start   <- NOT fixed
+```
+
+The cause is structural. At 22:36 UTC it is 6:36pm ET and games are underway —
+the same log records "2 in-play games skipped — closing lines frozen". The
+refresh re-captures schedule and weather for **every** game on the date,
+including in-progress ones, so the latest revision/forecast for those games is
+legitimately post-start. Both gates use `LEFT JOIN LATERAL ... LIMIT 1` to take
+the LATEST row, correctly judge it unusable for a pregame decision, and then
+fail the whole run — which kills prop capture for the games that have **not**
+started yet. Same class as the bullpen bug (a gate blocking unrelated downstream
+work), different mechanism: not a miscount, but failing the day's health over
+data that only ever concerned games already gone.
+
+The likely correct scoping — NOT implemented, because changing a provenance
+gate's semantics is a bigger decision than fixing a miscount — is to judge each
+game on the latest revision/forecast available **before its own commence time**,
+and fail only when no pre-start capture exists at all. A post-start row existing
+is not a defect; a decision built on one would be.
+
+**Cadence: do NOT increase it (decided 2026-08-24).** The question came up
+naturally — three captures a day looks thin. Reasons it is the wrong lever now:
+
+1. **The registered cadence has never actually run.** Nominal 3x/day, effective
+   ~1.1x/day. Tuning a knob that has never been set is guessing; restore 3x/day
+   and measure that first.
+2. **It would add a third regime to an already-contaminated cohort.**
+   `mlb-prop-program-v1` was registered 2026-08-15; the outage runs from at
+   least 2026-08-13. So **every enrolled observation was accrued at ~1x/day,
+   morning-only, and none has ever seen an evening prop board.** The program's
+   own analysis treats capture cadence as a covariate and forbids a
+   mixed-cadence median. Whether the pre-fix observations may pool with post-fix
+   ones is an open question that belongs to the program, not to a bug fix —
+   under this file's standing rule, a change of this kind is a NEW program
+   version with its own registration, never a silent continuation.
+3. **Credits.** 4 markets x 10 books x ~15 events = 60/run -> 180/day ->
+   ~5,400/30d against a ~20,000/month shared key that game-line capture also
+   draws on. 6x/day is ~10,800/30d — over half the quota — to chase a signal
+   this file already prices at $700–$3,700/year.
+4. **Cadence may not even be the binding constraint.** The ledger records
+   observed quote persistence (`dk_survival_min` + interval bounds). If a
+   flagged DK quote survives hours, 3x/day is sufficient; if it vanishes in
+   minutes, more cadence finds alerts that were never capturable — the
+   "stale != available" caveat recorded elsewhere in this file. That data
+   answers the question empirically once the pipeline actually runs.
+
+**Higher-value than any cadence increase: fix the 22:10 slot.** It is the
+capture closest to first pitch, when prop boards are fullest, and it has
+produced nothing at all. Going 2 -> 3 working captures a day by repairing the
+post-start gates beats going 3 -> 6 nominal captures that fail the same way.
+
 **Standing rules from this:**
 - **Never gate on `COUNT(rows)` from an append-only table.** Count the entities
   the check claims to be about. Every provenance table in this repo
@@ -1315,7 +1383,15 @@ confirmed the zero-snapshot date returns 0 rather than 1.
   for weeks. Decoupling steps 7-8 from the game-line refresh is a real remaining
   question and is deliberately NOT changed here — running the prop scan on a
   slate whose odds failed to refresh has its own risk, and that is a judgment
-  call, not a bug fix.
+  call, not a bug fix. Note this bug appeared **twice** in one incident, via two
+  independent gates (bullpen count, post-start provenance), which is the
+  argument for decoupling rather than for fixing gates one at a time.
+- **Fixing the failure you found is not the same as fixing the outage.** The
+  bullpen miscount was real and is fixed, but it accounted for the 17:10 slot
+  only; the 22:10 slot was dead for a different reason and stayed dead. Before
+  declaring a scheduled job restored, check a failing run **from each slot** —
+  the slots fail at different times of day and therefore under different data
+  conditions.
 - **A UI that hides staleness hides outages.** The failure was weeks old and
   invisible because the original prop page could not distinguish a live alert
   from a finished one. The empty board was the redesign working.
