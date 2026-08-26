@@ -28,6 +28,7 @@ from config import load_config
 from db.database import DatabaseManager
 from ingest.ff_playoff_sos import compute_playoff_sos
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
+from ingest.ff_injuries import persist_sleeper_injury_observations
 
 
 # v1.12 (2026-08-16): board no longer silently drops a team's presumptive
@@ -1222,7 +1223,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     bye_weeks = compute_bye_weeks(schedule, season)
     if len(bye_weeks) != 32:
         raise RuntimeError(f"Expected 32 schedule-derived bye weeks for {season}; found {len(bye_weeks)}")
-    _snapshot(
+    sleeper_snapshot_id = _snapshot(
         db, source="sleeper", dataset="players", season=season, digest=sleeper_digest,
         row_count=len(sleeper_payload), params={"url": SLEEPER_URL, "canonical": False},
     )
@@ -1235,6 +1236,12 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         row_count=len(schedule), params={"url": NFLVERSE_SCHEDULE_URL, "use": "schedule-derived bye weeks"},
     )
     universe = build_player_universe(db, season, roster, sleeper_payload, bye_weeks)
+    injury_ingestion = persist_sleeper_injury_observations(
+        db,
+        season=season,
+        source_snapshot_id=sleeper_snapshot_id,
+        players=universe,
+    )
 
     history_frames: dict[int, pd.DataFrame] = {}
     source_digests = [sleeper_digest, roster_digest, schedule_digest]
@@ -1345,6 +1352,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         "bye_weeks": len(bye_weeks),
         "adp_coverage": {scoring: len(lookup) for scoring, lookup in adp_lookups.items()},
         "adp_used_for_projection": False,
+        "injury_ingestion": injury_ingestion,
     }
 
 

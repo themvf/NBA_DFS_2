@@ -6337,6 +6337,7 @@ opening/current/close derivation and movement coverage alerts. These dependent
 issues may not claim the empty snapshot/cadence state as verified functionality.
 # Fantasy Football Draft Board
 
+- The canonical richer-injury data contract, reconciliation rules, rollout phases, and acceptance criteria are defined in [`docs/NFL Injury.md`](docs/NFL%20Injury.md). Injury ingestion is deterministic and independent of the AI draft advisors; richer timeline fields remain shadow data until chronologically calibrated.
 - The required player universe is the current-season nflverse weekly roster, not FantasyPros.
 - Sleeper is a no-auth enrichment source for fantasy IDs, depth order, position metadata, and injury status; nflverse remains canonical for current roster membership so stale Sleeper records cannot enter the board.
 - Independent projections use the three completed seasons immediately preceding the target season. They weight recent per-game production and regress toward position priors using the player's actual eligible historical-game sample plus four equivalent prior games. The displayed season baseline is always 17 active games; injury and availability estimates are stored separately and must not silently reduce that baseline. Bounded depth/role factors may still alter projected active-game opportunity.

@@ -290,6 +290,79 @@ export const ffPlayers = pgTable(
   (t) => [unique("ff_players_season_fp_key").on(t.season, t.fantasyprosPlayerId)],
 );
 
+export const ffPlayerInjuryObservations = pgTable(
+  "ff_player_injury_observations",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => ffPlayers.id, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+    source: text("source").notNull(),
+    sourceSnapshotId: bigint("source_snapshot_id", { mode: "number" }).references(() => ffSourceSnapshots.id, { onDelete: "set null" }),
+    sourceStatus: text("source_status"),
+    normalizedStatus: text("normalized_status").notNull(),
+    bodyPart: text("body_part"),
+    injuryType: text("injury_type"),
+    description: text("description"),
+    practiceStatus: text("practice_status"),
+    injuryStartedAt: timestamp("injury_started_at", { withTimezone: true }),
+    providerUpdatedAt: timestamp("provider_updated_at", { withTimezone: true }),
+    expectedReturnMin: date("expected_return_min"),
+    expectedReturnMax: date("expected_return_max"),
+    weeksOutMin: doublePrecision("weeks_out_min"),
+    weeksOutMax: doublePrecision("weeks_out_max"),
+    availabilityProbability: doublePrecision("availability_probability"),
+    rawPayload: jsonb("raw_payload").notNull().default({}),
+    responseHash: text("response_hash").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("ff_injury_observation_snapshot_player_source_key").on(t.sourceSnapshotId, t.playerId, t.source),
+    index("idx_ff_injury_observations_player").on(t.playerId, t.observedAt),
+  ],
+);
+
+export const ffPlayerInjuries = pgTable(
+  "ff_player_injuries",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => ffPlayers.id, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+    status: text("status").notNull(),
+    bodyPart: text("body_part"),
+    injuryType: text("injury_type"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+    lastConfirmedAt: timestamp("last_confirmed_at", { withTimezone: true }).notNull(),
+    clearedAt: timestamp("cleared_at", { withTimezone: true }),
+    expectedReturnMin: date("expected_return_min"),
+    expectedReturnMax: date("expected_return_max"),
+    weeksOutMin: doublePrecision("weeks_out_min"),
+    weeksOutMax: doublePrecision("weeks_out_max"),
+    estimateBasis: text("estimate_basis").notNull().default("unknown"),
+    confidence: doublePrecision("confidence"),
+    primarySource: text("primary_source").notNull(),
+    sourceConflict: boolean("source_conflict").notNull().default(false),
+    active: boolean("active").notNull().default(true),
+  },
+  (t) => [index("idx_ff_player_injuries_active").on(t.season, t.active, t.status)],
+);
+
+export const ffInjuryEvents = pgTable(
+  "ff_injury_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    injuryId: bigint("injury_id", { mode: "number" }).references(() => ffPlayerInjuries.id, { onDelete: "cascade" }),
+    playerId: bigint("player_id", { mode: "number" }).notNull().references(() => ffPlayers.id, { onDelete: "cascade" }),
+    observationId: bigint("observation_id", { mode: "number" }).references(() => ffPlayerInjuryObservations.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull(),
+    previousState: jsonb("previous_state").notNull().default({}),
+    newState: jsonb("new_state").notNull().default({}),
+    source: text("source").notNull(),
+    eventKey: text("event_key").notNull().unique(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_ff_injury_events_recent").on(t.playerId, t.occurredAt)],
+);
+
 export const ffRankingSets = pgTable("ff_ranking_sets", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   season: integer("season").notNull(),
@@ -1660,6 +1733,9 @@ export type YoutubePickChannel = typeof youtubePickChannels.$inferSelect;
 export type YoutubePickVideo = typeof youtubePickVideos.$inferSelect;
 export type YoutubePick = typeof youtubePicks.$inferSelect;
 export type FfPlayer = typeof ffPlayers.$inferSelect;
+export type FfPlayerInjuryObservation = typeof ffPlayerInjuryObservations.$inferSelect;
+export type FfPlayerInjury = typeof ffPlayerInjuries.$inferSelect;
+export type FfInjuryEvent = typeof ffInjuryEvents.$inferSelect;
 export type FfRankingSet = typeof ffRankingSets.$inferSelect;
 export type FfPlayerRanking = typeof ffPlayerRankings.$inferSelect;
 export type FfPlayerIndicator = typeof ffPlayerIndicators.$inferSelect;

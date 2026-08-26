@@ -32,6 +32,7 @@ from psycopg2.extras import RealDictCursor
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.ff_injuries import persist_fantasypros_injury_observations
 
 BASE_URL = "https://api.fantasypros.com/public/v2/json"
 NFLVERSE_SCHEDULE_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
@@ -711,6 +712,13 @@ def snapshot_fantasypros_contracts(
                 season,
                 snapshot_id,
                 payload,
+            )
+        elif contract.dataset == "injuries":
+            saved_row["injury_observations"] = persist_fantasypros_injury_observations(
+                db,
+                season=season,
+                source_snapshot_id=snapshot_id,
+                rows=row_dicts,
             )
         saved.append(saved_row)
     return {"season": season, "identity": identity, "snapshots": saved}
