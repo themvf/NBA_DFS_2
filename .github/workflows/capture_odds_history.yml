@@ -11,10 +11,24 @@ on:
   # within the configured minute, so it now owns the real cadence.
   workflow_dispatch:
   schedule:
-    # Hourly safety net only (same 10 AM–11:59 PM ET active window), in case
-    # the Vercel -> GitHub dispatch bridge breaks (expired token, Vercel
-    # outage, etc.). Not the primary cadence anymore - see note above.
-    - cron: "12 14-23,0-3 * * *"
+    # Safety net only (same 10 AM-11:59 PM ET active window), in case the
+    # Vercel -> GitHub dispatch bridge breaks (expired token, Vercel outage,
+    # etc.). Not the primary cadence - see note above.
+    #
+    # THINNED hourly -> 6-hourly on 2026-08-24. The shared ODDS_API_KEY hit its
+    # 20,000/month ceiling (remaining=0, every paid /odds call 401ing across
+    # MLB/NFL/tennis). This step is the single largest consumer in the whole
+    # project: 3 regions x 3 markets = 9 credits per run. Hourly over the 14h
+    # window was 14 runs/day = 126 credits/day spent purely duplicating what
+    # the Vercel cron already covers -- and `cancel-in-progress: false` means
+    # these QUEUE alongside the Vercel dispatches rather than deduping, so
+    # every one of them actually ran.
+    #
+    # Deliberately thinned rather than deleted: this fallback is the only
+    # thing standing between a broken Vercel bridge and silently capturing
+    # nothing at all, so it keeps ~3 probes/day (27 credits/day) instead of
+    # being removed outright.
+    - cron: "12 14,20,2 * * *"
 
 concurrency:
   group: capture-odds-history

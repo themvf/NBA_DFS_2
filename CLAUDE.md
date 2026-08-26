@@ -164,12 +164,39 @@ succeeded when they did fire).
 
 **Fix:** Vercel Cron (Pro plan — fires within the configured minute, unlike GitHub's
 best-effort scheduler) now owns the real cadence. `web/src/app/api/cron/mlb-odds-capture`
-is a thin route that Vercel invokes on the same `7,22,37,52 14-23,0-3 * * *` schedule
+is a thin route that Vercel invokes on a `7,37 14-23,0-3 * * *` schedule
 (`web/vercel.json`) and does nothing but fire a `workflow_dispatch` REST call against
 `capture_odds_history.yml` — **no capture/business logic moved**; the single-writer
 Python odds pipeline (`ingest.mlb_schedule`, `model.line_alerts`) still runs entirely
-inside GitHub Actions, untouched. GitHub's own `schedule:` trigger was reduced to an
-hourly fallback (`12 14-23,0-3 * * *`) in case the Vercel→GitHub bridge itself breaks.
+inside GitHub Actions, untouched. GitHub's own `schedule:` trigger is a sparse
+fallback (`12 14,20,2 * * *`) in case the Vercel→GitHub bridge itself breaks.
+
+**Cadence reduced 2026-08-24 — quota, not a change of heart about timing.** The
+shared `ODDS_API_KEY` hit its 20,000/month ceiling (`remaining=0 used=20000`), at
+which point The Odds API returns **401 Unauthorized** — not 429 — on every paid
+`/odds` call. That took MLB, NFL *and* tennis ingestion down simultaneously while
+the free `/v4/sports` and `/events` endpoints kept answering, which masked the
+outage and made it look like missing provider coverage. This capture step is the
+single largest consumer in the project (3 regions × 3 markets = **9 credits/run**),
+so it absorbed the cut:
+
+| | before | after | credits/day |
+|---|---|---|---|
+| Vercel cron | every 15 min (56/day) | every 30 min (28/day) | 504 → 252 |
+| GitHub fallback | hourly (14/day) | 6-hourly (3/day) | 126 → 27 |
+| | | | **630 → 279** |
+
+Note `cancel-in-progress: false` means the Vercel dispatches and the GitHub
+fallback **queue** rather than dedupe, so both schedules genuinely ran — the
+fallback was not free. It was thinned rather than deleted because it is the only
+thing preventing a broken Vercel bridge from silently capturing nothing.
+
+The cost of the reduction is real and should be stated: line-movement resolution
+on the MLB board halves (30-minute granularity instead of 15), so fast pre-game
+steam between captures is now less likely to be observed. The 15-minute cadence
+was originally chosen precisely because GitHub's own sub-hourly scheduler was
+unreliable; that reasoning is unchanged, and this is a budget concession to be
+revisited if quota headroom is restored.
 
 Deliberately NOT ported to a Vercel Python Function: Vercel's Root Directory (`web/`)
 cannot access files outside itself (`..` is blocked), so a real port would mean either
