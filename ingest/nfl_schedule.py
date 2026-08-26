@@ -37,7 +37,15 @@ NFL_SPORT_KEYS = {
     "americanfootball_nfl": "regular",
     "americanfootball_nfl_preseason": "preseason",
 }
-NFL_ODDS_REGIONS = "us,eu,us_ex"
+# us_ex REMOVED 2026-08-24: billed as a region (cost = markets x regions, so
+# it was a third of every NFL odds call) yet it returned Polymarket on 0 of
+# 1,685 NFL captures in the preceding 30 days -- measured against the books
+# JSONB, not assumed. This is why detector health reports
+# nfl/pinnacle_polymarket_delta as DEAD (0 alerts ever). MLB deliberately
+# KEEPS us_ex: there it lands on 89.4% of captures and its Pin/Poly detector
+# does fire, so this is a per-sport fact, not a blanket judgement on the
+# region.
+NFL_ODDS_REGIONS = "us,eu"
 EASTERN = ZoneInfo("America/New_York")
 
 
