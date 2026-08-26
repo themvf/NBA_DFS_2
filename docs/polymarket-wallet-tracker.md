@@ -1,8 +1,12 @@
 # Polymarket wallet tracking — status, method, and why it was closed
 
 Status as of **2026-08-26**: **investigated, answered, and closed.** The
-capability was built and works. It found no tradeable signal, and the reason
-is understood rather than merely suspected. Nothing here is scheduled, and
+capability was built and works. It found no tradeable signal, the reason is
+understood rather than merely suspected, and the finding is a **base rate
+over a whole leaderboard** (§6), not a case study that could be waved away
+as unlucky sampling: 52% of the top-50 "edge" wallets are automated, only 12%
+are non-automated sports bettors, and those are net **negative** once a
+9-market outlier is excluded. Nothing here is scheduled, and
 nothing writes to the database.
 
 Read this before proposing wallet tracking again. The question that killed it
@@ -155,7 +159,80 @@ $8,142 tennis profit) is one of the two confirmed bots.
 
 ---
 
-## 6. A production bug this work uncovered
+## 6. The base rate — the whole leaderboard, not a case study
+
+Section 5 is a case study of six wallets. The obvious objection is sampling:
+maybe those six were unlucky picks and real sharp money sits elsewhere on the
+list. So the automation screen was run over the **entire top-50 tennis edge
+leaderboard** (2026-08-26, ~2 minutes of API calls):
+
+| Classification | Count |
+|---|---|
+| Automated / market-maker | 7 (14%) |
+| Likely automated | 19 (38%) |
+| **Directional bettor** | **24 (48%)** |
+
+**52% of the highest-"edge" wallets are machines.** The six in §5 were
+representative, not unlucky.
+
+It gets worse one step further in. Of the 24 that pass the automation screen,
+only **6** are more than 60% sports-focused — the rest are generalists whose
+tennis activity is incidental to crypto, politics and esports. The funnel is:
+
+```
+50 ranked wallets
+  -> 24 not automated            (48%)
+  -> 6 also actually sports bettors (12%)
+```
+
+And those six do not make money:
+
+| Group | Markets | Staked | PnL | ROI |
+|---|---|---|---|---|
+| All 6 survivors | 469 | $11,866 | +$1,734 | **+14.6%** |
+| Excluding the 9-market wallet | 460 | $10,702 | −$270 | **−2.5%** |
+
+The entire positive figure is one wallet (`RTAYLOR232`) with **9 markets** —
+the same small-sample artifact the Wilson bound exists to suppress,
+reappearing on a different axis because the sport-focus filter was applied
+after ranking rather than as an eligibility gate. Remove it and the genuine,
+non-automated, sports-focused wallets at the top of our own edge leaderboard
+are **losing 2.5% across 460 markets**.
+
+### Why this is stronger than the case study
+
+This is the difference between "the wallets we examined were bots" and "the
+ranking is mostly bots, and what is left does not win." It closes the
+sampling objection, and it converts the conclusion from an anecdote into a
+base rate.
+
+Framed positively: we looked where sharp money would *have* to appear. If a
+wallet were reliably beating tennis markets, an edge-ranked leaderboard is
+exactly where it would surface. After filtering, the top of that leaderboard
+is flat-to-negative.
+
+Reproduce with:
+
+```bash
+python -m ingest.polymarket_wallet_forensics --wallets-file <addresses.txt> --compact
+```
+
+which prints the classification breakdown, how many survive the automation
+screen, and how many of those are also sport-focused.
+
+### A structural problem that outlives the metric
+
+Even a genuinely sharp wallet is only actionable if you can see its fill and
+act before the market absorbs it. The Data API reports fills **after** the
+fact and our capture cadence is measured in hours. That latency gap is
+independent of wallet quality, so it would have to be solved before any
+wallet-following strategy could work at all — and it is a harder problem than
+identification. Worth settling *before* any future effort spends time
+re-ranking wallets.
+
+---
+
+## 7. A production bug this work uncovered
 
 Separately valuable, and already fixed: `ingest/polymarket_tennis.py`
 discovered matches via `ATP_TAG_ID=101232` / `WTA_TAG_ID=102123`. Live
@@ -170,7 +247,7 @@ which is where futures genuinely live.
 
 ---
 
-## 7. An earlier attempt — reconcile before trusting
+## 8. An earlier attempt — reconcile before trusting
 
 Five design docs and nine scratch scripts from **2026-08-06/07** sit
 **uncommitted** in the working directory (`POLYMARKET_SHARP_TRACKER_PLAN.md`,
@@ -198,7 +275,7 @@ Either reconcile them against this document or delete them.
 
 ---
 
-## 8. What does not exist
+## 9. What does not exist
 
 - **No persistence.** Pilots print and write JSON. No table stores any of it.
 - **No scheduling.** No workflow runs any of this.
@@ -208,7 +285,7 @@ Either reconcile them against this document or delete them.
 
 ---
 
-## 9. If this is ever revisited
+## 10. If this is ever revisited
 
 The negative result is about **this metric on these wallets**, not a proof
 that Polymarket contains no information. Any revival should clear these bars
@@ -218,6 +295,11 @@ first, in order:
    `buy_dominance ≥ 0.6` filter was insufficient — it passed four wallets
    that still show 10–13% same-second trades. Fold the forensics signals
    (sub-$1 share, same-second share, category breadth) into eligibility.
+   This is no longer theoretical: `--wallets-file ... --compact` screens a
+   50-wallet leaderboard in about two minutes, and §6 shows what it finds.
+   Sport-focus must be an eligibility gate too, applied *before* ranking —
+   applying it afterwards is how a 9-market wallet ended up carrying the
+   entire apparent profit of the survivor group.
 2. **Rank on something a market maker cannot accidentally win.** Realized ROI
    on *directional, held-to-resolution* positions would be a start. Entry
    price relative to a quoted fair value is not.

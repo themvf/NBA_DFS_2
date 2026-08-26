@@ -324,21 +324,79 @@ def run(wallets: List[str]) -> Dict[str, Any]:
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "wallets": profiles,
         "pairwise_overlap": pairs,
+        "summary": summarize(profiles),
+    }
+
+
+SPORT_CATEGORIES = {"Tennis", "Tennis (ITF)", "MLB", "NBA", "NFL", "NHL", "Soccer"}
+
+
+def sport_share(p: Dict[str, Any]) -> float:
+    """Fraction of a wallet's trades in any sport category.
+
+    A wallet ranked on its tennis results but spending most of its activity
+    on crypto and politics is not a sports bettor who happens to trade
+    elsewhere -- it is a generalist whose tennis flow is incidental. The
+    distinction decides whether "follow this wallet on tennis" means
+    anything at all.
+    """
+    cats = p.get("categories") or {}
+    total = sum(cats.values())
+    if not total:
+        return 0.0
+    return sum(v for k, v in cats.items() if k in SPORT_CATEGORIES) / total
+
+
+def summarize(profiles: List[Dict[str, Any]], sport_floor: float = 0.60) -> Dict[str, Any]:
+    """Base rate: how much of a ranked list is automation vs real bettors.
+
+    Run over a whole leaderboard this answers what a single case study
+    cannot -- is the ranking mostly machines?
+    """
+    counts: Counter = Counter(p["classification"] for p in profiles)
+    directional = [p for p in profiles if p["classification"] == "DIRECTIONAL BETTOR"]
+    focused = [q for q in directional if sport_share(q) >= sport_floor]
+    return {
+        "n": len(profiles),
+        "by_classification": dict(counts),
+        "directional": len(directional),
+        "directional_and_sport_focused": len(focused),
+        "sport_floor": sport_floor,
+        "focused_wallets": [
+            {"wallet": q["wallet"], "name": q["display_name"],
+             "sport_share": round(sport_share(q), 3),
+             "trades": q["trades_analyzed"], "categories": q["distinct_categories"]}
+            for q in sorted(focused, key=lambda x: -sport_share(x))
+        ],
     }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--wallet", action="append", help="Analyse specific wallet(s) instead of the six")
+    ap.add_argument("--wallets-file", help="Newline-delimited wallet addresses (e.g. a whole leaderboard)")
+    ap.add_argument("--compact", action="store_true", help="One line per wallet (use for large lists)")
     ap.add_argument("--out", default="polymarket_wallet_forensics.json")
     args = ap.parse_args()
 
-    report = run(args.wallet or CROSS_SPORT_WALLETS)
+    wallets = list(args.wallet or [])
+    if args.wallets_file:
+        with open(args.wallets_file, encoding="utf-8") as fh:
+            wallets += [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
+    report = run(wallets or CROSS_SPORT_WALLETS)
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=1)
 
     print("\n=== Wallet forensics ===")
-    for p in report["wallets"]:
+    if args.compact:
+        for q in report["wallets"]:
+            nm = (q["display_name"] or q["wallet"][:12])[:20]
+            print(f"  {nm:20s} {q['trades_analyzed']:>5} tr  "
+                  f"dust {(q['sub_dollar_trade_share'] or 0)*100:>3.0f}%  "
+                  f"sec {(q['same_second_trade_share'] or 0)*100:>3.0f}%  "
+                  f"sport {sport_share(q)*100:>3.0f}%  cats {q['distinct_categories']:>2}  "
+                  f"{q['classification']}")
+    for p in ([] if args.compact else report["wallets"]):
         name = p["display_name"] or p["wallet"][:14]
         trunc = " [truncated]" if p["history_truncated"] else ""
         print(f"\n{name}  ({p['wallet'][:18]}...)")
@@ -350,6 +408,15 @@ def main() -> int:
         print(f"  >> {p['classification']}")
         for r in p["classification_reasons"]:
             print(f"       - {r}")
+
+    sm = report["summary"]
+    print()
+    print(f"=== Base rate over {sm['n']} wallets ===")
+    for k, v in sorted(sm["by_classification"].items(), key=lambda kv: -kv[1]):
+        print(f"   {k:26s} {v:>3}  ({v/sm['n']*100:.0f}%)")
+    print(f"   -> {sm['directional']}/{sm['n']} survive the automation screen")
+    print(f"   -> {sm['directional_and_sport_focused']}/{sm['n']} are ALSO "
+          f">{sm['sport_floor']*100:.0f}% sport-focused")
 
     print("\n=== Are these one entity? (pairwise market overlap) ===")
     for r in report["pairwise_overlap"][:6]:
