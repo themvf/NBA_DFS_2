@@ -100,11 +100,24 @@ def test_all_32_provider_team_names_are_unique() -> None:
     assert len({team["abbreviation"] for team in NFL_TEAMS}) == 32
 
 
-def test_live_nfl_and_mlb_regions_include_polymarket() -> None:
+def test_mlb_keeps_polymarket_region_but_nfl_does_not() -> None:
+    """us_ex is billed per region and only earns its cost for MLB.
+
+    Measured 2026-08-24 against the books JSONB in game_odds_history over the
+    preceding 30 days: Polymarket appeared on 89.4% of MLB captures but 0 of
+    1,685 NFL captures (and 0 of 2,838 tennis ones). It was dropped where it
+    never arrived -- which is also why detector health reports
+    nfl/pinnacle_polymarket_delta as DEAD with 0 alerts ever.
+
+    This asserts the ASYMMETRY on purpose. Re-adding us_ex to NFL should
+    require fresh evidence the provider actually serves NFL exchange prices,
+    not just a symmetry argument.
+    """
     from ingest.mlb_schedule import MLB_ODDS_REGIONS
 
-    assert set(nfl_schedule.NFL_ODDS_REGIONS.split(",")) == {"us", "eu", "us_ex"}
     assert set(MLB_ODDS_REGIONS.split(",")) == {"us", "eu", "us_ex"}
+    assert set(nfl_schedule.NFL_ODDS_REGIONS.split(",")) == {"us", "eu"}
+    assert "us_ex" not in nfl_schedule.NFL_ODDS_REGIONS
 
 
 def test_eastern_game_date_handles_sunday_night_utc_rollover() -> None:

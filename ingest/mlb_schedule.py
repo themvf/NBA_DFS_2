@@ -839,6 +839,52 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
 
     target_date = game_date or date.today().isoformat()
 
+    # Don't buy odds for a day with nothing left to price. This call costs
+    # 9 credits (3 regions x 3 markets) and fired unconditionally, so every
+    # scheduled capture on an off-day, during the All-Star break, or across
+    # the ~5-month offseason spent full price to receive an empty list.
+    # fetch_schedule() runs before this in every entrypoint and populates
+    # mlb_matchups from the free MLB Stats API, so the answer is already in
+    # the DB by the time we get here -- no extra paid call to find out.
+    #
+    # "Upcoming" (not merely "scheduled") is the right test: the parser below
+    # skips games that have already started so their closing lines stay
+    # frozen, so a date whose games are all underway has nothing to write
+    # either. Matches verify_fresh_upcoming_odds()'s own definition, which
+    # likewise passes when zero upcoming games remain.
+    counts = db.execute_one(
+        """
+        SELECT
+            COUNT(*) AS scheduled,
+            COUNT(*) FILTER (
+                WHERE commence_time > NOW()
+                  AND COALESCE(game_status, '') NOT IN ('Postponed', 'Cancelled')
+            ) AS upcoming
+        FROM mlb_matchups
+        WHERE game_date = %s
+        """,
+        (target_date,),
+    ) or {}
+    scheduled = int(counts.get("scheduled") or 0)
+    upcoming = int(counts.get("upcoming") or 0)
+    if upcoming == 0:
+        # Log the two cases apart: a genuinely empty/finished slate is normal,
+        # but zero SCHEDULED rows can also mean fetch_schedule failed upstream,
+        # and this guard must not quietly disguise that as "no games today".
+        if scheduled == 0:
+            logger.info(
+                "No MLB games in mlb_matchups for %s (off-day/offseason, or the schedule "
+                "fetch did not populate) — skipping the paid odds call, saves 9 credits",
+                target_date,
+            )
+        else:
+            logger.info(
+                "All %d MLB game(s) for %s have started or are postponed/cancelled — "
+                "skipping the paid odds call, saves 9 credits",
+                scheduled, target_date,
+            )
+        return 0
+
     try:
         resp = requests.get(
             "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/",

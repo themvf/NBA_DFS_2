@@ -50,8 +50,20 @@ logger = logging.getLogger(__name__)
 
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 # us + uk + eu = DraftKings/FanDuel, UK books, Pinnacle (sharp reference).
-# us_ex = Polymarket — enables Pin/Poly delta alerts same as MLB/NFL.
-REGIONS = "us,uk,eu,us_ex"
+#
+# us_ex REMOVED 2026-08-24. It is billed like any other region (cost =
+# markets x regions, so it was 25% of every tennis odds call: 12 credits
+# instead of 9) and it returned Polymarket on 0 of 2,838 paid tennis
+# captures in the preceding 30 days -- measured, not assumed. Every one of
+# the 577 Polymarket tennis rows in game_odds_history came from
+# ingest/polymarket_tennis.py, which reads Polymarket's own Gamma API for
+# FREE. We were paying for a feed we already get for nothing, and not even
+# receiving it. This is also why detector health reports
+# tennis/pinnacle_polymarket_delta as DEAD (0 alerts ever): the data never
+# arrived on this path. Re-adding us_ex would need evidence the provider
+# has started serving tennis exchange prices -- check the books JSONB, not
+# the docs.
+REGIONS = "us,uk,eu"
 
 
 class TennisOddsDiscoveryError(RuntimeError):
