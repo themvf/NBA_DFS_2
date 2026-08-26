@@ -12,7 +12,7 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { ANALYTICS_CACHE_TAG } from "@/db/analytics-cache";
 import { db } from "@/db";
-import { ensureDkPlayerPropColumns, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureOwnershipExperimentTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
+import { ensureDkPlayerPropColumns, ensureMlbBlowupTrackingTables, ensureOddsApiPropFetchLog, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureOwnershipExperimentTables, ensureProjectionExperimentTables } from "@/db/ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, projectionRuns, projectionPlayerSnapshots, ownershipRuns, ownershipPlayerSnapshots, mlbBlowupRuns, mlbBlowupPlayerSnapshots, mlbHomerunRuns, mlbHomerunPlayerSnapshots, gameOddsHistory, playerPropHistory, mlbTeams, mlbTeamStats as mlbTeamStatsTable, mlbMatchups, mlbBatterStats, mlbPitcherStats, mlbParkFactors, type MlbBatterStats, type MlbPitcherStats, type MlbTeamStats, type MlbParkFactors } from "@/db/schema";
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
 import { canWebSurfaceWriteMlbOdds } from "@/lib/mlb-odds-writer-policy";
@@ -2681,6 +2681,58 @@ export async function backfillPlayerStats(): Promise<{ ok: boolean; message: str
 
 // ── Player props (The Odds API) ───────────────────────────────
 
+// ── Odds API prop-fetch spend controls ───────────────────────────────────────
+// The DFS "Fetch Player Props" buttons make one PAID per-event call each
+// (MLB = 8 markets x 1 region = 8 credits/event, NBA = 5). They were
+// previously undeduped, so a double-click -- easy on a slow slate -- paid
+// twice for identical data. On 2026-08-24 the shared key hit its 20,000/month
+// ceiling and every paid /odds call started returning 401, which is what
+// prompted adding a guard here.
+const PROP_FETCH_DEDUPE_MINUTES = 10;
+
+/** Event ids fetched for `sport` within the dedupe window. */
+async function recentlyFetchedPropEventIds(sport: string): Promise<Set<string>> {
+  try {
+    await ensureOddsApiPropFetchLog();
+    const rows = await db.execute(sql`
+      SELECT event_id FROM odds_api_prop_fetch_log
+      WHERE sport = ${sport}
+        AND fetched_at > NOW() - (${PROP_FETCH_DEDUPE_MINUTES} * INTERVAL '1 minute')
+    `);
+    return new Set((rows.rows as Array<{ event_id: string }>).map((r) => String(r.event_id)));
+  } catch {
+    // Never let the guard block a fetch the user asked for -- a failed lookup
+    // degrades to the old (undeduped) behaviour rather than to no data.
+    return new Set<string>();
+  }
+}
+
+async function recordPropEventFetch(sport: string, eventId: string, credits: number): Promise<void> {
+  try {
+    await db.execute(sql`
+      INSERT INTO odds_api_prop_fetch_log (sport, event_id, fetched_at, credits_estimate)
+      VALUES (${sport}, ${eventId}, NOW(), ${credits})
+      ON CONFLICT (sport, event_id)
+      DO UPDATE SET fetched_at = NOW(), credits_estimate = ${credits}
+    `);
+  } catch {
+    /* logging spend must never fail the fetch itself */
+  }
+}
+
+/** Reads the Odds API's own quota headers off any response. */
+function readOddsQuota(headers: Headers): { remaining: number | null; used: number | null } {
+  const num = (v: string | null) => (v == null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+  return { remaining: num(headers.get("x-requests-remaining")), used: num(headers.get("x-requests-used")) };
+}
+
+function quotaSuffix(remaining: number | null): string {
+  if (remaining == null) return "";
+  if (remaining <= 0) return " · ⚠ Odds API quota EXHAUSTED (0 left)";
+  if (remaining < 500) return ` · ⚠ Odds API quota low: ${remaining.toLocaleString()} left`;
+  return ` · Odds API quota: ${remaining.toLocaleString()} left`;
+}
+
 async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> {
   try {
     await ensureDkPlayerPropColumns();
@@ -2756,12 +2808,24 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
     type PropAccumulator = Partial<Record<NbaProjectionPropStat, PropBookCandidate[]>>;
     const propAccum = new Map<number, PropAccumulator>(); // key = dk_players.id
 
+    const CREDITS_PER_EVENT = 5; // 5 markets x 1 region
+    const recentlyFetched = await recentlyFetchedPropEventIds("nba");
+    let skippedRecent = 0;
+    let creditsSpent = 0;
+    let quotaRemaining: number | null = null;
+
     for (const event of todayEvents) {
       const eventTeamIds = [event.home_team, event.away_team]
         .map((teamName) => (teamName ? teamIdByCanonicalName.get(canonicalizeTeamName(teamName)) ?? null : null))
         .filter((teamId): teamId is number => teamId != null);
       const eventCandidates = eventTeamIds.flatMap((teamId) => playersByTeamId.get(teamId) ?? []);
       if (eventCandidates.length === 0) continue;
+
+      // Paid per-event call. Skip if an identical one landed moments ago.
+      if (recentlyFetched.has(event.id)) {
+        skippedRecent += 1;
+        continue;
+      }
 
       const qs = new URLSearchParams({
         apiKey: oddsApiKey, regions: "us",
@@ -2773,7 +2837,10 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
           `https://api.the-odds-api.com/v4/sports/basketball_nba/events/${event.id}/odds?${qs}`,
           { next: { revalidate: 0 } },
         );
+        quotaRemaining = readOddsQuota(r.headers).remaining ?? quotaRemaining;
         if (!r.ok) continue;
+        creditsSpent += CREDITS_PER_EVENT;
+        await recordPropEventFetch("nba", event.id, CREDITS_PER_EVENT);
         const data = await r.json() as {
           bookmakers: Array<{
             key: string;
@@ -3078,7 +3145,10 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
     revalidatePath("/dfs");
     return {
       ok: true,
-      message: `Player props: ${propMatched}/${slatePlayers.length} players matched across ${todayEvents.length} games`,
+      message: `Player props: ${propMatched}/${slatePlayers.length} players matched across ${todayEvents.length} games`
+        + (skippedRecent > 0 ? ` · ${skippedRecent} game(s) skipped (fetched <${PROP_FETCH_DEDUPE_MINUTES}m ago)` : "")
+        + ` · ~${creditsSpent} credits used`
+        + quotaSuffix(quotaRemaining),
     };
   } catch (e) {
     return { ok: false, message: `Props failed: ${e instanceof Error ? e.message : String(e)}` };
@@ -3168,12 +3238,24 @@ async function fetchMlbPlayerProps(): Promise<{ ok: boolean; message: string }> 
     type PropAccumulator = Partial<Record<MlbProjectionPropStat, PropBookCandidate[]>>;
     const propAccum = new Map<number, PropAccumulator>();
 
+    const CREDITS_PER_EVENT = Object.keys(MLB_PROP_MARKET_TO_STAT).length; // markets x 1 region
+    const recentlyFetched = await recentlyFetchedPropEventIds("mlb");
+    let skippedRecent = 0;
+    let creditsSpent = 0;
+    let quotaRemaining: number | null = null;
+
     for (const event of todayEvents) {
       const eventTeamIds = [event.home_team, event.away_team]
         .map((teamName) => (teamName ? teamIdByCanonicalName.get(canonicalizeTeamName(teamName)) ?? null : null))
         .filter((teamId): teamId is number => teamId != null);
       const eventCandidates = eventTeamIds.flatMap((teamId) => playersByTeamId.get(teamId) ?? []);
       if (eventCandidates.length === 0) continue;
+
+      // Paid per-event call. Skip if an identical one landed moments ago.
+      if (recentlyFetched.has(event.id)) {
+        skippedRecent += 1;
+        continue;
+      }
 
       const qs = new URLSearchParams({
         apiKey: oddsApiKey,
@@ -3186,7 +3268,10 @@ async function fetchMlbPlayerProps(): Promise<{ ok: boolean; message: string }> 
           `https://api.the-odds-api.com/v4/sports/baseball_mlb/events/${event.id}/odds?${qs}`,
           { next: { revalidate: 0 } },
         );
+        quotaRemaining = readOddsQuota(response.headers).remaining ?? quotaRemaining;
         if (!response.ok) continue;
+        creditsSpent += CREDITS_PER_EVENT;
+        await recordPropEventFetch("mlb", event.id, CREDITS_PER_EVENT);
         const data = await response.json() as {
           bookmakers: Array<{
             key: string;
@@ -3543,7 +3628,10 @@ async function fetchMlbPlayerProps(): Promise<{ ok: boolean; message: string }> 
     revalidatePath("/dfs");
     return {
       ok: true,
-      message: `MLB player props: ${propMatched}/${slatePlayers.length} players matched across ${todayEvents.length} games`,
+      message: `MLB player props: ${propMatched}/${slatePlayers.length} players matched across ${todayEvents.length} games`
+        + (skippedRecent > 0 ? ` · ${skippedRecent} game(s) skipped (fetched <${PROP_FETCH_DEDUPE_MINUTES}m ago)` : "")
+        + ` · ~${creditsSpent} credits used`
+        + quotaSuffix(quotaRemaining),
     };
   } catch (e) {
     return { ok: false, message: `MLB props failed: ${e instanceof Error ? e.message : String(e)}` };
