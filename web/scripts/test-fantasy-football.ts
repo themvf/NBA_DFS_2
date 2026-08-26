@@ -11,6 +11,7 @@ import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 import { buildProjectionExplanation } from "../src/lib/fantasy-football/projection-explanation";
 import { buildBestBallDraftBoard, canAddBestBallPlayer, getBestBallRosterStatus, parseBestBallDraftState } from "../src/lib/fantasy-football/best-ball";
 import { buildRosterCorrelationBadges } from "../src/lib/fantasy-football/teammate-correlation-badge";
+import { scoreDraftKingsBestBallLine, selectBestBallLineup, simulateShadowBestBallCandidates, type ShadowBestBallPlayer } from "../src/lib/fantasy-football/best-ball-simulation";
 import type { TeammateCorrelationRow } from "../src/db/queries-fantasy-football";
 import {
   bestBallAdvisorDraftSignature,
@@ -181,6 +182,35 @@ assert.deepEqual(parseBestBallDraftState('bad-json'), { userSlot: 1, playerIds: 
 // cpuEnabled round-trips, and non-boolean values fall back to off rather than crashing.
 assert.deepEqual(parseBestBallDraftState('{"userSlot":2,"playerIds":[],"cpuEnabled":true}'), { userSlot: 2, playerIds: [], cpuEnabled: true });
 assert.deepEqual(parseBestBallDraftState('{"userSlot":2,"playerIds":[],"cpuEnabled":1}'), { userSlot: 2, playerIds: [], cpuEnabled: false });
+
+// DraftKings scoring includes full PPR and each yardage bonus independently.
+assert.equal(scoreDraftKingsBestBallLine({
+  passingYards: 300, passingTouchdowns: 2, interceptions: 1,
+  rushingYards: 100, rushingTouchdowns: 1,
+  receptions: 5, receivingYards: 100, receivingTouchdowns: 1,
+  returnTouchdowns: 1, fumblesLost: 1, twoPointConversions: 1,
+}), 72);
+assert.ok(Math.abs(scoreDraftKingsBestBallLine({ passingYards: 299, rushingYards: 99, receivingYards: 99 }) - 31.76) < 1e-9);
+
+const lineupPlayers: ShadowBestBallPlayer[] = [
+  { playerId: 201, name: "QB", position: "QB", team: "A", byeWeek: null, projectedPoints: 300, projectionLow: 280, projectionHigh: 320, expectedGames: 17, confidence: 0.9 },
+  ...Array.from({ length: 3 }, (_, index) => ({ playerId: 210 + index, name: `RB${index}`, position: "RB", team: "B", byeWeek: null, projectedPoints: 220, projectionLow: 190, projectionHigh: 250, expectedGames: 17, confidence: 0.8 })),
+  ...Array.from({ length: 4 }, (_, index) => ({ playerId: 220 + index, name: `WR${index}`, position: "WR", team: "C", byeWeek: null, projectedPoints: 220, projectionLow: 190, projectionHigh: 250, expectedGames: 17, confidence: 0.8 })),
+  ...Array.from({ length: 2 }, (_, index) => ({ playerId: 230 + index, name: `TE${index}`, position: "TE", team: "D", byeWeek: null, projectedPoints: 180, projectionLow: 150, projectionHigh: 210, expectedGames: 17, confidence: 0.8 })),
+];
+const lineupScores = new Map(lineupPlayers.map((player, index) => [player.playerId, 30 - index]));
+const selectedLineup = selectBestBallLineup(lineupPlayers, lineupScores);
+assert.equal(selectedLineup.countedPlayerIds.length, 8);
+assert.ok(selectedLineup.countedPlayerIds.includes(212), "the third RB should win FLEX over lower-scoring WR/TE reserves");
+assert.ok(!selectedLineup.countedPlayerIds.includes(223), "the fourth WR should remain on the bench");
+
+const shadowCandidate = { playerId: 299, name: "Candidate", position: "WR", team: "E", byeWeek: 8, projectedPoints: 250, projectionLow: 220, projectionHigh: 280, expectedGames: 16, confidence: 0.75 } satisfies ShadowBestBallPlayer;
+const shadow = simulateShadowBestBallCandidates({ roster: lineupPlayers, candidates: [shadowCandidate], iterations: 80 });
+assert.equal(shadow.model, "shadow-v0-v1.6-points");
+assert.equal(shadow.iterations, 80);
+assert.equal(shadow.candidates.length, 1);
+assert.ok(shadow.candidates[0].marginalCountedPoints >= 0);
+assert.ok(shadow.candidates[0].expectedCountedWeeks >= 0 && shadow.candidates[0].expectedCountedWeeks <= 17);
 
 function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingRow, "playerId" | "name" | "position">): FantasyRankingRow {
   return {

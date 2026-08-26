@@ -23,6 +23,8 @@ import BestBallDraftBoard from "./best-ball-draft-board";
 import BestBallPlayerBoard from "./best-ball-player-board";
 import BestBallAiAdvisor from "./best-ball-ai-advisor";
 import { BestBallDecisionDesk, type BestBallPickReceipt } from "./best-ball-decision-desk";
+import { simulateShadowBestBallCandidates, type ShadowBestBallPlayer } from "@/lib/fantasy-football/best-ball-simulation";
+import { BestBallShadowPanel } from "./best-ball-shadow-panel";
 
 const DRAFT_SLOTS = buildSnakeSlots(BEST_BALL_TEAM_COUNT, BEST_BALL_ROUNDS);
 const EMPTY_DRAFT: BestBallDraftState = { userSlot: 1, playerIds: [], cpuEnabled: false };
@@ -199,6 +201,33 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
     roster: userRoster, isUserOnClock, targetPick: targetOverallPick, futurePick: futureOverallPick,
   }), [rankings, draftedPlayerIds, availabilityByPlayerId, futureAvailabilityByPlayerId, userRoster, isUserOnClock, targetOverallPick, futureOverallPick]);
 
+  const shadowSimulation = useMemo(() => {
+    if (!decisionPlan) return null;
+    const toShadowPlayer = (player: FantasyRankingRow): ShadowBestBallPlayer => ({
+      playerId: player.playerId,
+      name: player.name,
+      position: player.position,
+      team: player.team,
+      byeWeek: player.byeWeek,
+      projectedPoints: player.ourProjectedPoints,
+      projectionLow: player.projectionLow,
+      projectionHigh: player.projectionHigh,
+      expectedGames: player.expectedGames,
+      confidence: player.confidence,
+    });
+    const decisionCandidates = [decisionPlan.primary, ...decisionPlan.fallbacks]
+      .filter((player, index, rows) => rows.findIndex((row) => row.playerId === player.playerId) === index);
+    const shadowCandidates = decisionCandidates.flatMap((candidate) => {
+      const fullPlayer = playerById.get(candidate.playerId);
+      return fullPlayer ? [toShadowPlayer(fullPlayer)] : [];
+    });
+    if (!shadowCandidates.length) return null;
+    return simulateShadowBestBallCandidates({
+      roster: userRoster.map(toShadowPlayer),
+      candidates: shadowCandidates,
+    });
+  }, [decisionPlan, userRoster, playerById]);
+
   const draftPlayer = useCallback((playerId: number, source: BestBallPickReceipt["source"] = "manual") => {
     const player = playerById.get(playerId);
     if (!player) return;
@@ -326,6 +355,12 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
       receipt={receipt}
       onDraft={(playerId) => draftPlayer(playerId, "decision-desk")}
       onDismissReceipt={() => setReceipt(null)}
+    />
+
+    <BestBallShadowPanel
+      simulation={shadowSimulation}
+      canDraft={isUserOnClock}
+      onDraft={(playerId) => draftPlayer(playerId, "decision-desk")}
     />
 
     <BestBallAiAdvisor
