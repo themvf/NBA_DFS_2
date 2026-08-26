@@ -64,6 +64,29 @@ in season.** Fetching preseason in November, or regular-season odds in
 August, is spend for an empty list -- the same class of waste the MLB
 no-upcoming-games guard now prevents.
 
+### Polymarket (Gamma + Data APIs)
+
+Free, unauthenticated, **unmetered** — unlike the Odds API, nothing here
+competes for quota. Two endpoints matter: `gamma-api.polymarket.com` for
+markets and resolved outcomes, `data-api.polymarket.com` for the per-wallet
+fill tape (`proxyWallet`). `clob.polymarket.com/trades` requires auth and is
+NOT the endpoint to use.
+
+Live use is one thing only: `ingest/polymarket_tennis.py` captures tennis
+match prices into `game_odds_history`, feeding the Pin/Poly delta detector.
+
+**Wallet tracking was built, investigated, and CLOSED (2026-08-26).** The
+pilots work and the method is sound, but the six wallets that looked like
+cross-sport sharp money turned out to be high-frequency generalist/bot flow,
+and the ranking metric was measuring trading style rather than skill. Read
+[`docs/polymarket-wallet-tracker.md`](docs/polymarket-wallet-tracker.md)
+before proposing wallet tracking again — it records the method, the five
+ranking bugs found in sequence, the negative result and why it is a real
+answer rather than an inconclusive one, plus the four bars any revival must
+clear first. It also flags an earlier uncommitted attempt whose two recorded
+conclusions ("blocked without auth", "no MLB games in August") are both
+wrong and will otherwise cause the work to be redone.
+
 ## Projection Model
 
 ### How `ourProj` is computed
@@ -1279,7 +1302,12 @@ this: `tennis/dk_prop_value`, `tennis/prop_line_gap` (the known
 and `nfl/pinnacle_polymarket_delta`** (both 0 alerts ever, 16-17 days
 deployed) — Polymarket has never appeared in a single tennis capture (0 of
 3,192) or fired for NFL either; only MLB's Pin/Poly delta has ever produced
-alerts (n=7). Correctly did NOT flag soccer's detectors, which are legitimately
+alerts (n=7). **Cause established 2026-08-24 and fixed:** the paid `us_ex`
+region returns Polymarket for MLB (89.4% of captures) but never for tennis
+(0/2,838) or NFL (0/1,685), so those two detectors were starved of the input
+they exist to compare. `us_ex` was dropped from both — see
+[`docs/the-odds-api.md`](docs/the-odds-api.md). Tennis still gets Polymarket,
+free, via `ingest/polymarket_tennis.py`. Correctly did NOT flag soccer's detectors, which are legitimately
 quiet post-World-Cup (`no_opportunity`), proving the eligibility gate works.
 
 **Delivery: web UI only**, per explicit user choice — a `Detector Health`
