@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/mlb-odds-capture",
-      "schedule": "7,22,37,52 14-23,0-3 * * *"
+      "schedule": "7,37 14-23,0-3 * * *"
     }
   ]
 }
