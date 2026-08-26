@@ -22,6 +22,11 @@ on:
         required: false
         default: "7"
         type: string
+      run_props:
+        description: "Also capture player-prop odds (PAUSED on schedule since 2026-08-24 — Odds API quota)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: refresh-mlb-vegas
@@ -86,6 +91,28 @@ jobs:
         # here — books are free to 10, the 11th doubles it. 3x/day, never on
         # the 30-min game-line cadence. Only the 4 markets with a same-line
         # Pinnacle anchor are funded; the rest cannot produce a verdict.
+        #
+        # PAUSED ON THE SCHEDULE 2026-08-24. The shared ODDS_API_KEY hit its
+        # 20,000/month ceiling (remaining=0 used=20000), so every paid /odds
+        # call — MLB, NFL and tennis alike — was returning 401 Unauthorized
+        # and writing nothing. Prop capture is the largest discretionary
+        # consumer here (~4 credits/event × ~15 events × 3 runs/day ≈ 180/day,
+        # ~5,400/30d), so it yields first to keep game-line capture — which the
+        # bet ledger, CLV and line-alert detectors all depend on — funded.
+        #
+        # CONSEQUENCE, recorded rather than glossed: this halts accrual for the
+        # pre-registered `mlb-prop-program-v1` cohort (verdict 2026-10-04;
+        # conjunctive floors n_eff>=134, >=25 distinct dates, >=30 settled).
+        # That program forbids stopping for efficacy — this is an
+        # infrastructure halt, not an efficacy decision, and it must be carried
+        # into the eventual verdict as a cadence change, per the standing rule
+        # that a cadence change is a NEW program version and never a silent
+        # continuation of the old one. Note the cohort was already accruing
+        # nothing while the quota sat at zero; this makes that explicit.
+        #
+        # To resume: dispatch manually with run_props=true, or delete this
+        # `if:` once there is quota headroom again.
+        if: inputs.run_props == true
         run: python -m ingest.mlb_prop_odds
 
       - name: Scan + settle sharp line alerts (game lines + props)
