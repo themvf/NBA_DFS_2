@@ -12,6 +12,7 @@ let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
 let ensureVideoAnalysisTablesPromise: Promise<void> | null = null;
 let ensureYoutubePickChannelsTablePromise: Promise<void> | null = null;
+let ensureOddsApiPropFetchLogPromise: Promise<void> | null = null;
 let ensureMlbGamePredictionTablesPromise: Promise<void> | null = null;
 let ensureFantasyFootballTablesPromise: Promise<void> | null = null;
 
@@ -608,6 +609,37 @@ export async function ensureYoutubePickChannelsTable(): Promise<void> {
     });
   }
   await ensureYoutubePickChannelsTablePromise;
+}
+
+// Records every per-event Odds API prop call so a repeat click can be skipped.
+// The DFS "Fetch Player Props" buttons are per-event paid calls (MLB 8 credits/
+// event, NBA 5) with no dedupe -- clicking twice used to cost twice. Vercel is
+// stateless per invocation, so the guard has to live in the DB, not memory.
+const ODDS_API_PROP_FETCH_LOG_DDLS = [
+  `CREATE TABLE IF NOT EXISTS odds_api_prop_fetch_log (
+      id SERIAL PRIMARY KEY,
+      sport TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      credits_estimate INTEGER,
+      UNIQUE (sport, event_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_odds_api_prop_fetch_log_lookup
+     ON odds_api_prop_fetch_log(sport, fetched_at DESC)`,
+];
+
+export async function ensureOddsApiPropFetchLog(): Promise<void> {
+  if (!ensureOddsApiPropFetchLogPromise) {
+    ensureOddsApiPropFetchLogPromise = (async () => {
+      for (const ddl of ODDS_API_PROP_FETCH_LOG_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureOddsApiPropFetchLogPromise = null;
+      throw error;
+    });
+  }
+  await ensureOddsApiPropFetchLogPromise;
 }
 
 export async function ensureAnalyticsColumns(): Promise<void> {
