@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { db } from ".";
 import { ensureFantasyFootballTables } from "./ensure-schema";
 import { queryRows } from "./query-result";
+import type { FantasyInjuryDetails } from "@/lib/fantasy-football/injury-display";
 
 export type FantasyRankingRow = {
   playerId: number;
@@ -13,6 +14,7 @@ export type FantasyRankingRow = {
   rookie: boolean;
   byeWeek: number | null;
   injuryStatus: string | null;
+  injuryDetails?: FantasyInjuryDetails | null;
   ecr: number | null;
   positionRank: number | null;
   ourRank: number | null;
@@ -201,7 +203,8 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     )
     SELECT p.id::int AS "playerId",p.canonical_name AS name,
     p.position,p.team_abbrev AS team,p.rookie,p.bye_week AS "byeWeek",
-    p.injury_status AS "injuryStatus",r.overall_rank AS ecr,r.position_rank AS "positionRank",
+    p.injury_status AS "injuryStatus",injury.details AS "injuryDetails",
+    r.overall_rank AS ecr,r.position_rank AS "positionRank",
     r.our_rank AS "ourRank",r.tier,r.adp,
     (r.source_row->'adp'->>'stdev')::double precision AS "adpStdev",
     (r.source_row->'adp'->>'high')::double precision AS "adpHigh",
@@ -236,6 +239,50 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     LEFT JOIN prior_position_finishes prior ON prior.player_id=p.id
     LEFT JOIN ff_player_indicators i ON i.ranking_set_id=r.ranking_set_id AND i.player_id=p.id
     LEFT JOIN LATERAL (
+      SELECT jsonb_build_object(
+        'active',episode.active,'status',episode.status,
+        'bodyPart',COALESCE(observation.body_part,episode.body_part),
+        'injuryType',COALESCE(observation.injury_type,episode.injury_type),
+        'description',observation.description,
+        'practiceStatus',observation.practice_status,
+        'expectedReturnMin',COALESCE(observation.expected_return_min,episode.expected_return_min)::text,
+        'expectedReturnMax',COALESCE(observation.expected_return_max,episode.expected_return_max)::text,
+        'weeksOutMin',COALESCE(observation.weeks_out_min,episode.weeks_out_min),
+        'weeksOutMax',COALESCE(observation.weeks_out_max,episode.weeks_out_max),
+        'availabilityProbability',COALESCE(observation.availability_probability,episode.confidence),
+        'estimateBasis',episode.estimate_basis,'confidence',episode.confidence,
+        'primarySource',episode.primary_source,'detailSource',observation.source,
+        'sourceConflict',episode.source_conflict,
+        'firstSeenAt',episode.first_seen_at::text,
+        'lastConfirmedAt',episode.last_confirmed_at::text,
+        'providerUpdatedAt',observation.provider_updated_at::text,
+        'clearedAt',episode.cleared_at::text
+      ) AS details
+      FROM LATERAL (
+        SELECT * FROM ff_player_injuries candidate
+        WHERE candidate.player_id=p.id
+          AND (candidate.active OR candidate.cleared_at >= NOW()-INTERVAL '48 hours')
+        ORDER BY candidate.active DESC,
+          COALESCE(candidate.cleared_at,candidate.last_confirmed_at) DESC
+        LIMIT 1
+      ) episode
+      LEFT JOIN LATERAL (
+        SELECT source,body_part,injury_type,description,practice_status,provider_updated_at,
+          expected_return_min,expected_return_max,weeks_out_min,weeks_out_max,availability_probability
+        FROM ff_player_injury_observations detail
+        WHERE detail.player_id=p.id AND detail.observed_at>=episode.first_seen_at
+          AND detail.observed_at<=COALESCE(episode.cleared_at,NOW()+INTERVAL '1 minute')
+        ORDER BY (
+          (detail.body_part IS NOT NULL)::int+
+          (detail.description IS NOT NULL)::int+
+          (detail.practice_status IS NOT NULL)::int+
+          (detail.weeks_out_max IS NOT NULL)::int+
+          (detail.expected_return_max IS NOT NULL)::int
+        ) DESC,COALESCE(detail.provider_updated_at,detail.observed_at) DESC
+        LIMIT 1
+      ) observation ON TRUE
+    ) injury ON TRUE
+    LEFT JOIN LATERAL (
       SELECT v.projected_points,s.fetched_at,s.source_updated_at
       FROM ff_player_source_projections v
       JOIN ff_source_snapshots s ON s.id=v.source_snapshot_id
@@ -253,6 +300,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     WHERE r.ranking_set_id=${rankingSetId}
     GROUP BY p.id,r.id,rs.id,f.id,prior.position_finish,prior.position_finish_tie_count,
       fp.projected_points,fp.fetched_at,fp.source_updated_at,
+      injury.details,
       dk.average_draft_position,dk.rank,dk.draft_percentage,dk.draft_group_id,dk.captured_at
     ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
   return queryRows<FantasyRankingRow>(result);

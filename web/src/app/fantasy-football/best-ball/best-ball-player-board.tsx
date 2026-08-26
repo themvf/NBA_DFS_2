@@ -9,6 +9,7 @@ import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-correlation-badge";
 import ProjectionNotation from "../rankings/projection-notation";
+import InjuryMarker from "@/components/fantasy-football/injury-marker";
 
 const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(280px,1.35fr)_150px_126px_96px_78px_82px_92px_92px_86px_100px]";
 const FLEX_POSITIONS = new Set(["RB", "WR", "TE"]);
@@ -87,6 +88,9 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
   const adpDelta = player.dkBestBallAdp !== null && player.adp !== null
     ? player.dkBestBallAdp - player.adp
     : null;
+  const hasInjuryMarker = Boolean(player.injuryStatus || player.injuryDetails);
+  const visibleIndicators = player.indicators.filter((indicator) => indicator.code !== "INJURY");
+  const indicatorLimit = Math.max(0, 3 - Number(Boolean(correlationBadge)) - Number(hasInjuryMarker));
   return <>
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
     <div role="cell" className="p-3"><p className="text-base font-black">#{overallRank}</p><p className="text-xs font-semibold text-muted-foreground">{player.position}{player.positionRank ?? "—"}</p></div>
@@ -97,7 +101,8 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
         title={`${correlationBadge.value >= 0 ? "Stacks with" : "Trades off with"} ${correlationBadge.evidence.withName} (${correlationBadge.evidence.relationshipType}, shrunk r=${correlationBadge.value.toFixed(2)}, ${correlationBadge.evidence.sampleWeeks} shared weeks in 2025). Correlation changes variance, not expected points -- a plus stacks ceiling for Weeks 15-17, a minus diversifies floor for Weeks 1-14.`}
         className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(correlationBadge)}`}
       >{correlationBadge.value >= 0 ? "🔗" : "⇄"} {correlationBadge.label}</span>}
-      {player.indicators.slice(0, correlationBadge ? 2 : 3).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
+      <InjuryMarker injuryStatus={player.injuryStatus} details={player.injuryDetails ?? null} />
+      {visibleIndicators.slice(0, indicatorLimit).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
     </div></div>
     <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.6 projects" /></div>
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>

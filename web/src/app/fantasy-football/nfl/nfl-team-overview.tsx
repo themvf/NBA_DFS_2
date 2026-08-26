@@ -5,6 +5,7 @@ import type { FantasyRankingRow } from "@/db/queries-fantasy-football";
 import { fantasyBadgeClass } from "@/lib/fantasy-football/badge-style";
 import { formatPriorSeasonFantasyPoints } from "@/lib/fantasy-football/prior-season-finish";
 import ProjectionNotation from "../rankings/projection-notation";
+import InjuryMarker from "@/components/fantasy-football/injury-marker";
 
 const POSITION_GROUPS = [
   { position: "QB", label: "Quarterbacks" },
@@ -17,6 +18,15 @@ const POSITION_GROUPS = [
 
 function number(value: number | null, digits = 1): string {
   return value === null ? "—" : value.toFixed(digits);
+}
+
+function PlayerSignals({ player }: { player: FantasyRankingRow }) {
+  const hasInjuryMarker = Boolean(player.injuryStatus || player.injuryDetails);
+  const visibleIndicators = player.indicators.filter((badge) => badge.code !== "INJURY");
+  return <div className="flex flex-wrap gap-1">
+    <InjuryMarker injuryStatus={player.injuryStatus} details={player.injuryDetails ?? null} />
+    {visibleIndicators.slice(0, hasInjuryMarker ? 2 : 3).map((badge) => <span key={badge.code} title={JSON.stringify(badge.evidence)} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
+  </div>;
 }
 
 function PositionTable({
@@ -45,8 +55,8 @@ function PositionTable({
         <tbody>
           {players.map((player) => <tr key={player.playerId} className="border-t align-top hover:bg-muted/35">
             <td className="p-3 text-lg font-black">{player.ourRank ?? player.ecr ?? "—"}<span className="block text-xs font-semibold text-muted-foreground">{player.position}{player.positionRank ?? ""} · T{player.tier ?? "—"}</span></td>
-            <td className="p-3"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">Bye {player.byeWeek ?? "—"}{player.injuryStatus ? ` · ${player.injuryStatus}` : ""}</p></td>
-            <td className="max-w-[300px] p-3"><div className="flex flex-wrap gap-1">{player.indicators.slice(0, 3).map((badge) => <span key={badge.code} title={JSON.stringify(badge.evidence)} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}</div></td>
+            <td className="p-3"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">Bye {player.byeWeek ?? "—"}</p></td>
+            <td className="max-w-[300px] p-3"><PlayerSignals player={player} /></td>
             <td className="p-3 font-black">{number(player.ourProjectedPoints)}<ProjectionNotation details={player.projectionDetails} label="Projection details" /></td>
             <td className="p-3 font-semibold">{number(player.fantasyProsProjectedPoints)}</td>
             <td className="p-3 font-semibold">{formatPriorSeasonFantasyPoints(player.fantasyPoints2025, player.positionFinish2025, player.positionFinishTieCount2025)}</td>

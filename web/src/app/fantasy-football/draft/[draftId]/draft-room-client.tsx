@@ -13,6 +13,7 @@ import { advanceComputerDraft, recordFantasyPick, undoFantasyPick } from "../../
 import { getScoringDescription, type RosterConfig, type ScoringConfig } from "@/lib/fantasy-football/league-config";
 import { getAdjustmentDescription, adjustAdpForRoster, isRosterDifferentFromBaseline } from "@/lib/fantasy-football/adp-adjustment";
 import { DraftIntelligencePanel, type PickReceipt } from "./draft-intelligence-panel";
+import InjuryMarker from "@/components/fantasy-football/injury-marker";
 
 function AvailabilityBadge({ odds, targetPick }: { odds: AvailabilityOdds | null | undefined; targetPick: number | null }) {
   if (!odds || targetPick === null) return <p className="text-[10px] text-muted-foreground">Avail —</p>;
@@ -22,7 +23,12 @@ function AvailabilityBadge({ odds, targetPick }: { odds: AvailabilityOdds | null
 }
 
 function PlayerBadges({ player }: { player: FantasyRankingRow }) {
-  return <div className="mt-1 flex flex-wrap gap-1">{player.indicators.slice(0, 3).map((badge) => <span key={badge.code} title={JSON.stringify(badge.evidence)} className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}</div>;
+  const hasInjuryMarker = Boolean(player.injuryStatus || player.injuryDetails);
+  const visibleIndicators = player.indicators.filter((badge) => badge.code !== "INJURY");
+  return <div className="mt-1 flex flex-wrap gap-1">
+    <InjuryMarker injuryStatus={player.injuryStatus} details={player.injuryDetails ?? null} compact />
+    {visibleIndicators.slice(0, hasInjuryMarker ? 2 : 3).map((badge) => <span key={badge.code} title={JSON.stringify(badge.evidence)} className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
+  </div>;
 }
 
 export default function DraftRoomClient({ initialState }: { initialState: FantasyDraftState }) {
