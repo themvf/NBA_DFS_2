@@ -35,6 +35,39 @@ T = TypeVar("T")
 DEFAULT_DAYS_BACK = 7
 
 
+# Freshness window for skipping a duplicate odds fetch. Deliberately well
+# under verify_fresh_upcoming_odds()'s own 35-minute "fresh enough" bar, so a
+# skip here can never leave that check failing.
+ODDS_DEDUPE_MINUTES = 20
+
+
+def _odds_captured_recently(db: DatabaseManager, game_date: str) -> bool:
+    """True when an odds capture for `game_date` landed inside the window.
+
+    Only counts captures tied to a game that has NOT started: a trail of
+    snapshots for already-started games says nothing about whether the
+    still-rateable slate is priced.
+    """
+    try:
+        row = db.execute_one(
+            """
+            SELECT COUNT(*) AS n
+            FROM game_odds_history h
+            JOIN mlb_matchups m ON m.id = h.matchup_id
+            WHERE h.sport = 'mlb'
+              AND m.game_date = %s
+              AND m.commence_time > NOW()
+              AND COALESCE(m.game_status, '') NOT IN ('Postponed', 'Cancelled')
+              AND h.captured_at >= NOW() - (%s || ' minutes')::interval
+            """,
+            (game_date, ODDS_DEDUPE_MINUTES),
+        ) or {}
+        return int(row.get("n") or 0) > 0
+    except Exception:
+        # Never let the dedupe check itself prevent a fetch.
+        return False
+
+
 def _run_refresh_stage(label: str, fn: Callable[[], T]) -> tuple[bool, T | None]:
     try:
         result = fn()
@@ -148,8 +181,22 @@ def run_refresh(
     ok, result = _run_refresh_stage("mlb_schedule_today", lambda: fetch_schedule(db, refresh_date_iso))
     stages.append(("mlb_schedule_today", ok, result))
 
-    ok, result = _run_refresh_stage("mlb_odds_today", lambda: fetch_odds(db, odds_api_key, refresh_date_iso))
-    stages.append(("mlb_odds_today", ok, result))
+    # capture_odds_history already fetches this exact endpoint on a 30-minute
+    # cadence, and two of this workflow's three slots (17:10 and 22:10 UTC)
+    # land within ~3 minutes of one of those captures -- paying 9 credits
+    # (3 regions x 3 markets) for a snapshot we just took. Skip when a
+    # capture for this date is already recent enough to rate bets against.
+    #
+    # Self-correcting by construction: if the capture pipeline is down or out
+    # of quota, no recent capture exists, the guard opens, and this stage
+    # fetches as it always did. It can only skip when the data is genuinely
+    # already there.
+    if _odds_captured_recently(db, refresh_date_iso):
+        stages.append(("mlb_odds_today", True, "skipped — capture within "
+                       f"{ODDS_DEDUPE_MINUTES}m already covers this date"))
+    else:
+        ok, result = _run_refresh_stage("mlb_odds_today", lambda: fetch_odds(db, odds_api_key, refresh_date_iso))
+        stages.append(("mlb_odds_today", ok, result))
 
     ok, result = _run_refresh_stage("mlb_scores_today", lambda: fetch_scores(db, refresh_date_iso))
     stages.append(("mlb_scores_today", ok, result))

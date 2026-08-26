@@ -25,6 +25,44 @@
 ### Vegas Odds (The Odds API)
 - `sport_key = "basketball_nba"`
 - Stored as `ODDS_API_KEY` in GitHub Secrets and `.env`
+- **One key, one 20,000/month quota, shared by every sport.** MLB, NFL,
+  tennis and the DFS prop buttons all draw on it, so an overspend in one
+  sport takes the others down with it. That happened 2026-08-24: the key hit
+  20,000/20,000 and every paid `/odds` call started returning **401
+  Unauthorized** (not 429) across all three sports at once, while the free
+  `/v4/sports` and `/events` endpoints kept answering and masked it.
+- **Read [`docs/the-odds-api.md`](docs/the-odds-api.md) before adding,
+  re-enabling or re-scheduling ANY Odds API call.** It is the single source
+  of truth for the cost model (`markets x regions`; `bookmakers=` is
+  `markets x 1`), the per-consumer credits/day table, the measured reasons
+  specific spends were removed, and a pre-flight checklist. Several removals
+  recorded there are deliberately asymmetric between sports and are backed
+  by measurement, not preference -- re-measure before reversing one.
+
+### NFL regular-season odds cadence — UNDECIDED (opens 2026-09-09)
+
+`refresh_nfl_vegas` currently runs **1x/day** (16 credits: 12 odds + 4
+scores) against a schedule where games are **weekly**, and it fetches the
+preseason and regular-season sport keys on every run regardless of which is
+actually in season. That was adequate for preseason; it is not obviously
+right for a real season, in either direction:
+
+- Daily is likely too COARSE near kickoff. NFL lines move most in the last
+  hours before a Sunday 13:00 ET slate, and one 13:20 UTC pass per day
+  cannot see that. If NFL is to have a CLV/line-movement story like MLB, it
+  needs a burst around game windows, not a flat daily poll.
+- Daily is too FINE mid-week. Tuesday and Wednesday carry almost no
+  information for a Sunday game, so those passes are near-pure spend.
+
+The obvious shape is game-proximity-weighted (sparse Mon-Thu, denser
+Sat-Sun), not a single uniform interval -- but the cadence should be chosen
+against a stated purpose (bet-rating freshness vs line-movement resolution),
+and costed against [`docs/the-odds-api.md`](docs/the-odds-api.md) first.
+
+Cheap and independent of that decision: **only fetch the sport key that is
+in season.** Fetching preseason in November, or regular-season odds in
+August, is spend for an empty list -- the same class of waste the MLB
+no-upcoming-games guard now prevents.
 
 ## Projection Model
 
