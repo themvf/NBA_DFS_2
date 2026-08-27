@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 
 import { db } from ".";
 
+let ensurePolymarketWatchlistTablesPromise: Promise<void> | null = null;
 let ensureDkPlayerPropColumnsPromise: Promise<void> | null = null;
 let ensureProjectionExperimentTablesPromise: Promise<void> | null = null;
 let ensureOwnershipExperimentTablesPromise: Promise<void> | null = null;
@@ -652,6 +653,78 @@ export async function ensureOddsApiPropFetchLog(): Promise<void> {
     });
   }
   await ensureOddsApiPropFetchLogPromise;
+}
+
+
+// Frozen Polymarket wallet cohort + open-position snapshots. Python
+// (ingest/polymarket_watchlist.py) owns the writes; the web app reads only.
+// Declared here too so the page renders rather than 500s on a machine where
+// the ingester has never run -- same pattern as the other experimental tables.
+const POLYMARKET_WATCHLIST_DDLS = [
+  `CREATE TABLE IF NOT EXISTS polymarket_watchlist_wallets (
+      id SERIAL PRIMARY KEY,
+      cohort_version TEXT NOT NULL,
+      wallet TEXT NOT NULL,
+      display_name TEXT,
+      validated_sport TEXT NOT NULL,
+      model_version TEXT NOT NULL,
+      dev_clv DOUBLE PRECISION,
+      dev_markets INTEGER,
+      holdout_clv_at_freeze DOUBLE PRECISION,
+      holdout_markets_at_freeze INTEGER,
+      rank_at_freeze INTEGER,
+      frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (cohort_version, wallet)
+    )`,
+  `CREATE TABLE IF NOT EXISTS polymarket_watchlist_positions (
+      id SERIAL PRIMARY KEY,
+      cohort_version TEXT NOT NULL,
+      wallet TEXT NOT NULL,
+      condition_id TEXT,
+      event_slug TEXT,
+      title TEXT,
+      outcome TEXT,
+      sport TEXT,
+      market_type TEXT,
+      is_in_scope BOOLEAN NOT NULL DEFAULT FALSE,
+      size DOUBLE PRECISION,
+      avg_price DOUBLE PRECISION,
+      cur_price DOUBLE PRECISION,
+      current_value DOUBLE PRECISION,
+      cash_pnl DOUBLE PRECISION,
+      percent_pnl DOUBLE PRECISION,
+      end_date TIMESTAMPTZ,
+      captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (cohort_version, wallet, condition_id, outcome, captured_at)
+    )`,
+  `CREATE TABLE IF NOT EXISTS polymarket_watchlist_forward (
+      id SERIAL PRIMARY KEY,
+      cohort_version TEXT NOT NULL,
+      wallet TEXT NOT NULL,
+      scored_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      markets INTEGER NOT NULL,
+      stake DOUBLE PRECISION NOT NULL,
+      clv DOUBLE PRECISION,
+      window_start TIMESTAMPTZ,
+      window_end TIMESTAMPTZ,
+      UNIQUE (cohort_version, wallet, scored_at)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_pm_watchlist_pos_lookup
+     ON polymarket_watchlist_positions(cohort_version, captured_at DESC)`,
+];
+
+export async function ensurePolymarketWatchlistTables(): Promise<void> {
+  if (!ensurePolymarketWatchlistTablesPromise) {
+    ensurePolymarketWatchlistTablesPromise = (async () => {
+      for (const ddl of POLYMARKET_WATCHLIST_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensurePolymarketWatchlistTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensurePolymarketWatchlistTablesPromise;
 }
 
 export async function ensureAnalyticsColumns(): Promise<void> {
