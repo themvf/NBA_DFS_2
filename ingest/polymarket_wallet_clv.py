@@ -437,7 +437,8 @@ def measure_market(
 
     per_wallet: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "clv_num": 0.0, "clv_stake": 0.0,
-        "pregame_buy_cash": 0.0, "pregame_trades": 0, "inplay_trades": 0,
+        "pregame_buy_cash": 0.0, "pregame_buy_size": 0.0, "pregame_fav_cash": 0.0,
+        "pregame_trades": 0, "inplay_trades": 0,
         "buy_cash": 0.0, "sell_cash": 0.0,
         "gross_size": 0.0, "trades": 0, "dust": 0,
         "net_by_outcome": defaultdict(float),
@@ -493,6 +494,13 @@ def measure_market(
             entry["clv_num"] += notional * (close_for_outcome - price)
             entry["clv_stake"] += notional
             entry["pregame_buy_cash"] += notional
+            entry["pregame_buy_size"] += size
+            # Dollars staked on the side that was ODDS-ON at entry. If a
+            # wallet's CLV comes from habitually backing favourites into a
+            # structural favourite-longshot drift, that is a fact about the
+            # market, not skill -- and it would not require following anyone.
+            if price > 0.5:
+                entry["pregame_fav_cash"] += notional
 
     out: Dict[str, Dict[str, Any]] = {}
     for wallet, entry in per_wallet.items():
@@ -502,6 +510,8 @@ def measure_market(
             "clv_num": entry["clv_num"],
             "clv_stake": entry["clv_stake"],
             "pregame_buy_cash": entry["pregame_buy_cash"],
+            "pregame_buy_size": entry["pregame_buy_size"],
+            "pregame_fav_cash": entry["pregame_fav_cash"],
             "pregame_trades": entry["pregame_trades"],
             "inplay_trades": entry["inplay_trades"],
             "buy_cash": entry["buy_cash"],
@@ -524,8 +534,8 @@ def measure_market(
 # ---------------------------------------------------------------------------
 
 _SUM_FLOAT_KEYS = (
-    "clv_num", "clv_stake", "pregame_buy_cash", "buy_cash",
-    "sell_cash", "gross_size", "net_abs_size",
+    "clv_num", "clv_stake", "pregame_buy_cash", "pregame_buy_size",
+    "pregame_fav_cash", "buy_cash", "sell_cash", "gross_size", "net_abs_size",
 )
 _SUM_INT_KEYS = ("pregame_trades", "inplay_trades", "trades", "dust", "same_second")
 
@@ -697,6 +707,10 @@ def rank_by_clv(wallets: Dict[str, Dict[str, Any]]) -> Tuple[List[Dict[str, Any]
             "clv_hi": hi,
             "clv_markets": wallet["clv_markets"],
             "pregame_stake": wallet["pregame_buy_cash"],
+            "avg_entry_price": (wallet["pregame_buy_cash"] / wallet["pregame_buy_size"]
+                                if wallet["pregame_buy_size"] > 0 else None),
+            "favourite_dollar_share": (wallet["pregame_fav_cash"] / wallet["pregame_buy_cash"]
+                                       if wallet["pregame_buy_cash"] > 0 else None),
             "hold_ratio": wallet["net_abs_size"] / gross,
             "buy_dominance": wallet["buy_cash"] / total_cash,
             "inplay_share": wallet["inplay_trades"] / max(wallet["trades"], 1),
@@ -734,6 +748,11 @@ def cohort_clv(
         "clv": sum(o[2] for o in obs) / stake,
         "ci": (lo, hi),
     }
+
+
+def _mean_of(rows: List[Dict[str, Any]], key: str) -> Optional[float]:
+    vals = [r[key] for r in rows if r.get(key) is not None]
+    return (sum(vals) / len(vals)) if vals else None
 
 
 def walk_forward(
@@ -777,6 +796,8 @@ def walk_forward(
             continue
         scored.append({
             "wallet": row["wallet"], "name": row["name"],
+            "avg_entry_price": row.get("avg_entry_price"),
+            "favourite_dollar_share": row.get("favourite_dollar_share"),
             "dev_clv": dev_clv, "dev_markets": len(dev_obs),
             "holdout_clv": hold_clv, "holdout_markets": len(hold_obs),
         })
@@ -846,6 +867,10 @@ def walk_forward(
         "leave_one_out_clv": clv_of(loo_obs),
         "leave_one_out_ci": (loo_lo, loo_hi),
         "leave_one_out_obs": len(loo_obs),
+        "selected_avg_entry": _mean_of(selected, "avg_entry_price"),
+        "rest_avg_entry": _mean_of(rest, "avg_entry_price"),
+        "selected_fav_share": _mean_of(selected, "favourite_dollar_share"),
+        "rest_fav_share": _mean_of(rest, "favourite_dollar_share"),
         "rows": selected,
     }
 
@@ -893,6 +918,17 @@ def print_walk_forward(wf: Dict[str, Any]) -> None:
                    else "NO LONGER excludes zero -- the finding was the one wallet")
         print(f"  leave-one-out holdout CLV          {loo:>+9.4f}  95% CI {lci}"
               f"  (n={wf['leave_one_out_obs']:,})  {verdict}")
+    sae, rae = wf.get("selected_avg_entry"), wf.get("rest_avg_entry")
+    sfs, rfs = wf.get("selected_fav_share"), wf.get("rest_fav_share")
+    if sae is not None and rae is not None:
+        print()
+        print("  FAVOURITE-LONGSHOT CHECK -- is the selection just backing favourites?")
+        print(f"    avg entry price   selected {sae:.3f}   rest {rae:.3f}")
+        if sfs is not None and rfs is not None:
+            print(f"    favourite $ share selected {sfs:.1%}   rest {rfs:.1%}")
+        drift = "SELECTED SKEW TO FAVOURITES -- drift-harvesting not excluded"
+        same = "no favourite skew -- a structural drift does not explain the gap"
+        print(f"    {drift if (sae - rae) > 0.03 else same}")
 
 
 def print_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 20) -> None:

@@ -527,3 +527,44 @@ def test_walk_forward_flags_a_result_carried_by_one_wallet():
     assert wf["selected_holdout_clv"] > 0
     # removing it reverses the sign -- the finding was the one wallet
     assert wf["leave_one_out_clv"] < 0
+
+
+def test_favourite_longshot_check_separates_drift_from_skill():
+    """If longshots drift down and favourites drift up, a wallet that simply
+    backs favourites earns persistent CLV with no predictive skill, and
+    selecting on early CLV would pick exactly those wallets. That is a fact
+    about the market, not about the wallet -- and you would trade the drift
+    directly rather than follow anyone. The report must be able to see it."""
+    from ingest.polymarket_wallet_clv import measure_market
+    start = START
+    fills = [
+        fill("fav_backer", REF, "BUY", 100, 0.80, start - 7200),
+        fill("dog_backer", OTHER, "BUY", 100, 0.20, start - 7200),
+    ] + _close_book(0.85)
+    measured, _ = measure_market(fills, MARKET)
+    # entry price is recorded in each wallet's own terms, so the two are
+    # distinguishable even though they traded the same match
+    assert measured["fav_backer"]["pregame_fav_cash"] > 0
+    assert measured["dog_backer"]["pregame_fav_cash"] == 0
+    fav = measured["fav_backer"]
+    assert fav["pregame_buy_cash"] / fav["pregame_buy_size"] == pytest.approx(0.80)
+
+
+def test_walk_forward_reports_entry_price_for_selected_and_rest():
+    from ingest.polymarket_wallet_clv import walk_forward
+    dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
+    hold = [(f"h{i}", 100.0, 5.0) for i in range(20)]
+    wallets = {}
+    for k, (dv, entry) in enumerate([(30.0, 0.85), (25.0, 0.82), (5.0, 0.30), (3.0, 0.25)]):
+        w = _wallet(obs=dev(dv) + hold, clv_num=1.0, clv_stake=100.0)
+        w["pregame_buy_size"] = 20000.0
+        w["pregame_buy_cash"] = 20000.0 * entry   # must clear MIN_PREGAME_STAKE
+        w["pregame_fav_cash"] = 20000.0 * entry if entry > 0.5 else 0.0
+        wallets[f"w{k}"] = w
+    rows, _ = rank_by_clv(wallets)
+    wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
+                      {f"h{i}" for i in range(20)}, top_n=2)
+    # the two selected are favourite-backers, the rest are longshot-backers
+    assert wf["selected_avg_entry"] > wf["rest_avg_entry"] + 0.03
+    assert wf["selected_fav_share"] == pytest.approx(1.0)
+    assert wf["rest_fav_share"] == pytest.approx(0.0)
