@@ -324,3 +324,53 @@ def test_walk_forward_reports_a_selection_gap_against_the_unselected_rest():
                       {f"h{i}" for i in range(20)}, top_n=1)
     # everyone earns the same holdout CLV, so selection adds nothing
     assert wf["selected_holdout_clv"] == pytest.approx(wf["rest_holdout_clv"])
+
+
+# --- fill-tape depth --------------------------------------------------------
+
+def test_tape_ceiling_matches_the_data_apis_actual_limit():
+    """Verified live 2026-08-27: offset 10,000 returns a row, 10,500 returns
+    HTTP 400. The shared engine caps at 6,000, and because the API only
+    serves newest-first, that missing 40% is the OLDEST 40% -- i.e. exactly
+    the pregame window this module measures in. Lowering this constant
+    silently shrinks CLV coverage rather than failing."""
+    from ingest.polymarket_wallet_clv import MAX_TRADES_PER_MARKET
+    from ingest.polymarket_wallet_pilot_common import MAX_TRADES_PER_MARKET as SHARED
+    assert MAX_TRADES_PER_MARKET == 10000
+    assert MAX_TRADES_PER_MARKET > SHARED
+
+
+def test_fetch_reports_truncation_rather_than_swallowing_it(monkeypatch):
+    """A truncated tape may have lost its whole pregame window, and a market
+    contributing no CLV must be distinguishable from one where nobody traded
+    before the match."""
+    import ingest.polymarket_wallet_clv as mod
+
+    page = [{"timestamp": 1, "size": 1, "price": 0.5} for _ in range(mod.TRADES_PAGE)]
+    monkeypatch.setattr(mod, "api_get", lambda url, params: page)
+    fills, hit = mod.fetch_market_fills("0x")
+    assert hit is True
+    assert len(fills) == mod.MAX_TRADES_PER_MARKET
+
+    monkeypatch.setattr(mod, "api_get", lambda url, params: page[:10])
+    fills, hit = mod.fetch_market_fills("0x")
+    assert hit is False and len(fills) == 10
+
+
+def test_offset_ceiling_error_is_truncation_not_a_lost_market(monkeypatch):
+    """HTTP 400 past the offset ceiling must return the partial tape flagged
+    as truncated -- not raise and drop the market from the sample."""
+    import ingest.polymarket_wallet_clv as mod
+
+    calls = {"n": 0}
+
+    def flaky(url, params):
+        calls["n"] += 1
+        if calls["n"] > 2:
+            raise RuntimeError("HTTP 400")
+        return [{"timestamp": 1, "size": 1, "price": 0.5} for _ in range(mod.TRADES_PAGE)]
+
+    monkeypatch.setattr(mod, "api_get", flaky)
+    fills, hit = mod.fetch_market_fills("0x")
+    assert hit is True
+    assert len(fills) == 2 * mod.TRADES_PAGE

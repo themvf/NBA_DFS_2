@@ -122,7 +122,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ingest.polymarket_wallet_pilot_common import (
-    fetch_market_fills,
+    DATA,
+    TRADES_PAGE,
+    api_get,
     paginate_events,
     select_balanced_dev_holdout,
 )
@@ -151,7 +153,50 @@ MAX_DUST_SHARE = 0.10         # sub-$1 notional -- market-maker odd lots
 MAX_SAME_SECOND_SHARE = 0.05  # two fills in one second is not a human
 DUST_NOTIONAL = 1.0
 
+# --- fill tape --------------------------------------------------------------
+# The Data API serves /trades NEWEST-FIRST and ignores every sort parameter
+# tried (order=timestamp, ascending=true, sortDirection=ASC all return the
+# same descending page -- verified live 2026-08-27). Truncation therefore
+# eats the OLDEST trades, which for a sports market is exactly the pregame
+# window CLV is measured in. That makes the depth limit load-bearing here in
+# a way it never was for v1's settlement, which only needed net position and
+# is indifferent to which end of the tape is missing.
+#
+# The hard ceiling is 10,000: offset 10,000 returns a row, 10,500 returns
+# HTTP 400 (verified against an $18M market). The shared engine caps at
+# 6,000, leaving 40% of the reachable tape -- the oldest 40% -- unfetched.
+MAX_TRADES_PER_MARKET = 10000
+
 BOOTSTRAP_ROUNDS = 2000
+
+
+# ---------------------------------------------------------------------------
+# fill tape
+# ---------------------------------------------------------------------------
+
+def fetch_market_fills(condition_id: str) -> Tuple[List[Dict[str, Any]], bool]:
+    """Newest-first fill tape. Returns (fills, hit_ceiling).
+
+    hit_ceiling is reported rather than swallowed: a truncated tape may have
+    lost its entire pregame window, and a market silently contributing no
+    CLV observations is indistinguishable from one where nobody traded."""
+    fills: List[Dict[str, Any]] = []
+    offset = 0
+    while offset < MAX_TRADES_PER_MARKET:
+        try:
+            page = api_get(f"{DATA}/trades", {
+                "market": condition_id, "limit": TRADES_PAGE,
+                "offset": offset, "takerOnly": "false",
+            })
+        except Exception:  # noqa: BLE001 - offset ceiling surfaces as HTTP 400
+            return fills, True
+        if not isinstance(page, list) or not page:
+            return fills, False
+        fills.extend(page)
+        if len(page) < TRADES_PAGE:
+            return fills, False
+        offset += TRADES_PAGE
+    return fills, True
 
 
 # ---------------------------------------------------------------------------
@@ -419,18 +464,27 @@ def accumulate(
     markets: List[Dict[str, Any]], progress_every: int = 25
 ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, int]]:
     wallets: Dict[str, Dict[str, Any]] = defaultdict(new_wallet)
-    counts = {"markets": 0, "fills": 0, "clv_eligible": 0, "no_pregame_trades": 0}
+    counts = {
+        "markets": 0, "fills": 0, "clv_eligible": 0, "no_pregame_trades": 0,
+        "truncated": 0, "truncated_and_lost_pregame": 0,
+    }
     for i, market in enumerate(markets, 1):
         try:
-            fills = fetch_market_fills(market["condition_id"])
+            fills, hit_ceiling = fetch_market_fills(market["condition_id"])
         except Exception as exc:  # noqa: BLE001 - one bad market must not end the run
             print(f"  ! {market['question'][:40]}: {exc}", file=sys.stderr)
             continue
         counts["markets"] += 1
         counts["fills"] += len(fills)
+        if hit_ceiling:
+            counts["truncated"] += 1
         measured, close_ref = measure_market(fills, market)
         if close_ref is None:
             counts["no_pregame_trades"] += 1
+            if hit_ceiling:
+                # The tape ran out before reaching pregame -- this market was
+                # lost TO truncation, not to an absence of pregame trading.
+                counts["truncated_and_lost_pregame"] += 1
         else:
             counts["clv_eligible"] += 1
         for wallet, stats in measured.items():
@@ -731,9 +785,11 @@ def run(sport: str, max_markets: int, out_path: Optional[str]) -> Dict[str, Any]
     wf = walk_forward(wallets, rows, dev_ids, holdout_ids)
 
     print()
-    print(f"markets processed {counts['markets']}, fills {counts['fills']:,}, "
-          f"CLV-eligible markets {counts['clv_eligible']} "
-          f"(no pregame trades: {counts['no_pregame_trades']})")
+    print(f"markets processed {counts['markets']}, fills {counts['fills']:,}")
+    print(f"  CLV-eligible markets      {counts['clv_eligible']}")
+    print(f"  no pregame trades reached {counts['no_pregame_trades']} "
+          f"(of which {counts['truncated_and_lost_pregame']} lost to tape truncation)")
+    print(f"  tapes hitting the {MAX_TRADES_PER_MARKET:,}-trade ceiling: {counts['truncated']}")
     print_funnel(len(wallets), reasons, len(rows))
 
     print()
