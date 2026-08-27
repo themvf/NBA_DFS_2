@@ -54,6 +54,7 @@ export type ShadowBestBallPlayer = {
 };
 
 export type YahooMarketSignal = "major-discount" | "discount" | "fair" | "premium" | "unavailable";
+export type YahooDraftAction = "wait" | "target-soon" | "take-now" | "pass-at-price" | "no-market-data";
 
 export function getYahooMarketSignal(ourRank: number | null, yahooXRank: number | null): {
   gap: number | null;
@@ -65,6 +66,43 @@ export function getYahooMarketSignal(ourRank: number | null, yahooXRank: number 
   if (gap >= 5) return { gap, signal: "discount" };
   if (gap <= -5) return { gap, signal: "premium" };
   return { gap, signal: "fair" };
+}
+
+export function getYahooDraftTiming(input: {
+  ourRank: number | null;
+  yahooXRank: number | null;
+  yahooAdp: number | null;
+  nextUserPick: number | null;
+  followingUserPick: number | null;
+  teamCount?: number;
+}): {
+  action: YahooDraftAction;
+  marketPick: number | null;
+  targetPick: number | null;
+} {
+  const marketRanks = [input.yahooXRank, input.yahooAdp]
+    .filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
+  if (!marketRanks.length || input.nextUserPick === null) {
+    return { action: "no-market-data", marketPick: null, targetPick: null };
+  }
+
+  // The earlier of XRank and ADP is the safer estimate of when a Yahoo room
+  // starts applying pressure. Move half a round ahead of it rather than
+  // pretending the player will survive all the way to the raw market rank.
+  const marketPick = Math.min(...marketRanks);
+  const safetyBuffer = Math.max(3, Math.ceil((input.teamCount ?? 12) / 2));
+  const targetPick = Math.max(1, Math.floor(marketPick - safetyBuffer));
+
+  if (input.ourRank !== null && marketPick <= input.ourRank - 5 && input.nextUserPick < input.ourRank) {
+    return { action: "pass-at-price", marketPick, targetPick: Math.max(1, Math.floor(input.ourRank)) };
+  }
+  if (input.nextUserPick >= targetPick || (input.followingUserPick !== null && input.followingUserPick > marketPick)) {
+    return { action: "take-now", marketPick, targetPick };
+  }
+  if (input.followingUserPick !== null && input.followingUserPick >= targetPick) {
+    return { action: "target-soon", marketPick, targetPick };
+  }
+  return { action: "wait", marketPick, targetPick };
 }
 
 export type BestBallLineupResult = {
@@ -89,6 +127,9 @@ export type ShadowBestBallCandidateResult = {
   yahooAdp: number | null;
   yahooRankGap: number | null;
   yahooMarketSignal: YahooMarketSignal;
+  yahooDraftAction: YahooDraftAction;
+  yahooMarketPick: number | null;
+  yahooTargetPick: number | null;
 };
 
 export type ShadowBestBallSimulation = {
@@ -193,6 +234,9 @@ export function simulateShadowBestBallCandidates(input: {
   roster: ShadowBestBallPlayer[];
   candidates: ShadowBestBallPlayer[];
   iterations?: number;
+  nextUserPick?: number | null;
+  followingUserPick?: number | null;
+  teamCount?: number;
 }): ShadowBestBallSimulation {
   const iterations = Math.min(500, Math.max(40, Math.round(input.iterations ?? 160)));
   const baselineSeasons: number[] = [];
@@ -230,6 +274,14 @@ export function simulateShadowBestBallCandidates(input: {
     const seasons = candidateSeasons.get(candidate.playerId) ?? [];
     const rosterMeanWithCandidate = seasons.reduce((sum, value) => sum + value, 0) / Math.max(1, seasons.length);
     const yahooMarket = getYahooMarketSignal(candidate.ourRank ?? null, candidate.yahooXRank ?? null);
+    const yahooTiming = getYahooDraftTiming({
+      ourRank: candidate.ourRank ?? null,
+      yahooXRank: candidate.yahooXRank ?? null,
+      yahooAdp: candidate.yahooAdp ?? null,
+      nextUserPick: input.nextUserPick ?? null,
+      followingUserPick: input.followingUserPick ?? null,
+      teamCount: input.teamCount,
+    });
     return {
       playerId: candidate.playerId,
       name: candidate.name,
@@ -247,6 +299,9 @@ export function simulateShadowBestBallCandidates(input: {
       yahooAdp: candidate.yahooAdp ?? null,
       yahooRankGap: yahooMarket.gap,
       yahooMarketSignal: yahooMarket.signal,
+      yahooDraftAction: yahooTiming.action,
+      yahooMarketPick: yahooTiming.marketPick,
+      yahooTargetPick: yahooTiming.targetPick,
     };
   }).sort((a, b) => b.marginalCountedPoints - a.marginalCountedPoints || b.p90RosterDelta - a.p90RosterDelta);
 

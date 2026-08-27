@@ -228,8 +228,11 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
     return simulateShadowBestBallCandidates({
       roster: userRoster.map(toShadowPlayer),
       candidates: shadowCandidates,
+      nextUserPick: targetOverallPick,
+      followingUserPick: futureOverallPick,
+      teamCount: BEST_BALL_TEAM_COUNT,
     });
-  }, [decisionPlan, userRoster, playerById]);
+  }, [decisionPlan, userRoster, playerById, targetOverallPick, futureOverallPick]);
 
   const draftPlayer = useCallback((playerId: number, source: BestBallPickReceipt["source"] = "manual") => {
     const player = playerById.get(playerId);
@@ -363,6 +366,8 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
     <BestBallShadowPanel
       simulation={shadowSimulation}
       canDraft={isUserOnClock}
+      nextUserPick={targetOverallPick}
+      followingUserPick={futureOverallPick}
       onDraft={(playerId) => draftPlayer(playerId, "decision-desk")}
     />
 
