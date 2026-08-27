@@ -385,6 +385,39 @@ def in_reference_terms(outcome: str, price: float, reference: str) -> float:
     return price if outcome == reference else 1.0 - price
 
 
+def closing_window(
+    fills: List[Dict[str, Any]], reference: str, start_ts: int, outcomes: List[str]
+) -> List[Tuple[str, float, float]]:
+    """The fills that define the close, as (wallet, size, reference_price).
+
+    Returned rather than immediately averaged so each wallet's own
+    contribution can be removed from the benchmark it is scored against --
+    see measure_market."""
+    valid = set(outcomes)
+    pregame: List[Tuple[int, str, float, float]] = []
+    for fill in fills:
+        outcome = str(fill.get("outcome") or "")
+        if outcome not in valid:
+            continue
+        try:
+            ts = int(fill.get("timestamp") or 0)
+            size = float(fill.get("size") or 0)
+            price = float(fill.get("price") or 0)
+        except (TypeError, ValueError):
+            continue
+        if ts <= 0 or ts >= start_ts or size <= 0 or not 0.0 < price < 1.0:
+            continue
+        pregame.append((ts, str(fill.get("proxyWallet") or ""), size,
+                        in_reference_terms(outcome, price, reference)))
+    if not pregame:
+        return []
+    pregame.sort(key=lambda row: row[0])
+    window = [row for row in pregame if row[0] >= start_ts - CLOSE_WINDOW_S]
+    if len(window) < CLOSE_MIN_TRADES:
+        window = pregame[-CLOSE_FALLBACK_TRADES:]
+    return [(w, size, price) for _ts, w, size, price in window]
+
+
 def closing_price(
     fills: List[Dict[str, Any]], reference: str, start_ts: int, outcomes: List[str]
 ) -> Optional[float]:
@@ -434,6 +467,27 @@ def measure_market(
     reference = market["winner"]
     start_ts = market["game_start_ts"]
     close_ref = closing_price(fills, reference, start_ts, market["outcomes"])
+
+    # A wallet trading inside the close window is part of the benchmark it
+    # gets scored against. Buy early at 0.55, buy again at 0.62 near the
+    # close, and that late buying lifts the very number the early buy is
+    # measured against -- self-impact, and it inflates CLV worst for the
+    # large wallets that dominate a dollar-weighted result. So each wallet
+    # is scored against a close computed with its OWN fills removed.
+    window = closing_window(fills, reference, start_ts, market["outcomes"])
+    win_size = sum(row[1] for row in window)
+    win_weighted = sum(row[1] * row[2] for row in window)
+    own_size: Dict[str, float] = defaultdict(float)
+    own_weighted: Dict[str, float] = defaultdict(float)
+    for wallet_addr, size, price in window:
+        own_size[wallet_addr] += size
+        own_weighted[wallet_addr] += size * price
+
+    def close_excluding(wallet_addr: str) -> Optional[float]:
+        rest_size = win_size - own_size.get(wallet_addr, 0.0)
+        if rest_size <= 0:
+            return None  # this wallet WAS the close; it cannot be scored here
+        return (win_weighted - own_weighted.get(wallet_addr, 0.0)) / rest_size
 
     per_wallet: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "clv_num": 0.0, "clv_stake": 0.0,
@@ -490,7 +544,10 @@ def measure_market(
         # taken at a price; scoring it would credit a scalper for unwinding
         # into a move it did not predict.
         if side == "BUY" and ts < start_ts and close_ref is not None:
-            close_for_outcome = close_ref if outcome == reference else 1.0 - close_ref
+            own_close = close_excluding(wallet)
+            if own_close is None:
+                continue
+            close_for_outcome = own_close if outcome == reference else 1.0 - own_close
             entry["clv_num"] += notional * (close_for_outcome - price)
             entry["clv_stake"] += notional
             entry["pregame_buy_cash"] += notional

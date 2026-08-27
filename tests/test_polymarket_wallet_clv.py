@@ -568,3 +568,49 @@ def test_walk_forward_reports_entry_price_for_selected_and_rest():
     assert wf["selected_avg_entry"] > wf["rest_avg_entry"] + 0.03
     assert wf["selected_fav_share"] == pytest.approx(1.0)
     assert wf["rest_fav_share"] == pytest.approx(0.0)
+
+
+# --- self-impact on the close -----------------------------------------------
+
+def test_a_wallet_is_not_scored_against_a_close_it_helped_set():
+    """Buy early, then buy again inside the close window, and that late
+    buying lifts the benchmark the early buy is measured against. Removing
+    the wallet's own fills from its own close is what stops a large wallet
+    manufacturing its own CLV."""
+    # Late activity is SELLS so it sets the close without itself being
+    # scored, isolating the self-impact effect from ordinary overpaying.
+    fills = [
+        fill("selfy", REF, "BUY", 100, 0.50, START - 7200),
+        fill("selfy", REF, "SELL", 5000, 0.90, START - 300),
+        fill("selfy", REF, "SELL", 5000, 0.90, START - 200),
+        # an independent quote also in the window
+        fill("other", REF, "BUY", 10000, 0.50, START - 100),
+    ]
+    measured, close = measure_market(fills, MARKET)
+    # the market-wide close is dragged up by selfy's own volume
+    assert close > 0.65
+    # but selfy is scored against the independent 0.50, so its 0.50 buy earns
+    # ~nothing instead of the ~+0.20 the self-inflated close would have paid
+    assert measured["selfy"]["clv_market"] == pytest.approx(0.0, abs=0.01)
+
+
+def test_wallet_that_is_the_entire_close_cannot_be_scored():
+    """With no independent trade in the window there is no benchmark left
+    once the wallet is removed, so it contributes no observation rather than
+    being scored against itself."""
+    fills = [
+        fill("only", REF, "BUY", 100, 0.40, START - 7200),
+        fill("only", REF, "BUY", 100, 0.90, START - 300),
+        fill("only", REF, "BUY", 100, 0.90, START - 200),
+        fill("only", REF, "BUY", 100, 0.90, START - 100),
+    ]
+    measured, _ = measure_market(fills, MARKET)
+    assert measured["only"]["clv_market"] is None
+
+
+def test_independent_wallets_are_unaffected_by_the_exclusion():
+    """A wallet with no fills in the close window is scored against the same
+    number as before -- the fix must not move ordinary observations."""
+    fills = [fill("early", REF, "BUY", 100, 0.40, START - 7200)] + _close_book(0.60)
+    measured, _ = measure_market(fills, MARKET)
+    assert measured["early"]["clv_market"] == pytest.approx(0.20, abs=0.001)
