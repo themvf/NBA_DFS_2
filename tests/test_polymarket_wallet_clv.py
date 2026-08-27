@@ -330,6 +330,27 @@ def test_walk_forward_reports_a_selection_gap_against_the_unselected_rest():
     assert wf["selected_holdout_clv"] == pytest.approx(wf["rest_holdout_clv"])
 
 
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _FakeSession:
+    """Stands in for the per-thread requests.Session the fetcher builds."""
+
+    def __init__(self, pager):
+        self._pager = pager
+
+    def get(self, url, params=None, timeout=None):
+        return _FakeResponse(self._pager(params.get("offset", 0)))
+
+
 # --- fill-tape depth --------------------------------------------------------
 
 def test_tape_ceiling_matches_the_data_apis_actual_limit():
@@ -351,12 +372,14 @@ def test_fetch_reports_truncation_rather_than_swallowing_it(monkeypatch):
     import ingest.polymarket_wallet_clv as mod
 
     page = [{"timestamp": 1, "size": 1, "price": 0.5} for _ in range(mod.TRADES_PAGE)]
-    monkeypatch.setattr(mod, "api_get", lambda url, params: page)
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+
+    monkeypatch.setattr(mod, "_session", lambda: _FakeSession(lambda _o: page))
     fills, hit = mod.fetch_market_fills("0x")
     assert hit is True
     assert len(fills) == mod.MAX_TRADES_PER_MARKET
 
-    monkeypatch.setattr(mod, "api_get", lambda url, params: page[:10])
+    monkeypatch.setattr(mod, "_session", lambda: _FakeSession(lambda _o: page[:10]))
     fills, hit = mod.fetch_market_fills("0x")
     assert hit is False and len(fills) == 10
 
@@ -368,13 +391,14 @@ def test_offset_ceiling_error_is_truncation_not_a_lost_market(monkeypatch):
 
     calls = {"n": 0}
 
-    def flaky(url, params):
+    def flaky(_offset):
         calls["n"] += 1
         if calls["n"] > 2:
             raise RuntimeError("HTTP 400")
         return [{"timestamp": 1, "size": 1, "price": 0.5} for _ in range(mod.TRADES_PAGE)]
 
-    monkeypatch.setattr(mod, "api_get", flaky)
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(mod, "_session", lambda: _FakeSession(flaky))
     fills, hit = mod.fetch_market_fills("0x")
     assert hit is True
     assert len(fills) == 2 * mod.TRADES_PAGE

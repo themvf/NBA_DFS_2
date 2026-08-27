@@ -117,14 +117,17 @@ import math
 import random
 import re
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ingest.polymarket_wallet_pilot_common import (
     DATA,
+    THROTTLE_S,
     TRADES_PAGE,
-    api_get,
     paginate_events,
     select_balanced_dev_holdout,
 )
@@ -190,12 +193,34 @@ MAX_TRADES_PER_MARKET = 10000
 MIN_MARKET_VOLUME = 1000.0
 MAX_MARKET_VOLUME = 350000.0
 
+# Tape fetching is latency-bound, not CPU-bound: serial fetching spends
+# almost all its wall time waiting on the network, which put a 2,400-market
+# scan at roughly six hours. A small pool cuts that by ~5x while staying
+# modest against a free, unmetered API -- this is politeness, not a rate
+# limit we measured, so keep it small.
+FETCH_WORKERS = 6
+
 BOOTSTRAP_ROUNDS = 2000
 
 
 # ---------------------------------------------------------------------------
 # fill tape
 # ---------------------------------------------------------------------------
+
+_local = threading.local()
+
+
+def _session() -> Any:
+    """requests.Session is not documented thread-safe, so each worker gets
+    its own rather than sharing the module-level one."""
+    sess = getattr(_local, "session", None)
+    if sess is None:
+        import requests
+        sess = requests.Session()
+        sess.headers["User-Agent"] = "NBADFS-polymarket-wallet-clv/2.0 (research)"
+        _local.session = sess
+    return sess
+
 
 def fetch_market_fills(condition_id: str) -> Tuple[List[Dict[str, Any]], bool]:
     """Newest-first fill tape. Returns (fills, hit_ceiling).
@@ -207,10 +232,13 @@ def fetch_market_fills(condition_id: str) -> Tuple[List[Dict[str, Any]], bool]:
     offset = 0
     while offset < MAX_TRADES_PER_MARKET:
         try:
-            page = api_get(f"{DATA}/trades", {
+            time.sleep(THROTTLE_S)
+            resp = _session().get(f"{DATA}/trades", params={
                 "market": condition_id, "limit": TRADES_PAGE,
                 "offset": offset, "takerOnly": "false",
-            })
+            }, timeout=30)
+            resp.raise_for_status()
+            page = resp.json()
         except Exception:  # noqa: BLE001 - offset ceiling surfaces as HTTP 400
             return fills, True
         if not isinstance(page, list) or not page:
@@ -491,41 +519,59 @@ def accumulate(
         "markets": 0, "fills": 0, "clv_eligible": 0, "no_pregame_trades": 0,
         "truncated": 0, "truncated_and_lost_pregame": 0,
     }
-    for i, market in enumerate(markets, 1):
+    def _fetch(market: Dict[str, Any]) -> Tuple[Dict[str, Any], Any, Any]:
         try:
-            fills, hit_ceiling = fetch_market_fills(market["condition_id"])
+            return market, fetch_market_fills(market["condition_id"]), None
         except Exception as exc:  # noqa: BLE001 - one bad market must not end the run
-            print(f"  ! {market['question'][:40]}: {exc}", file=sys.stderr)
-            continue
-        counts["markets"] += 1
-        counts["fills"] += len(fills)
-        if hit_ceiling:
-            counts["truncated"] += 1
-        measured, close_ref = measure_market(fills, market)
-        if close_ref is None:
-            counts["no_pregame_trades"] += 1
-            if hit_ceiling:
-                # The tape ran out before reaching pregame -- this market was
-                # lost TO truncation, not to an absence of pregame trading.
-                counts["truncated_and_lost_pregame"] += 1
-        else:
-            counts["clv_eligible"] += 1
-        for wallet, stats in measured.items():
-            agg = wallets[wallet]
-            if stats["name"]:
-                agg["name"] = stats["name"]
-            agg["markets"] += 1
-            agg["pnl"] += stats["pnl"]
-            agg["cost"] += stats["cost"]
-            if stats["pnl"] > 0:
-                agg["wins"] += 1
-            for key in _SUM_FLOAT_KEYS + _SUM_INT_KEYS:
-                agg[key] += stats[key]
-            if stats["clv_market"] is not None and stats["clv_stake"] > 0:
-                agg["clv_markets"] += 1
-                agg["obs"].append((market["condition_id"], stats["clv_stake"], stats["clv_num"]))
-        if i % progress_every == 0:
-            print(f"  processed {i}/{len(markets)} markets ({counts['fills']} fills)", file=sys.stderr)
+            return market, None, exc
+
+    # Fetch concurrently, aggregate on this thread only -- the wallet
+    # accumulator is plain dict mutation and is never touched by a worker.
+    # Chunked rather than one map over every market: ThreadPoolExecutor.map
+    # submits all tasks up front and buffers finished results in order, so a
+    # single slow market can hold thousands of fetched tapes in memory behind
+    # it. At up to 10,000 fills each that is a real footprint, and chunking
+    # bounds it to one batch.
+    chunk = FETCH_WORKERS * 8
+    batches = [markets[k:k + chunk] for k in range(0, len(markets), chunk)]
+    i = 0
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+        for batch in batches:
+          for market, result, exc in pool.map(_fetch, batch):
+              i += 1
+              if exc is not None or result is None:
+                  print(f"  ! {market['question'][:40]}: {exc}", file=sys.stderr)
+                  continue
+              fills, hit_ceiling = result
+              counts["markets"] += 1
+              counts["fills"] += len(fills)
+              if hit_ceiling:
+                  counts["truncated"] += 1
+              measured, close_ref = measure_market(fills, market)
+              if close_ref is None:
+                  counts["no_pregame_trades"] += 1
+                  if hit_ceiling:
+                      # The tape ran out before reaching pregame -- this market was
+                      # lost TO truncation, not to an absence of pregame trading.
+                      counts["truncated_and_lost_pregame"] += 1
+              else:
+                  counts["clv_eligible"] += 1
+              for wallet, stats in measured.items():
+                  agg = wallets[wallet]
+                  if stats["name"]:
+                      agg["name"] = stats["name"]
+                  agg["markets"] += 1
+                  agg["pnl"] += stats["pnl"]
+                  agg["cost"] += stats["cost"]
+                  if stats["pnl"] > 0:
+                      agg["wins"] += 1
+                  for key in _SUM_FLOAT_KEYS + _SUM_INT_KEYS:
+                      agg[key] += stats[key]
+                  if stats["clv_market"] is not None and stats["clv_stake"] > 0:
+                      agg["clv_markets"] += 1
+                      agg["obs"].append((market["condition_id"], stats["clv_stake"], stats["clv_num"]))
+              if i % progress_every == 0:
+                  print(f"  processed {i}/{len(markets)} markets ({counts['fills']} fills)", file=sys.stderr)
     return wallets, counts
 
 
