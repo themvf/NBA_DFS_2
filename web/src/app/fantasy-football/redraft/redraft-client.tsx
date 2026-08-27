@@ -22,7 +22,9 @@ import {
 import { nextControlledPick } from "@/lib/fantasy-football/draft-engine";
 import { computeAvailabilityOdds } from "@/lib/fantasy-football/availability-odds";
 import { computeCpuDraftBatch, localAutoDraftSeed, mapRankingsToAutoDraftPlayers } from "@/lib/fantasy-football/local-auto-draft";
+import { buildYahooRedraftStrategy, type YahooRedraftStrategyPlayer } from "@/lib/fantasy-football/yahoo-redraft-strategy";
 import RedraftPlayerBoard from "./redraft-player-board";
+import YahooRedraftStrategyPanel from "./yahoo-redraft-strategy-panel";
 
 const TOTAL_PICKS = REDRAFT_TEAM_COUNT * REDRAFT_ROUNDS;
 const EMPTY_DRAFT: RedraftDraftState = { userSlot: 1, playerIds: [], cpuEnabled: false };
@@ -153,6 +155,33 @@ export default function RedraftClient({ rankings, rankingSetId }: { rankings: Fa
   const displayStatus = useMemo(() => getRedraftRosterStatus(displayRoster), [displayRoster]);
   const currentRoster = useMemo(() => currentTeamSlot ? rosters.get(currentTeamSlot) ?? [] : [], [currentTeamSlot, rosters]);
   const currentStatus = useMemo(() => getRedraftRosterStatus(currentRoster), [currentRoster]);
+  const followingCurrentTeamPick = currentSlot && currentTeamSlot
+    ? nextControlledPick(currentSlot.overallPick + 1, currentTeamSlot, REDRAFT_TEAM_COUNT, REDRAFT_ROUNDS)
+    : null;
+  const canDraftCurrentPick = Boolean(currentSlot)
+    && currentStatus.size < REDRAFT_ROSTER_SIZE
+    && (!draft.cpuEnabled || currentTeamSlot === draft.userSlot);
+  const yahooStrategy = useMemo(() => {
+    if (!currentSlot) return null;
+    const toStrategyPlayer = (player: FantasyRankingRow): YahooRedraftStrategyPlayer => ({
+      playerId: player.playerId,
+      name: player.name,
+      position: player.position,
+      team: player.team,
+      projectedPoints: player.ourProjectedPoints,
+      expectedGames: player.expectedGames,
+      ourRank: player.ourRank,
+      yahooXRank: player.yahooXRank,
+      yahooAdp: player.yahooAdp,
+    });
+    return buildYahooRedraftStrategy({
+      roster: currentRoster.map(toStrategyPlayer),
+      availablePlayers: rankings.filter((player) => !draft.playerIds.includes(player.playerId)).map(toStrategyPlayer),
+      nextPick: currentSlot.overallPick,
+      followingPick: followingCurrentTeamPick,
+      teamCount: REDRAFT_TEAM_COUNT,
+    });
+  }, [currentSlot, currentRoster, rankings, draft.playerIds, followingCurrentTeamPick]);
 
   const draftPlayer = useCallback((playerId: number) => {
     updateDraft((latest) => {
@@ -217,6 +246,8 @@ export default function RedraftClient({ rankings, rankingSetId }: { rankings: Fa
       })}</div>
     </section>
 
+    <YahooRedraftStrategyPanel strategy={yahooStrategy} canDraft={canDraftCurrentPick} onDraft={draftPlayer} />
+
     <section className="grid gap-5 xl:grid-cols-[1fr_320px]">
       <div className="rounded-2xl border bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -249,7 +280,7 @@ export default function RedraftClient({ rankings, rankingSetId }: { rankings: Fa
     <RedraftPlayerBoard
       rankings={rankings}
       draftedPlayerIds={draft.playerIds}
-      canDraft={Boolean(currentSlot) && currentStatus.size < REDRAFT_ROSTER_SIZE && (!draft.cpuEnabled || currentTeamSlot === draft.userSlot)}
+      canDraft={canDraftCurrentPick}
       onDraft={draftPlayer}
       availabilityByPlayerId={availabilityByPlayerId}
     />

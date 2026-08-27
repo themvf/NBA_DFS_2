@@ -12,6 +12,7 @@ import { buildProjectionExplanation } from "../src/lib/fantasy-football/projecti
 import { buildBestBallDraftBoard, canAddBestBallPlayer, getBestBallRosterStatus, parseBestBallDraftState } from "../src/lib/fantasy-football/best-ball";
 import { buildRosterCorrelationBadges } from "../src/lib/fantasy-football/teammate-correlation-badge";
 import { getDraftMarketSignal, getDraftMarketTiming, scoreDraftKingsBestBallLine, selectBestBallLineup, simulateShadowBestBallCandidates, type ShadowBestBallPlayer } from "../src/lib/fantasy-football/best-ball-simulation";
+import { buildYahooRedraftStrategy, scoreYahooRedraftRoster, type YahooRedraftStrategyPlayer } from "../src/lib/fantasy-football/yahoo-redraft-strategy";
 import type { TeammateCorrelationRow } from "../src/db/queries-fantasy-football";
 import {
   bestBallAdvisorDraftSignature,
@@ -236,6 +237,23 @@ assert.equal(replacementAwareShadow.candidates[0].playerId, eliteTe.playerId);
 assert.equal(replacementAwareShadow.candidates[0].futureTargetPlayerId, laterQb.playerId);
 assert.equal(replacementAwareShadow.candidates.find((candidate) => candidate.playerId === eliteQb.playerId)?.strategyLabel, "position-can-wait");
 assert.match(replacementAwareShadow.recommendation?.headline ?? "", /Draft Elite TE now; target Later QB at #48/);
+
+const yahooEliteQb = { playerId: 401, name: "Yahoo Elite QB", position: "QB", team: "A", projectedPoints: 380, expectedGames: 17, ourRank: 23, yahooXRank: 28, yahooAdp: 28.6 } satisfies YahooRedraftStrategyPlayer;
+const yahooEliteTe = { playerId: 402, name: "Yahoo Elite TE", position: "TE", team: "B", projectedPoints: 275, expectedGames: 17, ourRank: 15, yahooXRank: 27, yahooAdp: 27.4 } satisfies YahooRedraftStrategyPlayer;
+const yahooLaterQb = { playerId: 403, name: "Yahoo Later QB", position: "QB", team: "C", projectedPoints: 355, expectedGames: 17, ourRank: 48, yahooXRank: 52, yahooAdp: 53 } satisfies YahooRedraftStrategyPlayer;
+const yahooLaterTe = { playerId: 404, name: "Yahoo Later TE", position: "TE", team: "D", projectedPoints: 205, expectedGames: 17, ourRank: 51, yahooXRank: 55, yahooAdp: 56 } satisfies YahooRedraftStrategyPlayer;
+const earlyKicker = { playerId: 405, name: "Early Kicker", position: "K", team: "E", projectedPoints: 170, expectedGames: 17, ourRank: 5, yahooXRank: 130, yahooAdp: 135 } satisfies YahooRedraftStrategyPlayer;
+const yahooStrategy = buildYahooRedraftStrategy({
+  roster: [], availablePlayers: [yahooEliteQb, yahooEliteTe, yahooLaterQb, yahooLaterTe, earlyKicker],
+  nextPick: 25, followingPick: 48, teamCount: 10,
+});
+assert.equal(yahooStrategy.model, "yahoo-redraft-two-pick-v1");
+assert.equal(yahooStrategy.candidates[0].playerId, yahooEliteTe.playerId);
+assert.equal(yahooStrategy.candidates[0].futureTargetPlayerId, yahooLaterQb.playerId);
+assert.equal(yahooStrategy.candidates.find((candidate) => candidate.playerId === yahooEliteQb.playerId)?.strategyLabel, "position-can-wait");
+assert.ok(!yahooStrategy.candidates.some((candidate) => candidate.playerId === earlyKicker.playerId));
+assert.match(yahooStrategy.recommendation?.headline ?? "", /Draft Yahoo Elite TE now; target Yahoo Later QB at #48/);
+assert.equal(scoreYahooRedraftRoster([yahooEliteQb, yahooEliteTe]), 655);
 assert.deepEqual(getDraftMarketSignal(20, 26), { gap: 6, signal: "discount" });
 assert.deepEqual(getDraftMarketSignal(20, 17), { gap: -3, signal: "fair" });
 assert.deepEqual(getDraftMarketSignal(20, 12), { gap: -8, signal: "premium" });
