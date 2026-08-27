@@ -331,8 +331,9 @@ def test_walk_forward_reports_a_selection_gap_against_the_unselected_rest():
 
 
 class _FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200):
         self._payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self):
         return None
@@ -348,7 +349,10 @@ class _FakeSession:
         self._pager = pager
 
     def get(self, url, params=None, timeout=None):
-        return _FakeResponse(self._pager(params.get("offset", 0)))
+        payload = self._pager(params.get("offset", 0))
+        if payload == 400:
+            return _FakeResponse(None, status_code=400)
+        return _FakeResponse(payload)
 
 
 # --- fill-tape depth --------------------------------------------------------
@@ -384,24 +388,57 @@ def test_fetch_reports_truncation_rather_than_swallowing_it(monkeypatch):
     assert hit is False and len(fills) == 10
 
 
-def test_offset_ceiling_error_is_truncation_not_a_lost_market(monkeypatch):
-    """HTTP 400 past the offset ceiling must return the partial tape flagged
-    as truncated -- not raise and drop the market from the sample."""
+def test_http_400_is_the_offset_ceiling_and_keeps_the_partial_tape(monkeypatch):
+    """400 is what the API returns past offset 10,000 -- a real ceiling, so
+    the partial tape is kept and flagged rather than dropped."""
+    import ingest.polymarket_wallet_clv as mod
+
+    calls = {"n": 0}
+
+    def pager(_offset):
+        calls["n"] += 1
+        if calls["n"] > 2:
+            return 400
+        return [{"timestamp": 1, "size": 1, "price": 0.5} for _ in range(mod.TRADES_PAGE)]
+
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(mod, "_session", lambda: _FakeSession(pager))
+    fills, hit = mod.fetch_market_fills("0x")
+    assert hit is True
+    assert len(fills) == 2 * mod.TRADES_PAGE
+
+
+def test_transient_failure_is_retried_then_raised_never_called_truncation(monkeypatch):
+    """Two concurrent scans produced enough rate-limit errors that 794 of
+    2,400 markets were recorded as truncated, against 1 in the identical
+    scan run alone -- 45% of the sample discarded and reported as a property
+    of Polymarket. A transient failure must never masquerade as a ceiling."""
+    import ingest.polymarket_wallet_clv as mod
+
+    def always_fails(_offset):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(mod, "_session", lambda: _FakeSession(always_fails))
+    with pytest.raises(mod.TapeIncomplete):
+        mod.fetch_market_fills("0x")
+
+
+def test_transient_failure_that_recovers_completes_the_tape(monkeypatch):
     import ingest.polymarket_wallet_clv as mod
 
     calls = {"n": 0}
 
     def flaky(_offset):
         calls["n"] += 1
-        if calls["n"] > 2:
-            raise RuntimeError("HTTP 400")
-        return [{"timestamp": 1, "size": 1, "price": 0.5} for _ in range(mod.TRADES_PAGE)]
+        if calls["n"] == 1:
+            raise RuntimeError("timeout")
+        return [{"timestamp": 1, "size": 1, "price": 0.5} for _ in range(10)]
 
     monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
     monkeypatch.setattr(mod, "_session", lambda: _FakeSession(flaky))
     fills, hit = mod.fetch_market_fills("0x")
-    assert hit is True
-    assert len(fills) == 2 * mod.TRADES_PAGE
+    assert hit is False and len(fills) == 10
 
 
 def test_walk_forward_never_selects_the_entire_population():

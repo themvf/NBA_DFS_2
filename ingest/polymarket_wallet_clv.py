@@ -199,6 +199,7 @@ MAX_MARKET_VOLUME = 350000.0
 # modest against a free, unmetered API -- this is politeness, not a rate
 # limit we measured, so keep it small.
 FETCH_WORKERS = 6
+FETCH_RETRIES = 4
 
 BOOTSTRAP_ROUNDS = 2000
 
@@ -222,25 +223,55 @@ def _session() -> Any:
     return sess
 
 
+class TapeIncomplete(Exception):
+    """A transient failure stopped the tape before it was fully read.
+
+    Deliberately NOT the same thing as hitting the offset ceiling. Both used
+    to be caught by one bare `except` and reported as truncation, which is
+    how a rate-limited run silently discarded 45% of its own sample and
+    reported it as a property of Polymarket -- see the docstring below."""
+
+
 def fetch_market_fills(condition_id: str) -> Tuple[List[Dict[str, Any]], bool]:
     """Newest-first fill tape. Returns (fills, hit_ceiling).
 
     hit_ceiling is reported rather than swallowed: a truncated tape may have
     lost its entire pregame window, and a market silently contributing no
-    CLV observations is indistinguishable from one where nobody traded."""
+    CLV observations is indistinguishable from one where nobody traded.
+
+    Only an HTTP 400 counts as the ceiling -- that is what the API returns
+    past offset 10,000. Every other failure is transient and is retried, then
+    raised as TapeIncomplete so the caller drops the market instead of
+    analysing a partial tape.
+
+    Found the hard way 2026-08-27: two scans run concurrently produced enough
+    rate-limit and timeout errors that 794 of 2,400 markets were recorded as
+    truncated, against 1 in the identical scan run alone. Same command, same
+    parameters, 45% of the sample gone -- and it looked like a finding about
+    market depth rather than a bug in error handling. A partial tape is
+    always missing its OLDEST trades, which is exactly the pregame window,
+    so quietly keeping one biases CLV rather than merely shrinking n."""
     fills: List[Dict[str, Any]] = []
     offset = 0
     while offset < MAX_TRADES_PER_MARKET:
-        try:
-            time.sleep(THROTTLE_S)
-            resp = _session().get(f"{DATA}/trades", params={
-                "market": condition_id, "limit": TRADES_PAGE,
-                "offset": offset, "takerOnly": "false",
-            }, timeout=30)
-            resp.raise_for_status()
-            page = resp.json()
-        except Exception:  # noqa: BLE001 - offset ceiling surfaces as HTTP 400
-            return fills, True
+        page = None
+        last_exc: Optional[Exception] = None
+        for attempt in range(FETCH_RETRIES):
+            try:
+                time.sleep(THROTTLE_S * (1 + attempt * 4))
+                resp = _session().get(f"{DATA}/trades", params={
+                    "market": condition_id, "limit": TRADES_PAGE,
+                    "offset": offset, "takerOnly": "false",
+                }, timeout=30)
+                if resp.status_code == 400:
+                    return fills, True  # the offset ceiling, the real thing
+                resp.raise_for_status()
+                page = resp.json()
+                break
+            except Exception as exc:  # noqa: BLE001 - retried below
+                last_exc = exc
+        if page is None:
+            raise TapeIncomplete(f"{condition_id}: {last_exc}")
         if not isinstance(page, list) or not page:
             return fills, False
         fills.extend(page)
@@ -517,7 +548,7 @@ def accumulate(
     wallets: Dict[str, Dict[str, Any]] = defaultdict(new_wallet)
     counts = {
         "markets": 0, "fills": 0, "clv_eligible": 0, "no_pregame_trades": 0,
-        "truncated": 0, "truncated_and_lost_pregame": 0,
+        "truncated": 0, "truncated_and_lost_pregame": 0, "fetch_failed": 0,
     }
     def _fetch(market: Dict[str, Any]) -> Tuple[Dict[str, Any], Any, Any]:
         try:
@@ -540,6 +571,7 @@ def accumulate(
           for market, result, exc in pool.map(_fetch, batch):
               i += 1
               if exc is not None or result is None:
+                  counts["fetch_failed"] += 1
                   print(f"  ! {market['question'][:40]}: {exc}", file=sys.stderr)
                   continue
               fills, hit_ceiling = result
@@ -906,6 +938,10 @@ def run(
     print(f"  no pregame trades reached {counts['no_pregame_trades']} "
           f"(of which {counts['truncated_and_lost_pregame']} lost to tape truncation)")
     print(f"  tapes hitting the {MAX_TRADES_PER_MARKET:,}-trade ceiling: {counts['truncated']}")
+    if counts["fetch_failed"]:
+        print(f"  MARKETS DROPPED after {FETCH_RETRIES} failed fetch attempts: "
+              f"{counts['fetch_failed']} -- a partial tape is missing its OLDEST "
+              f"trades, so it is dropped rather than analysed")
     print_funnel(len(wallets), reasons, len(rows))
 
     print()
