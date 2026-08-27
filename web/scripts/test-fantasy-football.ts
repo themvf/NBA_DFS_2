@@ -11,6 +11,7 @@ import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 import { buildProjectionExplanation } from "../src/lib/fantasy-football/projection-explanation";
 import { buildBestBallDraftBoard, canAddBestBallPlayer, getBestBallRosterStatus, parseBestBallDraftState } from "../src/lib/fantasy-football/best-ball";
 import { buildRosterCorrelationBadges } from "../src/lib/fantasy-football/teammate-correlation-badge";
+import { getDraftMarketSignal, getDraftMarketTiming, scoreDraftKingsBestBallLine, selectBestBallLineup, simulateShadowBestBallCandidates, type ShadowBestBallPlayer } from "../src/lib/fantasy-football/best-ball-simulation";
 import type { TeammateCorrelationRow } from "../src/db/queries-fantasy-football";
 import {
   bestBallAdvisorDraftSignature,
@@ -182,6 +183,47 @@ assert.deepEqual(parseBestBallDraftState('bad-json'), { userSlot: 1, playerIds: 
 assert.deepEqual(parseBestBallDraftState('{"userSlot":2,"playerIds":[],"cpuEnabled":true}'), { userSlot: 2, playerIds: [], cpuEnabled: true });
 assert.deepEqual(parseBestBallDraftState('{"userSlot":2,"playerIds":[],"cpuEnabled":1}'), { userSlot: 2, playerIds: [], cpuEnabled: false });
 
+// DraftKings scoring includes full PPR and each yardage bonus independently.
+assert.equal(scoreDraftKingsBestBallLine({
+  passingYards: 300, passingTouchdowns: 2, interceptions: 1,
+  rushingYards: 100, rushingTouchdowns: 1,
+  receptions: 5, receivingYards: 100, receivingTouchdowns: 1,
+  returnTouchdowns: 1, fumblesLost: 1, twoPointConversions: 1,
+}), 72);
+assert.ok(Math.abs(scoreDraftKingsBestBallLine({ passingYards: 299, rushingYards: 99, receivingYards: 99 }) - 31.76) < 1e-9);
+
+const lineupPlayers: ShadowBestBallPlayer[] = [
+  { playerId: 201, name: "QB", position: "QB", team: "A", byeWeek: null, projectedPoints: 300, projectionLow: 280, projectionHigh: 320, expectedGames: 17, confidence: 0.9 },
+  ...Array.from({ length: 3 }, (_, index) => ({ playerId: 210 + index, name: `RB${index}`, position: "RB", team: "B", byeWeek: null, projectedPoints: 220, projectionLow: 190, projectionHigh: 250, expectedGames: 17, confidence: 0.8 })),
+  ...Array.from({ length: 4 }, (_, index) => ({ playerId: 220 + index, name: `WR${index}`, position: "WR", team: "C", byeWeek: null, projectedPoints: 220, projectionLow: 190, projectionHigh: 250, expectedGames: 17, confidence: 0.8 })),
+  ...Array.from({ length: 2 }, (_, index) => ({ playerId: 230 + index, name: `TE${index}`, position: "TE", team: "D", byeWeek: null, projectedPoints: 180, projectionLow: 150, projectionHigh: 210, expectedGames: 17, confidence: 0.8 })),
+];
+const lineupScores = new Map(lineupPlayers.map((player, index) => [player.playerId, 30 - index]));
+const selectedLineup = selectBestBallLineup(lineupPlayers, lineupScores);
+assert.equal(selectedLineup.countedPlayerIds.length, 8);
+assert.ok(selectedLineup.countedPlayerIds.includes(212), "the third RB should win FLEX over lower-scoring WR/TE reserves");
+assert.ok(!selectedLineup.countedPlayerIds.includes(223), "the fourth WR should remain on the bench");
+
+const shadowCandidate = { playerId: 299, name: "Candidate", position: "WR", team: "E", byeWeek: 8, projectedPoints: 250, projectionLow: 220, projectionHigh: 280, expectedGames: 16, confidence: 0.75, ourRank: 24, dkBestBallRank: 35, dkBestBallAdp: 33.5 } satisfies ShadowBestBallPlayer;
+const shadow = simulateShadowBestBallCandidates({ roster: lineupPlayers, candidates: [shadowCandidate], iterations: 80, nextUserPick: 24, followingUserPick: 25, teamCount: 12 });
+assert.equal(shadow.model, "shadow-v0-v1.6-points");
+assert.equal(shadow.iterations, 80);
+assert.equal(shadow.candidates.length, 1);
+assert.ok(shadow.candidates[0].marginalCountedPoints >= 0);
+assert.ok(shadow.candidates[0].expectedCountedWeeks >= 0 && shadow.candidates[0].expectedCountedWeeks <= 17);
+assert.equal(shadow.candidates[0].dkDraftAction, "wait");
+assert.equal(shadow.candidates[0].dkMarketPick, 33.5);
+assert.equal(shadow.candidates[0].dkTargetPick, 27);
+assert.deepEqual(getDraftMarketSignal(20, 26), { gap: 6, signal: "discount" });
+assert.deepEqual(getDraftMarketSignal(20, 17), { gap: -3, signal: "fair" });
+assert.deepEqual(getDraftMarketSignal(20, 12), { gap: -8, signal: "premium" });
+assert.deepEqual(getDraftMarketSignal(null, 12), { gap: null, signal: "unavailable" });
+assert.deepEqual(getDraftMarketTiming({ ourRank: 63, marketRank: 124.1, marketAdp: 95.3, nextUserPick: 63, followingUserPick: 72, teamCount: 12 }), { action: "wait", marketPick: 95.3, targetPick: 89 });
+assert.deepEqual(getDraftMarketTiming({ ourRank: 63, marketRank: 124.1, marketAdp: 95.3, nextUserPick: 73, followingUserPick: 96, teamCount: 12 }), { action: "take-now", marketPick: 95.3, targetPick: 89 });
+assert.deepEqual(getDraftMarketTiming({ ourRank: 63, marketRank: 124.1, marketAdp: 95.3, nextUserPick: 82, followingUserPick: 90, teamCount: 12 }), { action: "target-soon", marketPick: 95.3, targetPick: 89 });
+assert.deepEqual(getDraftMarketTiming({ ourRank: 181, marketRank: 113.9, marketAdp: 118.4, nextUserPick: 120, followingUserPick: 121, teamCount: 12 }), { action: "pass-at-price", marketPick: 113.9, targetPick: 181 });
+assert.deepEqual(getDraftMarketTiming({ ourRank: 63, marketRank: 88, marketAdp: 82.4, nextUserPick: 72, followingUserPick: 73, teamCount: 12 }), { action: "wait", marketPick: 82.4, targetPick: 76 });
+
 function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingRow, "playerId" | "name" | "position">): FantasyRankingRow {
   return {
     team: null, rookie: false, byeWeek: null, injuryStatus: null, ecr: null, positionRank: null,
@@ -189,6 +231,7 @@ function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingR
     projectionLow: null, projectionHigh: null, rankMin: null, rankMax: null, rankStd: null,
     dkBestBallAdp: null, dkBestBallRank: null, dkBestBallDraftPct: null, dkBestBallDraftGroupId: null,
     dkBestBallCapturedAt: null,
+    yahooXRank: null, yahooAdp: null, yahooSourceOrder: null, yahooCapturedAt: null,
     projectedPoints: null, fantasyProsProjectedPoints: null,
     fantasyProsProjectionFetchedAt: null, fantasyProsProjectionUpdatedAt: null, ourProjectedPoints: null,
     games2025: null, fantasyPoints2025: null, positionFinish2025: null,

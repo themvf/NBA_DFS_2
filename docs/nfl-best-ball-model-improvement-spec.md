@@ -790,3 +790,27 @@ The first release is a **shadow Best Ball challenger** that:
 - collects prospective 2026 decisions for later calibration.
 
 This deliverable creates actionable Best Ball intelligence while preserving a measurable comparison with the current model.
+
+### 15.1 Implementation checkpoint — 2026-08-26
+
+The first user-visible shadow slice is now implemented:
+
+- `web/src/lib/fantasy-football/best-ball-simulation.ts` contains the exact
+  DraftKings offensive stat-line scorer, including the 300-yard passing and
+  100-yard rushing/receiving bonuses;
+- the same module performs deterministic paired weekly simulations and selects
+  the maximum legal `1 QB / 2 RB / 3 WR / 1 TE / 1 FLEX` lineup;
+- candidate results report marginal automatically counted points, the
+  candidate's expected counted points and weeks, and change in roster P90;
+- the live Best Ball page displays those results for the Decision Desk choices
+  in a clearly labeled shadow panel and recalculates from the user's roster;
+- V1.6 remains the production order. The shadow output is deliberately not
+  blended into the current recommendation.
+
+Current boundary: V1.6 supplies season-level PPR points and uncertainty ranges,
+not weekly passing/rushing/receiving stat projections. Shadow V0 therefore uses
+explicit, uncalibrated position-level weekly-variance priors and cannot yet feed
+yardage events through the exact scorer. The UI states this limitation. Phase 5
+is **PARTIAL**, not complete; promotion remains blocked on weekly opportunity and
+stat distributions, calibrated availability, correlations, completed-roster
+simulation, chronological validation, and real-data verification.
