@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet, getTeammateCorrelations } from "@/db/queries-fantasy-football";
+import { getDkBestBallAdpHealth, getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet, getTeammateCorrelations } from "@/db/queries-fantasy-football";
 import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import BestBallClient from "./best-ball-client";
 import { getBestBallAdvisorAvailability } from "@/lib/fantasy-football/ai-draft-advisor-env";
@@ -9,15 +9,17 @@ import ProjectionMethodExplainer from "./projection-method-explainer";
 
 export default async function BestBallPage() {
   const set = await getLatestRankingSet("PPR");
-  const [allRankings, fantasyProsHealth] = await Promise.all([
+  const [allRankings, fantasyProsHealth, dkBestBallHealth] = await Promise.all([
     set ? getFantasyRankings(set.id) : Promise.resolve([]),
     getFantasyProsSourceHealth(set?.season ?? 2026),
+    getDkBestBallAdpHealth(set?.season ?? 2026),
   ]);
   const rankings = allRankings
     .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
     .slice(0, 260);
   const correlations = await getTeammateCorrelations(rankings.map((player) => player.playerId));
   const fantasyProsProjectionDataset = fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "projections");
+  const latestDkCapture = dkBestBallHealth[0] ?? null;
   return <div className="space-y-6">
     <header className="overflow-hidden rounded-3xl border bg-gradient-to-br from-blue-950 via-slate-950 to-indigo-950 p-7 text-white shadow-xl">
       <div className="flex flex-wrap items-end justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-[0.28em] text-blue-300">DraftKings · NFL · Season Long</p><h1 className="mt-2 text-4xl font-black">Best Ball Draft Lab</h1><p className="mt-2 max-w-3xl text-slate-300">Build a 20-player roster whose highest-scoring legal lineup is counted automatically each week across Weeks 1–17.</p></div><nav className="flex gap-2"><Link href="/fantasy-football/rankings?scoring=PPR" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold">Redraft rankings</Link><span className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold">Best Ball</span><Link href="/fantasy-football/best-ball/print?scoring=PPR" className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold">Print sheet</Link></nav></div>
@@ -47,6 +49,10 @@ export default async function BestBallPage() {
           <p>{fantasyProsHealth.latestFetchedAt ? `Checked ${new Date(fantasyProsHealth.latestFetchedAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET` : "No successful snapshot"}</p>
         </div>
       </div>
+    </section>
+
+    <section className="rounded-2xl border border-blue-300 bg-blue-50 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">DraftKings Best Ball rank feed</p><p className="mt-1 text-lg font-black">{latestDkCapture ? "Current manual snapshot" : "No snapshot"}</p><p className="text-sm text-muted-foreground">DraftKings Rank and ADP power the DK Shadow acquisition window; they never alter our independent football projection.</p></div>{latestDkCapture && <div className="text-right text-xs text-muted-foreground"><p>{latestDkCapture.playerCount} DK players · {latestDkCapture.matchedCount} matched</p><p>Captured {new Date(latestDkCapture.capturedAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</p></div>}</div>
     </section>
 
     <ProjectionMethodExplainer />

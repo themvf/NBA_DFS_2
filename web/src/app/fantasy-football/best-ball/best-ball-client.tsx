@@ -215,6 +215,8 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
       expectedGames: player.expectedGames,
       confidence: player.confidence,
       ourRank: player.ourRank,
+      dkBestBallRank: player.dkBestBallRank,
+      dkBestBallAdp: player.dkBestBallAdp,
       yahooXRank: player.yahooXRank,
       yahooAdp: player.yahooAdp,
     });

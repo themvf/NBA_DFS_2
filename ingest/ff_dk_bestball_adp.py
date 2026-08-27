@@ -1,4 +1,4 @@
-"""Manual capture of DraftKings' own Best Ball ADP/draft-percentage.
+"""Manual capture of DraftKings' own Best Ball rank and ADP.
 
 This is a distinct signal from Fantasy Football Calculator's general-market
 ADP (`ingest/ff_adp_snapshot.py`) -- it's DK's own site-wide average draft
@@ -36,12 +36,15 @@ this script re-resolves names every time rather than trusting a cached ID.
 
 Usage:
     python -m ingest.ff_dk_bestball_adp --file dk_playerpool.json --draft-group 146136 --season 2026
+    python -m ingest.ff_dk_bestball_adp --file DkPreDraftRankings.csv --season 2026
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,21 +53,81 @@ from typing import Any
 from config import load_config
 from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, normalize_name
-from ingest.ff_independent import _snapshot
+from ingest.ff_independent import _snapshot, normalize_team
 
 MIN_PLAYER_UNIVERSE = 100
 MIN_DK_ROWS = 200
 
 
-def _player_lookup(db: RefreshDatabase, season: int) -> dict[str, list[int]]:
-    """normalized_name -> [ff_players.id, ...] (a name shared by >1 player in
-    the season is ambiguous without a position to disambiguate with, and is
-    reported as unmatched rather than guessed)."""
-    rows = db.execute("SELECT id, normalized_name FROM ff_players WHERE season=%s", (season,))
-    lookup: dict[str, list[int]] = {}
+def parse_dk_predraft_csv(text: str) -> list[dict[str, Any]]:
+    """Normalize DK's downloadable pre-draft ranking CSV.
+
+    The CSV has no explicit rank column: DraftKings documents that row order is
+    the ranking, so rank is deliberately derived from the 1-based row number.
+    """
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    required = {"ID", "Name", "Position", "ADP", "Team"}
+    if not reader.fieldnames or not required.issubset(reader.fieldnames):
+        raise ValueError(f"DraftKings CSV is missing required columns: {sorted(required)}")
+    players: list[dict[str, Any]] = []
+    for row_number, row in enumerate(reader, start=1):
+        if not (row.get("ID") and row.get("Name")):
+            continue
+        players.append({
+            "playerId": as_int(row.get("ID")),
+            "displayName": str(row.get("Name") or "").strip(),
+            "position": str(row.get("Position") or "").strip().upper(),
+            "team": normalize_team(row.get("Team")) or None,
+            "averageDraftPosition": as_float(row.get("ADP")),
+            "draftPercentage": None,
+            "rank": row_number,
+            "isAvailable": True,
+            "teamId": None,
+        })
+    return players
+
+
+def _player_lookup(db: RefreshDatabase, season: int) -> dict[str, list[dict[str, Any]]]:
+    rows = db.execute(
+        """WITH latest_board AS (
+             SELECT id FROM ff_ranking_sets
+             WHERE season=%s AND COALESCE(scoring_profile->>'preset','PPR')='PPR'
+             ORDER BY created_at DESC,id DESC LIMIT 1
+           )
+           SELECT p.id,p.normalized_name,p.position,p.team_abbrev,
+             EXISTS(SELECT 1 FROM ff_player_rankings r,latest_board lb
+                    WHERE r.ranking_set_id=lb.id AND r.player_id=p.id) AS on_current_board
+           FROM ff_players p WHERE p.season=%s""",
+        (season, season),
+    )
+    lookup: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
-        lookup.setdefault(row["normalized_name"], []).append(int(row["id"]))
+        lookup.setdefault(row["normalized_name"], []).append(row)
     return lookup
+
+
+def _match_player(row: dict[str, Any], lookup: dict[str, list[dict[str, Any]]]) -> tuple[int | None, str]:
+    def choose(candidates: list[dict[str, Any]], method: str) -> tuple[int | None, str]:
+        current = [candidate for candidate in candidates if candidate.get("on_current_board")]
+        if len(current) == 1:
+            return int(current[0]["id"]), f"{method}_current_board"
+        if len(candidates) == 1:
+            return int(candidates[0]["id"]), method
+        return None, "ambiguous" if candidates else "unmatched"
+
+    candidates = lookup.get(normalize_name(str(row.get("displayName") or "")), [])
+    position = str(row.get("position") or "").upper()
+    team = normalize_team(row.get("team"))
+    if position:
+        position_matches = [candidate for candidate in candidates if candidate.get("position") == position]
+        if position_matches:
+            candidates = position_matches
+    if team:
+        team_matches = [candidate for candidate in candidates if normalize_team(candidate.get("team_abbrev")) == team]
+        matched = choose(team_matches, "normalized_name_position_team")
+        if matched[0] is not None:
+            return matched
+    return choose(candidates, "normalized_name_position")
 
 
 def _run(
@@ -82,8 +145,12 @@ def _run(
         )
 
     raw_bytes = file_path.read_bytes()
-    payload = json.loads(raw_bytes)
-    players = ((payload.get("playerPool") or {}).get("draftablePlayers")) or []
+    source_format = "predraft-csv" if file_path.suffix.lower() == ".csv" else "playerpool-json"
+    if source_format == "predraft-csv":
+        players = parse_dk_predraft_csv(raw_bytes.decode("utf-8-sig"))
+    else:
+        payload = json.loads(raw_bytes)
+        players = ((payload.get("playerPool") or {}).get("draftablePlayers")) or []
     if not isinstance(players, list) or len(players) < MIN_DK_ROWS:
         raise RuntimeError(
             f"{file_path} has suspiciously few players ({len(players) if isinstance(players, list) else 'n/a'}) "
@@ -98,6 +165,8 @@ def _run(
             "draft_group_id": draft_group_id,
             "captured_at": captured_at.isoformat(),
             "file": str(file_path),
+            "source_format": source_format,
+            "rank_basis": "csv-row-order" if source_format == "predraft-csv" else "payload-rank",
         },
     )
 
@@ -110,12 +179,10 @@ def _run(
         display_name = row.get("displayName") or f"{row.get('firstName', '')} {row.get('lastName', '')}".strip()
         if dk_player_id is None or not display_name:
             continue
-        candidates = player_lookup.get(normalize_name(display_name), [])
-        ff_player_id: int | None = None
-        if len(candidates) == 1:
-            ff_player_id = candidates[0]
+        ff_player_id, match_method = _match_player(row, player_lookup)
+        if ff_player_id is not None:
             matched += 1
-        elif len(candidates) > 1:
+        elif match_method == "ambiguous":
             ambiguous.append(display_name)
         else:
             unmatched.append(display_name)
@@ -157,6 +224,8 @@ def _run(
         "unmatched_count": len(unmatched),
         "unmatched_sample": unmatched[:20],
         "source_snapshot_id": snapshot_id,
+        "source_format": source_format,
+        "adp_rows": sum(as_float(row.get("averageDraftPosition")) is not None for row in players),
     }
 
 
@@ -176,7 +245,10 @@ def run(season: int, draft_group_id: int, file_path: Path, captured_at: datetime
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--file", required=True, type=Path, help="Path to the saved playerpool JSON response body")
-    parser.add_argument("--draft-group", required=True, type=int, dest="draft_group_id")
+    parser.add_argument(
+        "--draft-group", type=int, dest="draft_group_id", default=0,
+        help="DK draft group for JSON captures; omit for the global pre-draft CSV (stored as group 0)",
+    )
     parser.add_argument("--season", type=int, default=2026)
     parser.add_argument(
         "--captured-at", type=str, default=None,

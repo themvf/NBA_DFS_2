@@ -11,7 +11,7 @@ import type { FantasyRankingRow } from "../src/db/queries-fantasy-football";
 import { buildProjectionExplanation } from "../src/lib/fantasy-football/projection-explanation";
 import { buildBestBallDraftBoard, canAddBestBallPlayer, getBestBallRosterStatus, parseBestBallDraftState } from "../src/lib/fantasy-football/best-ball";
 import { buildRosterCorrelationBadges } from "../src/lib/fantasy-football/teammate-correlation-badge";
-import { getYahooDraftTiming, getYahooMarketSignal, scoreDraftKingsBestBallLine, selectBestBallLineup, simulateShadowBestBallCandidates, type ShadowBestBallPlayer } from "../src/lib/fantasy-football/best-ball-simulation";
+import { getDraftMarketTiming, getYahooDraftTiming, getYahooMarketSignal, scoreDraftKingsBestBallLine, selectBestBallLineup, simulateShadowBestBallCandidates, type ShadowBestBallPlayer } from "../src/lib/fantasy-football/best-ball-simulation";
 import type { TeammateCorrelationRow } from "../src/db/queries-fantasy-football";
 import {
   bestBallAdvisorDraftSignature,
@@ -204,7 +204,7 @@ assert.equal(selectedLineup.countedPlayerIds.length, 8);
 assert.ok(selectedLineup.countedPlayerIds.includes(212), "the third RB should win FLEX over lower-scoring WR/TE reserves");
 assert.ok(!selectedLineup.countedPlayerIds.includes(223), "the fourth WR should remain on the bench");
 
-const shadowCandidate = { playerId: 299, name: "Candidate", position: "WR", team: "E", byeWeek: 8, projectedPoints: 250, projectionLow: 220, projectionHigh: 280, expectedGames: 16, confidence: 0.75, ourRank: 24, yahooXRank: 41.5, yahooAdp: 38.2 } satisfies ShadowBestBallPlayer;
+const shadowCandidate = { playerId: 299, name: "Candidate", position: "WR", team: "E", byeWeek: 8, projectedPoints: 250, projectionLow: 220, projectionHigh: 280, expectedGames: 16, confidence: 0.75, ourRank: 24, dkBestBallRank: 35, dkBestBallAdp: 33.5, yahooXRank: 41.5, yahooAdp: 38.2 } satisfies ShadowBestBallPlayer;
 const shadow = simulateShadowBestBallCandidates({ roster: lineupPlayers, candidates: [shadowCandidate], iterations: 80, nextUserPick: 24, followingUserPick: 25, teamCount: 12 });
 assert.equal(shadow.model, "shadow-v0-v1.6-points");
 assert.equal(shadow.iterations, 80);
@@ -216,6 +216,9 @@ assert.equal(shadow.candidates[0].yahooMarketSignal, "major-discount");
 assert.equal(shadow.candidates[0].yahooDraftAction, "wait");
 assert.equal(shadow.candidates[0].yahooMarketPick, 38.2);
 assert.equal(shadow.candidates[0].yahooTargetPick, 32);
+assert.equal(shadow.candidates[0].dkDraftAction, "wait");
+assert.equal(shadow.candidates[0].dkMarketPick, 33.5);
+assert.equal(shadow.candidates[0].dkTargetPick, 27);
 assert.deepEqual(getYahooMarketSignal(20, 26), { gap: 6, signal: "discount" });
 assert.deepEqual(getYahooMarketSignal(20, 17), { gap: -3, signal: "fair" });
 assert.deepEqual(getYahooMarketSignal(20, 12), { gap: -8, signal: "premium" });
@@ -224,6 +227,7 @@ assert.deepEqual(getYahooDraftTiming({ ourRank: 63, yahooXRank: 124.1, yahooAdp:
 assert.deepEqual(getYahooDraftTiming({ ourRank: 63, yahooXRank: 124.1, yahooAdp: 95.3, nextUserPick: 73, followingUserPick: 96, teamCount: 12 }), { action: "take-now", marketPick: 95.3, targetPick: 89 });
 assert.deepEqual(getYahooDraftTiming({ ourRank: 63, yahooXRank: 124.1, yahooAdp: 95.3, nextUserPick: 82, followingUserPick: 90, teamCount: 12 }), { action: "target-soon", marketPick: 95.3, targetPick: 89 });
 assert.deepEqual(getYahooDraftTiming({ ourRank: 181, yahooXRank: 113.9, yahooAdp: 118.4, nextUserPick: 120, followingUserPick: 121, teamCount: 12 }), { action: "pass-at-price", marketPick: 113.9, targetPick: 181 });
+assert.deepEqual(getDraftMarketTiming({ ourRank: 63, marketRank: 88, marketAdp: 82.4, nextUserPick: 72, followingUserPick: 73, teamCount: 12 }), { action: "wait", marketPick: 82.4, targetPick: 76 });
 
 function advisorRow(overrides: Partial<FantasyRankingRow> & Pick<FantasyRankingRow, "playerId" | "name" | "position">): FantasyRankingRow {
   return {

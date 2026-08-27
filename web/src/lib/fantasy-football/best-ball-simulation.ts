@@ -49,6 +49,8 @@ export type ShadowBestBallPlayer = {
   expectedGames: number | null;
   confidence: number | null;
   ourRank?: number | null;
+  dkBestBallRank?: number | null;
+  dkBestBallAdp?: number | null;
   yahooXRank?: number | null;
   yahooAdp?: number | null;
 };
@@ -56,22 +58,26 @@ export type ShadowBestBallPlayer = {
 export type YahooMarketSignal = "major-discount" | "discount" | "fair" | "premium" | "unavailable";
 export type YahooDraftAction = "wait" | "target-soon" | "take-now" | "pass-at-price" | "no-market-data";
 
-export function getYahooMarketSignal(ourRank: number | null, yahooXRank: number | null): {
+export function getDraftMarketSignal(ourRank: number | null, marketRank: number | null): {
   gap: number | null;
   signal: YahooMarketSignal;
 } {
-  if (ourRank === null || yahooXRank === null) return { gap: null, signal: "unavailable" };
-  const gap = yahooXRank - ourRank;
+  if (ourRank === null || marketRank === null) return { gap: null, signal: "unavailable" };
+  const gap = marketRank - ourRank;
   if (gap >= 12) return { gap, signal: "major-discount" };
   if (gap >= 5) return { gap, signal: "discount" };
   if (gap <= -5) return { gap, signal: "premium" };
   return { gap, signal: "fair" };
 }
 
-export function getYahooDraftTiming(input: {
+export function getYahooMarketSignal(ourRank: number | null, yahooXRank: number | null) {
+  return getDraftMarketSignal(ourRank, yahooXRank);
+}
+
+export function getDraftMarketTiming(input: {
   ourRank: number | null;
-  yahooXRank: number | null;
-  yahooAdp: number | null;
+  marketRank: number | null;
+  marketAdp: number | null;
   nextUserPick: number | null;
   followingUserPick: number | null;
   teamCount?: number;
@@ -80,7 +86,7 @@ export function getYahooDraftTiming(input: {
   marketPick: number | null;
   targetPick: number | null;
 } {
-  const marketRanks = [input.yahooXRank, input.yahooAdp]
+  const marketRanks = [input.marketRank, input.marketAdp]
     .filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
   if (!marketRanks.length || input.nextUserPick === null) {
     return { action: "no-market-data", marketPick: null, targetPick: null };
@@ -105,6 +111,24 @@ export function getYahooDraftTiming(input: {
   return { action: "wait", marketPick, targetPick };
 }
 
+export function getYahooDraftTiming(input: {
+  ourRank: number | null;
+  yahooXRank: number | null;
+  yahooAdp: number | null;
+  nextUserPick: number | null;
+  followingUserPick: number | null;
+  teamCount?: number;
+}) {
+  return getDraftMarketTiming({
+    ourRank: input.ourRank,
+    marketRank: input.yahooXRank,
+    marketAdp: input.yahooAdp,
+    nextUserPick: input.nextUserPick,
+    followingUserPick: input.followingUserPick,
+    teamCount: input.teamCount,
+  });
+}
+
 export type BestBallLineupResult = {
   points: number;
   countedPlayerIds: number[];
@@ -123,6 +147,13 @@ export type ShadowBestBallCandidateResult = {
   confidence: number | null;
   ourRank: number | null;
   projectedPoints: number | null;
+  dkBestBallRank: number | null;
+  dkBestBallAdp: number | null;
+  dkRankGap: number | null;
+  dkMarketSignal: YahooMarketSignal;
+  dkDraftAction: YahooDraftAction;
+  dkMarketPick: number | null;
+  dkTargetPick: number | null;
   yahooXRank: number | null;
   yahooAdp: number | null;
   yahooRankGap: number | null;
@@ -282,6 +313,15 @@ export function simulateShadowBestBallCandidates(input: {
       followingUserPick: input.followingUserPick ?? null,
       teamCount: input.teamCount,
     });
+    const dkMarket = getDraftMarketSignal(candidate.ourRank ?? null, candidate.dkBestBallRank ?? null);
+    const dkTiming = getDraftMarketTiming({
+      ourRank: candidate.ourRank ?? null,
+      marketRank: candidate.dkBestBallRank ?? null,
+      marketAdp: candidate.dkBestBallAdp ?? null,
+      nextUserPick: input.nextUserPick ?? null,
+      followingUserPick: input.followingUserPick ?? null,
+      teamCount: input.teamCount,
+    });
     return {
       playerId: candidate.playerId,
       name: candidate.name,
@@ -295,6 +335,13 @@ export function simulateShadowBestBallCandidates(input: {
       confidence: candidate.confidence,
       ourRank: candidate.ourRank ?? null,
       projectedPoints: candidate.projectedPoints,
+      dkBestBallRank: candidate.dkBestBallRank ?? null,
+      dkBestBallAdp: candidate.dkBestBallAdp ?? null,
+      dkRankGap: dkMarket.gap,
+      dkMarketSignal: dkMarket.signal,
+      dkDraftAction: dkTiming.action,
+      dkMarketPick: dkTiming.marketPick,
+      dkTargetPick: dkTiming.targetPick,
       yahooXRank: candidate.yahooXRank ?? null,
       yahooAdp: candidate.yahooAdp ?? null,
       yahooRankGap: yahooMarket.gap,
