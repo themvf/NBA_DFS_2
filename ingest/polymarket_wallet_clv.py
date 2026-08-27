@@ -605,20 +605,36 @@ def bootstrap_clv_ci(
 ) -> Tuple[float, float]:
     """95% CI on dollar-weighted CLV, resampling MARKETS with replacement.
 
-    Clustered by market because a wallet's fills inside one market are not
-    independent observations -- the same rule every other study in this
-    project follows (date-clustered there, market-clustered here)."""
-    if len(obs) < 2:
+    Clustered by market because observations sharing a market are not
+    independent -- the same rule every other study in this project follows
+    (date-clustered there, market-clustered here)."""
+    # Resample MARKETS, carrying every observation in a drawn market with it.
+    # Resampling individual wallet-market rows instead would treat two wallets
+    # who traded the SAME match as independent draws. They are not: they faced
+    # one price path and one close, so their CLV shares a common shock. For a
+    # single wallet the two are identical (one row per market); for the pooled
+    # and selected groups -- the numbers any conclusion rests on -- the row
+    # version understates the interval.
+    by_market: Dict[str, List[Tuple[float, float]]] = defaultdict(list)
+    for condition_id, stake, num in obs:
+        by_market[condition_id].append((stake, num))
+    keys = list(by_market)
+    if len(keys) < 2:
         return (float("nan"), float("nan"))
     rng = random.Random(seed)
-    n = len(obs)
+    n = len(keys)
     means: List[float] = []
     for _ in range(rounds):
-        picks = [obs[rng.randrange(n)] for _ in range(n)]
-        stake = sum(p[1] for p in picks)
+        picks = [keys[rng.randrange(n)] for _ in range(n)]
+        stake = 0.0
+        num = 0.0
+        for key in picks:
+            for row_stake, row_num in by_market[key]:
+                stake += row_stake
+                num += row_num
         if stake <= 0:
             continue
-        means.append(sum(p[2] for p in picks) / stake)
+        means.append(num / stake)
     if len(means) < 2:
         return (float("nan"), float("nan"))
     means.sort()

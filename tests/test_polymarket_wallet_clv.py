@@ -434,3 +434,31 @@ def test_walk_forward_refuses_to_split_a_single_wallet():
     wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
                       {f"h{i}" for i in range(20)}, top_n=20)
     assert not wf["available"] and "too few" in wf["reason"]
+
+
+def test_bootstrap_clusters_by_market_across_wallets_not_by_row():
+    """Two wallets in the same match faced one price path and one close, so
+    their CLV shares a common shock. Resampling rows would treat them as
+    independent and understate the interval on exactly the pooled numbers a
+    conclusion rests on."""
+    # 20 markets, each carrying 10 wallets that all moved together.
+    clustered = [(f"m{m}", 100.0, 40.0 if m % 2 else -40.0)
+                 for m in range(20) for _ in range(10)]
+    lo, hi = bootstrap_clv_ci(clustered, rounds=800)
+    # 200 rows but only 20 independent clusters: the interval must stay wide
+    assert (hi - lo) > 0.10
+
+
+def test_bootstrap_is_unchanged_for_a_single_wallet():
+    """One row per market, so clustering is a no-op -- the change must not
+    move any single-wallet interval."""
+    obs = [(f"m{i}", 100.0, 5.0 if i % 3 else -2.0) for i in range(40)]
+    lo, hi = bootstrap_clv_ci(obs, rounds=800)
+    assert lo <= sum(o[2] for o in obs) / sum(o[1] for o in obs) <= hi
+
+
+def test_bootstrap_needs_two_distinct_markets_not_two_rows():
+    """Ten wallets in one match is one cluster, not ten observations."""
+    one_market = [("m1", 100.0, 5.0) for _ in range(10)]
+    lo, hi = bootstrap_clv_ci(one_market)
+    assert lo != lo and hi != hi  # NaN
