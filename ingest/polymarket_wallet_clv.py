@@ -167,6 +167,29 @@ DUST_NOTIONAL = 1.0
 # 6,000, leaving 40% of the reachable tape -- the oldest 40% -- unfetched.
 MAX_TRADES_PER_MARKET = 10000
 
+# --- market volume band -----------------------------------------------------
+# Selecting the highest-volume markets -- inherited from v1, where it was
+# correct -- is actively hostile to CLV. Measured 2026-08-27 with a
+# one-call-per-market probe (read the trade at offset 9,500 and ask whether
+# it predates the match) over a volume-stratified sample of all 24,567
+# tennis markets:
+#
+#   decile 1-9  ($10 .. $10,266 median volume)   pregame reachable  12/12 each
+#   decile 10   ($575,560 median)                pregame reachable  10/12
+#
+# Reachability is essentially total everywhere EXCEPT the extreme top, which
+# is exactly where a top-volume selection puts every market it picks. That is
+# why the first full run lost 36% of its sample: not a property of the
+# market, a property of how the sample was chosen.
+#
+# The band's upper bound sits at the point where reachability starts to fail;
+# the lower bound drops markets too thin to carry wallets (decile 1 markets
+# have single-digit dollars of volume). Mid-volume markets are also far
+# cheaper to fetch -- a short tape is one page, not twenty -- so the band
+# buys sample size and speed at once.
+MIN_MARKET_VOLUME = 1000.0
+MAX_MARKET_VOLUME = 350000.0
+
 BOOTSTRAP_ROUNDS = 2000
 
 
@@ -775,7 +798,13 @@ def print_funnel(total: int, reasons: Counter, eligible: int) -> None:
     print(f"  ELIGIBLE                              {eligible:>9,}")
 
 
-def run(sport: str, max_markets: int, out_path: Optional[str]) -> Dict[str, Any]:
+def run(
+    sport: str,
+    max_markets: int,
+    out_path: Optional[str],
+    min_volume: float = MIN_MARKET_VOLUME,
+    max_volume: float = MAX_MARKET_VOLUME,
+) -> Dict[str, Any]:
     all_markets, rejects = discover_markets(sport)
     print(f"{sport}: head-to-head markets with gameStartTime: {len(all_markets)}", file=sys.stderr)
     for reason, count in sorted(rejects.items(), key=lambda kv: -kv[1]):
@@ -783,6 +812,16 @@ def run(sport: str, max_markets: int, out_path: Optional[str]) -> Dict[str, Any]
     if not all_markets:
         print("no markets discovered -- nothing to do", file=sys.stderr)
         return {}
+
+    discovered = len(all_markets)
+    banded = [m for m in all_markets if min_volume <= m["volume"] <= max_volume]
+    print(f"  volume band ${min_volume:,.0f}-${max_volume:,.0f}: "
+          f"{len(banded)} of {discovered} markets "
+          f"({discovered - len(banded)} outside the band)", file=sys.stderr)
+    if banded:
+        all_markets = banded
+    else:
+        print("  band empty -- falling back to the full pool", file=sys.stderr)
 
     markets, dev_ids, holdout_ids, dev_range, holdout_range, undated = select_balanced_dev_holdout(
         all_markets, max_markets
@@ -833,6 +872,8 @@ def run(sport: str, max_markets: int, out_path: Optional[str]) -> Dict[str, Any]
         "sport": sport,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "markets_selected": len(markets),
+        "markets_discovered": discovered,
+        "volume_band": [min_volume, max_volume],
         "counts": counts,
         "discovery_rejects": rejects,
         "dev_range": dev_range,
@@ -861,9 +902,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Polymarket wallet CLV screen (v2)")
     parser.add_argument("--sport", choices=["tennis", "mlb"], default="tennis")
     parser.add_argument("--max-markets", type=int, default=400)
+    parser.add_argument("--min-volume", type=float, default=MIN_MARKET_VOLUME)
+    parser.add_argument("--max-volume", type=float, default=MAX_MARKET_VOLUME)
     parser.add_argument("--out")
     args = parser.parse_args()
-    run(args.sport, args.max_markets, args.out)
+    run(args.sport, args.max_markets, args.out, args.min_volume, args.max_volume)
 
 
 if __name__ == "__main__":
