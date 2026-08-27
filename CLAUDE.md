@@ -75,10 +75,18 @@ NOT the endpoint to use.
 Live use is one thing only: `ingest/polymarket_tennis.py` captures tennis
 match prices into `game_odds_history`, feeding the Pin/Poly delta detector.
 
-**Wallet tracking was built, investigated, and CLOSED (2026-08-26).** The
-pilots work and the method is sound, but the six wallets that looked like
-cross-sport sharp money turned out to be high-frequency generalist/bot flow,
-and the ranking metric was measuring trading style rather than skill. Read
+**Wallet tracking was closed 2026-08-26 and REOPENED 2026-08-27.** v1's
+ranking metric (`Wilson floor - entry price`) measured trading style, not
+skill: 52% of its top-50 leaderboard was automated. v2
+(`ingest/polymarket_wallet_clv.py`) re-asks the question with **closing-line
+value**, which a market maker cannot systematically win, scored against the
+last PRE-MATCH price (Gamma's `gameStartTime`) rather than the last trade
+before resolution. Result: **MLB shows a walk-forward selection gap of
++0.0084 CLV, 95% CI [+0.0046, +0.0127]**, surviving concentration,
+favourite-longshot-drift and self-impact checks; **tennis fails** on
+concentration. That is one sport of two from an exploratory scan — a
+hypothesis for a pre-registered forward test, **not a confirmed edge**, and
+the fill-latency problem that would block acting on it is untouched. Read
 [`docs/polymarket-wallet-tracker.md`](docs/polymarket-wallet-tracker.md)
 before proposing wallet tracking again — it records the method, the five
 ranking bugs found in sequence, the negative result and why it is a real
