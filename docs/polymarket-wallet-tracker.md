@@ -1,17 +1,25 @@
-# Polymarket wallet tracking — status, method, and why it was closed
+# Polymarket wallet tracking — status, method, and what survived
 
-Status as of **2026-08-26**: **investigated, answered, and closed.** The
-capability was built and works. It found no tradeable signal, the reason is
-understood rather than merely suspected, and the finding is a **base rate
-over a whole leaderboard** (§6), not a case study that could be waved away
-as unlucky sampling: 52% of the top-50 "edge" wallets are automated, only 12%
-are non-automated sports bettors, and those are net **negative** once a
-9-market outlier is excluded. Nothing here is scheduled, and
-nothing writes to the database.
+Status as of **2026-08-27**: **REOPENED, with one unconfirmed positive
+result.** This supersedes the "closed" status of 2026-08-26.
 
-Read this before proposing wallet tracking again. The question that killed it
-is already answered, and re-running the pilots will not un-kill it.
+v1 (§1–§10) is unchanged and still correct: ranking wallets on
+`edge = Wilson floor − entry price` measured trading style, not skill, and
+52% of that leaderboard was automated. **What changed is the metric, not the
+verdict on v1.** v2 (§11) re-asks the question using closing-line value —
+which a market maker cannot systematically win — and finds:
 
+- **MLB: a walk-forward selection gap of +0.0084 CLV, 95% CI
+  [+0.0046, +0.0127], surviving concentration, favourite-longshot drift and
+  self-impact checks.**
+- **Tennis: fails.** Nominally positive, but carried by a single wallet and
+  does not survive leave-one-out.
+
+That is **one sport out of two, from a first-pass exploratory scan.** It is
+not a confirmed edge, nothing is scheduled, nothing writes to the database,
+and the latency problem in §6 that would block acting on it is untouched.
+Read §11 before treating it as more than a hypothesis worth a pre-registered
+forward test.
 ---
 
 ## 1. What exists
@@ -312,3 +320,156 @@ first, in order:
 
 Absent all four, the honest answer is the one already reached: following
 these wallets means following market-making flow, not information.
+
+---
+
+## 11. v2 — closing-line value, and what survived it
+
+`ingest/polymarket_wallet_clv.py`, shipped 2026-08-27. Read-only, like
+everything else here.
+
+### The change in one line
+
+v1 asked *did they buy cheap relative to how often they won?* — a question a
+quoter wins by accident. v2 asks *after they bought, did the market move
+toward them?* A market maker provides liquidity at the prevailing price
+rather than anticipating a move, so its CLV is ~0 by construction. Only a
+wallet trading ahead of information wins it repeatedly.
+
+It also disposes of v1's worst artifact for free: the wallet with 101
+markets, a 100% win rate, $7.5M of cost and $8,103 of profit bought at 0.99
+and closed at 0.99. CLV ≈ 0.
+
+### "The close" is the last PRE-MATCH price
+
+Not the last trade before resolution — by then the price has absorbed the
+outcome and "CLV" merely restates the result. That needs a match start time,
+and Gamma supplies `gameStartTime` on head-to-head markets.
+
+Verified live across 946 closed markets, and the separation is total: of 232
+tennis singles markets, **all 159** carrying `gameStartTime` are `-vs-`
+matches and **all 73** without are tournament futures. Zero
+misclassifications either way, so the CLV anchor doubles as a strictly
+better match filter than v1's outcome-name heuristic.
+
+Trades at or after the start are in-play. They are excluded from CLV — there
+is no post-start benchmark — but still counted behaviourally, since
+round-tripping is itself diagnostic.
+
+### Gates run BEFORE ranking
+
+v1's sport-focus filter ran on an already-ranked list, which is how a
+9-market wallet flipped the survivor cohort from −2.5% to +14.6%. Here a
+wallet failing any gate is never ranked: ≥30 CLV-scored markets, ≥$1,000
+pregame stake, hold-to-resolution ratio ≥0.5, buy dominance ≥0.6, <10%
+sub-$1 trades, <5% same-second trades.
+
+The automation screen is computed from the same fill tape already fetched,
+so it costs nothing and runs on **every** wallet — v1's forensics needed a
+separate per-wallet sweep, which is precisely why it could only afford to
+run last, on a shortlist.
+
+**Hold-to-resolution is the gate v1 never had**, and it is arguably the
+sharpest single discriminator: a scalper who buys 500 and sells 500 scores
+0; a directional bettor who buys and holds scores 1.0.
+
+### Results
+
+Both sports: 2,400 markets, volume band $1,000–$350,000, chronological
+dev/holdout split, top 20 selected on dev CLV and scored on holdout.
+
+| | Tennis | MLB |
+|---|---|---|
+| Markets CLV-eligible | 2,186 / 2,400 (91%) | 2,299 / 2,400 (96%) |
+| Wallets seen → eligible | 26,138 → **66** | 55,302 → **260** |
+| Pooled CLV (all eligible) | +0.0015 `[-0.0070, +0.0063]` | +0.0006 `[-0.0007, +0.0019]` |
+| Walk-forward, selected | +0.0077 `[+0.0037, +0.0113]` | +0.0103 `[+0.0071, +0.0144]` |
+| Walk-forward, everyone else | −0.0014 | +0.0018 |
+| **Selection gap** | **+0.0091 `[+0.0024, +0.0147]`** | **+0.0084 `[+0.0046, +0.0127]`** |
+| Persisted | 14/20 | 12/20 |
+| Largest wallet's share | **56.4%** | **29.7%** |
+| Leave-one-out | +0.0026 `[-0.0011, +0.0066]` **fails** | +0.0156 `[+0.0120, +0.0196]` **holds** |
+| Favourite skew | none (0.465 vs 0.513) | none (0.501 vs 0.500) |
+
+**The pooled population beats nothing, in either sport.** That is expected
+and is not a failure: most wallets are noise, and a metric that showed the
+whole population beating the close would be measuring something wrong.
+
+**Tennis fails on concentration.** `slimjoe` is 56% of the selected group's
+holdout stake and 46% of *all* eligible pregame stake; remove it and the
+interval includes zero. Its own interval is `[-0.0031, +0.0140]` across
+1,091 markets — the wallet carrying the finding is not individually
+significant. Same shape as v1's 9-market wallet, different metric, which is
+why the check is now structural rather than remembered.
+
+**MLB survives every check applied.** Notably the leave-one-out is *higher*
+than the headline (+0.0156 vs +0.0103), i.e. the largest wallet was diluting
+the result rather than creating it.
+
+### Alternative explanations tested and rejected
+
+- **Favourite-longshot drift.** If longshots are overpriced and drift down
+  while favourites drift up, a wallet habitually backing favourites earns
+  persistent CLV with no skill, style persists, and the pooled population
+  nets to zero — exactly the observed pattern. Rejected: selected and
+  unselected groups have effectively identical average entry prices in both
+  sports (MLB 0.501 vs 0.500).
+- **Self-impact on the close.** A wallet trading inside the close window is
+  part of the benchmark it is scored against. Each wallet is now scored
+  against a close recomputed with its own fills removed; a wallet that *is*
+  the entire close window yields no observation. Changed neither sport's
+  result materially, but it had to be measured rather than argued.
+
+### Six bugs found while building this, all silent-failure class
+
+1. **The walk-forward was computed and then never used** — dev/holdout ids
+   printed and dropped, i.e. the leaderboard was graded on the data that
+   built it.
+2. **The tape ceiling was 6,000, the API's is 10,000.** Harmless for v1's
+   settlement, load-bearing here: `/trades` serves newest-first and ignores
+   every sort parameter tried, so truncation eats the *oldest* trades —
+   exactly the pregame window.
+3. **Top-volume market selection was hostile to the measurement.** A
+   one-call-per-market probe over all 24,567 tennis markets showed pregame
+   reachable in 12/12 of deciles 1–9 and 10/12 in decile 10 — reachability
+   fails only at the extreme top, which is where a volume sort puts
+   everything. Fixed with a volume band; eligibility went 31% → 91%.
+4. **Transient failures were reported as truncation.** Running two scans
+   concurrently produced 794 "ceiling hits" against 1 in the identical scan
+   run alone — 45% of the sample silently discarded and dressed up as a
+   property of Polymarket. Only HTTP 400 is the ceiling now; everything else
+   retries, then drops the market and counts it.
+5. **The bootstrap resampled rows, not markets.** Two wallets in the same
+   match share one price path and one close.
+6. **The selection gap had no interval**, despite being the statistic the
+   report called "the test".
+
+### What this is NOT
+
+- **Not a confirmed edge.** One sport of two, first-pass exploratory, on a
+  metric refined during the same session that produced the result. The
+  correct next step is a **pre-registered forward test** on markets that
+  resolve *after* the registration — not another retrospective scan.
+- **Not actionable even if real.** §6's latency problem is untouched: the
+  Data API reports fills after the fact and capture cadence is hours. That
+  gap is independent of wallet quality and is the harder problem.
+- **Not free of multiple-comparisons risk.** 9 of 66 tennis wallets have
+  individually-positive intervals where chance gives ~2–3, which is
+  suggestive and is *not* a finding — it is 66 simultaneous tests with no
+  correction, exactly how this project's specs say mirages get made.
+
+### Known limitation, stated rather than fixed
+
+The leave-one-out is applied to the selected group's *level*, not to the
+*gap*. For both sports the direction is unambiguous — removing tennis's
+whale costs significance, removing MLB's increases it — so it changes
+neither verdict, but a confirmatory study should apply it to the gap
+directly.
+
+Reproduce with:
+
+```bash
+python -m ingest.polymarket_wallet_clv --sport mlb --max-markets 2400
+```
+
+Do not run two sports concurrently; see bug 4.
