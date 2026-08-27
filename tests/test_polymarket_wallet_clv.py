@@ -614,3 +614,38 @@ def test_independent_wallets_are_unaffected_by_the_exclusion():
     fills = [fill("early", REF, "BUY", 100, 0.40, START - 7200)] + _close_book(0.60)
     measured, _ = measure_market(fills, MARKET)
     assert measured["early"]["clv_market"] == pytest.approx(0.20, abs=0.001)
+
+
+# --- the gap is the test statistic ------------------------------------------
+
+def test_gap_ci_excludes_zero_when_selection_genuinely_separates():
+    from ingest.polymarket_wallet_clv import bootstrap_gap_ci
+    sel = [(f"m{i}", 100.0, 2.0) for i in range(60)]
+    rest = [(f"m{i}", 100.0, -2.0) for i in range(60)]
+    lo, hi = bootstrap_gap_ci(sel, rest, rounds=600)
+    assert lo > 0
+
+
+def test_gap_ci_includes_zero_when_both_groups_do_the_same_thing():
+    """A selected group beating the close means nothing if everyone else
+    beats it equally -- that is a market fact, not a selection result."""
+    from ingest.polymarket_wallet_clv import bootstrap_gap_ci
+    sel = [(f"m{i}", 100.0, 5.0) for i in range(60)]
+    rest = [(f"m{i}", 100.0, 5.0) for i in range(60)]
+    lo, hi = bootstrap_gap_ci(sel, rest, rounds=600)
+    assert lo <= 0 <= hi
+
+
+def test_gap_ci_cancels_the_shared_market_shock():
+    """Both groups are drawn on the SAME resampled markets, so a period where
+    the whole market drifted must not inflate the gap's interval."""
+    from ingest.polymarket_wallet_clv import bootstrap_gap_ci
+    # huge market-level swings, but a constant +0.02 difference between groups
+    sel, rest = [], []
+    for i in range(60):
+        shock = 50.0 if i % 2 else -50.0
+        sel.append((f"m{i}", 100.0, shock + 2.0))
+        rest.append((f"m{i}", 100.0, shock))
+    lo, hi = bootstrap_gap_ci(sel, rest, rounds=600)
+    assert lo > 0            # the shared shock cancels
+    assert (hi - lo) < 0.02  # and the interval stays tight

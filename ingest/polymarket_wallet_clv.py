@@ -742,6 +742,55 @@ def bootstrap_clv_ci(
     return (lo, hi)
 
 
+def bootstrap_gap_ci(
+    sel_obs: List[Tuple[str, float, float]],
+    rest_obs: List[Tuple[str, float, float]],
+    rounds: int = BOOTSTRAP_ROUNDS,
+    seed: int = 4242,
+) -> Tuple[float, float]:
+    """95% CI on the SELECTION GAP -- selected CLV minus everyone else's.
+
+    The gap is the actual test statistic: a selected group beating the close
+    means nothing if the unselected group beats it equally, and the absolute
+    level moves with whatever the market did that period. Reporting an
+    interval on the selected group alone left the quantity being claimed
+    without one.
+
+    Markets are drawn once and BOTH groups recomputed on the same draw, so
+    the common market-level shock cancels in the difference rather than
+    being counted as noise twice."""
+    by_market_sel: Dict[str, List[Tuple[float, float]]] = defaultdict(list)
+    by_market_rest: Dict[str, List[Tuple[float, float]]] = defaultdict(list)
+    for condition_id, stake, num in sel_obs:
+        by_market_sel[condition_id].append((stake, num))
+    for condition_id, stake, num in rest_obs:
+        by_market_rest[condition_id].append((stake, num))
+    keys = sorted(set(by_market_sel) | set(by_market_rest))
+    if len(keys) < 2:
+        return (float("nan"), float("nan"))
+    rng = random.Random(seed)
+    n = len(keys)
+    gaps: List[float] = []
+    for _ in range(rounds):
+        picks = [keys[rng.randrange(n)] for _ in range(n)]
+        s_stake = s_num = r_stake = r_num = 0.0
+        for key in picks:
+            for stake, num in by_market_sel.get(key, ()):
+                s_stake += stake
+                s_num += num
+            for stake, num in by_market_rest.get(key, ()):
+                r_stake += stake
+                r_num += num
+        if s_stake <= 0 or r_stake <= 0:
+            continue
+        gaps.append(s_num / s_stake - r_num / r_stake)
+    if len(gaps) < 2:
+        return (float("nan"), float("nan"))
+    gaps.sort()
+    return (gaps[int(0.025 * len(gaps))],
+            gaps[min(int(0.975 * len(gaps)), len(gaps) - 1)])
+
+
 def rank_by_clv(wallets: Dict[str, Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Counter]:
     rows: List[Dict[str, Any]] = []
     reasons: Counter = Counter()
@@ -918,6 +967,7 @@ def walk_forward(
         "selected_holdout_stake": sel_stake,
         "rest_holdout_clv": clv_of(rest_obs),
         "rest_holdout_obs": len(rest_obs),
+        "gap_ci": bootstrap_gap_ci(sel_obs, rest_obs),
         "persisted": sum(1 for r in selected if r["holdout_clv"] > 0),
         "dominant_wallet": (dominant["name"] or dominant["wallet"]) if dominant else None,
         "dominant_stake_share": dom_share,
@@ -957,8 +1007,12 @@ def print_walk_forward(wf: Dict[str, Any]) -> None:
         print(f"    holdout CLV                      {wf['rest_holdout_clv']:>+9.4f}"
               f"  (n={wf['rest_holdout_obs']:,})")
         gap = wf["selected_holdout_clv"] - wf["rest_holdout_clv"]
-        print(f"  selection gap                      {gap:>+9.4f}"
-              f"   <- this, not the absolute level, is the test")
+        glo, ghi = wf.get("gap_ci", (float("nan"), float("nan")))
+        gci = "n/a" if math.isnan(glo) else f"[{glo:+.4f}, {ghi:+.4f}]"
+        note = ("" if math.isnan(glo)
+                else ("  EXCLUDES ZERO" if glo > 0 else "  includes zero"))
+        print(f"  selection gap                      {gap:>+9.4f}  95% CI {gci}{note}")
+        print("    ^ the gap, not the absolute level, is the test statistic")
     print(f"  selected wallets with positive holdout CLV: {wf['persisted']}/{wf['top_n']}")
     print()
     share = wf.get("dominant_stake_share") or 0.0
