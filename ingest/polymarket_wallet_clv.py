@@ -119,7 +119,7 @@ import re
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ingest.polymarket_wallet_pilot_common import (
     fetch_market_fills,
@@ -565,9 +565,106 @@ def cohort_clv(
     }
 
 
+def walk_forward(
+    wallets: Dict[str, Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+    dev_ids: Set[str],
+    holdout_ids: Set[str],
+    top_n: int = 20,
+) -> Dict[str, Any]:
+    """Does dev-period CLV rank predict holdout-period CLV?
+
+    Selection uses the dev half ONLY; the score is the holdout half, which
+    those wallets were not chosen on. This is the check v1 ran honestly and
+    still failed -- 6/14 and 3/6 persisted, a coin flip -- and the reason it
+    failed was the metric, not the split. So the split is kept unchanged and
+    pointed at the new metric.
+
+    No re-fetching: every observation already carries its condition_id, so
+    the two halves are a partition of data we have.
+
+    The eligible-population baseline is reported alongside, because "the top
+    20 beat the close in holdout" means nothing if every eligible wallet did.
+    What matters is whether the SELECTED wallets beat the rest."""
+    if not dev_ids or not holdout_ids:
+        return {"available": False, "reason": "no chronological split available"}
+
+    def split(address: str) -> Tuple[List[Any], List[Any]]:
+        obs = wallets[address]["obs"]
+        return ([o for o in obs if o[0] in dev_ids],
+                [o for o in obs if o[0] in holdout_ids])
+
+    def clv_of(obs: List[Any]) -> Optional[float]:
+        stake = sum(o[1] for o in obs)
+        return (sum(o[2] for o in obs) / stake) if stake > 0 else None
+
+    scored = []
+    for row in rows:
+        dev_obs, hold_obs = split(row["wallet"])
+        dev_clv, hold_clv = clv_of(dev_obs), clv_of(hold_obs)
+        if dev_clv is None or hold_clv is None:
+            continue
+        scored.append({
+            "wallet": row["wallet"], "name": row["name"],
+            "dev_clv": dev_clv, "dev_markets": len(dev_obs),
+            "holdout_clv": hold_clv, "holdout_markets": len(hold_obs),
+        })
+    if not scored:
+        return {"available": False, "reason": "no wallet is active in both halves"}
+
+    scored.sort(key=lambda r: -r["dev_clv"])
+    selected = scored[:top_n]
+    rest = scored[top_n:]
+
+    sel_obs: List[Any] = []
+    for row in selected:
+        sel_obs.extend(split(row["wallet"])[1])
+    rest_obs: List[Any] = []
+    for row in rest:
+        rest_obs.extend(split(row["wallet"])[1])
+
+    lo, hi = bootstrap_clv_ci(sel_obs) if len(sel_obs) > 1 else (float("nan"), float("nan"))
+    return {
+        "available": True,
+        "n_both_halves": len(scored),
+        "top_n": len(selected),
+        "selected_holdout_clv": clv_of(sel_obs),
+        "selected_holdout_ci": (lo, hi),
+        "selected_holdout_obs": len(sel_obs),
+        "rest_holdout_clv": clv_of(rest_obs),
+        "rest_holdout_obs": len(rest_obs),
+        "persisted": sum(1 for r in selected if r["holdout_clv"] > 0),
+        "rows": selected,
+    }
+
+
 # ---------------------------------------------------------------------------
 # reporting
 # ---------------------------------------------------------------------------
+
+def print_walk_forward(wf: Dict[str, Any]) -> None:
+    print()
+    print("=" * 108)
+    print("WALK-FORWARD -- selected on the DEV half, scored on the HOLDOUT half")
+    print("=" * 108)
+    if not wf.get("available"):
+        print(f"  unavailable: {wf.get('reason')}")
+        return
+    lo, hi = wf["selected_holdout_ci"]
+    ci = "n/a" if math.isnan(lo) else f"[{lo:+.4f}, {hi:+.4f}]"
+    print(f"  wallets active in both halves      {wf['n_both_halves']:>9,}")
+    print(f"  selected (top {wf['top_n']} by dev CLV)")
+    print(f"    holdout CLV                      {wf['selected_holdout_clv']:>+9.4f}  95% CI {ci}"
+          f"  (n={wf['selected_holdout_obs']:,})")
+    if wf["rest_holdout_clv"] is not None:
+        print(f"  everyone else")
+        print(f"    holdout CLV                      {wf['rest_holdout_clv']:>+9.4f}"
+              f"  (n={wf['rest_holdout_obs']:,})")
+        gap = wf["selected_holdout_clv"] - wf["rest_holdout_clv"]
+        print(f"  selection gap                      {gap:>+9.4f}"
+              f"   <- this, not the absolute level, is the test")
+    print(f"  selected wallets with positive holdout CLV: {wf['persisted']}/{wf['top_n']}")
+
 
 def print_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 20) -> None:
     print()
@@ -631,6 +728,7 @@ def run(sport: str, max_markets: int, out_path: Optional[str]) -> Dict[str, Any]
     wallets, counts = accumulate(markets)
     rows, reasons = rank_by_clv(wallets)
     pooled = cohort_clv(wallets, rows)
+    wf = walk_forward(wallets, rows, dev_ids, holdout_ids)
 
     print()
     print(f"markets processed {counts['markets']}, fills {counts['fills']:,}, "
@@ -658,6 +756,7 @@ def run(sport: str, max_markets: int, out_path: Optional[str]) -> Dict[str, Any]
         print(f"  VERDICT: the eligible population {verdict}.")
 
     print_leaderboard(f"{sport.upper()} -- eligible wallets ranked by CLV", rows)
+    print_walk_forward(wf)
 
     report = {
         "sport": sport,
@@ -677,6 +776,7 @@ def run(sport: str, max_markets: int, out_path: Optional[str]) -> Dict[str, Any]
         },
         "funnel": dict(reasons),
         "pooled": pooled,
+        "walk_forward": wf,
         "leaderboard": rows[:50],
     }
     if out_path:

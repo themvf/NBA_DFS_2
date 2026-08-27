@@ -271,3 +271,56 @@ def test_thin_final_window_falls_back_to_the_last_pregame_trades():
     close = closing_price(fills, REF, START, [REF, OTHER])
     assert close is not None
     assert close == pytest.approx(0.50)  # both trades, not just the in-window one
+
+
+# --- walk-forward -----------------------------------------------------------
+
+def _wf_wallets(good_holdout, bad_holdout):
+    """Two wallets that both look good in dev; only one stays good later."""
+    dev = [(f"d{i}", 100.0, 20.0) for i in range(MIN_CLV_MARKETS + 5)]
+    return {
+        "persists": _wallet(obs=dev + [(f"h{i}", 100.0, good_holdout) for i in range(20)],
+                            clv_num=1.0, clv_stake=100.0),
+        "fades": _wallet(obs=dev + [(f"h{i}", 100.0, bad_holdout) for i in range(20)],
+                         clv_num=1.0, clv_stake=100.0),
+    }
+
+
+def test_walk_forward_scores_the_holdout_half_not_the_half_it_selected_on():
+    from ingest.polymarket_wallet_clv import walk_forward
+    wallets = _wf_wallets(good_holdout=15.0, bad_holdout=-15.0)
+    rows, _ = rank_by_clv(wallets)
+    dev_ids = {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)}
+    holdout_ids = {f"h{i}" for i in range(20)}
+    wf = walk_forward(wallets, rows, dev_ids, holdout_ids, top_n=2)
+    assert wf["available"]
+    # both selected on dev, but only one has positive holdout CLV
+    assert wf["persisted"] == 1
+    # holdout CLV averages the two, so it lands near zero -- not near dev's +0.20
+    assert abs(wf["selected_holdout_clv"]) < 0.05
+
+
+def test_walk_forward_is_unavailable_without_a_chronological_split():
+    from ingest.polymarket_wallet_clv import walk_forward
+    wallets = _wf_wallets(10.0, 10.0)
+    rows, _ = rank_by_clv(wallets)
+    wf = walk_forward(wallets, rows, set(), set())
+    assert not wf["available"] and "split" in wf["reason"]
+
+
+def test_walk_forward_reports_a_selection_gap_against_the_unselected_rest():
+    """The absolute holdout level is not the test -- if every eligible wallet
+    beats the close, selecting the top 20 proves nothing. The gap is the test."""
+    from ingest.polymarket_wallet_clv import walk_forward
+    dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
+    hold = lambda v: [(f"h{i}", 100.0, v) for i in range(20)]
+    wallets = {
+        "top": _wallet(obs=dev(30.0) + hold(10.0), clv_num=1.0, clv_stake=100.0),
+        "mid": _wallet(obs=dev(20.0) + hold(10.0), clv_num=1.0, clv_stake=100.0),
+        "low": _wallet(obs=dev(5.0) + hold(10.0), clv_num=1.0, clv_stake=100.0),
+    }
+    rows, _ = rank_by_clv(wallets)
+    wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
+                      {f"h{i}" for i in range(20)}, top_n=1)
+    # everyone earns the same holdout CLV, so selection adds nothing
+    assert wf["selected_holdout_clv"] == pytest.approx(wf["rest_holdout_clv"])
