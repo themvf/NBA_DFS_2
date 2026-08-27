@@ -56,6 +56,7 @@ export type ShadowBestBallPlayer = {
 export type DraftMarketSignal = "major-discount" | "discount" | "fair" | "premium" | "unavailable";
 export type DraftMarketAction = "wait" | "target-soon" | "take-now" | "pass-at-price" | "no-market-data";
 export type BestBallStrategyLabel = "best-path" | "position-can-wait" | "tier-drop" | "alternative";
+export type BestBallFinalAction = "draft-now" | "target-next" | "wait" | "pass";
 
 function draftMarketPick(player: ShadowBestBallPlayer): number | null {
   const values = [player.dkBestBallRank, player.dkBestBallAdp]
@@ -160,6 +161,7 @@ export type ShadowBestBallCandidateResult = {
   futureTargetName: string | null;
   futureTargetPosition: string | null;
   futureTargetMarketPick: number | null;
+  acquisitionOrderScore: number;
   samePositionReplacementName: string | null;
   samePositionReplacementPoints: number | null;
   pointsOverReplacement: number | null;
@@ -169,13 +171,16 @@ export type ShadowBestBallCandidateResult = {
 };
 
 export type ShadowBestBallSimulation = {
-  model: "shadow-v0-v1.7-two-pick";
+  model: "shadow-v0-v1.8-decision";
   iterations: number;
   candidates: ShadowBestBallCandidateResult[];
   recommendation: {
     playerId: number;
+    action: BestBallFinalAction;
     headline: string;
+    sequence: string | null;
     explanation: string;
+    planEdge: number | null;
   } | null;
 };
 
@@ -373,6 +378,10 @@ export function simulateShadowBestBallCandidates(input: {
       followingUserPick: input.followingUserPick ?? null,
       teamCount: input.teamCount,
     });
+    const futureTargetMarketPick = bestPair ? draftMarketPick(bestPair.future) : null;
+    const acquisitionOrderScore = dkTiming.marketPick !== null && futureTargetMarketPick !== null
+      ? futureTargetMarketPick - dkTiming.marketPick
+      : 0;
     return {
       playerId: candidate.playerId,
       name: candidate.name,
@@ -398,7 +407,8 @@ export function simulateShadowBestBallCandidates(input: {
       futureTargetPlayerId: bestPair?.future.playerId ?? null,
       futureTargetName: bestPair?.future.name ?? null,
       futureTargetPosition: bestPair?.future.position ?? null,
-      futureTargetMarketPick: bestPair ? draftMarketPick(bestPair.future) : null,
+      futureTargetMarketPick,
+      acquisitionOrderScore,
       samePositionReplacementName: samePositionReplacement?.name ?? null,
       samePositionReplacementPoints: replacementPoints,
       pointsOverReplacement,
@@ -407,6 +417,7 @@ export function simulateShadowBestBallCandidates(input: {
       strategyExplanation: "Two-pick path evaluated against likely DraftKings availability.",
     };
   }).sort((a, b) => b.twoPickMarginalPoints - a.twoPickMarginalPoints
+    || b.acquisitionOrderScore - a.acquisitionOrderScore
     || b.twoPickP90Delta - a.twoPickP90Delta
     || b.marginalCountedPoints - a.marginalCountedPoints);
 
@@ -414,7 +425,9 @@ export function simulateShadowBestBallCandidates(input: {
     const percent = candidate.replacementRetention === null ? null : Math.round(candidate.replacementRetention * 100);
     const replacementExplanation = candidate.samePositionReplacementName === null || percent === null
       ? `No reliable later ${candidate.position} replacement is visible at pick #${input.followingUserPick ?? "—"}.`
-      : percent >= 90
+      : percent > 101
+        ? `${candidate.position} can wait: ${candidate.samePositionReplacementName} projects about ${percent - 100}% higher and should be available later.`
+        : percent >= 90
         ? `${candidate.position} can wait: ${candidate.samePositionReplacementName} preserves about ${percent}% of this projection.`
         : percent < 82
           ? `${candidate.position} tier drop: ${candidate.samePositionReplacementName} preserves only about ${percent}% of this projection.`
@@ -437,13 +450,56 @@ export function simulateShadowBestBallCandidates(input: {
   });
 
   const best = explainedCandidates[0] ?? null;
-  const recommendation = best ? {
-    playerId: best.playerId,
-    headline: best.futureTargetName
-      ? `Draft ${best.name} now; target ${best.futureTargetName} at #${input.followingUserPick ?? "—"}`
-      : `Draft ${best.name} now`,
-    explanation: `This is the strongest simulated two-pick path, not simply the largest DraftKings discount. ${best.strategyExplanation}`,
-  } : null;
+  const bestPairKey = best?.futureTargetPlayerId === null || best?.futureTargetPlayerId === undefined
+    ? best ? `${best.playerId}` : null
+    : [best.playerId, best.futureTargetPlayerId].sort((a, b) => a - b).join(":");
+  const nextDistinctPlan = bestPairKey === null ? null : explainedCandidates.find((candidate) => {
+    const key = candidate.futureTargetPlayerId === null
+      ? `${candidate.playerId}`
+      : [candidate.playerId, candidate.futureTargetPlayerId].sort((a, b) => a - b).join(":");
+    return key !== bestPairKey;
+  }) ?? null;
+  const planEdge = best && nextDistinctPlan ? Math.max(0, best.twoPickMarginalPoints - nextDistinctPlan.twoPickMarginalPoints) : null;
 
-  return { model: "shadow-v0-v1.7-two-pick", iterations, candidates: explainedCandidates, recommendation };
+  let recommendation: ShadowBestBallSimulation["recommendation"] = null;
+  if (best) {
+    const atFootballValue = best.ourRank !== null && input.nextUserPick != null && input.nextUserPick >= best.ourRank - 3;
+    const action: BestBallFinalAction = best.dkDraftAction === "pass-at-price"
+      ? "pass"
+      : atFootballValue || best.dkDraftAction === "take-now"
+        ? "draft-now"
+        : best.dkDraftAction === "target-soon"
+          ? "target-next"
+          : "wait";
+    const headline = action === "draft-now"
+      ? `DRAFT ${best.name.toUpperCase()}`
+      : action === "target-next"
+        ? `WAIT NOW — TARGET ${best.name.toUpperCase()} NEXT`
+        : action === "pass"
+          ? `PASS ON ${best.name.toUpperCase()} AT THIS PRICE`
+          : `WAIT — DO NOT REACH FOR ${best.name.toUpperCase()}`;
+    const sequence = best.futureTargetName
+      ? `Preferred sequence: ${best.name} first → ${best.futureTargetName} at #${input.followingUserPick ?? "—"}`
+      : null;
+    const orderReason = best.futureTargetName && best.dkMarketPick !== null && best.futureTargetMarketPick !== null
+      ? best.dkMarketPick < best.futureTargetMarketPick
+        ? `${best.name}'s DraftKings window arrives around #${best.dkMarketPick.toFixed(1)}, before ${best.futureTargetName} around #${best.futureTargetMarketPick.toFixed(1)}, so take the earlier-closing player first.`
+        : `${best.futureTargetName}'s market window is earlier, so this sequence carries acquisition risk; use the timing badge before committing.`
+      : "The order uses the best available market timing evidence.";
+    const edgeReason = planEdge === null
+      ? "No distinct comparison path is available."
+      : planEdge < 1
+        ? "The next distinct plan is essentially tied, so market timing decides the order."
+        : `This path projects ${planEdge.toFixed(1)} more roster points than the next distinct two-pick plan.`;
+    recommendation = {
+      playerId: best.playerId,
+      action,
+      headline,
+      sequence,
+      explanation: `${orderReason} ${edgeReason}`,
+      planEdge,
+    };
+  }
+
+  return { model: "shadow-v0-v1.8-decision", iterations, candidates: explainedCandidates, recommendation };
 }

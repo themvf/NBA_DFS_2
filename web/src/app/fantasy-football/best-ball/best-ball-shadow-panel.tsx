@@ -37,6 +37,13 @@ const STRATEGY_LABEL = {
   alternative: { label: "ALTERNATIVE", className: "bg-slate-100 text-slate-700" },
 } as const;
 
+const FINAL_ACTION = {
+  "draft-now": { label: "DRAFT NOW", className: "border-emerald-300 bg-emerald-50 text-emerald-950", badge: "bg-emerald-700 text-white" },
+  "target-next": { label: "TARGET NEXT", className: "border-amber-300 bg-amber-50 text-amber-950", badge: "bg-amber-500 text-amber-950" },
+  wait: { label: "WAIT", className: "border-blue-300 bg-blue-50 text-blue-950", badge: "bg-blue-700 text-white" },
+  pass: { label: "PASS", className: "border-rose-300 bg-rose-50 text-rose-950", badge: "bg-rose-700 text-white" },
+} as const;
+
 export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, followingUserPick, onDraft }: Props) {
   if (!simulation?.candidates.length) return null;
   return <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
@@ -46,27 +53,33 @@ export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, follow
         <h2 className="mt-1 text-2xl font-black">Two-pick strategy and DraftKings room leverage</h2>
         <p className="mt-1 max-w-3xl text-sm text-violet-950/75">Shadow compares what happens if you draft each player now and then take the best likely option at your following pick. This prices in later QB and TE alternatives instead of rewarding an empty roster slot.</p>
       </div>
-      <div className="text-right"><span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-black text-violet-800">SHADOW · TWO-PICK V1.7</span><p className="mt-2 text-xs font-bold text-violet-950/65">Next picks: #{nextUserPick ?? "—"}{followingUserPick !== null ? ` → #${followingUserPick}` : ""}</p></div>
+      <div className="text-right"><span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-black text-violet-800">SHADOW · DECISION V1.8</span><p className="mt-2 text-xs font-bold text-violet-950/65">Next picks: #{nextUserPick ?? "—"}{followingUserPick !== null ? ` → #${followingUserPick}` : ""}</p></div>
     </div>
 
-    {simulation.recommendation ? <div className="mt-4 rounded-2xl border border-violet-300 bg-white p-4">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">Recommended path</p>
-      <p className="mt-1 text-lg font-black text-slate-950">{simulation.recommendation.headline}</p>
-      <p className="mt-1 text-sm text-slate-700">{simulation.recommendation.explanation}</p>
+    {simulation.recommendation ? <div className={`mt-4 rounded-2xl border p-4 ${FINAL_ACTION[simulation.recommendation.action].className}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-4xl">
+          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black tracking-wide ${FINAL_ACTION[simulation.recommendation.action].badge}`}>{FINAL_ACTION[simulation.recommendation.action].label}</span>
+          <p className="mt-2 text-2xl font-black">{simulation.recommendation.headline}</p>
+          {simulation.recommendation.sequence ? <p className="mt-1 text-base font-bold">{simulation.recommendation.sequence}</p> : null}
+          <p className="mt-1 text-sm opacity-80">{simulation.recommendation.explanation}</p>
+        </div>
+        {canDraft && simulation.recommendation.action === "draft-now" ? <button onClick={() => onDraft(simulation.recommendation!.playerId)} className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-black text-white shadow-sm">Draft recommended player</button> : null}
+      </div>
     </div> : null}
 
     <div className="mt-5 overflow-x-auto rounded-2xl border border-violet-200 bg-white">
       <table className="w-full min-w-[1260px] text-left text-sm">
         <thead className="bg-violet-100/70 text-xs uppercase tracking-wide text-violet-950/70"><tr>
           <th className="p-3">Candidate</th>
-          <th className="p-3 text-right" title="Expected roster improvement after this pick plus the best likely player at your following turn.">Two-pick roster Δ</th>
-          <th className="p-3 text-right" title="The candidate's standalone contribution to the current roster; this is no longer the ordering signal.">One-pick contribution</th>
-          <th className="p-3 text-right">Counted weeks</th>
-          <th className="p-3 text-right">Two-pick P90 Δ</th>
+          <th className="p-3 text-right" title="Expected season points this player and the named next target add to the current roster.">Two-pick plan value</th>
+          <th className="p-3 text-right" title="Expected season points this player adds to the current roster by himself.">Points added now</th>
+          <th className="p-3 text-right" title="Expected number of weeks this player's score reaches the automatic Best Ball lineup.">Counted weeks</th>
+          <th className="p-3 text-right" title="Roster improvement in a top-10% simulation outcome for this two-pick plan.">Upside outcome</th>
           <th className="p-3 text-right" title="Our projection-driven overall rank and projected PPR points.">Our value</th>
           <th className="p-3 text-right" title="Current DraftKings Best Ball pre-draft rank and DraftKings ADP.">DK market</th>
           <th className="p-3" title="Replacement-aware football decision using the likely player pool at your following pick.">Strategy</th>
-          <th className="p-3" title="Pick-aware recommendation using the earlier of DraftKings Rank and ADP, with a half-round safety buffer.">DK Shadow</th>
+          <th className="p-3" title="DraftKings-only acquisition timing. The large decision card above combines this timing with football value.">Market timing</th>
           <th className="p-3"></th>
         </tr></thead>
         <tbody>{simulation.candidates.map((candidate, index) => <tr key={candidate.playerId} className={`border-t border-violet-100 ${index === 0 ? "bg-violet-50/60" : ""}`}>
@@ -84,6 +97,6 @@ export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, follow
       </table>
     </div>
 
-    <p className="mt-3 text-xs text-violet-950/70"><b>Strategy order:</b> candidates are ranked by the simulated value of this pick plus the best plausible player at your following turn. A later player is considered plausible when DraftKings Rank/ADP has not crossed the half-round safety window. <b>DK Shadow timing</b> then tells you whether the room is likely to force the current decision now.</p>
+    <p className="mt-3 text-xs text-violet-950/70"><b>How to use this:</b> follow the large action card first. The table preserves the supporting evidence. <b>Two-pick plan value</b> is combined expected roster improvement, not an edge over the other rows. <b>Upside outcome</b> is the roster improvement in a top-10% simulation. Market timing shows when the DraftKings room is likely to reach each player.</p>
   </section>;
 }

@@ -208,7 +208,7 @@ assert.ok(!selectedLineup.countedPlayerIds.includes(223), "the fourth WR should 
 const shadowCandidate = { playerId: 299, name: "Candidate", position: "WR", team: "E", byeWeek: 8, projectedPoints: 250, projectionLow: 220, projectionHigh: 280, expectedGames: 16, confidence: 0.75, ourRank: 24, dkBestBallRank: 35, dkBestBallAdp: 33.5 } satisfies ShadowBestBallPlayer;
 const futureReplacement = { playerId: 300, name: "Later WR", position: "WR", team: "F", byeWeek: 9, projectedPoints: 200, projectionLow: 175, projectionHigh: 225, expectedGames: 17, confidence: 0.7, ourRank: 40, dkBestBallRank: 41, dkBestBallAdp: 42 } satisfies ShadowBestBallPlayer;
 const shadow = simulateShadowBestBallCandidates({ roster: lineupPlayers, candidates: [shadowCandidate], futureCandidates: [futureReplacement], iterations: 80, nextUserPick: 24, followingUserPick: 25, teamCount: 12 });
-assert.equal(shadow.model, "shadow-v0-v1.7-two-pick");
+assert.equal(shadow.model, "shadow-v0-v1.8-decision");
 assert.equal(shadow.iterations, 80);
 assert.equal(shadow.candidates.length, 1);
 assert.ok(shadow.candidates[0].marginalCountedPoints >= 0);
@@ -219,6 +219,7 @@ assert.equal(shadow.candidates[0].samePositionReplacementName, "Later WR");
 assert.equal(shadow.candidates[0].replacementRetention, 0.8);
 assert.equal(shadow.candidates[0].strategyLabel, "best-path");
 assert.equal(shadow.recommendation?.playerId, shadowCandidate.playerId);
+assert.equal(shadow.recommendation?.action, "draft-now");
 assert.equal(shadow.candidates[0].dkDraftAction, "wait");
 assert.equal(shadow.candidates[0].dkMarketPick, 33.5);
 assert.equal(shadow.candidates[0].dkTargetPick, 27);
@@ -236,7 +237,23 @@ const replacementAwareShadow = simulateShadowBestBallCandidates({
 assert.equal(replacementAwareShadow.candidates[0].playerId, eliteTe.playerId);
 assert.equal(replacementAwareShadow.candidates[0].futureTargetPlayerId, laterQb.playerId);
 assert.equal(replacementAwareShadow.candidates.find((candidate) => candidate.playerId === eliteQb.playerId)?.strategyLabel, "position-can-wait");
-assert.match(replacementAwareShadow.recommendation?.headline ?? "", /Draft Elite TE now; target Later QB at #48/);
+assert.equal(replacementAwareShadow.recommendation?.headline, "DRAFT ELITE TE");
+assert.equal(replacementAwareShadow.recommendation?.sequence, "Preferred sequence: Elite TE first → Later QB at #48");
+
+// When the same pair is available in either order, draft the player whose DK
+// room window closes first and leave the later-market player for the next turn.
+const orderKittle = { playerId: 305, name: "George Kittle", position: "TE", team: "SF", byeWeek: 14, projectedPoints: 243, projectionLow: 220, projectionHigh: 270, expectedGames: 17, confidence: 0.8, ourRank: 30, dkBestBallRank: 109, dkBestBallAdp: 107.7 } satisfies ShadowBestBallPlayer;
+const orderSutton = { playerId: 306, name: "Courtland Sutton", position: "WR", team: "DEN", byeWeek: 12, projectedPoints: 220, projectionLow: 195, projectionHigh: 245, expectedGames: 17, confidence: 0.8, ourRank: 43, dkBestBallRank: 78, dkBestBallAdp: 79.4 } satisfies ShadowBestBallPlayer;
+const orderedPairShadow = simulateShadowBestBallCandidates({
+  roster: [], candidates: [orderKittle, orderSutton], futureCandidates: [orderKittle, orderSutton],
+  iterations: 80, nextUserPick: 49, followingUserPick: 72, teamCount: 12,
+});
+assert.equal(orderedPairShadow.candidates[0].playerId, orderSutton.playerId);
+assert.equal(orderedPairShadow.candidates[0].futureTargetPlayerId, orderKittle.playerId);
+assert.equal(orderedPairShadow.recommendation?.action, "draft-now");
+assert.equal(orderedPairShadow.recommendation?.headline, "DRAFT COURTLAND SUTTON");
+assert.equal(orderedPairShadow.recommendation?.sequence, "Preferred sequence: Courtland Sutton first → George Kittle at #72");
+assert.match(orderedPairShadow.recommendation?.explanation ?? "", /Sutton's DraftKings window arrives.*before George Kittle/);
 
 const yahooEliteQb = { playerId: 401, name: "Yahoo Elite QB", position: "QB", team: "A", projectedPoints: 380, expectedGames: 17, ourRank: 23, yahooXRank: 28, yahooAdp: 28.6 } satisfies YahooRedraftStrategyPlayer;
 const yahooEliteTe = { playerId: 402, name: "Yahoo Elite TE", position: "TE", team: "B", projectedPoints: 275, expectedGames: 17, ourRank: 15, yahooXRank: 27, yahooAdp: 27.4 } satisfies YahooRedraftStrategyPlayer;
