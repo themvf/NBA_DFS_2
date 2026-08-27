@@ -499,3 +499,31 @@ def test_bootstrap_needs_two_distinct_markets_not_two_rows():
     one_market = [("m1", 100.0, 5.0) for _ in range(10)]
     lo, hi = bootstrap_clv_ci(one_market)
     assert lo != lo and hi != hi  # NaN
+
+
+def test_walk_forward_flags_a_result_carried_by_one_wallet():
+    """CLV is dollar-weighted, so a wallet staking most of the group's money
+    IS the group's result. This project's MLB underdog spec sets a 25% bar
+    on any single participant and requires leave-one-out to survive."""
+    from ingest.polymarket_wallet_clv import walk_forward
+    dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
+    wallets = {
+        # one whale carrying a huge positive holdout stake
+        "whale": _wallet(obs=dev(30.0) + [(f"h{i}", 10000.0, 500.0) for i in range(20)],
+                         clv_num=1.0, clv_stake=100.0),
+        "small_a": _wallet(obs=dev(20.0) + [(f"h{i}", 10.0, -0.5) for i in range(20)],
+                           clv_num=1.0, clv_stake=100.0),
+        "small_b": _wallet(obs=dev(10.0) + [(f"h{i}", 10.0, -0.5) for i in range(20)],
+                           clv_num=1.0, clv_stake=100.0),
+        "small_c": _wallet(obs=dev(5.0) + [(f"h{i}", 10.0, -0.5) for i in range(20)],
+                           clv_num=1.0, clv_stake=100.0),
+    }
+    rows, _ = rank_by_clv(wallets)
+    wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
+                      {f"h{i}" for i in range(20)}, top_n=2)
+    assert wf["dominant_wallet"] == "whale"
+    assert wf["dominant_stake_share"] > 0.25
+    # headline is strongly positive only because of the whale
+    assert wf["selected_holdout_clv"] > 0
+    # removing it reverses the sign -- the finding was the one wallet
+    assert wf["leave_one_out_clv"] < 0

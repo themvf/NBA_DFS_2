@@ -799,14 +799,36 @@ def walk_forward(
     selected = scored[:effective_n]
     rest = scored[effective_n:]
 
+    per_wallet_hold = {row["wallet"]: split(row["wallet"])[1] for row in scored}
+    for row in scored:
+        row["holdout_stake"] = sum(o[1] for o in per_wallet_hold[row["wallet"]])
+
     sel_obs: List[Any] = []
     for row in selected:
-        sel_obs.extend(split(row["wallet"])[1])
+        sel_obs.extend(per_wallet_hold[row["wallet"]])
     rest_obs: List[Any] = []
     for row in rest:
-        rest_obs.extend(split(row["wallet"])[1])
+        rest_obs.extend(per_wallet_hold[row["wallet"]])
 
     lo, hi = bootstrap_clv_ci(sel_obs) if len(sel_obs) > 1 else (float("nan"), float("nan"))
+
+    # Concentration. CLV is dollar-weighted, so a single wallet staking most
+    # of the group's money IS the group's result. This project's MLB
+    # underdog spec sets the same bar for teams and requires the
+    # leave-one-out to survive; a finding carried by one participant is a
+    # fact about that participant, not about the market.
+    sel_stake = sum(o[1] for o in sel_obs)
+    dominant = max(selected, key=lambda r: r["holdout_stake"]) if selected else None
+    dom_share = (dominant["holdout_stake"] / sel_stake) if dominant and sel_stake > 0 else 0.0
+
+    loo_obs: List[Any] = []
+    for row in selected:
+        if dominant is not None and row["wallet"] == dominant["wallet"]:
+            continue
+        loo_obs.extend(per_wallet_hold[row["wallet"]])
+    loo_lo, loo_hi = (bootstrap_clv_ci(loo_obs) if len(loo_obs) > 1
+                      else (float("nan"), float("nan")))
+
     return {
         "available": True,
         "n_both_halves": len(scored),
@@ -815,9 +837,15 @@ def walk_forward(
         "selected_holdout_clv": clv_of(sel_obs),
         "selected_holdout_ci": (lo, hi),
         "selected_holdout_obs": len(sel_obs),
+        "selected_holdout_stake": sel_stake,
         "rest_holdout_clv": clv_of(rest_obs),
         "rest_holdout_obs": len(rest_obs),
         "persisted": sum(1 for r in selected if r["holdout_clv"] > 0),
+        "dominant_wallet": (dominant["name"] or dominant["wallet"]) if dominant else None,
+        "dominant_stake_share": dom_share,
+        "leave_one_out_clv": clv_of(loo_obs),
+        "leave_one_out_ci": (loo_lo, loo_hi),
+        "leave_one_out_obs": len(loo_obs),
         "rows": selected,
     }
 
@@ -850,6 +878,21 @@ def print_walk_forward(wf: Dict[str, Any]) -> None:
         print(f"  selection gap                      {gap:>+9.4f}"
               f"   <- this, not the absolute level, is the test")
     print(f"  selected wallets with positive holdout CLV: {wf['persisted']}/{wf['top_n']}")
+    print()
+    share = wf.get("dominant_stake_share") or 0.0
+    flag = "  <-- OVER THE 25% BAR" if share > 0.25 else ""
+    print(f"  CONCENTRATION -- largest wallet '{wf.get('dominant_wallet')}' is "
+          f"{share:.1%} of selected holdout stake{flag}")
+    loo = wf.get("leave_one_out_clv")
+    if loo is None:
+        print("  leave-one-out: not computable")
+    else:
+        llo, lhi = wf["leave_one_out_ci"]
+        lci = "n/a" if math.isnan(llo) else f"[{llo:+.4f}, {lhi:+.4f}]"
+        verdict = ("still excludes zero" if not math.isnan(llo) and llo > 0
+                   else "NO LONGER excludes zero -- the finding was the one wallet")
+        print(f"  leave-one-out holdout CLV          {loo:>+9.4f}  95% CI {lci}"
+              f"  (n={wf['leave_one_out_obs']:,})  {verdict}")
 
 
 def print_leaderboard(title: str, rows: List[Dict[str, Any]], limit: int = 20) -> None:
