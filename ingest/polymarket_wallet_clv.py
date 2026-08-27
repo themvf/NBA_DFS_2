@@ -667,8 +667,20 @@ def walk_forward(
         return {"available": False, "reason": "no wallet is active in both halves"}
 
     scored.sort(key=lambda r: -r["dev_clv"])
-    selected = scored[:top_n]
-    rest = scored[top_n:]
+    # Never select the entire population. Asking for the top 20 out of 7
+    # wallets leaves no unselected remainder, which silently disables the
+    # selection-gap comparison -- the sharpest part of the test -- while
+    # still printing a confident-looking holdout number. Observed live on
+    # the first complete tennis run (7 wallets, top_n=20).
+    effective_n = min(top_n, len(scored) // 2)
+    if effective_n < 1:
+        return {
+            "available": False,
+            "reason": f"only {len(scored)} wallet(s) active in both halves -- "
+                      "too few to split into selected and unselected groups",
+        }
+    selected = scored[:effective_n]
+    rest = scored[effective_n:]
 
     sel_obs: List[Any] = []
     for row in selected:
@@ -682,6 +694,7 @@ def walk_forward(
         "available": True,
         "n_both_halves": len(scored),
         "top_n": len(selected),
+        "top_n_requested": top_n,
         "selected_holdout_clv": clv_of(sel_obs),
         "selected_holdout_ci": (lo, hi),
         "selected_holdout_obs": len(sel_obs),
@@ -707,7 +720,9 @@ def print_walk_forward(wf: Dict[str, Any]) -> None:
     lo, hi = wf["selected_holdout_ci"]
     ci = "n/a" if math.isnan(lo) else f"[{lo:+.4f}, {hi:+.4f}]"
     print(f"  wallets active in both halves      {wf['n_both_halves']:>9,}")
-    print(f"  selected (top {wf['top_n']} by dev CLV)")
+    note = ("" if wf["top_n"] == wf.get("top_n_requested")
+            else f" -- reduced from {wf['top_n_requested']} to keep a comparison group")
+    print(f"  selected (top {wf['top_n']} by dev CLV){note}")
     print(f"    holdout CLV                      {wf['selected_holdout_clv']:>+9.4f}  95% CI {ci}"
           f"  (n={wf['selected_holdout_obs']:,})")
     if wf["rest_holdout_clv"] is not None:

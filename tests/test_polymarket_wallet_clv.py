@@ -276,13 +276,16 @@ def test_thin_final_window_falls_back_to_the_last_pregame_trades():
 # --- walk-forward -----------------------------------------------------------
 
 def _wf_wallets(good_holdout, bad_holdout):
-    """Two wallets that both look good in dev; only one stays good later."""
-    dev = [(f"d{i}", 100.0, 20.0) for i in range(MIN_CLV_MARKETS + 5)]
+    """Four wallets whose dev CLV ranks them 1-4, so the top half is
+    well-defined. The two that rank best in dev then diverge: one keeps its
+    CLV in the holdout half, the other reverses."""
+    dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
+    hold = lambda v: [(f"h{i}", 100.0, v) for i in range(20)]
     return {
-        "persists": _wallet(obs=dev + [(f"h{i}", 100.0, good_holdout) for i in range(20)],
-                            clv_num=1.0, clv_stake=100.0),
-        "fades": _wallet(obs=dev + [(f"h{i}", 100.0, bad_holdout) for i in range(20)],
-                         clv_num=1.0, clv_stake=100.0),
+        "persists": _wallet(obs=dev(40.0) + hold(good_holdout), clv_num=1.0, clv_stake=100.0),
+        "fades": _wallet(obs=dev(30.0) + hold(bad_holdout), clv_num=1.0, clv_stake=100.0),
+        "rest_a": _wallet(obs=dev(10.0) + hold(0.0), clv_num=1.0, clv_stake=100.0),
+        "rest_b": _wallet(obs=dev(5.0) + hold(0.0), clv_num=1.0, clv_stake=100.0),
     }
 
 
@@ -294,9 +297,10 @@ def test_walk_forward_scores_the_holdout_half_not_the_half_it_selected_on():
     holdout_ids = {f"h{i}" for i in range(20)}
     wf = walk_forward(wallets, rows, dev_ids, holdout_ids, top_n=2)
     assert wf["available"]
-    # both selected on dev, but only one has positive holdout CLV
+    assert wf["top_n"] == 2  # 4 // 2, a real comparison group remains
+    # both were selected on dev, but only one keeps positive holdout CLV
     assert wf["persisted"] == 1
-    # holdout CLV averages the two, so it lands near zero -- not near dev's +0.20
+    # holdout averages the two, landing near zero -- NOT near dev's +0.35
     assert abs(wf["selected_holdout_clv"]) < 0.05
 
 
@@ -374,3 +378,35 @@ def test_offset_ceiling_error_is_truncation_not_a_lost_market(monkeypatch):
     fills, hit = mod.fetch_market_fills("0x")
     assert hit is True
     assert len(fills) == 2 * mod.TRADES_PAGE
+
+
+def test_walk_forward_never_selects_the_entire_population():
+    """Requesting the top 20 from 7 wallets left no unselected remainder, so
+    the selection-gap comparison silently did not run while a confident-
+    looking holdout number still printed. Observed live on the first
+    complete tennis run."""
+    from ingest.polymarket_wallet_clv import walk_forward
+    dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
+    hold = [(f"h{i}", 100.0, 5.0) for i in range(20)]
+    wallets = {
+        f"w{k}": _wallet(obs=dev(30.0 - k) + hold, clv_num=1.0, clv_stake=100.0)
+        for k in range(7)
+    }
+    rows, _ = rank_by_clv(wallets)
+    wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
+                      {f"h{i}" for i in range(20)}, top_n=20)
+    assert wf["available"]
+    assert wf["top_n"] == 3            # 7 // 2, not 20
+    assert wf["top_n_requested"] == 20
+    assert wf["rest_holdout_obs"] > 0  # a comparison group actually exists
+
+
+def test_walk_forward_refuses_to_split_a_single_wallet():
+    from ingest.polymarket_wallet_clv import walk_forward
+    dev = [(f"d{i}", 100.0, 20.0) for i in range(MIN_CLV_MARKETS + 5)]
+    hold = [(f"h{i}", 100.0, 5.0) for i in range(20)]
+    wallets = {"only": _wallet(obs=dev + hold, clv_num=1.0, clv_stake=100.0)}
+    rows, _ = rank_by_clv(wallets)
+    wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
+                      {f"h{i}" for i in range(20)}, top_n=20)
+    assert not wf["available"] and "too few" in wf["reason"]
