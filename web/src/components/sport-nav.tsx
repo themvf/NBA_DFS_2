@@ -47,6 +47,9 @@ const PAGE_LINKS: Array<{
   { href: "/schedule", label: "Schedule", sports: ["nba", "mlb"] },
   { href: "/video-analysis", label: "Video Analysis" },
   { href: "/youtube-picks", label: "YouTube Picks" },
+  // No `sports` filter: the cohort is MLB-validated but the page is
+  // cross-sport research, and it is unreachable without a link.
+  { href: "/polymarket/watchlist", label: "Wallet Watchlist" },
 ];
 
 export function SportNav() {
