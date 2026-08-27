@@ -14,15 +14,15 @@ function signed(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
 }
 
-const YAHOO_SIGNAL = {
+const MARKET_SIGNAL = {
   "major-discount": { label: "MAJOR DISCOUNT", className: "bg-emerald-100 text-emerald-800" },
-  discount: { label: "YAHOO DISCOUNT", className: "bg-green-100 text-green-800" },
+  discount: { label: "DK DISCOUNT", className: "bg-green-100 text-green-800" },
   fair: { label: "NEAR MARKET", className: "bg-slate-100 text-slate-700" },
-  premium: { label: "YAHOO PREMIUM", className: "bg-rose-100 text-rose-800" },
-  unavailable: { label: "NO YAHOO MATCH", className: "bg-slate-100 text-slate-500" },
+  premium: { label: "DK PREMIUM", className: "bg-rose-100 text-rose-800" },
+  unavailable: { label: "NO DK MATCH", className: "bg-slate-100 text-slate-500" },
 } as const;
 
-const YAHOO_ACTION = {
+const DK_ACTION = {
   wait: { label: "WAIT", className: "bg-blue-100 text-blue-800" },
   "target-soon": { label: "TARGET SOON", className: "bg-amber-100 text-amber-900" },
   "take-now": { label: "TAKE NOW", className: "bg-emerald-100 text-emerald-800" },
@@ -43,7 +43,7 @@ export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, follow
     </div>
 
     <div className="mt-5 overflow-x-auto rounded-2xl border border-violet-200 bg-white">
-      <table className="w-full min-w-[1180px] text-left text-sm">
+      <table className="w-full min-w-[1060px] text-left text-sm">
         <thead className="bg-violet-100/70 text-xs uppercase tracking-wide text-violet-950/70"><tr>
           <th className="p-3">Candidate</th>
           <th className="p-3 text-right">Marginal counted pts</th>
@@ -53,7 +53,6 @@ export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, follow
           <th className="p-3 text-right" title="Our projection-driven overall rank and projected PPR points.">Our value</th>
           <th className="p-3 text-right" title="Current DraftKings Best Ball pre-draft rank and DraftKings ADP.">DK market</th>
           <th className="p-3" title="Pick-aware recommendation using the earlier of DraftKings Rank and ADP, with a half-round safety buffer.">DK Shadow</th>
-          <th className="p-3 text-right" title="Yahoo redraft XRank and ADP remain visible as secondary cross-market context.">Yahoo context</th>
           <th className="p-3"></th>
         </tr></thead>
         <tbody>{simulation.candidates.map((candidate, index) => <tr key={candidate.playerId} className="border-t border-violet-100">
@@ -64,13 +63,12 @@ export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, follow
           <td className="p-3 text-right font-semibold text-violet-700">{signed(candidate.p90RosterDelta)}</td>
           <td className="p-3 text-right"><p className="font-black text-slate-900">#{candidate.ourRank?.toFixed(1) ?? "—"}</p><p className="text-[10px] text-muted-foreground">{candidate.projectedPoints?.toFixed(1) ?? "—"} PPR pts</p></td>
           <td className="p-3 text-right">{candidate.dkBestBallRank !== null ? <><p className="font-black text-blue-700">R {candidate.dkBestBallRank}</p><p className="text-[10px] text-muted-foreground">ADP {candidate.dkBestBallAdp?.toFixed(1) ?? "—"}</p></> : <span className="text-muted-foreground">—</span>}</td>
-          <td className="p-3"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ${YAHOO_ACTION[candidate.dkDraftAction].className}`}>{YAHOO_ACTION[candidate.dkDraftAction].label}</span><p className="mt-1 text-xs font-bold text-slate-700">{candidate.dkTargetPick !== null ? `Target by ~#${candidate.dkTargetPick}` : "Timing unavailable"}</p><p className="text-[10px] text-muted-foreground">{candidate.dkMarketPick !== null ? `DK pressure ~#${candidate.dkMarketPick.toFixed(1)}` : YAHOO_SIGNAL[candidate.dkMarketSignal].label}{candidate.dkRankGap !== null ? ` · Rank gap ${signed(candidate.dkRankGap)}` : ""}</p></td>
-          <td className="p-3 text-right">{candidate.yahooXRank !== null ? <><p className="font-black text-purple-700">X {candidate.yahooXRank.toFixed(1)}</p><p className="text-[10px] text-muted-foreground">ADP {candidate.yahooAdp?.toFixed(1) ?? "—"} · gap {candidate.yahooRankGap !== null ? signed(candidate.yahooRankGap) : "—"}</p></> : <span className="text-muted-foreground">—</span>}</td>
+          <td className="p-3"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ${DK_ACTION[candidate.dkDraftAction].className}`}>{DK_ACTION[candidate.dkDraftAction].label}</span><p className="mt-1 text-xs font-bold text-slate-700">{candidate.dkTargetPick !== null ? `Target by ~#${candidate.dkTargetPick}` : "Timing unavailable"}</p><p className="text-[10px] text-muted-foreground">{candidate.dkMarketPick !== null ? `DK pressure ~#${candidate.dkMarketPick.toFixed(1)}` : MARKET_SIGNAL[candidate.dkMarketSignal].label}{candidate.dkRankGap !== null ? ` · Rank gap ${signed(candidate.dkRankGap)}` : ""}</p></td>
           <td className="p-3 text-right"><button disabled={!canDraft} onClick={() => onDraft(candidate.playerId)} className="rounded-lg border border-violet-300 px-3 py-1.5 text-xs font-bold text-violet-800 disabled:opacity-35">{canDraft ? "Draft" : "Waiting"}</button></td>
         </tr>)}</tbody>
       </table>
     </div>
 
-    <p className="mt-3 text-xs text-violet-950/70"><b>DK Shadow timing:</b> market pressure is the earlier of current DraftKings Rank and DraftKings ADP; the target is approximately half a 12-team round earlier. <b>Wait</b> means another user turn remains before that window. <b>Target Soon</b> means the following turn enters it. <b>Take Now</b> means passing risks losing the player before your next turn. <b>Pass at This Price</b> means the DraftKings room is pushing the player earlier than our valuation. Yahoo remains comparison context and does not drive the DraftKings action.</p>
+    <p className="mt-3 text-xs text-violet-950/70"><b>DK Shadow timing:</b> market pressure is the earlier of current DraftKings Rank and DraftKings ADP; the target is approximately half a 12-team round earlier. <b>Wait</b> means another user turn remains before that window. <b>Target Soon</b> means the following turn enters it. <b>Take Now</b> means passing risks losing the player before your next turn. <b>Pass at This Price</b> means the DraftKings room is pushing the player earlier than our valuation.</p>
   </section>;
 }

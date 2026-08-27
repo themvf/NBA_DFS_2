@@ -51,16 +51,14 @@ export type ShadowBestBallPlayer = {
   ourRank?: number | null;
   dkBestBallRank?: number | null;
   dkBestBallAdp?: number | null;
-  yahooXRank?: number | null;
-  yahooAdp?: number | null;
 };
 
-export type YahooMarketSignal = "major-discount" | "discount" | "fair" | "premium" | "unavailable";
-export type YahooDraftAction = "wait" | "target-soon" | "take-now" | "pass-at-price" | "no-market-data";
+export type DraftMarketSignal = "major-discount" | "discount" | "fair" | "premium" | "unavailable";
+export type DraftMarketAction = "wait" | "target-soon" | "take-now" | "pass-at-price" | "no-market-data";
 
 export function getDraftMarketSignal(ourRank: number | null, marketRank: number | null): {
   gap: number | null;
-  signal: YahooMarketSignal;
+  signal: DraftMarketSignal;
 } {
   if (ourRank === null || marketRank === null) return { gap: null, signal: "unavailable" };
   const gap = marketRank - ourRank;
@@ -68,10 +66,6 @@ export function getDraftMarketSignal(ourRank: number | null, marketRank: number 
   if (gap >= 5) return { gap, signal: "discount" };
   if (gap <= -5) return { gap, signal: "premium" };
   return { gap, signal: "fair" };
-}
-
-export function getYahooMarketSignal(ourRank: number | null, yahooXRank: number | null) {
-  return getDraftMarketSignal(ourRank, yahooXRank);
 }
 
 export function getDraftMarketTiming(input: {
@@ -82,7 +76,7 @@ export function getDraftMarketTiming(input: {
   followingUserPick: number | null;
   teamCount?: number;
 }): {
-  action: YahooDraftAction;
+  action: DraftMarketAction;
   marketPick: number | null;
   targetPick: number | null;
 } {
@@ -92,7 +86,7 @@ export function getDraftMarketTiming(input: {
     return { action: "no-market-data", marketPick: null, targetPick: null };
   }
 
-  // The earlier of XRank and ADP is the safer estimate of when a Yahoo room
+  // The earlier of platform rank and ADP is the safer estimate of when a room
   // starts applying pressure. Move half a round ahead of it rather than
   // pretending the player will survive all the way to the raw market rank.
   const marketPick = Math.min(...marketRanks);
@@ -109,24 +103,6 @@ export function getDraftMarketTiming(input: {
     return { action: "target-soon", marketPick, targetPick };
   }
   return { action: "wait", marketPick, targetPick };
-}
-
-export function getYahooDraftTiming(input: {
-  ourRank: number | null;
-  yahooXRank: number | null;
-  yahooAdp: number | null;
-  nextUserPick: number | null;
-  followingUserPick: number | null;
-  teamCount?: number;
-}) {
-  return getDraftMarketTiming({
-    ourRank: input.ourRank,
-    marketRank: input.yahooXRank,
-    marketAdp: input.yahooAdp,
-    nextUserPick: input.nextUserPick,
-    followingUserPick: input.followingUserPick,
-    teamCount: input.teamCount,
-  });
 }
 
 export type BestBallLineupResult = {
@@ -150,17 +126,10 @@ export type ShadowBestBallCandidateResult = {
   dkBestBallRank: number | null;
   dkBestBallAdp: number | null;
   dkRankGap: number | null;
-  dkMarketSignal: YahooMarketSignal;
-  dkDraftAction: YahooDraftAction;
+  dkMarketSignal: DraftMarketSignal;
+  dkDraftAction: DraftMarketAction;
   dkMarketPick: number | null;
   dkTargetPick: number | null;
-  yahooXRank: number | null;
-  yahooAdp: number | null;
-  yahooRankGap: number | null;
-  yahooMarketSignal: YahooMarketSignal;
-  yahooDraftAction: YahooDraftAction;
-  yahooMarketPick: number | null;
-  yahooTargetPick: number | null;
 };
 
 export type ShadowBestBallSimulation = {
@@ -304,15 +273,6 @@ export function simulateShadowBestBallCandidates(input: {
   const candidates = input.candidates.map((candidate): ShadowBestBallCandidateResult => {
     const seasons = candidateSeasons.get(candidate.playerId) ?? [];
     const rosterMeanWithCandidate = seasons.reduce((sum, value) => sum + value, 0) / Math.max(1, seasons.length);
-    const yahooMarket = getYahooMarketSignal(candidate.ourRank ?? null, candidate.yahooXRank ?? null);
-    const yahooTiming = getYahooDraftTiming({
-      ourRank: candidate.ourRank ?? null,
-      yahooXRank: candidate.yahooXRank ?? null,
-      yahooAdp: candidate.yahooAdp ?? null,
-      nextUserPick: input.nextUserPick ?? null,
-      followingUserPick: input.followingUserPick ?? null,
-      teamCount: input.teamCount,
-    });
     const dkMarket = getDraftMarketSignal(candidate.ourRank ?? null, candidate.dkBestBallRank ?? null);
     const dkTiming = getDraftMarketTiming({
       ourRank: candidate.ourRank ?? null,
@@ -342,13 +302,6 @@ export function simulateShadowBestBallCandidates(input: {
       dkDraftAction: dkTiming.action,
       dkMarketPick: dkTiming.marketPick,
       dkTargetPick: dkTiming.targetPick,
-      yahooXRank: candidate.yahooXRank ?? null,
-      yahooAdp: candidate.yahooAdp ?? null,
-      yahooRankGap: yahooMarket.gap,
-      yahooMarketSignal: yahooMarket.signal,
-      yahooDraftAction: yahooTiming.action,
-      yahooMarketPick: yahooTiming.marketPick,
-      yahooTargetPick: yahooTiming.targetPick,
     };
   }).sort((a, b) => b.marginalCountedPoints - a.marginalCountedPoints || b.p90RosterDelta - a.p90RosterDelta);
 
