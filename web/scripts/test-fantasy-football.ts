@@ -205,15 +205,37 @@ assert.ok(selectedLineup.countedPlayerIds.includes(212), "the third RB should wi
 assert.ok(!selectedLineup.countedPlayerIds.includes(223), "the fourth WR should remain on the bench");
 
 const shadowCandidate = { playerId: 299, name: "Candidate", position: "WR", team: "E", byeWeek: 8, projectedPoints: 250, projectionLow: 220, projectionHigh: 280, expectedGames: 16, confidence: 0.75, ourRank: 24, dkBestBallRank: 35, dkBestBallAdp: 33.5 } satisfies ShadowBestBallPlayer;
-const shadow = simulateShadowBestBallCandidates({ roster: lineupPlayers, candidates: [shadowCandidate], iterations: 80, nextUserPick: 24, followingUserPick: 25, teamCount: 12 });
-assert.equal(shadow.model, "shadow-v0-v1.6-points");
+const futureReplacement = { playerId: 300, name: "Later WR", position: "WR", team: "F", byeWeek: 9, projectedPoints: 200, projectionLow: 175, projectionHigh: 225, expectedGames: 17, confidence: 0.7, ourRank: 40, dkBestBallRank: 41, dkBestBallAdp: 42 } satisfies ShadowBestBallPlayer;
+const shadow = simulateShadowBestBallCandidates({ roster: lineupPlayers, candidates: [shadowCandidate], futureCandidates: [futureReplacement], iterations: 80, nextUserPick: 24, followingUserPick: 25, teamCount: 12 });
+assert.equal(shadow.model, "shadow-v0-v1.7-two-pick");
 assert.equal(shadow.iterations, 80);
 assert.equal(shadow.candidates.length, 1);
 assert.ok(shadow.candidates[0].marginalCountedPoints >= 0);
+assert.ok(shadow.candidates[0].twoPickMarginalPoints >= shadow.candidates[0].marginalCountedPoints);
 assert.ok(shadow.candidates[0].expectedCountedWeeks >= 0 && shadow.candidates[0].expectedCountedWeeks <= 17);
+assert.equal(shadow.candidates[0].futureTargetName, "Later WR");
+assert.equal(shadow.candidates[0].samePositionReplacementName, "Later WR");
+assert.equal(shadow.candidates[0].replacementRetention, 0.8);
+assert.equal(shadow.candidates[0].strategyLabel, "best-path");
+assert.equal(shadow.recommendation?.playerId, shadowCandidate.playerId);
 assert.equal(shadow.candidates[0].dkDraftAction, "wait");
 assert.equal(shadow.candidates[0].dkMarketPick, 33.5);
 assert.equal(shadow.candidates[0].dkTargetPick, 27);
+
+// Replacement-aware ordering should prefer an elite TE now plus a strong QB
+// later when the later QB retains much more value than the later TE.
+const eliteQb = { playerId: 301, name: "Elite QB", position: "QB", team: "A", byeWeek: 7, projectedPoints: 380, projectionLow: 360, projectionHigh: 400, expectedGames: 17, confidence: 0.9, ourRank: 23, dkBestBallRank: 28, dkBestBallAdp: 28.6 } satisfies ShadowBestBallPlayer;
+const eliteTe = { playerId: 302, name: "Elite TE", position: "TE", team: "B", byeWeek: 8, projectedPoints: 275, projectionLow: 260, projectionHigh: 290, expectedGames: 17, confidence: 0.9, ourRank: 15, dkBestBallRank: 27, dkBestBallAdp: 27.4 } satisfies ShadowBestBallPlayer;
+const laterQb = { playerId: 303, name: "Later QB", position: "QB", team: "C", byeWeek: 9, projectedPoints: 355, projectionLow: 340, projectionHigh: 370, expectedGames: 17, confidence: 0.8, ourRank: 48, dkBestBallRank: 52, dkBestBallAdp: 53 } satisfies ShadowBestBallPlayer;
+const laterTe = { playerId: 304, name: "Later TE", position: "TE", team: "D", byeWeek: 10, projectedPoints: 205, projectionLow: 190, projectionHigh: 220, expectedGames: 17, confidence: 0.8, ourRank: 51, dkBestBallRank: 55, dkBestBallAdp: 56 } satisfies ShadowBestBallPlayer;
+const replacementAwareShadow = simulateShadowBestBallCandidates({
+  roster: [], candidates: [eliteQb, eliteTe], futureCandidates: [laterQb, laterTe],
+  iterations: 80, nextUserPick: 25, followingUserPick: 48, teamCount: 12,
+});
+assert.equal(replacementAwareShadow.candidates[0].playerId, eliteTe.playerId);
+assert.equal(replacementAwareShadow.candidates[0].futureTargetPlayerId, laterQb.playerId);
+assert.equal(replacementAwareShadow.candidates.find((candidate) => candidate.playerId === eliteQb.playerId)?.strategyLabel, "position-can-wait");
+assert.match(replacementAwareShadow.recommendation?.headline ?? "", /Draft Elite TE now; target Later QB at #48/);
 assert.deepEqual(getDraftMarketSignal(20, 26), { gap: 6, signal: "discount" });
 assert.deepEqual(getDraftMarketSignal(20, 17), { gap: -3, signal: "fair" });
 assert.deepEqual(getDraftMarketSignal(20, 12), { gap: -8, signal: "premium" });

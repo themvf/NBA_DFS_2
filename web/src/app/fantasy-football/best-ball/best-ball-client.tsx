@@ -224,15 +224,19 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
       const fullPlayer = playerById.get(candidate.playerId);
       return fullPlayer ? [toShadowPlayer(fullPlayer)] : [];
     });
+    const futureCandidates = rankings
+      .filter((player) => !draftedPlayerIds.has(player.playerId))
+      .map(toShadowPlayer);
     if (!shadowCandidates.length) return null;
     return simulateShadowBestBallCandidates({
       roster: userRoster.map(toShadowPlayer),
       candidates: shadowCandidates,
+      futureCandidates,
       nextUserPick: targetOverallPick,
       followingUserPick: futureOverallPick,
       teamCount: BEST_BALL_TEAM_COUNT,
     });
-  }, [decisionPlan, userRoster, playerById, targetOverallPick, futureOverallPick]);
+  }, [decisionPlan, userRoster, playerById, rankings, draftedPlayerIds, targetOverallPick, futureOverallPick]);
 
   const draftPlayer = useCallback((playerId: number, source: BestBallPickReceipt["source"] = "manual") => {
     const player = playerById.get(playerId);

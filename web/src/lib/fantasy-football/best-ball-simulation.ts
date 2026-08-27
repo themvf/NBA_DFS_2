@@ -1,4 +1,4 @@
-import { BEST_BALL_POSITIONS, type BestBallPosition } from "./best-ball";
+import { BEST_BALL_POSITIONS, canAddCompletableBestBallPlayer, type BestBallPosition } from "./best-ball";
 
 export type DraftKingsBestBallStatLine = {
   passingYards?: number;
@@ -55,6 +55,30 @@ export type ShadowBestBallPlayer = {
 
 export type DraftMarketSignal = "major-discount" | "discount" | "fair" | "premium" | "unavailable";
 export type DraftMarketAction = "wait" | "target-soon" | "take-now" | "pass-at-price" | "no-market-data";
+export type BestBallStrategyLabel = "best-path" | "position-can-wait" | "tier-drop" | "alternative";
+
+function draftMarketPick(player: ShadowBestBallPlayer): number | null {
+  const values = [player.dkBestBallRank, player.dkBestBallAdp]
+    .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value) && value > 0);
+  return values.length ? Math.min(...values) : null;
+}
+
+/**
+ * A player is treated as a plausible next-turn target when DraftKings market
+ * pressure has not arrived more than half a round before the user's next pick.
+ * This deliberately uses DraftKings Rank/ADP rather than a redraft feed.
+ */
+export function isLikelyAvailableAtDraftKingsPick(
+  player: ShadowBestBallPlayer,
+  pick: number | null,
+  teamCount = 12,
+): boolean {
+  if (pick === null) return false;
+  const marketPick = draftMarketPick(player);
+  const safetyBuffer = Math.max(3, Math.ceil(teamCount / 2));
+  if (marketPick !== null) return marketPick >= pick - safetyBuffer;
+  return player.ourRank !== null && player.ourRank !== undefined && player.ourRank >= pick - safetyBuffer;
+}
 
 export function getDraftMarketSignal(ourRank: number | null, marketRank: number | null): {
   gap: number | null;
@@ -130,12 +154,29 @@ export type ShadowBestBallCandidateResult = {
   dkDraftAction: DraftMarketAction;
   dkMarketPick: number | null;
   dkTargetPick: number | null;
+  twoPickMarginalPoints: number;
+  twoPickP90Delta: number;
+  futureTargetPlayerId: number | null;
+  futureTargetName: string | null;
+  futureTargetPosition: string | null;
+  futureTargetMarketPick: number | null;
+  samePositionReplacementName: string | null;
+  samePositionReplacementPoints: number | null;
+  pointsOverReplacement: number | null;
+  replacementRetention: number | null;
+  strategyLabel: BestBallStrategyLabel;
+  strategyExplanation: string;
 };
 
 export type ShadowBestBallSimulation = {
-  model: "shadow-v0-v1.6-points";
+  model: "shadow-v0-v1.7-two-pick";
   iterations: number;
   candidates: ShadowBestBallCandidateResult[];
+  recommendation: {
+    playerId: number;
+    headline: string;
+    explanation: string;
+  } | null;
 };
 
 const STARTERS: Record<BestBallPosition, number> = { QB: 1, RB: 2, WR: 3, TE: 1 };
@@ -233,24 +274,47 @@ export function selectBestBallLineup(
 export function simulateShadowBestBallCandidates(input: {
   roster: ShadowBestBallPlayer[];
   candidates: ShadowBestBallPlayer[];
+  futureCandidates?: ShadowBestBallPlayer[];
   iterations?: number;
   nextUserPick?: number | null;
   followingUserPick?: number | null;
   teamCount?: number;
 }): ShadowBestBallSimulation {
   const iterations = Math.min(500, Math.max(40, Math.round(input.iterations ?? 160)));
+  const futureOptions = (input.futureCandidates ?? [])
+    .filter((player, index, rows) => BEST_BALL_POSITIONS.includes(player.position as BestBallPosition)
+      && rows.findIndex((row) => row.playerId === player.playerId) === index
+      && isLikelyAvailableAtDraftKingsPick(player, input.followingUserPick ?? null, input.teamCount))
+    .sort((a, b) => (a.ourRank ?? 999) - (b.ourRank ?? 999))
+    .slice(0, 36);
+  const futureByCandidate = new Map(input.candidates.map((candidate) => [
+    candidate.playerId,
+    futureOptions.filter((player) => player.playerId !== candidate.playerId
+      && canAddCompletableBestBallPlayer([...input.roster, candidate], player)),
+  ]));
   const baselineSeasons: number[] = [];
   const candidateSeasons = new Map<number, number[]>();
+  const pairSeasons = new Map<string, number[]>();
   const candidateCountedPoints = new Map<number, number>();
   const candidateCountedWeeks = new Map<number, number>();
-  for (const candidate of input.candidates) candidateSeasons.set(candidate.playerId, []);
+  for (const candidate of input.candidates) {
+    candidateSeasons.set(candidate.playerId, []);
+    for (const future of futureByCandidate.get(candidate.playerId) ?? []) {
+      pairSeasons.set(`${candidate.playerId}:${future.playerId}`, []);
+    }
+  }
+
+  const simulationPlayers = [...input.roster, ...input.candidates, ...futureOptions]
+    .filter((player, index, rows) => rows.findIndex((row) => row.playerId === player.playerId) === index);
 
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     let baselineSeason = 0;
     const withCandidateSeason = new Map(input.candidates.map((candidate) => [candidate.playerId, 0]));
+    const withPairSeason = new Map<string, number>();
+    for (const key of pairSeasons.keys()) withPairSeason.set(key, 0);
     for (let week = 1; week <= 17; week += 1) {
       const scoreMap = new Map<number, number>();
-      for (const player of [...input.roster, ...input.candidates]) {
+      for (const player of simulationPlayers) {
         if (!scoreMap.has(player.playerId)) scoreMap.set(player.playerId, weeklyPoints(player, week, iteration));
       }
       const baseline = selectBestBallLineup(input.roster, scoreMap);
@@ -262,10 +326,16 @@ export function simulateShadowBestBallCandidates(input: {
           candidateCountedPoints.set(candidate.playerId, (candidateCountedPoints.get(candidate.playerId) ?? 0) + (scoreMap.get(candidate.playerId) ?? 0));
           candidateCountedWeeks.set(candidate.playerId, (candidateCountedWeeks.get(candidate.playerId) ?? 0) + 1);
         }
+        for (const future of futureByCandidate.get(candidate.playerId) ?? []) {
+          const key = `${candidate.playerId}:${future.playerId}`;
+          const pairLineup = selectBestBallLineup([...input.roster, candidate, future], scoreMap);
+          withPairSeason.set(key, (withPairSeason.get(key) ?? 0) + pairLineup.points);
+        }
       }
     }
     baselineSeasons.push(baselineSeason);
     for (const candidate of input.candidates) candidateSeasons.get(candidate.playerId)?.push(withCandidateSeason.get(candidate.playerId) ?? baselineSeason);
+    for (const [key, season] of withPairSeason) pairSeasons.get(key)?.push(season);
   }
 
   const baselineMean = baselineSeasons.reduce((sum, value) => sum + value, 0) / iterations;
@@ -273,6 +343,27 @@ export function simulateShadowBestBallCandidates(input: {
   const candidates = input.candidates.map((candidate): ShadowBestBallCandidateResult => {
     const seasons = candidateSeasons.get(candidate.playerId) ?? [];
     const rosterMeanWithCandidate = seasons.reduce((sum, value) => sum + value, 0) / Math.max(1, seasons.length);
+    const pairResults = (futureByCandidate.get(candidate.playerId) ?? []).map((future) => {
+      const pairValues = pairSeasons.get(`${candidate.playerId}:${future.playerId}`) ?? [];
+      return {
+        future,
+        values: pairValues,
+        mean: pairValues.reduce((sum, value) => sum + value, 0) / Math.max(1, pairValues.length),
+        p90: percentile(pairValues, 0.9),
+      };
+    }).sort((a, b) => b.mean - a.mean || b.p90 - a.p90 || (a.future.ourRank ?? 999) - (b.future.ourRank ?? 999));
+    const bestPair = pairResults[0] ?? null;
+    const samePositionReplacement = (futureByCandidate.get(candidate.playerId) ?? [])
+      .filter((future) => future.position === candidate.position)
+      .sort((a, b) => (a.ourRank ?? 999) - (b.ourRank ?? 999))[0] ?? null;
+    const candidatePoints = candidate.projectedPoints ?? null;
+    const replacementPoints = samePositionReplacement?.projectedPoints ?? null;
+    const pointsOverReplacement = candidatePoints !== null && replacementPoints !== null
+      ? candidatePoints - replacementPoints
+      : null;
+    const replacementRetention = candidatePoints !== null && candidatePoints > 0 && replacementPoints !== null
+      ? replacementPoints / candidatePoints
+      : null;
     const dkMarket = getDraftMarketSignal(candidate.ourRank ?? null, candidate.dkBestBallRank ?? null);
     const dkTiming = getDraftMarketTiming({
       ourRank: candidate.ourRank ?? null,
@@ -302,8 +393,57 @@ export function simulateShadowBestBallCandidates(input: {
       dkDraftAction: dkTiming.action,
       dkMarketPick: dkTiming.marketPick,
       dkTargetPick: dkTiming.targetPick,
+      twoPickMarginalPoints: Math.max(0, (bestPair?.mean ?? rosterMeanWithCandidate) - baselineMean),
+      twoPickP90Delta: Math.max(0, (bestPair?.p90 ?? percentile(seasons, 0.9)) - baselineP90),
+      futureTargetPlayerId: bestPair?.future.playerId ?? null,
+      futureTargetName: bestPair?.future.name ?? null,
+      futureTargetPosition: bestPair?.future.position ?? null,
+      futureTargetMarketPick: bestPair ? draftMarketPick(bestPair.future) : null,
+      samePositionReplacementName: samePositionReplacement?.name ?? null,
+      samePositionReplacementPoints: replacementPoints,
+      pointsOverReplacement,
+      replacementRetention,
+      strategyLabel: "alternative",
+      strategyExplanation: "Two-pick path evaluated against likely DraftKings availability.",
     };
-  }).sort((a, b) => b.marginalCountedPoints - a.marginalCountedPoints || b.p90RosterDelta - a.p90RosterDelta);
+  }).sort((a, b) => b.twoPickMarginalPoints - a.twoPickMarginalPoints
+    || b.twoPickP90Delta - a.twoPickP90Delta
+    || b.marginalCountedPoints - a.marginalCountedPoints);
 
-  return { model: "shadow-v0-v1.6-points", iterations, candidates };
+  const explainedCandidates = candidates.map((candidate, index): ShadowBestBallCandidateResult => {
+    const percent = candidate.replacementRetention === null ? null : Math.round(candidate.replacementRetention * 100);
+    const replacementExplanation = candidate.samePositionReplacementName === null || percent === null
+      ? `No reliable later ${candidate.position} replacement is visible at pick #${input.followingUserPick ?? "—"}.`
+      : percent >= 90
+        ? `${candidate.position} can wait: ${candidate.samePositionReplacementName} preserves about ${percent}% of this projection.`
+        : percent < 82
+          ? `${candidate.position} tier drop: ${candidate.samePositionReplacementName} preserves only about ${percent}% of this projection.`
+          : `Later ${candidate.position} option ${candidate.samePositionReplacementName} preserves about ${percent}% of this projection.`;
+    const pathExplanation = candidate.futureTargetName
+      ? `Best next target is ${candidate.futureTargetName} (${candidate.futureTargetPosition}) around pick #${input.followingUserPick ?? "—"}.`
+      : "No reliable next-pick partner is available.";
+    const strategyLabel: BestBallStrategyLabel = index === 0
+      ? "best-path"
+      : candidate.replacementRetention !== null && candidate.replacementRetention >= 0.9
+        ? "position-can-wait"
+        : candidate.replacementRetention !== null && candidate.replacementRetention < 0.82
+          ? "tier-drop"
+          : "alternative";
+    return {
+      ...candidate,
+      strategyLabel,
+      strategyExplanation: `${replacementExplanation} ${pathExplanation}`,
+    };
+  });
+
+  const best = explainedCandidates[0] ?? null;
+  const recommendation = best ? {
+    playerId: best.playerId,
+    headline: best.futureTargetName
+      ? `Draft ${best.name} now; target ${best.futureTargetName} at #${input.followingUserPick ?? "—"}`
+      : `Draft ${best.name} now`,
+    explanation: `This is the strongest simulated two-pick path, not simply the largest DraftKings discount. ${best.strategyExplanation}`,
+  } : null;
+
+  return { model: "shadow-v0-v1.7-two-pick", iterations, candidates: explainedCandidates, recommendation };
 }
