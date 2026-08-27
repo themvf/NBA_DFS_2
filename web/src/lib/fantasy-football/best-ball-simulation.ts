@@ -48,7 +48,24 @@ export type ShadowBestBallPlayer = {
   projectionHigh: number | null;
   expectedGames: number | null;
   confidence: number | null;
+  ourRank?: number | null;
+  yahooXRank?: number | null;
+  yahooAdp?: number | null;
 };
+
+export type YahooMarketSignal = "major-discount" | "discount" | "fair" | "premium" | "unavailable";
+
+export function getYahooMarketSignal(ourRank: number | null, yahooXRank: number | null): {
+  gap: number | null;
+  signal: YahooMarketSignal;
+} {
+  if (ourRank === null || yahooXRank === null) return { gap: null, signal: "unavailable" };
+  const gap = yahooXRank - ourRank;
+  if (gap >= 12) return { gap, signal: "major-discount" };
+  if (gap >= 5) return { gap, signal: "discount" };
+  if (gap <= -5) return { gap, signal: "premium" };
+  return { gap, signal: "fair" };
+}
 
 export type BestBallLineupResult = {
   points: number;
@@ -66,6 +83,12 @@ export type ShadowBestBallCandidateResult = {
   baselineRosterMean: number;
   rosterMeanWithCandidate: number;
   confidence: number | null;
+  ourRank: number | null;
+  projectedPoints: number | null;
+  yahooXRank: number | null;
+  yahooAdp: number | null;
+  yahooRankGap: number | null;
+  yahooMarketSignal: YahooMarketSignal;
 };
 
 export type ShadowBestBallSimulation = {
@@ -206,6 +229,7 @@ export function simulateShadowBestBallCandidates(input: {
   const candidates = input.candidates.map((candidate): ShadowBestBallCandidateResult => {
     const seasons = candidateSeasons.get(candidate.playerId) ?? [];
     const rosterMeanWithCandidate = seasons.reduce((sum, value) => sum + value, 0) / Math.max(1, seasons.length);
+    const yahooMarket = getYahooMarketSignal(candidate.ourRank ?? null, candidate.yahooXRank ?? null);
     return {
       playerId: candidate.playerId,
       name: candidate.name,
@@ -217,6 +241,12 @@ export function simulateShadowBestBallCandidates(input: {
       baselineRosterMean: baselineMean,
       rosterMeanWithCandidate,
       confidence: candidate.confidence,
+      ourRank: candidate.ourRank ?? null,
+      projectedPoints: candidate.projectedPoints,
+      yahooXRank: candidate.yahooXRank ?? null,
+      yahooAdp: candidate.yahooAdp ?? null,
+      yahooRankGap: yahooMarket.gap,
+      yahooMarketSignal: yahooMarket.signal,
     };
   }).sort((a, b) => b.marginalCountedPoints - a.marginalCountedPoints || b.p90RosterDelta - a.p90RosterDelta);
 

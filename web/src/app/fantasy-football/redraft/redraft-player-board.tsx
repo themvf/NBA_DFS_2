@@ -10,11 +10,11 @@ import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds"
 import ProjectionNotation from "../rankings/projection-notation";
 import InjuryMarker from "@/components/fantasy-football/injury-marker";
 
-const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(260px,1.3fr)_150px_126px_96px_78px_92px_86px_100px]";
-const TABLE_MIN_WIDTH = "min-w-[1500px]";
+const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(260px,1.3fr)_150px_126px_96px_78px_108px_92px_86px_100px]";
+const TABLE_MIN_WIDTH = "min-w-[1610px]";
 const FLEX_POSITIONS = new Set<string>(REDRAFT_FLEX_POSITIONS);
 
-type SortKey = "skillRank" | "overallRank" | "name" | "adp" | "avail" | "gp2025" | "fpts2025" | "fpProj" | "ourProj" | "projDelta";
+type SortKey = "skillRank" | "overallRank" | "name" | "adp" | "yahooRank" | "avail" | "gp2025" | "fpts2025" | "fpProj" | "ourProj" | "projDelta";
 type SortDir = "asc" | "desc";
 
 // Lower-is-better columns (rank/ADP-shaped) default to ascending on first
@@ -28,6 +28,7 @@ const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; ti
   { key: "fpProj", label: "FantasyPros PPR Proj.", defaultDir: "desc" },
   { key: "fpts2025", label: "2025 FPTS", defaultDir: "desc", title: "Actual 2025 PPR fantasy points. For DEF this is real Yahoo-scored team-defense scoring." },
   { key: "adp", label: "ADP", defaultDir: "asc", title: "12-team ADP from Fantasy Football Calculator. Comparison data only -- never changes our rank or projection." },
+  { key: "yahooRank", label: "Yahoo XRank", defaultDir: "asc", title: "Yahoo's own pre-draft XRank, with Yahoo ADP below it. Positive gap versus our rank means Yahoo buries a player we value earlier -- potential room-specific value. Market context only." },
   { key: "avail", label: "Avail.", defaultDir: "desc", title: "P(still available at your next pick), from FFC's observed ADP mean/variance/sample size" },
   { key: "gp2025", label: "2025 GP", defaultDir: "desc" },
   { key: "projDelta", label: "Our Δ FP", defaultDir: "desc", title: "Our projection minus FantasyPros'. Positive = we project this player higher. Comparison only -- never blended into our board." },
@@ -69,6 +70,9 @@ const RedraftPlayerRow = memo(function RedraftPlayerRow({ player, skillRank, can
   const projDelta = player.ourProjectedPoints !== null && player.fantasyProsProjectedPoints !== null
     ? player.ourProjectedPoints - player.fantasyProsProjectedPoints
     : null;
+  const yahooRankDelta = player.yahooXRank !== null && player.ourRank !== null
+    ? player.yahooXRank - player.ourRank
+    : null;
   const isDefense = player.position === "DST";
   const hasInjuryMarker = Boolean(player.injuryStatus || player.injuryDetails);
   const visibleIndicators = player.indicators.filter((indicator) => indicator.code !== "INJURY");
@@ -94,6 +98,9 @@ const RedraftPlayerRow = memo(function RedraftPlayerRow({ player, skillRank, can
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3 font-semibold">{formatPriorSeasonFantasyPoints(player.fantasyPoints2025, player.positionFinish2025, player.positionFinishTieCount2025)}</div>
     <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
+    <div role="cell" className="p-3" title={player.yahooCapturedAt ? `Yahoo pre-draft snapshot captured ${new Date(player.yahooCapturedAt).toLocaleString()}. Comparison only; never blended into our projection.` : "No matched Yahoo pre-draft ranking"}>
+      {player.yahooXRank !== null ? <><p className="font-black text-purple-700">{player.yahooXRank.toFixed(1)}</p><p className="text-[10px] text-muted-foreground">ADP {player.yahooAdp?.toFixed(1) ?? "—"}</p>{yahooRankDelta !== null && <p className={`text-[10px] font-bold ${yahooRankDelta > 0 ? "text-emerald-700" : yahooRankDelta < 0 ? "text-red-700" : "text-muted-foreground"}`}>{yahooRankDelta > 0 ? "+" : ""}{yahooRankDelta.toFixed(1)} vs us</p>}</> : <span className="text-muted-foreground">—</span>}
+    </div>
     <div role="cell" className="p-3"><AvailabilityCell odds={odds} /></div>
     <div role="cell" className="p-3">{player.games2025 ?? "—"}</div>
     <div role="cell" className={`p-3 font-bold ${projDelta === null ? "text-muted-foreground" : projDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}>{projDelta === null ? "—" : `${projDelta >= 0 ? "+" : ""}${projDelta.toFixed(1)}`}</div>
@@ -106,6 +113,7 @@ function sortValue(player: FantasyRankingRow, key: SortKey, skillRank: number, a
     case "overallRank": return player.ourRank ?? player.ecr ?? skillRank;
     case "name": return player.name;
     case "adp": return player.adp;
+    case "yahooRank": return player.yahooXRank;
     case "avail": return availProbability;
     case "gp2025": return player.games2025;
     case "fpts2025": return player.fantasyPoints2025;

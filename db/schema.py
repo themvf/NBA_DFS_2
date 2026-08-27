@@ -2221,6 +2221,36 @@ TABLES = [
         source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id),
         UNIQUE(draft_group_id, dk_player_id, captured_at)
     )""",
+    # Yahoo's own pre-draft XRank/ADP is a manually captured market surface,
+    # separate from our independent rank and the FFC/DraftKings feeds. Preserve
+    # the exact pasted export once per source snapshot so the normalized rows
+    # remain auditable and reproducible.
+    """CREATE TABLE IF NOT EXISTS ff_yahoo_predraft_captures (
+        source_snapshot_id BIGINT PRIMARY KEY REFERENCES ff_source_snapshots(id) ON DELETE CASCADE,
+        season INTEGER NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL,
+        raw_text TEXT NOT NULL,
+        format_version TEXT NOT NULL DEFAULT 'yahoo-paste-v1',
+        source_label TEXT NOT NULL DEFAULT 'Yahoo Fantasy Pre-Draft Rankings'
+    )""",
+    """CREATE TABLE IF NOT EXISTS ff_yahoo_predraft_rankings (
+        id BIGSERIAL PRIMARY KEY,
+        source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id) ON DELETE CASCADE,
+        season INTEGER NOT NULL,
+        player_id BIGINT REFERENCES ff_players(id) ON DELETE SET NULL,
+        source_order INTEGER NOT NULL,
+        display_name TEXT NOT NULL,
+        position TEXT NOT NULL,
+        team_abbrev TEXT,
+        bye_week INTEGER,
+        xrank DOUBLE PRECISION NOT NULL,
+        adp DOUBLE PRECISION,
+        captured_at TIMESTAMPTZ NOT NULL,
+        match_method TEXT NOT NULL,
+        raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+        UNIQUE(source_snapshot_id, source_order),
+        CHECK(position IN ('QB', 'RB', 'WR', 'TE', 'K', 'DST'))
+    )""",
 ]
 
 MIGRATIONS = [
@@ -3090,6 +3120,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_captured ON ff_adp_snapshots(season, scoring, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_dk_bestball_adp_group ON ff_dk_bestball_adp(draft_group_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_dk_bestball_adp_player ON ff_dk_bestball_adp(player_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_ff_yahoo_predraft_player ON ff_yahoo_predraft_rankings(player_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_ff_yahoo_predraft_snapshot ON ff_yahoo_predraft_rankings(source_snapshot_id, source_order)",
     # Tennis canonical/history/quote foundation (SCRUM-20)
     "CREATE INDEX IF NOT EXISTS idx_tennis_players_tour_name ON tennis_players(tour, norm_name)",
     "CREATE INDEX IF NOT EXISTS idx_tennis_aliases_lookup ON tennis_player_aliases(provider, tour, norm_name)",

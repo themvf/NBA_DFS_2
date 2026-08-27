@@ -38,6 +38,8 @@ const FANTASY_FOOTBALL_DDLS = [
   // DraftKings' own Best Ball ADP -- manual, cookie-gated capture, see
   // db/schema.py and ingest/ff_dk_bestball_adp.py for the full contract.
   `CREATE TABLE IF NOT EXISTS ff_dk_bestball_adp (id BIGSERIAL PRIMARY KEY, draft_group_id INTEGER NOT NULL, season INTEGER NOT NULL, dk_player_id BIGINT NOT NULL, player_id BIGINT REFERENCES ff_players(id) ON DELETE SET NULL, display_name TEXT NOT NULL, dk_team_id INTEGER, average_draft_position DOUBLE PRECISION, draft_percentage DOUBLE PRECISION, rank INTEGER, is_available BOOLEAN NOT NULL DEFAULT TRUE, captured_at TIMESTAMPTZ NOT NULL, source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id), UNIQUE(draft_group_id, dk_player_id, captured_at))`,
+  `CREATE TABLE IF NOT EXISTS ff_yahoo_predraft_captures (source_snapshot_id BIGINT PRIMARY KEY REFERENCES ff_source_snapshots(id) ON DELETE CASCADE, season INTEGER NOT NULL, captured_at TIMESTAMPTZ NOT NULL, raw_text TEXT NOT NULL, format_version TEXT NOT NULL DEFAULT 'yahoo-paste-v1', source_label TEXT NOT NULL DEFAULT 'Yahoo Fantasy Pre-Draft Rankings')`,
+  `CREATE TABLE IF NOT EXISTS ff_yahoo_predraft_rankings (id BIGSERIAL PRIMARY KEY, source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id) ON DELETE CASCADE, season INTEGER NOT NULL, player_id BIGINT REFERENCES ff_players(id) ON DELETE SET NULL, source_order INTEGER NOT NULL, display_name TEXT NOT NULL, position TEXT NOT NULL, team_abbrev TEXT, bye_week INTEGER, xrank DOUBLE PRECISION NOT NULL, adp DOUBLE PRECISION, captured_at TIMESTAMPTZ NOT NULL, match_method TEXT NOT NULL, raw_row JSONB NOT NULL DEFAULT '{}'::jsonb, UNIQUE(source_snapshot_id, source_order))`,
   `CREATE INDEX IF NOT EXISTS idx_ff_rank_sets_latest ON ff_ranking_sets(season, ranking_type, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_rankings_board ON ff_player_rankings(ranking_set_id, COALESCE(our_rank, overall_rank))`,
   `CREATE INDEX IF NOT EXISTS idx_ff_drafts_recent ON ff_draft_sessions(updated_at DESC)`,
@@ -45,6 +47,8 @@ const FANTASY_FOOTBALL_DDLS = [
   `CREATE INDEX IF NOT EXISTS idx_ff_adp_snapshots_captured ON ff_adp_snapshots(season, scoring, captured_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_dk_bestball_adp_group ON ff_dk_bestball_adp(draft_group_id, captured_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_dk_bestball_adp_player ON ff_dk_bestball_adp(player_id, captured_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_yahoo_predraft_player ON ff_yahoo_predraft_rankings(player_id, captured_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_yahoo_predraft_snapshot ON ff_yahoo_predraft_rankings(source_snapshot_id, source_order)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_player ON ff_player_injury_observations(player_id, observed_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_source ON ff_player_injury_observations(source, season, observed_at DESC)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active`,

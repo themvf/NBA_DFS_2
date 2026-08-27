@@ -214,6 +214,9 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
       projectionHigh: player.projectionHigh,
       expectedGames: player.expectedGames,
       confidence: player.confidence,
+      ourRank: player.ourRank,
+      yahooXRank: player.yahooXRank,
+      yahooAdp: player.yahooAdp,
     });
     const decisionCandidates = [decisionPlan.primary, ...decisionPlan.fallbacks]
       .filter((player, index, rows) => rows.findIndex((row) => row.playerId === player.playerId) === index);

@@ -32,6 +32,10 @@ export type FantasyRankingRow = {
   dkBestBallDraftPct: number | null;
   dkBestBallDraftGroupId: number | null;
   dkBestBallCapturedAt: string | null;
+  yahooXRank: number | null;
+  yahooAdp: number | null;
+  yahooSourceOrder: number | null;
+  yahooCapturedAt: string | null;
   projectionLow: number | null;
   projectionHigh: number | null;
   rankMin: number | null;
@@ -213,6 +217,8 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     dk.average_draft_position AS "dkBestBallAdp",dk.rank AS "dkBestBallRank",
     dk.draft_percentage AS "dkBestBallDraftPct",dk.draft_group_id AS "dkBestBallDraftGroupId",
     dk.captured_at::text AS "dkBestBallCapturedAt",
+    yahoo.xrank AS "yahooXRank",yahoo.adp AS "yahooAdp",
+    yahoo.source_order AS "yahooSourceOrder",yahoo.captured_at::text AS "yahooCapturedAt",
     r.projected_points AS "projectedPoints",r.projection_low AS "projectionLow",r.projection_high AS "projectionHigh",
     r.rank_min AS "rankMin",r.rank_max AS "rankMax",r.rank_std AS "rankStd",
     fp.projected_points AS "fantasyProsProjectedPoints",
@@ -297,11 +303,21 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
       WHERE player_id=p.id
       ORDER BY captured_at DESC,id DESC LIMIT 1
     ) dk ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT yr.xrank,yr.adp,yr.source_order,yr.captured_at
+      FROM ff_yahoo_predraft_rankings yr
+      JOIN ff_source_snapshots ys ON ys.id=yr.source_snapshot_id
+      WHERE yr.player_id=p.id AND yr.season=rs.season
+        AND ys.source='yahoo' AND ys.dataset='predraft-rankings'
+        AND ys.status IN ('success','partial')
+      ORDER BY yr.captured_at DESC,yr.id DESC LIMIT 1
+    ) yahoo ON TRUE
     WHERE r.ranking_set_id=${rankingSetId}
     GROUP BY p.id,r.id,rs.id,f.id,prior.position_finish,prior.position_finish_tie_count,
       fp.projected_points,fp.fetched_at,fp.source_updated_at,
       injury.details,
-      dk.average_draft_position,dk.rank,dk.draft_percentage,dk.draft_group_id,dk.captured_at
+      dk.average_draft_position,dk.rank,dk.draft_percentage,dk.draft_group_id,dk.captured_at,
+      yahoo.xrank,yahoo.adp,yahoo.source_order,yahoo.captured_at
     ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
   return queryRows<FantasyRankingRow>(result);
 }
