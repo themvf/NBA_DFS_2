@@ -23,6 +23,13 @@ const TIMING_LABEL = {
   "no-market-data": { label: "NO YAHOO MATCH", className: "bg-slate-100 text-slate-500" },
 } as const;
 
+const FINAL_ACTION = {
+  "draft-now": { label: "DRAFT NOW", className: "border-emerald-300 bg-emerald-50 text-emerald-950", badge: "bg-emerald-700 text-white" },
+  "target-next": { label: "TARGET NEXT", className: "border-amber-300 bg-amber-50 text-amber-950", badge: "bg-amber-500 text-amber-950" },
+  wait: { label: "WAIT", className: "border-blue-300 bg-blue-50 text-blue-950", badge: "bg-blue-700 text-white" },
+  pass: { label: "PASS", className: "border-rose-300 bg-rose-50 text-rose-950", badge: "bg-rose-700 text-white" },
+} as const;
+
 function signed(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
 }
@@ -36,25 +43,31 @@ export default function YahooRedraftStrategyPanel({ strategy, canDraft, onDraft 
         <h2 className="mt-1 text-2xl font-black">Two-pick opportunity cost and Yahoo room timing</h2>
         <p className="mt-1 max-w-3xl text-sm text-emerald-950/75">This compares each pick with the best player likely to remain at your following Yahoo turn. It values starters, flex depth, and later positional replacements instead of automatically filling an empty QB or TE slot.</p>
       </div>
-      <div className="text-right"><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800">YAHOO · TWO-PICK V1</span><p className="mt-2 text-xs font-bold text-emerald-950/65">Picks: #{strategy.nextPick ?? "—"}{strategy.followingPick !== null ? ` → #${strategy.followingPick}` : ""}</p></div>
+      <div className="text-right"><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800">YAHOO · DECISION V2</span><p className="mt-2 text-xs font-bold text-emerald-950/65">Picks: #{strategy.nextPick ?? "—"}{strategy.followingPick !== null ? ` → #${strategy.followingPick}` : ""}</p></div>
     </div>
 
-    {strategy.recommendation ? <div className="mt-4 rounded-2xl border border-emerald-300 bg-white p-4">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">Recommended path</p>
-      <p className="mt-1 text-lg font-black text-slate-950">{strategy.recommendation.headline}</p>
-      <p className="mt-1 text-sm text-slate-700">{strategy.recommendation.explanation}</p>
+    {strategy.recommendation ? <div className={`mt-4 rounded-2xl border p-4 ${FINAL_ACTION[strategy.recommendation.action].className}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-4xl">
+          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black tracking-wide ${FINAL_ACTION[strategy.recommendation.action].badge}`}>{FINAL_ACTION[strategy.recommendation.action].label}</span>
+          <p className="mt-2 text-2xl font-black">{strategy.recommendation.headline}</p>
+          {strategy.recommendation.sequence ? <p className="mt-1 text-base font-bold">{strategy.recommendation.sequence}</p> : null}
+          <p className="mt-1 text-sm opacity-80">{strategy.recommendation.explanation}</p>
+        </div>
+        {canDraft && strategy.recommendation.action === "draft-now" ? <button onClick={() => onDraft(strategy.recommendation!.playerId)} className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-black text-white shadow-sm">Draft recommended player</button> : null}
+      </div>
     </div> : null}
 
     <div className="mt-5 overflow-x-auto rounded-2xl border border-emerald-200 bg-white">
       <table className="w-full min-w-[1120px] text-left text-sm">
         <thead className="bg-emerald-100/70 text-xs uppercase tracking-wide text-emerald-950/70"><tr>
           <th className="p-3">Candidate</th>
-          <th className="p-3 text-right" title="Projected roster improvement from this player plus the best likely player at your following turn.">Two-pick roster Δ</th>
-          <th className="p-3 text-right" title="Projected roster improvement from this pick by itself.">One-pick Δ</th>
+          <th className="p-3 text-right" title="Expected season points this player and the named next target add to the current roster.">Two-pick plan value</th>
+          <th className="p-3 text-right" title="Expected season points this player adds to the current roster by himself.">Points added now</th>
           <th className="p-3 text-right">Our value</th>
           <th className="p-3 text-right">Yahoo market</th>
           <th className="p-3">Strategy</th>
-          <th className="p-3">Yahoo timing</th>
+          <th className="p-3" title="Yahoo-only acquisition timing. The large decision card combines timing with football value.">Market timing</th>
           <th className="p-3"></th>
         </tr></thead>
         <tbody>{strategy.candidates.map((candidate, index) => <tr key={candidate.playerId} className={`border-t border-emerald-100 ${index === 0 ? "bg-emerald-50/60" : ""}`}>
@@ -70,6 +83,6 @@ export default function YahooRedraftStrategyPanel({ strategy, canDraft, onDraft 
       </table>
     </div>
 
-    <p className="mt-3 text-xs text-emerald-950/70"><b>Strategy order:</b> candidates are ranked by this pick plus the best plausible option at the following turn. Yahoo XRank and ADP estimate availability; our projections determine football value. Kicker and defense are held out of early-round recommendations and enter the comparison in Round 12.</p>
+    <p className="mt-3 text-xs text-emerald-950/70"><b>How to use this:</b> follow the large action card first. The table preserves the supporting evidence. <b>Two-pick plan value</b> is combined expected roster improvement, not an edge over the other rows. Yahoo XRank and ADP determine acquisition timing; our projections determine football value. Kicker and defense enter recommendations in Round 12.</p>
   </section>;
 }

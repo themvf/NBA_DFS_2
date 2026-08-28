@@ -21,6 +21,7 @@ export type YahooRedraftStrategyPlayer = RedraftRosterPlayer & {
 
 export type YahooStrategyLabel = "best-path" | "position-can-wait" | "tier-drop" | "alternative";
 export type YahooTimingAction = "take-now" | "target-soon" | "wait" | "pass-at-price" | "no-market-data";
+export type YahooFinalAction = "draft-now" | "target-next" | "wait" | "pass";
 
 export type YahooRedraftStrategyCandidate = YahooRedraftStrategyPlayer & {
   onePickValueAdded: number;
@@ -28,6 +29,8 @@ export type YahooRedraftStrategyCandidate = YahooRedraftStrategyPlayer & {
   futureTargetPlayerId: number | null;
   futureTargetName: string | null;
   futureTargetPosition: string | null;
+  futureTargetMarketPick: number | null;
+  acquisitionOrderScore: number;
   samePositionReplacementName: string | null;
   replacementRetention: number | null;
   pointsOverReplacement: number | null;
@@ -40,10 +43,17 @@ export type YahooRedraftStrategyCandidate = YahooRedraftStrategyPlayer & {
 };
 
 export type YahooRedraftStrategy = {
-  model: "yahoo-redraft-two-pick-v1";
+  model: "yahoo-redraft-decision-v2";
   nextPick: number | null;
   followingPick: number | null;
-  recommendation: { playerId: number; headline: string; explanation: string } | null;
+  recommendation: {
+    playerId: number;
+    action: YahooFinalAction;
+    headline: string;
+    sequence: string | null;
+    explanation: string;
+    planEdge: number | null;
+  } | null;
   candidates: YahooRedraftStrategyCandidate[];
 };
 
@@ -68,7 +78,6 @@ export function getYahooMarketPick(player: YahooRedraftStrategyPlayer): number |
 export function isLikelyAvailableAtYahooPick(
   player: YahooRedraftStrategyPlayer,
   pick: number | null,
-  _teamCount = REDRAFT_TEAM_COUNT,
 ): boolean {
   if (pick === null) return false;
   const marketPick = getYahooMarketPick(player);
@@ -181,12 +190,12 @@ export function buildYahooRedraftStrategy(input: {
     .filter((player, index, rows) => rows.findIndex((row) => row.playerId === player.playerId) === index)
     .filter((player) => canAddRedraftPlayer(input.roster, player));
   if (input.roster.length >= REDRAFT_ROSTER_SIZE || !available.length) {
-    return { model: "yahoo-redraft-two-pick-v1", nextPick: input.nextPick, followingPick: input.followingPick, recommendation: null, candidates: [] };
+    return { model: "yahoo-redraft-decision-v2", nextPick: input.nextPick, followingPick: input.followingPick, recommendation: null, candidates: [] };
   }
 
   const currentCandidates = buildCandidatePool(available, input.roster, input.nextPick);
   const futurePool = available
-    .filter((player) => isLikelyAvailableAtYahooPick(player, input.followingPick, teamCount))
+    .filter((player) => isLikelyAvailableAtYahooPick(player, input.followingPick))
     .sort((a, b) => (a.ourRank ?? 999) - (b.ourRank ?? 999))
     .slice(0, 50);
   const baselineValue = scoreYahooRedraftRoster(input.roster);
@@ -205,6 +214,10 @@ export function buildYahooRedraftStrategy(input: {
     const replacementPoints = samePositionReplacement ? effectivePoints(samePositionReplacement) : null;
     const retention = replacementPoints !== null && candidatePoints > 0 ? replacementPoints / candidatePoints : null;
     const timing = yahooTiming({ player: candidate, nextPick: input.nextPick, followingPick: input.followingPick, teamCount });
+    const futureTargetMarketPick = bestPair ? getYahooMarketPick(bestPair.future) : null;
+    const acquisitionOrderScore = timing.marketPick !== null && futureTargetMarketPick !== null
+      ? futureTargetMarketPick - timing.marketPick
+      : 0;
     return {
       ...candidate,
       onePickValueAdded: Math.max(0, onePickValue - baselineValue),
@@ -212,6 +225,8 @@ export function buildYahooRedraftStrategy(input: {
       futureTargetPlayerId: bestPair?.future.playerId ?? null,
       futureTargetName: bestPair?.future.name ?? null,
       futureTargetPosition: bestPair?.future.position ?? null,
+      futureTargetMarketPick,
+      acquisitionOrderScore,
       samePositionReplacementName: samePositionReplacement?.name ?? null,
       replacementRetention: retention,
       pointsOverReplacement: replacementPoints === null ? null : candidatePoints - replacementPoints,
@@ -223,6 +238,7 @@ export function buildYahooRedraftStrategy(input: {
       strategyExplanation: "Yahoo two-pick path evaluated.",
     };
   }).sort((a, b) => b.twoPickValueAdded - a.twoPickValueAdded
+    || b.acquisitionOrderScore - a.acquisitionOrderScore
     || (b.pointsOverReplacement ?? -999) - (a.pointsOverReplacement ?? -999)
     || (a.ourRank ?? 999) - (b.ourRank ?? 999));
 
@@ -231,7 +247,9 @@ export function buildYahooRedraftStrategy(input: {
     const positionLabel = candidate.position === "DST" ? "DEF" : candidate.position;
     const replacementText = candidate.samePositionReplacementName === null || percent === null
       ? `No reliable later ${positionLabel} replacement is visible at pick #${input.followingPick ?? "—"}.`
-      : percent >= 90
+      : percent > 101
+        ? `${positionLabel} can wait: ${candidate.samePositionReplacementName} projects about ${percent - 100}% higher and should be available later.`
+        : percent >= 90
         ? `${positionLabel} can wait: ${candidate.samePositionReplacementName} retains about ${percent}% of this projection.`
         : percent < 82
           ? `${positionLabel} tier drop: ${candidate.samePositionReplacementName} retains only about ${percent}% of this projection.`
@@ -250,17 +268,55 @@ export function buildYahooRedraftStrategy(input: {
   });
 
   const best = explained[0] ?? null;
+  const bestPairKey = best?.futureTargetPlayerId === null || best?.futureTargetPlayerId === undefined
+    ? best ? `${best.playerId}` : null
+    : [best.playerId, best.futureTargetPlayerId].sort((a, b) => a - b).join(":");
+  const nextDistinctPlan = bestPairKey === null ? null : explained.find((candidate) => {
+    const key = candidate.futureTargetPlayerId === null
+      ? `${candidate.playerId}`
+      : [candidate.playerId, candidate.futureTargetPlayerId].sort((a, b) => a - b).join(":");
+    return key !== bestPairKey;
+  }) ?? null;
+  const planEdge = best && nextDistinctPlan ? Math.max(0, best.twoPickValueAdded - nextDistinctPlan.twoPickValueAdded) : null;
+
+  let recommendation: YahooRedraftStrategy["recommendation"] = null;
+  if (best) {
+    const atFootballValue = best.ourRank !== null && input.nextPick !== null && input.nextPick >= best.ourRank - 3;
+    const action: YahooFinalAction = best.yahooTimingAction === "pass-at-price"
+      ? "pass"
+      : atFootballValue || best.yahooTimingAction === "take-now"
+        ? "draft-now"
+        : best.yahooTimingAction === "target-soon"
+          ? "target-next"
+          : "wait";
+    const headline = action === "draft-now"
+      ? `DRAFT ${best.name.toUpperCase()}`
+      : action === "target-next"
+        ? `WAIT NOW — TARGET ${best.name.toUpperCase()} NEXT`
+        : action === "pass"
+          ? `PASS ON ${best.name.toUpperCase()} AT THIS PRICE`
+          : `WAIT — DO NOT REACH FOR ${best.name.toUpperCase()}`;
+    const sequence = best.futureTargetName
+      ? `Preferred sequence: ${best.name} first → ${best.futureTargetName} at #${input.followingPick ?? "—"}`
+      : null;
+    const orderReason = best.futureTargetName && best.yahooMarketPick !== null && best.futureTargetMarketPick !== null
+      ? best.yahooMarketPick < best.futureTargetMarketPick
+        ? `${best.name}'s Yahoo window arrives around #${best.yahooMarketPick.toFixed(1)}, before ${best.futureTargetName} around #${best.futureTargetMarketPick.toFixed(1)}, so take the earlier-closing player first.`
+        : `${best.futureTargetName}'s Yahoo window is earlier, so this sequence carries acquisition risk; use the timing badge before committing.`
+      : "The order uses the best available Yahoo market timing evidence.";
+    const edgeReason = planEdge === null
+      ? "No distinct comparison path is available."
+      : planEdge < 1
+        ? "The next distinct plan is essentially tied, so Yahoo timing decides the order."
+        : `This path projects ${planEdge.toFixed(1)} more roster points than the next distinct two-pick plan.`;
+    recommendation = { playerId: best.playerId, action, headline, sequence, explanation: `${orderReason} ${edgeReason}`, planEdge };
+  }
+
   return {
-    model: "yahoo-redraft-two-pick-v1",
+    model: "yahoo-redraft-decision-v2",
     nextPick: input.nextPick,
     followingPick: input.followingPick,
-    recommendation: best ? {
-      playerId: best.playerId,
-      headline: best.futureTargetName
-        ? `Draft ${best.name} now; target ${best.futureTargetName} at #${input.followingPick ?? "—"}`
-        : `Draft ${best.name} now`,
-      explanation: `This is the strongest Yahoo two-pick path, not simply the largest XRank discount. ${best.strategyExplanation}`,
-    } : null,
+    recommendation,
     candidates: explained,
   };
 }

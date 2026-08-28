@@ -264,12 +264,27 @@ const yahooStrategy = buildYahooRedraftStrategy({
   roster: [], availablePlayers: [yahooEliteQb, yahooEliteTe, yahooLaterQb, yahooLaterTe, earlyKicker],
   nextPick: 25, followingPick: 48, teamCount: 10,
 });
-assert.equal(yahooStrategy.model, "yahoo-redraft-two-pick-v1");
+assert.equal(yahooStrategy.model, "yahoo-redraft-decision-v2");
 assert.equal(yahooStrategy.candidates[0].playerId, yahooEliteTe.playerId);
 assert.equal(yahooStrategy.candidates[0].futureTargetPlayerId, yahooLaterQb.playerId);
 assert.equal(yahooStrategy.candidates.find((candidate) => candidate.playerId === yahooEliteQb.playerId)?.strategyLabel, "position-can-wait");
 assert.ok(!yahooStrategy.candidates.some((candidate) => candidate.playerId === earlyKicker.playerId));
-assert.match(yahooStrategy.recommendation?.headline ?? "", /Draft Yahoo Elite TE now; target Yahoo Later QB at #48/);
+assert.equal(yahooStrategy.recommendation?.action, "draft-now");
+assert.equal(yahooStrategy.recommendation?.headline, "DRAFT YAHOO ELITE TE");
+assert.equal(yahooStrategy.recommendation?.sequence, "Preferred sequence: Yahoo Elite TE first → Yahoo Later QB at #48");
+
+const yahooOrderKittle = { playerId: 406, name: "George Kittle", position: "TE", team: "SF", projectedPoints: 242.5, expectedGames: 17, ourRank: 30, yahooXRank: 109, yahooAdp: 107.7 } satisfies YahooRedraftStrategyPlayer;
+const yahooOrderSutton = { playerId: 407, name: "Courtland Sutton", position: "WR", team: "DEN", projectedPoints: 220, expectedGames: 17, ourRank: 43, yahooXRank: 78, yahooAdp: 79.4 } satisfies YahooRedraftStrategyPlayer;
+const yahooOrderedPair = buildYahooRedraftStrategy({
+  roster: [], availablePlayers: [yahooOrderKittle, yahooOrderSutton],
+  nextPick: 49, followingPick: 72, teamCount: 10,
+});
+assert.equal(yahooOrderedPair.candidates[0].playerId, yahooOrderSutton.playerId);
+assert.equal(yahooOrderedPair.candidates[0].futureTargetPlayerId, yahooOrderKittle.playerId);
+assert.equal(yahooOrderedPair.recommendation?.action, "draft-now");
+assert.equal(yahooOrderedPair.recommendation?.headline, "DRAFT COURTLAND SUTTON");
+assert.equal(yahooOrderedPair.recommendation?.sequence, "Preferred sequence: Courtland Sutton first → George Kittle at #72");
+assert.match(yahooOrderedPair.recommendation?.explanation ?? "", /Sutton's Yahoo window arrives.*before George Kittle/);
 assert.equal(scoreYahooRedraftRoster([yahooEliteQb, yahooEliteTe]), 655);
 assert.deepEqual(getDraftMarketSignal(20, 26), { gap: 6, signal: "discount" });
 assert.deepEqual(getDraftMarketSignal(20, 17), { gap: -3, signal: "fair" });
