@@ -56,9 +56,10 @@ export interface WatchlistMeta {
   valueTotal: number;
   valueInScope: number;
   forwardScored: number;
+  controlCount: number;
 }
 
-export const COHORT_VERSION = "mlb-clv-v2-2026-08-27";
+export const COHORT_VERSION = "mlb-clv-v2-2026-08-28";
 
 /** Only the newest snapshot counts as "open now" -- positions are captured
  * append-only, so without this every past capture would render as live. */
@@ -99,6 +100,7 @@ export async function getWatchlistWallets(): Promise<WatchlistWallet[]> {
       LEFT JOIN pos ON pos.wallet = w.wallet
       LEFT JOIN fwd ON fwd.wallet = w.wallet
      WHERE w.cohort_version = ${COHORT_VERSION}
+       AND w.cohort_group = 'selected'
      ORDER BY w.rank_at_freeze
   `);
   return (rows.rows as Record<string, unknown>[]).map((r) => ({
@@ -182,7 +184,11 @@ export async function getWatchlistMeta(): Promise<WatchlistMeta> {
         WHERE cohort_version = ${COHORT_VERSION}) AS frozen_at,
       (SELECT ts FROM latest) AS captured_at,
       (SELECT COUNT(*)::int FROM polymarket_watchlist_wallets
-        WHERE cohort_version = ${COHORT_VERSION}) AS wallet_count,
+        WHERE cohort_version = ${COHORT_VERSION}
+          AND cohort_group = 'selected') AS wallet_count,
+      (SELECT COUNT(*)::int FROM polymarket_watchlist_wallets
+        WHERE cohort_version = ${COHORT_VERSION}
+          AND cohort_group = 'control') AS control_count,
       (SELECT COUNT(*)::int FROM polymarket_watchlist_positions, latest
         WHERE cohort_version = ${COHORT_VERSION} AND captured_at = latest.ts) AS open_total,
       (SELECT COUNT(*)::int FROM polymarket_watchlist_positions, latest
@@ -207,5 +213,6 @@ export async function getWatchlistMeta(): Promise<WatchlistMeta> {
     valueTotal: Number(r.value_total ?? 0),
     valueInScope: Number(r.value_in_scope ?? 0),
     forwardScored: Number(r.forward_scored ?? 0),
+    controlCount: Number(r.control_count ?? 0),
   };
 }
