@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import {
+  getLatestCaptureAt,
   getSportBreakdown,
   getWatchlistMeta,
   getWatchlistPositions,
@@ -16,11 +17,17 @@ export const metadata: Metadata = {
 };
 
 export default async function PolymarketWatchlistPage() {
+  // Resolve the capture ONCE and pass it into every query. Each query used
+  // to inline its own MAX() subquery, so a capture landing between the four
+  // parallel round trips could leave the wallet table describing a different
+  // snapshot than the positions table below it, with nothing on the page
+  // saying so.
+  const capturedAt = await getLatestCaptureAt();
   const [wallets, positions, breakdown, meta] = await Promise.all([
-    getWatchlistWallets(),
-    getWatchlistPositions(),
-    getSportBreakdown(),
-    getWatchlistMeta(),
+    getWatchlistWallets(capturedAt),
+    getWatchlistPositions(capturedAt),
+    getSportBreakdown(capturedAt),
+    getWatchlistMeta(capturedAt),
   ]);
   return (
     <WatchlistClient

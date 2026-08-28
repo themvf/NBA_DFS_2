@@ -184,6 +184,16 @@ _DDL = [
         window_end TIMESTAMPTZ,
         UNIQUE (cohort_version, wallet, scored_at)
     )""",
+    """CREATE TABLE IF NOT EXISTS polymarket_watchlist_captures (
+        id SERIAL PRIMARY KEY,
+        cohort_version TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL,
+        wallets_expected INTEGER NOT NULL,
+        wallets_written INTEGER NOT NULL,
+        positions_written INTEGER NOT NULL,
+        completed_at TIMESTAMPTZ,
+        UNIQUE (cohort_version, captured_at)
+    )""",
     """CREATE INDEX IF NOT EXISTS idx_pm_watchlist_pos_lookup
          ON polymarket_watchlist_positions(cohort_version, captured_at DESC)""",
 ]
@@ -232,7 +242,8 @@ def freeze_cohort(db: DatabaseManager, report_path: str, sport: str, cohort: str
 
     written = 0
     for group, group_rows in (("selected", rows), ("control", rest)):
-        for rank, row in enumerate(sorted(group_rows, key=lambda r: -r["dev_clv"]), 1):
+        ordered = sorted(group_rows, key=lambda r: -(r.get("dev_clv") or 0.0))
+        for rank, row in enumerate(ordered, 1):
             db.execute(
                 """INSERT INTO polymarket_watchlist_wallets
                      (cohort_version, wallet, display_name, validated_sport, model_version,
@@ -322,7 +333,25 @@ def refresh_positions(db: DatabaseManager, cohort: str) -> Tuple[int, int]:
         print(f"no wallets in cohort {cohort}", file=sys.stderr)
         return (0, 0)
     captured_at = datetime.now(timezone.utc)
+    # Claim the capture up front with completed_at NULL. Readers select the
+    # newest COMPLETED capture, so a run that is still writing -- or that
+    # dies half way -- can never become "the current snapshot".
+    #
+    # This matters more than a normal race because DatabaseManager.execute()
+    # commits per statement, so a capture lands one row at a time over
+    # minutes of throttled HTTP. Without this marker, MAX(captured_at) flips
+    # to the new run the instant its first row commits, and the page renders
+    # 18 of 20 wallets as holding nothing -- indistinguishable from truth.
+    db.execute(
+        """INSERT INTO polymarket_watchlist_captures
+             (cohort_version, captured_at, wallets_expected, wallets_written,
+              positions_written)
+           VALUES (%s,%s,%s,0,0)
+           ON CONFLICT (cohort_version, captured_at) DO NOTHING""",
+        (cohort, captured_at, len(wallets)),
+    )
     total_open = 0
+    wallets_written = 0
     for entry in wallets:
         wallet = entry["wallet"]
         validated = entry["validated_sport"]
@@ -348,10 +377,17 @@ def refresh_positions(db: DatabaseManager, cohort: str) -> Tuple[int, int]:
                  position.get("percentPnl"), position.get("endDate"), captured_at),
             )
         total_open += len(open_positions)
+        wallets_written += 1
         breakdown = Counter(classify_sport(str(p.get("eventSlug") or "")) for p in positions)
         name = entry["display_name"] or wallet[:12]
         print(f"  {name:<16} {len(open_positions):>3} open / {len(positions):>4} total  "
               f"{dict(breakdown.most_common(5))}", file=sys.stderr)
+    db.execute(
+        """UPDATE polymarket_watchlist_captures
+              SET wallets_written = %s, positions_written = %s, completed_at = NOW()
+            WHERE cohort_version = %s AND captured_at = %s""",
+        (wallets_written, total_open, cohort, captured_at),
+    )
     return (len(wallets), total_open)
 
 

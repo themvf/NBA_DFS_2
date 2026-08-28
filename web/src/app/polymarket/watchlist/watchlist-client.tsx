@@ -160,7 +160,7 @@ export function WatchlistClient({
         <Stat
           label="In validated scope"
           value={`${meta.openInScope} (${inScopePct.toFixed(0)}%)`}
-          tone={inScopePct < 50 ? "warn" : "normal"}
+          tone={inScopePct < 50 && meta.openTotal > 0 ? "warn" : "normal"}
         />
         <Stat label="Value at risk" value={money(meta.valueTotal)} />
         <Stat label="Value in scope" value={money(meta.valueInScope)} />
@@ -359,8 +359,8 @@ export function WatchlistClient({
                     <td className="px-3 py-2">{p.title}</td>
                     <td className="px-3 py-2">{p.outcome ?? "—"}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {SPORT_ICON[p.sport ?? "other"] ?? "•"} {p.sport} ·{" "}
-                      {MARKET_TYPE_LABEL[p.marketType ?? ""] ?? p.marketType}
+                      {SPORT_ICON[p.sport ?? "other"] ?? "•"} {p.sport ?? "other"} ·{" "}
+                      {MARKET_TYPE_LABEL[p.marketType ?? ""] ?? p.marketType ?? "unknown"}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {p.avgPrice?.toFixed(3) ?? "—"}
