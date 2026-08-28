@@ -673,9 +673,17 @@ const POLYMARKET_WATCHLIST_DDLS = [
       holdout_clv_at_freeze DOUBLE PRECISION,
       holdout_markets_at_freeze INTEGER,
       rank_at_freeze INTEGER,
+      cohort_group TEXT NOT NULL DEFAULT 'selected',
       frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (cohort_version, wallet)
     )`,
+  // The CREATE above only helps a database that does not have the table
+  // yet. A database provisioned before cohort_group existed keeps the old
+  // shape forever, because CREATE TABLE IF NOT EXISTS no-ops -- and every
+  // read in queries.ts references this column. The Python writer carries
+  // the same repair; both sides need it or whichever runs first wins.
+  `ALTER TABLE polymarket_watchlist_wallets
+     ADD COLUMN IF NOT EXISTS cohort_group TEXT NOT NULL DEFAULT 'selected'`,
   `CREATE TABLE IF NOT EXISTS polymarket_watchlist_positions (
       id SERIAL PRIMARY KEY,
       cohort_version TEXT NOT NULL,
@@ -708,6 +716,16 @@ const POLYMARKET_WATCHLIST_DDLS = [
       window_start TIMESTAMPTZ,
       window_end TIMESTAMPTZ,
       UNIQUE (cohort_version, wallet, scored_at)
+    )`,
+  `CREATE TABLE IF NOT EXISTS polymarket_watchlist_captures (
+      id SERIAL PRIMARY KEY,
+      cohort_version TEXT NOT NULL,
+      captured_at TIMESTAMPTZ NOT NULL,
+      wallets_expected INTEGER NOT NULL,
+      wallets_written INTEGER NOT NULL,
+      positions_written INTEGER NOT NULL,
+      completed_at TIMESTAMPTZ,
+      UNIQUE (cohort_version, captured_at)
     )`,
   `CREATE INDEX IF NOT EXISTS idx_pm_watchlist_pos_lookup
      ON polymarket_watchlist_positions(cohort_version, captured_at DESC)`,

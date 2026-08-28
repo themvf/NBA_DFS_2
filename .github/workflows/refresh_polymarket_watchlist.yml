@@ -42,6 +42,13 @@ on:
 jobs:
   refresh-positions:
     runs-on: ubuntu-latest
+    # GitHub runs every job for every matching schedule entry, so without
+    # this the Monday cron would fire a SECOND position capture an hour
+    # after the daily one -- harmless but contradicting "daily", and it
+    # doubles Monday's exposure to a partial-capture window.
+    if: >-
+      github.event.schedule == '10 11 * * *' ||
+      github.event_name == 'workflow_dispatch'
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
