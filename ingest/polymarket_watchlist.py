@@ -75,7 +75,7 @@ DATA = "https://data-api.polymarket.com"
 THROTTLE_S = 0.15
 POSITIONS_PAGE = 500
 
-COHORT_VERSION = "mlb-clv-v2-2026-08-27"
+COHORT_VERSION = "mlb-clv-v2-2026-08-28"
 
 session = requests.Session()
 session.headers["User-Agent"] = "NBADFS-polymarket-watchlist/1.0 (research)"
@@ -147,6 +147,7 @@ _DDL = [
         holdout_clv_at_freeze DOUBLE PRECISION,
         holdout_markets_at_freeze INTEGER,
         rank_at_freeze INTEGER,
+        cohort_group TEXT NOT NULL DEFAULT 'selected',
         frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (cohort_version, wallet)
     )""",
@@ -191,6 +192,8 @@ _DDL = [
 def ensure_schema(db: DatabaseManager) -> None:
     for ddl in _DDL:
         db.execute(ddl)
+    db.execute("ALTER TABLE polymarket_watchlist_wallets "
+               "ADD COLUMN IF NOT EXISTS cohort_group TEXT NOT NULL DEFAULT 'selected'")
 
 
 # ---------------------------------------------------------------------------
@@ -206,9 +209,16 @@ def freeze_cohort(db: DatabaseManager, report_path: str, sport: str, cohort: str
         report = json.load(handle)
     wf = report.get("walk_forward") or {}
     rows = wf.get("rows") or []
+    rest = wf.get("rest_rows") or []
     if not rows:
         print("report has no walk-forward rows -- nothing to freeze", file=sys.stderr)
         return 0
+    if not rest:
+        print("WARNING: report carries no unselected control group. The forward "
+              "test will only be able to score the selected group's absolute "
+              "CLV, not the selection gap -- which is the actual statistic. "
+              "Re-run the scan with a build that emits rest_rows.",
+              file=sys.stderr)
 
     existing = db.execute_one(
         "SELECT COUNT(*) AS n FROM polymarket_watchlist_wallets WHERE cohort_version = %s",
@@ -221,30 +231,42 @@ def freeze_cohort(db: DatabaseManager, report_path: str, sport: str, cohort: str
         return 0
 
     written = 0
-    for rank, row in enumerate(sorted(rows, key=lambda r: -r["dev_clv"]), 1):
-        db.execute(
-            """INSERT INTO polymarket_watchlist_wallets
-                 (cohort_version, wallet, display_name, validated_sport, model_version,
-                  dev_clv, dev_markets, holdout_clv_at_freeze, holdout_markets_at_freeze,
-                  rank_at_freeze)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-               ON CONFLICT (cohort_version, wallet) DO NOTHING""",
-            (cohort, row["wallet"], row.get("name") or None, sport, "clv-v2",
-             row.get("dev_clv"), row.get("dev_markets"),
-             row.get("holdout_clv"), row.get("holdout_markets"), rank),
-        )
-        written += 1
+    for group, group_rows in (("selected", rows), ("control", rest)):
+        for rank, row in enumerate(sorted(group_rows, key=lambda r: -r["dev_clv"]), 1):
+            db.execute(
+                """INSERT INTO polymarket_watchlist_wallets
+                     (cohort_version, wallet, display_name, validated_sport, model_version,
+                      dev_clv, dev_markets, holdout_clv_at_freeze, holdout_markets_at_freeze,
+                      rank_at_freeze, cohort_group)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (cohort_version, wallet) DO NOTHING""",
+                (cohort, row["wallet"], row.get("name") or None, sport, "clv-v2",
+                 row.get("dev_clv"), row.get("dev_markets"),
+                 row.get("holdout_clv"), row.get("holdout_markets"), rank, group),
+            )
+            written += 1
+    print(f"  selected={len(rows)} control={len(rest)}", file=sys.stderr)
     print(f"froze {written} wallets as cohort {cohort} (validated sport: {sport})",
           file=sys.stderr)
     return written
 
 
-def cohort_wallets(db: DatabaseManager, cohort: str) -> List[Dict[str, Any]]:
+def cohort_wallets(
+    db: DatabaseManager, cohort: str, group: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    if group:
+        return db.execute(
+            """SELECT wallet, display_name, validated_sport, frozen_at, cohort_group
+                 FROM polymarket_watchlist_wallets
+                WHERE cohort_version = %s AND cohort_group = %s
+                ORDER BY rank_at_freeze""",
+            (cohort, group),
+        )
     return db.execute(
-        """SELECT wallet, display_name, validated_sport, frozen_at
+        """SELECT wallet, display_name, validated_sport, frozen_at, cohort_group
              FROM polymarket_watchlist_wallets
             WHERE cohort_version = %s
-            ORDER BY rank_at_freeze""",
+            ORDER BY cohort_group, rank_at_freeze""",
         (cohort,),
     )
 
@@ -291,7 +313,11 @@ def is_open(position: Dict[str, Any]) -> bool:
 
 
 def refresh_positions(db: DatabaseManager, cohort: str) -> Tuple[int, int]:
-    wallets = cohort_wallets(db, cohort)
+    # SELECTED only. The 161-wallet control group exists to be scored, not
+    # displayed -- pulling its positions daily would be ~8x the requests for
+    # rows nobody looks at, and the forward test never reads position
+    # snapshots anyway (it rebuilds from the fill tape).
+    wallets = cohort_wallets(db, cohort, group="selected")
     if not wallets:
         print(f"no wallets in cohort {cohort}", file=sys.stderr)
         return (0, 0)
@@ -363,6 +389,8 @@ def score_forward(db: DatabaseManager, cohort: str, sport: str, max_markets: int
 
     aggregated, counts = accumulate(forward)
     scored_at = datetime.now(timezone.utc)
+    groups = {w["wallet"]: w["cohort_group"] for w in wallets}
+    totals: Dict[str, List[float]] = {"selected": [0.0, 0.0], "control": [0.0, 0.0]}
     written = 0
     for wallet in tracked:
         stats = aggregated.get(wallet)
@@ -377,9 +405,27 @@ def score_forward(db: DatabaseManager, cohort: str, sport: str, max_markets: int
             (cohort, wallet, scored_at, stats["clv_markets"], stats["clv_stake"],
              stats["clv_num"] / stats["clv_stake"], frozen_at, scored_at),
         )
+        bucket = totals.get(groups.get(wallet, "selected"))
+        if bucket is not None:
+            bucket[0] += stats["clv_stake"]
+            bucket[1] += stats["clv_num"]
         written += 1
     print(f"scored {written} of {len(tracked)} tracked wallets over "
           f"{counts['clv_eligible']} eligible forward markets", file=sys.stderr)
+
+    # The selection gap is the test statistic; the absolute level moves with
+    # whatever the market did in the window, so it is reported alongside but
+    # never alone.
+    sel_stake, sel_num = totals["selected"]
+    ctl_stake, ctl_num = totals["control"]
+    if sel_stake > 0 and ctl_stake > 0:
+        sel = sel_num / sel_stake
+        ctl = ctl_num / ctl_stake
+        print(f"  forward CLV  selected {sel:+.4f}  control {ctl:+.4f}  "
+              f"GAP {sel - ctl:+.4f}", file=sys.stderr)
+    else:
+        print("  gap not computable yet -- one group has no scored forward "
+              "stake. This is expected early in the window.", file=sys.stderr)
     return written
 
 

@@ -979,6 +979,12 @@ def walk_forward(
         "selected_fav_share": _mean_of(selected, "favourite_dollar_share"),
         "rest_fav_share": _mean_of(rest, "favourite_dollar_share"),
         "rows": selected,
+        # The unselected remainder, carried so a frozen watchlist can score
+        # the SELECTION GAP forward rather than only the selected group's
+        # absolute level. Without a control the forward test cannot compute
+        # its own test statistic -- the absolute level moves with whatever
+        # the market did that period, which is exactly why the gap exists.
+        "rest_rows": rest,
     }
 
 

@@ -1,0 +1,86 @@
+name: Refresh Polymarket Wallet Watchlist
+
+# Frozen wallet cohort for the pre-registered forward test
+# (docs/polymarket-wallet-tracker.md §11 / §12).
+#
+# TWO JOBS ON DELIBERATELY DIFFERENT CADENCES, because they answer different
+# questions and one of them must NOT be run often:
+#
+#   positions  (daily, 11:10 UTC ~= 7:10am ET)
+#     A display snapshot of what the cohort currently holds. Pure UI. It is
+#     NOT evidence and the forward test does not read it -- forward CLV is
+#     rebuilt from the complete fill tape whenever it runs, so a missed
+#     snapshot loses nothing. Daily before the US slates is plenty; anything
+#     faster buys nothing, because Polymarket reports fills hours after the
+#     fact and no cadence here closes that gap.
+#
+#   forward    (weekly, Mondays 12:10 UTC)
+#     The actual experiment. Deliberately infrequent, and NOT because it is
+#     expensive -- Polymarket's API is free and unmetered. It is infrequent
+#     because a pre-registered test that gets re-read every morning invites
+#     stopping the moment it looks good, which is the efficacy-peeking
+#     failure this project's own specs forbid (see the NFL total_walking
+#     study: "no interim peeking that could stop the study early for
+#     efficacy -- futility only"). Weekly is enough to spot a pipeline
+#     breakage without turning the scorecard into a slot machine.
+#
+# Both are read-only against the free Data/Gamma APIs and write only the
+# three polymarket_watchlist_* tables. Neither touches the Odds API quota
+# documented in docs/the-odds-api.md.
+
+on:
+  schedule:
+    - cron: "10 11 * * *"    # positions, daily ~7:10am ET
+    - cron: "10 12 * * 1"    # forward scoring, Mondays
+  workflow_dispatch:
+    inputs:
+      run_forward:
+        description: "Also run forward scoring (normally weekly only)"
+        type: boolean
+        default: false
+
+jobs:
+  refresh-positions:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh open positions
+        run: python -m ingest.polymarket_watchlist --refresh-positions
+
+  score-forward:
+    runs-on: ubuntu-latest
+    # Only on the Monday cron, or when explicitly asked for. The daily run
+    # must not silently re-read the experiment.
+    if: >-
+      github.event.schedule == '10 12 * * 1' ||
+      inputs.run_forward == true
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Score markets that started after the freeze
+        run: python -m ingest.polymarket_watchlist --score-forward --sport mlb

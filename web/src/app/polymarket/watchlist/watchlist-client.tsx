@@ -104,7 +104,8 @@ export function WatchlistClient({
         <h1 className="text-2xl font-semibold tracking-tight">Polymarket wallet watchlist</h1>
         <p className="text-sm text-muted-foreground">
           Frozen cohort <code className="text-xs">{meta.cohortVersion}</code> · {meta.walletCount}{" "}
-          wallets · frozen {when(meta.frozenAt)} · positions captured {when(meta.capturedAt)}
+          selected (+{meta.controlCount} control) · frozen {when(meta.frozenAt)} · positions
+          captured {when(meta.capturedAt)}
         </p>
       </header>
 
@@ -133,6 +134,12 @@ export function WatchlistClient({
       {/* Forward scorecard -- the only number that will eventually matter. */}
       <section className="rounded-lg border p-4">
         <h2 className="text-sm font-semibold mb-1">Forward test</h2>
+        <p className="mb-2 text-sm text-muted-foreground">
+          Scored against a frozen control group of{" "}
+          <strong>{meta.controlCount} unselected wallets</strong>. The statistic is the{" "}
+          <strong>selection gap</strong> — selected minus control — not the absolute level, which
+          moves with whatever the market did in the window.
+        </p>
         {meta.forwardScored === 0 ? (
           <p className="text-sm text-muted-foreground">
             No markets have started since the freeze yet, so there is nothing to score. This is the
