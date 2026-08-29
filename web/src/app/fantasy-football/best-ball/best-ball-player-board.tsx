@@ -10,6 +10,7 @@ import type { AvailabilityOdds } from "@/lib/fantasy-football/availability-odds"
 import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-correlation-badge";
 import ProjectionNotation from "../rankings/projection-notation";
 import InjuryMarker from "@/components/fantasy-football/injury-marker";
+import AnalystNoteMarker from "@/components/fantasy-football/analyst-note-marker";
 
 const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(280px,1.35fr)_150px_126px_96px_78px_82px_92px_92px_86px_100px]";
 const FLEX_POSITIONS = new Set(["RB", "WR", "TE"]);
@@ -94,7 +95,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
   return <>
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
     <div role="cell" className="p-3"><p className="text-base font-black">#{overallRank}</p><p className="text-xs font-semibold text-muted-foreground">{player.position}{player.positionRank ?? "—"}</p></div>
-    <div role="cell" className="sticky left-0 z-10 border-r bg-card p-3 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.45)]"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p></div>
+    <div role="cell" className="sticky left-0 z-10 border-r bg-card p-3 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.45)]"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p><div className="mt-1"><AnalystNoteMarker name={player.name} position={player.position} /></div></div>
     <div role="cell" className="p-3"><button disabled={!canDraft} title={canDraft ? "Add this player for the team currently on the clock" : "Blocked: this pick would violate roster limits or leave too few slots to complete a legal 20-player roster"} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-35">Add</button></div>
     <div role="cell" className="max-w-[310px] p-3"><div className="flex flex-wrap gap-1">
       {correlationBadge && <span
