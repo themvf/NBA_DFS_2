@@ -21,9 +21,37 @@ export function isAnalystVerdict(value: unknown): value is AnalystVerdict {
   return typeof value === "string" && (ANALYST_VERDICTS as string[]).includes(value);
 }
 
+/**
+ * Note categories. A player carries at most one note per category, so two
+ * different ranking exercises can disagree about the same player without one
+ * overwriting the other -- e.g. Jameson Williams is "Caution" on the draft
+ * board and "Volatile" on the PPR-consistency list, and both are true of
+ * different questions.
+ *
+ * Adding a list: append an entry here, then seed it. Nothing else needs to
+ * change -- the query, the chips, and the admin page are all driven off this.
+ */
+export const NOTE_CATEGORIES = [
+  { id: "draft-board", label: "Draft Board", blurb: "Value against ADP" },
+  { id: "ppr-consistency", label: "PPR Consistency", blurb: "Weekly floor / reception volume" },
+] as const;
+
+export type NoteCategory = (typeof NOTE_CATEGORIES)[number]["id"];
+
+export const DEFAULT_NOTE_CATEGORY: NoteCategory = "draft-board";
+
+export function isNoteCategory(value: unknown): value is NoteCategory {
+  return typeof value === "string" && NOTE_CATEGORIES.some((category) => category.id === value);
+}
+
+export function noteCategoryLabel(id: string): string {
+  return NOTE_CATEGORIES.find((category) => category.id === id)?.label ?? id;
+}
+
 /** A note as stored and as handed to the display layer. */
 export type PlayerNote = {
   playerId: number;
+  category: NoteCategory;
   verdict: AnalystVerdict;
   /** Free text, e.g. "Target", "Strong target", "Fade at this price". */
   verdictLabel: string;
@@ -65,8 +93,8 @@ export function analystNoteTooltip(note: PlayerNote): string {
   if (note.sourceAdp !== null) provenance.push(`listed ADP ${note.sourceAdp}`);
 
   const heading = provenance.length
-    ? `${style.icon} ${note.verdictLabel} — ${provenance.join(" · ")}`
-    : `${style.icon} ${note.verdictLabel}`;
+    ? `${style.icon} ${noteCategoryLabel(note.category)}: ${note.verdictLabel} — ${provenance.join(" · ")}`
+    : `${style.icon} ${noteCategoryLabel(note.category)}: ${note.verdictLabel}`;
 
   const footer = note.updatedAt
     ? `Your note, last edited ${new Date(note.updatedAt).toLocaleDateString()} — it does not change our projection, rank, or ADP.`

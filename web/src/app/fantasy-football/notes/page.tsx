@@ -10,7 +10,8 @@ export default async function FantasyPlayerNotesPage() {
   // board because it is the deepest of the three.
   const set = await getLatestRankingSet("PPR");
   const players = set ? await getNoteEditorPlayers(set.id) : [];
-  const withNotes = players.filter((player) => player.note).length;
+  const withNotes = players.filter((player) => player.notes.length > 0).length;
+  const noteCount = players.reduce((total, player) => total + player.notes.length, 0);
 
   return <div className="space-y-5">
     <div className="flex flex-wrap items-end justify-between gap-4">
@@ -19,7 +20,7 @@ export default async function FantasyPlayerNotesPage() {
         <h1 className="text-3xl font-black">Player Notes</h1>
         <p className="text-sm text-muted-foreground">
           {set
-            ? `${withNotes} of ${players.length} players have a note · board ${set.name}`
+            ? `${noteCount} notes across ${withNotes} of ${players.length} players · board ${set.name}`
             : "No ranking snapshot available"}
         </p>
       </div>

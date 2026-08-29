@@ -51,9 +51,10 @@ export type FantasyRankingRow = {
   fantasyPoints2025: number | null;
   positionFinish2025: number | null;
   positionFinishTieCount2025: number | null;
-  // Hand-written editorial note from ff_player_notes, authored in
-  // /fantasy-football/notes. Display only -- never an input to rank or points.
-  analystNote?: PlayerNote | null;
+  // Hand-written editorial notes from ff_player_notes, authored in
+  // /fantasy-football/notes -- at most one per category. Display only, never an
+  // input to rank or points.
+  analystNotes?: PlayerNote[];
   projectionDetails: Record<string, unknown> | null;
   expectedGames: number | null;
   confidence: number | null;
@@ -259,10 +260,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
       ELSE f.fantasy_points_ppr
     END AS "fantasyPoints2025",prior.position_finish AS "positionFinish2025",
     prior.position_finish_tie_count AS "positionFinishTieCount2025",
-    CASE WHEN note.id IS NULL THEN NULL ELSE jsonb_build_object(
-      'playerId',p.id,'verdict',note.verdict,'verdictLabel',note.verdict_label,
-      'note',note.note,'updatedAt',note.updated_at::text,'listRank',note.list_rank,
-      'sourceTeam',note.source_team,'sourceAdp',note.source_adp) END AS "analystNote",
+    COALESCE(note.notes, '[]'::jsonb) AS "analystNotes",
     r.projected_stats AS "projectionDetails",r.expected_games AS "expectedGames",
     r.confidence,COALESCE(jsonb_agg(jsonb_build_object('code',i.indicator_code,
       'class',i.indicator_class,'label',i.label,'value',i.metric_value,'evidence',i.evidence)
@@ -344,15 +342,21 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
         AND ys.status IN ('success','partial')
       ORDER BY yr.captured_at DESC,yr.id DESC LIMIT 1
     ) yahoo ON TRUE
-    LEFT JOIN ff_player_notes note ON note.player_id=p.id
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(jsonb_build_object(
+        'playerId',n.player_id,'category',n.category,'verdict',n.verdict,
+        'verdictLabel',n.verdict_label,'note',n.note,'updatedAt',n.updated_at::text,
+        'listRank',n.list_rank,'sourceTeam',n.source_team,'sourceAdp',n.source_adp)
+        ORDER BY n.category) AS notes
+      FROM ff_player_notes n WHERE n.player_id=p.id
+    ) note ON TRUE
     WHERE r.ranking_set_id=${rankingSetId}
     GROUP BY p.id,r.id,rs.id,f.id,prior.position_finish,prior.position_finish_tie_count,
       fp.projected_points,fp.fetched_at,fp.source_updated_at,
       injury.details,
       dk.average_draft_position,dk.rank,dk.draft_percentage,dk.draft_group_id,dk.captured_at,
       yahoo.xrank,yahoo.adp,yahoo.source_order,yahoo.captured_at,
-      note.id,note.verdict,note.verdict_label,note.note,note.updated_at,
-      note.list_rank,note.source_team,note.source_adp
+      note.notes
     ORDER BY COALESCE(r.our_rank,r.overall_rank,9999),p.canonical_name`);
   return queryRows<FantasyRankingRow>(result);
 }
@@ -739,7 +743,7 @@ export type NoteEditorPlayer = {
   team: string | null;
   ourRank: number | null;
   adp: number | null;
-  note: PlayerNote | null;
+  notes: PlayerNote[];
 };
 
 /**
@@ -753,14 +757,18 @@ export async function getNoteEditorPlayers(rankingSetId: number): Promise<NoteEd
   const result = await db.execute(sql`
     SELECT p.id::int AS "playerId", p.canonical_name AS name, p.position,
       p.team_abbrev AS team, r.our_rank AS "ourRank", r.adp,
-      CASE WHEN note.id IS NULL THEN NULL ELSE jsonb_build_object(
-        'playerId',p.id,'verdict',note.verdict,'verdictLabel',note.verdict_label,
-        'note',note.note,'updatedAt',note.updated_at::text,'listRank',note.list_rank,
-        'sourceTeam',note.source_team,'sourceAdp',note.source_adp) END AS note
+      COALESCE(note.notes, '[]'::jsonb) AS notes
     FROM ff_players p
     LEFT JOIN ff_player_rankings r ON r.player_id=p.id AND r.ranking_set_id=${rankingSetId}
-    LEFT JOIN ff_player_notes note ON note.player_id=p.id
-    WHERE r.id IS NOT NULL OR note.id IS NOT NULL
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(jsonb_build_object(
+        'playerId',n.player_id,'category',n.category,'verdict',n.verdict,
+        'verdictLabel',n.verdict_label,'note',n.note,'updatedAt',n.updated_at::text,
+        'listRank',n.list_rank,'sourceTeam',n.source_team,'sourceAdp',n.source_adp)
+        ORDER BY n.category) AS notes
+      FROM ff_player_notes n WHERE n.player_id=p.id
+    ) note ON TRUE
+    WHERE r.id IS NOT NULL OR note.notes IS NOT NULL
     ORDER BY COALESCE(r.our_rank, 100000), p.canonical_name`);
   return queryRows<NoteEditorPlayer>(result);
 }

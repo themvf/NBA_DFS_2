@@ -204,7 +204,7 @@ export default function BestBallClient({ rankings, rankingSetId, projectionModel
   // Editorial notes for the Shadow panel's candidate rows. Built from the same
   // rankings the board renders, so a note edit shows up everywhere at once.
   const analystNotesByPlayerId = useMemo(
-    () => new Map(rankings.flatMap((player) => (player.analystNote ? [[player.playerId, player.analystNote] as const] : []))),
+    () => new Map(rankings.flatMap((player) => (player.analystNotes?.length ? [[player.playerId, player.analystNotes] as const] : []))),
     [rankings],
   );
 

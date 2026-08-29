@@ -12,7 +12,7 @@ import { getFantasyDraftState, getFantasyPercentileProfile, type FantasyPercenti
 import { AUTO_DRAFT_VERSION, selectComputerPick, type AutoDraftPlayer } from "@/lib/fantasy-football/auto-draft";
 import { isDraftStrategy } from "@/lib/fantasy-football/draft-strategy";
 import { queryRows } from "@/db/query-result";
-import { ANALYST_NOTE_STYLE, isAnalystVerdict, validateNoteInput } from "@/lib/fantasy-football/analyst-notes";
+import { ANALYST_NOTE_STYLE, isAnalystVerdict, isNoteCategory, validateNoteInput } from "@/lib/fantasy-football/analyst-notes";
 import { requireProjectionModelVersion } from "@/lib/fantasy-football/projection-model";
 
 export async function createFantasyDraft(formData: FormData): Promise<void> {
@@ -314,11 +314,13 @@ export async function fetchFantasyPercentileProfile(
 
 export async function saveFantasyPlayerNote(input: {
   playerId: number;
+  category: string;
   verdict: string;
   verdictLabel: string;
   note: string;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!Number.isInteger(input.playerId) || input.playerId <= 0) return { ok: false, error: "Pick a player first." };
+  if (!isNoteCategory(input.category)) return { ok: false, error: "Pick a note list." };
   if (!isAnalystVerdict(input.verdict)) return { ok: false, error: "Pick a verdict." };
 
   const note = input.note.trim();
@@ -337,10 +339,10 @@ export async function saveFantasyPlayerNote(input: {
     // Season/name/position are denormalized from the player row rather than
     // trusted from the client, so a stale form cannot mislabel a note.
     await db.execute(sql`
-      INSERT INTO ff_player_notes (player_id, season, normalized_name, position, verdict, verdict_label, note, author)
+      INSERT INTO ff_player_notes (player_id, season, normalized_name, position, category, verdict, verdict_label, note, author)
       VALUES (${input.playerId}, ${Number(row.season)}, ${String(row.normalized_name)}, ${String(row.position)},
-              ${input.verdict}, ${verdictLabel}, ${note}, ${"admin"})
-      ON CONFLICT (player_id) DO UPDATE SET
+              ${input.category}, ${input.verdict}, ${verdictLabel}, ${note}, ${"admin"})
+      ON CONFLICT (player_id, category) DO UPDATE SET
         verdict = EXCLUDED.verdict,
         verdict_label = EXCLUDED.verdict_label,
         note = EXCLUDED.note,
@@ -358,11 +360,14 @@ export async function saveFantasyPlayerNote(input: {
   }
 }
 
-export async function deleteFantasyPlayerNote(input: { playerId: number }): Promise<{ ok: boolean; error?: string }> {
+export async function deleteFantasyPlayerNote(input: { playerId: number; category: string }): Promise<{ ok: boolean; error?: string }> {
   if (!Number.isInteger(input.playerId) || input.playerId <= 0) return { ok: false, error: "Invalid player." };
+  // Category is required: without it a delete would wipe every list's note for
+  // this player, not the one on screen.
+  if (!isNoteCategory(input.category)) return { ok: false, error: "Pick a note list." };
   try {
     await ensureFantasyFootballTables();
-    await db.execute(sql`DELETE FROM ff_player_notes WHERE player_id=${input.playerId}`);
+    await db.execute(sql`DELETE FROM ff_player_notes WHERE player_id=${input.playerId} AND category=${input.category}`);
     revalidatePath("/fantasy-football/notes");
     revalidatePath("/fantasy-football/rankings");
     revalidatePath("/fantasy-football/redraft");
