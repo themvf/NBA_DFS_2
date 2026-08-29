@@ -10,6 +10,7 @@ import {
   OPENAI_BEST_BALL_MODEL,
 } from "../src/lib/fantasy-football/ai-draft-advisor-providers";
 import { BEST_BALL_POSITIONS } from "../src/lib/fantasy-football/best-ball";
+import { requireProjectionModelVersion } from "../src/lib/fantasy-football/projection-model";
 
 async function main() {
   const providerArg = process.argv.find((value) => value.startsWith("--provider="))?.split("=")[1];
@@ -27,7 +28,7 @@ async function main() {
     rankingSetId: Number(rankingSet.id),
     userSlot: 1,
     playerIds: rankings.slice(0, 23).map((player) => player.playerId),
-  });
+  }, requireProjectionModelVersion(rankingSet.modelVersion));
 
   let failures = 0;
   for (const provider of providers) {

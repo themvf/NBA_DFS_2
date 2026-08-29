@@ -1,7 +1,7 @@
 "use server";
 
 import { createHash } from "node:crypto";
-import { getFantasyRankings, getTeammateCorrelations } from "@/db/queries-fantasy-football";
+import { getFantasyRankings, getRankingSetSummary, getTeammateCorrelations } from "@/db/queries-fantasy-football";
 import {
   buildBestBallAdvisorSnapshot,
   enrichBestBallAdvisorResult,
@@ -17,6 +17,7 @@ import {
   OPENAI_BEST_BALL_MODEL,
 } from "@/lib/fantasy-football/ai-draft-advisor-providers";
 import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
+import { requireProjectionModelVersion } from "@/lib/fantasy-football/projection-model";
 
 const CACHE_TTL_MS = 5 * 60_000;
 const RATE_WINDOW_MS = 60_000;
@@ -77,12 +78,15 @@ export async function requestBestBallAdvice(input: BestBallAdvisorRequest): Prom
   try {
     if (input.provider !== "openai" && input.provider !== "deepseek") return { ok: false, message: "Choose OpenAI or DeepSeek." };
     if (withNews && input.provider !== "openai") return { ok: false, message: "News search is only available for OpenAI." };
+    const rankingSet = await getRankingSetSummary(Number(input.rankingSetId));
+    if (!rankingSet) return { ok: false, message: "This ranking snapshot no longer exists." };
+    const projectionModel = requireProjectionModelVersion(rankingSet.modelVersion);
     const rankings = (await getFantasyRankings(Number(input.rankingSetId)))
       .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
       .slice(0, 260);
     if (!rankings.length) return { ok: false, message: "This ranking snapshot has no eligible Best Ball players." };
     const correlations = await getTeammateCorrelations(rankings.map((player) => player.playerId));
-    const snapshot = buildBestBallAdvisorSnapshot(rankings, input, correlations);
+    const snapshot = buildBestBallAdvisorSnapshot(rankings, input, projectionModel, correlations);
     if (snapshot.draft.completed) return { ok: false, message: "The draft is complete." };
     if (snapshot.candidates.length < 3) return { ok: false, message: "Fewer than three legal candidates remain." };
 

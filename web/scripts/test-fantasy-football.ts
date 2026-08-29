@@ -22,6 +22,7 @@ import {
   getValidatedBestBallAdvisorOutput,
   validateBestBallAdvisorOutput,
 } from "../src/lib/fantasy-football/ai-draft-advisor";
+import { formatProjectionModelLabel, normalizeProjectionModelVersion, requireProjectionModelVersion } from "../src/lib/fantasy-football/projection-model";
 
 assert.deepEqual(queryRows<{ id: number }>({ rows: [{ id: 3 }] }), [{ id: 3 }]);
 assert.deepEqual(queryRows<{ id: number }>([{ id: 2 }]), [{ id: 2 }]);
@@ -318,8 +319,16 @@ const advisorRows = [
   advisorRow({ playerId: 4, name: "Available Receiver", position: "WR", team: "LAR", byeWeek: 9, ourRank: 4, positionRank: 2, adp: 5, ourProjectedPoints: 270, fantasyProsProjectedPoints: 268, games2025: 16, fantasyPoints2025: 260, confidence: 0.8 }),
   advisorRow({ playerId: 5, name: "Available Tight End", position: "TE", team: "KC", byeWeek: 10, ourRank: 5, positionRank: 1, adp: 6, ourProjectedPoints: 240, fantasyProsProjectedPoints: 235, games2025: 17, fantasyPoints2025: 230, confidence: 0.75 }),
 ];
-const advisorSnapshot = buildBestBallAdvisorSnapshot(advisorRows, { rankingSetId: 42, userSlot: 2, playerIds: [1, 2] });
-assert.equal(advisorSnapshot.projectionModel, "ff-independent-v1.6");
+assert.equal(normalizeProjectionModelVersion(" ff-independent-v1.14 "), "ff-independent-v1.14");
+assert.equal(formatProjectionModelLabel("ff-independent-v1.14"), "V1.14");
+assert.equal(formatProjectionModelLabel(null), "Unversioned");
+assert.throws(() => requireProjectionModelVersion(null), /does not identify its projection model/);
+const advisorSnapshot = buildBestBallAdvisorSnapshot(
+  advisorRows,
+  { rankingSetId: 42, userSlot: 2, playerIds: [1, 2] },
+  "ff-independent-v1.14",
+);
+assert.equal(advisorSnapshot.projectionModel, "ff-independent-v1.14");
 assert.equal(advisorSnapshot.draft.currentOverallPick, 3);
 assert.equal(advisorSnapshot.draft.targetOverallPick, 23);
 assert.equal(advisorSnapshot.draft.picksUntilUser, 20);
@@ -343,7 +352,7 @@ const advisorOutput = validateBestBallAdvisorOutput({
   confidence: 0.82,
   whyNow: "Best combination of projection and availability.",
   rosterFit: "Adds the first running back without duplicating the quarterback bye.",
-  evidence: ["V1.6 projects 280 points.", "ADP is 4."],
+  evidence: ["V1.14 projects 280 points.", "ADP is 4."],
   risks: "Role uncertainty remains.",
   alternatives: [{ candidateKey: "C02", reason: "Receiver value." }, { candidateKey: "C03", reason: "Tight-end value." }],
   strategyUntilNextTurn: "Watch the running-back tier.",
@@ -395,7 +404,7 @@ async function testAdvisorCorrection() {
     assert.match(correction.validationError, /no longer legal or available/);
     return {
       recommendedCandidateKey: "C01", confidence: 80, whyNow: "Corrected legal choice.",
-      rosterFit: "Adds a running back.", evidence: ["V1.6 points", "ADP"], risks: ["Role risk"],
+      rosterFit: "Adds a running back.", evidence: ["V1.14 points", "ADP"], risks: ["Role risk"],
       alternatives: [{ candidateKey: "C02", reason: "Receiver." }, { candidateKey: "C03", reason: "Tight end." }],
       strategyUntilNextTurn: "Watch tiers.", whatWouldChange: "New role data.",
     };

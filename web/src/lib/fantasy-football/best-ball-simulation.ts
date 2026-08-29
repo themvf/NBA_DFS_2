@@ -237,7 +237,7 @@ function weeklyPoints(player: ShadowBestBallPlayer, week: number, iteration: num
   const high = finite(player.projectionHigh, seasonMean * 1.15);
   const seasonUncertainty = Math.max(0, high - low) / Math.max(1, seasonMean) / 2.56;
   const scenarioMean = Math.max(0, seasonMean * (1 + normal(player.playerId * 65_537 + iteration * 257) * seasonUncertainty));
-  // V1.6 is a 17-active-game baseline and availability is intentionally stored
+  // The live champion is a 17-active-game baseline and availability is intentionally stored
   // separately. Keep its conditional-on-active PPG here; zeroed inactive weeks
   // then reduce realized roster value without inflating healthy-week scoring.
   const activeMean = scenarioMean / 17;

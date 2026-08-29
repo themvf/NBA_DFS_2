@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "artifactType": "fantasy-football-champion-baseline",
+  "season": 2026,
+  "championModelVersion": "ff-independent-v1.14",
+  "boards": [
+    {
+      "scoring": "STD",
+      "rankingSetId": 339,
+      "rankingSetName": "2026 Independent Model (STD)",
+      "sourceSnapshotId": 2460,
+      "sourceResponseHash": "02062de367d7a72ea3d718ad995a7a8c215b02beaae4200ae9a5a471c6ebaf82",
+      "sourceRequestParams": {
+        "bye_source": "nflverse schedule",
+        "model_version": "ff-independent-v1.14",
+        "history_seasons": [
+          2023,
+          2024,
+          2025
+        ],
+        "adp_snapshot_ids": {
+          "PPR": 2434,
+          "STD": 2432,
+          "HALF": 2433
+        },
+        "adp_used_for_projection": false
+      },
+      "createdAt": "2026-08-26 14:04:16.631584+00:00",
+      "playerCount": 444,
+      "projectionDigest": "b1eef752b568bf4c3ef38036750c010c7d749b12ea4549166cd6b1b23d37bcc0",
+      "orderDigest": "2b9b4859916b763d8dd7e99d75ac2ac12f254ca0861f82d9c8d57baa47f97c1b"
+    },
+    {
+      "scoring": "HALF",
+      "rankingSetId": 340,
+      "rankingSetName": "2026 Independent Model (HALF)",
+      "sourceSnapshotId": 2460,
+      "sourceResponseHash": "02062de367d7a72ea3d718ad995a7a8c215b02beaae4200ae9a5a471c6ebaf82",
+      "sourceRequestParams": {
+        "bye_source": "nflverse schedule",
+        "model_version": "ff-independent-v1.14",
+        "history_seasons": [
+          2023,
+          2024,
+          2025
+        ],
+        "adp_snapshot_ids": {
+          "PPR": 2434,
+          "STD": 2432,
+          "HALF": 2433
+        },
+        "adp_used_for_projection": false
+      },
+      "createdAt": "2026-08-26 14:04:16.631584+00:00",
+      "playerCount": 442,
+      "projectionDigest": "511e97bc0f1cddc7405b8c51864986230e4732590c670a4a28ebad206a391240",
+      "orderDigest": "f4453e6d514a9bc85771280c0853c9fee5cd15486c86cc73b8e7bef637d8efa2"
+    },
+    {
+      "scoring": "PPR",
+      "rankingSetId": 341,
+      "rankingSetName": "2026 Independent Model (PPR)",
+      "sourceSnapshotId": 2460,
+      "sourceResponseHash": "02062de367d7a72ea3d718ad995a7a8c215b02beaae4200ae9a5a471c6ebaf82",
+      "sourceRequestParams": {
+        "bye_source": "nflverse schedule",
+        "model_version": "ff-independent-v1.14",
+        "history_seasons": [
+          2023,
+          2024,
+          2025
+        ],
+        "adp_snapshot_ids": {
+          "PPR": 2434,
+          "STD": 2432,
+          "HALF": 2433
+        },
+        "adp_used_for_projection": false
+      },
+      "createdAt": "2026-08-26 14:04:16.631584+00:00",
+      "playerCount": 441,
+      "projectionDigest": "cc69da12f54ffa9da0ab55f3bf94160650d59d8bbe4c9714ca96f783c139819d",
+      "orderDigest": "d1be4fab929dcef554da171606663d101b7ac2f0c88266bc0a37502dad85b866"
+    }
+  ],
+  "frozenAt": "2026-08-28T16:54:15.877160+00:00",
+  "combinedDigest": "d9dbdb129aeec4e79e6421ca32bc71c06f128b4b822ac2917bca7f202989d6ac",
+  "projectionBehaviorChanged": false
+}

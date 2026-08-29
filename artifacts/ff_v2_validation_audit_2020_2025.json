@@ -1,0 +1,518 @@
+{
+  "artifactDigest": "a94acd8c45cef2985531c9f6e6b335119aeba9bfd4ce8b029562790c957115f8",
+  "artifactType": "fantasy-football-v2-validation-audit",
+  "auditVersion": "ff-v2-validation-audit-v1",
+  "backtestOutputDigest": "4f61720a8e84e55daa90fcb29dc324df790a8cf1d82c09e71ee636444d7b4399",
+  "backtestRunId": "3db2e15a-bbf0-57d4-bb5b-df684f671d3b",
+  "championCombinedDigest": "d9dbdb129aeec4e79e6421ca32bc71c06f128b4b822ac2917bca7f202989d6ac",
+  "comparisonProtocol": {
+    "backtestHarnessVersion": "ff-v2-backtest-v1",
+    "backtestSeed": 20260828,
+    "bootstrapDraws": 2000,
+    "bootstrapSeed": 20260829,
+    "challengerLabel": "challenger",
+    "champion": {
+      "artifactType": "fantasy-football-champion-baseline",
+      "championModelVersion": "ff-independent-v1.14",
+      "combinedDigest": "d9dbdb129aeec4e79e6421ca32bc71c06f128b4b822ac2917bca7f202989d6ac"
+    },
+    "comparisonIdentity": "exact_shared_artifact_identity",
+    "frozenAt": "2026-08-29T00:00:00-04:00",
+    "frozenBeforeTeamOpportunityFit": true,
+    "metricPolicy": {
+      "calibrationTolerances": {
+        "coverageP10AbsoluteError": 0.05,
+        "coverageP50AbsoluteError": 0.05,
+        "coverageP90AbsoluteError": 0.05,
+        "seasonTotalBiasPoints": 5.0
+      },
+      "comparison": "challenger_minus_declared_comparator_on_identity_intersection",
+      "confidenceInterval": "deterministic_paired_percentile_bootstrap_95pct",
+      "coverageDefinition": "empirical_fraction_actual_lte_quantile",
+      "distributionScore": "weighted_interval_score_p10_p50_p90_alpha_0.20",
+      "frozenBeforeFit": true,
+      "marketEligibility": "immutable_preseason_market_snapshot_available_by_fold_cutoff; distribution_metrics_require_actual_market_p10_p50_p90",
+      "materialDegradationBounds": {
+        "bestBallCountedPointsRelative": -0.01,
+        "draftDecisionRegretRelative": 0.01,
+        "seasonTotalMaeRelative": 0.01,
+        "spikeRecallAbsolute": 0.02,
+        "teamOpportunityMaeOrWisRelative": 0.02,
+        "top12PrecisionOrRecallAbsolute": 0.02
+      },
+      "missingCohortBehavior": "emit_ineligible_zero_sample_result",
+      "productWeeks": [
+        1,
+        17
+      ],
+      "resamplingUnits": {
+        "player_week": "player_week",
+        "roster_simulation": "draft_instance",
+        "season_total": "player_season",
+        "team_week": "game",
+        "top12": "evaluation_season"
+      },
+      "smallSampleDefinition": "priorGames <= 5",
+      "spikeProbabilityCutoff": 0.3,
+      "spikeThresholds": {
+        "QB": 25.0,
+        "RB": 20.0,
+        "TE": 15.0,
+        "WR": 20.0
+      },
+      "top12Scoring": "PPR_points_Weeks_1_17; top_min(12,n); ties_by_entity_id",
+      "top12Universe": "draftable_QB_RB_WR_TE_by_evaluation_season_and_position",
+      "topN": 12,
+      "version": "ff-v2-metrics-v1"
+    },
+    "metricPolicyDigest": "c892f475015886ac647a051f6ddd6429b746a4ea974cd7e25795d61e3554522a",
+    "metricSuiteVersion": "ff-v2-metrics-v1",
+    "promotionAuthority": "V2-021_verdict_plus_explicit_post_evidence_user_authorization",
+    "protocolVersion": "ff-v2-champion-challenger-v1",
+    "requiredModelLabels": [
+      "champion",
+      "simple_baseline",
+      "simple_baseline:rolling_average",
+      "simple_baseline:league_average",
+      "market_baseline",
+      "challenger",
+      "ablation:schedule",
+      "ablation:correlation",
+      "ablation:availability",
+      "ablation:roster_fit"
+    ]
+  },
+  "comparisonProtocolDigest": "56462cd23e414065a3fbc5157b2e67ad9e1ffda777d6d7fa474a95fb1963907b",
+  "evaluatedRows": [
+    {
+      "evaluationSeason": 2021,
+      "features": {
+        "playCaller": {
+          "availableAt": "2021-09-08T23:59:59-04:00",
+          "eligible": false,
+          "featureGroup": "football_performance",
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2021,
+          "value": null
+        },
+        "priorTeamWeekFacts": {
+          "availableAt": "2021-09-08T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "football_performance",
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2020,
+          "value": "064599501ff140afc575a78398b9de6a0cb17871c8c4c5f0c233d7938b2aafd3"
+        },
+        "scheduleContext": {
+          "availableAt": "2021-09-08T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "schedule_context",
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2021,
+          "value": {
+            "cutoff": "2021-09-08T23:59:59-04:00",
+            "evaluationSeason": 2021
+          }
+        }
+      },
+      "identity": "team-opportunity-fold:2021",
+      "seed": 8353644104310644009,
+      "seedToken": "team-opportunity-fold:2021"
+    },
+    {
+      "evaluationSeason": 2022,
+      "features": {
+        "playCaller": {
+          "availableAt": "2022-09-07T23:59:59-04:00",
+          "eligible": false,
+          "featureGroup": "football_performance",
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2022,
+          "value": null
+        },
+        "priorTeamWeekFacts": {
+          "availableAt": "2022-09-07T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "football_performance",
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2021,
+          "value": "ba1bbc2bbfbb4191ebc0e05995dee73966bff6ecfd7e0cec62fdf8c0c000f85b"
+        },
+        "scheduleContext": {
+          "availableAt": "2022-09-07T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "schedule_context",
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2022,
+          "value": {
+            "cutoff": "2022-09-07T23:59:59-04:00",
+            "evaluationSeason": 2022
+          }
+        }
+      },
+      "identity": "team-opportunity-fold:2022",
+      "seed": 10132266975027193680,
+      "seedToken": "team-opportunity-fold:2022"
+    },
+    {
+      "evaluationSeason": 2023,
+      "features": {
+        "playCaller": {
+          "availableAt": "2023-09-06T23:59:59-04:00",
+          "eligible": false,
+          "featureGroup": "football_performance",
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2023,
+          "value": null
+        },
+        "priorTeamWeekFacts": {
+          "availableAt": "2023-09-06T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "football_performance",
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2022,
+          "value": "a48e9006b382242ead1b3fc899a24a94d6b4b1e42d9e9d6f7a232da808e48fb6"
+        },
+        "scheduleContext": {
+          "availableAt": "2023-09-06T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "schedule_context",
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2023,
+          "value": {
+            "cutoff": "2023-09-06T23:59:59-04:00",
+            "evaluationSeason": 2023
+          }
+        }
+      },
+      "identity": "team-opportunity-fold:2023",
+      "seed": 13245300716536408862,
+      "seedToken": "team-opportunity-fold:2023"
+    },
+    {
+      "evaluationSeason": 2024,
+      "features": {
+        "playCaller": {
+          "availableAt": "2024-09-04T23:59:59-04:00",
+          "eligible": false,
+          "featureGroup": "football_performance",
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2024,
+          "value": null
+        },
+        "priorTeamWeekFacts": {
+          "availableAt": "2024-09-04T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "football_performance",
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2023,
+          "value": "46bbfb2822d572d6d5e312fb065885c96477c5fb7feda93a84e5e9c81dd95ee9"
+        },
+        "scheduleContext": {
+          "availableAt": "2024-09-04T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "schedule_context",
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2024,
+          "value": {
+            "cutoff": "2024-09-04T23:59:59-04:00",
+            "evaluationSeason": 2024
+          }
+        }
+      },
+      "identity": "team-opportunity-fold:2024",
+      "seed": 785819859200713221,
+      "seedToken": "team-opportunity-fold:2024"
+    },
+    {
+      "evaluationSeason": 2025,
+      "features": {
+        "playCaller": {
+          "availableAt": "2025-09-03T23:59:59-04:00",
+          "eligible": false,
+          "featureGroup": "football_performance",
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2025,
+          "value": null
+        },
+        "priorTeamWeekFacts": {
+          "availableAt": "2025-09-03T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "football_performance",
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2024,
+          "value": "68e4bc3cc8602de9d1e6fcb7c37a4361130322bbcb945b5cc043726e14ddf181"
+        },
+        "scheduleContext": {
+          "availableAt": "2025-09-03T23:59:59-04:00",
+          "eligible": true,
+          "featureGroup": "schedule_context",
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2025,
+          "value": {
+            "cutoff": "2025-09-03T23:59:59-04:00",
+            "evaluationSeason": 2025
+          }
+        }
+      },
+      "identity": "team-opportunity-fold:2025",
+      "seed": 9042917904781140088,
+      "seedToken": "team-opportunity-fold:2025"
+    }
+  ],
+  "preseasonCutoffs": {
+    "2020": "2020-09-09T23:59:59-04:00",
+    "2021": "2021-09-08T23:59:59-04:00",
+    "2022": "2022-09-07T23:59:59-04:00",
+    "2023": "2023-09-06T23:59:59-04:00",
+    "2024": "2024-09-04T23:59:59-04:00",
+    "2025": "2025-09-03T23:59:59-04:00"
+  },
+  "rootSeed": 20260828,
+  "rowAudits": [
+    {
+      "eligibleFeatureCount": 2,
+      "evaluationSeason": 2021,
+      "featureCount": 3,
+      "features": [
+        {
+          "availableAt": "2021-09-08T23:59:59-04:00",
+          "eligible": false,
+          "feature": "playCaller",
+          "featureGroup": "football_performance",
+          "missing": true,
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2021,
+          "valueDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "availableAt": "2021-09-08T23:59:59-04:00",
+          "eligible": true,
+          "feature": "priorTeamWeekFacts",
+          "featureGroup": "football_performance",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2020,
+          "valueDigest": "18424ea0f5a9f0fc5a4ccce1ef0abed1d6b64597de279aff3ae654952e96f257"
+        },
+        {
+          "availableAt": "2021-09-08T23:59:59-04:00",
+          "eligible": true,
+          "feature": "scheduleContext",
+          "featureGroup": "schedule_context",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2021,
+          "valueDigest": "7b860974048ce906b6e1a3d1abe0d0942feb293c3b5bff9cf6e01d898bc868d6"
+        }
+      ],
+      "identity": "team-opportunity-fold:2021",
+      "missingFeatureCount": 1,
+      "seed": 8353644104310644009,
+      "seedToken": "team-opportunity-fold:2021"
+    },
+    {
+      "eligibleFeatureCount": 2,
+      "evaluationSeason": 2022,
+      "featureCount": 3,
+      "features": [
+        {
+          "availableAt": "2022-09-07T23:59:59-04:00",
+          "eligible": false,
+          "feature": "playCaller",
+          "featureGroup": "football_performance",
+          "missing": true,
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2022,
+          "valueDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "availableAt": "2022-09-07T23:59:59-04:00",
+          "eligible": true,
+          "feature": "priorTeamWeekFacts",
+          "featureGroup": "football_performance",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2021,
+          "valueDigest": "a8bba999c5f58e4493fa4e23e1e9e149a83cd080bccad590ff2e48d3b36da5bd"
+        },
+        {
+          "availableAt": "2022-09-07T23:59:59-04:00",
+          "eligible": true,
+          "feature": "scheduleContext",
+          "featureGroup": "schedule_context",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2022,
+          "valueDigest": "bb738d03211b3dafd2ae7b57e621fb48ed421d5803b37bd543198bd6a62fb265"
+        }
+      ],
+      "identity": "team-opportunity-fold:2022",
+      "missingFeatureCount": 1,
+      "seed": 10132266975027193680,
+      "seedToken": "team-opportunity-fold:2022"
+    },
+    {
+      "eligibleFeatureCount": 2,
+      "evaluationSeason": 2023,
+      "featureCount": 3,
+      "features": [
+        {
+          "availableAt": "2023-09-06T23:59:59-04:00",
+          "eligible": false,
+          "feature": "playCaller",
+          "featureGroup": "football_performance",
+          "missing": true,
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2023,
+          "valueDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "availableAt": "2023-09-06T23:59:59-04:00",
+          "eligible": true,
+          "feature": "priorTeamWeekFacts",
+          "featureGroup": "football_performance",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2022,
+          "valueDigest": "7dbd8ad26da39c870faa1a36e822ec588b96897c2656046a2c4e61fb659bc733"
+        },
+        {
+          "availableAt": "2023-09-06T23:59:59-04:00",
+          "eligible": true,
+          "feature": "scheduleContext",
+          "featureGroup": "schedule_context",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2023,
+          "valueDigest": "a6fbb257f9b28c22442b436635312db0fb9207bfb49828adedce20cc4089a009"
+        }
+      ],
+      "identity": "team-opportunity-fold:2023",
+      "missingFeatureCount": 1,
+      "seed": 13245300716536408862,
+      "seedToken": "team-opportunity-fold:2023"
+    },
+    {
+      "eligibleFeatureCount": 2,
+      "evaluationSeason": 2024,
+      "featureCount": 3,
+      "features": [
+        {
+          "availableAt": "2024-09-04T23:59:59-04:00",
+          "eligible": false,
+          "feature": "playCaller",
+          "featureGroup": "football_performance",
+          "missing": true,
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2024,
+          "valueDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "availableAt": "2024-09-04T23:59:59-04:00",
+          "eligible": true,
+          "feature": "priorTeamWeekFacts",
+          "featureGroup": "football_performance",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2023,
+          "valueDigest": "75ad9e20e846f4502c6e0f2fa1fbb05c0189ff2c445e683f8fb28b9e724c78b3"
+        },
+        {
+          "availableAt": "2024-09-04T23:59:59-04:00",
+          "eligible": true,
+          "feature": "scheduleContext",
+          "featureGroup": "schedule_context",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2024,
+          "valueDigest": "a19689bd5da9f117aeedec67fd693783280149a014369f69373f8c265b02a748"
+        }
+      ],
+      "identity": "team-opportunity-fold:2024",
+      "missingFeatureCount": 1,
+      "seed": 785819859200713221,
+      "seedToken": "team-opportunity-fold:2024"
+    },
+    {
+      "eligibleFeatureCount": 2,
+      "evaluationSeason": 2025,
+      "featureCount": 3,
+      "features": [
+        {
+          "availableAt": "2025-09-03T23:59:59-04:00",
+          "eligible": false,
+          "feature": "playCaller",
+          "featureGroup": "football_performance",
+          "missing": true,
+          "missingReason": "not_captured_historical_as_of",
+          "sourceDataset": "attributable_play_caller_history",
+          "sourceSeason": 2025,
+          "valueDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "availableAt": "2025-09-03T23:59:59-04:00",
+          "eligible": true,
+          "feature": "priorTeamWeekFacts",
+          "featureGroup": "football_performance",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "ff_v2_team_week_facts_prior_seasons",
+          "sourceSeason": 2024,
+          "valueDigest": "53146547552d99e67e1ffb04721276c1d2fd984af792a7703ef7ce6c53c2dae5"
+        },
+        {
+          "availableAt": "2025-09-03T23:59:59-04:00",
+          "eligible": true,
+          "feature": "scheduleContext",
+          "featureGroup": "schedule_context",
+          "missing": false,
+          "missingReason": null,
+          "sourceDataset": "nflverse_historical_schedule_as_of",
+          "sourceSeason": 2025,
+          "valueDigest": "8fb22c681d6c4c1b460ad41e52d45f9d78a3e3a1ebc706fdf8256bbe1cc0f848"
+        }
+      ],
+      "identity": "team-opportunity-fold:2025",
+      "missingFeatureCount": 1,
+      "seed": 9042917904781140088,
+      "seedToken": "team-opportunity-fold:2025"
+    }
+  ],
+  "schemaVersion": 1,
+  "summary": {
+    "eligibleFeatureCount": 10,
+    "evaluatedRowCount": 5,
+    "featureCount": 15,
+    "liveProjectionChanged": false,
+    "missingFeatureCount": 5,
+    "teamOpportunityFitted": false
+  }
+}

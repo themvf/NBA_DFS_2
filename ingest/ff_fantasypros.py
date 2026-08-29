@@ -33,6 +33,7 @@ from psycopg2.extras import RealDictCursor
 from config import load_config
 from db.database import DatabaseManager
 from ingest.ff_injuries import persist_fantasypros_injury_observations
+from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapshot
 
 BASE_URL = "https://api.fantasypros.com/public/v2/json"
 NFLVERSE_SCHEDULE_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
@@ -774,28 +775,33 @@ def snapshot(
 ) -> int:
     rows = payload.get("players") or payload.get("injuries") or payload.get("items") or []
     digest = response_hash(payload)
-    result = db.execute_one(
-        """INSERT INTO ff_source_snapshots
-           (source, dataset, season, scoring, ranking_type, request_params,
-            source_updated_at, response_hash, row_count, status)
-           VALUES ('fantasypros', %s, %s, %s, %s, %s, %s, %s, %s, 'success')
-           ON CONFLICT (source, dataset, response_hash)
-           DO UPDATE SET fetched_at = NOW()
-           RETURNING id""",
-        (
-            dataset,
-            season,
-            scoring,
-            ranking_type,
-            Json(params),
-            datetime.fromtimestamp(payload["last_updated_ts"], tz=timezone.utc)
-            if as_int(payload.get("last_updated_ts"))
-            else None,
-            digest,
-            len(rows) if isinstance(rows, list) else 0,
+    updated_ts = as_int(payload.get("last_updated_ts"))
+    source_published_at = (
+        datetime.fromtimestamp(updated_ts, tz=timezone.utc)
+        if updated_ts is not None
+        else None
+    )
+    performance_eligible = dataset == "injuries"
+    return persist_source_snapshot(
+        db,
+        SnapshotProvenance(
+            source="fantasypros",
+            dataset=dataset,
+            season=season,
+            scoring=scoring,
+            ranking_type=ranking_type,
+            request_params=params,
+            source_published_at=source_published_at,
+            response_hash=digest,
+            row_count=len(rows) if isinstance(rows, list) else 0,
+            model_eligible=performance_eligible,
+            eligibility_reason=(
+                "current injury/availability evidence"
+                if performance_eligible
+                else "market ranking/projection context is excluded from V2 football-performance features"
+            ),
         ),
     )
-    return int(result["id"])
 
 
 def upsert_players(db: DatabaseManager | RefreshDatabase, season: int, payload: dict[str, Any]) -> dict[int, int]:

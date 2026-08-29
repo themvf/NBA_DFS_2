@@ -65,6 +65,7 @@ export type FantasyRankingSetSummary = {
   season: number;
   name: string;
   scoring: string;
+  modelVersion: string | null;
   createdAt: string;
   playerCount: number;
 };
@@ -121,14 +122,18 @@ export async function getFantasyHomeData(): Promise<{
     db.execute(sql`WITH ranked_sets AS (
       SELECT rs.id, rs.season, rs.name,
         COALESCE(rs.scoring_profile->>'preset', 'PPR') AS scoring,
+        COALESCE(NULLIF(rs.import_summary->>'model_version',''),
+          NULLIF(ss.request_params->>'model_version','')) AS "modelVersion",
         rs.created_at::text AS "createdAt", COUNT(pr.id)::int AS "playerCount",
         ROW_NUMBER() OVER (
           PARTITION BY COALESCE(rs.scoring_profile->>'preset', 'PPR')
           ORDER BY rs.created_at DESC, rs.id DESC
         ) AS recency
-      FROM ff_ranking_sets rs LEFT JOIN ff_player_rankings pr ON pr.ranking_set_id=rs.id
-      GROUP BY rs.id
-    ) SELECT id,season,name,scoring,"createdAt","playerCount"
+      FROM ff_ranking_sets rs
+      LEFT JOIN ff_player_rankings pr ON pr.ranking_set_id=rs.id
+      LEFT JOIN ff_source_snapshots ss ON ss.id=rs.source_snapshot_id
+      GROUP BY rs.id,ss.request_params
+    ) SELECT id,season,name,scoring,"modelVersion","createdAt","playerCount"
       FROM ranked_sets WHERE recency=1 ORDER BY "createdAt" DESC`),
     db.execute(sql`SELECT id::text, name, status, team_count AS "teamCount",
       controlled_slot AS "controlledSlot", current_pick AS "currentPick",
@@ -151,10 +156,29 @@ export async function getLatestRankingSet(scoring = "PPR"): Promise<FantasyRanki
   await ensureFantasyFootballTables();
   const result = await db.execute(sql`SELECT rs.id,rs.season,rs.name,
     COALESCE(rs.scoring_profile->>'preset','PPR') AS scoring,
+    COALESCE(NULLIF(rs.import_summary->>'model_version',''),
+      NULLIF(ss.request_params->>'model_version','')) AS "modelVersion",
     rs.created_at::text AS "createdAt",COUNT(pr.id)::int AS "playerCount"
-    FROM ff_ranking_sets rs LEFT JOIN ff_player_rankings pr ON pr.ranking_set_id=rs.id
+    FROM ff_ranking_sets rs
+    LEFT JOIN ff_player_rankings pr ON pr.ranking_set_id=rs.id
+    LEFT JOIN ff_source_snapshots ss ON ss.id=rs.source_snapshot_id
     WHERE COALESCE(rs.scoring_profile->>'preset','PPR')=${scoring}
-    GROUP BY rs.id ORDER BY rs.created_at DESC LIMIT 1`);
+    GROUP BY rs.id,ss.request_params ORDER BY rs.created_at DESC LIMIT 1`);
+  return queryRows<FantasyRankingSetSummary>(result)[0] ?? null;
+}
+
+export async function getRankingSetSummary(rankingSetId: number): Promise<FantasyRankingSetSummary | null> {
+  await ensureFantasyFootballTables();
+  const result = await db.execute(sql`SELECT rs.id,rs.season,rs.name,
+    COALESCE(rs.scoring_profile->>'preset','PPR') AS scoring,
+    COALESCE(NULLIF(rs.import_summary->>'model_version',''),
+      NULLIF(ss.request_params->>'model_version','')) AS "modelVersion",
+    rs.created_at::text AS "createdAt",COUNT(pr.id)::int AS "playerCount"
+    FROM ff_ranking_sets rs
+    LEFT JOIN ff_player_rankings pr ON pr.ranking_set_id=rs.id
+    LEFT JOIN ff_source_snapshots ss ON ss.id=rs.source_snapshot_id
+    WHERE rs.id=${rankingSetId}
+    GROUP BY rs.id,ss.request_params`);
   return queryRows<FantasyRankingSetSummary>(result)[0] ?? null;
 }
 

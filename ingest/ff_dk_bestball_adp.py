@@ -168,6 +168,8 @@ def _run(
             "source_format": source_format,
             "rank_basis": "csv-row-order" if source_format == "predraft-csv" else "payload-rank",
         },
+        model_eligible=False,
+        eligibility_reason="market context is excluded from football-performance features",
     )
 
     stored = 0

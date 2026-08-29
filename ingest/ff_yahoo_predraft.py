@@ -190,6 +190,8 @@ def _run(
             "adp_rows": sum(row.adp is not None for row in rows),
             "used_for_projection": False,
         },
+        model_eligible=False,
+        eligibility_reason="market context is excluded from football-performance features",
     )
     db.execute(
         """INSERT INTO ff_yahoo_predraft_captures

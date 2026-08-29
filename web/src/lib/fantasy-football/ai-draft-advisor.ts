@@ -9,8 +9,8 @@ import {
 } from "./best-ball";
 import { buildSnakeSlots, nextControlledPick } from "./draft-engine";
 import { computeAvailabilityOdds } from "./availability-odds";
+import { formatProjectionModelLabel, requireProjectionModelVersion } from "./projection-model";
 
-export const BEST_BALL_ADVISOR_PROJECTION_MODEL = "ff-independent-v1.6";
 export const BEST_BALL_ADVISOR_CANDIDATE_LIMIT = 40;
 // News search only covers players actually under consideration for this pick, not
 // the full 40-candidate board -- keeps latency/cost bounded (OpenAI-only feature;
@@ -77,7 +77,7 @@ export type BestBallAdvisorCandidate = {
 
 export type BestBallAdvisorSnapshot = {
   contractVersion: "best-ball-advisor-v1";
-  projectionModel: typeof BEST_BALL_ADVISOR_PROJECTION_MODEL;
+  projectionModel: string;
   rankingSetId: number;
   rules: {
     teams: 12;
@@ -155,7 +155,7 @@ export type BestBallAdvisorResult = {
   provider: BestBallAdvisorProvider;
   providerLabel: "OpenAI" | "DeepSeek";
   model: "gpt-5.6-luna" | "deepseek-v4-flash";
-  projectionModel: typeof BEST_BALL_ADVISOR_PROJECTION_MODEL;
+  projectionModel: string;
   requestHash: string;
   generatedAt: string;
   currentOverallPick: number | null;
@@ -232,8 +232,10 @@ export function buildBestBallAdvisorProviderSnapshot(snapshot: BestBallAdvisorSn
 export function buildBestBallAdvisorSnapshot(
   rankings: FantasyRankingRow[],
   input: Pick<BestBallAdvisorRequest, "rankingSetId" | "userSlot" | "playerIds">,
+  projectionModel: string,
   correlations: BestBallAdvisorCorrelationInput[] = [],
 ): BestBallAdvisorSnapshot {
+  const authoritativeProjectionModel = requireProjectionModelVersion(projectionModel);
   if (!Number.isInteger(input.rankingSetId) || input.rankingSetId <= 0) throw new Error("The ranking snapshot is invalid.");
   if (!Number.isInteger(input.userSlot) || input.userSlot < 1 || input.userSlot > BEST_BALL_TEAM_COUNT) {
     throw new Error("The user's draft slot must be between 1 and 12.");
@@ -328,7 +330,7 @@ export function buildBestBallAdvisorSnapshot(
 
   return {
     contractVersion: "best-ball-advisor-v1",
-    projectionModel: BEST_BALL_ADVISOR_PROJECTION_MODEL,
+    projectionModel: authoritativeProjectionModel,
     rankingSetId: input.rankingSetId,
     rules: {
       teams: 12,
@@ -379,7 +381,7 @@ export function buildBestBallAdvisorSnapshot(
       "Balance best available value with roster construction; do not force immediate bye-week backup when later value is likely.",
       "Prioritize spike-week upside and paths to a weekly starting slot, but never invent air-yard, injury, role, matchup, or correlation evidence absent from this snapshot.",
       "Each candidate's availabilityAtNextPickPct is a computed probability (not a guess) that the player survives to draft.availabilityTargetOverallPick. During an opponent turn that is the user's upcoming controlled pick; while the user is on the clock it is the following controlled turn. It comes from Fantasy Football Calculator's observed ADP mean, variance, and sample size. Prefer it over inferring survival from adp/ourRank alone; a low sampleSize means the number is less trustworthy.",
-      "The active point projection is V1.6. V2 opportunity and weekly-distribution modeling is not active.",
+      `The active point projection is ${formatProjectionModelLabel(authoritativeProjectionModel)} (${authoritativeProjectionModel}). V2 opportunity and weekly-distribution modeling is not active.`,
       "Select only candidateKey values contained in candidates. Candidate keys are the sole selection identifiers.",
       "Correlation is a variance lever, not an expected-points lever: it does not change a player's projected points, only how the roster's weekly total moves together. rules.tournament shows two different phases with opposite needs -- Weeks 1-14 is cumulative accumulation against a large field (favor diversification: uncorrelated players give the weekly-best-lineup selector more independent chances to pop), while Weeks 15-17 are single-week knockout rounds (favor 1-2 deliberate correlated stacks for ceiling, since a shared QB+WR spike is how an outlier single-week score gets made).",
       "Use each candidate's correlationsWithRoster (shrunkCorrelation, already shrunk toward a league-wide prior by sample size -- do not treat a low-sample_weeks pair as equally reliable as a high one) to judge whether this pick would add a genuine stack, add unwanted concentration, or is unrelated to the current roster. Never invent a correlation value for a pair not present there.",
@@ -567,7 +569,7 @@ export function validateBestBallAdvisorOutput(raw: unknown, snapshot: BestBallAd
   const suppliedEvidence = advisorField(value, ["evidence"]) ?? deepAdvisorField(value, ["evidence"]);
   const evidence = suppliedEvidence === null
     ? [
-      `V1.6 projection: ${recommendedCandidate.ourProjectedPoints?.toFixed(1) ?? "not available"} PPR points.`,
+      `${formatProjectionModelLabel(snapshot.projectionModel)} projection: ${recommendedCandidate.ourProjectedPoints?.toFixed(1) ?? "not available"} PPR points.`,
       `Current ADP: ${recommendedCandidate.adp?.toFixed(1) ?? "not available"}; our rank: ${recommendedCandidate.ourRank ?? "not available"}.`,
       recommendedCandidate.availabilityAtNextPickPct === null
         ? "Availability odds not available for this player."

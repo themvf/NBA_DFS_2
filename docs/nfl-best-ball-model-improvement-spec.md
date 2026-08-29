@@ -21,7 +21,7 @@ The model must remain independent and reproducible. ADP is a market comparison a
 
 V2 models running-back production through constrained team opportunity, role allocation, contextual efficiency, touchdown share, and weekly uncertainty. The architecture is intended to prevent projections from ignoring team changes or exceeding plausible team ceilings.
 
-This is a working hypothesis, not an outperformance claim. Coefficients and transition priors must be learned from leakage-safe historical data. V2 operates beside `ff-independent-v1.4` as a challenger until the final champion-versus-challenger gate returns `PROMOTE`.
+This is a working hypothesis, not an outperformance claim. Coefficients and transition priors must be learned from leakage-safe historical data. V2 operates beside the frozen live champion as a challenger until the final champion-versus-challenger gate returns `PROMOTE`. As of 2026-08-28 the champion is `ff-independent-v1.14`, frozen in `artifacts/ff_champion_baseline_v1.14.json`; ranking snapshots remain authoritative for the model identity shown by the application.
 
 The following values are expressly prohibited as unverified production assumptions:
 
@@ -50,7 +50,7 @@ The current independent projection pipeline in `ingest/ff_independent.py`:
 - stores current Fantasy Football Calculator ADP separately from the projection;
 - explains which seasons, weights, historical-game sample, priors, 17-game baseline, depth order, and separate availability estimate were used.
 
-The `ff-independent-v1.4` correction deliberately does not blend FantasyPros into our projection. FantasyPros remains a comparison benchmark used to reveal disagreement and evaluate calibration. The correction fixes an internal arithmetic error: established players had previously been shrunk as though their evidence sample were roughly one weighted season, and their active-game rate was then multiplied by fewer than 17 games.
+The historical `ff-independent-v1.4` correction deliberately did not blend FantasyPros into our projection. FantasyPros remains a comparison benchmark used to reveal disagreement and evaluate calibration. The correction fixed an internal arithmetic error: established players had previously been shrunk as though their evidence sample were roughly one weighted season, and their active-game rate was then multiplied by fewer than 17 games.
 
 The Best Ball route then takes the top 260 QB/RB/WR/TE players from that PPR ranking set. The local draft simulator correctly handles 12 teams, 20 snake rounds, automatic pick advancement, roster validation, persistence, and draft-results tracking.
 
@@ -578,7 +578,7 @@ The model may replace the current Best Ball rank only when:
 - all leakage and provenance checks pass;
 - the UI can explain the new rank;
 - a shadow-mode comparison has run on real 2026 draft snapshots.
-- the final decision is explicitly `PROMOTE`, `REVISE`, or `RETAIN V1.4`.
+- the final decision is explicitly `PROMOTE`, `REVISE`, or `RETAIN CHAMPION`, naming the frozen champion artifact and version.
 
 Until then, show it as `Best Ball model — shadow` beside the existing baseline.
 
@@ -686,7 +686,7 @@ No implementation should begin until the preceding required phase passes.
 
 - complete source contracts and immutable historical as-of snapshots;
 - populate 2020–2025 source partitions and effective-dated roster/team context;
-- freeze a reproducible `ff-independent-v1.4` baseline;
+- freeze a reproducible live champion baseline and preserve its ranking/source identifiers and projection/order digests;
 - freeze a timestamped draft-time PPR ADP baseline.
 
 ### Phase 1 — Validation framework
@@ -721,8 +721,8 @@ No implementation should begin until the preceding required phase passes.
 
 ### Phase 6 — Validation gate
 
-- compare V2 with V1.4 and draft-time ADP using the preregistered metrics;
-- return `PROMOTE`, `REVISE`, or `RETAIN V1.4`;
+- compare V2 with the frozen champion and draft-time ADP using the preregistered metrics;
+- return `PROMOTE`, `REVISE`, or `RETAIN CHAMPION`;
 - keep V2 as challenger when evidence is inconclusive or any required gate fails.
 
 ### Phase 7 — Product delivery and verification
@@ -804,10 +804,10 @@ The first user-visible shadow slice is now implemented:
   candidate's expected counted points and weeks, and change in roster P90;
 - the live Best Ball page displays those results for the Decision Desk choices
   in a clearly labeled shadow panel and recalculates from the user's roster;
-- V1.6 remains the production order. The shadow output is deliberately not
+- The persisted live champion remains the production order. The shadow output is deliberately not
   blended into the current recommendation.
 
-Current boundary: V1.6 supplies season-level PPR points and uncertainty ranges,
+Current boundary: `ff-independent-v1.14` supplies season-level PPR points and uncertainty ranges,
 not weekly passing/rushing/receiving stat projections. Shadow V0 therefore uses
 explicit, uncalibrated position-level weekly-variance priors and cannot yet feed
 yardage events through the exact scorer. The UI states this limitation. Phase 5

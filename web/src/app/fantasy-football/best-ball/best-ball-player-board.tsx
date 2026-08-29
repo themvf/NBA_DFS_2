@@ -11,6 +11,7 @@ import type { RosterCorrelationBadge } from "@/lib/fantasy-football/teammate-cor
 import ProjectionNotation from "../rankings/projection-notation";
 import InjuryMarker from "@/components/fantasy-football/injury-marker";
 import AnalystNoteMarker from "@/components/fantasy-football/analyst-note-marker";
+import { formatProjectionModelLabel } from "@/lib/fantasy-football/projection-model";
 
 const COLUMN_GRID = "grid-cols-[76px_104px_minmax(220px,1fr)_76px_minmax(280px,1.35fr)_150px_126px_96px_78px_82px_92px_92px_86px_100px]";
 const FLEX_POSITIONS = new Set(["RB", "WR", "TE"]);
@@ -22,11 +23,14 @@ type SortDir = "asc" | "desc";
 // click; higher-is-better columns (points/probability) default to descending
 // -- so the first click on any header always surfaces the "best" players
 // first, not just numerically smallest.
-const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; title?: string }> = [
+type SortHeaderConfig = { key: SortKey; label: string; defaultDir: SortDir; title?: string };
+
+function buildSortHeaders(projectionLabel: string): SortHeaderConfig[] {
+  return [
   { key: "skillRank", label: "Skill rank", defaultDir: "asc" },
   { key: "overallRank", label: "Overall / Pos.", defaultDir: "asc" },
   { key: "name", label: "Player", defaultDir: "asc" },
-  { key: "ourProj", label: "Our 2026 PPR Base (V1.6)", defaultDir: "desc" },
+  { key: "ourProj", label: `Our 2026 PPR Base (${projectionLabel})`, defaultDir: "desc" },
   { key: "fpProj", label: "FantasyPros PPR Proj.", defaultDir: "desc" },
   { key: "fpts2025", label: "2025 FPTS", defaultDir: "desc" },
   { key: "adp", label: "ADP", defaultDir: "asc" },
@@ -46,8 +50,9 @@ const SORT_HEADERS: Array<{ key: SortKey; label: string; defaultDir: SortDir; ti
   // where our projected points and FantasyPros' disagree. Deliberately NOT
   // labeled "DK" (unlike the real "DK ADP" column above) to avoid implying
   // this is DraftKings' own number - it's ours, compared against FantasyPros.
-  { key: "projDelta", label: "Our Δ FP", defaultDir: "desc", title: "Our 2026 PPR Base (V1.6) minus FantasyPros PPR Proj. Positive = we project this player higher than FantasyPros. Comparison only -- never blended into our board." },
-];
+  { key: "projDelta", label: "Our Δ FP", defaultDir: "desc", title: `Our 2026 PPR Base (${projectionLabel}) minus FantasyPros PPR Proj. Positive = we project this player higher than FantasyPros. Comparison only -- never blended into our board.` },
+  ];
+}
 
 type BestBallPlayerBoardProps = {
   rankings: FantasyRankingRow[];
@@ -59,6 +64,7 @@ type BestBallPlayerBoardProps = {
   // Absent entries (draft complete, or no FFC variance) render as "—".
   availabilityByPlayerId: Map<number, AvailabilityOdds | null>;
   correlationBadges: Map<number, RosterCorrelationBadge>;
+  projectionModel: string;
 };
 
 type PlayerRowProps = {
@@ -68,6 +74,7 @@ type PlayerRowProps = {
   onDraft: (playerId: number) => void;
   odds: AvailabilityOdds | null | undefined;
   correlationBadge?: RosterCorrelationBadge;
+  projectionLabel: string;
 };
 
 function AvailabilityCell({ odds }: { odds: AvailabilityOdds | null | undefined }) {
@@ -81,7 +88,7 @@ function AvailabilityCell({ odds }: { odds: AvailabilityOdds | null | undefined 
   );
 }
 
-const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, canDraft, onDraft, odds, correlationBadge }: PlayerRowProps) {
+const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, canDraft, onDraft, odds, correlationBadge, projectionLabel }: PlayerRowProps) {
   const overallRank = player.ourRank ?? player.ecr ?? skillRank;
   const projDelta = player.ourProjectedPoints !== null && player.fantasyProsProjectedPoints !== null
     ? player.ourProjectedPoints - player.fantasyProsProjectedPoints
@@ -105,7 +112,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
       <InjuryMarker injuryStatus={player.injuryStatus} details={player.injuryDetails ?? null} />
       {visibleIndicators.slice(0, indicatorLimit).map((badge) => <span key={badge.code} className={`rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${fantasyBadgeClass(badge)}`}>{badge.label}</span>)}
     </div></div>
-    <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label="How V1.6 projects" /></div>
+    <div role="cell" className="p-3 font-semibold">{player.ourProjectedPoints?.toFixed(1) ?? "—"}<ProjectionNotation details={player.projectionDetails} label={`How ${projectionLabel} projects`} /></div>
     <div role="cell" className="p-3 font-semibold" title={player.fantasyProsProjectionUpdatedAt ? `FantasyPros source updated ${new Date(player.fantasyProsProjectionUpdatedAt).toLocaleString()}` : "No matched FantasyPros PPR projection"}>{player.fantasyProsProjectedPoints?.toFixed(1) ?? "—"}</div>
     <div role="cell" className="p-3">{formatPriorSeasonFantasyPoints(player.fantasyPoints2025, player.positionFinish2025, player.positionFinishTieCount2025)}</div>
     <div role="cell" className="p-3">{player.adp?.toFixed(1) ?? "—"}</div>
@@ -152,7 +159,7 @@ function sortValue(
   }
 }
 
-function SortHeader({ config, active, dir, onSort }: { config: (typeof SORT_HEADERS)[number]; active: boolean; dir: SortDir; onSort: (key: SortKey, defaultDir: SortDir) => void }) {
+function SortHeader({ config, active, dir, onSort }: { config: SortHeaderConfig; active: boolean; dir: SortDir; onSort: (key: SortKey, defaultDir: SortDir) => void }) {
   return (
     <button
       type="button"
@@ -166,7 +173,9 @@ function SortHeader({ config, active, dir, onSort }: { config: (typeof SORT_HEAD
   );
 }
 
-export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDraftPlayerById, onDraft, availabilityByPlayerId, correlationBadges }: BestBallPlayerBoardProps) {
+export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDraftPlayerById, onDraft, availabilityByPlayerId, correlationBadges, projectionModel }: BestBallPlayerBoardProps) {
+  const projectionLabel = formatProjectionModelLabel(projectionModel);
+  const sortHeaders = useMemo(() => buildSortHeaders(projectionLabel), [projectionLabel]);
   const [name, setName] = useState("");
   const [position, setPosition] = useState("");
   const [team, setTeam] = useState("");
@@ -240,16 +249,16 @@ export default function BestBallPlayerBoard({ rankings, draftedPlayerIds, canDra
     <div ref={scrollRef} role="table" aria-rowcount={filtered.length + 1} className="h-[min(68vh,680px)] overflow-auto rounded-2xl border bg-card text-sm [contain:strict]">
       <div role="rowgroup" className="sticky top-0 z-20 min-w-[1716px] bg-muted text-left text-xs uppercase text-muted-foreground">
         <div role="row" className={`grid ${COLUMN_GRID}`}>
-          {SORT_HEADERS.slice(0, 3).map((config) => <div key={config.key} role="columnheader" className={config.key === "name" ? "sticky left-0 z-30 border-r bg-muted shadow-[4px_0_8px_-6px_rgba(15,23,42,0.45)]" : undefined}><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
+          {sortHeaders.slice(0, 3).map((config) => <div key={config.key} role="columnheader" className={config.key === "name" ? "sticky left-0 z-30 border-r bg-muted shadow-[4px_0_8px_-6px_rgba(15,23,42,0.45)]" : undefined}><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
           <div role="columnheader" className="p-3">Draft</div>
           <div role="columnheader" className="p-3">Signals</div>
-          {SORT_HEADERS.slice(3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
+          {sortHeaders.slice(3).map((config) => <div key={config.key} role="columnheader"><SortHeader config={config} active={sortKey === config.key} dir={sortDir} onSort={handleSort} /></div>)}
         </div>
       </div>
       <div role="rowgroup" className="relative min-w-[1716px]" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const player = filtered[virtualRow.index];
-          return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPlayerById.get(player.playerId) === true} onDraft={onDraft} odds={availabilityByPlayerId.get(player.playerId)} correlationBadge={correlationBadges.get(player.playerId)} /></div>;
+          return <div key={player.playerId} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} role="row" aria-rowindex={virtualRow.index + 2} className={`absolute left-0 top-0 grid w-full border-t align-top hover:bg-muted/40 ${COLUMN_GRID}`} style={{ transform: `translateY(${virtualRow.start}px)` }}><BestBallPlayerRow player={player} skillRank={skillRankById.get(player.playerId) ?? 999} canDraft={canDraftPlayerById.get(player.playerId) === true} onDraft={onDraft} odds={availabilityByPlayerId.get(player.playerId)} correlationBadge={correlationBadges.get(player.playerId)} projectionLabel={projectionLabel} /></div>;
         })}
       </div>
       {filtered.length === 0 && <p className="min-w-[1716px] border-t p-8 text-center text-sm text-muted-foreground">No available players match these filters.</p>}

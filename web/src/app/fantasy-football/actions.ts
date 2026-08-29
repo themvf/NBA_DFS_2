@@ -13,6 +13,7 @@ import { AUTO_DRAFT_VERSION, selectComputerPick, type AutoDraftPlayer } from "@/
 import { isDraftStrategy } from "@/lib/fantasy-football/draft-strategy";
 import { queryRows } from "@/db/query-result";
 import { ANALYST_NOTE_STYLE, isAnalystVerdict, validateNoteInput } from "@/lib/fantasy-football/analyst-notes";
+import { requireProjectionModelVersion } from "@/lib/fantasy-football/projection-model";
 
 export async function createFantasyDraft(formData: FormData): Promise<void> {
   await ensureFantasyFootballTables();
@@ -39,9 +40,14 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
   buildSnakeSlots(teamCount, rounds);
   if (controlledSlot < 1 || controlledSlot > teamCount) throw new Error("Draft slot is outside the league");
 
-  const rankingSetResult = await db.execute(sql`SELECT season,COALESCE(scoring_profile->>'preset', 'PPR') AS scoring
-    FROM ff_ranking_sets WHERE id=${rankingSetId}`);
-  const rankingSet = queryRows<{ season: number; scoring: string }>(rankingSetResult)[0];
+  const rankingSetResult = await db.execute(sql`SELECT rs.season,
+    COALESCE(rs.scoring_profile->>'preset', 'PPR') AS scoring,
+    COALESCE(NULLIF(rs.import_summary->>'model_version',''),
+      NULLIF(ss.request_params->>'model_version','')) AS "modelVersion"
+    FROM ff_ranking_sets rs
+    LEFT JOIN ff_source_snapshots ss ON ss.id=rs.source_snapshot_id
+    WHERE rs.id=${rankingSetId}`);
+  const rankingSet = queryRows<{ season: number; scoring: string; modelVersion: string | null }>(rankingSetResult)[0];
   if (!rankingSet) throw new Error("The selected ranking snapshot no longer exists");
   if (rankingSet.season !== season) throw new Error(`Choose a ${season} ranking snapshot`);
   if (rankingSet.scoring !== scoringPreset) {
@@ -55,7 +61,11 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
     version: AUTO_DRAFT_VERSION,
     seed: draftId,
   };
-  const recommendationConfig = { model: "ff-independent-v1.6", strategy: strategyMode, simulator };
+  const recommendationConfig = {
+    model: requireProjectionModelVersion(rankingSet.modelVersion),
+    strategy: strategyMode,
+    simulator,
+  };
 
   await db.execute(sql`WITH new_draft AS (
       INSERT INTO ff_draft_sessions

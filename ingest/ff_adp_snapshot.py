@@ -95,6 +95,8 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
                 "url": url, "teams": 12, "format": source_format,
                 "captured_at": captured_at.isoformat(), "cadence_hours": 12,
             },
+            model_eligible=False,
+            eligibility_reason="market context is excluded from football-performance features",
         )
         db.execute(
             "UPDATE ff_source_snapshots SET matched_count=%s,unmatched_count=%s WHERE id=%s",

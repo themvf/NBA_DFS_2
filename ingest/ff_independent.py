@@ -17,7 +17,7 @@ import json
 import warnings
 import math
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 import pandas as pd
@@ -29,6 +29,7 @@ from db.database import DatabaseManager
 from ingest.ff_playoff_sos import compute_playoff_sos
 from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indicators, normalize_name
 from ingest.ff_injuries import persist_sleeper_injury_observations
+from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapshot
 
 
 # v1.12 (2026-08-16): board no longer silently drops a team's presumptive
@@ -371,17 +372,37 @@ def _snapshot(
     params: dict[str, Any],
     scoring: str | None = None,
     ranking_type: str | None = None,
+    contract_key: str | None = None,
+    source_published_at: datetime | None = None,
+    as_of_at: datetime | None = None,
+    missingness: dict[str, Any] | None = None,
+    fallback_tier: str = "A",
+    confidence_multiplier: float = 1.0,
+    model_eligible: bool = True,
+    eligibility_reason: str | None = None,
 ) -> int:
-    row = db.execute_one(
-        """INSERT INTO ff_source_snapshots
-           (source,dataset,season,scoring,ranking_type,request_params,response_hash,row_count,status)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'success')
-           ON CONFLICT(source,dataset,response_hash) DO UPDATE SET
-             fetched_at=NOW(),row_count=EXCLUDED.row_count,status='success',error_summary=NULL
-           RETURNING id""",
-        (source, dataset, season, scoring, ranking_type, Json(params), digest, row_count),
+    return persist_source_snapshot(
+        db,
+        SnapshotProvenance(
+            source=source,
+            dataset=dataset,
+            season=season,
+            scoring=scoring,
+            ranking_type=ranking_type,
+            contract_key=contract_key,
+            request_params=params,
+            source_published_at=source_published_at,
+            fetched_at=datetime.now(timezone.utc),
+            as_of_at=as_of_at,
+            response_hash=digest,
+            row_count=row_count,
+            missingness=missingness or {},
+            fallback_tier=fallback_tier,
+            confidence_multiplier=confidence_multiplier,
+            model_eligible=model_eligible,
+            eligibility_reason=eligibility_reason,
+        ),
     )
-    return int(row["id"])
 
 
 def _sleeper_indexes(payload: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[tuple[str, str], dict[str, Any]]]:
@@ -1293,10 +1314,12 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     _snapshot(
         db, source="nflverse", dataset="weekly-roster", season=season, digest=roster_digest,
         row_count=len(roster), params={"url": NFLVERSE_ROSTER_URL.format(season=season), "canonical": True},
+        contract_key="weekly-rosters",
     )
     _snapshot(
         db, source="nflverse", dataset="schedule", season=season, digest=schedule_digest,
         row_count=len(schedule), params={"url": NFLVERSE_SCHEDULE_URL, "use": "schedule-derived bye weeks"},
+        contract_key="schedule",
     )
     universe = build_player_universe(db, season, roster, sleeper_payload, bye_weeks)
     injury_ingestion = persist_sleeper_injury_observations(
@@ -1358,6 +1381,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
             db, source="fantasy-football-calculator", dataset="adp", season=season,
             digest=digest, row_count=len(player_rows), scoring=scoring, ranking_type="ADP",
             params={"url": url, "teams": 12, "format": source_format, "projection_input": False},
+            model_eligible=False, eligibility_reason="market context is excluded from football-performance features",
         )
         db.execute(
             "UPDATE ff_source_snapshots SET matched_count=%s,unmatched_count=%s WHERE id=%s",

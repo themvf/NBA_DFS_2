@@ -7,6 +7,7 @@ import {
   type BestBallAdvisorResult,
 } from "@/lib/fantasy-football/ai-draft-advisor";
 import { requestBestBallAdvice } from "./advisor-actions";
+import { formatProjectionModelLabel } from "@/lib/fantasy-football/projection-model";
 
 type ProviderState = {
   loading: boolean;
@@ -36,6 +37,7 @@ function RecommendationCard({
   onRequest,
   onDraft,
   canDraftRecommendation,
+  projectionModel,
 }: {
   provider: BestBallAdvisorProvider;
   state: ProviderState;
@@ -44,9 +46,11 @@ function RecommendationCard({
   onRequest: (provider: BestBallAdvisorProvider, withNews: boolean) => void;
   onDraft: (playerId: number) => void;
   canDraftRecommendation: boolean;
+  projectionModel: string;
 }) {
   const label = provider === "openai" ? "OpenAI" : "DeepSeek";
   const model = provider === "openai" ? "GPT-5.6 Luna" : "DeepSeek V4 Flash";
+  const projectionLabel = formatProjectionModelLabel(projectionModel);
   const accent = provider === "openai"
     ? "border-emerald-300 bg-emerald-50 text-emerald-950"
     : "border-violet-300 bg-violet-50 text-violet-950";
@@ -55,7 +59,7 @@ function RecommendationCard({
       <div>
         <p className="text-xs font-black uppercase tracking-widest opacity-70">{label} recommendation</p>
         <h3 className="mt-1 text-xl font-black">{model}</h3>
-        <p className="text-xs opacity-70">Independent analysis · V1.6 evidence</p>
+        <p className="text-xs opacity-70">Independent analysis · {projectionLabel} evidence</p>
       </div>
       <div className="flex flex-wrap justify-end gap-2">
         <button
@@ -93,7 +97,7 @@ function RecommendationCard({
           <button type="button" disabled={!canDraftRecommendation} onClick={() => onDraft(state.result!.recommendation.playerId)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{canDraftRecommendation ? "Add this player" : "Waiting for your pick"}</button>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-          <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">Our V1.6</span><b>{formatProjection(state.result.recommendation.ourProjectedPoints)}</b></div>
+          <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">Our {projectionLabel}</span><b>{formatProjection(state.result.recommendation.ourProjectedPoints)}</b></div>
           <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">FantasyPros</span><b>{formatProjection(state.result.recommendation.fantasyProsProjectedPoints)}</b></div>
           <div className="rounded-lg bg-slate-100 p-2"><span className="block opacity-60">ADP</span><b>{formatProjection(state.result.recommendation.adp)}</b></div>
         </div>
@@ -136,6 +140,7 @@ export default function BestBallAiAdvisor({
   availability,
   onDraft,
   canDraftRecommendation,
+  projectionModel,
 }: {
   rankingSetId: number;
   userSlot: number;
@@ -143,7 +148,9 @@ export default function BestBallAiAdvisor({
   availability: Record<BestBallAdvisorProvider, boolean>;
   onDraft: (playerId: number) => void;
   canDraftRecommendation: boolean;
+  projectionModel: string;
 }) {
+  const projectionLabel = formatProjectionModelLabel(projectionModel);
   const signature = bestBallAdvisorDraftSignature({ rankingSetId, userSlot, playerIds });
   const signatureRef = useRef(signature);
   useEffect(() => {
@@ -178,11 +185,11 @@ export default function BestBallAiAdvisor({
     <div className="mb-5">
       <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-700">Your next pick</p>
       <h2 className="mt-1 text-2xl font-black">Ask two independent draft advisors</h2>
-      <p className="mt-1 max-w-4xl text-sm text-muted-foreground">Both models receive the same rules, your draft slot and roster, every recorded pick, bye weeks, ADP, and the legal V1.6 projection board. Their answers stay separate so you can compare their reasoning. OpenAI can also optionally check recent news for the top candidates before answering; DeepSeek has no equivalent web-search capability.</p>
+      <p className="mt-1 max-w-4xl text-sm text-muted-foreground">Both models receive the same rules, your draft slot and roster, every recorded pick, bye weeks, ADP, and the legal {projectionLabel} projection board. Their answers stay separate so you can compare their reasoning. OpenAI can also optionally check recent news for the top candidates before answering; DeepSeek has no equivalent web-search capability.</p>
     </div>
     <div className="grid gap-4 xl:grid-cols-2">
-      <RecommendationCard provider="openai" state={states.openai} configured={availability.openai} showNewsButton onRequest={onRequest} onDraft={onDraft} canDraftRecommendation={canDraftRecommendation} />
-      <RecommendationCard provider="deepseek" state={states.deepseek} configured={availability.deepseek} showNewsButton={false} onRequest={onRequest} onDraft={onDraft} canDraftRecommendation={canDraftRecommendation} />
+      <RecommendationCard provider="openai" state={states.openai} configured={availability.openai} showNewsButton onRequest={onRequest} onDraft={onDraft} canDraftRecommendation={canDraftRecommendation} projectionModel={projectionModel} />
+      <RecommendationCard provider="deepseek" state={states.deepseek} configured={availability.deepseek} showNewsButton={false} onRequest={onRequest} onDraft={onDraft} canDraftRecommendation={canDraftRecommendation} projectionModel={projectionModel} />
     </div>
   </section>;
 }

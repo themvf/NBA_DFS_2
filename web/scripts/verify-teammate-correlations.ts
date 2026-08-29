@@ -1,6 +1,7 @@
 import { getFantasyRankings, getLatestRankingSet, getTeammateCorrelations } from "../src/db/queries-fantasy-football";
 import { buildBestBallAdvisorSnapshot } from "../src/lib/fantasy-football/ai-draft-advisor";
 import { BEST_BALL_POSITIONS } from "../src/lib/fantasy-football/best-ball";
+import { requireProjectionModelVersion } from "../src/lib/fantasy-football/projection-model";
 
 async function main() {
   const rankingSet = await getLatestRankingSet("PPR");
@@ -35,6 +36,7 @@ async function main() {
   const snapshot = buildBestBallAdvisorSnapshot(
     rankings,
     { rankingSetId: Number(rankingSet.id), userSlot: 1, playerIds: draftedIds },
+    requireProjectionModelVersion(rankingSet.modelVersion),
     correlations,
   );
 

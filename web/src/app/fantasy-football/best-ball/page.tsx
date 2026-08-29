@@ -6,6 +6,7 @@ import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
 import BestBallClient from "./best-ball-client";
 import { getBestBallAdvisorAvailability } from "@/lib/fantasy-football/ai-draft-advisor-env";
 import ProjectionMethodExplainer from "./projection-method-explainer";
+import { requireProjectionModelVersion } from "@/lib/fantasy-football/projection-model";
 
 export default async function BestBallPage() {
   const set = await getLatestRankingSet("PPR");
@@ -18,6 +19,7 @@ export default async function BestBallPage() {
     .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
     .slice(0, 260);
   const correlations = await getTeammateCorrelations(rankings.map((player) => player.playerId));
+  const projectionModel = set ? requireProjectionModelVersion(set.modelVersion) : null;
   const fantasyProsProjectionDataset = fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "projections");
   const latestDkCapture = dkBestBallHealth[0] ?? null;
   return <div className="space-y-6">
@@ -55,7 +57,7 @@ export default async function BestBallPage() {
       <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">DraftKings Best Ball rank feed</p><p className="mt-1 text-lg font-black">{latestDkCapture ? "Current manual snapshot" : "No snapshot"}</p><p className="text-sm text-muted-foreground">DraftKings Rank and ADP power the DK Shadow acquisition window; they never alter our independent football projection.</p></div>{latestDkCapture && <div className="text-right text-xs text-muted-foreground"><p>{latestDkCapture.playerCount} DK players · {latestDkCapture.matchedCount} matched</p><p>Captured {new Date(latestDkCapture.capturedAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</p></div>}</div>
     </section>
 
-    <ProjectionMethodExplainer />
+    {projectionModel && <ProjectionMethodExplainer projectionModel={projectionModel} />}
 
     <details className="rounded-2xl border bg-card p-5"><summary className="cursor-pointer text-lg font-black">DraftKings scoring and draft rules</summary><div className="mt-4 grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-4">
       <div><h2 className="font-bold">Passing</h2><p className="mt-2">TD +4 · 25 yards +1</p><p>300-yard game +3</p><p>Interception −1</p></div>
@@ -64,6 +66,6 @@ export default async function BestBallPage() {
       <div><h2 className="font-bold">Other and clock</h2><p className="mt-2">Return TD +6 · lost fumble −1</p><p>Offensive fumble-recovery TD +6</p><p>Fast pick: 30 sec · slow pick: up to 8 hr</p></div>
     </div></details>
 
-    {!set ? <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">No PPR ranking snapshot is available. Run the Fantasy Football refresh workflow.</div> : <BestBallClient rankings={rankings} rankingSetId={Number(set.id)} advisorAvailability={getBestBallAdvisorAvailability()} correlations={correlations} />}
+    {!set || !projectionModel ? <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">No versioned PPR ranking snapshot is available. Run the Fantasy Football refresh workflow.</div> : <BestBallClient rankings={rankings} rankingSetId={Number(set.id)} projectionModel={projectionModel} advisorAvailability={getBestBallAdvisorAvailability()} correlations={correlations} />}
   </div>;
 }

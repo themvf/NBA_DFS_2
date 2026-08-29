@@ -92,7 +92,7 @@ function useBestBallDraft(storageKey: string) {
   return { draft, updateDraft };
 }
 
-export default function BestBallClient({ rankings, rankingSetId, advisorAvailability, correlations }: { rankings: FantasyRankingRow[]; rankingSetId: number; advisorAvailability: Record<BestBallAdvisorProvider, boolean>; correlations: TeammateCorrelationRow[] }) {
+export default function BestBallClient({ rankings, rankingSetId, projectionModel, advisorAvailability, correlations }: { rankings: FantasyRankingRow[]; rankingSetId: number; projectionModel: string; advisorAvailability: Record<BestBallAdvisorProvider, boolean>; correlations: TeammateCorrelationRow[] }) {
   const storageKey = `dfs-vegas:dk-best-ball-draft:v2:${rankingSetId}`;
   const [viewTeam, setViewTeam] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<"players" | "results">("players");
@@ -390,6 +390,7 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
       playerIds={draft.playerIds}
       availability={advisorAvailability}
       canDraftRecommendation={isUserOnClock}
+      projectionModel={projectionModel}
       onDraft={(playerId) => draftPlayer(playerId, "ai")}
     />
 
@@ -407,7 +408,7 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
 
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><b>Current ranking basis:</b> the top 260 eligible players from our season-long PPR board plus current ADP. The DraftKings yardage bonuses, weekly spike distributions, player correlations, and Weeks 15–17 matchups are not yet incorporated into the rank.</section>
 
-    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPlayerById={canDraftPlayerById} onDraft={draftPlayer} availabilityByPlayerId={playerBoardAvailabilityByPlayerId} correlationBadges={correlationBadges} />
+    <BestBallPlayerBoard rankings={rankings} draftedPlayerIds={draft.playerIds} canDraftPlayerById={canDraftPlayerById} onDraft={draftPlayer} availabilityByPlayerId={playerBoardAvailabilityByPlayerId} correlationBadges={correlationBadges} projectionModel={projectionModel} />
     </>}
   </div>;
 }

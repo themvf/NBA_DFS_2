@@ -1,0 +1,736 @@
+{
+  "schemaVersion": 1,
+  "program": "Fantasy Football Roster-Aware V2",
+  "specification": "docs/V2_FIXES.md",
+  "supportingSpecifications": [
+    "docs/fantasy-football-roster-aware-v2.md",
+    "docs/fantasy-football-v2-source-contracts.md",
+    "docs/fantasy-football-v2-historical-context.md",
+    "docs/fantasy-football-v2-backtest-harness.md",
+    "docs/fantasy-football-v2-metric-suite.md",
+    "docs/fantasy-football-v2-validation-audits.md",
+    "docs/fantasy-football-draft-spec.md",
+    "docs/nfl-best-ball-model-improvement-spec.md"
+  ],
+  "updatedAt": "2026-08-29",
+  "activeTarget": "V2-007",
+  "waivers": [],
+  "waves": [
+    {
+      "id": "V2-W0",
+      "order": 0,
+      "priority": "P0",
+      "name": "Foundations and immutable context",
+      "status": "complete",
+      "dependsOn": [],
+      "gateToAdvance": "The live champion is reproducible and correctly labeled, source contracts are immutable and as-of safe, and 2020-2025 roster/team context passes coverage checks.",
+      "targets": [
+        {
+          "id": "V2-001",
+          "name": "Freeze and label the live champion baseline",
+          "status": "complete",
+          "dependsOn": [],
+          "acceptance": [
+            "One reproducible live champion model version and ranking artifact is designated for V2 comparisons.",
+            "Ingestion, redraft, Best Ball, draft-room, advisor, and explainer surfaces report the same champion identity.",
+            "The frozen artifact records scoring format, source snapshot identifiers, model version, row count, digest, and creation time.",
+            "Freezing and relabeling the champion does not change player projections or ranking order."
+          ],
+          "evidence": [
+            {
+              "type": "code",
+              "reference": "web/src/lib/fantasy-football/projection-model.ts; web/src/db/queries-fantasy-football.ts; web/src/lib/fantasy-football/ai-draft-advisor.ts; web/src/app/best-ball/advisor-actions.ts",
+              "result": "Redraft, Best Ball, draft recommendation, advisor, and explainer paths now derive one champion identity from persisted ranking/source-snapshot metadata instead of hardcoded model labels.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "audit",
+              "reference": "artifacts/ff_champion_baseline_v1.14.json; python -m model.ff_champion_baseline --season 2026 --verify artifacts/ff_champion_baseline_v1.14.json",
+              "result": "Frozen ff-independent-v1.14 artifact records creation time plus source snapshot 2460 and ranking sets STD 339/444 rows, HALF 340/442 rows, and PPR 341/441 rows. Live projections and ranking order reproduced the recorded per-format digests and combined digest d9dbdb129aeec4e79e6421ca32bc71c06f128b4b822ac2917bca7f202989d6ac.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "test",
+              "reference": "python -m pytest tests/test_ff_champion_baseline.py tests/test_ff_independent.py -q; npm run test:fantasy-football; npm run verify:teammate-correlations; npm run lint; npx tsc --noEmit",
+              "result": "All focused Python tests passed (22), fantasy-football and teammate-correlation verification passed against live data, and lint plus TypeScript checks passed.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "playtest",
+              "reference": "npm run build; local browser review of /best-ball and /fantasy-football",
+              "result": "Production build passed. Rendered Best Ball surfaces consistently showed V1.14 in the live-status banner, base ranking label, advisor evidence, and player table while retaining the V2 NOT ACTIVE state; the redraft route also loaded successfully.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "audit",
+              "reference": "python -m model.ff_champion_baseline --season 2026 --verify artifacts/ff_champion_baseline_v1.14.json; rg model-identity references across web/src, web/scripts, docs, and CLAUDE.md",
+              "result": "Verification replay matched ff-independent-v1.14 combined digest d9dbdb129aeec4e79e6421ca32bc71c06f128b4b822ac2917bca7f202989d6ac; the persisted model identity is used by all named runtime surfaces, and the sole older version reference is labeled historical documentation.",
+              "date": "2026-08-28"
+            }
+          ],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-002",
+          "name": "Complete immutable weekly source contracts",
+          "status": "complete",
+          "dependsOn": [
+            "V2-001"
+          ],
+          "acceptance": [
+            "Weekly stats, play-by-play, participation, schedules, transactions, and roster inputs have documented source, license, fields, cadence, historical availability, and fallback behavior.",
+            "Every eligible ingestion persists response hash, fetched and published times where available, row and match coverage, missingness, status, and model eligibility through ff_source_snapshots or a shared provenance contract.",
+            "Historical examples reject inputs newer than the declared simulated as-of cutoff.",
+            "Missing sources select an explicit fallback and confidence reduction rather than a silent zero."
+          ],
+          "evidence": [
+            {
+              "type": "code",
+              "reference": "ingest/ff_source_contracts.py; docs/fantasy-football-v2-source-contracts.md",
+              "result": "Weekly rosters, weekly stats, play-by-play, participation, schedules, and transactions have executable and documented source, license, required-field, cadence, historical-availability, and fallback contracts. Market data is explicitly ineligible as a V2 football-performance feature.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "migration",
+              "reference": "db/schema.py; web/src/db/schema.ts; web/src/db/ensure-schema.ts; configured-database information_schema audit",
+              "result": "Applied and verified all 10 additive provenance columns on ff_source_snapshots: week, contract key, source-published time, available time, as-of cutoff, missingness, fallback tier, confidence multiplier, model eligibility, and eligibility reason.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "audit",
+              "reference": "ingest/ff_independent.py; ingest/ff_fantasypros.py; ingest/ff_adp_snapshot.py; ingest/ff_dk_bestball_adp.py; ingest/ff_yahoo_predraft.py; rollback-only configured-database duplicate-hash probe",
+              "result": "All ff_source_snapshots inserts now use the shared persistence contract. A live transactional probe returned the same ID for an identical response hash and preserved the original fetched_at value; the transaction was rolled back. Existing coverage finalization remains supported without rewriting response identity.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "test",
+              "reference": "python -m pytest tests/test_ff_source_contracts.py tests/test_ff_champion_baseline.py tests/test_ff_independent.py tests/test_ff_fantasypros.py tests/test_ff_dk_bestball_adp.py tests/test_ff_yahoo_predraft.py tests/test_ff_injuries.py -q; npm run test:fantasy-football; npx tsc --noEmit; npm run lint; npm run build",
+              "result": "56 focused Python tests passed, including post-cutoff rejection and explicit A/B/C fallback behavior; TypeScript fantasy-football tests, compilation, lint, and the production build passed. The unrelated full ff_* run remains red only in the pre-existing untracked RB-handcuff test fixture.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "audit",
+              "reference": "python -m pytest tests/test_ff_source_contracts.py -q; configured-database information_schema audit; rg ff_source_snapshots insert/update paths",
+              "result": "Verification rerun passed all 7 contract tests, confirmed all 10 V2 provenance columns in the configured database, and confirmed the shared helper is the sole snapshot insertion path with no fetched_at conflict mutation remaining.",
+              "date": "2026-08-28"
+            }
+          ],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-003",
+          "name": "Populate historical roster and team-week context",
+          "status": "complete",
+          "dependsOn": [
+            "V2-002"
+          ],
+          "acceptance": [
+            "Eligible 2020-2025 team-week opportunity facts are populated with unique team/game identity and documented count semantics.",
+            "Effective-dated player-team transactions, quarterback context, schedule, venue, opponent, and bye data are populated without current-roster leakage.",
+            "Coverage and identity reports quantify missing teams, weeks, games, players, and source partitions.",
+            "Representative rows can be reproduced from stored source snapshots and hashes."
+          ],
+          "evidence": [
+            {
+              "type": "code",
+              "reference": "ingest/ff_v2_historical_context.py; db/schema.py; web/src/db/schema.ts; web/src/db/ensure-schema.ts; docs/fantasy-football-v2-historical-context.md",
+              "result": "Implemented deterministic, run-keyed schemas and ingestion for historical team-week context, fantasy-relevant weekly rosters, effective team changes, and reconciled team opportunity facts. Exact play, attempt, target, rush, red-zone, goal-line, end-zone, RB/FB, pace, and score-state semantics are persisted and documented; current rosters are never read.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "data",
+              "reference": "artifacts/ff_v2_historical_context_2020_2025.json; configured database run 9077ad91-e258-5e47-beb8-f41b68c6651b",
+              "result": "Populated 2020-2025 with 3,424 team-week contexts, 3,230 game-team facts, 85,688 fantasy-relevant roster-week rows, 2,378 effective team changes, and 2,214 unique players. Coverage spans all 32 teams and every regular-season week, including 194 bye rows, with no missing or extra game-team facts, unresolved multi-team roster conflicts, or unknown rusher/receiver positions.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "replay",
+              "reference": "python -m ingest.ff_v2_historical_context --verify artifacts/ff_v2_historical_context_2020_2025.json",
+              "result": "Reloaded the SHA-256-pinned nflverse schedule, weekly roster, weekly stats, play-by-play, and participation partitions and rebuilt all six seasons. Run ID 9077ad91-e258-5e47-beb8-f41b68c6651b and digest 64fee3305b76dbc3d9bda9f6cf9d722c05bb9077a535bbb884ab90297cf39f3c reproduced exactly, and all persisted row counts matched.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "test",
+              "reference": "python -m pytest tests/test_ff_v2_historical_context.py tests/test_ff_source_contracts.py tests/test_ff_champion_baseline.py -q; npm run test:fantasy-football; npx tsc --noEmit",
+              "result": "13 focused Python tests passed, including bye/QB/venue context, same-week roster conflict resolution, effective transactions, play-count edge cases, RB allocation facts, and order-independent artifact identity. Fantasy-football TypeScript tests and compilation also passed.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "audit",
+              "reference": "configured-database uniqueness and provenance queries; python -m pytest tests/test_ff_v2_historical_context.py tests/test_ff_source_contracts.py -q; python -m ingest.ff_v2_historical_context --verify artifacts/ff_v2_historical_context_2020_2025.json",
+              "result": "Independent closure audit found 3,424/3,424 unique team-week identities, 3,230/3,230 unique game-team identities, and 85,688/85,688 unique roster-week identities; no fact or roster row lacked its digest/resolution lineage, and all 25 contributing source snapshots had response hashes and row counts. Twelve focused tests passed and a fresh six-season replay reproduced run ID 9077ad91-e258-5e47-beb8-f41b68c6651b, digest 64fee3305b76dbc3d9bda9f6cf9d722c05bb9077a535bbb884ab90297cf39f3c, and every persisted count.",
+              "date": "2026-08-28"
+            }
+          ],
+          "blockedBy": []
+        }
+      ]
+    },
+    {
+      "id": "V2-W1",
+      "order": 1,
+      "priority": "P0",
+      "name": "Chronological validation framework",
+      "status": "complete",
+      "dependsOn": [
+        "V2-W0"
+      ],
+      "gateToAdvance": "Rolling-origin evaluation, preregistered metrics, paired intervals, leakage checks, deterministic seeds, and reproducible artifacts are operational before V2 fitting.",
+      "targets": [
+        {
+          "id": "V2-004",
+          "name": "Build the rolling-origin backtest harness",
+          "status": "complete",
+          "dependsOn": [
+            "V2-003"
+          ],
+          "acceptance": [
+            "Evaluation seasons use only earlier eligible training seasons and a declared preseason cutoff.",
+            "The harness scores team-week, player-week, season-total, and roster-simulation artifacts without reading future data.",
+            "Runs persist configuration, model version, seed, source snapshot identifiers, cohort counts, and output digest.",
+            "A stored run replays to identical results."
+          ],
+          "evidence": [
+            {
+              "type": "code",
+              "reference": "model/ff_v2_backtest.py; docs/fantasy-football-v2-backtest-harness.md",
+              "result": "Implemented an expanding-window rolling-origin harness with six frozen preseason cutoffs, strict prior-season training eligibility, prediction/outcome isolation, and one identity-matched scoring envelope for team-week, player-week, season-total, and roster-simulation artifacts. Definitive metrics remain explicitly deferred to V2-005.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "migration",
+              "reference": "db/schema.py; web/src/db/schema.ts; web/src/db/ensure-schema.ts; configured database",
+              "result": "Added and applied persistent ff_v2_backtest_runs and ff_v2_backtest_splits contracts carrying context/source identity, model and calibration versions, seed, exact cutoffs, cohort counts, configuration, per-fold row counts and digests, artifact path, output digest, and explicit scorable/exclusion state.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "replay",
+              "reference": "artifacts/ff_v2_backtest_harness_2020_2025.json; python -m model.ff_v2_backtest --context-artifact artifacts/ff_v2_historical_context_2020_2025.json --artifact artifacts/ff_v2_backtest_harness_2020_2025.json --verify",
+              "result": "Persisted six folds over 2020-2025 using all 25 context source snapshots. The 2020 seed fold is explicitly non-scorable; 2021-2025 use only expanding prior seasons. Replay reproduced run ID 3db2e15a-bbf0-57d4-bb5b-df684f671d3b, output digest 4f61720a8e84e55daa90fcb29dc324df790a8cf1d82c09e71ee636444d7b4399, and all six database splits.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "test",
+              "reference": "python -m pytest tests/test_ff_v2_backtest.py tests/test_ff_v2_historical_context.py tests/test_ff_source_contracts.py -q; python -m compileall -q model/ff_v2_backtest.py; npx tsc --noEmit",
+              "result": "Twenty-two focused Python tests passed, including rejection of same-season or post-cutoff training, post-cutoff features and predictions, duplicate/mismatched artifact identities, and deterministic expanding folds; all four artifact kinds pass the shared scoring protocol. Python compilation and TypeScript compilation passed. The canonical data honestly reports zero historical roster-simulation rows rather than fabricating that missing cohort.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "build",
+              "reference": "npm run build",
+              "result": "The Next.js production build completed successfully after adding the shared Drizzle and ensure-schema declarations for backtest runs and splits.",
+              "date": "2026-08-28"
+            },
+            {
+              "type": "audit",
+              "reference": "independent V2-004 verifier; ledger validator; focused 22-test run; compileall; canonical replay; configured-database run/split/source audit",
+              "result": "Independent verification passed all four acceptance criteria. It confirmed expanding prior-season folds and cutoff guards, future-outcome isolation across all four artifact scopes, complete persisted run metadata with 25 hash-bearing source snapshots, exact agreement of every persisted split field with the artifact, and deterministic replay of run 3db2e15a-bbf0-57d4-bb5b-df684f671d3b and digest 4f61720a8e84e55daa90fcb29dc324df790a8cf1d82c09e71ee636444d7b4399.",
+              "date": "2026-08-29"
+            }
+          ],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-005",
+          "name": "Implement the definitive metric suite",
+          "status": "complete",
+          "dependsOn": [
+            "V2-004"
+          ],
+          "acceptance": [
+            "Metrics include team-opportunity MAE and bias, a proper distribution score, P10/P50/P90 coverage, season-total MAE and bias, Top-12 precision and recall, spike recall, counted Best Ball points, and draft-decision regret.",
+            "Results include sample sizes and paired bootstrap confidence intervals using a declared resampling unit.",
+            "Metrics are reported overall and for required position, rookie, changed-team, injury, and small-sample cohorts.",
+            "Champion, simple baseline, market baseline where eligible, challenger, and required ablations remain separately labeled."
+          ],
+          "evidence": [
+            {
+              "type": "code",
+              "reference": "model/ff_v2_metrics.py; model/ff_v2_backtest.py; docs/fantasy-football-v2-metric-suite.md",
+              "result": "Preregistered and implemented the definitive model-agnostic metric suite before V2 fitting: eight team-opportunity pools with MAE, bias, P10/P50/P90 weighted interval score and coverage; Week 1-17 season MAE/bias and Top-12 precision/recall; position-aware spike recall; Best Ball counted points; and non-negative draft-decision regret. Frozen tolerances, material-degradation bounds, missing-cohort rules, and market eligibility are part of the executable policy.",
+              "date": "2026-08-29"
+            },
+            {
+              "type": "audit",
+              "reference": "model/ff_v2_metrics.py FROZEN_METRIC_POLICY and REQUIRED_MODEL_LABELS; independent V2-005 criterion audit",
+              "result": "Reports emit sample and resampling-unit counts plus deterministic paired 95% bootstrap intervals, with game/player-week/player-season/evaluation-season/draft-instance units as appropriate. Overall, QB/RB/WR/TE, rookie, changed-team, injury, and small-sample cohorts are always represented, and champion, simple rolling/league/player baselines, eligible market, challenger, and schedule/correlation/availability/roster-fit ablations remain separately labeled. Missing distributions or cohorts fail closed rather than receiving invented scores.",
+              "date": "2026-08-29"
+            },
+            {
+              "type": "data",
+              "reference": "model/ff_v2_historical_bestball_cohort.py; artifacts/ff_v2_historical_bestball_cohort_2020_2025.json; python -m model.ff_v2_historical_bestball_cohort --verify artifacts/ff_v2_historical_bestball_cohort_2020_2025.json",
+              "result": "Created and exactly replayed 72 nonzero synthetic focal-seat market-baseline roster-seasons across 2020-2025 with exact DraftKings scoring, Weeks 1-17 maximum legal lineups, 97.09%-99.44% outcome-match coverage, counted points/weeks, and conservative same-position ex-post regret. Digest 36f76b660edc88961b2234a9740a263de2d52671347e3cb9bf7d46bcfb954d4f. The artifact explicitly states these are counterfactual focal baselines, not observed human drafts or fabricated full rooms.",
+              "date": "2026-08-29"
+            },
+            {
+              "type": "test",
+              "reference": "python -m pytest tests/test_ff_v2_metrics.py tests/test_ff_v2_backtest.py tests/test_ff_v2_historical_context.py tests/test_ff_source_contracts.py -q; python -m pytest tests/test_ff_v2_historical_bestball_cohort.py tests/test_ff_v2_metrics.py tests/test_ff_v2_backtest.py -q; compileall",
+              "result": "Thirty combined foundation/metric tests and 23 combined cohort/metric/backtest tests passed. Independent verification found and then rechecked two spike-reporting corrections: n now counts actual spike positives and complete zero-event cohorts report zero_actual_spike_events. The focused corrected metric suite passed 9 tests and manual one-spike/zero-spike probes.",
+              "date": "2026-08-29"
+            }
+          ],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-006",
+          "name": "Enforce leakage, determinism, and artifact audits",
+          "status": "complete",
+          "dependsOn": [
+            "V2-005"
+          ],
+          "acceptance": [
+            "Automated tests fail on post-cutoff features, current-roster leakage, ADP in performance features, duplicate identities, unstable seeds, or unreproducible artifacts.",
+            "Feature eligibility and missingness are auditable for every evaluated row.",
+            "The champion-versus-challenger protocol is frozen before Team Opportunity is fitted.",
+            "Validation commands complete on representative historical data."
+          ],
+          "evidence": [
+            {
+              "type": "code",
+              "reference": "model/ff_v2_audits.py; model/ff_v2_backtest.py; docs/fantasy-football-v2-validation-audits.md",
+              "result": "Implemented fail-closed row-level feature audits and exact artifact/run/split verification. The gate rejects post-cutoff or future-season inputs, current/live roster/depth/transaction data, ADP/ECR/market football-performance features, duplicate evaluated identities, non-derived seeds, implicit missingness, fitted-before-freeze protocols, and tampered or unreproducible artifacts.",
+              "date": "2026-08-29"
+            },
+            {
+              "type": "audit",
+              "reference": "artifacts/ff_v2_validation_audit_2020_2025.json; model.ff_v2_audits FROZEN_COMPARISON_PROTOCOL; independent V2-006 adversarial audit",
+              "result": "Frozen protocol digest 56462cd23e414065a3fbc5157b2e67ad9e1ffda777d6d7fa474a95fb1963907b pins champion ff-independent-v1.14 and digest, harness/root seed, complete V2-005 metric/bootstrap policy, exact shared identities, and V2-021 verdict plus explicit post-evidence user authorization. All adversarial tampering probes failed closed.",
+              "date": "2026-08-29"
+            },
+            {
+              "type": "replay",
+              "reference": "python -m model.ff_v2_audits --artifact artifacts/ff_v2_validation_audit_2020_2025.json --verify; python -m model.ff_v2_backtest --context-artifact artifacts/ff_v2_historical_context_2020_2025.json --artifact artifacts/ff_v2_backtest_harness_2020_2025.json --verify; live champion replay",
+              "result": "Audit replay reproduced digest a94acd8c45cef2985531c9f6e6b335119aeba9bfd4ce8b029562790c957115f8 for five scorable folds and 15 auditable features (10 eligible, five explicitly missing play caller). DB-backed harness replay reproduced all six splits and digest 4f61720a8e84e55daa90fcb29dc324df790a8cf1d82c09e71ee636444d7b4399; champion replay remained d9dbdb129aeec4e79e6421ca32bc71c06f128b4b822ac2917bca7f202989d6ac, demonstrating no live rank/projection change.",
+              "date": "2026-08-29"
+            },
+            {
+              "type": "test",
+              "reference": "python -m pytest tests/test_ff_v2_audits.py tests/test_ff_v2_metrics.py tests/test_ff_v2_backtest.py tests/test_ff_v2_historical_bestball_cohort.py tests/test_ff_v2_historical_context.py tests/test_ff_source_contracts.py tests/test_ff_champion_baseline.py -q; independent focused audit/backtest run",
+              "result": "Sixty-one combined V2 tests passed; the independent verifier reran 34 audit/backtest tests and direct adversarial probes. Representative validation commands completed on real 2020-2025 context data, and every evaluated feature retained source, source season, availability, eligibility, missingness reason, and value digest.",
+              "date": "2026-08-29"
+            }
+          ],
+          "blockedBy": []
+        }
+      ]
+    },
+    {
+      "id": "V2-W2",
+      "order": 2,
+      "priority": "P1",
+      "name": "Team opportunity forecast",
+      "status": "in_progress",
+      "dependsOn": [
+        "V2-W1"
+      ],
+      "gateToAdvance": "Every team-week has calibrated and reproducible plays, attempts, carry, target, and touchdown pools with coherent uncertainty and explicit fallbacks.",
+      "targets": [
+        {
+          "id": "V2-007",
+          "name": "Define and persist team opportunity facts and forecasts",
+          "status": "in_progress",
+          "dependsOn": [
+            "V2-006"
+          ],
+          "acceptance": [
+            "Count semantics distinguish plays, pass attempts, allocatable targets, rush attempts, RB carries, RB targets, passing touchdowns, and rushing touchdowns.",
+            "Historical team-week facts and versioned forecast distributions persist source and model provenance.",
+            "Quarterback kneels, scrambles, sacks, throwaways, and non-RB carries are handled by documented reconciliation rules.",
+            "Schema and ingestion tests cover duplicate identity, missing games, and idempotent refresh."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-008",
+          "name": "Forecast coherent team opportunity distributions",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-007"
+          ],
+          "acceptance": [
+            "The model forecasts weekly plays, attempts, allocatable targets, RB carries, RB targets, passing touchdowns, and rushing touchdowns with expected value, dispersion, P10, P50, and P90.",
+            "Game-script outcomes are jointly coherent rather than independently sampled counts.",
+            "Team, opponent, quarterback, and play-caller evidence is shrunk appropriately for sample size.",
+            "Fallback tiers A, B, and C are recorded and widen uncertainty when context is missing."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-009",
+          "name": "Calibrate and verify team ceilings",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-008"
+          ],
+          "acceptance": [
+            "Rolling-origin results compare V2 with rolling-average and league-average baselines for every required pool.",
+            "P10/P50/P90 coverage and proper scoring results are reported overall and by context-change and fallback cohorts.",
+            "Fixed inputs and seed reproduce identical team forecasts.",
+            "No team opportunity result changes the live displayed projection during shadow mode."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        }
+      ]
+    },
+    {
+      "id": "V2-W3",
+      "order": 3,
+      "priority": "P1",
+      "name": "Player role allocation",
+      "status": "not_started",
+      "dependsOn": [
+        "V2-W2"
+      ],
+      "gateToAdvance": "Every relevant teammate receives scenario-based, role-compatible shares that reconcile to the team pools, including changed-team, rookie, injury, and competition cases.",
+      "targets": [
+        {
+          "id": "V2-010",
+          "name": "Build effective-dated transaction and role-scenario contracts",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-009"
+          ],
+          "acceptance": [
+            "Transactions preserve player, from-team, to-team, effective date, type, source, and investment evidence where available.",
+            "Role scenarios separately represent active, starter, snap, route, target, rush, receiving, red-zone, end-zone, and goal-line shares.",
+            "Scenario probabilities are bounded, normalized, versioned, attributable, and as-of safe.",
+            "Manual overrides require author, timestamp, reason, affected component, previous value, and expiry."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-011",
+          "name": "Learn and reconcile player allocations",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-010"
+          ],
+          "acceptance": [
+            "Historical transition priors cover departures, arrivals, rookies, injuries, committees, and role changes.",
+            "Allocations use role compatibility and every relevant teammate rather than equal redistribution or independent multipliers.",
+            "Player target, RB-target, carry, receiving-TD-opportunity, and rushing-TD-opportunity shares reconcile to documented team tolerances.",
+            "Unresolved competitions remain explicit scenarios and widen player uncertainty."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-012",
+          "name": "Verify the Mike Evans Tampa Bay to San Francisco fixture",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-011"
+          ],
+          "acceptance": [
+            "Tampa Bay departure analysis uses route, target, end-zone, red-zone, expected-TD, and controlled with/without-player evidence.",
+            "San Francisco arrival inserts Evans into a pre-forecast team pool and jointly recalculates all affected teammate shares.",
+            "No actual Evans touchdown is copied from Tampa Bay to San Francisco and both teams reconcile independently.",
+            "Featured, standard, and limited-role scenarios are reproducible and explanations identify all meaningful upgrades and downgrades."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        }
+      ]
+    },
+    {
+      "id": "V2-W4",
+      "order": 4,
+      "priority": "P1",
+      "name": "Efficiency and touchdown share",
+      "status": "not_started",
+      "dependsOn": [
+        "V2-W3"
+      ],
+      "gateToAdvance": "Volume, efficiency, touchdown opportunity, touchdown conversion, and availability are separately estimated and chronologically calibrated.",
+      "targets": [
+        {
+          "id": "V2-013",
+          "name": "Estimate contextual player efficiency",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-012"
+          ],
+          "acceptance": [
+            "Yards and receptions are estimated from eligible player, role, quarterback, team, and opponent evidence with sample-aware shrinkage.",
+            "Changed-team and rookie players do not inherit destination efficiency without an explicit scenario and prior.",
+            "No automatic workload penalty is applied; volume, efficiency, and availability remain separate components.",
+            "Derivations expose source coverage, samples, priors, adjustments, and confidence."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-014",
+          "name": "Separate touchdown opportunity from conversion",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-013"
+          ],
+          "acceptance": [
+            "Receiving and rushing touchdown opportunity derives from reconciled team pools and role-specific end-zone, red-zone, and goal-line evidence.",
+            "Conversion is regressed toward position, role, age, and sample priors while retaining validated persistent skill.",
+            "Raw prior-year touchdowns are not redistributed or carried forward directly.",
+            "Expected touchdowns reconcile to team passing and rushing touchdown pools within documented tolerances."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-015",
+          "name": "Calibrate efficiency and touchdown cohorts",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-014"
+          ],
+          "acceptance": [
+            "Chronological results report yardage, reception, and touchdown calibration overall and by position, role, rookie, changed-team, injury, and sample-size cohort.",
+            "Touchdown-opportunity and conversion ablations are compared separately.",
+            "Mike Evans fixture outputs remain within the same general model contract with no player-specific branch.",
+            "Failed or inconclusive cohorts remain shadow and are not hidden by aggregate results."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        }
+      ]
+    },
+    {
+      "id": "V2-W5",
+      "order": 5,
+      "priority": "P2",
+      "name": "Weekly outcomes and roster simulation",
+      "status": "not_started",
+      "dependsOn": [
+        "V2-W4"
+      ],
+      "gateToAdvance": "Every draftable player has calibrated weekly stat and fantasy distributions, and redraft and Best Ball consume those identical football inputs correctly.",
+      "targets": [
+        {
+          "id": "V2-016",
+          "name": "Generate weekly player and availability distributions",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-015"
+          ],
+          "acceptance": [
+            "Every draftable player has Weeks 1-17 active probability and P10, P25, median, mean, P75, and P90 fantasy distributions.",
+            "Availability is modeled separately from points conditional on being active.",
+            "Weekly stat lines reproduce scoring totals and position-aware spike and yardage-bonus probabilities.",
+            "Distribution monotonicity, finite outputs, fallback behavior, and deterministic seeds pass automated tests."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-017",
+          "name": "Integrate shared distributions with redraft",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-016"
+          ],
+          "acceptance": [
+            "Redraft season projections aggregate the shared weekly distributions under each selected scoring contract.",
+            "Active-game rate, availability, season P10/P50/P90, changed-team scenario spread, confidence, and derivation are persisted.",
+            "Shadow results do not alter the live redraft order before promotion.",
+            "The redraft UI and downstream advisors read the persisted shared projection artifact rather than recomputing it differently."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-018",
+          "name": "Integrate shared distributions with Best Ball",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-016"
+          ],
+          "acceptance": [
+            "Weekly stat draws use exact current DraftKings scoring and select the maximum legal 1 QB, 2 RB, 3 WR, 1 TE, and 1 FLEX lineup.",
+            "Outputs include counted points, counted weeks, bye coverage, spike capture, roster P90, correlation effect, and candidate marginal value.",
+            "Save/resume and fixed-seed replay reproduce the same draft decision snapshot.",
+            "Existing partial shadow simulation is independently verified against roster-aware weekly inputs rather than accepted from code existence alone."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-019",
+          "name": "Estimate and apply weekly correlation",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-016"
+          ],
+          "acceptance": [
+            "Same-team and opponent correlations use residual weekly outcomes, relationship priors, minimum samples, and hierarchical shrinkage.",
+            "The simulation uses a valid positive-semidefinite correlation structure.",
+            "Weak or missing pair evidence falls back visibly to a relationship prior with reduced confidence.",
+            "Correlation value is measured through counted roster outcomes rather than an unexplained boost."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        }
+      ]
+    },
+    {
+      "id": "V2-W6",
+      "order": 6,
+      "priority": "P2",
+      "name": "Validation and promotion decision",
+      "status": "not_started",
+      "dependsOn": [
+        "V2-W5"
+      ],
+      "gateToAdvance": "The preregistered evidence supports an explicit PROMOTE decision; otherwise V2 is revised or retained in shadow mode.",
+      "targets": [
+        {
+          "id": "V2-020",
+          "name": "Run champion, market, challenger, and ablation comparisons",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-017",
+            "V2-018",
+            "V2-019"
+          ],
+          "acceptance": [
+            "All preregistered metrics, cohort slices, sample sizes, and paired confidence intervals are reported from chronological holdouts.",
+            "Overall season-total bias is within the approved tolerance and material cohort failures are visible.",
+            "V2 improves or meaningfully complements at least one primary roster or decision metric without materially degrading the others.",
+            "Real 2026 shadow decisions are collected without tuning on their outcomes."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-021",
+          "name": "Record the promotion verdict",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-020"
+          ],
+          "acceptance": [
+            "The decision is explicitly PROMOTE, REVISE, or RETAIN with linked evidence and known limitations.",
+            "Any inconclusive comparison, leakage failure, reconciliation failure, or required cohort failure prevents promotion.",
+            "The chosen champion model and rollback artifact are versioned and reproducible.",
+            "Promotion requires explicit user authorization after reviewing the evidence."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        }
+      ]
+    },
+    {
+      "id": "V2-W7",
+      "order": 7,
+      "priority": "P3",
+      "name": "Product delivery and activation",
+      "status": "not_started",
+      "dependsOn": [
+        "V2-W6"
+      ],
+      "gateToAdvance": "Backend, UI, advisors, persistence, accessibility, performance, real-data, and visual verification all pass for the explicitly promoted model.",
+      "targets": [
+        {
+          "id": "V2-022",
+          "name": "Deliver source-aware shadow explanations",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-021"
+          ],
+          "acceptance": [
+            "Redraft and Best Ball show the correct model status, weekly range, role and opportunity forecast, reconciliation state, source timestamps, missing inputs, samples, scenarios, and confidence.",
+            "Best Ball recommendations explain performance, roster fit or correlation, and draft timing or risk.",
+            "Missing, stale, and fallback states never render as zero or confident neutral values.",
+            "AI advisors receive the same persisted football artifact, rules, model version, and roster state as deterministic application logic."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        },
+        {
+          "id": "V2-023",
+          "name": "Verify and activate the promoted model",
+          "status": "not_started",
+          "dependsOn": [
+            "V2-022"
+          ],
+          "acceptance": [
+            "Unit, integration, policy, leakage, reconciliation, save/resume, accessibility, and performance checks pass.",
+            "Representative real 2026 data processes end to end for redraft and Best Ball.",
+            "Desktop and mobile application states are visually inspected with screenshots and examples attached.",
+            "Activation changes the live model only after the explicit promotion verdict and preserves a tested rollback path."
+          ],
+          "evidence": [],
+          "blockedBy": []
+        }
+      ]
+    }
+  ],
+  "changeLog": [
+    {
+      "date": "2026-08-29",
+      "change": "Started V2-007 after the chronological protocol was frozen and independently verified. Scope is versioned fact/forecast persistence, provenance, documented reconciliation semantics, duplicate/missing-game guards, and idempotent refresh; model fitting remains V2-008."
+    },
+    {
+      "date": "2026-08-29",
+      "change": "Independently verified and completed V2-006 after 61 combined tests, adversarial leakage/seed/identity/missingness/tamper probes, exact database artifact replay, and unchanged champion replay. Completed chronological-validation wave V2-W1 and opened only V2-W2 / V2-007 for team opportunity fact-and-forecast persistence."
+    },
+    {
+      "date": "2026-08-29",
+      "change": "Started V2-006 to enforce post-cutoff, current-roster, ADP-feature, duplicate-identity, deterministic-seed, feature-eligibility, and artifact-replay audits and to freeze the champion-versus-challenger protocol before any Team Opportunity fit."
+    },
+    {
+      "date": "2026-08-29",
+      "change": "Independently verified and completed V2-005 after implementing the preregistered metric/cohort/bootstrap contract, correcting spike-event sample semantics, and replaying 72 explicitly synthetic historical focal-seat Best Ball market baselines. Opened only V2-006 for leakage, determinism, and artifact enforcement; no challenger fitting has begun."
+    },
+    {
+      "date": "2026-08-29",
+      "change": "Started V2-005 after V2-004 independently closed. Scope is the preregistered metric, cohort, missing-eligibility, and paired-bootstrap contract; no model fitting is permitted, and zero historical roster-decision cohorts must remain visibly ineligible rather than receiving fabricated scores."
+    },
+    {
+      "date": "2026-08-29",
+      "change": "Independently verified and completed V2-004 after criterion-by-criterion code review, 22 focused tests, canonical replay, and live field-level run/split/source audits. Opened only dependency-unlocked V2-005 for the definitive metric suite; historical roster-decision cohort availability remains an explicit evidence boundary."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Implemented V2-004 and moved it to verification. Frozen six rolling-origin folds and preseason cutoffs, isolated prediction inputs from held-out outcomes, implemented the four-scope scoring envelope, persisted complete run/split metadata, and replayed the representative 2020-2025 artifact exactly. Historical roster-simulation cohort availability remains explicitly zero for V2-005 to address; no Team Opportunity model was fitted."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Started dependency-unlocked V2-004 to build the rolling-origin backtest harness. Scope is the chronological split, cutoff, artifact-scoring, run-metadata, and deterministic replay contract only; definitive metrics and leakage-policy completion remain V2-005 and V2-006."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Independently verified and completed V2-003 after live uniqueness/provenance audits, focused behavioral tests, and a fresh exact six-season replay. Completed foundation wave V2-W0 and opened only dependency-unlocked V2-W1 / V2-004 for the chronological backtest harness; Team Opportunity fitting remains closed."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Implemented and populated V2-003 and moved it to verification. Persisted the deterministic 2020-2025 historical roster/team-week foundation, documented count semantics and the known play-caller boundary, passed complete coverage and identity audits, and replayed the hash-pinned artifact to the identical run ID, digest, and database counts. V2 remains shadow-only and V2-W1 remains closed pending independent verification."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Verified and completed V2-002 after focused cutoff/fallback tests, live schema audit, and snapshot insertion-path audit. Opened dependency-unlocked V2-003 for historical roster and team-week context population."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Implemented V2-002 and moved it to verification. Added the shared immutable source-provenance contract and schema, documented all required weekly source classes and licenses, centralized snapshot persistence, enforced historical as-of cutoffs, and made missing-source fallback/confidence behavior explicit."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Verified and completed V2-001 after an exact live replay of the frozen ff-independent-v1.14 artifact and model-identity audit. Opened dependency-unlocked V2-002 for immutable weekly source contracts."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Implemented V2-001 and moved it to verification. Frozen the live ff-independent-v1.14 STD, HALF, and PPR boards with reproducible digests, replaced stale hardcoded model labels with persisted champion metadata across product and advisor surfaces, and verified that projections and ranking order are unchanged."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Started V2-001 to freeze and consistently label the live champion baseline before any roster-aware challenger work."
+    },
+    {
+      "date": "2026-08-28",
+      "change": "Initialized the Fantasy Football Roster-Aware V2 execution ledger from the approved shared redraft and Best Ball architecture. V2-W0 is ready; all dependent waves remain closed."
+    }
+  ]
+}

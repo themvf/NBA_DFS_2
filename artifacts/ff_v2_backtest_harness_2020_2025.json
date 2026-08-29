@@ -1,0 +1,262 @@
+{
+  "artifactType": "fantasy-football-v2-backtest-harness",
+  "calibrationVersion": "unfitted",
+  "cohortCounts": {
+    "2020": {
+      "player_week": 14028,
+      "roster_simulation": 0,
+      "season_total": 1043,
+      "team_week": 512
+    },
+    "2021": {
+      "player_week": 14721,
+      "roster_simulation": 0,
+      "season_total": 986,
+      "team_week": 544
+    },
+    "2022": {
+      "player_week": 14305,
+      "roster_simulation": 0,
+      "season_total": 1050,
+      "team_week": 542
+    },
+    "2023": {
+      "player_week": 14027,
+      "roster_simulation": 0,
+      "season_total": 1018,
+      "team_week": 544
+    },
+    "2024": {
+      "player_week": 14201,
+      "roster_simulation": 0,
+      "season_total": 1049,
+      "team_week": 544
+    },
+    "2025": {
+      "player_week": 14406,
+      "roster_simulation": 0,
+      "season_total": 1020,
+      "team_week": 544
+    }
+  },
+  "config": {
+    "contextMode": "hash_pinned_retrospective_reconstruction",
+    "outcomeAccess": "after_predictions_frozen",
+    "scoringProtocol": "artifact-kind-neutral; definitive metrics deferred to V2-005",
+    "splitStrategy": "rolling_origin_expanding_window",
+    "trainingEligibility": "season < evaluation_season and observed_at <= preseason_cutoff",
+    "zeroRosterSimulationRows": "historical draft-decision artifacts not populated yet"
+  },
+  "contextArtifactDigest": "64fee3305b76dbc3d9bda9f6cf9d722c05bb9077a535bbb884ab90297cf39f3c",
+  "contextRunId": "9077ad91-e258-5e47-beb8-f41b68c6651b",
+  "createdAt": "2026-08-28T17:09:16.693264-04:00",
+  "evaluationSeasons": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "harnessVersion": "ff-v2-backtest-v1",
+  "modelVersion": "unfitted-harness-contract",
+  "outputDigest": "4f61720a8e84e55daa90fcb29dc324df790a8cf1d82c09e71ee636444d7b4399",
+  "preseasonCutoffs": {
+    "2020": "2020-09-09T23:59:59-04:00",
+    "2021": "2021-09-08T23:59:59-04:00",
+    "2022": "2022-09-07T23:59:59-04:00",
+    "2023": "2023-09-06T23:59:59-04:00",
+    "2024": "2024-09-04T23:59:59-04:00",
+    "2025": "2025-09-03T23:59:59-04:00"
+  },
+  "runId": "3db2e15a-bbf0-57d4-bb5b-df684f671d3b",
+  "schemaVersion": 1,
+  "scoringScopes": [
+    "team_week",
+    "player_week",
+    "season_total",
+    "roster_simulation"
+  ],
+  "seed": 20260828,
+  "sourceSnapshotIds": [
+    2524,
+    2525,
+    2526,
+    2527,
+    2528,
+    2529,
+    2530,
+    2531,
+    2532,
+    2533,
+    2534,
+    2535,
+    2536,
+    2537,
+    2538,
+    2539,
+    2540,
+    2541,
+    2542,
+    2543,
+    2544,
+    2545,
+    2546,
+    2547,
+    2548
+  ],
+  "splits": [
+    {
+      "evaluationDigest": "064599501ff140afc575a78398b9de6a0cb17871c8c4c5f0c233d7938b2aafd3",
+      "evaluationRowCounts": {
+        "player_week": 14028,
+        "roster_simulation": 0,
+        "season_total": 1043,
+        "team_week": 512
+      },
+      "evaluationSeason": 2020,
+      "exclusionReason": "no_prior_season_training_history",
+      "preseasonCutoff": "2020-09-09T23:59:59-04:00",
+      "scorable": false,
+      "splitDigest": "6a28360d2657d1ecfdb38d7d3631764dcf05bd8af31dd3823c96495ea0804c9d",
+      "trainingDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "trainingRowCounts": {
+        "player_week": 0,
+        "roster_simulation": 0,
+        "season_total": 0,
+        "team_week": 0
+      },
+      "trainingSeasons": []
+    },
+    {
+      "evaluationDigest": "e55737195e0bd09da3e601a63ce568be1cc18537a420095ac3ec842738a0f5d1",
+      "evaluationRowCounts": {
+        "player_week": 14721,
+        "roster_simulation": 0,
+        "season_total": 986,
+        "team_week": 544
+      },
+      "evaluationSeason": 2021,
+      "exclusionReason": null,
+      "preseasonCutoff": "2021-09-08T23:59:59-04:00",
+      "scorable": true,
+      "splitDigest": "f55a3120c40c73a98aca247cd9e5250e10840ab27a5ebb63b2eadd1220ee86b3",
+      "trainingDigest": "064599501ff140afc575a78398b9de6a0cb17871c8c4c5f0c233d7938b2aafd3",
+      "trainingRowCounts": {
+        "player_week": 14028,
+        "roster_simulation": 0,
+        "season_total": 1043,
+        "team_week": 512
+      },
+      "trainingSeasons": [
+        2020
+      ]
+    },
+    {
+      "evaluationDigest": "647fb865759a04ef7fb196e1d4a43f646630b0b51aeddab999b0814d43fa5792",
+      "evaluationRowCounts": {
+        "player_week": 14305,
+        "roster_simulation": 0,
+        "season_total": 1050,
+        "team_week": 542
+      },
+      "evaluationSeason": 2022,
+      "exclusionReason": null,
+      "preseasonCutoff": "2022-09-07T23:59:59-04:00",
+      "scorable": true,
+      "splitDigest": "1c78bf23d7e06fe59283ec43ae5ed47e091bb9023dc7c33e99ae7e06dc48b4bd",
+      "trainingDigest": "ba1bbc2bbfbb4191ebc0e05995dee73966bff6ecfd7e0cec62fdf8c0c000f85b",
+      "trainingRowCounts": {
+        "player_week": 28749,
+        "roster_simulation": 0,
+        "season_total": 2029,
+        "team_week": 1056
+      },
+      "trainingSeasons": [
+        2020,
+        2021
+      ]
+    },
+    {
+      "evaluationDigest": "03b54d1b969416f7a8daa6fd08eb538aab3fa90351bfeaf7dfa4d2c047a6b041",
+      "evaluationRowCounts": {
+        "player_week": 14027,
+        "roster_simulation": 0,
+        "season_total": 1018,
+        "team_week": 544
+      },
+      "evaluationSeason": 2023,
+      "exclusionReason": null,
+      "preseasonCutoff": "2023-09-06T23:59:59-04:00",
+      "scorable": true,
+      "splitDigest": "9a062693ccff8e072309a8b3aefbdc43adba135402aa8bd9d2205fd0cec85bb0",
+      "trainingDigest": "a48e9006b382242ead1b3fc899a24a94d6b4b1e42d9e9d6f7a232da808e48fb6",
+      "trainingRowCounts": {
+        "player_week": 43054,
+        "roster_simulation": 0,
+        "season_total": 3079,
+        "team_week": 1598
+      },
+      "trainingSeasons": [
+        2020,
+        2021,
+        2022
+      ]
+    },
+    {
+      "evaluationDigest": "203c23c83e0196ad3c65bedff543437a1a31f456b705a350dafcccc5dee84693",
+      "evaluationRowCounts": {
+        "player_week": 14201,
+        "roster_simulation": 0,
+        "season_total": 1049,
+        "team_week": 544
+      },
+      "evaluationSeason": 2024,
+      "exclusionReason": null,
+      "preseasonCutoff": "2024-09-04T23:59:59-04:00",
+      "scorable": true,
+      "splitDigest": "1254554545b29d70d1ca7463e712d469aa9ac8d275962d4c27825094dbe7684e",
+      "trainingDigest": "46bbfb2822d572d6d5e312fb065885c96477c5fb7feda93a84e5e9c81dd95ee9",
+      "trainingRowCounts": {
+        "player_week": 57081,
+        "roster_simulation": 0,
+        "season_total": 4097,
+        "team_week": 2142
+      },
+      "trainingSeasons": [
+        2020,
+        2021,
+        2022,
+        2023
+      ]
+    },
+    {
+      "evaluationDigest": "5010eaa6bce82e292fb760930a82c9ae31baed953320f871a0338c8513bc7c5b",
+      "evaluationRowCounts": {
+        "player_week": 14406,
+        "roster_simulation": 0,
+        "season_total": 1020,
+        "team_week": 544
+      },
+      "evaluationSeason": 2025,
+      "exclusionReason": null,
+      "preseasonCutoff": "2025-09-03T23:59:59-04:00",
+      "scorable": true,
+      "splitDigest": "3a3c686f2d02f7c10b2193932a1c628eaa3efd950f72ab95feb37df091dfcf81",
+      "trainingDigest": "68e4bc3cc8602de9d1e6fcb7c37a4361130322bbcb945b5cc043726e14ddf181",
+      "trainingRowCounts": {
+        "player_week": 71282,
+        "roster_simulation": 0,
+        "season_total": 5146,
+        "team_week": 2686
+      },
+      "trainingSeasons": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ]
+    }
+  ]
+}
