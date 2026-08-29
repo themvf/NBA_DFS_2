@@ -149,10 +149,38 @@ function allEntries(sheet: ReturnType<typeof buildCheatSheet>, position: string)
     position: "TE",
     indicators: [
       { code: "OUR_BUY", class: "model", label: "BUY", value: null, evidence: {} },
-      { code: "INJURY", class: "risk", label: "Q", value: null, evidence: {} },
+      { code: "INJURY", class: "risk", label: "Q", value: null, evidence: { severity: "questionable" } },
     ],
   })];
   assert.equal(column(buildCheatSheet(flagged), "TE").entries[0].signal, "injury");
+}
+
+// v1.15: severity is split. "Expected to miss games" must not render the same
+// glyph as "day-to-day" -- one of those players cannot be drafted at his rank.
+{
+  const cases: Array<[string, string]> = [
+    ["reserve", "out"], ["out", "out"], ["suspended", "out"], ["doubtful", "out"],
+    ["questionable", "injury"], ["unknown", "injury"],
+  ];
+  for (const [severity, expected] of cases) {
+    const player = row({
+      position: "WR",
+      indicators: [{ code: "INJURY", class: "risk", label: severity, value: null, evidence: { severity } }],
+    });
+    assert.equal(column(buildCheatSheet([player]), "WR").entries[0].signal, expected,
+      `severity ${severity} should render as ${expected}`);
+  }
+}
+
+// An INJURY indicator with no severity recorded (rows written before v1.15)
+// must still flag, just conservatively as day-to-day rather than silently
+// dropping the marker or overstating it.
+{
+  const legacy = row({
+    position: "RB",
+    indicators: [{ code: "INJURY", class: "risk", label: "Q", value: null, evidence: {} }],
+  });
+  assert.equal(column(buildCheatSheet([legacy]), "RB").entries[0].signal, "injury");
 }
 
 // Every position renders a column even with an empty pool, so the printed grid

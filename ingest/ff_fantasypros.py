@@ -941,6 +941,10 @@ def create_indicators(
     rb_handcuffs: dict[str, str] | None = None,
     playoff_sos: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> None:
+    # Function-level import: ff_independent imports THIS module, so a top-level
+    # import here would be circular. By call time both modules are loaded.
+    from ingest.ff_independent import classify_injury
+
     def current_team(row: dict[str, Any]) -> str:
         return str(row.get("team_abbrev") or row.get("team") or "")
 
@@ -1008,7 +1012,16 @@ def create_indicators(
         if row.get("rookie"):
             codes.append(("ROOKIE", "fact", "ROOKIE", None, {"source": "player metadata"}))
         if row.get("injury_status"):
-            codes.append(("INJURY", "risk", str(row["injury_status"]).upper(), None, {"status": row["injury_status"]}))
+            # Severity travels with the indicator so downstream surfaces can
+            # tell "will miss games" from "day-to-day" without re-deriving it.
+            # Before v1.15 every designation rendered identically, so an IR
+            # player and a Questionable player were indistinguishable on a
+            # printed sheet.
+            severity = classify_injury(row["injury_status"])
+            codes.append((
+                "INJURY", "risk", str(row["injury_status"]).upper(), None,
+                {"status": row["injury_status"], "severity": severity},
+            ))
         # Fantasy-playoff (weeks 15-17) slate. Only the top/bottom quartile is
         # flagged, and only as an indicator -- the underlying carryover is weak
         # enough that folding it into a projection would overstate it. See
