@@ -2,6 +2,7 @@
 
 import type { ShadowBestBallSimulation } from "@/lib/fantasy-football/best-ball-simulation";
 import AnalystNoteMarker from "@/components/fantasy-football/analyst-note-marker";
+import type { PlayerNote } from "@/lib/fantasy-football/analyst-notes";
 
 type Props = {
   simulation: ShadowBestBallSimulation | null;
@@ -9,6 +10,9 @@ type Props = {
   nextUserPick: number | null;
   followingUserPick: number | null;
   onDraft: (playerId: number) => void;
+  // Editorial notes keyed by playerId. Passed in rather than threaded through
+  // ShadowBestBallPlayer so the simulation model stays free of display data.
+  notesByPlayerId: Map<number, PlayerNote>;
 };
 
 function signed(value: number): string {
@@ -45,7 +49,7 @@ const FINAL_ACTION = {
   pass: { label: "PASS", className: "border-rose-300 bg-rose-50 text-rose-950", badge: "bg-rose-700 text-white" },
 } as const;
 
-export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, followingUserPick, onDraft }: Props) {
+export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, followingUserPick, onDraft, notesByPlayerId }: Props) {
   if (!simulation?.candidates.length) return null;
   return <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -84,7 +88,7 @@ export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, follow
           <th className="p-3"></th>
         </tr></thead>
         <tbody>{simulation.candidates.map((candidate, index) => <tr key={candidate.playerId} className={`border-t border-violet-100 ${index === 0 ? "bg-violet-50/60" : ""}`}>
-          <td className="p-3"><span className="mr-2 text-xs font-black text-violet-600">#{index + 1}</span><b>{candidate.name}</b><span className="ml-2 text-xs text-muted-foreground">{candidate.position}</span><div className="mt-1"><AnalystNoteMarker name={candidate.name} position={candidate.position} /></div></td>
+          <td className="p-3"><span className="mr-2 text-xs font-black text-violet-600">#{index + 1}</span><b>{candidate.name}</b><span className="ml-2 text-xs text-muted-foreground">{candidate.position}</span><div className="mt-1"><AnalystNoteMarker note={notesByPlayerId.get(candidate.playerId) ?? null} /></div></td>
           <td className="p-3 text-right"><p className="font-black text-emerald-700">{signed(candidate.twoPickMarginalPoints)}</p><p className="text-[10px] text-muted-foreground">{candidate.futureTargetName ? `with ${candidate.futureTargetName}` : "no later target"}</p></td>
           <td className="p-3 text-right"><p className="font-semibold">{signed(candidate.marginalCountedPoints)}</p><p className="text-[10px] text-muted-foreground">{candidate.expectedCountedPoints.toFixed(1)} counted pts</p></td>
           <td className="p-3 text-right">{candidate.expectedCountedWeeks.toFixed(1)}</td>

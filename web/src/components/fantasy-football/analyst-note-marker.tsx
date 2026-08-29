@@ -1,8 +1,9 @@
-import { ANALYST_NOTE_STYLE, analystNoteTooltip, getAnalystNote } from "@/lib/fantasy-football/analyst-notes";
+import { ANALYST_NOTE_STYLE, analystNoteTooltip, type PlayerNote } from "@/lib/fantasy-football/analyst-notes";
 
 /**
  * Editorial note chip shown next to a player's name on the redraft board, the
- * Best Ball board, and the Best Ball shadow panel.
+ * Best Ball board, and the Best Ball Shadow panel. The note comes from
+ * ff_player_notes, authored in /fantasy-football/notes.
  *
  * A native `title` tooltip rather than a positioned hover card on purpose: all
  * three surfaces render inside `overflow-auto` scroll containers (two of them
@@ -10,27 +11,24 @@ import { ANALYST_NOTE_STYLE, analystNoteTooltip, getAnalystNote } from "@/lib/fa
  * positioned popover. Same convention the correlation and injury markers
  * already use.
  *
- * Renders nothing for a player with no note, so the layout is unchanged for
- * everyone outside the supplied top-100 list.
+ * Renders nothing when the player has no note, so the layout is unchanged for
+ * everyone you have not written one for.
  */
 export default function AnalystNoteMarker({
-  name,
-  position,
+  note,
   compact = false,
 }: {
-  name: string;
-  position?: string | null;
+  note: PlayerNote | null | undefined;
   compact?: boolean;
 }) {
-  const note = getAnalystNote(name, position);
   if (!note) return null;
-  const style = ANALYST_NOTE_STYLE[note.verdict];
+  const style = ANALYST_NOTE_STYLE[note.verdict] ?? ANALYST_NOTE_STYLE.fair;
   return <span
     title={analystNoteTooltip(note)}
     className={`inline-flex cursor-help items-center gap-1 rounded-full font-bold ring-1 ring-inset ${style.className} ${compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-0.5 text-[10px]"}`}
   >
     <span aria-hidden>{style.icon}</span>
     {compact ? null : <span>{note.verdictLabel}</span>}
-    <span className="opacity-60">#{note.listRank}</span>
+    {note.listRank !== null && <span className="opacity-60">#{note.listRank}</span>}
   </span>;
 }

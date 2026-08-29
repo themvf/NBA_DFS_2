@@ -1,64 +1,82 @@
 import assert from "node:assert/strict";
 
 import {
-  ANALYST_NOTES,
+  ANALYST_NOTE_STYLE,
+  ANALYST_VERDICTS,
+  MAX_NOTE_LENGTH,
   analystNoteTooltip,
-  getAnalystNote,
+  isAnalystVerdict,
   normalizeAnalystName,
+  validateNoteInput,
+  type PlayerNote,
 } from "../src/lib/fantasy-football/analyst-notes";
 
-// The supplied list is exactly 1-100, contiguous, no gaps or repeats.
-assert.equal(ANALYST_NOTES.length, 100);
-assert.deepEqual(
-  ANALYST_NOTES.map((note) => note.listRank),
-  Array.from({ length: 100 }, (_, index) => index + 1),
-);
-
-// Every note carries the fields the tooltip renders.
-for (const note of ANALYST_NOTES) {
-  assert.ok(note.name.trim(), `#${note.listRank} missing name`);
-  assert.ok(note.note.trim().length > 40, `#${note.listRank} note looks truncated`);
-  assert.ok(note.verdictLabel.trim(), `#${note.listRank} missing verdict label`);
-  assert.ok(Number.isFinite(note.adp), `#${note.listRank} missing adp`);
-}
-
-// Suffix stripping mirrors ingest/ff_fantasypros.py::normalize_name, so a note
-// keyed on the suffixed name still resolves the board's unsuffixed row.
+// Suffix stripping mirrors ingest/ff_fantasypros.py::normalize_name, so the seed
+// and admin lookups resolve a note keyed on the suffixed name.
 assert.equal(normalizeAnalystName("Kenneth Walker III"), "kennethwalker");
 assert.equal(normalizeAnalystName("Michael Pittman Jr."), "michaelpittman");
 assert.equal(normalizeAnalystName("Ja'Marr Chase"), "jamarrchase");
 assert.equal(normalizeAnalystName("Amon-Ra St. Brown"), "amonrastbrown");
+assert.equal(normalizeAnalystName(""), "");
 
-// Lookup is name-driven, so a suffix or punctuation difference between the note
-// and the roster feed still matches.
-assert.equal(getAnalystNote("Kenneth Walker", "RB")?.listRank, 23);
-assert.equal(getAnalystNote("Kenneth Walker III", "RB")?.listRank, 23);
-assert.equal(getAnalystNote("Travis Etienne", "RB")?.listRank, 38);
-assert.equal(getAnalystNote("Jahmyr Gibbs", "RB")?.listRank, 1);
+// Every verdict has presentation, and the guard accepts exactly those four --
+// it is what stops a hand-crafted server-action call writing a verdict the CHECK
+// constraint would then reject at the database.
+for (const verdict of ANALYST_VERDICTS) {
+  assert.ok(ANALYST_NOTE_STYLE[verdict], `${verdict} has no style`);
+  assert.ok(isAnalystVerdict(verdict));
+}
+assert.equal(isAnalystVerdict("bullish"), false);
+assert.equal(isAnalystVerdict(""), false);
+assert.equal(isAnalystVerdict(null), false);
+assert.equal(isAnalystVerdict(7), false);
 
-// Team is deliberately NOT part of the key: several notes describe 2026 moves
-// the roster feed may not agree with, and a team mismatch must not hide a note.
-assert.equal(getAnalystNote("Kenneth Walker III", "RB")?.team, "KC");
+// Input validation: empty notes and over-long fields are refused before they
+// reach the database.
+assert.ok(validateNoteInput("", "Target"));
+assert.ok(validateNoteInput("   ", "Target"));
+assert.equal(validateNoteInput("A real note.", "Target"), null);
+assert.ok(validateNoteInput("x".repeat(MAX_NOTE_LENGTH + 1), "Target"));
+assert.ok(validateNoteInput("A real note.", "x".repeat(41)));
 
-// Position is only a tiebreaker, so a position the note doesn't list still
-// resolves as long as the name is unique -- which every entry currently is.
-assert.equal(getAnalystNote("Jahmyr Gibbs", "WR")?.listRank, 1);
-assert.equal(getAnalystNote("Jahmyr Gibbs")?.listRank, 1);
+const seeded: PlayerNote = {
+  playerId: 1,
+  verdict: "fade",
+  verdictLabel: "Fade at this price",
+  note: "Rice averaged 18.5 PPR points in his eight games last season.",
+  updatedAt: "2026-08-29T12:00:00Z",
+  listRank: 15,
+  sourceTeam: "KC",
+  sourceAdp: 15,
+};
 
-// No two notes collide after normalization, which is what makes the above safe.
-const keys = ANALYST_NOTES.map((note) => normalizeAnalystName(note.name));
-assert.equal(new Set(keys).size, keys.length, "two notes normalize to the same name");
+// A seeded note keeps its provenance in the tooltip heading.
+const seededTooltip = analystNoteTooltip(seeded);
+assert.match(seededTooltip, /Fade at this price/);
+assert.match(seededTooltip, /#15 on the analyst board/);
+assert.match(seededTooltip, /KC/);
+assert.match(seededTooltip, /listed ADP 15/);
+assert.match(seededTooltip, /Rice averaged 18\.5 PPR points/);
+assert.match(seededTooltip, /does not change our projection, rank, or ADP/);
 
-// Players outside the list render nothing rather than a wrong note.
-assert.equal(getAnalystNote("Some Undrafted Guy", "WR"), null);
-assert.equal(getAnalystNote(""), null);
-
-// The tooltip carries the verdict, the source rank/ADP, the note itself, and
-// the disclaimer that this never moves our numbers.
-const tooltip = analystNoteTooltip(ANALYST_NOTES[14]);
-assert.match(tooltip, /Fade at this price/);
-assert.match(tooltip, /#15 on the analyst board \(WR KC, listed ADP 15\)/);
-assert.match(tooltip, /Rice averaged 18\.5 PPR points/);
-assert.match(tooltip, /does not change our projection, rank, or ADP/);
+// A hand-written note has no list rank, team, or ADP -- the heading must not
+// render an empty "#null" provenance run for it.
+const handWritten: PlayerNote = {
+  playerId: 2,
+  verdict: "target",
+  verdictLabel: "Target",
+  note: "Cheap points in a good offense.",
+  updatedAt: null,
+  listRank: null,
+  sourceTeam: null,
+  sourceAdp: null,
+};
+const handTooltip = analystNoteTooltip(handWritten);
+assert.match(handTooltip, /Target/);
+assert.doesNotMatch(handTooltip, /#/);
+assert.doesNotMatch(handTooltip, /null/);
+assert.doesNotMatch(handTooltip, /undefined/);
+assert.doesNotMatch(handTooltip, /last edited/);
+assert.match(handTooltip, /does not change our projection, rank, or ADP/);
 
 console.log("analyst notes: all assertions passed");
