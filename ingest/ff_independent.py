@@ -44,7 +44,7 @@ from ingest.ff_fantasypros import RefreshDatabase, as_float, as_int, create_indi
 # QB now guarantees the top 2 per team instead of adjudicating the
 # competition (GUARANTEE_COUNT). Bumped because board membership changed --
 # board_digest hashes MODEL_VERSION, forcing a fresh build.
-MODEL_VERSION = "ff-independent-v1.14"
+MODEL_VERSION = "ff-independent-v1.15"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -155,6 +155,47 @@ POSITION_REGRESSION_PRIOR_GAMES = {"K": 37.0, "RB": 2.0, "WR": 2.0, "TE": 2.0}
 # monotonic, so both knobs change the displayed SPREAD but never the draft
 # ORDER -- raising either only trades calibration for visual separation.
 # Re-run the relevant backtest after changing either constant.
+# Injury severity (v1.15). Replaces a two-bucket substring check
+# (`"IR" in status`) that treated an IR designation and a Questionable tag as
+# nearly the same thing, and that recorded an `injury_availability_factor` it
+# never actually applied -- expected_games moved by a flat -3.0/-0.5 while the
+# explanation payload claimed a 0.80/0.96 multiplication. The derivation
+# contract has to be a faithful record of what happened, so the factor is now
+# DERIVED from the games it produces rather than asserted alongside them.
+#
+# The caps below are NFL ROSTER RULES, not fitted constants, which is why they
+# ship without a backtest: a player on reserve/IR, reserve/PUP or reserve/NFI to
+# start the season is ineligible to play for the first four games, so 13 is a
+# hard ceiling on his active games, not an estimate.
+#
+# Suspensions are deliberately NOT in that bucket. They run from one game to a
+# full season with no common floor, so calling them "rules-based" would borrow
+# credibility the number does not have. They get their own middling estimate and
+# are labelled as an estimate.
+#
+# Everything else IS an estimate, and deliberately a small one. Game-day
+# designations are close to meaningless in August (Sleeper carries 121
+# "Questionable" players in the preseason, which reads as "has a noted issue"
+# rather than "is a game-time decision"), so they nudge expected games rather
+# than moving them hard.
+INJURY_RESERVE_MIN_GAMES_MISSED = 4.0
+INJURY_SEVERITY = {
+    # Reserve lists: a rules-based minimum absence.
+    "IR": "reserve", "PUP": "reserve", "NFI": "reserve",
+    # Length is unknown from this feed -- estimated, not rules-derived.
+    "SUS": "suspended", "SUSPENSION": "suspended",
+    # Ruled out / near-certain to miss the next game.
+    "OUT": "out", "DOUBTFUL": "doubtful",
+    # Day-to-day, and in the preseason mostly advisory.
+    "QUESTIONABLE": "questionable", "DTD": "questionable", "PROBABLE": "questionable",
+    # Roster oddity rather than a stated injury -- flagged, barely penalised.
+    "NA": "unknown", "COV": "unknown",
+}
+# Games subtracted from the availability estimate, by severity. "reserve" is not
+# here: it is a hard cap, applied separately.
+INJURY_GAMES_PENALTY = {
+    "suspended": 2.0, "out": 1.5, "doubtful": 1.0, "questionable": 0.5, "unknown": 0.5,
+}
 DST_CARRY_FORWARD_WEIGHT = 0.05
 K_CARRY_FORWARD_WEIGHT = 0.54
 POSITION_PRIOR_PPG = {
@@ -805,6 +846,20 @@ def _season_points(history: dict[str, Any], position: str, scoring: str) -> floa
     return std if scoring == "STD" else ppr if scoring == "PPR" else (std + ppr) / 2.0
 
 
+def classify_injury(status: str | None) -> str | None:
+    """Map a raw provider injury status to a severity bucket.
+
+    Exact-token matching on purpose. The previous substring test
+    (`"IR" in status`) would classify any status containing those two letters as
+    season-threatening, which is the kind of quiet false positive that is very
+    hard to notice on a 442-player board.
+    """
+    if not status:
+        return None
+    token = str(status).strip().upper().replace("RESERVE/", "").replace("-", "").replace(" ", "")
+    return INJURY_SEVERITY.get(token, "unknown")
+
+
 def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scoring: str, target_season: int) -> IndependentProjection:
     position = str(player["position"])
     injury = str(player.get("injury_status") or "").upper()
@@ -960,15 +1015,21 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
 
     expected_games_before_injury = expected_games
     base_points_before_injury = base_points
-    injury_availability_factor = 1.0
-    if any(token in injury for token in ("IR", "PUP", "OUT")):
-        injury_availability_factor = 0.80
-        expected_games = max(8.0, expected_games - 3.0)
+    injury_severity = classify_injury(injury)
+    if injury_severity == "reserve":
+        # Rules-based ceiling, not an estimate: a player opening the season on a
+        # reserve list cannot play the first four games.
+        expected_games = min(expected_games, BASELINE_GAMES - INJURY_RESERVE_MIN_GAMES_MISSED)
         confidence -= 0.10
-    elif injury:
-        injury_availability_factor = 0.96
-        expected_games = max(10.0, expected_games - 0.5)
+    elif injury_severity:
+        expected_games = max(10.0, expected_games - INJURY_GAMES_PENALTY[injury_severity])
         confidence -= 0.04
+    # Derived, never asserted: this must equal what actually happened to the
+    # availability estimate, because the explanation payload is a contract.
+    injury_availability_factor = (
+        round(expected_games / expected_games_before_injury, 3)
+        if expected_games_before_injury else 1.0
+    )
     # This is an active-performance season baseline. Availability belongs in
     # the weekly simulation and must not silently reduce the displayed score.
     points = max(0.0, base_points)
@@ -1017,6 +1078,8 @@ def project_player(player: dict[str, Any], histories: list[dict[str, Any]], scor
             "depth_order": depth,
             "role_factor": round(role_factor, 3),
             "injury_factor": 1.0,
+            "injury_status": player.get("injury_status"),
+            "injury_severity": injury_severity,
             "injury_availability_factor": injury_availability_factor,
             "availability_adjustment_applied_to_baseline": False,
             "not_modeled": ["current teammates", "offensive line", "coaching/play-caller", "future schedule"],

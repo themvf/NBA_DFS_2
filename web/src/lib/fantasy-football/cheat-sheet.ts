@@ -147,7 +147,7 @@ export type CheatSheetEntry = {
   signal: CheatSheetSignal | null;
 };
 
-export type CheatSheetSignal = "buy" | "fade" | "injury" | "rookie";
+export type CheatSheetSignal = "out" | "injury" | "buy" | "fade" | "rookie";
 
 /** Weeks 15-17 slate, shown only where those weeks are scored separately. */
 export type PlayoffSlate = "soft" | "tough";
@@ -159,23 +159,32 @@ export type PlayoffSlate = "soft" | "tough";
  * changes whether you draft him at all, buy/fade changes when.
  */
 const SIGNAL_PRIORITY: Array<{ codes: string[]; signal: CheatSheetSignal }> = [
-  { codes: ["INJURY"], signal: "injury" },
   { codes: ["OUR_BUY"], signal: "buy" },
   { codes: ["OUR_FADE"], signal: "fade" },
   { codes: ["ROOKIE"], signal: "rookie" },
 ];
 
+/**
+ * Injury severities that mean "expected to miss games", as opposed to
+ * day-to-day. Before v1.15 every designation printed the same glyph, so an IR
+ * player and a Questionable player were indistinguishable on paper -- a
+ * meaningful difference when one of them cannot be drafted at his rank.
+ */
+const MISSING_GAMES_SEVERITIES = new Set(["reserve", "out", "suspended", "doubtful"]);
+
 export const SIGNAL_GLYPH: Record<CheatSheetSignal, string> = {
+  out: "✕",
+  injury: "!",
   buy: "+",
   fade: "-",
-  injury: "!",
   rookie: "R",
 };
 
 export const SIGNAL_LABEL: Record<CheatSheetSignal, string> = {
+  out: "expected to miss games (IR/PUP/out/susp.)",
+  injury: "day-to-day designation",
   buy: "value vs ADP",
   fade: "costs more than we'd pay",
-  injury: "injury designation",
   rookie: "rookie",
 };
 
@@ -187,6 +196,13 @@ function pickPlayoffSlate(row: FantasyRankingRow): PlayoffSlate | null {
 }
 
 function pickSignal(row: FantasyRankingRow): CheatSheetSignal | null {
+  // Injuries outrank everything else and are split by severity: an injury
+  // changes whether you draft him at all, buy/fade only changes when.
+  const injury = row.indicators.find((indicator) => indicator.code === "INJURY");
+  if (injury) {
+    const severity = String((injury.evidence as { severity?: unknown })?.severity ?? "");
+    return MISSING_GAMES_SEVERITIES.has(severity) ? "out" : "injury";
+  }
   const codes = new Set(row.indicators.map((indicator) => indicator.code));
   for (const { codes: candidates, signal } of SIGNAL_PRIORITY) {
     if (candidates.some((code) => codes.has(code))) return signal;
