@@ -34,6 +34,7 @@ export function isAnalystVerdict(value: unknown): value is AnalystVerdict {
 export const NOTE_CATEGORIES = [
   { id: "draft-board", label: "Draft Board", blurb: "Value against ADP" },
   { id: "ppr-consistency", label: "PPR Consistency", blurb: "Weekly floor / reception volume" },
+  { id: "rb-adp-value", label: "RB ADP Value", blurb: "Market price vs my value (RB only)" },
 ] as const;
 
 export type NoteCategory = (typeof NOTE_CATEGORIES)[number]["id"];
