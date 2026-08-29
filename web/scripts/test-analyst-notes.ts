@@ -41,6 +41,7 @@ assert.ok(validateNoteInput("A real note.", "x".repeat(41)));
 
 const seeded: PlayerNote = {
   playerId: 1,
+  category: "draft-board",
   verdict: "fade",
   verdictLabel: "Fade at this price",
   note: "Rice averaged 18.5 PPR points in his eight games last season.",
@@ -63,6 +64,7 @@ assert.match(seededTooltip, /does not change our projection, rank, or ADP/);
 // render an empty "#null" provenance run for it.
 const handWritten: PlayerNote = {
   playerId: 2,
+  category: "ppr-consistency",
   verdict: "target",
   verdictLabel: "Target",
   note: "Cheap points in a good offense.",

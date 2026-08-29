@@ -102,7 +102,7 @@ const BestBallPlayerRow = memo(function BestBallPlayerRow({ player, skillRank, c
   return <>
     <div role="cell" className="p-3 text-lg font-black">{skillRank}</div>
     <div role="cell" className="p-3"><p className="text-base font-black">#{overallRank}</p><p className="text-xs font-semibold text-muted-foreground">{player.position}{player.positionRank ?? "—"}</p></div>
-    <div role="cell" className="sticky left-0 z-10 border-r bg-card p-3 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.45)]"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p><div className="mt-1"><AnalystNoteMarker note={player.analystNote} /></div></div>
+    <div role="cell" className="sticky left-0 z-10 border-r bg-card p-3 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.45)]"><p className="font-bold">{player.name}</p><p className="text-xs text-muted-foreground">{player.position} · {player.team ?? "FA"} · Bye {player.byeWeek ?? "—"}</p><div className="mt-1"><AnalystNoteMarker notes={player.analystNotes} /></div></div>
     <div role="cell" className="p-3"><button disabled={!canDraft} title={canDraft ? "Add this player for the team currently on the clock" : "Blocked: this pick would violate roster limits or leave too few slots to complete a legal 20-player roster"} onClick={() => onDraft(player.playerId)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-35">Add</button></div>
     <div role="cell" className="max-w-[310px] p-3"><div className="flex flex-wrap gap-1">
       {correlationBadge && <span

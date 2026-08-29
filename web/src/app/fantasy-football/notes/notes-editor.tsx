@@ -6,9 +6,13 @@ import type { NoteEditorPlayer } from "@/db/queries-fantasy-football";
 import {
   ANALYST_NOTE_STYLE,
   ANALYST_VERDICTS,
+  DEFAULT_NOTE_CATEGORY,
   MAX_NOTE_LENGTH,
   MAX_VERDICT_LABEL_LENGTH,
+  NOTE_CATEGORIES,
+  noteCategoryLabel,
   type AnalystVerdict,
+  type NoteCategory,
 } from "@/lib/fantasy-football/analyst-notes";
 import AnalystNoteMarker from "@/components/fantasy-football/analyst-note-marker";
 import { deleteFantasyPlayerNote, saveFantasyPlayerNote } from "../actions";
@@ -26,6 +30,9 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
   const [filter, setFilter] = useState<Filter>("all");
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Which list is being edited. A player carries one note per category, so this
+  // decides both which existing note loads and which one a save writes.
+  const [category, setCategory] = useState<NoteCategory>(DEFAULT_NOTE_CATEGORY);
   const [verdict, setVerdict] = useState<AnalystVerdict>("fair");
   const [verdictLabel, setVerdictLabel] = useState("");
   const [note, setNote] = useState("");
@@ -36,22 +43,40 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
     [players, selectedId],
   );
 
+  // The note for the list currently being edited, if one exists.
+  const selectedNote = selected?.notes.find((row) => row.category === category) ?? null;
+
   const visible = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
-    return players.filter((player) => (
-      (!term || player.name.toLocaleLowerCase().includes(term))
-      && (!position || player.position === position)
-      && (filter === "all" || (filter === "with-note" ? Boolean(player.note) : !player.note))
-    ));
-  }, [players, search, position, filter]);
+    return players.filter((player) => {
+      const note = player.notes.find((row) => row.category === category) ?? null;
+      return (!term || player.name.toLocaleLowerCase().includes(term))
+        && (!position || player.position === position)
+        && (filter === "all" || (filter === "with-note" ? Boolean(note) : !note));
+    });
+  }, [players, search, position, filter, category]);
 
   // Loading a player replaces the form wholesale. A blank verdict label falls
   // back to the verdict's own name at save time, so it is fine to leave empty.
-  const select = (player: NoteEditorPlayer) => {
+  const select = (player: NoteEditorPlayer, forCategory: NoteCategory = category) => {
+    const existing = player.notes.find((row) => row.category === forCategory) ?? null;
     setSelectedId(player.playerId);
-    setVerdict(player.note?.verdict ?? "fair");
-    setVerdictLabel(player.note?.verdictLabel ?? "");
-    setNote(player.note?.note ?? "");
+    setVerdict(existing?.verdict ?? "fair");
+    setVerdictLabel(existing?.verdictLabel ?? "");
+    setNote(existing?.note ?? "");
+    setMessage(null);
+  };
+
+  // Switching lists reloads the form from that list's note for the same player,
+  // so you never save one list's text into another.
+  const switchCategory = (next: NoteCategory) => {
+    setCategory(next);
+    if (selected) {
+      const existing = selected.notes.find((row) => row.category === next) ?? null;
+      setVerdict(existing?.verdict ?? "fair");
+      setVerdictLabel(existing?.verdictLabel ?? "");
+      setNote(existing?.note ?? "");
+    }
     setMessage(null);
   };
 
@@ -61,12 +86,13 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
     startTransition(async () => {
       const result = await saveFantasyPlayerNote({
         playerId: selected.playerId,
+        category,
         verdict,
         verdictLabel,
         note,
       });
       if (result.ok) {
-        setMessage({ tone: "ok", text: `Saved ${selected.name}. It is live on the boards now.` });
+        setMessage({ tone: "ok", text: `Saved ${selected.name} (${noteCategoryLabel(category)}). It is live on the boards now.` });
         router.refresh();
       } else {
         setMessage({ tone: "error", text: result.error ?? "Save failed." });
@@ -75,15 +101,15 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
   };
 
   const remove = () => {
-    if (!selected?.note) return;
+    if (!selectedNote) return;
     setMessage(null);
     startTransition(async () => {
-      const result = await deleteFantasyPlayerNote({ playerId: selected.playerId });
+      const result = await deleteFantasyPlayerNote({ playerId: selected!.playerId, category });
       if (result.ok) {
         setNote("");
         setVerdictLabel("");
         setVerdict("fair");
-        setMessage({ tone: "ok", text: `Deleted the note for ${selected.name}.` });
+        setMessage({ tone: "ok", text: `Deleted the ${noteCategoryLabel(category)} note for ${selected!.name}.` });
         router.refresh();
       } else {
         setMessage({ tone: "error", text: result.error ?? "Delete failed." });
@@ -100,9 +126,10 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
         verdictLabel: verdictLabel.trim() || ANALYST_NOTE_STYLE[verdict].label,
         note: note.trim() || "(nothing written yet)",
         updatedAt: null,
-        listRank: selected.note?.listRank ?? null,
-        sourceTeam: selected.note?.sourceTeam ?? null,
-        sourceAdp: selected.note?.sourceAdp ?? null,
+        category,
+        listRank: selectedNote?.listRank ?? null,
+        sourceTeam: selectedNote?.sourceTeam ?? null,
+        sourceAdp: selectedNote?.sourceAdp ?? null,
       }
     : null;
 
@@ -143,9 +170,20 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
               {player.position} · {player.team ?? "FA"}{player.ourRank !== null ? ` · #${player.ourRank}` : ""}
             </span>
           </span>
-          {player.note
-            ? <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${ANALYST_NOTE_STYLE[player.note.verdict].className}`}>{ANALYST_NOTE_STYLE[player.note.verdict].icon}</span>
-            : <span className="shrink-0 text-[10px] text-muted-foreground">—</span>}
+          <span className="flex shrink-0 gap-1">
+            {NOTE_CATEGORIES.map((option) => {
+              const existing = player.notes.find((row) => row.category === option.id);
+              // The list being edited shows its verdict chip; the other lists
+              // show a dim dot, so you can tell a player already has a take
+              // elsewhere without leaving this list.
+              if (!existing) return <span key={option.id} className="w-5 text-center text-[10px] text-muted-foreground">·</span>;
+              return <span
+                key={option.id}
+                title={`${option.label}: ${existing.verdictLabel}`}
+                className={`w-5 rounded-full text-center text-[10px] font-bold ring-1 ring-inset ${ANALYST_NOTE_STYLE[existing.verdict].className} ${option.id === category ? "" : "opacity-40"}`}
+              >{ANALYST_NOTE_STYLE[existing.verdict].icon}</span>;
+            })}
+          </span>
         </button>)}
         {visible.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">No players match these filters.</p>}
         {visible.length > 400 && <p className="p-3 text-center text-xs text-muted-foreground">Showing the first 400 &mdash; narrow the search to reach the rest.</p>}
@@ -163,7 +201,28 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
               {selected.adp !== null ? ` · ADP ${selected.adp.toFixed(1)}` : ""}
             </p>
           </div>
-          {selected.note?.updatedAt && <p className="text-xs text-muted-foreground">Last edited {new Date(selected.note.updatedAt).toLocaleString()}</p>}
+          {selectedNote?.updatedAt && <p className="text-xs text-muted-foreground">Last edited {new Date(selectedNote.updatedAt).toLocaleString()}</p>}
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Note list</label>
+          <div className="flex flex-wrap gap-2">
+            {NOTE_CATEGORIES.map((option) => {
+              const existing = selected.notes.find((row) => row.category === option.id);
+              return <button
+                key={option.id}
+                type="button"
+                onClick={() => switchCategory(option.id)}
+                className={`rounded-xl border px-3 py-2 text-left text-sm ${option.id === category ? "border-violet-500 bg-violet-50 ring-1 ring-violet-400" : "hover:bg-muted"}`}
+              >
+                <span className="block font-bold">{option.label}</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {existing ? `${ANALYST_NOTE_STYLE[existing.verdict].icon} ${existing.verdictLabel}` : option.blurb}
+                </span>
+              </button>;
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">Each list holds its own note for this player. Saving one never touches the other.</p>
         </div>
 
         <div className="space-y-2">
@@ -210,7 +269,7 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
           <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Preview on the board</p>
           <div className="mt-2 flex items-center gap-2">
             <span className="font-bold">{selected.name}</span>
-            <AnalystNoteMarker note={preview} />
+            <AnalystNoteMarker notes={preview ? [preview] : null} />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">Hover the chip to see the tooltip exactly as the boards render it.</p>
         </div>
@@ -221,8 +280,8 @@ export default function NotesEditor({ players }: { players: NoteEditorPlayer[] }
             onClick={save}
             disabled={pending || !note.trim()}
             className="rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >{pending ? "Saving…" : selected.note ? "Update note" : "Save note"}</button>
-          {selected.note && <button
+          >{pending ? "Saving…" : selectedNote ? "Update note" : "Save note"}</button>
+          {selectedNote && <button
             type="button"
             onClick={remove}
             disabled={pending}

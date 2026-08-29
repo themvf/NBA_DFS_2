@@ -1,42 +1,22 @@
-// One-time seed for ff_player_notes: the original 100 hand-written analyst notes
-// that shipped hardcoded in PR #152, before the /fantasy-football/notes admin
-// page existed.
+// One-time seed for the DRAFT BOARD note list: the original 100 hand-written
+// analyst notes that shipped hardcoded in PR #152, before the
+// /fantasy-football/notes admin page existed.
 //
 // The database is now the single source of truth for player notes. This file is
 // the migration input, not app code -- it lives in scripts/ so it never reaches
 // the client bundle, and it is safe to delete once the seed has run and you are
 // happy with what is in the table.
 //
-// Idempotent: re-running updates the same rows rather than duplicating, because
-// ff_player_notes is UNIQUE(player_id). It will NOT clobber a note you have
-// since edited unless you pass --force.
-//
-//   npm run seed:analyst-notes           # insert only where no note exists
+//   npm run seed:analyst-notes             # insert only where no note exists
 //   npm run seed:analyst-notes -- --force  # also overwrite edited notes
 //
-// Matching is by normalized name + season, deliberately not by team: several
-// notes describe 2026 moves the roster feed may not agree with.
+// Matching is by normalized name + position, deliberately not by team: several
+// notes describe 2026 moves the roster feed may not agree with. See
+// scripts/seed-notes-lib.ts for the resolution and upsert.
 
-import { sql } from "drizzle-orm";
+import { runSeed, seedNotes, type SeedNote } from "./seed-notes-lib";
 
-import { db } from "../src/db";
-import { ensureFantasyFootballTables } from "../src/db/ensure-schema";
-import { normalizeAnalystName, type AnalystVerdict } from "../src/lib/fantasy-football/analyst-notes";
-
-const SEASON = 2026;
-
-type SeedNote = {
-  listRank: number;
-  name: string;
-  position: string;
-  team: string;
-  adp: number;
-  verdict: AnalystVerdict;
-  verdictLabel: string;
-  note: string;
-};
-
-const SEED_NOTES: SeedNote[] = [
+const NOTES: SeedNote[] = [
   { listRank: 1, name: "Jahmyr Gibbs", position: "RB", team: "DET", adp: 1, verdict: "fair", verdictLabel: "Fair", note: "He combines elite receiving usage, explosive rushing and touchdown access in an offense built to create RB production. There's no bargain at 1.01, but he has perhaps the cleanest combination of floor and overall RB1 ceiling." },
   { listRank: 2, name: "Bijan Robinson", position: "RB", team: "ATL", adp: 2, verdict: "target", verdictLabel: "Target", note: "Robinson gives you true three-down volume with less age/workload concern than most elite backs. I would be perfectly comfortable taking him first overall and actually prefer his risk profile slightly to Gibbs." },
   { listRank: 3, name: "Puka Nacua", position: "WR", team: "LAR", adp: 3, verdict: "caution", verdictLabel: "Caution", note: "His 129-catch, 1,715-yard 2025 season gives him legitimate overall WR1 upside whenever Matthew Stafford is healthy. The only reason not to simply stamp him a top-three lock is the unresolved NFL review of his off-field situation, though no suspension has been announced." },
@@ -139,89 +119,4 @@ const SEED_NOTES: SeedNote[] = [
   { listRank: 100, name: "Jared Goff", position: "QB", team: "DET", adp: 103, verdict: "target", verdictLabel: "Target", note: "Goff lacks rushing production, but Detroit gives him St. Brown, Gibbs, Jameson Williams and one of football's most fantasy-friendly offensive environments. At QB18 pricing, you're barely paying anything for a quarterback with a realistic path to another top-10 passing season." },
 ];
 
-async function main(): Promise<void> {
-  const force = process.argv.includes("--force");
-  await ensureFantasyFootballTables();
-
-  // Resolve against the CURRENT board, not all of ff_players. Duplicate player
-  // rows genuinely exist (a stale orphan with no sleeper/gsis id alongside the
-  // live row -- Puka Nacua and Trevor Lawrence both have one, and CLAUDE.md
-  // already records the Lawrence case). Matching the whole table silently
-  // attached those notes to the dead row, where no surface would ever render
-  // them. Only players on the latest ranking set are eligible.
-  const players = await db.execute(sql`
-    SELECT p.id, p.normalized_name, p.position, p.canonical_name
-    FROM ff_players p
-    JOIN ff_player_rankings r ON r.player_id = p.id
-    JOIN ff_ranking_sets rs ON rs.id = r.ranking_set_id
-    WHERE p.season = ${SEASON}
-      AND rs.id = (
-        SELECT rs2.id FROM ff_ranking_sets rs2
-        WHERE COALESCE(rs2.scoring_profile->>'preset','PPR') = 'PPR'
-        ORDER BY rs2.created_at DESC LIMIT 1
-      )
-  `);
-  const byName = new Map<string, Array<{ id: number; position: string; name: string }>>();
-  for (const row of players.rows as Array<Record<string, unknown>>) {
-    const key = String(row.normalized_name);
-    const entry = { id: Number(row.id), position: String(row.position), name: String(row.canonical_name) };
-    const bucket = byName.get(key);
-    if (bucket) bucket.push(entry);
-    else byName.set(key, [entry]);
-  }
-
-  let inserted = 0;
-  let updated = 0;
-  let skipped = 0;
-  const unmatched: string[] = [];
-
-  for (const seed of SEED_NOTES) {
-    const bucket = byName.get(normalizeAnalystName(seed.name)) ?? [];
-    // Position disambiguates a shared name; with one candidate, take it -- the
-    // note's position and the roster feed's can legitimately differ.
-    const matches = bucket.length === 1 ? bucket : bucket.filter((row) => row.position === seed.position);
-    if (matches.length !== 1) {
-      // Refuse to guess. Silently taking the first is exactly how the notes for
-      // Puka Nacua and Trevor Lawrence landed on rows nothing renders.
-      unmatched.push(
-        matches.length === 0
-          ? `#${seed.listRank} ${seed.name} (${seed.position}) -- no board player`
-          : `#${seed.listRank} ${seed.name} (${seed.position}) -- ambiguous, ${matches.length} board players`,
-      );
-      continue;
-    }
-    const player = matches[0];
-
-    const result = await db.execute(sql`
-      INSERT INTO ff_player_notes (
-        player_id, season, normalized_name, position, verdict, verdict_label,
-        note, list_rank, source_team, source_adp, author
-      ) VALUES (
-        ${player.id}, ${SEASON}, ${normalizeAnalystName(seed.name)}, ${seed.position},
-        ${seed.verdict}, ${seed.verdictLabel}, ${seed.note}, ${seed.listRank},
-        ${seed.team}, ${seed.adp}, ${"seed:pr-152"}
-      )
-      ON CONFLICT (player_id) DO UPDATE SET
-        verdict = CASE WHEN ${force} THEN EXCLUDED.verdict ELSE ff_player_notes.verdict END,
-        verdict_label = CASE WHEN ${force} THEN EXCLUDED.verdict_label ELSE ff_player_notes.verdict_label END,
-        note = CASE WHEN ${force} THEN EXCLUDED.note ELSE ff_player_notes.note END,
-        updated_at = CASE WHEN ${force} THEN NOW() ELSE ff_player_notes.updated_at END
-      RETURNING (xmax = 0) AS was_insert, updated_at
-    `);
-    const row = (result.rows as Array<Record<string, unknown>>)[0];
-    if (row?.was_insert === true || row?.was_insert === "t") inserted += 1;
-    else if (force) updated += 1;
-    else skipped += 1;
-  }
-
-  console.log(`seed:analyst-notes -> ${inserted} inserted, ${updated} overwritten, ${skipped} left alone (already present)`);
-  if (unmatched.length) {
-    console.log(`${unmatched.length} note(s) matched no ${SEASON} player and were skipped:`);
-    for (const label of unmatched) console.log(`  - ${label}`);
-  }
-}
-
-main().then(() => process.exit(0)).catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+runSeed(seedNotes({ category: "draft-board", author: "seed:pr-152", notes: NOTES }));

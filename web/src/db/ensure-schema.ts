@@ -81,9 +81,18 @@ const FANTASY_FOOTBALL_DDLS = [
       author TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(player_id),
+      category TEXT NOT NULL DEFAULT 'draft-board',
+      UNIQUE(player_id, category),
       CHECK (verdict IN ('target','fair','caution','fade'))
     )`,
+  // Migration for tables created before categories existed: a player may now
+  // carry one note per list, so the old UNIQUE(player_id) has to give way to
+  // UNIQUE(player_id, category). Written as idempotent ALTERs because the
+  // CREATE above is IF NOT EXISTS and never re-runs on an existing table.
+  // Existing rows are the draft-board list, which is what the column defaults to.
+  `ALTER TABLE ff_player_notes ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'draft-board'`,
+  `ALTER TABLE ff_player_notes DROP CONSTRAINT IF EXISTS ff_player_notes_player_id_key`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_notes_player_category ON ff_player_notes(player_id, category)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_player_notes_season ON ff_player_notes(season, updated_at DESC)`,
   `CREATE TABLE IF NOT EXISTS ff_v2_context_runs (run_id UUID PRIMARY KEY, transform_version TEXT NOT NULL, seasons JSONB NOT NULL, source_snapshot_ids JSONB NOT NULL, coverage_report JSONB NOT NULL, artifact_digest TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(transform_version, artifact_digest))`,
   `CREATE TABLE IF NOT EXISTS ff_v2_team_week_context (id BIGSERIAL PRIMARY KEY, run_id UUID NOT NULL REFERENCES ff_v2_context_runs(run_id) ON DELETE CASCADE, season INTEGER NOT NULL, week INTEGER NOT NULL, team TEXT NOT NULL, is_bye BOOLEAN NOT NULL, game_id TEXT, game_date DATE, kickoff_at TIMESTAMPTZ, opponent TEXT, is_home BOOLEAN, location TEXT, stadium TEXT, stadium_id TEXT, roof TEXT, surface TEXT, quarterback_gsis_id TEXT, quarterback_name TEXT, head_coach TEXT, play_caller_id TEXT, source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id), row_digest TEXT NOT NULL, observed_at TIMESTAMPTZ NOT NULL, UNIQUE(run_id, season, week, team))`,
