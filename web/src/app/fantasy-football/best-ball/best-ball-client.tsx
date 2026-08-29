@@ -201,6 +201,13 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
     roster: userRoster, isUserOnClock, targetPick: targetOverallPick, futurePick: futureOverallPick,
   }), [rankings, draftedPlayerIds, availabilityByPlayerId, futureAvailabilityByPlayerId, userRoster, isUserOnClock, targetOverallPick, futureOverallPick]);
 
+  // Editorial notes for the Shadow panel's candidate rows. Built from the same
+  // rankings the board renders, so a note edit shows up everywhere at once.
+  const analystNotesByPlayerId = useMemo(
+    () => new Map(rankings.flatMap((player) => (player.analystNote ? [[player.playerId, player.analystNote] as const] : []))),
+    [rankings],
+  );
+
   const shadowSimulation = useMemo(() => {
     if (!decisionPlan) return null;
     const toShadowPlayer = (player: FantasyRankingRow): ShadowBestBallPlayer => ({
@@ -368,6 +375,7 @@ export default function BestBallClient({ rankings, rankingSetId, advisorAvailabi
     />
 
     <BestBallShadowPanel
+      notesByPlayerId={analystNotesByPlayerId}
       simulation={shadowSimulation}
       canDraft={isUserOnClock}
       nextUserPick={targetOverallPick}

@@ -35,6 +35,7 @@ const PAGE_LINKS: Array<{
   { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
   { href: "/fantasy-football/best-ball", label: "NFL Best Ball", sports: ["nfl"] },
   { href: "/fantasy-football/redraft", label: "NFL Redraft", sports: ["nfl"] },
+  { href: "/fantasy-football/notes", label: "Player Notes", sports: ["nfl"] },
   { href: "/homerun", label: "Homeruns", sports: ["mlb"] },
   { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },

@@ -12,6 +12,7 @@ import { getFantasyDraftState, getFantasyPercentileProfile, type FantasyPercenti
 import { AUTO_DRAFT_VERSION, selectComputerPick, type AutoDraftPlayer } from "@/lib/fantasy-football/auto-draft";
 import { isDraftStrategy } from "@/lib/fantasy-football/draft-strategy";
 import { queryRows } from "@/db/query-result";
+import { ANALYST_NOTE_STYLE, isAnalystVerdict, validateNoteInput } from "@/lib/fantasy-football/analyst-notes";
 
 export async function createFantasyDraft(formData: FormData): Promise<void> {
   await ensureFantasyFootballTables();
@@ -284,5 +285,80 @@ export async function fetchFantasyPercentileProfile(
     return { ok: true, profile };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Failed to load percentile profile." };
+  }
+}
+
+// --- Player notes -----------------------------------------------------------
+//
+// Editorial notes authored in /fantasy-football/notes and surfaced as the
+// tooltip on the redraft board, the Best Ball board, and the Shadow panel.
+// These write to ff_player_notes and to nothing else -- a note can never move a
+// projection, rank, VOR, or ADP.
+//
+// NOTE ON ACCESS: these actions are deliberately ungated, per an explicit
+// decision (2026-08-29) that the deployment is not publicly reachable. If that
+// ever changes, gate HERE -- both actions and the page loader funnel through
+// this file, so a single guard at the top of each covers every write path.
+// Hiding the page's link would not be enough: server actions are callable
+// directly whether or not a form renders.
+
+export async function saveFantasyPlayerNote(input: {
+  playerId: number;
+  verdict: string;
+  verdictLabel: string;
+  note: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!Number.isInteger(input.playerId) || input.playerId <= 0) return { ok: false, error: "Pick a player first." };
+  if (!isAnalystVerdict(input.verdict)) return { ok: false, error: "Pick a verdict." };
+
+  const note = input.note.trim();
+  const verdictLabel = input.verdictLabel.trim() || ANALYST_NOTE_STYLE[input.verdict].label;
+  const invalid = validateNoteInput(note, verdictLabel);
+  if (invalid) return { ok: false, error: invalid };
+
+  try {
+    await ensureFantasyFootballTables();
+    const player = await db.execute(sql`
+      SELECT id, season, normalized_name, position FROM ff_players WHERE id=${input.playerId}
+    `);
+    const row = (player.rows as Array<Record<string, unknown>>)[0];
+    if (!row) return { ok: false, error: "That player is not in the database." };
+
+    // Season/name/position are denormalized from the player row rather than
+    // trusted from the client, so a stale form cannot mislabel a note.
+    await db.execute(sql`
+      INSERT INTO ff_player_notes (player_id, season, normalized_name, position, verdict, verdict_label, note, author)
+      VALUES (${input.playerId}, ${Number(row.season)}, ${String(row.normalized_name)}, ${String(row.position)},
+              ${input.verdict}, ${verdictLabel}, ${note}, ${"admin"})
+      ON CONFLICT (player_id) DO UPDATE SET
+        verdict = EXCLUDED.verdict,
+        verdict_label = EXCLUDED.verdict_label,
+        note = EXCLUDED.note,
+        updated_at = NOW()
+    `);
+
+    // Every surface that renders a note reads the same rankings query.
+    revalidatePath("/fantasy-football/notes");
+    revalidatePath("/fantasy-football/rankings");
+    revalidatePath("/fantasy-football/redraft");
+    revalidatePath("/fantasy-football/best-ball");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Failed to save the note." };
+  }
+}
+
+export async function deleteFantasyPlayerNote(input: { playerId: number }): Promise<{ ok: boolean; error?: string }> {
+  if (!Number.isInteger(input.playerId) || input.playerId <= 0) return { ok: false, error: "Invalid player." };
+  try {
+    await ensureFantasyFootballTables();
+    await db.execute(sql`DELETE FROM ff_player_notes WHERE player_id=${input.playerId}`);
+    revalidatePath("/fantasy-football/notes");
+    revalidatePath("/fantasy-football/rankings");
+    revalidatePath("/fantasy-football/redraft");
+    revalidatePath("/fantasy-football/best-ball");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Failed to delete the note." };
   }
 }

@@ -41,6 +41,40 @@ const FANTASY_FOOTBALL_DDLS = [
   `CREATE TABLE IF NOT EXISTS ff_dk_bestball_adp (id BIGSERIAL PRIMARY KEY, draft_group_id INTEGER NOT NULL, season INTEGER NOT NULL, dk_player_id BIGINT NOT NULL, player_id BIGINT REFERENCES ff_players(id) ON DELETE SET NULL, display_name TEXT NOT NULL, dk_team_id INTEGER, average_draft_position DOUBLE PRECISION, draft_percentage DOUBLE PRECISION, rank INTEGER, is_available BOOLEAN NOT NULL DEFAULT TRUE, captured_at TIMESTAMPTZ NOT NULL, source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id), UNIQUE(draft_group_id, dk_player_id, captured_at))`,
   `CREATE TABLE IF NOT EXISTS ff_yahoo_predraft_captures (source_snapshot_id BIGINT PRIMARY KEY REFERENCES ff_source_snapshots(id) ON DELETE CASCADE, season INTEGER NOT NULL, captured_at TIMESTAMPTZ NOT NULL, raw_text TEXT NOT NULL, format_version TEXT NOT NULL DEFAULT 'yahoo-paste-v1', source_label TEXT NOT NULL DEFAULT 'Yahoo Fantasy Pre-Draft Rankings')`,
   `CREATE TABLE IF NOT EXISTS ff_yahoo_predraft_rankings (id BIGSERIAL PRIMARY KEY, source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id) ON DELETE CASCADE, season INTEGER NOT NULL, player_id BIGINT REFERENCES ff_players(id) ON DELETE SET NULL, source_order INTEGER NOT NULL, display_name TEXT NOT NULL, position TEXT NOT NULL, team_abbrev TEXT, bye_week INTEGER, xrank DOUBLE PRECISION NOT NULL, adp DOUBLE PRECISION, captured_at TIMESTAMPTZ NOT NULL, match_method TEXT NOT NULL, raw_row JSONB NOT NULL DEFAULT '{}'::jsonb, UNIQUE(source_snapshot_id, source_order))`,
+  // Hand-written per-player scouting notes, authored in the /fantasy-football/notes
+  // admin page and surfaced as the tooltip on the redraft board, the Best Ball
+  // board, and the Best Ball Shadow panel. Editorial only -- read by the display
+  // layer, never by a projection, VOR, rank, or ADP calculation.
+  //
+  // Written by the web app, not by Python -- same ownership as
+  // youtube_pick_channels. player_id is safe as the key because the ingest
+  // resolves-then-UPDATEs existing ff_players rows (never re-inserting) and
+  // nothing in the repo deletes them, so the id survives every refresh.
+  //
+  // Notes are SEASON-SCOPED as a consequence: ff_players is keyed by season, so
+  // a 2027 refresh creates new player rows and 2026 notes stay attached to the
+  // 2026 rows rather than silently following a player forward. normalized_name
+  // and position are denormalized here so a deliberate carry-forward is a
+  // re-link by name rather than a re-type.
+  `CREATE TABLE IF NOT EXISTS ff_player_notes (
+      id BIGSERIAL PRIMARY KEY,
+      player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE,
+      season INTEGER NOT NULL,
+      normalized_name TEXT NOT NULL,
+      position TEXT NOT NULL,
+      verdict TEXT NOT NULL,
+      verdict_label TEXT NOT NULL,
+      note TEXT NOT NULL,
+      list_rank INTEGER,
+      source_team TEXT,
+      source_adp DOUBLE PRECISION,
+      author TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(player_id),
+      CHECK (verdict IN ('target','fair','caution','fade'))
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_player_notes_season ON ff_player_notes(season, updated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_rank_sets_latest ON ff_ranking_sets(season, ranking_type, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_rankings_board ON ff_player_rankings(ranking_set_id, COALESCE(our_rank, overall_rank))`,
   `CREATE INDEX IF NOT EXISTS idx_ff_drafts_recent ON ff_draft_sessions(updated_at DESC)`,
