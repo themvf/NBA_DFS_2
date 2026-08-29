@@ -111,7 +111,7 @@ def test_buying_a_near_certainty_at_a_near_certain_price_scores_zero_clv():
         fill("sharp", REF, "BUY", 100, 0.40, START - 7200),
         fill("payer", REF, "BUY", 100, 0.99, START - 7200),
     ] + _close_book(0.99)
-    measured, close = measure_market(fills, MARKET)
+    measured, close, _fb = measure_market(fills, MARKET)
     assert close == pytest.approx(0.99, abs=0.001)
     assert measured["payer"]["clv_market"] == pytest.approx(0.0, abs=0.01)
     assert measured["sharp"]["clv_market"] > 0.5
@@ -123,7 +123,7 @@ def test_clv_is_negative_when_the_market_moves_away_from_the_buyer():
     fills = [
         fill("late", REF, "BUY", 100, 0.80, START - 7200),
     ] + _close_book(0.30)
-    measured, _ = measure_market(fills, MARKET)
+    measured, _, _fb = measure_market(fills, MARKET)
     assert measured["late"]["clv_market"] < 0
 
 
@@ -133,8 +133,8 @@ def test_clv_scores_pregame_buys_only_never_sells():
     fills = [
         fill("scalper", REF, "SELL", 100, 0.20, START - 7200),
     ] + _close_book(0.60)
-    measured, _ = measure_market(fills, MARKET)
-    assert measured["scalper"]["clv_stake"] == 0
+    measured, _, _fb = measure_market(fills, MARKET)
+    assert measured["scalper"]["clv_shares"] == 0
     assert measured["scalper"]["clv_market"] is None
 
 
@@ -143,12 +143,12 @@ def test_in_play_buys_are_excluded_from_clv_but_still_counted_behaviourally():
         fill("w", REF, "BUY", 100, 0.50, START - 7200),
         fill("w", REF, "BUY", 100, 0.10, START + 3600),
     ] + _close_book(0.50)
-    measured, _ = measure_market(fills, MARKET)
+    measured, _, _fb = measure_market(fills, MARKET)
     entry = measured["w"]
     assert entry["inplay_trades"] == 1
     assert entry["pregame_trades"] == 1
-    # only the pregame $50 is scored, not the in-play $10
-    assert entry["clv_stake"] == pytest.approx(50.0)
+    # only the pregame 100 shares are scored, not the in-play 100
+    assert entry["clv_shares"] == pytest.approx(100.0)
 
 
 def test_clv_is_dollar_weighted_within_a_market():
@@ -158,7 +158,7 @@ def test_clv_is_dollar_weighted_within_a_market():
         fill("w", REF, "BUY", 10000, 0.50, START - 7200),   # $5,000, big CLV
         fill("w", OTHER, "BUY", 1, 0.50, START - 7200),     # $0.50, big negative
     ] + _close_book(0.90)
-    measured, _ = measure_market(fills, MARKET)
+    measured, _, _fb = measure_market(fills, MARKET)
     # dominated by the $5,000 leg, not dragged to the midpoint by the $0.50 one
     assert measured["w"]["clv_market"] > 0.35
 
@@ -225,9 +225,9 @@ def test_gate_reports_every_failure_not_just_the_first():
 
 def test_rank_by_clv_excludes_gated_wallets_and_counts_the_reason():
     wallets = {
-        "good": _wallet(clv_num=100.0, clv_stake=1000.0,
+        "good": _wallet(clv_num=100.0, clv_shares=1000.0,
                         obs=[(f"m{i}", 100.0, 10.0) for i in range(MIN_CLV_MARKETS + 5)]),
-        "tiny": _wallet(clv_markets=2, clv_num=500.0, clv_stake=100.0,
+        "tiny": _wallet(clv_markets=2, clv_num=500.0, clv_shares=100.0,
                         obs=[("m1", 50.0, 250.0), ("m2", 50.0, 250.0)]),
     }
     rows, reasons = rank_by_clv(wallets)
@@ -282,10 +282,10 @@ def _wf_wallets(good_holdout, bad_holdout):
     dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
     hold = lambda v: [(f"h{i}", 100.0, v) for i in range(20)]
     return {
-        "persists": _wallet(obs=dev(40.0) + hold(good_holdout), clv_num=1.0, clv_stake=100.0),
-        "fades": _wallet(obs=dev(30.0) + hold(bad_holdout), clv_num=1.0, clv_stake=100.0),
-        "rest_a": _wallet(obs=dev(10.0) + hold(0.0), clv_num=1.0, clv_stake=100.0),
-        "rest_b": _wallet(obs=dev(5.0) + hold(0.0), clv_num=1.0, clv_stake=100.0),
+        "persists": _wallet(obs=dev(40.0) + hold(good_holdout), clv_num=1.0, clv_shares=100.0),
+        "fades": _wallet(obs=dev(30.0) + hold(bad_holdout), clv_num=1.0, clv_shares=100.0),
+        "rest_a": _wallet(obs=dev(10.0) + hold(0.0), clv_num=1.0, clv_shares=100.0),
+        "rest_b": _wallet(obs=dev(5.0) + hold(0.0), clv_num=1.0, clv_shares=100.0),
     }
 
 
@@ -319,9 +319,9 @@ def test_walk_forward_reports_a_selection_gap_against_the_unselected_rest():
     dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
     hold = lambda v: [(f"h{i}", 100.0, v) for i in range(20)]
     wallets = {
-        "top": _wallet(obs=dev(30.0) + hold(10.0), clv_num=1.0, clv_stake=100.0),
-        "mid": _wallet(obs=dev(20.0) + hold(10.0), clv_num=1.0, clv_stake=100.0),
-        "low": _wallet(obs=dev(5.0) + hold(10.0), clv_num=1.0, clv_stake=100.0),
+        "top": _wallet(obs=dev(30.0) + hold(10.0), clv_num=1.0, clv_shares=100.0),
+        "mid": _wallet(obs=dev(20.0) + hold(10.0), clv_num=1.0, clv_shares=100.0),
+        "low": _wallet(obs=dev(5.0) + hold(10.0), clv_num=1.0, clv_shares=100.0),
     }
     rows, _ = rank_by_clv(wallets)
     wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
@@ -450,7 +450,7 @@ def test_walk_forward_never_selects_the_entire_population():
     dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
     hold = [(f"h{i}", 100.0, 5.0) for i in range(20)]
     wallets = {
-        f"w{k}": _wallet(obs=dev(30.0 - k) + hold, clv_num=1.0, clv_stake=100.0)
+        f"w{k}": _wallet(obs=dev(30.0 - k) + hold, clv_num=1.0, clv_shares=100.0)
         for k in range(7)
     }
     rows, _ = rank_by_clv(wallets)
@@ -466,7 +466,7 @@ def test_walk_forward_refuses_to_split_a_single_wallet():
     from ingest.polymarket_wallet_clv import walk_forward
     dev = [(f"d{i}", 100.0, 20.0) for i in range(MIN_CLV_MARKETS + 5)]
     hold = [(f"h{i}", 100.0, 5.0) for i in range(20)]
-    wallets = {"only": _wallet(obs=dev + hold, clv_num=1.0, clv_stake=100.0)}
+    wallets = {"only": _wallet(obs=dev + hold, clv_num=1.0, clv_shares=100.0)}
     rows, _ = rank_by_clv(wallets)
     wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
                       {f"h{i}" for i in range(20)}, top_n=20)
@@ -510,13 +510,13 @@ def test_walk_forward_flags_a_result_carried_by_one_wallet():
     wallets = {
         # one whale carrying a huge positive holdout stake
         "whale": _wallet(obs=dev(30.0) + [(f"h{i}", 10000.0, 500.0) for i in range(20)],
-                         clv_num=1.0, clv_stake=100.0),
+                         clv_num=1.0, clv_shares=100.0),
         "small_a": _wallet(obs=dev(20.0) + [(f"h{i}", 10.0, -0.5) for i in range(20)],
-                           clv_num=1.0, clv_stake=100.0),
+                           clv_num=1.0, clv_shares=100.0),
         "small_b": _wallet(obs=dev(10.0) + [(f"h{i}", 10.0, -0.5) for i in range(20)],
-                           clv_num=1.0, clv_stake=100.0),
+                           clv_num=1.0, clv_shares=100.0),
         "small_c": _wallet(obs=dev(5.0) + [(f"h{i}", 10.0, -0.5) for i in range(20)],
-                           clv_num=1.0, clv_stake=100.0),
+                           clv_num=1.0, clv_shares=100.0),
     }
     rows, _ = rank_by_clv(wallets)
     wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
@@ -541,7 +541,7 @@ def test_favourite_longshot_check_separates_drift_from_skill():
         fill("fav_backer", REF, "BUY", 100, 0.80, start - 7200),
         fill("dog_backer", OTHER, "BUY", 100, 0.20, start - 7200),
     ] + _close_book(0.85)
-    measured, _ = measure_market(fills, MARKET)
+    measured, _, _fb = measure_market(fills, MARKET)
     # entry price is recorded in each wallet's own terms, so the two are
     # distinguishable even though they traded the same match
     assert measured["fav_backer"]["pregame_fav_cash"] > 0
@@ -556,7 +556,7 @@ def test_walk_forward_reports_entry_price_for_selected_and_rest():
     hold = [(f"h{i}", 100.0, 5.0) for i in range(20)]
     wallets = {}
     for k, (dv, entry) in enumerate([(30.0, 0.85), (25.0, 0.82), (5.0, 0.30), (3.0, 0.25)]):
-        w = _wallet(obs=dev(dv) + hold, clv_num=1.0, clv_stake=100.0)
+        w = _wallet(obs=dev(dv) + hold, clv_num=1.0, clv_shares=100.0)
         w["pregame_buy_size"] = 20000.0
         w["pregame_buy_cash"] = 20000.0 * entry   # must clear MIN_PREGAME_STAKE
         w["pregame_fav_cash"] = 20000.0 * entry if entry > 0.5 else 0.0
@@ -586,7 +586,7 @@ def test_a_wallet_is_not_scored_against_a_close_it_helped_set():
         # an independent quote also in the window
         fill("other", REF, "BUY", 10000, 0.50, START - 100),
     ]
-    measured, close = measure_market(fills, MARKET)
+    measured, close, _fb = measure_market(fills, MARKET)
     # the market-wide close is dragged up by selfy's own volume
     assert close > 0.65
     # but selfy is scored against the independent 0.50, so its 0.50 buy earns
@@ -604,7 +604,7 @@ def test_wallet_that_is_the_entire_close_cannot_be_scored():
         fill("only", REF, "BUY", 100, 0.90, START - 200),
         fill("only", REF, "BUY", 100, 0.90, START - 100),
     ]
-    measured, _ = measure_market(fills, MARKET)
+    measured, _, _fb = measure_market(fills, MARKET)
     assert measured["only"]["clv_market"] is None
 
 
@@ -612,7 +612,7 @@ def test_independent_wallets_are_unaffected_by_the_exclusion():
     """A wallet with no fills in the close window is scored against the same
     number as before -- the fix must not move ordinary observations."""
     fills = [fill("early", REF, "BUY", 100, 0.40, START - 7200)] + _close_book(0.60)
-    measured, _ = measure_market(fills, MARKET)
+    measured, _, _fb = measure_market(fills, MARKET)
     assert measured["early"]["clv_market"] == pytest.approx(0.20, abs=0.001)
 
 
@@ -649,3 +649,154 @@ def test_gap_ci_cancels_the_shared_market_shock():
     lo, hi = bootstrap_gap_ci(sel, rest, rounds=600)
     assert lo > 0            # the shared shock cancels
     assert (hi - lo) < 0.02  # and the interval stays tight
+
+
+# --- weighting ---------------------------------------------------------------
+
+def test_offsetting_share_positions_net_to_zero_clv():
+    """The bug that invalidated the first MLB result.
+
+    Dollar-weighting a PRICE MOVE drops the 1/p that converts dollars to
+    shares, so two wallets holding perfectly offsetting share positions did
+    not cancel: true economic return 0.0000, share-weighted CLV 0.0000, but
+    the old form reported +0.0400. The residual was a pure function of price
+    level, handing free CLV to whoever's dollars sat on favourites -- a
+    persistent style, so it survived the walk-forward as fake 'skill'."""
+    fills = [
+        fill("fav", REF, "BUY", 1000, 0.90, START - 7200),
+        fill("dog", OTHER, "BUY", 1000, 0.10, START - 7200),
+    ] + _close_book(0.95, size=50000)
+    measured, close, _fb = measure_market(fills, MARKET)
+    assert close == pytest.approx(0.95, abs=0.001)
+    num = sum(measured[w]["clv_num"] for w in ("fav", "dog"))
+    shares = sum(measured[w]["clv_shares"] for w in ("fav", "dog"))
+    assert num / shares == pytest.approx(0.0, abs=1e-9)
+
+
+def test_clv_is_antisymmetric_between_the_two_sides():
+    """Buying either side of the same binary market at the vig-free price
+    must give equal and opposite CLV per share. Without this, CLV is not
+    zero-sum and a market maker CAN win it, which is the entire premise."""
+    fills = [
+        fill("a", REF, "BUY", 500, 0.30, START - 7200),
+        fill("b", OTHER, "BUY", 500, 0.70, START - 7200),
+    ] + _close_book(0.45, size=40000)
+    measured, _, _fb = measure_market(fills, MARKET)
+    assert measured["a"]["clv_market"] == pytest.approx(-measured["b"]["clv_market"], abs=1e-9)
+
+
+def test_clv_weight_is_shares_not_dollars():
+    """clv_shares must accumulate SIZE. If it ever holds notional again the
+    weighting bug is back, silently."""
+    fills = [fill("w", REF, "BUY", 250, 0.40, START - 7200)] + _close_book(0.50)
+    measured, _, _fb = measure_market(fills, MARKET)
+    assert measured["w"]["clv_shares"] == pytest.approx(250.0)
+    assert measured["w"]["clv_shares"] != pytest.approx(250.0 * 0.40)
+    # and the reported CLV is the price move itself, in probability points
+    assert measured["w"]["clv_market"] == pytest.approx(0.10, abs=1e-9)
+
+
+def test_gates_can_be_scaled_for_a_dev_only_window():
+    """Eligibility judged on the combined sample requires the wallet to have
+    kept trading into the holdout, which preferentially deletes the false
+    positives from the SELECTED group and manufactures a gap from pure
+    survivorship. Gates therefore run on dev fills, scaled."""
+    from ingest.polymarket_wallet_clv import DEV_GATE_FRACTION
+    half = _wallet(clv_markets=int(MIN_CLV_MARKETS * DEV_GATE_FRACTION) + 1,
+                   pregame_buy_cash=600.0)
+    assert gate(half)[1] != []                       # fails at full scale
+    assert gate(half, scale=DEV_GATE_FRACTION)[0]    # passes on a half window
+
+
+def test_rank_by_clv_judges_eligibility_on_dev_but_scores_full_sample():
+    from ingest.polymarket_wallet_clv import rank_by_clv as rank
+    full = _wallet(clv_num=100.0, clv_shares=1000.0,
+                   obs=[(f"m{i}", 100.0, 10.0) for i in range(40)])
+    # dev half is thin but clears the scaled floor
+    dev = _wallet(clv_markets=16, pregame_buy_cash=600.0)
+    rows, _ = rank({"w": full}, {"w": dev})
+    assert [r["wallet"] for r in rows] == ["w"]
+    # the SCORE still comes from the full-sample accumulator
+    assert rows[0]["clv"] == pytest.approx(0.1)
+    # a wallet whose dev half is empty is not admitted on holdout strength
+    rows2, reasons = rank({"w": full}, {})
+    assert rows2 == [] and reasons["sample"] == 1
+
+
+def test_jackknife_reports_the_worst_single_deletion_not_just_the_whale():
+    """Dropping only the largest wallet asks 'does the whale carry it'. The
+    question that matters is whether ANY single wallet carries it."""
+    from ingest.polymarket_wallet_clv import walk_forward
+    dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
+    wallets = {}
+    # three modest contributors plus one wallet supplying the entire edge,
+    # deliberately NOT the largest by stake
+    for k, (dv, hv, stake) in enumerate([
+        (40.0, 0.2, 100.0), (30.0, 0.2, 100.0), (20.0, 0.2, 100.0),
+        (10.0, 60.0, 90.0),
+    ]):
+        wallets[f"w{k}"] = _wallet(
+            obs=dev(dv) + [(f"h{i}", stake, hv) for i in range(20)],
+            clv_num=1.0, clv_shares=100.0)
+    for k in range(4, 8):
+        wallets[f"c{k}"] = _wallet(
+            obs=dev(1.0) + [(f"h{i}", 100.0, 0.2) for i in range(20)],
+            clv_num=1.0, clv_shares=100.0)
+    rows, _ = rank_by_clv(wallets)
+    wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
+                      {f"h{i}" for i in range(20)}, top_n=4)
+    assert wf["jackknife"], "jackknife must run"
+    assert len(wf["jackknife"]) == wf["top_n"]
+    # the worst deletion is the wallet actually supplying the edge
+    assert wf["jackknife_worst"]["gap"] < max(j["gap"] for j in wf["jackknife"])
+    assert "jackknife_survives_all" in wf
+
+
+def test_control_side_concentration_is_measured():
+    """If the gap's DENOMINATOR is one wallet it is equally fragile."""
+    from ingest.polymarket_wallet_clv import walk_forward
+    dev = lambda v: [(f"d{i}", 100.0, v) for i in range(MIN_CLV_MARKETS + 5)]
+    wallets = {
+        "s1": _wallet(obs=dev(30.0) + [(f"h{i}", 100.0, 5.0) for i in range(20)],
+                      clv_num=1.0, clv_shares=100.0),
+        "s2": _wallet(obs=dev(25.0) + [(f"h{i}", 100.0, 5.0) for i in range(20)],
+                      clv_num=1.0, clv_shares=100.0),
+        "whale": _wallet(obs=dev(2.0) + [(f"h{i}", 90000.0, 1.0) for i in range(20)],
+                         clv_num=1.0, clv_shares=100.0),
+        "tiny": _wallet(obs=dev(1.0) + [(f"h{i}", 10.0, 1.0) for i in range(20)],
+                        clv_num=1.0, clv_shares=100.0),
+    }
+    rows, _ = rank_by_clv(wallets)
+    wf = walk_forward(wallets, rows, {f"d{i}" for i in range(MIN_CLV_MARKETS + 5)},
+                      {f"h{i}" for i in range(20)}, top_n=2)
+    assert wf["control_dominant_share"] > 0.9
+
+
+def test_wallet_clustered_interval_is_wider_when_the_effect_is_per_wallet():
+    """Market clustering cannot see a persistent per-wallet effect: it is a
+    within-wallet correlation across that wallet's own markets. If the whole
+    signal lives in a few wallets, resampling markets keeps every wallet in
+    every draw and reports a spuriously tight interval."""
+    from ingest.polymarket_wallet_clv import bootstrap_gap_ci, bootstrap_gap_ci_by_wallet
+    # 8 selected wallets: 2 carry a big effect, 6 carry none. Every wallet
+    # trades the same 40 markets, so market resampling barely moves.
+    sel_by_wallet, rest_by_wallet = {}, {}
+    for k in range(8):
+        v = 40.0 if k < 2 else 0.0
+        sel_by_wallet[f"s{k}"] = [(f"m{i}", 100.0, v) for i in range(40)]
+    for k in range(8):
+        rest_by_wallet[f"r{k}"] = [(f"m{i}", 100.0, 0.0) for i in range(40)]
+    sel_obs = [o for v in sel_by_wallet.values() for o in v]
+    rest_obs = [o for v in rest_by_wallet.values() for o in v]
+    m_lo, m_hi = bootstrap_gap_ci(sel_obs, rest_obs, rounds=500)
+    w_lo, w_hi = bootstrap_gap_ci_by_wallet(sel_by_wallet, rest_by_wallet, rounds=500)
+    assert (w_hi - w_lo) > (m_hi - m_lo) * 2
+    # and the wallet-clustered one correctly admits it cannot exclude zero
+    assert w_lo <= 0 <= w_hi
+    assert m_lo > 0   # the market-clustered one is falsely confident
+
+
+def test_wallet_clustered_interval_needs_two_wallets_per_side():
+    from ingest.polymarket_wallet_clv import bootstrap_gap_ci_by_wallet
+    lo, hi = bootstrap_gap_ci_by_wallet({"a": [("m", 1.0, 1.0)]}, {"b": [("m", 1.0, 0.0)]})
+    assert lo != lo and hi != hi  # NaN

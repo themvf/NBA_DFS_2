@@ -1,25 +1,37 @@
 # Polymarket wallet tracking — status, method, and what survived
 
-Status as of **2026-08-27**: **REOPENED, with one unconfirmed positive
-result.** This supersedes the "closed" status of 2026-08-26.
+Status as of **2026-08-28**: **the v2 positive result is WITHDRAWN.** An
+independent statistical review found the CLV metric itself was wrong, and
+the error supplies a complete non-skill explanation for the finding.
 
-v1 (§1–§10) is unchanged and still correct: ranking wallets on
-`edge = Wilson floor − entry price` measured trading style, not skill, and
-52% of that leaderboard was automated. **What changed is the metric, not the
-verdict on v1.** v2 (§11) re-asks the question using closing-line value —
-which a market maker cannot systematically win — and finds:
+The metric weighted a price MOVE by dollars instead of by shares. N dollars
+at price p buys N/p shares, so the value of a move is (N/p)·dp; weighting dp
+by N drops the 1/p and destroys the antisymmetry that makes CLV zero-sum.
+Reproduced exactly: two wallets holding perfectly offsetting share positions
+while a market drifts 0.90 → 0.95 have a true economic return of **0.0000**
+and a share-weighted CLV of **0.0000**, but the shipped metric reported
+**+0.0400**. The residual is a pure function of price level, so any group
+whose dollars sat on high-priced favourites earned positive CLV from drift
+alone — and which side of the book a wallet trades is a *persistent style*,
+so it survived the walk-forward looking exactly like skill.
 
-- **MLB: a walk-forward selection gap of +0.0084 CLV, 95% CI
-  [+0.0046, +0.0127], surviving concentration, favourite-longshot drift and
-  self-impact checks.**
-- **Tennis: fails.** Nominally positive, but carried by a single wallet and
-  does not survive leave-one-out.
+It also falsified the premise the module was built on. The claim that "a
+market maker cannot systematically win CLV" is true only of the
+share-weighted form.
 
-That is **one sport out of two, from a first-pass exploratory scan.** It is
-not a confirmed edge, nothing is scheduled, nothing writes to the database,
-and the latency problem in §6 that would block acting on it is untouched.
-Read §11 before treating it as more than a hypothesis worth a pre-registered
-forward test.
+Four further defects were found in the same review, each independently
+capable of manufacturing the result: eligibility gates computed over dev AND
+holdout (so study entry required continuation into the holdout, which
+preferentially deletes the false positives from the *selected* group);
+market-clustered intervals that cannot see the persistent per-wallet effect
+the study is about (a wallet-clustered SE is ≈0.011, larger than the +0.0084
+gap); leave-one-out applied to the level rather than the gap; and a
+favourite-longshot check with no power, because comparing group *mean* entry
+price cancels exactly the tail exposure it was meant to detect.
+
+**Nothing here is a confirmed edge, and §11's numbers should not be quoted.**
+All six defects are now fixed and both sports are being re-measured; §11
+records what was found and why. v1 (§1–§10) is unchanged and still correct.
 ---
 
 ## 1. What exists

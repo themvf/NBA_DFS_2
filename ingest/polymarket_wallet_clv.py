@@ -27,7 +27,8 @@ to
     after they bought, did the market move toward them?     (v2)
 
 That is closing-line value, and it is the right instrument for one specific
-reason: a market maker cannot systematically win it. A quoter earns the
+reason -- PROVIDED it is share-weighted (see measure_market): a market maker
+cannot systematically win it. A quoter earns the
 spread by providing liquidity at the prevailing price; it is not
 anticipating a move, so its average CLV is ~0 by construction. Only a wallet
 trading ahead of information wins CLV repeatedly. This project already
@@ -387,8 +388,13 @@ def in_reference_terms(outcome: str, price: float, reference: str) -> float:
 
 def closing_window(
     fills: List[Dict[str, Any]], reference: str, start_ts: int, outcomes: List[str]
-) -> List[Tuple[str, float, float]]:
-    """The fills that define the close, as (wallet, size, reference_price).
+) -> Tuple[List[Tuple[str, float, float]], bool]:
+    """The fills that define the close, plus whether the FALLBACK fired.
+
+    The fallback matters enough to count. When the close is set by ~5 trades
+    reaching back in time, and each wallet is scored against a close with its
+    own fills removed, CLV degenerates into "did you pay less than the two
+    other people present" -- a pairwise contest, not a market benchmark.
 
     Returned rather than immediately averaged so each wallet's own
     contribution can be removed from the benchmark it is scored against --
@@ -410,12 +416,13 @@ def closing_window(
         pregame.append((ts, str(fill.get("proxyWallet") or ""), size,
                         in_reference_terms(outcome, price, reference)))
     if not pregame:
-        return []
+        return [], False
     pregame.sort(key=lambda row: row[0])
     window = [row for row in pregame if row[0] >= start_ts - CLOSE_WINDOW_S]
-    if len(window) < CLOSE_MIN_TRADES:
+    fell_back = len(window) < CLOSE_MIN_TRADES
+    if fell_back:
         window = pregame[-CLOSE_FALLBACK_TRADES:]
-    return [(w, size, price) for _ts, w, size, price in window]
+    return [(w, size, price) for _ts, w, size, price in window], fell_back
 
 
 def closing_price(
@@ -458,8 +465,9 @@ def closing_price(
 
 def measure_market(
     fills: List[Dict[str, Any]], market: Dict[str, Any]
-) -> Tuple[Dict[str, Dict[str, Any]], Optional[float]]:
-    """Per-wallet CLV plus the behavioural signals the eligibility gates need.
+) -> Tuple[Dict[str, Dict[str, Any]], Optional[float], bool]:
+    """Per-wallet CLV, the behavioural signals the gates need, and whether
+    the close came from the thin-window fallback.
 
     Everything here comes from one fill tape we already had to fetch for
     settlement, so the automation screen is free -- which is what lets it run
@@ -474,7 +482,7 @@ def measure_market(
     # measured against -- self-impact, and it inflates CLV worst for the
     # large wallets that dominate a dollar-weighted result. So each wallet
     # is scored against a close computed with its OWN fills removed.
-    window = closing_window(fills, reference, start_ts, market["outcomes"])
+    window, fell_back = closing_window(fills, reference, start_ts, market["outcomes"])
     win_size = sum(row[1] for row in window)
     win_weighted = sum(row[1] * row[2] for row in window)
     own_size: Dict[str, float] = defaultdict(float)
@@ -490,7 +498,7 @@ def measure_market(
         return (win_weighted - own_weighted.get(wallet_addr, 0.0)) / rest_size
 
     per_wallet: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
-        "clv_num": 0.0, "clv_stake": 0.0,
+        "clv_num": 0.0, "clv_shares": 0.0,
         "pregame_buy_cash": 0.0, "pregame_buy_size": 0.0, "pregame_fav_cash": 0.0,
         "pregame_trades": 0, "inplay_trades": 0,
         "buy_cash": 0.0, "sell_cash": 0.0,
@@ -548,8 +556,27 @@ def measure_market(
             if own_close is None:
                 continue
             close_for_outcome = own_close if outcome == reference else 1.0 - own_close
-            entry["clv_num"] += notional * (close_for_outcome - price)
-            entry["clv_stake"] += notional
+            # SHARE-weighted, not dollar-weighted. N dollars at price p buys
+            # N/p shares, so the value of a move dp is (N/p)*dp -- weighting
+            # dp by N instead of by shares drops the 1/p and destroys the
+            # antisymmetry that makes CLV zero-sum.
+            #
+            # Found by review 2026-08-28 and reproduced exactly: two wallets
+            # holding perfectly offsetting SHARE positions while the market
+            # drifts 0.90 -> 0.95 have a true economic return of 0.0000 and a
+            # share-weighted CLV of 0.0000, but the old dollar-weighted form
+            # reported +0.0400. The residual is a pure function of price
+            # level, so any group whose dollars sit on high-priced favourites
+            # inherited positive CLV from drift alone -- with no skill, and
+            # persistently, because which side of the book a wallet trades is
+            # a stable style. That was a complete non-skill explanation for
+            # the MLB selection gap this module was built to test.
+            #
+            # Share weighting also keeps CLV in probability POINTS, matching
+            # model/clv_report.py, rather than mixing in longshot return
+            # variance.
+            entry["clv_num"] += size * (close_for_outcome - price)
+            entry["clv_shares"] += size
             entry["pregame_buy_cash"] += notional
             entry["pregame_buy_size"] += size
             # Dollars staked on the side that was ODDS-ON at entry. If a
@@ -565,7 +592,7 @@ def measure_market(
         same_second = sum(c for c in entry["seconds"].values() if c > 1)
         out[wallet] = {
             "clv_num": entry["clv_num"],
-            "clv_stake": entry["clv_stake"],
+            "clv_shares": entry["clv_shares"],
             "pregame_buy_cash": entry["pregame_buy_cash"],
             "pregame_buy_size": entry["pregame_buy_size"],
             "pregame_fav_cash": entry["pregame_fav_cash"],
@@ -581,9 +608,9 @@ def measure_market(
             "pnl": entry["cash"] + max(entry["net_win"], 0.0),
             "cost": entry["cost"],
             "name": entry["name"],
-            "clv_market": (entry["clv_num"] / entry["clv_stake"]) if entry["clv_stake"] > 0 else None,
+            "clv_market": (entry["clv_num"] / entry["clv_shares"]) if entry["clv_shares"] > 0 else None,
         }
-    return out, close_ref
+    return out, close_ref, fell_back
 
 
 # ---------------------------------------------------------------------------
@@ -591,7 +618,7 @@ def measure_market(
 # ---------------------------------------------------------------------------
 
 _SUM_FLOAT_KEYS = (
-    "clv_num", "clv_stake", "pregame_buy_cash", "pregame_buy_size",
+    "clv_num", "clv_shares", "pregame_buy_cash", "pregame_buy_size",
     "pregame_fav_cash", "buy_cash", "sell_cash", "gross_size", "net_abs_size",
 )
 _SUM_INT_KEYS = ("pregame_trades", "inplay_trades", "trades", "dust", "same_second")
@@ -610,12 +637,18 @@ def new_wallet() -> Dict[str, Any]:
 
 
 def accumulate(
-    markets: List[Dict[str, Any]], progress_every: int = 25
-) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, int]]:
+    markets: List[Dict[str, Any]],
+    progress_every: int = 25,
+    dev_ids: Optional[Set[str]] = None,
+) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, int], Dict[str, Dict[str, Any]]]:
     wallets: Dict[str, Dict[str, Any]] = defaultdict(new_wallet)
+    # Second accumulator over DEV markets only. Eligibility must not be able
+    # to see the holdout -- see gate_on_dev below.
+    dev_wallets: Dict[str, Dict[str, Any]] = defaultdict(new_wallet)
     counts = {
         "markets": 0, "fills": 0, "clv_eligible": 0, "no_pregame_trades": 0,
         "truncated": 0, "truncated_and_lost_pregame": 0, "fetch_failed": 0,
+        "fallback_close": 0,
     }
     def _fetch(market: Dict[str, Any]) -> Tuple[Dict[str, Any], Any, Any]:
         try:
@@ -646,7 +679,7 @@ def accumulate(
               counts["fills"] += len(fills)
               if hit_ceiling:
                   counts["truncated"] += 1
-              measured, close_ref = measure_market(fills, market)
+              measured, close_ref, fell_back = measure_market(fills, market)
               if close_ref is None:
                   counts["no_pregame_trades"] += 1
                   if hit_ceiling:
@@ -655,33 +688,38 @@ def accumulate(
                       counts["truncated_and_lost_pregame"] += 1
               else:
                   counts["clv_eligible"] += 1
+                  if fell_back:
+                      counts["fallback_close"] += 1
               for wallet, stats in measured.items():
-                  agg = wallets[wallet]
-                  if stats["name"]:
-                      agg["name"] = stats["name"]
-                  agg["markets"] += 1
-                  agg["pnl"] += stats["pnl"]
-                  agg["cost"] += stats["cost"]
-                  if stats["pnl"] > 0:
-                      agg["wins"] += 1
-                  for key in _SUM_FLOAT_KEYS + _SUM_INT_KEYS:
-                      agg[key] += stats[key]
-                  if stats["clv_market"] is not None and stats["clv_stake"] > 0:
-                      agg["clv_markets"] += 1
-                      agg["obs"].append((market["condition_id"], stats["clv_stake"], stats["clv_num"]))
+                  targets = [wallets[wallet]]
+                  if dev_ids is not None and market['condition_id'] in dev_ids:
+                      targets.append(dev_wallets[wallet])
+                  for agg in targets:
+                      if stats["name"]:
+                          agg["name"] = stats["name"]
+                      agg["markets"] += 1
+                      agg["pnl"] += stats["pnl"]
+                      agg["cost"] += stats["cost"]
+                      if stats["pnl"] > 0:
+                          agg["wins"] += 1
+                      for key in _SUM_FLOAT_KEYS + _SUM_INT_KEYS:
+                          agg[key] += stats[key]
+                      if stats["clv_market"] is not None and stats["clv_shares"] > 0:
+                          agg["clv_markets"] += 1
+                          agg["obs"].append((market["condition_id"], stats["clv_shares"], stats["clv_num"]))
               if i % progress_every == 0:
                   print(f"  processed {i}/{len(markets)} markets ({counts['fills']} fills)", file=sys.stderr)
-    return wallets, counts
+    return wallets, counts, dev_wallets
 
 
-def gate(wallet: Dict[str, Any]) -> Tuple[bool, List[str]]:
+def gate(wallet: Dict[str, Any], scale: float = 1.0) -> Tuple[bool, List[str]]:
     """Every gate a wallet fails, not just the first -- a wallet rejected for
     one reason and a wallet rejected for four are different objects, and the
     distribution of failure reasons IS the base-rate result."""
     fails: List[str] = []
-    if wallet["clv_markets"] < MIN_CLV_MARKETS:
+    if wallet["clv_markets"] < MIN_CLV_MARKETS * scale:
         fails.append("sample")
-    if wallet["pregame_buy_cash"] < MIN_PREGAME_STAKE:
+    if wallet["pregame_buy_cash"] < MIN_PREGAME_STAKE * scale:
         fails.append("stake")
     gross = wallet["gross_size"]
     hold = (wallet["net_abs_size"] / gross) if gross > 0 else 0.0
@@ -791,17 +829,87 @@ def bootstrap_gap_ci(
             gaps[min(int(0.975 * len(gaps)), len(gaps) - 1)])
 
 
-def rank_by_clv(wallets: Dict[str, Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Counter]:
+# Gates are checked on DEV-period activity only, so they must be scaled --
+# a 30-market floor over the full sample is ~15 over half of it. Pre-set
+# here rather than tuned after seeing what survives.
+DEV_GATE_FRACTION = 0.5
+
+
+def bootstrap_gap_ci_by_wallet(
+    sel_by_wallet: Dict[str, List[Tuple[str, float, float]]],
+    rest_by_wallet: Dict[str, List[Tuple[str, float, float]]],
+    rounds: int = BOOTSTRAP_ROUNDS,
+    seed: int = 90210,
+) -> Tuple[float, float]:
+    """Gap CI clustering on WALLETS instead of markets.
+
+    Market clustering answers "would another draw of matches give this
+    answer". It cannot answer "would another draw of WALLETS", and that is
+    the question the study actually asks: the whole hypothesis is a
+    persistent per-wallet effect, which is a within-wallet correlation
+    across that wallet's ~30+ markets. Market resampling leaves it intact,
+    so the interval it produces implicitly claims hundreds of independent
+    observations from 20 concentrated wallets.
+
+    Reported alongside the market-clustered interval; the WIDER of the two
+    is the honest one, because each captures a source of variation the other
+    ignores."""
+    sel_keys = list(sel_by_wallet)
+    rest_keys = list(rest_by_wallet)
+    if len(sel_keys) < 2 or len(rest_keys) < 2:
+        return (float("nan"), float("nan"))
+    rng = random.Random(seed)
+    gaps: List[float] = []
+    for _ in range(rounds):
+        s_num = s_w = r_num = r_w = 0.0
+        for _ in range(len(sel_keys)):
+            for _cid, weight, num in sel_by_wallet[sel_keys[rng.randrange(len(sel_keys))]]:
+                s_w += weight
+                s_num += num
+        for _ in range(len(rest_keys)):
+            for _cid, weight, num in rest_by_wallet[rest_keys[rng.randrange(len(rest_keys))]]:
+                r_w += weight
+                r_num += num
+        if s_w <= 0 or r_w <= 0:
+            continue
+        gaps.append(s_num / s_w - r_num / r_w)
+    if len(gaps) < 2:
+        return (float("nan"), float("nan"))
+    gaps.sort()
+    return (gaps[int(0.025 * len(gaps))],
+            gaps[min(int(0.975 * len(gaps)), len(gaps) - 1)])
+
+
+def rank_by_clv(
+    wallets: Dict[str, Dict[str, Any]],
+    dev_wallets: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Tuple[List[Dict[str, Any]], Counter]:
+    """Rank the full-sample CLV of wallets that pass eligibility.
+
+    When dev_wallets is supplied, ELIGIBILITY is judged on dev-period fills
+    only. This matters more than it looks. Judging it on the combined sample
+    means study entry requires >=30 markets and >=$1,000 of stake ACROSS BOTH
+    HALVES -- i.e. it requires the wallet to have kept trading at size into
+    the holdout. Among wallets with a good dev run, that preferentially
+    deletes the ones who then went quiet, which are exactly the false
+    positives. The control group is not conditioned on a good dev run, so the
+    deletion does not act on it the same way, and the result is a rank x
+    continuation interaction that manufactures a selection gap from pure
+    survivorship. Found by review 2026-08-28."""
     rows: List[Dict[str, Any]] = []
     reasons: Counter = Counter()
     for address, wallet in wallets.items():
-        ok, fails = gate(wallet)
+        if dev_wallets is None:
+            ok, fails = gate(wallet)
+        else:
+            ok, fails = gate(dev_wallets.get(address) or new_wallet(),
+                             scale=DEV_GATE_FRACTION)
         if not ok:
             for fail in fails:
                 reasons[fail] += 1
             reasons["__rejected__"] += 1
             continue
-        clv = wallet["clv_num"] / wallet["clv_stake"] if wallet["clv_stake"] > 0 else 0.0
+        clv = wallet["clv_num"] / wallet["clv_shares"] if wallet["clv_shares"] > 0 else 0.0
         lo, hi = bootstrap_clv_ci(wallet["obs"])
         gross = wallet["gross_size"] or 1.0
         total_cash = (wallet["buy_cash"] + wallet["sell_cash"]) or 1.0
@@ -948,12 +1056,45 @@ def walk_forward(
     dominant = max(selected, key=lambda r: r["holdout_stake"]) if selected else None
     dom_share = (dominant["holdout_stake"] / sel_stake) if dominant and sel_stake > 0 else 0.0
 
+    # FULL JACKKNIFE on the GAP, not a single leave-one-out on the level.
+    # The declared test statistic is the gap; grading robustness on the
+    # level tests a different quantity and can both kill a real result and
+    # bless a fake one. And dropping only the largest wallet answers "does
+    # the whale carry it" while leaving "does ANY single wallet carry it"
+    # unasked -- a finding that dies on any one deletion is not a finding.
+    jack: List[Dict[str, Any]] = []
+    for dropped in selected:
+        keep_obs: List[Any] = []
+        for row in selected:
+            if row["wallet"] != dropped["wallet"]:
+                keep_obs.extend(per_wallet_hold[row["wallet"]])
+        if len(keep_obs) < 2 or not rest_obs:
+            continue
+        g_lo, g_hi = bootstrap_gap_ci(keep_obs, rest_obs)
+        jack.append({
+            "dropped": dropped["name"] or dropped["wallet"],
+            "gap": (clv_of(keep_obs) or 0.0) - (clv_of(rest_obs) or 0.0),
+            "lo": g_lo, "hi": g_hi,
+        })
+    worst = min(jack, key=lambda j: j["gap"]) if jack else None
+    survives_all = bool(jack) and all(
+        not math.isnan(j["lo"]) and j["lo"] > 0 for j in jack
+    )
+
+    # Control-side concentration. If the DENOMINATOR of the gap is one
+    # wallet the result is equally fragile, and nothing was checking it.
+    rest_stake = sum(o[1] for o in rest_obs)
+    rest_dom = max(rest, key=lambda r: r["holdout_stake"]) if rest else None
+    rest_dom_share = ((rest_dom["holdout_stake"] / rest_stake)
+                      if rest_dom and rest_stake > 0 else 0.0)
+
     loo_obs: List[Any] = []
     for row in selected:
         if dominant is not None and row["wallet"] == dominant["wallet"]:
             continue
         loo_obs.extend(per_wallet_hold[row["wallet"]])
-    loo_lo, loo_hi = (bootstrap_clv_ci(loo_obs) if len(loo_obs) > 1
+    loo_lo, loo_hi = (bootstrap_gap_ci(loo_obs, rest_obs)
+                      if len(loo_obs) > 1 and rest_obs
                       else (float("nan"), float("nan")))
 
     return {
@@ -968,12 +1109,22 @@ def walk_forward(
         "rest_holdout_clv": clv_of(rest_obs),
         "rest_holdout_obs": len(rest_obs),
         "gap_ci": bootstrap_gap_ci(sel_obs, rest_obs),
+        "gap_ci_wallet": bootstrap_gap_ci_by_wallet(
+            {r["wallet"]: per_wallet_hold[r["wallet"]] for r in selected},
+            {r["wallet"]: per_wallet_hold[r["wallet"]] for r in rest},
+        ),
         "persisted": sum(1 for r in selected if r["holdout_clv"] > 0),
         "dominant_wallet": (dominant["name"] or dominant["wallet"]) if dominant else None,
         "dominant_stake_share": dom_share,
         "leave_one_out_clv": clv_of(loo_obs),
         "leave_one_out_ci": (loo_lo, loo_hi),
         "leave_one_out_obs": len(loo_obs),
+        "leave_one_out_gap": ((clv_of(loo_obs) or 0.0) - (clv_of(rest_obs) or 0.0))
+                             if loo_obs and rest_obs else None,
+        "jackknife": jack,
+        "jackknife_worst": worst,
+        "jackknife_survives_all": survives_all,
+        "control_dominant_share": rest_dom_share,
         "selected_avg_entry": _mean_of(selected, "avg_entry_price"),
         "rest_avg_entry": _mean_of(rest, "avg_entry_price"),
         "selected_fav_share": _mean_of(selected, "favourite_dollar_share"),
@@ -1017,15 +1168,27 @@ def print_walk_forward(wf: Dict[str, Any]) -> None:
         gci = "n/a" if math.isnan(glo) else f"[{glo:+.4f}, {ghi:+.4f}]"
         note = ("" if math.isnan(glo)
                 else ("  EXCLUDES ZERO" if glo > 0 else "  includes zero"))
-        print(f"  selection gap                      {gap:>+9.4f}  95% CI {gci}{note}")
-        print("    ^ the gap, not the absolute level, is the test statistic")
+        print(f"  selection gap                      {gap:>+9.4f}")
+        print(f"    market-clustered 95% CI          {gci}{note}")
+        wlo, whi = wf.get("gap_ci_wallet", (float("nan"), float("nan")))
+        wci = "n/a" if math.isnan(wlo) else f"[{wlo:+.4f}, {whi:+.4f}]"
+        wnote = ("" if math.isnan(wlo)
+                 else ("  EXCLUDES ZERO" if wlo > 0 else "  INCLUDES ZERO"))
+        print(f"    wallet-clustered 95% CI          {wci}{wnote}")
+        if not math.isnan(wlo) and not math.isnan(glo):
+            print("    ^ the WIDER interval is the honest one -- the hypothesis is a")
+            print("      persistent per-wallet effect, which market clustering cannot see")
     print(f"  selected wallets with positive holdout CLV: {wf['persisted']}/{wf['top_n']}")
     print()
     share = wf.get("dominant_stake_share") or 0.0
     flag = "  <-- OVER THE 25% BAR" if share > 0.25 else ""
     print(f"  CONCENTRATION -- largest wallet '{wf.get('dominant_wallet')}' is "
           f"{share:.1%} of selected holdout stake{flag}")
-    loo = wf.get("leave_one_out_clv")
+    ctl_share = wf.get("control_dominant_share") or 0.0
+    if ctl_share:
+        cflag = "  <-- the DENOMINATOR is one wallet" if ctl_share > 0.25 else ""
+        print(f"  control-side concentration          {ctl_share:.1%}{cflag}")
+    loo = wf.get("leave_one_out_gap")
     if loo is None:
         print("  leave-one-out: not computable")
     else:
@@ -1033,8 +1196,18 @@ def print_walk_forward(wf: Dict[str, Any]) -> None:
         lci = "n/a" if math.isnan(llo) else f"[{llo:+.4f}, {lhi:+.4f}]"
         verdict = ("still excludes zero" if not math.isnan(llo) and llo > 0
                    else "NO LONGER excludes zero -- the finding was the one wallet")
-        print(f"  leave-one-out holdout CLV          {loo:>+9.4f}  95% CI {lci}"
+        print(f"  leave-one-out GAP                  {loo:>+9.4f}  95% CI {lci}"
               f"  (n={wf['leave_one_out_obs']:,})  {verdict}")
+    jack = wf.get("jackknife") or []
+    if jack:
+        worst = wf["jackknife_worst"]
+        wlo = worst["lo"]
+        wci = "n/a" if math.isnan(wlo) else f"[{wlo:+.4f}, {worst['hi']:+.4f}]"
+        print(f"  JACKKNIFE over all {len(jack)} selected wallets:")
+        print(f"    worst case  drop '{worst['dropped']}'  gap {worst['gap']:+.4f}  95% CI {wci}")
+        print("    " + ("every single-wallet deletion still excludes zero"
+                        if wf.get("jackknife_survives_all")
+                        else "AT LEAST ONE deletion breaks it -- not robust"))
     sae, rae = wf.get("selected_avg_entry"), wf.get("rest_avg_entry")
     sfs, rfs = wf.get("selected_fav_share"), wf.get("rest_fav_share")
     if sae is not None and rae is not None:
@@ -1123,8 +1296,8 @@ def run(
           f"({len(dev_ids)} dev + {len(holdout_ids)} holdout, {undated} undated excluded)",
           file=sys.stderr)
 
-    wallets, counts = accumulate(markets)
-    rows, reasons = rank_by_clv(wallets)
+    wallets, counts, dev_wallets = accumulate(markets, dev_ids=dev_ids)
+    rows, reasons = rank_by_clv(wallets, dev_wallets)
     pooled = cohort_clv(wallets, rows)
     wf = walk_forward(wallets, rows, dev_ids, holdout_ids)
 
@@ -1134,6 +1307,12 @@ def run(
     print(f"  no pregame trades reached {counts['no_pregame_trades']} "
           f"(of which {counts['truncated_and_lost_pregame']} lost to tape truncation)")
     print(f"  tapes hitting the {MAX_TRADES_PER_MARKET:,}-trade ceiling: {counts['truncated']}")
+    fb = counts.get("fallback_close", 0)
+    if fb:
+        share = 100 * fb / max(counts["clv_eligible"], 1)
+        print(f"  closes set by the THIN-WINDOW FALLBACK: {fb} ({share:.0f}% of eligible)"
+              f" -- in these, CLV is closer to a pairwise contest among a few"
+              f" traders than a market benchmark")
     if counts["fetch_failed"]:
         print(f"  MARKETS DROPPED after {FETCH_RETRIES} failed fetch attempts: "
               f"{counts['fetch_failed']} -- a partial tape is missing its OLDEST "

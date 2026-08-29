@@ -75,18 +75,21 @@ NOT the endpoint to use.
 Live use is one thing only: `ingest/polymarket_tennis.py` captures tennis
 match prices into `game_odds_history`, feeding the Pin/Poly delta detector.
 
-**Wallet tracking was closed 2026-08-26 and REOPENED 2026-08-27.** v1's
-ranking metric (`Wilson floor - entry price`) measured trading style, not
-skill: 52% of its top-50 leaderboard was automated. v2
-(`ingest/polymarket_wallet_clv.py`) re-asks the question with **closing-line
-value**, which a market maker cannot systematically win, scored against the
-last PRE-MATCH price (Gamma's `gameStartTime`) rather than the last trade
-before resolution. Result: **MLB shows a walk-forward selection gap of
-+0.0084 CLV, 95% CI [+0.0046, +0.0127]**, surviving concentration,
-favourite-longshot-drift and self-impact checks; **tennis fails** on
-concentration. That is one sport of two from an exploratory scan — a
-hypothesis for a pre-registered forward test, **not a confirmed edge**, and
-the fill-latency problem that would block acting on it is untouched. Read
+**Wallet tracking: v1 closed 2026-08-26, v2 reopened it 2026-08-27, and the
+v2 positive result was WITHDRAWN 2026-08-28 after review.** v1's metric
+measured trading style, not skill. v2 re-asked the question with
+closing-line value and appeared to find an MLB selection gap of +0.0084 —
+but an independent statistical review found the CLV metric was **weighting a
+price move by dollars instead of by shares**, which drops the 1/p converting
+dollars to shares and destroys the antisymmetry that makes CLV zero-sum.
+Two perfectly offsetting share positions scored +0.0400 instead of 0.0000,
+handing free CLV to whoever's dollars sat on favourites — a persistent
+style, so it survived the walk-forward looking like skill. Four further
+defects (gates leaking the holdout, market-clustered intervals blind to the
+per-wallet effect they test, leave-one-out on the level not the gap, and a
+powerless favourite-longshot check) were each independently capable of
+producing the same result. **Do not quote the +0.0084 figure.** All six are
+fixed and both sports are being re-measured. Read
 [`docs/polymarket-wallet-tracker.md`](docs/polymarket-wallet-tracker.md)
 before proposing wallet tracking again — it records the method, the five
 ranking bugs found in sequence, the negative result and why it is a real
