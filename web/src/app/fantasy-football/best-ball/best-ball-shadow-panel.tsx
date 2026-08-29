@@ -1,6 +1,7 @@
 "use client";
 
 import type { ShadowBestBallSimulation } from "@/lib/fantasy-football/best-ball-simulation";
+import AnalystNoteMarker from "@/components/fantasy-football/analyst-note-marker";
 
 type Props = {
   simulation: ShadowBestBallSimulation | null;
@@ -83,7 +84,7 @@ export function BestBallShadowPanel({ simulation, canDraft, nextUserPick, follow
           <th className="p-3"></th>
         </tr></thead>
         <tbody>{simulation.candidates.map((candidate, index) => <tr key={candidate.playerId} className={`border-t border-violet-100 ${index === 0 ? "bg-violet-50/60" : ""}`}>
-          <td className="p-3"><span className="mr-2 text-xs font-black text-violet-600">#{index + 1}</span><b>{candidate.name}</b><span className="ml-2 text-xs text-muted-foreground">{candidate.position}</span></td>
+          <td className="p-3"><span className="mr-2 text-xs font-black text-violet-600">#{index + 1}</span><b>{candidate.name}</b><span className="ml-2 text-xs text-muted-foreground">{candidate.position}</span><div className="mt-1"><AnalystNoteMarker name={candidate.name} position={candidate.position} /></div></td>
           <td className="p-3 text-right"><p className="font-black text-emerald-700">{signed(candidate.twoPickMarginalPoints)}</p><p className="text-[10px] text-muted-foreground">{candidate.futureTargetName ? `with ${candidate.futureTargetName}` : "no later target"}</p></td>
           <td className="p-3 text-right"><p className="font-semibold">{signed(candidate.marginalCountedPoints)}</p><p className="text-[10px] text-muted-foreground">{candidate.expectedCountedPoints.toFixed(1)} counted pts</p></td>
           <td className="p-3 text-right">{candidate.expectedCountedWeeks.toFixed(1)}</td>
