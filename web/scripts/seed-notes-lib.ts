@@ -21,14 +21,17 @@ import {
 export const SEED_SEASON = 2026;
 
 export type SeedNote = {
-  listRank: number;
   name: string;
   position: string;
-  team: string;
-  adp: number;
   verdict: AnalystVerdict;
   verdictLabel: string;
   note: string;
+  // Provenance, all optional: a list that quotes a positional rank rather than
+  // an overall ADP leaves these out rather than storing a number the tooltip
+  // would render as "listed ADP N".
+  listRank?: number | null;
+  team?: string | null;
+  adp?: number | null;
 };
 
 type BoardPlayer = { id: number; position: string; name: string };
@@ -81,10 +84,12 @@ export async function seedNotes(options: {
     if (matches.length !== 1) {
       // Refuse to guess. Silently taking the first is exactly how the notes for
       // Puka Nacua and Trevor Lawrence landed on rows nothing renders.
+      // listRank is optional, so only show it when the list actually has one.
+      const label = `${seed.listRank != null ? `#${seed.listRank} ` : ""}${seed.name} (${seed.position})`;
       unmatched.push(
         matches.length === 0
-          ? `#${seed.listRank} ${seed.name} (${seed.position}) -- no board player`
-          : `#${seed.listRank} ${seed.name} (${seed.position}) -- ambiguous, ${matches.length} board players`,
+          ? `${label} -- no board player`
+          : `${label} -- ambiguous, ${matches.length} board players`,
       );
       continue;
     }
@@ -97,7 +102,7 @@ export async function seedNotes(options: {
       ) VALUES (
         ${player.id}, ${SEED_SEASON}, ${normalizeAnalystName(seed.name)}, ${seed.position},
         ${options.category}, ${seed.verdict}, ${seed.verdictLabel}, ${seed.note},
-        ${seed.listRank}, ${seed.team}, ${seed.adp}, ${options.author}
+        ${seed.listRank ?? null}, ${seed.team ?? null}, ${seed.adp ?? null}, ${options.author}
       )
       ON CONFLICT (player_id, category) DO UPDATE SET
         verdict = CASE WHEN ${force} THEN EXCLUDED.verdict ELSE ff_player_notes.verdict END,
