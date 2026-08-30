@@ -846,7 +846,8 @@ export type WeeklyPointsRow = {
 };
 
 /**
- * Week-by-week fantasy points for one position, in the board's scoring format.
+ * Week-by-week fantasy points for every position on the board, in the board's
+ * scoring format.
  *
  * `weeks` carries only the weeks a player actually played. A bye, an inactive,
  * or a week on nobody's roster is simply absent -- the caller decides whether
@@ -857,7 +858,6 @@ export type WeeklyPointsRow = {
 export async function getWeeklyFantasyPoints(
   rankingSetId: number,
   season: number,
-  position: string,
 ): Promise<WeeklyPointsRow[]> {
   await ensureFantasyFootballTables();
   const result = await db.execute(sql`
@@ -896,7 +896,7 @@ export async function getWeeklyFantasyPoints(
     LEFT JOIN ff_player_week_stats w
       ON w.player_id=p.id AND w.season=${season} AND w.source='nflverse' AND w.season_type='REG'
     LEFT JOIN team_byes tb ON tb.team=p.team_abbrev
-    WHERE r.ranking_set_id=${rankingSetId} AND p.position=${position}
+    WHERE r.ranking_set_id=${rankingSetId}
     GROUP BY p.id, p.canonical_name, p.position, p.team_abbrev, tb.bye_week,
              r.adp, r.position_rank
     HAVING COUNT(w.id) > 0

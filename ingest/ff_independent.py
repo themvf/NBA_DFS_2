@@ -64,6 +64,10 @@ NFLVERSE_WEEKLY_STATS_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/stats_player/"
     "stats_player_week_{season}.csv"
 )
+NFLVERSE_WEEKLY_TEAM_STATS_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/stats_team/"
+    "stats_team_week_{season}.csv"
+)
 NFLVERSE_SCHEDULE_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
 NFLVERSE_TEAM_STATS_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/stats_team/"
@@ -884,6 +888,103 @@ def save_dst_history(
     return result
 
 
+def _team_points_allowed_fpts_by_week(schedule: pd.DataFrame, season: int) -> dict[tuple[str, int], float]:
+    """Per-(team, week) points-allowed fantasy points, the weekly analogue of
+    `_team_points_allowed_fpts_by_season`. Same schedule frame, same tiers, just
+    not summed -- points allowed is inherently per-game, so the weekly split is
+    the more natural form and the season version is its sum."""
+    regular = schedule[(schedule["season"] == season) & (schedule["game_type"] == "REG")]
+    allowed: dict[tuple[str, int], float] = {}
+    for _, game in regular.iterrows():
+        home_score = as_int(game.get("home_score"))
+        away_score = as_int(game.get("away_score"))
+        week = as_int(game.get("week"))
+        if home_score is None or away_score is None or week is None:
+            continue
+        allowed[(normalize_team(game.get("home_team")), week)] = _points_allowed_fpts(away_score)
+        allowed[(normalize_team(game.get("away_team")), week)] = _points_allowed_fpts(home_score)
+    return allowed
+
+
+def save_dst_weekly_history(
+    db: RefreshDatabase,
+    universe: list[dict[str, Any]],
+    weekly_season: int,
+    team_week_frame: pd.DataFrame,
+    schedule: pd.DataFrame,
+) -> int:
+    """Per-week DST points, mirroring `save_dst_history`'s scoring exactly.
+
+    Team defenses have no row in the per-player weekly feed, so this reads
+    nflverse's team-week release instead and applies the identical Yahoo
+    components (sacks, INTs, opponent fumble recoveries, safeties, defensive
+    and return TDs, points-allowed tier). Verified against the team-season
+    release: every component's weekly sum matches the season figure exactly
+    for all 32 teams, so a weekly row set totals the stored season DST points.
+
+    Blocked kicks stay unmodeled here for the same reason as the season path.
+    """
+    by_team = {row["team"]: row for row in universe if row["position"] == "DST" and row.get("team")}
+    if not by_team:
+        return 0
+    points_allowed = _team_points_allowed_fpts_by_week(schedule, weekly_season)
+    written = 0
+    for _, series in team_week_frame.iterrows():
+        if str(series.get("season_type") or "REG") != "REG":
+            continue
+        raw = _clean(series.to_dict())
+        team = normalize_team(raw.get("team"))
+        player = by_team.get(team)
+        week = as_int(raw.get("week"))
+        if not player or week is None:
+            continue
+        sacks = as_float(raw.get("def_sacks")) or 0.0
+        interceptions = as_float(raw.get("def_interceptions")) or 0.0
+        fumble_recoveries = as_float(raw.get("fumble_recovery_opp")) or 0.0
+        safeties = as_float(raw.get("def_safeties")) or 0.0
+        defensive_tds = as_float(raw.get("def_tds")) or 0.0
+        return_tds = as_float(raw.get("special_teams_tds")) or 0.0
+        points_allowed_fpts = points_allowed.get((team, week), 0.0)
+        fpts = round(
+            sacks * YAHOO_DST_SACK_PTS
+            + interceptions * YAHOO_DST_INT_PTS
+            + fumble_recoveries * YAHOO_DST_FUMBLE_REC_PTS
+            + safeties * YAHOO_DST_SAFETY_PTS
+            + (defensive_tds + return_tds) * YAHOO_DST_TD_PTS
+            + points_allowed_fpts,
+            2,
+        )
+        db.execute(
+            """INSERT INTO ff_player_week_stats
+               (player_id,season,week,source,season_type,team,opponent,
+                fantasy_points_std,fantasy_points_ppr,source_row,fetched_at)
+               VALUES (%s,%s,%s,'nflverse','REG',%s,%s,%s,%s,%s,NOW())
+               ON CONFLICT(player_id,season,week,season_type,source) DO UPDATE SET
+                team=EXCLUDED.team,opponent=EXCLUDED.opponent,
+                fantasy_points_std=EXCLUDED.fantasy_points_std,
+                fantasy_points_ppr=EXCLUDED.fantasy_points_ppr,
+                source_row=EXCLUDED.source_row,fetched_at=NOW()""",
+            (
+                player["player_id"], weekly_season, week, team,
+                normalize_team(raw.get("opponent_team")), fpts, fpts,
+                Json({
+                    "model": "yahoo-dst-scoring-v1",
+                    "sacks": sacks,
+                    "interceptions": interceptions,
+                    "fumble_recoveries_opp": fumble_recoveries,
+                    "safeties": safeties,
+                    "defensive_tds": defensive_tds,
+                    "special_teams_return_tds": return_tds,
+                    "points_allowed_fpts": round(points_allowed_fpts, 2),
+                    "blocked_kicks_modeled": False,
+                    "raw_team_stats": raw,
+                }),
+            ),
+        )
+        written += 1
+    return written
+
+
 def _depth_factor(position: str, depth_order: int | None) -> float:
     if not depth_order:
         return 1.0
@@ -1434,7 +1535,29 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         params={"url": weekly_url, "season_type": "REG", "positions": list(WEEKLY_STAT_POSITIONS)},
     )
     weekly_rows = save_weekly_history(db, universe, weekly_season, weekly_frame)
-    print(f"  weekly stats: {weekly_rows} player-weeks stored for {weekly_season}")
+
+    # Team defenses have no row in the per-player weekly feed, so DST weeks
+    # come from the team-week release and reuse `schedule` (already fetched)
+    # for the per-week points-allowed tier.
+    weekly_team_url = NFLVERSE_WEEKLY_TEAM_STATS_URL.format(season=weekly_season)
+    weekly_team_frame, weekly_team_digest = _fetch_csv(weekly_team_url)
+    if len(weekly_team_frame) < 300:
+        raise RuntimeError(
+            f"nflverse {weekly_season} team-week stats returned {len(weekly_team_frame)} rows; expected hundreds"
+        )
+    source_digests.append(weekly_team_digest)
+    _snapshot(
+        db, source="nflverse", dataset="team-week-stats", season=weekly_season,
+        digest=weekly_team_digest, row_count=len(weekly_team_frame),
+        params={"url": weekly_team_url, "season_type": "REG", "use": "weekly DST scoring"},
+    )
+    weekly_dst_rows = save_dst_weekly_history(
+        db, universe, weekly_season, weekly_team_frame, schedule
+    )
+    print(
+        f"  weekly stats: {weekly_rows} player-weeks and {weekly_dst_rows} DST-weeks "
+        f"stored for {weekly_season}"
+    )
 
     dst_history_frames: dict[int, pd.DataFrame] = {}
     for history_season in range(season - 3, season):

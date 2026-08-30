@@ -14,8 +14,14 @@ import { useMemo, useState } from "react";
 import type { WeeklyPointsRow } from "@/db/queries-fantasy-football";
 import {
   PLAYOFF_WEEKS,
+  POSITION_COLORS,
   SEASON_WEEKS,
+  VIEW_LABELS,
+  VIEW_POSITIONS,
+  heatLegendValues,
+  heatScaleLabel,
   weekHeat,
+  type ScatterView,
 } from "@/lib/fantasy-football/projection-scatter";
 
 type Sort = "season" | "playoff" | "total" | "avg";
@@ -27,18 +33,25 @@ export default function WeeklyTable({
   rows,
   season,
   scoring,
-  position,
+  view,
 }: {
   rows: WeeklyPointsRow[];
   season: number;
   scoring: string;
-  position: string;
+  view: ScatterView;
 }) {
   const [draftedOnly, setDraftedOnly] = useState(true);
   const [sort, setSort] = useState<Sort>("total");
 
+  const label = VIEW_LABELS[view];
+  // Flex puts three positions in one table, so the row has to say which.
+  const multiPosition = VIEW_POSITIONS[view].length > 1;
+
   const prepared = useMemo(() => {
-    const scoped = draftedOnly ? rows.filter((r) => r.adp != null) : rows;
+    const wanted = new Set(VIEW_POSITIONS[view]);
+    const scoped = rows
+      .filter((r) => wanted.has(r.position))
+      .filter((r) => (draftedOnly ? r.adp != null : true));
     return scoped
       .map((row) => {
         const points = (week: number) => row.weeks[String(week)] ?? 0;
@@ -69,7 +82,7 @@ export default function WeeklyTable({
               ? b.avg - a.avg
               : b.total - a.total,
       );
-  }, [rows, draftedOnly, sort]);
+  }, [rows, view, draftedOnly, sort]);
 
   const sortButton = (key: Sort, label: string) => (
     <button
@@ -89,7 +102,7 @@ export default function WeeklyTable({
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div>
           <h2 className="font-bold">
-            {position} week by week &mdash; {season} actual
+            {label} week by week &mdash; {season} actual
           </h2>
           <p className="text-xs text-muted-foreground">
             {scoring} points per week. Season is Weeks 1&ndash;14; Playoff is Weeks 15&ndash;17, the
@@ -124,9 +137,11 @@ export default function WeeklyTable({
             <tr>
               <th
                 rowSpan={2}
-                className="sticky left-0 top-0 z-30 min-w-[170px] border-b border-r bg-card p-2 text-left text-[10px] uppercase tracking-wider text-muted-foreground"
+                className={`sticky left-0 top-0 z-30 border-b border-r bg-card p-2 text-left text-[10px] uppercase tracking-wider text-muted-foreground ${
+                  multiPosition ? "min-w-[210px]" : "min-w-[170px]"
+                }`}
               >
-                {position}
+                {label}
               </th>
               <th
                 colSpan={SEASON_WEEKS.length}
@@ -175,14 +190,32 @@ export default function WeeklyTable({
             </tr>
           </thead>
           <tbody>
+            {prepared.length === 0 && (
+              <tr>
+                <td
+                  colSpan={ALL_WEEKS.length + 6}
+                  className="p-6 text-center text-muted-foreground"
+                >
+                  No {label} carries a {season} stat line under this filter.
+                </td>
+              </tr>
+            )}
             {prepared.map(({ row, points, played, seasonTotal, playoffTotal, total, week18, avg }) => (
               <tr key={row.playerId} className="group">
                 <th
                   scope="row"
                   className="sticky left-0 z-10 border-b border-r bg-card p-2 text-left font-semibold group-hover:bg-muted"
                 >
+                  {multiPosition && (
+                    <span
+                      className="mr-1.5 inline-block size-2 rounded-full align-middle"
+                      style={{ background: POSITION_COLORS[row.position]?.light }}
+                      title={row.position}
+                    />
+                  )}
                   {row.name}
                   <span className="ml-1.5 font-normal text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {multiPosition ? `${row.position} · ` : ""}
                     {row.team}
                     {row.adp == null && " · undrafted"}
                   </span>
@@ -191,7 +224,7 @@ export default function WeeklyTable({
                   const value = points(week);
                   const didPlay = row.weeks[String(week)] != null;
                   const isBye = row.seasonByeWeek === week;
-                  const heat = didPlay ? weekHeat(value) : null;
+                  const heat = didPlay ? weekHeat(value, row.position) : null;
                   const lastSeasonWeek = week === SEASON_WEEKS[SEASON_WEEKS.length - 1];
                   const lastPlayoffWeek = week === PLAYOFF_WEEKS[PLAYOFF_WEEKS.length - 1];
                   return (
@@ -234,18 +267,31 @@ export default function WeeklyTable({
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           Fewer
-          {[0.01, 10, 15, 20, 25, 30].map((min) => {
-            const heat = weekHeat(min);
+          {heatLegendValues(VIEW_POSITIONS[view][0]).map((min) => {
+            const heat = weekHeat(min, VIEW_POSITIONS[view][0]);
             return (
               <span
                 key={min}
+                title={min < 1 ? "any points scored" : `${min}+ points`}
                 className="inline-block size-3.5 rounded-sm border"
                 style={heat ? { background: heat.bg } : undefined}
               />
             );
           })}
           More points
+          <span className="text-muted-foreground/80">
+            (scaled to {heatScaleLabel(VIEW_POSITIONS[view][0])})
+          </span>
         </span>
+        {view === "DEF" && (
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block size-3.5 rounded-sm border"
+              style={{ background: "#f6d7d5" }}
+            />
+            Negative week
+          </span>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="inline-block size-3.5 rounded-sm border bg-muted/70" />
           Bye week

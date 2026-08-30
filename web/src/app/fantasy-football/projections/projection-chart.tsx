@@ -22,7 +22,6 @@ import {
   VIEW_LABELS,
   VIEW_NOTES,
   VIEW_MOVER_NOTES,
-  VIEW_ORDER,
   VIEW_POSITIONS,
   type ScatterView,
 } from "@/lib/fantasy-football/projection-scatter";
@@ -54,13 +53,27 @@ function niceTicks(lo: number, hi: number, count: number): number[] {
   return out;
 }
 
-export default function ProjectionChart({ rows }: { rows: ProjectionScatterRow[] }) {
-  const [view, setView] = useState<ScatterView>("QB");
+export default function ProjectionChart({
+  rows,
+  view,
+}: {
+  rows: ProjectionScatterRow[];
+  view: ScatterView;
+}) {
   const [mode, setMode] = useState<Mode>("pg");
   const [scope, setScope] = useState<Scope>("adp");
   const [hover, setHover] = useState<Placed | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(900);
+
+  // The hovered mark belongs to the previous position's layout, so drop it when
+  // the position changes. Adjusted during render rather than in an effect --
+  // an effect would paint one frame with a tooltip pointing at the wrong dot.
+  const [renderedView, setRenderedView] = useState(view);
+  if (renderedView !== view) {
+    setRenderedView(view);
+    setHover(null);
+  }
 
   useEffect(() => {
     const node = wrapRef.current;
@@ -198,37 +211,6 @@ export default function ProjectionChart({ rows }: { rows: ProjectionScatterRow[]
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
-        {VIEW_ORDER.map((key) => {
-          const active = key === view;
-          const accent = key === "FLEX" ? null : POSITION_COLORS[VIEW_POSITIONS[key][0]];
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                setView(key);
-                setHover(null);
-              }}
-              aria-pressed={active}
-              className={`rounded-lg border px-4 py-2 text-sm font-bold transition ${
-                active ? "border-slate-900 bg-slate-900 text-white" : "hover:bg-muted"
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                {accent && (
-                  <span
-                    className="inline-block size-2.5 rounded-full"
-                    style={{ background: accent.light }}
-                  />
-                )}
-                {VIEW_LABELS[key]}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       <div className="flex flex-wrap items-end gap-x-7 gap-y-4 rounded-2xl border bg-card p-4">
         <div className="space-y-1.5">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
