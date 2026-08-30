@@ -36,6 +36,9 @@ export const NOTE_CATEGORIES = [
   { id: "ppr-consistency", label: "WR Consistency", blurb: "Weekly floor / reception volume (WR)" },
   { id: "rb-adp-value", label: "RB ADP Value", blurb: "Market price vs my value (RB only)" },
   { id: "te-consistency", label: "TE Consistency", blurb: "Weekly floor at tight end" },
+  // Unlike the other lists, this one decays: a camp injury read is worth little
+  // a month later. The tooltip's "last edited" date is the staleness signal.
+  { id: "injury-watch", label: "Injury Watch", blurb: "Health concern + draft impact (goes stale)" },
 ] as const;
 
 export type NoteCategory = (typeof NOTE_CATEGORIES)[number]["id"];
