@@ -20,9 +20,12 @@ from config import load_config
 from db.database import DatabaseManager
 from ingest.ff_fantasypros import RefreshDatabase
 from ingest.ff_independent import (
+    NFLVERSE_SCHEDULE_URL,
     NFLVERSE_WEEKLY_STATS_URL,
+    NFLVERSE_WEEKLY_TEAM_STATS_URL,
     WEEKLY_STAT_POSITIONS,
     _fetch_csv,
+    save_dst_weekly_history,
     save_weekly_history,
 )
 
@@ -35,17 +38,20 @@ def backfill(season: int) -> int:
     DatabaseManager(config.database_url)
     db = RefreshDatabase(config.database_url)
     try:
+        # DST is carried alongside the skill positions: it needs `team` to
+        # resolve, since team defenses are keyed by team rather than gsis id.
         universe = [
             {
                 "player_id": row["id"],
                 "gsis_id": row["gsis_id"],
                 "name": row["canonical_name"],
                 "position": row["position"],
+                "team": row["team_abbrev"],
             }
             for row in db.execute(
-                """SELECT id, gsis_id, canonical_name, position
+                """SELECT id, gsis_id, canonical_name, position, team_abbrev
                    FROM ff_players WHERE position = ANY(%s)""",
-                (list(WEEKLY_STAT_POSITIONS),),
+                (list(WEEKLY_STAT_POSITIONS) + ["DST"],),
             )
         ]
         if not universe:
@@ -57,9 +63,20 @@ def backfill(season: int) -> int:
             raise RuntimeError(f"nflverse {season} weekly stats returned {len(frame)} rows; expected thousands")
 
         written = save_weekly_history(db, universe, season, frame)
+
+        team_url = NFLVERSE_WEEKLY_TEAM_STATS_URL.format(season=season)
+        team_frame, _ = _fetch_csv(team_url)
+        if len(team_frame) < 300:
+            raise RuntimeError(f"nflverse {season} team-week stats returned {len(team_frame)} rows")
+        schedule, _ = _fetch_csv(NFLVERSE_SCHEDULE_URL)
+        dst_written = save_dst_weekly_history(db, universe, season, team_frame, schedule)
+
         db.conn.commit()
-        print(f"{written} player-weeks stored for {season} across {len(universe)} known players")
-        return written
+        print(
+            f"{written} player-weeks and {dst_written} DST-weeks stored for {season} "
+            f"across {len(universe)} known players"
+        )
+        return written + dst_written
     finally:
         db.conn.close()
 

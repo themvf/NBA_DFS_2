@@ -7,8 +7,7 @@ import {
   getWeeklyFantasyPoints,
 } from "@/db/queries-fantasy-football";
 import { BASELINE_GAMES } from "@/lib/fantasy-football/projection-scatter";
-import ProjectionChart from "./projection-chart";
-import WeeklyTable from "./weekly-table";
+import ProjectionsClient from "./projections-client";
 
 const SCORING_OPTIONS = ["STD", "HALF", "PPR"];
 /** Weekly actuals come from the most recent completed season. */
@@ -26,7 +25,7 @@ export default async function ProjectionsPage({
   const [rows, weekly] = set
     ? await Promise.all([
         getProjectionScatter(set.id),
-        getWeeklyFantasyPoints(set.id, WEEKLY_SEASON, "QB"),
+        getWeeklyFantasyPoints(set.id, WEEKLY_SEASON),
       ])
     : [[], []];
 
@@ -76,18 +75,20 @@ export default async function ProjectionsPage({
             {set.name} · {rows.length} projected players ·{" "}
             {new Date(set.createdAt).toLocaleString()}
           </p>
-          <ProjectionChart rows={rows} />
-          <div id="weekly" className="scroll-mt-20">
-            {weekly.length > 0 ? (
-              <WeeklyTable rows={weekly} season={WEEKLY_SEASON} scoring={scoring} position="QB" />
-            ) : (
-              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm">
-                No {WEEKLY_SEASON} weekly stat lines are stored yet. Run{" "}
-                <code>python -m ingest.ff_backfill_week_stats --season {WEEKLY_SEASON}</code>, or
-                wait for the next scheduled Fantasy Football refresh.
-              </div>
-            )}
-          </div>
+          {weekly.length === 0 && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm">
+              No {WEEKLY_SEASON} weekly stat lines are stored yet, so the week-by-week grid is
+              empty. Run{" "}
+              <code>python -m ingest.ff_backfill_week_stats --season {WEEKLY_SEASON}</code>, or wait
+              for the next scheduled Fantasy Football refresh.
+            </div>
+          )}
+          <ProjectionsClient
+            rows={rows}
+            weekly={weekly}
+            weeklySeason={WEEKLY_SEASON}
+            scoring={scoring}
+          />
           <div className="space-y-2 rounded-2xl border bg-card p-4 text-xs text-muted-foreground">
             <p className="text-[10px] font-bold uppercase tracking-widest">How to read this</p>
             <p>

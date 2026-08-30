@@ -100,18 +100,73 @@ export const PLAYOFF_WEEKS = [15, 16, 17];
 /**
  * Sequential ramp for the weekly grid: one hue, light to dark, so magnitude
  * reads without the cell colours pretending to be categories. Steps are the
- * documented blue ramp; a scoreless week gets no fill at all so it recedes
- * rather than competing with real production.
+ * documented blue ramp.
+ *
+ * The BREAKPOINTS are per position group, because a single absolute ramp does
+ * not survive contact with the real distributions. Measured over 2025 weeks
+ * 1-17 for drafted players, the median week is 16.8 for a QB but 5.0 for a
+ * defense and 9.0 for a kicker, and DEF's 95th percentile (16.3) sits below
+ * QB's median. On one QB-calibrated ramp, ~95% of DEF and K cells collapse
+ * into the lightest step and the grid stops encoding anything. Each group is
+ * therefore anchored on its own quantiles (roughly p50/p70/p85/p95/p99).
+ *
+ * RB, WR and TE deliberately share one scale rather than getting three: their
+ * distributions are close (medians 9.3-9.8, p95 24-29), and Flex puts all
+ * three in one table, where per-position scales would make a 12-point TE week
+ * look identical to a 12-point RB week's neighbour at a different value.
  */
-export const WEEK_HEAT_STEPS: { min: number; bg: string; fg: string }[] = [
-  { min: 30, bg: "#256abf", fg: "#ffffff" },
-  { min: 25, bg: "#3987e5", fg: "#ffffff" },
-  { min: 20, bg: "#6da7ec", fg: "#0b0b0b" },
-  { min: 15, bg: "#9ec5f4", fg: "#0b0b0b" },
-  { min: 10, bg: "#b7d3f6", fg: "#0b0b0b" },
-  { min: 0.01, bg: "#cde2fb", fg: "#0b0b0b" },
+const HEAT_HUES = [
+  { bg: "#256abf", fg: "#ffffff" },
+  { bg: "#3987e5", fg: "#ffffff" },
+  { bg: "#6da7ec", fg: "#0b0b0b" },
+  { bg: "#9ec5f4", fg: "#0b0b0b" },
+  { bg: "#b7d3f6", fg: "#0b0b0b" },
+  { bg: "#cde2fb", fg: "#0b0b0b" },
 ];
 
-export function weekHeat(points: number): { bg: string; fg: string } | null {
-  return WEEK_HEAT_STEPS.find((step) => points >= step.min) ?? null;
+/** Highest-to-lowest minimums, one per HEAT_HUES step. */
+const HEAT_BREAKPOINTS: Record<string, number[]> = {
+  QB: [36, 28, 22, 17, 10, 0.01],
+  SKILL: [30, 22, 16, 11, 6, 0.01],
+  K: [18, 14, 11, 9, 5, 0.01],
+  DST: [16, 11, 8, 5, 3, 0.01],
+};
+
+const POSITION_HEAT_GROUP: Record<string, string> = {
+  QB: "QB",
+  RB: "SKILL",
+  WR: "SKILL",
+  TE: "SKILL",
+  K: "K",
+  DST: "DST",
+};
+
+/**
+ * A negative week is not "no production" -- a defense can genuinely go below
+ * zero under Yahoo's points-allowed tiers (34 such weeks in 2025), and an
+ * untinted -4 is indistinguishable from an untinted 0. It gets its own muted
+ * warm step, well clear of the blue ramp.
+ */
+const HEAT_NEGATIVE = { bg: "#f6d7d5", fg: "#7a1f1c" };
+
+export function weekHeat(points: number, position: string): { bg: string; fg: string } | null {
+  if (points < 0) return HEAT_NEGATIVE;
+  const breaks = HEAT_BREAKPOINTS[POSITION_HEAT_GROUP[position] ?? "SKILL"];
+  const index = breaks.findIndex((min) => points >= min);
+  return index === -1 ? null : HEAT_HUES[index];
+}
+
+/** Legend sample values for a position, lowest to highest step. */
+export function heatLegendValues(position: string): number[] {
+  const breaks = HEAT_BREAKPOINTS[POSITION_HEAT_GROUP[position] ?? "SKILL"];
+  return [...breaks].reverse();
+}
+
+/**
+ * What the shading is actually scaled to. RB, WR and TE share one scale, so a
+ * single-position RB tab must not claim the ramp is RB-specific.
+ */
+export function heatScaleLabel(position: string): string {
+  const group = POSITION_HEAT_GROUP[position] ?? "SKILL";
+  return group === "SKILL" ? "RB/WR/TE" : group === "DST" ? "DEF" : group;
 }
