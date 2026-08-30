@@ -6,6 +6,7 @@ import {
   getProjectionScatter,
   getWeeklyFantasyPoints,
 } from "@/db/queries-fantasy-football";
+import { BASELINE_GAMES } from "@/lib/fantasy-football/projection-scatter";
 import ProjectionChart from "./projection-chart";
 import WeeklyTable from "./weekly-table";
 
@@ -43,7 +44,13 @@ export default async function ProjectionsPage({
             without a 2025 sample, sit in the strip at the left rather than at a fake zero.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="#weekly"
+            className="rounded-lg border px-3 py-2 text-sm font-bold hover:bg-muted"
+          >
+            Week by week &darr;
+          </a>
           {SCORING_OPTIONS.map((value) => (
             <Link
               key={value}
@@ -69,16 +76,42 @@ export default async function ProjectionsPage({
             {set.name} · {rows.length} projected players ·{" "}
             {new Date(set.createdAt).toLocaleString()}
           </p>
-          <ProjectionChart rows={rows} scoring={scoring} modelVersion={set.modelVersion ?? null} />
-          {weekly.length > 0 ? (
-            <WeeklyTable rows={weekly} season={WEEKLY_SEASON} scoring={scoring} position="QB" />
-          ) : (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm">
-              No {WEEKLY_SEASON} weekly stat lines are stored yet. Run{" "}
-              <code>python -m ingest.ff_backfill_week_stats --season {WEEKLY_SEASON}</code>, or wait
-              for the next scheduled Fantasy Football refresh.
-            </div>
-          )}
+          <ProjectionChart rows={rows} />
+          <div id="weekly" className="scroll-mt-20">
+            {weekly.length > 0 ? (
+              <WeeklyTable rows={weekly} season={WEEKLY_SEASON} scoring={scoring} position="QB" />
+            ) : (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm">
+                No {WEEKLY_SEASON} weekly stat lines are stored yet. Run{" "}
+                <code>python -m ingest.ff_backfill_week_stats --season {WEEKLY_SEASON}</code>, or
+                wait for the next scheduled Fantasy Football refresh.
+              </div>
+            )}
+          </div>
+          <div className="space-y-2 rounded-2xl border bg-card p-4 text-xs text-muted-foreground">
+            <p className="text-[10px] font-bold uppercase tracking-widest">How to read this</p>
+            <p>
+              <strong className="text-foreground">Per game is the fair comparison.</strong> The 2026
+              projection is a {BASELINE_GAMES}-active-game baseline, so on the season-total view
+              anyone who missed time in 2025 shows an enormous gain that is really just health.
+              Switch views and watch the injured players move.
+            </p>
+            <p>
+              <strong className="text-foreground">Scoring is {scoring}.</strong> 2025 actuals are
+              resolved in the same format as the projection, so the two axes are always comparable.
+              Kicker points use Yahoo distance tiers and DEF points use Yahoo defensive scoring; both
+              are identical across STD, HALF and PPR.
+            </p>
+            <p>
+              <strong className="text-foreground">Source.</strong> 2025 actuals from nflverse season
+              and weekly features; 2026 numbers from the live{" "}
+              <code className="rounded bg-muted px-1 py-0.5">
+                {set.modelVersion ?? "independent"}
+              </code>{" "}
+              board. ADP is Fantasy Football Calculator 12-team {scoring} &mdash; comparison only, it
+              never moves the projection.
+            </p>
+          </div>
         </>
       )}
     </div>
