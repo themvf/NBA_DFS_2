@@ -2,33 +2,39 @@
 
 **Version:** `ff-v2-team-opportunity-v1`
 **Calibration:** `uncalibrated-shadow-v1`
-**Status:** shadow engine implemented; historical fit blocked; not active
+**Status:** eligible shadow fit implemented; awaiting calibration; not active
 
 This is the smallest interpretable V2-008 engine. It produces weekly
 team-opportunity distributions through the V2-007 persistence contract. The
-engine and its synthetic/adversarial tests are push-safe, but no historical fit
-is accepted yet: the exact stored play-by-play and weekly-stat snapshots used by
-the diagnostic reconstruction became available after the simulated 2025
-preseason cutoff. The CLI now rejects those snapshots rather than treating game
-completion time as source availability. Calibration and superiority comparisons
-remain V2-009.
+accepted shadow reconstruction trains on exact archived 2020-2021 play-by-play
+and roster bytes published before the applicable simulated cutoffs. Current
+nflverse release replacements still fail the cutoff gate. Calibration, baseline
+comparison, and superiority claims remain V2-009.
 
 ## Chronological feature boundary
 
-For evaluation season `Y`, training contains only V2-003 facts from seasons
+For evaluation season `Y`, training contains only archived facts from seasons
 before `Y` whose `observed_at` is at or before the frozen V2-004 preseason
 cutoff, and every exact consumed source snapshot must have `available_at` no
-later than that cutoff. The held-out fact supplies only season, week, game,
-date, team, and opponent identity before the forecast is frozen. Its opportunity
-counts and result context are not features.
+later than that cutoff. The held-out V2-003 fact supplies only season, week,
+game, date, team, and opponent identity before the forecast is frozen. Its
+opportunity counts and result context are not features.
+
+Two immutable archive bundles are available. The 2021 fold can train on 2020;
+the 2022-2025 folds can train on 2020-2021. No later historical season is
+silently substituted. Each bundle verifies file SHA-256, Git blob identity where
+applicable, row counts, all 32 teams, and zero unknown rusher/receiver positions.
 
 Historical quarterback fields identify actual game starters from final
 schedules and are not preseason-safe. Historical play-caller coverage is null.
 The canonical reconstruction therefore marks both fields missing with
-`no_eligible_as_of_source` and uses Tier B. Head coach and realized score-state
-features are also excluded. Tier A is supported only when independently sourced
-QB and play-caller values carry availability timestamps no later than the
-cutoff; it has zero canonical historical rows and is not yet validated.
+`no_eligible_as_of_source`. Because weekly stats, participation, schedule,
+transactions, quarterback, and play-caller sources are also unavailable in the
+archive, an explicit minimum Tier C is enforced even when team/opponent samples
+would otherwise estimate Tier B. Head coach and realized score-state features
+are excluded. Tier A is supported only when independently sourced QB and
+play-caller values carry availability timestamps no later than the cutoff; it
+has zero canonical historical rows and is not yet validated.
 
 ADP, ECR, rankings, consensus, market data, current rosters, and held-out
 outcomes never enter the model.
@@ -70,8 +76,9 @@ they are not independently sampled marginals.
   confidence `1.00`, latent uncertainty scale `1.00`.
 - **B:** adequate team/opponent history with QB or play caller missing;
   confidence `0.80`, latent uncertainty scale `1.25`.
-- **C:** fewer than four eligible team or opponent games; league-prior forecast,
-  confidence `0.60`, latent uncertainty scale `1.70`.
+- **C:** fewer than four eligible team/opponent games or a declared core-source
+  gap; league-dominant forecast, confidence `0.60`, latent uncertainty scale
+  `1.70`.
 
 The scale applies monotonically to shared play-volume and touchdown-rate latent
 variance. All child pools inherit those parent draws. Because counts are
@@ -81,34 +88,35 @@ quantile width to increase strictly. Tests demonstrate strict widening for the
 continuous parent play-volume pool and verify the stored scales satisfy
 `scale >= 1 / confidence` for Tier C.
 
-## Diagnostic reconstruction (not accepted evidence)
+## Canonical 2025 shadow reconstruction
 
-Before the source-availability defect was found, a representative 2025
-diagnostic reconstruction was generated. It is intentionally not committed as a
-canonical artifact and cannot close V2-008.
+The accepted representative reconstruction separates its eligible archived
+training run from the current historical context run used only for held-out game
+identity and evaluation. It remains shadow-only.
 
 | Field | Value |
 |---|---|
-| Run ID | `c6721951-dccd-5702-82c0-de8cc4d83b29` |
-| Diagnostic digest | `f82a3e270c86db407e6dd8b1c488a1c838149442df3dd8ebc3e0dc22618a7980` |
+| Run ID | `ea73a8c7-65db-593a-b237-8c40ee645bfd` |
+| Artifact digest | `587499356e7aedd0e979861b2bdf5f992d2c6be9c1ef9044640e51ed29f27b8d` |
 | Evaluation season | 2025 |
-| Training seasons | 2020–2024 |
+| Training context run | `61cfdc92-3aac-5e3b-ab1d-2d0cbc7a063c` |
+| Training seasons | 2020–2021 |
 | Forecasts | 544 |
 | Distributions | 4,352 |
 | Draws per team-game | 4,000 |
-| Feature snapshots | 21 |
-| Fallback cohorts | 544 Tier B; 0 Tier A; 0 Tier C |
-| File size | 11,263,275 bytes |
+| Feature snapshots | 5 |
+| Fallback cohorts | 544 Tier C; 0 Tier A; 0 Tier B |
 
-All 544 diagnostic rows are Tier B because neither historical quarterback nor
-play-caller identity has a qualifying preseason source. This is an explicit
-limitation, not missingness hidden by an aggregate.
+All 544 rows are Tier C. Every row records the six declared source gaps, the
+sample-derived tier, the enforced minimum tier, and the effective uncertainty
+scale. Exact rebuild and persisted-row verification reproduce the same run and
+artifact digest.
 
-The next eligible artifact must freeze the root seed, identity seeds, draw
-count, cutoff, training seasons and digest, source snapshot IDs and availability,
-feature missingness, shrinkage evidence, fallback tier, distributions, and
-V2-007 artifact/run digests. Until eligible immutable snapshots are located,
-the historical CLI fails closed before fitting.
+The artifact freezes the root seed, identity seeds, draw count, cutoff, training
+context run and seasons, source snapshot IDs and availability, feature
+missingness, shrinkage evidence, fallback tier, distributions, and V2-007
+artifact/run digests. A payload hash, archive identity, position-coverage, or
+cutoff mismatch fails before fitting.
 
 No runtime redraft, Best Ball, advisor, ranking, or display path reads this
 artifact.
