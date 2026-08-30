@@ -80,3 +80,10 @@ def test_policy_is_importable_by_client_components() -> None:
     assert 'import "server-only"' not in _read(POLICY)
     for panel in (SHARED_PANEL, NFL_PANEL):
         assert _read(panel).lstrip().startswith('"use client"')
+
+
+def test_tennis_pin_forward_test_has_a_separate_100_alert_gate() -> None:
+    src = _read(POLICY)
+    assert re.search(r"TENNIS_PIN_FORWARD_TARGET\s*=\s*100", src)
+    assert 'row.alertType === "pinnacle_favorite_forward"' in src
+    assert "forward test ${d.settled}/${TENNIS_PIN_FORWARD_TARGET}" in src

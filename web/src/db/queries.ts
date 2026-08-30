@@ -9470,6 +9470,7 @@ export async function getMlbClv(): Promise<MlbClvRow[]> {
 }
 
 export type MlbLineMovementRow = {
+  lane: LineMovementLane;
   matchupId: number;
   gameDate: string;
   matchup: string;
@@ -9487,6 +9488,8 @@ export type MlbLineMovementRow = {
   confirmingBooks: number;
   trackedBooks: number;
 };
+
+export type LineMovementLane = "sportsbook" | "polymarket";
 
 function americanOddsProbability(value: unknown): number | null {
   const odds = Number(value);
@@ -9542,6 +9545,7 @@ const LINE_MOVEMENT_MATCHUP_TABLE: Record<string, string> = {
 export async function getLineMovement(
   sport: "mlb" | "nba" | "nfl" | "soccer" | "tennis",
   days = 7,
+  lane: LineMovementLane = "sportsbook",
 ): Promise<MlbLineMovementRow[]> {
   // Open -> close line movement per game from the 30-min game_odds_history
   // capture trail (Edge-Finding P2). open = first pre-game capture, close =
@@ -9550,6 +9554,17 @@ export async function getLineMovement(
   // close: the sharp book sitting off retail marks the sharp side. Rows whose
   // first capture predates 2026-07-02 carry the arithmetic-averaging bug in
   // their consensus history (postFix=false) - movement on them is noise.
+  const sourceFilter = lane === "polymarket"
+    ? sql`AND h.books ? 'polymarket'`
+    : sql`AND NOT (h.books ? 'polymarket')`;
+  const comparableFilter = lane === "polymarket"
+    ? sql`AND o.books ? 'polymarket' AND c.books ? 'polymarket'`
+    : sql`AND EXISTS (
+        SELECT 1
+        FROM jsonb_object_keys(o.books) AS ob(book_key)
+        JOIN jsonb_object_keys(c.books) AS cb(book_key) USING (book_key)
+        WHERE ob.book_key <> 'polymarket'
+      )`;
   const rows = await db.execute(sql`
     WITH caps AS (
       SELECT h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
@@ -9568,6 +9583,7 @@ export async function getLineMovement(
         AND m.commence_time > NOW()   -- live panel: UPCOMING (not-yet-started) games only
         AND h.vegas_prob_home IS NOT NULL
         AND h.captured_at <= m.commence_time
+        ${sourceFilter}
     ),
     o AS (SELECT * FROM caps WHERE rf = 1 AND cnt >= 2),
     c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= 2),
@@ -9621,6 +9637,8 @@ export async function getLineMovement(
                   WHEN pin_ml.mld > 0 THEN 100.0 / (pin_ml.mld + 100)
                   ELSE ABS(pin_ml.mld) / (ABS(pin_ml.mld) + 100) END AS pd
     ) pin_p
+    WHERE TRUE
+    ${comparableFilter}
     -- Clean (post-odds-fix) rows first: pre-fix consensus noise produces fake
     -- 30pp "moves" that would otherwise crowd trusted rows out of the LIMIT.
     ORDER BY (j.first_cap >= '2026-07-02'::timestamptz) DESC,
@@ -9645,6 +9663,7 @@ export async function getLineMovement(
       Number(rec.closeProb) - Number(rec.openProb),
     );
     return {
+      lane,
       matchupId: Number(rec.matchupId),
       gameDate: String(rec.gameDate),
       matchup: String(rec.matchup),
@@ -9700,6 +9719,7 @@ export async function getLineMovementHistory(
   sport: "mlb" | "nba" | "nfl" | "soccer" | "tennis",
   page = 1,
   pageSize = 50,
+  lane: LineMovementLane = "sportsbook",
 ): Promise<LineMovementHistoryRow[]> {
   const oc = HISTORY_OUTCOME[sport];
   const winnerExpr = oc.winner
@@ -9712,11 +9732,23 @@ export async function getLineMovementHistory(
     : sql.raw(`CASE WHEN ${oc.home} IS NULL OR ${oc.away} IS NULL THEN NULL
                     ELSE (${oc.away})::text || '-' || (${oc.home})::text END`);
   const offset = (page - 1) * pageSize;
+  const sourceFilter = lane === "polymarket"
+    ? sql`AND h.books ? 'polymarket'`
+    : sql`AND NOT (h.books ? 'polymarket')`;
+  const comparableFilter = lane === "polymarket"
+    ? sql`AND o.books ? 'polymarket' AND c.books ? 'polymarket'`
+    : sql`AND EXISTS (
+        SELECT 1
+        FROM jsonb_object_keys(o.books) AS ob(book_key)
+        JOIN jsonb_object_keys(c.books) AS cb(book_key) USING (book_key)
+        WHERE ob.book_key <> 'polymarket'
+      )`;
   const rows = await db.execute(sql`
     WITH caps AS (
       SELECT h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
              h.captured_at, h.vegas_prob_home,
              COALESCE(h.vegas_total_raw, h.vegas_total) AS total,
+             h.books,
              ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at ASC)  AS rf,
              ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at DESC) AS rl,
              COUNT(*)    OVER (PARTITION BY h.matchup_id) AS cnt,
@@ -9727,6 +9759,7 @@ export async function getLineMovementHistory(
         AND m.commence_time <= NOW()   -- history: games that have already started
         AND h.vegas_prob_home IS NOT NULL
         AND h.captured_at <= m.commence_time
+        ${sourceFilter}
     ),
     o AS (SELECT * FROM caps WHERE rf = 1 AND cnt >= 2),
     c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= 2)
@@ -9747,6 +9780,8 @@ export async function getLineMovementHistory(
     FROM o
     JOIN c USING (matchup_id)
     JOIN ${sql.raw(LINE_MOVEMENT_MATCHUP_TABLE[sport])} m2 ON m2.id = o.matchup_id
+    WHERE TRUE
+    ${comparableFilter}
     ORDER BY m2.commence_time DESC NULLS LAST
     OFFSET ${offset} LIMIT ${pageSize}
   `);

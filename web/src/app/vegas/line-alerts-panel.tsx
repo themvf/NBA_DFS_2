@@ -19,7 +19,7 @@ const sideName = (a: LineAlertRow): string => {
   return a.side; // prop sides carry their own label ("Roki Sasaki K O4.5")
 };
 
-function ActionChip({ a }: { a: LineAlertRow }) {
+function ActionChip({ a, tennisResearch = false }: { a: LineAlertRow; tennisResearch?: boolean }) {
   const name = sideName(a);
   if (a.alertType === "prop_outlier") {
     const d = (a.details ?? {}) as {
@@ -101,11 +101,30 @@ function ActionChip({ a }: { a: LineAlertRow }) {
     return (
       <span
         className="cursor-help rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 whitespace-nowrap"
-        title={`Pinnacle prices ${name} ${gap}pp above retail consensus — retail books are offering ${name} at better than sharp fair value. ` +
-               `Usable now as a price rule: if you bet this game, only take ${name}, at the best retail price you can find. ` +
-               `Never take the opposite side at a retail price the sharp book says is too short.`}
+        title={tennisResearch
+          ? `RESEARCH ONLY. Pinnacle prices ${name} ${gap}pp above retail consensus, but this candidate did not qualify for the ` +
+            `favorite-only prospective cohort with a frozen executable price. Do not treat it as a recommendation.`
+          : `Pinnacle prices ${name} ${gap}pp above retail consensus — use this as a price-comparison signal and shop the best available retail quote.`}
       >
-        Prefer {name} @ retail
+        {tennisResearch ? `Research · Pin gap on ${name}` : `Prefer ${name} @ retail`}
+      </span>
+    );
+  }
+  if (a.alertType === "pinnacle_favorite_forward") {
+    const d = (a.details ?? {}) as {
+      exec_book?: string; exec_odds?: number; gap_pp?: number;
+      retail_books?: number; forward_test_target?: number;
+    };
+    const odds = d.exec_odds != null ? (d.exec_odds > 0 ? `+${d.exec_odds}` : `${d.exec_odds}`) : "?";
+    const book = d.exec_book?.replaceAll("_", " ") ?? "retail";
+    return (
+      <span
+        className="cursor-help rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700 whitespace-nowrap"
+        title={`PROSPECTIVE RESEARCH ONLY. Pinnacle prices favorite ${name} ${d.gap_pp ?? "?"}pp above a ${d.retail_books ?? "?"}-book retail consensus. ` +
+               `The executable price was frozen at trigger time: ${book} ${odds}. This cohort requires ${d.forward_test_target ?? 100} graded, ` +
+               `priced matches before review and is not a betting recommendation.`}
+      >
+        Forward test · {name} @ {book} {odds}
       </span>
     );
   }
@@ -137,14 +156,17 @@ function ActionChip({ a }: { a: LineAlertRow }) {
 export default function LineAlertsPanel({
   alerts,
   backtest,
+  tennisResearch = false,
 }: {
   alerts: LineAlertRow[];
   backtest: LineAlertBacktestRow[];
+  tennisResearch?: boolean;
 }) {
   const pp = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}pp`;
   const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
   const typeLabel = (t: string) =>
     t === "pinnacle_divergence" ? "Pin divergence"
+    : t === "pinnacle_favorite_forward" ? "Pin favorite forward test"
     : t === "pinnacle_polymarket_delta" ? "Pin/Poly gap"
     : t === "steam" ? "Steam"
     : t === "walking" ? "Walking"
@@ -268,7 +290,7 @@ export default function LineAlertsPanel({
                 <td className="py-1">{a.matchup}</td>
                 <td className="py-1">
                   <div className="flex items-center gap-1.5">
-                    <ActionChip a={a} />
+                    <ActionChip a={a} tennisResearch={tennisResearch} />
                     {(a.details as Record<string, unknown>)?.poly_confirmed === true && (
                       <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700" title="Polymarket independently confirms this direction — its price already moved the same way before this alert fired">Poly ✓</span>
                     )}

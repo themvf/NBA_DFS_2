@@ -44,18 +44,19 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
 
   // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
-    const [matchups, bets, backtest, legacyBetSummary, lineMovement, lineAlerts, lineAlertBacktest, eloDashboard, detectorHealth] = await Promise.all([
+    const [matchups, bets, backtest, legacyBetSummary, sportsbookMovement, polymarketMovement, lineAlerts, lineAlertBacktest, eloDashboard, detectorHealth] = await Promise.all([
       getTennisVegasMatchups(date),
       getTennisBets(300),
       getTennisBetBacktest(),
       getTennisLegacyBetSummary(),
-      getLineMovement("tennis"),
+      getLineMovement("tennis", 7, "sportsbook"),
+      getLineMovement("tennis", 7, "polymarket"),
       getLineAlerts("tennis"),
       getLineAlertBacktest("tennis"),
       getTennisEloDashboard(),
       getDetectorHealth("tennis"),
     ]);
-    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} lineMovement={lineMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} eloDashboard={eloDashboard} detectorHealth={detectorHealth} queryDate={date ?? null} />;
+    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} sportsbookMovement={sportsbookMovement} polymarketMovement={polymarketMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} eloDashboard={eloDashboard} detectorHealth={detectorHealth} queryDate={date ?? null} />;
   }
 
   // Soccer: focused fixtures view + star-rated bet ledger + backtest, rather

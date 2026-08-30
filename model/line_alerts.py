@@ -65,6 +65,10 @@ _PIN_POLY_GAP_MIN_PP = 2.0  # Pinnacle vs Polymarket, probability points
 _STEAM_MIN_BOOKS = 3      # books moving together between consecutive captures
 _STEAM_MIN_MOVE_PP = 1.5  # per-book move threshold, probability points
 _WALK_MIN_PP = 2.0        # consensus drift toward a side since open (slow walk)
+_TENNIS_PIN_FORWARD_TYPE = "pinnacle_favorite_forward"
+_TENNIS_PIN_FORWARD_VERSION = "tennis-pin-favorite-v1"
+_TENNIS_PIN_FORWARD_TARGET = 100
+_TENNIS_PIN_FORWARD_MIN_RETAIL_BOOKS = 3
 _MODEL_NEUTRAL_GAP_PP = 0.5
 _MAX_MODEL_GAP_PP = 15.0
 # dk_value: EV of DraftKings' OFFERED price judged by Pinnacle's vig-free fair
@@ -125,6 +129,7 @@ DETECTOR_REGISTRY: list[dict] = [
     {"sport": "soccer", "alert_type": "walking", "deployed_at": date(2026, 7, 7)},
     {"sport": "soccer", "alert_type": "pinnacle_polymarket_delta", "deployed_at": date(2026, 8, 1)},
     {"sport": "tennis", "alert_type": "pinnacle_divergence", "deployed_at": date(2026, 7, 2)},
+    {"sport": "tennis", "alert_type": _TENNIS_PIN_FORWARD_TYPE, "deployed_at": date(2026, 8, 29)},
     {"sport": "tennis", "alert_type": "dk_value", "deployed_at": date(2026, 7, 2)},
     {"sport": "tennis", "alert_type": "steam", "deployed_at": date(2026, 7, 2)},
     {"sport": "tennis", "alert_type": "walking", "deployed_at": date(2026, 7, 7)},
@@ -258,9 +263,40 @@ def _book_fair_side(book: dict, side: str) -> float | None:
 
 def _retail_fair_side(books: dict, side: str) -> float | None:
     """Mean vig-free P(side) across retail books, excluding sharp exchanges."""
-    probs = [p for key, b in books.items() if key not in {"pinnacle", "polymarket"}
-             for p in [_book_fair_side(b, side)] if p is not None]
+    probs, _ = _retail_probabilities(books, side)
     return sum(probs) / len(probs) if probs else None
+
+
+def _retail_probabilities(books: dict, side: str,
+                          keys: set[str] | None = None) -> tuple[list[float], set[str]]:
+    """Return usable retail probabilities and the books that supplied them."""
+    allowed = set(books) if keys is None else keys
+    used: set[str] = set()
+    probs: list[float] = []
+    for key in allowed:
+        if key in {"pinnacle", "polymarket"} or key not in books:
+            continue
+        probability = _book_fair_side(books[key], side)
+        if probability is not None:
+            used.add(key)
+            probs.append(probability)
+    return probs, used
+
+
+def _comparable_retail_probabilities(opening: dict, current: dict, side: str
+                                     ) -> tuple[float | None, float | None, int]:
+    """Consensus at two times over the exact same retail-book intersection."""
+    keys = (set(opening) & set(current)) - {"pinnacle", "polymarket"}
+    open_probs, open_used = _retail_probabilities(opening, side, keys)
+    current_probs, current_used = _retail_probabilities(current, side, keys)
+    used = open_used & current_used
+    if not used:
+        return None, None, 0
+    # Recompute after intersecting successfully parsed quotes; a malformed leg
+    # in either snapshot must not alter the composition of just one endpoint.
+    open_probs, _ = _retail_probabilities(opening, side, used)
+    current_probs, _ = _retail_probabilities(current, side, used)
+    return sum(open_probs) / len(open_probs), sum(current_probs) / len(current_probs), len(used)
 
 
 def _pinnacle_polymarket_signals(books: dict) -> list[dict]:
@@ -394,6 +430,25 @@ def freeze_execution_price(books: dict, *, market: str, side: str) -> dict:
     if line is not None:
         out["exec_line"] = line
     return out
+
+
+def _tennis_pin_favorite_forward_details(books: dict, side: str,
+                                         retail: float, gap_pp: float) -> dict | None:
+    """Freeze a candidate for the prospective favorite-only Tennis cohort."""
+    _, retail_books = _retail_probabilities(books, side)
+    if retail <= 0.5 or len(retail_books) < _TENNIS_PIN_FORWARD_MIN_RETAIL_BOOKS:
+        return None
+    priced = freeze_execution_price(books, market="moneyline", side=side)
+    if not priced.get("exec_price_available"):
+        return None
+    return {
+        "program_version": _TENNIS_PIN_FORWARD_VERSION,
+        "forward_test_target": _TENNIS_PIN_FORWARD_TARGET,
+        "gap_pp": round(gap_pp, 2),
+        "retail_books": len(retail_books),
+        "market": "moneyline",
+        **priced,
+    }
 
 
 def _consensus_book_line(books: dict, key: str) -> float | None:
@@ -534,6 +589,10 @@ def scan(db: DatabaseManager, sport: str) -> int:
         FROM game_odds_history h
         JOIN {matchup_tbl} m ON m.id = h.matchup_id
         WHERE h.sport = %s AND h.books IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM jsonb_object_keys(h.books) AS source(book_key)
+            WHERE source.book_key <> 'polymarket'
+          )
           AND m.commence_time > NOW()
         ORDER BY h.matchup_id, h.captured_at DESC
         """,
@@ -553,12 +612,21 @@ def scan(db: DatabaseManager, sport: str) -> int:
                     continue
                 gap_pp = (sharp - retail) * 100
                 if gap_pp >= _PIN_GAP_MIN_PP:
+                    forward_details = (_tennis_pin_favorite_forward_details(
+                        books, side, retail, gap_pp) if sport == "tennis" else None)
+                    alert_type = (_TENNIS_PIN_FORWARD_TYPE
+                                  if forward_details is not None
+                                  else "pinnacle_divergence")
                     new_alerts.extend(_insert(
                         db, sport=sport, r=r, label=label,
-                        alert_type="pinnacle_divergence", side=side,
+                        alert_type=alert_type, side=side,
                         alert_prob=retail, sharp_prob=sharp,
-                        details={"gap_pp": round(gap_pp, 2),
-                                 "n_books": len(books)},
+                        details=(forward_details or {
+                            "gap_pp": round(gap_pp, 2),
+                            "n_books": len(books),
+                            **freeze_execution_price(
+                                books, market="moneyline", side=side),
+                        }),
                     ))
         # ── Pinnacle vs Polymarket disagreement ──
         for signal in _pinnacle_polymarket_signals(books):
@@ -596,6 +664,10 @@ def scan(db: DatabaseManager, sport: str) -> int:
             SELECT books FROM game_odds_history
             WHERE sport = %s AND matchup_id = %s AND captured_at < %s
               AND books IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM jsonb_object_keys(books) AS source(book_key)
+                WHERE source.book_key <> 'polymarket'
+              )
             ORDER BY captured_at DESC LIMIT 1
             """,
             (sport, r["matchup_id"], r["captured_at"]),
@@ -629,6 +701,10 @@ def scan(db: DatabaseManager, sport: str) -> int:
             """
             SELECT books FROM game_odds_history
             WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM jsonb_object_keys(books) AS source(book_key)
+                WHERE source.book_key <> 'polymarket'
+              )
             ORDER BY captured_at ASC LIMIT 1
             """,
             (sport, r["matchup_id"]),
@@ -636,8 +712,8 @@ def scan(db: DatabaseManager, sport: str) -> int:
         if first and first["books"]:
             fb = first["books"]
             for side in _sides(books):
-                p_open = _retail_fair_side(fb, side)
-                p_now = _retail_fair_side(books, side)
+                p_open, p_now, overlap_books = _comparable_retail_probabilities(
+                    fb, books, side)
                 if p_open is None or p_now is None:
                     continue
                 drift_pp = (p_now - p_open) * 100
@@ -650,6 +726,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         details={"open_pp": round(p_open * 100, 2),
                                  "now_pp": round(p_now * 100, 2),
                                  "drift_pp": round(drift_pp, 2),
+                                 "overlap_books": overlap_books,
                                  "market": "moneyline",
                                  **freeze_execution_price(books, market="moneyline",
                                                           side=side)},
@@ -751,7 +828,8 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
     books = r.get("books") or {}
     poly = books.get("polymarket")
     if poly and alert_type in ("dk_value", "dk_prop_value", "prop_line_gap",
-                               "pinnacle_divergence", "steam"):
+                               "pinnacle_divergence", _TENNIS_PIN_FORWARD_TYPE,
+                               "steam"):
         poly_prob = _book_fair_side(poly, side)
         if poly_prob is not None and sharp_prob is not None and alert_prob is not None:
             # "Confirmed" = Poly's price for this side is ABOVE the retail
@@ -1721,18 +1799,25 @@ def settle(db: DatabaseManager, sport: str) -> int:
     # (settle_props / settle_props_soccer / settle_tennis_totals).
     open_alerts = db.execute(
         "SELECT * FROM line_alerts WHERE sport = %s AND settled_at IS NULL "
-        "AND alert_type IN ('pinnacle_divergence', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking') "
+        "AND alert_type IN ('pinnacle_divergence', 'pinnacle_favorite_forward', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking') "
         "AND commence_time IS NOT NULL AND commence_time <= NOW()",
         (sport,),
     )
     graded = 0
     for a in open_alerts:
         # CLV: vig-free P(side) at the last pre-commence per-book capture.
+        close_source = ("AND books ? 'polymarket'"
+                        if a["alert_type"] == "pinnacle_polymarket_delta"
+                        else """AND EXISTS (
+                          SELECT 1 FROM jsonb_object_keys(books) AS source(book_key)
+                          WHERE source.book_key <> 'polymarket'
+                        )""")
         close = db.execute_one(
-            """
+            f"""
             SELECT books FROM game_odds_history
             WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
               AND captured_at <= %s
+              {close_source}
             ORDER BY captured_at DESC LIMIT 1
             """,
             (sport, a["matchup_id"], a["commence_time"]),

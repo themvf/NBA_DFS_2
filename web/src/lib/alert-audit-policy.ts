@@ -20,6 +20,7 @@
  * permissive than the engine behind it is a lie about how much is known.
  */
 export const MIN_SETTLED_FOR_CI = 30;
+export const TENNIS_PIN_FORWARD_TARGET = 100;
 
 /** Above this mean CLV a detector is "early"; below it the move was absorbed. */
 export const CLV_SIGNAL_PP = 0.5;
@@ -55,10 +56,17 @@ export type Disclosure = {
  * and the eye reads a percentage as a finding no matter what the caption says.
  * That distinction is the whole rule.
  */
-export function disclosure(row: Pick<AuditRow, "nClv">): Disclosure {
+export function validationTarget(row: Pick<AuditRow, "alertType"> | { alertType?: string }): number {
+  return row.alertType === "pinnacle_favorite_forward"
+    ? TENNIS_PIN_FORWARD_TARGET
+    : MIN_SETTLED_FOR_CI;
+}
+
+export function disclosure(row: Pick<AuditRow, "nClv"> & { alertType?: string }): Disclosure {
   const settled = row.nClv ?? 0;
-  const ok = settled >= MIN_SETTLED_FOR_CI;
-  const needed = Math.max(0, MIN_SETTLED_FOR_CI - settled);
+  const target = validationTarget(row);
+  const ok = settled >= target;
+  const needed = Math.max(0, target - settled);
   return {
     disclosable: ok,
     settled,
@@ -66,7 +74,7 @@ export function disclosure(row: Pick<AuditRow, "nClv">): Disclosure {
     lockLabel: ok ? "" : `needs ${needed} more`,
     reason: ok
       ? ""
-      : `${settled} graded alert(s). Below the ${MIN_SETTLED_FOR_CI}-alert floor ` +
+      : `${settled} graded alert(s). Below the ${target}-alert floor ` +
         `used by model/line_alerts.py, so no rate or interval is computed — raw ` +
         `counts only. Same-slate alerts are correlated and carry less ` +
         `information than the count suggests.`,
@@ -80,11 +88,13 @@ export type Verdict = { label: string; cls: string; tip: string };
  * detector in this system has cleared one — positive CLV means the alert was
  * early, not that the detector is profitable.
  */
-export function verdict(row: Pick<AuditRow, "nClv" | "avgClvPp">): Verdict {
+export function verdict(row: Pick<AuditRow, "nClv" | "avgClvPp"> & { alertType?: string }): Verdict {
   const d = disclosure(row);
   if (!d.disclosable) {
     return {
-      label: "accruing",
+      label: row.alertType === "pinnacle_favorite_forward"
+        ? `forward test ${d.settled}/${TENNIS_PIN_FORWARD_TARGET}`
+        : "accruing",
       cls: "bg-gray-100 text-gray-500",
       tip: d.reason,
     };

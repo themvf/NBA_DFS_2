@@ -460,7 +460,8 @@ export default function TennisVegasClient({
   bets,
   backtest,
   legacyBetSummary,
-  lineMovement,
+  sportsbookMovement,
+  polymarketMovement,
   lineAlerts,
   lineAlertBacktest,
   eloDashboard,
@@ -471,7 +472,8 @@ export default function TennisVegasClient({
   bets: TennisBetRow[];
   backtest: TennisBetBacktestRow[];
   legacyBetSummary: TennisLegacyBetSummary;
-  lineMovement: MlbLineMovementRow[];
+  sportsbookMovement: MlbLineMovementRow[];
+  polymarketMovement: MlbLineMovementRow[];
   lineAlerts: LineAlertRow[];
   lineAlertBacktest: LineAlertBacktestRow[];
   eloDashboard: TennisEloDashboard;
@@ -618,8 +620,18 @@ export default function TennisVegasClient({
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Evidence below the live board</div>
           <h2 className="mt-1 font-serif text-4xl tracking-[-0.05em]">The research desk.</h2>
         </div>
-        {lineMovement.length > 0 && <LineMovementPanel rows={lineMovement} cadenceNote="the 6-hourly odds captures" />}
-        {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} />}
+        <LineMovementPanel
+          rows={sportsbookMovement}
+          cadenceNote="the 6-hourly sportsbook captures"
+          lane="sportsbook"
+          researchOnly
+        />
+        <LineMovementPanel
+          rows={polymarketMovement}
+          cadenceNote="the independent Polymarket captures"
+          lane="polymarket"
+        />
+        {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} tennisResearch />}
         <DetectorHealthPanel health={detectorHealth} />
         <TennisSurfaceEvidence dashboard={eloDashboard} />
       </section>

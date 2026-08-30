@@ -13,7 +13,12 @@ Pricing at the consensus would invent a bet that never existed.
 
 from __future__ import annotations
 
-from model.line_alerts import _EXECUTION_BOOKS, freeze_execution_price
+from model.line_alerts import (
+    _EXECUTION_BOOKS,
+    _comparable_retail_probabilities,
+    _tennis_pin_favorite_forward_details,
+    freeze_execution_price,
+)
 
 
 def _books() -> dict:
@@ -101,3 +106,51 @@ def test_legacy_keys_carry_the_execution_price_for_downstream_grading() -> None:
     assert got["dk_decimal"] == got["exec_decimal"]
     assert got["dk_odds"] == got["exec_odds"]
     assert got["clv_book"] == got["exec_book"]
+
+
+def test_tennis_forward_cohort_is_favorite_only_and_freezes_price() -> None:
+    books = _books()
+    home = _tennis_pin_favorite_forward_details(books, "home", 0.60, 2.4)
+    assert home is not None
+    assert home["program_version"] == "tennis-pin-favorite-v1"
+    assert home["forward_test_target"] == 100
+    assert home["retail_books"] == 5
+    assert home["exec_price_available"] is True
+    assert home["exec_odds"] == -145
+    assert home["exec_book"] == "betmgm"
+
+    assert _tennis_pin_favorite_forward_details(books, "away", 0.40, 2.4) is None
+
+
+def test_tennis_forward_cohort_requires_three_retail_books() -> None:
+    books = {
+        "pinnacle": _books()["pinnacle"],
+        "draftkings": _books()["draftkings"],
+        "fanduel": _books()["fanduel"],
+    }
+    assert _tennis_pin_favorite_forward_details(books, "home", 0.60, 2.4) is None
+
+
+def test_walking_uses_only_books_present_at_both_endpoints() -> None:
+    opening = {
+        "draftkings": {"ml_home": -110, "ml_away": -110},
+        "fanduel": {"ml_home": -120, "ml_away": +100},
+        "pinnacle": {"ml_home": -125, "ml_away": +105},
+        "polymarket": {"ml_home": -200, "ml_away": +160},
+    }
+    current = {
+        "draftkings": {"ml_home": -150, "ml_away": +130},
+        "betmgm": {"ml_home": -300, "ml_away": +230},
+        "pinnacle": {"ml_home": -155, "ml_away": +135},
+    }
+    p_open, p_now, overlap = _comparable_retail_probabilities(
+        opening, current, "home")
+    assert overlap == 1
+    assert p_open == 0.5
+    assert p_now is not None and p_now > p_open
+
+
+def test_walking_rejects_two_captures_without_a_shared_retail_book() -> None:
+    opening = {"draftkings": {"ml_home": -110, "ml_away": -110}}
+    current = {"fanduel": {"ml_home": -150, "ml_away": +130}}
+    assert _comparable_retail_probabilities(opening, current, "home") == (None, None, 0)

@@ -6173,6 +6173,8 @@ the data and provenance requirements supporting that UI are verified.
 
 ## Tennis decision data contract — 2023+ (2026-07-13)
 
+Current implementation and prospective line-movement study: [`docs/tennis-betting-update.md`](docs/tennis-betting-update.md).
+
 This contract supersedes the old odds-only Tennis MVP architecture for all new
 work under Jira Epic `SCRUM-17`. It does not overturn the existing no-edge
 finding: Tennis stays market-equal and cannot emit a TAKE decision unless a new
