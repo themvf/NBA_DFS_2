@@ -5,8 +5,9 @@ import {
   getLatestRankingSet,
   getProjectionScatter,
   getWeeklyFantasyPoints,
+  getWeeklyUpside,
 } from "@/db/queries-fantasy-football";
-import { BASELINE_GAMES } from "@/lib/fantasy-football/projection-scatter";
+import { BASELINE_GAMES, WEEKLY_SEASONS } from "@/lib/fantasy-football/projection-scatter";
 import ProjectionsClient from "./projections-client";
 
 const SCORING_OPTIONS = ["STD", "HALF", "PPR"];
@@ -22,12 +23,14 @@ export default async function ProjectionsPage({
   const requested = String(params.scoring || "PPR").toUpperCase();
   const scoring = SCORING_OPTIONS.includes(requested) ? requested : "PPR";
   const set = await getLatestRankingSet(scoring);
-  const [rows, weekly] = set
+  const [rows, weekly, upsideRecent, upsideAll] = set
     ? await Promise.all([
         getProjectionScatter(set.id),
         getWeeklyFantasyPoints(set.id, WEEKLY_SEASON),
+        getWeeklyUpside(set.id, [WEEKLY_SEASON]),
+        getWeeklyUpside(set.id, WEEKLY_SEASONS),
       ])
-    : [[], []];
+    : [[], [], [], []];
 
   return (
     <div className="space-y-5">
@@ -87,6 +90,8 @@ export default async function ProjectionsPage({
             rows={rows}
             weekly={weekly}
             weeklySeason={WEEKLY_SEASON}
+            upsideRecent={upsideRecent}
+            upsideAll={upsideAll}
             scoring={scoring}
           />
           <div className="space-y-2 rounded-2xl border bg-card p-4 text-xs text-muted-foreground">

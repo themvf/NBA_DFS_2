@@ -903,3 +903,78 @@ export async function getWeeklyFantasyPoints(
     ORDER BY "seasonPoints" DESC`);
   return queryRows<WeeklyPointsRow>(result);
 }
+
+export type WeeklyUpsideRow = {
+  playerId: number;
+  name: string;
+  position: string;
+  team: string | null;
+  adp: number | null;
+  positionRank: number | null;
+  games: number;
+  ppg: number;
+  sd: number;
+  best: number;
+  top3: number;
+  worst: number;
+  floor: number;
+  spikes: number;
+  seasons: number;
+};
+
+/**
+ * Weekly boom/bust profile per player, aggregated over one or more seasons.
+ *
+ * Everything here describes weeks that were actually played -- it is history,
+ * not a forecast. `games` is the real number of stat lines behind the numbers
+ * so a three-game sample can be told apart from a fifty-game one; variance off
+ * a short sample is mostly noise and the UI filters on this.
+ *
+ * Weeks 18 is excluded for the same reason as the weekly grid: no standard
+ * fantasy format scores it, and rested starters would distort both the
+ * ceiling and the floor.
+ */
+export async function getWeeklyUpside(
+  rankingSetId: number,
+  seasons: number[],
+): Promise<WeeklyUpsideRow[]> {
+  await ensureFantasyFootballTables();
+  const result = await db.execute(sql`
+    WITH scored AS (
+      SELECT w.player_id, p.position, w.season,
+        CASE COALESCE(rs.scoring_profile->>'preset','PPR')
+          WHEN 'STD' THEN w.fantasy_points_std
+          WHEN 'HALF' THEN (w.fantasy_points_std+w.fantasy_points_ppr)/2.0
+          ELSE w.fantasy_points_ppr
+        END AS pts
+      FROM ff_player_week_stats w
+      JOIN ff_players p ON p.id=w.player_id
+      JOIN ff_ranking_sets rs ON rs.id=${rankingSetId}
+      WHERE w.season IN (${sql.join(seasons.map((year) => sql`${year}`), sql`, `)}) AND w.week <= 17
+        AND w.season_type='REG' AND w.source='nflverse'
+    ), thresholds (position, spike) AS (
+      VALUES ('QB', 24.0), ('RB', 18.0), ('WR', 16.0),
+             ('TE', 12.0), ('K', 13.0), ('DST', 12.0)
+    ), ranked AS (
+      SELECT s.*, ROW_NUMBER() OVER (PARTITION BY s.player_id ORDER BY s.pts DESC) AS rn
+      FROM scored s
+    )
+    SELECT p.id::int AS "playerId", p.canonical_name AS name, p.position,
+      p.team_abbrev AS team, r.adp, r.position_rank AS "positionRank",
+      COUNT(*)::int AS games,
+      AVG(ranked.pts)::double precision AS ppg,
+      COALESCE(STDDEV_POP(ranked.pts), 0)::double precision AS sd,
+      MAX(ranked.pts)::double precision AS best,
+      AVG(ranked.pts) FILTER (WHERE ranked.rn <= 3)::double precision AS top3,
+      MIN(ranked.pts)::double precision AS worst,
+      PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY ranked.pts)::double precision AS floor,
+      COUNT(*) FILTER (WHERE ranked.pts >= t.spike)::int AS spikes,
+      COUNT(DISTINCT ranked.season)::int AS seasons
+    FROM ranked
+    JOIN ff_players p ON p.id=ranked.player_id
+    JOIN ff_player_rankings r ON r.player_id=p.id AND r.ranking_set_id=${rankingSetId}
+    LEFT JOIN thresholds t ON t.position=p.position
+    GROUP BY p.id, p.canonical_name, p.position, p.team_abbrev, r.adp, r.position_rank
+    ORDER BY "top3" DESC NULLS LAST`);
+  return queryRows<WeeklyUpsideRow>(result);
+}
