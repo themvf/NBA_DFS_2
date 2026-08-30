@@ -95,9 +95,124 @@ function SignalBadge({ signal }: { signal: MatchSignal }) {
   return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${cls}`}>{label}</span>;
 }
 
-// One match, one card — replaces the old 9-column table row (with its two
-// stacked lines per cell) with a single scannable unit that reflows to one
-// column on mobile instead of forcing horizontal scroll.
+function editorialRead(m: TennisMatchRow) {
+  if (m.homeWinProb == null || m.ourProbHome == null) {
+    return {
+      kicker: "Market still forming",
+      headline: "The number needs more evidence.",
+      detail: "Model or consensus probability is not available yet. Keep the match visible without pretending the read is complete.",
+    };
+  }
+
+  const edge = m.ourProbHome - m.homeWinProb;
+  const magnitude = Math.abs(edge);
+  const favored = m.homeWinProb >= 0.5 ? m.homePlayer : m.awayPlayer;
+  if (magnitude <= 0.01) {
+    return {
+      kicker: "Low disagreement",
+      headline: `${favored} controls the number.`,
+      detail: "The market and model arrive at nearly the same probability. The matchup is legible; the pricing gap is not.",
+    };
+  }
+
+  const modelSide = edge > 0 ? m.homePlayer : m.awayPlayer;
+  return {
+    kicker: `${(magnitude * 100).toFixed(1)} point disagreement`,
+    headline: `The model sees more in ${modelSide}.`,
+    detail: `This is a calibration signal, not a bet recommendation. Watch whether the market moves toward the model before first serve.`,
+  };
+}
+
+function CourtProbability({ m }: { m: TennisMatchRow }) {
+  const marketHome = m.homeWinProb ?? 0.5;
+  const modelHome = m.ourProbHome;
+  const marker = modelHome == null ? null : Math.min(96, Math.max(4, modelHome * 100));
+
+  return (
+    <div className="relative min-h-[290px] overflow-hidden bg-[#71963f] text-[#f7ffe9] sm:min-h-[360px]">
+      <div className="absolute inset-4 border-2 border-[#f7ffe9]/80 sm:inset-5" />
+      <div className="absolute inset-y-4 left-1/2 w-0.5 -translate-x-1/2 bg-[#f7ffe9]/75 sm:inset-y-5" />
+      <div className="absolute inset-x-4 top-1/2 h-1.5 -translate-y-1/2 bg-[#263719]/55 sm:inset-x-5" />
+      <div className="absolute inset-y-[27%] left-4 right-4 border-y-2 border-[#f7ffe9]/70 sm:left-5 sm:right-5" />
+
+      <div className="absolute left-7 top-7 z-10 text-[10px] font-semibold uppercase tracking-[0.18em] sm:left-9 sm:top-9">
+        Consensus win probability
+      </div>
+      <div className="absolute left-7 top-1/2 z-10 -translate-y-1/2 sm:left-9">
+        <div className="font-serif text-6xl leading-none tracking-[-0.08em] sm:text-8xl">
+          {(marketHome * 100).toFixed(0)}
+        </div>
+        <div className="mt-1 text-[10px] uppercase tracking-[0.14em]">{m.homePlayer}</div>
+      </div>
+
+      {marker != null && (
+        <div className="absolute inset-y-4 z-10 w-px bg-[#f7ffe9]/85 sm:inset-y-5" style={{ left: `${marker}%` }}>
+          <span className="absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#f7ffe9] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wide text-[#1c2b10]">
+            Model {(modelHome! * 100).toFixed(0)}%
+          </span>
+        </div>
+      )}
+
+      <div className="absolute bottom-7 right-7 z-10 text-right text-[10px] uppercase tracking-[0.12em] sm:bottom-9 sm:right-9">
+        <div>{m.nBooks ?? "—"} books</div>
+        <div className="mt-1 opacity-75">vig removed</div>
+      </div>
+    </div>
+  );
+}
+
+function FeaturedMatch({ m }: { m: TennisMatchRow }) {
+  const read = editorialRead(m);
+  const homeEloVal = blendedElo(m.homeElo, m.homeGrassElo, m.homeGrassMatches);
+  const awayEloVal = blendedElo(m.awayElo, m.awayGrassElo, m.awayGrassMatches);
+  const edge = m.ourProbHome != null && m.homeWinProb != null ? m.ourProbHome - m.homeWinProb : null;
+
+  return (
+    <section className="overflow-hidden rounded-[1.4rem] bg-card shadow-[0_24px_70px_rgba(0,0,0,0.14)]">
+      <div className="grid lg:grid-cols-[minmax(0,0.9fr)_minmax(320px,1.28fr)_minmax(220px,0.72fr)]">
+        <div className="order-2 p-6 lg:order-1 lg:p-7">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {fmtTime(m.commenceTime) || "Time TBD"} · {m.tour} · {m.matchDate}
+          </div>
+          <div className="mt-5 border-b pb-5">
+            <div className="font-serif text-3xl tracking-[-0.04em]">{m.homePlayer}</div>
+            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>Elo {homeEloVal ?? "—"}</span><strong className="text-sm text-foreground">{fmtMl(m.homeMl)}</strong>
+            </div>
+          </div>
+          <div className="py-5">
+            <div className="font-serif text-3xl tracking-[-0.04em]">{m.awayPlayer}</div>
+            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>Elo {awayEloVal ?? "—"}</span><strong className="text-sm text-foreground">{fmtMl(m.awayMl)}</strong>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 border-t pt-4 text-xs">
+            <div><span className="block text-[10px] uppercase tracking-wide text-muted-foreground">Total games</span><strong>{m.totalGamesLine ?? "—"}</strong></div>
+            <div><span className="block text-[10px] uppercase tracking-wide text-muted-foreground">Set handicap</span><strong>{m.setHandicap != null && m.setHandicap > 0 ? `+${m.setHandicap}` : m.setHandicap ?? "—"}</strong></div>
+          </div>
+        </div>
+
+        <div className="order-1 lg:order-2"><CourtProbability m={m} /></div>
+
+        <aside className="order-3 flex min-h-[280px] flex-col p-6 lg:p-7">
+          <span className="w-fit rounded-full bg-[#c7ff3d] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-[#152500]">
+            {read.kicker}
+          </span>
+          <h2 className="mt-4 font-serif text-3xl leading-[0.94] tracking-[-0.045em]">{read.headline}</h2>
+          <div className="mt-6 space-y-3 text-xs">
+            <div className="flex justify-between border-b pb-3"><span className="text-muted-foreground">Market split</span><strong>{fmtPct(m.homeWinProb)} / {fmtPct(m.awayWinProb)}</strong></div>
+            <div className="flex justify-between border-b pb-3"><span className="text-muted-foreground">Model gap</span><strong>{fmtSignedPp(edge)}</strong></div>
+            <div className="flex justify-between border-b pb-3"><span className="text-muted-foreground">Coverage</span><strong>{m.nBooks ?? "—"} books</strong></div>
+          </div>
+          <p className="mt-auto pt-6 text-[11px] leading-relaxed text-muted-foreground">{read.detail}</p>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+// Secondary matches read like an editorial run-of-show: quiet typographic
+// tickets beneath the featured court, not a wall of interchangeable cards.
 function MatchCard({ m }: { m: TennisMatchRow }) {
   const homeFav = (m.homeWinProb ?? 0) >= (m.awayWinProb ?? 0);
   const signal = matchSignal(m);
@@ -110,42 +225,37 @@ function MatchCard({ m }: { m: TennisMatchRow }) {
   ].filter(Boolean).join(" · ") || "No total/handicap quote";
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-lg border bg-card p-3.5">
+    <article className="group border-t border-border pt-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground tabular-nums">{fmtTime(m.commenceTime)} · {m.tour}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground tabular-nums">
+          {fmtTime(m.commenceTime) || "TBD"} · {m.tour}
+        </span>
         <SignalBadge signal={signal} />
       </div>
 
-      <div className="flex flex-col gap-1 text-sm">
-        <div className={`flex items-baseline justify-between gap-2 ${homeFav ? "font-semibold" : ""}`}>
-          <span className="truncate">
+      <div className="mt-4 space-y-2">
+        <div className={`flex items-end justify-between gap-3 ${homeFav ? "text-foreground" : "text-muted-foreground"}`}>
+          <span className="min-w-0 truncate font-serif text-xl tracking-[-0.035em]">
             {m.homePlayer}
-            {homeEloVal != null && <span className="ml-1.5 text-[10px] font-normal text-muted-foreground tabular-nums">{homeEloVal}</span>}
+            {homeEloVal != null && <span className="ml-2 font-sans text-[9px] tracking-normal text-muted-foreground tabular-nums">{homeEloVal}</span>}
           </span>
-          <span className="tabular-nums">{fmtMl(m.homeMl)}</span>
+          <span className="text-xs font-semibold tabular-nums">{fmtMl(m.homeMl)}</span>
         </div>
-        <div className={`flex items-baseline justify-between gap-2 ${!homeFav ? "font-semibold" : "text-muted-foreground"}`}>
-          <span className="truncate">
+        <div className={`flex items-end justify-between gap-3 ${!homeFav ? "text-foreground" : "text-muted-foreground"}`}>
+          <span className="min-w-0 truncate font-serif text-xl tracking-[-0.035em]">
             {m.awayPlayer}
-            {awayEloVal != null && <span className="ml-1.5 text-[10px] font-normal text-muted-foreground tabular-nums">{awayEloVal}</span>}
+            {awayEloVal != null && <span className="ml-2 font-sans text-[9px] tracking-normal text-muted-foreground tabular-nums">{awayEloVal}</span>}
           </span>
-          <span className="tabular-nums">{fmtMl(m.awayMl)}</span>
+          <span className="text-xs font-semibold tabular-nums">{fmtMl(m.awayMl)}</span>
         </div>
       </div>
 
-      <DivergingProbBar marketHome={m.homeWinProb} ourHome={m.ourProbHome} />
-
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
-        <span>Market {fmtPct(m.homeWinProb)} / {fmtPct(m.awayWinProb)}</span>
-        {edgeH != null && Math.abs(edgeH) > 0.01 && (
-          <span className="text-amber-500">{fmtSignedPp(edgeH)} home</span>
-        )}
+      <div className="mt-4"><DivergingProbBar marketHome={m.homeWinProb} ourHome={m.ourProbHome} /></div>
+      <div className="mt-2 flex items-center justify-between text-[9px] uppercase tracking-wide text-muted-foreground tabular-nums">
+        <span>{secondary} · {m.nBooks ?? "—"} books</span>
+        {edgeH != null && Math.abs(edgeH) > 0.01 && <span className="text-amber-500">{fmtSignedPp(edgeH)} home</span>}
       </div>
-
-      <div className="border-t pt-2 text-[10px] text-muted-foreground tabular-nums">
-        {secondary} · {m.nBooks ?? "—"} books
-      </div>
-    </div>
+    </article>
   );
 }
 
@@ -395,132 +505,128 @@ export default function TennisVegasClient({
 
   const atpCount = matchups.filter((m) => m.tour === "ATP").length;
   const wtaCount = matchups.filter((m) => m.tour === "WTA").length;
+  const featured = filtered[0] ?? null;
+  const secondaryByDay = byDay
+    .map(([day, matches]) => [day, matches.filter((m) => m.id !== featured?.id)] as const)
+    .filter(([, matches]) => matches.length > 0);
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 max-w-5xl mx-auto">
-      {/* Trust banner — replaces the old plain-gray disclaimer paragraph.
-          Same underlying finding (tennis-moneyline-no-edge), but the visual
-          weight now matches the honesty: this is a research/calibration
-          surface, not a recommendation feed. */}
-      <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+    <div className="mx-auto max-w-7xl space-y-12 p-4 sm:p-6 lg:p-8">
+      <header className="grid gap-5 border-b pb-7 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            Tennis market journal · {tour === "all" ? "ATP + WTA" : tour}
+          </div>
+          <h1 className="mt-3 font-serif text-5xl leading-[0.88] tracking-[-0.065em] sm:text-7xl">
+            The court<br />is the model.
+          </h1>
+          <p className="mt-4 max-w-xl text-xs leading-relaxed text-muted-foreground sm:text-sm">
+            One matchup at a time. Market consensus, model probability and surface Elo share a single visual field instead of competing in a dashboard.
+          </p>
+        </div>
+        <div className="sm:text-right">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            {queryDate ?? "Upcoming board"}
+          </div>
+          <div className="mt-1 font-serif text-2xl tracking-[-0.04em]">{filtered.length} matches in view</div>
+        </div>
+      </header>
+
+      <div className="flex items-start gap-3 border-y border-amber-500/30 py-3">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-        <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">
-          <strong className="font-semibold">Research / calibration only.</strong> Tennis moneyline has no
-          confirmed edge — every rating is capped at 2★ and nothing here is a recommendation to bet.
-          Total-games and handicap quotes are tracked for alert research only, not promoted as picks.
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          <strong className="font-semibold text-foreground">Calibration, not picks.</strong> Tennis moneyline has no confirmed edge; ratings are capped at 2★. Disagreement is a research signal, never a recommendation.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-xl font-bold">Tennis 🎾</h1>
-        <span className="text-xs text-muted-foreground">
-          {matchups.length} matches · consensus across books, vig removed · {queryDate ?? "upcoming"}
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Featured court</div>
+        <div className="flex gap-1.5">
+          {([
+            ["all", `All ${matchups.length}`],
+            ["ATP", `ATP ${atpCount}`],
+            ["WTA", `WTA ${wtaCount}`],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTour(key as "all" | "ATP" | "WTA")}
+              className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition ${
+                tour === key
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-background text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {lineMovement.length > 0 && (
-        <LineMovementPanel rows={lineMovement} cadenceNote="the 6-hourly odds captures" />
-      )}
-      {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && (
-        <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} />
-      )}
-      <DetectorHealthPanel health={detectorHealth} />
-
-      <TennisSurfaceEvidence dashboard={eloDashboard} />
-
-      {/* Top rated bets — the model's recommendations, best first. Settled bets
-          (won/lost/void) are excluded even if high-starred: a bet from a since-
-          superseded model version whose match already happened is history, not
-          a live recommendation (see memory tennis-moneyline-no-edge). */}
-      {bets.length > 0 && (() => {
-        const top = bets.filter((b) => b.status === "pending" && b.stars >= 3 && (b.edge ?? 0) > 0).slice(0, 12);
-        if (top.length === 0) return null;
-        return (
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              Rated ATP moneyline plays (3★+ value) · {top.length}
-            </h2>
-            <div className="space-y-1.5">
-              {top.map((b) => (
-                <div
-                  key={b.id}
-                  className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-card px-3.5 py-2.5"
-                >
-                  <Stars n={b.stars} />
-                  <div className="min-w-0 flex-1">
-                    <span className="font-medium">{b.selectionLabel}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">{b.fixture}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs tabular-nums">
-                    <span title="Our probability">{fmtPct(b.ourProb)}</span>
-                    <span className="text-muted-foreground" title="Market probability">{fmtPct(b.marketProb)}</span>
-                    <span className="text-amber-500" title="Edge">{fmtSignedPp(b.edge)}</span>
-                    <span title="Odds">{fmtMl(b.marketOdds)}</span>
-                    <span className="text-amber-500" title="Expected value">{fmtSignedPp(b.ev)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              Edge = our model prob − vig-free market prob. EV = expected ROI per unit at the offered price.
-              Calibration (do these win at the rate we claim?) lands as tennis-data.co.uk results settle the bets.
-            </p>
-          </div>
-        );
-      })()}
-
-      {/* Tour filter */}
-      <div className="flex gap-1.5">
-        {([
-          ["all", `All (${matchups.length})`],
-          ["ATP", `ATP ${atpCount}`],
-          ["WTA", `WTA ${wtaCount}`],
-        ] as const).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTour(key as "all" | "ATP" | "WTA")}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-              tour === key
-                ? "border-foreground bg-foreground text-background"
-                : "border-border bg-background text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {byDay.length === 0 && (
-        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
+      {featured ? (
+        <FeaturedMatch m={featured} />
+      ) : (
+        <div className="border-y py-10 text-sm text-muted-foreground">
           No matches in the feed. Run <code className="rounded bg-muted px-1 py-0.5">python -m ingest.tennis_schedule</code> to seed odds.
         </div>
       )}
 
-      {byDay.map(([day, matches], dayIndex) => {
-        const open = isDayOpen(day, dayIndex);
+      {bets.length > 0 && (() => {
+        const top = bets.filter((b) => b.status === "pending" && b.stars >= 3 && (b.edge ?? 0) > 0).slice(0, 12);
+        if (top.length === 0) return null;
         return (
-          <div key={day} className="space-y-2">
-            <button
-              onClick={() => toggleDay(day, dayIndex)}
-              className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground uppercase tracking-wide"
-            >
-              <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
-              {fmtDayHeading(day)}
-              <span className="text-xs font-normal normal-case tabular-nums">{matches.length}</span>
-            </button>
-            {open && (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {matches.map((m) => (
-                  <MatchCard key={m.id} m={m} />
-                ))}
-              </div>
-            )}
-          </div>
+          <section>
+            <div className="mb-4 flex items-end justify-between gap-3 border-b pb-3">
+              <div><div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Model notebook</div><h2 className="mt-1 font-serif text-3xl tracking-[-0.04em]">Rated observations.</h2></div>
+              <span className="text-xs text-muted-foreground">{top.length} pending</span>
+            </div>
+            <div className="grid gap-x-5 gap-y-3 md:grid-cols-2">
+              {top.map((b) => (
+                <div key={b.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-3">
+                  <Stars n={b.stars} />
+                  <div className="min-w-0 flex-1"><span className="font-serif text-lg">{b.selectionLabel}</span><span className="ml-2 text-[10px] text-muted-foreground">{b.fixture}</span></div>
+                  <div className="flex items-center gap-2 text-[10px] tabular-nums"><span>{fmtPct(b.ourProb)}</span><span className="text-muted-foreground">{fmtPct(b.marketProb)}</span><span className="text-amber-500">{fmtSignedPp(b.edge)}</span><span>{fmtMl(b.marketOdds)}</span></div>
+                </div>
+              ))}
+            </div>
+          </section>
         );
-      })}
+      })()}
 
-      {/* Results & calibration — renders structure even with zero settled bets */}
-      <TennisResults bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} />
+      {secondaryByDay.length > 0 && (
+        <section className="space-y-7">
+          <div className="border-b pb-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Order of play</div>
+            <h2 className="mt-1 font-serif text-4xl tracking-[-0.05em]">The next courts.</h2>
+          </div>
+          {secondaryByDay.map(([day, matches], dayIndex) => {
+            const open = isDayOpen(day, dayIndex);
+            return (
+              <div key={day} className="space-y-4">
+                <button onClick={() => toggleDay(day, dayIndex)} className="flex items-center gap-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground">
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+                  {fmtDayHeading(day)} <span className="font-normal tabular-nums">{matches.length}</span>
+                </button>
+                {open && <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2 xl:grid-cols-4">{matches.map((m) => <MatchCard key={m.id} m={m} />)}</div>}
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      <section className="space-y-6 border-t pt-10">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Evidence below the live board</div>
+          <h2 className="mt-1 font-serif text-4xl tracking-[-0.05em]">The research desk.</h2>
+        </div>
+        {lineMovement.length > 0 && <LineMovementPanel rows={lineMovement} cadenceNote="the 6-hourly odds captures" />}
+        {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} />}
+        <DetectorHealthPanel health={detectorHealth} />
+        <TennisSurfaceEvidence dashboard={eloDashboard} />
+      </section>
+
+      <section className="border-t pt-10">
+        <TennisResults bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} />
+      </section>
     </div>
   );
 }
