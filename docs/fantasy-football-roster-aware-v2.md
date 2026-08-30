@@ -15,6 +15,9 @@ history, cutoff, and fallback contracts are defined in
 The versioned Team Opportunity persistence and reconciliation contract is
 defined in
 [`fantasy-football-v2-team-opportunity-contract.md`](fantasy-football-v2-team-opportunity-contract.md).
+The uncalibrated V2-008 forecasting engine and its unresolved historical-source
+cutoff gate are documented in
+[`fantasy-football-v2-team-opportunity-model.md`](fantasy-football-v2-team-opportunity-model.md).
 The populated 2020-2025 roster and team-week foundation, exact count semantics,
 coverage audit, and deterministic replay instructions are documented in
 [`fantasy-football-v2-historical-context.md`](fantasy-football-v2-historical-context.md).

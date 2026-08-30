@@ -111,6 +111,20 @@ def build_manifest(
     }
 
 
+def verification_model_version(
+    explicit_model_version: str | None,
+    frozen_manifest: dict[str, Any] | None,
+) -> str:
+    """Pin verification to the artifact identity unless explicitly overridden."""
+    if explicit_model_version:
+        return explicit_model_version
+    if frozen_manifest:
+        frozen_version = frozen_manifest.get("championModelVersion")
+        if isinstance(frozen_version, str) and frozen_version.strip():
+            return frozen_version
+    return MODEL_VERSION
+
+
 def load_manifest_inputs(database_url: str, season: int, model_version: str) -> tuple[list[dict[str, Any]], dict[int, list[dict[str, Any]]]]:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -159,22 +173,24 @@ def load_manifest_inputs(database_url: str, season: int, model_version: str) -> 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int, default=2026)
-    parser.add_argument("--model-version", default=MODEL_VERSION)
+    parser.add_argument("--model-version")
     parser.add_argument("--verify", type=Path, help="Verify the live boards against a frozen manifest")
     args = parser.parse_args()
     config = load_config()
     if not config.database_url:
         raise RuntimeError("DATABASE_URL is required to freeze the champion baseline")
-    boards, rankings_by_set = load_manifest_inputs(config.database_url, args.season, args.model_version)
+    frozen = json.loads(args.verify.read_text(encoding="utf-8")) if args.verify else None
+    model_version = verification_model_version(args.model_version, frozen)
+    boards, rankings_by_set = load_manifest_inputs(config.database_url, args.season, model_version)
     manifest = build_manifest(
         season=args.season,
-        model_version=args.model_version,
+        model_version=model_version,
         boards=boards,
         rankings_by_set=rankings_by_set,
         frozen_at=datetime.now(timezone.utc).isoformat(),
     )
     if args.verify:
-        frozen = json.loads(args.verify.read_text(encoding="utf-8"))
+        assert frozen is not None
         expected = {
             "season": frozen.get("season"),
             "championModelVersion": frozen.get("championModelVersion"),

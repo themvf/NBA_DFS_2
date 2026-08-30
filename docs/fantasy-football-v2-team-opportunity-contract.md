@@ -1,8 +1,11 @@
 # Fantasy Football V2 Team Opportunity Contract
 
-Status: **shadow contract only; no forecast values have been fitted or
-published.** This document implements V2-007. Model fitting, joint game-script
-sampling, shrinkage, and uncertainty calibration belong to V2-008 and V2-009.
+Status: **implemented shadow contract; consumed only by the inactive V2-008
+engine.** This document implements V2-007. Model fitting and joint game-script
+sampling are documented in
+[`fantasy-football-v2-team-opportunity-model.md`](fantasy-football-v2-team-opportunity-model.md);
+an eligible historical fit is blocked on exact as-of source snapshots, and
+chronological calibration remains V2-009.
 
 ## Persisted contract
 
@@ -24,7 +27,8 @@ attempts are an allowed optional distribution and remain a required observed
 fact because they reconcile RB and non-RB rushing work.
 
 The persistence API is `ingest/ff_v2_team_opportunity.py`. It accepts forecast
-values produced elsewhere; it does not estimate, fill, or default any value.
+values produced by the V2-008 shadow model; it does not estimate, fill, or
+default any value itself.
 Every input team/game must resolve to exactly one persisted V2-003 fact. An
 unknown game, duplicate fact, duplicate forecast, incomplete distribution, or
 conflicting digest fails before or during the same database transaction.

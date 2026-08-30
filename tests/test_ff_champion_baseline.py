@@ -1,4 +1,4 @@
-from model.ff_champion_baseline import SCORING_TYPES, build_manifest
+from model.ff_champion_baseline import SCORING_TYPES, build_manifest, verification_model_version
 
 
 def _board(scoring: str, ranking_set_id: int) -> dict:
@@ -54,3 +54,9 @@ def test_manifest_is_reproducible_and_records_required_evidence() -> None:
     assert all(len(board["orderDigest"]) == 64 for board in first["boards"])
     assert first["combinedDigest"] == replay["combinedDigest"]
     assert first["projectionBehaviorChanged"] is False
+
+
+def test_verification_uses_frozen_identity_after_live_model_advances() -> None:
+    frozen = {"championModelVersion": "ff-independent-v1.14"}
+    assert verification_model_version(None, frozen) == "ff-independent-v1.14"
+    assert verification_model_version("ff-independent-v1.15", frozen) == "ff-independent-v1.15"
