@@ -824,3 +824,82 @@ export async function getProjectionScatter(rankingSetId: number): Promise<Projec
     ORDER BY r.our_projected_points DESC`);
   return queryRows<ProjectionScatterRow>(result);
 }
+
+export type WeeklyPointsRow = {
+  playerId: number;
+  name: string;
+  position: string;
+  team: string | null;
+  /**
+   * The bye in THE SEASON BEING SHOWN, derived from the weekly data itself.
+   * Deliberately not `ff_players.bye_week`, which is the *target* season's bye
+   * (2026) and therefore marks the wrong cell on a 2025 grid -- it differs for
+   * most teams (New England: 2025 bye week 14, 2026 bye week 11).
+   */
+  seasonByeWeek: number | null;
+  adp: number | null;
+  positionRank: number | null;
+  seasonPoints: number;
+  gamesPlayed: number;
+  /** Week number -> points, for weeks the player actually recorded a stat line. */
+  weeks: Record<string, number>;
+};
+
+/**
+ * Week-by-week fantasy points for one position, in the board's scoring format.
+ *
+ * `weeks` carries only the weeks a player actually played. A bye, an inactive,
+ * or a week on nobody's roster is simply absent -- the caller decides whether
+ * to render that as a zero, and can still tell it apart from a played week
+ * that genuinely scored nothing. `gamesPlayed` counts real stat lines, so it
+ * is never inflated by rendered zeroes.
+ */
+export async function getWeeklyFantasyPoints(
+  rankingSetId: number,
+  season: number,
+  position: string,
+): Promise<WeeklyPointsRow[]> {
+  await ensureFantasyFootballTables();
+  const result = await db.execute(sql`
+    WITH team_byes AS (
+      -- A bye is the week in which a team put NO stat line on the board at
+      -- all. Verified against the live 2025 data: all 32 teams resolve to
+      -- exactly one such week, so this is unambiguous rather than a guess.
+      SELECT s.team, MIN(w.week) AS bye_week
+      FROM (SELECT DISTINCT team FROM ff_player_week_stats
+            WHERE season=${season} AND team IS NOT NULL) s
+      CROSS JOIN generate_series(1, 18) AS w(week)
+      LEFT JOIN (SELECT DISTINCT team, week FROM ff_player_week_stats
+                 WHERE season=${season}) p ON p.team=s.team AND p.week=w.week
+      WHERE p.team IS NULL
+      GROUP BY s.team
+    )
+    SELECT p.id::int AS "playerId", p.canonical_name AS name, p.position,
+      p.team_abbrev AS team, tb.bye_week AS "seasonByeWeek",
+      r.adp, r.position_rank AS "positionRank",
+      COALESCE(SUM(
+        CASE COALESCE(rs.scoring_profile->>'preset','PPR')
+          WHEN 'STD' THEN w.fantasy_points_std
+          WHEN 'HALF' THEN (w.fantasy_points_std+w.fantasy_points_ppr)/2.0
+          ELSE w.fantasy_points_ppr
+        END), 0)::double precision AS "seasonPoints",
+      COUNT(w.id)::int AS "gamesPlayed",
+      COALESCE(jsonb_object_agg(w.week::text,
+        ROUND((CASE COALESCE(rs.scoring_profile->>'preset','PPR')
+          WHEN 'STD' THEN w.fantasy_points_std
+          WHEN 'HALF' THEN (w.fantasy_points_std+w.fantasy_points_ppr)/2.0
+          ELSE w.fantasy_points_ppr
+        END)::numeric, 2)) FILTER (WHERE w.id IS NOT NULL), '{}'::jsonb) AS weeks
+    FROM ff_player_rankings r
+    JOIN ff_players p ON p.id=r.player_id
+    JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
+    LEFT JOIN ff_player_week_stats w
+      ON w.player_id=p.id AND w.season=${season} AND w.source='nflverse' AND w.season_type='REG'
+    LEFT JOIN team_byes tb ON tb.team=p.team_abbrev
+    WHERE r.ranking_set_id=${rankingSetId} AND p.position=${position}
+    GROUP BY p.id, p.canonical_name, p.position, p.team_abbrev, tb.bye_week,
+             r.adp, r.position_rank
+    HAVING COUNT(w.id) > 0
+    ORDER BY "seasonPoints" DESC`);
+  return queryRows<WeeklyPointsRow>(result);
+}
