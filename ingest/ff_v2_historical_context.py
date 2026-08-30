@@ -654,6 +654,7 @@ def persist_context_run(
     roster_rows: list[dict[str, Any]],
     transactions: list[dict[str, Any]],
     facts: list[dict[str, Any]],
+    transform_version: str = TRANSFORM_VERSION,
 ) -> None:
     cursor = db.conn.cursor()
     cursor.execute(
@@ -661,7 +662,7 @@ def persist_context_run(
            (run_id,transform_version,seasons,source_snapshot_ids,coverage_report,artifact_digest)
            VALUES (%s,%s,%s,%s,%s,%s)
            ON CONFLICT(run_id) DO NOTHING""",
-        (run_id, TRANSFORM_VERSION, Json(seasons), Json(dict(source_snapshot_ids)), Json(dict(coverage)), digest),
+        (run_id, transform_version, Json(seasons), Json(dict(source_snapshot_ids)), Json(dict(coverage)), digest),
     )
     _insert_values(
         cursor,

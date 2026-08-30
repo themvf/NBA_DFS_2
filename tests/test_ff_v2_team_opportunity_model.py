@@ -207,6 +207,27 @@ def test_fallbacks_record_missingness_and_widen_uncertainty_monotonically():
     assert FALLBACK_UNCERTAINTY["C"] >= 1 / FALLBACK_CONFIDENCE["C"]
 
 
+def test_declared_archive_gaps_enforce_tier_c_even_with_large_team_samples():
+    forecast, _ = forecast_team_week(
+        _training(),
+        _identity(),
+        cutoff=CUTOFF,
+        root_seed=5,
+        draws=1000,
+        source_snapshot_ids=[11, 12],
+        minimum_fallback_tier="C",
+        declared_missing_sources=["weekly-stats", "quarterback"],
+    )
+    assert forecast["fallback_tier"] == "C"
+    basis = forecast["feature_provenance"]["fallback_tier_basis"]
+    assert basis == {
+        "estimated": "B",
+        "enforced_minimum": "C",
+        "effective": "C",
+        "declared_missing_sources": ["quarterback", "weekly-stats"],
+    }
+
+
 def test_eligible_qb_and_play_caller_evidence_is_sample_aware():
     forecast, _ = forecast_team_week(
         _training(),
@@ -314,6 +335,28 @@ def test_historical_artifact_is_order_independent_and_canonical_context_is_tier_
         context = row["feature_provenance"]["context"]
         assert context["quarterback_missing_reason"] == "no_eligible_as_of_source"
         assert context["play_caller_missing_reason"] == "no_eligible_as_of_source"
+
+
+def test_historical_artifact_can_separate_archived_training_from_evaluation_facts():
+    home = {**_row(901, season=2025, team="TB", opponent="ATL"), "game_id": "2025_01_TB_ATL"}
+    away = {**_row(902, season=2025, team="ATL", opponent="TB"), "game_id": "2025_01_TB_ATL"}
+    artifact = build_historical_artifact(
+        [home, away],
+        context_run_id="evaluation-run",
+        evaluation_season=2025,
+        cutoff=CUTOFF,
+        source_snapshots=_snapshots(11, 12),
+        training_facts=_training(),
+        training_context_run_id="eligible-archive-run",
+        minimum_fallback_tier="C",
+        declared_missing_sources=["weekly-stats"],
+        seed=44,
+        draws=100,
+    )
+    assert artifact["model_config"]["training_context_run_id"] == "eligible-archive-run"
+    assert artifact["model_config"]["training_source_mode"] == "separate_archived_context"
+    assert artifact["model_config"]["training_seasons"] == [2023, 2024]
+    assert {row["fallback_tier"] for row in artifact["forecasts"]} == {"C"}
 
 
 def test_historical_artifact_rejects_exact_snapshots_fetched_after_cutoff():

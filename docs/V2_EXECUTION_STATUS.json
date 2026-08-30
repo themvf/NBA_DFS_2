@@ -12,7 +12,7 @@
     "docs/fantasy-football-draft-spec.md",
     "docs/nfl-best-ball-model-improvement-spec.md"
   ],
-  "updatedAt": "2026-08-29",
+  "updatedAt": "2026-08-30",
   "activeTarget": "V2-008",
   "waivers": [],
   "waves": [
@@ -319,7 +319,7 @@
       "order": 2,
       "priority": "P1",
       "name": "Team opportunity forecast",
-      "status": "blocked",
+      "status": "verification",
       "dependsOn": [
         "V2-W1"
       ],
@@ -363,7 +363,7 @@
         {
           "id": "V2-008",
           "name": "Forecast coherent team opportunity distributions",
-          "status": "blocked",
+          "status": "verification",
           "dependsOn": [
             "V2-007"
           ],
@@ -395,13 +395,29 @@
             {
               "type": "audit",
               "reference": "independent V2-008 statistical design review; canonical artifact fallback audit",
-              "result": "The canonical reconstruction does not use actual game-starter QB, realized score state, or null play-caller fields as preseason features. All 544 historical forecasts explicitly record missing QB/play-caller reasons and Tier B confidence 0.80. Tier A is supported only with timestamped eligible context but remains historically unvalidated; Tier C uses league-dominant shrinkage and a 1.70 uncertainty scale.",
+              "result": "The former late-snapshot diagnostic did not use actual game-starter QB, realized score state, or null play-caller fields as preseason features. Its 544 Tier B rows established the missing-context behavior but were not chronological fit evidence. Tier A remains supported only with timestamped eligible context and is historically unvalidated; Tier C uses league-dominant shrinkage and a 1.70 uncertainty scale.",
               "date": "2026-08-29"
+            },
+            {
+              "type": "code",
+              "reference": "ingest/ff_v2_archived_team_context.py; model/ff_v2_team_opportunity.py; artifacts/ff_v2_archived_team_context.json; artifacts/ff_v2_team_opportunity_2025.json",
+              "result": "Recovered and hash-pinned immutable pre-cutoff play-by-play and roster sources for the 2021 and 2022 cutoff bundles. The historical forecast CLI now separates archived training facts from held-out evaluation identities and enforces the archive's Tier C minimum instead of consuming late replacement assets.",
+              "date": "2026-08-30"
+            },
+            {
+              "type": "test",
+              "reference": "python -m pytest tests/test_ff_champion_baseline.py tests/test_ff_source_contracts.py tests/test_ff_v2_historical_context.py tests/test_ff_v2_backtest.py tests/test_ff_v2_metrics.py tests/test_ff_v2_historical_bestball_cohort.py tests/test_ff_v2_audits.py tests/test_ff_v2_team_opportunity.py tests/test_ff_v2_team_opportunity_model.py tests/test_ff_v2_archived_team_context.py -q; python -m compileall -q ingest/ff_v2_archived_team_context.py ingest/ff_v2_historical_context.py model/ff_v2_team_opportunity.py",
+              "result": "All 87 V2 regression tests passed. New checks cover release-asset and Git-blob integrity, complete position joins, separate archived training context, declared-source Tier C enforcement, coherent per-draw opportunity conservation, deterministic seeds, and future-data rejection. Python compilation passed.",
+              "date": "2026-08-30"
+            },
+            {
+              "type": "audit",
+              "reference": "archive runs 383cc2c3-08c1-55c0-b1c2-6c1002d7204b and 61cfdc92-3aac-5e3b-ab1d-2d0cbc7a063c; forecast run ea73a8c7-65db-593a-b237-8c40ee645bfd; exact CLI replay",
+              "result": "Archive replay produced 512 eligible 2020 facts and 1,056 eligible 2020-2021 facts across all 32 teams with zero unknown rusher or receiver positions. The canonical 2025 shadow run persisted and exactly replayed 544 Tier C forecasts and 4,352 distributions with digest 587499356e7aedd0e979861b2bdf5f992d2c6be9c1ef9044640e51ed29f27b8d. Independent completion review remains pending.",
+              "date": "2026-08-30"
             }
           ],
-          "blockedBy": [
-            "No exact stored play-by-play or weekly-stat snapshots for the required historical folds have available_at timestamps at or before their simulated preseason cutoffs. The 2025 fold rejects late snapshot IDs 2524, 2526, 2527, 2530, 2531, 2534, 2535, 2538, 2539, 2540, 2542, 2543, and 2544. An immutable eligible archive or a user-approved specification change is required before fitting can be accepted."
-          ]
+          "blockedBy": []
         },
         {
           "id": "V2-009",
@@ -714,6 +730,10 @@
     }
   ],
   "changeLog": [
+    {
+      "date": "2026-08-30",
+      "change": "Resolved the V2-008 exact-source blocker and moved V2-008 / Wave 2 to verification. Hash-pinned pre-cutoff archives now produce complete 2020 and 2020-2021 Team Opportunity training contexts with zero unknown opportunity-player positions. The canonical 2025 shadow run trains only on those eligible facts, explicitly declares six unavailable source classes, enforces Tier C uncertainty for all 544 forecasts, persists 4,352 distributions, and replays exactly. V2-009 remains dependency-closed pending independent V2-008 completion review."
+    },
     {
       "date": "2026-08-29",
       "change": "Marked V2-008 and Wave 2 blocked on the exact as-of source gate. The push-safe engine and tests remain usable, but the late-snapshot diagnostic artifact is not canonical and will not be committed. Historical fitting now rejects exact source snapshots whose availability postdates the simulated cutoff."

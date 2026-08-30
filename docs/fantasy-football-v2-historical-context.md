@@ -103,6 +103,18 @@ persisted row counts matching.
 
 The source set provides quarterback identity but not an attributable historical
 play-caller ID, so `play_caller_id` is explicitly null in this foundation run.
-This missing field is reported in coverage rather than inferred. A later source
-contract can populate it without rewriting this run. Team Opportunity fitting
-must wait for V2-W1's chronological validation framework.
+This missing field is reported in coverage rather than inferred.
+
+The current nflverse release bytes for earlier seasons were published after the
+frozen historical cutoffs, so they remain ineligible for rolling-origin fitting.
+`ingest/ff_v2_archived_team_context.py` separately recovers exact pre-cutoff Git
+blobs and an archived release asset for 2020-2021. It verifies SHA-256 for every
+file, Git object identity where applicable, and complete offensive-player
+position coverage before persisting append-only training facts. The two bundles
+replay to 512 facts for the 2021 cutoff and 1,056 facts for the 2022 cutoff,
+cover all 32 teams, and contain zero unknown rusher or receiver positions.
+
+That archive intentionally declares weekly stats, participation, schedule,
+transactions, quarterback, and play-caller context missing. Team Opportunity
+therefore uses it only as Tier C evidence; missing inputs are not replaced with
+zero or reconstructed from future data.
