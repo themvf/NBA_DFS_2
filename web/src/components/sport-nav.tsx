@@ -33,6 +33,7 @@ const PAGE_LINKS: Array<{
   { href: "/nfl", label: "NFL Board", sports: ["nfl"] },
   { href: "/fantasy-football/nfl", label: "NFL Teams", sports: ["nfl"] },
   { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
+  { href: "/fantasy-football/projections", label: "Projection Scatter", sports: ["nfl"] },
   { href: "/fantasy-football/best-ball", label: "NFL Best Ball", sports: ["nfl"] },
   { href: "/fantasy-football/redraft", label: "NFL Redraft", sports: ["nfl"] },
   { href: "/fantasy-football/notes", label: "Player Notes", sports: ["nfl"] },
