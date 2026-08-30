@@ -33,8 +33,9 @@ export function isAnalystVerdict(value: unknown): value is AnalystVerdict {
  */
 export const NOTE_CATEGORIES = [
   { id: "draft-board", label: "Draft Board", blurb: "Value against ADP" },
-  { id: "ppr-consistency", label: "PPR Consistency", blurb: "Weekly floor / reception volume" },
+  { id: "ppr-consistency", label: "WR Consistency", blurb: "Weekly floor / reception volume (WR)" },
   { id: "rb-adp-value", label: "RB ADP Value", blurb: "Market price vs my value (RB only)" },
+  { id: "te-consistency", label: "TE Consistency", blurb: "Weekly floor at tight end" },
 ] as const;
 
 export type NoteCategory = (typeof NOTE_CATEGORIES)[number]["id"];
@@ -89,7 +90,7 @@ export function normalizeAnalystName(value: string): string {
 export function analystNoteTooltip(note: PlayerNote): string {
   const style = ANALYST_NOTE_STYLE[note.verdict];
   const provenance: string[] = [];
-  if (note.listRank !== null) provenance.push(`#${note.listRank} on the analyst board`);
+  if (note.listRank !== null) provenance.push(`#${note.listRank} in this list`);
   if (note.sourceTeam) provenance.push(note.sourceTeam);
   if (note.sourceAdp !== null) provenance.push(`listed ADP ${note.sourceAdp}`);
 

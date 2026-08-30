@@ -54,7 +54,9 @@ const seeded: PlayerNote = {
 // A seeded note keeps its provenance in the tooltip heading.
 const seededTooltip = analystNoteTooltip(seeded);
 assert.match(seededTooltip, /Fade at this price/);
-assert.match(seededTooltip, /#15 on the analyst board/);
+assert.match(seededTooltip, /#15 in this list/);
+// Each list has its own rank sequence, so the rank must not read as overall.
+assert.doesNotMatch(seededTooltip, /on the analyst board/);
 assert.match(seededTooltip, /KC/);
 assert.match(seededTooltip, /listed ADP 15/);
 assert.match(seededTooltip, /Rice averaged 18\.5 PPR points/);
