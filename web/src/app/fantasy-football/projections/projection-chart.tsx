@@ -54,15 +54,7 @@ function niceTicks(lo: number, hi: number, count: number): number[] {
   return out;
 }
 
-export default function ProjectionChart({
-  rows,
-  scoring,
-  modelVersion,
-}: {
-  rows: ProjectionScatterRow[];
-  scoring: string;
-  modelVersion: string | null;
-}) {
+export default function ProjectionChart({ rows }: { rows: ProjectionScatterRow[] }) {
   const [view, setView] = useState<ScatterView>("QB");
   const [mode, setMode] = useState<Mode>("pg");
   const [scope, setScope] = useState<Scope>("adp");
@@ -603,28 +595,6 @@ export default function ProjectionChart({
         </div>
       </details>
 
-      <div className="space-y-2 rounded-2xl border bg-card p-4 text-xs text-muted-foreground">
-        <p className="text-[10px] font-bold uppercase tracking-widest">How to read this</p>
-        <p>
-          <strong className="text-foreground">Per game is the fair comparison.</strong> The 2026
-          projection is a {BASELINE_GAMES}-active-game baseline, so on the season-total view anyone
-          who missed time in 2025 shows an enormous gain that is really just health. Switch views and
-          watch the injured players move.
-        </p>
-        <p>
-          <strong className="text-foreground">Scoring is {scoring}.</strong> 2025 actuals are
-          resolved in the same format as the projection, so the two axes are always comparable.
-          Kicker points use Yahoo distance tiers and DEF points use Yahoo defensive scoring; both are
-          identical across STD, HALF and PPR.
-        </p>
-        <p>
-          <strong className="text-foreground">Source.</strong> 2025 actuals from nflverse season
-          features; 2026 numbers from the live{" "}
-          <code className="rounded bg-muted px-1 py-0.5">{modelVersion ?? "independent"}</code> board.
-          ADP is Fantasy Football Calculator 12-team {scoring} — comparison only, it never moves the
-          projection.
-        </p>
-      </div>
     </div>
   );
 }
