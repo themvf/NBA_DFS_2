@@ -772,3 +772,55 @@ export async function getNoteEditorPlayers(rankingSetId: number): Promise<NoteEd
     ORDER BY COALESCE(r.our_rank, 100000), p.canonical_name`);
   return queryRows<NoteEditorPlayer>(result);
 }
+
+export type ProjectionScatterRow = {
+  playerId: number;
+  name: string;
+  position: string;
+  team: string | null;
+  rookie: boolean;
+  byeWeek: number | null;
+  positionRank: number | null;
+  ourRank: number | null;
+  adp: number | null;
+  ourProjectedPoints: number | null;
+  games2025: number | null;
+  fantasyPoints2025: number | null;
+};
+
+/**
+ * Prior-season actual against this board's forward projection, for every player
+ * in the set -- the input to the /fantasy-football/projections scatter.
+ *
+ * `fantasyPoints2025` is resolved in the SET's own scoring format using the
+ * same CASE the rankings query uses, so a HALF board is compared against HALF
+ * actuals rather than PPR ones. K and DST carry identical std/ppr values (see
+ * ingest/ff_independent.py), so the CASE is a no-op for them.
+ *
+ * Players with no 2025 row come back with NULL games/points rather than zero:
+ * a rookie and a player who scored nothing are different facts, and the chart
+ * renders them differently.
+ */
+export async function getProjectionScatter(rankingSetId: number): Promise<ProjectionScatterRow[]> {
+  await ensureFantasyFootballTables();
+  const result = await db.execute(sql`
+    SELECT p.id::int AS "playerId", p.canonical_name AS name, p.position,
+      p.team_abbrev AS team, p.rookie, p.bye_week AS "byeWeek",
+      r.position_rank AS "positionRank", r.our_rank AS "ourRank", r.adp,
+      r.our_projected_points AS "ourProjectedPoints",
+      f.games AS "games2025",
+      CASE COALESCE(rs.scoring_profile->>'preset','PPR')
+        WHEN 'STD' THEN f.fantasy_points_std
+        WHEN 'HALF' THEN (f.fantasy_points_std+f.fantasy_points_ppr)/2.0
+        ELSE f.fantasy_points_ppr
+      END AS "fantasyPoints2025"
+    FROM ff_player_rankings r
+    JOIN ff_players p ON p.id=r.player_id
+    JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
+    LEFT JOIN ff_player_season_features f
+      ON f.player_id=p.id AND f.season=2025 AND f.source='nflverse'
+    WHERE r.ranking_set_id=${rankingSetId}
+      AND r.our_projected_points IS NOT NULL
+    ORDER BY r.our_projected_points DESC`);
+  return queryRows<ProjectionScatterRow>(result);
+}
