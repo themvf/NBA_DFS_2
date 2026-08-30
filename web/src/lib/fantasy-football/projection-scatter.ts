@@ -82,3 +82,36 @@ export const VIEW_LABELS: Record<ScatterView, string> = {
  * year shows an enormous "gain" that is really just health.
  */
 export const BASELINE_GAMES = 17;
+
+/**
+ * Fantasy weeks, split the way this app already splits them everywhere else:
+ * DraftKings Best Ball scores Weeks 1-14 as the regular season and Weeks 15,
+ * 16 and 17 as the three tournament rounds, and `ingest/ff_playoff_sos.py`
+ * computes playoff strength of schedule over exactly 15-17.
+ *
+ * Week 18 exists in the nflverse feed and is stored, but is deliberately not
+ * shown: no standard fantasy format scores it, and starters are routinely
+ * rested, so including it would drag season totals and averages toward a week
+ * nobody actually plays. Add it here if a format ever needs it.
+ */
+export const SEASON_WEEKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+export const PLAYOFF_WEEKS = [15, 16, 17];
+
+/**
+ * Sequential ramp for the weekly grid: one hue, light to dark, so magnitude
+ * reads without the cell colours pretending to be categories. Steps are the
+ * documented blue ramp; a scoreless week gets no fill at all so it recedes
+ * rather than competing with real production.
+ */
+export const WEEK_HEAT_STEPS: { min: number; bg: string; fg: string }[] = [
+  { min: 30, bg: "#256abf", fg: "#ffffff" },
+  { min: 25, bg: "#3987e5", fg: "#ffffff" },
+  { min: 20, bg: "#6da7ec", fg: "#0b0b0b" },
+  { min: 15, bg: "#9ec5f4", fg: "#0b0b0b" },
+  { min: 10, bg: "#b7d3f6", fg: "#0b0b0b" },
+  { min: 0.01, bg: "#cde2fb", fg: "#0b0b0b" },
+];
+
+export function weekHeat(points: number): { bg: string; fg: string } | null {
+  return WEEK_HEAT_STEPS.find((step) => points >= step.min) ?? null;
+}

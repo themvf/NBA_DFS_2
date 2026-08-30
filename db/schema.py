@@ -2075,6 +2075,26 @@ TABLES = [
         fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(player_id, season, source)
     )""",
+    # Per-week fantasy points, the week-by-week companion to the season
+    # aggregates above. A row exists only for a week the player actually
+    # recorded a stat line; a bye, an inactive, or an unrostered week is an
+    # ABSENT row, never a stored zero, so "did not play" stays distinguishable
+    # from "played and scored nothing". Readers decide how to render the gap.
+    """CREATE TABLE IF NOT EXISTS ff_player_week_stats (
+        id BIGSERIAL PRIMARY KEY,
+        player_id BIGINT NOT NULL REFERENCES ff_players(id),
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        season_type TEXT NOT NULL DEFAULT 'REG',
+        team TEXT,
+        opponent TEXT,
+        fantasy_points_std DOUBLE PRECISION,
+        fantasy_points_ppr DOUBLE PRECISION,
+        source_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(player_id, season, week, season_type, source)
+    )""",
     """CREATE TABLE IF NOT EXISTS ff_teammate_correlations (
         id BIGSERIAL PRIMARY KEY,
         season INTEGER NOT NULL,
@@ -3322,6 +3342,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_rank_sets_latest ON ff_ranking_sets(season, ranking_type, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_rankings_board ON ff_player_rankings(ranking_set_id, COALESCE(our_rank, overall_rank))",
     "CREATE INDEX IF NOT EXISTS idx_ff_features_player_season ON ff_player_season_features(player_id, season)",
+    "CREATE INDEX IF NOT EXISTS idx_ff_week_stats_season_player ON ff_player_week_stats(season, player_id, week)",
     "CREATE INDEX IF NOT EXISTS idx_ff_indicators_player ON ff_player_indicators(ranking_set_id, player_id)",
     "CREATE INDEX IF NOT EXISTS idx_ff_drafts_recent ON ff_draft_sessions(updated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_events_active ON ff_draft_events(draft_id, overall_pick, created_at)",

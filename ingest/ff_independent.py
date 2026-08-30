@@ -60,6 +60,10 @@ NFLVERSE_STATS_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/stats_player/"
     "stats_player_reg_{season}.csv"
 )
+NFLVERSE_WEEKLY_STATS_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/stats_player/"
+    "stats_player_week_{season}.csv"
+)
 NFLVERSE_SCHEDULE_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
 NFLVERSE_TEAM_STATS_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/stats_team/"
@@ -714,6 +718,73 @@ def save_history(
     return result
 
 
+# Positions stored week by week. DST is excluded: nflverse's player-week feed
+# is per-player, and a team defense has no player row -- weekly DST would need
+# the team feed and its own Yahoo tier derivation, which is a separate job.
+WEEKLY_STAT_POSITIONS = ("QB", "RB", "WR", "TE", "K")
+
+
+def save_weekly_history(
+    db: RefreshDatabase,
+    universe: list[dict[str, Any]],
+    weekly_season: int,
+    frame: pd.DataFrame,
+) -> int:
+    """Persist per-week fantasy points for the most recent completed season.
+
+    Only weeks the player actually recorded a stat line become rows. A bye,
+    an inactive, or a week on another roster is an ABSENT row rather than a
+    stored zero -- see the table comment in db/schema.py.
+
+    Kickers get the same treatment as the season aggregates: nflverse's
+    generic `fantasy_points` is 0 for every kicker (verified: 542 of 543 2025
+    kicker-weeks), so Yahoo's distance-tiered scoring is recomputed here from
+    the per-distance buckets the weekly feed carries, through the same
+    `yahoo_kicker_points` helper the season path uses.
+    """
+    by_gsis = {str(row.get("gsis_id") or "").strip(): row for row in universe if str(row.get("gsis_id") or "").strip()}
+    by_name_position = {(normalize_name(str(row["name"])), row["position"]): row for row in universe}
+    wanted = set(WEEKLY_STAT_POSITIONS)
+    written = 0
+    for _, series in frame.iterrows():
+        if str(series.get("season_type") or "REG") != "REG":
+            continue
+        if str(series.get("position") or "") not in wanted:
+            continue
+        raw = _clean(series.to_dict())
+        gsis = str(raw.get("player_id") or "").strip()
+        player = by_gsis.get(gsis) or by_name_position.get(
+            (normalize_name(str(raw.get("player_display_name") or raw.get("player_name") or "")), raw.get("position"))
+        )
+        if not player:
+            continue
+        week = as_int(raw.get("week"))
+        if week is None:
+            continue
+        std = as_float(raw.get("fantasy_points")) or 0.0
+        ppr = as_float(raw.get("fantasy_points_ppr")) or 0.0
+        if player["position"] == "K":
+            std = ppr = yahoo_kicker_points(raw)
+        db.execute(
+            """INSERT INTO ff_player_week_stats
+               (player_id,season,week,source,season_type,team,opponent,
+                fantasy_points_std,fantasy_points_ppr,source_row,fetched_at)
+               VALUES (%s,%s,%s,'nflverse','REG',%s,%s,%s,%s,%s,NOW())
+               ON CONFLICT(player_id,season,week,season_type,source) DO UPDATE SET
+                team=EXCLUDED.team,opponent=EXCLUDED.opponent,
+                fantasy_points_std=EXCLUDED.fantasy_points_std,
+                fantasy_points_ppr=EXCLUDED.fantasy_points_ppr,
+                source_row=EXCLUDED.source_row,fetched_at=NOW()""",
+            (
+                player["player_id"], weekly_season, week,
+                normalize_team(raw.get("team")), normalize_team(raw.get("opponent_team")),
+                std, ppr, Json(raw),
+            ),
+        )
+        written += 1
+    return written
+
+
 def _points_allowed_fpts(points_allowed: int) -> float:
     """Yahoo's DST points-allowed tier, applied PER GAME (not season total)."""
     for max_points, fpts in YAHOO_DST_POINTS_ALLOWED_TIERS:
@@ -1343,6 +1414,27 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
             digest=digest, row_count=len(frame), params={"url": url, "season_type": "REG"},
         )
     histories = save_history(db, season, universe, history_frames)
+
+    # Week-by-week points for the most recent completed season only. The
+    # season aggregates above cover three years because the projection needs
+    # them; the weekly table exists to SHOW a season, so pulling three ~8.6MB
+    # CSVs on every scheduled refresh would be bandwidth for data nothing
+    # reads. The table is keyed by season, so adding years later is additive.
+    weekly_season = season - 1
+    weekly_url = NFLVERSE_WEEKLY_STATS_URL.format(season=weekly_season)
+    weekly_frame, weekly_digest = _fetch_csv(weekly_url)
+    if len(weekly_frame) < 5000:
+        raise RuntimeError(
+            f"nflverse {weekly_season} weekly stats returned {len(weekly_frame)} rows; expected thousands"
+        )
+    source_digests.append(weekly_digest)
+    _snapshot(
+        db, source="nflverse", dataset="player-week-stats", season=weekly_season,
+        digest=weekly_digest, row_count=len(weekly_frame),
+        params={"url": weekly_url, "season_type": "REG", "positions": list(WEEKLY_STAT_POSITIONS)},
+    )
+    weekly_rows = save_weekly_history(db, universe, weekly_season, weekly_frame)
+    print(f"  weekly stats: {weekly_rows} player-weeks stored for {weekly_season}")
 
     dst_history_frames: dict[int, pd.DataFrame] = {}
     for history_season in range(season - 3, season):

@@ -1,10 +1,17 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { getLatestRankingSet, getProjectionScatter } from "@/db/queries-fantasy-football";
+import {
+  getLatestRankingSet,
+  getProjectionScatter,
+  getWeeklyFantasyPoints,
+} from "@/db/queries-fantasy-football";
 import ProjectionChart from "./projection-chart";
+import WeeklyTable from "./weekly-table";
 
 const SCORING_OPTIONS = ["STD", "HALF", "PPR"];
+/** Weekly actuals come from the most recent completed season. */
+const WEEKLY_SEASON = 2025;
 
 export default async function ProjectionsPage({
   searchParams,
@@ -15,7 +22,12 @@ export default async function ProjectionsPage({
   const requested = String(params.scoring || "PPR").toUpperCase();
   const scoring = SCORING_OPTIONS.includes(requested) ? requested : "PPR";
   const set = await getLatestRankingSet(scoring);
-  const rows = set ? await getProjectionScatter(set.id) : [];
+  const [rows, weekly] = set
+    ? await Promise.all([
+        getProjectionScatter(set.id),
+        getWeeklyFantasyPoints(set.id, WEEKLY_SEASON, "QB"),
+      ])
+    : [[], []];
 
   return (
     <div className="space-y-5">
@@ -58,6 +70,15 @@ export default async function ProjectionsPage({
             {new Date(set.createdAt).toLocaleString()}
           </p>
           <ProjectionChart rows={rows} scoring={scoring} modelVersion={set.modelVersion ?? null} />
+          {weekly.length > 0 ? (
+            <WeeklyTable rows={weekly} season={WEEKLY_SEASON} scoring={scoring} position="QB" />
+          ) : (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm">
+              No {WEEKLY_SEASON} weekly stat lines are stored yet. Run{" "}
+              <code>python -m ingest.ff_backfill_week_stats --season {WEEKLY_SEASON}</code>, or wait
+              for the next scheduled Fantasy Football refresh.
+            </div>
+          )}
         </>
       )}
     </div>
