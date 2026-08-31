@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet } from "@/db/queries-fantasy-football";
+import { buildDraftPool } from "@/lib/fantasy-football/draft-pool";
 import {
   REDRAFT_BENCH_SLOTS,
   REDRAFT_POSITIONS,
@@ -23,9 +24,12 @@ export default async function RedraftPage() {
     set ? getFantasyRankings(set.id) : Promise.resolve([]),
     getFantasyProsSourceHealth(set?.season ?? 2026),
   ]);
-  const rankings = allRankings
-    .filter((player) => (REDRAFT_POSITIONS as readonly string[]).includes(player.position))
-    .slice(0, BOARD_SIZE);
+  const rankings = buildDraftPool(
+    allRankings,
+    REDRAFT_POSITIONS,
+    BOARD_SIZE,
+    REDRAFT_TEAM_COUNT * REDRAFT_ROUNDS,
+  );
   const fantasyProsProjectionDataset = fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "projections");
 
   return <div className="space-y-6">

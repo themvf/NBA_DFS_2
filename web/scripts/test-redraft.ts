@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { buildDraftPool } from "../src/lib/fantasy-football/draft-pool";
 import {
   REDRAFT_BENCH_SLOTS,
   REDRAFT_ROSTER_SIZE,
@@ -73,3 +74,41 @@ assert.deepEqual(parseRedraftState(JSON.stringify({ userSlot: 3, playerIds: [], 
 assert.deepEqual(parseRedraftState(JSON.stringify({ userSlot: 3, playerIds: [], cpuEnabled: "yes" })), { userSlot: 3, playerIds: [], cpuEnabled: false });
 
 console.log("redraft tests passed");
+
+// --- draft pool -------------------------------------------------------------
+// Regression: the rooms used to slice the board by OUR rank alone, which cut
+// players the market drafts early but our model ranks low. Bhayshul Tuten went
+// at ADP 52 -- round 6 of a 10-team draft -- while sitting at our #285, so he
+// could not be picked in a mock of the draft he is certain to be in.
+{
+  const board = Array.from({ length: 300 }, (_, i) => ({
+    playerId: i + 1,
+    position: i % 2 === 0 ? "RB" : "WR",
+    adp: null as number | null,
+  }));
+  // a market darling our board buries, exactly Tuten's shape
+  board[284] = { playerId: 285, position: "RB", adp: 52.4 };
+  // and one the market also ignores, who should stay cut
+  board[290] = { playerId: 291, position: "RB", adp: 400 };
+  const pool = buildDraftPool(board, ["QB", "RB", "WR", "TE"], 260, 150);
+  const ids = new Set(pool.map((p) => p.playerId));
+
+  assert.ok(ids.has(285), "a player drafted inside the format's picks must be reachable");
+  assert.ok(!ids.has(291), "a player nobody drafts stays off the board");
+  assert.equal(pool.length, 261, "exactly one player is added back");
+  assert.ok(
+    pool.findIndex((p) => p.playerId === 285) > 250,
+    "the added player keeps his board position and is not promoted",
+  );
+  // ordering is otherwise untouched
+  assert.deepEqual(pool.slice(0, 5).map((p) => p.playerId), [1, 2, 3, 4, 5]);
+
+  // positions outside the format are excluded regardless of ADP
+  const withK = buildDraftPool(
+    [{ playerId: 999, position: "K", adp: 10 }, ...board],
+    ["QB", "RB", "WR", "TE"], 260, 150,
+  );
+  assert.ok(!withK.some((p) => p.playerId === 999), "position filter still applies");
+}
+
+console.log("draft-pool tests passed");
