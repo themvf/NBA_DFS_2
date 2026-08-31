@@ -6,7 +6,9 @@ name: Tennis Settlement (frequent)
 # results — verified 2026-07-04 (settled 130 of 166 pending bets correctly on
 # first run, after tennis-data.co.uk stalled 6+ days into the tournament and
 # TheSportsDB turned out to have zero Wimbledon events in its feed at all).
-# Runs all three providers every 15 min. Individual sources remain
+# The same poll also runs the quota-aware sportsbook checkpoint guard; it makes
+# a paid request only when an upcoming US Open match is missing open/T-6h/
+# T-90m/T-20m evidence. Runs all three result providers every 15 min. Individual sources remain
 # best-effort, but every observation is immutable and accepted resolutions
 # publish match + moneyline state in one row-locked transaction. The final
 # reconciliation gate exposes all-provider failure, stale results, disputes,
@@ -26,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
       THESPORTSDB_API_KEY: ${{ secrets.THESPORTSDB_API_KEY || '123' }}
 
     steps:
@@ -40,6 +43,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Capture due US Open sportsbook checkpoints
+        run: python -m ingest.tennis_capture_checkpoints
 
       - name: Settle from tennisexplorer.com (same-day results, primary)
         continue-on-error: true

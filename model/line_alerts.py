@@ -54,9 +54,9 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
-from ingest.tennis_result_semantics import void_derivatives
 from model.line_movement import _MATCHUP_TBL, _book_fair_home
 from model.soccer_bet_rating import american_to_decimal
+from model.tennis_book_rules import settle_tennis_selection, tennis_rule_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -432,13 +432,22 @@ def freeze_execution_price(books: dict, *, market: str, side: str) -> dict:
     return out
 
 
+def _freeze_game_price(sport: str, books: dict, *, market: str, side: str) -> dict:
+    """Freeze an executable quote and, for Tennis, its settlement contract."""
+    priced = freeze_execution_price(books, market=market, side=side)
+    if sport == "tennis" and priced.get("exec_book"):
+        priced.update(tennis_rule_snapshot(priced["exec_book"], market))
+    return priced
+
+
 def _tennis_pin_favorite_forward_details(books: dict, side: str,
                                          retail: float, gap_pp: float) -> dict | None:
     """Freeze a candidate for the prospective favorite-only Tennis cohort."""
     _, retail_books = _retail_probabilities(books, side)
     if retail <= 0.5 or len(retail_books) < _TENNIS_PIN_FORWARD_MIN_RETAIL_BOOKS:
         return None
-    priced = freeze_execution_price(books, market="moneyline", side=side)
+    priced = _freeze_game_price(
+        "tennis", books, market="moneyline", side=side)
     if not priced.get("exec_price_available"):
         return None
     return {
@@ -624,8 +633,8 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         details=(forward_details or {
                             "gap_pp": round(gap_pp, 2),
                             "n_books": len(books),
-                            **freeze_execution_price(
-                                books, market="moneyline", side=side),
+                            **_freeze_game_price(
+                                sport, books, market="moneyline", side=side),
                         }),
                     ))
         # ── Pinnacle vs Polymarket disagreement ──
@@ -653,10 +662,19 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         alert_type="dk_value", side=side,
                         alert_prob=_book_price_prob(dk, side),  # DK implied, vig incl.
                         sharp_prob=_book_fair_side(pin, side),
-                        details={"ev_pct": round(ev * 100, 2),
-                                 "dk_odds": dk_odds,
-                                 "dk_decimal": round(american_to_decimal(dk_odds), 4)
-                                 if dk_odds is not None else None},
+                        details={
+                            "ev_pct": round(ev * 100, 2),
+                            "dk_odds": dk_odds,
+                            "dk_decimal": round(american_to_decimal(dk_odds), 4)
+                            if dk_odds is not None else None,
+                            "exec_book": "draftkings",
+                            "exec_odds": dk_odds,
+                            "exec_decimal": round(american_to_decimal(dk_odds), 4)
+                            if dk_odds is not None else None,
+                            "exec_price_available": dk_odds is not None,
+                            **(tennis_rule_snapshot("draftkings", "moneyline")
+                               if sport == "tennis" else {}),
+                        },
                     ))
         # ── Steam (needs the previous capture) ──
         prev = db.execute_one(
@@ -692,8 +710,8 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         details={"books_moved": len(movers),
                                  "avg_move_pp": round(sum(movers) / len(movers), 2),
                                  "market": "moneyline",
-                                 **freeze_execution_price(books, market="moneyline",
-                                                          side=side)},
+                                 **_freeze_game_price(sport, books, market="moneyline",
+                                                      side=side)},
                     ))
         # ── Walking (slow consensus drift >= _WALK_MIN_PP toward a side since
         #    OPEN — the first capture of this fixture, not the previous one). ──
@@ -728,8 +746,8 @@ def scan(db: DatabaseManager, sport: str) -> int:
                                  "drift_pp": round(drift_pp, 2),
                                  "overlap_books": overlap_books,
                                  "market": "moneyline",
-                                 **freeze_execution_price(books, market="moneyline",
-                                                          side=side)},
+                                 **_freeze_game_price(sport, books, market="moneyline",
+                                                      side=side)},
                     ))
         if sport == "nfl":
             previous_books = prev["books"] if prev and prev.get("books") else None
@@ -1141,7 +1159,12 @@ def scan_tennis_totals(db: DatabaseManager) -> int:
                                  "line": dk_line, "player": label,
                                  "dk_odds": int(price),
                                  "dk_decimal": round(dec, 4),
-                                 "ev_pct": round(ev * 100, 2)},
+                                 "exec_book": "draftkings",
+                                 "exec_odds": int(price),
+                                 "exec_decimal": round(dec, 4),
+                                 "exec_price_available": True,
+                                 "ev_pct": round(ev * 100, 2),
+                                 **tennis_rule_snapshot("draftkings", "total")},
                     ))
         elif abs(dk_line - pin_line) >= _TENNIS_TOTALS_LINE_GAP:
             bet = "Over" if dk_line < pin_line else "Under"
@@ -1157,7 +1180,12 @@ def scan_tennis_totals(db: DatabaseManager) -> int:
                          "line": dk_line, "pin_line": pin_line,
                          "gap": round(abs(dk_line - pin_line), 1),
                          "dk_odds": int(price) if price is not None else None,
-                         "dk_decimal": round(dec, 4) if dec else None},
+                         "dk_decimal": round(dec, 4) if dec else None,
+                         "exec_book": "draftkings",
+                         "exec_odds": int(price) if price is not None else None,
+                         "exec_decimal": round(dec, 4) if dec else None,
+                         "exec_price_available": price is not None,
+                         **tennis_rule_snapshot("draftkings", "total")},
             ))
     if new_alerts:
         print(f"Tennis totals alerts: {len(new_alerts)} new — "
@@ -1167,7 +1195,7 @@ def scan_tennis_totals(db: DatabaseManager) -> int:
 
 
 def settle_tennis_totals(db: DatabaseManager) -> int:
-    """Grade tennis totals alerts from final games; retirements void (book rule)."""
+    """Grade Tennis totals under the rule frozen with the execution quote."""
     open_alerts = db.execute(
         """
         SELECT a.*, m.home_games, m.away_games, m.winner, m.completion_status
@@ -1179,20 +1207,23 @@ def settle_tennis_totals(db: DatabaseManager) -> int:
     graded = 0
     for a in open_alerts:
         d = a["details_json"] or {}
-        if void_derivatives(a["completion_status"]):
-            outcome = "void"
-        elif a["home_games"] is None or a["away_games"] is None:
-            continue  # winner known but games not filled yet — next pass
-        else:
-            total = int(a["home_games"]) + int(a["away_games"])
-            line, bet = float(d["line"]), d["bet"]
-            if total == line:
-                outcome = "void"
-            elif (total > line) == (bet == "Over"):
-                outcome = "won"
-            else:
-                outcome = "lost"
+        book = d.get("exec_book") or d.get("clv_book")
+        if book is None and d.get("dk_odds") is not None:
+            book = "draftkings"
+        outcome = settle_tennis_selection(
+            book=book, market="total", selection_side=a["side"],
+            winner_side=a["winner"], completion_status=a["completion_status"],
+            home_games=a["home_games"], away_games=a["away_games"],
+            line=float(d["line"]), total_bet=d["bet"],
+        )
+        if outcome is None:
+            continue
         g = _grade_alert_prices(db, a)
+        g["grading_json"] = {
+            **(g["grading_json"] or {}),
+            **tennis_rule_snapshot(book, "total"),
+            "completion_status": a["completion_status"],
+        }
         with db.connect() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -1839,12 +1870,16 @@ def settle(db: DatabaseManager, sport: str) -> int:
                 f"SELECT winner, completion_status FROM {matchup_tbl} WHERE id = %s",
                 (a["matchup_id"],),
             )
-            # Tennis moneyline alerts follow the advancing-player result. A
-            # verified pre-match walkover has no advancing player and voids.
-            if m and m["winner"] in ("home", "away"):
-                outcome = "won" if m["winner"] == a["side"] else "lost"
-            elif m and void_derivatives(m["completion_status"]):
-                outcome = "void"
+            if m:
+                details = a["details_json"] or {}
+                book = details.get("exec_book") or details.get("clv_book")
+                if book is None and details.get("dk_odds") is not None:
+                    book = "draftkings"
+                outcome = settle_tennis_selection(
+                    book=book, market="moneyline", selection_side=a["side"],
+                    winner_side=m["winner"],
+                    completion_status=m["completion_status"],
+                )
         else:
             hs_col, as_col = _SCORE_COLS[sport]
             m = db.execute_one(
@@ -1860,6 +1895,12 @@ def settle(db: DatabaseManager, sport: str) -> int:
         if clv_pp is None and outcome is None:
             continue
         g = _grade_alert_prices(db, a)
+        if sport == "tennis" and m:
+            g["grading_json"] = {
+                **(g["grading_json"] or {}),
+                **tennis_rule_snapshot(book, "moneyline"),
+                "completion_status": m["completion_status"],
+            }
         with db.connect() as conn:
             cur = conn.cursor()
             cur.execute(

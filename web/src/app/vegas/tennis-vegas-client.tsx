@@ -11,6 +11,25 @@ import TennisSurfaceEvidence from "./tennis-surface-evidence";
 const fmtMl = (ml: number | null) => (ml == null ? "—" : ml > 0 ? `+${ml}` : String(ml));
 const fmtPct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
 const fmtSignedPp = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(0)}%`);
+const americanToDecimal = (ml: number | null) => ml == null ? null : 1 + (ml > 0 ? ml / 100 : 100 / Math.abs(ml));
+const bookLabel = (key: string | null) => ({
+  draftkings: "DK", betmgm: "BetMGM", fanatics: "Fanatics",
+  williamhill_us: "Caesars", fanduel: "FanDuel", betrivers: "BetRivers",
+}[key ?? ""] ?? key ?? "—");
+
+function BestPrice({ book, odds, decimal, dkOdds }: {
+  book: string | null; odds: number | null; decimal: number | null; dkOdds: number | null;
+}) {
+  if (book == null || odds == null) return <span className="text-muted-foreground">No executable quote</span>;
+  const dkDecimal = americanToDecimal(dkOdds);
+  const lift = decimal != null && dkDecimal != null ? (decimal / dkDecimal - 1) * 100 : null;
+  return (
+    <span className="inline-flex flex-wrap items-center justify-end gap-1 tabular-nums" title="Best latest pre-match moneyline among the approved executable sportsbooks">
+      <span className="rounded bg-[#c7ff3d]/25 px-1.5 py-0.5 font-semibold text-foreground">{bookLabel(book)} {fmtMl(odds)}</span>
+      {lift != null && lift > 0.05 && <span className="text-[9px] font-semibold text-emerald-600">+{lift.toFixed(1)}% payout vs DK</span>}
+    </span>
+  );
+}
 
 function Stars({ n }: { n: number }) {
   return (
@@ -177,13 +196,13 @@ function FeaturedMatch({ m }: { m: TennisMatchRow }) {
           <div className="mt-5 border-b pb-5">
             <div className="font-serif text-3xl tracking-[-0.04em]">{m.homePlayer}</div>
             <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Elo {homeEloVal ?? "—"}</span><strong className="text-sm text-foreground">{fmtMl(m.homeMl)}</strong>
+              <span>Elo {homeEloVal ?? "—"}</span><BestPrice book={m.bestHomeBook} odds={m.bestHomeMl} decimal={m.bestHomeDecimal} dkOdds={m.dkHomeMl} />
             </div>
           </div>
           <div className="py-5">
             <div className="font-serif text-3xl tracking-[-0.04em]">{m.awayPlayer}</div>
             <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Elo {awayEloVal ?? "—"}</span><strong className="text-sm text-foreground">{fmtMl(m.awayMl)}</strong>
+              <span>Elo {awayEloVal ?? "—"}</span><BestPrice book={m.bestAwayBook} odds={m.bestAwayMl} decimal={m.bestAwayDecimal} dkOdds={m.dkAwayMl} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 border-t pt-4 text-xs">
@@ -239,14 +258,14 @@ function MatchCard({ m }: { m: TennisMatchRow }) {
             {m.homePlayer}
             {homeEloVal != null && <span className="ml-2 font-sans text-[9px] tracking-normal text-muted-foreground tabular-nums">{homeEloVal}</span>}
           </span>
-          <span className="text-xs font-semibold tabular-nums">{fmtMl(m.homeMl)}</span>
+          <span className="text-xs"><BestPrice book={m.bestHomeBook} odds={m.bestHomeMl} decimal={m.bestHomeDecimal} dkOdds={m.dkHomeMl} /></span>
         </div>
         <div className={`flex items-end justify-between gap-3 ${!homeFav ? "text-foreground" : "text-muted-foreground"}`}>
           <span className="min-w-0 truncate font-serif text-xl tracking-[-0.035em]">
             {m.awayPlayer}
             {awayEloVal != null && <span className="ml-2 font-sans text-[9px] tracking-normal text-muted-foreground tabular-nums">{awayEloVal}</span>}
           </span>
-          <span className="text-xs font-semibold tabular-nums">{fmtMl(m.awayMl)}</span>
+          <span className="text-xs"><BestPrice book={m.bestAwayBook} odds={m.bestAwayMl} decimal={m.bestAwayDecimal} dkOdds={m.dkAwayMl} /></span>
         </div>
       </div>
 

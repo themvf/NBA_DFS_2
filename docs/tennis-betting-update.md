@@ -79,6 +79,17 @@ The Tennis research desk shows two explicit panels:
 
 Empty sportsbook state explains that two comparable captures with an overlapping book are required. The alert feed labels the new cohort as a forward test and shows its frozen execution book and price.
 
+## US Open operating layer
+
+Implemented on 2026-08-30/31:
+
+1. **Best-price shopping:** every Tennis match card resolves the latest valid pre-start moneyline independently for each player across DraftKings, BetMGM, Fanatics, Caesars, FanDuel, and BetRivers. The card shows the selected book and price plus payout lift versus DraftKings when both quotes exist.
+2. **Draw and metadata readiness:** `ingest.tennis_us_open_preflight` reconciles 64 ATP and 64 WTA first-round fixtures, verifies pricing and canonical identity coverage, and enriches deterministic US Open metadata (`hard`, outdoor, ATP best-of-five, WTA best-of-three, first round `R128`). The scheduled refresh fails when this gate is not ready.
+3. **Quota-aware capture checkpoints:** the 15-minute settlement workflow polls for missing sportsbook evidence and buys an Odds API refresh only when a tour has a match due in the open, T-6h, T-90m, or T-20m window. One tournament request covers every due match in that tour; no due checkpoint means no paid discovery or odds request.
+4. **Book-specific retirement grading:** the execution book and a versioned settlement-rule snapshot are frozen with each Tennis alert. DraftKings rules are automated from its official Tennis rules; incomplete matches at books without a verified rule remain `manual_review` and are excluded from won/lost ROI rather than graded through an invented generic rule.
+
+The live readiness check on 2026-08-31 passed with 128/128 canonical and priced first-round matches, complete surface/format metadata, and 128/128 matches carrying at least two sportsbook captures (7.41 average captures).
+
 ## Acceptance criteria
 
 - A Polymarket-only latest capture cannot change sportsbook open, close, jump, or walking values.
@@ -87,4 +98,7 @@ Empty sportsbook state explains that two comparable captures with an overlapping
 - Every `pinnacle_favorite_forward` row has `program_version`, `forward_test_target`, `retail_books`, `exec_book`, `exec_odds`, and `exec_decimal`.
 - No underdog can enter `pinnacle_favorite_forward`.
 - The prospective alert type is included in health monitoring, settlement, CLV grading, ROI reporting, and the Tennis UI.
+- Match cards show the best recorded valid quote from an approved executable book for each side without changing the model probability.
+- No paid checkpoint refresh runs when no match is due, and at most one tournament refresh is made per due tour.
+- Retirement grading uses the frozen execution-book rule; unverified incomplete-match rules cannot enter automated ROI.
 - Automated tests cover source separation, comparable-book walking, favorite eligibility, execution-price freezing, and the 100-alert disclosure gate.

@@ -135,3 +135,7 @@ jobs:
           else
             python -m model.tennis_bets
           fi
+
+      - name: US Open draw and metadata readiness gate
+        if: inputs.debug_discovery != true
+        run: python -m ingest.tennis_us_open_preflight --enrich --fail-on-unready

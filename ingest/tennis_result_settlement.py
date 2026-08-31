@@ -15,12 +15,13 @@ from typing import Any
 from psycopg2.extras import Json
 
 from db.database import DatabaseManager
-from ingest.tennis_result_semantics import void_derivatives
+from model.tennis_book_rules import settle_tennis_selection
 
 POLICY_VERSION = "tennis-settlement-v1"
 _KNOWN_STATUSES = {"completed", "retired", "walkover", "awarded", "cancelled"}
 _GAME_SIDE_ALERT_TYPES = {
-    "pinnacle_divergence", "pinnacle_polymarket_delta", "steam", "dk_value", "walking",
+    "pinnacle_divergence", "pinnacle_favorite_forward", "pinnacle_polymarket_delta",
+    "steam", "dk_value", "walking",
 }
 _TENNIS_TOTAL_ALERT_TYPES = {"dk_prop_value", "prop_line_gap"}
 
@@ -150,29 +151,31 @@ def _append_alert_grade_cur(
 
 
 def _expected_alert_outcome(alert: dict) -> str | None:
+    details = alert.get("details_json") or {}
+    book = details.get("exec_book") or details.get("clv_book")
+    if book is None and details.get("dk_odds") is not None:
+        book = "draftkings"
+    if alert.get("resolution_state") == "void":
+        return "void"
     if alert["alert_type"] in _GAME_SIDE_ALERT_TYPES:
-        if alert.get("winner") in ("home", "away"):
-            return "won" if alert["side"] == alert["winner"] else "lost"
-        if alert.get("resolution_state") == "void":
-            return "void"
-        return None
+        return settle_tennis_selection(
+            book=book, market="moneyline", selection_side=alert["side"],
+            winner_side=alert.get("winner"),
+            completion_status=alert.get("completion_status"),
+        )
     if alert["alert_type"] in _TENNIS_TOTAL_ALERT_TYPES:
-        if alert.get("resolution_state") == "void" or void_derivatives(
-            alert.get("completion_status")
-        ):
-            return "void"
-        if alert.get("home_games") is None or alert.get("away_games") is None:
-            return None
-        details = alert.get("details_json") or {}
         try:
-            total = int(alert["home_games"]) + int(alert["away_games"])
             line = float(details["line"])
             bet = details["bet"]
         except (KeyError, TypeError, ValueError):
             return None
-        if total == line:
-            return "void"
-        return "won" if (total > line) == (bet == "Over") else "lost"
+        return settle_tennis_selection(
+            book=book, market="total", selection_side=alert["side"],
+            winner_side=alert.get("winner"),
+            completion_status=alert.get("completion_status"),
+            home_games=alert.get("home_games"), away_games=alert.get("away_games"),
+            line=line, total_bet=bet,
+        )
     return None
 
 

@@ -118,6 +118,8 @@ def test_tennis_forward_cohort_is_favorite_only_and_freezes_price() -> None:
     assert home["exec_price_available"] is True
     assert home["exec_odds"] == -145
     assert home["exec_book"] == "betmgm"
+    assert home["tennis_rule_book"] == "betmgm"
+    assert home["tennis_rule_verified"] is False
 
     assert _tennis_pin_favorite_forward_details(books, "away", 0.40, 2.4) is None
 

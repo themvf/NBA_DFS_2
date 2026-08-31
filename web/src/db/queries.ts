@@ -6322,6 +6322,14 @@ export type TennisMatchRow = {
   awayPlayer: string;
   homeMl: number | null;
   awayMl: number | null;
+  bestHomeBook: string | null;
+  bestHomeMl: number | null;
+  bestHomeDecimal: number | null;
+  dkHomeMl: number | null;
+  bestAwayBook: string | null;
+  bestAwayMl: number | null;
+  bestAwayDecimal: number | null;
+  dkAwayMl: number | null;
   homeWinProb: number | null;
   awayWinProb: number | null;
   totalGamesLine: number | null;
@@ -6359,6 +6367,14 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
       tm.away_player        AS "awayPlayer",
       tm.home_ml            AS "homeMl",
       tm.away_ml            AS "awayMl",
+      best_home.bookmaker_key AS "bestHomeBook",
+      best_home.price_american AS "bestHomeMl",
+      best_home.price_decimal AS "bestHomeDecimal",
+      dk_home.price_american AS "dkHomeMl",
+      best_away.bookmaker_key AS "bestAwayBook",
+      best_away.price_american AS "bestAwayMl",
+      best_away.price_decimal AS "bestAwayDecimal",
+      dk_away.price_american AS "dkAwayMl",
       tm.home_win_prob      AS "homeWinProb",
       tm.away_win_prob      AS "awayWinProb",
       tm.total_games_line   AS "totalGamesLine",
@@ -6385,6 +6401,58 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
     LEFT JOIN tennis_player_ratings ra
       ON ra.norm_name = regexp_replace(lower(tm.away_player), '[^a-z0-9]', '', 'g')
       AND ra.tour = tm.tour
+    LEFT JOIN LATERAL (
+      SELECT quote.bookmaker_key, quote.price_american, quote.price_decimal
+      FROM (
+        SELECT DISTINCT ON (q.bookmaker_key)
+          q.bookmaker_key, q.price_american, q.price_decimal
+        FROM tennis_exact_quotes q
+        WHERE q.event_id = tm.canonical_event_id
+          AND q.selection_player_id = tm.home_player_id
+          AND q.market = 'moneyline' AND q.is_prestart
+          AND q.validation_status = 'valid'
+          AND q.bookmaker_key IN ('draftkings','betmgm','fanatics','williamhill_us','fanduel','betrivers')
+        ORDER BY q.bookmaker_key, q.captured_at DESC
+      ) quote
+      ORDER BY quote.price_decimal DESC
+      LIMIT 1
+    ) best_home ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT q.price_american
+      FROM tennis_exact_quotes q
+      WHERE q.event_id = tm.canonical_event_id
+        AND q.selection_player_id = tm.home_player_id
+        AND q.bookmaker_key = 'draftkings'
+        AND q.market = 'moneyline' AND q.is_prestart
+        AND q.validation_status = 'valid'
+      ORDER BY q.captured_at DESC LIMIT 1
+    ) dk_home ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT quote.bookmaker_key, quote.price_american, quote.price_decimal
+      FROM (
+        SELECT DISTINCT ON (q.bookmaker_key)
+          q.bookmaker_key, q.price_american, q.price_decimal
+        FROM tennis_exact_quotes q
+        WHERE q.event_id = tm.canonical_event_id
+          AND q.selection_player_id = tm.away_player_id
+          AND q.market = 'moneyline' AND q.is_prestart
+          AND q.validation_status = 'valid'
+          AND q.bookmaker_key IN ('draftkings','betmgm','fanatics','williamhill_us','fanduel','betrivers')
+        ORDER BY q.bookmaker_key, q.captured_at DESC
+      ) quote
+      ORDER BY quote.price_decimal DESC
+      LIMIT 1
+    ) best_away ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT q.price_american
+      FROM tennis_exact_quotes q
+      WHERE q.event_id = tm.canonical_event_id
+        AND q.selection_player_id = tm.away_player_id
+        AND q.bookmaker_key = 'draftkings'
+        AND q.market = 'moneyline' AND q.is_prestart
+        AND q.validation_status = 'valid'
+      ORDER BY q.captured_at DESC LIMIT 1
+    ) dk_away ON TRUE
     ${whereClause}
     ORDER BY tm.commence_time ASC NULLS LAST
   `);
@@ -6398,6 +6466,14 @@ export async function getTennisVegasMatchups(matchDate?: string): Promise<Tennis
     awayPlayer: String(r.awayPlayer ?? ""),
     homeMl: r.homeMl != null ? Number(r.homeMl) : null,
     awayMl: r.awayMl != null ? Number(r.awayMl) : null,
+    bestHomeBook: r.bestHomeBook != null ? String(r.bestHomeBook) : null,
+    bestHomeMl: r.bestHomeMl != null ? Number(r.bestHomeMl) : null,
+    bestHomeDecimal: r.bestHomeDecimal != null ? Number(r.bestHomeDecimal) : null,
+    dkHomeMl: r.dkHomeMl != null ? Number(r.dkHomeMl) : null,
+    bestAwayBook: r.bestAwayBook != null ? String(r.bestAwayBook) : null,
+    bestAwayMl: r.bestAwayMl != null ? Number(r.bestAwayMl) : null,
+    bestAwayDecimal: r.bestAwayDecimal != null ? Number(r.bestAwayDecimal) : null,
+    dkAwayMl: r.dkAwayMl != null ? Number(r.dkAwayMl) : null,
     homeWinProb: r.homeWinProb != null ? Number(r.homeWinProb) : null,
     awayWinProb: r.awayWinProb != null ? Number(r.awayWinProb) : null,
     totalGamesLine: r.totalGamesLine != null ? Number(r.totalGamesLine) : null,
