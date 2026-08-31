@@ -2,6 +2,8 @@ import pandas as pd
 
 from ingest.ff_independent import (
     yahoo_kicker_points,
+    MARKET_GUARANTEE_PICKS,
+    _must_include_ids,
     DST_CARRY_FORWARD_WEIGHT,
     K_CARRY_FORWARD_WEIGHT,
     MODEL_VERSION,
@@ -312,3 +314,37 @@ def test_rank_rows_uses_value_over_replacement() -> None:
     ranked = rank_rows(rows)
     assert sorted(row["our_rank"] for row in ranked) == list(range(1, len(rows) + 1))
     assert all(row["position_rank"] >= 1 for row in ranked)
+
+
+def _board_row(player_id: int, name: str, position: str, team: str, points: float) -> dict:
+    return {
+        "player_id": player_id, "name": name, "position": position,
+        "team_abbrev": team, "our_projected_points": points,
+    }
+
+
+def test_market_priced_player_is_guaranteed_a_board_row() -> None:
+    """A player the market drafts early must reach the board even when our own
+    model buries him. Jordyn Tyson was our #738 against a Yahoo ADP of 95, so
+    no per-team starter guarantee reached him and the draft rooms -- which
+    build their pool FROM the board -- could not offer a player certain to be
+    taken in the first ten rounds."""
+    rows = [_board_row(i, f"Starter {i}", "WR", "T1", 200 - i) for i in range(1, 6)]
+    rows.append(_board_row(99, "Market Darling", "WR", "T1", 1.0))
+    assert 99 not in _must_include_ids(rows)
+    assert 99 in _must_include_ids(rows, {99: MARKET_GUARANTEE_PICKS - 1})
+
+
+def test_market_guarantee_stops_at_the_threshold() -> None:
+    """The guarantee is bounded: a player nobody drafts in the deepest format
+    we simulate does not earn a row just for carrying a price."""
+    rows = [_board_row(1, "Team WR1", "WR", "T1", 200.0),
+            _board_row(99, "Undrafted", "WR", "T1", 1.0)]
+    assert 99 in _must_include_ids(rows, {99: MARKET_GUARANTEE_PICKS})
+    assert 99 not in _must_include_ids(rows, {99: MARKET_GUARANTEE_PICKS + 0.1})
+
+
+def test_market_guarantee_covers_the_deepest_simulated_format() -> None:
+    """Must stay >= Best Ball's 240 picks times draft-pool.ts's 1.25 headroom,
+    or the board can omit a player the pool gate would happily include."""
+    assert MARKET_GUARANTEE_PICKS >= 240 * 1.25
