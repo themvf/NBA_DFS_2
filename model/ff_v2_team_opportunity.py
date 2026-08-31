@@ -34,6 +34,7 @@ DEFAULT_DRAWS = 4000
 FALLBACK_UNCERTAINTY = {"A": 1.0, "B": 1.25, "C": 1.7}
 FALLBACK_CONFIDENCE = {"A": 1.0, "B": 0.8, "C": 0.6}
 SCENARIO_PROBABILITIES = {"leading": 0.25, "neutral": 0.5, "trailing": 0.25}
+FALLBACK_ORDER = {"A": 0, "B": 1, "C": 2}
 
 
 @dataclass(frozen=True)
@@ -365,6 +366,8 @@ def forecast_team_week(
     source_snapshot_ids: Sequence[int],
     game_latents: Mapping[str, np.ndarray] | None = None,
     complement_scenario: bool = False,
+    minimum_fallback_tier: str | None = None,
+    declared_missing_sources: Sequence[str] = (),
 ) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
     evaluation_season = int(evaluation_identity["season"])
     eligible_training = [
@@ -378,7 +381,7 @@ def forecast_team_week(
     play_caller_id = _eligible_context(play_caller, cutoff, "play_caller")
     team = str(evaluation_identity["team"])
     opponent = str(evaluation_identity["opponent"])
-    parameters, evidence, tier = estimate_parameters(
+    parameters, evidence, estimated_tier = estimate_parameters(
         eligible_training,
         evaluation_season=evaluation_season,
         team=team,
@@ -386,6 +389,14 @@ def forecast_team_week(
         quarterback_id=quarterback_id,
         play_caller_id=play_caller_id,
     )
+    if minimum_fallback_tier not in {None, "A", "B", "C"}:
+        raise ValueError(f"Unknown minimum fallback tier: {minimum_fallback_tier}")
+    tier = estimated_tier
+    if minimum_fallback_tier and FALLBACK_ORDER[minimum_fallback_tier] > FALLBACK_ORDER[tier]:
+        tier = minimum_fallback_tier
+    evidence["estimated_fallback_tier"] = estimated_tier
+    evidence["enforced_minimum_fallback_tier"] = minimum_fallback_tier
+    evidence["declared_missing_sources"] = sorted(set(str(value) for value in declared_missing_sources))
     identity_seed = _identity_seed(root_seed, str(evaluation_identity["game_id"]), team)
     simulations = simulate_game_scripts(
         parameters,
@@ -418,6 +429,14 @@ def forecast_team_week(
             "cutoff": cutoff.isoformat(),
             "evaluation_identity_fields": ["season", "week", "game_id", "game_date", "team", "opponent"],
             "held_out_outcomes_used_as_features": False,
+            "fallback_tier_basis": {
+                "estimated": estimated_tier,
+                "enforced_minimum": minimum_fallback_tier,
+                "effective": tier,
+                "declared_missing_sources": sorted(
+                    set(str(value) for value in declared_missing_sources)
+                ),
+            },
             "training_seasons": sorted({int(row["season"]) for row in eligible_training}),
             "training_digest": canonical_digest([
                 {"id": row["id"], "fact_digest": row["fact_digest"]}
@@ -535,10 +554,15 @@ def build_historical_artifact(
     evaluation_season: int,
     cutoff: datetime,
     source_snapshots: Sequence[Mapping[str, Any]],
+    training_facts: Sequence[Mapping[str, Any]] | None = None,
+    training_context_run_id: str | None = None,
+    minimum_fallback_tier: str | None = None,
+    declared_missing_sources: Sequence[str] = (),
     seed: int = DEFAULT_SEED,
     draws: int = DEFAULT_DRAWS,
 ) -> dict[str, Any]:
-    training = [dict(row) for row in facts if int(row["season"]) < evaluation_season]
+    training_source = facts if training_facts is None else training_facts
+    training = [dict(row) for row in training_source if int(row["season"]) < evaluation_season]
     evaluation = [dict(row) for row in facts if int(row["season"]) == evaluation_season]
     if not training or not evaluation:
         raise ValueError("Historical artifact requires prior training and held-out evaluation rows")
@@ -570,6 +594,8 @@ def build_historical_artifact(
                 source_snapshot_ids=snapshots,
                 game_latents=game_latents,
                 complement_scenario=side_index == 1,
+                minimum_fallback_tier=minimum_fallback_tier,
+                declared_missing_sources=declared_missing_sources,
             )
             forecasts.append(forecast)
     return prepare_forecast_artifact(
@@ -585,6 +611,10 @@ def build_historical_artifact(
             "draws": draws,
             "evaluation_season": evaluation_season,
             "training_seasons": sorted({int(row["season"]) for row in eligible_training}),
+            "training_context_run_id": training_context_run_id or context_run_id,
+            "training_source_mode": "separate_archived_context" if training_facts is not None else "evaluation_context_prior_seasons",
+            "minimum_fallback_tier": minimum_fallback_tier,
+            "declared_missing_sources": sorted(set(str(value) for value in declared_missing_sources)),
             "rolling_origin": True,
             "retrospective_reconstruction": True,
             "outcome_features": False,
@@ -633,15 +663,31 @@ def _cutoff_from_backtest(path: Path, evaluation_season: int) -> datetime:
     return _as_datetime(fold["preseasonCutoff"])
 
 
+def _archived_training_bundle(path: Path, evaluation_season: int) -> dict[str, Any]:
+    artifact = json.loads(path.read_text(encoding="utf-8"))
+    bundle_key = "2021-cutoff" if evaluation_season == 2021 else "2022-cutoff"
+    bundle = next(
+        (item for item in artifact["bundles"] if item["bundleKey"] == bundle_key),
+        None,
+    )
+    if bundle is None:
+        raise ValueError(f"Archived context artifact has no {bundle_key} bundle")
+    return bundle
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     config = AppConfig.from_env()
     if not config.database_url:
         raise RuntimeError("DATABASE_URL is required")
     database = DatabaseManager(config.database_url)
     cutoff = _cutoff_from_backtest(Path(args.backtest_artifact), args.evaluation_season)
+    training_bundle = _archived_training_bundle(
+        Path(args.archived_context_artifact), args.evaluation_season
+    )
+    training_context_run_id = str(training_bundle["runId"])
     with database.connect() as conn:
         facts = load_model_facts(conn, args.context_run_id)
-        training_rows = [row for row in facts if int(row["season"]) < args.evaluation_season]
+        training_rows = load_model_facts(conn, training_context_run_id)
         source_snapshots = load_source_snapshots(conn, _snapshot_ids(training_rows))
     artifact = build_historical_artifact(
         facts,
@@ -649,6 +695,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         evaluation_season=args.evaluation_season,
         cutoff=cutoff,
         source_snapshots=source_snapshots,
+        training_facts=training_rows,
+        training_context_run_id=training_context_run_id,
+        minimum_fallback_tier=str(training_bundle["coverage"]["fallback_tier"]),
+        declared_missing_sources=training_bundle["coverage"]["declared_missing_sources"],
         seed=args.seed,
         draws=args.draws,
     )
@@ -687,6 +737,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--context-run-id", default="9077ad91-e258-5e47-beb8-f41b68c6651b")
     parser.add_argument("--evaluation-season", type=int, default=2025)
     parser.add_argument("--backtest-artifact", default="artifacts/ff_v2_backtest_harness_2020_2025.json")
+    parser.add_argument(
+        "--archived-context-artifact",
+        default="artifacts/ff_v2_archived_team_context.json",
+    )
     parser.add_argument("--artifact", default="artifacts/ff_v2_team_opportunity_2025.json")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--draws", type=int, default=DEFAULT_DRAWS)
