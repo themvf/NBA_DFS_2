@@ -2467,6 +2467,109 @@ TABLES = [
         exclusion_reason TEXT,
         UNIQUE(run_id, evaluation_season)
     )""",
+
+    # ---------------------------------------------------------------
+    # NFL survivor pool
+    # ---------------------------------------------------------------
+    # The full-season schedule grid. nfl_matchups is the Odds API / live-odds
+    # layer and only ever holds what the provider currently lists; this table
+    # is the canonical 272-game season from nflverse, which a survivor grid
+    # needs in full from week 1. matchup_id is a LINK to the odds row, not a
+    # second identity for the same game.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_season_games (
+        id SERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        game_type TEXT NOT NULL,
+        nflverse_game_id TEXT NOT NULL UNIQUE,
+        matchup_id INTEGER REFERENCES nfl_matchups(id),
+        gameday DATE,
+        kickoff TIMESTAMPTZ,
+        home_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        away_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        div_game BOOLEAN,
+        roof TEXT,
+        surface TEXT,
+        home_rest INTEGER,
+        away_rest INTEGER,
+        quoted_spread_line DOUBLE PRECISION,
+        quoted_total_line DOUBLE PRECISION,
+        quoted_home_ml INTEGER,
+        quoted_away_ml INTEGER,
+        quote_source TEXT,
+        home_score INTEGER,
+        away_score INTEGER,
+        completed BOOLEAN NOT NULL DEFAULT FALSE,
+        source_captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season, week, home_team_id, away_team_id),
+        CHECK (home_team_id <> away_team_id)
+    )
+    """,
+
+    # Market-implied power ratings, append-only and as-of. These are a
+    # compression of the spreads the market has already posted, propagated to
+    # games it has not priced yet -- never an independent opinion.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_team_ratings (
+        id SERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        as_of_week INTEGER NOT NULL,
+        as_of_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        rating DOUBLE PRECISION NOT NULL,
+        hfa DOUBLE PRECISION NOT NULL,
+        n_games_fit INTEGER NOT NULL,
+        ridge_lambda DOUBLE PRECISION NOT NULL,
+        fit_rmse DOUBLE PRECISION,
+        model_version TEXT NOT NULL,
+        UNIQUE(season, as_of_week, team_id, model_version)
+    )
+    """,
+
+    # Measured forecast error of the rating model by horizon, regenerated on
+    # every fit rather than frozen as a constant. This is the sigma that
+    # widens a modeled probability, and the evidence for the UI's claim that
+    # far columns are a plan and not a forecast.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_spread_horizon_calibration (
+        id SERIAL PRIMARY KEY,
+        fit_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        season_range TEXT NOT NULL,
+        horizon INTEGER NOT NULL,
+        n INTEGER NOT NULL,
+        rmse DOUBLE PRECISION NOT NULL,
+        top_pick_exact_rate DOUBLE PRECISION,
+        top_pick_top5_rate DOUBLE PRECISION,
+        model_version TEXT NOT NULL,
+        UNIQUE(season_range, horizon, model_version)
+    )
+    """,
+
+    # One row per team per game: the probability that team advances, with the
+    # provenance that produced it. provenance is the whole point -- a modeled
+    # cell and a quoted cell must never be indistinguishable downstream.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_game_win_probs (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER NOT NULL REFERENCES nfl_season_games(id) ON DELETE CASCADE,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        opponent_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        is_home BOOLEAN NOT NULL,
+        p_win DOUBLE PRECISION,
+        p_tie DOUBLE PRECISION,
+        provenance TEXT NOT NULL,
+        spread_used DOUBLE PRECISION,
+        spread_source TEXT,
+        horizon_weeks INTEGER,
+        sigma_h DOUBLE PRECISION,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        model_version TEXT NOT NULL,
+        UNIQUE(game_id, team_id, model_version)
+    )
+    """,
 ]
 
 MIGRATIONS = [
@@ -3405,6 +3508,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_matchups_date ON nfl_matchups(game_date, commence_time)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_matchups_upcoming ON nfl_matchups(commence_time) WHERE completed = FALSE",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_season_games_season ON nfl_season_games(season, week)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_season_games_teams ON nfl_season_games(season, home_team_id, away_team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_team_ratings_asof ON nfl_team_ratings(season, as_of_week DESC, model_version)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_win_probs_season ON nfl_game_win_probs(season, week, team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_win_probs_game ON nfl_game_win_probs(game_id)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",

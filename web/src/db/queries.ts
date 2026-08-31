@@ -8524,6 +8524,188 @@ export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoard
   });
 }
 
+// ---------------------------------------------------------------------------
+// NFL Survivor Pool
+// ---------------------------------------------------------------------------
+
+export type SurvivorCell = {
+  week: number;
+  gameId: number;
+  opponent: string;
+  isHome: boolean;
+  pWin: number | null;
+  pTie: number | null;
+  provenance: "market_ml_novig" | "market_spread" | "model_spread" | "blocked";
+  spread: number | null;
+  spreadSource: string | null;
+  horizonWeeks: number | null;
+  sigmaH: number | null;
+  kickoff: string | null;
+  completed: boolean;
+  won: boolean | null;
+};
+
+export type SurvivorTeamRow = {
+  teamId: number;
+  abbrev: string;
+  name: string;
+  conference: string | null;
+  division: string | null;
+  byeWeek: number | null;
+  cells: Record<number, SurvivorCell>;
+};
+
+export type SurvivorGrid = {
+  season: number;
+  weeks: number[];
+  teams: SurvivorTeamRow[];
+  /** Last week whose lines are essentially fully posted; horizon runs from here. */
+  anchorWeek: number | null;
+  modelVersion: string | null;
+  computedAt: string | null;
+  provenanceCounts: Record<string, number>;
+  /**
+   * Measured error and ranking stability of the lookahead model by horizon.
+   * The page is required to show this: it is the evidence for the claim that
+   * far-out columns are a plan rather than a forecast.
+   */
+  calibration: Array<{
+    horizon: number;
+    n: number;
+    rmse: number;
+    topPickExactRate: number | null;
+    topPickTop5Rate: number | null;
+  }>;
+};
+
+/**
+ * The full season grid: one row per team, one cell per week.
+ *
+ * Reads the probabilities the Python model wrote. It deliberately does not
+ * recompute anything -- provenance and horizon widening are decided once, at
+ * ingest, so the page cannot quietly disagree with the stored record.
+ */
+export async function getNflSurvivorGrid(season = 2026): Promise<SurvivorGrid> {
+  const rows = await db.execute(sql`
+    SELECT
+      w.week, w.game_id AS "gameId", w.team_id AS "teamId", w.is_home AS "isHome",
+      w.p_win AS "pWin", w.p_tie AS "pTie", w.provenance,
+      w.spread_used AS "spread", w.spread_source AS "spreadSource",
+      w.horizon_weeks AS "horizonWeeks", w.sigma_h AS "sigmaH",
+      w.model_version AS "modelVersion", w.computed_at::text AS "computedAt",
+      t.abbreviation AS "abbrev", t.name, t.conference, t.division,
+      o.abbreviation AS "opponent",
+      g.kickoff::text AS kickoff, g.completed,
+      g.home_score AS "homeScore", g.away_score AS "awayScore"
+    FROM nfl_game_win_probs w
+    JOIN nfl_teams t ON t.team_id = w.team_id
+    JOIN nfl_teams o ON o.team_id = w.opponent_team_id
+    JOIN nfl_season_games g ON g.id = w.game_id
+    WHERE w.season = ${season}
+    ORDER BY t.abbreviation, w.week
+  `);
+
+  const calibrationRows = await db.execute(sql`
+    SELECT horizon, n, rmse,
+           top_pick_exact_rate AS "topPickExactRate",
+           top_pick_top5_rate AS "topPickTop5Rate"
+    FROM nfl_spread_horizon_calibration
+    ORDER BY horizon
+  `);
+
+  const anchorRow = await db.execute(sql`
+    SELECT MAX(as_of_week) AS "anchorWeek" FROM nfl_team_ratings WHERE season = ${season}
+  `);
+
+  const teams = new Map<number, SurvivorTeamRow>();
+  const weeks = new Set<number>();
+  const provenanceCounts: Record<string, number> = {};
+  let modelVersion: string | null = null;
+  let computedAt: string | null = null;
+
+  for (const raw of rows.rows) {
+    const record = raw as Record<string, unknown>;
+    const teamId = Number(record.teamId);
+    const week = Number(record.week);
+    weeks.add(week);
+    modelVersion ??= record.modelVersion != null ? String(record.modelVersion) : null;
+    const stamp = record.computedAt != null ? String(record.computedAt) : null;
+    if (stamp && (!computedAt || stamp > computedAt)) computedAt = stamp;
+
+    if (!teams.has(teamId)) {
+      teams.set(teamId, {
+        teamId,
+        abbrev: String(record.abbrev),
+        name: String(record.name),
+        conference: record.conference != null ? String(record.conference) : null,
+        division: record.division != null ? String(record.division) : null,
+        byeWeek: null,
+        cells: {},
+      });
+    }
+
+    const provenance = String(record.provenance) as SurvivorCell["provenance"];
+    // Counted once per game, not once per side.
+    if (record.isHome) provenanceCounts[provenance] = (provenanceCounts[provenance] ?? 0) + 1;
+
+    const isHome = Boolean(record.isHome);
+    const homeScore = record.homeScore != null ? Number(record.homeScore) : null;
+    const awayScore = record.awayScore != null ? Number(record.awayScore) : null;
+    let won: boolean | null = null;
+    if (homeScore != null && awayScore != null && homeScore !== awayScore) {
+      won = isHome ? homeScore > awayScore : awayScore > homeScore;
+    }
+
+    teams.get(teamId)!.cells[week] = {
+      week,
+      gameId: Number(record.gameId),
+      opponent: String(record.opponent),
+      isHome,
+      pWin: record.pWin != null ? Number(record.pWin) : null,
+      pTie: record.pTie != null ? Number(record.pTie) : null,
+      provenance,
+      spread: record.spread != null ? Number(record.spread) : null,
+      spreadSource: record.spreadSource != null ? String(record.spreadSource) : null,
+      horizonWeeks: record.horizonWeeks != null ? Number(record.horizonWeeks) : null,
+      sigmaH: record.sigmaH != null ? Number(record.sigmaH) : null,
+      kickoff: record.kickoff != null ? String(record.kickoff) : null,
+      completed: Boolean(record.completed),
+      won,
+    };
+  }
+
+  const orderedWeeks = [...weeks].sort((a, b) => a - b);
+  const teamRows = [...teams.values()].map((team) => ({
+    ...team,
+    byeWeek: orderedWeeks.find((week) => !(week in team.cells)) ?? null,
+  }));
+  teamRows.sort((a, b) => a.abbrev.localeCompare(b.abbrev));
+
+  return {
+    season,
+    weeks: orderedWeeks,
+    teams: teamRows,
+    anchorWeek:
+      anchorRow.rows[0] && (anchorRow.rows[0] as Record<string, unknown>).anchorWeek != null
+        ? Number((anchorRow.rows[0] as Record<string, unknown>).anchorWeek)
+        : null,
+    modelVersion,
+    computedAt,
+    provenanceCounts,
+    calibration: calibrationRows.rows.map((raw) => {
+      const record = raw as Record<string, unknown>;
+      return {
+        horizon: Number(record.horizon),
+        n: Number(record.n),
+        rmse: Number(record.rmse),
+        topPickExactRate:
+          record.topPickExactRate != null ? Number(record.topPickExactRate) : null,
+        topPickTop5Rate: record.topPickTop5Rate != null ? Number(record.topPickTop5Rate) : null,
+      };
+    }),
+  };
+}
+
 export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
   const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
   await ensureAnalyticsColumns();

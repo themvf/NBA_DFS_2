@@ -31,6 +31,7 @@ const PAGE_LINKS: Array<{
 }> = [
   { href: "/dfs", label: "DFS", sports: ["nba", "mlb"] },
   { href: "/nfl", label: "NFL Board", sports: ["nfl"] },
+  { href: "/nfl/survivor", label: "Survivor Pool", sports: ["nfl"] },
   { href: "/fantasy-football/nfl", label: "NFL Teams", sports: ["nfl"] },
   { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
   { href: "/fantasy-football/projections", label: "Projection Scatter", sports: ["nfl"] },
