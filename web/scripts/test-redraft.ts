@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDraftPool } from "../src/lib/fantasy-football/draft-pool";
+import { buildDraftPool, earliestMarketPick } from "../src/lib/fantasy-football/draft-pool";
 import {
   REDRAFT_BENCH_SLOTS,
   REDRAFT_ROSTER_SIZE,
@@ -85,30 +85,49 @@ console.log("redraft tests passed");
     playerId: i + 1,
     position: i % 2 === 0 ? "RB" : "WR",
     adp: null as number | null,
+    yahooAdp: null as number | null,
   }));
   // a market darling our board buries, exactly Tuten's shape
-  board[284] = { playerId: 285, position: "RB", adp: 52.4 };
-  // and one the market also ignores, who should stay cut
-  board[290] = { playerId: 291, position: "RB", adp: 400 };
+  board[284] = { playerId: 285, position: "RB", adp: 52.4, yahooAdp: null };
+  // one the market also ignores, who should stay cut
+  board[290] = { playerId: 291, position: "RB", adp: 400, yahooAdp: 420 };
+  // MarShawn Lloyd's shape: just past the pick count on one market, comfortably
+  // inside it on the other. A hard cutoff at exactly 150 excluded him by 0.4.
+  board[292] = { playerId: 293, position: "RB", adp: 150.4, yahooAdp: 130.8 };
+  // Jayden Higgins' shape: no FFC price at all, only a Yahoo one.
+  board[296] = { playerId: 297, position: "WR", adp: null, yahooAdp: 133.1 };
+
   const pool = buildDraftPool(board, ["QB", "RB", "WR", "TE"], 260, 150);
   const ids = new Set(pool.map((p) => p.playerId));
 
   assert.ok(ids.has(285), "a player drafted inside the format's picks must be reachable");
-  assert.ok(!ids.has(291), "a player nobody drafts stays off the board");
-  assert.equal(pool.length, 261, "exactly one player is added back");
+  assert.ok(ids.has(293), "a near-miss on one market is reachable when another prices him earlier");
+  assert.ok(ids.has(297), "a player with only a Yahoo price is still reachable");
+  assert.ok(!ids.has(291), "a player no market drafts stays off the board");
   assert.ok(
     pool.findIndex((p) => p.playerId === 285) > 250,
     "the added player keeps his board position and is not promoted",
   );
-  // ordering is otherwise untouched
   assert.deepEqual(pool.slice(0, 5).map((p) => p.playerId), [1, 2, 3, 4, 5]);
 
-  // positions outside the format are excluded regardless of ADP
+  // headroom is real but bounded: 150 picks reaches 187, not 260
+  const edge = [
+    { playerId: 900, position: "RB", adp: 186, yahooAdp: null },
+    { playerId: 901, position: "RB", adp: 200, yahooAdp: null },
+  ];
+  const edgePool = buildDraftPool(edge, ["RB"], 0, 150);
+  assert.deepEqual(edgePool.map((p) => p.playerId), [900], "headroom stops well short of the board size");
+
+  // positions outside the format are excluded regardless of price
   const withK = buildDraftPool(
-    [{ playerId: 999, position: "K", adp: 10 }, ...board],
+    [{ playerId: 999, position: "K", adp: 10, yahooAdp: 10 }, ...board],
     ["QB", "RB", "WR", "TE"], 260, 150,
   );
   assert.ok(!withK.some((p) => p.playerId === 999), "position filter still applies");
+
+  assert.equal(earliestMarketPick({ playerId: 1, position: "RB", adp: 150.4, yahooAdp: 130.8 }), 130.8);
+  assert.equal(earliestMarketPick({ playerId: 1, position: "RB", adp: null, yahooAdp: 133.1 }), 133.1);
+  assert.equal(earliestMarketPick({ playerId: 1, position: "RB", adp: null, yahooAdp: null }), null);
 }
 
 console.log("draft-pool tests passed");
