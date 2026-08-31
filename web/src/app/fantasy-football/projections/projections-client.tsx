@@ -10,29 +10,43 @@
  */
 
 import { useState } from "react";
-import type { ProjectionScatterRow, WeeklyPointsRow } from "@/db/queries-fantasy-football";
+import type {
+  ProjectionScatterRow,
+  WeeklyPointsRow,
+  WeeklyUpsideRow,
+} from "@/db/queries-fantasy-football";
 import {
   POSITION_COLORS,
   VIEW_LABELS,
   VIEW_ORDER,
   VIEW_POSITIONS,
+  WEEKLY_SEASONS,
   type ScatterView,
 } from "@/lib/fantasy-football/projection-scatter";
 import ProjectionChart from "./projection-chart";
+import UpsideTable from "./upside-table";
 import WeeklyTable from "./weekly-table";
 
 export default function ProjectionsClient({
   rows,
   weekly,
   weeklySeason,
+  upsideRecent,
+  upsideAll,
   scoring,
 }: {
   rows: ProjectionScatterRow[];
   weekly: WeeklyPointsRow[];
   weeklySeason: number;
+  upsideRecent: WeeklyUpsideRow[];
+  upsideAll: WeeklyUpsideRow[];
   scoring: string;
 }) {
   const [view, setView] = useState<ScatterView>("QB");
+  // Both season windows are fetched up front so the toggle is instant; a
+  // 3-season window is the better base for a variance estimate, but the most
+  // recent season is what people reach for first.
+  const [seasonMode, setSeasonMode] = useState<"recent" | "all">("recent");
 
   return (
     <div className="space-y-5">
@@ -68,6 +82,16 @@ export default function ProjectionsClient({
 
       <div id="weekly" className="scroll-mt-20">
         <WeeklyTable rows={weekly} season={weeklySeason} scoring={scoring} view={view} />
+      </div>
+
+      <div id="upside" className="scroll-mt-20">
+        <UpsideTable
+          rows={seasonMode === "all" ? upsideAll : upsideRecent}
+          view={view}
+          seasons={seasonMode === "all" ? WEEKLY_SEASONS : [WEEKLY_SEASONS[0]]}
+          seasonMode={seasonMode}
+          onSeasonModeChange={setSeasonMode}
+        />
       </div>
     </div>
   );

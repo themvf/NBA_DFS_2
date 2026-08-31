@@ -177,6 +177,25 @@ def normalize_injury_observation(source: str, row: dict[str, Any]) -> Normalized
     )
 
 
+def _json(value: Any) -> Json:
+    """psycopg2 Json adapter that survives dates and datetimes.
+
+    `_state()` reads straight off a database row, so it carries whatever the
+    column types are -- `expected_return_min`/`expected_return_max` come back as
+    `date` objects, and the raw Sleeper payload can carry timestamps. Plain
+    `Json()` uses `json.dumps` with no fallback and raises
+    "Object of type datetime is not JSON serializable", which aborts the whole
+    refresh mid-transaction: the scheduled job failed 13 consecutive times
+    between 2026-08-26 and 2026-08-31 on exactly this, leaving the draft board
+    frozen while NFL rosters churned through final cuts.
+
+    The two hash helpers in this file already pass `default=str`; this makes the
+    write path agree with them, so a value that can be hashed can also be
+    stored.
+    """
+    return Json(value, dumps=lambda obj: json.dumps(obj, default=str))
+
+
 def _payload_hash(source: str, row: dict[str, Any]) -> str:
     raw = json.dumps({"source": source, "row": row}, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -233,8 +252,8 @@ def _insert_event(
             player_id,
             observation_id,
             event_type,
-            Json(previous_state),
-            Json(new_state),
+            _json(previous_state),
+            _json(new_state),
             source,
             _event_key(player_id, event_type, observation_hash, new_state),
         ),
@@ -281,7 +300,7 @@ def persist_injury_observation(
             normalized.weeks_out_min,
             normalized.weeks_out_max,
             normalized.availability_probability,
-            Json(row),
+            _json(row),
             response_hash,
         ),
     )

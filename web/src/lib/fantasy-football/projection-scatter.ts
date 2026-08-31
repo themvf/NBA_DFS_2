@@ -170,3 +170,40 @@ export function heatScaleLabel(position: string): string {
   const group = POSITION_HEAT_GROUP[position] ?? "SKILL";
   return group === "SKILL" ? "RB/WR/TE" : group === "DST" ? "DEF" : group;
 }
+
+/**
+ * A "spike week" threshold per position: the 85th percentile weekly score,
+ * measured over 2023-2025 weeks 1-17 for players on the board. Frozen here
+ * rather than recomputed per view, so a player's spike count does not shift
+ * when a filter changes.
+ *
+ * Measured: QB 23.9, RB 17.8, WR 16.1, TE 11.6, K 13.0, DST 12.0.
+ */
+export const SPIKE_THRESHOLDS: Record<string, number> = {
+  QB: 24,
+  RB: 18,
+  WR: 16,
+  TE: 12,
+  K: 13,
+  DST: 12,
+};
+
+/** Seasons with weekly stat lines stored. Newest first. */
+export const WEEKLY_SEASONS = [2025, 2024, 2023];
+
+/**
+ * What a year-over-year screen of these metrics actually found (2023->2024 and
+ * 2024->2025, players with >=8 games in both, correlations after removing what
+ * the prior year's points-per-game already tells you):
+ *
+ *   ceiling (top-3 avg) beyond PPG:  +0.17, -0.10 (WR) · +0.02, -0.06 (RB)
+ *                                    +0.27, -0.07 (TE) · -0.31, +0.17 (QB)
+ *   spike rate beyond PPG:           +0.05..+0.25, one negative
+ *   streakiness (CV) beyond PPG:     +0.02..+0.48 for RB/WR/TE
+ *
+ * Read: last season's ceiling is mostly a restatement of how good the player
+ * is -- the extra signal flips sign between year pairs, which is what noise
+ * looks like. Streakiness carries more, but modestly. This panel is therefore
+ * a record of what happened, not a projection, and says so on screen.
+ */
+export const UPSIDE_IS_DESCRIPTIVE = true;
