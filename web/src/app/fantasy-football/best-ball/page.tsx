@@ -2,11 +2,15 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { getDkBestBallAdpHealth, getFantasyProsSourceHealth, getFantasyRankings, getLatestRankingSet, getTeammateCorrelations } from "@/db/queries-fantasy-football";
-import { BEST_BALL_POSITIONS } from "@/lib/fantasy-football/best-ball";
+import { BEST_BALL_POSITIONS, BEST_BALL_ROUNDS, BEST_BALL_TEAM_COUNT } from "@/lib/fantasy-football/best-ball";
+import { buildDraftPool } from "@/lib/fantasy-football/draft-pool";
 import BestBallClient from "./best-ball-client";
 import { getBestBallAdvisorAvailability } from "@/lib/fantasy-football/ai-draft-advisor-env";
 import ProjectionMethodExplainer from "./projection-method-explainer";
 import { requireProjectionModelVersion } from "@/lib/fantasy-football/projection-model";
+
+// 12 x 20 = 240 picks; 260 leaves real depth at the end of the draft.
+const BEST_BALL_BOARD_SIZE = 260;
 
 export default async function BestBallPage() {
   const set = await getLatestRankingSet("PPR");
@@ -15,9 +19,12 @@ export default async function BestBallPage() {
     getFantasyProsSourceHealth(set?.season ?? 2026),
     getDkBestBallAdpHealth(set?.season ?? 2026),
   ]);
-  const rankings = allRankings
-    .filter((player) => BEST_BALL_POSITIONS.includes(player.position as "QB" | "RB" | "WR" | "TE"))
-    .slice(0, 260);
+  const rankings = buildDraftPool(
+    allRankings,
+    BEST_BALL_POSITIONS,
+    BEST_BALL_BOARD_SIZE,
+    BEST_BALL_TEAM_COUNT * BEST_BALL_ROUNDS,
+  );
   const correlations = await getTeammateCorrelations(rankings.map((player) => player.playerId));
   const projectionModel = set ? requireProjectionModelVersion(set.modelVersion) : null;
   const fantasyProsProjectionDataset = fantasyProsHealth.datasets.find((dataset) => dataset.dataset === "projections");
