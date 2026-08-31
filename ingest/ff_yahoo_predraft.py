@@ -35,11 +35,31 @@ from ingest.ff_independent import _snapshot, normalize_team
 
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF", "DST"}
 MIN_YAHOO_ROWS = 100
-YAHOO_NAME_ALIASES = {
-    "kennygainwell": "kennethgainwell",
-    "hollywoodbrown": "marquisebrown",
-    "gabedavis": "gabrieldavis",
-}
+# Names Yahoo and our roster source spell differently. Declared as unordered
+# PAIRS, not one-way rewrites, because the direction is not stable: this map
+# used to send "kennygainwell" -> "kennethgainwell" since nflverse listed him
+# as Kenneth, and when nflverse started calling him Kenny the rewrite pointed
+# at a name that no longer existed and silently dropped a player the market
+# drafts inside pick 120. A pair matches whichever spelling each side happens
+# to be using today, so a future flip cannot break it again.
+YAHOO_NAME_ALIAS_PAIRS = (
+    ("kennygainwell", "kennethgainwell"),
+    ("hollywoodbrown", "marquisebrown"),
+    ("gabedavis", "gabrieldavis"),
+)
+
+
+def _alias_equivalents(pairs: tuple[tuple[str, str], ...]) -> dict[str, tuple[str, ...]]:
+    """Expand the pairs into every spelling reachable from a given name."""
+    groups: dict[str, set[str]] = {}
+    for left, right in pairs:
+        merged = groups.get(left, {left}) | groups.get(right, {right})
+        for name in merged:
+            groups[name] = merged
+    return {name: tuple(sorted(names)) for name, names in groups.items()}
+
+
+YAHOO_NAME_ALIASES = _alias_equivalents(YAHOO_NAME_ALIAS_PAIRS)
 
 
 @dataclass(frozen=True)
@@ -154,8 +174,13 @@ def _match_player(
         return choose(defenses, "position_team")
 
     normalized_name = normalize_name(row.display_name)
-    normalized_name = YAHOO_NAME_ALIASES.get(normalized_name, normalized_name)
-    candidates = by_name_position.get((normalized_name, row.position), [])
+    candidates: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for name in YAHOO_NAME_ALIASES.get(normalized_name, (normalized_name,)):
+        for candidate in by_name_position.get((name, row.position), []):
+            if int(candidate["id"]) not in seen:
+                seen.add(int(candidate["id"]))
+                candidates.append(candidate)
     if row.team_abbrev:
         same_team = [candidate for candidate in candidates if normalize_team(candidate.get("team_abbrev")) == row.team_abbrev]
         matched = choose(same_team, "normalized_name_position_team")

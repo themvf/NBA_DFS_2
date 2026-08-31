@@ -46,7 +46,15 @@ from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapsh
 # QB now guarantees the top 2 per team instead of adjudicating the
 # competition (GUARANTEE_COUNT). Bumped because board membership changed --
 # board_digest hashes MODEL_VERSION, forcing a fresh build.
-MODEL_VERSION = "ff-independent-v1.15"
+# v1.16 (2026-08-31): board membership is now also guaranteed by MARKET
+# price, not only by our own depth-chart guarantee. A coverage audit found
+# three players the market drafts inside the first 132 picks -- Jordyn Tyson
+# (Yahoo 95.3), Jonah Coleman (130.0), Keaton Mitchell (131.8) -- absent from
+# a 440-deep board, because our model ranks them outside it and no per-team
+# starter guarantee reached them. That is the same class of hole as Bhayshul
+# Tuten: the draft rooms build their pool FROM the board, so a player missing
+# here can never be drafted no matter how generous buildDraftPool is.
+MODEL_VERSION = "ff-independent-v1.16"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -1320,8 +1328,18 @@ def rank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # whichever RB our model likes 2nd-best" case explicitly.
 GUARANTEE_COUNT = {"QB": 2, "RB": 1, "WR": 1, "TE": 1}
 
+# Any player a market prices inside this pick is guaranteed a board row. Set
+# from the deepest format the app simulates (Best Ball, 12 x 20 = 240 picks)
+# times the same ADP-spread headroom web/src/lib/fantasy-football/draft-pool.ts
+# applies, so the two layers agree: the pool gate can only ever narrow what the
+# board already carries, never ask for a player the board omitted.
+MARKET_GUARANTEE_PICKS = 300
 
-def _must_include_ids(rows: list[dict[str, Any]]) -> set[int]:
+
+def _must_include_ids(
+    rows: list[dict[str, Any]],
+    market_prices: dict[int, float] | None = None,
+) -> set[int]:
     """Players who must always get an ff_player_rankings row regardless of the
     top-BOARD_SIZE VOR cut: each team's top GUARANTEE_COUNT[position] players
     by our_projected_points at QB/RB/WR/TE (the presumptive starter(s) a
@@ -1332,8 +1350,19 @@ def _must_include_ids(rows: list[dict[str, Any]]) -> set[int]:
     ff_player_rankings, so a player who missed the VOR cut simply didn't
     exist there even though they're on the roster. `rows` must already have
     position_rank/our_rank/vor assigned (i.e. be rank_rows()'s output).
+
+    `market_prices` maps player_id to the EARLIEST pick any market we hold
+    expects, and anyone inside MARKET_GUARANTEE_PICKS is guaranteed a row too.
+    The depth-chart guarantee above cannot reach these players: it walks each
+    team's top projected starters, so a third-string back the market likes and
+    our model does not is invisible to it. Neither guarantee touches rank or
+    projections -- both only decide whether a row is WRITTEN, so ADP stays
+    comparison-only exactly as the rest of this module treats it.
     """
     must_include: set[int] = set()
+    for player_id, price in (market_prices or {}).items():
+        if price <= MARKET_GUARANTEE_PICKS:
+            must_include.add(int(player_id))
     by_team_position: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
         team = str(row.get("team_abbrev") or row.get("team") or "")
@@ -1368,6 +1397,7 @@ def create_ranking_set(
     histories: dict[int, list[dict[str, Any]]],
     adp_lookup: dict[tuple[str, str], dict[str, Any]],
     playoff_sos: dict[tuple[str, str], dict[str, Any]] | None = None,
+    yahoo_adp: dict[int, float] | None = None,
 ) -> int:
     existing = db.execute_one(
         """SELECT rs.id,COUNT(pr.id)::int AS player_count FROM ff_ranking_sets rs
@@ -1430,7 +1460,17 @@ def create_ranking_set(
     ranked_all = rank_rows(model_rows)
     board = ranked_all[:BOARD_SIZE]
     board_ids = {int(row["player_id"]) for row in board}
-    must_include = _must_include_ids(ranked_all)
+    # The earliest pick ANY market we hold puts on the player. One market is
+    # not the market: Yahoo prices players FFC never lists (and vice versa),
+    # so gating on either alone reopens the hole this guarantee exists to fix.
+    market_prices: dict[int, float] = dict(yahoo_adp or {})
+    for row in ranked_all:
+        ffc = as_float(row.get("adp"))
+        if ffc is None:
+            continue
+        player_id = int(row["player_id"])
+        market_prices[player_id] = min(ffc, market_prices.get(player_id, ffc))
+    must_include = _must_include_ids(ranked_all, market_prices)
     extra_rows = [
         row for row in ranked_all
         if int(row["player_id"]) in must_include and int(row["player_id"]) not in board_ids
@@ -1606,6 +1646,30 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         adp_snapshot_ids[scoring] = snapshot_id
         source_digests.append(digest)
 
+    # Yahoo's pre-draft ADP is a manual paste (ingest/ff_yahoo_predraft.py), so
+    # it is read from the last capture rather than fetched here. It feeds board
+    # MEMBERSHIP only, never a projection or a rank -- see _must_include_ids.
+    # Its response hash joins source_digests so a fresh paste changes
+    # board_digest and forces a rebuild; without that the idempotency guard in
+    # create_ranking_set would keep serving a board built against stale prices.
+    yahoo_adp: dict[int, float] = {}
+    yahoo_capture = db.execute_one(
+        """SELECT s.response_hash,s.id FROM ff_yahoo_predraft_captures c
+           JOIN ff_source_snapshots s ON s.id=c.source_snapshot_id
+           WHERE c.season=%s ORDER BY c.captured_at DESC,c.source_snapshot_id DESC LIMIT 1""",
+        (season,),
+    )
+    if yahoo_capture:
+        for row in db.execute(
+            """SELECT player_id,adp FROM ff_yahoo_predraft_rankings
+               WHERE source_snapshot_id=%s AND player_id IS NOT NULL AND adp IS NOT NULL""",
+            (int(yahoo_capture["id"]),),
+        ):
+            price = as_float(row["adp"])
+            if price is not None:
+                yahoo_adp[int(row["player_id"])] = price
+        source_digests.append(str(yahoo_capture["response_hash"]))
+
     board_digest = _response_hash({
         "model_version": MODEL_VERSION,
         "season": season,
@@ -1640,7 +1704,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         create_ranking_set(
             db, season=season, scoring=scoring, source_snapshot_id=board_snapshot_id,
             universe=universe, histories=histories, adp_lookup=adp_lookups[scoring],
-            playoff_sos=playoff_sos,
+            playoff_sos=playoff_sos, yahoo_adp=yahoo_adp,
         )
         for scoring in SCORING_TYPES
     ]
@@ -1653,6 +1717,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         "players_per_board": BOARD_SIZE,
         "bye_weeks": len(bye_weeks),
         "adp_coverage": {scoring: len(lookup) for scoring, lookup in adp_lookups.items()},
+        "yahoo_adp_prices": len(yahoo_adp),
         "adp_used_for_projection": False,
         "injury_ingestion": injury_ingestion,
     }
