@@ -594,6 +594,230 @@ def upsert_nfl_matchup(
     return int(row["id"]) if row else 0
 
 
+# ── College football team + schedule helpers ────────────────────────────────
+
+def upsert_cfb_team(
+    db: DatabaseManager,
+    *,
+    cfbd_team_id: int,
+    name: str,
+    conference: str | None = None,
+    classification: str | None = None,
+    abbreviation: str | None = None,
+    logo_url: str = "",
+) -> int:
+    row = db.execute_one(
+        """
+        INSERT INTO cfb_teams (
+            cfbd_team_id, name, abbreviation, conference, classification,
+            logo_url, updated_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (cfbd_team_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            abbreviation = COALESCE(EXCLUDED.abbreviation, cfb_teams.abbreviation),
+            conference = EXCLUDED.conference,
+            classification = EXCLUDED.classification,
+            logo_url = COALESCE(NULLIF(EXCLUDED.logo_url, ''), cfb_teams.logo_url),
+            active = TRUE,
+            updated_at = NOW()
+        RETURNING team_id
+        """,
+        (cfbd_team_id, name, abbreviation, conference, classification, logo_url),
+    )
+    return int(row["team_id"]) if row else 0
+
+
+def upsert_cfb_team_alias(
+    db: DatabaseManager, *, provider: str, alias: str, team_id: int, reviewed: bool,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO cfb_team_aliases (provider, alias, team_id, reviewed)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (provider, alias) DO UPDATE SET
+            team_id = EXCLUDED.team_id,
+            reviewed = cfb_team_aliases.reviewed OR EXCLUDED.reviewed
+        """,
+        (provider, alias, team_id, reviewed),
+    )
+
+
+def build_cfb_team_name_cache(db: DatabaseManager, provider: str = "odds_api") -> dict[str, int]:
+    """Return exact canonical names plus reviewed provider aliases.
+
+    Keys intentionally remain human-readable and case-sensitive. Normalization
+    is handled once by the ingest boundary; this function never fuzzy-matches.
+    """
+    rows = db.execute(
+        """
+        SELECT t.team_id, t.name, a.alias
+        FROM cfb_teams t
+        LEFT JOIN cfb_team_aliases a
+          ON a.team_id=t.team_id AND a.provider=%s AND a.reviewed=TRUE
+        WHERE t.active=TRUE
+        """,
+        (provider,),
+    )
+    cache: dict[str, int] = {}
+    for row in rows:
+        cache[str(row["name"])] = int(row["team_id"])
+        if row.get("alias"):
+            cache[str(row["alias"])] = int(row["team_id"])
+    return cache
+
+
+def upsert_cfb_venue(
+    db: DatabaseManager, *, cfbd_venue_id: int | None, name: str,
+) -> int:
+    if cfbd_venue_id is None:
+        row = db.execute_one(
+            """
+            SELECT venue_id FROM cfb_venues WHERE name=%s
+            ORDER BY venue_id LIMIT 1
+            """,
+            (name,),
+        )
+        if row:
+            return int(row["venue_id"])
+        row = db.execute_one(
+            "INSERT INTO cfb_venues (name) VALUES (%s) RETURNING venue_id",
+            (name,),
+        )
+        return int(row["venue_id"]) if row else 0
+    row = db.execute_one(
+        """
+        INSERT INTO cfb_venues (cfbd_venue_id, name, updated_at)
+        VALUES (%s, %s, NOW())
+        ON CONFLICT (cfbd_venue_id) DO UPDATE SET
+            name=EXCLUDED.name, updated_at=NOW()
+        RETURNING venue_id
+        """,
+        (cfbd_venue_id, name),
+    )
+    return int(row["venue_id"]) if row else 0
+
+
+def upsert_cfb_matchup(
+    db: DatabaseManager,
+    *,
+    cfbd_game_id: int,
+    season: int,
+    season_type: str,
+    week: int,
+    game_date: str,
+    commence_time,
+    start_time_tbd: bool,
+    home_team_id: int,
+    away_team_id: int,
+    venue_id: int | None,
+    neutral_site: bool,
+    conference_game: bool,
+    network: str | None,
+    completed: bool,
+    home_score: int | None,
+    away_score: int | None,
+    home_line_scores: list | None,
+    away_line_scores: list | None,
+    game_status: str | None = None,
+) -> int:
+    overtime_periods = max(
+        len(home_line_scores or []) - 4,
+        len(away_line_scores or []) - 4,
+        0,
+    )
+    row = db.execute_one(
+        """
+        INSERT INTO cfb_matchups (
+            cfbd_game_id, season, season_type, week, game_date, commence_time,
+            start_time_tbd, home_team_id, away_team_id, venue_id, neutral_site,
+            conference_game, network, game_status, completed, home_score,
+            away_score, home_line_scores, away_line_scores, went_to_overtime,
+            overtime_periods, fetched_at, score_fetched_at, final_at
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW(),
+            CASE WHEN %s THEN NOW() ELSE NULL END,
+            CASE WHEN %s THEN NOW() ELSE NULL END
+        )
+        ON CONFLICT (cfbd_game_id) DO UPDATE SET
+            season=EXCLUDED.season,
+            season_type=EXCLUDED.season_type,
+            week=EXCLUDED.week,
+            game_date=EXCLUDED.game_date,
+            commence_time=EXCLUDED.commence_time,
+            start_time_tbd=EXCLUDED.start_time_tbd,
+            home_team_id=EXCLUDED.home_team_id,
+            away_team_id=EXCLUDED.away_team_id,
+            venue_id=EXCLUDED.venue_id,
+            neutral_site=EXCLUDED.neutral_site,
+            conference_game=EXCLUDED.conference_game,
+            network=COALESCE(EXCLUDED.network, cfb_matchups.network),
+            game_status=COALESCE(EXCLUDED.game_status, cfb_matchups.game_status),
+            completed=EXCLUDED.completed,
+            home_score=COALESCE(EXCLUDED.home_score, cfb_matchups.home_score),
+            away_score=COALESCE(EXCLUDED.away_score, cfb_matchups.away_score),
+            home_line_scores=COALESCE(EXCLUDED.home_line_scores, cfb_matchups.home_line_scores),
+            away_line_scores=COALESCE(EXCLUDED.away_line_scores, cfb_matchups.away_line_scores),
+            went_to_overtime=EXCLUDED.went_to_overtime,
+            overtime_periods=EXCLUDED.overtime_periods,
+            fetched_at=NOW(),
+            score_fetched_at=CASE WHEN EXCLUDED.completed THEN NOW() ELSE cfb_matchups.score_fetched_at END,
+            final_at=CASE WHEN EXCLUDED.completed THEN COALESCE(cfb_matchups.final_at, NOW()) ELSE cfb_matchups.final_at END
+        RETURNING id
+        """,
+        (
+            cfbd_game_id, season, season_type, week, game_date, commence_time,
+            start_time_tbd, home_team_id, away_team_id, venue_id, neutral_site,
+            conference_game, network, game_status, completed, home_score,
+            away_score, json.dumps(home_line_scores) if home_line_scores is not None else None,
+            json.dumps(away_line_scores) if away_line_scores is not None else None,
+            overtime_periods > 0, overtime_periods, completed, completed,
+        ),
+    )
+    return int(row["id"]) if row else 0
+
+
+def map_cfb_odds_event(db: DatabaseManager, *, matchup_id: int, event_id: str) -> None:
+    row = db.execute_one(
+        "SELECT odds_event_id FROM cfb_matchups WHERE id=%s",
+        (matchup_id,),
+    )
+    if not row:
+        raise ValueError(f"unknown CFB matchup id {matchup_id}")
+    existing = row.get("odds_event_id")
+    if existing and str(existing) != event_id:
+        raise ValueError(
+            f"CFB matchup {matchup_id} already maps to odds event {existing}"
+        )
+    db.execute(
+        "UPDATE cfb_matchups SET odds_event_id=%s, fetched_at=NOW() WHERE id=%s",
+        (event_id, matchup_id),
+    )
+
+
+def quarantine_cfb_event(
+    db: DatabaseManager, *, event_id: str, home_name: str | None,
+    away_name: str | None, commence_time, reason: str, raw_json: dict,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO cfb_unmapped_events (
+            provider, provider_event_id, home_name, away_name, commence_time,
+            reason, raw_json
+        ) VALUES ('odds_api', %s, %s, %s, %s, %s, %s::jsonb)
+        ON CONFLICT (provider, provider_event_id) DO UPDATE SET
+            home_name=EXCLUDED.home_name,
+            away_name=EXCLUDED.away_name,
+            commence_time=EXCLUDED.commence_time,
+            reason=EXCLUDED.reason,
+            raw_json=EXCLUDED.raw_json,
+            last_seen_at=NOW(),
+            occurrences=cfb_unmapped_events.occurrences + 1
+        """,
+        (event_id, home_name, away_name, commence_time, reason, json.dumps(raw_json)),
+    )
+
+
 # ── MLB team helpers ──────────────────────────────────────────────────────────
 
 def build_mlb_team_abbrev_cache(db: DatabaseManager) -> dict[str, int]:

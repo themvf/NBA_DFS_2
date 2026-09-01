@@ -16,7 +16,7 @@ type SolverResult = Record<string, number> & { feasible: boolean; result: number
 
 // ── Sport discriminator ──────────────────────────────────────
 // Add new sports here as the project expands.
-export type Sport = "nba" | "mlb" | "nfl" | "soccer" | "tennis";
+export type Sport = "nba" | "mlb" | "nfl" | "soccer" | "tennis" | "cfb";
 
 // ── DFS Player Pool ──────────────────────────────────────────
 
@@ -9910,6 +9910,222 @@ export type MlbLineMovementRow = {
   trackedBooks: number;
 };
 
+export type CfbBookQuote = {
+  title?: string | null;
+  last_update?: string | null;
+  ml_home?: number | null;
+  ml_away?: number | null;
+  spread_home?: number | null;
+  spread_home_price?: number | null;
+  spread_away?: number | null;
+  spread_away_price?: number | null;
+  total_line?: number | null;
+  over?: number | null;
+  under?: number | null;
+};
+
+export type CfbBookMap = Record<string, CfbBookQuote>;
+
+export type CfbTerminalRow = {
+  matchupId: number;
+  cfbdGameId: number;
+  oddsEventId: string | null;
+  gameDate: string;
+  season: number;
+  week: number;
+  commenceTime: string | null;
+  startTimeTbd: boolean;
+  homeTeam: string;
+  awayTeam: string;
+  venue: string | null;
+  network: string | null;
+  neutralSite: boolean;
+  completed: boolean;
+  homeScore: number | null;
+  awayScore: number | null;
+  wentToOvertime: boolean;
+  overtimePeriods: number;
+  captures: number;
+  openingBooks: CfbBookMap | null;
+  currentBooks: CfbBookMap | null;
+  openingCapturedAt: string | null;
+  latestCapturedAt: string | null;
+  history: Array<{ capturedAt: string; books: CfbBookMap }>;
+};
+
+export type CfbTerminalStatus = "live" | "stale" | "partial" | "unavailable";
+
+export type CfbTerminalBoard = {
+  gameDate: string;
+  asOf: string;
+  status: CfbTerminalStatus;
+  statusDetail: string;
+  games: CfbTerminalRow[];
+  unmappedEvents: number;
+};
+
+function easternDateNow(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export async function getCfbDefaultGameDate(): Promise<string> {
+  await ensureOddsHistoryTables();
+  const today = easternDateNow();
+  const rows = await db.execute(sql`
+    SELECT COALESCE(
+      MIN(game_date) FILTER (WHERE game_date >= ${today}::date),
+      MAX(game_date),
+      ${today}::date
+    )::text AS game_date
+    FROM cfb_matchups
+  `);
+  const row = rows.rows[0] as Record<string, unknown> | undefined;
+  return row?.game_date ? String(row.game_date) : today;
+}
+
+export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTerminalBoard> {
+  await ensureOddsHistoryTables();
+  const targetDate = gameDate ?? await getCfbDefaultGameDate();
+  const rows = await db.execute(sql`
+    WITH eligible AS (
+      SELECT h.*,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at, h.id) AS open_rank,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at DESC, h.id DESC) AS latest_rank,
+             COUNT(*) OVER (PARTITION BY h.matchup_id)::int AS capture_count
+      FROM game_odds_history h
+      JOIN cfb_matchups m ON m.id=h.matchup_id
+      WHERE h.sport='cfb' AND h.books IS NOT NULL
+        AND m.game_date=${targetDate}::date
+        AND m.commence_time IS NOT NULL
+        AND h.captured_at < m.commence_time
+    ), opening AS (
+      SELECT * FROM eligible WHERE open_rank=1
+    ), latest AS (
+      SELECT * FROM eligible WHERE latest_rank=1
+    ), trails AS (
+      SELECT matchup_id,
+             JSONB_AGG(JSONB_BUILD_OBJECT(
+               'capturedAt', captured_at::text,
+               'books', books
+             ) ORDER BY captured_at, id) AS history
+      FROM eligible
+      GROUP BY matchup_id
+    )
+    SELECT
+      m.id AS "matchupId",
+      m.cfbd_game_id AS "cfbdGameId",
+      m.odds_event_id AS "oddsEventId",
+      m.game_date::text AS "gameDate",
+      m.season,
+      m.week,
+      m.commence_time::text AS "commenceTime",
+      m.start_time_tbd AS "startTimeTbd",
+      ht.name AS "homeTeam",
+      at.name AS "awayTeam",
+      v.name AS venue,
+      m.network,
+      m.neutral_site AS "neutralSite",
+      m.completed,
+      m.home_score AS "homeScore",
+      m.away_score AS "awayScore",
+      m.went_to_overtime AS "wentToOvertime",
+      m.overtime_periods AS "overtimePeriods",
+      COALESCE(latest.capture_count, 0)::int AS captures,
+      opening.books AS "openingBooks",
+      latest.books AS "currentBooks",
+      opening.captured_at::text AS "openingCapturedAt",
+      latest.captured_at::text AS "latestCapturedAt",
+      COALESCE(trails.history, '[]'::jsonb) AS history
+    FROM cfb_matchups m
+    JOIN cfb_teams ht ON ht.team_id=m.home_team_id
+    JOIN cfb_teams at ON at.team_id=m.away_team_id
+    LEFT JOIN cfb_venues v ON v.venue_id=m.venue_id
+    LEFT JOIN opening ON opening.matchup_id=m.id
+    LEFT JOIN latest ON latest.matchup_id=m.id
+    LEFT JOIN trails ON trails.matchup_id=m.id
+    WHERE m.game_date=${targetDate}::date
+    ORDER BY m.commence_time NULLS LAST, m.id
+  `);
+  const games = rows.rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    const history = Array.isArray(r.history) ? r.history.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const point = item as Record<string, unknown>;
+      return [{
+        capturedAt: String(point.capturedAt),
+        books: point.books && typeof point.books === "object" ? point.books as CfbBookMap : {},
+      }];
+    }) : [];
+    return {
+      matchupId: Number(r.matchupId),
+      cfbdGameId: Number(r.cfbdGameId),
+      oddsEventId: r.oddsEventId != null ? String(r.oddsEventId) : null,
+      gameDate: String(r.gameDate),
+      season: Number(r.season),
+      week: Number(r.week),
+      commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+      startTimeTbd: Boolean(r.startTimeTbd),
+      homeTeam: String(r.homeTeam),
+      awayTeam: String(r.awayTeam),
+      venue: r.venue != null ? String(r.venue) : null,
+      network: r.network != null ? String(r.network) : null,
+      neutralSite: Boolean(r.neutralSite),
+      completed: Boolean(r.completed),
+      homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+      awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+      wentToOvertime: Boolean(r.wentToOvertime),
+      overtimePeriods: Number(r.overtimePeriods ?? 0),
+      captures: Number(r.captures ?? 0),
+      openingBooks: r.openingBooks && typeof r.openingBooks === "object" ? r.openingBooks as CfbBookMap : null,
+      currentBooks: r.currentBooks && typeof r.currentBooks === "object" ? r.currentBooks as CfbBookMap : null,
+      openingCapturedAt: r.openingCapturedAt != null ? String(r.openingCapturedAt) : null,
+      latestCapturedAt: r.latestCapturedAt != null ? String(r.latestCapturedAt) : null,
+      history,
+    } satisfies CfbTerminalRow;
+  });
+  const unmappedRows = await db.execute(sql`
+    SELECT COUNT(*)::int AS n FROM cfb_unmapped_events WHERE resolved_at IS NULL
+  `);
+  const unmapped = Number((unmappedRows.rows[0] as Record<string, unknown> | undefined)?.n ?? 0);
+  const now = Date.now();
+  const upcoming = games.filter((game) => !game.completed && game.commenceTime && new Date(game.commenceTime).getTime() > now);
+  const missing = upcoming.filter((game) => !game.latestCapturedAt);
+  const stale = upcoming.filter((game) => {
+    if (!game.latestCapturedAt || !game.commenceTime) return false;
+    const minutesToKick = (new Date(game.commenceTime).getTime() - now) / 60000;
+    const ageMinutes = (now - new Date(game.latestCapturedAt).getTime()) / 60000;
+    const targetAge = minutesToKick <= 25 ? 20 : minutesToKick <= 120 ? 90 : minutesToKick <= 420 ? 120 : 720;
+    return ageMinutes > targetAge;
+  });
+  let status: CfbTerminalStatus = "live";
+  let statusDetail = "All displayed market observations meet their checkpoint freshness target.";
+  if (games.length === 0) {
+    status = "unavailable";
+    statusDetail = "No canonical CFB games are loaded for this date.";
+  } else if (missing.length > 0 || unmapped > 0) {
+    status = "partial";
+    statusDetail = `${missing.length} upcoming game(s) lack odds and ${unmapped} provider event(s) remain quarantined.`;
+  } else if (stale.length > 0) {
+    status = "stale";
+    statusDetail = `${stale.length} upcoming game(s) missed their checkpoint freshness target.`;
+  }
+  return {
+    gameDate: targetDate,
+    asOf: new Date().toISOString(),
+    status,
+    statusDetail,
+    games,
+    unmappedEvents: unmapped,
+  };
+}
+
 export type LineMovementLane = "sportsbook" | "polymarket";
 
 function americanOddsProbability(value: unknown): number | null {
@@ -9959,12 +10175,13 @@ const LINE_MOVEMENT_MATCHUP_TABLE: Record<string, string> = {
   mlb: "mlb_matchups",
   nba: "nba_matchups",
   nfl: "nfl_matchups",
+  cfb: "cfb_matchups",
   soccer: "soccer_matchups",
   tennis: "tennis_matches",
 };
 
 export async function getLineMovement(
-  sport: "mlb" | "nba" | "nfl" | "soccer" | "tennis",
+  sport: "mlb" | "nba" | "nfl" | "cfb" | "soccer" | "tennis",
   days = 7,
   lane: LineMovementLane = "sportsbook",
 ): Promise<MlbLineMovementRow[]> {

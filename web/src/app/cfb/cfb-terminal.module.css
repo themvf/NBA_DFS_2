@@ -483,6 +483,18 @@
   color: #111;
 }
 
+.paperAction button:disabled {
+  cursor: not-allowed;
+  border-color: #4c5360;
+  background: #171a20;
+  color: #7d8592;
+}
+
+.paperAction button:disabled:hover {
+  background: #171a20;
+  color: #7d8592;
+}
+
 .paperAction button svg {
   width: 14px;
   height: 14px;

@@ -1,585 +1,156 @@
 "use client";
 
-import {
-  Activity,
-  BellRing,
-  BookOpen,
-  CloudSun,
-  Newspaper,
-  Radio,
-  Search,
-  ShieldAlert,
-  TrendingDown,
-  TrendingUp,
-  Zap,
-} from "lucide-react";
+import { Activity, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useMemo, useState } from "react";
+import type { CfbBookQuote, CfbTerminalBoard, CfbTerminalRow } from "@/db/queries";
 import styles from "./cfb-terminal.module.css";
 
 type MarketKey = "spread" | "total" | "moneyline";
-type AlertTone = "critical" | "market" | "news" | "weather";
+type SelectionSide = "home" | "away" | "over" | "under";
+type HistoryPoint = { time: string; values: Record<string, number> };
+type BookRow = { key: string; book: string; line: string; price: string; side: SelectionSide; updatedAt: string | null; fresh: boolean };
+type MarketView = { label: string; current: string; open: string; move: string; axisLabel: string; series: string[]; history: HistoryPoint[]; books: BookRow[]; selectedLineBookCount: number; marketBookCount: number };
+type PaperPosition = { id: string; game: string; market: string; book: string; entry: string; observedAt: string };
 
-type HistoryPoint = {
-  time: string;
-  Pinnacle: number;
-  DraftKings: number;
-  Circa: number;
-};
+const MARKET_LABELS: Record<MarketKey, string> = { spread: "SPREAD", total: "TOTAL", moneyline: "MONEYLINE" };
+const SERIES_COLORS = ["#f6a800", "#59b6ff", "#c58cff", "#5fd0a5", "#ff718b"];
+const BOOK_PRIORITY = ["pinnacle", "draftkings", "fanduel", "betmgm", "bovada"];
 
-type BookQuote = {
-  book: string;
-  line: string;
-  price: string;
-  relativeLimit: number;
-  stale?: boolean;
-};
+function signed(value: number, digits = 1): string { return `${value > 0 ? "+" : ""}${value.toFixed(digits)}`; }
+function american(value: number | null | undefined): string { return value == null ? "—" : `${value > 0 ? "+" : ""}${Math.round(value)}`; }
+function lowerMedian(values: number[]): number | null {
+  if (!values.length) return null;
+  const ordered = [...values].sort((a, b) => a - b);
+  return ordered[Math.floor((ordered.length - 1) / 2)];
+}
+function probability(price: number): number { return price > 0 ? 100 / (price + 100) : Math.abs(price) / (Math.abs(price) + 100); }
+function fairHome(book: CfbBookQuote): number | null {
+  if (book.ml_home == null || book.ml_away == null) return null;
+  const home = probability(Number(book.ml_home)); const away = probability(Number(book.ml_away));
+  return home + away > 0 ? home / (home + away) : null;
+}
+function valueFor(book: CfbBookQuote, market: MarketKey): number | null {
+  if (market === "spread") return book.spread_home == null ? null : Number(book.spread_home);
+  if (market === "total") return book.total_line == null ? null : Number(book.total_line);
+  return fairHome(book);
+}
+function bookTitle(key: string, quote?: CfbBookQuote): string {
+  if (quote?.title) return quote.title;
+  return key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+function fmtEt(value: string, compact = false): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...(compact ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) }).format(new Date(value));
+}
+function quoteFresh(updatedAt: string | null, capturedAt: string | null, asOf: string): boolean {
+  if (!updatedAt || !capturedAt) return false;
+  const now = new Date(asOf).getTime();
+  return now - new Date(updatedAt).getTime() <= 5 * 60_000 && now - new Date(capturedAt).getTime() <= 5 * 60_000;
+}
+function selectionFor(market: MarketKey): SelectionSide { return market === "total" ? "over" : "home"; }
 
-type Catalyst = {
-  time: string;
-  type: string;
-  title: string;
-  detail: string;
-  tone: AlertTone;
-};
-
-type Market = {
-  label: string;
-  current: string;
-  open: string;
-  move: string;
-  axisLabel: string;
-  history: HistoryPoint[];
-  catalysts: Array<{ at: string; label: string }>;
-  books: BookQuote[];
-};
-
-type Game = {
-  id: string;
-  away: string;
-  home: string;
-  kickoff: string;
-  venue: string;
-  network: string;
-  headlineLine: string;
-  headlineMove: number;
-  markets: Record<MarketKey, Market>;
-  pulse: Catalyst[];
-  related: Array<{ label: string; value: string; note: string }>;
-};
-
-type PaperPosition = {
-  id: string;
-  game: string;
-  market: string;
-  book: string;
-  entry: string;
-  current: string;
-  state: string;
-};
-
-const TIMES = ["OPEN", "THU 12P", "THU 8P", "FRI 10A", "FRI 4P", "SAT 8A", "SAT 11A", "NOW"];
-
-function history(pinnacle: number[], draftKings: number[], circa: number[]): HistoryPoint[] {
-  return TIMES.map((time, index) => ({
-    time,
-    Pinnacle: pinnacle[index],
-    DraftKings: draftKings[index],
-    Circa: circa[index],
-  }));
+function buildBookRows(game: CfbTerminalRow, market: MarketKey, side: SelectionSide, asOf: string): BookRow[] {
+  return Object.entries(game.currentBooks ?? {}).flatMap(([key, quote]) => {
+    let line: string; let price: number | null | undefined;
+    if (market === "spread") {
+      const point = side === "away" ? quote.spread_away : quote.spread_home;
+      price = side === "away" ? quote.spread_away_price : quote.spread_home_price;
+      if (point == null || price == null) return [];
+      line = `${side === "home" ? game.homeTeam : game.awayTeam} ${signed(Number(point))}`;
+    } else if (market === "total") {
+      if (quote.total_line == null) return [];
+      price = side === "under" ? quote.under : quote.over;
+      if (price == null) return [];
+      line = `${side === "under" ? "UNDER" : "OVER"} ${Number(quote.total_line).toFixed(1)}`;
+    } else {
+      price = side === "away" ? quote.ml_away : quote.ml_home;
+      if (price == null) return [];
+      line = `${side === "home" ? game.homeTeam : game.awayTeam} ML`;
+    }
+    const updatedAt = quote.last_update ? String(quote.last_update) : null;
+    return [{ key, book: bookTitle(key, quote), line, price: american(Number(price)), side, updatedAt, fresh: quoteFresh(updatedAt, game.latestCapturedAt, asOf) }];
+  }).sort((a, b) => {
+    const ai = BOOK_PRIORITY.indexOf(a.key); const bi = BOOK_PRIORITY.indexOf(b.key);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.book.localeCompare(b.book);
+  });
 }
 
-const GAMES: Game[] = [
-  {
-    id: "osu-ore",
-    away: "OHIO STATE",
-    home: "OREGON",
-    kickoff: "7:30 PM ET",
-    venue: "Autzen Stadium",
-    network: "NBC",
-    headlineLine: "ORE -4.5",
-    headlineMove: 2,
-    markets: {
-      spread: {
-        label: "Full-game spread",
-        current: "ORE -4.5",
-        open: "ORE -2.5",
-        move: "2.0 pts toward Oregon",
-        axisLabel: "Oregon spread",
-        history: history(
-          [-2.5, -2.5, -3, -3.5, -4, -4.5, -4.5, -4.5],
-          [-2.5, -2.5, -2.5, -3.5, -3.5, -4, -4.5, -4.5],
-          [-2.5, -2.5, -3, -3.5, -4, -4, -4.5, -5],
-        ),
-        catalysts: [{ at: "FRI 10A", label: "QB upgraded" }, { at: "SAT 8A", label: "wind 18 mph" }],
-        books: [
-          { book: "Pinnacle", line: "ORE -4.5", price: "-108", relativeLimit: 92 },
-          { book: "Circa", line: "ORE -5.0", price: "-105", relativeLimit: 100 },
-          { book: "DraftKings", line: "ORE -4.5", price: "-112", relativeLimit: 58 },
-          { book: "FanDuel", line: "ORE -4.0", price: "-115", relativeLimit: 50, stale: true },
-          { book: "BetMGM", line: "ORE -4.5", price: "-110", relativeLimit: 42 },
-        ],
-      },
-      total: {
-        label: "Full-game total",
-        current: "52.0",
-        open: "54.0",
-        move: "2.0 pts toward under",
-        axisLabel: "Game total",
-        history: history(
-          [54, 54, 53.5, 53.5, 53, 52.5, 52, 52],
-          [54, 54, 54, 53.5, 53.5, 52.5, 52.5, 52],
-          [54, 54, 53.5, 53, 53, 52.5, 52, 51.5],
-        ),
-        catalysts: [{ at: "FRI 10A", label: "CB doubtful" }, { at: "SAT 8A", label: "wind update" }],
-        books: [
-          { book: "Pinnacle", line: "52.0", price: "U -109", relativeLimit: 92 },
-          { book: "Circa", line: "51.5", price: "O -106", relativeLimit: 100 },
-          { book: "DraftKings", line: "52.0", price: "U -112", relativeLimit: 58 },
-          { book: "FanDuel", line: "52.5", price: "U -110", relativeLimit: 50, stale: true },
-          { book: "BetMGM", line: "52.0", price: "U -108", relativeLimit: 42 },
-        ],
-      },
-      moneyline: {
-        label: "Oregon moneyline",
-        current: "ORE -185",
-        open: "ORE -142",
-        move: "6.6pp implied probability",
-        axisLabel: "Vig-free Oregon win probability",
-        history: history(
-          [0.584, 0.588, 0.602, 0.619, 0.632, 0.646, 0.648, 0.649],
-          [0.581, 0.584, 0.589, 0.613, 0.621, 0.639, 0.645, 0.647],
-          [0.586, 0.59, 0.605, 0.622, 0.638, 0.65, 0.654, 0.657],
-        ),
-        catalysts: [{ at: "FRI 10A", label: "QB upgraded" }, { at: "SAT 8A", label: "limits raised" }],
-        books: [
-          { book: "Pinnacle", line: "ORE ML", price: "-185", relativeLimit: 92 },
-          { book: "Circa", line: "ORE ML", price: "-190", relativeLimit: 100 },
-          { book: "DraftKings", line: "ORE ML", price: "-188", relativeLimit: 58 },
-          { book: "FanDuel", line: "ORE ML", price: "-176", relativeLimit: 50, stale: true },
-          { book: "BetMGM", line: "ORE ML", price: "-185", relativeLimit: 42 },
-        ],
-      },
-    },
-    pulse: [
-      { time: "12:03", type: "PRICE GAP", title: "FanDuel trails the sharp spread", detail: "A half-point remains available against the current reference consensus.", tone: "critical" },
-      { time: "11:47", type: "TOTAL STEAM", title: "Four books move under", detail: "The median total fell 1.5 points within six minutes.", tone: "market" },
-      { time: "11:42", type: "WEATHER", title: "Wind forecast rises", detail: "Sustained wind is now 18 mph with gusts to 27.", tone: "weather" },
-      { time: "10:18", type: "KEY CROSS", title: "Oregon crosses -3", detail: "Pinnacle moved first after confirmed quarterback availability.", tone: "market" },
-      { time: "09:56", type: "NEWS", title: "Ohio State corner doubtful", detail: "Local beat report changed the starter's game designation.", tone: "news" },
-    ],
-    related: [
-      { label: "1H spread", value: "ORE -2.5", note: "Moved before full game" },
-      { label: "Ohio St team total", value: "U 24.5", note: "Strongest price pressure" },
-      { label: "Weather", value: "18 mph", note: "Gusts to 27" },
-    ],
-  },
-  {
-    id: "uga-tex",
-    away: "GEORGIA",
-    home: "TEXAS",
-    kickoff: "3:30 PM ET",
-    venue: "DKR–Texas Memorial",
-    network: "ABC",
-    headlineLine: "TEX +1.0",
-    headlineMove: -1.5,
-    markets: {
-      spread: {
-        label: "Full-game spread",
-        current: "TEX +1.0",
-        open: "TEX -0.5",
-        move: "1.5 pts toward Georgia",
-        axisLabel: "Texas spread",
-        history: history([-0.5, -0.5, 0, 0.5, 0.5, 1, 1, 1], [-0.5, -0.5, -0.5, 0, 0.5, 0.5, 1, 1], [-0.5, 0, 0, 0.5, 1, 1, 1, 1]),
-        catalysts: [{ at: "FRI 10A", label: "LT ruled out" }, { at: "SAT 8A", label: "buyback" }],
-        books: [
-          { book: "Pinnacle", line: "TEX +1.0", price: "-106", relativeLimit: 94 },
-          { book: "Circa", line: "TEX +1.0", price: "-110", relativeLimit: 100 },
-          { book: "DraftKings", line: "TEX +1.5", price: "-115", relativeLimit: 61, stale: true },
-          { book: "FanDuel", line: "TEX +1.0", price: "-108", relativeLimit: 54 },
-          { book: "BetMGM", line: "TEX +1.0", price: "-110", relativeLimit: 45 },
-        ],
-      },
-      total: {
-        label: "Full-game total", current: "48.5", open: "49.5", move: "1.0 pt toward under", axisLabel: "Game total",
-        history: history([49.5, 49.5, 49, 49, 48.5, 48.5, 48.5, 48.5], [49.5, 49.5, 49.5, 49, 49, 48.5, 48.5, 48.5], [49.5, 49, 49, 48.5, 48.5, 48.5, 48, 48.5]),
-        catalysts: [{ at: "FRI 10A", label: "OL news" }, { at: "SAT 8A", label: "under buy" }],
-        books: [
-          { book: "Pinnacle", line: "48.5", price: "U -108", relativeLimit: 94 }, { book: "Circa", line: "48.0", price: "O -105", relativeLimit: 100 }, { book: "DraftKings", line: "48.5", price: "U -112", relativeLimit: 61 }, { book: "FanDuel", line: "49.0", price: "U -110", relativeLimit: 54, stale: true }, { book: "BetMGM", line: "48.5", price: "U -110", relativeLimit: 45 },
-        ],
-      },
-      moneyline: {
-        label: "Texas moneyline", current: "TEX +102", open: "TEX -106", move: "4.0pp implied probability", axisLabel: "Vig-free Texas win probability",
-        history: history([0.51, 0.508, 0.5, 0.492, 0.484, 0.476, 0.474, 0.47], [0.512, 0.51, 0.505, 0.497, 0.488, 0.48, 0.478, 0.472], [0.508, 0.505, 0.498, 0.49, 0.48, 0.472, 0.468, 0.466]),
-        catalysts: [{ at: "FRI 10A", label: "LT ruled out" }, { at: "SAT 8A", label: "limits raised" }],
-        books: [
-          { book: "Pinnacle", line: "TEX ML", price: "+102", relativeLimit: 94 }, { book: "Circa", line: "TEX ML", price: "+105", relativeLimit: 100 }, { book: "DraftKings", line: "TEX ML", price: "+100", relativeLimit: 61 }, { book: "FanDuel", line: "TEX ML", price: "+108", relativeLimit: 54, stale: true }, { book: "BetMGM", line: "TEX ML", price: "+102", relativeLimit: 45 },
-        ],
-      },
-    },
-    pulse: [
-      { time: "11:31", type: "REVERSAL", title: "Texas buyback appears", detail: "Circa returned from +1.5 to +1 after limits increased.", tone: "market" },
-      { time: "10:22", type: "INJURY", title: "Texas left tackle ruled out", detail: "The market moved through pick'em nine minutes later.", tone: "critical" },
-      { time: "09:48", type: "PRICE GAP", title: "DraftKings hangs Texas +1.5", detail: "The extra half-point remains isolated from sharp books.", tone: "market" },
-      { time: "08:40", type: "NEWS", title: "Georgia receiver expected active", detail: "Pregame warmup participation was confirmed.", tone: "news" },
-    ],
-    related: [
-      { label: "1H spread", value: "UGA -0.5", note: "Sharp books aligned" },
-      { label: "Texas team total", value: "U 23.5", note: "Juice building" },
-      { label: "Key state", value: "Through 0", note: "No longer pick'em" },
-    ],
-  },
-  {
-    id: "bama-lsu",
-    away: "ALABAMA",
-    home: "LSU",
-    kickoff: "8:00 PM ET",
-    venue: "Tiger Stadium",
-    network: "ESPN",
-    headlineLine: "LSU +2.5",
-    headlineMove: 1,
-    markets: {
-      spread: {
-        label: "Full-game spread", current: "LSU +2.5", open: "LSU +3.5", move: "1.0 pt toward LSU", axisLabel: "LSU spread",
-        history: history([3.5, 3.5, 3.5, 3, 3, 2.5, 2.5, 2.5], [3.5, 3.5, 3.5, 3.5, 3, 3, 2.5, 2.5], [3.5, 3.5, 3, 3, 3, 2.5, 2.5, 2]),
-        catalysts: [{ at: "FRI 10A", label: "WR active" }, { at: "SAT 8A", label: "sharp buy" }],
-        books: [
-          { book: "Pinnacle", line: "LSU +2.5", price: "-108", relativeLimit: 91 }, { book: "Circa", line: "LSU +2.0", price: "-105", relativeLimit: 100 }, { book: "DraftKings", line: "LSU +2.5", price: "-110", relativeLimit: 56 }, { book: "FanDuel", line: "LSU +3.0", price: "-120", relativeLimit: 51, stale: true }, { book: "BetMGM", line: "LSU +2.5", price: "-112", relativeLimit: 44 },
-        ],
-      },
-      total: {
-        label: "Full-game total", current: "61.5", open: "60.5", move: "1.0 pt toward over", axisLabel: "Game total",
-        history: history([60.5, 60.5, 60.5, 61, 61, 61.5, 61.5, 61.5], [60.5, 60.5, 60.5, 60.5, 61, 61, 61.5, 61.5], [60.5, 60.5, 61, 61, 61, 61.5, 61.5, 62]),
-        catalysts: [{ at: "FRI 10A", label: "WR active" }, { at: "SAT 8A", label: "over steam" }],
-        books: [
-          { book: "Pinnacle", line: "61.5", price: "O -106", relativeLimit: 91 }, { book: "Circa", line: "62.0", price: "U -110", relativeLimit: 100 }, { book: "DraftKings", line: "61.5", price: "O -110", relativeLimit: 56 }, { book: "FanDuel", line: "61.0", price: "O -112", relativeLimit: 51, stale: true }, { book: "BetMGM", line: "61.5", price: "O -108", relativeLimit: 44 },
-        ],
-      },
-      moneyline: {
-        label: "LSU moneyline", current: "LSU +118", open: "LSU +145", move: "4.5pp implied probability", axisLabel: "Vig-free LSU win probability",
-        history: history([0.408, 0.41, 0.414, 0.425, 0.435, 0.447, 0.451, 0.453], [0.405, 0.408, 0.41, 0.419, 0.43, 0.44, 0.449, 0.451], [0.41, 0.412, 0.42, 0.43, 0.44, 0.45, 0.454, 0.458]),
-        catalysts: [{ at: "FRI 10A", label: "WR active" }, { at: "SAT 8A", label: "limits raised" }],
-        books: [
-          { book: "Pinnacle", line: "LSU ML", price: "+118", relativeLimit: 91 }, { book: "Circa", line: "LSU ML", price: "+115", relativeLimit: 100 }, { book: "DraftKings", line: "LSU ML", price: "+120", relativeLimit: 56 }, { book: "FanDuel", line: "LSU ML", price: "+125", relativeLimit: 51, stale: true }, { book: "BetMGM", line: "LSU ML", price: "+118", relativeLimit: 44 },
-        ],
-      },
-    },
-    pulse: [
-      { time: "12:11", type: "KEY NUMBER", title: "LSU reaches +2.5", detail: "The market traded off +3 after limits rose.", tone: "critical" },
-      { time: "11:55", type: "STEAM", title: "LSU and over move together", detail: "Three reference books adjusted both markets.", tone: "market" },
-      { time: "10:07", type: "ROSTER", title: "LSU receiver confirmed active", detail: "The designation changed after the final walkthrough.", tone: "news" },
-      { time: "09:20", type: "WEATHER", title: "Dry forecast holds", detail: "No meaningful wind or precipitation risk is expected.", tone: "weather" },
-    ],
-    related: [
-      { label: "1H total", value: "O 31.0", note: "Two-book steam" },
-      { label: "LSU team total", value: "O 29.5", note: "Price firming" },
-      { label: "Key state", value: "Off +3", note: "Crossed at 11:54" },
-    ],
-  },
-  {
-    id: "usc-mich",
-    away: "USC",
-    home: "MICHIGAN",
-    kickoff: "12:00 PM ET",
-    venue: "Michigan Stadium",
-    network: "FOX",
-    headlineLine: "MICH -3.0",
-    headlineMove: 0,
-    markets: {
-      spread: {
-        label: "Full-game spread", current: "MICH -3.0", open: "MICH -3.0", move: "Two-way trade at key number", axisLabel: "Michigan spread",
-        history: history([-3, -3, -3, -3, -3, -3, -3, -3], [-3, -3, -2.5, -3, -3, -3, -3, -3], [-3, -3, -3, -3.5, -3, -3, -3, -3]),
-        catalysts: [{ at: "FRI 10A", label: "rain risk" }, { at: "SAT 8A", label: "two-way trade" }],
-        books: [
-          { book: "Pinnacle", line: "MICH -3.0", price: "+102", relativeLimit: 93 }, { book: "Circa", line: "MICH -3.0", price: "-105", relativeLimit: 100 }, { book: "DraftKings", line: "MICH -3.0", price: "-108", relativeLimit: 60 }, { book: "FanDuel", line: "MICH -2.5", price: "-120", relativeLimit: 53 }, { book: "BetMGM", line: "MICH -3.0", price: "+100", relativeLimit: 46 },
-        ],
-      },
-      total: {
-        label: "Full-game total", current: "45.0", open: "46.5", move: "1.5 pts toward under", axisLabel: "Game total",
-        history: history([46.5, 46.5, 46, 46, 45.5, 45, 45, 45], [46.5, 46.5, 46.5, 46, 46, 45.5, 45, 45], [46.5, 46, 46, 45.5, 45.5, 45, 44.5, 45]),
-        catalysts: [{ at: "FRI 10A", label: "rain risk" }, { at: "SAT 8A", label: "under buy" }],
-        books: [
-          { book: "Pinnacle", line: "45.0", price: "U -106", relativeLimit: 93 }, { book: "Circa", line: "44.5", price: "O -110", relativeLimit: 100 }, { book: "DraftKings", line: "45.0", price: "U -110", relativeLimit: 60 }, { book: "FanDuel", line: "45.5", price: "U -115", relativeLimit: 53, stale: true }, { book: "BetMGM", line: "45.0", price: "U -108", relativeLimit: 46 },
-        ],
-      },
-      moneyline: {
-        label: "Michigan moneyline", current: "MICH -152", open: "MICH -150", move: "0.3pp implied probability", axisLabel: "Vig-free Michigan win probability",
-        history: history([0.595, 0.596, 0.594, 0.598, 0.596, 0.597, 0.596, 0.598], [0.593, 0.594, 0.592, 0.596, 0.595, 0.596, 0.597, 0.597], [0.597, 0.596, 0.598, 0.6, 0.597, 0.598, 0.599, 0.6]),
-        catalysts: [{ at: "FRI 10A", label: "weather" }, { at: "SAT 8A", label: "balanced" }],
-        books: [
-          { book: "Pinnacle", line: "MICH ML", price: "-152", relativeLimit: 93 }, { book: "Circa", line: "MICH ML", price: "-155", relativeLimit: 100 }, { book: "DraftKings", line: "MICH ML", price: "-154", relativeLimit: 60 }, { book: "FanDuel", line: "MICH ML", price: "-148", relativeLimit: 53 }, { book: "BetMGM", line: "MICH ML", price: "-152", relativeLimit: 46 },
-        ],
-      },
-    },
-    pulse: [
-      { time: "11:32", type: "BALANCED", title: "Spread pinned at -3", detail: "Books are adjusting price rather than leaving the key number.", tone: "market" },
-      { time: "10:58", type: "TOTAL STEAM", title: "Under reaches 45", detail: "Circa briefly tested 44.5 before buyback.", tone: "critical" },
-      { time: "09:35", type: "WEATHER", title: "Rain probability increases", detail: "The latest forecast now carries a 65% game-window probability.", tone: "weather" },
-      { time: "08:15", type: "NEWS", title: "Michigan backfield intact", detail: "Both listed running backs completed warmups.", tone: "news" },
-    ],
-    related: [
-      { label: "Spread price", value: "+102", note: "Market protects -3" },
-      { label: "1H total", value: "U 22.0", note: "Earlier move" },
-      { label: "Weather", value: "65% rain", note: "Wind remains low" },
-    ],
-  },
-];
-
-const MARKET_LABELS: Record<MarketKey, string> = {
-  spread: "SPREAD",
-  total: "TOTAL",
-  moneyline: "MONEYLINE",
-};
-
-const SERIES_COLORS = {
-  Pinnacle: "#f6a800",
-  DraftKings: "#59b6ff",
-  Circa: "#c58cff",
-};
-
-function displayTick(value: number, market: MarketKey): string {
-  if (market === "moneyline") return `${(value * 100).toFixed(0)}%`;
-  return value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
+function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSide, asOf: string): MarketView {
+  const currentValues = Object.values(game.currentBooks ?? {}).flatMap((book) => { const value = valueFor(book, market); return value == null ? [] : [value]; });
+  const openingValues = Object.values(game.openingBooks ?? {}).flatMap((book) => { const value = valueFor(book, market); return value == null ? [] : [value]; });
+  const current = lowerMedian(currentValues); const opening = lowerMedian(openingValues);
+  const bookKeys = Array.from(new Set(game.history.flatMap((point) => Object.keys(point.books))));
+  const orderedBooks = [...BOOK_PRIORITY.filter((book) => bookKeys.includes(book)), ...bookKeys.filter((book) => !BOOK_PRIORITY.includes(book)).sort()].slice(0, 3);
+  const history = game.history.map((point) => ({ time: fmtEt(point.capturedAt, true), values: Object.fromEntries(orderedBooks.flatMap((key) => { const value = valueFor(point.books[key] ?? {}, market); return value == null ? [] : [[key, value]]; })) }));
+  const movement = current != null && opening != null ? current - opening : null;
+  let currentLabel = "NO MARKET"; let openingLabel = "—";
+  if (current != null) currentLabel = market === "spread" ? `${game.homeTeam} ${signed(current)}` : market === "total" ? current.toFixed(1) : `${game.homeTeam} ${(current * 100).toFixed(1)}%`;
+  if (opening != null) openingLabel = market === "spread" ? signed(opening) : market === "total" ? opening.toFixed(1) : `${(opening * 100).toFixed(1)}%`;
+  const selectedLineBookCount = current == null ? 0 : currentValues.filter((value) => value === current).length;
+  return {
+    label: `Full-game ${market}`, current: currentLabel, open: openingLabel,
+    move: movement == null ? "Awaiting two captures" : market === "moneyline" ? `${signed(movement * 100)}pp` : `${signed(movement)} pts`,
+    axisLabel: market === "moneyline" ? `Vig-free ${game.homeTeam} probability` : market === "spread" ? `${game.homeTeam} spread` : "Game total",
+    series: orderedBooks, history, books: buildBookRows(game, market, side, asOf), selectedLineBookCount, marketBookCount: currentValues.length,
+  };
 }
 
-function fmtEt(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  }).format(new Date(value));
-}
+function displayTick(value: number, market: MarketKey): string { return market === "moneyline" ? `${(value * 100).toFixed(0)}%` : signed(value); }
 
-function pulseIcon(tone: AlertTone) {
-  if (tone === "weather") return CloudSun;
-  if (tone === "news") return Newspaper;
-  if (tone === "critical") return ShieldAlert;
-  return Zap;
-}
-
-function MarketChart({ market, marketKey }: { market: Market; marketKey: MarketKey }) {
-  const width = 760;
-  const height = 300;
-  const frame = { left: 62, right: 738, top: 26, bottom: 250 };
-  const values = market.history.flatMap((point) => [point.Pinnacle, point.DraftKings, point.Circa]);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
+function MarketChart({ market, marketKey }: { market: MarketView; marketKey: MarketKey }) {
+  const width = 760; const height = 300; const frame = { left: 62, right: 738, top: 26, bottom: 250 };
+  const values = market.history.flatMap((point) => Object.values(point.values));
+  if (!values.length) return <div className={styles.empty}>No eligible pregame history for this market yet.</div>;
+  const rawMin = Math.min(...values); const rawMax = Math.max(...values);
   const padding = Math.max((rawMax - rawMin) * 0.25, marketKey === "moneyline" ? 0.008 : 0.4);
-  const min = rawMin - padding;
-  const max = rawMax + padding;
+  const min = rawMin - padding; const max = rawMax + padding;
   const x = (index: number) => frame.left + (index / Math.max(market.history.length - 1, 1)) * (frame.right - frame.left);
   const y = (value: number) => frame.top + ((max - value) / Math.max(max - min, 0.001)) * (frame.bottom - frame.top);
-  const points = (series: keyof typeof SERIES_COLORS) => market.history.map((point, index) => `${x(index).toFixed(1)},${y(point[series]).toFixed(1)}`).join(" ");
   const ticks = Array.from({ length: 5 }, (_, index) => max - (index / 4) * (max - min));
-
-  return (
-    <svg className={styles.marketChart} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${market.axisLabel} movement across Pinnacle, DraftKings, and Circa`}>
-      <title>{`${market.axisLabel} movement`}</title>
-      {ticks.map((tick) => {
-        const tickY = y(tick);
-        return <g key={tick}><line x1={frame.left} x2={frame.right} y1={tickY} y2={tickY} className={styles.chartGrid} /><text x={frame.left - 9} y={tickY + 4} textAnchor="end">{displayTick(tick, marketKey)}</text></g>;
-      })}
-      <line x1={frame.left} x2={frame.right} y1={frame.bottom} y2={frame.bottom} className={styles.chartAxis} />
-      <line x1={frame.left} x2={frame.left} y1={frame.top} y2={frame.bottom} className={styles.chartAxis} />
-      {market.history.map((point, index) => (
-        <text key={point.time} x={x(index)} y={frame.bottom + 24} textAnchor={index === 0 ? "start" : index === market.history.length - 1 ? "end" : "middle"} className={styles.chartTime}>{point.time}</text>
-      ))}
-      {market.catalysts.map((catalyst, index) => {
-        const pointIndex = Math.max(market.history.findIndex((point) => point.time === catalyst.at), 0);
-        const catalystX = x(pointIndex);
-        return <g key={`${catalyst.at}-${catalyst.label}`}><line x1={catalystX} x2={catalystX} y1={frame.top} y2={frame.bottom} className={styles.catalystLine} /><text x={catalystX + 5} y={frame.top + 13 + index * 14} className={styles.catalystLabel}>{catalyst.label}</text></g>;
-      })}
-      {(Object.keys(SERIES_COLORS) as Array<keyof typeof SERIES_COLORS>).map((series) => (
-        <polyline key={series} points={points(series)} fill="none" stroke={SERIES_COLORS[series]} strokeWidth={series === "Pinnacle" ? 2.6 : 1.9} vectorEffect="non-scaling-stroke" />
-      ))}
-      {(Object.keys(SERIES_COLORS) as Array<keyof typeof SERIES_COLORS>).map((series, index) => (
-        <g key={`legend-${series}`} transform={`translate(${frame.left + index * 125}, 291)`}><line x1="0" x2="18" y1="-4" y2="-4" stroke={SERIES_COLORS[series]} strokeWidth={series === "Pinnacle" ? 2.6 : 1.9} /><text x="24" y="0" className={styles.legendLabel}>{series}</text></g>
-      ))}
-    </svg>
-  );
+  return <svg className={styles.marketChart} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${market.axisLabel} movement`}><title>{market.axisLabel}</title>
+    {ticks.map((tick) => <g key={tick}><line x1={frame.left} x2={frame.right} y1={y(tick)} y2={y(tick)} className={styles.chartGrid} /><text x={frame.left - 9} y={y(tick) + 4} textAnchor="end">{displayTick(tick, marketKey)}</text></g>)}
+    <line x1={frame.left} x2={frame.right} y1={frame.bottom} y2={frame.bottom} className={styles.chartAxis} /><line x1={frame.left} x2={frame.left} y1={frame.top} y2={frame.bottom} className={styles.chartAxis} />
+    {market.history.map((point, index) => <text key={`${point.time}-${index}`} x={x(index)} y={frame.bottom + 24} textAnchor={index === 0 ? "start" : index === market.history.length - 1 ? "end" : "middle"} className={styles.chartTime}>{point.time}</text>)}
+    {market.series.map((series, seriesIndex) => market.history.slice(1).map((point, index) => { const before = market.history[index].values[series]; const after = point.values[series]; return before == null || after == null ? null : <line key={`${series}-${index}`} x1={x(index)} y1={y(before)} x2={x(index + 1)} y2={y(after)} stroke={SERIES_COLORS[seriesIndex]} strokeWidth={seriesIndex === 0 ? 2.6 : 1.9} vectorEffect="non-scaling-stroke" />; }))}
+    {market.series.map((series, index) => <g key={series} transform={`translate(${frame.left + index * 150}, 291)`}><line x1="0" x2="18" y1="-4" y2="-4" stroke={SERIES_COLORS[index]} strokeWidth={index === 0 ? 2.6 : 1.9} /><text x="24" y="0" className={styles.legendLabel}>{bookTitle(series)}</text></g>)}
+  </svg>;
 }
 
-export default function CfbTerminalClient({ evaluatedAt }: { evaluatedAt: string }) {
-  const [gameId, setGameId] = useState(GAMES[0].id);
+export default function CfbTerminalClient({ board }: { board: CfbTerminalBoard }) {
+  const [gameId, setGameId] = useState(board.games[0]?.matchupId ?? 0);
   const [marketKey, setMarketKey] = useState<MarketKey>("spread");
-  const [query, setQuery] = useState("");
-  const [selectedBook, setSelectedBook] = useState("FanDuel");
-  const [positions, setPositions] = useState<PaperPosition[]>([]);
-  const [lockMessage, setLockMessage] = useState<string | null>(null);
-
-  const game = GAMES.find((item) => item.id === gameId) ?? GAMES[0];
-  const market = game.markets[marketKey];
-  const quote = market.books.find((item) => item.book === selectedBook) ?? market.books[0];
-  const filteredGames = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return GAMES;
-    return GAMES.filter((item) => `${item.away} ${item.home} ${item.network}`.toLowerCase().includes(normalized));
-  }, [query]);
-
-  function chooseGame(id: string) {
-    setGameId(id);
-    setSelectedBook("FanDuel");
-    setLockMessage(null);
-  }
-
-  function chooseMarket(next: MarketKey) {
-    setMarketKey(next);
-    setSelectedBook("FanDuel");
-    setLockMessage(null);
-  }
-
+  const [side, setSide] = useState<SelectionSide>("home");
+  const [query, setQuery] = useState(""); const [selectedBook, setSelectedBook] = useState("");
+  const [positions, setPositions] = useState<PaperPosition[]>([]); const [lockMessage, setLockMessage] = useState<string | null>(null);
+  const game = board.games.find((item) => item.matchupId === gameId) ?? board.games[0] ?? null;
+  const market = useMemo(() => game ? buildMarket(game, marketKey, side, board.asOf) : null, [game, marketKey, side, board.asOf]);
+  const quote = market?.books.find((item) => item.key === selectedBook) ?? market?.books[0] ?? null;
+  const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return !normalized ? board.games : board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized)); }, [board.games, query]);
+  function chooseGame(id: number) { setGameId(id); setSelectedBook(""); setLockMessage(null); }
+  function chooseMarket(next: MarketKey) { setMarketKey(next); setSide(selectionFor(next)); setSelectedBook(""); setLockMessage(null); }
+  function chooseSide(next: SelectionSide) { setSide(next); setSelectedBook(""); setLockMessage(null); }
   function addPaperPosition() {
-    const next = {
-      game: `${game.away} @ ${game.home}`,
-      market: MARKET_LABELS[marketKey],
-      book: quote.book,
-      entry: `${quote.line} ${quote.price}`,
-      current: market.current,
-      state: quote.stale ? "Price gap captured" : "At market",
-    };
-    setPositions((current) => [{ ...next, id: `${game.id}-${marketKey}-${quote.book}-${current.length + 1}` }, ...current]);
-    setLockMessage(`Paper locked ${quote.line} ${quote.price} at ${quote.book}`);
+    if (!game || !quote || !quote.fresh) return;
+    setPositions((current) => [{ id: `${game.matchupId}-${marketKey}-${quote.key}-${Date.now()}`, game: `${game.awayTeam} @ ${game.homeTeam}`, market: `${MARKET_LABELS[marketKey]} · ${quote.side.toUpperCase()}`, book: quote.book, entry: `${quote.line} ${quote.price}`, observedAt: quote.updatedAt ?? board.asOf }, ...current]);
+    setLockMessage(`Recorded paper position at ${quote.book}; this did not place a wager.`);
   }
-
-  return (
-    <div className={styles.terminal}>
-      <header className={styles.topbar}>
-        <div className={styles.brand}>CFB LINE TERMINAL</div>
-        <label className={styles.command}>
-          <Search aria-hidden="true" />
-          <span className={styles.srOnly}>Search market watch</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SEARCH TEAM, GAME, MARKET OR NEWS" />
-        </label>
-        <div className={styles.marketOpen}><Radio aria-hidden="true" /> MARKET OPEN</div>
-        <div className={styles.shadowMode}>SHADOW MARKET · SAMPLE DATA</div>
-      </header>
-
-      <div className={styles.shell}>
-        <aside className={styles.watchPane} aria-label="CFB market watch">
-          <div className={styles.sectionTitle}><span>MARKET WATCH</span><span>SATURDAY</span></div>
-          <div className={styles.watchHeader}><span>GAME</span><span>LINE</span><span>MOVE</span></div>
-          <div className={styles.watchList}>
-            {filteredGames.map((item) => {
-              const active = item.id === game.id;
-              const Trend = item.headlineMove > 0 ? TrendingUp : item.headlineMove < 0 ? TrendingDown : Activity;
-              return (
-                <button key={item.id} type="button" className={styles.watchRow} data-active={active} onClick={() => chooseGame(item.id)}>
-                  <span className={styles.watchGame}><strong>{item.away} @ {item.home}</strong><small>{item.kickoff} · {item.network} · 5 books</small></span>
-                  <span className={styles.watchLine}>{item.headlineLine}</span>
-                  <span className={item.headlineMove > 0 ? styles.positive : item.headlineMove < 0 ? styles.negative : styles.neutral}><Trend aria-hidden="true" /> {Math.abs(item.headlineMove).toFixed(1)}</span>
-                </button>
-              );
-            })}
-            {filteredGames.length === 0 ? <div className={styles.empty}>No games match that search.</div> : null}
-          </div>
-        </aside>
-
-        <main className={styles.instrumentPane}>
-          <section className={styles.instrumentHeader}>
-            <div className={styles.instrumentTop}>
-              <div>
-                <div className={styles.instrumentTitle}>{game.away} @ {game.home}</div>
-                <div className={styles.instrumentMeta}>{game.venue} · {game.kickoff} · {game.network} · {market.label}</div>
-              </div>
-              <div className={styles.primaryQuote}>
-                <strong>{market.current}</strong>
-                <span>OPEN {market.open} · {market.move.toUpperCase()}</span>
-              </div>
-            </div>
-            <div className={styles.marketTabs} aria-label="Market type">
-              {(Object.keys(MARKET_LABELS) as MarketKey[]).map((key) => (
-                <button key={key} type="button" data-active={marketKey === key} onClick={() => chooseMarket(key)}>{MARKET_LABELS[key]}</button>
-              ))}
-            </div>
-          </section>
-
-          <section className={styles.chartSection}>
-            <div className={styles.chartLabelRow}>
-              <span>{market.axisLabel}</span>
-              <span>{fmtEt(evaluatedAt)} · pregame snapshots only</span>
-            </div>
-            <div className={styles.chartWrap}>
-              <MarketChart market={market} marketKey={marketKey} />
-            </div>
-          </section>
-
-          <section className={styles.lowerGrid}>
-            <div className={styles.ladderPane}>
-              <div className={styles.sectionTitle}><span>BOOK LADDER</span><span>EXECUTABLE PRICES</span></div>
-              <div className={styles.bookHeader}><span>BOOK</span><span>REL. LIMIT</span><span>LINE</span><span>PRICE</span></div>
-              {market.books.map((item) => (
-                <button key={item.book} type="button" className={styles.bookRow} data-selected={selectedBook === item.book} onClick={() => { setSelectedBook(item.book); setLockMessage(null); }}>
-                  <span>{item.book}{item.stale ? <em>GAP</em> : null}</span>
-                  <span className={styles.limitTrack}><span style={{ width: `${item.relativeLimit}%` }} /></span>
-                  <span>{item.line}</span>
-                  <span>{item.price}</span>
-                </button>
-              ))}
-              <div className={styles.paperAction}>
-                <button type="button" onClick={addPaperPosition}><BookOpen aria-hidden="true" /> PAPER LOCK {quote.book.toUpperCase()} {quote.line} {quote.price}</button>
-                <div aria-live="polite">{lockMessage ?? "Track entry-to-close CLV without placing a wager."}</div>
-              </div>
-            </div>
-
-            <div className={styles.catalystPane}>
-              <div className={styles.sectionTitle}><span>CATALYST TIMELINE</span><span>LINE-ALIGNED</span></div>
-              {game.pulse.slice(0, 5).map((item) => (
-                <div key={`${item.time}-${item.type}`} className={styles.catalystRow}>
-                  <span>{item.time}</span><strong>{item.type}</strong><p>{item.title}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className={styles.blotter}>
-            <div className={styles.sectionTitle}><span>PAPER TRADE BLOTTER</span><span>{positions.length} OPEN</span></div>
-            {positions.length === 0 ? (
-              <div className={styles.blotterEmpty}>Select an executable quote and paper lock it to begin tracking entry-to-close movement.</div>
-            ) : (
-              <div className={styles.blotterTableWrap}>
-                <table>
-                  <thead><tr><th>Game</th><th>Market</th><th>Book</th><th>Entry</th><th>Current mark</th><th>State</th></tr></thead>
-                  <tbody>{positions.map((position) => <tr key={position.id}><td>{position.game}</td><td>{position.market}</td><td>{position.book}</td><td>{position.entry}</td><td>{position.current}</td><td>{position.state}</td></tr>)}</tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </main>
-
-        <aside className={styles.pulsePane} aria-label="CFB market pulse">
-          <div className={styles.sectionTitle}><span>MARKET PULSE</span><span>PRIORITY</span></div>
-          {game.pulse.map((item) => {
-            const Icon = pulseIcon(item.tone);
-            return (
-              <article key={`${item.time}-${item.type}`} className={styles.pulseRow} data-tone={item.tone}>
-                <div><span>{item.time}</span><strong><Icon aria-hidden="true" /> {item.type}</strong></div>
-                <h3>{item.title}</h3>
-                <p>{item.detail}</p>
-              </article>
-            );
-          })}
-          <div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>
-          {game.related.map((item) => (
-            <div key={item.label} className={styles.relatedRow}>
-              <span>{item.label}</span><strong>{item.value}</strong><small>{item.note}</small>
-            </div>
-          ))}
-          <div className={styles.disclosure}>
-            <BellRing aria-hidden="true" />
-            <div><strong>Research terminal</strong><p>Sample quotes demonstrate the product experience. No CFB model edge or live execution is represented.</p></div>
-          </div>
-        </aside>
-      </div>
-
-      <footer className={styles.ticker}>
-        <span><strong>TOP MOVE</strong> GEORGIA/TEXAS THROUGH 0</span>
-        <span><strong>STEAM</strong> OHIO STATE/OREGON UNDER</span>
-        <span><strong>STALE PRICE</strong> FANDUEL ORE -4.0</span>
-        <span><strong>KEY CROSS</strong> LSU OFF +3</span>
-        <span><strong>NEXT KICK</strong> USC @ MICHIGAN 12:00 ET</span>
-      </footer>
+  const statusLabel = board.status.toUpperCase();
+  const sideOptions: SelectionSide[] = marketKey === "total" ? ["over", "under"] : ["home", "away"];
+  return <div className={styles.terminal}>
+    <header className={styles.topbar}><div className={styles.brand}>CFB LINE TERMINAL</div><label className={styles.command}><Search aria-hidden="true" /><span className={styles.srOnly}>Search market watch</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SEARCH TEAM OR GAME" /></label><div className={styles.marketOpen}><Radio aria-hidden="true" /> {board.games.length ? "MARKET BOARD" : "NO BOARD"}</div><div className={styles.shadowMode} title={board.statusDetail}>{statusLabel} · AS OF {fmtEt(board.asOf, true)}</div></header>
+    <div className={styles.shell}>
+      <aside className={styles.watchPane} aria-label="CFB market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div><div className={styles.watchHeader}><span>GAME</span><span>LINE</span><span>MOVE</span></div><div className={styles.watchList}>
+        {filteredGames.map((item) => { const itemMarket = buildMarket(item, "spread", "home", board.asOf); const current = lowerMedian(Object.values(item.currentBooks ?? {}).flatMap((book) => book.spread_home == null ? [] : [Number(book.spread_home)])); const opening = lowerMedian(Object.values(item.openingBooks ?? {}).flatMap((book) => book.spread_home == null ? [] : [Number(book.spread_home)])); const move = current != null && opening != null ? current - opening : 0; const Trend = move > 0 ? TrendingUp : move < 0 ? TrendingDown : Activity; return <button key={item.matchupId} type="button" className={styles.watchRow} data-active={item.matchupId === game?.matchupId} onClick={() => chooseGame(item.matchupId)}><span className={styles.watchGame}><strong>{item.awayTeam} @ {item.homeTeam}</strong><small>{item.commenceTime ? fmtEt(item.commenceTime, true) : "TBD"} · {item.network ?? "NETWORK TBD"} · {item.captures} captures</small></span><span className={styles.watchLine}>{itemMarket.current}</span><span className={move > 0 ? styles.positive : move < 0 ? styles.negative : styles.neutral}><Trend aria-hidden="true" /> {Math.abs(move).toFixed(1)}</span></button>; })}
+        {!filteredGames.length ? <div className={styles.empty}>{board.statusDetail}</div> : null}
+      </div></aside>
+      <main className={styles.instrumentPane}>{!game || !market ? <section className={styles.chartSection}><div className={styles.empty}>Load the canonical CFB schedule to begin. No sample quotes are substituted.</div></section> : <>
+        <section className={styles.instrumentHeader}><div className={styles.instrumentTop}><div><div className={styles.instrumentTitle}>{game.awayTeam} @ {game.homeTeam}</div><div className={styles.instrumentMeta}>{game.venue ?? "Venue TBD"} · {game.commenceTime ? fmtEt(game.commenceTime) : "Kickoff TBD"} · {game.network ?? "Network TBD"} · {market.label}</div></div><div className={styles.primaryQuote}><strong>{market.current}</strong><span>OPEN {market.open} · {market.move.toUpperCase()}</span></div></div><div className={styles.marketTabs}>{(Object.keys(MARKET_LABELS) as MarketKey[]).map((key) => <button key={key} type="button" data-active={marketKey === key} onClick={() => chooseMarket(key)}>{MARKET_LABELS[key]}</button>)}</div><div className={styles.marketTabs}>{sideOptions.map((option) => <button key={option} type="button" data-active={side === option} onClick={() => chooseSide(option)}>{option === "home" ? game.homeTeam : option === "away" ? game.awayTeam : option.toUpperCase()}</button>)}</div></section>
+        <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{market.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)}` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><MarketChart market={market} marketKey={marketKey} /></div></section>
+        <section className={styles.lowerGrid}><div className={styles.ladderPane}><div className={styles.sectionTitle}><span>BOOK LADDER</span><span>OBSERVED QUOTES</span></div><div className={styles.bookHeader}><span>BOOK</span><span>UPDATED</span><span>LINE</span><span>PRICE</span></div>{market.books.map((item) => <button key={item.key} type="button" className={styles.bookRow} data-selected={quote?.key === item.key} onClick={() => { setSelectedBook(item.key); setLockMessage(null); }}><span>{item.book}{!item.fresh ? <em>STALE</em> : null}</span><span>{item.updatedAt ? fmtEt(item.updatedAt, true) : "—"}</span><span>{item.line}</span><span>{item.price}</span></button>)}{!market.books.length ? <div className={styles.empty}>This market or side is not quoted by the captured books.</div> : null}<div className={styles.paperAction}><button type="button" disabled={!quote?.fresh} onClick={addPaperPosition}><BookOpen aria-hidden="true" /> {quote?.fresh ? `RECORD PAPER ${quote.book.toUpperCase()} ${quote.line} ${quote.price}` : "PAPER ENTRY DISABLED · QUOTE NOT ≤5M FRESH"}</button><div aria-live="polite">{lockMessage ?? "Displayed quotes are observations, not verified execution availability."}</div></div></div>
+          <div className={styles.catalystPane}><div className={styles.sectionTitle}><span>MARKET QUALITY</span><span>AUDIT</span></div><div className={styles.catalystRow}><span>NOW</span><strong>SUPPORT</strong><p>{market.selectedLineBookCount} books at selected consensus line · {market.marketBookCount} books in market</p></div><div className={styles.catalystRow}><span>OPEN</span><strong>HISTORY</strong><p>{game.captures} accepted pregame captures; post-kickoff rows excluded</p></div><div className={styles.catalystRow}><span>MAP</span><strong>IDENTITY</strong><p>CFBD game {game.cfbdGameId} · Odds event {game.oddsEventId ?? "unmapped"}</p></div></div></section>
+        <section className={styles.blotter}><div className={styles.sectionTitle}><span>SESSION PAPER BLOTTER</span><span>{positions.length} OPEN</span></div>{!positions.length ? <div className={styles.blotterEmpty}>A paper position can be recorded only from an observation no more than five minutes old.</div> : <div className={styles.blotterTableWrap}><table><thead><tr><th>Game</th><th>Market</th><th>Book</th><th>Entry</th><th>Observed</th></tr></thead><tbody>{positions.map((position) => <tr key={position.id}><td>{position.game}</td><td>{position.market}</td><td>{position.book}</td><td>{position.entry}</td><td>{fmtEt(position.observedAt)}</td></tr>)}</tbody></table></div>}</section>
+      </>}</main>
+      <aside className={styles.pulsePane}><div className={styles.sectionTitle}><span>DATA PULSE</span><span>{statusLabel}</span></div><article className={styles.pulseRow} data-tone={board.status === "live" ? "market" : "critical"}><div><span>{fmtEt(board.asOf, true)}</span><strong>{board.status === "live" ? <Zap aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />} FEED STATE</strong></div><h3>{statusLabel}</h3><p>{board.statusDetail}</p></article>{game ? <><article className={styles.pulseRow} data-tone="market"><div><span>{game.latestCapturedAt ? fmtEt(game.latestCapturedAt, true) : "—"}</span><strong><Activity aria-hidden="true" /> CAPTURE</strong></div><h3>{game.captures} observations</h3><p>Every chart point comes from the append-only exact-book ledger.</p></article><div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>{(["spread", "total", "moneyline"] as MarketKey[]).map((key) => { const view = buildMarket(game, key, selectionFor(key), board.asOf); return <div key={key} className={styles.relatedRow}><span>{MARKET_LABELS[key]}</span><strong>{view.current}</strong><small>{view.move}</small></div>; })}</> : null}<div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Lines are live provider observations when marked fresh. No predictive CFB edge or real-money execution is represented.</p></div></div></aside>
     </div>
-  );
+    <footer className={styles.ticker}><span><strong>STATUS</strong> {board.statusDetail}</span><span><strong>BOARD</strong> {board.games.length} GAMES</span><span><strong>QUARANTINE</strong> {board.unmappedEvents} UNMAPPED EVENTS</span><span><strong>CONSENSUS</strong> LOWER MEDIAN · EXACT-LINE PRICE SUPPORT</span><span><strong>PAPER</strong> FIVE-MINUTE FRESHNESS REQUIRED</span></footer>
+  </div>;
 }

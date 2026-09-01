@@ -291,6 +291,105 @@ TABLES = [
     )
     """,
 
+    # ── College football teams + canonical CFBD schedule ──────
+    """
+    CREATE TABLE IF NOT EXISTS cfb_teams (
+        team_id SERIAL PRIMARY KEY,
+        cfbd_team_id INTEGER NOT NULL UNIQUE,
+        name TEXT NOT NULL UNIQUE,
+        abbreviation TEXT,
+        conference TEXT,
+        classification TEXT,
+        logo_url TEXT DEFAULT '',
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_team_aliases (
+        id SERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        alias TEXT NOT NULL,
+        team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+        reviewed BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(provider, alias)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_venues (
+        venue_id SERIAL PRIMARY KEY,
+        cfbd_venue_id INTEGER UNIQUE,
+        name TEXT NOT NULL,
+        city TEXT,
+        state TEXT,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        timezone TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_matchups (
+        id SERIAL PRIMARY KEY,
+        cfbd_game_id BIGINT NOT NULL UNIQUE,
+        odds_event_id TEXT UNIQUE,
+        season INTEGER NOT NULL,
+        season_type TEXT NOT NULL,
+        week INTEGER NOT NULL,
+        game_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ,
+        start_time_tbd BOOLEAN NOT NULL DEFAULT FALSE,
+        home_team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+        away_team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+        venue_id INTEGER REFERENCES cfb_venues(venue_id),
+        neutral_site BOOLEAN NOT NULL DEFAULT FALSE,
+        conference_game BOOLEAN NOT NULL DEFAULT FALSE,
+        network TEXT,
+        game_status TEXT,
+        completed BOOLEAN NOT NULL DEFAULT FALSE,
+        home_score INTEGER,
+        away_score INTEGER,
+        home_line_scores JSONB,
+        away_line_scores JSONB,
+        went_to_overtime BOOLEAN NOT NULL DEFAULT FALSE,
+        overtime_periods INTEGER NOT NULL DEFAULT 0,
+        vegas_total DOUBLE PRECISION,
+        home_ml INTEGER,
+        away_ml INTEGER,
+        home_spread DOUBLE PRECISION,
+        vegas_prob_home DOUBLE PRECISION,
+        home_implied DOUBLE PRECISION,
+        away_implied DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        odds_fetched_at TIMESTAMPTZ,
+        score_fetched_at TIMESTAMPTZ,
+        final_at TIMESTAMPTZ,
+        CHECK (home_team_id <> away_team_id)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_unmapped_events (
+        id BIGSERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        provider_event_id TEXT NOT NULL,
+        home_name TEXT,
+        away_name TEXT,
+        commence_time TIMESTAMPTZ,
+        reason TEXT NOT NULL,
+        raw_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        occurrences INTEGER NOT NULL DEFAULT 1,
+        resolved_at TIMESTAMPTZ,
+        UNIQUE(provider, provider_event_id)
+    )
+    """,
+
     # Immutable revisions from the official MLB schedule feed. The mutable
     # mlb_matchups row is a convenience cache; this table preserves what the
     # application knew at each capture.
@@ -3630,6 +3729,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_survivor_picks_pending ON survivor_entry_picks(result) WHERE result = 'pending'",
     "CREATE INDEX IF NOT EXISTS idx_survivor_recs_entry ON survivor_recommendations(entry_id, week, frozen_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_survivor_recs_open ON survivor_recommendations(season, week) WHERE superseded_by IS NULL",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_date ON cfb_matchups(game_date, commence_time)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_upcoming ON cfb_matchups(commence_time) WHERE completed = FALSE",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_alias_lookup ON cfb_team_aliases(provider, alias)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_unmapped_open ON cfb_unmapped_events(last_seen_at DESC) WHERE resolved_at IS NULL",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",
