@@ -4016,6 +4016,110 @@ INDEXES = [
     # capture series is reproducible from the append-only *_odds_history tables.
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS comparison_status TEXT",
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS grading_version TEXT",
+    # Event-driven, quality-graded closes. CFB adds early market checkpoints;
+    # every close still points to one immutable pre-boundary history row.
+    """CREATE TABLE IF NOT EXISTS odds_capture_checkpoints (
+        id BIGSERIAL PRIMARY KEY,
+        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'cfb')),
+        matchup_id INTEGER NOT NULL,
+        event_id TEXT NOT NULL,
+        checkpoint TEXT NOT NULL CHECK (
+            checkpoint IN (
+                't_minus_48h', 't_minus_24h', 't_minus_6h',
+                't_minus_90m', 't_minus_15m', 't_minus_2m'
+            )
+        ),
+        scheduled_start_at TIMESTAMPTZ NOT NULL,
+        target_at TIMESTAMPTZ NOT NULL,
+        due_until TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (
+            status IN ('pending', 'attempted', 'captured', 'missed', 'failed')
+        ),
+        attempted_at TIMESTAMPTZ,
+        captured_at TIMESTAMPTZ,
+        history_id INTEGER REFERENCES game_odds_history(id),
+        failure_reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (sport, matchup_id, checkpoint, scheduled_start_at)
+    )""",
+    """CREATE TABLE IF NOT EXISTS event_closing_lines (
+        id BIGSERIAL PRIMARY KEY,
+        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'cfb')),
+        matchup_id INTEGER NOT NULL,
+        event_id TEXT,
+        scheduled_start_at TIMESTAMPTZ NOT NULL,
+        actual_start_at TIMESTAMPTZ,
+        boundary_at TIMESTAMPTZ NOT NULL,
+        boundary_source TEXT NOT NULL,
+        history_id INTEGER NOT NULL REFERENCES game_odds_history(id),
+        captured_at TIMESTAMPTZ NOT NULL,
+        lead_seconds INTEGER NOT NULL CHECK (lead_seconds >= 0),
+        quality TEXT NOT NULL CHECK (quality IN ('A', 'B', 'C', 'stale')),
+        methodology_version TEXT NOT NULL DEFAULT 'event-close-v1',
+        clv_cohort TEXT NOT NULL DEFAULT 'non_primary' CHECK (
+            clv_cohort IN ('verified_clv_v1', 'non_primary')
+        ),
+        verification_level TEXT NOT NULL DEFAULT 'scheduled_boundary' CHECK (
+            verification_level IN ('actual_start', 'scheduled_boundary')
+        ),
+        cohort_started_at TIMESTAMPTZ NOT NULL DEFAULT '2026-08-31T04:00:00Z',
+        primary_clv_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+        verification_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (sport, matchup_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS odds_api_usage (
+        id BIGSERIAL PRIMARY KEY,
+        requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        sport TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        endpoint TEXT NOT NULL,
+        event_count INTEGER NOT NULL DEFAULT 0,
+        markets TEXT,
+        bookmakers TEXT,
+        requests_last INTEGER,
+        requests_used INTEGER,
+        requests_remaining INTEGER,
+        response_status INTEGER,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+    )""",
+    "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_sport_check",
+    "ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_sport_check CHECK (sport IN ('mlb', 'tennis', 'cfb'))",
+    "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_checkpoint_check",
+    """ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check
+       CHECK (checkpoint IN ('t_minus_48h', 't_minus_24h', 't_minus_6h', 't_minus_90m', 't_minus_15m', 't_minus_2m'))""",
+    "ALTER TABLE event_closing_lines DROP CONSTRAINT IF EXISTS event_closing_lines_sport_check",
+    "ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'cfb'))",
+    "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS methodology_version TEXT NOT NULL DEFAULT 'event-close-v1'",
+    "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS clv_cohort TEXT NOT NULL DEFAULT 'non_primary'",
+    "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS verification_level TEXT NOT NULL DEFAULT 'scheduled_boundary'",
+    "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS cohort_started_at TIMESTAMPTZ NOT NULL DEFAULT '2026-08-31T04:00:00Z'",
+    "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS primary_clv_eligible BOOLEAN NOT NULL DEFAULT FALSE",
+    """UPDATE event_closing_lines
+       SET methodology_version='event-close-v1',
+           cohort_started_at='2026-08-31T04:00:00Z',
+           verification_level=CASE
+               WHEN boundary_source IN ('mlb_first_pitch', 'mlb_first_play') THEN 'actual_start'
+               ELSE 'scheduled_boundary'
+           END,
+           primary_clv_eligible=(
+               scheduled_start_at >= '2026-08-31T04:00:00Z'
+               AND quality IN ('A', 'B', 'C')
+           ),
+           clv_cohort=CASE
+               WHEN scheduled_start_at >= '2026-08-31T04:00:00Z'
+                AND quality IN ('A', 'B', 'C') THEN 'verified_clv_v1'
+               ELSE 'non_primary'
+           END
+       WHERE methodology_version='event-close-v1'""",
+    """CREATE OR REPLACE VIEW verified_clv_closes AS
+       SELECT * FROM event_closing_lines
+       WHERE methodology_version='event-close-v1'
+         AND cohort_started_at='2026-08-31T04:00:00Z'
+         AND scheduled_start_at >= cohort_started_at
+         AND quality IN ('A', 'B', 'C')
+         AND primary_clv_eligible=TRUE
+         AND clv_cohort='verified_clv_v1'""",
     # 2026-07-03: APPEND-ONLY grade history. line_alerts holds the CURRENT
     # grade for ordinary querying (denormalized); alert_grades preserves EVERY
     # grade event immutably. Reproducibility (from the append-only *_odds_history
@@ -4038,4 +4142,8 @@ INDEXES = [
         is_current BOOLEAN NOT NULL DEFAULT TRUE
     )""",
     "CREATE INDEX IF NOT EXISTS idx_alert_grades_current ON alert_grades(alert_id) WHERE is_current",
+    "CREATE INDEX IF NOT EXISTS idx_odds_checkpoints_due ON odds_capture_checkpoints(status, target_at, due_until)",
+    "CREATE INDEX IF NOT EXISTS idx_event_closing_lines_quality ON event_closing_lines(sport, quality, frozen_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_event_closing_lines_cohort ON event_closing_lines(clv_cohort, sport, scheduled_start_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_odds_api_usage_day ON odds_api_usage(requested_at DESC, sport, purpose)",
 ]

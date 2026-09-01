@@ -502,6 +502,37 @@ const ODDS_HISTORY_DDLS = [
   `ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS books JSONB`,
   `ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS vegas_total_raw DOUBLE PRECISION`,
   `ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS draw_ml INTEGER`,
+  `CREATE TABLE IF NOT EXISTS event_closing_lines (
+      id BIGSERIAL PRIMARY KEY,
+      sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'cfb')),
+      matchup_id INTEGER NOT NULL,
+      event_id TEXT,
+      scheduled_start_at TIMESTAMPTZ NOT NULL,
+      actual_start_at TIMESTAMPTZ,
+      boundary_at TIMESTAMPTZ NOT NULL,
+      boundary_source TEXT NOT NULL,
+      history_id INTEGER NOT NULL REFERENCES game_odds_history(id),
+      captured_at TIMESTAMPTZ NOT NULL,
+      lead_seconds INTEGER NOT NULL CHECK (lead_seconds >= 0),
+      quality TEXT NOT NULL CHECK (quality IN ('A', 'B', 'C', 'stale')),
+      methodology_version TEXT NOT NULL DEFAULT 'event-close-v1',
+      clv_cohort TEXT NOT NULL DEFAULT 'non_primary',
+      verification_level TEXT NOT NULL DEFAULT 'scheduled_boundary',
+      cohort_started_at TIMESTAMPTZ NOT NULL DEFAULT '2026-08-31T04:00:00Z',
+      primary_clv_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+      verification_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (sport, matchup_id)
+    )`,
+  `ALTER TABLE event_closing_lines DROP CONSTRAINT IF EXISTS event_closing_lines_sport_check`,
+  `ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'cfb'))`,
+  `CREATE OR REPLACE VIEW verified_clv_closes AS
+     SELECT * FROM event_closing_lines
+     WHERE methodology_version='event-close-v1'
+       AND scheduled_start_at >= cohort_started_at
+       AND quality IN ('A', 'B', 'C')
+       AND primary_clv_eligible=TRUE
+       AND clv_cohort='verified_clv_v1'`,
   `CREATE TABLE IF NOT EXISTS player_prop_history (
       id SERIAL PRIMARY KEY,
       sport TEXT NOT NULL,

@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/mlb-odds-capture",
       "schedule": "7,37 14-23,0-3 * * *"
+    },
+    {
+      "path": "/api/cron/event-closing-lines",
+      "schedule": "* * * * *"
     }
   ]
 }

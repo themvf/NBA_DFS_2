@@ -92,7 +92,7 @@ alone.
 | Tennis | `ingest.tennis_schedule` | 3 regions × 3 markets | 9/tournament | 3h in US Open window, else 6h | ~72 |
 | NFL game lines | `ingest.nfl_schedule` | 2 regions × 3 markets × 2 keys | 12 | 1×/day | 12 |
 | NFL scores | `ingest.nfl_schedule` | `daysFrom=3` × 2 keys | 4 | 1×/day | 4 |
-| CFB game lines | `ingest.cfb_schedule` | 10 named books × 3 markets | expected 3/bulk call; verify in Phase 0 | 4 lead-time checkpoints/game cluster | **GATED** by `CFB_LIVE_CAPTURE_ENABLED=false` |
+| CFB game lines | `ingest.event_closing_lines` | 10 named books × 3 markets | expected 3/bulk call | T−48h, T−24h, T−6h, T−90m, T−15m, T−2m/game cluster | quota guarded |
 | MLB props | `ingest.mlb_prop_odds` | 4 markets × 1 (10 books) | 4/event | **PAUSED 2026-08-24** | 0 |
 | Soccer | `refresh_soccer.yml` | — | — | **disabled 2026-08-01** | 0 |
 
@@ -210,14 +210,12 @@ used 2026-05-22.
 
 ## 5. Open items
 
-- **CFB is implemented but paid scheduling is gated.** The workflow refreshes
-  canonical CFBD games, maps the free Odds API event list, and dry-runs due
-  checkpoint windows. It will not call the paid odds endpoint until the
-  repository variable `CFB_LIVE_CAPTURE_ENABLED` is set to `true` after a
-  capped seven-day probe verifies coverage and actual `x-requests-last` cost.
-  The capture windows are open (12–72h), T−6h (5–7h), T−90m (60–120m), and
-  T−15m (5–25m). A single bulk call satisfies all due games represented in the
-  accepted response; request success alone does not mark fulfillment.
+- **CFB uses the shared event-close worker.** The regular CFB workflow refreshes
+  canonical CFBD games and free provider-event mappings. The one-minute Vercel
+  dispatcher starts a paid worker only when a durable checkpoint is due. CFB
+  checkpoints are T−48h, T−24h, T−6h, T−90m, T−15m, and T−2m; one bulk call
+  satisfies every due mapped game in that run. Request success alone does not
+  mark fulfillment, and the daily cap plus monthly reserve remain hard guards.
 - **NFL regular season needs a cadence.** Currently 1×/day (16 credits) for
   weekly games, with preseason and regular both fetched daily. The right
   cadence is undecided; the season opens 2026-09-09.

@@ -9948,8 +9948,15 @@ export type CfbTerminalRow = {
   captures: number;
   openingBooks: CfbBookMap | null;
   currentBooks: CfbBookMap | null;
+  closingBooks: CfbBookMap | null;
   openingCapturedAt: string | null;
   latestCapturedAt: string | null;
+  closingCapturedAt: string | null;
+  closeQuality: "A" | "B" | "C" | "stale" | null;
+  closeLeadSeconds: number | null;
+  closeBoundarySource: string | null;
+  closeVerificationLevel: string | null;
+  closeCohort: string | null;
   history: Array<{ capturedAt: string; books: CfbBookMap }>;
 };
 
@@ -10040,8 +10047,15 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
       COALESCE(latest.capture_count, 0)::int AS captures,
       opening.books AS "openingBooks",
       latest.books AS "currentBooks",
+      close_history.books AS "closingBooks",
       opening.captured_at::text AS "openingCapturedAt",
       latest.captured_at::text AS "latestCapturedAt",
+      close_history.captured_at::text AS "closingCapturedAt",
+      vclose.quality AS "closeQuality",
+      vclose.lead_seconds AS "closeLeadSeconds",
+      vclose.boundary_source AS "closeBoundarySource",
+      vclose.verification_level AS "closeVerificationLevel",
+      vclose.clv_cohort AS "closeCohort",
       COALESCE(trails.history, '[]'::jsonb) AS history
     FROM cfb_matchups m
     JOIN cfb_teams ht ON ht.team_id=m.home_team_id
@@ -10050,6 +10064,9 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
     LEFT JOIN opening ON opening.matchup_id=m.id
     LEFT JOIN latest ON latest.matchup_id=m.id
     LEFT JOIN trails ON trails.matchup_id=m.id
+    LEFT JOIN verified_clv_closes vclose
+      ON vclose.sport='cfb' AND vclose.matchup_id=m.id
+    LEFT JOIN game_odds_history close_history ON close_history.id=vclose.history_id
     WHERE m.game_date=${targetDate}::date
     ORDER BY m.commence_time NULLS LAST, m.id
   `);
@@ -10085,8 +10102,15 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
       captures: Number(r.captures ?? 0),
       openingBooks: r.openingBooks && typeof r.openingBooks === "object" ? r.openingBooks as CfbBookMap : null,
       currentBooks: r.currentBooks && typeof r.currentBooks === "object" ? r.currentBooks as CfbBookMap : null,
+      closingBooks: r.closingBooks && typeof r.closingBooks === "object" ? r.closingBooks as CfbBookMap : null,
       openingCapturedAt: r.openingCapturedAt != null ? String(r.openingCapturedAt) : null,
       latestCapturedAt: r.latestCapturedAt != null ? String(r.latestCapturedAt) : null,
+      closingCapturedAt: r.closingCapturedAt != null ? String(r.closingCapturedAt) : null,
+      closeQuality: ["A", "B", "C", "stale"].includes(String(r.closeQuality)) ? String(r.closeQuality) as "A" | "B" | "C" | "stale" : null,
+      closeLeadSeconds: r.closeLeadSeconds != null ? Number(r.closeLeadSeconds) : null,
+      closeBoundarySource: r.closeBoundarySource != null ? String(r.closeBoundarySource) : null,
+      closeVerificationLevel: r.closeVerificationLevel != null ? String(r.closeVerificationLevel) : null,
+      closeCohort: r.closeCohort != null ? String(r.closeCohort) : null,
       history,
     } satisfies CfbTerminalRow;
   });

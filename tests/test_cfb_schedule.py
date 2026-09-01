@@ -249,6 +249,8 @@ def test_unmapped_provider_team_is_quarantined(monkeypatch) -> None:
     assert quarantined[0]["reason"] == "unknown team alias"
 
 
-def test_checkpoint_windows_are_hittable_by_fifteen_minute_scheduler() -> None:
-    assert ("t_minus_15m", 5, 25) in cfb_schedule.CHECKPOINTS
-    assert all(name != "t_minus_2m" for name, _, _ in cfb_schedule.CHECKPOINTS)
+def test_checkpoint_windows_cover_early_market_through_game_time() -> None:
+    assert ("t_minus_48h", 2520, 2880) in cfb_schedule.CHECKPOINTS
+    assert ("t_minus_24h", 1200, 1440) in cfb_schedule.CHECKPOINTS
+    assert ("t_minus_15m", 5, 15) in cfb_schedule.CHECKPOINTS
+    assert ("t_minus_2m", 0, 2) in cfb_schedule.CHECKPOINTS

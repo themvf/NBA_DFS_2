@@ -47,10 +47,12 @@ CFB_BOOKMAKERS = (
 )
 CFB_MARKETS = "h2h,spreads,totals"
 CHECKPOINTS = (
-    ("open", 12 * 60, 72 * 60),
-    ("t_minus_6h", 5 * 60, 7 * 60),
-    ("t_minus_90m", 60, 120),
-    ("t_minus_15m", 5, 25),
+    ("t_minus_48h", 42 * 60, 48 * 60),
+    ("t_minus_24h", 20 * 60, 24 * 60),
+    ("t_minus_6h", 330, 360),
+    ("t_minus_90m", 60, 90),
+    ("t_minus_15m", 5, 15),
+    ("t_minus_2m", 0, 2),
 )
 
 

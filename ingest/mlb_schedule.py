@@ -823,7 +823,16 @@ def _consensus_american(prices: list[int]) -> int | None:
     return prob_to_american(avg_prob)
 
 
-def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) -> int:
+def fetch_odds(
+    db: DatabaseManager,
+    api_key: str,
+    game_date: str | None = None,
+    *,
+    event_ids: list[str] | None = None,
+    bookmakers: str | None = None,
+    markets: str = "h2h,totals,spreads",
+    request_audit: dict | None = None,
+) -> int:
     """Fetch Vegas totals + moneylines from The Odds API and update mlb_matchups.
 
     Computes consensus averages across ALL bookmakers (not just [0]) for
@@ -886,19 +895,31 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
         return 0
 
     try:
+        params = {
+            "apiKey": api_key,
+            "markets": markets,
+            "oddsFormat": "american",
+            "dateFormat": "iso",
+        }
+        if bookmakers:
+            params["bookmakers"] = bookmakers
+        else:
+            params["regions"] = MLB_ODDS_REGIONS
+        if event_ids:
+            params["eventIds"] = ",".join(sorted(set(event_ids)))
         resp = requests.get(
             "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/",
-            params={
-                "apiKey": api_key,
-                # eu brings Pinnacle; us_ex brings Polymarket. Both exact
-                # moneylines are retained for sharp-market delta tracking.
-                "regions": MLB_ODDS_REGIONS,
-                "markets": "h2h,totals,spreads",
-                "oddsFormat": "american",
-                "dateFormat": "iso",
-            },
+            params=params,
             timeout=20,
         )
+        if request_audit is not None:
+            request_audit.update({
+                "endpoint": str(resp.url).split("?", 1)[0],
+                "status": resp.status_code,
+                "requests_last": resp.headers.get("x-requests-last"),
+                "requests_used": resp.headers.get("x-requests-used"),
+                "requests_remaining": resp.headers.get("x-requests-remaining"),
+            })
         resp.raise_for_status()
         games = resp.json()
     except requests.RequestException as e:
@@ -935,7 +956,6 @@ def fetch_odds(db: DatabaseManager, api_key: str, game_date: str | None = None) 
     }
     # Exact team/time matching is centralized in mlb_odds_policy.
     # Ensure h2h + totals + spreads (run line) are all fetched
-    markets_to_fetch = "h2h,totals,spreads"
     captured_at = datetime.now(timezone.utc).replace(microsecond=0)
     capture_key = captured_at.isoformat()
 

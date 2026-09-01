@@ -469,13 +469,12 @@ are deliberately wide enough to survive delayed cron execution:
 | `t_minus_90m` | 60–120 minutes |
 | `t_minus_15m` | 5–25 minutes |
 
-There is no T−2-minute checkpoint: it is not reliably hittable by a 15-minute
-scheduler. Fulfillment is derived per accepted game from a `NOT EXISTS` query
-against `game_odds_history`; it is never marked merely because the HTTP request
-succeeded. One Saturday bulk response can therefore satisfy many games while
-retries remain idempotent. Schedule/status refreshes independently every six
-hours. The UI displays observed quote and capture age and never implies a tick
-stream.
+CFB captures T−48h, T−24h, T−6h, T−90m, T−15m, and T−2m. The one-minute Vercel
+dispatcher makes the final window reachable; GitHub Actions performs the paid
+bulk fetch. Fulfillment is derived per accepted game from an immutable
+`game_odds_history` row inside the checkpoint window, never from HTTP success.
+One Saturday response can therefore satisfy many games while retries remain
+idempotent. Schedule/status and free event mapping refresh independently.
 
 Quota controls:
 
@@ -486,10 +485,9 @@ Quota controls:
 - circuit breaker when remaining credits fall below the configured reserve;
 - alert on forecast monthly burn above plan.
 
-The workflow defaults `CFB_LIVE_CAPTURE_ENABLED` to false. Scheduled runs still
-refresh canonical data, event mappings, and report due checkpoints, but cannot
-make the paid call until the repository variable is explicitly enabled after
-Phase 0 approval. A manual `capture_now` dispatch is an intentional spend action.
+The shared event-close worker owns paid checkpoint captures and quota auditing;
+the regular CFB refresh job must not make overlapping scheduled paid calls. A
+manual `capture_now` dispatch remains an intentional out-of-window spend action.
 
 ### 4.7 Movement and alert semantics
 

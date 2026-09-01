@@ -33,9 +33,6 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-      # Phase 0 safety gate. Set the repository variable to "true" only after
-      # the seven-day coverage/cost probe is reviewed and approved.
-      CFB_LIVE_CAPTURE_ENABLED: ${{ vars.CFB_LIVE_CAPTURE_ENABLED || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -65,12 +62,9 @@ jobs:
         run: python -m ingest.cfb_schedule --year "$CFB_YEAR" --refresh-schedule
       - name: Refresh free provider-event mappings
         run: python -m ingest.cfb_schedule --refresh-events
-      - name: Capture due checkpoint windows
-        if: env.CFB_LIVE_CAPTURE_ENABLED == 'true'
-        run: python -m ingest.cfb_schedule --capture-due
-      - name: Report due checkpoints without spending credits
-        if: env.CFB_LIVE_CAPTURE_ENABLED != 'true'
-        run: python -m ingest.cfb_schedule --capture-due --dry-run
+      # Paid checkpoint captures and frozen closes are owned by the shared
+      # event-closing-lines workflow. Keeping them out of this 15-minute job
+      # prevents overlapping schedulers from buying the same market snapshot.
       - name: Optional manual market capture
         if: github.event_name == 'workflow_dispatch' && inputs.capture_now == true
         run: python -m ingest.cfb_schedule --capture-now

@@ -1643,6 +1643,15 @@ def _grade_alert_prices(db, a) -> dict:
 
     is_prop_src = (a["alert_type"] in ("dk_prop_value", "prop_line_gap", "prop_outlier")
                    and d.get("market") != "total_games")
+    frozen_close = None
+    if not is_prop_src and a["sport"] in ("mlb", "tennis", "cfb"):
+        frozen_close = db.execute_one(
+            """SELECT history_id, captured_at, quality, boundary_source, lead_seconds,
+                      methodology_version, clv_cohort, verification_level
+               FROM verified_clv_closes WHERE sport=%s AND matchup_id=%s""",
+            (a["sport"], a["matchup_id"]),
+        )
+    close_cutoff = (frozen_close["captured_at"] if frozen_close else a["commence_time"])
     if is_prop_src:
         caps = db.execute(
             """SELECT captured_at, books FROM prop_odds_history
@@ -1658,7 +1667,7 @@ def _grade_alert_prices(db, a) -> dict:
                WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
                  AND captured_at <= %s
                ORDER BY captured_at ASC""",
-            (a["sport"], a["matchup_id"], a["commence_time"]),
+            (a["sport"], a["matchup_id"], close_cutoff),
         )
 
     series = [(c["captured_at"], *_selection_prices(a, c["books"] or {})) for c in caps]
@@ -1681,6 +1690,19 @@ def _grade_alert_prices(db, a) -> dict:
                "comparison_status": comp, "convergence_eligible": elig,
                "convergence_exclusion_reason": reason,
                "grading_version": _GRADING_VERSION}
+    if frozen_close:
+        grading.update(
+            close_source="event_closing_lines",
+            close_quality=frozen_close["quality"],
+            close_boundary_source=frozen_close["boundary_source"],
+            close_lead_seconds=frozen_close["lead_seconds"],
+            close_history_id=frozen_close["history_id"],
+            close_methodology_version=frozen_close["methodology_version"],
+            close_cohort=frozen_close["clv_cohort"],
+            close_verification_level=frozen_close["verification_level"],
+        )
+    else:
+        grading.update(close_source="legacy_last_observed", close_cohort="non_primary")
 
     # ── Observed quote persistence (interval-censored by capture cadence) ──
     # The true change time lies in (last_same_at, first_changed_at]; we can only
@@ -1843,16 +1865,34 @@ def settle(db: DatabaseManager, sport: str) -> int:
                           SELECT 1 FROM jsonb_object_keys(books) AS source(book_key)
                           WHERE source.book_key <> 'polymarket'
                         )""")
-        close = db.execute_one(
-            f"""
-            SELECT books FROM game_odds_history
-            WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
-              AND captured_at <= %s
-              {close_source}
-            ORDER BY captured_at DESC LIMIT 1
-            """,
-            (sport, a["matchup_id"], a["commence_time"]),
-        )
+        if (
+            sport in ("mlb", "tennis", "cfb")
+            and a["alert_type"] != "pinnacle_polymarket_delta"
+        ):
+            close = db.execute_one(
+                """
+                SELECT h.books
+                FROM verified_clv_closes c
+                JOIN game_odds_history h ON h.id=c.history_id
+                WHERE c.sport=%s AND c.matchup_id=%s AND h.books IS NOT NULL
+                """,
+                (sport, a["matchup_id"]),
+            )
+        else:
+            close = None
+        # Historical alerts and the short interval before the close worker
+        # freezes a new event retain the explicitly-labelled legacy fallback.
+        if close is None:
+            close = db.execute_one(
+                f"""
+                SELECT books FROM game_odds_history
+                WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
+                  AND captured_at <= %s
+                  {close_source}
+                ORDER BY captured_at DESC LIMIT 1
+                """,
+                (sport, a["matchup_id"], a["commence_time"]),
+            )
         close_prob = None
         if close and close["books"]:
             if a["alert_type"] == "pinnacle_polymarket_delta":
@@ -1995,7 +2035,7 @@ def _settle_nfl_line_alerts(db: DatabaseManager) -> int:
     return graded
 
 
-def report(db: DatabaseManager) -> None:
+def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
     """The audit: does each alert type beat the close, and win at the flagged rate?
 
     dk_value additionally gets true ROI: 1 unit staked at DK's frozen price per
@@ -2018,8 +2058,15 @@ def report(db: DatabaseManager) -> None:
             f"{h['sport']}/{h['alert_type']}: {h['status']}" for h in quiet) + ")")
     print()
 
+    cohort_predicate = "TRUE" if include_legacy else """(
+        a.sport NOT IN ('mlb', 'tennis', 'cfb') OR EXISTS (
+            SELECT 1 FROM verified_clv_closes c
+            WHERE c.sport=a.sport AND c.matchup_id=a.matchup_id
+        )
+    )"""
+    cohort_label = "including non-primary/legacy" if include_legacy else "verified_clv_v1 for MLB/Tennis/CFB"
     rows = db.execute(
-        """
+        f"""
         SELECT sport, alert_type, COUNT(*) n,
                COUNT(*) FILTER (WHERE clv_pp IS NOT NULL) n_clv,
                ROUND(AVG(clv_pp)::numeric, 2) avg_clv_pp,
@@ -2035,11 +2082,15 @@ def report(db: DatabaseManager) -> None:
                      FILTER (WHERE details_json ? 'dk_decimal')::numeric, 2) dk_units,
                COUNT(*) FILTER (WHERE dk_clv_pct IS NOT NULL) n_dkclv,
                ROUND(AVG(dk_clv_pct)::numeric, 2) avg_dk_clv
-        FROM line_alerts
+        FROM line_alerts a
+        WHERE {cohort_predicate}
         GROUP BY sport, alert_type ORDER BY sport, alert_type
         """
     )
-    print("\n=== Line-alert backtest — CLV (beat the close?) + outcomes (win at the flagged rate?) ===")
+    print(
+        "\n=== Line-alert backtest — CLV (beat the close?) + outcomes "
+        f"(win at the flagged rate?) [{cohort_label}] ==="
+    )
     if not rows:
         print("  (no alerts recorded yet)")
     for r in rows:
@@ -2057,7 +2108,7 @@ def report(db: DatabaseManager) -> None:
     # opportunities — higher claimed EV should win/return more. If 6% edges
     # perform no better than 1% edges, the numeric precision is decorative.
     tiers = db.execute(
-        """
+        f"""
         SELECT CASE WHEN ev >= 8 THEN '8%%+'
                     WHEN ev >= 5 THEN '5-8%%'
                     WHEN ev >= 3 THEN '3-5%%'
@@ -2085,8 +2136,9 @@ def report(db: DatabaseManager) -> None:
         FROM (
             SELECT *, COALESCE((details_json->>'ev_pct')::numeric,
                                (details_json->>'edge_vs_median_pct')::numeric) AS ev
-            FROM line_alerts
+            FROM line_alerts a
             WHERE alert_type IN ('dk_value','dk_prop_value','prop_outlier')
+              AND {cohort_predicate}
         ) t
         WHERE ev IS NOT NULL
         GROUP BY 1 ORDER BY tier_min
@@ -2121,11 +2173,11 @@ def report(db: DatabaseManager) -> None:
                   f"persisted={persist}{excl_s}  [{status}]")
 
     conv = db.execute(
-        """SELECT convergence, COUNT(*) n,
+        f"""SELECT convergence, COUNT(*) n,
               COUNT(*) FILTER (WHERE outcome = 'won') wins,
               COUNT(*) FILTER (WHERE outcome = 'lost') losses,
               ROUND(AVG((grading_json->>'gap_closure_ratio')::numeric)::numeric, 2) avg_gcr
-           FROM line_alerts WHERE convergence IS NOT NULL
+           FROM line_alerts a WHERE convergence IS NOT NULL AND {cohort_predicate}
            GROUP BY 1 ORDER BY n DESC"""
     )
     if conv:
@@ -2136,9 +2188,9 @@ def report(db: DatabaseManager) -> None:
                   f"avgGapClosure={c['avg_gcr'] if c['avg_gcr'] is not None else '—'}  [descriptive-only]")
 
     comp = db.execute(
-        """SELECT comparison_status, COUNT(*) n,
+        f"""SELECT comparison_status, COUNT(*) n,
               COUNT(*) FILTER (WHERE convergence IS NOT NULL) has_conv
-           FROM line_alerts WHERE comparison_status IS NOT NULL
+           FROM line_alerts a WHERE comparison_status IS NOT NULL AND {cohort_predicate}
            GROUP BY 1 ORDER BY n DESC"""
     )
     if comp:
@@ -2199,6 +2251,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sharp line-movement alerts + audit")
     parser.add_argument("--sport", choices=list(_ALERT_SPORTS), help="Scan + settle one sport")
     parser.add_argument("--report", action="store_true", help="Print the backtest")
+    parser.add_argument(
+        "--include-legacy", action="store_true",
+        help="Include stale/non-primary/legacy MLB and Tennis closes in reports",
+    )
     parser.add_argument("--dk-board", action="store_true",
                         help="Live DraftKings-vs-Pinnacle EV board, all sports")
     args = parser.parse_args()
@@ -2222,4 +2278,4 @@ if __name__ == "__main__":
     if args.dk_board:
         dk_board(db)
     if args.report or (not args.sport and not args.dk_board):
-        report(db)
+        report(db, include_legacy=args.include_legacy)

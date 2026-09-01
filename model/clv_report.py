@@ -5,7 +5,8 @@ bet the moment it closes, win or lose. For each bet with >= 2 pre-kickoff
 snapshots in the append-only *_bet_snapshots audit trail:
 
     entry = FIRST snapshot  (when the model first rated the selection)
-    close = LAST snapshot at/before kickoff  (the closing recommendation)
+    close = LAST snapshot at/before the frozen event close when available;
+            otherwise LAST snapshot at/before kickoff (legacy fallback)
 
     delta_prob = close.market_prob - entry.market_prob
         + = the market moved TOWARD our selection after we rated it (we beat
@@ -51,35 +52,52 @@ from model.soccer_bet_rating import american_to_decimal
 
 logger = logging.getLogger(__name__)
 
-# sport -> (bets table, snapshots table, bet-id FK column)
+# sport -> (bets table, snapshots table, bet-id FK column, matchup FK column)
 _SOURCES = {
-    "soccer": ("soccer_bets", "soccer_bet_snapshots", "bet_id"),
-    "mlb": ("mlb_bets", "mlb_bet_snapshots", "bet_id"),
+    "soccer": ("soccer_bets", "soccer_bet_snapshots", "bet_id", None),
+    "mlb": ("mlb_bets", "mlb_bet_snapshots", "bet_id", "matchup_id"),
     # tennis snapshots exist from 2026-07-02 (post-Wimbledon upgrade); tennis
     # market_odds are prob-space consensus from day one, so clv_ev is valid.
-    "tennis": ("tennis_bets", "tennis_bet_snapshots", "bet_id"),
+    "tennis": ("tennis_bets", "tennis_bet_snapshots", "bet_id", "match_id"),
 }
 
 
-def _collect(db: DatabaseManager, sport: str, since: str | None) -> list[dict]:
+def _collect(
+    db: DatabaseManager, sport: str, since: str | None, *, include_legacy: bool = False,
+) -> list[dict]:
     """One record per bet: entry/close snapshot pair + bet metadata."""
-    bets_tbl, snaps_tbl, fk = _SOURCES[sport]
+    bets_tbl, snaps_tbl, fk, matchup_fk = _SOURCES[sport]
     since_clause = "AND b.event_commence >= %s" if since else ""
     params: tuple = (since,) if since else ()
+    if sport in ("mlb", "tennis"):
+        close_relation = "event_closing_lines" if include_legacy else "verified_clv_closes"
+        join_kind = "LEFT JOIN" if include_legacy else "JOIN"
+        close_join = (
+            f"{join_kind} {close_relation} c "
+            f"ON c.sport = %s AND c.matchup_id = b.{matchup_fk}"
+        )
+    else:
+        close_join = "LEFT JOIN event_closing_lines c ON FALSE"
+    query_params: tuple = ((sport,) + params) if sport in ("mlb", "tennis") else params
     rows = db.execute(
         f"""
         SELECT b.id AS bet_id, b.bet_type, b.model_version, b.selection_label,
                b.event_commence, b.status, b.stars AS final_stars,
-               s.captured_at, s.market_prob, s.market_odds, s.our_prob, s.stars
+               s.captured_at, s.market_prob, s.market_odds, s.our_prob, s.stars,
+               c.captured_at AS frozen_close_at, c.quality AS close_quality,
+               c.boundary_source AS close_boundary_source,
+               c.clv_cohort AS clv_cohort,
+               c.verification_level AS verification_level
         FROM {bets_tbl} b
         JOIN {snaps_tbl} s ON s.{fk} = b.id
+        {close_join}
         WHERE b.event_commence IS NOT NULL
           AND s.market_prob IS NOT NULL
-          AND s.captured_at <= b.event_commence
+          AND s.captured_at <= COALESCE(c.captured_at, b.event_commence)
           {since_clause}
         ORDER BY b.id, s.captured_at
         """,
-        params,
+        query_params,
     )
     by_bet: dict[int, list[dict]] = defaultdict(list)
     meta: dict[int, dict] = {}
@@ -106,6 +124,15 @@ def _collect(db: DatabaseManager, sport: str, since: str | None) -> list[dict]:
             "entry_edge": (float(entry["our_prob"]) - float(entry["market_prob"]))
                           if entry["our_prob"] is not None else None,
             "hours_held": (close["captured_at"] - entry["captured_at"]).total_seconds() / 3600,
+            "close_source": (
+                "verified_clv_v1"
+                if close.get("clv_cohort") == "verified_clv_v1" else
+                "non_primary_frozen"
+                if close.get("frozen_close_at") else
+                "legacy_last_observed"
+            ),
+            "close_quality": close.get("close_quality"),
+            "verification_level": close.get("verification_level"),
             "clv_ev": None,
         }
         # Entry-price EV at the closing number — soccer only (see module doc).
@@ -168,12 +195,34 @@ def _fmt_slice(label: str, recs: list[dict]) -> str:
     return line
 
 
-def report(db: DatabaseManager, sports: list[str], since: str | None) -> None:
+def report(
+    db: DatabaseManager, sports: list[str], since: str | None, *, include_legacy: bool = False,
+) -> None:
     for sport in sports:
-        recs = _collect(db, sport, since)
-        print(f"\n=== {sport.upper()} — {len(recs)} bets with a measurable entry→close window ===")
+        recs = _collect(db, sport, since, include_legacy=include_legacy)
+        cohort_label = (
+            "including non-primary/legacy" if include_legacy else "verified_clv_v1 only"
+        ) if sport in ("mlb", "tennis") else "legacy methodology; no v1 adapter"
+        print(
+            f"\n=== {sport.upper()} — {len(recs)} bets with a measurable entry→close window "
+            f"({cohort_label}) ==="
+        )
         if not recs:
             continue
+        verified = [r for r in recs if r["close_source"] == "verified_clv_v1"]
+        quality_counts = {
+            quality: sum(1 for r in verified if r["close_quality"] == quality)
+            for quality in ("A", "B", "C", "stale")
+        }
+        print(
+            f"    close source: verified={len(verified)} non-primary/legacy={len(recs)-len(verified)} "
+            f"quality={quality_counts}"
+        )
+        verification_counts = {
+            level: sum(1 for r in verified if r["verification_level"] == level)
+            for level in ("actual_start", "scheduled_boundary")
+        }
+        print(f"    boundary verification: {verification_counts}")
 
         by_type: dict[str, list[dict]] = defaultdict(list)
         for r in recs:
@@ -208,8 +257,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Closing Line Value report")
     parser.add_argument("--sport", choices=sorted(_SOURCES), help="Limit to one sport")
     parser.add_argument("--since", help="Only events commencing on/after YYYY-MM-DD")
+    parser.add_argument(
+        "--include-legacy", action="store_true",
+        help="Explicitly include stale, non-primary frozen, and legacy last-observed closes",
+    )
     args = parser.parse_args()
 
     config = load_config()
     db = DatabaseManager(config.database_url)
-    report(db, [args.sport] if args.sport else sorted(_SOURCES), args.since)
+    report(
+        db, [args.sport] if args.sport else sorted(_SOURCES), args.since,
+        include_legacy=args.include_legacy,
+    )

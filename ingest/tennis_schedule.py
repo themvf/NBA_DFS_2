@@ -156,21 +156,46 @@ def _consensus_handicap_line(points: list[float]) -> float | None:
     return Counter(rounded).most_common(1)[0][0]
 
 
-def fetch_tournament(db: DatabaseManager, api_key: str, tour_label: str, sport_key: str,
-                     tournament: str, game_date: str | None) -> int:
+def fetch_tournament(
+    db: DatabaseManager,
+    api_key: str,
+    tour_label: str,
+    sport_key: str,
+    tournament: str,
+    game_date: str | None,
+    *,
+    event_ids: list[str] | None = None,
+    bookmakers: str | None = None,
+    markets: str = "h2h,totals,spreads",
+    request_audit: dict | None = None,
+) -> int:
     """Fetch one tournament's fixtures + odds, upsert into tennis_matches. Returns count."""
     try:
+        params = {
+            "apiKey": api_key,
+            "markets": markets,
+            "oddsFormat": "american",
+            "dateFormat": "iso",
+        }
+        if bookmakers:
+            params["bookmakers"] = bookmakers
+        else:
+            params["regions"] = REGIONS
+        if event_ids:
+            params["eventIds"] = ",".join(sorted(set(event_ids)))
         resp = requests.get(
             f"{ODDS_BASE}/sports/{sport_key}/odds/",
-            params={
-                "apiKey": api_key,
-                "regions": REGIONS,
-                "markets": "h2h,totals,spreads",
-                "oddsFormat": "american",
-                "dateFormat": "iso",
-            },
+            params=params,
             timeout=20,
         )
+        if request_audit is not None:
+            request_audit.update({
+                "endpoint": str(resp.url).split("?", 1)[0],
+                "status": resp.status_code,
+                "requests_last": resp.headers.get("x-requests-last"),
+                "requests_used": resp.headers.get("x-requests-used"),
+                "requests_remaining": resp.headers.get("x-requests-remaining"),
+            })
         resp.raise_for_status()
         events = resp.json()
     except requests.RequestException as e:
