@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
+import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 const CURRENT_SEASON = "2025-26";
@@ -8543,6 +8543,8 @@ export type SurvivorCell = {
   kickoff: string | null;
   completed: boolean;
   won: boolean | null;
+  /** Field pick share for this team-week, when the popularity feed has it. */
+  pickPct: number | null;
 };
 
 export type SurvivorTeamRow = {
@@ -8596,11 +8598,19 @@ export async function getNflSurvivorGrid(season = 2026): Promise<SurvivorGrid> {
       t.abbreviation AS "abbrev", t.name, t.conference, t.division,
       o.abbreviation AS "opponent",
       g.kickoff::text AS kickoff, g.completed,
-      g.home_score AS "homeScore", g.away_score AS "awayScore"
+      g.home_score AS "homeScore", g.away_score AS "awayScore",
+      pop.pick_pct AS "pickPct"
     FROM nfl_game_win_probs w
     JOIN nfl_teams t ON t.team_id = w.team_id
     JOIN nfl_teams o ON o.team_id = w.opponent_team_id
     JOIN nfl_season_games g ON g.id = w.game_id
+    LEFT JOIN LATERAL (
+      SELECT p.pick_pct
+      FROM survivor_pick_popularity p
+      WHERE p.season = w.season AND p.week = w.week AND p.team_id = w.team_id
+      ORDER BY p.captured_at DESC
+      LIMIT 1
+    ) pop ON TRUE
     WHERE w.season = ${season}
     ORDER BY t.abbreviation, w.week
   `);
@@ -8671,6 +8681,7 @@ export async function getNflSurvivorGrid(season = 2026): Promise<SurvivorGrid> {
       kickoff: record.kickoff != null ? String(record.kickoff) : null,
       completed: Boolean(record.completed),
       won,
+      pickPct: record.pickPct != null ? Number(record.pickPct) : null,
     };
   }
 
@@ -8704,6 +8715,158 @@ export async function getNflSurvivorGrid(season = 2026): Promise<SurvivorGrid> {
       };
     }),
   };
+}
+
+export type SurvivorPoolRow = {
+  id: number;
+  name: string;
+  season: number;
+  poolSize: number | null;
+  tieRule: "tie_loses" | "tie_survives";
+  strikes: number;
+  startWeek: number;
+  endWeek: number;
+  entries: Array<{
+    id: number;
+    label: string;
+    status: "alive" | "eliminated";
+    strikesUsed: number;
+    eliminatedWeek: number | null;
+    picks: Array<{
+      week: number;
+      teamId: number;
+      abbrev: string;
+      locked: boolean;
+      result: "pending" | "won" | "lost" | "push" | "void";
+      pAdvanceAtPick: number | null;
+    }>;
+  }>;
+};
+
+export type SurvivorLedgerRow = {
+  id: number;
+  entryId: number | null;
+  entryLabel: string | null;
+  week: number;
+  team: string;
+  pAdvance: number | null;
+  provenance: string | null;
+  pathSurvivalProb: number | null;
+  opportunityCost: number | null;
+  frozenAt: string;
+  superseded: boolean;
+  result: "pending" | "won" | "lost" | "push" | "void";
+};
+
+export async function getSurvivorPools(season = 2026): Promise<SurvivorPoolRow[]> {
+  await ensureSurvivorTables();
+  const pools = await db.execute(sql`
+    SELECT id, name, season, pool_size AS "poolSize", tie_rule AS "tieRule",
+           strikes, start_week AS "startWeek", end_week AS "endWeek"
+    FROM survivor_pools WHERE season = ${season} ORDER BY created_at
+  `);
+  if (pools.rows.length === 0) return [];
+
+  const entries = await db.execute(sql`
+    SELECT e.id, e.pool_id AS "poolId", e.label, e.status,
+           e.strikes_used AS "strikesUsed", e.eliminated_week AS "eliminatedWeek"
+    FROM survivor_entries e
+    JOIN survivor_pools p ON p.id = e.pool_id
+    WHERE p.season = ${season}
+    ORDER BY e.id
+  `);
+  const picks = await db.execute(sql`
+    SELECT k.entry_id AS "entryId", k.week, k.team_id AS "teamId", t.abbreviation AS abbrev,
+           k.locked_at IS NOT NULL AS locked, k.result,
+           k.p_advance_at_pick AS "pAdvanceAtPick"
+    FROM survivor_entry_picks k
+    JOIN nfl_teams t ON t.team_id = k.team_id
+    JOIN survivor_entries e ON e.id = k.entry_id
+    JOIN survivor_pools p ON p.id = e.pool_id
+    WHERE p.season = ${season}
+    ORDER BY k.week
+  `);
+
+  const picksByEntry = new Map<number, SurvivorPoolRow["entries"][number]["picks"]>();
+  for (const raw of picks.rows) {
+    const row = raw as Record<string, unknown>;
+    const entryId = Number(row.entryId);
+    if (!picksByEntry.has(entryId)) picksByEntry.set(entryId, []);
+    picksByEntry.get(entryId)!.push({
+      week: Number(row.week),
+      teamId: Number(row.teamId),
+      abbrev: String(row.abbrev),
+      locked: Boolean(row.locked),
+      result: String(row.result) as "pending" | "won" | "lost" | "push" | "void",
+      pAdvanceAtPick: row.pAdvanceAtPick != null ? Number(row.pAdvanceAtPick) : null,
+    });
+  }
+
+  const entriesByPool = new Map<number, SurvivorPoolRow["entries"]>();
+  for (const raw of entries.rows) {
+    const row = raw as Record<string, unknown>;
+    const poolId = Number(row.poolId);
+    if (!entriesByPool.has(poolId)) entriesByPool.set(poolId, []);
+    entriesByPool.get(poolId)!.push({
+      id: Number(row.id),
+      label: String(row.label),
+      status: String(row.status) as "alive" | "eliminated",
+      strikesUsed: Number(row.strikesUsed),
+      eliminatedWeek: row.eliminatedWeek != null ? Number(row.eliminatedWeek) : null,
+      picks: picksByEntry.get(Number(row.id)) ?? [],
+    });
+  }
+
+  return pools.rows.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      id: Number(row.id),
+      name: String(row.name),
+      season: Number(row.season),
+      poolSize: row.poolSize != null ? Number(row.poolSize) : null,
+      tieRule: String(row.tieRule) as "tie_loses" | "tie_survives",
+      strikes: Number(row.strikes),
+      startWeek: Number(row.startWeek),
+      endWeek: Number(row.endWeek),
+      entries: entriesByPool.get(Number(row.id)) ?? [],
+    };
+  });
+}
+
+/** The frozen recommendation ledger, newest first. Superseded rows are kept. */
+export async function getSurvivorLedger(season = 2026, limit = 100): Promise<SurvivorLedgerRow[]> {
+  await ensureSurvivorTables();
+  const rows = await db.execute(sql`
+    SELECT r.id, r.entry_id AS "entryId", e.label AS "entryLabel", r.week,
+           t.abbreviation AS team, r.p_advance AS "pAdvance", r.provenance,
+           r.path_survival_prob AS "pathSurvivalProb",
+           r.opportunity_cost AS "opportunityCost",
+           r.frozen_at::text AS "frozenAt",
+           r.superseded_by IS NOT NULL AS superseded, r.result
+    FROM survivor_recommendations r
+    JOIN nfl_teams t ON t.team_id = r.recommended_team_id
+    LEFT JOIN survivor_entries e ON e.id = r.entry_id
+    WHERE r.season = ${season}
+    ORDER BY r.week DESC, r.frozen_at DESC
+    LIMIT ${limit}
+  `);
+  return rows.rows.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      id: Number(row.id),
+      entryId: row.entryId != null ? Number(row.entryId) : null,
+      entryLabel: row.entryLabel != null ? String(row.entryLabel) : null,
+      week: Number(row.week),
+      team: String(row.team),
+      pAdvance: row.pAdvance != null ? Number(row.pAdvance) : null,
+      provenance: row.provenance != null ? String(row.provenance) : null,
+      pathSurvivalProb: row.pathSurvivalProb != null ? Number(row.pathSurvivalProb) : null,
+      opportunityCost: row.opportunityCost != null ? Number(row.opportunityCost) : null,
+      frozenAt: String(row.frozenAt),
+      superseded: Boolean(row.superseded),
+      result: String(row.result) as "pending" | "won" | "lost" | "push" | "void",
+    };
+  });
 }
 
 export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {

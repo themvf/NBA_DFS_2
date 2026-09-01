@@ -9,6 +9,13 @@
  */
 
 import {
+  CONTRARIAN_TOLERANCE,
+  EV_IS_VALIDATED,
+  EV_MIN_POOL_SIZE,
+  buildPlan,
+  defaultObjective,
+} from "../src/lib/nfl/survivor-policy";
+import {
   buildCostMatrix,
   evaluateWeek,
   futureSurvivorValue,
@@ -226,6 +233,58 @@ console.log("\nsurvivor assignment\n");
   check("forcing blocks that team in other weeks", cost[1][2] >= 1e9);
   const solution = solveSurvivor(probs, { forced });
   check("forced solve honors the pin", solution.assignment[0] === 2);
+}
+
+// 10. Objective policy: EV never defaults on, and the band is the measured one.
+{
+  check("EV never becomes the default objective",
+    defaultObjective(50) === "survive" && defaultObjective(5000) === "survive");
+  check("EV is not marked validated on one season", EV_IS_VALIDATED === false);
+  check("contrarian band is the measured 0.05, not a round guess", CONTRARIAN_TOLERANCE === 0.05);
+  check("EV pool floor reflects the study, not the original guess of 50", EV_MIN_POOL_SIZE >= 1000);
+}
+
+// 11. EV mode fades the crowd only inside the band, and reports what it cost.
+{
+  const probs: (number | null)[][] = [
+    [0.80, 0.79, 0.55],
+    [0.60, 0.10, 0.70],
+  ];
+  //          heavily picked, near-equal contrarian, ignored
+  const pickPct: (number | null)[][] = [
+    [0.60, 0.02, 0.05],
+    [0.10, 0.10, 0.10],
+  ];
+  const survive = buildPlan({ probs, pickPct, bannedTeams: new Set(), mode: "survive" });
+  const ev = buildPlan({ probs, pickPct, bannedTeams: new Set(), mode: "ev" });
+
+  check("survive mode takes the strongest team", survive.path[0] === 0, JSON.stringify(survive.path));
+  check(
+    "EV mode fades the 60%-picked team for the near-equal one",
+    ev.path[0] === 1,
+    JSON.stringify(ev.path),
+  );
+  check("EV reports which weeks it deviated", ev.deviations.includes(0));
+  check(
+    "EV reports the survival probability it gave up",
+    ev.survivalGivenUp > 0,
+    String(ev.survivalGivenUp),
+  );
+}
+
+// 12. A big probability gap is never faded, however popular the favorite.
+{
+  const probs: (number | null)[][] = [
+    [0.90, 0.55],
+    [0.50, 0.60],
+  ];
+  const pickPct: (number | null)[][] = [[0.90, 0.001], [0.1, 0.1]];
+  const ev = buildPlan({ probs, pickPct, bannedTeams: new Set(), mode: "ev" });
+  check(
+    "a team outside the band is not faded no matter how crowded",
+    ev.path[0] === 0,
+    JSON.stringify(ev.path),
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
