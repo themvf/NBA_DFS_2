@@ -9971,6 +9971,58 @@ export type CfbTerminalBoard = {
   unmappedEvents: number;
 };
 
+export type CfbSignalBacktestRow = {
+  alertType: string;
+  signalVersion: string;
+  observations: number;
+  settled: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  avgLineClv: number | null;
+  beatClose: number | null;
+  units: number | null;
+  roiPerBet: number | null;
+  gameDates: number;
+};
+
+export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
+  await ensureOddsHistoryTables();
+  const rows = await db.execute(sql`
+    SELECT alert_type AS "alertType",
+           COALESCE(signal_version, details_json->>'signal_version', 'unstamped') AS "signalVersion",
+           COUNT(*)::int AS observations,
+           COUNT(*) FILTER (WHERE outcome IN ('won','lost','void'))::int AS settled,
+           COUNT(*) FILTER (WHERE outcome='won')::int AS wins,
+           COUNT(*) FILTER (WHERE outcome='lost')::int AS losses,
+           COUNT(*) FILTER (WHERE outcome='void')::int AS pushes,
+           AVG((grading_json->>'line_clv')::numeric)
+             FILTER (WHERE grading_json ? 'line_clv') AS "avgLineClv",
+           AVG(((grading_json->>'line_clv')::numeric > 0)::int)
+             FILTER (WHERE grading_json ? 'line_clv') AS "beatClose",
+           SUM(pnl_units) FILTER (WHERE pnl_units IS NOT NULL) AS units,
+           AVG(pnl_units) FILTER (WHERE pnl_units IS NOT NULL) AS "roiPerBet",
+           COUNT(DISTINCT game_date)::int AS "gameDates"
+    FROM line_alerts
+    WHERE sport='cfb' AND origin='prospective'
+    GROUP BY alert_type, COALESCE(signal_version, details_json->>'signal_version', 'unstamped')
+    ORDER BY observations DESC, alert_type
+  `);
+  return rows.rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      alertType: String(r.alertType), signalVersion: String(r.signalVersion),
+      observations: Number(r.observations), settled: Number(r.settled),
+      wins: Number(r.wins), losses: Number(r.losses), pushes: Number(r.pushes),
+      avgLineClv: r.avgLineClv != null ? Number(r.avgLineClv) : null,
+      beatClose: r.beatClose != null ? Number(r.beatClose) : null,
+      units: r.units != null ? Number(r.units) : null,
+      roiPerBet: r.roiPerBet != null ? Number(r.roiPerBet) : null,
+      gameDates: Number(r.gameDates),
+    };
+  });
+}
+
 function easternDateNow(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
@@ -10651,6 +10703,18 @@ const DETECTOR_REGISTRY: { sport: string; alertType: string; deployedAt: string 
   { sport: "nfl", alertType: "spread_steam", deployedAt: "2026-08-01" },
   { sport: "nfl", alertType: "total_walking", deployedAt: "2026-08-01" },
   { sport: "nfl", alertType: "spread_walking", deployedAt: "2026-08-01" },
+  { sport: "cfb", alertType: "pinnacle_divergence", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "dk_value", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "steam", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "walking", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "spread_steam", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "total_steam", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "spread_walking", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "total_walking", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "key_cross", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "price_pressure", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "reversal", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "reference_led", deployedAt: "2026-09-01" },
   // soccer's prop_outlier (ATGS) intentionally excluded: RETIRED 2026-08-13
   // as a confirmed loser, not dead — it's supposed to be silent.
 ];

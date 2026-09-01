@@ -533,6 +533,16 @@ const ODDS_HISTORY_DDLS = [
        AND quality IN ('A', 'B', 'C')
        AND primary_clv_eligible=TRUE
        AND clv_cohort='verified_clv_v1'`,
+  `ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS signal_version TEXT`,
+  `ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'prospective'`,
+  `ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS trigger_history_id INTEGER REFERENCES game_odds_history(id)`,
+  `ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS previous_history_id INTEGER REFERENCES game_odds_history(id)`,
+  `ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS opening_history_id INTEGER REFERENCES game_odds_history(id)`,
+  `ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS close_history_id INTEGER REFERENCES game_odds_history(id)`,
+  `ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS dedupe_key TEXT`,
+  `ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS pnl_units DOUBLE PRECISION`,
+  `UPDATE line_alerts SET dedupe_key=alert_type || ':' || side WHERE dedupe_key IS NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_line_alerts_dedupe_key ON line_alerts(sport, matchup_id, dedupe_key)`,
   `CREATE TABLE IF NOT EXISTS player_prop_history (
       id SERIAL PRIMARY KEY,
       sport TEXT NOT NULL,

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getCfbTerminalBoard, type CfbTerminalBoard } from "@/db/queries";
+import { getCfbSignalBacktest, getCfbTerminalBoard, getLineAlerts, type CfbSignalBacktestRow, type CfbTerminalBoard, type LineAlertRow } from "@/db/queries";
 import CfbTerminalClient from "./cfb-terminal-client";
 
 export const dynamic = "force-dynamic";
@@ -29,5 +29,15 @@ export default async function CfbPage({
       unmappedEvents: 0,
     };
   }
-  return <CfbTerminalClient board={board} />;
+  let signals: LineAlertRow[] = [];
+  let backtest: CfbSignalBacktestRow[] = [];
+  try {
+    [signals, backtest] = await Promise.all([
+      getLineAlerts("cfb", 250),
+      getCfbSignalBacktest(),
+    ]);
+  } catch {
+    // The market board remains useful during a first-deploy schema bootstrap.
+  }
+  return <CfbTerminalClient board={board} signals={signals} backtest={backtest} />;
 }

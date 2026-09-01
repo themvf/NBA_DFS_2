@@ -55,7 +55,7 @@ import requests
 from config import load_config
 from db.database import DatabaseManager
 from model.line_movement import _MATCHUP_TBL, _book_fair_home
-from model.soccer_bet_rating import american_to_decimal
+from model.soccer_bet_rating import american_to_decimal, american_to_prob
 from model.tennis_book_rules import settle_tennis_selection, tennis_rule_snapshot
 
 logger = logging.getLogger(__name__)
@@ -87,11 +87,19 @@ _DK_VALUE_MAX_DECIMAL = 11.0
 _DK_BOOK = "draftkings"
 _NFL_STEAM_LINE_MOVE = 0.5
 _NFL_WALK_LINE_MOVE = 1.0
+_CFB_SIGNAL_VERSION = "cfb-lines-v1"
+_CFB_MIN_BOOKS = 4
+_CFB_SPREAD_STEAM = 1.0
+_CFB_TOTAL_STEAM = 1.5
+_CFB_SPREAD_REVERSAL = 0.75
+_CFB_TOTAL_REVERSAL = 1.0
+_CFB_PRICE_PRESSURE_PP = 4.0
+_CFB_KEY_NUMBERS = (3.0, 7.0, 10.0, 14.0)
 
 # Sports wired into the alert pipeline. NBA joins when the season resumes —
 # nba_matchups has no commence_time column yet, which scan()/settle()/dk_board
 # all join on.
-_ALERT_SPORTS = ("mlb", "nfl", "soccer", "tennis")
+_ALERT_SPORTS = ("mlb", "nfl", "cfb", "soccer", "tennis")
 
 # ── Detector health ──────────────────────────────────────────────────────
 # Found via manual DB audit (2026-08-17): scan_tennis_totals had run every
@@ -148,6 +156,18 @@ DETECTOR_REGISTRY: list[dict] = [
     {"sport": "nfl", "alert_type": "spread_steam", "deployed_at": date(2026, 8, 1)},
     {"sport": "nfl", "alert_type": "total_walking", "deployed_at": date(2026, 8, 1)},
     {"sport": "nfl", "alert_type": "spread_walking", "deployed_at": date(2026, 8, 1)},
+    {"sport": "cfb", "alert_type": "pinnacle_divergence", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "dk_value", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "steam", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "walking", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "spread_steam", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "total_steam", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "spread_walking", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "total_walking", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "key_cross", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "price_pressure", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "reversal", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "reference_led", "deployed_at": date(2026, 9, 1)},
     # soccer's prop_outlier (ATGS) is intentionally excluded: RETIRED
     # 2026-08-13 as a confirmed loser, not dead — it's supposed to be silent.
 ]
@@ -208,6 +228,7 @@ _SCORE_COLS = {
     "mlb": ("home_score", "away_score"),
     "nba": ("home_score", "away_score"),
     "nfl": ("home_score", "away_score"),
+    "cfb": ("home_score", "away_score"),
     "soccer": ("COALESCE(reg_home_score, home_score)", "COALESCE(reg_away_score, away_score)"),
 }
 
@@ -215,7 +236,7 @@ _SCORE_COLS = {
 def _game_side_outcome(sport: str, home_score: int, away_score: int, side: str) -> str:
     """Grade a frozen home/away game-line selection from a final score."""
     winner = "home" if home_score > away_score else "away" if away_score > home_score else "draw"
-    if sport == "nfl" and winner == "draw":
+    if sport in ("nfl", "cfb") and winner == "draw":
         return "void"
     return "won" if winner == side else "lost"
 
@@ -529,6 +550,202 @@ def _nfl_market_signals(current: dict, previous: dict | None, opening: dict | No
     return signals
 
 
+def _lower_median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[(len(ordered) - 1) // 2]
+
+
+def _cfb_market_snapshot(books: dict, market: str) -> dict | None:
+    """Deterministic lower-median line plus exact-line price support."""
+    key = "spread_home" if market == "spread" else "total_line"
+    usable: dict[str, float] = {}
+    for book_key, quote in (books or {}).items():
+        if book_key == "polymarket" or not isinstance(quote, dict):
+            continue
+        try:
+            if quote.get(key) is not None:
+                usable[book_key] = float(quote[key])
+        except (TypeError, ValueError):
+            continue
+    line = _lower_median(list(usable.values()))
+    if line is None:
+        return None
+    exact = {book_key for book_key, value in usable.items() if value == line}
+    return {"line": line, "books": usable, "market_books": len(usable), "support": len(exact), "exact": exact}
+
+
+def _cfb_side_price_probability(quote: dict, market: str, side: str) -> float | None:
+    if market == "spread":
+        home, away = quote.get("spread_home_price"), quote.get("spread_away_price")
+        use_home_price = side == "home"
+    else:
+        home, away = quote.get("over"), quote.get("under")
+        use_home_price = side == "over"
+    if home is None or away is None:
+        return None
+    try:
+        ph, pa = american_to_prob(int(home)), american_to_prob(int(away))
+        return (ph if use_home_price else pa) / (ph + pa)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+
+
+def _cfb_signal_details(market: str, current: dict, previous: dict | None, opening: dict | None) -> dict:
+    snap = _cfb_market_snapshot(current.get("books") or {}, market) or {}
+    return {
+        "market": market,
+        "signal_version": _CFB_SIGNAL_VERSION,
+        "detector_version": _CFB_SIGNAL_VERSION,
+        "origin": "prospective",
+        "evaluation_arm": "follow_signal",
+        "trigger_history_id": current.get("history_id"),
+        "previous_history_id": previous.get("history_id") if previous else None,
+        "opening_history_id": opening.get("history_id") if opening else None,
+        "trigger_capture_at": str(current.get("captured_at")),
+        "consensus_method": "lower_median",
+        "consensus_support": snap.get("support", 0),
+        "market_book_count": snap.get("market_books", 0),
+    }
+
+
+def _cfb_market_signals(history: list[dict]) -> list[dict]:
+    """Prospective CFB spread/total observations from immutable captures.
+
+    Every result includes the exact source history ids and rule version. The
+    detector emits candidates only; profitability is learned later from CLV,
+    final-score settlement, and the frozen execution price.
+    """
+    if len(history) < 2:
+        return []
+    current, previous, opening = history[-1], history[-2], history[0]
+    signals: list[dict] = []
+    for market, down_side, up_side, steam_threshold, reversal_threshold in (
+        ("spread", "home", "away", _CFB_SPREAD_STEAM, _CFB_SPREAD_REVERSAL),
+        ("total", "under", "over", _CFB_TOTAL_STEAM, _CFB_TOTAL_REVERSAL),
+    ):
+        cur = _cfb_market_snapshot(current.get("books") or {}, market)
+        prev = _cfb_market_snapshot(previous.get("books") or {}, market)
+        opn = _cfb_market_snapshot(opening.get("books") or {}, market)
+        if not cur or cur["market_books"] < _CFB_MIN_BOOKS or cur["support"] < _CFB_MIN_BOOKS:
+            continue
+        base = _cfb_signal_details(market, current, previous, opening)
+
+        if prev and prev["market_books"] >= _CFB_MIN_BOOKS and prev["support"] >= _CFB_MIN_BOOKS:
+            elapsed = (current["captured_at"] - previous["captured_at"]).total_seconds() / 60
+            delta = cur["line"] - prev["line"]
+            shared = set(cur["books"]) & set(prev["books"])
+            per_book = [cur["books"][key] - prev["books"][key] for key in shared]
+            directional = [move for move in per_book if move * delta > 0]
+            if 0 < elapsed <= 30 and abs(delta) >= steam_threshold and len(directional) >= 3:
+                side = up_side if delta > 0 else down_side
+                signals.append({
+                    "alert_type": f"{market}_steam", "side": side,
+                    "details": {**base, "selection": side, "trigger_line": cur["line"],
+                                "previous_line": prev["line"], "interval_delta": delta,
+                                "interval_minutes": round(elapsed, 2),
+                                "books_moved": len(directional)},
+                })
+
+            if market == "spread":
+                crossed = [key for key in _CFB_KEY_NUMBERS
+                           if (abs(prev["line"]) < key <= abs(cur["line"]))
+                           or (abs(cur["line"]) < key <= abs(prev["line"]))]
+                if crossed:
+                    side = up_side if delta > 0 else down_side
+                    signals.append({
+                        "alert_type": "key_cross", "side": side,
+                        "details": {**base, "selection": side, "trigger_line": cur["line"],
+                                    "previous_line": prev["line"], "key_number": crossed[0],
+                                    "direction": "away_from_zero" if abs(cur["line"]) > abs(prev["line"]) else "toward_zero"},
+                    })
+
+            if cur["line"] == prev["line"] and cur["support"] >= _CFB_MIN_BOOKS and prev["support"] >= _CFB_MIN_BOOKS:
+                for side in (down_side, up_side):
+                    common = cur["exact"] & prev["exact"]
+                    before = [_cfb_side_price_probability(previous["books"][key], market, side) for key in common]
+                    after = [_cfb_side_price_probability(current["books"][key], market, side) for key in common]
+                    paired = [(a, b) for a, b in zip(before, after) if a is not None and b is not None]
+                    if len(paired) < _CFB_MIN_BOOKS:
+                        continue
+                    price_delta = (_lower_median([b for _, b in paired]) or 0) - (_lower_median([a for a, _ in paired]) or 0)
+                    if price_delta * 100 >= _CFB_PRICE_PRESSURE_PP:
+                        signals.append({
+                            "alert_type": "price_pressure", "side": side,
+                            "details": {**base, "selection": side, "trigger_line": cur["line"],
+                                        "price_move_pp": round(price_delta * 100, 3),
+                                        "comparable_books": len(paired)},
+                        })
+
+        if opn and opn["market_books"] >= _CFB_MIN_BOOKS and opn["support"] >= _CFB_MIN_BOOKS:
+            drift = cur["line"] - opn["line"]
+            if abs(drift) >= steam_threshold:
+                side = up_side if drift > 0 else down_side
+                signals.append({
+                    "alert_type": f"{market}_walking", "side": side,
+                    "details": {**base, "selection": side, "trigger_line": cur["line"],
+                                "open_line": opn["line"], "delta": drift},
+                })
+
+        # Reversal: a material first leg followed by an opposite move back
+        # toward the earlier number within 90 minutes of the pivot.
+        for pivot_index in range(1, len(history) - 1):
+            pivot_row = history[pivot_index]
+            if (current["captured_at"] - pivot_row["captured_at"]).total_seconds() > 90 * 60:
+                continue
+            pivot = _cfb_market_snapshot(pivot_row.get("books") or {}, market)
+            if not pivot or pivot["support"] < _CFB_MIN_BOOKS:
+                continue
+            for before_row in history[:pivot_index]:
+                before = _cfb_market_snapshot(before_row.get("books") or {}, market)
+                if not before or before["support"] < _CFB_MIN_BOOKS:
+                    continue
+                first_leg = pivot["line"] - before["line"]
+                second_leg = cur["line"] - pivot["line"]
+                if abs(first_leg) >= steam_threshold and abs(second_leg) >= reversal_threshold and first_leg * second_leg < 0:
+                    side = up_side if second_leg > 0 else down_side
+                    signals.append({
+                        "alert_type": "reversal", "side": side,
+                        "details": {**base, "selection": side, "trigger_line": cur["line"],
+                                    "pre_move_line": before["line"], "pivot_line": pivot["line"],
+                                    "first_leg": first_leg, "reversal_leg": second_leg,
+                                    "pivot_history_id": pivot_row.get("history_id")},
+                    })
+                    break
+            if signals and signals[-1]["alert_type"] == "reversal" and signals[-1]["details"]["market"] == market:
+                break
+
+        # Reference-led is intentionally descriptive. It requires Pinnacle to
+        # move first while retail is stable, followed by retail in the same direction.
+        if len(history) >= 3:
+            lead_start, lead_end = history[-3], history[-2]
+            start_retail = _cfb_market_snapshot(lead_start.get("books") or {}, market)
+            end_retail = _cfb_market_snapshot(lead_end.get("books") or {}, market)
+            pin0 = (lead_start.get("books") or {}).get("pinnacle") or {}
+            pin1 = (lead_end.get("books") or {}).get("pinnacle") or {}
+            key = "spread_home" if market == "spread" else "total_line"
+            try:
+                pin_move = float(pin1[key]) - float(pin0[key])
+            except (KeyError, TypeError, ValueError):
+                pin_move = 0.0
+            if start_retail and end_retail:
+                early_retail = end_retail["line"] - start_retail["line"]
+                follow = cur["line"] - end_retail["line"]
+                threshold = 0.5 if market == "spread" else 1.0
+                elapsed = (current["captured_at"] - lead_end["captured_at"]).total_seconds() / 60
+                if (abs(pin_move) >= threshold and abs(early_retail) < threshold
+                        and 0 < elapsed <= 30 and follow * pin_move > 0 and abs(follow) >= threshold):
+                    side = up_side if follow > 0 else down_side
+                    signals.append({
+                        "alert_type": "reference_led", "side": side,
+                        "details": {**base, "selection": side, "trigger_line": cur["line"],
+                                    "reference_book": "pinnacle", "reference_move": pin_move,
+                                    "retail_follow_move": follow, "follow_minutes": round(elapsed, 2)},
+                    })
+    return signals
+
+
 def _notify(alerts: list[dict]) -> None:
     """Push new alerts to any configured channel; silent no-op otherwise.
 
@@ -593,7 +810,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
     rows = db.execute(
         f"""
         SELECT DISTINCT ON (h.matchup_id)
-               h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
+               h.id AS history_id, h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
                h.captured_at, h.capture_key, h.books, m.commence_time
         FROM game_odds_history h
         JOIN {matchup_tbl} m ON m.id = h.matchup_id
@@ -679,7 +896,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
         # ── Steam (needs the previous capture) ──
         prev = db.execute_one(
             """
-            SELECT books FROM game_odds_history
+            SELECT id AS history_id, captured_at, capture_key, books FROM game_odds_history
             WHERE sport = %s AND matchup_id = %s AND captured_at < %s
               AND books IS NOT NULL
               AND EXISTS (
@@ -717,7 +934,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
         #    OPEN — the first capture of this fixture, not the previous one). ──
         first = db.execute_one(
             """
-            SELECT books FROM game_odds_history
+            SELECT id AS history_id, captured_at, capture_key, books FROM game_odds_history
             WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
               AND EXISTS (
                 SELECT 1 FROM jsonb_object_keys(books) AS source(book_key)
@@ -769,6 +986,44 @@ def scan(db: DatabaseManager, sport: str) -> int:
                                 if priced.get("exec_decimal") else None),
                     sharp_prob=None,
                     details={**signal["details"], **priced},
+                ))
+        if sport == "cfb":
+            history = db.execute(
+                """
+                SELECT id AS history_id, captured_at, capture_key, books
+                FROM game_odds_history
+                WHERE sport='cfb' AND matchup_id=%s AND books IS NOT NULL
+                  AND captured_at < %s
+                ORDER BY captured_at, id
+                """,
+                (r["matchup_id"], r["commence_time"]),
+            )
+            for signal in _cfb_market_signals(history):
+                details = signal["details"]
+                priced = freeze_execution_price(
+                    books, market=details["market"], side=signal["side"],
+                )
+                if details["market"] == "spread" and priced.get("exec_line") is not None:
+                    details["entry_home_line"] = (
+                        float(priced["exec_line"])
+                        if signal["side"] == "home" else -float(priced["exec_line"])
+                    )
+                elif priced.get("exec_line") is not None:
+                    details["entry_home_line"] = float(priced["exec_line"])
+                details = {
+                    **details,
+                    **priced,
+                    "evidence_key": (
+                        f"{_CFB_SIGNAL_VERSION}:{signal['alert_type']}:"
+                        f"{signal['side']}:{r['history_id']}"
+                    ),
+                }
+                new_alerts.extend(_insert(
+                    db, sport="cfb", r=r, label=label,
+                    alert_type=signal["alert_type"], side=signal["side"],
+                    alert_prob=(1 / float(priced["exec_decimal"])
+                                if priced.get("exec_decimal") else None),
+                    sharp_prob=None, details=details,
                 ))
     if new_alerts:
         print(f"Line alerts ({sport}): {len(new_alerts)} new — "
@@ -837,6 +1092,13 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
     """First-breach insert; returns [alert] only when a NEW row was created."""
     if sport == "mlb":
         details = {**details, **_mlb_model_signal_context(db, r, side, alert_prob)}
+    if sport == "cfb":
+        details = {
+            "signal_version": _CFB_SIGNAL_VERSION,
+            "origin": "prospective",
+            "trigger_history_id": r.get("history_id"),
+            **details,
+        }
     # ── Polymarket-confirmed flag ──────────────────────────────────────────
     # When Polymarket is present in the same capture AND its price for the
     # alert's side agrees with the sharp reference (i.e., Poly already moved
@@ -862,13 +1124,20 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
     rows = db.execute(
         """
         INSERT INTO line_alerts (sport, matchup_id, game_date, matchup, commence_time,
-                                 alert_type, side, capture_key, alert_prob, sharp_prob, details_json)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                 alert_type, side, capture_key, alert_prob, sharp_prob, details_json,
+                                 signal_version, origin, trigger_history_id, previous_history_id,
+                                 opening_history_id, dedupe_key)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s)
         ON CONFLICT (sport, matchup_id, alert_type, side) DO NOTHING
         RETURNING id
         """,
         (sport, r["matchup_id"], r["game_date"], label, r["commence_time"],
-         alert_type, side, r["capture_key"], alert_prob, sharp_prob, json.dumps(details)),
+         alert_type, side, r["capture_key"], alert_prob, sharp_prob, json.dumps(details),
+         details.get("signal_version"), details.get("origin", "prospective"),
+         details.get("trigger_history_id") or r.get("history_id"),
+         details.get("previous_history_id"), details.get("opening_history_id"),
+         f"{alert_type}:{side}"),
     )
     if not rows:
         return []
@@ -1813,8 +2082,10 @@ def _append_grade_history_cur(cur, alert_id: int, g: dict, outcome=None) -> None
         """SELECT 1 FROM alert_grades WHERE alert_id = %s AND is_current
              AND grading_version = %s AND convergence IS NOT DISTINCT FROM %s
              AND comparison_status IS NOT DISTINCT FROM %s
-             AND outcome IS NOT DISTINCT FROM %s""",
-        (alert_id, g["grading_version"], g["convergence"], g["comparison_status"], outcome),
+             AND outcome IS NOT DISTINCT FROM %s
+             AND grading_json IS NOT DISTINCT FROM %s::jsonb""",
+        (alert_id, g["grading_version"], g["convergence"], g["comparison_status"],
+         outcome, json.dumps(g["grading_json"])),
     )
     if cur.fetchone():
         return
@@ -1823,10 +2094,13 @@ def _append_grade_history_cur(cur, alert_id: int, g: dict, outcome=None) -> None
     cur.execute(
         """INSERT INTO alert_grades
              (alert_id, grading_version, comparison_status, convergence, outcome,
-              dk_clv_pct, grading_json, is_current)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)""",
+              dk_clv_pct, line_clv, pnl_units, close_history_id, grading_json, is_current)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)""",
         (alert_id, g["grading_version"], g["comparison_status"], g["convergence"],
-         outcome, g["dk_clv_pct"], json.dumps(g["grading_json"])),
+         outcome, g["dk_clv_pct"], (g["grading_json"] or {}).get("line_clv"),
+         (g["grading_json"] or {}).get("pnl_units"),
+         (g["grading_json"] or {}).get("close_history_id"),
+         json.dumps(g["grading_json"])),
     )
 
 
@@ -1882,6 +2156,10 @@ def settle(db: DatabaseManager, sport: str) -> int:
             close = None
         # Historical alerts and the short interval before the close worker
         # freezes a new event retain the explicitly-labelled legacy fallback.
+        if close is None and sport == "cfb":
+            # CFB belongs to the prospective verified-close cohort. Waiting is
+            # preferable to silently grading against a latest-row proxy.
+            continue
         if close is None:
             close = db.execute_one(
                 f"""
@@ -1956,23 +2234,31 @@ def settle(db: DatabaseManager, sport: str) -> int:
             )
             _append_grade_history_cur(cur, a["id"], g, outcome=outcome)
         graded += 1
-    if sport == "nfl":
-        graded += _settle_nfl_line_alerts(db)
+    if sport in ("nfl", "cfb"):
+        graded += _settle_football_line_alerts(db, sport)
     if graded:
         print(f"Line alerts ({sport}): {graded} graded")
     return graded
 
 
 def _settle_nfl_line_alerts(db: DatabaseManager) -> int:
+    """Backward-compatible entry point retained for tests and operators."""
+    return _settle_football_line_alerts(db, "nfl")
+
+
+def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
+    matchup_table = "nfl_matchups" if sport == "nfl" else "cfb_matchups"
     alerts = db.execute(
-        """
+        f"""
         SELECT a.*, m.home_score, m.away_score
         FROM line_alerts a
-        JOIN nfl_matchups m ON m.id = a.matchup_id
-        WHERE a.sport = 'nfl' AND a.settled_at IS NULL
-          AND a.alert_type IN ('spread_steam', 'spread_walking', 'total_steam', 'total_walking')
+        JOIN {matchup_table} m ON m.id = a.matchup_id
+        WHERE a.sport = %s AND a.settled_at IS NULL
+          AND a.alert_type IN ('spread_steam', 'spread_walking', 'total_steam', 'total_walking',
+                               'key_cross', 'price_pressure', 'reversal', 'reference_led')
           AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
-        """
+        """,
+        (sport,),
     )
     graded = 0
     for alert in alerts:
@@ -1982,53 +2268,111 @@ def _settle_nfl_line_alerts(db: DatabaseManager) -> int:
         try:
             trigger_line = float(details["trigger_line"])
         except (KeyError, TypeError, ValueError):
-            logger.error("NFL line alert %s is missing trigger_line", alert["id"])
+            logger.error("%s line alert %s is missing trigger_line", sport.upper(), alert["id"])
             continue
-        close = db.execute_one(
-            """
-            SELECT home_spread, COALESCE(vegas_total_raw, vegas_total) AS total
-            FROM game_odds_history
-            WHERE sport = 'nfl' AND matchup_id = %s AND captured_at <= %s
-            ORDER BY captured_at DESC LIMIT 1
-            """,
-            (alert["matchup_id"], alert["commence_time"]),
-        )
-        close_value = close.get("home_spread" if market == "spread" else "total") if close else None
-        if close_value is None:
+        if sport == "cfb":
+            close = db.execute_one(
+                """SELECT h.id AS history_id, h.books
+                   FROM verified_clv_closes c
+                   JOIN game_odds_history h ON h.id=c.history_id
+                   WHERE c.sport='cfb' AND c.matchup_id=%s""",
+                (alert["matchup_id"],),
+            )
+        else:
+            close = db.execute_one(
+                """SELECT id AS history_id, books FROM game_odds_history
+                   WHERE sport='nfl' AND matchup_id=%s AND captured_at <= %s
+                   ORDER BY captured_at DESC, id DESC LIMIT 1""",
+                (alert["matchup_id"], alert["commence_time"]),
+            )
+        if not close or not close.get("books"):
             continue
-        close_line = float(close_value)
+        close_books = close["books"]
+        close_snapshot = _cfb_market_snapshot(close_books, market)
+        if not close_snapshot:
+            continue
+        exec_book = details.get("exec_book")
+        exec_quote = close_books.get(exec_book) if exec_book else None
+        close_user_line = None
+        close_home_line = None
+        close_odds = None
+        if isinstance(exec_quote, dict):
+            if market == "spread":
+                line_key = "spread_home" if side == "home" else "spread_away"
+                price_key = "spread_home_price" if side == "home" else "spread_away_price"
+                if exec_quote.get(line_key) is not None:
+                    close_user_line = float(exec_quote[line_key])
+                    close_home_line = close_user_line if side == "home" else -close_user_line
+                close_odds = exec_quote.get(price_key)
+            else:
+                if exec_quote.get("total_line") is not None:
+                    close_user_line = close_home_line = float(exec_quote["total_line"])
+                close_odds = exec_quote.get("over" if side == "over" else "under")
+        if close_home_line is None:
+            close_home_line = float(close_snapshot["line"])
+            close_user_line = (-close_home_line if market == "spread" and side == "away"
+                               else close_home_line)
+        entry_home_line = float(details.get("entry_home_line", trigger_line))
         outcome = _nfl_line_outcome(
             market,
             side,
-            trigger_line,
+            entry_home_line,
             int(alert["home_score"]),
             int(alert["away_score"]),
         )
-        line_clv = _nfl_line_clv(market, side, trigger_line, close_line)
+        line_clv = _nfl_line_clv(market, side, entry_home_line, close_home_line)
+        entry_decimal = details.get("exec_decimal") or details.get("dk_decimal")
+        pnl_units = None
+        if entry_decimal is not None:
+            pnl_units = (float(entry_decimal) - 1 if outcome == "won"
+                         else -1.0 if outcome == "lost" else 0.0)
+        close_decimal = None
+        price_clv = None
+        if close_odds is not None and details.get("exec_line") is not None:
+            try:
+                if abs(float(details["exec_line"]) - float(close_user_line)) < 1e-9:
+                    close_decimal = american_to_decimal(int(close_odds))
+                    if entry_decimal:
+                        price_clv = round((float(entry_decimal) / close_decimal - 1) * 100, 3)
+            except (TypeError, ValueError):
+                pass
         grading_json = {
             "market": market,
             "selection": side,
             "trigger_line": trigger_line,
-            "close_line": close_line,
+            "entry_line": details.get("exec_line"),
+            "entry_home_line": entry_home_line,
+            "close_line": close_user_line,
+            "close_home_line": close_home_line,
             "line_clv": round(line_clv, 3),
+            "price_clv_pct": price_clv,
+            "close_history_id": int(close["history_id"]),
+            "close_source": "verified_clv_closes" if sport == "cfb" else "last_prestart_capture",
+            "signal_version": details.get("signal_version") or ("nfl-lines-v1" if sport == "nfl" else _CFB_SIGNAL_VERSION),
+            "exec_book": exec_book,
+            "entry_decimal": float(entry_decimal) if entry_decimal is not None else None,
+            "close_decimal": close_decimal,
+            "pnl_units": round(pnl_units, 4) if pnl_units is not None else None,
             "home_score": int(alert["home_score"]),
             "away_score": int(alert["away_score"]),
         }
         grade = {
-            "grading_version": "nfl-lines-v1",
+            "grading_version": "nfl-lines-v1" if sport == "nfl" else _CFB_SIGNAL_VERSION,
             "comparison_status": "SAME_PROPOSITION",
             "convergence": None,
-            "dk_clv_pct": None,
+            "dk_clv_pct": price_clv,
             "grading_json": grading_json,
         }
         db.execute(
             """
             UPDATE line_alerts SET outcome = %s, settled_at = NOW(),
-                grading_json = %s, comparison_status = %s, grading_version = %s
+                grading_json = %s, comparison_status = %s, grading_version = %s,
+                dk_close_decimal=%s, dk_clv_pct=%s, close_history_id=%s, pnl_units=%s
             WHERE id = %s
             """,
             (outcome, json.dumps(grading_json), grade["comparison_status"],
-             grade["grading_version"], alert["id"]),
+             grade["grading_version"], close_decimal, price_clv, close["history_id"],
+             pnl_units, alert["id"]),
         )
         _append_grade_history(db, alert["id"], grade, outcome=outcome)
         graded += 1

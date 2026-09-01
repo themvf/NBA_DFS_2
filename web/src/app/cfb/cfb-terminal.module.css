@@ -374,6 +374,12 @@
   font-size: 9px !important;
 }
 
+.signalChartLabel {
+  fill: var(--terminal-orange) !important;
+  font-size: 8px !important;
+  font-weight: 800;
+}
+
 .catalystLine {
   stroke: var(--terminal-cyan);
   stroke-width: 1;
@@ -569,6 +575,55 @@
   font-weight: 500;
 }
 
+.researchPane {
+  min-width: 0;
+  border-top: 1px solid var(--terminal-line);
+}
+
+.researchTableWrap {
+  overflow-x: auto;
+}
+
+.researchPane table {
+  min-width: 820px;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.researchPane th,
+.researchPane td {
+  border-bottom: 1px solid var(--terminal-line-soft);
+  padding: 7px 9px;
+  text-align: right;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.researchPane th:first-child,
+.researchPane th:nth-child(2),
+.researchPane td:first-child,
+.researchPane td:nth-child(2) {
+  text-align: left;
+}
+
+.researchPane th {
+  color: var(--terminal-muted);
+  font-weight: 500;
+}
+
+.researchPane td:first-child {
+  color: var(--terminal-orange);
+  font-weight: 800;
+}
+
+.researchDisclosure {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--terminal-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
 .pulseRow {
   position: relative;
   border-bottom: 1px solid var(--terminal-line-soft);
@@ -652,6 +707,47 @@
   grid-column: 1 / -1;
   color: var(--terminal-muted);
   font-size: 9px;
+}
+
+.signalRow {
+  border-bottom: 1px solid var(--terminal-line-soft);
+  box-shadow: inset 3px 0 var(--terminal-orange);
+  padding: 8px 10px 8px 13px;
+}
+
+.signalRow[data-tone="risk"] {
+  box-shadow: inset 3px 0 var(--terminal-red);
+}
+
+.signalRow > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.signalRow strong {
+  color: var(--terminal-orange);
+  font-size: 9px;
+}
+
+.signalRow span,
+.signalRow small {
+  color: var(--terminal-muted);
+  font-size: 8px;
+}
+
+.signalRow p {
+  margin: 4px 0;
+  color: var(--terminal-text);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.signalEmpty {
+  padding: 14px 10px;
+  color: var(--terminal-muted);
+  font-size: 9px;
+  text-align: center;
 }
 
 .disclosure {

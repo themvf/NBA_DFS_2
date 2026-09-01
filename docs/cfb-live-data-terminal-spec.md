@@ -5,6 +5,8 @@
 **Route:** `/cfb`  
 **Product posture:** Market-observation and paper-trading terminal; not an automated betting system
 
+The implemented signal definitions, evidence lineage, settlement rules, and model-promotion gates are maintained in [CFB Signal Research and Promotion Contract](cfb-signal-research.md).
+
 ## 1. Executive decision
 
 The CFB page now reads canonical games and exact sportsbook captures from the database. The implementation is a point-in-time market ledger:

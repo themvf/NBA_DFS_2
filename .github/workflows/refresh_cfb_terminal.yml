@@ -70,3 +70,5 @@ jobs:
         run: python -m ingest.cfb_schedule --capture-now
       - name: Report CFB data health
         run: python -m ingest.cfb_schedule --health
+      - name: Detect and settle CFB market signals
+        run: python -m model.line_alerts --sport cfb

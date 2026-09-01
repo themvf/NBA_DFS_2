@@ -23,3 +23,5 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Capture due checkpoints and freeze verified closes
         run: python -m ingest.event_closing_lines
+      - name: Detect and grade prospective CFB market signals
+        run: python -m model.line_alerts --sport cfb

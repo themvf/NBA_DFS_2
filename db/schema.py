@@ -3940,6 +3940,14 @@ INDEXES = [
         clv_pp DOUBLE PRECISION,            -- (close_prob − alert_prob) × 100
         outcome TEXT,                       -- 'won' | 'lost' | 'void'
         settled_at TIMESTAMPTZ,
+        signal_version TEXT,
+        origin TEXT NOT NULL DEFAULT 'prospective',
+        trigger_history_id INTEGER REFERENCES game_odds_history(id),
+        previous_history_id INTEGER REFERENCES game_odds_history(id),
+        opening_history_id INTEGER REFERENCES game_odds_history(id),
+        close_history_id INTEGER REFERENCES game_odds_history(id),
+        dedupe_key TEXT,
+        pnl_units DOUBLE PRECISION,
         UNIQUE (sport, matchup_id, alert_type, side)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_line_alerts_open ON line_alerts(sport, settled_at) WHERE settled_at IS NULL",
@@ -4016,6 +4024,16 @@ INDEXES = [
     # capture series is reproducible from the append-only *_odds_history tables.
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS comparison_status TEXT",
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS grading_version TEXT",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS signal_version TEXT",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'prospective'",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS trigger_history_id INTEGER REFERENCES game_odds_history(id)",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS previous_history_id INTEGER REFERENCES game_odds_history(id)",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS opening_history_id INTEGER REFERENCES game_odds_history(id)",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS close_history_id INTEGER REFERENCES game_odds_history(id)",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS dedupe_key TEXT",
+    "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS pnl_units DOUBLE PRECISION",
+    "UPDATE line_alerts SET dedupe_key=alert_type || ':' || side WHERE dedupe_key IS NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_line_alerts_dedupe_key ON line_alerts(sport, matchup_id, dedupe_key)",
     # Event-driven, quality-graded closes. CFB adds early market checkpoints;
     # every close still points to one immutable pre-boundary history row.
     """CREATE TABLE IF NOT EXISTS odds_capture_checkpoints (
@@ -4138,9 +4156,15 @@ INDEXES = [
         convergence TEXT,
         outcome TEXT,
         dk_clv_pct DOUBLE PRECISION,
+        line_clv DOUBLE PRECISION,
+        pnl_units DOUBLE PRECISION,
+        close_history_id INTEGER REFERENCES game_odds_history(id),
         grading_json JSONB,
         is_current BOOLEAN NOT NULL DEFAULT TRUE
     )""",
+    "ALTER TABLE alert_grades ADD COLUMN IF NOT EXISTS line_clv DOUBLE PRECISION",
+    "ALTER TABLE alert_grades ADD COLUMN IF NOT EXISTS pnl_units DOUBLE PRECISION",
+    "ALTER TABLE alert_grades ADD COLUMN IF NOT EXISTS close_history_id INTEGER REFERENCES game_odds_history(id)",
     "CREATE INDEX IF NOT EXISTS idx_alert_grades_current ON alert_grades(alert_id) WHERE is_current",
     "CREATE INDEX IF NOT EXISTS idx_odds_checkpoints_due ON odds_capture_checkpoints(status, target_at, due_until)",
     "CREATE INDEX IF NOT EXISTS idx_event_closing_lines_quality ON event_closing_lines(sport, quality, frozen_at DESC)",

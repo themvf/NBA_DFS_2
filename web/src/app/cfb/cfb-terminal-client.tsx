@@ -3,12 +3,12 @@
 import { Activity, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CfbBookQuote, CfbTerminalBoard, CfbTerminalRow } from "@/db/queries";
+import type { CfbBookQuote, CfbSignalBacktestRow, CfbTerminalBoard, CfbTerminalRow, LineAlertRow } from "@/db/queries";
 import styles from "./cfb-terminal.module.css";
 
 type MarketKey = "spread" | "total" | "moneyline";
 type SelectionSide = "home" | "away" | "over" | "under";
-type HistoryPoint = { time: string; values: Record<string, number> };
+type HistoryPoint = { capturedAt: string; time: string; values: Record<string, number> };
 type BookRow = { key: string; book: string; line: string; price: string; side: SelectionSide; updatedAt: string | null; fresh: boolean };
 type MarketView = { label: string; current: string; open: string; close: string; move: string; closeMove: string; axisLabel: string; series: string[]; history: HistoryPoint[]; books: BookRow[]; selectedLineBookCount: number; marketBookCount: number };
 type PaperPosition = { id: string; game: string; market: string; book: string; entry: string; observedAt: string };
@@ -16,6 +16,30 @@ type PaperPosition = { id: string; game: string; market: string; book: string; e
 const MARKET_LABELS: Record<MarketKey, string> = { spread: "SPREAD", total: "TOTAL", moneyline: "MONEYLINE" };
 const SERIES_COLORS = ["#f6a800", "#59b6ff", "#c58cff", "#5fd0a5", "#ff718b"];
 const BOOK_PRIORITY = ["pinnacle", "draftkings", "fanduel", "betmgm", "bovada"];
+
+const SIGNAL_LABELS: Record<string, string> = {
+  spread_steam: "SPREAD STEAM", total_steam: "TOTAL STEAM",
+  spread_walking: "SPREAD WALK", total_walking: "TOTAL WALK",
+  key_cross: "KEY CROSS", price_pressure: "PRICE PRESSURE",
+  reversal: "REVERSAL", reference_led: "REFERENCE LED",
+  pinnacle_divergence: "REFERENCE GAP", dk_value: "PRICE VALUE",
+  steam: "ML STEAM", walking: "ML WALK",
+};
+
+function signalMarket(signal: LineAlertRow): MarketKey {
+  const market = signal.details?.market;
+  if (market === "spread" || market === "total" || market === "moneyline") return market;
+  if (signal.alertType.startsWith("spread") || signal.alertType === "key_cross") return "spread";
+  if (signal.alertType.startsWith("total")) return "total";
+  return "moneyline";
+}
+
+function signalObservedAt(signal: LineAlertRow): string {
+  const observedAt = signal.details?.trigger_capture_at;
+  return typeof observedAt === "string" && observedAt ? observedAt : signal.createdAt;
+}
+
+function pct(value: number | null): string { return value == null ? "—" : `${(value * 100).toFixed(1)}%`; }
 
 function signed(value: number, digits = 1): string { return `${value > 0 ? "+" : ""}${value.toFixed(digits)}`; }
 function american(value: number | null | undefined): string { return value == null ? "—" : `${value > 0 ? "+" : ""}${Math.round(value)}`; }
@@ -83,7 +107,7 @@ function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSid
   const closing = lowerMedian(closingValues);
   const bookKeys = Array.from(new Set(game.history.flatMap((point) => Object.keys(point.books))));
   const orderedBooks = [...BOOK_PRIORITY.filter((book) => bookKeys.includes(book)), ...bookKeys.filter((book) => !BOOK_PRIORITY.includes(book)).sort()].slice(0, 3);
-  const history = game.history.map((point) => ({ time: fmtEt(point.capturedAt, true), values: Object.fromEntries(orderedBooks.flatMap((key) => { const value = valueFor(point.books[key] ?? {}, market); return value == null ? [] : [[key, value]]; })) }));
+  const history = game.history.map((point) => ({ capturedAt: point.capturedAt, time: fmtEt(point.capturedAt, true), values: Object.fromEntries(orderedBooks.flatMap((key) => { const value = valueFor(point.books[key] ?? {}, market); return value == null ? [] : [[key, value]]; })) }));
   const movement = current != null && opening != null ? current - opening : null;
   let currentLabel = "NO MARKET"; let openingLabel = "—"; let closingLabel = "PENDING";
   if (current != null) currentLabel = market === "spread" ? `${game.homeTeam} ${signed(current)}` : market === "total" ? current.toFixed(1) : `${game.homeTeam} ${(current * 100).toFixed(1)}%`;
@@ -102,7 +126,7 @@ function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSid
 
 function displayTick(value: number, market: MarketKey): string { return market === "moneyline" ? `${(value * 100).toFixed(0)}%` : signed(value); }
 
-function MarketChart({ market, marketKey }: { market: MarketView; marketKey: MarketKey }) {
+function MarketChart({ market, marketKey, signals }: { market: MarketView; marketKey: MarketKey; signals: LineAlertRow[] }) {
   const width = 760; const height = 300; const frame = { left: 62, right: 738, top: 26, bottom: 250 };
   const values = market.history.flatMap((point) => Object.values(point.values));
   if (!values.length) return <div className={styles.empty}>No eligible pregame history for this market yet.</div>;
@@ -118,11 +142,12 @@ function MarketChart({ market, marketKey }: { market: MarketView; marketKey: Mar
     {market.history.map((point, index) => <text key={`${point.time}-${index}`} x={x(index)} y={frame.bottom + 24} textAnchor={index === 0 ? "start" : index === market.history.length - 1 ? "end" : "middle"} className={styles.chartTime}>{point.time}</text>)}
     {market.series.map((series, seriesIndex) => market.history.slice(1).map((point, index) => { const before = market.history[index].values[series]; const after = point.values[series]; return before == null || after == null ? null : <line key={`${series}-${index}`} x1={x(index)} y1={y(before)} x2={x(index + 1)} y2={y(after)} stroke={SERIES_COLORS[seriesIndex]} strokeWidth={seriesIndex === 0 ? 2.6 : 1.9} vectorEffect="non-scaling-stroke" />; }))}
     {market.series.map((series, seriesIndex) => market.history.map((point, index) => { const value = point.values[series]; return value == null ? null : <circle key={`${series}-point-${index}`} cx={x(index)} cy={y(value)} r={seriesIndex === 0 ? 4.5 : 3.5} fill={SERIES_COLORS[seriesIndex]} stroke="#07100e" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />; }))}
+    {signals.map((signal, signalIndex) => { const observedAt = signalObservedAt(signal); const at = new Date(observedAt).getTime(); const nearest = market.history.reduce((best, point, index) => Math.abs(new Date(point.capturedAt).getTime() - at) < Math.abs(new Date(market.history[best].capturedAt).getTime() - at) ? index : best, 0); const sx = x(nearest); return <g key={`${signal.alertType}-${observedAt}`}><line x1={sx} x2={sx} y1={frame.top} y2={frame.bottom} stroke={signal.alertType === "reversal" ? "#ff6464" : "#f6a800"} strokeDasharray="4 4" opacity="0.85" /><text x={Math.min(sx + 4, frame.right - 90)} y={frame.top + 11 + signalIndex * 11} className={styles.signalChartLabel}>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</text></g>; })}
     {market.series.map((series, index) => <g key={series} transform={`translate(${frame.left + index * 150}, 291)`}><line x1="0" x2="18" y1="-4" y2="-4" stroke={SERIES_COLORS[index]} strokeWidth={index === 0 ? 2.6 : 1.9} /><text x="24" y="0" className={styles.legendLabel}>{bookTitle(series)}</text></g>)}
   </svg>;
 }
 
-export default function CfbTerminalClient({ board }: { board: CfbTerminalBoard }) {
+export default function CfbTerminalClient({ board, signals, backtest }: { board: CfbTerminalBoard; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[] }) {
   const router = useRouter();
   const [gameId, setGameId] = useState(board.games[0]?.matchupId ?? 0);
   const [marketKey, setMarketKey] = useState<MarketKey>("spread");
@@ -133,6 +158,8 @@ export default function CfbTerminalClient({ board }: { board: CfbTerminalBoard }
   const game = board.games.find((item) => item.matchupId === gameId) ?? board.games[0] ?? null;
   const market = useMemo(() => game ? buildMarket(game, marketKey, side, board.asOf) : null, [game, marketKey, side, board.asOf]);
   const quote = market?.books.find((item) => item.key === selectedBook) ?? market?.books[0] ?? null;
+  const gameSignals = useMemo(() => signals.filter((item) => item.matchupId === game?.matchupId), [signals, game?.matchupId]);
+  const marketSignals = useMemo(() => gameSignals.filter((item) => signalMarket(item) === marketKey), [gameSignals, marketKey]);
   const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return !normalized ? board.games : board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized)); }, [board.games, query]);
   function chooseGame(id: number) { setGameId(id); setSelectedBook(""); setLockMessage(null); }
   function chooseMarket(next: MarketKey) { setMarketKey(next); setSide(selectionFor(next)); setSelectedBook(""); setLockMessage(null); }
@@ -153,12 +180,13 @@ export default function CfbTerminalClient({ board }: { board: CfbTerminalBoard }
       </div></aside>
       <main className={styles.instrumentPane}>{!game || !market ? <section className={styles.chartSection}><div className={styles.empty}>Load the canonical CFB schedule to begin. No sample quotes are substituted.</div></section> : <>
         <section className={styles.instrumentHeader}><div className={styles.instrumentTop}><div><div className={styles.instrumentTitle}>{game.awayTeam} @ {game.homeTeam}</div><div className={styles.instrumentMeta}>{game.venue ?? "Venue TBD"} · {game.commenceTime ? fmtEt(game.commenceTime) : "Kickoff TBD"} · {game.network ?? "Network TBD"} · {market.label}</div></div><div className={styles.primaryQuote}><strong>{market.current}</strong><span>OPEN {market.open} · {market.move.toUpperCase()} · CLV CLOSE {market.close}</span></div></div><div className={styles.marketTabs}>{(Object.keys(MARKET_LABELS) as MarketKey[]).map((key) => <button key={key} type="button" data-active={marketKey === key} onClick={() => chooseMarket(key)}>{MARKET_LABELS[key]}</button>)}</div><div className={styles.marketTabs}>{sideOptions.map((option) => <button key={option} type="button" data-active={side === option} onClick={() => chooseSide(option)}>{option === "home" ? game.homeTeam : option === "away" ? game.awayTeam : option.toUpperCase()}</button>)}</div></section>
-        <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{market.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)}` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><MarketChart market={market} marketKey={marketKey} /></div></section>
+        <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{market.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)} · ${marketSignals.length} signals` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><MarketChart market={market} marketKey={marketKey} signals={marketSignals} /></div></section>
         <section className={styles.lowerGrid}><div className={styles.ladderPane}><div className={styles.sectionTitle}><span>BOOK LADDER</span><span>OBSERVED QUOTES</span></div><div className={styles.bookHeader}><span>BOOK</span><span>UPDATED</span><span>LINE</span><span>PRICE</span></div>{market.books.map((item) => <button key={item.key} type="button" className={styles.bookRow} data-selected={quote?.key === item.key} onClick={() => { setSelectedBook(item.key); setLockMessage(null); }}><span>{item.book}{!item.fresh ? <em>STALE</em> : null}</span><span>{item.updatedAt ? fmtEt(item.updatedAt, true) : "—"}</span><span>{item.line}</span><span>{item.price}</span></button>)}{!market.books.length ? <div className={styles.empty}>This market or side is not quoted by the captured books.</div> : null}<div className={styles.paperAction}><button type="button" disabled={!quote?.fresh} onClick={addPaperPosition}><BookOpen aria-hidden="true" /> {quote?.fresh ? `RECORD PAPER ${quote.book.toUpperCase()} ${quote.line} ${quote.price}` : "PAPER ENTRY DISABLED · QUOTE NOT ≤5M FRESH"}</button><div aria-live="polite">{lockMessage ?? "Displayed quotes are observations, not verified execution availability."}</div></div></div>
           <div className={styles.catalystPane}><div className={styles.sectionTitle}><span>MARKET QUALITY</span><span>AUDIT</span></div><div className={styles.catalystRow}><span>NOW</span><strong>SUPPORT</strong><p>{market.selectedLineBookCount} books at selected consensus line · {market.marketBookCount} books in market</p></div><div className={styles.catalystRow}><span>OPEN</span><strong>HISTORY</strong><p>{game.captures} accepted pregame captures; post-kickoff rows excluded</p></div><div className={styles.catalystRow}><span>CLOSE</span><strong>{game.closeQuality ? `GRADE ${game.closeQuality}` : "PENDING"}</strong><p>{game.closingCapturedAt ? `${market.closeMove}; ${Math.round((game.closeLeadSeconds ?? 0) / 60)}m before ${game.closeBoundarySource}` : "Frozen only after the scheduled CFB kickoff boundary; no latest-row proxy."}</p></div><div className={styles.catalystRow}><span>MAP</span><strong>IDENTITY</strong><p>CFBD game {game.cfbdGameId} · Odds event {game.oddsEventId ?? "provider event unavailable"}</p></div></div></section>
         <section className={styles.blotter}><div className={styles.sectionTitle}><span>SESSION PAPER BLOTTER</span><span>{positions.length} OPEN</span></div>{!positions.length ? <div className={styles.blotterEmpty}>A paper position can be recorded only from an observation no more than five minutes old.</div> : <div className={styles.blotterTableWrap}><table><thead><tr><th>Game</th><th>Market</th><th>Book</th><th>Entry</th><th>Observed</th></tr></thead><tbody>{positions.map((position) => <tr key={position.id}><td>{position.game}</td><td>{position.market}</td><td>{position.book}</td><td>{position.entry}</td><td>{fmtEt(position.observedAt)}</td></tr>)}</tbody></table></div>}</section>
+        <section className={styles.researchPane}><div className={styles.sectionTitle}><span>PROSPECTIVE SIGNAL AUDIT</span><span>CFB-LINES-V1 · NO EDGE CLAIM</span></div>{!backtest.length ? <div className={styles.blotterEmpty}>No prospective CFB signals yet. Metrics appear only after immutable detector observations are recorded.</div> : <div className={styles.researchTableWrap}><table><thead><tr><th>Signal</th><th>Version</th><th>Obs</th><th>Dates</th><th>Settled</th><th>W-L-P</th><th>Avg CLV</th><th>Beat close</th><th>Units</th><th>ROI/bet</th></tr></thead><tbody>{backtest.map((row) => <tr key={`${row.alertType}-${row.signalVersion}`}><td>{SIGNAL_LABELS[row.alertType] ?? row.alertType}</td><td>{row.signalVersion}</td><td>{row.observations}</td><td>{row.gameDates}</td><td>{row.settled}</td><td>{row.wins}-{row.losses}-{row.pushes}</td><td>{row.avgLineClv == null ? "—" : signed(row.avgLineClv)}</td><td>{pct(row.beatClose)}</td><td>{row.units == null ? "—" : signed(row.units, 2)}</td><td>{row.roiPerBet == null ? "—" : `${signed(row.roiPerBet * 100, 1)}%`}</td></tr>)}</tbody></table></div>}<p className={styles.researchDisclosure}>Descriptive research only. Small samples, repeated game dates, and mixed execution books can make apparent ROI unstable; model promotion requires prospective CLV and out-of-sample evidence.</p></section>
       </>}</main>
-      <aside className={styles.pulsePane}><div className={styles.sectionTitle}><span>DATA PULSE</span><span>{statusLabel}</span></div><article className={styles.pulseRow} data-tone={board.status === "live" ? "market" : "critical"}><div><span>{fmtEt(board.asOf, true)}</span><strong>{board.status === "live" ? <Zap aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />} FEED STATE</strong></div><h3>{statusLabel}</h3><p>{board.statusDetail}</p></article>{game ? <><article className={styles.pulseRow} data-tone="market"><div><span>{game.latestCapturedAt ? fmtEt(game.latestCapturedAt, true) : "—"}</span><strong><Activity aria-hidden="true" /> CAPTURE</strong></div><h3>{game.captures} observations</h3><p>Every chart point comes from the append-only exact-book ledger.</p></article><div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>{(["spread", "total", "moneyline"] as MarketKey[]).map((key) => { const view = buildMarket(game, key, selectionFor(key), board.asOf); return <div key={key} className={styles.relatedRow}><span>{MARKET_LABELS[key]}</span><strong>{view.current}</strong><small>{view.move}</small></div>; })}</> : null}<div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Lines are live provider observations when marked fresh. No predictive CFB edge or real-money execution is represented.</p></div></div></aside>
+      <aside className={styles.pulsePane}><div className={styles.sectionTitle}><span>DATA PULSE</span><span>{statusLabel}</span></div><article className={styles.pulseRow} data-tone={board.status === "live" ? "market" : "critical"}><div><span>{fmtEt(board.asOf, true)}</span><strong>{board.status === "live" ? <Zap aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />} FEED STATE</strong></div><h3>{statusLabel}</h3><p>{board.statusDetail}</p></article>{game ? <><article className={styles.pulseRow} data-tone="market"><div><span>{game.latestCapturedAt ? fmtEt(game.latestCapturedAt, true) : "—"}</span><strong><Activity aria-hidden="true" /> CAPTURE</strong></div><h3>{game.captures} observations</h3><p>Every chart point comes from the append-only exact-book ledger.</p></article><div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>{(["spread", "total", "moneyline"] as MarketKey[]).map((key) => { const view = buildMarket(game, key, selectionFor(key), board.asOf); return <div key={key} className={styles.relatedRow}><span>{MARKET_LABELS[key]}</span><strong>{view.current}</strong><small>{view.move}</small></div>; })}<div className={styles.sectionTitle}><span>SIGNAL TAPE</span><span>{gameSignals.length} RECORDED</span></div>{gameSignals.length ? gameSignals.slice(0, 8).map((signal) => { const observedAt = signalObservedAt(signal); return <article key={`${signal.alertType}-${observedAt}`} className={styles.signalRow} data-tone={signal.alertType === "reversal" ? "risk" : "market"}><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(observedAt, true)}</span></div><p>{String(signal.details?.market ?? signalMarket(signal)).toUpperCase()} · {signal.side.toUpperCase()} · line {String(signal.details?.trigger_line ?? "—")} · support {String(signal.details?.consensus_support ?? "—")}</p><small>{String(signal.details?.signal_version ?? "unstamped")} · evidence #{String(signal.details?.trigger_history_id ?? "—")}</small></article>; }) : <div className={styles.signalEmpty}>No qualifying prospective signal for this game.</div>}</> : null}<div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Signals are versioned observations, not recommendations. No predictive edge or real-money execution is represented.</p></div></div></aside>
     </div>
     <footer className={styles.ticker}><span><strong>STATUS</strong> {board.statusDetail}</span><span><strong>BOARD</strong> {board.games.length} GAMES</span><span><strong>QUARANTINE</strong> {board.unmappedEvents} UNMAPPED EVENTS</span><span><strong>CONSENSUS</strong> LOWER MEDIAN · EXACT-LINE PRICE SUPPORT</span><span><strong>PAPER</strong> FIVE-MINUTE FRESHNESS REQUIRED</span></footer>
   </div>;
