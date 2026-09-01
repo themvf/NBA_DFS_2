@@ -17,11 +17,15 @@ User-selected, recorded so they are not silently revisited.
 
 ## 1. What DraftKings actually requires — verified, not assumed
 
-Verified 2026-09-01 against DK Network and search corroboration.
-`draftkings.com/help/rules/nfl` returns **HTTP 403** to automated
-fetches, so items marked **UNVERIFIED** must be confirmed against the
-live rules page by hand, in a browser, before the scoring module is
-coded. They are recorded here as claims to check, never as facts.
+Roster structure and the column layout are **VERIFIED** — against DK
+Network for the rules, and against the user's own Week 1 Classic and
+Showdown exports for everything the files themselves prove.
+
+Scoring is the one thing still **SECOND-HAND**: DK's rules page is
+unreachable from here (403 to fetch, domain blocked in the browser
+tool), so it rests on independent references that agree with each other.
+Each claim below carries its own evidence level; nothing is recorded as
+fact on the strength of recall.
 
 ### The real column layout — VERIFIED against Week 1 exports
 
