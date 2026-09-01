@@ -94,7 +94,18 @@ The two rows are **not adjacent**: DK sorts the file by salary, so a
 player's CPT row can sit dozens of lines from his FLEX row. Pairing is by
 name + team, never by position in the file.
 
-### Scoring — UNVERIFIED, confirm before coding the scoring module
+### Scoring — SECOND-HAND, confirm by eye before the scoring module ships
+
+DraftKings' own rules page could not be reached: `draftkings.com` returns
+**HTTP 403** to automated fetches and the domain is **blocked by policy**
+in the browser tool. The table below is corroborated by independent DFS
+references (notably RotoGrinders' site-scoring comparison), which agree
+with each other on every line including the DST points-allowed tiers.
+
+That is good evidence, not confirmation. Scoring feeds the projection
+model directly, so **one human look at DK's live rules page** should
+happen before `nfl_dfs_scoring` is trusted — cheap to do, and a silently
+wrong tier would bias every DST projection in the same direction forever.
 
 Offense (full PPR):
 
@@ -320,7 +331,7 @@ prerequisites pass.
 
 | # | Step | Gate |
 |---|---|---|
-| 1 | DK rules verification (section 1 UNVERIFIED items) + prop market probe | Per-market DK/Pinnacle/same-line coverage recorded |
+| 1 | DK scoring confirmed by eye + prop market probe | Scoring matches DK's live rules page; per-market DK/Pinnacle/same-line coverage recorded |
 | 2 | Schema: `sport='nfl'` on `dk_slates`, NFL columns on `dk_players`, `nfl_player_props` | Migrations applied, NBA/MLB untouched |
 | 3 | DK CSV ingestion, Classic + Showdown | ✅ **Done** — real Week 1 exports parse with 0 warnings; 126 Showdown rows resolve to 63 players |
 | 4 | Prop ingestion + in-season weekly stats | Coverage counts reported, not assumed |
