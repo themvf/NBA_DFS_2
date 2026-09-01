@@ -4,10 +4,12 @@ name: Refresh NFL Survivor
 #
 # The survivor grid changes on a weekly clock, not a daily one: results settle
 # on Monday night, and the next week's lines and pick shares are what the
-# Wednesday planning pass needs. Nothing here spends Odds API credits -- the
-# grid reads the capture refresh_nfl_vegas already makes, and nflverse and
-# survivorgrid are both free and unmetered -- so the cadence is chosen for
-# freshness, not for cost.
+# Wednesday planning pass needs. Cost is 6 Odds API credits per run -- one
+# bulk call whose response covers the entire season, priced markets x regions
+# -- so about 52 a month against a 100,000/month key. nflverse and
+# survivorgrid are free and unmetered. The cadence is therefore chosen for
+# freshness, not for cost. The current week is separately refreshed daily by
+# refresh_nfl_vegas, and the grid prefers whichever capture is newer.
 #
 # Tuesday 13:20 UTC (9:20 ET) settles the weekend; Thursday 13:20 UTC picks up
 # the week's posted lines before Sunday.
@@ -36,6 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -3,7 +3,9 @@
 Status: **Built through P8** (2026-09-01). `/nfl/survivor` is live. Numbers in
 sections 6, 7, 13.1 and 13.3 are measured from real data and reproducible; they
 are not estimates. Where a measurement contradicted this spec, the spec has been
-corrected and the contradiction recorded rather than quietly edited away.
+corrected and the contradiction recorded rather than quietly edited away -- see
+2.1 and 5.2, where the central premise of the original design (that most of a
+full-season grid must be modeled) turned out to be false.
 
 ---
 
@@ -45,18 +47,33 @@ Four defects, each of which drives a requirement below.
 
 **2.1 It shows modeled numbers as if they were market numbers.** The baseline
 renders a spread and a win % in every one of 544 cells, in identical styling,
-through Week 18. As of 2026-08-31 only **112 of 272** scheduled 2026 games have
-a quoted spread anywhere (Weeks 1-6 complete, Week 7 half, Weeks 8-18 almost
-nothing). Every cell past Week 6 is therefore a model output wearing a market
-costume. This repo's standing rule is that a modeled value is labeled as one
-(cf. the MLB `Actionable` removal, the DST spread-compression disclosure). The
-grid must distinguish MARKET from MODELED per cell.
+through Week 18. This repo's standing rule is that a modeled value is labeled
+as one (cf. the MLB `Actionable` removal, the DST spread-compression
+disclosure), so the grid must distinguish MARKET from MODELED per cell.
+
+**Correction, 2026-09-01.** This section originally read "only 112 of 272
+scheduled 2026 games have a quoted spread anywhere," and the whole design was
+built around modeling the other 160. That figure was **nflverse's** coverage,
+not the market's, and the difference was never checked. The market prices all
+272 (section 5.2). The provenance machinery stays -- it is what makes the
+distinction visible, and it correctly reports 272 of 272 MARKET today rather
+than pretending a gap exists -- but the premise that most of a full-season grid
+*must* be modeled was simply false. The lesson is the one this file keeps
+relearning: a coverage claim about one source is not a claim about the world.
 
 **2.2 It presents far-future cells with unearned precision.** Measured
 (section 7): a market-implied rating model fit through week *k* predicts closing
 spreads 10 weeks out with **RMSE 5.15 points**, and its single best lookahead
 play is the eventual best play only **33%** of the time. The number in a Week 15
 cell is a planning aid, not a forecast. The UI must say so.
+
+Since 5.2, those numbers describe the **fallback** rather than the live grid,
+which is fully market-priced. The caution survives the change, for a different
+and weaker reason: a Week 15 price posted in September is a real quote but an
+opening one, and it will move. **How much it moves is not measured** -- no
+archive of NFL lookahead lines was available, so `market_captured_at` starts
+accumulating that this season and the UI says the number is unknown rather than
+substituting the model's error for the market's.
 
 **2.3 It optimizes the wrong objective for large pools.** Maximizing survival
 probability is the right objective in a small pool. In a large one, everybody
@@ -130,19 +147,47 @@ CLAUDE.md records what the last miss of this cost: every Arizona player silently
 carried a NULL team and NULL bye week. Ingestion **fails closed** on an unmapped
 code rather than dropping the row.
 
-### 5.2 The Odds API via `nfl_matchups` / `game_odds_history` — live prices
+### 5.2 The Odds API — full-season prices (CORRECTED 2026-09-01)
 
-Already built (`ingest/nfl_schedule.py`, `ingest/refresh_nfl_vegas.py`,
-`docs/nfl-odds-ingestion-and-movement-spec.md`). Per-book moneylines and spreads
-with pre-kickoff capture guards and an append-only history. Covers only games
-the provider currently lists — near-term weeks.
+**What this section said, and why it was wrong.** It said the provider "covers
+only games the provider currently lists — near-term weeks," and on that basis
+the grid modeled 160 of 272 games. That was an assumption, never measured.
 
-**No new Odds API spend.** The survivor tool is a consumer of the existing
-capture, not a new one. `docs/the-odds-api.md` must be read before any change to
-that, and this spec proposes none. The open NFL cadence question recorded in
-CLAUDE.md ("NFL regular-season odds cadence — UNDECIDED") is unaffected: the
-tool works at any cadence and gets better at higher ones, but does not require
-an increase and must not be used to justify one.
+Measured 2026-09-01: `GET /v4/sports/americanfootball_nfl/odds` returns **all
+272 regular-season games**, moneyline and spread, priced by DraftKings (272 of
+272) and William Hill (256), for a flat **6 credits** (3 markets x 2 regions —
+the response size does not affect the price). The two-way hold is a flat
+**~4.3% in every month of the season**, so a Week 18 quote is not a wide
+throwaway lookahead number; it carries the same margin as Week 1.
+
+Worse: `ingest/nfl_schedule.py::fetch_odds` was **already making that call** on
+every refresh and storing only the target date's games. The survivor grid was
+modeling 160 games whose real prices the project was already paying for and
+discarding.
+
+**Why this is a second consumer rather than a fix to `fetch_odds`.** Widening
+`fetch_odds` would widen `game_odds_history`, which feeds the line-alert
+detectors, which feed the **pre-registered NFL `total_walking` fade study**
+whose population CLAUDE.md freezes as regular-season alerts from 2026-09-09
+with at least two pre-commence captures. Going from ~16 captured games per run
+to 272 would start generating alerts on games ten weeks out, whose lines wander
+for entirely different reasons — a regime change inside a live experiment, of
+exactly the kind this file's discipline exists to prevent. So
+`ingest/nfl_survivor_odds.py` reads the same response and writes only to
+`nfl_season_games.market_*`. It touches neither `game_odds_history` nor
+`nfl_matchups`, and cannot contaminate the study.
+
+**Cost:** 6 credits per run, twice weekly, ~52/month. `docs/the-odds-api.md`
+(also corrected 2026-09-01 — the plan is 100,000/month, not 20,000) carries the
+budget. The open NFL cadence question in CLAUDE.md remains unaffected: this
+consumer is independent of `refresh_nfl_vegas`'s cadence.
+
+**Freshness ordering.** Both Odds API captures quote the same books and differ
+only in scope and cadence — full-season twice weekly, date-scoped daily. The
+ladder therefore prefers **whichever capture is newer**, not whichever module
+wrote it. Preferring the full-season one unconditionally would show a stale
+Thursday price for Sunday's game, which is the one game a survivor pick is
+actually made on.
 
 ### 5.3 survivorgrid.com — field pick percentage (verified 2026-08-31)
 

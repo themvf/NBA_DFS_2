@@ -304,8 +304,10 @@ def compute_and_store(db: DatabaseManager, season: int, fit: dict) -> dict:
         """
         SELECT g.id, g.week, g.home_team_id, g.away_team_id,
                g.quoted_spread_line, g.quoted_home_ml, g.quoted_away_ml,
+               g.market_home_ml, g.market_away_ml, g.market_spread_line,
+               g.market_captured_at,
                m.home_ml AS live_home_ml, m.away_ml AS live_away_ml,
-               m.home_spread AS live_spread,
+               m.home_spread AS live_spread, m.fetched_at AS live_captured_at,
                ht.abbreviation AS home_abbrev, at.abbreviation AS away_abbrev
         FROM nfl_season_games g
         JOIN nfl_teams ht ON ht.team_id = g.home_team_id
@@ -321,11 +323,22 @@ def compute_and_store(db: DatabaseManager, season: int, fit: dict) -> dict:
 
     frame = pd.DataFrame(games)
 
+    # Every source of a real posted spread, in preference order. market_* is
+    # the full-season Odds API capture (ingest/nfl_survivor_odds.py) and
+    # normally covers all 272 games; the others are fallbacks for when that
+    # capture has not run or the provider has dropped a game.
+    frame["best_spread"] = (
+        frame["market_spread_line"]
+        .fillna(-frame["live_spread"])
+        .fillna(frame["quoted_spread_line"])
+    )
+
     # Anchor week: the last week whose lines are essentially fully posted.
-    # Horizon for every modeled game is measured forward from here, so a
-    # Week 15 cell in September is honestly labeled as nine weeks out.
+    # Horizon for a modeled game is measured forward from here. When the whole
+    # season is priced this lands on the final week and nothing is modeled at
+    # all, which is the intended outcome, not a degenerate one.
     coverage = frame.groupby("week").apply(
-        lambda part: part["quoted_spread_line"].notna().mean(), include_groups=False
+        lambda part: part["best_spread"].notna().mean(), include_groups=False
     )
     anchor_week = 0
     for week in sorted(coverage.index):
@@ -334,10 +347,12 @@ def compute_and_store(db: DatabaseManager, season: int, fit: dict) -> dict:
         else:
             break
 
-    # Ratings from every quoted spread available, preferring our own captured
-    # line over nflverse's when both exist.
-    quoted = frame[frame["quoted_spread_line"].notna() | frame["live_spread"].notna()].copy()
-    quoted["spread_line"] = quoted["live_spread"].fillna(quoted["quoted_spread_line"])
+    # Ratings are fit on every posted spread available. They are only consumed
+    # for games with no price at all, but they are still worth fitting: they
+    # are what fills a provider gap, and their fit RMSE is a live check that
+    # the ladder's sources agree with each other.
+    quoted = frame[frame["best_spread"].notna()].copy()
+    quoted["spread_line"] = quoted["best_spread"]
     quoted["home_team"] = quoted["home_abbrev"]
     quoted["away_team"] = quoted["away_abbrev"]
     teams = sorted(set(frame["home_abbrev"]) | set(frame["away_abbrev"]))
@@ -379,16 +394,37 @@ def compute_and_store(db: DatabaseManager, season: int, fit: dict) -> dict:
         # came from the price side would hide a number the user reads first.
         # nfl_matchups stores the home spread book-style (favorite negative);
         # nflverse stores it positive-is-home-favored.
+        # Both Odds API captures quote the same books; they differ only in
+        # scope and cadence. The full-season pass runs twice a week and covers
+        # every game; the date-scoped pass runs daily but only for that day.
+        # For the current week the daily one is usually fresher, and a survivor
+        # pick is made on the current week -- so order them by capture time
+        # rather than by which module wrote them.
+        odds_api_sources = sorted(
+            (
+                (game["market_captured_at"], game["market_home_ml"],
+                 game["market_away_ml"],
+                 None if game["market_spread_line"] is None
+                 else float(game["market_spread_line"])),
+                (game["live_captured_at"], game["live_home_ml"], game["live_away_ml"],
+                 None if game["live_spread"] is None else -float(game["live_spread"])),
+            ),
+            key=lambda entry: (entry[0] is not None, entry[0]),
+            reverse=True,
+        )
+
         spread: float | None = None
         spread_source: str | None = None
-        if game["live_spread"] is not None:
-            spread, spread_source = -float(game["live_spread"]), "odds_api"
-        elif game["quoted_spread_line"] is not None:
+        for _, _, _, candidate in odds_api_sources:
+            if candidate is not None:
+                spread, spread_source = candidate, "odds_api"
+                break
+        if spread is None and game["quoted_spread_line"] is not None:
             spread, spread_source = float(game["quoted_spread_line"]), "nflverse"
 
-        # 1. no-vig moneyline, ours first then nflverse's
+        # 1. no-vig moneyline, freshest Odds API capture first
         for ml_home, ml_away, label in (
-            (game["live_home_ml"], game["live_away_ml"], "odds_api"),
+            *[(entry[1], entry[2], "odds_api") for entry in odds_api_sources],
             (game["quoted_home_ml"], game["quoted_away_ml"], "nflverse"),
         ):
             probability = _american_pair_to_prob(ml_home, ml_away)

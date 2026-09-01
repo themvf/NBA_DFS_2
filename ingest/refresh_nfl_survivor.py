@@ -7,13 +7,16 @@ nothing to do with, for weeks:
 
   1. schedule   -- nflverse season grid. A failure here blocks everything,
                    because there is no grid without it.
-  2. model      -- probabilities and ratings. A failure blocks modeled cells;
-                   quoted-line weeks would still render from the last run.
-  3. popularity -- field pick share. A failure blocks the fade-the-field mode
+  2. odds       -- full-season Odds API prices. A failure degrades the grid to
+                   nflverse's partial lines plus modeled cells, which is what
+                   it ran on before this step existed; it never blocks.
+  3. model      -- probabilities and ratings. A failure blocks new
+                   probabilities; the previous run's grid still renders.
+  4. popularity -- field pick share. A failure blocks the fade-the-field mode
                    only, and NEVER the grid. It is also expected to fail
                    early in a season: survivorgrid publishes a season shortly
                    before week 1, and "not published yet" is not an outage.
-  4. settlement -- lock started picks, grade finished ones.
+  5. settlement -- lock started picks, grade finished ones.
 
 Usage:
     python -m ingest.refresh_nfl_survivor
@@ -59,7 +62,26 @@ def main() -> None:
         raise SystemExit("schedule health gate failed -- the grid cannot be built")
     print("  PASS 32 teams x every week x exactly one bye")
 
-    # 2. Probabilities.
+    # 2. Full-season market prices. Optional: the grid falls back to nflverse
+    #    lines plus modeled cells, which is what it ran on before this existed.
+    print("== market prices ==")
+    try:
+        from ingest.nfl_survivor_odds import fetch_season_odds
+
+        api_key = load_config().odds_api.api_key
+        if not api_key:
+            print("  SKIP no ODDS_API_KEY; falling back to nflverse lines")
+        else:
+            summary = fetch_season_odds(db, api_key, args.season)
+            print(f"  {summary['stored']} of {summary['events']} events priced "
+                  f"({summary['skipped_started']} started, "
+                  f"{summary['skipped_unmatched']} unmatched, "
+                  f"{summary['skipped_wide']} too wide)")
+    except Exception:  # noqa: BLE001 - degrades the grid, never blocks it
+        traceback.print_exc()
+        failures.append("market prices")
+
+    # 3. Probabilities.
     print("== probabilities ==")
     try:
         from ingest.nfl_season_schedule import fetch_schedule
@@ -87,7 +109,7 @@ def main() -> None:
         traceback.print_exc()
         failures.append("probabilities")
 
-    # 3. Field pick share -- optional, and its absence is usually not a fault.
+    # 4. Field pick share -- optional, and its absence is usually not a fault.
     print("== pick popularity ==")
     try:
         from ingest.survivor_pick_popularity import load as load_popularity
@@ -106,7 +128,7 @@ def main() -> None:
         traceback.print_exc()
         failures.append("pick popularity")
 
-    # 4. Settlement.
+    # 5. Settlement.
     print("== settlement ==")
     try:
         from model.survivor_settlement import run as settle

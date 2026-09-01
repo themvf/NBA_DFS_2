@@ -3642,6 +3642,20 @@ MIGRATIONS = [
     """CREATE TRIGGER mlb_weather_forecasts_immutable
     BEFORE UPDATE OR DELETE ON mlb_weather_forecast_snapshots
     FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
+
+    # Full-season Odds API prices for the survivor grid. Deliberately stored on
+    # nfl_season_games rather than in game_odds_history: the alert pipeline's
+    # capture population is frozen for the pre-registered NFL total_walking
+    # study, and widening it from today's games to all 272 mid-study would be a
+    # regime change inside a live experiment. These columns are a separate
+    # consumer of the same already-paid-for bulk response.
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_home_ml INTEGER",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_away_ml INTEGER",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_spread_line DOUBLE PRECISION",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_total_line DOUBLE PRECISION",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_book_count INTEGER",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_overround DOUBLE PRECISION",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_captured_at TIMESTAMPTZ",
 ]
 
 INDEXES = [

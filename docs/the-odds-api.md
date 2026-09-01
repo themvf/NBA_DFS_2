@@ -56,12 +56,28 @@ Read them. Ignoring them is how the key silently reached 20,000/20,000.
 
 ## 2. Budget
 
-Plan: **20,000 credits/month ≈ 667/day sustainable.**
+Plan: **100,000 credits/month ≈ 3,333/day sustainable.**
+
+**Corrected 2026-09-01.** This section previously said 20,000/month, which was
+true when the 2026-08-24 emergency cuts were made and is no longer true — the
+live response headers now read `x-requests-remaining: 99,800` against
+`x-requests-used: 186`, i.e. a 100,000 key. Read the headers rather than this
+line: the plan can change under us in either direction, and the 2026-08-24
+outage happened because nobody was reading them.
+
+**This does not reopen the 2026-08-24 removals.** Every one of those was made
+on a *measured* basis — `us_ex` returned Polymarket on 0 of 1,685 NFL captures,
+`batter_runs_scored` never matched Pinnacle's line, and so on. Those spends
+were removed because they bought nothing, not because the budget was tight.
+More headroom is not a reason to restore a consumer that was measured to be
+useless; it is only a reason not to refuse a *new* consumer on cost grounds
+alone.
 
 | Date | Scheduled burn | Status |
 |---|---|---|
-| Before 2026-08-24 | ~955/day (~28,650/30d) | **143% of plan** — exhausted mid-cycle |
-| After the 2026-08-24 work | ~395/day (~11,850/30d) | ~59% of plan |
+| Before 2026-08-24 | ~955/day (~28,650/30d) | Exhausted the then-20,000 plan mid-cycle |
+| After the 2026-08-24 work | ~395/day (~11,850/30d) | ~12% of the current plan |
+| Plus NFL survivor (2026-09-01) | +~1.7/day (6 credits, 2x/week) | negligible |
 
 ---
 

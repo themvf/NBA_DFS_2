@@ -804,8 +804,16 @@ export default function SurvivorClient({ grid, pools, ledger, loadedAt }: Props)
         <header className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 text-xs">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="font-semibold">{teams.length * weeks.length} team-weeks</span>
-            <LegendSwatch className="bg-emerald-500/35" label={`Market — ${marketCells} games priced`} />
-            <LegendSwatch className="bg-sky-500/25" label={`Model — ${modelCells} games not yet priced`} />
+            <LegendSwatch
+              className="bg-emerald-500/35"
+              label={`Market — ${marketCells} of ${marketCells + modelCells} games priced`}
+            />
+            {modelCells > 0 && (
+              <LegendSwatch
+                className="bg-sky-500/25"
+                label={`Model — ${modelCells} with no posted price`}
+              />
+            )}
             <span className="text-muted-foreground">Click a cell to use that team that week</span>
           </div>
           <span className="font-mono text-[11px] text-muted-foreground">
@@ -999,24 +1007,41 @@ export default function SurvivorClient({ grid, pools, ledger, loadedAt }: Props)
           <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
           How much to trust the far columns
         </div>
-        <p className="max-w-4xl text-muted-foreground">
-          Weeks {anchorWeek == null ? "past the priced ones" : `after W${anchorWeek}`} have no
-          quoted line, so those cells are modeled from market-implied power ratings — shown in
-          blue italics with a ± band.{" "}
-          {far && far.topPickExactRate != null && far.topPickTop5Rate != null && (
-            <>
-              Measured over 2010–2025: at {far.horizon} weeks out this model names the eventual
-              best play <strong className="text-foreground">{pct(far.topPickExactRate)}</strong> of
-              the time and lands in the top five{" "}
-              <strong className="text-foreground">{pct(far.topPickTop5Rate)}</strong> of the time,
-              with a spread error of{" "}
-              <strong className="text-foreground">±{far.rmse.toFixed(1)} points</strong>.{" "}
-            </>
-          )}
-          <strong className="text-foreground">
-            Plan with these columns; commit only the current week.
-          </strong>
-        </p>
+        {modelCells === 0 ? (
+          <p className="max-w-4xl text-muted-foreground">
+            Every week has a{" "}
+            <strong className="text-foreground">real posted price</strong> — sportsbooks quote the
+            whole season, not just the next few weeks, and the two-way margin on a Week 18 game is
+            the same ~4% as on Week 1. So nothing on this grid is modeled today. That is a much
+            better position than a guess, but it is not the same as a settled number:{" "}
+            <strong className="text-foreground">
+              a Week 15 price posted in September is an opening line, and it will move a lot
+            </strong>{" "}
+            as injuries, form and playoff seeding resolve. How much it moves is not yet measured —
+            we started recording it this season and cannot say until there is a season of it. Until
+            then, treat distant weeks as a plan rather than a decision and{" "}
+            <strong className="text-foreground">commit only the current week.</strong>
+          </p>
+        ) : (
+          <p className="max-w-4xl text-muted-foreground">
+            {modelCells} game{modelCells === 1 ? "" : "s"} have no posted price, so those cells fall
+            back to market-implied power ratings — shown in blue italics with a ± band.{" "}
+            {far && far.topPickExactRate != null && far.topPickTop5Rate != null && (
+              <>
+                Measured over 2010–2025: at {far.horizon} weeks out that fallback names the
+                eventual best play{" "}
+                <strong className="text-foreground">{pct(far.topPickExactRate)}</strong> of the time
+                and lands in the top five{" "}
+                <strong className="text-foreground">{pct(far.topPickTop5Rate)}</strong> of the time,
+                with a spread error of{" "}
+                <strong className="text-foreground">±{far.rmse.toFixed(1)} points</strong>.{" "}
+              </>
+            )}
+            <strong className="text-foreground">
+              Plan with those columns; commit only the current week.
+            </strong>
+          </p>
+        )}
         {grid.calibration.length > 0 && (
           <div className="mt-2 overflow-x-auto">
             <table className="font-mono text-[11px] tabular-nums">
