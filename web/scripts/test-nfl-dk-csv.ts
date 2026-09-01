@@ -4,11 +4,15 @@ import {
   dkIdForSlot,
   NflDkCsvError,
   parseNflDkSalaryCsv,
+  playablePlayers,
   salaryForSlot,
   SHOWDOWN_CAPTAIN_MULTIPLIER,
 } from "../src/lib/nfl-dfs/dk-salary-csv";
 
-const HEADER = "Position,Name + ID,Name,ID,Roster Position,Salary,Game Info,TeamAbbrev,AvgPointsPerGame";
+// Column layout taken verbatim from a real DK Week 1 export, including the
+// trailing `Status` column and the UTF-8 BOM DK writes before `Position`.
+const HEADER =
+  "﻿Position,Name + ID,Name,ID,Roster Position,Salary,Game Info,TeamAbbrev,AvgPointsPerGame,Status";
 
 function classicCsv(rows: string[]): string {
   return [HEADER, ...rows].join("\n");
@@ -213,6 +217,72 @@ function classicCsv(rows: string[]): string {
     ].join("\n"),
   );
   assert.equal(slate.players.length, 2, "header is located rather than assumed to be line 0");
+}
+
+// ── DK injury status ───────────────────────────────────────────────────
+//
+// Real DK NFL exports carry a `Status` column (`OUT`, `IR`, `Q`, blank).
+// The NBA/MLB parser assumes it does not exist and defers to LineStar; for
+// NFL that dependency is unnecessary, and an IR player left in the pool
+// silently wastes a roster slot.
+{
+  const slate = parseNflDkSalaryCsv(
+    classicCsv([
+      `QB,Healthy QB (1),Healthy QB,1,QB,7000,KC@BUF 09/07/2026 08:20PM ET,KC,20,`,
+      `RB,Hurt RB (2),Hurt RB,2,RB/FLEX,6000,KC@BUF 09/07/2026 08:20PM ET,KC,15,OUT`,
+      `WR,Shelved WR (3),Shelved WR,3,WR/FLEX,5000,DAL@PHI 09/07/2026 04:25PM ET,DAL,11,IR`,
+      `TE,Maybe TE (4),Maybe TE,4,TE/FLEX,4000,DAL@PHI 09/07/2026 04:25PM ET,PHI,9,Q`,
+    ]),
+  );
+
+  const byId = new Map(slate.players.map((p) => [p.dkPlayerId, p]));
+  assert.equal(byId.get(1)!.status, null, "a blank Status is null, not an empty string");
+  assert.equal(byId.get(1)!.isOut, false);
+  assert.equal(byId.get(2)!.status, "OUT");
+  assert.equal(byId.get(2)!.isOut, true);
+  assert.equal(byId.get(3)!.status, "IR");
+  assert.equal(byId.get(3)!.isOut, true, "IR is unrosterable, same as OUT");
+
+  // Questionable is risk, not absence. Whether to accept it is a
+  // contest-type decision the optimizer makes, so the parser keeps the
+  // player and merely reports the flag.
+  assert.equal(byId.get(4)!.status, "Q");
+  assert.equal(byId.get(4)!.isOut, false, "Q must stay in the pool");
+
+  assert.deepEqual(
+    playablePlayers(slate.players).map((p) => p.dkPlayerId).sort(),
+    [1, 4],
+  );
+}
+
+// A file with no Status column at all must not crash or mark everyone out.
+{
+  const slate = parseNflDkSalaryCsv(
+    [
+      "Position,Name + ID,Name,ID,Roster Position,Salary,Game Info,TeamAbbrev,AvgPointsPerGame",
+      `QB,A B (1),A B,1,QB,7000,KC@BUF 09/07/2026 08:20PM ET,KC,20`,
+      `RB,C D (2),C D,2,RB/FLEX,6000,DAL@PHI 09/07/2026 04:25PM ET,DAL,15`,
+    ].join("\n"),
+  );
+  assert.equal(slate.players.every((p) => p.status === null && !p.isOut), true);
+  assert.equal(playablePlayers(slate.players).length, 2);
+}
+
+// Status survives the Showdown CPT/FLEX collapse.
+{
+  const slate = parseNflDkSalaryCsv(
+    classicCsv([
+      `RB,Zach Charbonnet (1),Zach Charbonnet,1,CPT,12300,NE@SEA 09/09/2026 08:20PM ET,SEA,11,OUT`,
+      `RB,Zach Charbonnet (2),Zach Charbonnet,2,FLEX,8200,NE@SEA 09/09/2026 08:20PM ET,SEA,11,OUT`,
+      `QB,Drake Maye (3),Drake Maye,3,CPT,15000,NE@SEA 09/09/2026 08:20PM ET,NE,20.9,`,
+      `QB,Drake Maye (4),Drake Maye,4,FLEX,10000,NE@SEA 09/09/2026 08:20PM ET,NE,20.9,`,
+    ]),
+  );
+  assert.equal(slate.players.length, 2);
+  const charbonnet = slate.players.find((p) => p.name === "Zach Charbonnet")!;
+  assert.equal(charbonnet.isOut, true, "an OUT player must not become playable via his CPT row");
+  assert.equal(charbonnet.captain?.dkPlayerId, 1);
+  assert.deepEqual(playablePlayers(slate.players).map((p) => p.name), ["Drake Maye"]);
 }
 
 assert.throws(() => parseNflDkSalaryCsv("not,a,dk,file\n1,2,3,4"), NflDkCsvError);

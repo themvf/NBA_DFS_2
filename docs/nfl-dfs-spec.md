@@ -23,12 +23,44 @@ fetches, so items marked **UNVERIFIED** must be confirmed against the
 live rules page by hand, in a browser, before the scoring module is
 coded. They are recorded here as claims to check, never as facts.
 
+### The real column layout — VERIFIED against Week 1 exports
+
+Both files (Classic, 719 rows; Showdown, 126 rows) carry:
+
+```
+Position, Name + ID, Name, ID, Roster Position, Salary,
+Game Info, TeamAbbrev, AvgPointsPerGame, Status
+```
+
+A UTF-8 BOM precedes `Position`. Two columns matter more than they look:
+
+- **`Status` exists**, with values `OUT`, `IR`, `Q` and blank — 56 of the
+  719 Classic players are `IR`/`OUT` and cannot play. The NBA/MLB parser
+  in `actions.ts` states the opposite (*"CSV doesn't carry DK injury
+  status — rely on LineStar for is_out"*). That is true for NBA and
+  **false for NFL**, so NFL needs no LineStar dependency for
+  availability. An `IR` player left in the pool silently wastes a roster
+  slot.
+- **`Position` and `Roster Position` diverge completely on Showdown**
+  (`Roster Position` is `CPT`/`FLEX` there), which is why both are read.
+  On Classic, `Roster Position` carries the FLEX eligibility directly:
+  `QB`, `RB/FLEX`, `WR/FLEX`, `TE/FLEX`, `DST`.
+
+`Q` (questionable) is treated as risk, not absence — whether to accept it
+is a contest-type judgement, so the parser flags it and the optimizer
+decides.
+
 ### Classic (weekly) — VERIFIED
 
 ```
 QB  RB  RB  WR  WR  WR  TE  FLEX  DST      9 players, $50,000 cap
 FLEX = RB / WR / TE.  No kicker in DK NFL Classic.
 ```
+
+The no-kicker claim is now verified against a real export rather than
+inferred: the Week 1 Classic pool is 91 QB / 153 RB / 295 WR / 156 TE /
+24 DST and **zero K**. Showdown pools *do* include kickers (2 in the
+NE@SEA file), so the position set is format-specific, not sport-wide.
 
 Hard rule, VERIFIED and load-bearing for the optimizer: a lineup must
 contain players from **at least 2 different NFL teams** *and* **at least
@@ -51,6 +83,16 @@ and one `FLEX` row, with different `ID` and different `Salary`. The
 ingestion must treat those two rows as one underlying player with two
 purchasable roles, or the optimizer will happily roster the same human
 twice.
+
+Confirmed on the real NE@SEA file: 126 rows collapse to **63 players**,
+every one priced at both CPT and FLEX, with the CPT/FLEX salary ratio
+exactly 1.500 across all 63 (min 1.500, max 1.500). The parser still
+reads DK's own CPT salary rather than deriving it — the multiplier is
+only a fallback, since a derived value would drift the moment DK rounds.
+
+The two rows are **not adjacent**: DK sorts the file by salary, so a
+player's CPT row can sit dozens of lines from his FLEX row. Pairing is by
+name + team, never by position in the file.
 
 ### Scoring — UNVERIFIED, confirm before coding the scoring module
 
@@ -86,12 +128,16 @@ simulation-based rather than a point estimate (section 3).
 
 | Input | Source | Status today | Work needed |
 |---|---|---|---|
-| Player pool, salaries, roster positions, game info | **User-uploaded DK CSV** | `parseDkCsv` exists for NBA/MLB | New NFL parser: robust quoted-field handling, `Position` vs `Roster Position` split, Showdown CPT/FLEX pairing |
+| Player pool, salaries, roster positions, game info, **injury status** | **User-uploaded DK CSV** | ✅ **Built + validated** — `web/src/lib/nfl-dfs/dk-salary-csv.ts` | Done. Validated against real Week 1 Classic (719 players / 12 games / 24 teams) and Showdown (63 players / 1 game / 2 teams) exports, 0 warnings on both. |
 | Game environment: total, spread, implied team totals | `nfl_matchups` | **Live**, `refresh_nfl_vegas` 1×/day, 16 credits | Nothing. Already flowing. |
 | Player prop lines | The Odds API, `americanfootball_nfl` | **Not ingested** | New `ingest/nfl_prop_odds.py` |
 | Weekly actuals + recent form | `ff_player_week_stats` | Prior completed seasons only | In-season weekly refresh |
 | Roster, position, team, depth | `ff_players` (nflverse) | Live | Reuse |
 | Projected ownership | LineStar | NBA=5, CBB=4; **NFL sport id unknown** | Empirical discovery, or defer — see section 6 |
+
+**Availability no longer needs LineStar.** DK's own `Status` column
+supplies `OUT`/`IR`/`Q` directly, so the only remaining LineStar use for
+NFL is projected ownership, which section 6 defers.
 
 ### Prop markets — keys confirmed, coverage NOT confirmed
 
@@ -276,7 +322,7 @@ prerequisites pass.
 |---|---|---|
 | 1 | DK rules verification (section 1 UNVERIFIED items) + prop market probe | Per-market DK/Pinnacle/same-line coverage recorded |
 | 2 | Schema: `sport='nfl'` on `dk_slates`, NFL columns on `dk_players`, `nfl_player_props` | Migrations applied, NBA/MLB untouched |
-| 3 | DK CSV ingestion, Classic + Showdown | Real Week 1 CSV parses; CPT/FLEX pairs resolve to one player |
+| 3 | DK CSV ingestion, Classic + Showdown | ✅ **Done** — real Week 1 exports parse with 0 warnings; 126 Showdown rows resolve to 63 players |
 | 4 | Prop ingestion + in-season weekly stats | Coverage counts reported, not assumed |
 | 5 | Scoring + projection model | Kill criteria in section 3 evaluated honestly |
 | 6 | Optimizer, both formats, both modes | Lineups are DK-legal, including the 2-team/2-game rule |
@@ -284,7 +330,8 @@ prerequisites pass.
 | 8 | Entry-file export | Round-trips against a real DK entry file |
 | 9 | Tests + real-data verification | Real slate, end to end |
 
-Steps 1–3 are independent of the model and can proceed immediately.
 Step 5 gates 6–9.
 
-**Status: spec only. No implementation exists yet.**
+**Status (2026-09-01):** step 3 complete and validated against real DK
+Week 1 exports. Step 1's scoring verification and step 4's prop probe are
+both still open; step 2 (schema) is unblocked and next.

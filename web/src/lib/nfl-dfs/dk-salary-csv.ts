@@ -23,8 +23,24 @@ export type NflSlateFormat = "classic" | "showdown";
 
 export type NflPosition = "QB" | "RB" | "WR" | "TE" | "DST" | "K";
 
-/** The set DK actually uses in NFL Classic. No kicker. */
+/**
+ * The set DK actually uses in NFL Classic. No kicker -- VERIFIED against a
+ * real Week 1 Classic export (719 players: 91 QB, 153 RB, 295 WR, 156 TE,
+ * 24 DST, zero K). Showdown pools DO include kickers.
+ */
 export const NFL_CLASSIC_POSITIONS: readonly NflPosition[] = ["QB", "RB", "WR", "TE", "DST"];
+
+/**
+ * DK `Status` values that mean the player cannot play at all. Rostering
+ * one wastes a lineup slot outright, so the optimizer excludes them by
+ * default.
+ *
+ * `Q` (questionable) and `D` (doubtful) are deliberately NOT here: they
+ * are risk, not absence, and which of them is acceptable is a contest-type
+ * judgement (a GPP lineup may want a cheap doubtful player others fade),
+ * so that call belongs to the optimizer, not the parser.
+ */
+const DK_OUT_STATUSES = new Set(["OUT", "O", "IR", "PUP", "SUSP", "NA"]);
 
 /** Positions eligible for the Classic FLEX slot. */
 export const NFL_FLEX_POSITIONS: readonly NflPosition[] = ["RB", "WR", "TE"];
@@ -81,6 +97,14 @@ export type NflDkPlayer = {
   gameInfo: string | null;
   salary: number;
   avgFptsDk: number | null;
+  /**
+   * Raw DK `Status`, uppercased -- `OUT`, `IR`, `Q`, `D`, ... or `null`
+   * when DK left it blank. Preserved verbatim so a status DK adds later
+   * is visible rather than silently swallowed by our own vocabulary.
+   */
+  status: string | null;
+  /** DK says this player cannot play. Excluded from lineups by default. */
+  isOut: boolean;
   /** Showdown only. `null` on Classic slates and on any player DK did not price at CPT. */
   captain: NflDkPurchase | null;
 };
@@ -103,8 +127,9 @@ export class NflDkCsvError extends Error {}
 
 const REQUIRED_COLUMNS = ["Name", "ID", "Roster Position", "Salary", "TeamAbbrev"] as const;
 
+/** DK writes a UTF-8 BOM ahead of the first header cell. */
 function normalizeHeaderCell(cell: string): string {
-  return cell.trim().replace(/^﻿/, "");
+  return cell.replace(/^﻿/, "").trim();
 }
 
 /**
@@ -155,6 +180,8 @@ type RawRow = {
   gameKey: string | null;
   salary: number;
   avgFptsDk: number | null;
+  status: string | null;
+  isOut: boolean;
 };
 
 /**
@@ -190,6 +217,7 @@ export function parseNflDkSalaryCsv(content: string): NflDkSlate {
   const teamCol = col("TeamAbbrev");
   const gameInfoCol = col("Game Info");
   const avgCol = col("AvgPointsPerGame");
+  const statusCol = col("Status");
 
   const warnings: string[] = [];
   const rows: RawRow[] = [];
@@ -253,6 +281,9 @@ export function parseNflDkSalaryCsv(content: string): NflDkSlate {
     // 0.0 is a legitimate DK value for a rookie; only a blank is "unknown".
     const avgFptsDk = avgRaw.trim() === "" || !Number.isFinite(avgParsed) ? null : avgParsed;
 
+    const statusRaw = statusCol >= 0 ? (cells[statusCol] ?? "").trim().toUpperCase() : "";
+    const status = statusRaw || null;
+
     seenIds.add(dkPlayerId);
     rows.push({
       name,
@@ -264,6 +295,8 @@ export function parseNflDkSalaryCsv(content: string): NflDkSlate {
       gameKey,
       salary,
       avgFptsDk,
+      status,
+      isOut: status !== null && DK_OUT_STATUSES.has(status),
     });
   }
 
@@ -314,8 +347,15 @@ function toClassicPlayer(row: RawRow): NflDkPlayer {
     gameInfo: row.gameInfo,
     salary: row.salary,
     avgFptsDk: row.avgFptsDk,
+    status: row.status,
+    isOut: row.isOut,
     captain: null,
   };
+}
+
+/** Players DK has not ruled out. The default optimizer pool. */
+export function playablePlayers(players: readonly NflDkPlayer[]): NflDkPlayer[] {
+  return players.filter((player) => !player.isOut);
 }
 
 /**
