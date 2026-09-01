@@ -14,10 +14,13 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { Sport } from "@/db/queries";
 
-const SPORTS: { sport: Sport; label: string; icon: string }[] = [
+type NavSport = Sport | "cfb";
+
+const SPORTS: { sport: NavSport; label: string; icon: string }[] = [
   { sport: "nba", label: "NBA", icon: "🏀" },
   { sport: "mlb", label: "MLB", icon: "⚾" },
   { sport: "nfl", label: "NFL", icon: "🏈" },
+  { sport: "cfb", label: "CFB", icon: "📈" },
   { sport: "soccer", label: "World Cup", icon: "⚽" },
   { sport: "tennis", label: "Tennis", icon: "🎾" },
 ];
@@ -27,11 +30,12 @@ const SPORTS: { sport: Sport; label: string; icon: string }[] = [
 const PAGE_LINKS: Array<{
   href: string;
   label: string;
-  sports?: Sport[];
+  sports?: NavSport[];
 }> = [
   { href: "/dfs", label: "DFS", sports: ["nba", "mlb"] },
   { href: "/nfl", label: "NFL Board", sports: ["nfl"] },
   { href: "/nfl/survivor", label: "Survivor Pool", sports: ["nfl"] },
+  { href: "/cfb", label: "Line Terminal", sports: ["cfb"] },
   { href: "/fantasy-football/nfl", label: "NFL Teams", sports: ["nfl"] },
   { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
   { href: "/fantasy-football/projections", label: "Projection Scatter", sports: ["nfl"] },
@@ -58,10 +62,21 @@ const PAGE_LINKS: Array<{
 export function SportNav() {
   const pathname    = usePathname();
   const searchParams = useSearchParams();
-  const currentSport = (pathname === "/nfl" || pathname.startsWith("/nfl/") || pathname.startsWith("/fantasy-football")
+  const currentSport = (pathname === "/cfb" || pathname.startsWith("/cfb/")
+    ? "cfb"
+    : pathname === "/nfl" || pathname.startsWith("/nfl/") || pathname.startsWith("/fantasy-football")
     ? "nfl"
-    : searchParams.get("sport") ?? "nba") as Sport;
+    : searchParams.get("sport") ?? "nba") as NavSport;
   const visiblePageLinks = PAGE_LINKS.filter((link) => !link.sports || link.sports.includes(currentSport));
+
+  const sportHref = (sport: NavSport): string => {
+    if (sport === "cfb") return "/cfb";
+    if (sport === "nfl") return "/nfl";
+    if (currentSport === "nfl" || currentSport === "cfb") {
+      return sport === "nba" || sport === "mlb" ? `/dfs?sport=${sport}` : `/vegas?sport=${sport}`;
+    }
+    return `${pathname}?sport=${sport}`;
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -69,7 +84,7 @@ export function SportNav() {
 
         {/* Logo */}
         <Link
-          href={currentSport === "nfl" ? "/nfl" : currentSport === "soccer" || currentSport === "tennis" ? `/vegas?sport=${currentSport}` : `/dfs?sport=${currentSport}`}
+          href={currentSport === "cfb" ? "/cfb" : currentSport === "nfl" ? "/nfl" : currentSport === "soccer" || currentSport === "tennis" ? `/vegas?sport=${currentSport}` : `/dfs?sport=${currentSport}`}
           className="mr-3 shrink-0 font-bold text-lg tracking-tight"
         >
           DFS
@@ -82,7 +97,7 @@ export function SportNav() {
             return (
               <Link
                 key={sport}
-                href={sport === "nfl" ? "/nfl" : currentSport === "nfl" ? `/vegas?sport=${sport}` : `${pathname}?sport=${sport}`}
+                href={sportHref(sport)}
                 className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
                     ? "bg-blue-600 text-white"
@@ -102,7 +117,7 @@ export function SportNav() {
         {/* Page links — carry current sport forward */}
         <nav className="flex items-center gap-1 text-sm">
           {visiblePageLinks.map((l) => {
-            const href = currentSport === "nfl" ? l.href : `${l.href}?sport=${currentSport}`;
+            const href = currentSport === "nfl" || currentSport === "cfb" ? l.href : `${l.href}?sport=${currentSport}`;
             // Prefer the most specific matching href so nested routes (e.g.
             // /vegas/wimbledon under /vegas) don't also highlight their parent.
             const matches = (p: string) => pathname === p || pathname.startsWith(`${p}/`);
