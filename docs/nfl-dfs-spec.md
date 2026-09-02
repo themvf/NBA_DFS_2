@@ -190,7 +190,7 @@ simulation-based rather than a point estimate (section 3).
 |---|---|---|---|
 | Player pool, salaries, roster positions, game info, **injury status** | **User-uploaded DK CSV** | ✅ **Built + validated** — `web/src/lib/nfl-dfs/dk-salary-csv.ts` | Done. Validated against real Week 1 Classic (719 players / 12 games / 24 teams) and Showdown (63 players / 1 game / 2 teams) exports, 0 warnings on both. |
 | Game environment: total, spread, implied team totals | `nfl_matchups` | **Live**, `refresh_nfl_vegas` 1×/day, 16 credits | Nothing. Already flowing. |
-| Player prop lines | The Odds API, `americanfootball_nfl` | **Not ingested** | New `ingest/nfl_prop_odds.py` |
+| Player prop lines | The Odds API, `americanfootball_nfl` | **Deferred** | Apply only after the prop-free historical baseline passes its promotion gate |
 | Weekly actuals + recent form | `ff_player_week_stats` | Prior completed seasons only | In-season weekly refresh |
 | Roster, position, team, depth | `ff_players` (nflverse) | Live | Reuse |
 | Projected ownership | LineStar | NBA=5, CBB=4; **NFL sport id unknown** | Empirical discovery, or defer — see section 6 |
@@ -305,34 +305,41 @@ that will actually use it.
 
 ## 3. Projection model
 
-`model/nfl_dfs_projections.py`. Architecture follows the pattern this
-repo has already validated twice: **market lines replace the formula
-where they exist, history fills the rest**, and the output is a
+The first implementation is `model/nfl_dfs_historical.py`. It is deliberately
+**historical first and prop free**. Market inputs do not get to hide a weak
+football model: the historical baseline is built, versioned, and graded on its
+own before props are permitted to update any component. The output is a
 distribution rather than a point estimate.
 
 ### Stage 1 — per-stat expectation
 
-For each player, per stat, in priority order:
+For each player, the baseline uses only completed weeks strictly before the
+target kickoff:
 
-1. **Prop line, de-vigged.** A prop is a line *and* a price; the pair
-   pins P(over) rather than only the median. Both are used. Prices are
-   averaged in probability space, never in American odds — the
-   arithmetic-averaging bug already fixed once in this repo.
-2. **History + environment fallback**, for the majority of a ~500-player
-   NFL pool that carries no prop market: per-game rates from
-   `ff_player_week_stats`, scaled by the team's Vegas implied total and
-   by depth-chart role.
+1. Resample complete historical stat lines with exponential recency weights.
+   Keeping whole games preserves the real correlations between volume,
+   yardage, touchdowns, and bonuses.
+2. Shrink sparse samples toward comparable players selected by their prior
+   production profile. Peer selection happens at the player level; selecting
+   individual games close to a mean would manufacture narrow uncertainty.
+3. Apply capped opponent and Vegas team-total factors whose values and source
+   are stored in the projection snapshot. Missing pregame context is a visible
+   fallback, never a zero.
+4. Rookies or players with fewer than two eligible games receive an explicit
+   `position_prior` status and zero confidence. They are not silently assigned
+   a normal veteran projection.
 
-Anytime-TD props are the single highest-leverage input — a touchdown is
-6 of the ~15 points a typical flex player scores — and they exist for
-nearly every skill player, so prop coverage is better than the
-skill-position count alone suggests.
+After the baseline passes its gate, de-vigged props may update a named stat
+component. A prop overlay must cite the immutable baseline run/player row,
+store line and price evidence, and expose the before/after delta. The untouched
+baseline remains queryable. Prices are averaged in probability space, never
+in American odds.
 
 ### Stage 2 — simulation, not addition
 
-`compute_monte_carlo()` is already sport-agnostic and is reused. Per
-player, draw correlated stat outcomes, apply DK scoring **including the
-three yardage bonuses evaluated per draw**, and keep the distribution:
+Per player, draw complete correlated stat outcomes, apply DK scoring
+**including the three yardage bonuses evaluated per draw**, and keep the
+distribution:
 
 ```
 proj (mean) | floor (P10) | ceiling (P90) | boom rate
@@ -343,17 +350,19 @@ on afterward. Per-player variance comes from weekly history.
 
 ### Stage 3 — DST
 
-DST has no player props and is handled from game odds alone, the same
-way this repo's soccer spec handles goalkeepers: the opponent's implied
-total maps through the points-allowed tiers, plus sack and turnover
-rates from team history. This is explicitly the weakest projection in
-the pool and must be labelled as such in the UI, not presented at parity
-with a prop-driven skill projection.
+DST remains unavailable in the first historical model. The existing stored DST
+weeks use Yahoo scoring, while DraftKings has different points-allowed rules.
+Re-labelling those rows as DK outcomes would be false precision. DST may ship
+only after DK-compatible historical outcomes are derived and pass the separate
+flat-constant comparison.
 
 ### Kill criteria — fixed now, before any data is examined
 
-Graded walk-forward on completed 2026 weeks, one week at a time, never
-in-sample:
+The initial shadow gate is graded walk-forward on the immutable 2020–2025
+nflverse snapshots, one week at a time, never in-sample. The convenience
+`ff_player_week_stats` table is not the validation source because its current-
+roster match creates survivorship bias. Prospective 2026 grading follows once
+weeks complete.
 
 - **Primary:** mean absolute error per player against DK actuals, by
   position, versus a DK `AvgPointsPerGame` baseline. The model must beat
@@ -370,9 +379,22 @@ in-sample:
   it ships as a flat constant and says so — the exact outcome already
   reached, with evidence, for season-long DST in this repo.
 
-Minimum sample before any verdict: **4 completed weeks**. No conclusion
-is drawn earlier, and no constant is tuned on a week that has already
-been graded.
+Minimum prospective sample before any 2026 verdict: **4 completed weeks**. No
+constant is tuned on a week that has already been graded.
+
+### Historical v1 shadow result (recorded 2026-09-02)
+
+`artifacts/nfl_dfs_historical_backtest_2025.json` contains the immutable source
+hashes, configuration, seed, cutoff rule, and position metrics for 4,523 held-
+out 2025 player-weeks. The adjusted candidate did **not** beat the unadjusted
+recency baseline at any position (MAE delta: QB +0.036, RB +0.020, WR +0.016,
+TE +0.002; lower is better). It therefore remains shadow-only. This is not a
+claim about performance versus DK Avg—the historical salary archive required
+for that benchmark does not yet exist.
+
+The next model iteration must add pre-kickoff role/opportunity features from
+the roster-aware V2 pipeline and improve P10/P90 calibration. Props stay
+deferred until that prop-free version passes its fixed gate.
 
 ## 4. Optimizer
 
@@ -458,18 +480,19 @@ prerequisites pass.
 | 1 | DK scoring verification | ✅ **Done** — official Classic + Showdown rules supplied 2026-09-01; table confirmed correct, kicker scoring and the Points Allowed definition added |
 | 2 | Schema: `sport='nfl'` on `dk_slates`, NFL columns on `dk_players`, `nfl_player_props` | Migrations applied, NBA/MLB untouched |
 | 3 | DK CSV ingestion, Classic + Showdown | ✅ **Done** — real Week 1 exports parse with 0 warnings; 126 Showdown rows resolve to 63 players |
-| 4 | Prop market probe, then prop ingestion + in-season weekly stats | Per-market DK/Pinnacle/same-line coverage recorded before any model code depends on a market; coverage counts reported, not assumed |
+| 4 | Historical model + immutable audit snapshots | ✅ **Built in shadow** — prop-free engine, run/player tables, and 2025 walk-forward artifact; promotion gate failed |
 | 5a | DK scoring module | ✅ **Done** — `web/src/lib/nfl-dfs/scoring.ts`, offence/kicker/DST + captain, verified against DK's official tables |
-| 5b | Projection model | Kill criteria in section 3 evaluated honestly |
+| 5b | Role/opportunity model refinement | Add point-in-time V2 opportunity inputs, recalibrate uncertainty, and re-run the fixed gate |
+| 5c | Prop market probe and overlay | Starts only after 5b passes; per-market DK/Pinnacle/same-line coverage recorded before the overlay depends on a market |
 | 6 | Optimizer, both formats, both modes | Lineups are DK-legal, including the 2-team/2-game rule |
 | 7 | `/dfs/nfl` UI | **Intake/pool audit visible**; projections, optimizer controls, and exposure remain gated |
 | 8 | Entry-file export | Round-trips against a real DK entry file |
 | 9 | Tests + real-data verification | Real slate, end to end |
 
-Step 5 gates 6–9.
+Steps 5b and 5c gate 6–9.
 
-**Status (2026-09-01):** steps 1, 3 and 5a complete — DK's rules and
-scoring are verified from the official pages, the salary parser is
-validated against real Week 1 exports, and the scoring module is built
-and tested. Step 4's prop-market probe is still blocked on an Odds API
-key. Step 2 (schema) is unblocked and next.
+**Status (2026-09-02):** steps 1, 3, 4 and 5a are implemented. The
+historical model remains shadow-only because its first held-out run did not
+beat the recency benchmark; this is the gate working as designed. Props are
+intentionally deferred. Step 5b is next: add roster-aware team opportunity and
+role evidence without using any target-week outcomes.

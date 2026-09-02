@@ -539,6 +539,71 @@ export const ffV2BacktestSplits = pgTable("ff_v2_backtest_splits", {
   exclusionReason: text("exclusion_reason"),
 });
 
+export const nflDfsProjectionRuns = pgTable(
+  "nfl_dfs_projection_runs",
+  {
+    runId: uuid("run_id").primaryKey(),
+    modelVersion: text("model_version").notNull(),
+    scoring: text("scoring").notNull().default("DK"),
+    slateDate: date("slate_date"),
+    season: integer("season").notNull(),
+    week: integer("week"),
+    asOfAt: timestamp("as_of_at", { withTimezone: true }).notNull(),
+    seed: bigint("seed", { mode: "number" }).notNull(),
+    historyCutoffSeason: integer("history_cutoff_season").notNull(),
+    historyCutoffWeek: integer("history_cutoff_week"),
+    sourceSnapshotIds: jsonb("source_snapshot_ids").notNull().default([]),
+    modelConfig: jsonb("model_config").notNull().default({}),
+    playerCount: integer("player_count").notNull(),
+    artifactDigest: text("artifact_digest").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("nfl_dfs_projection_runs_artifact_key").on(t.modelVersion, t.artifactDigest),
+    index("idx_nfl_dfs_projection_runs_slate").on(t.season, t.week, t.asOfAt),
+  ],
+);
+
+export const nflDfsPlayerProjections = pgTable(
+  "nfl_dfs_player_projections",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    runId: uuid("run_id").notNull().references(() => nflDfsProjectionRuns.runId, { onDelete: "cascade" }),
+    dkPlayerId: bigint("dk_player_id", { mode: "number" }),
+    // Python DDL owns the FK to ff_players. Keeping this as a scalar here
+    // avoids a forward-reference during module initialization (ffPlayers is
+    // declared below the V2 run tables in this file).
+    playerId: bigint("player_id", { mode: "number" }),
+    playerGsisId: text("player_gsis_id"),
+    playerName: text("player_name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    team: text("team"),
+    opponent: text("opponent"),
+    position: text("position").notNull(),
+    salary: integer("salary"),
+    identityMethod: text("identity_method").notNull(),
+    projectionStatus: text("projection_status").notNull(),
+    historyGames: integer("history_games").notNull(),
+    priorGames: integer("prior_games").notNull(),
+    modelProjFpts: doublePrecision("model_proj_fpts"),
+    baselineFpts: doublePrecision("baseline_fpts"),
+    floorFpts: doublePrecision("floor_fpts"),
+    medianFpts: doublePrecision("median_fpts"),
+    ceilingFpts: doublePrecision("ceiling_fpts"),
+    boomRate: doublePrecision("boom_rate"),
+    confidence: doublePrecision("confidence").notNull(),
+    statMeans: jsonb("stat_means").notNull().default({}),
+    featureSnapshot: jsonb("feature_snapshot").notNull().default({}),
+    sourceEvidence: jsonb("source_evidence").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("nfl_dfs_player_projections_run_player_key").on(t.runId, t.playerId),
+    index("idx_nfl_dfs_player_projections_run").on(t.runId, t.position),
+    index("idx_nfl_dfs_player_projections_player").on(t.playerId, t.createdAt),
+  ],
+);
+
 export const ffPlayers = pgTable(
   "ff_players",
   {

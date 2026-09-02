@@ -63,7 +63,7 @@ export default function NflDfsClient() {
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300">DraftKings · NFL DFS</div>
             <h1 className="mt-2 text-3xl font-black tracking-tight">NFL DFS Workspace</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-300">Audit a DraftKings Classic or Showdown salary pool. The projection model and optimizer remain locked until their prospective validation gates pass.</p>
+            <p className="mt-2 max-w-3xl text-sm text-slate-300">Audit a DraftKings Classic or Showdown salary pool. Our prop-free historical model is running in shadow; projections and optimization remain locked until validation passes.</p>
           </div>
           <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-200">INTAKE / READINESS</span>
         </div>
@@ -72,7 +72,7 @@ export default function NflDfsClient() {
       <section className="grid gap-3 md:grid-cols-4">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><CheckCircle2 className="h-5 w-5" /><h2 className="mt-2 font-bold">Salary intake</h2><p className="mt-1 text-xs">Classic and Showdown parser verified against real DK exports.</p></div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><ShieldCheck className="h-5 w-5" /><h2 className="mt-2 font-bold">DK scoring</h2><p className="mt-1 text-xs">Offense, DST, kicker, bonuses, and captain rules verified.</p></div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"><LockKeyhole className="h-5 w-5" /><h2 className="mt-2 font-bold">Our projections</h2><p className="mt-1 text-xs">Locked pending props, weekly features, and walk-forward accuracy.</p></div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"><LockKeyhole className="h-5 w-5" /><h2 className="mt-2 font-bold">Historical model · shadow</h2><p className="mt-1 text-xs">Built without props. The first 2025 walk-forward candidate did not beat its recency baseline, so projections remain research-only while role/opportunity features are added.</p></div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"><LockKeyhole className="h-5 w-5" /><h2 className="mt-2 font-bold">Lineup optimizer</h2><p className="mt-1 text-xs">Locked until the model passes position-level validation.</p></div>
       </section>
 
