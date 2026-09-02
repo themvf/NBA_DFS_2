@@ -37,6 +37,7 @@ Example: a Sunday 1:00 PM ET kickoff receives 4 D−3 slots, 4 D−2 slots, 8 D�
 
 - GitHub Actions invokes the worker every five minutes. A run with no due checkpoint exits without an Odds API odds request.
 - Each run refreshes the provider's free NFL event list before seeding jobs, so future games are mapped in time for D−3 collection. Event discovery does not count as a market capture.
+- If the provider changes a kickoff, `nfl_matchups.commence_time` is updated, checkpoints for the former kickoff are retained as `missed: superseded by kickoff reschedule`, and a complete new cadence is seeded from the revised time. Superseded jobs cannot trigger paid calls.
 - The former half-hour `capture_nfl_odds.yml` schedule is disabled to prevent duplicate paid captures; that workflow remains available as a manual recovery path.
 - Durable rows in `odds_capture_checkpoints` make retries idempotent. Existing accepted `game_odds_history` rows reconcile checkpoints before a new request is considered.
 - Interrupted attempts remain retryable inside their original window. Provider failures record their reason and quota headers when available; an event-discovery outage does not prevent already-mapped games from capturing or freezing a close.

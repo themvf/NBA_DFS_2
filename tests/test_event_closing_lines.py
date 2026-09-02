@@ -151,6 +151,17 @@ def test_no_due_checkpoint_makes_no_paid_request(monkeypatch) -> None:
     assert result["paid_requests"] == 0
 
 
+def test_reconcile_supersedes_old_nfl_kickoff_jobs() -> None:
+    db = EmptyDb()
+    closes.reconcile_checkpoints(
+        db, now=datetime(2026, 9, 10, 12, tzinfo=timezone.utc),
+    )
+    supersede_sql = db.calls[0][0]
+    assert "superseded by kickoff reschedule" in supersede_sql
+    assert "c.scheduled_start_at IS DISTINCT FROM m.commence_time" in supersede_sql
+    assert "c.sport='nfl'" in supersede_sql
+
+
 def test_cfb_due_games_share_one_paid_bulk_capture(monkeypatch) -> None:
     jobs = [
         {"id": 1, "sport": "cfb", "event_id": "a", "scheduled_start_at": "2026-09-05T16:00:00Z"},

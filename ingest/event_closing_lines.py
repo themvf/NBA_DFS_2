@@ -271,6 +271,19 @@ def seed_checkpoints(db: DatabaseManager, now: datetime | None = None) -> int:
 def reconcile_checkpoints(db: DatabaseManager, now: datetime | None = None) -> int:
     """Attach already-recorded history rows and expire windows that were missed."""
     now = now or datetime.now(timezone.utc)
+    # Provider event refreshes update nfl_matchups.commence_time in place. Old
+    # schedule jobs remain as audit evidence but must never become due after a
+    # kickoff change; the newly seeded scheduled_start_at owns the cadence.
+    db.execute(
+        """
+        UPDATE odds_capture_checkpoints c
+        SET status='missed', failure_reason='superseded by kickoff reschedule'
+        FROM nfl_matchups m
+        WHERE c.sport='nfl' AND m.id=c.matchup_id
+          AND c.status IN ('pending', 'attempted', 'failed')
+          AND c.scheduled_start_at IS DISTINCT FROM m.commence_time
+        """
+    )
     captured = db.execute(
         """
         WITH candidates AS (
