@@ -1,0 +1,55 @@
+name: Refresh NFL Survivor
+
+# Twice a week rather than daily, and deliberately so.
+#
+# The survivor grid changes on a weekly clock, not a daily one: results settle
+# on Monday night, and the next week's lines and pick shares are what the
+# Wednesday planning pass needs. Cost is 6 Odds API credits per run -- one
+# bulk call whose response covers the entire season, priced markets x regions
+# -- so about 52 a month against a 100,000/month key. nflverse and
+# survivorgrid are free and unmetered. The cadence is therefore chosen for
+# freshness, not for cost. The current week is separately refreshed daily by
+# refresh_nfl_vegas, and the grid prefers whichever capture is newer.
+#
+# Tuesday 13:20 UTC (9:20 ET) settles the weekend; Thursday 13:20 UTC picks up
+# the week's posted lines before Sunday.
+
+on:
+  schedule:
+    - cron: "20 13 * * 2,4"
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season year (default 2026)"
+        required: false
+        type: string
+      recalibrate:
+        description: "Re-measure the horizon error table (slow)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: refresh-nfl-survivor
+  cancel-in-progress: false
+
+jobs:
+  refresh-nfl-survivor:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Refresh survivor grid, probabilities, pick share, and settlement
+        run: |
+          SEASON="${{ inputs.season }}"
+          if [ -z "$SEASON" ]; then SEASON="2026"; fi
+          FLAGS=""
+          if [ "${{ inputs.recalibrate }}" = "true" ]; then FLAGS="--recalibrate"; fi
+          python -m ingest.refresh_nfl_survivor --season "$SEASON" $FLAGS

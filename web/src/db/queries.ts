@@ -1,5 +1,5 @@
 import { db } from ".";
-import { ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
+import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 const CURRENT_SEASON = "2025-26";
@@ -16,7 +16,7 @@ type SolverResult = Record<string, number> & { feasible: boolean; result: number
 
 // ── Sport discriminator ──────────────────────────────────────
 // Add new sports here as the project expands.
-export type Sport = "nba" | "mlb" | "nfl" | "soccer" | "tennis";
+export type Sport = "nba" | "mlb" | "nfl" | "soccer" | "tennis" | "cfb";
 
 // ── DFS Player Pool ──────────────────────────────────────────
 
@@ -8524,6 +8524,351 @@ export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoard
   });
 }
 
+// ---------------------------------------------------------------------------
+// NFL Survivor Pool
+// ---------------------------------------------------------------------------
+
+export type SurvivorCell = {
+  week: number;
+  gameId: number;
+  opponent: string;
+  isHome: boolean;
+  pWin: number | null;
+  pTie: number | null;
+  provenance: "market_ml_novig" | "market_spread" | "model_spread" | "blocked";
+  spread: number | null;
+  spreadSource: string | null;
+  horizonWeeks: number | null;
+  sigmaH: number | null;
+  kickoff: string | null;
+  completed: boolean;
+  won: boolean | null;
+  /** Field pick share for this team-week, when the popularity feed has it. */
+  pickPct: number | null;
+};
+
+export type SurvivorTeamRow = {
+  teamId: number;
+  abbrev: string;
+  name: string;
+  conference: string | null;
+  division: string | null;
+  byeWeek: number | null;
+  cells: Record<number, SurvivorCell>;
+};
+
+export type SurvivorGrid = {
+  season: number;
+  weeks: number[];
+  teams: SurvivorTeamRow[];
+  /** Last week whose lines are essentially fully posted; horizon runs from here. */
+  anchorWeek: number | null;
+  modelVersion: string | null;
+  computedAt: string | null;
+  provenanceCounts: Record<string, number>;
+  /**
+   * Measured error and ranking stability of the lookahead model by horizon.
+   * The page is required to show this: it is the evidence for the claim that
+   * far-out columns are a plan rather than a forecast.
+   */
+  calibration: Array<{
+    horizon: number;
+    n: number;
+    rmse: number;
+    topPickExactRate: number | null;
+    topPickTop5Rate: number | null;
+  }>;
+};
+
+/**
+ * The full season grid: one row per team, one cell per week.
+ *
+ * Reads the probabilities the Python model wrote. It deliberately does not
+ * recompute anything -- provenance and horizon widening are decided once, at
+ * ingest, so the page cannot quietly disagree with the stored record.
+ */
+export async function getNflSurvivorGrid(season = 2026): Promise<SurvivorGrid> {
+  const rows = await db.execute(sql`
+    SELECT
+      w.week, w.game_id AS "gameId", w.team_id AS "teamId", w.is_home AS "isHome",
+      w.p_win AS "pWin", w.p_tie AS "pTie", w.provenance,
+      w.spread_used AS "spread", w.spread_source AS "spreadSource",
+      w.horizon_weeks AS "horizonWeeks", w.sigma_h AS "sigmaH",
+      w.model_version AS "modelVersion", w.computed_at::text AS "computedAt",
+      t.abbreviation AS "abbrev", t.name, t.conference, t.division,
+      o.abbreviation AS "opponent",
+      g.kickoff::text AS kickoff, g.completed,
+      g.home_score AS "homeScore", g.away_score AS "awayScore",
+      pop.pick_pct AS "pickPct"
+    FROM nfl_game_win_probs w
+    JOIN nfl_teams t ON t.team_id = w.team_id
+    JOIN nfl_teams o ON o.team_id = w.opponent_team_id
+    JOIN nfl_season_games g ON g.id = w.game_id
+    LEFT JOIN LATERAL (
+      SELECT p.pick_pct
+      FROM survivor_pick_popularity p
+      WHERE p.season = w.season AND p.week = w.week AND p.team_id = w.team_id
+      ORDER BY p.captured_at DESC
+      LIMIT 1
+    ) pop ON TRUE
+    WHERE w.season = ${season}
+    ORDER BY t.abbreviation, w.week
+  `);
+
+  const calibrationRows = await db.execute(sql`
+    SELECT horizon, n, rmse,
+           top_pick_exact_rate AS "topPickExactRate",
+           top_pick_top5_rate AS "topPickTop5Rate"
+    FROM nfl_spread_horizon_calibration
+    ORDER BY horizon
+  `);
+
+  const anchorRow = await db.execute(sql`
+    SELECT MAX(as_of_week) AS "anchorWeek" FROM nfl_team_ratings WHERE season = ${season}
+  `);
+
+  const teams = new Map<number, SurvivorTeamRow>();
+  const weeks = new Set<number>();
+  const provenanceCounts: Record<string, number> = {};
+  let modelVersion: string | null = null;
+  let computedAt: string | null = null;
+
+  for (const raw of rows.rows) {
+    const record = raw as Record<string, unknown>;
+    const teamId = Number(record.teamId);
+    const week = Number(record.week);
+    weeks.add(week);
+    modelVersion ??= record.modelVersion != null ? String(record.modelVersion) : null;
+    const stamp = record.computedAt != null ? String(record.computedAt) : null;
+    if (stamp && (!computedAt || stamp > computedAt)) computedAt = stamp;
+
+    if (!teams.has(teamId)) {
+      teams.set(teamId, {
+        teamId,
+        abbrev: String(record.abbrev),
+        name: String(record.name),
+        conference: record.conference != null ? String(record.conference) : null,
+        division: record.division != null ? String(record.division) : null,
+        byeWeek: null,
+        cells: {},
+      });
+    }
+
+    const provenance = String(record.provenance) as SurvivorCell["provenance"];
+    // Counted once per game, not once per side.
+    if (record.isHome) provenanceCounts[provenance] = (provenanceCounts[provenance] ?? 0) + 1;
+
+    const isHome = Boolean(record.isHome);
+    const homeScore = record.homeScore != null ? Number(record.homeScore) : null;
+    const awayScore = record.awayScore != null ? Number(record.awayScore) : null;
+    let won: boolean | null = null;
+    if (homeScore != null && awayScore != null && homeScore !== awayScore) {
+      won = isHome ? homeScore > awayScore : awayScore > homeScore;
+    }
+
+    teams.get(teamId)!.cells[week] = {
+      week,
+      gameId: Number(record.gameId),
+      opponent: String(record.opponent),
+      isHome,
+      pWin: record.pWin != null ? Number(record.pWin) : null,
+      pTie: record.pTie != null ? Number(record.pTie) : null,
+      provenance,
+      spread: record.spread != null ? Number(record.spread) : null,
+      spreadSource: record.spreadSource != null ? String(record.spreadSource) : null,
+      horizonWeeks: record.horizonWeeks != null ? Number(record.horizonWeeks) : null,
+      sigmaH: record.sigmaH != null ? Number(record.sigmaH) : null,
+      kickoff: record.kickoff != null ? String(record.kickoff) : null,
+      completed: Boolean(record.completed),
+      won,
+      pickPct: record.pickPct != null ? Number(record.pickPct) : null,
+    };
+  }
+
+  const orderedWeeks = [...weeks].sort((a, b) => a - b);
+  const teamRows = [...teams.values()].map((team) => ({
+    ...team,
+    byeWeek: orderedWeeks.find((week) => !(week in team.cells)) ?? null,
+  }));
+  teamRows.sort((a, b) => a.abbrev.localeCompare(b.abbrev));
+
+  return {
+    season,
+    weeks: orderedWeeks,
+    teams: teamRows,
+    anchorWeek:
+      anchorRow.rows[0] && (anchorRow.rows[0] as Record<string, unknown>).anchorWeek != null
+        ? Number((anchorRow.rows[0] as Record<string, unknown>).anchorWeek)
+        : null,
+    modelVersion,
+    computedAt,
+    provenanceCounts,
+    calibration: calibrationRows.rows.map((raw) => {
+      const record = raw as Record<string, unknown>;
+      return {
+        horizon: Number(record.horizon),
+        n: Number(record.n),
+        rmse: Number(record.rmse),
+        topPickExactRate:
+          record.topPickExactRate != null ? Number(record.topPickExactRate) : null,
+        topPickTop5Rate: record.topPickTop5Rate != null ? Number(record.topPickTop5Rate) : null,
+      };
+    }),
+  };
+}
+
+export type SurvivorPoolRow = {
+  id: number;
+  name: string;
+  season: number;
+  poolSize: number | null;
+  tieRule: "tie_loses" | "tie_survives";
+  strikes: number;
+  startWeek: number;
+  endWeek: number;
+  entries: Array<{
+    id: number;
+    label: string;
+    status: "alive" | "eliminated";
+    strikesUsed: number;
+    eliminatedWeek: number | null;
+    picks: Array<{
+      week: number;
+      teamId: number;
+      abbrev: string;
+      locked: boolean;
+      result: "pending" | "won" | "lost" | "push" | "void";
+      pAdvanceAtPick: number | null;
+    }>;
+  }>;
+};
+
+export type SurvivorLedgerRow = {
+  id: number;
+  entryId: number | null;
+  entryLabel: string | null;
+  week: number;
+  team: string;
+  pAdvance: number | null;
+  provenance: string | null;
+  pathSurvivalProb: number | null;
+  opportunityCost: number | null;
+  frozenAt: string;
+  superseded: boolean;
+  result: "pending" | "won" | "lost" | "push" | "void";
+};
+
+export async function getSurvivorPools(season = 2026): Promise<SurvivorPoolRow[]> {
+  await ensureSurvivorTables();
+  const pools = await db.execute(sql`
+    SELECT id, name, season, pool_size AS "poolSize", tie_rule AS "tieRule",
+           strikes, start_week AS "startWeek", end_week AS "endWeek"
+    FROM survivor_pools WHERE season = ${season} ORDER BY created_at
+  `);
+  if (pools.rows.length === 0) return [];
+
+  const entries = await db.execute(sql`
+    SELECT e.id, e.pool_id AS "poolId", e.label, e.status,
+           e.strikes_used AS "strikesUsed", e.eliminated_week AS "eliminatedWeek"
+    FROM survivor_entries e
+    JOIN survivor_pools p ON p.id = e.pool_id
+    WHERE p.season = ${season}
+    ORDER BY e.id
+  `);
+  const picks = await db.execute(sql`
+    SELECT k.entry_id AS "entryId", k.week, k.team_id AS "teamId", t.abbreviation AS abbrev,
+           k.locked_at IS NOT NULL AS locked, k.result,
+           k.p_advance_at_pick AS "pAdvanceAtPick"
+    FROM survivor_entry_picks k
+    JOIN nfl_teams t ON t.team_id = k.team_id
+    JOIN survivor_entries e ON e.id = k.entry_id
+    JOIN survivor_pools p ON p.id = e.pool_id
+    WHERE p.season = ${season}
+    ORDER BY k.week
+  `);
+
+  const picksByEntry = new Map<number, SurvivorPoolRow["entries"][number]["picks"]>();
+  for (const raw of picks.rows) {
+    const row = raw as Record<string, unknown>;
+    const entryId = Number(row.entryId);
+    if (!picksByEntry.has(entryId)) picksByEntry.set(entryId, []);
+    picksByEntry.get(entryId)!.push({
+      week: Number(row.week),
+      teamId: Number(row.teamId),
+      abbrev: String(row.abbrev),
+      locked: Boolean(row.locked),
+      result: String(row.result) as "pending" | "won" | "lost" | "push" | "void",
+      pAdvanceAtPick: row.pAdvanceAtPick != null ? Number(row.pAdvanceAtPick) : null,
+    });
+  }
+
+  const entriesByPool = new Map<number, SurvivorPoolRow["entries"]>();
+  for (const raw of entries.rows) {
+    const row = raw as Record<string, unknown>;
+    const poolId = Number(row.poolId);
+    if (!entriesByPool.has(poolId)) entriesByPool.set(poolId, []);
+    entriesByPool.get(poolId)!.push({
+      id: Number(row.id),
+      label: String(row.label),
+      status: String(row.status) as "alive" | "eliminated",
+      strikesUsed: Number(row.strikesUsed),
+      eliminatedWeek: row.eliminatedWeek != null ? Number(row.eliminatedWeek) : null,
+      picks: picksByEntry.get(Number(row.id)) ?? [],
+    });
+  }
+
+  return pools.rows.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      id: Number(row.id),
+      name: String(row.name),
+      season: Number(row.season),
+      poolSize: row.poolSize != null ? Number(row.poolSize) : null,
+      tieRule: String(row.tieRule) as "tie_loses" | "tie_survives",
+      strikes: Number(row.strikes),
+      startWeek: Number(row.startWeek),
+      endWeek: Number(row.endWeek),
+      entries: entriesByPool.get(Number(row.id)) ?? [],
+    };
+  });
+}
+
+/** The frozen recommendation ledger, newest first. Superseded rows are kept. */
+export async function getSurvivorLedger(season = 2026, limit = 100): Promise<SurvivorLedgerRow[]> {
+  await ensureSurvivorTables();
+  const rows = await db.execute(sql`
+    SELECT r.id, r.entry_id AS "entryId", e.label AS "entryLabel", r.week,
+           t.abbreviation AS team, r.p_advance AS "pAdvance", r.provenance,
+           r.path_survival_prob AS "pathSurvivalProb",
+           r.opportunity_cost AS "opportunityCost",
+           r.frozen_at::text AS "frozenAt",
+           r.superseded_by IS NOT NULL AS superseded, r.result
+    FROM survivor_recommendations r
+    JOIN nfl_teams t ON t.team_id = r.recommended_team_id
+    LEFT JOIN survivor_entries e ON e.id = r.entry_id
+    WHERE r.season = ${season}
+    ORDER BY r.week DESC, r.frozen_at DESC
+    LIMIT ${limit}
+  `);
+  return rows.rows.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      id: Number(row.id),
+      entryId: row.entryId != null ? Number(row.entryId) : null,
+      entryLabel: row.entryLabel != null ? String(row.entryLabel) : null,
+      week: Number(row.week),
+      team: String(row.team),
+      pAdvance: row.pAdvance != null ? Number(row.pAdvance) : null,
+      provenance: row.provenance != null ? String(row.provenance) : null,
+      pathSurvivalProb: row.pathSurvivalProb != null ? Number(row.pathSurvivalProb) : null,
+      opportunityCost: row.opportunityCost != null ? Number(row.opportunityCost) : null,
+      frozenAt: String(row.frozenAt),
+      superseded: Boolean(row.superseded),
+      result: String(row.result) as "pending" | "won" | "lost" | "push" | "void",
+    };
+  });
+}
+
 export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
   const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
   await ensureAnalyticsColumns();
@@ -9565,6 +9910,222 @@ export type MlbLineMovementRow = {
   trackedBooks: number;
 };
 
+export type CfbBookQuote = {
+  title?: string | null;
+  last_update?: string | null;
+  ml_home?: number | null;
+  ml_away?: number | null;
+  spread_home?: number | null;
+  spread_home_price?: number | null;
+  spread_away?: number | null;
+  spread_away_price?: number | null;
+  total_line?: number | null;
+  over?: number | null;
+  under?: number | null;
+};
+
+export type CfbBookMap = Record<string, CfbBookQuote>;
+
+export type CfbTerminalRow = {
+  matchupId: number;
+  cfbdGameId: number;
+  oddsEventId: string | null;
+  gameDate: string;
+  season: number;
+  week: number;
+  commenceTime: string | null;
+  startTimeTbd: boolean;
+  homeTeam: string;
+  awayTeam: string;
+  venue: string | null;
+  network: string | null;
+  neutralSite: boolean;
+  completed: boolean;
+  homeScore: number | null;
+  awayScore: number | null;
+  wentToOvertime: boolean;
+  overtimePeriods: number;
+  captures: number;
+  openingBooks: CfbBookMap | null;
+  currentBooks: CfbBookMap | null;
+  openingCapturedAt: string | null;
+  latestCapturedAt: string | null;
+  history: Array<{ capturedAt: string; books: CfbBookMap }>;
+};
+
+export type CfbTerminalStatus = "live" | "stale" | "partial" | "unavailable";
+
+export type CfbTerminalBoard = {
+  gameDate: string;
+  asOf: string;
+  status: CfbTerminalStatus;
+  statusDetail: string;
+  games: CfbTerminalRow[];
+  unmappedEvents: number;
+};
+
+function easternDateNow(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export async function getCfbDefaultGameDate(): Promise<string> {
+  await ensureOddsHistoryTables();
+  const today = easternDateNow();
+  const rows = await db.execute(sql`
+    SELECT COALESCE(
+      MIN(game_date) FILTER (WHERE game_date >= ${today}::date),
+      MAX(game_date),
+      ${today}::date
+    )::text AS game_date
+    FROM cfb_matchups
+  `);
+  const row = rows.rows[0] as Record<string, unknown> | undefined;
+  return row?.game_date ? String(row.game_date) : today;
+}
+
+export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTerminalBoard> {
+  await ensureOddsHistoryTables();
+  const targetDate = gameDate ?? await getCfbDefaultGameDate();
+  const rows = await db.execute(sql`
+    WITH eligible AS (
+      SELECT h.*,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at, h.id) AS open_rank,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at DESC, h.id DESC) AS latest_rank,
+             COUNT(*) OVER (PARTITION BY h.matchup_id)::int AS capture_count
+      FROM game_odds_history h
+      JOIN cfb_matchups m ON m.id=h.matchup_id
+      WHERE h.sport='cfb' AND h.books IS NOT NULL
+        AND m.game_date=${targetDate}::date
+        AND m.commence_time IS NOT NULL
+        AND h.captured_at < m.commence_time
+    ), opening AS (
+      SELECT * FROM eligible WHERE open_rank=1
+    ), latest AS (
+      SELECT * FROM eligible WHERE latest_rank=1
+    ), trails AS (
+      SELECT matchup_id,
+             JSONB_AGG(JSONB_BUILD_OBJECT(
+               'capturedAt', captured_at::text,
+               'books', books
+             ) ORDER BY captured_at, id) AS history
+      FROM eligible
+      GROUP BY matchup_id
+    )
+    SELECT
+      m.id AS "matchupId",
+      m.cfbd_game_id AS "cfbdGameId",
+      m.odds_event_id AS "oddsEventId",
+      m.game_date::text AS "gameDate",
+      m.season,
+      m.week,
+      m.commence_time::text AS "commenceTime",
+      m.start_time_tbd AS "startTimeTbd",
+      ht.name AS "homeTeam",
+      at.name AS "awayTeam",
+      v.name AS venue,
+      m.network,
+      m.neutral_site AS "neutralSite",
+      m.completed,
+      m.home_score AS "homeScore",
+      m.away_score AS "awayScore",
+      m.went_to_overtime AS "wentToOvertime",
+      m.overtime_periods AS "overtimePeriods",
+      COALESCE(latest.capture_count, 0)::int AS captures,
+      opening.books AS "openingBooks",
+      latest.books AS "currentBooks",
+      opening.captured_at::text AS "openingCapturedAt",
+      latest.captured_at::text AS "latestCapturedAt",
+      COALESCE(trails.history, '[]'::jsonb) AS history
+    FROM cfb_matchups m
+    JOIN cfb_teams ht ON ht.team_id=m.home_team_id
+    JOIN cfb_teams at ON at.team_id=m.away_team_id
+    LEFT JOIN cfb_venues v ON v.venue_id=m.venue_id
+    LEFT JOIN opening ON opening.matchup_id=m.id
+    LEFT JOIN latest ON latest.matchup_id=m.id
+    LEFT JOIN trails ON trails.matchup_id=m.id
+    WHERE m.game_date=${targetDate}::date
+    ORDER BY m.commence_time NULLS LAST, m.id
+  `);
+  const games = rows.rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    const history = Array.isArray(r.history) ? r.history.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const point = item as Record<string, unknown>;
+      return [{
+        capturedAt: String(point.capturedAt),
+        books: point.books && typeof point.books === "object" ? point.books as CfbBookMap : {},
+      }];
+    }) : [];
+    return {
+      matchupId: Number(r.matchupId),
+      cfbdGameId: Number(r.cfbdGameId),
+      oddsEventId: r.oddsEventId != null ? String(r.oddsEventId) : null,
+      gameDate: String(r.gameDate),
+      season: Number(r.season),
+      week: Number(r.week),
+      commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+      startTimeTbd: Boolean(r.startTimeTbd),
+      homeTeam: String(r.homeTeam),
+      awayTeam: String(r.awayTeam),
+      venue: r.venue != null ? String(r.venue) : null,
+      network: r.network != null ? String(r.network) : null,
+      neutralSite: Boolean(r.neutralSite),
+      completed: Boolean(r.completed),
+      homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+      awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+      wentToOvertime: Boolean(r.wentToOvertime),
+      overtimePeriods: Number(r.overtimePeriods ?? 0),
+      captures: Number(r.captures ?? 0),
+      openingBooks: r.openingBooks && typeof r.openingBooks === "object" ? r.openingBooks as CfbBookMap : null,
+      currentBooks: r.currentBooks && typeof r.currentBooks === "object" ? r.currentBooks as CfbBookMap : null,
+      openingCapturedAt: r.openingCapturedAt != null ? String(r.openingCapturedAt) : null,
+      latestCapturedAt: r.latestCapturedAt != null ? String(r.latestCapturedAt) : null,
+      history,
+    } satisfies CfbTerminalRow;
+  });
+  const unmappedRows = await db.execute(sql`
+    SELECT COUNT(*)::int AS n FROM cfb_unmapped_events WHERE resolved_at IS NULL
+  `);
+  const unmapped = Number((unmappedRows.rows[0] as Record<string, unknown> | undefined)?.n ?? 0);
+  const now = Date.now();
+  const upcoming = games.filter((game) => !game.completed && game.commenceTime && new Date(game.commenceTime).getTime() > now);
+  const missing = upcoming.filter((game) => !game.latestCapturedAt);
+  const stale = upcoming.filter((game) => {
+    if (!game.latestCapturedAt || !game.commenceTime) return false;
+    const minutesToKick = (new Date(game.commenceTime).getTime() - now) / 60000;
+    const ageMinutes = (now - new Date(game.latestCapturedAt).getTime()) / 60000;
+    const targetAge = minutesToKick <= 25 ? 20 : minutesToKick <= 120 ? 90 : minutesToKick <= 420 ? 120 : 720;
+    return ageMinutes > targetAge;
+  });
+  let status: CfbTerminalStatus = "live";
+  let statusDetail = "All displayed market observations meet their checkpoint freshness target.";
+  if (games.length === 0) {
+    status = "unavailable";
+    statusDetail = "No canonical CFB games are loaded for this date.";
+  } else if (missing.length > 0 || unmapped > 0) {
+    status = "partial";
+    statusDetail = `${missing.length} upcoming game(s) lack odds and ${unmapped} provider event(s) remain quarantined.`;
+  } else if (stale.length > 0) {
+    status = "stale";
+    statusDetail = `${stale.length} upcoming game(s) missed their checkpoint freshness target.`;
+  }
+  return {
+    gameDate: targetDate,
+    asOf: new Date().toISOString(),
+    status,
+    statusDetail,
+    games,
+    unmappedEvents: unmapped,
+  };
+}
+
 export type LineMovementLane = "sportsbook" | "polymarket";
 
 function americanOddsProbability(value: unknown): number | null {
@@ -9614,12 +10175,13 @@ const LINE_MOVEMENT_MATCHUP_TABLE: Record<string, string> = {
   mlb: "mlb_matchups",
   nba: "nba_matchups",
   nfl: "nfl_matchups",
+  cfb: "cfb_matchups",
   soccer: "soccer_matchups",
   tennis: "tennis_matches",
 };
 
 export async function getLineMovement(
-  sport: "mlb" | "nba" | "nfl" | "soccer" | "tennis",
+  sport: "mlb" | "nba" | "nfl" | "cfb" | "soccer" | "tennis",
   days = 7,
   lane: LineMovementLane = "sportsbook",
 ): Promise<MlbLineMovementRow[]> {

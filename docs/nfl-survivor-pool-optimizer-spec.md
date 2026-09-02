@@ -1,8 +1,11 @@
 # NFL Survivor Pool Optimizer
 
-Status: **Spec only.** Nothing below is built. Numbers in sections 6 and 7 are
-measured from real data during spec authoring (2026-08-31) and are reproducible;
-they are not estimates.
+Status: **Built through P8** (2026-09-01). `/nfl/survivor` is live. Numbers in
+sections 6, 7, 13.1 and 13.3 are measured from real data and reproducible; they
+are not estimates. Where a measurement contradicted this spec, the spec has been
+corrected and the contradiction recorded rather than quietly edited away -- see
+2.1 and 5.2, where the central premise of the original design (that most of a
+full-season grid must be modeled) turned out to be false.
 
 ---
 
@@ -29,11 +32,12 @@ different strength:
 
 | Claim | Strength | How it gets tested |
 |---|---|---|
-| Planning a full-season path beats picking the biggest weekly favorite | Strong prior; provable by construction and backtestable over 26 seasons | Section 13.1 backtest, 1999-2025 closing spreads |
-| Fading heavily-picked teams raises pool-win rate in large pools | Real mechanism, unproven here | Section 13.3, pre-registered; only one season of field data exists |
+| Planning a full-season path beats picking the biggest weekly favorite | **Measured: +0.59 weeks/season, CI [-0.26, +1.81] -- not demonstrated** | Section 13.1 backtest, 27 seasons |
+| Fading heavily-picked teams raises pool-win rate in large pools | **Measured: helps at 2,000 entries, HURTS at 100 -- one season only** | Section 13.3, pre-registered |
 
-The second claim is the one that could turn into a mirage, and it is gated
-accordingly.
+Both were graded (section 13). The first came out weaker than expected and the
+second stronger, in opposite directions to the prior -- which is the reason to
+measure rather than assume.
 
 ---
 
@@ -43,18 +47,33 @@ Four defects, each of which drives a requirement below.
 
 **2.1 It shows modeled numbers as if they were market numbers.** The baseline
 renders a spread and a win % in every one of 544 cells, in identical styling,
-through Week 18. As of 2026-08-31 only **112 of 272** scheduled 2026 games have
-a quoted spread anywhere (Weeks 1-6 complete, Week 7 half, Weeks 8-18 almost
-nothing). Every cell past Week 6 is therefore a model output wearing a market
-costume. This repo's standing rule is that a modeled value is labeled as one
-(cf. the MLB `Actionable` removal, the DST spread-compression disclosure). The
-grid must distinguish MARKET from MODELED per cell.
+through Week 18. This repo's standing rule is that a modeled value is labeled
+as one (cf. the MLB `Actionable` removal, the DST spread-compression
+disclosure), so the grid must distinguish MARKET from MODELED per cell.
+
+**Correction, 2026-09-01.** This section originally read "only 112 of 272
+scheduled 2026 games have a quoted spread anywhere," and the whole design was
+built around modeling the other 160. That figure was **nflverse's** coverage,
+not the market's, and the difference was never checked. The market prices all
+272 (section 5.2). The provenance machinery stays -- it is what makes the
+distinction visible, and it correctly reports 272 of 272 MARKET today rather
+than pretending a gap exists -- but the premise that most of a full-season grid
+*must* be modeled was simply false. The lesson is the one this file keeps
+relearning: a coverage claim about one source is not a claim about the world.
 
 **2.2 It presents far-future cells with unearned precision.** Measured
 (section 7): a market-implied rating model fit through week *k* predicts closing
 spreads 10 weeks out with **RMSE 5.15 points**, and its single best lookahead
 play is the eventual best play only **33%** of the time. The number in a Week 15
 cell is a planning aid, not a forecast. The UI must say so.
+
+Since 5.2, those numbers describe the **fallback** rather than the live grid,
+which is fully market-priced. The caution survives the change, for a different
+and weaker reason: a Week 15 price posted in September is a real quote but an
+opening one, and it will move. **How much it moves is not measured** -- no
+archive of NFL lookahead lines was available, so `market_captured_at` starts
+accumulating that this season and the UI says the number is unknown rather than
+substituting the model's error for the market's.
 
 **2.3 It optimizes the wrong objective for large pools.** Maximizing survival
 probability is the right objective in a small pool. In a large one, everybody
@@ -128,19 +147,47 @@ CLAUDE.md records what the last miss of this cost: every Arizona player silently
 carried a NULL team and NULL bye week. Ingestion **fails closed** on an unmapped
 code rather than dropping the row.
 
-### 5.2 The Odds API via `nfl_matchups` / `game_odds_history` — live prices
+### 5.2 The Odds API — full-season prices (CORRECTED 2026-09-01)
 
-Already built (`ingest/nfl_schedule.py`, `ingest/refresh_nfl_vegas.py`,
-`docs/nfl-odds-ingestion-and-movement-spec.md`). Per-book moneylines and spreads
-with pre-kickoff capture guards and an append-only history. Covers only games
-the provider currently lists — near-term weeks.
+**What this section said, and why it was wrong.** It said the provider "covers
+only games the provider currently lists — near-term weeks," and on that basis
+the grid modeled 160 of 272 games. That was an assumption, never measured.
 
-**No new Odds API spend.** The survivor tool is a consumer of the existing
-capture, not a new one. `docs/the-odds-api.md` must be read before any change to
-that, and this spec proposes none. The open NFL cadence question recorded in
-CLAUDE.md ("NFL regular-season odds cadence — UNDECIDED") is unaffected: the
-tool works at any cadence and gets better at higher ones, but does not require
-an increase and must not be used to justify one.
+Measured 2026-09-01: `GET /v4/sports/americanfootball_nfl/odds` returns **all
+272 regular-season games**, moneyline and spread, priced by DraftKings (272 of
+272) and William Hill (256), for a flat **6 credits** (3 markets x 2 regions —
+the response size does not affect the price). The two-way hold is a flat
+**~4.3% in every month of the season**, so a Week 18 quote is not a wide
+throwaway lookahead number; it carries the same margin as Week 1.
+
+Worse: `ingest/nfl_schedule.py::fetch_odds` was **already making that call** on
+every refresh and storing only the target date's games. The survivor grid was
+modeling 160 games whose real prices the project was already paying for and
+discarding.
+
+**Why this is a second consumer rather than a fix to `fetch_odds`.** Widening
+`fetch_odds` would widen `game_odds_history`, which feeds the line-alert
+detectors, which feed the **pre-registered NFL `total_walking` fade study**
+whose population CLAUDE.md freezes as regular-season alerts from 2026-09-09
+with at least two pre-commence captures. Going from ~16 captured games per run
+to 272 would start generating alerts on games ten weeks out, whose lines wander
+for entirely different reasons — a regime change inside a live experiment, of
+exactly the kind this file's discipline exists to prevent. So
+`ingest/nfl_survivor_odds.py` reads the same response and writes only to
+`nfl_season_games.market_*`. It touches neither `game_odds_history` nor
+`nfl_matchups`, and cannot contaminate the study.
+
+**Cost:** 6 credits per run, twice weekly, ~52/month. `docs/the-odds-api.md`
+(also corrected 2026-09-01 — the plan is 100,000/month, not 20,000) carries the
+budget. The open NFL cadence question in CLAUDE.md remains unaffected: this
+consumer is independent of `refresh_nfl_vegas`'s cadence.
+
+**Freshness ordering.** Both Odds API captures quote the same books and differ
+only in scope and cadence — full-season twice weekly, date-scoped daily. The
+ladder therefore prefers **whichever capture is newer**, not whichever module
+wrote it. Preferring the full-season one unconditionally would show a stale
+Thursday price for Sunday's game, which is the one game a survivor pick is
+actually made on.
 
 ### 5.3 survivorgrid.com — field pick percentage (verified 2026-08-31)
 
@@ -650,65 +697,116 @@ Week 15 best play is lying, and the measurement to prove it is in section 7.
 
 ## 13. Validation
 
-### 13.1 Backtest — path planning vs greedy (26 seasons)
+### 13.1 Backtest — path planning vs greedy (RESULT: not demonstrated)
 
-The corpus exists: 6,967 games since 1999 with closing spread and result. Replay
-every season, walk-forward, using only lines available at decision time:
+`model/survivor_backtest.py`. Every season 1999-2025 replayed walk-forward on
+the 6,967-game corpus. Each decision uses only what was knowable then: the
+CURRENT week's closing spread, and MODELED spreads for future weeks from ridge
+ratings fit on the weeks already played. Feeding future closing lines into the
+planner would have inflated the result and measured nothing.
 
-| Strategy | Description |
-|---|---|
-| B0 | Biggest weekly favorite by closing spread (the naive baseline, and what most pools' median entry does) |
-| B1 | Biggest favorite subject to not-yet-used |
-| S1 | This spec's `SURVIVE` assignment, re-solved weekly |
+| | mean weeks survived | median | >=9 | >=13 | >=17 |
+|---|---:|---:|---:|---:|---:|
+| B0 biggest favorite, reuse allowed *(not a legal entry; a ceiling)* | 5.52 | 5.0 | 26% | 7% | 4% |
+| B1 biggest unused favorite *(the real naive baseline)* | 4.04 | 4.0 | 11% | 0% | 0% |
+| S1 planned path, re-solved weekly | 4.63 | 4.0 | 15% | 4% | 4% |
 
-Metrics: mean weeks survived, P(survive to W9 / W13 / W17), and the full
-survival curve. Report all seasons pooled and per season, with a bootstrap CI on
-the S1 - B1 difference.
+**S1 - B1 = +0.59 weeks per season, 95% CI [-0.26, +1.81] over 27 seasons.**
+The CI includes zero, so the planned path is **not demonstrated** to outlast
+greedy on realized outcomes. S1 outlasted B1 in 5 seasons, was outlasted in 4,
+and tied in 18.
 
-**This is not an edge claim and does not need a pre-registration.** S1 is
-provably at least as good as B1 on the *modeled* objective by construction; the
-backtest measures whether that advantage survives contact with real outcomes and
-how large it is. If S1 does not beat B1 on realized survival, that is a finding
-about the probability inputs, not about the optimizer, and must be reported as
-such.
+That 18 is the important number and it is why this is underpowered rather than
+negative. The two strategies frequently make the same pick and die in the same
+week, so 27 seasons yield only 9 discordant observations -- a 5-4 split. The
+point estimate is positive, the direction matches the construction argument
+(S1 is provably at least as good on the *modeled* objective), and S1 is the
+only strategy that ever reached week 17 while staying legal. But a positive
+point estimate inside a CI spanning zero is exactly what this repo has been
+burned by before, and it does not get to be called an edge.
+
+**What this does not license.** It does not license re-slicing to the seasons
+where planning won, or dropping B0 to make the table look better. The honest
+summary is: the optimizer is provably optimal against the model, and 27
+seasons cannot show whether that optimality converts into extra weeks alive.
+
+Calibration of the picks S1 actually made is reassuring at least:
+
+| bucket | n | predicted | realized |
+|---|---:|---:|---:|
+| 0.6-0.7 | 5 | 68.3% | 40.0% |
+| 0.7-0.8 | 47 | 75.8% | 72.3% |
+| 0.8-0.9 | 86 | 83.6% | 88.4% |
+| 0.9-1.0 | 13 | 92.6% | 100.0% |
+
+The 0.6-0.7 row is 5 picks and says nothing.
 
 ### 13.2 Calibration
 
-Reliability of `p_advance` by decile against realized results, split MARKET vs
-MODEL and by horizon bucket. Modeled cells being *less* calibrated than quoted
-ones is expected; the question is by how much, and whether 6.4's widening
-actually helps. Publish it either way.
+Covered by the table above for the backtest population, and by 13.4 for live
+recommendations once they settle. Splitting reliability MARKET vs MODEL needs
+modeled cells that have actually resolved, which will not exist until the 2026
+season has run past its quoted horizon.
 
-### 13.3 Pre-registered study — does fading the field help? (gates `EV` mode)
+### 13.3 Pre-registered study — does fading the field help? (RESULT: directional)
 
-Fixed now, before the data is examined.
+`model/survivor_field_study.py`. Registered before the data was examined.
+2025 season, 18 weeks of archived national pick share, pools of 100 / 500 /
+2,000 entries, 20,000 paired trials each on a common random stream. Rivals are
+simulated individually, each with its own used-team set, and eliminated when
+they run out of legal teams. Policy family fixed in advance: take the
+least-picked team whose survival-optimal net score is within `tolerance` of
+the best available.
 
-**H:** In a pool of >= 100 entries, an EV-optimized path produces a higher
-expected prize share than the `SURVIVE` path.
+Delta in mean prize share versus the SURVIVE path:
 
-**Population:** 2025 season, all 18 weeks, using survivorgrid's archived `P%` as
-the field distribution. Simulated pools at 100 / 500 / 2,000 entries, 10,000
-trials each; field picks drawn from `P%`; outcomes drawn from the week's market
-probabilities with within-week correlation.
+| pool | tol=0.05 | tol=0.10 | tol=0.20 |
+|---:|---|---|---|
+| 100 | **-0.0085** [-.0121, -.0048] | **-0.0089** [-.0126, -.0052] | **-0.0338** [-.0369, -.0306] |
+| 500 | +0.0017 [-.0000, +.0035] | -0.0001 [-.0017, +.0017] | **-0.0082** [-.0096, -.0068] |
+| 2000 | **+0.0012** [+.0005, +.0019] | **+0.0008** [+.0001, +.0016] | **-0.0024** [-.0029, -.0018] |
 
-**Primary metric:** mean prize share, bootstrap CI over trials.
+The pattern is monotone in pool size and in tolerance, which is worth more
+than either starred cell on its own: a narrow band helps in a big pool, does
+nothing in a mid pool, and actively hurts in a small one, while a wide band
+hurts everywhere. In relative terms the 2,000-entry gain is large (+0.0012 on
+a 0.0035 base, so roughly a third more expected prize share); in absolute
+terms it is a tenth of a percentage point.
 
-**Floors:** one season is one season. `n = 1` field-season is **below any
-defensible floor**, and this is stated up front rather than discovered later.
-The 2025 result can therefore only ever be *directional*; `EV` mode stays
-`RESEARCH`-badged until at least **three** seasons of archived `P%` exist and
-the effect holds in each independently.
+**This refutes D5 as originally written.** The spec guessed EV should default
+on above 50 entries. At 100 entries it is the worst thing you can do. The code
+now carries `EV_MIN_POOL_SIZE = 1000` and `EV` never defaults on.
 
-**Kill criterion:** if the 2025 simulation shows no positive effect at any pool
-size, `EV` mode is not built. No re-slicing to a specific pool size or week
-range afterwards — that would be exactly the multiple-comparisons drift that
-produced the soccer totals mirage.
+**Verdict: directional only.** One field-season is below any defensible floor
+and the registration said so in advance. `EV` mode ships `RESEARCH`-badged and
+stays there until three independent seasons each show the effect. Nine
+comparisons were run, so a single star would have been unremarkable; the
+monotone structure is the reason this is worth carrying forward at all rather
+than discarding.
 
-**Honest prior:** the theory is sound and the mechanism is real. The risk is not
-that the idea is wrong; it is that `P%` from a national aggregator does not
-describe the user's actual pool, in which case a correct model is being fed the
-wrong field. That is a data problem the simulation cannot detect, and it is the
-most likely way this ships something useless.
+**Two method corrections, recorded rather than quietly applied.** Both are in
+the module docstring in full:
+
+1. The field was first modelled as an aggregate surviving mass with no
+   per-rival used-team constraint. It returned an exactly zero effect, and
+   that was an artifact -- unconstrained rivals never get boxed in, so the
+   mass surviving on other teams stays large and swamps any one team's share.
+   The simplification ran *against* the hypothesis, so killing EV on it would
+   have been a wrong verdict from a plausible-looking shortcut.
+2. The replacement -- an unconstrained week-by-week local search on simulated
+   prize share -- was worse. Prize share has a per-trial SD near 0.1 even
+   after pairing, so resolving a ~0.001 effect needs tens of thousands of
+   trials per candidate and the search had ~100 candidates. It duly "found"
+   improvements that failed to reproduce on a fresh stream: it was fitting its
+   own simulation noise. A one-parameter family can be powered; a
+   hundred-dimensional search cannot.
+
+**Limitations.** `P%` is national pick share, not the distribution inside any
+real pool -- the most likely way this ships something useless, and a data
+problem no amount of simulation can detect. Each policy is a fixed path rather
+than one adapting to how many rivals actually remain, so this tests *planned*
+contrarian play, not contrarian play in general.
+
 
 ### 13.4 Weekly accountability
 
@@ -741,24 +839,29 @@ solver's answer.
 
 ---
 
-## 15. Rollout
+## 15. Rollout — status
 
-| Phase | Scope | Done when |
+| Phase | Scope | Status |
 |---|---|---|
-| P1 | `nfl_season_games` ingest + team-code mapping + health gate | 272 rows for 2026; 32 teams x 18 weeks x exactly one bye each, verified against a live run |
-| P2 | `nfl_spread_prob` + `nfl_power_ratings` + `nfl_win_probs` | Every 2026 cell has a probability with a provenance value; the 7.1 calibration table is regenerated and stored |
-| P3 | Assignment solver + tests | `npm run test:survivor` green including brute-force equivalence |
-| P4 | `/nfl/survivor` grid + Optimize + provenance/uncertainty treatment | Screenshot parity plus 12.4, verified in the browser |
-| P5 | Pool config, entries, weekly recommendation ledger + settlement | A frozen recommendation settles correctly against a real Week 1 result |
-| P6 | `model/survivor_backtest.py` (13.1, 13.2) | Results published in this doc |
-| P7 | Pick-popularity ingest + the 13.3 study | Study run and graded against its own kill criterion |
-| P8 | `EV` mode | Only if P7 passes; ships `RESEARCH`-badged regardless |
+| P1 | `nfl_season_games` ingest + team-code mapping + health gate | **Done.** 272 games; 32 teams x 18 weeks x exactly one bye, verified live |
+| P2 | Spread->prob fit, market-implied ratings, win probs | **Done.** Every 2026 cell carries a probability and a provenance value; the horizon table is regenerated and stored |
+| P3 | Assignment solver + tests | **Done.** `npm run test:survivor`, 28 checks including brute-force equivalence over 40 random grids |
+| P4 | Grid, Optimize, provenance and uncertainty treatment | **Done.** Verified in the browser, both themes |
+| P5 | Pools, entries, weekly ledger + settlement | **Done.** Pool -> entry -> pick -> frozen recommendation verified end to end against the live database; `model/survivor_settlement.py` locks at each game's own kickoff and grades under the pool's tie rule |
+| P6 | Backtest and calibration | **Done — result is "not demonstrated", 13.1** |
+| P7 | Pick-popularity ingest + the 13.3 study | **Done.** 2025 archive ingested (576 rows, 18 weeks); study run and graded |
+| P8 | `EV` mode | **Done, `RESEARCH`-badged and never default.** Ships only because 13.3 was directional; it would not have been built on a null |
 
-P1-P4 is the usable tool and matches the baseline. P5-P6 is what makes it
-trustworthy. P7-P8 is what would make it better than the baseline, and may not
-happen.
+Automation: `.github/workflows/refresh_nfl_survivor.yml` runs
+`ingest.refresh_nfl_survivor` Tuesdays and Thursdays. Each step blocks only
+what it covers -- a pick-popularity failure can never take down the grid, and
+"not published yet" is reported as such rather than as an outage.
 
----
+**Not built, deliberately.** Multi-entry portfolio diversification (section
+8.6 ships sequential-ban only, not Murty's K-best); adaptive EV that responds
+to how many rivals actually remain; and any promotion of `EV` out of research
+status, which requires 2026 and 2027 field data.
+
 
 ## 16. Open questions
 

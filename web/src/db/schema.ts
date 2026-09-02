@@ -244,6 +244,87 @@ export const nflMatchups = pgTable(
   ],
 );
 
+export const cfbTeams = pgTable("cfb_teams", {
+  teamId: serial("team_id").primaryKey(),
+  cfbdTeamId: integer("cfbd_team_id").notNull().unique(),
+  name: text("name").notNull().unique(),
+  abbreviation: text("abbreviation"),
+  conference: text("conference"),
+  classification: text("classification"),
+  logoUrl: text("logo_url").default(""),
+  active: boolean("active").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const cfbTeamAliases = pgTable(
+  "cfb_team_aliases",
+  {
+    id: serial("id").primaryKey(),
+    provider: text("provider").notNull(),
+    alias: text("alias").notNull(),
+    teamId: integer("team_id").notNull().references(() => cfbTeams.teamId),
+    reviewed: boolean("reviewed").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("cfb_team_aliases_provider_alias_key").on(t.provider, t.alias)],
+);
+
+export const cfbVenues = pgTable("cfb_venues", {
+  venueId: serial("venue_id").primaryKey(),
+  cfbdVenueId: integer("cfbd_venue_id").unique(),
+  name: text("name").notNull(),
+  city: text("city"),
+  state: text("state"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  timezone: text("timezone"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const cfbMatchups = pgTable(
+  "cfb_matchups",
+  {
+    id: serial("id").primaryKey(),
+    cfbdGameId: bigint("cfbd_game_id", { mode: "number" }).notNull().unique(),
+    oddsEventId: text("odds_event_id").unique(),
+    season: integer("season").notNull(),
+    seasonType: text("season_type").notNull(),
+    week: integer("week").notNull(),
+    gameDate: date("game_date").notNull(),
+    commenceTime: timestamp("commence_time", { withTimezone: true }),
+    startTimeTbd: boolean("start_time_tbd").notNull().default(false),
+    homeTeamId: integer("home_team_id").notNull().references(() => cfbTeams.teamId),
+    awayTeamId: integer("away_team_id").notNull().references(() => cfbTeams.teamId),
+    venueId: integer("venue_id").references(() => cfbVenues.venueId),
+    neutralSite: boolean("neutral_site").notNull().default(false),
+    conferenceGame: boolean("conference_game").notNull().default(false),
+    network: text("network"),
+    gameStatus: text("game_status"),
+    completed: boolean("completed").notNull().default(false),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
+    homeLineScores: jsonb("home_line_scores"),
+    awayLineScores: jsonb("away_line_scores"),
+    wentToOvertime: boolean("went_to_overtime").notNull().default(false),
+    overtimePeriods: integer("overtime_periods").notNull().default(0),
+    vegasTotal: doublePrecision("vegas_total"),
+    homeMl: integer("home_ml"),
+    awayMl: integer("away_ml"),
+    homeSpread: doublePrecision("home_spread"),
+    vegasProbHome: doublePrecision("vegas_prob_home"),
+    homeImplied: doublePrecision("home_implied"),
+    awayImplied: doublePrecision("away_implied"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    oddsFetchedAt: timestamp("odds_fetched_at", { withTimezone: true }),
+    scoreFetchedAt: timestamp("score_fetched_at", { withTimezone: true }),
+    finalAt: timestamp("final_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("idx_cfb_matchups_date").on(t.gameDate, t.commenceTime),
+    index("idx_cfb_matchups_upcoming").on(t.commenceTime),
+  ],
+);
+
 // Fantasy Football draft assistant
 export const ffSourceSnapshots = pgTable("ff_source_snapshots", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
@@ -1021,6 +1102,9 @@ export const gameOddsHistory = pgTable(
     homeWinProb: doublePrecision("vegas_prob_home"),
     homeImplied: doublePrecision("home_implied"),
     awayImplied: doublePrecision("away_implied"),
+    books: jsonb("books"),
+    vegasTotalRaw: doublePrecision("vegas_total_raw"),
+    drawMl: integer("draw_ml"),
     captureKey: text("capture_key").notNull(),
     capturedAt: timestamp("captured_at").defaultNow().notNull(),
   },

@@ -34,7 +34,8 @@
     "bench:optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/benchmark-nba-optimizer.ts",
     "test:cheat-sheet": "node --import tsx ./scripts/test-cheat-sheet.ts",
     "test:nfl-dk-csv": "node --import tsx ./scripts/test-nfl-dk-csv.ts",
-    "test:nfl-scoring": "node --import tsx ./scripts/test-nfl-scoring.ts"
+    "test:nfl-scoring": "node --import tsx ./scripts/test-nfl-scoring.ts",
+    "test:survivor": "node --import tsx ./scripts/test-survivor-assignment.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

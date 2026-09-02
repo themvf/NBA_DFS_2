@@ -16,6 +16,7 @@ let ensureYoutubePickChannelsTablePromise: Promise<void> | null = null;
 let ensureOddsApiPropFetchLogPromise: Promise<void> | null = null;
 let ensureMlbGamePredictionTablesPromise: Promise<void> | null = null;
 let ensureFantasyFootballTablesPromise: Promise<void> | null = null;
+let ensureSurvivorTablesPromise: Promise<void> | null = null;
 
 const FANTASY_FOOTBALL_DDLS = [
   `CREATE TABLE IF NOT EXISTS ff_source_snapshots (id BIGSERIAL PRIMARY KEY, source TEXT NOT NULL, dataset TEXT NOT NULL, season INTEGER NOT NULL, scoring TEXT, ranking_type TEXT, request_params JSONB NOT NULL DEFAULT '{}'::jsonb, source_updated_at TIMESTAMPTZ, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), response_hash TEXT NOT NULL, row_count INTEGER NOT NULL, matched_count INTEGER NOT NULL DEFAULT 0, unmatched_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, error_summary TEXT, UNIQUE(source, dataset, response_hash))`,
@@ -388,6 +389,92 @@ const ODDS_HISTORY_DDLS = [
     )`,
   `CREATE INDEX IF NOT EXISTS idx_nfl_matchups_date ON nfl_matchups(game_date, commence_time)`,
   `CREATE INDEX IF NOT EXISTS idx_nfl_matchups_upcoming ON nfl_matchups(commence_time) WHERE completed = FALSE`,
+  `CREATE TABLE IF NOT EXISTS cfb_teams (
+      team_id SERIAL PRIMARY KEY,
+      cfbd_team_id INTEGER NOT NULL UNIQUE,
+      name TEXT NOT NULL UNIQUE,
+      abbreviation TEXT,
+      conference TEXT,
+      classification TEXT,
+      logo_url TEXT DEFAULT '',
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  `CREATE TABLE IF NOT EXISTS cfb_team_aliases (
+      id SERIAL PRIMARY KEY,
+      provider TEXT NOT NULL,
+      alias TEXT NOT NULL,
+      team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+      reviewed BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(provider, alias)
+    )`,
+  `CREATE TABLE IF NOT EXISTS cfb_venues (
+      venue_id SERIAL PRIMARY KEY,
+      cfbd_venue_id INTEGER UNIQUE,
+      name TEXT NOT NULL,
+      city TEXT,
+      state TEXT,
+      latitude DOUBLE PRECISION,
+      longitude DOUBLE PRECISION,
+      timezone TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  `CREATE TABLE IF NOT EXISTS cfb_matchups (
+      id SERIAL PRIMARY KEY,
+      cfbd_game_id BIGINT NOT NULL UNIQUE,
+      odds_event_id TEXT UNIQUE,
+      season INTEGER NOT NULL,
+      season_type TEXT NOT NULL,
+      week INTEGER NOT NULL,
+      game_date DATE NOT NULL,
+      commence_time TIMESTAMPTZ,
+      start_time_tbd BOOLEAN NOT NULL DEFAULT FALSE,
+      home_team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+      away_team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+      venue_id INTEGER REFERENCES cfb_venues(venue_id),
+      neutral_site BOOLEAN NOT NULL DEFAULT FALSE,
+      conference_game BOOLEAN NOT NULL DEFAULT FALSE,
+      network TEXT,
+      game_status TEXT,
+      completed BOOLEAN NOT NULL DEFAULT FALSE,
+      home_score INTEGER,
+      away_score INTEGER,
+      home_line_scores JSONB,
+      away_line_scores JSONB,
+      went_to_overtime BOOLEAN NOT NULL DEFAULT FALSE,
+      overtime_periods INTEGER NOT NULL DEFAULT 0,
+      vegas_total DOUBLE PRECISION,
+      home_ml INTEGER,
+      away_ml INTEGER,
+      home_spread DOUBLE PRECISION,
+      vegas_prob_home DOUBLE PRECISION,
+      home_implied DOUBLE PRECISION,
+      away_implied DOUBLE PRECISION,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      odds_fetched_at TIMESTAMPTZ,
+      score_fetched_at TIMESTAMPTZ,
+      final_at TIMESTAMPTZ,
+      CHECK(home_team_id <> away_team_id)
+    )`,
+  `CREATE TABLE IF NOT EXISTS cfb_unmapped_events (
+      id BIGSERIAL PRIMARY KEY,
+      provider TEXT NOT NULL,
+      provider_event_id TEXT NOT NULL,
+      home_name TEXT,
+      away_name TEXT,
+      commence_time TIMESTAMPTZ,
+      reason TEXT NOT NULL,
+      raw_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      occurrences INTEGER NOT NULL DEFAULT 1,
+      resolved_at TIMESTAMPTZ,
+      UNIQUE(provider, provider_event_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_cfb_matchups_date ON cfb_matchups(game_date, commence_time)`,
+  `CREATE INDEX IF NOT EXISTS idx_cfb_matchups_upcoming ON cfb_matchups(commence_time) WHERE completed=FALSE`,
+  `CREATE INDEX IF NOT EXISTS idx_cfb_unmapped_open ON cfb_unmapped_events(last_seen_at DESC) WHERE resolved_at IS NULL`,
   `CREATE TABLE IF NOT EXISTS game_odds_history (
       id SERIAL PRIMARY KEY,
       sport TEXT NOT NULL,
@@ -412,6 +499,9 @@ const ODDS_HISTORY_DDLS = [
     )`,
   `CREATE INDEX IF NOT EXISTS idx_game_odds_history_lookup ON game_odds_history(sport, game_date, captured_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_game_odds_history_matchup ON game_odds_history(sport, matchup_id, captured_at DESC)`,
+  `ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS books JSONB`,
+  `ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS vegas_total_raw DOUBLE PRECISION`,
+  `ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS draw_ml INTEGER`,
   `CREATE TABLE IF NOT EXISTS player_prop_history (
       id SERIAL PRIMARY KEY,
       sport TEXT NOT NULL,
@@ -661,6 +751,99 @@ export async function ensureVideoAnalysisTables(): Promise<void> {
 // Channel" action, read by the Python ingest script to know what to scrape.
 // Also defined in db/schema.py so it self-provisions regardless of which
 // side runs first -- same pattern as game_odds_history/player_prop_history.
+// Pools, entries, picks and the recommendation ledger are written by the web
+// app and read/settled by Python (model/survivor_settlement.py), so both sides
+// provision them -- the same shared-ownership pattern as youtube_pick_channels.
+// The probability tables these reference are Python-owned and are NOT created
+// here: the page must fail visibly if the model has never run rather than
+// render an empty grid that looks like a quiet season.
+const SURVIVOR_DDLS = [
+  `CREATE TABLE IF NOT EXISTS survivor_pools (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      season INTEGER NOT NULL,
+      entry_count INTEGER NOT NULL DEFAULT 1,
+      pool_size INTEGER,
+      tie_rule TEXT NOT NULL DEFAULT 'tie_loses',
+      strikes INTEGER NOT NULL DEFAULT 0,
+      start_week INTEGER NOT NULL DEFAULT 1,
+      end_week INTEGER NOT NULL DEFAULT 18,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (tie_rule IN ('tie_loses', 'tie_survives')),
+      CHECK (end_week >= start_week)
+  )`,
+  `CREATE TABLE IF NOT EXISTS survivor_entries (
+      id SERIAL PRIMARY KEY,
+      pool_id INTEGER NOT NULL REFERENCES survivor_pools(id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'alive',
+      strikes_used INTEGER NOT NULL DEFAULT 0,
+      eliminated_week INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(pool_id, label),
+      CHECK (status IN ('alive', 'eliminated'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS survivor_entry_picks (
+      id SERIAL PRIMARY KEY,
+      entry_id INTEGER NOT NULL REFERENCES survivor_entries(id) ON DELETE CASCADE,
+      week INTEGER NOT NULL,
+      team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+      game_id INTEGER,
+      p_advance_at_pick DOUBLE PRECISION,
+      provenance_at_pick TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      locked_at TIMESTAMPTZ,
+      result TEXT NOT NULL DEFAULT 'pending',
+      settled_at TIMESTAMPTZ,
+      UNIQUE(entry_id, week),
+      CHECK (result IN ('pending', 'won', 'lost', 'push', 'void'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS survivor_recommendations (
+      id SERIAL PRIMARY KEY,
+      pool_id INTEGER REFERENCES survivor_pools(id) ON DELETE CASCADE,
+      entry_id INTEGER REFERENCES survivor_entries(id) ON DELETE CASCADE,
+      season INTEGER NOT NULL,
+      week INTEGER NOT NULL,
+      recommended_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+      game_id INTEGER,
+      p_advance DOUBLE PRECISION,
+      provenance TEXT,
+      objective_mode TEXT NOT NULL DEFAULT 'survive',
+      path_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      path_survival_prob DOUBLE PRECISION,
+      opportunity_cost DOUBLE PRECISION,
+      fsv_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      pick_pct_at_rec DOUBLE PRECISION,
+      alternatives_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      constraints_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      model_version TEXT NOT NULL,
+      frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      event_commence TIMESTAMPTZ,
+      superseded_by INTEGER REFERENCES survivor_recommendations(id),
+      result TEXT NOT NULL DEFAULT 'pending',
+      settled_at TIMESTAMPTZ,
+      CHECK (result IN ('pending', 'won', 'lost', 'push', 'void'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_survivor_entries_pool ON survivor_entries(pool_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_survivor_picks_entry ON survivor_entry_picks(entry_id, week)`,
+  `CREATE INDEX IF NOT EXISTS idx_survivor_recs_entry ON survivor_recommendations(entry_id, week, frozen_at DESC)`,
+];
+
+export async function ensureSurvivorTables(): Promise<void> {
+  if (!ensureSurvivorTablesPromise) {
+    ensureSurvivorTablesPromise = (async () => {
+      for (const ddl of SURVIVOR_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureSurvivorTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureSurvivorTablesPromise;
+}
+
 const YOUTUBE_PICK_CHANNELS_DDLS = [
   `CREATE TABLE IF NOT EXISTS youtube_pick_channels (
       id SERIAL PRIMARY KEY,

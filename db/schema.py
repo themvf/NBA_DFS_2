@@ -291,6 +291,105 @@ TABLES = [
     )
     """,
 
+    # ── College football teams + canonical CFBD schedule ──────
+    """
+    CREATE TABLE IF NOT EXISTS cfb_teams (
+        team_id SERIAL PRIMARY KEY,
+        cfbd_team_id INTEGER NOT NULL UNIQUE,
+        name TEXT NOT NULL UNIQUE,
+        abbreviation TEXT,
+        conference TEXT,
+        classification TEXT,
+        logo_url TEXT DEFAULT '',
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_team_aliases (
+        id SERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        alias TEXT NOT NULL,
+        team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+        reviewed BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(provider, alias)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_venues (
+        venue_id SERIAL PRIMARY KEY,
+        cfbd_venue_id INTEGER UNIQUE,
+        name TEXT NOT NULL,
+        city TEXT,
+        state TEXT,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        timezone TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_matchups (
+        id SERIAL PRIMARY KEY,
+        cfbd_game_id BIGINT NOT NULL UNIQUE,
+        odds_event_id TEXT UNIQUE,
+        season INTEGER NOT NULL,
+        season_type TEXT NOT NULL,
+        week INTEGER NOT NULL,
+        game_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ,
+        start_time_tbd BOOLEAN NOT NULL DEFAULT FALSE,
+        home_team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+        away_team_id INTEGER NOT NULL REFERENCES cfb_teams(team_id),
+        venue_id INTEGER REFERENCES cfb_venues(venue_id),
+        neutral_site BOOLEAN NOT NULL DEFAULT FALSE,
+        conference_game BOOLEAN NOT NULL DEFAULT FALSE,
+        network TEXT,
+        game_status TEXT,
+        completed BOOLEAN NOT NULL DEFAULT FALSE,
+        home_score INTEGER,
+        away_score INTEGER,
+        home_line_scores JSONB,
+        away_line_scores JSONB,
+        went_to_overtime BOOLEAN NOT NULL DEFAULT FALSE,
+        overtime_periods INTEGER NOT NULL DEFAULT 0,
+        vegas_total DOUBLE PRECISION,
+        home_ml INTEGER,
+        away_ml INTEGER,
+        home_spread DOUBLE PRECISION,
+        vegas_prob_home DOUBLE PRECISION,
+        home_implied DOUBLE PRECISION,
+        away_implied DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        odds_fetched_at TIMESTAMPTZ,
+        score_fetched_at TIMESTAMPTZ,
+        final_at TIMESTAMPTZ,
+        CHECK (home_team_id <> away_team_id)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_unmapped_events (
+        id BIGSERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        provider_event_id TEXT NOT NULL,
+        home_name TEXT,
+        away_name TEXT,
+        commence_time TIMESTAMPTZ,
+        reason TEXT NOT NULL,
+        raw_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        occurrences INTEGER NOT NULL DEFAULT 1,
+        resolved_at TIMESTAMPTZ,
+        UNIQUE(provider, provider_event_id)
+    )
+    """,
+
     # Immutable revisions from the official MLB schedule feed. The mutable
     # mlb_matchups row is a convenience cache; this table preserves what the
     # application knew at each capture.
@@ -2467,6 +2566,220 @@ TABLES = [
         exclusion_reason TEXT,
         UNIQUE(run_id, evaluation_season)
     )""",
+
+    # ---------------------------------------------------------------
+    # NFL survivor pool
+    # ---------------------------------------------------------------
+    # The full-season schedule grid. nfl_matchups is the Odds API / live-odds
+    # layer and only ever holds what the provider currently lists; this table
+    # is the canonical 272-game season from nflverse, which a survivor grid
+    # needs in full from week 1. matchup_id is a LINK to the odds row, not a
+    # second identity for the same game.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_season_games (
+        id SERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        game_type TEXT NOT NULL,
+        nflverse_game_id TEXT NOT NULL UNIQUE,
+        matchup_id INTEGER REFERENCES nfl_matchups(id),
+        gameday DATE,
+        kickoff TIMESTAMPTZ,
+        home_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        away_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        div_game BOOLEAN,
+        roof TEXT,
+        surface TEXT,
+        home_rest INTEGER,
+        away_rest INTEGER,
+        quoted_spread_line DOUBLE PRECISION,
+        quoted_total_line DOUBLE PRECISION,
+        quoted_home_ml INTEGER,
+        quoted_away_ml INTEGER,
+        quote_source TEXT,
+        home_score INTEGER,
+        away_score INTEGER,
+        completed BOOLEAN NOT NULL DEFAULT FALSE,
+        source_captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season, week, home_team_id, away_team_id),
+        CHECK (home_team_id <> away_team_id)
+    )
+    """,
+
+    # Market-implied power ratings, append-only and as-of. These are a
+    # compression of the spreads the market has already posted, propagated to
+    # games it has not priced yet -- never an independent opinion.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_team_ratings (
+        id SERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        as_of_week INTEGER NOT NULL,
+        as_of_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        rating DOUBLE PRECISION NOT NULL,
+        hfa DOUBLE PRECISION NOT NULL,
+        n_games_fit INTEGER NOT NULL,
+        ridge_lambda DOUBLE PRECISION NOT NULL,
+        fit_rmse DOUBLE PRECISION,
+        model_version TEXT NOT NULL,
+        UNIQUE(season, as_of_week, team_id, model_version)
+    )
+    """,
+
+    # Measured forecast error of the rating model by horizon, regenerated on
+    # every fit rather than frozen as a constant. This is the sigma that
+    # widens a modeled probability, and the evidence for the UI's claim that
+    # far columns are a plan and not a forecast.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_spread_horizon_calibration (
+        id SERIAL PRIMARY KEY,
+        fit_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        season_range TEXT NOT NULL,
+        horizon INTEGER NOT NULL,
+        n INTEGER NOT NULL,
+        rmse DOUBLE PRECISION NOT NULL,
+        top_pick_exact_rate DOUBLE PRECISION,
+        top_pick_top5_rate DOUBLE PRECISION,
+        model_version TEXT NOT NULL,
+        UNIQUE(season_range, horizon, model_version)
+    )
+    """,
+
+    # One row per team per game: the probability that team advances, with the
+    # provenance that produced it. provenance is the whole point -- a modeled
+    # cell and a quoted cell must never be indistinguishable downstream.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_game_win_probs (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER NOT NULL REFERENCES nfl_season_games(id) ON DELETE CASCADE,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        opponent_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        is_home BOOLEAN NOT NULL,
+        p_win DOUBLE PRECISION,
+        p_tie DOUBLE PRECISION,
+        provenance TEXT NOT NULL,
+        spread_used DOUBLE PRECISION,
+        spread_source TEXT,
+        horizon_weeks INTEGER,
+        sigma_h DOUBLE PRECISION,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        model_version TEXT NOT NULL,
+        UNIQUE(game_id, team_id, model_version)
+    )
+    """,
+
+    # Field pick popularity. `P%` is one aggregator's estimate of NATIONAL pick
+    # share, which is not the same thing as the distribution inside any
+    # particular pool -- the study that consumes it says so explicitly.
+    """
+    CREATE TABLE IF NOT EXISTS survivor_pick_popularity (
+        id SERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        pick_pct DOUBLE PRECISION,
+        source_win_pct DOUBLE PRECISION,
+        source_ev DOUBLE PRECISION,
+        source TEXT NOT NULL,
+        source_url TEXT,
+        raw_hash TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season, week, team_id, source, raw_hash)
+    )
+    """,
+
+    # ---------------------------------------------------------------
+    # Pools, entries, and the recommendation ledger
+    # ---------------------------------------------------------------
+    # Pool configuration is mutable: it describes the rules of a real pool the
+    # user belongs to, and those are known up front rather than discovered.
+    """
+    CREATE TABLE IF NOT EXISTS survivor_pools (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        season INTEGER NOT NULL,
+        entry_count INTEGER NOT NULL DEFAULT 1,
+        pool_size INTEGER,
+        tie_rule TEXT NOT NULL DEFAULT 'tie_loses',
+        strikes INTEGER NOT NULL DEFAULT 0,
+        start_week INTEGER NOT NULL DEFAULT 1,
+        end_week INTEGER NOT NULL DEFAULT 18,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (tie_rule IN ('tie_loses', 'tie_survives')),
+        CHECK (end_week >= start_week)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS survivor_entries (
+        id SERIAL PRIMARY KEY,
+        pool_id INTEGER NOT NULL REFERENCES survivor_pools(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'alive',
+        strikes_used INTEGER NOT NULL DEFAULT 0,
+        eliminated_week INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(pool_id, label),
+        CHECK (status IN ('alive', 'eliminated'))
+    )
+    """,
+
+    # A pick is editable until it locks, and immutable afterwards. Locking is
+    # what makes settlement meaningful: a pick that can be edited after the
+    # game has started is not a record of a decision.
+    """
+    CREATE TABLE IF NOT EXISTS survivor_entry_picks (
+        id SERIAL PRIMARY KEY,
+        entry_id INTEGER NOT NULL REFERENCES survivor_entries(id) ON DELETE CASCADE,
+        week INTEGER NOT NULL,
+        team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        game_id INTEGER REFERENCES nfl_season_games(id),
+        p_advance_at_pick DOUBLE PRECISION,
+        provenance_at_pick TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        locked_at TIMESTAMPTZ,
+        result TEXT NOT NULL DEFAULT 'pending',
+        settled_at TIMESTAMPTZ,
+        UNIQUE(entry_id, week),
+        CHECK (result IN ('pending', 'won', 'lost', 'push', 'void'))
+    )
+    """,
+
+    # The accountability ledger. One row per (entry, week) recommendation,
+    # frozen before the week's first kickoff and never rewritten -- a changed
+    # recommendation appends a new row and supersedes, the same discipline as
+    # mlb_bets. Without this the tool can never be graded, only admired.
+    """
+    CREATE TABLE IF NOT EXISTS survivor_recommendations (
+        id SERIAL PRIMARY KEY,
+        pool_id INTEGER REFERENCES survivor_pools(id) ON DELETE CASCADE,
+        entry_id INTEGER REFERENCES survivor_entries(id) ON DELETE CASCADE,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        recommended_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+        game_id INTEGER REFERENCES nfl_season_games(id),
+        p_advance DOUBLE PRECISION,
+        provenance TEXT,
+        objective_mode TEXT NOT NULL DEFAULT 'survive',
+        path_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        path_survival_prob DOUBLE PRECISION,
+        opportunity_cost DOUBLE PRECISION,
+        fsv_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        pick_pct_at_rec DOUBLE PRECISION,
+        alternatives_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        constraints_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        model_version TEXT NOT NULL,
+        frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        event_commence TIMESTAMPTZ,
+        superseded_by INTEGER REFERENCES survivor_recommendations(id),
+        result TEXT NOT NULL DEFAULT 'pending',
+        settled_at TIMESTAMPTZ,
+        CHECK (result IN ('pending', 'won', 'lost', 'push', 'void'))
+    )
+    """,
 ]
 
 MIGRATIONS = [
@@ -3329,6 +3642,20 @@ MIGRATIONS = [
     """CREATE TRIGGER mlb_weather_forecasts_immutable
     BEFORE UPDATE OR DELETE ON mlb_weather_forecast_snapshots
     FOR EACH ROW EXECUTE FUNCTION reject_mlb_stats_history_mutation()""",
+
+    # Full-season Odds API prices for the survivor grid. Deliberately stored on
+    # nfl_season_games rather than in game_odds_history: the alert pipeline's
+    # capture population is frozen for the pre-registered NFL total_walking
+    # study, and widening it from today's games to all 272 mid-study would be a
+    # regime change inside a live experiment. These columns are a separate
+    # consumer of the same already-paid-for bulk response.
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_home_ml INTEGER",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_away_ml INTEGER",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_spread_line DOUBLE PRECISION",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_total_line DOUBLE PRECISION",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_book_count INTEGER",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_overround DOUBLE PRECISION",
+    "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_captured_at TIMESTAMPTZ",
 ]
 
 INDEXES = [
@@ -3405,6 +3732,21 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_mlb_matchups_date ON mlb_matchups(game_date)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_matchups_date ON nfl_matchups(game_date, commence_time)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_matchups_upcoming ON nfl_matchups(commence_time) WHERE completed = FALSE",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_season_games_season ON nfl_season_games(season, week)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_season_games_teams ON nfl_season_games(season, home_team_id, away_team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_team_ratings_asof ON nfl_team_ratings(season, as_of_week DESC, model_version)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_win_probs_season ON nfl_game_win_probs(season, week, team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_win_probs_game ON nfl_game_win_probs(game_id)",
+    "CREATE INDEX IF NOT EXISTS idx_survivor_popularity_week ON survivor_pick_popularity(season, week, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_survivor_entries_pool ON survivor_entries(pool_id)",
+    "CREATE INDEX IF NOT EXISTS idx_survivor_picks_entry ON survivor_entry_picks(entry_id, week)",
+    "CREATE INDEX IF NOT EXISTS idx_survivor_picks_pending ON survivor_entry_picks(result) WHERE result = 'pending'",
+    "CREATE INDEX IF NOT EXISTS idx_survivor_recs_entry ON survivor_recommendations(entry_id, week, frozen_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_survivor_recs_open ON survivor_recommendations(season, week) WHERE superseded_by IS NULL",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_date ON cfb_matchups(game_date, commence_time)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_upcoming ON cfb_matchups(commence_time) WHERE completed = FALSE",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_alias_lookup ON cfb_team_aliases(provider, alias)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_unmapped_open ON cfb_unmapped_events(last_seen_at DESC) WHERE resolved_at IS NULL",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",

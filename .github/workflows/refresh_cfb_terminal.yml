@@ -1,0 +1,78 @@
+name: Refresh CFB Line Terminal
+
+on:
+  schedule:
+    # Polling is free unless a game is missing a due checkpoint. Lead-time
+    # windows, not exact clock instants, make delayed GitHub schedules safe.
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "CFB season year"
+        required: false
+        type: string
+      force_schedule:
+        description: "Refresh the full CFBD schedule on this run"
+        required: false
+        default: true
+        type: boolean
+      capture_now:
+        description: "Make one paid odds capture outside checkpoint windows"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: refresh-cfb-terminal
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      # Phase 0 safety gate. Set the repository variable to "true" only after
+      # the seven-day coverage/cost probe is reviewed and approved.
+      CFB_LIVE_CAPTURE_ENABLED: ${{ vars.CFB_LIVE_CAPTURE_ENABLED || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Resolve season and schedule-refresh slot
+        shell: bash
+        env:
+          INPUT_YEAR: ${{ inputs.year }}
+          FORCE_SCHEDULE: ${{ inputs.force_schedule }}
+        run: |
+          year="${INPUT_YEAR:-$(TZ=America/New_York date +%Y)}"
+          echo "CFB_YEAR=$year" >> "$GITHUB_ENV"
+          hour=$(date -u +%H)
+          minute=$(date -u +%M)
+          refresh=false
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${FORCE_SCHEDULE:-true}" = "true" ]; then
+            refresh=true
+          elif [ "$minute" = "07" ] && [ $((10#$hour % 6)) -eq 0 ]; then
+            refresh=true
+          fi
+          echo "CFB_REFRESH_SCHEDULE=$refresh" >> "$GITHUB_ENV"
+      - name: Refresh canonical CFBD schedule and scores
+        if: env.CFB_REFRESH_SCHEDULE == 'true'
+        run: python -m ingest.cfb_schedule --year "$CFB_YEAR" --refresh-schedule
+      - name: Refresh free provider-event mappings
+        run: python -m ingest.cfb_schedule --refresh-events
+      - name: Capture due checkpoint windows
+        if: env.CFB_LIVE_CAPTURE_ENABLED == 'true'
+        run: python -m ingest.cfb_schedule --capture-due
+      - name: Report due checkpoints without spending credits
+        if: env.CFB_LIVE_CAPTURE_ENABLED != 'true'
+        run: python -m ingest.cfb_schedule --capture-due --dry-run
+      - name: Optional manual market capture
+        if: github.event_name == 'workflow_dispatch' && inputs.capture_now == true
+        run: python -m ingest.cfb_schedule --capture-now
+      - name: Report CFB data health
+        run: python -m ingest.cfb_schedule --health
