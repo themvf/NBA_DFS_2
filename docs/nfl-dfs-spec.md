@@ -239,6 +239,53 @@ credit cost. Run it via the manual `NFL Prop Market Probe` workflow,
 which reads `ODDS_API_KEY` from GitHub Secrets — the key is held in
 Vercel and GitHub, never in a local `.env`.
 
+### P0 probe RESULT — measured 2026-09-02, 5 events, 35 credits
+
+Run 33628093963, seven days before Week 1 kickoff.
+
+```
+market                        events   DK  PIN  DK+PIN  paired  same-line  DK players
+player_pass_yds                 5/5     5    2       2       5          0          10
+player_pass_tds                 5/5     5    2       2       5          2          10
+player_pass_interceptions       3/5     0    0       0       0          0           0
+player_rush_yds                 5/5     5    2       2       5          2          18
+player_receptions               5/5     5    2       2       5          2          30
+player_reception_yds            5/5     5    2       2       5          2          30
+player_anytime_td               5/5     5    0       0       0          0          99
+```
+
+**Six of seven markets are usable.** DraftKings posts them on every
+probed event with paired over/under quotes.
+
+**`player_pass_interceptions` is dead for us.** DraftKings posts it on
+**0 of 5** events; only BetRivers quotes it at all (3/5). This is the
+`batter_home_runs` situation exactly — the key exists, the book doesn't
+post it. Interceptions fall back to history. Cost is low: an
+interception is −1 point, the smallest term in the offensive table.
+
+**`player_anytime_td` is the deepest market on the board** — 99 DK
+players across 5 games, roughly 20 per game, against 2 per game for
+passing yards. Confirmed yes-only (`name=yes, description=<player>,
+point=no`), exactly the shape MLB's paired-only rule would have
+discarded. It is the most valuable projection input and it is fully
+available; not copying that rule was load-bearing, not academic.
+
+**A DK-vs-Pinnacle NFL prop detector is NOT viable at this coverage.**
+Pinnacle appears on only 2 of 5 events and **0 of 5** for anytime-TD, and
+same-line agreement on passing yards is 0/5. NFL props are not MLB props;
+do not assume the `dk_prop_value` architecture ports over. This spec's
+consumer is the DFS projection, which needs neither Pinnacle nor paired
+quotes, so nothing here is blocked.
+
+**Caveat — this is a floor, not a steady state.** The probe ran seven
+days before kickoff and prop boards fill out closer to game time. The
+per-game player counts should be re-measured against a live slate before
+any coverage assumption is baked into the model. The pool has 719
+players and the props cover on the order of 20–25 per game, so the
+**history + environment fallback is the majority path, not an edge
+case** — particularly for the low-salary players where DFS leverage
+actually lives.
+
 **Paired quotes gate a detector, not a projection — do not copy MLB's
 rule blindly.** `ingest/mlb_prop_odds.py` rejects one-sided markets
 because a DK-vs-Pinnacle *value detector* needs a paired same-line quote

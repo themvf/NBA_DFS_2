@@ -13,6 +13,34 @@ argument — re-measure first.
 
 ---
 
+## 0. The quota is 100,000/month, not 20,000 — MEASURED 2026-09-02
+
+Every budget figure written below on 2026-08-24 assumes a **20,000/month**
+plan. That is wrong now. Read live from the provider's own response
+headers during the NFL prop probe (GitHub Actions run 33628093963):
+
+```
+x-requests-used=749   x-requests-remaining=99251     (sum = 100,000)
+```
+
+Recorded as a measurement, not a plan change anyone announced — the
+account may have been upgraded, so **confirm the tier before relying on
+the headroom**. Two things follow either way:
+
+- The percentages in section 2 are off by 5x. The ~395/day post-reduction
+  burn is **~12% of a 100,000 key**, not ~59%.
+- The 2026-08-24 cadence cuts were made against the wrong denominator.
+  That does **not** automatically justify reversing them: several were
+  removed for producing nothing we consume (`us_ex` for NFL and tennis at
+  0% Polymarket coverage), and the standing rule at the top of this file
+  applies — a call that returns nothing is a bug regardless of how much
+  quota is spare. Reversals still need fresh measurement, not just room.
+
+The cost-per-call model in section 1 is unaffected and was re-confirmed by
+the same probe: 7 markets x 10 books billed exactly 7 credits/event.
+
+---
+
 ## 1. Pricing model
 
 | Endpoint | Cost |
