@@ -209,10 +209,22 @@ player_rush_yds   player_receptions player_reception_yds
 player_anytime_td
 ```
 
-All are event-scoped (`/events/{id}/odds`), never bulk. Using the
-`bookmakers=` parameter rather than `regions=` prices these at
-**markets × 1** — the cost model already established and measured in
-this repo's MLB D4 work — so 7 markets is **7 credits/event**, roughly
+All are event-scoped (`/events/{id}/odds`), never bulk.
+
+**Cost correction (2026-09-01).** An earlier draft of this spec said the
+`bookmakers=` parameter prices a call at `markets × 1` *regardless of
+book count*. That is wrong, and `ingest/mlb_prop_odds.py` records the
+measured rule:
+
+```
+credits = n_markets × ceil(n_books / 10)     per event
+```
+
+8, 9 and 10 books all cost `markets × 1`; **the 11th book doubles the
+bill**. So ten books is a hard cap, not a preference. `regions=` remains
+strictly worse (`markets × n_regions`).
+
+At 7 markets and ≤10 books that is **7 credits/event**, or roughly
 **112 credits for a full 16-game Sunday slate**.
 
 Against the current ~395/day scheduled burn (~11,850/30d of a 20,000
@@ -222,13 +234,27 @@ costs ~500–900/month and fits the remaining headroom. It must be
 "Fetch Player Props" buttons — never a cron. Read
 [`docs/the-odds-api.md`](the-odds-api.md) before changing this.
 
-**P0 gate, do not skip:** a market key existing in documentation is not
-the same as books posting it, and this repo has already been burned by
-exactly that distinction twice — `batter_home_runs`, where DraftKings
-posted nothing, and `batter_runs_scored`, where Pinnacle posted a
-different line every time. Probe all 7 markets against 5 real NFL events
-and record per-market **DraftKings presence, Pinnacle presence, and
-same-line agreement** before any model code depends on a market.
+**P0 gate.** A market key existing in documentation is not the same as
+books posting it, and this repo has been burned by exactly that
+distinction twice — `batter_home_runs`, where DraftKings posted nothing,
+and `batter_runs_scored`, where Pinnacle posted a different line every
+time. `ingest/nfl_prop_probe.py` measures it: per market, DraftKings
+presence, Pinnacle presence, paired-quote availability and same-line
+agreement, across N real events. It writes nothing and prints its exact
+credit cost. Run it via the manual `NFL Prop Market Probe` workflow,
+which reads `ODDS_API_KEY` from GitHub Secrets — the key is held in
+Vercel and GitHub, never in a local `.env`.
+
+**Paired quotes gate a detector, not a projection — do not copy MLB's
+rule blindly.** `ingest/mlb_prop_odds.py` rejects one-sided markets
+because a DK-vs-Pinnacle *value detector* needs a paired same-line quote
+to de-vig against. A DFS *projection* has no such requirement:
+`player_anytime_td` is a yes-only market by nature and is the single
+most valuable NFL projection input — a touchdown is 6 of the ~15 points
+a typical flex player scores — and it is de-vigged **across players** in
+the market, the same power method already used in
+`model/soccer_first_scorer.py`. Judge each market against the consumer
+that will actually use it.
 
 ## 3. Projection model
 

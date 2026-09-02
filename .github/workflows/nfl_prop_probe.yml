@@ -1,0 +1,42 @@
+name: NFL Prop Market Probe
+
+# Manual only, and deliberately so. This is a read-only diagnostic that
+# SPENDS SHARED ODDS API CREDITS (7 markets x <=10 books x N events, so
+# 7 credits/event) against a 20,000/month key every sport draws on.
+# Never put it on a schedule.
+on:
+  workflow_dispatch:
+    inputs:
+      events:
+        description: "Events to probe (7 credits each; 5 = 35 credits)"
+        required: false
+        default: "5"
+        type: string
+      markets:
+        description: "Comma-separated market keys (blank = all 7 NFL player-prop markets)"
+        required: false
+        type: string
+
+concurrency:
+  group: nfl-prop-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Probe NFL player-prop coverage
+        run: |
+          ARGS="--events ${{ inputs.events || '5' }}"
+          if [ -n "${{ inputs.markets }}" ]; then
+            ARGS="$ARGS --markets ${{ inputs.markets }}"
+          fi
+          python -m ingest.nfl_prop_probe $ARGS
