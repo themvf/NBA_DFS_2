@@ -17,15 +17,16 @@ User-selected, recorded so they are not silently revisited.
 
 ## 1. What DraftKings actually requires — verified, not assumed
 
-Roster structure and the column layout are **VERIFIED** — against DK
-Network for the rules, and against the user's own Week 1 Classic and
-Showdown exports for everything the files themselves prove.
+Everything in this section is now **VERIFIED** against DK's official
+Classic and Showdown Captain Mode rules pages, supplied by the user
+2026-09-01 after automated access failed (403 to fetch, domain blocked
+in the browser tool), plus the user's own Week 1 exports for everything
+the files themselves prove.
 
-Scoring is the one thing still **SECOND-HAND**: DK's rules page is
-unreachable from here (403 to fetch, domain blocked in the browser
-tool), so it rests on independent references that agree with each other.
-Each claim below carries its own evidence level; nothing is recorded as
-fact on the strength of recall.
+The scoring table previously recorded here from secondary sources turned
+out to be **correct in every line**, including the DST points-allowed
+tiers. Two things it was missing or wrong about are corrected below and
+called out explicitly rather than quietly patched.
 
 ### The real column layout — VERIFIED against Week 1 exports
 
@@ -66,21 +67,32 @@ inferred: the Week 1 Classic pool is 91 QB / 153 RB / 295 WR / 156 TE /
 24 DST and **zero K**. Showdown pools *do* include kickers (2 in the
 NE@SEA file), so the position set is format-specific, not sport-wide.
 
-Hard rule, VERIFIED and load-bearing for the optimizer: a lineup must
-contain players from **at least 2 different NFL teams** *and* **at least
-2 different games**. DK refuses to save a lineup that violates either.
-Neither the NBA nor the MLB optimizer in this repo has this constraint,
-so it is new code, not a reused rule.
+**Correction (2026-09-01).** An earlier draft of this spec recorded the
+Classic constraint as *"at least 2 different NFL teams AND at least 2
+different games"*, taken from a secondary source. DK's official rule is
+narrower — **"must include players from at least 2 different NFL
+games"**, and nothing about a team count. The team clause was redundant
+anyway (two games implies at least two teams), so the effect is one
+fewer constraint for the optimizer to enforce, not a behaviour change.
+
+The games rule is still real and still load-bearing: neither the NBA nor
+the MLB optimizer in this repo has anything like it, so it is new code.
 
 ### Showdown Captain Mode (single game) — VERIFIED
 
 ```
 CPT  FLEX  FLEX  FLEX  FLEX  FLEX          6 players, $50,000 cap
 CPT scores 1.5x and costs 1.5x salary.
-All six slots draw from ONE game; any position may fill any slot
-  (Showdown is the only DK NFL format where two QBs are legal).
-Must include at least 1 player from BOTH teams.
+Every slot, CPT included, is eligible to QB / RB / WR / TE / K / DST
+  (Showdown is the only DK NFL format where two QBs are legal, and a
+   DST or a kicker may be captained).
+Lineups must include players from BOTH teams.
 ```
+
+DK states the duplicate-row trap as a rule in its own words: *"a player
+cannot be added at both Captain and another position in the same
+lineup."* That is exactly the constraint the parser's CPT/FLEX collapse
+exists to make representable.
 
 The DK Showdown salary CSV lists **each player twice** — one `CPT` row
 and one `FLEX` row, with different `ID` and different `Salary`. The
@@ -98,18 +110,10 @@ The two rows are **not adjacent**: DK sorts the file by salary, so a
 player's CPT row can sit dozens of lines from his FLEX row. Pairing is by
 name + team, never by position in the file.
 
-### Scoring — SECOND-HAND, confirm by eye before the scoring module ships
+### Scoring — VERIFIED against DK's official rules
 
-DraftKings' own rules page could not be reached: `draftkings.com` returns
-**HTTP 403** to automated fetches and the domain is **blocked by policy**
-in the browser tool. The table below is corroborated by independent DFS
-references (notably RotoGrinders' site-scoring comparison), which agree
-with each other on every line including the DST points-allowed tiers.
-
-That is good evidence, not confirmation. Scoring feeds the projection
-model directly, so **one human look at DK's live rules page** should
-happen before `nfl_dfs_scoring` is trusted — cheap to do, and a silently
-wrong tier would bias every DST projection in the same direction forever.
+Identical between Classic and Showdown, except that Showdown adds
+kickers and multiplies the captain.
 
 Offense (full PPR):
 
@@ -131,6 +135,41 @@ Any defensive or special-teams TD +6 | 2pt return +2
 Points allowed:  0 = +10 | 1-6 = +7 | 7-13 = +4 | 14-20 = +1
                 21-27 = 0 | 28-34 = -1 | 35+ = -4
 ```
+
+**Kicker — Showdown only** (Classic has no kicker slot at all):
+
+```
+Extra point +1 | 0-39 yd FG +3 | 40-49 yd FG +4 | 50+ yd FG +5
+```
+
+Two notes on this, both load-bearing:
+
+- DK restricts these categories to kickers: *"Kickers are only eligible
+  for extra points and field goals made. Non-kickers are not eligible."*
+  So a position player who kicks in an emergency scores nothing for it,
+  and the scorer must gate on position rather than on the stat's
+  presence.
+- This is **exactly Yahoo's distance-tiered kicker formula**, which this
+  repo already implements as `yahoo_kicker_points()` in
+  `ingest/ff_independent.py`, fed by the same nflverse per-distance
+  buckets (`fg_made_0_19` … `fg_made_60_`). The DFS kicker path should
+  reuse those buckets rather than re-derive them — and note the trap
+  already recorded for fantasy football: nflverse's generic
+  `fantasy_points` field is **0 for essentially every kicker**, so
+  scoring must come from the buckets, never from that column.
+
+**Points Allowed is not the opponent's final score.** DK: *"Points
+Allowed only includes points surrendered while DST is on the field —
+doesn't include points given up by team's offense."* A pick-six thrown by
+your DST's own offense does not count against it. Special-teams and
+blocked-kick return TDs, extra points and field goals all do.
+
+This matters for section 3's DST design, which maps the opponent's
+Vegas implied total through the tiers: that proxy is **biased slightly
+high**, because a fraction of the opponent's implied points arrive via
+defensive scores the DST is not charged for. The bias is small but
+systematic and one-directional, so it should be measured and corrected
+rather than assumed negligible.
 
 The three yardage **bonuses are threshold events, not linear terms**.
 A mean-based projection cannot price them: a 250-yard mean, and a
@@ -264,7 +303,8 @@ Rules NFL genuinely needs:
 
 **Classic**
 - 9 slots, FLEX = RB/WR/TE, $50k
-- **≥ 2 teams and ≥ 2 games** (DK-enforced, new to this repo)
+- **≥ 2 different games** (DK-enforced, new to this repo; there is no
+  separate team-count rule — see the correction in section 1)
 - QB stacking: QB plus 1–2 pass catchers from his own team; the
   strongest correlation in DFS and the core of NFL GPP
 - Bring-back: one opposing player, capturing shootout game script
@@ -273,7 +313,8 @@ Rules NFL genuinely needs:
   unlike MLB's pitcher-versus-batter rule, which is strictly negative
 
 **Showdown**
-- 6 slots, CPT at 1.5× points and 1.5× salary
+- 6 slots, CPT at 1.5× points and 1.5× salary; K and DST are
+  CPT-eligible like everyone else
 - One game; **both teams must be represented**
 - The same human may not occupy both the CPT and a FLEX slot — the
   CPT/FLEX duplicate-row trap from section 1
@@ -335,11 +376,12 @@ prerequisites pass.
 
 | # | Step | Gate |
 |---|---|---|
-| 1 | DK scoring confirmed by eye + prop market probe | Scoring matches DK's live rules page; per-market DK/Pinnacle/same-line coverage recorded |
+| 1 | DK scoring verification | ✅ **Done** — official Classic + Showdown rules supplied 2026-09-01; table confirmed correct, kicker scoring and the Points Allowed definition added |
 | 2 | Schema: `sport='nfl'` on `dk_slates`, NFL columns on `dk_players`, `nfl_player_props` | Migrations applied, NBA/MLB untouched |
 | 3 | DK CSV ingestion, Classic + Showdown | ✅ **Done** — real Week 1 exports parse with 0 warnings; 126 Showdown rows resolve to 63 players |
-| 4 | Prop ingestion + in-season weekly stats | Coverage counts reported, not assumed |
-| 5 | Scoring + projection model | Kill criteria in section 3 evaluated honestly |
+| 4 | Prop market probe, then prop ingestion + in-season weekly stats | Per-market DK/Pinnacle/same-line coverage recorded before any model code depends on a market; coverage counts reported, not assumed |
+| 5a | DK scoring module | ✅ **Done** — `web/src/lib/nfl-dfs/scoring.ts`, offence/kicker/DST + captain, verified against DK's official tables |
+| 5b | Projection model | Kill criteria in section 3 evaluated honestly |
 | 6 | Optimizer, both formats, both modes | Lineups are DK-legal, including the 2-team/2-game rule |
 | 7 | `/dfs/nfl` UI | Pool, projections, optimizer controls, exposure |
 | 8 | Entry-file export | Round-trips against a real DK entry file |
@@ -347,6 +389,8 @@ prerequisites pass.
 
 Step 5 gates 6–9.
 
-**Status (2026-09-01):** step 3 complete and validated against real DK
-Week 1 exports. Step 1's scoring verification and step 4's prop probe are
-both still open; step 2 (schema) is unblocked and next.
+**Status (2026-09-01):** steps 1, 3 and 5a complete — DK's rules and
+scoring are verified from the official pages, the salary parser is
+validated against real Week 1 exports, and the scoring module is built
+and tested. Step 4's prop-market probe is still blocked on an Odds API
+key. Step 2 (schema) is unblocked and next.
