@@ -5,6 +5,12 @@ structures (Classic weekly, Showdown single-game) and both contest
 intents (PvP/cash, Tournament/GPP), fed by a manually uploaded DK salary
 CSV, producing a DK bulk-entry-uploadable lineup CSV.
 
+**Visibility amendment (2026-09-02):** At the user's direction, `/dfs/nfl`
+ships before the projection-model gate as an explicitly labelled intake and
+readiness workspace. It exposes the verified salary parser and pool audit but
+keeps projections, optimization, and entry export locked. This does not waive
+steps 4–6 or permit DK average points to be presented as our model.
+
 ## Decisions taken 2026-09-01
 
 User-selected, recorded so they are not silently revisited.
@@ -383,7 +389,7 @@ prerequisites pass.
 | 5a | DK scoring module | ✅ **Done** — `web/src/lib/nfl-dfs/scoring.ts`, offence/kicker/DST + captain, verified against DK's official tables |
 | 5b | Projection model | Kill criteria in section 3 evaluated honestly |
 | 6 | Optimizer, both formats, both modes | Lineups are DK-legal, including the 2-team/2-game rule |
-| 7 | `/dfs/nfl` UI | Pool, projections, optimizer controls, exposure |
+| 7 | `/dfs/nfl` UI | **Intake/pool audit visible**; projections, optimizer controls, and exposure remain gated |
 | 8 | Entry-file export | Round-trips against a real DK entry file |
 | 9 | Tests + real-data verification | Real slate, end to end |
 
