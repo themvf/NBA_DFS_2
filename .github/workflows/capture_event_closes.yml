@@ -1,6 +1,10 @@
 name: Capture Event Closing Lines
 
 on:
+  schedule:
+    # The worker makes no paid request when no checkpoint is due. Five-minute
+    # polling is required to distinguish T-15 from the T-5 close candidate.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -25,3 +29,5 @@ jobs:
         run: python -m ingest.event_closing_lines
       - name: Detect and grade prospective CFB market signals
         run: python -m model.line_alerts --sport cfb
+      - name: Detect and grade NFL market signals
+        run: python -m model.line_alerts --sport nfl

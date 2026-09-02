@@ -1,5 +1,7 @@
 # NFL Odds Ingestion and Line-Movement Monitoring
 
+The production event-relative capture schedule and closing-line semantics are defined in [NFL Event-Relative Odds Capture Cadence](nfl-event-relative-capture-cadence.md).
+
 Status: Implemented
 Date: 2026-08-01
 Owner: NBA DFS v2

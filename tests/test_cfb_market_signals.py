@@ -127,3 +127,18 @@ def test_cfb_settlement_uses_verified_close_and_saves_roi(monkeypatch) -> None:
     assert grading["line_clv"] == pytest.approx(1.0)
     assert grading["pnl_units"] == pytest.approx(0.91)
     assert grades[0][2] == "won"
+
+
+def test_nfl_line_settlement_also_requires_verified_close(monkeypatch) -> None:
+    db = SettlementDb()
+    grades = []
+    monkeypatch.setattr(
+        line_alerts, "_append_grade_history",
+        lambda _db, alert_id, grade, outcome=None: grades.append((alert_id, grade, outcome)),
+    )
+
+    assert line_alerts._settle_football_line_alerts(db, "nfl") == 1
+    grading = __import__("json").loads(db.updates[-1][1][1])
+    assert grading["close_source"] == "verified_clv_closes"
+    assert grading["close_history_id"] == 99
+    assert grades[0][2] == "won"

@@ -1913,7 +1913,7 @@ def _grade_alert_prices(db, a) -> dict:
     is_prop_src = (a["alert_type"] in ("dk_prop_value", "prop_line_gap", "prop_outlier")
                    and d.get("market") != "total_games")
     frozen_close = None
-    if not is_prop_src and a["sport"] in ("mlb", "tennis", "cfb"):
+    if not is_prop_src and a["sport"] in ("mlb", "tennis", "cfb", "nfl"):
         frozen_close = db.execute_one(
             """SELECT history_id, captured_at, quality, boundary_source, lead_seconds,
                       methodology_version, clv_cohort, verification_level
@@ -2140,7 +2140,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
                           WHERE source.book_key <> 'polymarket'
                         )""")
         if (
-            sport in ("mlb", "tennis", "cfb")
+            sport in ("mlb", "tennis", "cfb", "nfl")
             and a["alert_type"] != "pinnacle_polymarket_delta"
         ):
             close = db.execute_one(
@@ -2156,9 +2156,9 @@ def settle(db: DatabaseManager, sport: str) -> int:
             close = None
         # Historical alerts and the short interval before the close worker
         # freezes a new event retain the explicitly-labelled legacy fallback.
-        if close is None and sport == "cfb":
-            # CFB belongs to the prospective verified-close cohort. Waiting is
-            # preferable to silently grading against a latest-row proxy.
+        if close is None and sport in ("cfb", "nfl"):
+            # CFB and NFL belong to the prospective verified-close cohort.
+            # Waiting is preferable to silently grading against a latest-row proxy.
             continue
         if close is None:
             close = db.execute_one(
@@ -2270,21 +2270,16 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
         except (KeyError, TypeError, ValueError):
             logger.error("%s line alert %s is missing trigger_line", sport.upper(), alert["id"])
             continue
-        if sport == "cfb":
+        if sport in ("cfb", "nfl"):
             close = db.execute_one(
                 """SELECT h.id AS history_id, h.books
                    FROM verified_clv_closes c
                    JOIN game_odds_history h ON h.id=c.history_id
-                   WHERE c.sport='cfb' AND c.matchup_id=%s""",
-                (alert["matchup_id"],),
+                   WHERE c.sport=%s AND c.matchup_id=%s""",
+                (sport, alert["matchup_id"]),
             )
         else:
-            close = db.execute_one(
-                """SELECT id AS history_id, books FROM game_odds_history
-                   WHERE sport='nfl' AND matchup_id=%s AND captured_at <= %s
-                   ORDER BY captured_at DESC, id DESC LIMIT 1""",
-                (alert["matchup_id"], alert["commence_time"]),
-            )
+            close = None
         if not close or not close.get("books"):
             continue
         close_books = close["books"]
@@ -2347,7 +2342,7 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             "line_clv": round(line_clv, 3),
             "price_clv_pct": price_clv,
             "close_history_id": int(close["history_id"]),
-            "close_source": "verified_clv_closes" if sport == "cfb" else "last_prestart_capture",
+            "close_source": "verified_clv_closes",
             "signal_version": details.get("signal_version") or ("nfl-lines-v1" if sport == "nfl" else _CFB_SIGNAL_VERSION),
             "exec_book": exec_book,
             "entry_decimal": float(entry_decimal) if entry_decimal is not None else None,
@@ -2403,12 +2398,12 @@ def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
     print()
 
     cohort_predicate = "TRUE" if include_legacy else """(
-        a.sport NOT IN ('mlb', 'tennis', 'cfb') OR EXISTS (
+        a.sport NOT IN ('mlb', 'tennis', 'cfb', 'nfl') OR EXISTS (
             SELECT 1 FROM verified_clv_closes c
             WHERE c.sport=a.sport AND c.matchup_id=a.matchup_id
         )
     )"""
-    cohort_label = "including non-primary/legacy" if include_legacy else "verified_clv_v1 for MLB/Tennis/CFB"
+    cohort_label = "including non-primary/legacy" if include_legacy else "verified_clv_v1 for MLB/Tennis/NFL/CFB"
     rows = db.execute(
         f"""
         SELECT sport, alert_type, COUNT(*) n,

@@ -4034,18 +4034,20 @@ INDEXES = [
     "ALTER TABLE line_alerts ADD COLUMN IF NOT EXISTS pnl_units DOUBLE PRECISION",
     "UPDATE line_alerts SET dedupe_key=alert_type || ':' || side WHERE dedupe_key IS NULL",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_line_alerts_dedupe_key ON line_alerts(sport, matchup_id, dedupe_key)",
-    # Event-driven, quality-graded closes. CFB adds early market checkpoints;
+    # Event-driven, quality-graded closes. CFB and NFL add early market checkpoints;
     # every close still points to one immutable pre-boundary history row.
     """CREATE TABLE IF NOT EXISTS odds_capture_checkpoints (
         id BIGSERIAL PRIMARY KEY,
-        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'cfb')),
+        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb')),
         matchup_id INTEGER NOT NULL,
         event_id TEXT NOT NULL,
         checkpoint TEXT NOT NULL CHECK (
             checkpoint IN (
                 't_minus_48h', 't_minus_24h', 't_minus_6h',
-                't_minus_90m', 't_minus_15m', 't_minus_2m'
+                't_minus_90m', 't_minus_30m', 't_minus_15m', 't_minus_2m',
+                'closing_candidate'
             )
+            OR checkpoint ~ '^(d_minus_[123]|game_day)_[0-2][0-9]$'
         ),
         scheduled_start_at TIMESTAMPTZ NOT NULL,
         target_at TIMESTAMPTZ NOT NULL,
@@ -4062,7 +4064,7 @@ INDEXES = [
     )""",
     """CREATE TABLE IF NOT EXISTS event_closing_lines (
         id BIGSERIAL PRIMARY KEY,
-        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'cfb')),
+        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb')),
         matchup_id INTEGER NOT NULL,
         event_id TEXT,
         scheduled_start_at TIMESTAMPTZ NOT NULL,
@@ -4102,12 +4104,16 @@ INDEXES = [
         metadata JSONB NOT NULL DEFAULT '{}'::jsonb
     )""",
     "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_sport_check",
-    "ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_sport_check CHECK (sport IN ('mlb', 'tennis', 'cfb'))",
+    "ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_sport_check CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb'))",
     "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_checkpoint_check",
     """ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check
-       CHECK (checkpoint IN ('t_minus_48h', 't_minus_24h', 't_minus_6h', 't_minus_90m', 't_minus_15m', 't_minus_2m'))""",
+       CHECK (
+         checkpoint IN ('t_minus_48h', 't_minus_24h', 't_minus_6h', 't_minus_90m',
+                        't_minus_30m', 't_minus_15m', 't_minus_2m', 'closing_candidate')
+         OR checkpoint ~ '^(d_minus_[123]|game_day)_[0-2][0-9]$'
+       )""",
     "ALTER TABLE event_closing_lines DROP CONSTRAINT IF EXISTS event_closing_lines_sport_check",
-    "ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'cfb'))",
+    "ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb'))",
     "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS methodology_version TEXT NOT NULL DEFAULT 'event-close-v1'",
     "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS clv_cohort TEXT NOT NULL DEFAULT 'non_primary'",
     "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS verification_level TEXT NOT NULL DEFAULT 'scheduled_boundary'",

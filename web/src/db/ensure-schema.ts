@@ -504,7 +504,7 @@ const ODDS_HISTORY_DDLS = [
   `ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS draw_ml INTEGER`,
   `CREATE TABLE IF NOT EXISTS event_closing_lines (
       id BIGSERIAL PRIMARY KEY,
-      sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'cfb')),
+      sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb')),
       matchup_id INTEGER NOT NULL,
       event_id TEXT,
       scheduled_start_at TIMESTAMPTZ NOT NULL,
@@ -525,7 +525,7 @@ const ODDS_HISTORY_DDLS = [
       UNIQUE (sport, matchup_id)
     )`,
   `ALTER TABLE event_closing_lines DROP CONSTRAINT IF EXISTS event_closing_lines_sport_check`,
-  `ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'cfb'))`,
+  `ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb'))`,
   `CREATE OR REPLACE VIEW verified_clv_closes AS
      SELECT * FROM event_closing_lines
      WHERE methodology_version='event-close-v1'

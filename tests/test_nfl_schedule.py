@@ -254,6 +254,42 @@ def test_odds_ingestion_writes_append_only_fixture(monkeypatch) -> None:
     assert db.current_update is not None
 
 
+def test_targeted_odds_capture_uses_named_books_and_event_ids(monkeypatch) -> None:
+    db = _OddsDatabase()
+    event = _event(
+        commence_time="2099-09-14T00:20:00Z",
+        bookmakers=[{
+            "key": "draftkings",
+            "last_update": "2099-09-13T12:00:00Z",
+            "markets": [{"key": "h2h", "outcomes": [
+                {"name": "Dallas Cowboys", "price": -145},
+                {"name": "Philadelphia Eagles", "price": 125},
+            ]}],
+        }],
+    )
+    observed = {}
+
+    def fake_get(_url, *, params, timeout):
+        observed.update(params)
+        assert timeout == 20
+        return _Response([event])
+
+    monkeypatch.setattr(nfl_schedule.requests, "get", fake_get)
+    monkeypatch.setattr(nfl_schedule, "insert_game_odds_history_rows", lambda _db, rows: len(rows))
+    audit = {}
+    updated = nfl_schedule.fetch_odds(
+        db, "key", event_ids={"nfl-event-1"}, refresh_events=False,
+        bookmakers="draftkings,fanduel,pinnacle", request_audit=audit,
+    )
+
+    assert updated == 1
+    assert observed["eventIds"] == "nfl-event-1"
+    assert observed["bookmakers"] == "draftkings,fanduel,pinnacle"
+    assert "regions" not in observed
+    assert audit["request_count"] == 1
+    assert audit["requests_last"] == 1
+
+
 def test_capture_must_precede_provider_and_stored_kickoff() -> None:
     captured = datetime(2026, 9, 13, 17, 5, tzinfo=timezone.utc)
     with pytest.raises(ValueError, match="stored kickoff"):

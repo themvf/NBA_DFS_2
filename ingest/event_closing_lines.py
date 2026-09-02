@@ -1,4 +1,4 @@
-"""Event-driven, quality-graded closing lines for MLB, Tennis, and CFB.
+"""Event-driven, quality-graded closing lines for MLB, Tennis, NFL, and CFB.
 
 This worker is cheap to poll: it seeds durable checkpoint rows from schedules
 and calls The Odds API only when one or more events are actually due. Existing
@@ -12,8 +12,9 @@ import json
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -21,6 +22,7 @@ from config import load_config
 from db.database import DatabaseManager
 from ingest.cfb_schedule import fetch_odds as fetch_cfb_odds
 from ingest.mlb_schedule import fetch_odds as fetch_mlb_odds
+from ingest.nfl_schedule import fetch_events as fetch_nfl_events, fetch_odds as fetch_nfl_odds
 from ingest.tennis_schedule import discover_tournaments, fetch_tournament
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ BOOKMAKERS = (
 VERIFIED_CLV_START_AT = datetime(2026, 8, 31, 4, 0, tzinfo=timezone.utc)
 CLV_METHODOLOGY_VERSION = "event-close-v1"
 VERIFIED_CLV_COHORT = "verified_clv_v1"
+EASTERN = ZoneInfo("America/New_York")
 CORE_CHECKPOINTS = (
     ("t_minus_6h", 360, 330),
     ("t_minus_90m", 90, 60),
@@ -52,6 +55,7 @@ CHECKPOINTS_BY_SPORT = {
 DAILY_CREDIT_CAP = int(os.getenv("ODDS_CLOSE_DAILY_CREDIT_CAP", "240"))
 MIN_REMAINING_RESERVE = int(os.getenv("ODDS_CLOSE_MIN_REMAINING", "250"))
 ESTIMATED_GROUP_COST = 3  # three markets x one <=10-book group
+NFL_STANDARD_WINDOW_MINUTES = 20
 
 
 def _as_utc(value: datetime | str) -> datetime:
@@ -60,6 +64,82 @@ def _as_utc(value: datetime | str) -> datetime:
     else:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
+
+def nfl_checkpoint_schedule(scheduled_start: datetime | str) -> list[dict]:
+    """Build the frozen ET calendar cadence for one NFL kickoff.
+
+    Calendar-day slots express the requested D-3/D-2/D-1/game-day cadence.
+    The final three jobs are event-relative. Each target has a durable window
+    so a five-minute scheduler does not need to fire on the exact minute.
+    """
+    kickoff = _as_utc(scheduled_start)
+    kickoff_et = kickoff.astimezone(EASTERN)
+    jobs: list[dict] = []
+
+    def add(name: str, target: datetime, due_until: datetime | None = None) -> None:
+        target_utc = _as_utc(target)
+        due_utc = _as_utc(due_until or (target_utc + timedelta(minutes=NFL_STANDARD_WINDOW_MINUTES)))
+        if target_utc < kickoff:
+            jobs.append({
+                "checkpoint": name,
+                "target_at": target_utc,
+                "due_until": min(due_utc, kickoff),
+            })
+
+    for days_before, hours_between in ((3, 6), (2, 6), (1, 3)):
+        local_date = kickoff_et.date() - timedelta(days=days_before)
+        for hour in range(0, 24, hours_between):
+            local_target = datetime.combine(local_date, time(hour=hour), tzinfo=EASTERN)
+            add(f"d_minus_{days_before}_{hour:02d}", local_target)
+
+    # Game-day hourly captures end at least 60 minutes before kickoff. The
+    # event-relative 30m/15m/close-candidate jobs own the final hour.
+    for hour in range(0, 24):
+        local_target = datetime.combine(kickoff_et.date(), time(hour=hour), tzinfo=EASTERN)
+        if _as_utc(local_target) <= kickoff - timedelta(hours=1):
+            add(f"game_day_{hour:02d}", local_target)
+
+    add("t_minus_30m", kickoff - timedelta(minutes=30), kickoff - timedelta(minutes=20))
+    add("t_minus_15m", kickoff - timedelta(minutes=15), kickoff - timedelta(minutes=5))
+    add("closing_candidate", kickoff - timedelta(minutes=5), kickoff)
+    return jobs
+
+
+def _seed_nfl_checkpoints(db: DatabaseManager, now: datetime) -> int:
+    events = db.execute(
+        """
+        SELECT id AS matchup_id, event_id, commence_time AS scheduled_start_at
+        FROM nfl_matchups
+        WHERE event_id IS NOT NULL
+          AND commence_time BETWEEN %s - INTERVAL '8 hours' AND %s + INTERVAL '4 days'
+          AND completed = FALSE
+          AND COALESCE(game_status, '') NOT IN ('Postponed', 'Cancelled')
+        """,
+        (now, now),
+    )
+    values: list[tuple] = []
+    for event in events:
+        for job in nfl_checkpoint_schedule(event["scheduled_start_at"]):
+            values.append((
+                "nfl", event["matchup_id"], str(event["event_id"]), job["checkpoint"],
+                event["scheduled_start_at"], job["target_at"], job["due_until"],
+            ))
+    if not values:
+        return 0
+    placeholders = ",".join(["(%s,%s,%s,%s,%s,%s,%s)"] * len(values))
+    params = tuple(item for row in values for item in row)
+    inserted = db.execute(
+        f"""
+        INSERT INTO odds_capture_checkpoints (
+            sport, matchup_id, event_id, checkpoint, scheduled_start_at, target_at, due_until
+        ) VALUES {placeholders}
+        ON CONFLICT (sport, matchup_id, checkpoint, scheduled_start_at) DO NOTHING
+        RETURNING id
+        """,
+        params,
+    )
+    return len(inserted)
 
 
 def close_quality(lead_seconds: int) -> str:
@@ -185,7 +265,7 @@ def seed_checkpoints(db: DatabaseManager, now: datetime | None = None) -> int:
             (sport, now, now),
         )
         inserted += len(rows)
-    return inserted
+    return inserted + _seed_nfl_checkpoints(db, now)
 
 
 def reconcile_checkpoints(db: DatabaseManager, now: datetime | None = None) -> int:
@@ -228,10 +308,12 @@ def due_checkpoints(db: DatabaseManager, now: datetime | None = None) -> list[di
     return [dict(row) for row in db.execute(
         """
         SELECT c.*, CASE WHEN c.sport='tennis' THEN tm.tour END AS tour,
-               CASE WHEN c.sport='tennis' THEN tm.tournament END AS tournament
+               CASE WHEN c.sport='tennis' THEN tm.tournament END AS tournament,
+               CASE WHEN c.sport='nfl' THEN nm.season_type END AS season_type
         FROM odds_capture_checkpoints c
         LEFT JOIN tennis_matches tm ON c.sport='tennis' AND tm.id=c.matchup_id
-        WHERE c.status IN ('pending', 'failed')
+        LEFT JOIN nfl_matchups nm ON c.sport='nfl' AND nm.id=c.matchup_id
+        WHERE c.status IN ('pending', 'attempted', 'failed')
           AND c.target_at <= %s AND c.due_until >= %s
           AND c.scheduled_start_at > %s
         ORDER BY c.sport, c.scheduled_start_at, c.matchup_id
@@ -337,13 +419,16 @@ def capture_due_checkpoints(
     mlb_groups: dict[str, list[dict]] = defaultdict(list)
     tennis_jobs: list[dict] = []
     cfb_jobs: list[dict] = []
+    nfl_groups: dict[str, list[dict]] = defaultdict(list)
     for job in due:
         if job["sport"] == "mlb":
             mlb_groups[_as_utc(job["scheduled_start_at"]).date().isoformat()].append(job)
         elif job["sport"] == "tennis":
             tennis_jobs.append(job)
-        else:
+        elif job["sport"] == "cfb":
             cfb_jobs.append(job)
+        elif job["sport"] == "nfl":
+            nfl_groups[str(job.get("season_type") or "regular")].append(job)
 
     for game_date, jobs in mlb_groups.items():
         allowed, reason = quota_allows(db)
@@ -419,6 +504,49 @@ def capture_due_checkpoints(
             result["paid_requests"] += 1
             if updated == 0:
                 _mark_failure(db, cfb_jobs, "provider returned no accepted prestart events")
+
+    for season_type, jobs in nfl_groups.items():
+        allowed, reason = quota_allows(db)
+        if not allowed:
+            _mark_failure(db, jobs, f"quota deferred: {reason}")
+            result["quota_deferred"] += len(jobs)
+            continue
+        event_ids = {str(job["event_id"]) for job in jobs}
+        _mark_attempt(db, jobs, now)
+        audit = {}
+        try:
+            updated = fetch_nfl_odds(
+                db, api_key, event_ids=event_ids, refresh_events=False,
+                bookmakers=BOOKMAKERS, markets=MARKETS, request_audit=audit,
+            )
+        except requests.RequestException as exc:
+            response = exc.response
+            if response is not None:
+                audit.update({
+                    "endpoint": str(response.url).split("?", 1)[0],
+                    "status": response.status_code,
+                    "requests_last": response.headers.get("x-requests-last"),
+                    "requests_used": response.headers.get("x-requests-used"),
+                    "requests_remaining": response.headers.get("x-requests-remaining"),
+                    "request_count": 1,
+                })
+            _audit_usage(
+                db, sport="nfl", event_count=len(event_ids), audit=audit,
+                metadata={"season_type": season_type, "event_ids": sorted(event_ids),
+                          "error": str(exc)},
+            )
+            _mark_failure(db, jobs, f"provider request failed: {exc}")
+            result["groups"] += 1
+            result["paid_requests"] += int(audit.get("request_count") or 0)
+            continue
+        _audit_usage(
+            db, sport="nfl", event_count=len(event_ids), audit=audit,
+            metadata={"season_type": season_type, "event_ids": sorted(event_ids)},
+        )
+        result["groups"] += 1
+        result["paid_requests"] += int(audit.get("request_count") or 1)
+        if updated == 0:
+            _mark_failure(db, jobs, "provider returned no accepted prestart events")
 
     reconcile_checkpoints(db, datetime.now(timezone.utc))
     return result
@@ -523,8 +651,14 @@ def freeze_due_closes(db: DatabaseManager, now: datetime | None = None) -> dict:
         WHERE m.commence_time <= %s AND m.commence_time >= %s - INTERVAL '12 hours'
           AND m.completed = FALSE AND m.start_time_tbd = FALSE
           AND NOT EXISTS (SELECT 1 FROM event_closing_lines c WHERE c.sport='cfb' AND c.matchup_id=m.id)
+        UNION ALL
+        SELECT 'nfl', m.id, NULL, m.event_id, m.commence_time
+        FROM nfl_matchups m
+        WHERE m.commence_time <= %s AND m.commence_time >= %s - INTERVAL '12 hours'
+          AND COALESCE(m.game_status, '') NOT IN ('Postponed', 'Cancelled')
+          AND NOT EXISTS (SELECT 1 FROM event_closing_lines c WHERE c.sport='nfl' AND c.matchup_id=m.id)
         """,
-        (now, now, now, now, now, now),
+        (now, now, now, now, now, now, now, now),
     )
     result = {"eligible": len(rows), "frozen": 0, "awaiting_boundary": 0, "missing_history": 0}
     for row in rows:
@@ -540,11 +674,16 @@ def freeze_due_closes(db: DatabaseManager, now: datetime | None = None) -> dict:
             boundary = scheduled
             source = "scheduled_provider"
             evidence = {"limitation": "no verified point-level first-serve timestamp"}
-        else:
+        elif row["sport"] == "cfb":
             actual = None
             boundary = scheduled
             source = "scheduled_cfbd"
             evidence = {"limitation": "no verified play-level CFB kickoff timestamp"}
+        else:
+            actual = None
+            boundary = scheduled
+            source = "scheduled_nfl"
+            evidence = {"limitation": "no verified play-level NFL kickoff timestamp"}
         if _freeze_one(
             db, sport=row["sport"], matchup_id=int(row["matchup_id"]),
             event_id=row.get("event_id"), scheduled_start=scheduled,
@@ -578,6 +717,16 @@ def health_report(db: DatabaseManager) -> dict:
 
 
 def run(db: DatabaseManager, api_key: str, *, dry_run: bool = False) -> dict:
+    # The previous scheduled NFL capture discovered only the current game
+    # date. Refreshing the provider's free event list here is required before
+    # D-3 checkpoints can be seeded. It does not write an odds observation.
+    if not dry_run:
+        try:
+            fetch_nfl_events(db, api_key)
+        except requests.RequestException as exc:
+            # Existing mapped games and due checkpoints remain usable. Most
+            # importantly, an event-list outage cannot block close freezing.
+            logger.warning("NFL event discovery failed; continuing with mapped games: %s", exc)
     captures = capture_due_checkpoints(db, api_key, dry_run=dry_run)
     closes = {"skipped": "dry_run"} if dry_run else freeze_due_closes(db)
     return {"captures": captures, "closes": closes, "health": health_report(db)}
@@ -585,7 +734,7 @@ def run(db: DatabaseManager, api_key: str, *, dry_run: bool = False) -> dict:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="Capture and freeze MLB/Tennis/CFB closing lines")
+    parser = argparse.ArgumentParser(description="Capture and freeze MLB/Tennis/NFL/CFB closing lines")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--health-only", action="store_true")
     args = parser.parse_args()

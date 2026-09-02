@@ -27,6 +27,30 @@ def test_cfb_uses_early_and_late_market_checkpoints() -> None:
     assert ("t_minus_2m", 2, 0) in checkpoints
 
 
+def test_nfl_calendar_cadence_for_sunday_early_game() -> None:
+    kickoff = datetime(2026, 9, 13, 17, tzinfo=timezone.utc)  # 1:00 PM ET
+    jobs = closes.nfl_checkpoint_schedule(kickoff)
+    keyed = {job["checkpoint"]: job for job in jobs}
+
+    assert len(jobs) == 32
+    assert {f"d_minus_3_{hour:02d}" for hour in (0, 6, 12, 18)} <= set(keyed)
+    assert {f"d_minus_2_{hour:02d}" for hour in (0, 6, 12, 18)} <= set(keyed)
+    assert {f"d_minus_1_{hour:02d}" for hour in range(0, 24, 3)} <= set(keyed)
+    assert {f"game_day_{hour:02d}" for hour in range(13)} <= set(keyed)
+    assert keyed["game_day_12"]["target_at"] == datetime(2026, 9, 13, 16, tzinfo=timezone.utc)
+    assert keyed["t_minus_30m"]["target_at"] == datetime(2026, 9, 13, 16, 30, tzinfo=timezone.utc)
+    assert keyed["t_minus_15m"]["due_until"] == datetime(2026, 9, 13, 16, 55, tzinfo=timezone.utc)
+    assert keyed["closing_candidate"]["due_until"] == kickoff
+
+
+def test_nfl_calendar_cadence_respects_dst_offset() -> None:
+    # DST ends on this Sunday: midnight is EDT while the 1 PM game is EST.
+    jobs = closes.nfl_checkpoint_schedule(datetime(2026, 11, 1, 18, tzinfo=timezone.utc))
+    keyed = {job["checkpoint"]: job for job in jobs}
+    assert keyed["game_day_00"]["target_at"] == datetime(2026, 11, 1, 4, tzinfo=timezone.utc)
+    assert keyed["game_day_12"]["target_at"] == datetime(2026, 11, 1, 17, tzinfo=timezone.utc)
+
+
 def test_verified_cohort_boundary_is_machine_readable() -> None:
     assert closes.VERIFIED_CLV_START_AT == datetime(2026, 8, 31, 4, tzinfo=timezone.utc)
     actual = closes.classify_clv_cohort(
@@ -152,6 +176,39 @@ def test_cfb_due_games_share_one_paid_bulk_capture(monkeypatch) -> None:
         db, "key", now=datetime(2026, 9, 5, 10, tzinfo=timezone.utc),
     )
     assert observed == {"event_ids": {"a", "b"}, "refresh_events": False}
+    assert result["paid_requests"] == 1
+    assert result["groups"] == 1
+
+
+def test_nfl_due_games_share_one_targeted_bulk_capture(monkeypatch) -> None:
+    jobs = [
+        {"id": 11, "sport": "nfl", "event_id": "a", "season_type": "regular",
+         "scheduled_start_at": "2026-09-13T17:00:00Z"},
+        {"id": 12, "sport": "nfl", "event_id": "b", "season_type": "regular",
+         "scheduled_start_at": "2026-09-13T17:00:00Z"},
+    ]
+    db = EmptyDb()
+    observed = {}
+    monkeypatch.setattr(closes, "seed_checkpoints", lambda *_args: 0)
+    monkeypatch.setattr(closes, "reconcile_checkpoints", lambda *_args: 0)
+    monkeypatch.setattr(closes, "due_checkpoints", lambda *_args: jobs)
+    monkeypatch.setattr(closes, "quota_allows", lambda *_args: (True, None))
+    monkeypatch.setattr(closes, "_audit_usage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(closes, "_mark_attempt", lambda *_args: None)
+    monkeypatch.setattr(closes, "_mark_failure", lambda *_args: None)
+
+    def fake_fetch(_db, _key, **kwargs):
+        observed.update(kwargs)
+        kwargs["request_audit"].update({"request_count": 1, "requests_last": 3})
+        return 2
+
+    monkeypatch.setattr(closes, "fetch_nfl_odds", fake_fetch)
+    result = closes.capture_due_checkpoints(
+        db, "key", now=datetime(2026, 9, 13, 12, tzinfo=timezone.utc),
+    )
+    assert observed["event_ids"] == {"a", "b"}
+    assert observed["refresh_events"] is False
+    assert observed["bookmakers"] == closes.BOOKMAKERS
     assert result["paid_requests"] == 1
     assert result["groups"] == 1
 

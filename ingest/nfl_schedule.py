@@ -216,11 +216,25 @@ def fetch_odds(
     game_date: str | None = None,
     *,
     monitoring_hours: int | None = None,
+    event_ids: set[str] | None = None,
+    refresh_events: bool = True,
+    bookmakers: str | None = None,
+    markets: str = "h2h,spreads,totals",
+    request_audit: dict | None = None,
 ) -> int:
     if not api_key:
         raise ValueError("ODDS_API_KEY is required for NFL odds ingestion")
-    fetch_events(db, api_key, None if monitoring_hours else game_date)
-    if monitoring_hours:
+    if refresh_events:
+        fetch_events(db, api_key, None if monitoring_hours else game_date)
+    if event_ids is not None:
+        eligible_rows = db.execute(
+            """
+            SELECT event_id, season_type FROM nfl_matchups
+            WHERE event_id = ANY(%s) AND commence_time > NOW() AND NOT completed
+            """,
+            (sorted(event_ids),),
+        )
+    elif monitoring_hours:
         eligible_rows = db.execute(
             """
             SELECT event_id, season_type FROM nfl_matchups
@@ -247,25 +261,55 @@ def fetch_odds(
         print(f"NFL odds: no events {horizon}; paid odds request skipped")
         return 0
     games: list[dict] = []
+    audit_calls: list[dict] = []
     for sport_key, season_type in NFL_SPORT_KEYS.items():
         if not eligible_by_type.get(season_type):
             continue
+        requested_ids = sorted(eligible_by_type[season_type])
+        params = {
+            "apiKey": api_key,
+            "markets": markets,
+            "oddsFormat": "american",
+            "dateFormat": "iso",
+            "eventIds": ",".join(requested_ids),
+        }
+        if bookmakers:
+            params["bookmakers"] = bookmakers
+        else:
+            params["regions"] = NFL_ODDS_REGIONS
         response = requests.get(
             f"{ODDS_API_BASE}/sports/{sport_key}/odds/",
-            params={
-                "apiKey": api_key,
-                # us_ex adds Polymarket. Exact moneyline quotes stay in books
-                # JSON for Pinnacle-vs-Polymarket probability comparisons.
-                "regions": NFL_ODDS_REGIONS,
-                "markets": "h2h,spreads,totals",
-                "oddsFormat": "american",
-                "dateFormat": "iso",
-            },
+            params=params,
             timeout=20,
         )
         response.raise_for_status()
         _log_quota(response, f"NFL {season_type} odds")
+        audit_calls.append({
+            "endpoint": str(getattr(response, "url", f"{ODDS_API_BASE}/sports/{sport_key}/odds/")).split("?", 1)[0],
+            "season_type": season_type,
+            "event_ids": requested_ids,
+            "status": getattr(response, "status_code", 200),
+            "requests_last": response.headers.get("x-requests-last"),
+            "requests_used": response.headers.get("x-requests-used"),
+            "requests_remaining": response.headers.get("x-requests-remaining"),
+        })
         games.extend(response.json() or [])
+    if request_audit is not None and audit_calls:
+        def _header_int(name: str) -> int | None:
+            try:
+                return int(audit_calls[-1].get(name))
+            except (TypeError, ValueError):
+                return None
+
+        request_audit.update({
+            "endpoint": audit_calls[0]["endpoint"],
+            "status": audit_calls[-1]["status"],
+            "requests_last": sum(int(call.get("requests_last") or 0) for call in audit_calls),
+            "requests_used": _header_int("requests_used"),
+            "requests_remaining": _header_int("requests_remaining"),
+            "request_count": len(audit_calls),
+            "calls": audit_calls,
+        })
     captured_at = datetime.now(timezone.utc).replace(microsecond=0)
     capture_key = captured_at.isoformat()
     history_rows: list[dict] = []

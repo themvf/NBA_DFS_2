@@ -1,14 +1,12 @@
 name: Capture NFL Odds
 
 on:
-  schedule:
-    # Redundant half-hour opportunities; the CLI skips the paid odds call when
-    # no NFL events are scheduled on the current Eastern date.
-    - cron: "7,37 * * * *"
+  # Manual recovery path. Scheduled NFL capture is owned by
+  # capture_event_closes.yml and its durable event-relative checkpoints.
   workflow_dispatch:
 
 concurrency:
-  group: capture-nfl-odds
+  group: capture-event-closing-lines
   cancel-in-progress: false
 
 jobs:
