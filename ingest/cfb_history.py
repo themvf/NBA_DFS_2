@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,8 +23,6 @@ import requests
 from config import DATA_DIR, load_config
 from db.database import DatabaseManager
 from db.queries import (
-    insert_cfb_historical_line,
-    set_cfb_canonical_historical_provider,
     upsert_cfb_matchup,
     upsert_cfb_team,
     upsert_cfb_team_alias,
@@ -165,24 +163,64 @@ def audit_season(games: list[dict], line_games: list[dict], season: int) -> dict
     }
 
 
-def _upsert_game(db: DatabaseManager, game: dict) -> int:
-    home_id = upsert_cfb_team(
-        db, cfbd_team_id=int(game["homeId"]), name=str(game["homeTeam"]),
-        conference=game.get("homeConference"), classification=game.get("homeClassification"),
-    )
-    away_id = upsert_cfb_team(
-        db, cfbd_team_id=int(game["awayId"]), name=str(game["awayTeam"]),
-        conference=game.get("awayConference"), classification=game.get("awayClassification"),
-    )
-    upsert_cfb_team_alias(db, provider=SOURCE, alias=str(game["homeTeam"]), team_id=home_id, reviewed=True)
-    upsert_cfb_team_alias(db, provider=SOURCE, alias=str(game["awayTeam"]), team_id=away_id, reviewed=True)
+class _TransactionDb:
+    """DatabaseManager-compatible facade that reuses one season transaction."""
+
+    def __init__(self, connection) -> None:
+        self.connection = connection
+
+    def execute(self, sql: str, params=None):
+        cursor = self.connection.cursor()
+        cursor.execute(sql, params or ())
+        try:
+            return cursor.fetchall()
+        except Exception:
+            return []
+
+    def execute_one(self, sql: str, params=None):
+        cursor = self.connection.cursor()
+        cursor.execute(sql, params or ())
+        return cursor.fetchone()
+
+    def execute_insert(self, sql: str, params=None) -> int:
+        row = self.execute_one(sql, params)
+        return int(row["id"]) if row else 0
+
+
+def _upsert_game(
+    db: DatabaseManager, game: dict, *, team_cache: dict[int, int] | None = None,
+    venue_cache: dict[tuple[int | None, str], int] | None = None,
+) -> int:
+    team_cache = team_cache if team_cache is not None else {}
+    venue_cache = venue_cache if venue_cache is not None else {}
+
+    def team_id(side: str) -> int:
+        source_id = int(game[f"{side}Id"])
+        if source_id not in team_cache:
+            team_cache[source_id] = upsert_cfb_team(
+                db, cfbd_team_id=source_id, name=str(game[f"{side}Team"]),
+                conference=game.get(f"{side}Conference"),
+                classification=game.get(f"{side}Classification"),
+            )
+            upsert_cfb_team_alias(
+                db, provider=SOURCE, alias=str(game[f"{side}Team"]),
+                team_id=team_cache[source_id], reviewed=True,
+            )
+        return team_cache[source_id]
+
+    home_id = team_id("home")
+    away_id = team_id("away")
     venue_id = None
     if game.get("venue"):
-        venue_id = upsert_cfb_venue(
-            db,
-            cfbd_venue_id=int(game["venueId"]) if game.get("venueId") is not None else None,
-            name=str(game["venue"]),
+        venue_key = (
+            int(game["venueId"]) if game.get("venueId") is not None else None,
+            str(game["venue"]),
         )
+        if venue_key not in venue_cache:
+            venue_cache[venue_key] = upsert_cfb_venue(
+                db, cfbd_venue_id=venue_key[0], name=venue_key[1],
+            )
+        venue_id = venue_cache[venue_key]
     commence = parse_iso(game.get("startDate"))
     completed = bool(game.get("completed"))
     return upsert_cfb_matchup(
@@ -253,37 +291,82 @@ def choose_canonical_provider(rows: list[dict]) -> str | None:
 
 
 def ingest_season(db: DatabaseManager, games: list[dict], line_games: list[dict]) -> dict:
+    from psycopg2.extras import execute_values
+
     captured_at = datetime.now(timezone.utc).replace(microsecond=0)
+    line_source_ids = {int(row["id"]) for row in line_games if row.get("id") is not None}
+    eligible_games = [
+        game for game in games
+        if game.get("id") is not None and int(game["id"]) in line_source_ids
+        and game.get("completed") and game.get("homePoints") is not None
+        and game.get("awayPoints") is not None
+        and str(game.get("homeClassification", "")).lower() == "fbs"
+        and str(game.get("awayClassification", "")).lower() == "fbs"
+    ]
     matchup_ids: dict[int, int] = {}
-    for game in games:
-        if game.get("id") is not None:
-            matchup_ids[int(game["id"])] = _upsert_game(db, game)
-    inserted = 0
-    skipped = 0
-    canonicalized = 0
-    for line_game in line_games:
-        source_id = int(line_game["id"])
-        matchup_id = matchup_ids.get(source_id)
-        if not matchup_id:
-            skipped += 1
-            continue
-        rows = _line_rows(matchup_id, line_game, captured_at)
-        for row in rows:
-            inserted += int(bool(insert_cfb_historical_line(db, row)))
-        grouped: dict[tuple[str, str], list[dict]] = defaultdict(list)
-        for row in rows:
-            grouped[(row["market_type"], row["line_designation"])].append(row)
-        for (market, designation), candidates in grouped.items():
-            provider = choose_canonical_provider(candidates)
-            if provider:
-                set_cfb_canonical_historical_provider(
-                    db, game_id=matchup_id, market_type=market,
-                    line_designation=designation, provider=provider,
+    team_cache: dict[int, int] = {}
+    venue_cache: dict[tuple[int | None, str], int] = {}
+    with db.connect() as connection:
+        tx = _TransactionDb(connection)
+        for game in eligible_games:
+            matchup_ids[int(game["id"])] = _upsert_game(
+                tx, game, team_cache=team_cache, venue_cache=venue_cache,
+            )
+        all_rows = [
+            row
+            for line_game in line_games
+            if (matchup_id := matchup_ids.get(int(line_game["id"]))) is not None
+            for row in _line_rows(matchup_id, line_game, captured_at)
+        ]
+        values = [(
+            row["game_id"], row["provider"], row["market_type"], row.get("home_value"),
+            row.get("away_value"), row.get("home_price"), row.get("away_price"),
+            row["line_designation"], row.get("home_conference"), row.get("away_conference"),
+            row.get("home_classification"), row.get("away_classification"),
+            row.get("source_event_id"), row.get("source_updated_at"), row.get("available_at"),
+            row["captured_at"], row["raw_payload_hash"], False,
+        ) for row in all_rows]
+        if values:
+            cursor = connection.cursor()
+            execute_values(cursor, """
+                INSERT INTO cfb_historical_game_lines (
+                    game_id, provider, market_type, home_value, away_value,
+                    home_price, away_price, line_designation, home_conference,
+                    away_conference, home_classification, away_classification,
+                    source_event_id, source_updated_at, available_at, captured_at,
+                    raw_payload_hash, is_canonical_reference
+                ) VALUES %s
+                ON CONFLICT (game_id, provider, market_type, line_designation, raw_payload_hash)
+                DO UPDATE SET
+                    home_price=COALESCE(EXCLUDED.home_price, cfb_historical_game_lines.home_price),
+                    away_price=COALESCE(EXCLUDED.away_price, cfb_historical_game_lines.away_price)
+            """, values, page_size=1000)
+            cursor.execute("""
+                WITH ranked AS (
+                  SELECT id, ROW_NUMBER() OVER (
+                    PARTITION BY game_id, market_type, line_designation
+                    ORDER BY CASE provider
+                      WHEN 'consensus' THEN 1 WHEN 'draftkings' THEN 2
+                      WHEN 'fanduel' THEN 3 WHEN 'betmgm' THEN 4
+                      WHEN 'caesars' THEN 5 ELSE 99 END,
+                      provider, id
+                  ) AS provider_rank
+                  FROM cfb_historical_game_lines
+                  WHERE game_id = ANY(%s)
                 )
-                canonicalized += 1
+                UPDATE cfb_historical_game_lines h
+                SET is_canonical_reference=(r.provider_rank=1)
+                FROM ranked r WHERE h.id=r.id
+            """, (list(matchup_ids.values()),))
+    excluded = len(line_games) - len(matchup_ids)
+    canonicalized = len({
+        (row["game_id"], row["market_type"], row["line_designation"])
+        for row in all_rows
+    })
     return {
-        "games_upserted": len(matchup_ids), "line_rows_processed": inserted,
-        "unmapped_line_games": skipped, "canonical_groups": canonicalized,
+        "games_upserted": len(matchup_ids), "line_rows_processed": len(all_rows),
+        "excluded_line_games": excluded, "unmapped_line_games": 0,
+        "canonical_groups": canonicalized,
     }
 
 
