@@ -35,7 +35,6 @@ export type NflOptimizerSettings = {
   mode: NflOptimizerMode;
   projectionSource: NflProjectionSource;
   allowDkFallback: boolean;
-  allowShadowModel: boolean;
   nLineups: number;
   minSalary: number;
   maxExposure: number;
@@ -135,7 +134,6 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (settings.maxExposure <= 0 || settings.maxExposure > 1) throw new Error("Maximum exposure must be greater than 0 and at most 100%.");
   const rosterSize = settings.format === "classic" ? 9 : 6;
   if (settings.minUnique < 1 || settings.minUnique > rosterSize) throw new Error(`Minimum unique players must be 1-${rosterSize}.`);
-  if (settings.projectionSource === "our" && !settings.allowShadowModel) throw new Error("Our historical model is shadow-only. Acknowledge research use before optimizing with it.");
 }
 
 function buildOne(
@@ -150,7 +148,12 @@ function buildOne(
   const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
   const slots = settings.format === "classic" ? [...CLASSIC_SLOTS] : [...SHOWDOWN_SLOTS];
   const rosterSize = slots.length;
-  const maxCount = (player: ResolvedPlayer) => Math.max(1, Math.floor((settings.maxExposureByPlayer[String(player.dkPlayerId)] ?? settings.maxExposure) * settings.nLineups + 1e-9));
+  const maxCount = (player: ResolvedPlayer) => {
+    const override = settings.maxExposureByPlayer[String(player.dkPlayerId)];
+    return override == null
+      ? Math.max(1, Math.floor(settings.maxExposure * settings.nLineups + 1e-9))
+      : Math.max(0, Math.floor(override * settings.nLineups + 1e-9));
+  };
   const available = pool.filter((player) => (exposureCounts.get(player.dkPlayerId) ?? 0) < maxCount(player));
   const constraints: SolverModel["constraints"] = { salary: { max: 50000, min: settings.minSalary } };
   if (settings.format === "classic") {
@@ -287,6 +290,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     if (!resolved) { coverage.excluded++; continue; }
     if (resolved.source === "dk_avg_fallback") coverage.fallback++; else coverage.direct++;
     pool.push({ ...player, projection: resolved.value, resolvedSource: resolved.source });
+  }
+  for (const [rawId, target] of Object.entries(settings.minExposureByPlayer)) {
+    if (target > 0 && !pool.some((player) => player.dkPlayerId === Number(rawId))) {
+      const named = players.find((player) => player.dkPlayerId === Number(rawId));
+      throw new Error(`${named?.name ?? `Player ${rawId}`} has a target exposure but is unavailable in the selected projection source.`);
+    }
   }
   const warnings: string[] = [];
   if (coverage.fallback > 0) warnings.push(`${coverage.fallback} players used the visible DK Avg fallback.`);

@@ -15,8 +15,8 @@ and generated lineups.
 
 FantasyPros, LineStar, and custom CSVs remain labeled comparison or explicitly
 selected optimization inputs. They are never blended into `ourProj`. Because
-the first walk-forward model did not beat its recency baseline, using our
-projection source requires an explicit research-only acknowledgement.
+the first walk-forward model did not beat its recency baseline, the page keeps
+the research-only status visible without adding a confirmation gate.
 
 ## Decisions taken 2026-09-01
 

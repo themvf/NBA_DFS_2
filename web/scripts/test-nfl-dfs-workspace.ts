@@ -22,7 +22,7 @@ for (const [game, teams] of [["A", ["BUF", "MIA"]], ["B", ["KC", "DEN"]], ["C", 
     pool.push(player(`${team} TE`, "TE", team, opp, 4200, 11), player(`${team} DST`, "DST", team, opp, 3200, 8));
   }
 }
-const settings: NflOptimizerSettings = { format: "classic", mode: "gpp", projectionSource: "our", allowDkFallback: false, allowShadowModel: true, nLineups: 3, minSalary: 45000, maxExposure: 1, minUnique: 2, stackPassCatchers: 1, bringBack: true, randomness: 0, lockedPlayerIds: [], excludedPlayerIds: [], minExposureByPlayer: {}, maxExposureByPlayer: {} };
+const settings: NflOptimizerSettings = { format: "classic", mode: "gpp", projectionSource: "our", allowDkFallback: false, nLineups: 3, minSalary: 45000, maxExposure: 1, minUnique: 2, stackPassCatchers: 1, bringBack: true, randomness: 0, lockedPlayerIds: [], excludedPlayerIds: [], minExposureByPlayer: {}, maxExposureByPlayer: {} };
 const result = optimizeNflLineups(pool, settings);
 assert.equal(result.lineups.length, 3);
 for (const lineup of result.lineups) {
@@ -40,6 +40,27 @@ assert.ok(insight.reasons.some((reason) => reason.tone === "ceiling"));
 assert.ok(insight.reasons.some((reason) => reason.tone === "correlation"));
 assert.equal(insight.sourceCounts.our, 9);
 assert.ok(insight.gameCounts.length >= 2);
+
+const targetId = pool.find((entry) => entry.name === "BUF QB")!.dkPlayerId;
+const exactExposure = optimizeNflLineups(pool, {
+  ...settings,
+  nLineups: 5,
+  stackPassCatchers: 0,
+  bringBack: false,
+  minExposureByPlayer: { [String(targetId)]: 0.4 },
+  maxExposureByPlayer: { [String(targetId)]: 0.4 },
+});
+assert.equal(exactExposure.lineups.length, 5);
+assert.equal(exactExposure.lineups.filter((lineup) => lineup.playerIds.includes(targetId)).length, 2);
+const zeroExposure = optimizeNflLineups(pool, {
+  ...settings,
+  nLineups: 1,
+  stackPassCatchers: 0,
+  bringBack: false,
+  minExposureByPlayer: { [String(targetId)]: 0 },
+  maxExposureByPlayer: { [String(targetId)]: 0 },
+});
+assert.equal(zeroExposure.lineups[0].playerIds.includes(targetId), false);
 
 const comparison = parseNflComparisonCsv("Player,Team,Proj,Own%\nJosh Allen,BUF,24.5,12.3%\nTyreek Hill,MIA,19.2,0.18\n");
 assert.equal(comparison.rows[0].projection, 24.5);
