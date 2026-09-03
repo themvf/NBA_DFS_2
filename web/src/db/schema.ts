@@ -604,6 +604,115 @@ export const nflDfsPlayerProjections = pgTable(
   ],
 );
 
+export const nflDfsSlateUploads = pgTable(
+  "nfl_dfs_slate_uploads",
+  {
+    uploadId: uuid("upload_id").primaryKey(),
+    slateSignature: text("slate_signature").notNull(),
+    fileName: text("file_name").notNull(),
+    fileDigest: text("file_digest").notNull(),
+    format: text("format").notNull(),
+    games: jsonb("games").notNull().default([]),
+    teams: jsonb("teams").notNull().default([]),
+    warnings: jsonb("warnings").notNull().default([]),
+    playerCount: integer("player_count").notNull(),
+    projectionRunId: uuid("projection_run_id").references(() => nflDfsProjectionRuns.runId),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("nfl_dfs_slate_uploads_file_projection_key").on(t.fileDigest, t.projectionRunId),
+    index("idx_nfl_dfs_slate_uploads_created").on(t.createdAt),
+  ],
+);
+
+export const nflDfsSlatePlayers = pgTable(
+  "nfl_dfs_slate_players",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    uploadId: uuid("upload_id").notNull().references(() => nflDfsSlateUploads.uploadId, { onDelete: "cascade" }),
+    dkPlayerId: bigint("dk_player_id", { mode: "number" }).notNull(),
+    captainDkPlayerId: bigint("captain_dk_player_id", { mode: "number" }),
+    ffPlayerId: bigint("ff_player_id", { mode: "number" }),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    position: text("position").notNull(),
+    rosterPositions: jsonb("roster_positions").notNull(),
+    team: text("team").notNull(),
+    opponent: text("opponent"),
+    gameKey: text("game_key"),
+    gameInfo: text("game_info"),
+    salary: integer("salary").notNull(),
+    captainSalary: integer("captain_salary"),
+    avgFptsDk: doublePrecision("avg_fpts_dk"),
+    dkStatus: text("dk_status"),
+    isOut: boolean("is_out").notNull().default(false),
+    identityMethod: text("identity_method").notNull(),
+    projectionStatus: text("projection_status").notNull(),
+    ourProj: doublePrecision("our_proj"),
+    floorFpts: doublePrecision("floor_fpts"),
+    medianFpts: doublePrecision("median_fpts"),
+    ceilingFpts: doublePrecision("ceiling_fpts"),
+    boomRate: doublePrecision("boom_rate"),
+    modelConfidence: doublePrecision("model_confidence"),
+    historyGames: integer("history_games"),
+    fantasyprosProj: doublePrecision("fantasypros_proj"),
+    linestarProj: doublePrecision("linestar_proj"),
+    linestarOwnPct: doublePrecision("linestar_own_pct"),
+    customProj: doublePrecision("custom_proj"),
+    comparisonEvidence: jsonb("comparison_evidence").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("nfl_dfs_slate_players_upload_player_key").on(t.uploadId, t.dkPlayerId),
+    index("idx_nfl_dfs_slate_players_upload").on(t.uploadId, t.position),
+  ],
+);
+
+export const nflDfsOptimizerRuns = pgTable(
+  "nfl_dfs_optimizer_runs",
+  {
+    runId: uuid("run_id").primaryKey(),
+    uploadId: uuid("upload_id").notNull().references(() => nflDfsSlateUploads.uploadId, { onDelete: "cascade" }),
+    projectionRunId: uuid("projection_run_id").references(() => nflDfsProjectionRuns.runId),
+    optimizerVersion: text("optimizer_version").notNull(),
+    mode: text("mode").notNull(),
+    projectionSource: text("projection_source").notNull(),
+    settings: jsonb("settings").notNull(),
+    inputSnapshot: jsonb("input_snapshot").notNull(),
+    inputDigest: text("input_digest").notNull(),
+    requestedLineups: integer("requested_lineups").notNull(),
+    generatedLineups: integer("generated_lineups").notNull(),
+    status: text("status").notNull(),
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_nfl_dfs_optimizer_runs_upload").on(t.uploadId, t.createdAt)],
+);
+
+export const nflDfsLineups = pgTable(
+  "nfl_dfs_lineups",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    runId: uuid("run_id").notNull().references(() => nflDfsOptimizerRuns.runId, { onDelete: "cascade" }),
+    lineupNumber: integer("lineup_number").notNull(),
+    slots: jsonb("slots").notNull(),
+    playerIds: jsonb("player_ids").notNull(),
+    totalSalary: integer("total_salary").notNull(),
+    projectedFpts: doublePrecision("projected_fpts").notNull(),
+    floorFpts: doublePrecision("floor_fpts"),
+    ceilingFpts: doublePrecision("ceiling_fpts"),
+    projectedOwnership: doublePrecision("projected_ownership"),
+    stackSummary: jsonb("stack_summary").notNull().default({}),
+    actualFpts: doublePrecision("actual_fpts"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("nfl_dfs_lineups_run_number_key").on(t.runId, t.lineupNumber),
+    index("idx_nfl_dfs_lineups_run").on(t.runId, t.lineupNumber),
+  ],
+);
+
 export const ffPlayers = pgTable(
   "ff_players",
   {

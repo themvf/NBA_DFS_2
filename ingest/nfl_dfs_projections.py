@@ -34,6 +34,23 @@ from model.nfl_dfs_historical import (
 RUN_NAMESPACE = uuid.UUID("8abcf42c-6a0d-49cc-9f34-1ad6f17b0d77")
 
 
+def infer_target_week(db: DatabaseManager, season: int) -> int:
+    """Select the next scheduled regular-season week from the canonical schedule."""
+    rows = db.execute(
+        """SELECT week, MIN(kickoff) first_kickoff
+           FROM nfl_season_games
+           WHERE season=%s AND game_type='REG'
+             AND kickoff >= NOW() - INTERVAL '6 hours'
+           GROUP BY week
+           ORDER BY first_kickoff, week
+           LIMIT 1""",
+        (season,),
+    )
+    if not rows:
+        raise ValueError(f"No current or upcoming regular-season week is loaded for {season}")
+    return int(rows[0]["week"])
+
+
 def _history(db: DatabaseManager, season: int, week: int | None) -> list[HistoricalWeek]:
     rows = db.execute(
         """SELECT w.player_id, p.gsis_id, p.canonical_name, p.position,
@@ -185,7 +202,7 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
             evidence = {
                 "source_snapshot_ids": source_ids,
                 "event_id": row["event_id"],
-                "commence_time": row["commence_time"],
+                "commence_time": row["commence_time"].isoformat() if row["commence_time"] else None,
                 "prop_inputs": [],
             }
             values.append((
@@ -209,15 +226,16 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--season", type=int, required=True)
+    parser.add_argument("--season", type=int, default=datetime.now(timezone.utc).year)
     parser.add_argument("--week", type=int)
     parser.add_argument("--seed", type=int, default=20260902)
     parser.add_argument("--no-persist", action="store_true")
     args = parser.parse_args()
     config = load_config()
     db = DatabaseManager(config.database_url)
+    week = args.week if args.week is not None else infer_target_week(db, args.season)
     projections, manifest = build_week(
-        db, season=args.season, week=args.week,
+        db, season=args.season, week=week,
         as_of_at=datetime.now(timezone.utc), seed=args.seed,
     )
     run_id = None if args.no_persist else persist_week(db, projections, manifest)
@@ -228,7 +246,7 @@ def main() -> None:
         "run_id": run_id,
         "artifact_digest": manifest["artifact_digest"],
         "season": args.season,
-        "week": args.week,
+        "week": week,
         "players": len(projections),
         "status_counts": counts,
         "prop_inputs": [],

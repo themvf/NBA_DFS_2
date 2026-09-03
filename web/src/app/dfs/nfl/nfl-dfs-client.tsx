@@ -1,107 +1,85 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, FileUp, LockKeyhole, Search, ShieldCheck } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
-import {
-  NflDkCsvError,
-  parseNflDkSalaryCsv,
-  playablePlayers,
-  type NflDkSlate,
-  type NflPosition,
-} from "@/lib/nfl-dfs/dk-salary-csv";
+import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { applyNflComparison, loadNflSalaryCsv, runNflOptimizer, type NflComparisonSource, type NflWorkspaceSlate } from "./actions";
+import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
+import { parseNflComparisonCsv } from "@/lib/nfl-dfs/comparison-csv";
+import { exportNflDkEntries } from "@/lib/nfl-dfs/entry-export";
 
-const POSITION_ORDER: NflPosition[] = ["QB", "RB", "WR", "TE", "K", "DST"];
+const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"] as const;
+const SOURCE_LABELS: Record<NflProjectionSource, string> = { our: "Our historical model", dk_avg: "DK average", fantasypros: "FantasyPros", linestar: "LineStar", custom: "Custom" };
+const points = (value: number | null) => value == null ? "—" : value.toFixed(1);
+const pct = (value: number | null) => value == null ? "—" : `${value.toFixed(1)}%`;
+const dollars = (value: number) => `$${value.toLocaleString()}`;
 
-function dollars(value: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
-}
-
-function number(value: number | null): string {
-  return value == null ? "—" : value.toFixed(1);
+function downloadText(name: string, content: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url);
 }
 
 export default function NflDfsClient() {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [slate, setSlate] = useState<NflDkSlate | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [position, setPosition] = useState<"ALL" | NflPosition>("ALL");
-  const [showUnavailable, setShowUnavailable] = useState(false);
+  const salaryRef = useRef<HTMLInputElement>(null), comparisonRef = useRef<HTMLInputElement>(null), entryRef = useRef<HTMLInputElement>(null);
+  const [pending, startTransition] = useTransition();
+  const [slate, setSlate] = useState<NflWorkspaceSlate | null>(null);
+  const [lineups, setLineups] = useState<NflGeneratedLineup[]>([]);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null), [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState(""), [position, setPosition] = useState("ALL");
+  const [comparisonSource, setComparisonSource] = useState<NflComparisonSource>("fantasypros");
+  const [entryFile, setEntryFile] = useState<File | null>(null);
+  const [locked, setLocked] = useState<number[]>([]), [excluded, setExcluded] = useState<number[]>([]);
+  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, allowDkFallback: true, allowShadowModel: false, nLineups: 20, minSalary: 49000, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: .08 });
 
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return (slate?.players ?? [])
-      .filter((player) => showUnavailable || !player.isOut)
-      .filter((player) => position === "ALL" || player.position === position)
-      .filter((player) => !normalized || `${player.name} ${player.teamAbbrev} ${player.opponent ?? ""}`.toLowerCase().includes(normalized))
-      .sort((a, b) => (b.avgFptsDk ?? -1) - (a.avgFptsDk ?? -1) || b.salary - a.salary);
-  }, [position, query, showUnavailable, slate]);
+  const filtered = useMemo(() => (slate?.players ?? []).filter((p) => (position === "ALL" || p.position === position) && (!query.trim() || `${p.name} ${p.team} ${p.opponent ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))).sort((a, b) => (b.ourProj ?? b.avgFptsDk ?? -1) - (a.ourProj ?? a.avgFptsDk ?? -1)), [slate, position, query]);
+  const exposures = useMemo(() => {
+    const map = new Map<number, { name: string; team: string; n: number }>();
+    lineups.forEach((lineup) => lineup.slots.forEach(({ player }) => { const row = map.get(player.dkPlayerId) ?? { name: player.name, team: player.team, n: 0 }; row.n++; map.set(player.dkPlayerId, row); }));
+    return [...map.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  }, [lineups]);
 
-  async function loadFile(file: File | null) {
-    if (!file) return;
-    setError(null);
-    try {
-      const parsed = parseNflDkSalaryCsv(await file.text());
-      setSlate(parsed);
-      setFileName(file.name);
-      setQuery("");
-      setPosition("ALL");
-    } catch (reason) {
-      setSlate(null);
-      setFileName(null);
-      setError(reason instanceof NflDkCsvError || reason instanceof Error ? reason.message : "The salary file could not be parsed.");
-    }
+  function loadSalary(file: File | null) {
+    if (!file) return; setError(null); setMessage(null); setLineups([]);
+    const form = new FormData(); form.set("file", file);
+    startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
   }
+  function importComparison(file: File | null) {
+    if (!file || !slate) return; setError(null); setMessage(null);
+    startTransition(async () => { try { const parsed = parseNflComparisonCsv(await file.text()); const result = await applyNflComparison(slate.uploadId, comparisonSource, parsed.rows, file.name); setSlate(result.slate); setMessage(`${SOURCE_LABELS[comparisonSource]}: matched ${result.matched}/${parsed.rows.length}; ${result.unmatched.length} unmatched.${parsed.warnings.length ? ` ${parsed.warnings.length} rows warned.` : ""}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Comparison import failed."); } });
+  }
+  function generate() {
+    if (!slate) return; setError(null); setMessage(null);
+    const payload: NflOptimizerSettings = { ...settings, format: slate.format, lockedPlayerIds: locked, excludedPlayerIds: excluded, minExposureByPlayer: {}, maxExposureByPlayer: {} };
+    startTransition(async () => { try { const response = await runNflOptimizer(slate.uploadId, payload); setLineups(response.result.lineups); setRunId(response.runId); setMessage(`Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
+  }
+  async function exportEntries() { if (!entryFile || !lineups.length) return; try { downloadText(`nfl-lineups-${runId?.slice(0, 8) ?? "export"}.csv`, exportNflDkEntries(await entryFile.text(), lineups)); } catch (reason) { setError(reason instanceof Error ? reason.message : "Entry export failed."); } }
 
-  const playable = slate ? playablePlayers(slate.players).length : 0;
-
-  return (
-    <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
-      <header className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-950 p-6 text-white shadow-lg">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300">DraftKings · NFL DFS</div>
-            <h1 className="mt-2 text-3xl font-black tracking-tight">NFL DFS Workspace</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-300">Audit a DraftKings Classic or Showdown salary pool. Our prop-free historical model is running in shadow; projections and optimization remain locked until validation passes.</p>
-          </div>
-          <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-200">INTAKE / READINESS</span>
-        </div>
-      </header>
-
-      <section className="grid gap-3 md:grid-cols-4">
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><CheckCircle2 className="h-5 w-5" /><h2 className="mt-2 font-bold">Salary intake</h2><p className="mt-1 text-xs">Classic and Showdown parser verified against real DK exports.</p></div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><ShieldCheck className="h-5 w-5" /><h2 className="mt-2 font-bold">DK scoring</h2><p className="mt-1 text-xs">Offense, DST, kicker, bonuses, and captain rules verified.</p></div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"><LockKeyhole className="h-5 w-5" /><h2 className="mt-2 font-bold">Historical model · shadow</h2><p className="mt-1 text-xs">Built without props. The first 2025 walk-forward candidate did not beat its recency baseline, so projections remain research-only while role/opportunity features are added.</p></div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"><LockKeyhole className="h-5 w-5" /><h2 className="mt-2 font-bold">Lineup optimizer</h2><p className="mt-1 text-xs">Locked until the model passes position-level validation.</p></div>
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div><h2 className="font-bold text-slate-950">Load a DK salary CSV</h2><p className="mt-1 text-sm text-slate-600">The file is parsed in your browser and is not saved to the database.</p></div>
-          <input ref={inputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => void loadFile(event.target.files?.[0] ?? null)} />
-          <button type="button" onClick={() => inputRef.current?.click()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500"><FileUp className="h-4 w-4" />{slate ? "Replace salary file" : "Upload salary file"}</button>
-        </div>
-        {fileName ? <p className="mt-3 text-xs font-semibold text-emerald-700">Loaded {fileName}</p> : null}
-        {error ? <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}
-      </section>
-
-      {slate ? <>
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          {[['Format', slate.format.toUpperCase()], ['Players', String(slate.players.length)], ['Playable', String(playable)], ['Games', String(slate.games.length)], ['Teams', String(slate.teams.length)]].map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-2xl font-black text-slate-950">{value}</div></div>)}
-        </section>
-
-        {slate.warnings.length ? <details className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"><summary className="cursor-pointer font-bold">Import warnings ({slate.warnings.length})</summary><ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{slate.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul></details> : null}
-
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-4">
-            <label className="flex min-h-10 min-w-[230px] flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search player or team" className="w-full bg-transparent text-sm outline-none" /></label>
-            <select value={position} onChange={(event) => setPosition(event.target.value as "ALL" | NflPosition)} className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold"><option value="ALL">All positions</option>{POSITION_ORDER.map((item) => <option key={item} value={item}>{item}</option>)}</select>
-            <label className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold"><input type="checkbox" checked={showUnavailable} onChange={(event) => setShowUnavailable(event.target.checked)} />Show OUT / IR</label>
-          </div>
-          <div className="overflow-x-auto"><table className="min-w-[820px] w-full text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Player</th><th className="px-3 py-3">Pos</th><th className="px-3 py-3">Team</th><th className="px-3 py-3">Opponent</th><th className="px-3 py-3">Game</th><th className="px-3 py-3 text-right">Salary</th><th className="px-3 py-3 text-right">DK Avg</th><th className="px-3 py-3">Status</th></tr></thead><tbody>{filtered.map((player) => <tr key={`${player.dkPlayerId}-${player.teamAbbrev}`} className="border-t border-slate-100"><td className="px-3 py-3 font-bold text-slate-950">{player.name}</td><td className="px-3 py-3">{player.position}</td><td className="px-3 py-3 font-semibold">{player.teamAbbrev}</td><td className="px-3 py-3">{player.opponent ?? "—"}</td><td className="px-3 py-3">{player.gameKey ?? "—"}</td><td className="px-3 py-3 text-right tabular-nums">{dollars(player.salary)}</td><td className="px-3 py-3 text-right tabular-nums">{number(player.avgFptsDk)}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${player.isOut ? "bg-red-100 text-red-800" : player.status ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{player.status ?? "ACTIVE"}</span></td></tr>)}</tbody></table>{!filtered.length ? <div className="p-10 text-center text-sm text-slate-500">No players match these filters.</div> : null}</div>
-        </section>
-      </> : <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-12 text-center"><FileUp className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-3 font-bold text-slate-900">No NFL slate loaded</h2><p className="mt-1 text-sm text-slate-600">Download a salary CSV from a DraftKings NFL Classic or Showdown contest, then upload it above.</p></section>}
-    </div>
-  );
+  return <div className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6">
+    <header className="rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-950 p-6 text-white shadow-xl"><div className="flex flex-wrap items-start justify-between gap-5"><div><div className="text-xs font-bold uppercase tracking-[.2em] text-emerald-300">DraftKings · NFL DFS</div><h1 className="mt-2 text-3xl font-black">Projection & Lineup Lab</h1><p className="mt-2 max-w-3xl text-sm text-slate-300">Build Classic or Showdown portfolios from a frozen, auditable player pool. Compare sources without silently blending them into our model.</p></div><div className="rounded-full border border-amber-300/40 bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-200">RESEARCH · MODEL IN SHADOW</div></div></header>
+    <section className="grid gap-3 md:grid-cols-4"><Status icon={<FileUp className="h-5 w-5" />} title="Persisted intake" text="Salary pools and source files are fingerprinted and saved." good /><Status icon={<BarChart3 className="h-5 w-5" />} title="Source comparison" text="Our model, DK, FantasyPros, LineStar, or custom—always labeled." good /><Status icon={<ShieldCheck className="h-5 w-5" />} title="Auditable optimizer" text="Settings, input snapshot, digest, and every lineup are retained." good /><Status icon={<AlertTriangle className="h-5 w-5" />} title="No claimed edge yet" text="The historical model has not beaten its recency baseline." /></section>
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end"><div><h2 className="font-bold text-slate-950">1. Load the DraftKings player pool</h2><p className="mt-1 text-sm text-slate-600">Upload the salary CSV—not the entries-only file. It is saved and linked to the latest model snapshot.</p></div><input ref={salaryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => loadSalary(e.target.files?.[0] ?? null)} /><button disabled={pending} onClick={() => salaryRef.current?.click()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-50"><FileUp className="h-4 w-4" />{slate ? "Replace salaries" : "Upload salaries"}</button></div>{message ? <Notice good>{message}</Notice> : null}{error ? <Notice>{error}</Notice> : null}</section>
+    {slate ? <>
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-6"><Metric label="Format" value={slate.format.toUpperCase()} /><Metric label="Players" value={String(slate.players.length)} /><Metric label="Games" value={String(slate.games.length)} /><Metric label="Our model" value={`${slate.players.filter((p) => p.ourProj != null).length}/${slate.players.length}`} /><Metric label="Model" value={slate.modelVersion ?? "None"} small /><Metric label="As of" value={slate.modelAsOf ? new Date(slate.modelAsOf).toLocaleString() : "No run"} small /></section>
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"><div className="space-y-5">
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-wrap items-end gap-3 border-b p-4"><div className="mr-auto"><h2 className="font-bold">2. Player pool & controls</h2><p className="text-xs text-slate-500">Lock or exclude players. OUT/IR players are removed automatically.</p></div><label className="flex min-h-10 min-w-56 items-center gap-2 rounded-lg border px-3"><Search className="h-4 w-4 text-slate-400" /><input className="w-full text-sm outline-none" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} /></label><select className="min-h-10 rounded-lg border bg-white px-3 text-sm" value={position} onChange={(e) => setPosition(e.target.value)}><option>ALL</option>{POSITIONS.map((p) => <option key={p}>{p}</option>)}</select></div>
+          <div className="max-h-[620px] overflow-auto"><table className="w-full min-w-[980px] text-xs"><thead className="sticky top-0 bg-slate-100 text-left text-[10px] uppercase text-slate-500"><tr><th className="p-3">Control</th><th className="p-3">Player</th><th>Pos</th><th>Team</th><th className="text-right">Salary</th><th className="text-right">Our</th><th className="text-right">Floor</th><th className="text-right">Ceiling</th><th className="text-right">DK Avg</th><th className="text-right">FantasyPros</th><th className="text-right">LineStar</th><th className="p-3 text-right">Own</th></tr></thead><tbody>{filtered.map((player) => <tr key={player.dkPlayerId} className={`border-t ${player.isOut ? "bg-red-50 opacity-60" : locked.includes(player.dkPlayerId) ? "bg-emerald-50" : excluded.includes(player.dkPlayerId) ? "bg-slate-100 opacity-60" : ""}`}><td className="p-2"><div className="flex gap-1"><button title="Lock" onClick={() => { setLocked((v) => v.includes(player.dkPlayerId) ? v.filter((id) => id !== player.dkPlayerId) : [...v, player.dkPlayerId]); setExcluded((v) => v.filter((id) => id !== player.dkPlayerId)); }} className="rounded border p-1.5">{locked.includes(player.dkPlayerId) ? <Lock className="h-3.5 w-3.5 text-emerald-700" /> : <Unlock className="h-3.5 w-3.5" />}</button><button title="Exclude" onClick={() => { setExcluded((v) => v.includes(player.dkPlayerId) ? v.filter((id) => id !== player.dkPlayerId) : [...v, player.dkPlayerId]); setLocked((v) => v.filter((id) => id !== player.dkPlayerId)); }} className="rounded border p-1.5"><XCircle className={`h-3.5 w-3.5 ${excluded.includes(player.dkPlayerId) ? "text-red-600" : ""}`} /></button></div></td><td className="p-3 font-bold">{player.name}<div className="font-normal text-[10px] text-slate-500">{player.projectionStatus} · {player.historyGames ?? 0} games</div></td><td>{player.position}</td><td>{player.team}<span className="text-slate-400"> {player.opponent ? `vs ${player.opponent}` : ""}</span></td><td className="text-right">{dollars(player.salary)}</td><td className="text-right font-bold">{points(player.ourProj)}</td><td className="text-right">{points(player.floorFpts)}</td><td className="text-right">{points(player.ceilingFpts)}</td><td className="text-right">{points(player.avgFptsDk)}</td><td className="text-right">{points(player.fantasyprosProj)}</td><td className="text-right">{points(player.linestarProj)}</td><td className="p-3 text-right">{pct(player.linestarOwnPct)}</td></tr>)}</tbody></table></div></section>
+        {lineups.length ? <LineupTable lineups={lineups} runId={runId} /> : null}
+      </div><aside className="space-y-5">
+        <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Comparison sources</h2><p className="mt-1 text-xs text-slate-500">CSV: Name, optional Team, Projection and/or Ownership.</p><div className="mt-3 flex gap-2"><select value={comparisonSource} onChange={(e) => setComparisonSource(e.target.value as NflComparisonSource)} className="control"><option value="fantasypros">FantasyPros</option><option value="linestar">LineStar</option><option value="custom">Custom</option></select><input ref={comparisonRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => importComparison(e.target.files?.[0] ?? null)} /><button disabled={pending} onClick={() => comparisonRef.current?.click()} className="rounded-lg border px-3"><FileUp className="h-4 w-4" /></button></div></section>
+        <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">3. Portfolio settings</h2><div className="mt-4 space-y-3"><Field label="Objective"><select value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: e.target.value as "cash" | "gpp" })} className="control"><option value="gpp">GPP ceiling</option><option value="cash">Cash floor</option></select></Field><Field label="Projection source"><select value={settings.projectionSource} onChange={(e) => setSettings({ ...settings, projectionSource: e.target.value as NflProjectionSource })} className="control">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+          <div className="grid grid-cols-2 gap-2"><Field label="Lineups"><input type="number" min={1} max={150} value={settings.nLineups} onChange={(e) => setSettings({ ...settings, nLineups: Number(e.target.value) })} className="control" /></Field><Field label="Min salary"><input type="number" step={100} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="control" /></Field><Field label="Max exposure %"><input type="number" min={1} max={100} value={Math.round(settings.maxExposure * 100)} onChange={(e) => setSettings({ ...settings, maxExposure: Number(e.target.value) / 100 })} className="control" /></Field><Field label="Min unique"><input type="number" min={1} max={9} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="control" /></Field></div>
+          {settings.mode === "gpp" && slate.format === "classic" ? <><Field label="QB pass catchers"><select value={settings.stackPassCatchers} onChange={(e) => setSettings({ ...settings, stackPassCatchers: Number(e.target.value) as 0 | 1 | 2 })} className="control"><option value={0}>No requirement</option><option value={1}>At least 1</option><option value={2}>At least 2</option></select></Field><label className="check"><input type="checkbox" checked={settings.bringBack} onChange={(e) => setSettings({ ...settings, bringBack: e.target.checked })} />Require opposing bring-back</label></> : null}
+          <Field label={`Randomness (${Math.round(settings.randomness * 100)}%)`}><input type="range" min={0} max={.25} step={.01} value={settings.randomness} onChange={(e) => setSettings({ ...settings, randomness: Number(e.target.value) })} className="w-full" /></Field><label className="check"><input type="checkbox" checked={settings.allowDkFallback} onChange={(e) => setSettings({ ...settings, allowDkFallback: e.target.checked })} />Visible DK Avg fallback if selected source is missing</label>{settings.projectionSource === "our" ? <label className="check rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-950"><input type="checkbox" checked={settings.allowShadowModel} onChange={(e) => setSettings({ ...settings, allowShadowModel: e.target.checked })} />I understand our model is research-only and has not established an edge.</label> : null}<button disabled={pending || (settings.projectionSource === "our" && !settings.allowShadowModel)} onClick={generate} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : "Generate & save"}</button></div></section>
+        {lineups.length ? <><Exposure rows={exposures} total={lineups.length} /><section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">DraftKings export</h2><p className="mt-1 text-xs text-slate-500">Your DK entries template supplies the entry IDs; generated rosters fill its slot columns.</p><input ref={entryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => setEntryFile(e.target.files?.[0] ?? null)} /><button onClick={() => entryRef.current?.click()} className="mt-3 min-h-10 w-full rounded-lg border text-sm font-bold">{entryFile?.name ?? "Select entry template"}</button><button disabled={!entryFile} onClick={() => void exportEntries()} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-bold text-white disabled:opacity-40"><Download className="h-4 w-4" />Export lineups</button></section></> : null}
+      </aside></section>
+    </> : <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-14 text-center"><FileUp className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-3 font-bold">No NFL slate loaded</h2><p className="mt-1 text-sm text-slate-600">Upload a DraftKings NFL Classic or Showdown salary CSV to begin.</p></section>}
+    <style jsx global>{`.control{min-height:40px;width:100%;border:1px solid #cbd5e1;border-radius:.5rem;background:white;padding:0 .65rem;font-size:.875rem}.check{display:flex;align-items:flex-start;gap:.5rem;font-size:.75rem;color:#334155}`}</style>
+  </div>;
 }
+
+function Status({ icon, title, text, good = false }: { icon: React.ReactNode; title: string; text: string; good?: boolean }) { return <div className={`rounded-xl border p-4 ${good ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>{icon}<h2 className="mt-2 font-bold">{title}</h2><p className="mt-1 text-xs">{text}</p></div>; }
+function Metric({ label, value, small = false }: { label: string; value: string; small?: boolean }) { return <div className="rounded-xl border bg-white p-4 shadow-sm"><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div><div className={`mt-1 font-black ${small ? "text-sm" : "text-2xl"}`}>{value}</div></div>; }
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-xs font-bold text-slate-700"><span className="mb-1 block">{label}</span>{children}</label>; }
+function Notice({ children, good = false }: { children: React.ReactNode; good?: boolean }) { return <div role={good ? undefined : "alert"} className={`mt-4 flex items-start gap-2 rounded-lg border p-3 text-sm ${good ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}>{good ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}{children}</div>; }
+function Exposure({ rows, total }: { rows: { name: string; team: string; n: number }[]; total: number }) { return <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Exposure</h2><div className="mt-3 max-h-64 space-y-2 overflow-auto">{rows.slice(0, 30).map((row) => <div key={`${row.name}-${row.team}`}><div className="flex justify-between text-xs"><span>{row.name} <span className="text-slate-400">{row.team}</span></span><b>{Math.round(row.n / total * 100)}%</b></div><div className="mt-1 h-1.5 rounded bg-slate-100"><div className="h-full rounded bg-blue-600" style={{ width: `${row.n / total * 100}%` }} /></div></div>)}</div></section>; }
+function LineupTable({ lineups, runId }: { lineups: NflGeneratedLineup[]; runId: string | null }) { return <section className="rounded-xl border bg-white shadow-sm"><div className="border-b p-4"><h2 className="font-bold">Generated lineups</h2><p className="text-xs text-slate-500">Saved run {runId}. Review before upload.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase text-slate-500"><tr><th className="p-3">#</th><th>Roster</th><th className="text-right">Salary</th><th className="text-right">Proj</th><th className="text-right">Floor</th><th className="text-right">Ceiling</th><th className="p-3">Stack</th></tr></thead><tbody>{lineups.map((l) => <tr key={l.lineupNumber} className="border-t"><td className="p-3 font-bold">{l.lineupNumber}</td><td className="py-3">{l.slots.map((e) => <span key={e.slot} className="mr-2 inline-block"><b>{e.slot}</b> {e.player.name}</span>)}</td><td className="text-right">{dollars(l.totalSalary)}</td><td className="text-right font-bold">{l.projectedFpts.toFixed(1)}</td><td className="text-right">{l.floorFpts.toFixed(1)}</td><td className="text-right">{l.ceilingFpts.toFixed(1)}</td><td className="p-3">{l.stackSummary.quarterback ? `${l.stackSummary.quarterback} + ${l.stackSummary.passCatchers.join(", ")}${l.stackSummary.bringBack ? ` / ${l.stackSummary.bringBack}` : ""}` : "—"}</td></tr>)}</tbody></table></div></section>; }

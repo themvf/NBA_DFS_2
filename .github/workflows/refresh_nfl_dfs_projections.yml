@@ -1,0 +1,39 @@
+name: Refresh NFL DFS Projections
+
+on:
+  schedule:
+    - cron: "35 13 * * *"
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "NFL season year (defaults to current UTC year)"
+        required: false
+        type: string
+      week:
+        description: "Optional explicit regular-season week"
+        required: false
+        type: string
+
+concurrency:
+  group: refresh-nfl-dfs-projections
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Build immutable projection snapshot
+        shell: bash
+        run: |
+          ARGS=()
+          if [ -n "${{ inputs.season }}" ]; then ARGS+=(--season "${{ inputs.season }}"); fi
+          if [ -n "${{ inputs.week }}" ]; then ARGS+=(--week "${{ inputs.week }}"); fi
+          python -m ingest.nfl_dfs_projections "${ARGS[@]}"

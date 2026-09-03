@@ -17,6 +17,7 @@ let ensureOddsApiPropFetchLogPromise: Promise<void> | null = null;
 let ensureMlbGamePredictionTablesPromise: Promise<void> | null = null;
 let ensureFantasyFootballTablesPromise: Promise<void> | null = null;
 let ensureSurvivorTablesPromise: Promise<void> | null = null;
+let ensureNflDfsTablesPromise: Promise<void> | null = null;
 
 const FANTASY_FOOTBALL_DDLS = [
   `CREATE TABLE IF NOT EXISTS ff_source_snapshots (id BIGSERIAL PRIMARY KEY, source TEXT NOT NULL, dataset TEXT NOT NULL, season INTEGER NOT NULL, scoring TEXT, ranking_type TEXT, request_params JSONB NOT NULL DEFAULT '{}'::jsonb, source_updated_at TIMESTAMPTZ, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), response_hash TEXT NOT NULL, row_count INTEGER NOT NULL, matched_count INTEGER NOT NULL DEFAULT 0, unmatched_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, error_summary TEXT, UNIQUE(source, dataset, response_hash))`,
@@ -883,6 +884,34 @@ export async function ensureSurvivorTables(): Promise<void> {
     });
   }
   await ensureSurvivorTablesPromise;
+}
+
+const NFL_DFS_DDLS = [
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_projection_runs (run_id UUID PRIMARY KEY, model_version TEXT NOT NULL, scoring TEXT NOT NULL DEFAULT 'DK', slate_date DATE, season INTEGER NOT NULL, week INTEGER, as_of_at TIMESTAMPTZ NOT NULL, seed BIGINT NOT NULL, history_cutoff_season INTEGER NOT NULL, history_cutoff_week INTEGER, source_snapshot_ids JSONB NOT NULL DEFAULT '[]'::jsonb, model_config JSONB NOT NULL DEFAULT '{}'::jsonb, player_count INTEGER NOT NULL, artifact_digest TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(model_version,artifact_digest))`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_player_projections (id BIGSERIAL PRIMARY KEY, run_id UUID NOT NULL REFERENCES nfl_dfs_projection_runs(run_id) ON DELETE CASCADE, dk_player_id BIGINT, player_id BIGINT REFERENCES ff_players(id), player_gsis_id TEXT, player_name TEXT NOT NULL, normalized_name TEXT NOT NULL, team TEXT, opponent TEXT, position TEXT NOT NULL, salary INTEGER, identity_method TEXT NOT NULL, projection_status TEXT NOT NULL, history_games INTEGER NOT NULL, prior_games INTEGER NOT NULL, model_proj_fpts DOUBLE PRECISION, baseline_fpts DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, confidence DOUBLE PRECISION NOT NULL, stat_means JSONB NOT NULL DEFAULT '{}'::jsonb, feature_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb, source_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(run_id,player_id))`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_uploads (upload_id UUID PRIMARY KEY, slate_signature TEXT NOT NULL, file_name TEXT NOT NULL, file_digest TEXT NOT NULL, format TEXT NOT NULL, games JSONB NOT NULL DEFAULT '[]'::jsonb, teams JSONB NOT NULL DEFAULT '[]'::jsonb, warnings JSONB NOT NULL DEFAULT '[]'::jsonb, player_count INTEGER NOT NULL, projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(file_digest,projection_run_id))`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_players (id BIGSERIAL PRIMARY KEY, upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE, dk_player_id BIGINT NOT NULL, captain_dk_player_id BIGINT, ff_player_id BIGINT REFERENCES ff_players(id), name TEXT NOT NULL, normalized_name TEXT NOT NULL, position TEXT NOT NULL, roster_positions JSONB NOT NULL, team TEXT NOT NULL, opponent TEXT, game_key TEXT, game_info TEXT, salary INTEGER NOT NULL, captain_salary INTEGER, avg_fpts_dk DOUBLE PRECISION, dk_status TEXT, is_out BOOLEAN NOT NULL DEFAULT FALSE, identity_method TEXT NOT NULL, projection_status TEXT NOT NULL, our_proj DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, model_confidence DOUBLE PRECISION, history_games INTEGER, fantasypros_proj DOUBLE PRECISION, linestar_proj DOUBLE PRECISION, linestar_own_pct DOUBLE PRECISION, custom_proj DOUBLE PRECISION, comparison_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(upload_id,dk_player_id))`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_optimizer_runs (run_id UUID PRIMARY KEY, upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE, projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id), optimizer_version TEXT NOT NULL, mode TEXT NOT NULL, projection_source TEXT NOT NULL, settings JSONB NOT NULL, input_snapshot JSONB NOT NULL, input_digest TEXT NOT NULL, requested_lineups INTEGER NOT NULL, generated_lineups INTEGER NOT NULL, status TEXT NOT NULL, failure_reason TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_lineups (id BIGSERIAL PRIMARY KEY, run_id UUID NOT NULL REFERENCES nfl_dfs_optimizer_runs(run_id) ON DELETE CASCADE, lineup_number INTEGER NOT NULL, slots JSONB NOT NULL, player_ids JSONB NOT NULL, total_salary INTEGER NOT NULL, projected_fpts DOUBLE PRECISION NOT NULL, floor_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, projected_ownership DOUBLE PRECISION, stack_summary JSONB NOT NULL DEFAULT '{}'::jsonb, actual_fpts DOUBLE PRECISION, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(run_id,lineup_number))`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_projection_runs_slate ON nfl_dfs_projection_runs(season,week,as_of_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_player_projections_run ON nfl_dfs_player_projections(run_id,position)`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_slate_uploads_created ON nfl_dfs_slate_uploads(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_slate_players_upload ON nfl_dfs_slate_players(upload_id,position)`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_optimizer_runs_upload ON nfl_dfs_optimizer_runs(upload_id,created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_lineups_run ON nfl_dfs_lineups(run_id,lineup_number)`,
+];
+
+export async function ensureNflDfsTables(): Promise<void> {
+  if (!ensureNflDfsTablesPromise) {
+    ensureNflDfsTablesPromise = (async () => {
+      await ensureFantasyFootballTables();
+      for (const ddl of NFL_DFS_DDLS) await db.execute(sql.raw(ddl));
+    })().catch((error) => {
+      ensureNflDfsTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureNflDfsTablesPromise;
 }
 
 const YOUTUBE_PICK_CHANNELS_DDLS = [

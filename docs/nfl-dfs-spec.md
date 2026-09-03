@@ -5,11 +5,18 @@ structures (Classic weekly, Showdown single-game) and both contest
 intents (PvP/cash, Tournament/GPP), fed by a manually uploaded DK salary
 CSV, producing a DK bulk-entry-uploadable lineup CSV.
 
-**Visibility amendment (2026-09-02):** At the user's direction, `/dfs/nfl`
-ships before the projection-model gate as an explicitly labelled intake and
-readiness workspace. It exposes the verified salary parser and pool audit but
-keeps projections, optimization, and entry export locked. This does not waive
-steps 4–6 or permit DK average points to be presented as our model.
+**Implementation amendment (2026-09-02):** `/dfs/nfl` now persists the DK
+salary pool, links it to an immutable model run, and supports Classic and
+Showdown portfolio construction. The UI includes source comparisons,
+locks/exclusions, cash/GPP objectives, salary and uniqueness controls,
+exposure caps, QB stacks and bring-backs, lineup/exposure review, and DK
+entry-template export. Every run stores its settings, input snapshot, digest,
+and generated lineups.
+
+FantasyPros, LineStar, and custom CSVs remain labeled comparison or explicitly
+selected optimization inputs. They are never blended into `ourProj`. Because
+the first walk-forward model did not beat its recency baseline, using our
+projection source requires an explicit research-only acknowledgement.
 
 ## Decisions taken 2026-09-01
 
