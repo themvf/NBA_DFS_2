@@ -3,7 +3,7 @@
 import { Activity, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CfbBookQuote, CfbSignalBacktestRow, CfbTerminalBoard, CfbTerminalRow, LineAlertRow } from "@/db/queries";
+import type { CfbBookQuote, CfbResearchBoard, CfbResearchContext, CfbResearchRecord, CfbSignalBacktestRow, CfbTeamFeatureContext, CfbTerminalBoard, CfbTerminalRow, LineAlertRow } from "@/db/queries";
 import styles from "./cfb-terminal.module.css";
 
 type MarketKey = "spread" | "total" | "moneyline";
@@ -147,7 +147,88 @@ function MarketChart({ market, marketKey, signals }: { market: MarketView; marke
   </svg>;
 }
 
-export default function CfbTerminalClient({ board, signals, backtest }: { board: CfbTerminalBoard; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[] }) {
+function recordLabel(record: CfbResearchRecord): string {
+  return record.rate == null ? "—" : `${(record.rate * 100).toFixed(1)}%`;
+}
+
+function intervalLabel(record: CfbResearchRecord): string {
+  return record.ciLow == null || record.ciHigh == null
+    ? "interval unavailable"
+    : `95% CI ${(record.ciLow * 100).toFixed(1)}–${(record.ciHigh * 100).toFixed(1)}%`;
+}
+
+function HistoricalRecord({ label, record }: { label: string; record: CfbResearchRecord }) {
+  return <div className={styles.historyMetric}>
+    <span>{label}</span>
+    <strong>{recordLabel(record)}</strong>
+    <small>{record.wins}-{record.losses}-{record.pushes} · n={record.n}</small>
+    <small>{intervalLabel(record)}</small>
+  </div>;
+}
+
+function featureNumber(features: Record<string, unknown>, section: string, key: string): number | null {
+  const group = features[section];
+  if (!group || typeof group !== "object" || Array.isArray(group)) return null;
+  const value = Number((group as Record<string, unknown>)[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function TeamFeatureCard({ feature }: { feature: CfbTeamFeatureContext | null }) {
+  if (!feature) return <div className={styles.historyEmpty}>No pre-kickoff feature snapshot yet.</div>;
+  const margin = featureNumber(feature.features, "blended", "margin");
+  const pointsFor = featureNumber(feature.features, "blended", "points_for");
+  const roster = feature.features.roster && typeof feature.features.roster === "object" && !Array.isArray(feature.features.roster)
+    ? feature.features.roster as Record<string, unknown> : null;
+  const continuity = roster && Number.isFinite(Number(roster.roster_continuity_pct)) ? Number(roster.roster_continuity_pct) : null;
+  const returningPpa = roster?.returning_production && typeof roster.returning_production === "object"
+    ? Number((roster.returning_production as Record<string, unknown>).percentPPA) : NaN;
+  return <article className={styles.featureCard}>
+    <div><strong>{feature.teamName}</strong><span>{feature.featureVersion}</span></div>
+    <p>{feature.gamesPlayed} completed · {(feature.currentWeight * 100).toFixed(0)}% season / {(feature.priorWeight * 100).toFixed(0)}% prior</p>
+    <dl>
+      <div><dt>Blended margin</dt><dd>{margin == null ? "—" : signed(margin)}</dd></div>
+      <div><dt>Blended points</dt><dd>{pointsFor == null ? "—" : pointsFor.toFixed(1)}</dd></div>
+      <div><dt>Roster continuity</dt><dd>{continuity == null ? "—" : `${(continuity * 100).toFixed(0)}%`}</dd></div>
+      <div><dt>Returning PPA</dt><dd>{Number.isFinite(returningPpa) ? `${(returningPpa * 100).toFixed(0)}%` : "—"}</dd></div>
+    </dl>
+    <small>Completeness {feature.sourceCompleteness == null ? "—" : `${(feature.sourceCompleteness * 100).toFixed(0)}%`} · snapshot {feature.asOf ? fmtEt(feature.asOf) : "—"}</small>
+  </article>;
+}
+
+function HistoryPanel({ context, game }: { context: CfbResearchContext | null; game: CfbTerminalRow }) {
+  if (!context) return <section className={styles.historyPane}><div className={styles.sectionTitle}><span>HISTORICAL + TEAM CONTEXT</span><span>UNAVAILABLE</span></div><div className={styles.historyEmpty}>Historical tables are ready, but this game has no research context yet. Live collection is unaffected.</div></section>;
+  const teamRows = [
+    { name: game.homeTeam, record: context.homeTeam },
+    { name: game.awayTeam, record: context.awayTeam },
+  ];
+  return <section className={styles.historyPane}>
+    <div className={styles.sectionTitle}><span>HISTORICAL + TEAM CONTEXT</span><span>DESCRIPTIVE · NO VALIDATED EDGE</span></div>
+    <div className={styles.historyDisclosure}><ShieldAlert aria-hidden="true" /><p>CFBD historical references are not verified closing lines. Exact and bucket records include overtime, report uncertainty, and never substitute for the live movement ledger.</p></div>
+    <div className={styles.historyGrid}>
+      <article className={styles.historyCard}>
+        <header><strong>EXACT LINE</strong><span>{context.homeSpread == null ? "NO LINE" : `${game.homeTeam} ${signed(context.homeSpread)}`}</span></header>
+        <div className={styles.historyMetrics}><HistoricalRecord label="SU" record={context.exact.su} /><HistoricalRecord label="ATS" record={context.exact.ats} /></div>
+        <footer>{context.seasons.length ? `${context.seasons[0]}–${context.seasons.at(-1)}` : "No historical sample"} · historical reference</footer>
+      </article>
+      <article className={styles.historyCard}>
+        <header><strong>REGISTERED BUCKET</strong><span>{context.bucketLabel ?? "OUTSIDE BUCKETS"}</span></header>
+        <div className={styles.historyMetrics}><HistoricalRecord label="SU" record={context.bucket.su} /><HistoricalRecord label="ATS" record={context.bucket.ats} /></div>
+        <footer>Definition cfb-history-v1 · pushes excluded from rates</footer>
+      </article>
+      <article className={styles.historyCard}>
+        <header><strong>TEAM / REGIME</strong><span>PARTIALLY POOLED</span></header>
+        <div className={styles.teamRows}>{teamRows.map(({ name, record }) => <div key={name} className={styles.teamContextRow}><div><strong>{name}</strong><span>{record.coach ? `${record.coach} regime` : "recent team fallback"}</span></div><p>Raw {record.rawRate == null ? "—" : `${(record.rawRate * 100).toFixed(1)}%`} · shrunk {record.shrunkRate == null ? "—" : `${(record.shrunkRate * 100).toFixed(1)}%`}</p><small>{record.wins}-{record.losses}-{record.pushes} · n={record.n} · {record.reliability} sample reliability</small></div>)}</div>
+      </article>
+    </div>
+    <div className={styles.sectionTitle}><span>SEASON + ROSTER SNAPSHOTS</span><span>POINT-IN-TIME ONLY</span></div>
+    <div className={styles.featureGrid}><TeamFeatureCard feature={context.homeFeature} /><TeamFeatureCard feature={context.awayFeature} /></div>
+    <div className={styles.sectionTitle}><span>RECENT COMPARABLES</span><span>{context.bucketLabel ?? "NO REGISTERED BUCKET"}</span></div>
+    {context.comparableGames.length ? <div className={styles.comparableGrid}>{context.comparableGames.map((item) => <article key={item.gameId} className={styles.comparableGame}><span>{item.gameDate}</span><strong>{item.awayTeam} {item.awayScore} · {item.homeTeam} {item.homeScore}</strong><small>{item.homeTeam} {signed(item.homeSpread)} · home ATS {item.atsOutcome}</small></article>)}</div> : <div className={styles.historyEmpty}>No completed comparable games are available for this registered bucket.</div>}
+    <div className={styles.hypothesisStrip}><strong>HYPOTHESIS REGISTRY</strong>{context.hypotheses.length ? context.hypotheses.map((item) => <span key={`${item.key}-${item.version}`}>{item.key} {item.version} · {item.status.replaceAll("_", " ")} · prospective n={item.prospectiveN}</span>) : <span>No registered hypothesis has been evaluated.</span>}</div>
+  </section>;
+}
+
+export default function CfbTerminalClient({ board, signals, backtest, research }: { board: CfbTerminalBoard; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard }) {
   const router = useRouter();
   const [gameId, setGameId] = useState(board.games[0]?.matchupId ?? 0);
   const [marketKey, setMarketKey] = useState<MarketKey>("spread");
@@ -160,6 +241,7 @@ export default function CfbTerminalClient({ board, signals, backtest }: { board:
   const quote = market?.books.find((item) => item.key === selectedBook) ?? market?.books[0] ?? null;
   const gameSignals = useMemo(() => signals.filter((item) => item.matchupId === game?.matchupId), [signals, game?.matchupId]);
   const marketSignals = useMemo(() => gameSignals.filter((item) => signalMarket(item) === marketKey), [gameSignals, marketKey]);
+  const researchContext = game ? research[game.matchupId] ?? null : null;
   const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return !normalized ? board.games : board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized)); }, [board.games, query]);
   function chooseGame(id: number) { setGameId(id); setSelectedBook(""); setLockMessage(null); }
   function chooseMarket(next: MarketKey) { setMarketKey(next); setSide(selectionFor(next)); setSelectedBook(""); setLockMessage(null); }
@@ -183,6 +265,7 @@ export default function CfbTerminalClient({ board, signals, backtest }: { board:
         <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{market.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)} · ${marketSignals.length} signals` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><MarketChart market={market} marketKey={marketKey} signals={marketSignals} /></div></section>
         <section className={styles.lowerGrid}><div className={styles.ladderPane}><div className={styles.sectionTitle}><span>BOOK LADDER</span><span>OBSERVED QUOTES</span></div><div className={styles.bookHeader}><span>BOOK</span><span>UPDATED</span><span>LINE</span><span>PRICE</span></div>{market.books.map((item) => <button key={item.key} type="button" className={styles.bookRow} data-selected={quote?.key === item.key} onClick={() => { setSelectedBook(item.key); setLockMessage(null); }}><span>{item.book}{!item.fresh ? <em>STALE</em> : null}</span><span>{item.updatedAt ? fmtEt(item.updatedAt, true) : "—"}</span><span>{item.line}</span><span>{item.price}</span></button>)}{!market.books.length ? <div className={styles.empty}>This market or side is not quoted by the captured books.</div> : null}<div className={styles.paperAction}><button type="button" disabled={!quote?.fresh} onClick={addPaperPosition}><BookOpen aria-hidden="true" /> {quote?.fresh ? `RECORD PAPER ${quote.book.toUpperCase()} ${quote.line} ${quote.price}` : "PAPER ENTRY DISABLED · QUOTE NOT ≤5M FRESH"}</button><div aria-live="polite">{lockMessage ?? "Displayed quotes are observations, not verified execution availability."}</div></div></div>
           <div className={styles.catalystPane}><div className={styles.sectionTitle}><span>MARKET QUALITY</span><span>AUDIT</span></div><div className={styles.catalystRow}><span>NOW</span><strong>SUPPORT</strong><p>{market.selectedLineBookCount} books at selected consensus line · {market.marketBookCount} books in market</p></div><div className={styles.catalystRow}><span>OPEN</span><strong>HISTORY</strong><p>{game.captures} accepted pregame captures; post-kickoff rows excluded</p></div><div className={styles.catalystRow}><span>CLOSE</span><strong>{game.closeQuality ? `GRADE ${game.closeQuality}` : "PENDING"}</strong><p>{game.closingCapturedAt ? `${market.closeMove}; ${Math.round((game.closeLeadSeconds ?? 0) / 60)}m before ${game.closeBoundarySource}` : "Frozen only after the scheduled CFB kickoff boundary; no latest-row proxy."}</p></div><div className={styles.catalystRow}><span>MAP</span><strong>IDENTITY</strong><p>CFBD game {game.cfbdGameId} · Odds event {game.oddsEventId ?? "provider event unavailable"}</p></div></div></section>
+        <HistoryPanel context={researchContext} game={game} />
         <section className={styles.blotter}><div className={styles.sectionTitle}><span>SESSION PAPER BLOTTER</span><span>{positions.length} OPEN</span></div>{!positions.length ? <div className={styles.blotterEmpty}>A paper position can be recorded only from an observation no more than five minutes old.</div> : <div className={styles.blotterTableWrap}><table><thead><tr><th>Game</th><th>Market</th><th>Book</th><th>Entry</th><th>Observed</th></tr></thead><tbody>{positions.map((position) => <tr key={position.id}><td>{position.game}</td><td>{position.market}</td><td>{position.book}</td><td>{position.entry}</td><td>{fmtEt(position.observedAt)}</td></tr>)}</tbody></table></div>}</section>
         <section className={styles.researchPane}><div className={styles.sectionTitle}><span>PROSPECTIVE SIGNAL AUDIT</span><span>CFB-LINES-V1 · NO EDGE CLAIM</span></div>{!backtest.length ? <div className={styles.blotterEmpty}>No prospective CFB signals yet. Metrics appear only after immutable detector observations are recorded.</div> : <div className={styles.researchTableWrap}><table><thead><tr><th>Signal</th><th>Version</th><th>Obs</th><th>Dates</th><th>Settled</th><th>W-L-P</th><th>Avg CLV</th><th>Beat close</th><th>Units</th><th>ROI/bet</th></tr></thead><tbody>{backtest.map((row) => <tr key={`${row.alertType}-${row.signalVersion}`}><td>{SIGNAL_LABELS[row.alertType] ?? row.alertType}</td><td>{row.signalVersion}</td><td>{row.observations}</td><td>{row.gameDates}</td><td>{row.settled}</td><td>{row.wins}-{row.losses}-{row.pushes}</td><td>{row.avgLineClv == null ? "—" : signed(row.avgLineClv)}</td><td>{pct(row.beatClose)}</td><td>{row.units == null ? "—" : signed(row.units, 2)}</td><td>{row.roiPerBet == null ? "—" : `${signed(row.roiPerBet * 100, 1)}%`}</td></tr>)}</tbody></table></div>}<p className={styles.researchDisclosure}>Descriptive research only. Small samples, repeated game dates, and mixed execution books can make apparent ROI unstable; model promotion requires prospective CLV and out-of-sample evidence.</p></section>
       </>}</main>

@@ -818,6 +818,202 @@ def quarantine_cfb_event(
     )
 
 
+def insert_cfb_historical_line(db: DatabaseManager, row: dict) -> int:
+    """Insert one provider historical line; identical source payloads are idempotent."""
+    result = db.execute_one(
+        """
+        INSERT INTO cfb_historical_game_lines (
+            game_id, provider, market_type, home_value, away_value,
+            home_price, away_price, line_designation, home_conference,
+            away_conference, home_classification, away_classification,
+            source_event_id, source_updated_at, available_at, captured_at,
+            raw_payload_hash, is_canonical_reference
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s
+        )
+        ON CONFLICT (
+            game_id, provider, market_type, line_designation, raw_payload_hash
+        ) DO UPDATE SET
+            home_price=COALESCE(EXCLUDED.home_price, cfb_historical_game_lines.home_price),
+            away_price=COALESCE(EXCLUDED.away_price, cfb_historical_game_lines.away_price),
+            is_canonical_reference=(
+                cfb_historical_game_lines.is_canonical_reference
+                OR EXCLUDED.is_canonical_reference
+            )
+        RETURNING id
+        """,
+        (
+            row["game_id"], row["provider"], row["market_type"],
+            row.get("home_value"), row.get("away_value"), row.get("home_price"),
+            row.get("away_price"), row["line_designation"],
+            row.get("home_conference"), row.get("away_conference"),
+            row.get("home_classification"), row.get("away_classification"),
+            row.get("source_event_id"), row.get("source_updated_at"),
+            row.get("available_at"), row["captured_at"], row["raw_payload_hash"],
+            bool(row.get("is_canonical_reference")),
+        ),
+    )
+    return int(result["id"]) if result else 0
+
+
+def set_cfb_canonical_historical_provider(
+    db: DatabaseManager, *, game_id: int, market_type: str,
+    line_designation: str, provider: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE cfb_historical_game_lines
+        SET is_canonical_reference=(provider=%s)
+        WHERE game_id=%s AND market_type=%s AND line_designation=%s
+        """,
+        (provider, game_id, market_type, line_designation),
+    )
+
+
+def upsert_cfb_staff_regime(db: DatabaseManager, row: dict) -> int:
+    result = db.execute_one(
+        """
+        INSERT INTO cfb_staff_regimes (
+            team_id, role, source_person_id, person_name, start_season,
+            start_week, end_season, end_week, scheme_label, source,
+            available_at, captured_at, source_json
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+        ON CONFLICT (team_id, role, person_name, start_season, start_week)
+        DO UPDATE SET
+            end_season=EXCLUDED.end_season,
+            end_week=EXCLUDED.end_week,
+            available_at=LEAST(cfb_staff_regimes.available_at, EXCLUDED.available_at),
+            captured_at=EXCLUDED.captured_at,
+            source_json=EXCLUDED.source_json
+        RETURNING id
+        """,
+        (
+            row["team_id"], row["role"], row.get("source_person_id"),
+            row["person_name"], row["start_season"], row.get("start_week", 0),
+            row.get("end_season"), row.get("end_week"), row.get("scheme_label"),
+            row["source"], row["available_at"], row["captured_at"],
+            json.dumps(row.get("source_json") or {}),
+        ),
+    )
+    return int(result["id"]) if result else 0
+
+
+def upsert_cfb_roster_snapshot(db: DatabaseManager, row: dict) -> int:
+    result = db.execute_one(
+        """
+        INSERT INTO cfb_roster_snapshots (
+            team_id, season, source, source_updated_at, available_at,
+            captured_at, payload_hash, confidence, is_complete,
+            point_in_time_eligible, summary_json
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+        ON CONFLICT (team_id, season, source, payload_hash) DO UPDATE SET
+            summary_json=EXCLUDED.summary_json,
+            confidence=EXCLUDED.confidence,
+            is_complete=EXCLUDED.is_complete
+        RETURNING id
+        """,
+        (
+            row["team_id"], row["season"], row["source"],
+            row.get("source_updated_at"), row["available_at"], row["captured_at"],
+            row["payload_hash"], row.get("confidence", 0.5),
+            bool(row.get("is_complete")), bool(row.get("point_in_time_eligible")),
+            json.dumps(row.get("summary_json") or {}),
+        ),
+    )
+    return int(result["id"]) if result else 0
+
+
+def upsert_cfb_roster_player(db: DatabaseManager, row: dict) -> int:
+    result = db.execute_one(
+        """
+        INSERT INTO cfb_roster_players (
+            snapshot_id, source_player_id, normalized_name, display_name,
+            position, position_group, class_year, previous_team_id, depth_role,
+            availability_status, availability_confidence, attributes_json
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+        ON CONFLICT (snapshot_id, source_player_id) DO UPDATE SET
+            normalized_name=EXCLUDED.normalized_name,
+            display_name=EXCLUDED.display_name,
+            position=EXCLUDED.position,
+            position_group=EXCLUDED.position_group,
+            class_year=EXCLUDED.class_year,
+            attributes_json=EXCLUDED.attributes_json
+        RETURNING id
+        """,
+        (
+            row["snapshot_id"], row["source_player_id"], row["normalized_name"],
+            row["display_name"], row.get("position"), row.get("position_group"),
+            row.get("class_year"), row.get("previous_team_id"),
+            row.get("depth_role"), row.get("availability_status"),
+            row.get("availability_confidence"),
+            json.dumps(row.get("attributes_json") or {}),
+        ),
+    )
+    return int(result["id"]) if result else 0
+
+
+def upsert_cfb_team_game_feature(db: DatabaseManager, row: dict) -> int:
+    result = db.execute_one(
+        """
+        INSERT INTO cfb_team_game_features (
+            game_id, team_id, opponent_team_id, feature_version, as_of_at,
+            available_at, games_played, effective_games, current_weight,
+            prior_weight, features_json, source_completeness
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+        ON CONFLICT (game_id, team_id, feature_version, as_of_at) DO UPDATE SET
+            available_at=LEAST(cfb_team_game_features.available_at, EXCLUDED.available_at),
+            games_played=EXCLUDED.games_played,
+            effective_games=EXCLUDED.effective_games,
+            current_weight=EXCLUDED.current_weight,
+            prior_weight=EXCLUDED.prior_weight,
+            features_json=EXCLUDED.features_json,
+            source_completeness=EXCLUDED.source_completeness,
+            created_at=NOW()
+        RETURNING id
+        """,
+        (
+            row["game_id"], row["team_id"], row["opponent_team_id"],
+            row["feature_version"], row["as_of_at"], row["available_at"],
+            row.get("games_played", 0), row.get("effective_games", 0),
+            row.get("current_weight", 0), row.get("prior_weight", 1),
+            json.dumps(row.get("features_json") or {}),
+            row.get("source_completeness"),
+        ),
+    )
+    return int(result["id"]) if result else 0
+
+
+def upsert_cfb_team_game_features(db: DatabaseManager, rows: list[dict]) -> int:
+    """Bulk-upsert feature snapshots in one transaction for scheduled refreshes."""
+    if not rows:
+        return 0
+    statement = """
+        INSERT INTO cfb_team_game_features (
+            game_id, team_id, opponent_team_id, feature_version, as_of_at,
+            available_at, games_played, effective_games, current_weight,
+            prior_weight, features_json, source_completeness
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+        ON CONFLICT (game_id, team_id, feature_version, as_of_at) DO UPDATE SET
+            available_at=LEAST(cfb_team_game_features.available_at, EXCLUDED.available_at),
+            games_played=EXCLUDED.games_played,
+            effective_games=EXCLUDED.effective_games,
+            current_weight=EXCLUDED.current_weight,
+            prior_weight=EXCLUDED.prior_weight,
+            features_json=EXCLUDED.features_json,
+            source_completeness=EXCLUDED.source_completeness
+    """
+    params = [(
+        row["game_id"], row["team_id"], row["opponent_team_id"],
+        row["feature_version"], row["as_of_at"], row["available_at"],
+        row.get("games_played", 0), row.get("effective_games", 0),
+        row.get("current_weight", 0), row.get("prior_weight", 1),
+        json.dumps(row.get("features_json") or {}), row.get("source_completeness"),
+    ) for row in rows]
+    db.execute_many(statement, params)
+    return len(rows)
+
+
 # ── MLB team helpers ──────────────────────────────────────────────────────────
 
 def build_mlb_team_abbrev_cache(db: DatabaseManager) -> dict[str, int]:

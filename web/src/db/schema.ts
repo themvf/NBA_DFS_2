@@ -325,6 +325,202 @@ export const cfbMatchups = pgTable(
   ],
 );
 
+export const cfbHistoricalGameLines = pgTable(
+  "cfb_historical_game_lines",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    gameId: integer("game_id").notNull().references(() => cfbMatchups.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    marketType: text("market_type").notNull(),
+    homeValue: doublePrecision("home_value"),
+    awayValue: doublePrecision("away_value"),
+    homePrice: integer("home_price"),
+    awayPrice: integer("away_price"),
+    lineDesignation: text("line_designation").notNull(),
+    homeConference: text("home_conference"),
+    awayConference: text("away_conference"),
+    homeClassification: text("home_classification"),
+    awayClassification: text("away_classification"),
+    sourceEventId: text("source_event_id"),
+    sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
+    availableAt: timestamp("available_at", { withTimezone: true }),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+    rawPayloadHash: text("raw_payload_hash").notNull(),
+    isCanonicalReference: boolean("is_canonical_reference").notNull().default(false),
+  },
+  (t) => [
+    unique("cfb_historical_game_lines_source_key").on(
+      t.gameId, t.provider, t.marketType, t.lineDesignation, t.rawPayloadHash,
+    ),
+    index("idx_cfb_history_game_market").on(t.gameId, t.marketType, t.lineDesignation),
+  ],
+);
+
+export const cfbStaffRegimes = pgTable(
+  "cfb_staff_regimes",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    teamId: integer("team_id").notNull().references(() => cfbTeams.teamId, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    sourcePersonId: text("source_person_id"),
+    personName: text("person_name").notNull(),
+    startSeason: integer("start_season").notNull(),
+    startWeek: integer("start_week").notNull().default(0),
+    endSeason: integer("end_season"),
+    endWeek: integer("end_week"),
+    schemeLabel: text("scheme_label"),
+    source: text("source").notNull(),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+    sourceJson: jsonb("source_json").notNull().default({}),
+  },
+  (t) => [
+    unique("cfb_staff_regimes_identity_key").on(t.teamId, t.role, t.personName, t.startSeason, t.startWeek),
+    index("idx_cfb_staff_regime_team").on(t.teamId, t.startSeason, t.endSeason),
+  ],
+);
+
+export const cfbRosterSnapshots = pgTable(
+  "cfb_roster_snapshots",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    teamId: integer("team_id").notNull().references(() => cfbTeams.teamId, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+    source: text("source").notNull(),
+    sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+    payloadHash: text("payload_hash").notNull(),
+    confidence: doublePrecision("confidence").notNull().default(0.5),
+    isComplete: boolean("is_complete").notNull().default(false),
+    pointInTimeEligible: boolean("point_in_time_eligible").notNull().default(false),
+    summaryJson: jsonb("summary_json").notNull().default({}),
+  },
+  (t) => [
+    unique("cfb_roster_snapshots_source_key").on(t.teamId, t.season, t.source, t.payloadHash),
+    index("idx_cfb_roster_snapshot_asof").on(t.teamId, t.season, t.availableAt),
+  ],
+);
+
+export const cfbRosterPlayers = pgTable(
+  "cfb_roster_players",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    snapshotId: bigint("snapshot_id", { mode: "number" }).notNull().references(() => cfbRosterSnapshots.id, { onDelete: "cascade" }),
+    sourcePlayerId: text("source_player_id").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    displayName: text("display_name").notNull(),
+    position: text("position"),
+    positionGroup: text("position_group"),
+    classYear: integer("class_year"),
+    previousTeamId: integer("previous_team_id").references(() => cfbTeams.teamId),
+    depthRole: text("depth_role"),
+    availabilityStatus: text("availability_status"),
+    availabilityConfidence: doublePrecision("availability_confidence"),
+    attributesJson: jsonb("attributes_json").notNull().default({}),
+  },
+  (t) => [
+    unique("cfb_roster_players_snapshot_player_key").on(t.snapshotId, t.sourcePlayerId),
+    index("idx_cfb_roster_players_snapshot").on(t.snapshotId, t.positionGroup),
+  ],
+);
+
+export const cfbTeamGameFeatures = pgTable(
+  "cfb_team_game_features",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    gameId: integer("game_id").notNull().references(() => cfbMatchups.id, { onDelete: "cascade" }),
+    teamId: integer("team_id").notNull().references(() => cfbTeams.teamId, { onDelete: "cascade" }),
+    opponentTeamId: integer("opponent_team_id").notNull().references(() => cfbTeams.teamId),
+    featureVersion: text("feature_version").notNull(),
+    asOfAt: timestamp("as_of_at", { withTimezone: true }).notNull(),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull(),
+    gamesPlayed: integer("games_played").notNull().default(0),
+    effectiveGames: doublePrecision("effective_games").notNull().default(0),
+    currentWeight: doublePrecision("current_weight").notNull().default(0),
+    priorWeight: doublePrecision("prior_weight").notNull().default(1),
+    featuresJson: jsonb("features_json").notNull().default({}),
+    sourceCompleteness: doublePrecision("source_completeness"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("cfb_team_game_features_snapshot_identity_key").on(t.gameId, t.teamId, t.featureVersion, t.asOfAt),
+    index("idx_cfb_team_features_asof").on(t.teamId, t.asOfAt, t.featureVersion),
+  ],
+);
+
+export const cfbHypotheses = pgTable(
+  "cfb_hypotheses",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    hypothesisKey: text("hypothesis_key").notNull(),
+    version: text("version").notNull(),
+    name: text("name").notNull(),
+    claim: text("claim").notNull(),
+    status: text("status").notNull(),
+    outcomeDefinitionJson: jsonb("outcome_definition_json").notNull(),
+    populationFilterJson: jsonb("population_filter_json").notNull(),
+    featureDefinitionJson: jsonb("feature_definition_json").notNull().default({}),
+    bucketDefinitionJson: jsonb("bucket_definition_json").notNull().default({}),
+    minSampleJson: jsonb("min_sample_json").notNull().default({}),
+    splitPlanJson: jsonb("split_plan_json").notNull().default({}),
+    testPlanJson: jsonb("test_plan_json").notNull().default({}),
+    promotionRulesJson: jsonb("promotion_rules_json").notNull().default({}),
+    multipleTestFamily: text("multiple_test_family"),
+    registeredAt: timestamp("registered_at", { withTimezone: true }).notNull().defaultNow(),
+    frozenAt: timestamp("frozen_at", { withTimezone: true }),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+    notes: text("notes"),
+  },
+  (t) => [unique("cfb_hypotheses_key_version_key").on(t.hypothesisKey, t.version)],
+);
+
+export const cfbHypothesisResults = pgTable("cfb_hypothesis_results", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  hypothesisId: bigint("hypothesis_id", { mode: "number" }).notNull().references(() => cfbHypotheses.id, { onDelete: "cascade" }),
+  evaluationType: text("evaluation_type").notNull(),
+  trainStart: date("train_start"),
+  trainEnd: date("train_end"),
+  testStart: date("test_start"),
+  testEnd: date("test_end"),
+  n: integer("n").notNull().default(0),
+  wins: integer("wins").notNull().default(0),
+  losses: integer("losses").notNull().default(0),
+  pushes: integer("pushes").notNull().default(0),
+  effect: doublePrecision("effect"),
+  standardError: doublePrecision("standard_error"),
+  ciLow: doublePrecision("ci_low"),
+  ciHigh: doublePrecision("ci_high"),
+  pValue: doublePrecision("p_value"),
+  qValue: doublePrecision("q_value"),
+  roi: doublePrecision("roi"),
+  avgClv: doublePrecision("avg_clv"),
+  calibrationJson: jsonb("calibration_json").notNull().default({}),
+  dataVersion: text("data_version").notNull(),
+  codeVersion: text("code_version").notNull(),
+  evaluatedAt: timestamp("evaluated_at", { withTimezone: true }).notNull().defaultNow(),
+  resultPayloadHash: text("result_payload_hash").notNull(),
+});
+
+export const cfbGameSignalSnapshots = pgTable(
+  "cfb_game_signal_snapshots",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    gameId: integer("game_id").notNull().references(() => cfbMatchups.id, { onDelete: "cascade" }),
+    teamId: integer("team_id").references(() => cfbTeams.teamId),
+    hypothesisId: bigint("hypothesis_id", { mode: "number" }).notNull().references(() => cfbHypotheses.id, { onDelete: "cascade" }),
+    signalStatus: text("signal_status").notNull(),
+    signalValue: doublePrecision("signal_value"),
+    confidence: doublePrecision("confidence"),
+    evidenceLevel: text("evidence_level").notNull(),
+    inputsJson: jsonb("inputs_json").notNull(),
+    modelVersion: text("model_version").notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+    qualifiedForTracking: boolean("qualified_for_tracking").notNull().default(false),
+  },
+  (t) => [unique("cfb_game_signal_snapshots_identity_key").on(t.gameId, t.teamId, t.hypothesisId, t.modelVersion)],
+);
+
 // Fantasy Football draft assistant
 export const ffSourceSnapshots = pgTable("ff_source_snapshots", {
   id: bigserial("id", { mode: "number" }).primaryKey(),

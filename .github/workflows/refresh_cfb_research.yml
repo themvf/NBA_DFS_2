@@ -1,0 +1,76 @@
+name: Refresh CFB Research Context
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Work to run
+        type: choice
+        required: true
+        default: current
+        options: [current, audit, backfill, evaluate, all]
+      start_season:
+        description: First historical season
+        required: false
+        default: "2016"
+      end_season:
+        description: Last historical season
+        required: false
+        default: "2025"
+  schedule:
+    - cron: "17 10 * 8-12 4"
+
+concurrency:
+  group: refresh-cfb-research
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: data/cfb/history-cache
+          key: cfb-history-${{ inputs.start_season || '2016' }}-${{ inputs.end_season || '2025' }}-${{ hashFiles('ingest/cfb_history.py') }}
+          restore-keys: cfb-history-
+      - name: Audit historical coverage
+        if: inputs.mode == 'audit' || inputs.mode == 'all'
+        run: python -m ingest.cfb_history --start-season "${{ inputs.start_season }}" --end-season "${{ inputs.end_season }}" --audit-only
+      - name: Backfill historical games and references
+        if: inputs.mode == 'backfill' || inputs.mode == 'all'
+        run: python -m ingest.cfb_history --start-season "${{ inputs.start_season }}" --end-season "${{ inputs.end_season }}"
+      - name: Capture current roster and staff context
+        if: inputs.mode == 'current' || inputs.mode == 'all' || github.event_name == 'schedule'
+        run: python -m ingest.cfb_rosters --season "$(date +%Y)" --prospective
+      - name: Build upcoming point-in-time features
+        if: inputs.mode == 'current' || inputs.mode == 'all' || github.event_name == 'schedule'
+        run: python -m model.cfb_team_features --through-date "$(date -u -d '+14 days' +%F)"
+      - name: Register frozen default hypothesis
+        if: inputs.mode == 'backfill' || inputs.mode == 'evaluate' || inputs.mode == 'all'
+        run: python -m research.cfb_hypotheses register-default
+      - name: Run walk-forward evaluation
+        if: inputs.mode == 'evaluate' || inputs.mode == 'all'
+        run: python -m research.cfb_hypotheses evaluate CFB-H001
+      - name: Settle prospective hypothesis snapshots
+        if: inputs.mode == 'current' || inputs.mode == 'evaluate' || inputs.mode == 'all' || github.event_name == 'schedule'
+        run: python -m research.cfb_hypotheses settle CFB-H001
+      - name: Snapshot qualified prospective hypotheses
+        if: inputs.mode == 'current' || inputs.mode == 'all' || github.event_name == 'schedule'
+        run: python -m research.cfb_hypotheses snapshot-qualified --date "$(date -u -d '+14 days' +%F)"
+      - uses: actions/upload-artifact@v4
+        if: always() && (inputs.mode == 'audit' || inputs.mode == 'all')
+        with:
+          name: cfb-history-audits
+          path: artifacts/cfb/history-audits
+          if-no-files-found: warn

@@ -9926,6 +9926,349 @@ export type CfbBookQuote = {
 
 export type CfbBookMap = Record<string, CfbBookQuote>;
 
+export type CfbResearchRecord = {
+  n: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  rate: number | null;
+  ciLow: number | null;
+  ciHigh: number | null;
+};
+
+export type CfbTeamResearchRecord = CfbResearchRecord & {
+  rawRate: number | null;
+  shrunkRate: number | null;
+  reliability: "VERY LOW" | "LOW" | "MODERATE" | "HIGH";
+  evidenceLevel: "current_head_coach" | "recent_team";
+  coach: string | null;
+};
+
+export type CfbTeamFeatureContext = {
+  teamId: number;
+  teamName: string;
+  featureVersion: string | null;
+  gamesPlayed: number;
+  effectiveGames: number;
+  currentWeight: number;
+  priorWeight: number;
+  sourceCompleteness: number | null;
+  features: Record<string, unknown>;
+  asOf: string | null;
+};
+
+export type CfbResearchContext = {
+  matchupId: number;
+  homeSpread: number | null;
+  bucketLabel: string | null;
+  lineDesignation: "historical_reference";
+  seasons: number[];
+  exact: { su: CfbResearchRecord; ats: CfbResearchRecord };
+  bucket: { su: CfbResearchRecord; ats: CfbResearchRecord };
+  homeTeam: CfbTeamResearchRecord;
+  awayTeam: CfbTeamResearchRecord;
+  homeFeature: CfbTeamFeatureContext | null;
+  awayFeature: CfbTeamFeatureContext | null;
+  comparableGames: Array<{
+    gameId: number;
+    gameDate: string;
+    homeTeam: string;
+    awayTeam: string;
+    homeSpread: number;
+    homeScore: number;
+    awayScore: number;
+    atsOutcome: "W" | "L" | "P";
+  }>;
+  hypotheses: Array<{
+    key: string;
+    version: string;
+    name: string;
+    status: string;
+    prospectiveN: number;
+  }>;
+};
+
+export type CfbResearchBoard = Record<number, CfbResearchContext>;
+
+function wilson95(wins: number, trials: number): [number | null, number | null] {
+  if (trials <= 0) return [null, null];
+  const z = 1.959963984540054;
+  const p = wins / trials;
+  const denominator = 1 + z * z / trials;
+  const center = (p + z * z / (2 * trials)) / denominator;
+  const margin = z * Math.sqrt((p * (1 - p) + z * z / (4 * trials)) / trials) / denominator;
+  return [Math.max(0, center - margin), Math.min(1, center + margin)];
+}
+
+function researchRecord(row: Record<string, unknown>, prefix: string): CfbResearchRecord {
+  const wins = Number(row[`${prefix}Wins`] ?? 0);
+  const losses = Number(row[`${prefix}Losses`] ?? 0);
+  const pushes = Number(row[`${prefix}Pushes`] ?? 0);
+  const n = wins + losses + pushes;
+  const [ciLow, ciHigh] = wilson95(wins, wins + losses);
+  return { n, wins, losses, pushes, rate: wins + losses ? wins / (wins + losses) : null, ciLow, ciHigh };
+}
+
+function reliability(n: number): CfbTeamResearchRecord["reliability"] {
+  if (n < 10) return "VERY LOW";
+  if (n < 25) return "LOW";
+  if (n < 50) return "MODERATE";
+  return "HIGH";
+}
+
+/** Historical context is intentionally separate from live game_odds_history.
+ * CFBD reference values do not carry the observation trail needed to call them
+ * a verified close or to backtest historical movement. */
+export async function getCfbResearchBoard(gameDate?: string): Promise<CfbResearchBoard> {
+  await ensureOddsHistoryTables();
+  const targetDate = gameDate ?? await getCfbDefaultGameDate();
+  const rows = await db.execute(sql`
+    WITH targets AS (
+      SELECT m.id, m.season, m.home_team_id, m.away_team_id, m.home_spread,
+             ht.name AS home_name, at.name AS away_name,
+             CASE
+               WHEN ABS(m.home_spread) BETWEEN 0.5 AND 2.5 THEN 0.5
+               WHEN ABS(m.home_spread) BETWEEN 3.0 AND 6.5 THEN 3.0
+               WHEN ABS(m.home_spread) BETWEEN 7.0 AND 10.0 THEN 7.0
+               WHEN ABS(m.home_spread) BETWEEN 10.5 AND 13.5 THEN 10.5
+               WHEN ABS(m.home_spread) BETWEEN 14.0 AND 16.5 THEN 14.0
+               WHEN ABS(m.home_spread) BETWEEN 17.0 AND 20.5 THEN 17.0
+               WHEN ABS(m.home_spread) BETWEEN 21.0 AND 27.5 THEN 21.0
+               WHEN ABS(m.home_spread) >= 28.0 THEN 28.0
+             END AS bucket_low,
+             CASE
+               WHEN ABS(m.home_spread) BETWEEN 0.5 AND 2.5 THEN 2.5
+               WHEN ABS(m.home_spread) BETWEEN 3.0 AND 6.5 THEN 6.5
+               WHEN ABS(m.home_spread) BETWEEN 7.0 AND 10.0 THEN 10.0
+               WHEN ABS(m.home_spread) BETWEEN 10.5 AND 13.5 THEN 13.5
+               WHEN ABS(m.home_spread) BETWEEN 14.0 AND 16.5 THEN 16.5
+               WHEN ABS(m.home_spread) BETWEEN 17.0 AND 20.5 THEN 20.5
+               WHEN ABS(m.home_spread) BETWEEN 21.0 AND 27.5 THEN 27.5
+               WHEN ABS(m.home_spread) >= 28.0 THEN 999.0
+             END AS bucket_high
+      FROM cfb_matchups m
+      JOIN cfb_teams ht ON ht.team_id=m.home_team_id
+      JOIN cfb_teams at ON at.team_id=m.away_team_id
+      WHERE m.game_date=${targetDate}::date
+    ), historical AS (
+      SELECT m.id, m.season, m.game_date, m.home_team_id, m.away_team_id,
+             m.home_score, m.away_score, hl.home_value AS home_spread
+      FROM cfb_matchups m
+      JOIN cfb_historical_game_lines hl ON hl.game_id=m.id
+      WHERE m.completed=TRUE AND m.neutral_site=FALSE
+        AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+        AND hl.market_type='spread'
+        AND hl.line_designation='historical_reference'
+        AND hl.is_canonical_reference=TRUE
+        AND hl.home_classification='fbs' AND hl.away_classification='fbs'
+    ), team_perspectives AS (
+      SELECT id, season, game_date, home_team_id AS team_id,
+             home_score-away_score AS margin, home_spread AS team_spread
+      FROM historical
+      UNION ALL
+      SELECT id, season, game_date, away_team_id AS team_id,
+             away_score-home_score AS margin, -home_spread AS team_spread
+      FROM historical
+    )
+    SELECT t.id AS "matchupId", t.home_spread AS "homeSpread",
+           t.bucket_low AS "bucketLow", t.bucket_high AS "bucketHigh",
+           t.home_team_id AS "homeTeamId", t.away_team_id AS "awayTeamId",
+           t.home_name AS "homeTeamName", t.away_name AS "awayTeamName",
+           exact_stats.*, bucket_stats.*, home_stats.*, away_stats.*,
+           home_coach.person_name AS "homeCoach",
+           away_coach.person_name AS "awayCoach",
+           home_feature.feature_version AS "homeFeatureVersion",
+           home_feature.games_played AS "homeGamesPlayed",
+           home_feature.effective_games AS "homeEffectiveGames",
+           home_feature.current_weight AS "homeCurrentWeight",
+           home_feature.prior_weight AS "homePriorWeight",
+           home_feature.source_completeness AS "homeSourceCompleteness",
+           home_feature.features_json AS "homeFeatures",
+           home_feature.as_of_at::text AS "homeFeatureAsOf",
+           away_feature.feature_version AS "awayFeatureVersion",
+           away_feature.games_played AS "awayGamesPlayed",
+           away_feature.effective_games AS "awayEffectiveGames",
+           away_feature.current_weight AS "awayCurrentWeight",
+           away_feature.prior_weight AS "awayPriorWeight",
+           away_feature.source_completeness AS "awaySourceCompleteness",
+           away_feature.features_json AS "awayFeatures",
+           away_feature.as_of_at::text AS "awayFeatureAsOf",
+           season_stats.seasons,
+           comparable_stats.games AS "comparableGames"
+    FROM targets t
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*) FILTER (WHERE home_score > away_score)::int AS "exactSuWins",
+        COUNT(*) FILTER (WHERE home_score < away_score)::int AS "exactSuLosses",
+        COUNT(*) FILTER (WHERE home_score = away_score)::int AS "exactSuPushes",
+        COUNT(*) FILTER (WHERE home_score-away_score+home_spread > 0)::int AS "exactAtsWins",
+        COUNT(*) FILTER (WHERE home_score-away_score+home_spread < 0)::int AS "exactAtsLosses",
+        COUNT(*) FILTER (WHERE home_score-away_score+home_spread = 0)::int AS "exactAtsPushes"
+      FROM historical h
+      WHERE t.home_spread IS NOT NULL AND h.home_spread=t.home_spread
+    ) exact_stats ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*) FILTER (WHERE home_score > away_score)::int AS "bucketSuWins",
+        COUNT(*) FILTER (WHERE home_score < away_score)::int AS "bucketSuLosses",
+        COUNT(*) FILTER (WHERE home_score = away_score)::int AS "bucketSuPushes",
+        COUNT(*) FILTER (WHERE home_score-away_score+home_spread > 0)::int AS "bucketAtsWins",
+        COUNT(*) FILTER (WHERE home_score-away_score+home_spread < 0)::int AS "bucketAtsLosses",
+        COUNT(*) FILTER (WHERE home_score-away_score+home_spread = 0)::int AS "bucketAtsPushes"
+      FROM historical h
+      WHERE t.bucket_low IS NOT NULL
+        AND ABS(h.home_spread) BETWEEN t.bucket_low AND t.bucket_high
+        AND SIGN(h.home_spread)=SIGN(t.home_spread)
+    ) bucket_stats ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT s.person_name, s.start_season, s.end_season
+      FROM cfb_staff_regimes s
+      WHERE s.team_id=t.home_team_id AND s.role='HEAD_COACH'
+        AND s.start_season <= t.season AND COALESCE(s.end_season, t.season) >= t.season
+      ORDER BY s.start_season DESC, s.id DESC LIMIT 1
+    ) home_coach ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT s.person_name, s.start_season, s.end_season
+      FROM cfb_staff_regimes s
+      WHERE s.team_id=t.away_team_id AND s.role='HEAD_COACH'
+        AND s.start_season <= t.season AND COALESCE(s.end_season, t.season) >= t.season
+      ORDER BY s.start_season DESC, s.id DESC LIMIT 1
+    ) away_coach ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*) FILTER (WHERE margin+team_spread > 0)::int AS "homeTeamWins",
+        COUNT(*) FILTER (WHERE margin+team_spread < 0)::int AS "homeTeamLosses",
+        COUNT(*) FILTER (WHERE margin+team_spread = 0)::int AS "homeTeamPushes"
+      FROM team_perspectives p
+      WHERE p.team_id=t.home_team_id AND t.bucket_low IS NOT NULL
+        AND ABS(p.team_spread) BETWEEN t.bucket_low AND t.bucket_high
+        AND SIGN(p.team_spread)=SIGN(t.home_spread)
+        AND p.season >= COALESCE(home_coach.start_season, GREATEST(t.season-5, 0))
+        AND p.season <= COALESCE(home_coach.end_season, t.season)
+    ) home_stats ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*) FILTER (WHERE margin+team_spread > 0)::int AS "awayTeamWins",
+        COUNT(*) FILTER (WHERE margin+team_spread < 0)::int AS "awayTeamLosses",
+        COUNT(*) FILTER (WHERE margin+team_spread = 0)::int AS "awayTeamPushes"
+      FROM team_perspectives p
+      WHERE p.team_id=t.away_team_id AND t.bucket_low IS NOT NULL
+        AND ABS(p.team_spread) BETWEEN t.bucket_low AND t.bucket_high
+        AND SIGN(p.team_spread)=SIGN(-t.home_spread)
+        AND p.season >= COALESCE(away_coach.start_season, GREATEST(t.season-5, 0))
+        AND p.season <= COALESCE(away_coach.end_season, t.season)
+    ) away_stats ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT * FROM cfb_team_game_features f
+      WHERE f.game_id=t.id AND f.team_id=t.home_team_id
+      ORDER BY f.created_at DESC LIMIT 1
+    ) home_feature ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT * FROM cfb_team_game_features f
+      WHERE f.game_id=t.id AND f.team_id=t.away_team_id
+      ORDER BY f.created_at DESC LIMIT 1
+    ) away_feature ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(ARRAY_AGG(DISTINCT season ORDER BY season), ARRAY[]::integer[]) AS seasons
+      FROM historical
+    ) season_stats ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(JSONB_AGG(c.game ORDER BY c.game_date DESC, c.game_id DESC), '[]'::jsonb) AS games
+      FROM (
+        SELECT h.game_date, h.id AS game_id,
+               JSONB_BUILD_OBJECT(
+                 'gameId', h.id, 'gameDate', h.game_date,
+                 'homeTeam', ht.name, 'awayTeam', at.name,
+                 'homeSpread', h.home_spread, 'homeScore', h.home_score,
+                 'awayScore', h.away_score,
+                 'atsOutcome', CASE
+                   WHEN h.home_score-h.away_score+h.home_spread > 0 THEN 'W'
+                   WHEN h.home_score-h.away_score+h.home_spread < 0 THEN 'L'
+                   ELSE 'P'
+                 END
+               ) AS game
+        FROM historical h
+        JOIN cfb_teams ht ON ht.team_id=h.home_team_id
+        JOIN cfb_teams at ON at.team_id=h.away_team_id
+        WHERE t.bucket_low IS NOT NULL
+          AND ABS(h.home_spread) BETWEEN t.bucket_low AND t.bucket_high
+          AND SIGN(h.home_spread)=SIGN(t.home_spread)
+        ORDER BY h.game_date DESC, h.id DESC
+        LIMIT 5
+      ) c
+    ) comparable_stats ON TRUE
+    ORDER BY t.id
+  `);
+  const hypothesisRows = await db.execute(sql`
+    SELECT h.hypothesis_key AS key, h.version, h.name, h.status,
+           COUNT(s.id) FILTER (WHERE s.qualified_for_tracking)::int AS "prospectiveN"
+    FROM cfb_hypotheses h
+    LEFT JOIN cfb_game_signal_snapshots s ON s.hypothesis_id=h.id
+    GROUP BY h.id ORDER BY h.hypothesis_key, h.version
+  `);
+  const hypotheses = hypothesisRows.rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    return { key: String(r.key), version: String(r.version), name: String(r.name), status: String(r.status), prospectiveN: Number(r.prospectiveN ?? 0) };
+  });
+  const board: CfbResearchBoard = {};
+  for (const row of rows.rows) {
+    const r = row as Record<string, unknown>;
+    const bucketAts = researchRecord(r, "bucketAts");
+    const teamRecord = (prefix: "home" | "away", coach: string | null): CfbTeamResearchRecord => {
+      const base = researchRecord(r, `${prefix}Team`);
+      const rawRate = base.rate;
+      const priorRate = bucketAts.rate;
+      const decisions = base.wins + base.losses;
+      const shrunkRate = priorRate == null
+        ? rawRate
+        : (base.wins + 20 * priorRate) / (decisions + 20);
+      return { ...base, rawRate, shrunkRate, reliability: reliability(base.n), evidenceLevel: coach ? "current_head_coach" : "recent_team", coach };
+    };
+    const feature = (prefix: "home" | "away", teamId: number, teamName: string): CfbTeamFeatureContext | null => {
+      if (r[`${prefix}FeatureVersion`] == null) return null;
+      return {
+        teamId, teamName, featureVersion: String(r[`${prefix}FeatureVersion`]),
+        gamesPlayed: Number(r[`${prefix}GamesPlayed`] ?? 0),
+        effectiveGames: Number(r[`${prefix}EffectiveGames`] ?? 0),
+        currentWeight: Number(r[`${prefix}CurrentWeight`] ?? 0),
+        priorWeight: Number(r[`${prefix}PriorWeight`] ?? 1),
+        sourceCompleteness: r[`${prefix}SourceCompleteness`] == null ? null : Number(r[`${prefix}SourceCompleteness`]),
+        features: r[`${prefix}Features`] && typeof r[`${prefix}Features`] === "object" ? r[`${prefix}Features`] as Record<string, unknown> : {},
+        asOf: r[`${prefix}FeatureAsOf`] == null ? null : String(r[`${prefix}FeatureAsOf`]),
+      };
+    };
+    const low = r.bucketLow == null ? null : Number(r.bucketLow);
+    const high = r.bucketHigh == null ? null : Number(r.bucketHigh);
+    const label = low == null || high == null ? null : high >= 999
+      ? `Favorite ${low.toFixed(1)}+`
+      : `Favorite ${low.toFixed(1)}-${high.toFixed(1)}`;
+    const matchupId = Number(r.matchupId);
+    const homeCoach = r.homeCoach == null ? null : String(r.homeCoach);
+    const awayCoach = r.awayCoach == null ? null : String(r.awayCoach);
+    board[matchupId] = {
+      matchupId, homeSpread: r.homeSpread == null ? null : Number(r.homeSpread),
+      bucketLabel: label, lineDesignation: "historical_reference",
+      seasons: Array.isArray(r.seasons) ? r.seasons.map(Number) : [],
+      exact: { su: researchRecord(r, "exactSu"), ats: researchRecord(r, "exactAts") },
+      bucket: { su: researchRecord(r, "bucketSu"), ats: bucketAts },
+      homeTeam: teamRecord("home", homeCoach), awayTeam: teamRecord("away", awayCoach),
+      homeFeature: feature("home", Number(r.homeTeamId), String(r.homeTeamName)),
+      awayFeature: feature("away", Number(r.awayTeamId), String(r.awayTeamName)),
+      comparableGames: Array.isArray(r.comparableGames) ? r.comparableGames.map((item) => {
+        const game = item as Record<string, unknown>;
+        return {
+          gameId: Number(game.gameId), gameDate: String(game.gameDate),
+          homeTeam: String(game.homeTeam), awayTeam: String(game.awayTeam),
+          homeSpread: Number(game.homeSpread), homeScore: Number(game.homeScore),
+          awayScore: Number(game.awayScore), atsOutcome: String(game.atsOutcome) as "W" | "L" | "P",
+        };
+      }) : [],
+      hypotheses,
+    };
+  }
+  return board;
+}
+
 export type CfbTerminalRow = {
   matchupId: number;
   cfbdGameId: number;

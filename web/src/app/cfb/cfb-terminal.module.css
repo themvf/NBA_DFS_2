@@ -803,6 +803,237 @@
   clip-path: inset(50%);
 }
 
+.historyPane {
+  border-top: 1px solid var(--terminal-line);
+  background: #09100f;
+}
+
+.historyDisclosure {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px;
+  padding: 10px 12px;
+  border: 1px solid #705b16;
+  background: #181507;
+  color: #e8d895;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.historyDisclosure svg {
+  width: 15px;
+  flex: 0 0 auto;
+  color: var(--terminal-orange);
+}
+
+.historyDisclosure p {
+  margin: 0;
+}
+
+.historyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--terminal-line);
+  border-top: 1px solid var(--terminal-line);
+  border-bottom: 1px solid var(--terminal-line);
+}
+
+.historyCard {
+  min-width: 0;
+  padding: 13px;
+  background: #0b1211;
+}
+
+.historyCard header,
+.featureCard > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--terminal-muted);
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+
+.historyCard header strong,
+.featureCard > div:first-child strong {
+  color: var(--terminal-orange);
+}
+
+.historyCard footer {
+  margin-top: 12px;
+  color: var(--terminal-muted);
+  font-size: 9px;
+}
+
+.historyMetrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.historyMetric {
+  display: grid;
+  gap: 3px;
+}
+
+.historyMetric > span {
+  color: var(--terminal-muted);
+  font-size: 9px;
+}
+
+.historyMetric > strong {
+  color: var(--terminal-text);
+  font-size: 22px;
+}
+
+.historyMetric > small,
+.teamContextRow small,
+.featureCard small {
+  color: var(--terminal-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.teamRows {
+  display: grid;
+  gap: 12px;
+  margin-top: 13px;
+}
+
+.teamContextRow > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.teamContextRow > div span {
+  color: var(--terminal-muted);
+  text-align: right;
+}
+
+.teamContextRow p {
+  margin: 4px 0 1px;
+  color: var(--terminal-text);
+  font-size: 11px;
+}
+
+.featureGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--terminal-line);
+}
+
+.featureCard {
+  padding: 13px;
+  background: #0b1211;
+}
+
+.featureCard p {
+  margin: 10px 0;
+  color: var(--terminal-text);
+  font-size: 11px;
+}
+
+.featureCard dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px 16px;
+  margin: 0 0 10px;
+}
+
+.featureCard dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px dotted #25322f;
+  padding-bottom: 3px;
+}
+
+.featureCard dt {
+  color: var(--terminal-muted);
+  font-size: 9px;
+}
+
+.featureCard dd {
+  margin: 0;
+  color: var(--terminal-green);
+  font-size: 10px;
+}
+
+.historyEmpty {
+  padding: 18px;
+  color: var(--terminal-muted);
+  font-size: 11px;
+}
+
+.hypothesisStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  padding: 10px 13px;
+  border-top: 1px solid var(--terminal-line);
+  color: var(--terminal-muted);
+  font-size: 9px;
+}
+
+.hypothesisStrip strong {
+  color: var(--terminal-orange);
+}
+
+.comparableGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-top: 1px solid var(--terminal-line);
+}
+
+.comparableGame {
+  min-width: 0;
+  padding: 9px 10px;
+  border-right: 1px solid var(--terminal-line);
+}
+
+.comparableGame:last-child {
+  border-right: 0;
+}
+
+.comparableGame span,
+.comparableGame strong,
+.comparableGame small {
+  display: block;
+}
+
+.comparableGame span,
+.comparableGame small {
+  color: var(--terminal-muted);
+  font-size: 8px;
+}
+
+.comparableGame strong {
+  margin: 4px 0;
+  color: var(--terminal-text);
+  font-size: 9px;
+}
+
+@media (max-width: 1050px) {
+  .historyGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .featureGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .comparableGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1080px) {
   .shell {
     grid-template-columns: 220px minmax(0, 1fr);
