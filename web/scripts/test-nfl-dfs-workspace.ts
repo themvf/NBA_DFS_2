@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
 import { parseNflComparisonCsv } from "../src/lib/nfl-dfs/comparison-csv";
 import { exportNflDkEntries } from "../src/lib/nfl-dfs/entry-export";
+import { averagePairwiseUnique, buildLineupInsight, lineupOverlap } from "../src/lib/nfl-dfs/lineup-insights";
 
 let id = 100;
 const player = (name: string, position: NflOptimizerPlayer["position"], team: string, opponent: string, salary: number, proj: number): NflOptimizerPlayer => ({
@@ -32,6 +33,13 @@ for (const lineup of result.lineups) {
   assert.ok(lineup.stackSummary.bringBack);
 }
 assert.ok(result.lineups[0].playerIds.filter((value) => result.lineups[1].playerIds.includes(value)).length <= 7);
+assert.equal(lineupOverlap(result.lineups[0], result.lineups[0]), 9);
+assert.ok(averagePairwiseUnique(result.lineups) >= 2);
+const insight = buildLineupInsight(result.lineups[1], result.lineups, "gpp", "our");
+assert.ok(insight.reasons.some((reason) => reason.tone === "ceiling"));
+assert.ok(insight.reasons.some((reason) => reason.tone === "correlation"));
+assert.equal(insight.sourceCounts.our, 9);
+assert.ok(insight.gameCounts.length >= 2);
 
 const comparison = parseNflComparisonCsv("Player,Team,Proj,Own%\nJosh Allen,BUF,24.5,12.3%\nTyreek Hill,MIA,19.2,0.18\n");
 assert.equal(comparison.rows[0].projection, 24.5);
