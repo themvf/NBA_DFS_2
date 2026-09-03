@@ -54,6 +54,9 @@ def _line_game():
 def test_audit_reports_coverage_and_never_claims_verified_close() -> None:
     report = audit_season([_game()], [_line_game()], 2025)
     assert report["fbs_vs_fbs_games"] == 1
+    assert report["completed_fbs_vs_fbs_games"] == 1
+    assert report["fbs_line_games"] == 1
+    assert report["fbs_line_coverage"] == 1
     assert report["market_rows"] == {"spread": 1, "total": 1, "moneyline": 1}
     assert report["spread_price_rows"] == 0
     assert report["line_timing_contract"]["verified_close_available"] is False

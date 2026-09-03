@@ -97,6 +97,7 @@ def fetch_cfbd(
 
 def audit_season(games: list[dict], line_games: list[dict], season: int) -> dict:
     line_by_id = {int(item["id"]): item for item in line_games if item.get("id") is not None}
+    game_by_id = {int(item["id"]): item for item in games if item.get("id") is not None}
     providers: Counter[str] = Counter()
     market_counts = Counter()
     priced_spreads = 0
@@ -120,12 +121,20 @@ def audit_season(games: list[dict], line_games: list[dict], season: int) -> dict
         if str(game.get("homeClassification", "")).lower() == "fbs"
         and str(game.get("awayClassification", "")).lower() == "fbs"
     )
+    completed_fbs_ids = {
+        game_id for game_id, game in game_by_id.items()
+        if str(game.get("homeClassification", "")).lower() == "fbs"
+        and str(game.get("awayClassification", "")).lower() == "fbs"
+        and game.get("completed") and game.get("homePoints") is not None
+        and game.get("awayPoints") is not None
+    }
+    fbs_line_games = len(completed_fbs_ids.intersection(line_by_id))
     completed = sum(
         1 for game in games
         if game.get("completed") and game.get("homePoints") is not None and game.get("awayPoints") is not None
     )
     neutral_known = sum(1 for game in games if game.get("neutralSite") is not None)
-    mapped_lines = sum(1 for game_id in line_by_id if game_id in {int(g["id"]) for g in games if g.get("id") is not None})
+    mapped_lines = sum(1 for game_id in line_by_id if game_id in game_by_id)
     return {
         "season": season,
         "audited_at": datetime.now(timezone.utc).isoformat(),
@@ -133,6 +142,9 @@ def audit_season(games: list[dict], line_games: list[dict], season: int) -> dict
         "completed_games": completed,
         "result_completeness": completed / len(games) if games else 0,
         "fbs_vs_fbs_games": fbs_vs_fbs,
+        "completed_fbs_vs_fbs_games": len(completed_fbs_ids),
+        "fbs_line_games": fbs_line_games,
+        "fbs_line_coverage": fbs_line_games / len(completed_fbs_ids) if completed_fbs_ids else 0,
         "line_games": len(line_games),
         "line_games_mapped_to_schedule": mapped_lines,
         "line_game_coverage": mapped_lines / completed if completed else 0,
@@ -286,6 +298,7 @@ def _write_audit(artifact_dir: Path, report: dict) -> None:
         f"- Games: {report['games']}",
         f"- Completed: {report['completed_games']} ({report['result_completeness']:.1%})",
         f"- FBS vs FBS: {report['fbs_vs_fbs_games']}",
+        f"- Completed FBS vs FBS with betting rows: {report['fbs_line_games']} ({report['fbs_line_coverage']:.1%})",
         f"- Games with betting rows: {report['line_games']} ({report['line_game_coverage']:.1%} of completed)",
         f"- Duplicate game IDs: {report['duplicate_game_ids']}",
         f"- Spread price rows: {report['spread_price_rows']}", "",
