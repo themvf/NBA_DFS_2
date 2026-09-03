@@ -910,7 +910,13 @@ def upsert_cfb_roster_snapshot(db: DatabaseManager, row: dict) -> int:
         ON CONFLICT (team_id, season, source, payload_hash) DO UPDATE SET
             summary_json=EXCLUDED.summary_json,
             confidence=EXCLUDED.confidence,
-            is_complete=EXCLUDED.is_complete
+            is_complete=EXCLUDED.is_complete,
+            available_at=LEAST(cfb_roster_snapshots.available_at, EXCLUDED.available_at),
+            captured_at=GREATEST(cfb_roster_snapshots.captured_at, EXCLUDED.captured_at),
+            point_in_time_eligible=(
+                cfb_roster_snapshots.point_in_time_eligible
+                OR EXCLUDED.point_in_time_eligible
+            )
         RETURNING id
         """,
         (

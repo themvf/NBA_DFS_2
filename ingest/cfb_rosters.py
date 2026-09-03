@@ -25,10 +25,10 @@ from config import load_config
 from db.database import DatabaseManager
 from db.queries import (
     build_cfb_team_name_cache,
-    upsert_cfb_roster_player,
     upsert_cfb_roster_snapshot,
     upsert_cfb_staff_regime,
 )
+from ingest.cfb_history import _TransactionDb
 
 logger = logging.getLogger(__name__)
 CFBD_BASE = "https://api.collegefootballdata.com"
@@ -155,54 +155,68 @@ def ingest_roster_context(
             transfers_in[_normal(item["destination"])].append(item)
         if item.get("origin"):
             transfers_out[_normal(item["origin"])].append(item)
-    snapshots = players_written = unmapped = staff_written = 0
-    for team_key, players in roster_by_team.items():
-        team_id = team_cache.get(team_key)
-        if not team_id:
-            unmapped += 1
-            continue
-        previous_ids = _previous_player_ids(db, team_id, season)
-        summary = summarize_roster(
-            players, previous_ids, returning_by_team.get(team_key), talent_by_team.get(team_key),
-            transfers_in.get(team_key, []), transfers_out.get(team_key, []),
-        )
-        digest = _hash({"season": season, "team": team_key, "players": players, "summary": summary})
-        snapshot_id = upsert_cfb_roster_snapshot(db, {
-            "team_id": team_id, "season": season, "source": "cfbd_annual_roster",
-            "available_at": captured_at, "captured_at": captured_at, "payload_hash": digest,
-            "confidence": 0.8 if prospective else 0.5, "is_complete": bool(players),
-            "point_in_time_eligible": prospective, "summary_json": summary,
-        })
-        snapshots += int(bool(snapshot_id))
-        for player in players:
-            display_name = " ".join(filter(None, [player.get("firstName"), player.get("lastName")])).strip()
-            players_written += int(bool(upsert_cfb_roster_player(db, {
-                "snapshot_id": snapshot_id,
-                "source_player_id": str(player.get("id")),
-                "normalized_name": _normal(display_name),
-                "display_name": display_name,
-                "position": player.get("position"),
-                "position_group": position_group(player.get("position")),
-                "class_year": player.get("year"),
-                "availability_status": None,
-                "availability_confidence": None,
-                "attributes_json": player,
-            })))
-    for coach in coaches:
-        person_name = " ".join(filter(None, [coach.get("firstName"), coach.get("lastName")])).strip()
-        seasons_by_team: dict[int, list[int]] = defaultdict(list)
-        for item in coach.get("seasons") or []:
-            team_id = team_cache.get(_normal(item.get("school")))
-            if team_id and item.get("year") is not None:
-                seasons_by_team[team_id].append(int(item["year"]))
-        for team_id, years in seasons_by_team.items():
-            staff_written += int(bool(upsert_cfb_staff_regime(db, {
-                "team_id": team_id, "role": "HEAD_COACH",
-                "source_person_id": str(coach.get("id")), "person_name": person_name,
-                "start_season": min(years), "start_week": 0, "end_season": max(years),
-                "source": "cfbd_coaches", "available_at": captured_at,
-                "captured_at": captured_at, "source_json": coach,
-            })))
+    from psycopg2.extras import Json, execute_values
+
+    snapshots = unmapped = staff_written = 0
+    player_values = []
+    with db.connect() as connection:
+        tx = _TransactionDb(connection)
+        for team_key, players in roster_by_team.items():
+            team_id = team_cache.get(team_key)
+            if not team_id:
+                unmapped += 1
+                continue
+            previous_ids = _previous_player_ids(tx, team_id, season)
+            summary = summarize_roster(
+                players, previous_ids, returning_by_team.get(team_key), talent_by_team.get(team_key),
+                transfers_in.get(team_key, []), transfers_out.get(team_key, []),
+            )
+            digest = _hash({"season": season, "team": team_key, "players": players, "summary": summary})
+            snapshot_id = upsert_cfb_roster_snapshot(tx, {
+                "team_id": team_id, "season": season, "source": "cfbd_annual_roster",
+                "available_at": captured_at, "captured_at": captured_at, "payload_hash": digest,
+                "confidence": 0.8 if prospective else 0.5, "is_complete": bool(players),
+                "point_in_time_eligible": prospective, "summary_json": summary,
+            })
+            snapshots += int(bool(snapshot_id))
+            for player in players:
+                display_name = " ".join(filter(None, [player.get("firstName"), player.get("lastName")])).strip()
+                player_values.append((
+                    snapshot_id, str(player.get("id")), _normal(display_name), display_name,
+                    player.get("position"), position_group(player.get("position")),
+                    player.get("year"), None, None, None, None, Json(player),
+                ))
+        if player_values:
+            execute_values(connection.cursor(), """
+                INSERT INTO cfb_roster_players (
+                    snapshot_id, source_player_id, normalized_name, display_name,
+                    position, position_group, class_year, previous_team_id, depth_role,
+                    availability_status, availability_confidence, attributes_json
+                ) VALUES %s
+                ON CONFLICT (snapshot_id, source_player_id) DO UPDATE SET
+                    normalized_name=EXCLUDED.normalized_name,
+                    display_name=EXCLUDED.display_name,
+                    position=EXCLUDED.position,
+                    position_group=EXCLUDED.position_group,
+                    class_year=EXCLUDED.class_year,
+                    attributes_json=EXCLUDED.attributes_json
+            """, player_values, page_size=1000)
+        for coach in coaches:
+            person_name = " ".join(filter(None, [coach.get("firstName"), coach.get("lastName")])).strip()
+            seasons_by_team: dict[int, list[int]] = defaultdict(list)
+            for item in coach.get("seasons") or []:
+                team_id = team_cache.get(_normal(item.get("school")))
+                if team_id and item.get("year") is not None:
+                    seasons_by_team[team_id].append(int(item["year"]))
+            for team_id, years in seasons_by_team.items():
+                staff_written += int(bool(upsert_cfb_staff_regime(tx, {
+                    "team_id": team_id, "role": "HEAD_COACH",
+                    "source_person_id": str(coach.get("id")), "person_name": person_name,
+                    "start_season": min(years), "start_week": 0, "end_season": max(years),
+                    "source": "cfbd_coaches", "available_at": captured_at,
+                    "captured_at": captured_at, "source_json": coach,
+                })))
+    players_written = len(player_values)
     return {
         "season": season, "prospective": prospective, "snapshots": snapshots,
         "players": players_written, "staff_regimes": staff_written,
