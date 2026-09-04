@@ -2944,6 +2944,41 @@ TABLES = [
     )
     """,
 
+    # Versioned realized DraftKings scoring derived from immutable nflverse
+    # player-week payloads.  Rows are append-only by input digest: if an
+    # upstream source row is corrected, a new result is inserted rather than
+    # silently rewriting the prior evidence. DST calculations retain their
+    # scoring components so other redraft scoring configurations can reuse the
+    # same source observation without pretending one platform is universal.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_dfs_player_week_results (
+        id BIGSERIAL PRIMARY KEY,
+        player_week_stat_id BIGINT NOT NULL REFERENCES ff_player_week_stats(id),
+        player_id BIGINT NOT NULL REFERENCES ff_players(id),
+        game_id INTEGER REFERENCES nfl_season_games(id),
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        team TEXT,
+        opponent TEXT,
+        position TEXT NOT NULL,
+        actual_dk_fpts DOUBLE PRECISION,
+        scoring_status TEXT NOT NULL,
+        exclusion_reason TEXT,
+        scoring_version TEXT NOT NULL,
+        input_source TEXT NOT NULL,
+        input_digest TEXT NOT NULL,
+        scoring_evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(player_week_stat_id, scoring_version, input_digest),
+        CHECK(scoring_status IN ('exact', 'excluded')),
+        CHECK(
+            (scoring_status = 'exact' AND actual_dk_fpts IS NOT NULL AND exclusion_reason IS NULL)
+            OR
+            (scoring_status = 'excluded' AND actual_dk_fpts IS NULL AND exclusion_reason IS NOT NULL)
+        )
+    )
+    """,
+
     # Market-implied power ratings, append-only and as-of. These are a
     # compression of the spreads the market has already posted, propagated to
     # games it has not priced yet -- never an independent opinion.
@@ -4012,6 +4047,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_rankings_board ON ff_player_rankings(ranking_set_id, COALESCE(our_rank, overall_rank))",
     "CREATE INDEX IF NOT EXISTS idx_ff_features_player_season ON ff_player_season_features(player_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_ff_week_stats_season_player ON ff_player_week_stats(season, player_id, week)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_week_results_game ON nfl_dfs_player_week_results(game_id, scoring_status, position)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_week_results_player ON nfl_dfs_player_week_results(player_id, season, week)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_projection_runs_slate ON nfl_dfs_projection_runs(season, week, as_of_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_player_projections_run ON nfl_dfs_player_projections(run_id, position)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_player_projections_player ON nfl_dfs_player_projections(player_id, created_at DESC)",

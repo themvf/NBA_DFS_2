@@ -29,6 +29,8 @@ import argparse
 import io
 import logging
 import time
+from datetime import date, datetime, time as wall_time
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -46,6 +48,7 @@ NFLVERSE_SCHEDULE_URL = (
 # ingest/ff_independent.py::TEAM_ABBREV_OVERRIDES; if that map grows, this one
 # must grow with it.
 TEAM_ABBREV_OVERRIDES = {"LA": "LAR", "WAS": "WSH", "AZ": "ARI", "JAC": "JAX"}
+EASTERN = ZoneInfo("America/New_York")
 
 
 def fetch_schedule(timeout: int = 60, attempts: int = 3) -> pd.DataFrame:
@@ -102,6 +105,30 @@ def _int(value: object) -> int | None:
     return None if numeric is None else int(numeric)
 
 
+def _kickoff(gameday: object, gametime: object) -> datetime | None:
+    """Build an aware kickoff from nflverse's Eastern-local date and time.
+
+    A fixed UTC offset is incorrect for most of the regular season: September
+    games are EDT (UTC-4), while December games are EST (UTC-5).  ZoneInfo also
+    preserves the correct offset if daylight-saving rules change later.
+    """
+    if gameday is None or gametime is None:
+        return None
+    try:
+        if pd.isna(gameday) or pd.isna(gametime):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    day_text = str(gameday).strip()
+    time_text = str(gametime).strip()
+    if not day_text or not time_text:
+        return None
+    day = date.fromisoformat(day_text)
+    clock = wall_time.fromisoformat(time_text)
+    return datetime.combine(day, clock, tzinfo=EASTERN)
+
+
 def _link_matchup_ids(db: DatabaseManager, season: int) -> dict[tuple[int, int, str], int]:
     """Map (home_team_id, away_team_id, game_date) -> nfl_matchups.id.
 
@@ -131,55 +158,19 @@ def load_season(db: DatabaseManager, season: int, schedule: pd.DataFrame | None 
 
     by_abbrev = team_id_map(db)
     matchups = _link_matchup_ids(db, season)
-    written = 0
+    values: list[tuple[object, ...]] = []
 
     for _, row in games.iterrows():
         home_id = _resolve(row["home_team"], by_abbrev)
         away_id = _resolve(row["away_team"], by_abbrev)
         gameday = None if pd.isna(row.get("gameday")) else str(row["gameday"])
-        kickoff = None
-        if gameday and not pd.isna(row.get("gametime")):
-            # nflverse publishes local Eastern time for gametime.
-            kickoff = f"{gameday} {row['gametime']}:00-05:00"
+        kickoff = _kickoff(row.get("gameday"), row.get("gametime"))
 
         home_score = _int(row.get("home_score"))
         away_score = _int(row.get("away_score"))
         spread = _num(row.get("spread_line"))
 
-        db.execute(
-            """
-            INSERT INTO nfl_season_games (
-                season, week, game_type, nflverse_game_id, matchup_id,
-                gameday, kickoff, home_team_id, away_team_id,
-                div_game, roof, surface, home_rest, away_rest,
-                quoted_spread_line, quoted_total_line,
-                quoted_home_ml, quoted_away_ml, quote_source,
-                home_score, away_score, completed, source_captured_at
-            ) VALUES (
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s,
-                %s, %s, %s, %s, %s,
-                %s, %s,
-                %s, %s, %s,
-                %s, %s, %s, NOW()
-            )
-            ON CONFLICT (nflverse_game_id) DO UPDATE SET
-                week = EXCLUDED.week,
-                matchup_id = COALESCE(EXCLUDED.matchup_id, nfl_season_games.matchup_id),
-                gameday = EXCLUDED.gameday,
-                kickoff = EXCLUDED.kickoff,
-                home_rest = EXCLUDED.home_rest,
-                away_rest = EXCLUDED.away_rest,
-                quoted_spread_line = EXCLUDED.quoted_spread_line,
-                quoted_total_line = EXCLUDED.quoted_total_line,
-                quoted_home_ml = EXCLUDED.quoted_home_ml,
-                quoted_away_ml = EXCLUDED.quoted_away_ml,
-                quote_source = EXCLUDED.quote_source,
-                home_score = EXCLUDED.home_score,
-                away_score = EXCLUDED.away_score,
-                completed = EXCLUDED.completed,
-                source_captured_at = NOW()
-            """,
+        values.append(
             (
                 season,
                 _int(row["week"]),
@@ -203,11 +194,46 @@ def load_season(db: DatabaseManager, season: int, schedule: pd.DataFrame | None 
                 home_score,
                 away_score,
                 home_score is not None and away_score is not None,
-            ),
+            )
         )
-        written += 1
 
-    return written
+    db.execute_many(
+        """
+        INSERT INTO nfl_season_games (
+            season, week, game_type, nflverse_game_id, matchup_id,
+            gameday, kickoff, home_team_id, away_team_id,
+            div_game, roof, surface, home_rest, away_rest,
+            quoted_spread_line, quoted_total_line,
+            quoted_home_ml, quoted_away_ml, quote_source,
+            home_score, away_score, completed, source_captured_at
+        ) VALUES (
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s,
+            %s, %s, %s,
+            %s, %s, %s, NOW()
+        )
+        ON CONFLICT (nflverse_game_id) DO UPDATE SET
+            week = EXCLUDED.week,
+            matchup_id = COALESCE(EXCLUDED.matchup_id, nfl_season_games.matchup_id),
+            gameday = EXCLUDED.gameday,
+            kickoff = EXCLUDED.kickoff,
+            home_rest = EXCLUDED.home_rest,
+            away_rest = EXCLUDED.away_rest,
+            quoted_spread_line = EXCLUDED.quoted_spread_line,
+            quoted_total_line = EXCLUDED.quoted_total_line,
+            quoted_home_ml = EXCLUDED.quoted_home_ml,
+            quoted_away_ml = EXCLUDED.quoted_away_ml,
+            quote_source = EXCLUDED.quote_source,
+            home_score = EXCLUDED.home_score,
+            away_score = EXCLUDED.away_score,
+            completed = EXCLUDED.completed,
+            source_captured_at = NOW()
+        """,
+        values,
+    )
+    return len(values)
 
 
 def verify_season(db: DatabaseManager, season: int) -> list[str]:

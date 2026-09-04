@@ -98,5 +98,37 @@ def test_sparse_player_is_explicit_position_prior() -> None:
     assert result.confidence == 0.0
 
 
+def test_dst_projects_from_exact_dk_week_results() -> None:
+    rows = [
+        HistoricalWeek(
+            player_id=10,
+            player_gsis_id=None,
+            player_name="Buffalo DST",
+            position="DST",
+            season=2025,
+            week=number,
+            team="BUF",
+            opponent="MIA",
+            stats={"fantasy_points": points},
+        )
+        for number, points in enumerate((8.0, 12.0, 16.0, 10.0), start=1)
+    ]
+    result = project_player(
+        player_id=10,
+        player_gsis_id=None,
+        player_name="Buffalo DST",
+        position="DST",
+        historical_rows=rows,
+        cutoff_season=2026,
+        cutoff_week=1,
+        seed=4,
+    )
+
+    assert result.projection_status == "historical"
+    assert result.model_proj_fpts is not None
+    assert result.floor_fpts <= result.median_fpts <= result.ceiling_fpts
+    assert result.confidence > 0
+
+
 def test_artifact_digest_is_order_stable() -> None:
     assert artifact_digest({"b": 2, "a": 1}) == artifact_digest({"a": 1, "b": 2})

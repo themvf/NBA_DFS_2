@@ -20,7 +20,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 
 
-MODEL_VERSION = "nfl-dfs-historical-v1"
+MODEL_VERSION = "nfl-dfs-historical-v2"
 MODEL_CONFIG = {
     "player_half_life_games": 6.0,
     "prior_equivalent_games": 4.0,
@@ -63,9 +63,9 @@ def _number(row: Mapping[str, Any], key: str) -> float:
 def draftkings_points(position: str, row: Mapping[str, Any]) -> float:
     """Score a realized stat line using current DraftKings NFL rules."""
     if position == "DST":
-        # This is accepted only for scoring an explicitly DK-compatible input.
-        # The repo's current matched DST history is Yahoo-scored and therefore
-        # never reaches this branch through project_player (see below).
+        # DST history reaches the model only through the versioned exact-DK
+        # result ledger. Its component evidence remains available separately
+        # for custom redraft scoring.
         return _number(row, "fantasy_points")
     if position == "K":
         return (
@@ -250,12 +250,6 @@ def project_player(
 ) -> HistoricalProjection:
     if position not in SUPPORTED_POSITIONS:
         raise ValueError(f"Unsupported NFL position: {position}")
-    if position == "DST":
-        return HistoricalProjection(
-            MODEL_VERSION, "unavailable", player_id, player_gsis_id, player_name, position,
-            0, 0, None, None, None, None, None, None, 0.0, {},
-            {"reason": "current DST history is Yahoo-scored, not DK-compatible"},
-        )
     prior = sorted(
         (row for row in historical_rows if before_cutoff(row, cutoff_season, cutoff_week)),
         key=lambda row: row.chronological_key,

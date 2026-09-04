@@ -1,0 +1,265 @@
+{
+  "artifact_digest": "6bc845e43f185e5cee9e4899aa1ddf7f4c94dbe3c9918baf623bc92901adda6a",
+  "artifact_type": "vegas-environment-phase0-coverage-audit",
+  "as_of": "2026-09-03T22:16:40.308195+00:00",
+  "audit_version": "vegas-environment-phase0-v2",
+  "inventory": {
+    "dk_players": {
+      "exists": true,
+      "first": null,
+      "last": null,
+      "rows": 0
+    },
+    "dk_slates": {
+      "exists": true,
+      "first": null,
+      "last": null,
+      "rows": 0
+    },
+    "ff_player_week_stats": {
+      "exists": true,
+      "first": "2026-08-30T03:33:23.890454+00:00",
+      "last": "2026-09-03T21:44:09.186692+00:00",
+      "rows": 17232
+    },
+    "game_odds_history": {
+      "exists": true,
+      "first": "2026-08-01T18:45:16+00:00",
+      "last": "2026-08-29T21:44:14+00:00",
+      "rows": 1686
+    },
+    "nfl_dfs_player_projections": {
+      "exists": true,
+      "first": "2026-09-03T02:59:33.165218+00:00",
+      "last": "2026-09-03T02:59:33.165218+00:00",
+      "rows": 1084
+    },
+    "nfl_dfs_player_week_results": {
+      "exists": true,
+      "first": "2026-09-03T21:42:35.240856+00:00",
+      "last": "2026-09-03T22:16:03.106995+00:00",
+      "rows": 34488
+    },
+    "nfl_dfs_projection_runs": {
+      "exists": true,
+      "first": "2026-09-03T02:58:18.077278+00:00",
+      "last": "2026-09-03T02:58:18.077278+00:00",
+      "rows": 1
+    },
+    "nfl_dfs_slate_players": {
+      "exists": true,
+      "first": "2026-09-03T13:11:04.683857+00:00",
+      "last": "2026-09-03T14:20:23.432445+00:00",
+      "rows": 1438
+    },
+    "nfl_dfs_slate_uploads": {
+      "exists": true,
+      "first": "2026-09-03T13:11:04.666344+00:00",
+      "last": "2026-09-03T14:20:18.478322+00:00",
+      "rows": 2
+    },
+    "nfl_matchups": {
+      "exists": true,
+      "first": "2026-08-07T00:09:08+00:00",
+      "last": "2027-01-10T21:05:00+00:00",
+      "rows": 322
+    },
+    "nfl_season_games": {
+      "exists": true,
+      "first": "2023-09-08T00:20:00+00:00",
+      "last": "2027-01-10T18:00:00+00:00",
+      "rows": 1088
+    }
+  },
+  "market_coverage": {
+    "accepted_pregame_rows": 0,
+    "all_nfl_odds_rows": {
+      "complete_pregame_rows": 1686,
+      "mapped_to_commence_time": 1686,
+      "mapping_pct": 100.0,
+      "missing_matchup_time_rows": 0,
+      "post_start_rows": 0,
+      "rows": 1686
+    },
+    "by_season": {
+      "2023": {
+        "completed_score": 272,
+        "mapped": 0,
+        "past_games": 272,
+        "pregame_market": 0
+      },
+      "2024": {
+        "completed_score": 272,
+        "mapped": 0,
+        "past_games": 272,
+        "pregame_market": 0
+      },
+      "2025": {
+        "completed_score": 272,
+        "mapped": 0,
+        "past_games": 272,
+        "pregame_market": 0
+      }
+    },
+    "capture_keys": {},
+    "checkpoint_coverage": {
+      "close": {
+        "coverage_pct": 0.0,
+        "eligible_past_games": 816,
+        "games": 0,
+        "window_hours": null
+      },
+      "open": {
+        "coverage_pct": 0.0,
+        "eligible_past_games": 816,
+        "games": 0,
+        "window_hours": null
+      },
+      "t_minus_15m": {
+        "coverage_pct": 0.0,
+        "eligible_past_games": 816,
+        "games": 0,
+        "window_hours": [
+          0.08333333333333333,
+          0.5833333333333334
+        ]
+      },
+      "t_minus_24h": {
+        "coverage_pct": 0.0,
+        "eligible_past_games": 816,
+        "games": 0,
+        "window_hours": [
+          20.0,
+          28.0
+        ]
+      },
+      "t_minus_48h": {
+        "coverage_pct": 0.0,
+        "eligible_past_games": 816,
+        "games": 0,
+        "window_hours": [
+          42.0,
+          54.0
+        ]
+      },
+      "t_minus_6h": {
+        "coverage_pct": 0.0,
+        "eligible_past_games": 816,
+        "games": 0,
+        "window_hours": [
+          5.0,
+          7.0
+        ]
+      },
+      "t_minus_90m": {
+        "coverage_pct": 0.0,
+        "eligible_past_games": 816,
+        "games": 0,
+        "window_hours": [
+          1.0,
+          2.0
+        ]
+      }
+    },
+    "eligible_market_seasons": [],
+    "four_book_support_pct_of_pregame": null,
+    "games_with_completed_scores": 816,
+    "games_with_eligible_pregame_market": 0,
+    "games_with_four_plus_books": 0,
+    "historical_closing_reference": {
+      "checkpoint_eligible": false,
+      "coverage_pct": 100.0,
+      "games": 816,
+      "reason": "The source has no per-game pregame availability timestamp; it cannot establish open or checkpoint state.",
+      "seasons": [
+        2023,
+        2024,
+        2025
+      ],
+      "source": "nfl_season_games quoted lines (nflverse)"
+    },
+    "mapped_to_nfl_matchups": 0,
+    "mapping_pct": 0.0,
+    "past_regular_season_games": 816,
+    "pregame_market_coverage_pct": 0.0,
+    "rejected_incomplete_market_rows": 0,
+    "rejected_post_start_rows": 0,
+    "team_result_coverage_pct": 100.0,
+    "upcoming_readiness": {
+      "games": 272,
+      "games_with_eligible_pregame_market": 1,
+      "games_with_four_plus_books": 1,
+      "mapped_to_nfl_matchups": 272,
+      "mapping_pct": 100.0,
+      "pregame_market_coverage_pct": 0.37
+    }
+  },
+  "next_actions": [
+    "Backfill or accumulate canonical pregame NFL total/spread captures with kickoff-safe timestamps.",
+    "Do not substitute nfl_season_games quoted_total_line for missing checkpoint history unless its availability timestamp is proven.",
+    "Persist historical NFL DK salary slates and link each player to ff_player_week_stats results.",
+    "Collect actual contest ownership before attempting ownership-adjusted leverage conclusions.",
+    "Re-run this exact audit after remediation; do not begin predictive fitting until its gates pass."
+  ],
+  "player_linkage": {
+    "evaluable_player_rows": 0,
+    "evaluable_slates": 0,
+    "historical_player_weeks": {
+      "first_season": 2023,
+      "last_season": 2025,
+      "ppr_rows": 17232,
+      "rows": 17232,
+      "schedule_link_rows": 17232,
+      "seasons": 3,
+      "team_rows": 17232
+    },
+    "legacy_dk_tables": {
+      "actual_ownership_rows": 0,
+      "evaluable_rows": 0,
+      "evaluable_slates": 0,
+      "player_rows": 0,
+      "slates": 0
+    },
+    "nfl_workspace": {
+      "actual_ownership_rows": 0,
+      "evaluable_slates": 0,
+      "identity_rows": 1380,
+      "player_rows": 1438,
+      "projected_ownership_rows": 0,
+      "projection_rows": 1334,
+      "result_link_rows": 0,
+      "salary_rows": 1438,
+      "uploads": 2
+    },
+    "notes": [
+      "Exact realized DK scoring, including DST, is versioned from ff_player_week_stats source components.",
+      "DST scoring evidence retains reusable components so redraft scoring can apply league-specific settings without rewriting source data.",
+      "LineStar ownership in nfl_dfs_slate_players is projected ownership, not actual contest ownership.",
+      "Optimal-lineup reconstruction requires salary and realized DK points on the same frozen slate."
+    ],
+    "optimal_lineup_reconstructable_slates": 0,
+    "ownership_adjusted_rows": 0,
+    "realized_dk_scoring": {
+      "exact_rows": 17232,
+      "excluded_rows": 0,
+      "game_linked_exact_rows": 17232,
+      "rows": 17232,
+      "scoring_versions": [
+        "nfl-dk-realized-v2"
+      ],
+      "seasons": 3
+    }
+  },
+  "policy": {
+    "minimum_evaluable_player_rows": 500,
+    "minimum_evaluable_slates": 10,
+    "minimum_market_games": 100,
+    "minimum_market_seasons": 2
+  },
+  "read_only": true,
+  "recommendation": "BLOCKED_MISSING_MARKETS",
+  "recommendation_reasons": [
+    "Only 0 completed/past games have eligible pregame markets; 100 are required."
+  ],
+  "sport": "nfl"
+}

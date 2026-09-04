@@ -54,11 +54,25 @@ def infer_target_week(db: DatabaseManager, season: int) -> int:
 def _history(db: DatabaseManager, season: int, week: int | None) -> list[HistoricalWeek]:
     rows = db.execute(
         """SELECT w.player_id, p.gsis_id, p.canonical_name, p.position,
-                  w.season, w.week, w.team, w.opponent, w.source_row
+                  w.season, w.week, w.team, w.opponent,
+                  CASE WHEN p.position='DST'
+                    THEN jsonb_build_object(
+                      'fantasy_points', result.actual_dk_fpts,
+                      'scoring_components', result.scoring_evidence->'scoring_components'
+                    )
+                    ELSE w.source_row
+                  END source_row
            FROM ff_player_week_stats w
            JOIN ff_players p ON p.id=w.player_id
+           LEFT JOIN LATERAL (
+             SELECT r.actual_dk_fpts,r.scoring_evidence
+             FROM nfl_dfs_player_week_results r
+             WHERE r.player_week_stat_id=w.id AND r.scoring_status='exact'
+             ORDER BY r.computed_at DESC,r.id DESC LIMIT 1
+           ) result ON TRUE
            WHERE w.season_type='REG'
              AND (w.season < %s OR (w.season=%s AND %s IS NOT NULL AND w.week < %s))
+             AND (p.position <> 'DST' OR result.actual_dk_fpts IS NOT NULL)
            ORDER BY w.season,w.week,w.player_id""",
         (season, season, week, week),
     )
