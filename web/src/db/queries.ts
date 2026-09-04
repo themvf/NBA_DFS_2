@@ -9905,7 +9905,7 @@ export type MlbLineMovementRow = {
   maxJumpPp: number;
   pinGapPp: number | null;
   postFix: boolean;
-  trail: Array<{ capturedAt: string; homeProb: number }>;
+  trail: Array<{ capturedAt: string; homeProb: number; bookHomeProbs: Record<string, number> }>;
   confirmingBooks: number;
   trackedBooks: number;
 };
@@ -10659,7 +10659,8 @@ export async function getLineMovement(
       SELECT matchup_id,
              JSONB_AGG(JSONB_BUILD_OBJECT(
                'capturedAt', captured_at::text,
-               'homeProb', vegas_prob_home
+               'homeProb', vegas_prob_home,
+               'books', books
              ) ORDER BY captured_at) AS trail
       FROM caps
       GROUP BY matchup_id
@@ -10718,8 +10719,22 @@ export async function getLineMovement(
           if (!item || typeof item !== "object") return [];
           const point = item as Record<string, unknown>;
           const homeProb = Number(point.homeProb);
+          const books = point.books && typeof point.books === "object"
+            ? point.books as Record<string, unknown>
+            : {};
+          const bookHomeProbs = Object.fromEntries(Object.entries(books).flatMap(([book, raw]) => {
+            if (!raw || typeof raw !== "object") return [];
+            const quote = raw as Record<string, unknown>;
+            const homeMl = Number(quote.ml_home), awayMl = Number(quote.ml_away);
+            if (!Number.isFinite(homeMl) || !Number.isFinite(awayMl)) return [];
+            const implied = (american: number) => american > 0
+              ? 100 / (american + 100)
+              : Math.abs(american) / (Math.abs(american) + 100);
+            const home = implied(homeMl), away = implied(awayMl);
+            return home + away > 0 ? [[book, home / (home + away)]] : [];
+          }));
           return Number.isFinite(homeProb)
-            ? [{ capturedAt: String(point.capturedAt), homeProb }]
+            ? [{ capturedAt: String(point.capturedAt), homeProb, bookHomeProbs }]
             : [];
         })
       : [];

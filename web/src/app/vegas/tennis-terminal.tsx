@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Search } from "lucide-react";
 import type { TennisMatchRow, MlbLineMovementRow, LineAlertRow } from "@/db/queries";
 import s from "./tennis-terminal.module.css";
@@ -10,24 +10,45 @@ const pct = (v: number | null) => v == null ? "—" : `${(v * 100).toFixed(1)}%`
 const time = (v: string | null) => v && Number.isFinite(Date.parse(v))
   ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(new Date(v)) + " ET" : "Time unavailable";
 const label = (v: string) => v.replaceAll("_", " ").toUpperCase();
+const BOOK_LABELS: Record<string,string> = { draftkings: "DraftKings", pinnacle: "Pinnacle", fanduel: "FanDuel", betmgm: "BetMGM", betrivers: "BetRivers", fanatics: "Fanatics", betonlineag: "BetOnline" };
+const bookLabel = (v: string) => BOOK_LABELS[v] ?? v.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+const BOOK_COLORS = ["#52dbd1", "#b980ff", "#5da9ff", "#75d46b", "#ff6f91", "#e7d66b", "#ff8f4c", "#b6c2bd"];
 
 function Trail({ row, mini = false }: { row?: MlbLineMovementRow; mini?: boolean }) {
-  const points = (row?.trail ?? []).filter(p => Number.isFinite(p.homeProb) && Number.isFinite(Date.parse(p.capturedAt)))
-    .slice().sort((a,b) => Date.parse(a.capturedAt)-Date.parse(b.capturedAt));
+  const points = useMemo(() => (row?.trail ?? []).filter(p => Number.isFinite(p.homeProb) && Number.isFinite(Date.parse(p.capturedAt)))
+    .slice().sort((a,b) => Date.parse(a.capturedAt)-Date.parse(b.capturedAt)),[row?.trail]);
+  const availableBooks = useMemo(() => {
+    const counts = new Map<string,number>();
+    for (const point of points) for (const book of Object.keys(point.bookHomeProbs ?? {})) counts.set(book,(counts.get(book) ?? 0)+1);
+    const priority = (book: string) => book === "pinnacle" ? 0 : book === "draftkings" ? 1 : 2;
+    return [...counts].sort(([a,ac],[b,bc]) => priority(a)-priority(b) || bc-ac || a.localeCompare(b)).slice(0,8).map(([book])=>book);
+  },[points]);
+  const [hiddenByMatch,setHiddenByMatch] = useState<Record<number,string[]>>({});
+  const matchupId = row?.matchupId ?? -1;
+  const hiddenBooks = hiddenByMatch[matchupId] ?? [];
+  const visibleBooks = availableBooks.filter(book => !hiddenBooks.includes(book));
   if (!points.length) return <div className={s.noChart}>{mini ? "NO LOADED TRAIL" : "No probability trail in the loaded feed for this match."}</div>;
   const width = 640, height = 240, left = 52, right = 620;
   const start = Date.parse(points[0].capturedAt), end = Date.parse(points.at(-1)!.capturedAt);
-  const lo = Math.max(0, Math.min(...points.map(p => p.homeProb)) - .015);
-  const hi = Math.min(1, Math.max(...points.map(p => p.homeProb)) + .015);
+  const displayedValues = points.flatMap(p => [p.homeProb,...visibleBooks.flatMap(book => p.bookHomeProbs?.[book] != null ? [p.bookHomeProbs[book]] : [])]);
+  const lo = Math.max(0, Math.min(...displayedValues) - .015);
+  const hi = Math.min(1, Math.max(...displayedValues) + .015);
   const x = (p: typeof points[number]) => end === start ? (left+right)/2 : left+(Date.parse(p.capturedAt)-start)/(end-start)*(right-left);
-  const y = (p: typeof points[number]) => 20+(hi-p.homeProb)/(hi-lo || 1)*180;
-  return <svg viewBox={`0 0 ${width} ${height}`} className={mini ? s.mini : s.chart} role="img"
+  const y = (value: number) => 20+(hi-value)/(hi-lo || 1)*180;
+  const graphic = <svg viewBox={`0 0 ${width} ${height}`} className={mini ? s.mini : s.chart} role="img"
     aria-label={`${points.length} captured probability observations${mini ? "" : "; dashed connections indicate gaps over 30 minutes"}`}>
     {!mini && [0,.5,1].map(t => <g key={t}><line x1={left} x2={right} y1={20+t*180} y2={20+t*180} stroke="#27302f"/><text x="2" y={24+t*180} fill="#98a6a0" fontSize="11">{pct(hi-t*(hi-lo))}</text></g>)}
-    {points.slice(1).map((p,i) => <line key={`${p.capturedAt}-${i}`} x1={x(points[i])} y1={y(points[i])} x2={x(p)} y2={y(p)} stroke="#f6a800" strokeWidth={mini ? 5 : 2} strokeDasharray={Date.parse(p.capturedAt)-Date.parse(points[i].capturedAt)>1800000 ? "7 5" : undefined}/>)}
-    {points.map((p,i) => <circle key={i} cx={x(p)} cy={y(p)} r={mini ? 5 : 3} fill="#f6a800"><title>{time(p.capturedAt)} · {pct(p.homeProb)}</title></circle>)}
+    {!mini && availableBooks.map((book,bi) => visibleBooks.includes(book) && points.slice(1).flatMap((point,i) => {
+      const previous=points[i], from=previous.bookHomeProbs?.[book], to=point.bookHomeProbs?.[book];
+      if (from == null || to == null) return [];
+      return [<line key={`${book}-${point.capturedAt}`} x1={x(previous)} y1={y(from)} x2={x(point)} y2={y(to)} stroke={BOOK_COLORS[bi]} strokeWidth={book === "pinnacle" || book === "draftkings" ? 1.8 : 1.1} opacity={.82} strokeDasharray={Date.parse(point.capturedAt)-Date.parse(previous.capturedAt)>1800000 ? "6 5" : undefined}><title>{bookLabel(book)} · {time(point.capturedAt)} · {pct(to)}</title></line>];
+    }))}
+    {points.slice(1).map((p,i) => <line key={`${p.capturedAt}-${i}`} x1={x(points[i])} y1={y(points[i].homeProb)} x2={x(p)} y2={y(p.homeProb)} stroke="#f6a800" strokeWidth={mini ? 5 : 3} strokeDasharray={Date.parse(p.capturedAt)-Date.parse(points[i].capturedAt)>1800000 ? "7 5" : undefined}/>)}
+    {points.map((p,i) => <circle key={i} cx={x(p)} cy={y(p.homeProb)} r={mini ? 5 : 2.5} fill="#f6a800"><title>Consensus · {time(p.capturedAt)} · {pct(p.homeProb)}</title></circle>)}
     {!mini && <><text x={left} y="229" fill="#98a6a0" fontSize="10">{time(points[0].capturedAt)}</text><text x={right} y="229" textAnchor="end" fill="#98a6a0" fontSize="10">{time(points.at(-1)!.capturedAt)}</text></>}
   </svg>;
+  if (mini) return graphic;
+  return <div><div className={s.bookLegend}><span className={s.consensusKey}>CONSENSUS</span>{availableBooks.map((book,i)=><button key={book} aria-pressed={visibleBooks.includes(book)} onClick={()=>setHiddenByMatch(current=>{const hidden=current[matchupId] ?? []; return {...current,[matchupId]:hidden.includes(book)?hidden.filter(v=>v!==book):[...hidden,book]};})} style={{"--book-color":BOOK_COLORS[i]} as CSSProperties}>{bookLabel(book)}</button>)}</div>{graphic}<div className={s.bookNote}>Consensus is bold · individual books use no-vig moneyline probability · top 8 by coverage shown</div></div>;
 }
 
 export default function TennisTerminal({ matchups, movement, alerts, queryDate, children }: {
@@ -80,7 +101,7 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
         <div className={s.heading}>MODEL / MARKET <span>CALIBRATION ONLY</span></div>
         <div className={s.metrics}><div><small>MARKET · {match.homePlayer}</small><strong>{pct(match.homeWinProb)}</strong></div><div><small>MODEL · {match.homePlayer}</small><strong>{pct(match.ourProbHome)}</strong></div><div><small>OVERALL ELO · HOME / AWAY</small><strong>{match.homeElo ?? "—"} / {match.awayElo ?? "—"}</strong></div></div>
       </> : <p className={s.empty}>Select a match when the feed is available. Missing quotes are never displayed as zero.</p>}</main>
-      <aside className={s.pulse}><div className={s.heading}>DATA PULSE <span>{status}</span></div><div className={s.pulseBlock}><strong className={s.amber}>{status}</strong><p>Last trail observation<br/>{history ? time(history.closeCapturedAt) : "Unavailable"}</p><p>{match?.nBooks ?? "—"} books in match feed · {history?.trackedBooks ?? "—"} tracked in trail</p></div>
+      <aside className={s.pulse}><div className={s.heading}>DATA PULSE <span>{status}</span></div><div className={s.pulseBlock}><strong className={s.amber}>{status}</strong><p>Last trail observation<br/>{history ? time(history.closeCapturedAt) : "Unavailable"}</p><p>{match?.nBooks ?? "—"} books in current match feed · {history?.trackedBooks ?? "—"} comparable at open/close</p></div>
         <div className={s.heading}>SIGNAL TAPE <span>{tape.length} RECORDED</span></div>
         <div className={s.tape}>{tape.map((a,i)=><div className={s.pulseBlock} key={`${a.createdAt}-${a.alertType}-${i}`}><strong>{label(a.alertType)}</strong><p>{a.side === "home" ? match?.homePlayer : a.side === "away" ? match?.awayPlayer : label(a.side)}</p><small>{time(a.createdAt)}</small><p>{a.outcome ?? "Outcome pending"} · CLV {a.clvPp == null ? "pending" : `${a.clvPp.toFixed(1)}pp`}</p></div>)}{!tape.length && <p className={s.empty}>No recorded signals in the loaded feed for this match.</p>}</div>
         <div className={s.notice}><strong>RESEARCH TERMINAL</strong><p>Tennis moneyline has no confirmed edge. Ratings are capped at 2★. Model disagreement is not a recommendation.</p><p>Capture targets reach five-minute intervals near scheduled start. Delays and missing observations remain possible.</p></div>

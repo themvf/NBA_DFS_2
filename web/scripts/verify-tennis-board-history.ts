@@ -26,6 +26,7 @@ async function main() {
     assert.ok(found);
     assert.equal(found.captures, Number(row.captures));
     assert.equal(found.trail.length, Number(row.captures));
+    assert.ok(found.trail.some(point => Object.keys(point.bookHomeProbs).length > 1), "Per-book probabilities must reach the chart");
     assert.ok(found.trail.every(p => Date.parse(p.capturedAt) <= new Date(String(row.commence_time)).getTime()));
   }
   assert.deepEqual(await getLineMovement("tennis", 7, "sportsbook", []), []);
