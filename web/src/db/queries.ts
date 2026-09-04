@@ -10605,7 +10605,15 @@ export async function getLineMovement(
   sport: "mlb" | "nba" | "nfl" | "cfb" | "soccer" | "tennis",
   days = 7,
   lane: LineMovementLane = "sportsbook",
+  boardMatchupIds?: number[],
 ): Promise<MlbLineMovementRow[]> {
+  // A match board needs every displayed match's saved pre-start trail, not
+  // just the upcoming/top-movers research shortlist. Never include in-play rows.
+  if (boardMatchupIds?.length === 0) return [];
+  const boardScope = boardMatchupIds !== undefined;
+  const scopeFilter = boardScope
+    ? sql`AND h.matchup_id IN (${sql.join(boardMatchupIds.map(id => sql`${id}`), sql`, `)})`
+    : sql`AND h.game_date >= CURRENT_DATE - ${days}::int AND m.commence_time > NOW()`;
   // Open -> close line movement per game from the 30-min game_odds_history
   // capture trail (Edge-Finding P2). open = first pre-game capture, close =
   // last capture before first pitch (the in-play guard stops captures at
@@ -10638,14 +10646,13 @@ export async function getLineMovement(
       FROM game_odds_history h
       LEFT JOIN ${sql.raw(LINE_MOVEMENT_MATCHUP_TABLE[sport])} m ON m.id = h.matchup_id
       WHERE h.sport = ${sport}
-        AND h.game_date >= CURRENT_DATE - ${days}::int
-        AND m.commence_time > NOW()   -- live panel: UPCOMING (not-yet-started) games only
+        ${scopeFilter}
         AND h.vegas_prob_home IS NOT NULL
         AND h.captured_at <= m.commence_time
         ${sourceFilter}
     ),
-    o AS (SELECT * FROM caps WHERE rf = 1 AND cnt >= 2),
-    c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= 2),
+    o AS (SELECT * FROM caps WHERE rf = 1 AND cnt >= ${boardScope ? 1 : 2}),
+    c AS (SELECT * FROM caps WHERE rl = 1 AND cnt >= ${boardScope ? 1 : 2}),
     j AS (SELECT matchup_id, MAX(jump) AS max_jump, MIN(captured_at) AS first_cap
           FROM caps GROUP BY matchup_id),
     trails AS (
@@ -10697,12 +10704,12 @@ export async function getLineMovement(
                   ELSE ABS(pin_ml.mld) / (ABS(pin_ml.mld) + 100) END AS pd
     ) pin_p
     WHERE TRUE
-    ${comparableFilter}
+    ${boardScope ? sql`` : comparableFilter}
     -- Clean (post-odds-fix) rows first: pre-fix consensus noise produces fake
     -- 30pp "moves" that would otherwise crowd trusted rows out of the LIMIT.
     ORDER BY (j.first_cap >= '2026-07-02'::timestamptz) DESC,
              ABS(c.vegas_prob_home - o.vegas_prob_home) DESC
-    LIMIT 40
+    ${boardScope ? sql`` : sql`LIMIT 40`}
   `);
   return rows.rows.map((r) => {
     const rec = r as Record<string, unknown>;

@@ -44,13 +44,14 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
 
   // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
+    const matchesPromise = getTennisVegasMatchups(date);
     const [matchups, bets, backtest, legacyBetSummary, sportsbookMovement, polymarketMovement, lineAlerts, lineAlertBacktest, eloDashboard, detectorHealth] = await Promise.all([
-      getTennisVegasMatchups(date),
+      matchesPromise,
       getTennisBets(300),
       getTennisBetBacktest(),
       getTennisLegacyBetSummary(),
-      getLineMovement("tennis", 7, "sportsbook"),
-      getLineMovement("tennis", 7, "polymarket"),
+      matchesPromise.then(matches => getLineMovement("tennis", 7, "sportsbook", matches.map(m => m.id))),
+      matchesPromise.then(matches => getLineMovement("tennis", 7, "polymarket", matches.map(m => m.id))),
       getLineAlerts("tennis"),
       getLineAlertBacktest("tennis"),
       getTennisEloDashboard(),

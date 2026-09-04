@@ -46,7 +46,8 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
   const history = movement.find(r => r.matchupId === match?.id);
   const tape = alerts.filter(a => a.matchupId === match?.id).sort((a,b) => Date.parse(b.createdAt)-Date.parse(a.createdAt));
   const age = history && now ? (now-Date.parse(history.closeCapturedAt))/60000 : null;
-  const status = !history ? "NO HISTORY" : age != null && age > 30 ? "STALE" : "OBSERVED";
+  const pastScheduledStart = now != null && match?.commenceTime != null && Date.parse(match.commenceTime) <= now;
+  const status = !history ? "NO LOADED TRAIL" : pastScheduledStart ? "SAVED PRE-MATCH" : age != null && age > 30 ? "STALE" : "OBSERVED";
   const delta = history ? (history.closeProb-history.openProb)*100 : null;
   return <div className={s.terminal}>
     <header className={s.topbar}><h1>TENNIS LINE TERMINAL</h1><label className={s.search}><Search size={14}/><input aria-label="Search tennis players or date" placeholder="SEARCH PLAYER OR MATCH" value={search} onChange={e=>setSearch(e.target.value)}/></label><span className={s.amber}>RESEARCH · {queryDate ?? "UPCOMING BOARD"}</span></header>
@@ -66,7 +67,7 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
       <main className={s.instrument}>{match ? <>
         <div className={s.matchHeader}><div><div className={s.eyebrow}>{match.tour} / MATCH MARKET</div><h2>{match.awayPlayer} <span>vs</span> {match.homePlayer}</h2><p>{time(match.commenceTime)} · {match.completionStatus} · Scheduled start</p></div><div className={s.primaryQuote}>{ml(match.homeMl)}<small>{match.homePlayer} · moneyline</small></div></div>
         <div className={s.tabs} aria-label="Selected market">{["moneyline","total","handicap"].map(t=><button key={t} aria-pressed={market===t} onClick={()=>setMarket(t)}>{t.toUpperCase()}</button>)}</div>
-        <div className={s.heading}>{market === "moneyline" ? `${match.homePlayer} · SPORTSBOOK PROBABILITY` : `${market.toUpperCase()} · LATEST QUOTES`}<span>{history?.captures ?? 0} CAPTURES</span></div>
+        <div className={s.heading}>{market === "moneyline" ? `${match.homePlayer} · SPORTSBOOK PROBABILITY` : `${market.toUpperCase()} · LATEST QUOTES`}<span>{market !== "moneyline" ? "CURRENT QUOTES ONLY" : history ? `${history.captures} PRE-MATCH CAPTURES` : "CAPTURES UNAVAILABLE"}</span></div>
         {market === "moneyline" ? <div className={s.chartArea}><Trail row={history}/><div className={s.chartFoot}><span>● Sportsbook trail · {delta == null ? "—" : `${delta>=0?"+":""}${delta.toFixed(1)}pp since first capture`}</span><span>Dashed = gap &gt;30m · independently scaled</span></div></div> : <div className={s.marketQuotes}>
           <div><small>{market === "total" ? "TOTAL GAMES" : `${match.homePlayer} HANDICAP`}</small><strong>{market === "total" ? match.totalGamesLine ?? "—" : match.setHandicap ?? "—"}</strong></div>
           <div><small>{market === "total" ? "OVER / UNDER" : "HOME / AWAY PRICE"}</small><strong>{market === "total" ? `${ml(match.overOdds)} / ${ml(match.underOdds)}` : `${ml(match.handicapHomeOdds)} / ${ml(match.handicapAwayOdds)}`}</strong></div>
