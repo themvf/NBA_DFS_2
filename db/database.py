@@ -13,11 +13,12 @@ from db.schema import TABLES, INDEXES, MIGRATIONS
 
 
 class DatabaseManager:
-    def __init__(self, database_url: str) -> None:
+    def __init__(self, database_url: str, *, initialize_schema: bool = True) -> None:
         if not database_url:
             raise ValueError("DATABASE_URL is required")
         self.database_url = database_url
-        self._ensure_schema()
+        if initialize_schema:
+            self._ensure_schema()
 
     @contextmanager
     def connect(self):

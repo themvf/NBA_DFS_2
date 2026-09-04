@@ -2613,6 +2613,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sharp line-movement alerts + audit")
     parser.add_argument("--sport", choices=list(_ALERT_SPORTS), help="Scan + settle one sport")
     parser.add_argument("--report", action="store_true", help="Print the backtest")
+    parser.add_argument("--existing-schema", action="store_true",
+                        help="Use an already migrated database without running global DDL")
     parser.add_argument(
         "--include-legacy", action="store_true",
         help="Include stale/non-primary/legacy MLB and Tennis closes in reports",
@@ -2622,7 +2624,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = load_config()
-    db = DatabaseManager(config.database_url)
+    db = DatabaseManager(config.database_url, initialize_schema=not args.existing_schema)
     if args.sport in ("cfb", "nfl"):
         with db.reuse_connection():
             _run_cli(db, args)

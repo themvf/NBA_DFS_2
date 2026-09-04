@@ -28,10 +28,10 @@ jobs:
           cache: "pip"
       - run: pip install -r requirements.txt
       - name: Capture due checkpoints and freeze verified closes
-        run: python -m ingest.event_closing_lines
+        run: python -m ingest.event_closing_lines --existing-schema
       - name: Detect and grade prospective CFB market signals
-        run: python -m model.line_alerts --sport cfb
+        run: python -m model.line_alerts --sport cfb --existing-schema
       - name: Audit CFB capture and grading integrity
         run: python -m ingest.cfb_capture_audit
       - name: Detect and grade NFL market signals
-        run: python -m model.line_alerts --sport nfl
+        run: python -m model.line_alerts --sport nfl --existing-schema

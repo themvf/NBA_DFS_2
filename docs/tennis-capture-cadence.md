@@ -25,3 +25,10 @@ these are shared across sports, not an additional tennis allocation. The final
 30-minute targets cost at most six bulk requests (18 credits) per isolated
 tournament/match window, before any retries, with overlapping matches sharing
 requests. Other scheduled tennis ingestion remains unchanged.
+
+The shared scheduled odds capture/grading job uses `--existing-schema`: it does
+not rerun global database migrations, which can wait on unrelated long-running
+imports and exhaust the capture windows. Migrations must be applied separately
+before deploying a new schema-dependent worker version. Normal CLI behavior
+still initializes schema unless this flag is explicitly supplied; a missing
+required table/column remains an error, never a silent fallback.

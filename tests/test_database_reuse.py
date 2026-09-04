@@ -2,6 +2,16 @@ from db.database import DatabaseManager
 import pytest
 
 
+def test_worker_can_skip_global_schema_without_changing_default(monkeypatch):
+    calls = []
+    monkeypatch.setattr(DatabaseManager, "_ensure_schema", lambda self: calls.append(self.database_url))
+    DatabaseManager("default")
+    DatabaseManager("worker", initialize_schema=False)
+    assert calls == ["default"]
+    with pytest.raises(ValueError):
+        DatabaseManager("", initialize_schema=False)
+
+
 def test_reuse_keeps_transactions_independent_and_closes_once(monkeypatch):
     class Connection:
         commits = rollbacks = closes = 0

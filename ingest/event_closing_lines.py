@@ -780,9 +780,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capture and freeze MLB/Tennis/NFL/CFB closing lines")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--health-only", action="store_true")
+    parser.add_argument("--existing-schema", action="store_true",
+                        help="Use an already migrated database; do not run global DDL in the capture worker")
     args = parser.parse_args()
     config = load_config()
-    database = DatabaseManager(config.database_url)
+    database = DatabaseManager(config.database_url, initialize_schema=not args.existing_schema)
     with database.reuse_connection():
         output = health_report(database) if args.health_only else run(
             database, config.odds_api.api_key, dry_run=args.dry_run,
