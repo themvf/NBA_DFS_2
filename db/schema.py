@@ -4360,6 +4360,17 @@ INDEXES = [
     )
     """,
 
+    # Archive evidence and replay results are deliberately separate from live captures.
+    """CREATE TABLE IF NOT EXISTS cfb_historical_archive (
+        profile TEXT NOT NULL, requested_at TIMESTAMPTZ NOT NULL,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), credits INTEGER NOT NULL,
+        remaining INTEGER, payload JSONB NOT NULL, PRIMARY KEY(profile,requested_at)
+    )""",
+    """CREATE TABLE IF NOT EXISTS cfb_historical_replays (
+        profile TEXT NOT NULL, matchup_id INTEGER NOT NULL REFERENCES cfb_matchups(id),
+        evaluated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), result JSONB NOT NULL,
+        PRIMARY KEY(profile,matchup_id)
+    )""",
     # Every observed CFB quote transition, separate from first-breach signals.
     """CREATE TABLE IF NOT EXISTS cfb_quote_movements (
         id BIGSERIAL PRIMARY KEY,

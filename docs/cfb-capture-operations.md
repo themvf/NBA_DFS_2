@@ -63,6 +63,42 @@ are research observations, not established predictive edges or live bet advice.
 
 ## Verification
 
+### 2026 historical pilot (missing games only)
+
+`python -m ingest.cfb_historical_replay` prints a dry-run credit estimate.
+`--execute` downloads the plan with a default cumulative 7,500-credit cap.
+Only 2026 games already started, with known kickoff and no live history, are
+eligible. 2025 is deliberately excluded. Sampling is every five minutes during
+the final six hours, two reference snapshots at 24/48 hours, and a request one
+second before kickoff (the provider returns its latest available earlier snapshot).
+This does not reconstruct the full path from true market open.
+
+Raw timestamped responses are cached in `cfb_historical_archive`; replay outputs
+are stored in `cfb_historical_replays`. Neither table changes live captures,
+first-breach alerts, immutable closing records, or dashboard badges. Historical
+origin is explicit, and reconstructed trigger timestamps are not detection times.
+Event matching requires both canonical team identities and kickoff within five
+minutes; ambiguous identity or invalid quote evidence aborts processing.
+
+Replay uses the live first-breach rules on successive prefixes. W/L/push and
+hypothetical units use the actual recorded selection line/price and completed
+game scores. CLV is signed line-point improvement against the same execution
+book, not vig-adjusted price CLV: it requires a snapshot within ten minutes of
+kickoff and a book update within fifteen minutes. Missing evidence yields null.
+The closing observation is a near-close proxy, not a guaranteed exact final tick.
+Signals from the same game overlap; they are not independent bets or validation
+of an edge. Archived quote transitions remain available for repeated-movement
+analysis even though the graded signal cohort retains first-breach semantics.
+
+No automatic retry occurs after a transport failure because charges may be
+uncertain. Responses are cached as they arrive and quota usage is reported to
+the shared audit table. Concurrent invocations of this one-off importer should
+not be run; use one process and resume from its cache.
+Failed/interrupted attempts reserve 30 credits conservatively against the cap.
+Duplicate event rows may be collapsed only when identities and normalized quote
+values agree; the older bookmaker timestamp is retained. Conflicting evidence
+still aborts. Pilot findings are in `cfb-2026-historical-pilot-results.md`.
+
 ### Every observed quote movement
 
 CFB grading first reconciles `cfb_quote_movements` from the append-only pregame
