@@ -2588,6 +2588,9 @@ def dk_board(db: DatabaseManager) -> None:
 
 def _run_cli(db, args):
     if args.sport:
+        if args.sport == "cfb":
+            from ingest.cfb_movements import record_movements
+            print("CFB observed movement ledger:", record_movements(db))
         scan(db, args.sport)
         settle(db, args.sport)
         if args.sport == "mlb":

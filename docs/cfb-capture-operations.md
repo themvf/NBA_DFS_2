@@ -63,6 +63,29 @@ are research observations, not established predictive edges or live bet advice.
 
 ## Verification
 
+### Every observed quote movement
+
+CFB grading first reconciles `cfb_quote_movements` from the append-only pregame
+history. This separate ledger records every changed field at every book for
+spread lines/prices, totals/over/under prices, and home/away moneylines. There is
+no minimum move, time-window cutoff, or first-breach deduplication: repeated moves
+and slow/full retracements remain separate observations. Availability changes
+are explicitly `appeared`/`disappeared`, not inferred directional price moves.
+The first snapshot is the baseline; timestamp-only updates are not price moves.
+
+Each row links both source snapshots. Their capture timestamps bound when we
+observed the change; book update timestamps remain available in source JSON.
+Processing time is stored separately. Replay fills transitions from already saved
+history without claiming retroactive prospective signals or inventing missing
+quotes. Every run reconciles the ledger exactly against the source transitions
+and fails on unsupported/mismatched rows. Repeated runs cannot duplicate rows.
+Run independently with `python -m ingest.cfb_movements`.
+
+This adds no paid API requests and does not change polling cadence. Changes
+entirely between polls, unsupported markets, and in-play changes are not covered.
+Existing chart snapshots and first-breach signal badges are unchanged; the new
+ledger is the research data foundation, not a new dashboard movement feed.
+
 The shared worker now runs `python -m ingest.cfb_capture_audit` after CFB
 grading. The audit uses a read-only consistent database snapshot and fails on
 identity, boundary, duplicate, quote, checkpoint, close, trigger, or settlement

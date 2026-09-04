@@ -4353,6 +4353,23 @@ INDEXES = [
     )
     """,
 
+    # Every observed CFB quote transition, separate from first-breach signals.
+    """CREATE TABLE IF NOT EXISTS cfb_quote_movements (
+        id BIGSERIAL PRIMARY KEY,
+        matchup_id INTEGER NOT NULL REFERENCES cfb_matchups(id),
+        previous_history_id INTEGER NOT NULL REFERENCES game_odds_history(id),
+        history_id INTEGER NOT NULL REFERENCES game_odds_history(id),
+        book TEXT NOT NULL,
+        market TEXT NOT NULL CHECK (market IN ('spread','total','moneyline')),
+        field TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('changed','appeared','disappeared')),
+        before_value JSONB NOT NULL,
+        after_value JSONB NOT NULL,
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(history_id,book,field)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_quote_movements_game ON cfb_quote_movements(matchup_id,history_id)",
+
     # 2026-07-02: sharp line-movement ALERTS — an auditable ledger, not a toast.
     # Each row freezes the trigger-time market state (first breach only —
     # ON CONFLICT DO NOTHING; escalations never rewrite history), then gets
