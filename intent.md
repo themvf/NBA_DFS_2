@@ -8,7 +8,7 @@ Initial implementation target: NFL DFS, followed by NBA, MLB, and CFB adapters
 
 Every modeling increment must include a corresponding application visual, saved evidence, honest unavailable states, and browser verification. Backend-only implementation is not feature completion. The project-wide requirement is recorded in [intention.md](intention.md#project-wide-addition-visual-model-delivery--2026-09-04).
 
-Next specification: [NFL opportunity-and-efficiency model and visual delivery](docs/nfl-dfs-opportunity-efficiency-spec.md). Status: draft specification, not implemented. Start with source/feature coverage plus its UI, then deliver workload, efficiency, distributions, and evaluation as vertical slices. Existing production projections and optimizer defaults stay unchanged during research.
+Next specification: [NFL opportunity-and-efficiency model and visual delivery](docs/nfl-dfs-opportunity-efficiency-spec.md). Slice A is implemented locally: saved source coverage and Model Lab visuals. Workload, efficiency, distributions, and evaluation remain subsequent vertical slices. Existing production projections and optimizer defaults stay unchanged during research. See [coverage delivery and findings](docs/nfl-dfs-feature-audit-delivery.md).
 
 ## 1. Intent
 

@@ -18,6 +18,14 @@ import {
 
 // ── NBA tables ────────────────────────────────────────────────
 
+export const nflDfsFeatureAudits = pgTable("nfl_dfs_feature_audits", {
+  auditDigest: text("audit_digest").primaryKey(),
+  version: text("version").notNull(),
+  payload: jsonb("payload").notNull(),
+  inputEvidence: jsonb("input_evidence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const nflDfsWeeklyReportCards = pgTable("nfl_dfs_weekly_report_cards", {
   reportDigest: text("report_digest").primaryKey(),
   season: integer("season").notNull(),

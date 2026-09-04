@@ -2,7 +2,7 @@
 
 Date: 2026-09-04
 
-Status: Draft v1; planning only. No new model, route, schema, or production promotion is implemented by this document.
+Status: Slice A implemented locally 2026-09-04: persisted feature audit and Model Lab coverage UI. Slices B–E remain planned; no component model or production promotion is implemented. See [Slice A delivery](nfl-dfs-feature-audit-delivery.md).
 
 Intent: [NFL research roadmap](../intent.md) and [visual delivery requirement](../intention.md#project-wide-addition-visual-model-delivery--2026-09-04).
 
@@ -154,4 +154,4 @@ Use the existing daily NFL workflow for approved lightweight materialization onl
 
 ## 10. Next action
 
-Implement Slice A: audit the existing stored fields and publish the coverage view. Use that report to lock the first supported component cohort and finalize numeric evaluation gates before fitting the workload model. Keep this draft and the intent documents current as audited evidence narrows the scope.
+Slice A is implemented. Before Slice B, create a separately versioned raw component history: the old frozen history lacks completions/raw DST inputs and uses legacy missing-to-zero defaults. Working source rows contain richer 2023–2025 fields but are a different population. Do not silently join them into the old study. Audit missingness and game/roster identity on the new frozen cohort, then finalize numeric evaluation gates before fitting the workload model.
