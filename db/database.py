@@ -28,7 +28,8 @@ class DatabaseManager:
         import psycopg2
         from psycopg2.extras import RealDictCursor
 
-        conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+        shared = getattr(self, "_shared_connection", None)
+        conn = shared if shared is not None else psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
         try:
             yield conn
             conn.commit()
@@ -36,6 +37,27 @@ class DatabaseManager:
             conn.rollback()
             raise
         finally:
+            if shared is None:
+                conn.close()
+
+    @contextmanager
+    def reuse_connection(self):
+        """Opt-in, single-threaded worker session; preserve per-operation commits.
+
+        A failed later detector must not roll back already accepted captures.
+        Reuse only the transport, not one transaction spanning the whole worker.
+        """
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        if getattr(self, "_shared_connection", None) is not None:
+            yield self
+            return
+        conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+        self._shared_connection = conn
+        try:
+            yield self
+        finally:
+            self._shared_connection = None
             conn.close()
 
     def execute(self, sql: str, params=None):

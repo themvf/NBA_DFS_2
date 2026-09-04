@@ -166,6 +166,8 @@ def test_reconcile_supersedes_old_nfl_kickoff_jobs() -> None:
     assert "superseded by kickoff reschedule" in supersede_sql
     assert "c.scheduled_start_at IS DISTINCT FROM m.commence_time" in supersede_sql
     assert "c.sport='nfl'" in supersede_sql
+    assert "c.sport='cfb'" in db.calls[1][0]
+    assert "c.scheduled_start_at IS DISTINCT FROM m.commence_time" in db.calls[1][0]
 
 
 def test_cfb_due_games_share_one_paid_bulk_capture(monkeypatch) -> None:

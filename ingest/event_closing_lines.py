@@ -291,6 +291,14 @@ def reconcile_checkpoints(db: DatabaseManager, now: datetime | None = None) -> i
           AND c.scheduled_start_at IS DISTINCT FROM m.commence_time
         """
     )
+    db.execute(
+        """UPDATE odds_capture_checkpoints c
+           SET status='missed', failure_reason='superseded by kickoff reschedule'
+           FROM cfb_matchups m
+           WHERE c.sport='cfb' AND m.id=c.matchup_id
+             AND c.status IN ('pending', 'attempted', 'failed')
+             AND c.scheduled_start_at IS DISTINCT FROM m.commence_time"""
+    )
     captured = db.execute(
         """
         WITH candidates AS (
@@ -761,7 +769,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = load_config()
     database = DatabaseManager(config.database_url)
-    output = health_report(database) if args.health_only else run(
-        database, config.odds_api.api_key, dry_run=args.dry_run,
-    )
+    with database.reuse_connection():
+        output = health_report(database) if args.health_only else run(
+            database, config.odds_api.api_key, dry_run=args.dry_run,
+        )
     print(json.dumps(output, indent=2, default=str))

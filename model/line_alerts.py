@@ -2586,6 +2586,24 @@ def dk_board(db: DatabaseManager) -> None:
     print()
 
 
+def _run_cli(db, args):
+    if args.sport:
+        scan(db, args.sport)
+        settle(db, args.sport)
+        if args.sport == "mlb":
+            scan_props(db)
+            settle_props(db)
+        if args.sport == "soccer":
+            settle_props_soccer(db)
+        if args.sport == "tennis":
+            scan_tennis_totals(db)
+            settle_tennis_totals(db)
+    if args.dk_board:
+        dk_board(db)
+    if args.report or (not args.sport and not args.dk_board):
+        report(db, include_legacy=args.include_legacy)
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # Windows cp1252 console
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -2602,21 +2620,8 @@ if __name__ == "__main__":
 
     config = load_config()
     db = DatabaseManager(config.database_url)
-    if args.sport:
-        scan(db, args.sport)
-        settle(db, args.sport)
-        if args.sport == "mlb":
-            scan_props(db)
-            settle_props(db)
-        if args.sport == "soccer":
-            # scan_props_soccer is RETIRED (2026-08-13) — see its docstring.
-            # Settlement still runs so any alert already in the ledger finishes
-            # grading; the ledger is append-only and keeps the full history.
-            settle_props_soccer(db)
-        if args.sport == "tennis":
-            scan_tennis_totals(db)
-            settle_tennis_totals(db)
-    if args.dk_board:
-        dk_board(db)
-    if args.report or (not args.sport and not args.dk_board):
-        report(db, include_legacy=args.include_legacy)
+    if args.sport in ("cfb", "nfl"):
+        with db.reuse_connection():
+            _run_cli(db, args)
+    else:
+        _run_cli(db, args)

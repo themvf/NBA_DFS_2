@@ -63,6 +63,17 @@ are research observations, not established predictive edges or live bet advice.
 
 ## Verification
 
+The shared worker now runs `python -m ingest.cfb_capture_audit` after CFB
+grading. The audit uses a read-only consistent database snapshot and fails on
+identity, boundary, duplicate, quote, checkpoint, close, trigger, or settlement
+integrity errors. It separately reports missing windows and replays stored
+history to identify missing/late first-breach detections; it never backdates a
+prospective alert. Passing integrity is not a claim of complete coverage.
+
+Capture and football grading CLIs reuse a database connection while retaining
+individual transaction commits. A later detector failure cannot roll back saved
+captures. CFB kickoff changes supersede obsolete pending checkpoint windows.
+
 Run Python tests for CFB market signals, schedule, and event closing lines;
 `node --import tsx scripts/test-cfb-movement.ts` from `web`; TypeScript checking;
 and the production build. After publication, dispatch the shared capture worker
