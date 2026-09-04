@@ -26,7 +26,7 @@ def test_official_aliases_include_mascots_but_reject_ambiguous_names():
     aliases = dict(cfb_schedule.official_team_aliases([
         {"id": 1, "school": "Miami", "mascot": "Hurricanes", "altName1": "Miami FL"},
         {"id": 2, "school": "Miami", "mascot": "RedHawks"},
-        {"id": 3, "school": "San José State", "mascot": "Spartans"},
+        {"id": 3, "school": "San José State", "mascot": "Spartans", "alternateNames": ["San Jose State", "SJSU"]},
         {"id": 4, "school": "Unknown", "mascot": "Team"},
     ], {1: 10, 2: 20, 3: 30}, {"Miami": 10}))
     assert "Miami" not in aliases
@@ -34,6 +34,7 @@ def test_official_aliases_include_mascots_but_reject_ambiguous_names():
     assert aliases["Miami RedHawks"] == 20
     assert aliases["Miami FL Hurricanes"] == 10
     assert "Unknown Team" not in aliases
+    assert aliases["SJSU Spartans"] == 30
     assert cfb_schedule._normal_name("San José State Spartans") == cfb_schedule._normal_name("San Jose State Spartans")
 
 

@@ -75,6 +75,9 @@ def official_team_aliases(teams: list[dict], canonical: dict[int, int], existing
         names = {str(team[key]).strip() for key in (
             "school", "alt_name_1", "alt_name_2", "alt_name_3", "altName1", "altName2", "altName3"
         ) if team.get(key)}
+        # Current CFBD API uses an array; retain scalar support for old exports.
+        names.update(name.strip() for name in (team.get("alternateNames") or [])
+                     if isinstance(name, str) and name.strip())
         mascot = str(team.get("mascot") or "").strip()
         aliases = names | {f"{name} {mascot}" for name in names if mascot}
         for alias in aliases:
