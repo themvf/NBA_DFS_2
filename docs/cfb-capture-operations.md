@@ -29,6 +29,12 @@ the next full slate; raising the cap alone cannot solve a delayed scheduler.
 
 ## Results and audit
 
+Full/manual refreshes synchronize official CFBD school, alternate-name, and
+mascot aliases by CFBD team ID. Cross-team name collisions are excluded and
+existing reviewed mappings are not overwritten. Accents and punctuation are
+normalized; fuzzy team matching is not allowed. Provider events must still match
+both teams and the canonical kickoff window before any odds are accepted.
+
 Full canonical schedule refreshes run every six hours. Recent game weeks refresh
 hourly, keyed to the scheduled workflow expression rather than the runner's
 actual start minute. Final scores are required for spread/total result grading.

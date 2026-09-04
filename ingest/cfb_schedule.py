@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import sys
+import unicodedata
 from datetime import datetime, timezone
 
 import requests
@@ -57,7 +58,48 @@ CHECKPOINTS = (
 
 
 def _normal_name(value: object) -> str:
-    return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+    text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "", text.casefold())
+
+
+def official_team_aliases(teams: list[dict], canonical: dict[int, int], existing: dict[str, int]) -> list[tuple[str, int]]:
+    """Exact official names + mascots, rejecting cross-team collisions (no fuzzy matching)."""
+    owners: dict[str, set[int]] = {}
+    candidates: dict[str, int] = {}
+    for name, team_id in existing.items():
+        owners.setdefault(_normal_name(name), set()).add(team_id)
+    for team in teams:
+        team_id = canonical.get(team.get("id"))
+        if team_id is None:
+            continue
+        names = {str(team[key]).strip() for key in (
+            "school", "alt_name_1", "alt_name_2", "alt_name_3", "altName1", "altName2", "altName3"
+        ) if team.get(key)}
+        mascot = str(team.get("mascot") or "").strip()
+        aliases = names | {f"{name} {mascot}" for name in names if mascot}
+        for alias in aliases:
+            owners.setdefault(_normal_name(alias), set()).add(team_id)
+            candidates[alias] = team_id
+    return sorted((alias, team_id) for alias, team_id in candidates.items()
+                  if len(owners[_normal_name(alias)]) == 1)
+
+
+def refresh_team_aliases(db: DatabaseManager, api_key: str) -> int:
+    from psycopg2.extras import execute_values
+    response = requests.get(f"{CFBD_BASE}/teams", headers=_cfbd_headers(api_key), timeout=45)
+    response.raise_for_status()
+    canonical = {int(row["cfbd_team_id"]): int(row["team_id"]) for row in db.execute(
+        "SELECT cfbd_team_id, team_id FROM cfb_teams WHERE active=TRUE"
+    )}
+    aliases = official_team_aliases(response.json(), canonical, build_cfb_team_name_cache(db))
+    if aliases:
+        with db.connect() as connection:
+            execute_values(connection.cursor(),
+                """INSERT INTO cfb_team_aliases (provider, alias, team_id, reviewed)
+                   VALUES %s ON CONFLICT (provider, alias) DO NOTHING""",
+                [("odds_api", alias, team_id, True) for alias, team_id in aliases])
+    print(f"CFB aliases: {len(aliases)} unambiguous official name candidates synchronized")
+    return len(aliases)
 
 
 def _cfbd_headers(api_key: str) -> dict[str, str]:
@@ -503,6 +545,7 @@ def main() -> None:
     parser.add_argument("--season-type", default="regular")
     parser.add_argument("--refresh-schedule", action="store_true")
     parser.add_argument("--refresh-scores", action="store_true")
+    parser.add_argument("--refresh-team-aliases", action="store_true")
     parser.add_argument("--refresh-events", action="store_true")
     parser.add_argument("--capture-due", action="store_true")
     parser.add_argument("--capture-now", action="store_true")
@@ -514,6 +557,9 @@ def main() -> None:
     cfbd_key = getattr(config, "cfbd_api_key", None) or __import__("os").getenv("CFBD_API_KEY", "")
     odds_key = config.odds_api.api_key
     ran = False
+    if args.refresh_team_aliases:
+        refresh_team_aliases(db, cfbd_key)
+        ran = True
     if args.refresh_schedule:
         fetch_schedule(db, cfbd_key, year=args.year, week=args.week, season_type=args.season_type)
         ran = True

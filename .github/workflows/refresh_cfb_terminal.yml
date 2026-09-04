@@ -62,8 +62,11 @@ jobs:
         if: env.CFB_REFRESH_SCHEDULE == 'true'
         run: python -m ingest.cfb_schedule --year "$CFB_YEAR" --refresh-schedule
       - name: Refresh recent scores hourly (delay-safe scheduled slot)
-        if: github.event.schedule == '7 1-5,7-11,13-17,19-23 * * *'
+        if: github.event.schedule == '7 1-5,7-11,13-17,19-23 * * *' || (github.event_name == 'workflow_dispatch' && inputs.force_schedule == false)
         run: python -m ingest.cfb_schedule --refresh-scores
+      - name: Synchronize exact official school and mascot aliases
+        if: env.CFB_REFRESH_SCHEDULE == 'true' || github.event_name == 'workflow_dispatch'
+        run: python -m ingest.cfb_schedule --refresh-team-aliases
       - name: Refresh free provider-event mappings
         run: python -m ingest.cfb_schedule --refresh-events
       # Paid checkpoint captures and frozen closes are owned by the shared

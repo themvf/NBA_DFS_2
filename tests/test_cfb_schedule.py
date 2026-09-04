@@ -22,6 +22,21 @@ def test_recent_score_refresh_scopes_to_recent_weeks(monkeypatch):
     assert calls == [{"year": 2026, "week": 1, "season_type": "regular"}]
 
 
+def test_official_aliases_include_mascots_but_reject_ambiguous_names():
+    aliases = dict(cfb_schedule.official_team_aliases([
+        {"id": 1, "school": "Miami", "mascot": "Hurricanes", "altName1": "Miami FL"},
+        {"id": 2, "school": "Miami", "mascot": "RedHawks"},
+        {"id": 3, "school": "San José State", "mascot": "Spartans"},
+        {"id": 4, "school": "Unknown", "mascot": "Team"},
+    ], {1: 10, 2: 20, 3: 30}, {"Miami": 10}))
+    assert "Miami" not in aliases
+    assert aliases["Miami Hurricanes"] == 10
+    assert aliases["Miami RedHawks"] == 20
+    assert aliases["Miami FL Hurricanes"] == 10
+    assert "Unknown Team" not in aliases
+    assert cfb_schedule._normal_name("San José State Spartans") == cfb_schedule._normal_name("San Jose State Spartans")
+
+
 class _Response:
     def __init__(self, payload, *, last: str = "3"):
         self._payload = payload
