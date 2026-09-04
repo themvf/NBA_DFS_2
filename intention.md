@@ -4,6 +4,20 @@
 **Companion specification:** [`docs/cfb-historical-team-roster-signal-spec.md`](docs/cfb-historical-team-roster-signal-spec.md)
 **Existing terminal specification:** [`docs/cfb-live-data-terminal-spec.md`](docs/cfb-live-data-terminal-spec.md)
 
+## Project-wide addition: visual model delivery — 2026-09-04
+
+Every new model, feature family, experiment, calibration adjustment, and operational data-quality capability must ship with a useful visual in the application. A backend job, saved JSON artifact, or terminal report alone is not a completed feature. This applies to NFL DFS now and future modeling work across sports; the CFB plan below remains unchanged.
+
+- Specify the user question, UI location, visual, saved-data contract, missing-data behavior, and verification evidence before implementation.
+- Show what the model expects, which measured inputs contributed, how uncertain the forecast is, and how it performed against realized outcomes. Do not label associations or formula contributions as causal explanations.
+- Use charts where they reveal trends, distributions, allocations, or comparisons; use compact tables/status cards where clearer. Technical plumbing can share an operational health view rather than needing a decorative chart per function.
+- Render from versioned, persisted evidence. Show model version, forecast cutoff, sample size, units, source/fallback, and research/shadow/production status. Never fabricate chart points or fill missing results with zero.
+- Every implementation slice includes its visual, automated reconciliation tests, and browser verification. Core visuals appear automatically; an optional Generate Visuals action may add expensive analyses but must not hide the essential model explanation.
+- Failed, inconclusive, and rejected experiments remain visible alongside successful ones. Production promotion is explicit and separate from making research visible.
+- Keep personal-project language concise; do not add instructional "understand" messaging, marketing copy, or unsupported profitability claims.
+
+NFL companion: [Opportunity-and-efficiency model + visual delivery spec](docs/nfl-dfs-opportunity-efficiency-spec.md). The NFL execution roadmap remains in [intent.md](intent.md).
+
 ## Intent
 
 Build a point-in-time research layer for the College Football Line Terminal that can:

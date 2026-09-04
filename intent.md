@@ -4,6 +4,12 @@ Status: Phase 0 rerun after schedule/result remediation; market and slate-histor
 Created: 2026-09-03  
 Initial implementation target: NFL DFS, followed by NBA, MLB, and CFB adapters
 
+## Standing delivery requirement — visuals included
+
+Every modeling increment must include a corresponding application visual, saved evidence, honest unavailable states, and browser verification. Backend-only implementation is not feature completion. The project-wide requirement is recorded in [intention.md](intention.md#project-wide-addition-visual-model-delivery--2026-09-04).
+
+Next specification: [NFL opportunity-and-efficiency model and visual delivery](docs/nfl-dfs-opportunity-efficiency-spec.md). Status: draft specification, not implemented. Start with source/feature coverage plus its UI, then deliver workload, efficiency, distributions, and evaluation as vertical slices. Existing production projections and optimizer defaults stay unchanged during research.
+
 ## 1. Intent
 
 Build an auditable historical research system that measures how pregame sports-betting expectations relate to realized team scoring and individual DFS performance.
