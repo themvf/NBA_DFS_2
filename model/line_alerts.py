@@ -2253,10 +2253,11 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
         SELECT a.*, m.home_score, m.away_score
         FROM line_alerts a
         JOIN {matchup_table} m ON m.id = a.matchup_id
-        WHERE a.sport = %s AND a.settled_at IS NULL
+        WHERE a.sport = %s AND (a.settled_at IS NULL OR a.close_history_id IS NULL)
           AND a.alert_type IN ('spread_steam', 'spread_walking', 'total_steam', 'total_walking',
                                'key_cross', 'price_pressure', 'reversal', 'reference_led')
           AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+          AND m.completed = TRUE
         """,
         (sport,),
     )
@@ -2280,11 +2281,11 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             )
         else:
             close = None
-        if not close or not close.get("books"):
-            continue
-        close_books = close["books"]
+        close_books = (close.get("books") or {}) if close else {}
         close_snapshot = _cfb_market_snapshot(close_books, market)
-        if not close_snapshot:
+        # Results and CLV are independent observations. Never fabricate a close
+        # to settle a final game; permit a later verified close to enrich it.
+        if not close_snapshot and alert.get("settled_at") is not None:
             continue
         exec_book = details.get("exec_book")
         exec_quote = close_books.get(exec_book) if exec_book else None
@@ -2303,7 +2304,7 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
                 if exec_quote.get("total_line") is not None:
                     close_user_line = close_home_line = float(exec_quote["total_line"])
                 close_odds = exec_quote.get("over" if side == "over" else "under")
-        if close_home_line is None:
+        if close_home_line is None and close_snapshot:
             close_home_line = float(close_snapshot["line"])
             close_user_line = (-close_home_line if market == "spread" and side == "away"
                                else close_home_line)
@@ -2315,7 +2316,8 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             int(alert["home_score"]),
             int(alert["away_score"]),
         )
-        line_clv = _nfl_line_clv(market, side, entry_home_line, close_home_line)
+        line_clv = (_nfl_line_clv(market, side, entry_home_line, close_home_line)
+                    if close_home_line is not None else None)
         entry_decimal = details.get("exec_decimal") or details.get("dk_decimal")
         pnl_units = None
         if entry_decimal is not None:
@@ -2339,10 +2341,10 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             "entry_home_line": entry_home_line,
             "close_line": close_user_line,
             "close_home_line": close_home_line,
-            "line_clv": round(line_clv, 3),
+            "line_clv": round(line_clv, 3) if line_clv is not None else None,
             "price_clv_pct": price_clv,
-            "close_history_id": int(close["history_id"]),
-            "close_source": "verified_clv_closes",
+            "close_history_id": int(close["history_id"]) if close_snapshot else None,
+            "close_source": "verified_clv_closes" if close_snapshot else "unavailable",
             "signal_version": details.get("signal_version") or ("nfl-lines-v1" if sport == "nfl" else _CFB_SIGNAL_VERSION),
             "exec_book": exec_book,
             "entry_decimal": float(entry_decimal) if entry_decimal is not None else None,
@@ -2353,20 +2355,20 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
         }
         grade = {
             "grading_version": "nfl-lines-v1" if sport == "nfl" else _CFB_SIGNAL_VERSION,
-            "comparison_status": "SAME_PROPOSITION",
+            "comparison_status": "SAME_PROPOSITION" if close_snapshot else "NO_CLOSE",
             "convergence": None,
             "dk_clv_pct": price_clv,
             "grading_json": grading_json,
         }
         db.execute(
             """
-            UPDATE line_alerts SET outcome = %s, settled_at = NOW(),
+            UPDATE line_alerts SET outcome = %s, settled_at = COALESCE(settled_at, NOW()),
                 grading_json = %s, comparison_status = %s, grading_version = %s,
                 dk_close_decimal=%s, dk_clv_pct=%s, close_history_id=%s, pnl_units=%s
             WHERE id = %s
             """,
             (outcome, json.dumps(grading_json), grade["comparison_status"],
-             grade["grading_version"], close_decimal, price_clv, close["history_id"],
+             grade["grading_version"], close_decimal, price_clv, grading_json["close_history_id"],
              pnl_units, alert["id"]),
         )
         _append_grade_history(db, alert["id"], grade, outcome=outcome)

@@ -10446,7 +10446,7 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
       opening.captured_at::text AS "openingCapturedAt",
       latest.captured_at::text AS "latestCapturedAt",
       close_history.captured_at::text AS "closingCapturedAt",
-      vclose.quality AS "closeQuality",
+      COALESCE(vclose.quality, close_audit.quality) AS "closeQuality",
       vclose.lead_seconds AS "closeLeadSeconds",
       vclose.boundary_source AS "closeBoundarySource",
       vclose.verification_level AS "closeVerificationLevel",
@@ -10461,6 +10461,8 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
     LEFT JOIN trails ON trails.matchup_id=m.id
     LEFT JOIN verified_clv_closes vclose
       ON vclose.sport='cfb' AND vclose.matchup_id=m.id
+    LEFT JOIN event_closing_lines close_audit
+      ON close_audit.sport='cfb' AND close_audit.matchup_id=m.id
     LEFT JOIN game_odds_history close_history ON close_history.id=vclose.history_id
     WHERE m.game_date=${targetDate}::date
     ORDER BY m.commence_time NULLS LAST, m.id
@@ -10907,6 +10909,7 @@ export async function getLineAlerts(
   sport: string,
   limit = 25,
   alertTypes?: string[],
+  matchupIds?: number[],
 ): Promise<LineAlertRow[]> {
   // alertTypes narrows at the SQL level (not just post-filtered in the UI) so
   // a type-scoped view — e.g. MLB props — gets its own LIMIT worth of rows
@@ -10918,10 +10921,11 @@ export async function getLineAlerts(
            alert_prob AS "alertProb", sharp_prob AS "sharpProb",
            details_json AS details, clv_pp AS "clvPp", outcome
     FROM line_alerts WHERE sport = ${sport}
+    ${matchupIds ? (matchupIds.length ? sql`AND matchup_id IN (${sql.join(matchupIds.map((id) => sql`${id}`), sql`, `)})` : sql`AND FALSE`) : sql``}
     ${alertTypes && alertTypes.length > 0
       ? sql`AND alert_type IN (${sql.join(alertTypes.map((t) => sql`${t}`), sql`, `)})`
       : sql``}
-    ORDER BY created_at DESC LIMIT ${limit}
+    ORDER BY created_at DESC ${matchupIds ? sql`` : sql`LIMIT ${limit}`}
   `);
   return rows.rows.map((r) => {
     const rec = r as Record<string, unknown>;

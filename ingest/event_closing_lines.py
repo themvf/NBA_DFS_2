@@ -50,6 +50,13 @@ CHECKPOINTS_BY_SPORT = {
         ("t_minus_48h", 48 * 60, 42 * 60),
         ("t_minus_24h", 24 * 60, 20 * 60),
         *CORE_CHECKPOINTS,
+        # Hourly on game day, then 15-minute observations for the final six
+        # hours. Durable windows tolerate scheduler delay; missed slots remain
+        # missed rather than being backfilled with a later quote.
+        *((f"cfb_t_minus_{lead}m", lead, lead - 60) for lead in range(720, 360, -60)),
+        *((f"cfb_t_minus_{lead}m", lead, lead - 15)
+          for lead in range(345, 15, -15) if lead != 90),
+        ("closing_candidate", 5, 0),
     ),
 }
 DAILY_CREDIT_CAP = int(os.getenv("ODDS_CLOSE_DAILY_CREDIT_CAP", "240"))
@@ -511,7 +518,8 @@ def capture_due_checkpoints(
             )
             _audit_usage(
                 db, sport="cfb", event_count=len(event_ids), audit=audit,
-                metadata={"event_ids": sorted(event_ids)},
+                metadata={"event_ids": sorted(event_ids), "cadence_version": "cfb-dense-v1",
+                          "daily_credit_cap": DAILY_CREDIT_CAP},
             )
             result["groups"] += 1
             result["paid_requests"] += 1

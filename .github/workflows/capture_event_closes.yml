@@ -18,6 +18,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      ODDS_CLOSE_DAILY_CREDIT_CAP: ${{ vars.ODDS_CLOSE_DAILY_CREDIT_CAP || '240' }}
+      ODDS_CLOSE_MIN_REMAINING: ${{ vars.ODDS_CLOSE_MIN_REMAINING || '250' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

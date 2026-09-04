@@ -4,7 +4,9 @@ on:
   schedule:
     # Polling is free unless a game is missing a due checkpoint. Lead-time
     # windows, not exact clock instants, make delayed GitHub schedules safe.
-    - cron: "7,22,37,52 * * * *"
+    - cron: "7 */6 * * *"
+    - cron: "7 1-5,7-11,13-17,19-23 * * *"
+    - cron: "22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       year:
@@ -45,21 +47,23 @@ jobs:
         env:
           INPUT_YEAR: ${{ inputs.year }}
           FORCE_SCHEDULE: ${{ inputs.force_schedule }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           year="${INPUT_YEAR:-$(TZ=America/New_York date +%Y)}"
           echo "CFB_YEAR=$year" >> "$GITHUB_ENV"
-          hour=$(date -u +%H)
-          minute=$(date -u +%M)
           refresh=false
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${FORCE_SCHEDULE:-true}" = "true" ]; then
             refresh=true
-          elif [ "$minute" = "07" ] && [ $((10#$hour % 6)) -eq 0 ]; then
+          elif [ "$SCHEDULE" = "7 */6 * * *" ]; then
             refresh=true
           fi
           echo "CFB_REFRESH_SCHEDULE=$refresh" >> "$GITHUB_ENV"
       - name: Refresh canonical CFBD schedule and scores
         if: env.CFB_REFRESH_SCHEDULE == 'true'
         run: python -m ingest.cfb_schedule --year "$CFB_YEAR" --refresh-schedule
+      - name: Refresh recent scores hourly (delay-safe scheduled slot)
+        if: github.event.schedule == '7 1-5,7-11,13-17,19-23 * * *'
+        run: python -m ingest.cfb_schedule --refresh-scores
       - name: Refresh free provider-event mappings
         run: python -m ingest.cfb_schedule --refresh-events
       # Paid checkpoint captures and frozen closes are owned by the shared

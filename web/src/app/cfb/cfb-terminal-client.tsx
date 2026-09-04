@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CfbBookQuote, CfbResearchBoard, CfbResearchContext, CfbResearchRecord, CfbSignalBacktestRow, CfbTeamFeatureContext, CfbTerminalBoard, CfbTerminalRow, LineAlertRow } from "@/db/queries";
 import styles from "./cfb-terminal.module.css";
+import { movementKind, movementSeries, movementSignals } from "@/lib/cfb-movement";
 
 type MarketKey = "spread" | "total" | "moneyline";
 type SelectionSide = "home" | "away" | "over" | "under";
@@ -109,7 +110,7 @@ function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSid
   const orderedBooks = [...BOOK_PRIORITY.filter((book) => bookKeys.includes(book)), ...bookKeys.filter((book) => !BOOK_PRIORITY.includes(book)).sort()].slice(0, 3);
   const history = game.history.map((point) => ({ capturedAt: point.capturedAt, time: fmtEt(point.capturedAt, true), values: Object.fromEntries(orderedBooks.flatMap((key) => { const value = valueFor(point.books[key] ?? {}, market); return value == null ? [] : [[key, value]]; })) }));
   const movement = current != null && opening != null ? current - opening : null;
-  let currentLabel = "NO MARKET"; let openingLabel = "—"; let closingLabel = "PENDING";
+  let currentLabel = "NO MARKET"; let openingLabel = "—"; let closingLabel = game.closeQuality && !game.closingBooks ? "UNAVAILABLE" : "PENDING";
   if (current != null) currentLabel = market === "spread" ? `${game.homeTeam} ${signed(current)}` : market === "total" ? current.toFixed(1) : `${game.homeTeam} ${(current * 100).toFixed(1)}%`;
   if (opening != null) openingLabel = market === "spread" ? signed(opening) : market === "total" ? opening.toFixed(1) : `${(opening * 100).toFixed(1)}%`;
   if (closing != null) closingLabel = market === "spread" ? signed(closing) : market === "total" ? closing.toFixed(1) : `${(closing * 100).toFixed(1)}%`;
@@ -228,12 +229,53 @@ function HistoryPanel({ context, game }: { context: CfbResearchContext | null; g
   </section>;
 }
 
+function MovementMiniChart({ game, market }: { game: CfbTerminalRow; market: "spread" | "total" }) {
+  const points = movementSeries(game, market);
+  const label = market === "spread" ? "HOME SPREAD" : "TOTAL";
+  const values = points.map((point) => point.value);
+  const low = Math.min(...values); const high = Math.max(...values);
+  const duration = points.length > 1 ? points.at(-1)!.time - points[0].time : 0;
+  const coords = points.map((point) => ({
+    x: duration ? 3 + (point.time - points[0].time) / duration * 110 : 58,
+    y: high === low ? 16 : 29 - (point.value - low) / (high - low) * 26,
+  }));
+  const change = points.length > 1 ? points.at(-1)!.value - points[0].value : null;
+  return <span className={styles.miniChart} title={`${label}: observed consensus, independently scaled; dashed lines indicate gaps over 30 minutes. Book coverage can change.`}>
+    <span>{label} <b>{change == null ? "—" : signed(change)}</b></span>
+    {!points.length ? <small>No captures</small> : <svg viewBox="0 0 116 32" role="img" aria-label={`${label}: ${points.length} captures${change == null ? ", insufficient history" : `, change ${signed(change)} points`}`}>
+      {coords.slice(1).map((point, index) => <line key={index} x1={coords[index].x} y1={coords[index].y} x2={point.x} y2={point.y} stroke="currentColor" strokeWidth="1.5" strokeDasharray={points[index + 1].time - points[index].time > 30 * 60_000 ? "3 3" : undefined} />)}
+      {coords.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="1.8" fill="currentColor" />)}
+    </svg>}
+  </span>;
+}
+
+function WatchGame({ item, signals, active, asOf, onChoose }: { item: CfbTerminalRow; signals: LineAlertRow[]; active: boolean; asOf: string; onChoose: () => void }) {
+  const itemMarket = buildMarket(item, "spread", "home", asOf);
+  const series = movementSeries(item, "spread");
+  const move = series.length > 1 ? series.at(-1)!.value - series[0].value : null;
+  const Trend = move != null && move > 0 ? TrendingUp : move != null && move < 0 ? TrendingDown : Activity;
+  const recorded = movementSignals(signals, item.matchupId);
+  const latestByType = recorded.filter((signal, index) => recorded.findIndex((other) => other.alertType === signal.alertType && other.details?.market === signal.details?.market) === index);
+  const stale = item.latestCapturedAt && Date.parse(asOf) - Date.parse(item.latestCapturedAt) > 30 * 60_000;
+  return <button type="button" className={styles.watchRow} data-active={active} onClick={onChoose} aria-pressed={active}>
+    <span className={styles.watchGame}><strong title={`${item.awayTeam} @ ${item.homeTeam}`}>{item.awayTeam} @ {item.homeTeam}</strong><small>{item.commenceTime ? fmtEt(item.commenceTime, true) : "TBD"} · {item.captures} captures</small></span>
+    <span className={styles.watchLine}>{itemMarket.current}</span>
+    <span className={move != null && move > 0 ? styles.positive : move != null && move < 0 ? styles.negative : styles.neutral}><Trend aria-hidden="true" /> {move == null ? "—" : Math.abs(move).toFixed(1)}</span>
+    <span className={styles.miniCharts}><MovementMiniChart game={item} market="spread" /><MovementMiniChart game={item} market="total" /></span>
+    <span className={styles.movementBadges}>{latestByType.map((signal) => <span key={`${signal.alertType}-${signal.details?.market}`} data-kind={movementKind(signal.alertType)} title={`${SIGNAL_LABELS[signal.alertType]} · ${signal.side} · ${fmtEt(signalObservedAt(signal))} · ${signal.outcome ?? "result pending"}`}>
+      {signalMarket(signal) === "spread" ? "S" : signalMarket(signal) === "total" ? "T" : "ML"} {movementKind(signal.alertType)?.toUpperCase()} · {signal.side.toUpperCase()} · {fmtEt(signalObservedAt(signal), true)}
+    </span>)}{!recorded.length ? <small>{item.captures < 2 ? "INSUFFICIENT HISTORY" : "NO RECORDED STEAM / WALK / REVERSAL"}</small> : null}</span>
+    <span className={styles.watchHealth}>{item.latestCapturedAt ? `OBS ${fmtEt(item.latestCapturedAt)}` : "NEVER CAPTURED"}{stale && !item.completed ? " · STALE" : ""}{item.closeQuality ? ` · CLOSE ${item.closeQuality.toUpperCase()}` : ""}</span>
+  </button>;
+}
+
 export default function CfbTerminalClient({ board, signals, backtest, research }: { board: CfbTerminalBoard; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard }) {
   const router = useRouter();
   const [gameId, setGameId] = useState(board.games[0]?.matchupId ?? 0);
   const [marketKey, setMarketKey] = useState<MarketKey>("spread");
   const [side, setSide] = useState<SelectionSide>("home");
   const [query, setQuery] = useState(""); const [selectedBook, setSelectedBook] = useState("");
+  const [movementFilter, setMovementFilter] = useState("all");
   const [positions, setPositions] = useState<PaperPosition[]>([]); const [lockMessage, setLockMessage] = useState<string | null>(null);
   useEffect(() => { const timer = window.setInterval(() => router.refresh(), 60_000); return () => window.clearInterval(timer); }, [router]);
   const game = board.games.find((item) => item.matchupId === gameId) ?? board.games[0] ?? null;
@@ -242,7 +284,7 @@ export default function CfbTerminalClient({ board, signals, backtest, research }
   const gameSignals = useMemo(() => signals.filter((item) => item.matchupId === game?.matchupId), [signals, game?.matchupId]);
   const marketSignals = useMemo(() => gameSignals.filter((item) => signalMarket(item) === marketKey), [gameSignals, marketKey]);
   const researchContext = game ? research[game.matchupId] ?? null : null;
-  const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return !normalized ? board.games : board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized)); }, [board.games, query]);
+  const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized) && (movementFilter === "all" || movementSignals(signals, item.matchupId).some((signal) => movementKind(signal.alertType) === movementFilter))); }, [board.games, query, movementFilter, signals]);
   function chooseGame(id: number) { setGameId(id); setSelectedBook(""); setLockMessage(null); }
   function chooseMarket(next: MarketKey) { setMarketKey(next); setSide(selectionFor(next)); setSelectedBook(""); setLockMessage(null); }
   function chooseSide(next: SelectionSide) { setSide(next); setSelectedBook(""); setLockMessage(null); }
@@ -256,9 +298,12 @@ export default function CfbTerminalClient({ board, signals, backtest, research }
   return <div className={styles.terminal}>
     <header className={styles.topbar}><div className={styles.brand}>CFB LINE TERMINAL</div><label className={styles.command}><Search aria-hidden="true" /><span className={styles.srOnly}>Search market watch</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SEARCH TEAM OR GAME" /></label><div className={styles.marketOpen}><Radio aria-hidden="true" /> {board.games.length ? "MARKET BOARD" : "NO BOARD"}</div><div className={styles.shadowMode} title={board.statusDetail}>{statusLabel} · AS OF {fmtEt(board.asOf, true)}</div></header>
     <div className={styles.shell}>
-      <aside className={styles.watchPane} aria-label="CFB market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div><div className={styles.watchHeader}><span>GAME</span><span>LINE</span><span>MOVE</span></div><div className={styles.watchList}>
-        {filteredGames.map((item) => { const itemMarket = buildMarket(item, "spread", "home", board.asOf); const current = lowerMedian(Object.values(item.currentBooks ?? {}).flatMap((book) => book.spread_home == null ? [] : [Number(book.spread_home)])); const opening = lowerMedian(Object.values(item.openingBooks ?? {}).flatMap((book) => book.spread_home == null ? [] : [Number(book.spread_home)])); const move = current != null && opening != null ? current - opening : 0; const Trend = move > 0 ? TrendingUp : move < 0 ? TrendingDown : Activity; return <button key={item.matchupId} type="button" className={styles.watchRow} data-active={item.matchupId === game?.matchupId} onClick={() => chooseGame(item.matchupId)}><span className={styles.watchGame}><strong>{item.awayTeam} @ {item.homeTeam}</strong><small>{item.commenceTime ? fmtEt(item.commenceTime, true) : "TBD"} · {item.network ?? "NETWORK TBD"} · {item.captures} captures</small></span><span className={styles.watchLine}>{itemMarket.current}</span><span className={move > 0 ? styles.positive : move < 0 ? styles.negative : styles.neutral}><Trend aria-hidden="true" /> {Math.abs(move).toFixed(1)}</span></button>; })}
-        {!filteredGames.length ? <div className={styles.empty}>{board.statusDetail}</div> : null}
+      <aside className={styles.watchPane} aria-label="CFB market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div>
+        <div className={styles.movementFilters} aria-label="Filter recorded movements">{["all", "steam", "walk", "reversal"].map((kind) => <button key={kind} type="button" aria-pressed={movementFilter === kind} onClick={() => setMovementFilter(kind)}>{kind.toUpperCase()}</button>)}</div>
+        <p className={styles.watchLegend}>S = home spread · T = total · ML = moneyline. Badges are recorded signals, not recommendations. Charts show observed consensus; dashed gaps exceed 30m.</p>
+        <div className={styles.watchHeader}><span>GAME</span><span>LINE</span><span>MOVE</span></div><div className={styles.watchList}>
+        {filteredGames.map((item) => <WatchGame key={item.matchupId} item={item} signals={signals} active={item.matchupId === game?.matchupId} asOf={board.asOf} onChoose={() => chooseGame(item.matchupId)} />)}
+        {!filteredGames.length ? <div className={styles.empty}>{board.games.length ? "No games match this search and movement filter." : board.statusDetail}</div> : null}
       </div></aside>
       <main className={styles.instrumentPane}>{!game || !market ? <section className={styles.chartSection}><div className={styles.empty}>Load the canonical CFB schedule to begin. No sample quotes are substituted.</div></section> : <>
         <section className={styles.instrumentHeader}><div className={styles.instrumentTop}><div><div className={styles.instrumentTitle}>{game.awayTeam} @ {game.homeTeam}</div><div className={styles.instrumentMeta}>{game.venue ?? "Venue TBD"} · {game.commenceTime ? fmtEt(game.commenceTime) : "Kickoff TBD"} · {game.network ?? "Network TBD"} · {market.label}</div></div><div className={styles.primaryQuote}><strong>{market.current}</strong><span>OPEN {market.open} · {market.move.toUpperCase()} · CLV CLOSE {market.close}</span></div></div><div className={styles.marketTabs}>{(Object.keys(MARKET_LABELS) as MarketKey[]).map((key) => <button key={key} type="button" data-active={marketKey === key} onClick={() => chooseMarket(key)}>{MARKET_LABELS[key]}</button>)}</div><div className={styles.marketTabs}>{sideOptions.map((option) => <button key={option} type="button" data-active={side === option} onClick={() => chooseSide(option)}>{option === "home" ? game.homeTeam : option === "away" ? game.awayTeam : option.toUpperCase()}</button>)}</div></section>

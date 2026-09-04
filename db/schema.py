@@ -4506,6 +4506,7 @@ INDEXES = [
          checkpoint IN ('t_minus_48h', 't_minus_24h', 't_minus_6h', 't_minus_90m',
                         't_minus_30m', 't_minus_15m', 't_minus_2m', 'closing_candidate')
          OR checkpoint ~ '^(d_minus_[123]|game_day)_[0-2][0-9]$'
+         OR checkpoint ~ '^cfb_t_minus_[0-9]{2,3}m$'
        )""",
     "ALTER TABLE event_closing_lines DROP CONSTRAINT IF EXISTS event_closing_lines_sport_check",
     "ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb'))",

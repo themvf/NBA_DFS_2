@@ -456,6 +456,18 @@ def capture_due_checkpoints(db: DatabaseManager, api_key: str, *, dry_run: bool 
     return result
 
 
+def refresh_recent_scores(db: DatabaseManager, api_key: str) -> int:
+    """Refresh weeks with recent games instead of rewriting the whole season."""
+    weeks = db.execute(
+        """SELECT DISTINCT season, week, season_type FROM cfb_matchups
+           WHERE commence_time BETWEEN NOW() - INTERVAL '48 hours' AND NOW()
+             AND season_type IN ('regular', 'postseason')"""
+    )
+    return sum(fetch_schedule(db, api_key, year=int(row["season"]),
+                              week=int(row["week"]), season_type=row["season_type"])
+               for row in weeks)
+
+
 def collect_data_health(db: DatabaseManager) -> dict:
     row = db.execute_one(
         """
@@ -490,6 +502,7 @@ def main() -> None:
     parser.add_argument("--week", type=int)
     parser.add_argument("--season-type", default="regular")
     parser.add_argument("--refresh-schedule", action="store_true")
+    parser.add_argument("--refresh-scores", action="store_true")
     parser.add_argument("--refresh-events", action="store_true")
     parser.add_argument("--capture-due", action="store_true")
     parser.add_argument("--capture-now", action="store_true")
@@ -503,6 +516,9 @@ def main() -> None:
     ran = False
     if args.refresh_schedule:
         fetch_schedule(db, cfbd_key, year=args.year, week=args.week, season_type=args.season_type)
+        ran = True
+    if args.refresh_scores:
+        refresh_recent_scores(db, cfbd_key)
         ran = True
     if args.refresh_events:
         fetch_events(db, odds_key)

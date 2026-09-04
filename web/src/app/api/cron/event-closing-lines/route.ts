@@ -36,9 +36,15 @@ async function hasDueWork() {
           starts_at - due_minutes * INTERVAL '1 minute' AS due_until
         FROM events
         CROSS JOIN (
-          VALUES
+          SELECT * FROM (VALUES
             ('cfb', 2880, 2520), ('cfb', 1440, 1200),
-            ('all', 360, 330), ('all', 90, 60), ('all', 15, 5), ('all', 2, 0)
+            ('all', 360, 330), ('all', 90, 60), ('all', 15, 5), ('all', 2, 0),
+            ('cfb', 5, 0)
+          ) AS base(sport, lead, due)
+          UNION ALL
+          SELECT 'cfb', lead, lead - 60 FROM generate_series(420, 720, 60) AS lead
+          UNION ALL
+          SELECT 'cfb', lead, lead - 15 FROM generate_series(30, 345, 15) AS lead WHERE lead <> 90
         ) AS w(window_sport, offset_minutes, due_minutes)
         WHERE w.window_sport='all' OR w.window_sport=events.sport
       )

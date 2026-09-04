@@ -99,6 +99,7 @@ class SettlementDb:
 
     def execute(self, sql, params=None):
         if "SELECT a.*, m.home_score" in sql:
+            assert "m.completed = TRUE" in sql
             return [{
                 "id": 41, "matchup_id": 9, "commence_time": datetime(2026, 9, 5, 16, tzinfo=timezone.utc),
                 "home_score": 24, "away_score": 20, "side": "home",
@@ -142,3 +143,34 @@ def test_nfl_line_settlement_also_requires_verified_close(monkeypatch) -> None:
     assert grading["close_source"] == "verified_clv_closes"
     assert grading["close_history_id"] == 99
     assert grades[0][2] == "won"
+
+
+def test_final_result_settles_without_close_and_does_not_invent_clv(monkeypatch) -> None:
+    db = SettlementDb()
+    monkeypatch.setattr(db, "execute_one", lambda *_: None)
+    monkeypatch.setattr(line_alerts, "_append_grade_history", lambda *args, **kwargs: None)
+    assert line_alerts._settle_football_line_alerts(db, "cfb") == 1
+    params = db.updates[-1][1]
+    grading = __import__("json").loads(params[1])
+    assert params[0] == "won"
+    assert grading["pnl_units"] == pytest.approx(0.91)
+    assert grading["close_history_id"] is None
+    assert grading["line_clv"] is None
+    assert grading["close_source"] == "unavailable"
+
+
+def test_missing_close_result_is_idempotent_and_can_be_enriched(monkeypatch) -> None:
+    db = SettlementDb()
+    original = db.execute
+    def settled_rows(sql, params=None):
+        rows = original(sql, params)
+        if "SELECT a.*, m.home_score" in sql:
+            rows[0]["settled_at"] = datetime(2026, 9, 6, tzinfo=timezone.utc)
+        return rows
+    monkeypatch.setattr(db, "execute", settled_rows)
+    monkeypatch.setattr(db, "execute_one", lambda *_: None)
+    monkeypatch.setattr(line_alerts, "_append_grade_history", lambda *args, **kwargs: None)
+    assert line_alerts._settle_football_line_alerts(db, "cfb") == 0
+    assert not db.updates
+    monkeypatch.setattr(db, "execute_one", lambda *_: {"history_id": 99, "books": _books(-4.0)})
+    assert line_alerts._settle_football_line_alerts(db, "cfb") == 1

@@ -106,7 +106,7 @@
 .shell {
   display: grid;
   min-height: 720px;
-  grid-template-columns: 248px minmax(500px, 1fr) 286px;
+  grid-template-columns: 310px minmax(440px, 1fr) 286px;
 }
 
 .watchPane,
@@ -193,6 +193,24 @@
   min-width: 0;
 }
 
+.miniCharts { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.miniChart { min-width: 0; color: #59b6ff; font-size: 8px; }
+.miniChart:last-child { color: #c58cff; }
+.miniChart > span { display: flex; justify-content: space-between; }
+.miniChart svg { width: 100%; height: 32px; display: block; }
+.miniChart small { display: block; height: 32px; padding-top: 8px; }
+.movementBadges { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.movementBadges > span { border: 1px solid currentColor; padding: 3px 5px; font-size: 8px; color: #59b6ff; }
+.movementBadges > span[data-kind="steam"] { color: #ffbf47; }
+.movementBadges > span[data-kind="reversal"] { color: #eea0ff; }
+.movementBadges small, .watchHealth { color: var(--terminal-muted); font-size: 8px; }
+.watchHealth { grid-column: 1 / -1; }
+.movementFilters { display: flex; gap: 4px; padding: 8px; }
+.movementFilters button { border: 1px solid var(--terminal-line); padding: 5px; font-size: 9px; cursor: pointer; }
+.movementFilters button[aria-pressed="true"] { color: #080d0b; background: var(--terminal-orange); }
+.watchLegend { padding: 0 9px 8px; margin: 0; font-size: 9px; line-height: 1.5; color: var(--terminal-muted); }
+.watchRow:focus-visible, .movementFilters button:focus-visible { outline: 2px solid #59b6ff; outline-offset: -2px; }
+
 .watchGame strong,
 .watchGame small {
   display: block;
@@ -203,6 +221,8 @@
 
 .watchGame strong {
   font-weight: 800;
+  white-space: normal;
+  line-height: 1.4;
 }
 
 .watchGame small {

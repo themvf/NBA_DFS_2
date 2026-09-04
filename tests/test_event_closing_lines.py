@@ -25,6 +25,12 @@ def test_cfb_uses_early_and_late_market_checkpoints() -> None:
     assert ("t_minus_90m", 90, 60) in checkpoints
     assert ("t_minus_15m", 15, 5) in checkpoints
     assert ("t_minus_2m", 2, 0) in checkpoints
+    assert ("closing_candidate", 5, 0) in checkpoints
+    assert ("cfb_t_minus_720m", 720, 660) in checkpoints
+    targets = sorted({target for _, target, _ in checkpoints if target <= 360})
+    assert max(b - a for a, b in zip(targets, targets[1:])) <= 15
+    assert len({name for name, _, _ in checkpoints}) == len(checkpoints)
+    assert all(target > due >= 0 for _, target, due in checkpoints)
 
 
 def test_nfl_calendar_cadence_for_sunday_early_game() -> None:

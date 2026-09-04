@@ -34,7 +34,7 @@ export default async function CfbPage({
   let research: CfbResearchBoard = {};
   try {
     [signals, backtest, research] = await Promise.all([
-      getLineAlerts("cfb", 250),
+      getLineAlerts("cfb", 250, undefined, board.games.map((game) => game.matchupId)),
       getCfbSignalBacktest(),
       getCfbResearchBoard(board.gameDate),
     ]);

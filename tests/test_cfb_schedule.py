@@ -8,6 +8,20 @@ from ingest import cfb_schedule
 from ingest.game_odds_market import extract_game_markets, lower_median
 
 
+def test_recent_score_refresh_scopes_to_recent_weeks(monkeypatch):
+    class Db:
+        def execute(self, sql):
+            assert "48 hours" in sql
+            return [{"season": 2026, "week": 1, "season_type": "regular"}]
+    calls = []
+    def fetch(db, key, **kwargs):
+        calls.append(kwargs)
+        return 12
+    monkeypatch.setattr(cfb_schedule, "fetch_schedule", fetch)
+    assert cfb_schedule.refresh_recent_scores(Db(), "test-key") == 12
+    assert calls == [{"year": 2026, "week": 1, "season_type": "regular"}]
+
+
 class _Response:
     def __init__(self, payload, *, last: str = "3"):
         self._payload = payload
