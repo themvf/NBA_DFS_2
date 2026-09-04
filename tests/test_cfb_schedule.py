@@ -152,7 +152,16 @@ def test_fetch_schedule_uses_cfbd_identity_and_overtime_fields(monkeypatch) -> N
         lambda _db, **kwargs: captured.update(kwargs) or 77,
     )
 
-    assert cfb_schedule.fetch_schedule(object(), "cfbd-key", year=2099, week=1) == 1
+    from contextlib import contextmanager
+    class Db:
+        calls = 0
+        @contextmanager
+        def connect(self):
+            self.calls += 1
+            yield None  # SQL helpers are mocked above; facade must remain unused.
+    db = Db()
+    assert cfb_schedule.fetch_schedule(db, "cfbd-key", year=2099, week=1) == 1
+    assert db.calls == 1
     assert captured["cfbd_game_id"] == 401000001
     assert captured["network"] == "NBC"
     assert captured["home_line_scores"][-1] == 7

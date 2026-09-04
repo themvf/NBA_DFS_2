@@ -166,8 +166,18 @@ def fetch_schedule(
     )
     response.raise_for_status()
     media = _media_by_game(api_key, year=year, week=week, season_type=season_type)
+    # Reuse the historical ingest's transaction facade; opening a fresh TLS
+    # connection for every team/alias/venue/game write can take several minutes.
+    from ingest.cfb_history import _TransactionDb
+    with db.connect() as connection:
+        return _store_schedule(_TransactionDb(connection), response.json() or [], media,
+                               year=year, week=week, season_type=season_type)
+
+
+def _store_schedule(db, games: list[dict], media: dict, *, year: int,
+                    week: int | None, season_type: str) -> int:
     upserted = 0
-    for game in response.json() or []:
+    for game in games:
         game_id = game.get("id")
         if game_id is None:
             raise ValueError("CFBD game missing id")

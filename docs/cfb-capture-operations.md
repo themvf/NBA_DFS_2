@@ -37,7 +37,8 @@ both teams and the canonical kickoff window before any odds are accepted.
 
 Full canonical schedule refreshes run every six hours. Recent game weeks refresh
 hourly, keyed to the scheduled workflow expression rather than the runner's
-actual start minute. Final scores are required for spread/total result grading.
+actual start minute. Each response is written in one transaction rather than
+opening separate connections for each row. Final scores are required for spread/total result grading.
 Final W/L/push and price-based hypothetical units settle independently of CLV.
 Missing verified closes remain null, not zero or the latest available line;
 later verified closes may enrich the existing settlement with a new audit grade.
