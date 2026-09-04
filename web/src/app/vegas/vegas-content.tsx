@@ -52,7 +52,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getTennisLegacyBetSummary(),
       matchesPromise.then(matches => getLineMovement("tennis", 7, "sportsbook", matches.map(m => m.id))),
       matchesPromise.then(matches => getLineMovement("tennis", 7, "polymarket", matches.map(m => m.id))),
-      getLineAlerts("tennis"),
+      matchesPromise.then(matches => getLineAlerts("tennis", 25, undefined, matches.map(m => m.id))),
       getLineAlertBacktest("tennis"),
       getTennisEloDashboard(),
       getDetectorHealth("tennis"),

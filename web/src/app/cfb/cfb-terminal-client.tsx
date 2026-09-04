@@ -25,6 +25,8 @@ const SIGNAL_LABELS: Record<string, string> = {
   reversal: "REVERSAL", reference_led: "REFERENCE LED",
   pinnacle_divergence: "REFERENCE GAP", dk_value: "PRICE VALUE",
   steam: "ML STEAM", walking: "ML WALK",
+  book_disagreement: "BOOK DISAGREEMENT", market_convergence: "CONVERGENCE",
+  late_move: "LATE MOVE", favorite_flip: "FAVORITE FLIP",
 };
 
 function signalMarket(signal: LineAlertRow): MarketKey {

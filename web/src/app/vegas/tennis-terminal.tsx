@@ -13,6 +13,8 @@ const label = (v: string) => v.replaceAll("_", " ").toUpperCase();
 const BOOK_LABELS: Record<string,string> = { draftkings: "DraftKings", pinnacle: "Pinnacle", fanduel: "FanDuel", betmgm: "BetMGM", betrivers: "BetRivers", fanatics: "Fanatics", betonlineag: "BetOnline" };
 const bookLabel = (v: string) => BOOK_LABELS[v] ?? v.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
 const BOOK_COLORS = ["#52dbd1", "#b980ff", "#5da9ff", "#75d46b", "#ff6f91", "#e7d66b", "#ff8f4c", "#b6c2bd"];
+const alertObservedAt = (alert: LineAlertRow) => typeof alert.details?.trigger_capture_at === "string"
+  ? alert.details.trigger_capture_at : alert.createdAt;
 
 function Trail({ row, mini = false }: { row?: MlbLineMovementRow; mini?: boolean }) {
   const points = useMemo(() => (row?.trail ?? []).filter(p => Number.isFinite(p.homeProb) && Number.isFinite(Date.parse(p.capturedAt)))
@@ -65,7 +67,7 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
     `${m.homePlayer} ${m.awayPlayer} ${m.matchDate}`.toLowerCase().includes(search.toLowerCase())),[matchups,tour,search]);
   const match = rows.find(m => m.id === selected) ?? rows.find(m => movement.some(r => r.matchupId === m.id && r.trail.length > 0)) ?? rows[0];
   const history = movement.find(r => r.matchupId === match?.id);
-  const tape = alerts.filter(a => a.matchupId === match?.id).sort((a,b) => Date.parse(b.createdAt)-Date.parse(a.createdAt));
+  const tape = alerts.filter(a => a.matchupId === match?.id).sort((a,b) => Date.parse(alertObservedAt(b))-Date.parse(alertObservedAt(a)));
   const age = history && now ? (now-Date.parse(history.closeCapturedAt))/60000 : null;
   const pastScheduledStart = now != null && match?.commenceTime != null && Date.parse(match.commenceTime) <= now;
   const status = !history ? "NO LOADED TRAIL" : pastScheduledStart ? "SAVED PRE-MATCH" : age != null && age > 30 ? "STALE" : "OBSERVED";
@@ -103,7 +105,7 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
       </> : <p className={s.empty}>Select a match when the feed is available. Missing quotes are never displayed as zero.</p>}</main>
       <aside className={s.pulse}><div className={s.heading}>DATA PULSE <span>{status}</span></div><div className={s.pulseBlock}><strong className={s.amber}>{status}</strong><p>Last trail observation<br/>{history ? time(history.closeCapturedAt) : "Unavailable"}</p><p>{match?.nBooks ?? "—"} books in current match feed · {history?.trackedBooks ?? "—"} comparable at open/close</p></div>
         <div className={s.heading}>SIGNAL TAPE <span>{tape.length} RECORDED</span></div>
-        <div className={s.tape}>{tape.map((a,i)=><div className={s.pulseBlock} key={`${a.createdAt}-${a.alertType}-${i}`}><strong>{label(a.alertType)}</strong><p>{a.side === "home" ? match?.homePlayer : a.side === "away" ? match?.awayPlayer : label(a.side)}</p><small>{time(a.createdAt)}</small><p>{a.outcome ?? "Outcome pending"} · CLV {a.clvPp == null ? "pending" : `${a.clvPp.toFixed(1)}pp`}</p></div>)}{!tape.length && <p className={s.empty}>No recorded signals in the loaded feed for this match.</p>}</div>
+        <div className={s.tape}>{tape.map((a,i)=><div className={s.pulseBlock} key={`${a.createdAt}-${a.alertType}-${i}`}><strong>{label(a.alertType)}</strong><p>{a.side === "home" ? match?.homePlayer : a.side === "away" ? match?.awayPlayer : label(a.side)}</p><small>{time(alertObservedAt(a))}{a.details?.origin === "retrospective" ? " · RETROSPECTIVE" : ""}</small><p>{a.outcome ?? "Outcome pending"} · CLV {a.clvPp == null ? "pending" : `${a.clvPp.toFixed(1)}pp`}</p></div>)}{!tape.length && <p className={s.empty}>No recorded signals in the loaded feed for this match.</p>}</div>
         <div className={s.notice}><strong>RESEARCH TERMINAL</strong><p>Tennis moneyline has no confirmed edge. Ratings are capped at 2★. Model disagreement is not a recommendation.</p><p>Capture targets reach five-minute intervals near scheduled start. Delays and missing observations remain possible.</p></div>
       </aside>
     </div>

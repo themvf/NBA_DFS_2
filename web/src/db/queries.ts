@@ -10996,7 +10996,7 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
              AS "nFrozenPrice",
            COUNT(DISTINCT COALESCE(details_json->>'exec_book', 'draftkings'))
              FILTER (WHERE details_json ? 'dk_decimal') AS "nExecBooks"
-    FROM line_alerts WHERE sport = ${sport}
+    FROM line_alerts WHERE sport = ${sport} AND origin = 'prospective'
     GROUP BY alert_type ORDER BY alert_type
   `);
   return rows.rows.map((r) => {
@@ -11058,6 +11058,13 @@ const DETECTOR_REGISTRY: { sport: string; alertType: string; deployedAt: string 
   { sport: "tennis", alertType: "dk_value", deployedAt: "2026-07-02" },
   { sport: "tennis", alertType: "steam", deployedAt: "2026-07-02" },
   { sport: "tennis", alertType: "walking", deployedAt: "2026-07-07" },
+  { sport: "tennis", alertType: "reversal", deployedAt: "2026-09-04" },
+  { sport: "tennis", alertType: "reference_led", deployedAt: "2026-09-04" },
+  { sport: "tennis", alertType: "price_pressure", deployedAt: "2026-09-04" },
+  { sport: "tennis", alertType: "book_disagreement", deployedAt: "2026-09-04" },
+  { sport: "tennis", alertType: "market_convergence", deployedAt: "2026-09-04" },
+  { sport: "tennis", alertType: "late_move", deployedAt: "2026-09-04" },
+  { sport: "tennis", alertType: "favorite_flip", deployedAt: "2026-09-04" },
   { sport: "tennis", alertType: "pinnacle_polymarket_delta", deployedAt: "2026-08-01" },
   { sport: "nfl", alertType: "pinnacle_divergence", deployedAt: "2026-08-01" },
   { sport: "nfl", alertType: "dk_value", deployedAt: "2026-08-01" },
@@ -11084,6 +11091,9 @@ const DETECTOR_REGISTRY: { sport: string; alertType: string; deployedAt: string 
   { sport: "cfb", alertType: "price_pressure", deployedAt: "2026-09-01" },
   { sport: "cfb", alertType: "reversal", deployedAt: "2026-09-01" },
   { sport: "cfb", alertType: "reference_led", deployedAt: "2026-09-01" },
+  { sport: "cfb", alertType: "book_disagreement", deployedAt: "2026-09-04" },
+  { sport: "cfb", alertType: "market_convergence", deployedAt: "2026-09-04" },
+  { sport: "cfb", alertType: "late_move", deployedAt: "2026-09-04" },
   // soccer's prop_outlier (ATGS) intentionally excluded: RETIRED 2026-08-13
   // as a confirmed loser, not dead — it's supposed to be silent.
 ];
@@ -11101,7 +11111,8 @@ async function computeHealthForSport(
     db.execute(sql`
       SELECT alert_type AS "alertType", COUNT(*)::int AS n, MAX(created_at)::text AS "lastAt"
       FROM line_alerts
-      WHERE sport = ${sport} AND alert_type IN (${sql.join(alertTypes.map((t) => sql`${t}`), sql`, `)})
+      WHERE sport = ${sport} AND origin = 'prospective'
+        AND alert_type IN (${sql.join(alertTypes.map((t) => sql`${t}`), sql`, `)})
       GROUP BY alert_type
     `),
     db.execute(sql`

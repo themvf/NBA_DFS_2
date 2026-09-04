@@ -95,11 +95,30 @@ _CFB_SPREAD_REVERSAL = 0.75
 _CFB_TOTAL_REVERSAL = 1.0
 _CFB_PRICE_PRESSURE_PP = 4.0
 _CFB_KEY_NUMBERS = (3.0, 7.0, 10.0, 14.0)
+_STRUCTURE_SIGNAL_VERSION = "market-structure-v1"
+_STRUCTURE_MIN_BOOKS = 4
+_PRESSURE_MIN_BOOKS = 5
+_REVERSAL_FIRST_LEG_PP = 2.0
+_REVERSAL_RETRACE_PP = 1.5
+_REVERSAL_RETRACE_FRACTION = 0.50
+_DISAGREEMENT_PP = 6.0
+_CONVERGED_PP = 2.0
+_LATE_WINDOW_MINUTES = 60
+_LATE_MOVE_PP = 1.0
 
 # Sports wired into the alert pipeline. NBA joins when the season resumes —
 # nba_matchups has no commence_time column yet, which scan()/settle()/dk_board
 # all join on.
 _ALERT_SPORTS = ("mlb", "nfl", "cfb", "soccer", "tennis")
+
+TOP_TEN_SIGNAL_TYPES = {
+    "tennis": ("steam", "walking", "reversal", "reference_led", "price_pressure",
+               "pinnacle_divergence", "book_disagreement", "market_convergence",
+               "late_move", "favorite_flip"),
+    "cfb": ("steam", "walking", "reversal", "reference_led", "price_pressure",
+            "pinnacle_divergence", "book_disagreement", "market_convergence",
+            "late_move", "key_cross"),
+}
 
 # ── Detector health ──────────────────────────────────────────────────────
 # Found via manual DB audit (2026-08-17): scan_tennis_totals had run every
@@ -141,6 +160,13 @@ DETECTOR_REGISTRY: list[dict] = [
     {"sport": "tennis", "alert_type": "dk_value", "deployed_at": date(2026, 7, 2)},
     {"sport": "tennis", "alert_type": "steam", "deployed_at": date(2026, 7, 2)},
     {"sport": "tennis", "alert_type": "walking", "deployed_at": date(2026, 7, 7)},
+    {"sport": "tennis", "alert_type": "reversal", "deployed_at": date(2026, 9, 4)},
+    {"sport": "tennis", "alert_type": "reference_led", "deployed_at": date(2026, 9, 4)},
+    {"sport": "tennis", "alert_type": "price_pressure", "deployed_at": date(2026, 9, 4)},
+    {"sport": "tennis", "alert_type": "book_disagreement", "deployed_at": date(2026, 9, 4)},
+    {"sport": "tennis", "alert_type": "market_convergence", "deployed_at": date(2026, 9, 4)},
+    {"sport": "tennis", "alert_type": "late_move", "deployed_at": date(2026, 9, 4)},
+    {"sport": "tennis", "alert_type": "favorite_flip", "deployed_at": date(2026, 9, 4)},
     {"sport": "tennis", "alert_type": "pinnacle_polymarket_delta", "deployed_at": date(2026, 8, 1)},
     {"sport": "nfl", "alert_type": "pinnacle_divergence", "deployed_at": date(2026, 8, 1)},
     {"sport": "nfl", "alert_type": "dk_value", "deployed_at": date(2026, 8, 1)},
@@ -168,6 +194,9 @@ DETECTOR_REGISTRY: list[dict] = [
     {"sport": "cfb", "alert_type": "price_pressure", "deployed_at": date(2026, 9, 1)},
     {"sport": "cfb", "alert_type": "reversal", "deployed_at": date(2026, 9, 1)},
     {"sport": "cfb", "alert_type": "reference_led", "deployed_at": date(2026, 9, 1)},
+    {"sport": "cfb", "alert_type": "book_disagreement", "deployed_at": date(2026, 9, 4)},
+    {"sport": "cfb", "alert_type": "market_convergence", "deployed_at": date(2026, 9, 4)},
+    {"sport": "cfb", "alert_type": "late_move", "deployed_at": date(2026, 9, 4)},
     # soccer's prop_outlier (ATGS) is intentionally excluded: RETIRED
     # 2026-08-13 as a confirmed loser, not dead — it's supposed to be silent.
 ]
@@ -190,7 +219,7 @@ def check_detector_health(db: DatabaseManager) -> list[dict]:
         days_deployed = (today - deployed_at).days
         counted = db.execute_one(
             "SELECT COUNT(*)::int AS n, MAX(created_at) AS last_at "
-            "FROM line_alerts WHERE sport=%s AND alert_type=%s",
+            "FROM line_alerts WHERE sport=%s AND alert_type=%s AND origin='prospective'",
             (sport, alert_type),
         )
         alerts_ever = int(counted["n"]) if counted else 0
@@ -318,6 +347,196 @@ def _comparable_retail_probabilities(opening: dict, current: dict, side: str
     open_probs, _ = _retail_probabilities(opening, side, used)
     current_probs, _ = _retail_probabilities(current, side, used)
     return sum(open_probs) / len(open_probs), sum(current_probs) / len(current_probs), len(used)
+
+
+def _retail_home_snapshot(books: dict, keys: set[str] | None = None) -> dict | None:
+    """Comparable retail home probabilities plus dispersion for structure signals."""
+    allowed = set(books or {}) if keys is None else keys
+    values = {}
+    for key in sorted(allowed - {"pinnacle", "polymarket"}):
+        if key in (books or {}):
+            probability = _book_fair_side(books[key], "home")
+            if probability is not None:
+                values[key] = probability
+    if not values:
+        return None
+    probabilities = list(values.values())
+    return {
+        "prob": sum(probabilities) / len(probabilities),
+        "dispersion_pp": (max(probabilities) - min(probabilities)) * 100,
+        "books": set(values),
+        "values": values,
+    }
+
+
+def _comparable_home_snapshots(*book_maps: dict) -> tuple[list[dict], int]:
+    keys = set.intersection(*(set(books or {}) for books in book_maps)) - {"pinnacle", "polymarket"}
+    parsed = [_retail_home_snapshot(books, keys) for books in book_maps]
+    if any(snapshot is None for snapshot in parsed):
+        return [], 0
+    usable = set.intersection(*(snapshot["books"] for snapshot in parsed if snapshot))
+    if not usable:
+        return [], 0
+    reparsed = [_retail_home_snapshot(books, usable) for books in book_maps]
+    return ([snapshot for snapshot in reparsed if snapshot], len(usable))
+
+
+def _moneyline_structure_signals(history: list[dict], commence_time: datetime,
+                                  *, include_favorite_flip: bool) -> list[dict]:
+    """Prospective, quote-supported market-shape candidates at the latest capture.
+
+    This complements (rather than rewrites) the established steam/walking and
+    Pinnacle-divergence cohorts. Every comparison uses the same retail books at
+    all endpoints so provider churn cannot manufacture a move.
+    """
+    if len(history) < 2:
+        return []
+    current, previous, opening = history[-1], history[-2], history[0]
+    current_books = current.get("books") or {}
+    current_snapshot = _retail_home_snapshot(current_books)
+    if not current_snapshot or len(current_snapshot["books"]) < _STRUCTURE_MIN_BOOKS:
+        return []
+    base = {
+        "market": "moneyline", "signal_version": _STRUCTURE_SIGNAL_VERSION,
+        "detector_version": _STRUCTURE_SIGNAL_VERSION, "origin": "prospective",
+        "trigger_history_id": current.get("history_id"),
+        "previous_history_id": previous.get("history_id"),
+        "opening_history_id": opening.get("history_id"),
+        "trigger_capture_at": str(current.get("captured_at")),
+        "market_book_count": len(current_snapshot["books"]),
+    }
+    signals: list[dict] = []
+
+    # Coordinated sub-steam movement: more books, smaller per-book threshold.
+    paired, support = _comparable_home_snapshots(previous.get("books") or {}, current_books)
+    if support >= _STRUCTURE_MIN_BOOKS:
+        before, now = paired
+        common = before["books"] & now["books"]
+        changes = [now["values"][key] - before["values"][key] for key in common]
+        direction = 1 if sum(changes) >= 0 else -1
+        movers = [change for change in changes if change * direction >= 0.005]
+        avg_move = sum(movers) / len(movers) if movers else 0
+        if len(movers) >= _PRESSURE_MIN_BOOKS and avg_move >= 0.01:
+            side = "home" if direction > 0 else "away"
+            signals.append({"alert_type": "price_pressure", "side": side,
+                            "details": {**base, "books_moved": len(movers),
+                                        "avg_move_pp": round(avg_move * 100, 3),
+                                        "comparable_books": support}})
+
+    # Material U-turn. Search all earlier pivots but require identical books
+    # at the pre-move, pivot, and trigger snapshots.
+    best_reversal = None
+    for pivot_index in range(1, len(history) - 1):
+        pivot = history[pivot_index]
+        for before in history[:pivot_index]:
+            snaps, support = _comparable_home_snapshots(
+                before.get("books") or {}, pivot.get("books") or {}, current_books)
+            if support < _STRUCTURE_MIN_BOOKS:
+                continue
+            pre, turn, now = snaps
+            first_leg = (turn["prob"] - pre["prob"]) * 100
+            retrace = (now["prob"] - turn["prob"]) * 100
+            fraction = abs(retrace) / abs(first_leg) if first_leg else 0
+            if (abs(first_leg) >= _REVERSAL_FIRST_LEG_PP
+                    and abs(retrace) >= _REVERSAL_RETRACE_PP
+                    and fraction >= _REVERSAL_RETRACE_FRACTION
+                    and first_leg * retrace < 0):
+                score = abs(retrace)
+                if best_reversal is None or score > best_reversal[0]:
+                    best_reversal = (score, before, pivot, first_leg, retrace, fraction, support)
+    if best_reversal:
+        _, before, pivot, first_leg, retrace, fraction, support = best_reversal
+        side = "home" if retrace > 0 else "away"
+        signals.append({"alert_type": "reversal", "side": side,
+                        "details": {**base, "pre_move_history_id": before.get("history_id"),
+                                    "pivot_history_id": pivot.get("history_id"),
+                                    "first_leg_pp": round(first_leg, 3),
+                                    "reversal_leg_pp": round(retrace, 3),
+                                    "retracement_pct": round(fraction * 100, 1),
+                                    "comparable_books": support}})
+
+    # Pinnacle moves first while retail is quiet, then retail follows within 6h.
+    for pivot_index in range(1, len(history) - 1):
+        before, pivot = history[pivot_index - 1], history[pivot_index]
+        pin0 = (before.get("books") or {}).get("pinnacle")
+        pin1 = (pivot.get("books") or {}).get("pinnacle")
+        if not pin0 or not pin1:
+            continue
+        p0, p1 = _book_fair_side(pin0, "home"), _book_fair_side(pin1, "home")
+        comparable, support = _comparable_home_snapshots(
+            before.get("books") or {}, pivot.get("books") or {}, current_books)
+        if p0 is None or p1 is None or support < _STRUCTURE_MIN_BOOKS:
+            continue
+        before_retail, pivot_retail, now_retail = comparable
+        pin_move = (p1 - p0) * 100
+        early_retail = (pivot_retail["prob"] - before_retail["prob"]) * 100
+        follow = (now_retail["prob"] - pivot_retail["prob"]) * 100
+        elapsed = (current["captured_at"] - pivot["captured_at"]).total_seconds() / 60
+        if (abs(pin_move) >= 1.0 and abs(early_retail) < 0.5 and abs(follow) >= 0.75
+                and pin_move * follow > 0 and 0 < elapsed <= 360):
+            side = "home" if follow > 0 else "away"
+            signals.append({"alert_type": "reference_led", "side": side,
+                            "details": {**base, "reference_book": "pinnacle",
+                                        "reference_move_pp": round(pin_move, 3),
+                                        "retail_follow_pp": round(follow, 3),
+                                        "follow_minutes": round(elapsed, 1),
+                                        "pivot_history_id": pivot.get("history_id"),
+                                        "comparable_books": support}})
+            break
+
+    # Wide retail disagreement is descriptive; direction follows the furthest
+    # quoted outlier so it remains gradeable without pretending it is advice.
+    if current_snapshot["dispersion_pp"] >= _DISAGREEMENT_PP:
+        values = current_snapshot["values"]
+        mean = current_snapshot["prob"]
+        outlier_book, outlier_prob = max(values.items(), key=lambda item: abs(item[1] - mean))
+        side = "home" if outlier_prob > mean else "away"
+        signals.append({"alert_type": "book_disagreement", "side": side,
+                        "details": {**base, "evaluation_arm": "observe_only",
+                                    "dispersion_pp": round(current_snapshot["dispersion_pp"], 3),
+                                    "outlier_book": outlier_book,
+                                    "outlier_home_prob": round(outlier_prob, 6)}})
+
+    previous_snapshot = _retail_home_snapshot(previous.get("books") or {})
+    if (previous_snapshot and previous_snapshot["dispersion_pp"] >= _DISAGREEMENT_PP
+            and current_snapshot["dispersion_pp"] <= _CONVERGED_PP
+            and previous_snapshot["dispersion_pp"] - current_snapshot["dispersion_pp"] >= 2.0):
+        side = "home" if current_snapshot["prob"] >= previous_snapshot["prob"] else "away"
+        signals.append({"alert_type": "market_convergence", "side": side,
+                        "details": {**base, "evaluation_arm": "observe_only",
+                                    "before_dispersion_pp": round(previous_snapshot["dispersion_pp"], 3),
+                                    "now_dispersion_pp": round(current_snapshot["dispersion_pp"], 3)}})
+
+    minutes_to_start = (commence_time - current["captured_at"]).total_seconds() / 60
+    if 0 <= minutes_to_start <= _LATE_WINDOW_MINUTES:
+        anchors = [row for row in history[:-1]
+                   if (commence_time - row["captured_at"]).total_seconds() / 60 >= _LATE_WINDOW_MINUTES]
+        if anchors:
+            anchor = anchors[-1]
+            comparable, support = _comparable_home_snapshots(anchor.get("books") or {}, current_books)
+            if support >= _STRUCTURE_MIN_BOOKS:
+                before, now = comparable
+                move = (now["prob"] - before["prob"]) * 100
+                if abs(move) >= _LATE_MOVE_PP:
+                    side = "home" if move > 0 else "away"
+                    signals.append({"alert_type": "late_move", "side": side,
+                                    "details": {**base, "move_pp": round(move, 3),
+                                                "minutes_to_start": round(minutes_to_start, 1),
+                                                "anchor_history_id": anchor.get("history_id"),
+                                                "comparable_books": support}})
+
+    if include_favorite_flip:
+        comparable, support = _comparable_home_snapshots(opening.get("books") or {}, current_books)
+        if support >= _STRUCTURE_MIN_BOOKS:
+            opened, now = comparable
+            crossed = (opened["prob"] < 0.5 <= now["prob"]) or (opened["prob"] > 0.5 >= now["prob"])
+            if crossed and abs(now["prob"] - opened["prob"]) * 100 >= 1.0:
+                side = "home" if now["prob"] >= 0.5 else "away"
+                signals.append({"alert_type": "favorite_flip", "side": side,
+                                "details": {**base, "open_home_prob": round(opened["prob"], 6),
+                                            "now_home_prob": round(now["prob"], 6),
+                                            "comparable_books": support}})
+    return signals
 
 
 def _pinnacle_polymarket_signals(books: dict) -> list[dict]:
@@ -966,6 +1185,45 @@ def scan(db: DatabaseManager, sport: str) -> int:
                                  **_freeze_game_price(sport, books, market="moneyline",
                                                       side=side)},
                     ))
+        structure_history = None
+        if sport in ("tennis", "cfb"):
+            structure_history = db.execute(
+                """
+                SELECT id AS history_id, captured_at, capture_key, books
+                FROM game_odds_history
+                WHERE sport=%s AND matchup_id=%s AND books IS NOT NULL
+                  AND captured_at < %s
+                  AND EXISTS (
+                    SELECT 1 FROM jsonb_object_keys(books) AS source(book_key)
+                    WHERE source.book_key <> 'polymarket'
+                  )
+                ORDER BY captured_at, id
+                """,
+                (sport, r["matchup_id"], r["commence_time"]),
+            )
+            allowed = ({"reversal", "reference_led", "price_pressure", "book_disagreement",
+                        "market_convergence", "late_move", "favorite_flip"}
+                       if sport == "tennis"
+                       else {"book_disagreement", "market_convergence", "late_move"})
+            for signal in _moneyline_structure_signals(
+                    structure_history, r["commence_time"],
+                    include_favorite_flip=sport == "tennis"):
+                if signal["alert_type"] not in allowed:
+                    continue
+                side = signal["side"]
+                retail = _retail_fair_side(books, side)
+                pin_prob = (_book_fair_side(books["pinnacle"], side)
+                            if "pinnacle" in books else None)
+                details = {
+                    **signal["details"],
+                    **_freeze_game_price(sport, books, market="moneyline", side=side),
+                }
+                new_alerts.extend(_insert(
+                    db, sport=sport, r=r, label=label,
+                    alert_type=signal["alert_type"], side=side,
+                    alert_prob=retail, sharp_prob=pin_prob, details=details,
+                ))
+
         if sport == "nfl":
             previous_books = prev["books"] if prev and prev.get("books") else None
             opening_books = first["books"] if first and first.get("books") else None
@@ -988,17 +1246,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
                     details={**signal["details"], **priced},
                 ))
         if sport == "cfb":
-            history = db.execute(
-                """
-                SELECT id AS history_id, captured_at, capture_key, books
-                FROM game_odds_history
-                WHERE sport='cfb' AND matchup_id=%s AND books IS NOT NULL
-                  AND captured_at < %s
-                ORDER BY captured_at, id
-                """,
-                (r["matchup_id"], r["commence_time"]),
-            )
-            for signal in _cfb_market_signals(history):
+            for signal in _cfb_market_signals(structure_history or []):
                 details = signal["details"]
                 priced = freeze_execution_price(
                     books, market=details["market"], side=signal["side"],
@@ -2126,9 +2374,11 @@ def settle(db: DatabaseManager, sport: str) -> int:
     # (settle_props / settle_props_soccer / settle_tennis_totals).
     open_alerts = db.execute(
         "SELECT * FROM line_alerts WHERE sport = %s AND settled_at IS NULL "
-        "AND alert_type IN ('pinnacle_divergence', 'pinnacle_favorite_forward', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking') "
+        "AND (alert_type IN ('pinnacle_divergence', 'pinnacle_favorite_forward', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking', "
+        "'book_disagreement', 'market_convergence', 'late_move') "
+        "OR (%s = 'tennis' AND alert_type IN ('favorite_flip', 'reversal', 'reference_led', 'price_pressure'))) "
         "AND commence_time IS NOT NULL AND commence_time <= NOW()",
-        (sport,),
+        (sport, sport),
     )
     graded = 0
     for a in open_alerts:
@@ -2399,12 +2649,12 @@ def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
             f"{h['sport']}/{h['alert_type']}: {h['status']}" for h in quiet) + ")")
     print()
 
-    cohort_predicate = "TRUE" if include_legacy else """(
+    cohort_predicate = "TRUE" if include_legacy else """(a.origin='prospective' AND (
         a.sport NOT IN ('mlb', 'tennis', 'cfb', 'nfl') OR EXISTS (
             SELECT 1 FROM verified_clv_closes c
             WHERE c.sport=a.sport AND c.matchup_id=a.matchup_id
         )
-    )"""
+    ))"""
     cohort_label = "including non-primary/legacy" if include_legacy else "verified_clv_v1 for MLB/Tennis/NFL/CFB"
     rows = db.execute(
         f"""
