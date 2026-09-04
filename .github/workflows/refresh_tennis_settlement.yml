@@ -45,10 +45,13 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Closing-line fallback poll (MLB + Tennis)
-        run: python -m ingest.event_closing_lines
+        run: python -m ingest.event_closing_lines --existing-schema
 
       - name: Capture due US Open sportsbook checkpoints
         run: python -m ingest.tennis_capture_checkpoints
+
+      - name: Detect and grade Tennis market signals
+        run: python -m model.line_alerts --sport tennis --existing-schema
 
       - name: Settle from tennisexplorer.com (same-day results, primary)
         continue-on-error: true

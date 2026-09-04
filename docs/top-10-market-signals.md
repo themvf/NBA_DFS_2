@@ -25,3 +25,7 @@ Polymarket are excluded from retail consensus and retain their reference lanes.
 The first qualifying prospective observation is immutable because the alert
 ledger deduplicates by sport, match, signal, and side. Detector health uses a
 14-day grace period before a newly deployed signal can be classified as dead.
+
+CFB is evaluated by the five-minute closing-line worker. Tennis is evaluated
+after every 15-minute checkpoint/settlement poll as well as the full scheduled
+refresh, so a stored capture does not wait hours for market-shape classification.
