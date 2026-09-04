@@ -38,6 +38,17 @@ def test_official_aliases_include_mascots_but_reject_ambiguous_names():
     assert cfb_schedule._normal_name("San José State Spartans") == cfb_schedule._normal_name("San Jose State Spartans")
 
 
+def test_reviewed_provider_variants_are_exact_and_fail_closed(monkeypatch):
+    monkeypatch.setattr(cfb_schedule, "build_cfb_team_name_cache", lambda db: {
+        "The Citadel": 1, "Nicholls": 2, "SE Louisiana": 3,
+        "Nicholls State Colonels": 99,
+    })
+    cache = cfb_schedule._team_cache(object())
+    assert cache["citadelbulldogs"] == 1
+    assert cache["southeasternlouisianalions"] == 3
+    assert "nichollsstatecolonels" not in cache
+
+
 class _Response:
     def __init__(self, payload, *, last: str = "3"):
         self._payload = payload

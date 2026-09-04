@@ -47,6 +47,13 @@ CFB_BOOKMAKERS = (
     "espnbet", "hardrockbet", "betrivers", "pinnacle", "bovada",
 )
 CFB_MARKETS = "h2h,spreads,totals"
+# Reviewed against official athletics identities, not fuzzy name similarity:
+# citadelsports.com, geauxcolonels.com, lionsports.net.
+REVIEWED_ODDS_ALIASES = {
+    "Citadel Bulldogs": "The Citadel",
+    "Nicholls State Colonels": "Nicholls",
+    "Southeastern Louisiana Lions": "SE Louisiana",
+}
 CHECKPOINTS = (
     ("t_minus_48h", 42 * 60, 48 * 60),
     ("t_minus_24h", 20 * 60, 24 * 60),
@@ -241,10 +248,19 @@ def _store_schedule(db, games: list[dict], media: dict, *, year: int,
 
 
 def _team_cache(db: DatabaseManager) -> dict[str, int]:
-    return {
+    cache = {
         _normal_name(name): team_id
         for name, team_id in build_cfb_team_name_cache(db).items()
     }
+    for alias, canonical_name in REVIEWED_ODDS_ALIASES.items():
+        team_id = cache.get(_normal_name(canonical_name))
+        key = _normal_name(alias)
+        if team_id is not None:
+            if key in cache and cache[key] != team_id:
+                cache.pop(key)  # conflicting identities remain quarantined
+            else:
+                cache[key] = team_id
+    return cache
 
 
 def _candidate_matchups(db: DatabaseManager, home_id: int, away_id: int) -> list[dict]:

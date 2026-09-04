@@ -34,6 +34,11 @@ mascot aliases by CFBD team ID. Cross-team name collisions are excluded and
 existing reviewed mappings are not overwritten. Accents and punctuation are
 normalized; fuzzy team matching is not allowed. Provider events must still match
 both teams and the canonical kickoff window before any odds are accepted.
+Three remaining provider variants have explicit, source-reviewed mappings in
+code: [Citadel Bulldogs](https://citadelsports.com/),
+[Nicholls State Colonels](https://geauxcolonels.com/), and
+[Southeastern Louisiana Lions](https://lionsports.net/sports/2008/11/7/GEN_1107082533.aspx).
+Conflicts fail closed rather than replacing another team's identity.
 
 Full canonical schedule refreshes run every six hours. Recent game weeks refresh
 hourly, keyed to the scheduled workflow expression rather than the runner's
