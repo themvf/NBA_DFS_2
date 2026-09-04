@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import NflDfsClient from "./nfl-dfs-client";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "NFL DFS Workspace",
@@ -7,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function NflDfsPage() {
-  return <NflDfsClient />;
+  return <><nav className="mx-auto max-w-[1600px] px-6 pt-4"><Link className="inline-flex rounded-lg border border-emerald-700 px-4 py-2 text-sm font-bold text-emerald-800" href="/dfs/nfl/review">Weekly player review →</Link></nav><NflDfsClient /></>;
 }

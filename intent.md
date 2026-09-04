@@ -537,3 +537,7 @@ the numerical comparison and limitations. No production default was changed.
 Research/shadow release includes a daily current-season player/DST result refresh, weekly shadow grading summaries, portable code-pin verification, and append-only DST corrections that include opponent/final-score dependencies. Production model formulas and optimizer defaults remain unchanged.
 
 Next design: `docs/nfl-dfs-player-variance-and-weekly-review.md`. Prioritize a per-player weekly report card with missing-data coverage, then player/role-specific variance shrinkage and opportunity/efficiency features. This is a simulated junior-developer review and proposed follow-on scope, not a claim that the new variance model or UI is built.
+
+## 20. Weekly player review and variance experiment — 2026-09-04
+
+Implemented: `/dfs/nfl/review`, append-only report-card materialization, separate production/shadow grading, missing-result coverage, per-player interval charts, component/audit details, and daily workflow wiring. First Week 1 report is persisted. A player/position variance experiment saved 12,525 retrospective distributions; interval-score improvement is mixed (QB/DST better, RB/WR/TE worse). No variance candidate was activated and production formulas are unchanged. Role/injury modeling and new opportunity/efficiency forecasts remain future work. See `docs/nfl-dfs-weekly-review-delivery.md` for evidence and limitations. Prepared for main release; hosting deployment is verified separately.

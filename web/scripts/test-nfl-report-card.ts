@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import { reportSummary, type ReportRow } from "../src/lib/nfl-dfs/report-card";
+const base = { valid_forecast: true, error: null, actual: null, interval_hit: null, overdue: false } as ReportRow;
+const summary = reportSummary([base, { ...base, error: 0, actual: 0, interval_hit: true }, { ...base, error: -4, actual: 6, interval_hit: false }]);
+assert.equal(summary.players, 3);
+assert.equal(summary.scored, 2);
+assert.equal(summary.unscored, 1);
+assert.equal(summary.mae, 2);
+assert.equal(summary.bias, -2);
+assert.equal(summary.coverage, .5);
+assert.equal(reportSummary([base]).mae, null);
+console.log("NFL report-card denominator and zero-result checks passed");

@@ -45,3 +45,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -c "import os,sys; sys.argv=['shadow']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_shadow import main; main()"
+      - name: Save weekly production and shadow report cards
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_reportcard import main; main()"

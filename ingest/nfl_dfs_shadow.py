@@ -110,6 +110,8 @@ def freeze(connection, report: dict, season: int, week: int, now: datetime) -> d
             "prior_opportunity": float(np.mean([float(r.stats.get(opportunity_key, 0) or 0) +
                 (float(r.stats.get("carries", 0) or 0) if position == "RB" else 0) for r in own[-4:]])),
             "position": position, "player_name": player["canonical_name"], "gsis_id": gsis,
+            "team": player["team_abbrev"], "opponent": env["opponent"],
+            "stat_means": dict(projection.stat_means), "median": projection.median_fpts,
             "p10": projection.floor_fpts, "p90": projection.ceiling_fpts,
             "boom_probability": projection.boom_rate, "boom_threshold": BOOM_THRESHOLDS[position],
             "history_digest": history_digest, "history_cutoff": list(max(r.chronological_key for r in priors)),
@@ -121,6 +123,7 @@ def freeze(connection, report: dict, season: int, week: int, now: datetime) -> d
             residuals = np.array(recipe["residuals"])
             p = predict(recipe, row)
             row["candidate"] = {"prediction": p, "p10": p+float(np.quantile(residuals,.1)),
+                "median": p+float(np.quantile(residuals,.5)),
                 "p90": p+float(np.quantile(residuals,.9)),
                 "boom_probability": float(np.mean(p+residuals >= row["boom_threshold"])),
                 "recipe_digest": artifact_digest(recipe)}

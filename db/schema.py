@@ -2979,6 +2979,13 @@ TABLES = [
     )
     """,
 
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_weekly_report_cards (
+        report_digest TEXT PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL CHECK(week BETWEEN 1 AND 18),
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_research_runs (
         run_id TEXT PRIMARY KEY,
         report JSONB NOT NULL,
