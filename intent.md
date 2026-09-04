@@ -509,3 +509,31 @@ Historical odds cost gate:
 - Full 2023–2025 coverage at T-48, T-24, T-6, T-90, T-15, and a T-5 close proxy requires 2,177 distinct bulk snapshots, estimated at 65,310 credits.
 - A 2025 pilot at T-6, T-15, and T-5 requires 378 snapshots, estimated at 11,340 credits.
 - These are saved dry-run plans; no paid historical API calls were made. Explicit approval of a plan is required before executing it.
+
+## 18. Model study and forward shadow — authorized development
+
+The five-step study is defined in `docs/nfl-dfs-model-development-study.md`.
+It benchmarks a market-free reconstruction of the historical model, fits
+prior-opportunity and separately labeled closing-reference candidates, and
+stores full samples/predictions. The strict market/slate gates above remain
+in force for production and timestamped market research. They do not make
+prior-opportunity research depend on purchasing historical odds.
+
+2025 has already been inspected and is a retrospective diagnostic, not an
+untouched holdout. Forward 2026 forecasts are frozen in a separate shadow
+ledger; only qualified non-market candidates are allowed there. No automatic
+production promotion is implemented. Missing salary, ownership and DNP evidence
+is surfaced explicitly rather than filled with proxies.
+
+Executed study: 18,581 player-week evaluations; 43,631 saved variant/sample
+records; 36,551 frozen history rows. All five opportunity candidates qualified
+for shadow-only use, with retrospective 2025 MAE reductions of 1.15%–2.75%.
+The first 645 Week 1 player-week baseline/candidate pairs have been frozen.
+Forward results remain pending. See `docs/nfl-dfs-model-study-findings.md` for
+the numerical comparison and limitations. No production default was changed.
+
+## 19. 2026-09-04 release and next iteration
+
+Research/shadow release includes a daily current-season player/DST result refresh, weekly shadow grading summaries, portable code-pin verification, and append-only DST corrections that include opponent/final-score dependencies. Production model formulas and optimizer defaults remain unchanged.
+
+Next design: `docs/nfl-dfs-player-variance-and-weekly-review.md`. Prioritize a per-player weekly report card with missing-data coverage, then player/role-specific variance shrinkage and opportunity/efficiency features. This is a simulated junior-developer review and proposed follow-on scope, not a claim that the new variance model or UI is built.

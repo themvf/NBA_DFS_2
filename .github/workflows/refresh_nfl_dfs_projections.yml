@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       season:
-        description: "NFL season year (defaults to current UTC year)"
+        description: "NFL season year (January-March defaults to previous year)"
         required: false
         type: string
       week:
@@ -21,8 +21,11 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NFL_RESEARCH_SEASON: ${{ inputs.season }}
+      NFL_RESEARCH_WEEK: ${{ inputs.week }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,10 +33,15 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Build immutable projection snapshot
-        shell: bash
+      - name: Refresh current-season inputs and immutable results
+        id: results
         run: |
-          ARGS=()
-          if [ -n "${{ inputs.season }}" ]; then ARGS+=(--season "${{ inputs.season }}"); fi
-          if [ -n "${{ inputs.week }}" ]; then ARGS+=(--week "${{ inputs.week }}"); fi
-          python -m ingest.nfl_dfs_projections "${ARGS[@]}"
+          python -c "import os,sys; sys.argv=['weekly','--phase','results']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; main()"
+      - name: Build immutable projection snapshot
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['weekly','--phase','projections']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; main()"
+      - name: Freeze and settle shadow-only research forecasts
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['shadow']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_shadow import main; main()"

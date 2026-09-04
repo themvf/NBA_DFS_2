@@ -54,13 +54,16 @@ def _canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
-def input_digest(*, position: str, source: str, source_row: Mapping[str, Any]) -> str:
+def input_digest(*, position: str, source: str, source_row: Mapping[str, Any],
+                 dst_context: Mapping[str, Any] | None = None) -> str:
     payload = {
         "position": position,
         "source": source,
         "source_row": source_row,
         "scoring_version": SCORING_VERSION,
     }
+    if position == "DST":
+        payload["dst_context"] = dst_context
     return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
 
@@ -230,22 +233,25 @@ def materialize(db: DatabaseManager, seasons: Sequence[int], *, dry_run: bool = 
         # Historical source position wins over the player's current canonical
         # position so later position changes cannot rewrite old scoring rules.
         position = str(row["source_row"].get("position") or row["position"] or "").upper()
+        dst_context = {
+            "opponent_final_points": row["opponent_final_points"],
+            "opponent_raw_team_stats": (row["opponent_raw_source"] or {}).get("raw_team_stats"),
+        }
         scored = score_source_row(
             position,
             row["source_row"],
-            dst_context={
-                "opponent_final_points": row["opponent_final_points"],
-                "opponent_raw_team_stats": (row["opponent_raw_source"] or {}).get("raw_team_stats"),
-            },
+            dst_context=dst_context,
         )
         counts[scored.status] += 1
         counts["game_linked"] += int(row["game_id"] is not None)
-        digest = input_digest(position=position, source=row["source"], source_row=row["source_row"])
+        digest = input_digest(position=position, source=row["source"], source_row=row["source_row"],
+                              dst_context=dst_context)
         evidence = {
             **scored.evidence,
             "source_fetched_at": row["fetched_at"].isoformat(),
             "source_row_digest": digest,
             "schedule_link_method": "season+week+team",
+            "dst_context": dst_context if position == "DST" else None,
         }
         inserts.append(
             (

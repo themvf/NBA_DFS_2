@@ -2979,6 +2979,52 @@ TABLES = [
     )
     """,
 
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_research_runs (
+        run_id TEXT PRIMARY KEY,
+        report JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_research_samples (
+        id BIGSERIAL PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES nfl_dfs_research_runs(run_id),
+        sample_key TEXT NOT NULL,
+        variant TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        UNIQUE(run_id, sample_key, variant)
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_research_history (
+        run_id TEXT NOT NULL REFERENCES nfl_dfs_research_runs(run_id),
+        row_key TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        PRIMARY KEY(run_id,row_key)
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_shadow_predictions (
+        id BIGSERIAL PRIMARY KEY,
+        study_run_id TEXT NOT NULL REFERENCES nfl_dfs_research_runs(run_id),
+        player_id BIGINT NOT NULL REFERENCES ff_players(id),
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL,
+        kickoff TIMESTAMPTZ NOT NULL,
+        payload JSONB NOT NULL,
+        input_digest TEXT NOT NULL,
+        UNIQUE(study_run_id,player_id,season,week,captured_at),
+        CHECK(captured_at < kickoff)
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_shadow_outcomes (
+        prediction_id BIGINT NOT NULL REFERENCES nfl_dfs_shadow_predictions(id),
+        result_id BIGINT NOT NULL REFERENCES nfl_dfs_player_week_results(id),
+        payload JSONB NOT NULL,
+        settled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(prediction_id,result_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_shadow_evaluations (
+        evaluation_digest TEXT PRIMARY KEY,
+        study_run_id TEXT NOT NULL REFERENCES nfl_dfs_research_runs(run_id),
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+
     # Market-implied power ratings, append-only and as-of. These are a
     # compression of the spreads the market has already posted, propagated to
     # games it has not priced yet -- never an independent opinion.

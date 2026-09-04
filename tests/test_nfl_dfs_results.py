@@ -73,3 +73,11 @@ def test_input_digest_is_order_invariant_and_versioned() -> None:
     assert first == second
     assert len(first) == 64
     assert SCORING_VERSION == "nfl-dk-realized-v2"
+
+
+def test_dst_digest_includes_opponent_and_final_score_corrections():
+    def digest(score, tds):
+        return input_digest(position="DST", source="nflverse", source_row={"raw_team_stats": {"def_sacks": 3}},
+                            dst_context={"opponent_final_points": score, "opponent_raw_team_stats": {"def_tds": tds}})
+    assert digest(21, 1) == digest(21, 1)
+    assert len({digest(21, 1), digest(28, 1), digest(21, 0)}) == 3

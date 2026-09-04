@@ -1,0 +1,8 @@
+{
+  "study_run_id": "8bab909112d93a5d0f0c1bcfa2674262d7116aebe04d58402cfd7d5e717d033e",
+  "output_digest": "5298a404d8447281db9d4f5d8c8361d62e82da61232d3a58bc5d47e32f9be970",
+  "mode": "shadow_only",
+  "production_promotion": false,
+  "fresh_evaluation_season": 2026,
+  "report": "artifacts/nfl_dfs_research_36cbc63d06d706a9/8bab909112d93a5d/report.json"
+}
