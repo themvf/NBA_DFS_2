@@ -33,6 +33,18 @@ def test_cfb_uses_early_and_late_market_checkpoints() -> None:
     assert all(target > due >= 0 for _, target, due in checkpoints)
 
 
+def test_tennis_dense_cadence_preserves_legacy_and_covers_final_thirty_minutes():
+    checkpoints = closes.CHECKPOINTS_BY_SPORT["tennis"]
+    assert set(closes.CORE_CHECKPOINTS) <= set(checkpoints)
+    assert len({name for name, _, _ in checkpoints}) == len(checkpoints)
+    assert all(target > due >= 0 for _, target, due in checkpoints)
+    for lead in range(30, 0, -5):
+        assert (f"tennis_t_minus_{lead}m", lead, lead-5) in checkpoints
+    for low, high, interval in ((90,360,30),(30,90,15),(0,30,5)):
+        targets = sorted({low, high} | {target for _,target,_ in checkpoints if low <= target <= high})
+        assert max(b-a for a,b in zip(targets,targets[1:])) <= interval
+
+
 def test_nfl_calendar_cadence_for_sunday_early_game() -> None:
     kickoff = datetime(2026, 9, 13, 17, tzinfo=timezone.utc)  # 1:00 PM ET
     jobs = closes.nfl_checkpoint_schedule(kickoff)
@@ -168,6 +180,9 @@ def test_reconcile_supersedes_old_nfl_kickoff_jobs() -> None:
     assert "c.sport='nfl'" in supersede_sql
     assert "c.sport='cfb'" in db.calls[1][0]
     assert "c.scheduled_start_at IS DISTINCT FROM m.commence_time" in db.calls[1][0]
+    assert "c.sport='tennis'" in db.calls[2][0]
+    assert "c.scheduled_start_at IS DISTINCT FROM m.commence_time" in db.calls[2][0]
+    assert "c.status IN ('pending', 'attempted', 'failed')" in db.calls[2][0]
 
 
 def test_cfb_due_games_share_one_paid_bulk_capture(monkeypatch) -> None:

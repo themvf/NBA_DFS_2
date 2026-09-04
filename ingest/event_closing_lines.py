@@ -45,7 +45,12 @@ CORE_CHECKPOINTS = (
 )
 CHECKPOINTS_BY_SPORT = {
     "mlb": CORE_CHECKPOINTS,
-    "tennis": CORE_CHECKPOINTS,
+    "tennis": (
+        *CORE_CHECKPOINTS,
+        *((f"tennis_t_minus_{lead}m", lead, lead - 30) for lead in range(330, 90, -30)),
+        *((f"tennis_t_minus_{lead}m", lead, lead - 15) for lead in (75, 60, 45)),
+        *((f"tennis_t_minus_{lead}m", lead, lead - 5) for lead in range(30, 0, -5)),
+    ),
     "cfb": (
         ("t_minus_48h", 48 * 60, 42 * 60),
         ("t_minus_24h", 24 * 60, 20 * 60),
@@ -299,6 +304,14 @@ def reconcile_checkpoints(db: DatabaseManager, now: datetime | None = None) -> i
              AND c.status IN ('pending', 'attempted', 'failed')
              AND c.scheduled_start_at IS DISTINCT FROM m.commence_time"""
     )
+    db.execute(
+        """UPDATE odds_capture_checkpoints c
+           SET status='missed', failure_reason='superseded by match-start reschedule'
+           FROM tennis_matches m
+           WHERE c.sport='tennis' AND m.id=c.matchup_id
+             AND c.status IN ('pending', 'attempted', 'failed')
+             AND c.scheduled_start_at IS DISTINCT FROM m.commence_time"""
+    )
     captured = db.execute(
         """
         WITH candidates AS (
@@ -505,7 +518,8 @@ def capture_due_checkpoints(
                 request_audit=audit,
             )
             _audit_usage(db, sport="tennis", event_count=len(event_ids), audit=audit,
-                         metadata={"sport_key": sport_key, "event_ids": event_ids})
+                         metadata={"sport_key": sport_key, "event_ids": event_ids,
+                                   "cadence_version": "tennis-dense-v1"})
             result["groups"] += 1
             result["paid_requests"] += 1
             if updated == 0:
