@@ -6,6 +6,7 @@ import argparse
 from config import load_config
 from db.database import DatabaseManager
 from ingest.tennis_result_settlement import (
+    _expected_alert_outcome,
     replay_pending_moneylines,
     replay_tennis_alert_outcomes,
 )
@@ -48,23 +49,22 @@ def reconciliation_report(
              OR (tr.state='void' AND tb.status IN ('pending','won','lost'))
            )"""
     )["n"]
-    alert_outcome_mismatch = db.execute_one(
-        """SELECT COUNT(*) AS n FROM line_alerts la
+    alert_rows = db.execute(
+        """SELECT la.*, tm.winner, tm.completion_status, tm.home_games, tm.away_games,
+                  tr.state AS resolution_state
+           FROM line_alerts la
            JOIN tennis_matches tm ON tm.id=la.matchup_id
            JOIN tennis_result_resolutions tr ON tr.id=tm.result_resolution_id
-           WHERE la.sport='tennis' AND (
-             (la.alert_type IN ('pinnacle_divergence','pinnacle_polymarket_delta',
-                                'steam','dk_value','walking')
-               AND ((tr.state='resolved' AND tm.winner IN ('home','away')
-                     AND la.outcome IS DISTINCT FROM
-                         CASE WHEN la.side=tm.winner THEN 'won' ELSE 'lost' END)
-                    OR (tr.state='void' AND la.outcome IS DISTINCT FROM 'void')))
-             OR (la.alert_type IN ('dk_prop_value','prop_line_gap')
-                 AND (tr.state='void'
-                      OR tm.completion_status IN ('retired','walkover','awarded'))
-                 AND la.outcome IS DISTINCT FROM 'void')
-           )"""
-    )["n"]
+           WHERE la.sport='tennis'"""
+    )
+    # Use the same book-aware grading policy as settlement. A published winner
+    # with completion_status='unknown' is not enough evidence to grade, while a
+    # retirement can be void/manual-review depending on the execution book.
+    alert_outcome_mismatch = sum(
+        1 for alert in alert_rows
+        if (expected := _expected_alert_outcome(alert)) is not None
+        and alert["outcome"] != expected
+    )
     alert_grade_mismatch = db.execute_one(
         """SELECT COUNT(*) AS n FROM line_alerts la
            WHERE la.sport='tennis' AND la.outcome IS NOT NULL

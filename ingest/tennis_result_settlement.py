@@ -21,7 +21,8 @@ POLICY_VERSION = "tennis-settlement-v1"
 _KNOWN_STATUSES = {"completed", "retired", "walkover", "awarded", "cancelled"}
 _GAME_SIDE_ALERT_TYPES = {
     "pinnacle_divergence", "pinnacle_favorite_forward", "pinnacle_polymarket_delta",
-    "steam", "dk_value", "walking",
+    "steam", "dk_value", "walking", "reversal", "reference_led", "price_pressure",
+    "book_disagreement", "market_convergence", "late_move", "favorite_flip",
 }
 _TENNIS_TOTAL_ALERT_TYPES = {"dk_prop_value", "prop_line_gap"}
 
