@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { TennisMatchRow, MlbLineMovementRow, LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow } from "@/db/queries";
 import MarketSignalScorecard from "@/components/market-signal-scorecard";
+import MovementIntelligence from "@/components/movement-intelligence";
+import { buildMovementInsights, tennisIntelligenceEvents } from "@/lib/movement-intelligence";
 import s from "./tennis-terminal.module.css";
 
 const ml = (v: number | null) => v == null ? "—" : `${v > 0 ? "+" : ""}${v}`;
@@ -62,10 +65,10 @@ function Trail({ row, mini = false }: { row?: MlbLineMovementRow; mini?: boolean
     {!mini && availableBooks.map((book,bi) => visibleBooks.includes(book) && points.slice(1).flatMap((point,i) => {
       const previous=points[i], from=previous.bookHomeProbs?.[book], to=point.bookHomeProbs?.[book];
       if (from == null || to == null) return [];
-      return [<line key={`${book}-${point.capturedAt}`} x1={x(previous)} y1={y(from)} x2={x(point)} y2={y(to)} stroke={BOOK_COLORS[bi]} strokeWidth={book === "pinnacle" || book === "draftkings" ? 1.8 : 1.1} opacity={.82} strokeDasharray={Date.parse(point.capturedAt)-Date.parse(previous.capturedAt)>1800000 ? "6 5" : undefined}><title>{bookLabel(book)} · {time(point.capturedAt)} · {pct(to)}</title></line>];
+      return [<line key={`${book}-${point.capturedAt}`} x1={x(previous)} y1={y(from)} x2={x(point)} y2={y(to)} stroke={BOOK_COLORS[bi]} strokeWidth={book === "pinnacle" || book === "draftkings" ? 1.8 : 1.1} opacity={.82} strokeDasharray={Date.parse(point.capturedAt)-Date.parse(previous.capturedAt)>1800000 ? "6 5" : undefined}><title>{`${bookLabel(book)} · ${time(point.capturedAt)} · ${pct(to)}`}</title></line>];
     }))}
     {points.slice(1).map((p,i) => <line key={`${p.capturedAt}-${i}`} x1={x(points[i])} y1={y(points[i].homeProb)} x2={x(p)} y2={y(p.homeProb)} stroke="#f6a800" strokeWidth={mini ? 5 : 3} strokeDasharray={Date.parse(p.capturedAt)-Date.parse(points[i].capturedAt)>1800000 ? "7 5" : undefined}/>)}
-    {points.map((p,i) => <circle key={i} cx={x(p)} cy={y(p.homeProb)} r={mini ? 5 : 2.5} fill="#f6a800"><title>Consensus · {time(p.capturedAt)} · {pct(p.homeProb)}</title></circle>)}
+    {points.map((p,i) => <circle key={i} cx={x(p)} cy={y(p.homeProb)} r={mini ? 5 : 2.5} fill="#f6a800"><title>{`Consensus · ${time(p.capturedAt)} · ${pct(p.homeProb)}`}</title></circle>)}
     {!mini && <><text x={left} y="229" fill="#98a6a0" fontSize="10">{time(points[0].capturedAt)}</text><text x={right} y="229" textAnchor="end" fill="#98a6a0" fontSize="10">{time(points.at(-1)!.capturedAt)}</text></>}
   </svg>;
   if (mini) return graphic;
@@ -76,14 +79,16 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
   matchups: TennisMatchRow[]; movement: MlbLineMovementRow[]; alerts: LineAlertRow[];
   queryDate: string | null; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth; children: ReactNode;
 }) {
+  const router = useRouter();
   const [search,setSearch] = useState("");
   const [tour,setTour] = useState("ALL");
   const [selected,setSelected] = useState<number | null>(null);
   const [market,setMarket] = useState("moneyline");
   const [now,setNow] = useState<number | null>(null);
-  useEffect(() => { const initial = setTimeout(() => setNow(Date.now()),0); const id = setInterval(() => setNow(Date.now()),60000); return () => { clearTimeout(initial); clearInterval(id); }; },[]);
+  useEffect(() => { const initial = setTimeout(() => setNow(Date.now()),0); const id = setInterval(() => { setNow(Date.now()); router.refresh(); },60000); return () => { clearTimeout(initial); clearInterval(id); }; },[router]);
   const rows = useMemo(() => matchups.filter(m => (tour === "ALL" || m.tour === tour) &&
     `${m.homePlayer} ${m.awayPlayer} ${m.matchDate}`.toLowerCase().includes(search.toLowerCase())),[matchups,tour,search]);
+  const intelligence = useMemo(() => buildMovementInsights(tennisIntelligenceEvents(rows, movement), alerts, now ?? NaN), [rows, movement, alerts, now]);
   const match = rows.find(m => m.id === selected) ?? rows.find(m => movement.some(r => r.matchupId === m.id && r.trail.length > 0)) ?? rows[0];
   const history = movement.find(r => r.matchupId === match?.id);
   const tape = alerts.filter(a => a.matchupId === match?.id).sort((a,b) => Date.parse(alertObservedAt(b))-Date.parse(alertObservedAt(a)));
@@ -93,6 +98,7 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
   const delta = history ? (history.closeProb-history.openProb)*100 : null;
   return <div className={s.terminal}>
     <header className={s.topbar}><h1>TENNIS LINE TERMINAL</h1><label className={s.search}><Search size={14}/><input aria-label="Search tennis players or date" placeholder="SEARCH PLAYER OR MATCH" value={search} onChange={e=>setSearch(e.target.value)}/></label><span className={s.amber}>RESEARCH · {queryDate ?? "UPCOMING BOARD"}</span></header>
+    <MovementIntelligence items={intelligence} selectedKey={`${match?.id}:${market}`} loading={now == null} onSelect={(item) => { setSelected(item.matchupId); setMarket(item.market); }} />
     <div className={s.shell}>
       <aside className={s.watch}><div className={s.heading}>MARKET WATCH <span>{rows.length} MATCHES</span></div>
         <div className={s.tabs} aria-label="Tour filter">{["ALL","ATP","WTA"].map(t=><button key={t} aria-pressed={tour===t} onClick={()=>setTour(t)}>{t}</button>)}</div>

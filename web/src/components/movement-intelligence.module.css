@@ -1,0 +1,28 @@
+.strip { background:#0d1111; color:#e8ecea; border-bottom:1px solid #27302f; font-family:var(--font-mono,Consolas,monospace); }
+.heading { display:flex; align-items:center; flex-wrap:wrap; gap:8px 18px; padding:9px 12px 4px; }
+.heading h2 { margin:0; color:#f6a800; font-size:11px; font-weight:800; letter-spacing:.06em; }
+.heading > span { color:#99a69f; font-size:10px; }
+.heading button { margin-left:auto; border:1px solid #555038; padding:5px 9px; background:#191b12; color:#f6a800; cursor:pointer; font:inherit; font-size:11px; }
+.policy { margin:0; padding:0 12px 9px; color:#99a69f; font-size:10px; }
+.cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; padding:0 12px 12px; }
+.cards:empty { display:none; }
+.card { display:flex; flex-direction:column; gap:7px; min-width:0; padding:11px; background:#111717; border:1px solid #34413b; text-align:left; color:#e8ecea; cursor:pointer; font:inherit; }
+.card:hover { background:#1a211f; border-color:#8f7a40; }
+.card[aria-pressed="true"] { border-color:#f6a800; box-shadow:inset 0 2px #f6a800; }
+.card:focus-visible,.heading button:focus-visible { outline:2px solid #52dbd1; outline-offset:2px; }
+.cardTop,.cardFoot { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 10px; font-size:10px; }
+.cardTop { color:#f6a800; font-weight:700; }
+.cardTop > span:last-child { color:#99a69f; }
+.fixture { font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.direction { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; color:#e8ecea; font-size:11px; }
+.direction > span { color:#f6a800; font-variant-numeric:tabular-nums; }
+.sparkWrap { display:block; }
+.trailLabel { display:block; color:#99a69f; font-size:10px; }
+.spark { display:block; width:100%; height:34px; color:#5db2ff; margin-top:3px; }
+.noTrail { display:flex; align-items:center; min-height:48px; color:#99a69f; font-size:10px; }
+.explanation { display:block; color:#c6ceca; font-size:11px; line-height:1.5; }
+.related { color:#99a69f; font-size:9px; }
+.cardFoot { margin-top:auto; padding-top:8px; border-top:1px solid #27302f; color:#99a69f; }
+.empty { margin:0; padding:6px 12px 15px; color:#99a69f; font-size:11px; }
+@media(max-width:1080px) { .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:540px) { .cards { grid-template-columns:1fr; } .heading button { margin-left:0; } }

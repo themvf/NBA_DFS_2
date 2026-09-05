@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CfbBookQuote, CfbResearchBoard, CfbResearchContext, CfbResearchRecord, CfbSignalBacktestRow, CfbTeamFeatureContext, CfbTerminalBoard, CfbTerminalRow, LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow } from "@/db/queries";
 import MarketSignalScorecard from "@/components/market-signal-scorecard";
+import MovementIntelligence from "@/components/movement-intelligence";
+import { buildMovementInsights, cfbIntelligenceEvents } from "@/lib/movement-intelligence";
 import styles from "./cfb-terminal.module.css";
 import { movementKind, movementSeries, movementSignals } from "@/lib/cfb-movement";
 
@@ -287,8 +289,9 @@ export default function CfbTerminalClient({ board, signals, backtest, research, 
   const [side, setSide] = useState<SelectionSide>("home");
   const [query, setQuery] = useState(""); const [selectedBook, setSelectedBook] = useState("");
   const [movementFilter, setMovementFilter] = useState("all");
+  const [observedNow, setObservedNow] = useState(Date.parse(board.asOf));
   const [positions, setPositions] = useState<PaperPosition[]>([]); const [lockMessage, setLockMessage] = useState<string | null>(null);
-  useEffect(() => { const timer = window.setInterval(() => router.refresh(), 60_000); return () => window.clearInterval(timer); }, [router]);
+  useEffect(() => { const timer = window.setInterval(() => { setObservedNow(Date.now()); router.refresh(); }, 60_000); return () => window.clearInterval(timer); }, [router]);
   const game = board.games.find((item) => item.matchupId === gameId) ?? board.games[0] ?? null;
   const market = useMemo(() => game ? buildMarket(game, marketKey, side, board.asOf) : null, [game, marketKey, side, board.asOf]);
   const quote = market?.books.find((item) => item.key === selectedBook) ?? market?.books[0] ?? null;
@@ -296,6 +299,7 @@ export default function CfbTerminalClient({ board, signals, backtest, research, 
   const marketSignals = useMemo(() => gameSignals.filter((item) => signalMarket(item) === marketKey), [gameSignals, marketKey]);
   const researchContext = game ? research[game.matchupId] ?? null : null;
   const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized) && (movementFilter === "all" || movementSignals(signals, item.matchupId).some((signal) => movementKind(signal.alertType) === movementFilter))); }, [board.games, query, movementFilter, signals]);
+  const intelligence = useMemo(() => buildMovementInsights(cfbIntelligenceEvents(filteredGames), signals, Math.max(observedNow, Date.parse(board.asOf))), [filteredGames, signals, observedNow, board.asOf]);
   function chooseGame(id: number) { setGameId(id); setSelectedBook(""); setLockMessage(null); }
   function chooseMarket(next: MarketKey) { setMarketKey(next); setSide(selectionFor(next)); setSelectedBook(""); setLockMessage(null); }
   function chooseSide(next: SelectionSide) { setSide(next); setSelectedBook(""); setLockMessage(null); }
@@ -308,6 +312,7 @@ export default function CfbTerminalClient({ board, signals, backtest, research, 
   const sideOptions: SelectionSide[] = marketKey === "total" ? ["over", "under"] : ["home", "away"];
   return <div className={styles.terminal}>
     <header className={styles.topbar}><div className={styles.brand}>CFB LINE TERMINAL</div><label className={styles.command}><Search aria-hidden="true" /><span className={styles.srOnly}>Search market watch</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SEARCH TEAM OR GAME" /></label><div className={styles.marketOpen}><Radio aria-hidden="true" /> {board.games.length ? "MARKET BOARD" : "NO BOARD"}</div><div className={styles.shadowMode} title={board.statusDetail}>{statusLabel} · AS OF {fmtEt(board.asOf, true)}</div></header>
+    <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket(item.market); chooseSide(item.side); }} />
     <div className={styles.shell}>
       <aside className={styles.watchPane} aria-label="CFB market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div>
         <div className={styles.movementFilters} aria-label="Filter recorded movements">{["all", "steam", "walk", "reversal"].map((kind) => <button key={kind} type="button" aria-pressed={movementFilter === kind} onClick={() => setMovementFilter(kind)}>{kind.toUpperCase()}</button>)}</div>
