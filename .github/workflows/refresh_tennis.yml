@@ -120,6 +120,9 @@ jobs:
       - name: Scan + settle sharp line alerts (tennis)
         run: python -m model.line_alerts --sport tennis --existing-schema
 
+      - name: Report prospective WTA walking study (read-only)
+        run: python -m model.tennis_walking_study
+
       - name: Write model predictions (ATP grass-Elo, market-anchored)
         run: |
           if [ -n "${{ inputs.date }}" ]; then

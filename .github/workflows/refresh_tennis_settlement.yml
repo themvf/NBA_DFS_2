@@ -55,7 +55,7 @@ jobs:
 
       - name: Settle from tennisexplorer.com (same-day results, primary)
         continue-on-error: true
-        run: python -m ingest.tennis_results_tennisexplorer
+        run: python -m ingest.tennis_results_tennisexplorer --existing-schema
 
       - name: Settle from tennis-data.co.uk (richer per-set data, when current)
         continue-on-error: true
@@ -67,3 +67,7 @@ jobs:
 
       - name: Reconcile and gate Tennis settlement health
         run: python -m ingest.tennis_reconciliation --fail-on-unhealthy
+
+      - name: Report prospective WTA walking study (read-only)
+        if: always()
+        run: python -m model.tennis_walking_study

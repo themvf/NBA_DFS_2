@@ -1027,13 +1027,18 @@ def _notify(alerts: list[dict]) -> None:
 def scan(db: DatabaseManager, sport: str) -> int:
     """Detect breaches on UPCOMING games' latest captures. Returns new alerts."""
     matchup_tbl = _MATCHUP_TBL[sport]
+    tennis_fields = ("m.tour, m.tournament, te.surface" if sport == "tennis"
+                     else "NULL::text AS tour, NULL::text AS tournament, NULL::text AS surface")
+    tennis_join = ("LEFT JOIN tennis_events te ON te.id=m.canonical_event_id"
+                   if sport == "tennis" else "")
     rows = db.execute(
         f"""
         SELECT DISTINCT ON (h.matchup_id)
                h.id AS history_id, h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
-               h.captured_at, h.capture_key, h.books, m.commence_time
+               h.captured_at, h.capture_key, h.books, m.commence_time, {tennis_fields}
         FROM game_odds_history h
         JOIN {matchup_tbl} m ON m.id = h.matchup_id
+        {tennis_join}
         WHERE h.sport = %s AND h.books IS NOT NULL
           AND EXISTS (
             SELECT 1 FROM jsonb_object_keys(h.books) AS source(book_key)
@@ -1174,17 +1179,31 @@ def scan(db: DatabaseManager, sport: str) -> int:
                 drift_pp = (p_now - p_open) * 100
                 if drift_pp >= _WALK_MIN_PP:
                     pin_p = _book_fair_side(books["pinnacle"], side) if "pinnacle" in books else None
+                    walking_details = {
+                        "open_pp": round(p_open * 100, 2),
+                        "now_pp": round(p_now * 100, 2),
+                        "drift_pp": round(drift_pp, 2),
+                        "overlap_books": overlap_books,
+                        "market": "moneyline",
+                        **_freeze_game_price(sport, books, market="moneyline", side=side),
+                    }
+                    if sport == "tennis":
+                        from model.tennis_walking_study import enrollment
+                        prior = db.execute_one(
+                            "SELECT id FROM line_alerts WHERE sport='tennis' "
+                            "AND matchup_id=%s AND alert_type='walking' LIMIT 1",
+                            (r["matchup_id"],),
+                        )
+                        if prior is None:
+                            study = enrollment(context=r, opening={**first, "id": first["history_id"]},
+                                               details=walking_details, probability=p_now)
+                            if study:
+                                walking_details.update(study)
                     new_alerts.extend(_insert(
                         db, sport=sport, r=r, label=label,
                         alert_type="walking", side=side,
                         alert_prob=p_now, sharp_prob=pin_p,
-                        details={"open_pp": round(p_open * 100, 2),
-                                 "now_pp": round(p_now * 100, 2),
-                                 "drift_pp": round(drift_pp, 2),
-                                 "overlap_books": overlap_books,
-                                 "market": "moneyline",
-                                 **_freeze_game_price(sport, books, market="moneyline",
-                                                      side=side)},
+                        details=walking_details,
                     ))
         structure_history = None
         if sport in ("tennis", "cfb"):
@@ -2063,7 +2082,7 @@ def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
             except (TypeError, ValueError):
                 pass
         # no Pinnacle for WC props — pin_fair stays None
-    elif market:
+    elif market and market != "moneyline":
         # ANY over/under player-prop market (was a hardcoded 6-market list, which
         # would silently fail to grade every market added after it was written).
         line_key = "total_line" if market == "total_games" else "line"

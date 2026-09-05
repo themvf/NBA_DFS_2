@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import unicodedata
 from datetime import date, timedelta
 
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 _TOUR_TYPE = {"ATP": "atp-single", "WTA": "wta-single"}
 _DEFAULT_DAYS_BACK = 7
-_PARSER_VERSION = "tennisexplorer-v3"
+_PARSER_VERSION = "tennisexplorer-v4-completion"
 
 
 def _norm(text: str) -> str:
@@ -124,9 +125,14 @@ def _fetch_day(tour: str, d: date) -> list[dict]:
     except requests.RequestException as e:
         raise RuntimeError(f"tennisexplorer {tour} {d} fetch failed: {e}") from e
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    return _parse_day(resp.text)
+
+
+def _parse_day(html: str) -> list[dict]:
+    """Retain set-level and status evidence; match paired row IDs exactly."""
+    soup = BeautifulSoup(html, "html.parser")
     matches: list[dict] = []
-    pending: tuple[str, int] | None = None
+    pending = None
 
     for tr in soup.find_all("tr"):
         classes = tr.get("class") or []
@@ -142,22 +148,69 @@ def _fetch_day(tour: str, d: date) -> list[dict]:
         try:
             result = int(result_td.get_text(strip=True))
         except ValueError:
+            pending = None
             continue
 
         row_id = tr.get("id") or ""
         if row_id.endswith("b") and pending is not None:
-            a_name, a_sets = pending
+            a_name, a_sets, a_id, a_row = pending
             pending = None
+            if row_id != a_id + "b":
+                continue
             if a_sets != result:
                 a_keys = _keys_surname_initial(a_name)
                 b_keys = _keys_surname_initial(name)
                 if a_keys and b_keys:
+                    def scores(row):
+                        values = []
+                        for cell in row.select("td.score"):
+                            # Superscript is tiebreak points, not games.
+                            text = "".join(str(t) for t in cell.find_all(string=True)
+                                           if t.parent.name != "sup").strip()
+                            values.append(int(text) if text.isdigit() else None)
+                        return values
+                    detail = a_row.select_one('a[href*="match-detail"]')
+                    match_id = re.search(r"[?&]id=(\d+)", detail.get("href", "")) if detail else None
                     matches.append({"a_keys": a_keys, "a_sets": a_sets,
-                                    "b_keys": b_keys, "b_sets": result})
+                                    "b_keys": b_keys, "b_sets": result,
+                                    "a_games": scores(a_row), "b_games": scores(tr),
+                                    "source_match_id": match_id.group(1) if match_id else None,
+                                    "source_rows": str(a_row) + str(tr)})
         else:
-            pending = (name, result)
+            pending = (name, result, row_id, tr)
 
     return matches
+
+
+def _completion_evidence(scraped: dict, best_of: int | None) -> bool:
+    """Confirm a normal finish only from a complete, coherent best-of score.
+
+    Any exception marker, incomplete set, missing format, or mismatching set
+    tally fails closed. A leading player alone is not a completed-match winner.
+    """
+    if best_of not in (3, 5):
+        return False
+    markup = scraped.get("source_rows", "").lower()
+    if re.search(r"retir|walkover|w\.o\.|\bret\b|abandon|suspend|postpon|cancel|awarded|disqual", markup):
+        return False
+    ag, bg = scraped.get("a_games", []), scraped.get("b_games", [])
+    if not ag or len(ag) != len(bg):
+        return False
+    pairs = [(a, b) for a, b in zip(ag, bg) if a is not None or b is not None]
+    needed = best_of // 2 + 1
+    wins = [0, 0]
+    # No played sets may follow a missing score column.
+    if pairs != list(zip(ag, bg))[:len(pairs)]:
+        return False
+    for a, b in pairs:
+        if a is None or b is None or max(wins) >= needed:
+            return False
+        hi, lo = max(a, b), min(a, b)
+        if not ((hi == 6 and 0 <= lo <= 4) or (hi == 7 and lo in (5, 6))
+                or (hi > 7 and hi - lo == 2)):
+            return False
+        wins[0 if a > b else 1] += 1
+    return wins == [scraped["a_sets"], scraped["b_sets"]] and max(wins) == needed
 
 
 def settle_tour(db: DatabaseManager, tour: str, days_back: int) -> tuple[int, int]:
@@ -173,9 +226,10 @@ def _settle_tour(
     db: DatabaseManager, tour: str, days_back: int, run_id: int,
 ) -> tuple[int, int]:
     rows = db.execute(
-        """SELECT id, match_date, home_player, away_player
-           FROM tennis_matches
-           WHERE tour=%s AND winner IS NULL AND match_date <= CURRENT_DATE""",
+        """SELECT m.id, m.match_date, m.home_player, m.away_player, e.best_of
+           FROM tennis_matches m LEFT JOIN tennis_events e ON e.id=m.canonical_event_id
+           WHERE m.tour=%s AND (m.winner IS NULL OR m.completion_status='unknown')
+             AND m.match_date <= CURRENT_DATE""",
         (tour,),
     )
     if not rows:
@@ -216,6 +270,9 @@ def _settle_tour(
                     ambiguous += len(best) != 1
                     continue
                 match = best[0]
+                best_of = match.get("best_of") or (3 if tour == "WTA" else None)
+                if not _completion_evidence(scraped, best_of):
+                    continue  # no invented completion or winner from a partial score
                 home_is_a = bool(_keys_full_name(match["home_player"]) & scraped["a_keys"])
                 away_is_a = bool(_keys_full_name(match["away_player"]) & scraped["a_keys"])
                 if home_is_a == away_is_a:
@@ -228,8 +285,9 @@ def _settle_tour(
                 winner = "home" if home_sets > away_sets else "away"
                 result = record_observation_and_settle(db, ResultObservation(
                     match_id=match["id"], provider="tennisexplorer",
-                    winner_side=winner, completion_status="unknown",
-                    status_evidence=False, observed_match_date=result_date,
+                    winner_side=winner, completion_status="completed",
+                    status_evidence=True, observed_match_date=result_date,
+                    provider_event_id=scraped.get("source_match_id"),
                     home_sets=home_sets, away_sets=away_sets,
                     source_url=(f"https://www.tennisexplorer.com/results/?type={_TOUR_TYPE[tour]}"
                                 f"&year={result_date.year}&month={result_date.month}&day={result_date.day}"),
@@ -237,9 +295,11 @@ def _settle_tour(
                     raw_payload={"a_keys": sorted(scraped["a_keys"]),
                                  "a_sets": scraped["a_sets"],
                                  "b_keys": sorted(scraped["b_keys"]),
-                                 "b_sets": scraped["b_sets"]},
+                                 "b_sets": scraped["b_sets"],
+                                 "a_games": scraped["a_games"], "b_games": scraped["b_games"],
+                                 "best_of": best_of, "source_rows": scraped["source_rows"]},
                     match_method="surname_initial_date", match_confidence=0.9,
-                    reason="Advancing player observed; completion semantics not supplied",
+                    reason="Complete set-level score matches best-of format; no exception marker",
                 ))
                 if result["state"] == "resolved":
                     matches_updated += 1
@@ -278,8 +338,10 @@ if __name__ == "__main__":
         description="Settle tennis bets from tennisexplorer.com (same-day results)"
     )
     parser.add_argument("--days-back", type=int, default=_DEFAULT_DAYS_BACK)
+    parser.add_argument("--existing-schema", action="store_true",
+                        help="Skip schema initialization on deployed databases")
     args = parser.parse_args()
 
     config = load_config()
-    db = DatabaseManager(config.database_url)
+    db = DatabaseManager(config.database_url, initialize_schema=not args.existing_schema)
     settle(db, args.days_back)
