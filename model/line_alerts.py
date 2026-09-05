@@ -2915,7 +2915,7 @@ if __name__ == "__main__":
 
     config = load_config()
     db = DatabaseManager(config.database_url, initialize_schema=not args.existing_schema)
-    if args.sport in ("cfb", "nfl"):
+    if args.sport in ("cfb", "nfl", "tennis"):
         with db.reuse_connection():
             _run_cli(db, args)
     else:
