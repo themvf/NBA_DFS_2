@@ -2408,7 +2408,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
     # 'lost' regardless of the actual stat. They have their own settlers
     # (settle_props / settle_props_soccer / settle_tennis_totals).
     open_alerts = db.execute(
-        "SELECT * FROM line_alerts WHERE sport = %s AND settled_at IS NULL "
+        "SELECT * FROM line_alerts WHERE sport = %s AND origin = 'prospective' AND settled_at IS NULL "
         "AND (alert_type IN ('pinnacle_divergence', 'pinnacle_favorite_forward', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking', "
         "'book_disagreement', 'market_convergence', 'late_move') "
         "OR (%s = 'tennis' AND alert_type IN ('favorite_flip', 'reversal', 'reference_led', 'price_pressure'))) "
