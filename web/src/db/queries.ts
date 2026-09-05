@@ -10901,6 +10901,42 @@ export type LineAlertRow = {
   details: Record<string, unknown> | null;
   clvPp: number | null;
   outcome: string | null;
+  origin: string;
+};
+
+export type MarketSignalScorecardRow = {
+  alertType: string;
+  observations: number;
+  pending: number;
+  nClv: number;
+  avgClvPp: number | null;
+  medianClvPp: number | null;
+  beatClose: number | null;
+  settled: number;
+  wins: number;
+  losses: number;
+  voids: number;
+  units: number | null;
+  roiPerBet: number | null;
+  lastTriggeredAt: string | null;
+  stage: "collecting" | "initial_review" | "validation_ready";
+};
+
+export type MarketCaptureHealth = {
+  sport: "cfb" | "tennis";
+  asOf: string;
+  scheduled: number;
+  captured: number;
+  pending: number;
+  attempted: number;
+  missed: number;
+  failed: number;
+  due: number;
+  dueCaptured: number;
+  dueCoverage: number | null;
+  eventsCovered: number;
+  latestCapturedAt: string | null;
+  status: "healthy" | "partial" | "no_schedule";
 };
 
 export type LineAlertBacktestRow = {
@@ -10941,7 +10977,7 @@ export async function getLineAlerts(
            commence_time::text AS "commenceTime",
            alert_type AS "alertType", side,
            alert_prob AS "alertProb", sharp_prob AS "sharpProb",
-           details_json AS details, clv_pp AS "clvPp", outcome
+           details_json AS details, clv_pp AS "clvPp", outcome, origin
     FROM line_alerts WHERE sport = ${sport}
     ${matchupIds ? (matchupIds.length ? sql`AND matchup_id IN (${sql.join(matchupIds.map((id) => sql`${id}`), sql`, `)})` : sql`AND FALSE`) : sql``}
     ${alertTypes && alertTypes.length > 0
@@ -10963,8 +10999,118 @@ export async function getLineAlerts(
       details: (rec.details as Record<string, unknown>) ?? null,
       clvPp: rec.clvPp != null ? Number(rec.clvPp) : null,
       outcome: rec.outcome != null ? String(rec.outcome) : null,
+      origin: String(rec.origin ?? "prospective"),
     };
   });
+}
+
+/** Prospective-only, fixed-family audit. Zero-observation detectors remain
+ * visible so silence cannot be mistaken for a missing UI row. CFB market
+ * variants are rolled into the common STEAM and WALKING families. */
+export async function getMarketSignalScorecard(sport: "cfb" | "tennis"): Promise<MarketSignalScorecardRow[]> {
+  const signalTypes = sport === "cfb"
+    ? ["steam", "walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "key_cross"]
+    : ["steam", "walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "favorite_flip"];
+  const rows = await db.execute(sql`
+    WITH expected(alert_type, ordinal) AS (
+      VALUES ${sql.join(signalTypes.map((type, index) => sql`(${type}, ${index})`), sql`, `)}
+    ), normalized AS (
+      SELECT CASE
+               WHEN alert_type IN ('steam','spread_steam','total_steam') THEN 'steam'
+               WHEN alert_type IN ('walking','spread_walking','total_walking') THEN 'walking'
+               ELSE alert_type
+             END AS alert_type,
+             created_at, outcome, pnl_units,
+             COALESCE(clv_pp, (grading_json->>'line_clv')::numeric) AS clv
+      FROM line_alerts
+      WHERE sport = ${sport} AND origin = 'prospective'
+    ), aggregate AS (
+      SELECT alert_type,
+             COUNT(*)::int AS observations,
+             COUNT(*) FILTER (WHERE outcome IS NULL)::int AS pending,
+             COUNT(clv)::int AS n_clv,
+             AVG(clv) AS avg_clv,
+             percentile_cont(0.5) WITHIN GROUP (ORDER BY clv) AS median_clv,
+             AVG((clv > 0)::int) FILTER (WHERE clv IS NOT NULL) AS beat_close,
+             COUNT(*) FILTER (WHERE outcome IN ('won','lost'))::int AS settled,
+             COUNT(*) FILTER (WHERE outcome = 'won')::int AS wins,
+             COUNT(*) FILTER (WHERE outcome = 'lost')::int AS losses,
+             COUNT(*) FILTER (WHERE outcome = 'void')::int AS voids,
+             SUM(pnl_units) FILTER (WHERE outcome IN ('won','lost')) AS units,
+             MAX(created_at)::text AS last_triggered_at
+      FROM normalized GROUP BY alert_type
+    )
+    SELECT expected.alert_type AS "alertType",
+           COALESCE(aggregate.observations, 0)::int AS observations,
+           COALESCE(aggregate.pending, 0)::int AS pending,
+           COALESCE(aggregate.n_clv, 0)::int AS "nClv",
+           aggregate.avg_clv AS "avgClvPp", aggregate.median_clv AS "medianClvPp",
+           aggregate.beat_close AS "beatClose", COALESCE(aggregate.settled, 0)::int AS settled,
+           COALESCE(aggregate.wins, 0)::int AS wins, COALESCE(aggregate.losses, 0)::int AS losses,
+           COALESCE(aggregate.voids, 0)::int AS voids, aggregate.units,
+           CASE WHEN aggregate.settled > 0 THEN aggregate.units / aggregate.settled ELSE NULL END AS "roiPerBet",
+           aggregate.last_triggered_at AS "lastTriggeredAt"
+    FROM expected LEFT JOIN aggregate USING (alert_type)
+    ORDER BY expected.ordinal
+  `);
+  return rows.rows.map((row) => {
+    const rec = row as Record<string, unknown>;
+    const observations = Number(rec.observations ?? 0);
+    return {
+      alertType: String(rec.alertType), observations,
+      pending: Number(rec.pending ?? 0), nClv: Number(rec.nClv ?? 0),
+      avgClvPp: rec.avgClvPp == null ? null : Number(rec.avgClvPp),
+      medianClvPp: rec.medianClvPp == null ? null : Number(rec.medianClvPp),
+      beatClose: rec.beatClose == null ? null : Number(rec.beatClose),
+      settled: Number(rec.settled ?? 0), wins: Number(rec.wins ?? 0),
+      losses: Number(rec.losses ?? 0), voids: Number(rec.voids ?? 0),
+      units: rec.units == null ? null : Number(rec.units),
+      roiPerBet: rec.roiPerBet == null ? null : Number(rec.roiPerBet),
+      lastTriggeredAt: rec.lastTriggeredAt == null ? null : String(rec.lastTriggeredAt),
+      stage: observations >= 100 ? "validation_ready" : observations >= 50 ? "initial_review" : "collecting",
+    };
+  });
+}
+
+/** Operational health from the persisted checkpoint ledger. "Due" excludes
+ * future checkpoints; coverage therefore cannot be inflated by work that has
+ * not been expected yet. */
+export async function getMarketCaptureHealth(
+  sport: "cfb" | "tennis",
+  gameDate?: string,
+): Promise<MarketCaptureHealth> {
+  const rows = await db.execute(sql`
+    SELECT COUNT(*)::int AS scheduled,
+           COUNT(*) FILTER (WHERE status = 'captured')::int AS captured,
+           COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
+           COUNT(*) FILTER (WHERE status = 'attempted')::int AS attempted,
+           COUNT(*) FILTER (WHERE status = 'missed')::int AS missed,
+           COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+           COUNT(*) FILTER (WHERE target_at <= NOW())::int AS due,
+           COUNT(*) FILTER (WHERE target_at <= NOW() AND status = 'captured')::int AS "dueCaptured",
+           COUNT(DISTINCT matchup_id) FILTER (WHERE status = 'captured')::int AS "eventsCovered",
+           MAX(captured_at)::text AS "latestCapturedAt"
+    FROM odds_capture_checkpoints
+    WHERE sport = ${sport}
+      ${gameDate
+        ? sql`AND (scheduled_start_at AT TIME ZONE 'America/New_York')::date = ${gameDate}::date`
+        : sql`AND scheduled_start_at >= NOW() - interval '6 hours' AND scheduled_start_at < NOW() + interval '48 hours'`}
+  `);
+  const rec = (rows.rows[0] ?? {}) as Record<string, unknown>;
+  const scheduled = Number(rec.scheduled ?? 0);
+  const due = Number(rec.due ?? 0);
+  const dueCaptured = Number(rec.dueCaptured ?? 0);
+  const missed = Number(rec.missed ?? 0);
+  const failed = Number(rec.failed ?? 0);
+  const dueCoverage = due > 0 ? dueCaptured / due : null;
+  return {
+    sport, asOf: new Date().toISOString(), scheduled,
+    captured: Number(rec.captured ?? 0), pending: Number(rec.pending ?? 0),
+    attempted: Number(rec.attempted ?? 0), missed, failed, due, dueCaptured,
+    dueCoverage, eventsCovered: Number(rec.eventsCovered ?? 0),
+    latestCapturedAt: rec.latestCapturedAt == null ? null : String(rec.latestCapturedAt),
+    status: scheduled === 0 ? "no_schedule" : missed > 0 || failed > 0 || (due > 0 && dueCaptured < due) ? "partial" : "healthy",
+  };
 }
 
 export async function getLineAlertBacktest(sport: string): Promise<LineAlertBacktestRow[]> {
