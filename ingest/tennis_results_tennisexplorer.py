@@ -87,7 +87,28 @@ def _keys_full_name(name: str) -> set[tuple[str, str]]:
     parts = [p for p in str(name or "").split() if p]
     if len(parts) < 2:
         return set()
-    return _surname_keys(parts[1:], _norm(parts[0])[:1])
+    keys = _surname_keys(parts[1:], _norm(parts[0])[:1])
+    # Provider and Odds-API display names do not use one universal order.
+    # ``Wu Yibing`` is surname-first, ``Martin Damm Jr.`` has a suffix, and
+    # ``Maria Camila Osorio Serrano`` may be shortened to ``Osorio C.``.
+    # Generate adjacent-token and suffix variants; the opposing player plus
+    # the tight date window still has to identify one unique stored fixture.
+    for index, token in enumerate(parts):
+        surname = _norm(token)
+        if index > 0:
+            initial = _norm(parts[index - 1])[:1]
+            if surname and initial:
+                keys.add((surname, initial))
+        if index + 1 < len(parts):
+            initial = _norm(parts[index + 1])[:1]
+            if surname and initial:
+                keys.add((surname, initial))
+    first_initial = _norm(parts[0])[:1]
+    for split in range(2, len(parts)):
+        compound = _norm("".join(parts[split:]))
+        if compound and first_initial:
+            keys.add((compound, first_initial))
+    return keys
 
 
 def _fetch_day(tour: str, d: date) -> list[dict]:
