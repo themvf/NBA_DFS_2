@@ -41,6 +41,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -c "import os,sys; sys.argv=['weekly','--phase','projections']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; main()"
+      - name: Freeze research-only workload forecasts
+        id: workload
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['workload']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_workload import main; main()"
+      - name: Freeze research-only efficiency forecasts
+        if: ${{ !cancelled() && steps.workload.outcome == 'success' }}
+        run: |
+          python -c "import os,sys; sys.argv=['efficiency']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_efficiency import main; main()"
       - name: Freeze and settle shadow-only research forecasts
         if: ${{ !cancelled() }}
         run: |

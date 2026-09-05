@@ -27,7 +27,9 @@ Frozen research QB rows lack completions. Frozen DST history carries transformed
 
 All values are classified conservatively as retrospective-only. A latest `fetched_at` proves storage at that time, not historical source publication or pregame availability. Deferred routes/snaps/red-zone/injury/role keys do not have approved aliases or a usable source contract. The page does not claim that missing named keys prove no provider has that data.
 
-Next modeling step: a new raw component-history version with missingness preserved, richer QB/team/DST fields and audited game/roster identity. Do not modify the old frozen study or silently combine its player cohort with working rows. Freeze validation thresholds before fitting the workload model.
+The next component-history version and workload slice are now implemented locally. They preserve missingness and do not modify or combine the old frozen study. Historical weekly roster membership remains unavailable, so only team budgets receive retrospective grading; player allocation begins as forward research.
+
+Corrected team-volume diagnostic (2024–2025, previously inspected; 1,088 team-games per field): attempts MAE 6.179 versus recency 6.331, carries 5.884 versus 6.088, and targets 5.892 versus 6.053. These small retrospective differences are descriptive, not a promotion gate or profitability evidence. See `docs/nfl-dfs-workload-delivery.md`.
 
 ## Storage and operations
 

@@ -1,4 +1,4 @@
-export type ReportVariant = "production" | "shadow_baseline" | "opportunity";
+export type ReportVariant = "production" | "shadow_baseline" | "opportunity" | "efficiency_research";
 export type Forecast = {
   mean: number | null; median?: number | null; p10: number | null; p90: number | null;
   boom_probability: number | null; history_games: number; captured_at: string;
@@ -22,6 +22,7 @@ export type WeeklyReport = {
 };
 export const VARIANT_LABELS: Record<ReportVariant, string> = {
   production: "Production model", shadow_baseline: "Market-free baseline", opportunity: "Opportunity candidate",
+  efficiency_research: "Workload + efficiency research",
 };
 export function reportSummary(rows: ReportRow[]) {
   const scored = rows.filter(r => r.error !== null);

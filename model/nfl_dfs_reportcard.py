@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from math import isfinite
 
 VERSION = "nfl-dfs-weekly-report-v1"
-VARIANTS = ("production", "shadow_baseline", "opportunity")
+VARIANTS = ("production", "shadow_baseline", "opportunity", "efficiency_research")
 
 
 def timestamp(value):
@@ -44,7 +44,8 @@ def grade(forecast, result, game, now, grace_hours=48):
     interval_hit = lo <= actual <= hi if valid and actual is not None and lo is not None and hi is not None else None
     overdue = bool(game.get("completed") and kickoff and (now-kickoff).total_seconds() > grace_hours*3600 and actual is None)
     components = []
-    actual_stats = (result or {}).get("scoring_evidence", {}).get("scoring_input") or {}
+    evidence = (result or {}).get("scoring_evidence", {})
+    actual_stats = evidence.get("scoring_input") or evidence.get("scoring_components") or {}
     for key, predicted in (forecast or {}).get("stat_means", {}).items():
         observed = number(actual_stats.get(key)) if actual is not None else None
         components.append({"stat": key, "projected": number(predicted), "actual": observed,

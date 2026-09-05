@@ -17,7 +17,7 @@ def inputs(db, season, week):
         FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id
         JOIN nfl_teams a ON a.team_id=g.away_team_id
         WHERE g.season=%s AND g.week=%s AND g.game_type='REG'""", (season, week))
-    players = db.execute("""SELECT id player_id,canonical_name name,position,team_abbrev team
+    players = db.execute("""SELECT id player_id,gsis_id,canonical_name name,position,team_abbrev team
         FROM ff_players WHERE season=%s AND active AND position IN ('QB','RB','WR','TE','DST')""", (season,))
     production = db.execute("""SELECT p.*,r.model_version,r.model_config,r.seed,r.artifact_digest,
         GREATEST(p.created_at,r.created_at,r.as_of_at) captured_at
@@ -52,6 +52,30 @@ def inputs(db, season, week):
             forecasts.append({**base, "variant": "opportunity", "mean": c["prediction"], "median": c.get("median"),
                 "p10": c["p10"], "p90": c["p90"], "boom_probability": c["boom_probability"],
                 "stat_means": {}, "recipe_digest": c["recipe_digest"]})
+    identities = {str(player["gsis_id"]): player["player_id"] for player in players if player.get("gsis_id")}
+    identities.update({f"DST:{player['team']}": player["player_id"] for player in players if player["position"] == "DST"})
+    efficiency_runs = db.execute("""SELECT run_digest,as_of_at,payload FROM nfl_dfs_efficiency_runs
+        WHERE season=%s AND week=%s ORDER BY as_of_at,run_digest""", (season, week))
+    for run in efficiency_runs:
+        payload = run["payload"]
+        for team_forecast in payload.get("forecasts", []):
+            for projection in team_forecast.get("players", []):
+                player_id = identities.get(str(projection.get("identity")))
+                if player_id is None:
+                    continue
+                forecasts.append({
+                    "player_id": player_id, "forecast_id": f"{run['run_digest']}:{projection.get('identity')}",
+                    "variant": "efficiency_research", "name": projection["name"], "team": team_forecast["team"],
+                    "position": projection["position"], "captured_at": run["as_of_at"],
+                    "mean": projection["mean_fpts"], "median": projection["median_fpts"],
+                    "p10": projection["p10_fpts"], "p90": projection["p90_fpts"],
+                    "boom_probability": projection["boom_rate"], "history_games": projection["history_games"],
+                    "stat_means": projection["stat_means"], "model_version": payload["version"],
+                    "run_id": run["run_digest"], "input_digest": payload["dataset_digest"],
+                    "source_evidence": {"workload_run_digest": payload["workload_run_digest"],
+                        "coherence_scope": projection["coherence_scope"]}, "config": payload["config"],
+                    "seed": projection["seed"],
+                })
     results = db.execute("""SELECT * FROM nfl_dfs_player_week_results WHERE season=%s AND week=%s""", (season, week))
     return dict(games=games, players=players, forecasts=forecasts, results=results)
 

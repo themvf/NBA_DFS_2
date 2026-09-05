@@ -18,6 +18,21 @@ import {
 
 // ── NBA tables ────────────────────────────────────────────────
 
+export const nflDfsComponentDatasets = pgTable("nfl_dfs_component_datasets", {
+  datasetDigest: text("dataset_digest").primaryKey(), version: text("version").notNull(), payload: jsonb("payload").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const nflDfsWorkloadRuns = pgTable("nfl_dfs_workload_runs", {
+  runDigest: text("run_digest").primaryKey(), datasetDigest: text("dataset_digest").notNull().references(() => nflDfsComponentDatasets.datasetDigest),
+  season: integer("season").notNull(), week: integer("week").notNull(), asOfAt: timestamp("as_of_at", { withTimezone: true }).notNull(),
+  payload: jsonb("payload").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const nflDfsEfficiencyRuns = pgTable("nfl_dfs_efficiency_runs", {
+  runDigest: text("run_digest").primaryKey(), workloadRunDigest: text("workload_run_digest").notNull().references(() => nflDfsWorkloadRuns.runDigest),
+  datasetDigest: text("dataset_digest").notNull().references(() => nflDfsComponentDatasets.datasetDigest),
+  season: integer("season").notNull(), week: integer("week").notNull(), asOfAt: timestamp("as_of_at", { withTimezone: true }).notNull(),
+  payload: jsonb("payload").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 export const nflDfsFeatureAudits = pgTable("nfl_dfs_feature_audits", {
   auditDigest: text("audit_digest").primaryKey(),
   version: text("version").notNull(),

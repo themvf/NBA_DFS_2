@@ -2,7 +2,7 @@
 
 Date: 2026-09-04
 
-Status: Slice A implemented locally 2026-09-04: persisted feature audit and Model Lab coverage UI. Slices B–E remain planned; no component model or production promotion is implemented. See [Slice A delivery](nfl-dfs-feature-audit-delivery.md).
+Status: Slice A released; Slices B and C are implemented locally through 2026-09-05 for the currently audited fields. The saved candidate uses team-coupled offense, conditional rates, exact DraftKings scoring, a separate opponent-conditioned DST process, Weekly Review grading, and Model Lab visuals. Role/depth-chart evidence remains unresolved. No production promotion is implemented.
 
 Intent: [NFL research roadmap](../intent.md) and [visual delivery requirement](../intention.md#project-wide-addition-visual-model-delivery--2026-09-04).
 
@@ -19,7 +19,7 @@ Scope: NFL regular-season QB/RB/WR/TE and DST, DraftKings scoring first. Preserv
 - `model/nfl_dfs_historical.py` resamples historical stat lines and scores each draw, including nonlinear bonuses. This is the baseline to preserve, not a new implementation to replace silently.
 - `model/nfl_dfs_research.py` has an opportunity candidate using baseline, history count, and prior opportunity. It is a correction to expected fantasy points, not a team-consistent workload/efficiency simulator.
 - `model/nfl_dfs_variance.py` tests player/position residual shrinkage around the market-free baseline. Gains are mixed and it is not activated.
-- `ingest/nfl_dfs_shadow.py` freezes eligible baseline/candidate forecasts separately from production. The current weekly report supports a fixed three-variant list; adding a new candidate requires explicit end-to-end contract changes.
+- `ingest/nfl_dfs_shadow.py` freezes eligible baseline/candidate forecasts separately from production. Weekly Review now carries a fourth, explicitly labeled `efficiency_research` stream without changing the production stream.
 - `/dfs/nfl/review` already displays saved production/shadow forecasts and outcomes. Available frozen stat means are not evidence that every proposed workload component has been forecast.
 - Historical raw player rows and versioned result evidence exist. Routes, snaps, red-zone usage, historical role membership, and timestamped injuries still need a field-level coverage audit. A field in a raw feed is not proof of reliable historical coverage.
 
@@ -132,7 +132,7 @@ Weekly jobs freeze upcoming forecasts, append result revisions, grade past forec
 |---|---|---|---|
 | A | Proposed `ingest/nfl_dfs_feature_audit.py`, pure coverage validation and fixtures | Model Lab shell + source coverage | Counts reconcile to actual stored payloads; unavailable inputs visible |
 | B | Proposed `model/nfl_dfs_components.py`, lagged team budgets/shares and frozen forecast writer | Workload trends + allocation bars | Pregame-only inputs; budgets reconcile including unknown share; fallback tests |
-| C | Conditional efficiency/scoring and separate DST implementation | Scoring contribution chart + component actuals in weekly review | Valid draws, exact scorer/bonus reconciliation, no missing-as-zero |
+| C | Conditional efficiency/scoring and separate DST implementation | Scoring contribution chart + component actuals in weekly review | **Implemented locally:** shared team draws reconcile offense, DST is separate and opponent-conditioned, and the fourth report-card stream is saved |
 | D | Candidate-specific role/variance experiment and saved distributions | Distribution comparison + sample/prior indicators | Deterministic replay; sparse-history behavior; width-aware evaluation |
 | E | Extend research/shadow/report-card adapters without changing production | Experiment comparison + change timeline + operational state | End-to-end candidate identity, immutable results/revisions and matched cohorts |
 
@@ -154,4 +154,4 @@ Use the existing daily NFL workflow for approved lightweight materialization onl
 
 ## 10. Next action
 
-Slice A is implemented. Before Slice B, create a separately versioned raw component history: the old frozen history lacks completions/raw DST inputs and uses legacy missing-to-zero defaults. Working source rows contain richer 2023–2025 fields but are a different population. Do not silently join them into the old study. Audit missingness and game/roster identity on the new frozen cohort, then finalize numeric evaluation gates before fitting the workload model.
+Slices B and C are implemented locally. Next, begin Slice D by measuring candidate-specific residual distributions and role uncertainty around the new workload-plus-efficiency mean, with saved distribution comparisons and width-aware backtests. In parallel, audit a timestamped depth-chart/injury source; player allocations remain forward research because historical weekly roster membership is not verified. The current candidate remains shadow research and cannot alter production without forward evidence and explicit approval.

@@ -3,23 +3,31 @@
 import Link from "next/link";
 import { useState } from "react";
 import { captureAgeHours, coverage, type FeatureAudit, type AuditCell } from "@/lib/nfl-dfs/feature-audit";
+import type { EfficiencyReport } from "@/lib/nfl-dfs/efficiency";
+import type { WorkloadReport } from "@/lib/nfl-dfs/workload";
+import ResearchStages from "./research-stages";
 
 const names: Record<string, string> = { frozen_history: "Frozen research history", working_source: "Working source rows" };
 const integer = (n: number) => n.toLocaleString("en-US");
 const panel = "rounded-2xl border border-slate-700 bg-slate-900/70 p-5";
 
-export default function ModelLab({ report, digest, viewedAt }: { report: FeatureAudit; digest: string; viewedAt: number }) {
+export default function ModelLab({ report, digest, viewedAt, workload, workloadDigest, workloadFailed, efficiency, efficiencyDigest, efficiencyFailed }: {
+  report: FeatureAudit; digest: string; viewedAt: number; workload: WorkloadReport | null; workloadDigest: string | null;
+  workloadFailed: boolean; efficiency: EfficiencyReport | null; efficiencyDigest: string | null; efficiencyFailed: boolean;
+}) {
   const [dataset, setDataset] = useState(report.datasets[0]?.dataset);
   const [position, setPosition] = useState("QB");
   const [group, setGroup] = useState("All");
   const [selected, setSelected] = useState<AuditCell | null>(null);
+  const [view, setView] = useState<"Coverage" | "Workload" | "Efficiency">(efficiency ? "Efficiency" : workload ? "Workload" : "Coverage");
   const data = report.datasets.find(d => d.dataset === dataset);
   const age = captureAgeHours(report.evaluated_at, viewedAt);
   const captureAge = captureAgeHours(data?.latest_capture ?? null, viewedAt);
   const fields = report.fields.filter(f => f.positions.includes(position) && (group === "All" || f.group === group));
   function download() {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ audit_digest: digest, ...report }, null, 2)], { type: "application/json" }));
-    const a = document.createElement("a"); a.href = url; a.download = `nfl-feature-audit-${digest.slice(0, 12)}.json`; a.click(); URL.revokeObjectURL(url);
+    const evidence = { audit_digest: digest, input_coverage: report, workload_run_digest: workloadDigest, workload, efficiency_run_digest: efficiencyDigest, efficiency };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a"); a.href = url; a.download = `nfl-model-lab-evidence-${digest.slice(0, 12)}.json`; a.click(); URL.revokeObjectURL(url);
   }
   return <main className="min-h-screen bg-slate-950 px-4 py-7 text-slate-100 sm:px-8">
     <div className="mx-auto max-w-7xl space-y-6">
@@ -29,11 +37,18 @@ export default function ModelLab({ report, digest, viewedAt }: { report: Feature
           <h1 className="mt-2 text-4xl font-semibold tracking-tight">Model Lab</h1>
           <p className="mt-3 max-w-2xl text-slate-300">The inputs behind the next projection. Coverage first; workload and efficiency follow.</p></div>
         <div className="space-y-3 text-right"><span className="inline-block rounded-full border border-teal-800 bg-teal-950 px-3 py-1 text-xs text-teal-200">RESEARCH · PRODUCTION UNCHANGED</span>
-          <div><button className="rounded-lg border border-slate-500 px-4 py-2 text-sm hover:bg-slate-800" onClick={download}>Export audit JSON</button></div></div>
+          <div><button className="rounded-lg border border-slate-500 px-4 py-2 text-sm hover:bg-slate-800" onClick={download}>Export evidence JSON</button></div></div>
       </header>
       <section aria-label="Development stages" className="grid gap-2 sm:grid-cols-5">
-        {["01 / Input coverage", "02 / Workload", "03 / Efficiency", "04 / Distributions", "05 / Comparison"].map((label, i) => <div key={label} className={`rounded-xl border p-3 ${i === 0 ? "border-teal-600 bg-teal-950" : "border-slate-800 text-slate-400"}`}><p className="text-sm font-semibold">{label}</p><p className="mt-1 text-xs">{i === 0 ? "Saved evidence" : "Not implemented"}</p></div>)}
+        {["01 / Input coverage", "02 / Workload", "03 / Efficiency", "04 / Distributions", "05 / Comparison"].map((label, i) => {
+          const target = i === 0 ? "Coverage" : i === 1 ? "Workload" : "Efficiency";
+          const enabled = i === 0 || i === 1 && !!workload || i === 2 && !!efficiency;
+          const status = i === 0 ? "Saved evidence" : i === 1 ? workload ? "Saved evidence" : workloadFailed ? "Unavailable" : "No saved run" : i === 2 ? efficiency ? "Saved · shadow research" : efficiencyFailed ? "Unavailable" : "No saved run" : "Not implemented";
+          return <button type="button" disabled={!enabled} onClick={() => enabled && setView(target)} key={label} className={`rounded-xl border p-3 text-left ${view === target ? "border-teal-600 bg-teal-950" : "border-slate-800 text-slate-400"}`}><p className="text-sm font-semibold">{label}</p><p className="mt-1 text-xs">{status}</p></button>;
+        })}
       </section>
+      {view !== "Coverage" && workload && <ResearchStages mode={view} workload={workload} workloadDigest={workloadDigest} efficiency={efficiency} efficiencyDigest={efficiencyDigest} />}
+      {view === "Coverage" && <>
       {age !== null && age > 36 && <p role="alert" className="rounded-lg border border-amber-700 bg-amber-950 p-4 text-amber-200">This audit is over 36 hours old. It does not confirm current input coverage.</p>}
       <div className="flex flex-wrap gap-4">
         <label className="text-sm">Dataset<select value={dataset} onChange={e => { setDataset(e.target.value); setSelected(null); }} className="ml-3 rounded-lg border border-slate-600 bg-slate-900 p-2">{report.datasets.map(d => <option key={d.dataset} value={d.dataset}>{names[d.dataset] ?? d.dataset}</option>)}</select></label>
@@ -74,6 +89,7 @@ export default function ModelLab({ report, digest, viewedAt }: { report: Feature
           <Link className="inline-block text-teal-300 underline" href={`/dfs/nfl/model?audit=${digest}`}>Permalink to this saved audit</Link>
           <ul className="list-disc space-y-2 pl-5">{report.limits.map(limit => <li key={limit}>{limit}</li>)}</ul>
         </div></details>
+      </>}
       </>}
     </div>
   </main>;
