@@ -48,7 +48,7 @@ jobs:
         run: python -m ingest.event_closing_lines --existing-schema
 
       - name: Capture due US Open sportsbook checkpoints
-        run: python -m ingest.tennis_capture_checkpoints
+        run: python -m ingest.tennis_capture_checkpoints --existing-schema
 
       - name: Detect and grade Tennis market signals
         run: python -m model.line_alerts --sport tennis --existing-schema

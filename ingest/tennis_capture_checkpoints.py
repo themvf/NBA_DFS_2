@@ -79,9 +79,13 @@ def capture_due_checkpoints(db: DatabaseManager, api_key: str, *, dry_run: bool 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capture due US Open sportsbook checkpoints")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--existing-schema", action="store_true",
+                        help="Use an already migrated database without running global DDL")
     args = parser.parse_args()
     config = load_config()
     output = capture_due_checkpoints(
-        DatabaseManager(config.database_url), config.odds_api.api_key, dry_run=args.dry_run,
+        DatabaseManager(config.database_url, initialize_schema=not args.existing_schema),
+        config.odds_api.api_key,
+        dry_run=args.dry_run,
     )
     print(json.dumps(output, indent=2, default=str))

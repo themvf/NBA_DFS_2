@@ -48,6 +48,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import date, datetime, timezone
 
 import requests
@@ -2364,6 +2365,40 @@ def _dk_execution_clv(db, a) -> tuple[float | None, float | None]:
     return g["dk_close_decimal"], g["dk_clv_pct"]
 
 
+def _verified_close(db: DatabaseManager, sport: str, matchup_id: int, *, include_id: bool = False):
+    """Read a frozen close without letting concurrent schema DDL kill a worker.
+
+    Scheduled jobs occasionally overlap a schema-initializing process. PostgreSQL
+    can then deadlock a harmless close lookup behind an AccessExclusiveLock. Keep
+    this read bounded and retry it in a fresh transaction; no write is repeated.
+    """
+    import psycopg2
+
+    retryable = (psycopg2.errors.DeadlockDetected, psycopg2.errors.LockNotAvailable)
+    select = "h.id AS history_id, h.books" if include_id else "h.books"
+    attempts = 4
+    for attempt in range(attempts):
+        try:
+            with db.connect() as conn:
+                cur = conn.cursor()
+                cur.execute("SET LOCAL lock_timeout = '10s'")
+                cur.execute(
+                    f"""
+                    SELECT {select}
+                    FROM verified_clv_closes c
+                    JOIN game_odds_history h ON h.id=c.history_id
+                    WHERE c.sport=%s AND c.matchup_id=%s AND h.books IS NOT NULL
+                    """,
+                    (sport, matchup_id),
+                )
+                return cur.fetchone()
+        except retryable:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2 ** attempt)
+    return None
+
+
 def settle(db: DatabaseManager, sport: str) -> int:
     """Grade alerts whose games have started: CLV always, outcome when scored."""
     matchup_tbl = _MATCHUP_TBL[sport]
@@ -2393,15 +2428,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
             sport in ("mlb", "tennis", "cfb", "nfl")
             and a["alert_type"] != "pinnacle_polymarket_delta"
         ):
-            close = db.execute_one(
-                """
-                SELECT h.books
-                FROM verified_clv_closes c
-                JOIN game_odds_history h ON h.id=c.history_id
-                WHERE c.sport=%s AND c.matchup_id=%s AND h.books IS NOT NULL
-                """,
-                (sport, a["matchup_id"]),
-            )
+            close = _verified_close(db, sport, a["matchup_id"])
         else:
             close = None
         # Historical alerts and the short interval before the close worker
@@ -2522,13 +2549,7 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             logger.error("%s line alert %s is missing trigger_line", sport.upper(), alert["id"])
             continue
         if sport in ("cfb", "nfl"):
-            close = db.execute_one(
-                """SELECT h.id AS history_id, h.books
-                   FROM verified_clv_closes c
-                   JOIN game_odds_history h ON h.id=c.history_id
-                   WHERE c.sport=%s AND c.matchup_id=%s""",
-                (sport, alert["matchup_id"]),
-            )
+            close = _verified_close(db, sport, alert["matchup_id"], include_id=True)
         else:
             close = None
         close_books = (close.get("books") or {}) if close else {}
