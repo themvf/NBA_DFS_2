@@ -228,6 +228,8 @@ export default function TennisVegasClient({
   lineAlertBacktest,
   eloDashboard,
   detectorHealth,
+  scorecard,
+  captureHealth,
   queryDate,
 }: {
   matchups: TennisMatchRow[];
@@ -240,9 +242,11 @@ export default function TennisVegasClient({
   lineAlertBacktest: LineAlertBacktestRow[];
   eloDashboard: TennisEloDashboard;
   detectorHealth: DetectorHealthRow[];
+  scorecard: import("@/db/queries").MarketSignalScorecardRow[];
+  captureHealth: import("@/db/queries").MarketCaptureHealth;
   queryDate: string | null;
 }) {
-  return <TennisTerminal matchups={matchups} movement={sportsbookMovement} alerts={lineAlerts} queryDate={queryDate}>
+  return <TennisTerminal matchups={matchups} movement={sportsbookMovement} alerts={lineAlerts} queryDate={queryDate} scorecard={scorecard} captureHealth={captureHealth}>
     <LineMovementPanel rows={sportsbookMovement} cadenceNote="scheduled sportsbook captures, increasing to five-minute targets near match start" lane="sportsbook" researchOnly />
     <LineMovementPanel rows={polymarketMovement} cadenceNote="the independent Polymarket captures" lane="polymarket" />
     {(lineAlerts.length > 0 || lineAlertBacktest.length > 0) && <LineAlertsPanel alerts={lineAlerts} backtest={lineAlertBacktest} tennisResearch />}

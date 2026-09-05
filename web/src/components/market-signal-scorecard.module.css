@@ -1,0 +1,24 @@
+.scorecard {
+  background: #0b1010;
+  border-top: 1px solid #27302f;
+  color: #e8ecea;
+  font: 10px var(--font-mono, Consolas, monospace);
+}
+.scorecard header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 13px; border-bottom: 1px solid #27302f; background: #111716; }
+.scorecard header div { display: flex; gap: 18px; align-items: center; }
+.scorecard header strong, .scorecard td:first-child { color: #f6a800; font-weight: bold; }
+.scorecard header span, .scorecard header p, .scorecard footer { color: #99a69f; }
+.scorecard header p { margin: 0; }
+.scroll { overflow: auto; }
+.scorecard table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.scorecard th, .scorecard td { padding: 9px 10px; border-bottom: 1px solid #202a28; text-align: right; }
+.scorecard th { color: #99a69f; font-size: 8px; font-weight: normal; }
+.scorecard th:first-child, .scorecard td:first-child, .scorecard th:nth-child(2), .scorecard td:nth-child(2) { text-align: left; }
+.stage { display: inline-block; border: 1px solid #42504c; padding: 3px 5px; color: #aab5b0; }
+.stage[data-stage="initial_review"] { border-color: #79601f; color: #e3c779; }
+.stage[data-stage="validation_ready"] { border-color: #27745e; color: #62d2ad; }
+.scorecard footer { padding: 9px 13px; font-size: 8px; line-height: 1.5; }
+@media (max-width: 700px) {
+  .scorecard header, .scorecard header div { align-items: flex-start; flex-direction: column; }
+  .scorecard header div { gap: 4px; }
+}

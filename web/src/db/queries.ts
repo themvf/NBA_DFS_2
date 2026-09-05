@@ -11020,7 +11020,11 @@ export async function getMarketSignalScorecard(sport: "cfb" | "tennis"): Promise
                WHEN alert_type IN ('walking','spread_walking','total_walking') THEN 'walking'
                ELSE alert_type
              END AS alert_type,
-             created_at, outcome, pnl_units,
+             created_at, outcome,
+             COALESCE(pnl_units,
+               CASE WHEN details_json ? 'dk_decimal' AND outcome = 'won' THEN (details_json->>'dk_decimal')::numeric - 1
+                    WHEN details_json ? 'dk_decimal' AND outcome = 'lost' THEN -1 END
+             ) AS effective_units,
              COALESCE(clv_pp, (grading_json->>'line_clv')::numeric) AS clv
       FROM line_alerts
       WHERE sport = ${sport} AND origin = 'prospective'
@@ -11036,7 +11040,7 @@ export async function getMarketSignalScorecard(sport: "cfb" | "tennis"): Promise
              COUNT(*) FILTER (WHERE outcome = 'won')::int AS wins,
              COUNT(*) FILTER (WHERE outcome = 'lost')::int AS losses,
              COUNT(*) FILTER (WHERE outcome = 'void')::int AS voids,
-             SUM(pnl_units) FILTER (WHERE outcome IN ('won','lost')) AS units,
+             SUM(effective_units) FILTER (WHERE outcome IN ('won','lost')) AS units,
              MAX(created_at)::text AS last_triggered_at
       FROM normalized GROUP BY alert_type
     )

@@ -8,6 +8,8 @@ import {
   getLineAlerts,
   getLineAlertBacktest,
   getDetectorHealth,
+  getMarketCaptureHealth,
+  getMarketSignalScorecard,
   getVegasSummaryStats,
   getBiggestMisses,
   getTeamVegasInsights,
@@ -45,7 +47,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
   // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
     const matchesPromise = getTennisVegasMatchups(date);
-    const [matchups, bets, backtest, legacyBetSummary, sportsbookMovement, polymarketMovement, lineAlerts, lineAlertBacktest, eloDashboard, detectorHealth] = await Promise.all([
+    const [matchups, bets, backtest, legacyBetSummary, sportsbookMovement, polymarketMovement, lineAlerts, lineAlertBacktest, eloDashboard, detectorHealth, scorecard, captureHealth] = await Promise.all([
       matchesPromise,
       getTennisBets(300),
       getTennisBetBacktest(),
@@ -56,8 +58,10 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getLineAlertBacktest("tennis"),
       getTennisEloDashboard(),
       getDetectorHealth("tennis"),
+      getMarketSignalScorecard("tennis"),
+      getMarketCaptureHealth("tennis", date),
     ]);
-    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} sportsbookMovement={sportsbookMovement} polymarketMovement={polymarketMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} eloDashboard={eloDashboard} detectorHealth={detectorHealth} queryDate={date ?? null} />;
+    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} sportsbookMovement={sportsbookMovement} polymarketMovement={polymarketMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} eloDashboard={eloDashboard} detectorHealth={detectorHealth} scorecard={scorecard} captureHealth={captureHealth} queryDate={date ?? null} />;
   }
 
   // Soccer: focused fixtures view + star-rated bet ledger + backtest, rather

@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Search } from "lucide-react";
-import type { TennisMatchRow, MlbLineMovementRow, LineAlertRow } from "@/db/queries";
+import type { TennisMatchRow, MlbLineMovementRow, LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow } from "@/db/queries";
+import MarketSignalScorecard from "@/components/market-signal-scorecard";
 import s from "./tennis-terminal.module.css";
 
 const ml = (v: number | null) => v == null ? "—" : `${v > 0 ? "+" : ""}${v}`;
@@ -15,6 +16,24 @@ const bookLabel = (v: string) => BOOK_LABELS[v] ?? v.replaceAll("_", " ").replac
 const BOOK_COLORS = ["#52dbd1", "#b980ff", "#5da9ff", "#75d46b", "#ff6f91", "#e7d66b", "#ff8f4c", "#b6c2bd"];
 const alertObservedAt = (alert: LineAlertRow) => typeof alert.details?.trigger_capture_at === "string"
   ? alert.details.trigger_capture_at : alert.createdAt;
+
+function alertMagnitude(alert: LineAlertRow): string | null {
+  for (const key of ["move_pp", "avg_move_pp", "price_move_pp", "reference_move_pp", "consensus_move_pp", "movement_pp", "first_leg_pp", "divergence_pp"]) {
+    const value = alert.details?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) return `${value > 0 ? "+" : ""}${value.toFixed(1)}pp`;
+  }
+  return null;
+}
+
+function movementState(row?: MlbLineMovementRow): string {
+  if (!row || row.captures < 2) return "INSUFFICIENT HISTORY";
+  const delta = (row.closeProb - row.openProb) * 100;
+  const values = row.trail.map(point => point.homeProb).filter(Number.isFinite);
+  const maxExcursion = values.length ? Math.max(...values.map(value => Math.abs((value - row.openProb) * 100))) : Math.abs(delta);
+  if (maxExcursion >= 1.5 && Math.abs(delta) <= 0.5) return "RETURNED TOWARD MEAN";
+  if (Math.abs(delta) < 0.05) return "FLAT 0.0pp";
+  return `${delta >= 0 ? "HOME" : "AWAY"} ${delta >= 0 ? "+" : ""}${delta.toFixed(1)}pp`;
+}
 
 function Trail({ row, mini = false }: { row?: MlbLineMovementRow; mini?: boolean }) {
   const points = useMemo(() => (row?.trail ?? []).filter(p => Number.isFinite(p.homeProb) && Number.isFinite(Date.parse(p.capturedAt)))
@@ -53,9 +72,9 @@ function Trail({ row, mini = false }: { row?: MlbLineMovementRow; mini?: boolean
   return <div><div className={s.bookLegend}><span className={s.consensusKey}>CONSENSUS</span>{availableBooks.map((book,i)=><button key={book} aria-pressed={visibleBooks.includes(book)} onClick={()=>setHiddenByMatch(current=>{const hidden=current[matchupId] ?? []; return {...current,[matchupId]:hidden.includes(book)?hidden.filter(v=>v!==book):[...hidden,book]};})} style={{"--book-color":BOOK_COLORS[i]} as CSSProperties}>{bookLabel(book)}</button>)}</div>{graphic}<div className={s.bookNote}>Consensus is bold · individual books use no-vig moneyline probability · top 8 by coverage shown</div></div>;
 }
 
-export default function TennisTerminal({ matchups, movement, alerts, queryDate, children }: {
+export default function TennisTerminal({ matchups, movement, alerts, queryDate, scorecard, captureHealth, children }: {
   matchups: TennisMatchRow[]; movement: MlbLineMovementRow[]; alerts: LineAlertRow[];
-  queryDate: string | null; children: ReactNode;
+  queryDate: string | null; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth; children: ReactNode;
 }) {
   const [search,setSearch] = useState("");
   const [tour,setTour] = useState("ALL");
@@ -79,11 +98,12 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
         <div className={s.tabs} aria-label="Tour filter">{["ALL","ATP","WTA"].map(t=><button key={t} aria-pressed={tour===t} onClick={()=>setTour(t)}>{t}</button>)}</div>
         <div className={s.watchScroll}>{rows.map(m=>{
           const trail=movement.find(r=>r.matchupId===m.id);
-          const signals=alerts.filter(a=>a.matchupId===m.id);
+          const signals=alerts.filter(a=>a.matchupId===m.id && a.origin === "prospective");
+          const latest=signals.slice().sort((a,b)=>Date.parse(alertObservedAt(b))-Date.parse(alertObservedAt(a)))[0];
           return <button key={m.id} className={s.watchRow} aria-pressed={match?.id===m.id} onClick={()=>setSelected(m.id)}>
             <span className={s.players}>{m.awayPlayer}<br/>{m.homePlayer}<small>{m.tour} · {time(m.commenceTime)}</small></span>
             <span className={s.watchPrice}>{ml(m.awayMl)}<br/>{ml(m.homeMl)}<Trail row={trail} mini/></span>
-            {signals.length>0 && <span className={s.badge}>{[...new Set(signals.map(a=>label(a.alertType)))].slice(0,2).join(" · ")}</span>}
+            <span className={s.badge}>{latest ? `${label(latest.alertType)} · ${latest.side.toUpperCase()}${alertMagnitude(latest) ? ` · ${alertMagnitude(latest)}` : ""}` : movementState(trail)}</span>
           </button>;
         })}{!rows.length && <p className={s.empty}>No matches match this search or tour.</p>}</div>
       </aside>
@@ -104,11 +124,13 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
         <div className={s.metrics}><div><small>MARKET · {match.homePlayer}</small><strong>{pct(match.homeWinProb)}</strong></div><div><small>MODEL · {match.homePlayer}</small><strong>{pct(match.ourProbHome)}</strong></div><div><small>OVERALL ELO · HOME / AWAY</small><strong>{match.homeElo ?? "—"} / {match.awayElo ?? "—"}</strong></div></div>
       </> : <p className={s.empty}>Select a match when the feed is available. Missing quotes are never displayed as zero.</p>}</main>
       <aside className={s.pulse}><div className={s.heading}>DATA PULSE <span>{status}</span></div><div className={s.pulseBlock}><strong className={s.amber}>{status}</strong><p>Last trail observation<br/>{history ? time(history.closeCapturedAt) : "Unavailable"}</p><p>{match?.nBooks ?? "—"} books in current match feed · {history?.trackedBooks ?? "—"} comparable at open/close</p></div>
+        <div className={s.heading}>CAPTURE HEALTH <span>{captureHealth.status.replaceAll("_", " ")}</span></div><div className={s.pulseBlock}><strong className={captureHealth.status === "healthy" ? s.good : s.warn}>{captureHealth.due ? `${captureHealth.dueCaptured}/${captureHealth.due} DUE CAPTURED` : "NO CHECKPOINTS DUE"}</strong><p>{captureHealth.eventsCovered} matches covered · {captureHealth.missed} missed · {captureHealth.failed} failed</p><small>{captureHealth.pending} future checkpoints scheduled</small></div>
         <div className={s.heading}>SIGNAL TAPE <span>{tape.length} RECORDED</span></div>
         <div className={s.tape}>{tape.map((a,i)=><div className={s.pulseBlock} key={`${a.createdAt}-${a.alertType}-${i}`}><strong>{label(a.alertType)}</strong><p>{a.side === "home" ? match?.homePlayer : a.side === "away" ? match?.awayPlayer : label(a.side)}</p><small>{time(alertObservedAt(a))}{a.details?.origin === "retrospective" ? " · RETROSPECTIVE" : ""}</small><p>{a.outcome ?? "Outcome pending"} · CLV {a.clvPp == null ? "pending" : `${a.clvPp.toFixed(1)}pp`}</p></div>)}{!tape.length && <p className={s.empty}>No recorded signals in the loaded feed for this match.</p>}</div>
         <div className={s.notice}><strong>RESEARCH TERMINAL</strong><p>Tennis moneyline has no confirmed edge. Ratings are capped at 2★. Model disagreement is not a recommendation.</p><p>Capture targets reach five-minute intervals near scheduled start. Delays and missing observations remain possible.</p></div>
       </aside>
     </div>
+    <MarketSignalScorecard rows={scorecard} sport="TENNIS" />
     <details className={s.research}><summary>RESEARCH DESK · SURFACE ELO / SIGNAL AUDIT / HISTORICAL RESULTS</summary><div className={s.researchBody}>{children}</div></details>
   </div>;
 }
