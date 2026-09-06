@@ -1,0 +1,7836 @@
+{
+  "schemaVersion": 1,
+  "kind": "nfl-scenario-ranking-experiment",
+  "source": "synthetic",
+  "limitations": [
+    "Research scorer only: no contest field, payout, cash-hit, top-1% or Kelly claim.",
+    "Supplied scenario coherence/calibration and independent streams require generator evidence; this boundary validates identity, stats and provenance.",
+    "Monte Carlo intervals cover IID simulation noise only, not model uncertainty or selection bias.",
+    "The candidate set bounds the search; selected lineups are not a jointly optimized portfolio."
+  ],
+  "manifest": {
+    "scorerVersion": "nfl-dk-scenario-v1",
+    "prngVersion": "mulberry32-v1",
+    "target": 90,
+    "candidateCount": 100,
+    "ablationSeed": 2253417224,
+    "evaluationAblationSeed": 409408177,
+    "slateDigest": "3055500f8b6c39cd5312d9c80491be772cb26c62334472c41dda558e2d255f06",
+    "candidatesDigest": "636d6715efb05d0a55e82b792682647eb66116d4b792527ad21685f79242445e",
+    "selectionDigest": "e53ca2cbefebdd1f3f39ec4d5e4963a2a7dd4420b022e0a51b416dbec82479ef",
+    "evaluationDigest": "83df0c9fdfeba2419a614083571c15249cb1f9e162cbcc365ffe5e7fe07587a1",
+    "selection": {
+      "schemaVersion": 1,
+      "runId": "synthetic-selection-20260905",
+      "modelVersion": "synthetic-events-v1-unvalidated",
+      "snapshotId": "synthetic-showdown-v1",
+      "streamId": "selection",
+      "decisionAt": "2026-09-05T12:00:00Z",
+      "inputsCapturedAt": "2026-09-05T11:00:00Z",
+      "source": "synthetic",
+      "sampling": "iid",
+      "seed": 20260905
+    },
+    "evaluation": {
+      "schemaVersion": 1,
+      "runId": "synthetic-evaluation-2760936844",
+      "modelVersion": "synthetic-events-v1-unvalidated",
+      "snapshotId": "synthetic-showdown-v1",
+      "streamId": "evaluation",
+      "decisionAt": "2026-09-05T12:00:00Z",
+      "inputsCapturedAt": "2026-09-05T11:00:00Z",
+      "source": "synthetic",
+      "sampling": "iid",
+      "seed": 2760936844
+    },
+    "selectionDraws": 2000,
+    "evaluationDraws": 2000
+  },
+  "selected": [
+    {
+      "policy": "additive-player-p90",
+      "candidateKey": "showdown:1001:1000,1002,1003,1004,1009",
+      "selectionObjective": 165.44,
+      "evaluation": {
+        "mean": 93.56212000000502,
+        "p10": 53.75,
+        "p50": 89.3,
+        "p90": 138.92,
+        "target": 90,
+        "targetProbability": 0.49300000000001426,
+        "monteCarlo95": [
+          0.47112351149483855,
+          0.5149033271671274
+        ]
+      }
+    },
+    {
+      "policy": "independent-lineup-p90",
+      "candidateKey": "showdown:1001:1000,1002,1003,1004,1009",
+      "selectionObjective": 122.51,
+      "evaluation": {
+        "mean": 93.56212000000502,
+        "p10": 53.75,
+        "p50": 89.3,
+        "p90": 138.92,
+        "target": 90,
+        "targetProbability": 0.49300000000001426,
+        "monteCarlo95": [
+          0.47112351149483855,
+          0.5149033271671274
+        ]
+      }
+    },
+    {
+      "policy": "joint-lineup-p90",
+      "candidateKey": "showdown:1001:1000,1002,1003,1004,1009",
+      "selectionObjective": 141,
+      "evaluation": {
+        "mean": 93.56212000000502,
+        "p10": 53.75,
+        "p50": 89.3,
+        "p90": 138.92,
+        "target": 90,
+        "targetProbability": 0.49300000000001426,
+        "monteCarlo95": [
+          0.47112351149483855,
+          0.5149033271671274
+        ]
+      }
+    },
+    {
+      "policy": "joint-target-probability",
+      "candidateKey": "showdown:1010:1000,1001,1008,1011,1013",
+      "selectionObjective": 0.49350000000001426,
+      "evaluation": {
+        "mean": 92.76501000000523,
+        "p10": 59.01,
+        "p50": 89.61,
+        "p90": 131.11,
+        "target": 90,
+        "targetProbability": 0.49350000000001426,
+        "monteCarlo95": [
+          0.4716222579682337,
+          0.515402663646451
+        ]
+      }
+    }
+  ],
+  "candidates": [
+    {
+      "key": "showdown:1003:1002,1011,1012,1015,1016",
+      "salary": 29850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        }
+      ],
+      "additivePlayerP90": 134.15,
+      "selection": {
+        "joint": {
+          "mean": 72.54695000000397,
+          "p10": 45.5,
+          "p50": 69.85,
+          "p90": 103.5,
+          "target": 90,
+          "targetProbability": 0.21200000000001193,
+          "monteCarlo95": [
+            0.19464794597706048,
+            0.230456273256965
+          ]
+        },
+        "independent": {
+          "mean": 72.54695000000392,
+          "p10": 48.4,
+          "p50": 70.45,
+          "p90": 98.65,
+          "target": 90,
+          "targetProbability": 0.17800000000001,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 73.62272500000412,
+          "p10": 46.15,
+          "p50": 70.9,
+          "p90": 104,
+          "target": 90,
+          "targetProbability": 0.23600000000001328,
+          "monteCarlo95": [
+            0.21790751368925262,
+            0.25510468727527535
+          ]
+        },
+        "independent": {
+          "mean": 73.62272500000411,
+          "p10": 50.1,
+          "p50": 72.55,
+          "p90": 99.6,
+          "target": 90,
+          "targetProbability": 0.18900000000001063,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1015:1002,1004,1007,1008,1012",
+      "salary": 26500,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        }
+      ],
+      "additivePlayerP90": 123.15,
+      "selection": {
+        "joint": {
+          "mean": 64.76750000000358,
+          "p10": 39.15,
+          "p50": 63,
+          "p90": 93.15,
+          "target": 90,
+          "targetProbability": 0.12200000000000687,
+          "monteCarlo95": [
+            0.1083764194065414,
+            0.13707286833809953
+          ]
+        },
+        "independent": {
+          "mean": 64.76750000000348,
+          "p10": 42.2,
+          "p50": 63.35,
+          "p90": 88.75,
+          "target": 90,
+          "targetProbability": 0.08850000000000498,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 64.80382500000349,
+          "p10": 38.6,
+          "p50": 62.45,
+          "p90": 93.65,
+          "target": 90,
+          "targetProbability": 0.1315000000000074,
+          "monteCarlo95": [
+            0.11739290085531927,
+            0.1470199629909789
+          ]
+        },
+        "independent": {
+          "mean": 64.80382500000357,
+          "p10": 42.6,
+          "p50": 63.15,
+          "p90": 89.45,
+          "target": 90,
+          "targetProbability": 0.09450000000000532,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1000,1003,1010,1012,1016",
+      "salary": 33450,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        }
+      ],
+      "additivePlayerP90": 148.42000000000002,
+      "selection": {
+        "joint": {
+          "mean": 83.07944000000434,
+          "p10": 52.28,
+          "p50": 80.23,
+          "p90": 117.87,
+          "target": 90,
+          "targetProbability": 0.36550000000001415,
+          "monteCarlo95": [
+            0.34467115419863387,
+            0.3868445315200513
+          ]
+        },
+        "independent": {
+          "mean": 83.0794400000044,
+          "p10": 58.53,
+          "p50": 81.2,
+          "p90": 110.02,
+          "target": 90,
+          "targetProbability": 0.35000000000001413,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 83.56516000000458,
+          "p10": 52.53,
+          "p50": 80.42,
+          "p90": 120.23,
+          "target": 90,
+          "targetProbability": 0.36900000000001415,
+          "monteCarlo95": [
+            0.34812232726922754,
+            0.3903799391184889
+          ]
+        },
+        "independent": {
+          "mean": 83.56516000000443,
+          "p10": 58.95,
+          "p50": 81.73,
+          "p90": 110.14,
+          "target": 90,
+          "targetProbability": 0.35550000000001414,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1001,1006,1014,1015,1016",
+      "salary": 23750,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        }
+      ],
+      "additivePlayerP90": 119.49999999999999,
+      "selection": {
+        "joint": {
+          "mean": 61.93470000000344,
+          "p10": 40.4,
+          "p50": 60.2,
+          "p90": 85.2,
+          "target": 90,
+          "targetProbability": 0.06900000000000388,
+          "monteCarlo95": [
+            0.058698269797799435,
+            0.08095422495864832
+          ]
+        },
+        "independent": {
+          "mean": 61.934700000003346,
+          "p10": 41.1,
+          "p50": 60.7,
+          "p90": 84.6,
+          "target": 90,
+          "targetProbability": 0.059000000000003314,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 61.717000000003324,
+          "p10": 40.9,
+          "p50": 60,
+          "p90": 85,
+          "target": 90,
+          "targetProbability": 0.0640000000000036,
+          "monteCarlo95": [
+            0.05408699935255651,
+            0.07558466587670323
+          ]
+        },
+        "independent": {
+          "mean": 61.7170000000034,
+          "p10": 40.5,
+          "p50": 60.7,
+          "p90": 84.2,
+          "target": 90,
+          "targetProbability": 0.05450000000000306,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1014:1000,1001,1002,1011,1017",
+      "salary": 29400,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        }
+      ],
+      "additivePlayerP90": 155.27000000000004,
+      "selection": {
+        "joint": {
+          "mean": 88.77366500000495,
+          "p10": 54.96,
+          "p50": 85.97,
+          "p90": 126.06,
+          "target": 90,
+          "targetProbability": 0.4420000000000142,
+          "monteCarlo95": [
+            0.4203666437667354,
+            0.4638557337179182
+          ]
+        },
+        "independent": {
+          "mean": 88.77366500000478,
+          "p10": 63.39,
+          "p50": 87.48,
+          "p90": 116.19,
+          "target": 90,
+          "targetProbability": 0.4515000000000142,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 89.31966000000493,
+          "p10": 54.35,
+          "p50": 86.63,
+          "p90": 126.78,
+          "target": 90,
+          "targetProbability": 0.4535000000000142,
+          "monteCarlo95": [
+            0.4317917889314477,
+            0.4753864964657371
+          ]
+        },
+        "independent": {
+          "mean": 89.31966000000486,
+          "p10": 64.17,
+          "p50": 87.86,
+          "p90": 116.1,
+          "target": 90,
+          "targetProbability": 0.4475000000000142,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1014:1002,1004,1012,1016,1017",
+      "salary": 25900,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 123.64999999999999,
+      "selection": {
+        "joint": {
+          "mean": 64.84392500000355,
+          "p10": 40.2,
+          "p50": 62.4,
+          "p90": 92.85,
+          "target": 90,
+          "targetProbability": 0.1265000000000071,
+          "monteCarlo95": [
+            0.1126440546357615,
+            0.1417879796833486
+          ]
+        },
+        "independent": {
+          "mean": 64.84392500000357,
+          "p10": 42.75,
+          "p50": 63.3,
+          "p90": 88.35,
+          "target": 90,
+          "targetProbability": 0.09000000000000506,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 64.76260000000357,
+          "p10": 39.1,
+          "p50": 62.5,
+          "p90": 93.5,
+          "target": 90,
+          "targetProbability": 0.12550000000000705,
+          "monteCarlo95": [
+            0.11169516279842268,
+            0.14074070561524982
+          ]
+        },
+        "independent": {
+          "mean": 64.76260000000349,
+          "p10": 42.35,
+          "p50": 63.4,
+          "p90": 88.35,
+          "target": 90,
+          "targetProbability": 0.09150000000000515,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1005,1008,1012,1016,1017",
+      "salary": 22450,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        }
+      ],
+      "additivePlayerP90": 100.3,
+      "selection": {
+        "joint": {
+          "mean": 51.36280000000283,
+          "p10": 35.8,
+          "p50": 50.2,
+          "p90": 68.7,
+          "target": 90,
+          "targetProbability": 0.004000000000000219,
+          "monteCarlo95": [
+            0.0020282466069653166,
+            0.007873464296038031
+          ]
+        },
+        "independent": {
+          "mean": 51.36280000000281,
+          "p10": 33,
+          "p50": 50.2,
+          "p90": 71.1,
+          "target": 90,
+          "targetProbability": 0.008500000000000466,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 51.06425000000284,
+          "p10": 35.3,
+          "p50": 50,
+          "p90": 68.9,
+          "target": 90,
+          "targetProbability": 0.004500000000000246,
+          "monteCarlo95": [
+            0.0023692806369620054,
+            0.008530513218760144
+          ]
+        },
+        "independent": {
+          "mean": 51.06425000000282,
+          "p10": 32.5,
+          "p50": 50.2,
+          "p90": 70.1,
+          "target": 90,
+          "targetProbability": 0.008500000000000466,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1011:1004,1007,1012,1013,1015",
+      "salary": 28250,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        }
+      ],
+      "additivePlayerP90": 131.45,
+      "selection": {
+        "joint": {
+          "mean": 69.3889000000038,
+          "p10": 42.55,
+          "p50": 66.7,
+          "p90": 100.2,
+          "target": 90,
+          "targetProbability": 0.17800000000001,
+          "monteCarlo95": [
+            0.16185794150485058,
+            0.19537663694429622
+          ]
+        },
+        "independent": {
+          "mean": 69.38890000000376,
+          "p10": 45.5,
+          "p50": 68.05,
+          "p90": 95.7,
+          "target": 90,
+          "targetProbability": 0.1460000000000082,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 70.20930000000388,
+          "p10": 42.95,
+          "p50": 68.1,
+          "p90": 100.5,
+          "target": 90,
+          "targetProbability": 0.18950000000001066,
+          "monteCarlo95": [
+            0.17292570250235456,
+            0.20726478385932473
+          ]
+        },
+        "independent": {
+          "mean": 70.20930000000385,
+          "p10": 46.2,
+          "p50": 68.7,
+          "p90": 95.6,
+          "target": 90,
+          "targetProbability": 0.15550000000000874,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1015:1005,1006,1011,1014,1016",
+      "salary": 23300,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        }
+      ],
+      "additivePlayerP90": 128.25,
+      "selection": {
+        "joint": {
+          "mean": 65.88460000000362,
+          "p10": 38.75,
+          "p50": 63.45,
+          "p90": 97.25,
+          "target": 90,
+          "targetProbability": 0.15000000000000843,
+          "monteCarlo95": [
+            0.13502252494971625,
+            0.16631940814717758
+          ]
+        },
+        "independent": {
+          "mean": 65.88460000000369,
+          "p10": 43.1,
+          "p50": 63.65,
+          "p90": 91.3,
+          "target": 90,
+          "targetProbability": 0.11300000000000636,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 66.68342500000358,
+          "p10": 39.1,
+          "p50": 64.05,
+          "p90": 97.5,
+          "target": 90,
+          "targetProbability": 0.16300000000000917,
+          "monteCarlo95": [
+            0.14746080314736457,
+            0.17983128672021817
+          ]
+        },
+        "independent": {
+          "mean": 66.68342500000355,
+          "p10": 43.45,
+          "p50": 65.45,
+          "p90": 91.9,
+          "target": 90,
+          "targetProbability": 0.11250000000000633,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1015:1001,1004,1012,1016,1017",
+      "salary": 28200,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        }
+      ],
+      "additivePlayerP90": 123.35,
+      "selection": {
+        "joint": {
+          "mean": 64.73380000000351,
+          "p10": 40.15,
+          "p50": 62.35,
+          "p90": 93.25,
+          "target": 90,
+          "targetProbability": 0.12400000000000698,
+          "monteCarlo95": [
+            0.11027238735126008,
+            0.13916923220425606
+          ]
+        },
+        "independent": {
+          "mean": 64.73380000000358,
+          "p10": 42.05,
+          "p50": 63.55,
+          "p90": 88.4,
+          "target": 90,
+          "targetProbability": 0.08450000000000475,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 64.57612500000354,
+          "p10": 39.2,
+          "p50": 62.6,
+          "p90": 92.2,
+          "target": 90,
+          "targetProbability": 0.12000000000000675,
+          "monteCarlo95": [
+            0.10648169331038777,
+            0.13497526262337792
+          ]
+        },
+        "independent": {
+          "mean": 64.5761250000035,
+          "p10": 41.8,
+          "p50": 63.6,
+          "p90": 87.9,
+          "target": 90,
+          "targetProbability": 0.08650000000000486,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1013:1001,1003,1007,1012,1017",
+      "salary": 30750,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        }
+      ],
+      "additivePlayerP90": 122.05,
+      "selection": {
+        "joint": {
+          "mean": 64.59477500000357,
+          "p10": 41.7,
+          "p50": 61.7,
+          "p90": 92.1,
+          "target": 90,
+          "targetProbability": 0.11300000000000636,
+          "monteCarlo95": [
+            0.09986032758661821,
+            0.12762346700908422
+          ]
+        },
+        "independent": {
+          "mean": 64.5947750000035,
+          "p10": 42.85,
+          "p50": 63.7,
+          "p90": 88.25,
+          "target": 90,
+          "targetProbability": 0.08200000000000461,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 64.51810000000349,
+          "p10": 40.95,
+          "p50": 61.95,
+          "p90": 91.85,
+          "target": 90,
+          "targetProbability": 0.11600000000000653,
+          "monteCarlo95": [
+            0.10269607466146724,
+            0.13077621765054803
+          ]
+        },
+        "independent": {
+          "mean": 64.51810000000336,
+          "p10": 42.7,
+          "p50": 63.25,
+          "p90": 88.2,
+          "target": 90,
+          "targetProbability": 0.08400000000000472,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1001:1002,1005,1008,1009,1013",
+      "salary": 31100,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        }
+      ],
+      "additivePlayerP90": 150.92000000000002,
+      "selection": {
+        "joint": {
+          "mean": 84.98257000000477,
+          "p10": 51.85,
+          "p50": 82.1,
+          "p90": 121.65,
+          "target": 90,
+          "targetProbability": 0.4005000000000142,
+          "monteCarlo95": [
+            0.37923570117817595,
+            0.42214579123082163
+          ]
+        },
+        "independent": {
+          "mean": 84.98257000000454,
+          "p10": 59.71,
+          "p50": 83.16,
+          "p90": 111.99,
+          "target": 90,
+          "targetProbability": 0.37700000000001416,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 85.65711000000464,
+          "p10": 52.22,
+          "p50": 82.99,
+          "p90": 123.72,
+          "target": 90,
+          "targetProbability": 0.4030000000000142,
+          "monteCarlo95": [
+            0.38170901476391733,
+            0.424662892408674
+          ]
+        },
+        "independent": {
+          "mean": 85.65711000000466,
+          "p10": 60.7,
+          "p50": 84.18,
+          "p90": 112.01,
+          "target": 90,
+          "targetProbability": 0.38600000000001417,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1012:1002,1007,1010,1014,1015",
+      "salary": 29050,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        }
+      ],
+      "additivePlayerP90": 136.25,
+      "selection": {
+        "joint": {
+          "mean": 73.28380000000409,
+          "p10": 46.5,
+          "p50": 70.5,
+          "p90": 104.75,
+          "target": 90,
+          "targetProbability": 0.21300000000001199,
+          "monteCarlo95": [
+            0.19561533085664606,
+            0.23148505428281696
+          ]
+        },
+        "independent": {
+          "mean": 73.28380000000405,
+          "p10": 50.45,
+          "p50": 71.85,
+          "p90": 97.35,
+          "target": 90,
+          "targetProbability": 0.17650000000000993,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 73.51730000000404,
+          "p10": 46.2,
+          "p50": 70.25,
+          "p90": 106.05,
+          "target": 90,
+          "targetProbability": 0.23750000000001337,
+          "monteCarlo95": [
+            0.2193640587175235,
+            0.2566423911051609
+          ]
+        },
+        "independent": {
+          "mean": 73.51730000000386,
+          "p10": 49.9,
+          "p50": 71.3,
+          "p90": 99.65,
+          "target": 90,
+          "targetProbability": 0.19600000000001103,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1008:1000,1001,1002,1004,1010",
+      "salary": 32300,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        }
+      ],
+      "additivePlayerP90": 154.22,
+      "selection": {
+        "joint": {
+          "mean": 88.32554000000462,
+          "p10": 54.16,
+          "p50": 86.06,
+          "p90": 127.98,
+          "target": 90,
+          "targetProbability": 0.4390000000000142,
+          "monteCarlo95": [
+            0.41738810737259274,
+            0.46084577239574837
+          ]
+        },
+        "independent": {
+          "mean": 88.32554000000489,
+          "p10": 63.2,
+          "p50": 87.28,
+          "p90": 114.38,
+          "target": 90,
+          "targetProbability": 0.4485000000000142,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 88.13776000000477,
+          "p10": 54.08,
+          "p50": 85.28,
+          "p90": 126.56,
+          "target": 90,
+          "targetProbability": 0.4450000000000142,
+          "monteCarlo95": [
+            0.42334598288821973,
+            0.46686489231274636
+          ]
+        },
+        "independent": {
+          "mean": 88.1377600000048,
+          "p10": 63.92,
+          "p50": 87,
+          "p90": 113.38,
+          "target": 90,
+          "targetProbability": 0.4455000000000142,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1003:1000,1001,1002,1008,1012",
+      "salary": 34750,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        }
+      ],
+      "additivePlayerP90": 146.67000000000002,
+      "selection": {
+        "joint": {
+          "mean": 81.47059000000449,
+          "p10": 46.25,
+          "p50": 78.57,
+          "p90": 120.47,
+          "target": 90,
+          "targetProbability": 0.34850000000001413,
+          "monteCarlo95": [
+            0.32792549501682583,
+            0.3696553703094219
+          ]
+        },
+        "independent": {
+          "mean": 81.47059000000435,
+          "p10": 57.07,
+          "p50": 80.18,
+          "p90": 108.42,
+          "target": 90,
+          "targetProbability": 0.3105000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 81.61273500000448,
+          "p10": 47.64,
+          "p50": 77.76,
+          "p90": 120.57,
+          "target": 90,
+          "targetProbability": 0.35350000000001414,
+          "monteCarlo95": [
+            0.3328477027136494,
+            0.37471399213978585
+          ]
+        },
+        "independent": {
+          "mean": 81.61273500000428,
+          "p10": 57.61,
+          "p50": 79.93,
+          "p90": 107.57,
+          "target": 90,
+          "targetProbability": 0.3180000000000141,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1014:1001,1009,1011,1013,1015",
+      "salary": 30400,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        }
+      ],
+      "additivePlayerP90": 152.47,
+      "selection": {
+        "joint": {
+          "mean": 83.0457950000045,
+          "p10": 46.34,
+          "p50": 78.99,
+          "p90": 127.52,
+          "target": 90,
+          "targetProbability": 0.37250000000001415,
+          "monteCarlo95": [
+            0.3515746912837613,
+            0.3939141557729864
+          ]
+        },
+        "independent": {
+          "mean": 83.0457950000044,
+          "p10": 57.51,
+          "p50": 81.72,
+          "p90": 110.13,
+          "target": 90,
+          "targetProbability": 0.34850000000001413,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 84.0677100000047,
+          "p10": 45.89,
+          "p50": 79.11,
+          "p90": 129.69,
+          "target": 90,
+          "targetProbability": 0.38300000000001416,
+          "monteCarlo95": [
+            0.36193886129420594,
+            0.40450972776963545
+          ]
+        },
+        "independent": {
+          "mean": 84.0677100000045,
+          "p10": 58.25,
+          "p50": 82.31,
+          "p90": 112.87,
+          "target": 90,
+          "targetProbability": 0.36050000000001414,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1008:1006,1007,1009,1010,1011",
+      "salary": 28100,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        }
+      ],
+      "additivePlayerP90": 138.42000000000002,
+      "selection": {
+        "joint": {
+          "mean": 77.50117000000427,
+          "p10": 50.96,
+          "p50": 75.14,
+          "p90": 107.94,
+          "target": 90,
+          "targetProbability": 0.26600000000001406,
+          "monteCarlo95": [
+            0.24709676197879119,
+            0.2858004161488632
+          ]
+        },
+        "independent": {
+          "mean": 77.5011700000044,
+          "p10": 54.46,
+          "p50": 76.68,
+          "p90": 101.4,
+          "target": 90,
+          "targetProbability": 0.231000000000013,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 78.19046000000425,
+          "p10": 51.58,
+          "p50": 76.26,
+          "p90": 108.08,
+          "target": 90,
+          "targetProbability": 0.2855000000000141,
+          "monteCarlo95": [
+            0.2661317454119897,
+            0.30569066787169585
+          ]
+        },
+        "independent": {
+          "mean": 78.19046000000435,
+          "p10": 55.02,
+          "p50": 76.84,
+          "p90": 102.72,
+          "target": 90,
+          "targetProbability": 0.25600000000001405,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1017:1003,1004,1006,1009,1012",
+      "salary": 31600,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        }
+      ],
+      "additivePlayerP90": 127.42000000000002,
+      "selection": {
+        "joint": {
+          "mean": 66.34827000000367,
+          "p10": 35.08,
+          "p50": 63.36,
+          "p90": 101.8,
+          "target": 90,
+          "targetProbability": 0.18600000000001046,
+          "monteCarlo95": [
+            0.1695546371104076,
+            0.20364926858224006
+          ]
+        },
+        "independent": {
+          "mean": 66.3482700000036,
+          "p10": 44.02,
+          "p50": 65.4,
+          "p90": 90.06,
+          "target": 90,
+          "targetProbability": 0.10100000000000568,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 66.26386000000356,
+          "p10": 34.78,
+          "p50": 64.04,
+          "p90": 100.36,
+          "target": 90,
+          "targetProbability": 0.1830000000000103,
+          "monteCarlo95": [
+            0.16666695547446111,
+            0.20054845250187373
+          ]
+        },
+        "independent": {
+          "mean": 66.26386000000367,
+          "p10": 43.84,
+          "p50": 65.56,
+          "p90": 90.74,
+          "target": 90,
+          "targetProbability": 0.10550000000000594,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1014:1001,1003,1004,1005,1013",
+      "salary": 29800,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        }
+      ],
+      "additivePlayerP90": 136.25,
+      "selection": {
+        "joint": {
+          "mean": 69.81527500000387,
+          "p10": 38.8,
+          "p50": 66.05,
+          "p90": 106.25,
+          "target": 90,
+          "targetProbability": 0.21950000000001235,
+          "monteCarlo95": [
+            0.20190717147291654,
+            0.23816829205189094
+          ]
+        },
+        "independent": {
+          "mean": 69.81527500000382,
+          "p10": 45.8,
+          "p50": 68.3,
+          "p90": 95.05,
+          "target": 90,
+          "targetProbability": 0.1530000000000086,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 69.42185000000372,
+          "p10": 37.85,
+          "p50": 66.3,
+          "p90": 106.4,
+          "target": 90,
+          "targetProbability": 0.21600000000001215,
+          "monteCarlo95": [
+            0.1985184360116872,
+            0.23457044684408865
+          ]
+        },
+        "independent": {
+          "mean": 69.4218500000038,
+          "p10": 45.35,
+          "p50": 67.9,
+          "p90": 95.25,
+          "target": 90,
+          "targetProbability": 0.14150000000000795,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1006:1004,1007,1009,1012,1015",
+      "salary": 29300,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        }
+      ],
+      "additivePlayerP90": 129.32,
+      "selection": {
+        "joint": {
+          "mean": 65.64659500000363,
+          "p10": 35.49,
+          "p50": 62.27,
+          "p90": 101.07,
+          "target": 90,
+          "targetProbability": 0.17900000000001007,
+          "monteCarlo95": [
+            0.16281935972426528,
+            0.19641138463031912
+          ]
+        },
+        "independent": {
+          "mean": 65.6465950000035,
+          "p10": 43.35,
+          "p50": 63.73,
+          "p90": 89.51,
+          "target": 90,
+          "targetProbability": 0.0960000000000054,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 65.76926000000363,
+          "p10": 35.21,
+          "p50": 62.89,
+          "p90": 100.22,
+          "target": 90,
+          "targetProbability": 0.18050000000001015,
+          "monteCarlo95": [
+            0.1642618495364823,
+            0.19796314367625853
+          ]
+        },
+        "independent": {
+          "mean": 65.76926000000367,
+          "p10": 41.9,
+          "p50": 64.62,
+          "p90": 91.04,
+          "target": 90,
+          "targetProbability": 0.10800000000000608,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1010:1000,1001,1008,1011,1013",
+      "salary": 33700,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        }
+      ],
+      "additivePlayerP90": 159.97,
+      "selection": {
+        "joint": {
+          "mean": 92.16274000000502,
+          "p10": 58.91,
+          "p50": 89.61,
+          "p90": 128.84,
+          "target": 90,
+          "targetProbability": 0.49350000000001426,
+          "monteCarlo95": [
+            0.4716222579682337,
+            0.515402663646451
+          ]
+        },
+        "independent": {
+          "mean": 92.1627400000051,
+          "p10": 66.15,
+          "p50": 90.6,
+          "p90": 119.42,
+          "target": 90,
+          "targetProbability": 0.515000000000016,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 92.76501000000523,
+          "p10": 59.01,
+          "p50": 89.61,
+          "p90": 131.11,
+          "target": 90,
+          "targetProbability": 0.49350000000001426,
+          "monteCarlo95": [
+            0.4716222579682337,
+            0.515402663646451
+          ]
+        },
+        "independent": {
+          "mean": 92.76501000000512,
+          "p10": 66.91,
+          "p50": 90.73,
+          "p90": 120.24,
+          "target": 90,
+          "targetProbability": 0.5155000000000161,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1000,1005,1012,1013,1015",
+      "salary": 28350,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        }
+      ],
+      "additivePlayerP90": 125.62,
+      "selection": {
+        "joint": {
+          "mean": 64.07939000000356,
+          "p10": 36.64,
+          "p50": 61.52,
+          "p90": 95.74,
+          "target": 90,
+          "targetProbability": 0.13950000000000784,
+          "monteCarlo95": [
+            0.1250055929377428,
+            0.15537659815205615
+          ]
+        },
+        "independent": {
+          "mean": 64.07939000000357,
+          "p10": 41.82,
+          "p50": 63.02,
+          "p90": 87.6,
+          "target": 90,
+          "targetProbability": 0.08200000000000461,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 64.14796000000365,
+          "p10": 36.78,
+          "p50": 61.24,
+          "p90": 95.5,
+          "target": 90,
+          "targetProbability": 0.14700000000000826,
+          "monteCarlo95": [
+            0.13215774792822385,
+            0.16319568745235716
+          ]
+        },
+        "independent": {
+          "mean": 64.14796000000348,
+          "p10": 42.32,
+          "p50": 63.06,
+          "p90": 87.24,
+          "target": 90,
+          "targetProbability": 0.07850000000000441,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1000,1002,1009,1010,1014",
+      "salary": 30750,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        }
+      ],
+      "additivePlayerP90": 151.94,
+      "selection": {
+        "joint": {
+          "mean": 85.3014100000046,
+          "p10": 54.18,
+          "p50": 82.66,
+          "p90": 120.86,
+          "target": 90,
+          "targetProbability": 0.4015000000000142,
+          "monteCarlo95": [
+            0.380224957074592,
+            0.4231527012398431
+          ]
+        },
+        "independent": {
+          "mean": 85.3014100000047,
+          "p10": 60.96,
+          "p50": 84.52,
+          "p90": 110.68,
+          "target": 90,
+          "targetProbability": 0.37950000000001416,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 85.47567000000474,
+          "p10": 53.72,
+          "p50": 82.58,
+          "p90": 121.72,
+          "target": 90,
+          "targetProbability": 0.4025000000000142,
+          "monteCarlo95": [
+            0.3812143057070642,
+            0.42415951851280836
+          ]
+        },
+        "independent": {
+          "mean": 85.47567000000477,
+          "p10": 60.5,
+          "p50": 84.72,
+          "p90": 112,
+          "target": 90,
+          "targetProbability": 0.39050000000001417,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1000,1002,1006,1009,1014",
+      "salary": 28550,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        }
+      ],
+      "additivePlayerP90": 143.44,
+      "selection": {
+        "joint": {
+          "mean": 78.08756000000439,
+          "p10": 46.62,
+          "p50": 75.36,
+          "p90": 113.54,
+          "target": 90,
+          "targetProbability": 0.3170000000000141,
+          "monteCarlo95": [
+            0.2969747332191193,
+            0.3377269060858474
+          ]
+        },
+        "independent": {
+          "mean": 78.0875600000044,
+          "p10": 53.52,
+          "p50": 77.14,
+          "p90": 102.88,
+          "target": 90,
+          "targetProbability": 0.26400000000001406,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 78.35727000000432,
+          "p10": 45.8,
+          "p50": 75.76,
+          "p90": 114.42,
+          "target": 90,
+          "targetProbability": 0.3210000000000141,
+          "monteCarlo95": [
+            0.30089919242159213,
+            0.34178711050512445
+          ]
+        },
+        "independent": {
+          "mean": 78.3572700000044,
+          "p10": 54.04,
+          "p50": 77.26,
+          "p90": 103.46,
+          "target": 90,
+          "targetProbability": 0.26500000000001406,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1001:1000,1003,1004,1006,1013",
+      "salary": 34600,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        }
+      ],
+      "additivePlayerP90": 148.62,
+      "selection": {
+        "joint": {
+          "mean": 79.77024000000436,
+          "p10": 42.19,
+          "p50": 74.65,
+          "p90": 124.95,
+          "target": 90,
+          "targetProbability": 0.3390000000000141,
+          "monteCarlo95": [
+            0.31858027518215065,
+            0.3600370140424409
+          ]
+        },
+        "independent": {
+          "mean": 79.7702400000044,
+          "p10": 55.77,
+          "p50": 78.01,
+          "p90": 106.66,
+          "target": 90,
+          "targetProbability": 0.3025000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 79.51576000000456,
+          "p10": 43.21,
+          "p50": 75.63,
+          "p90": 121.87,
+          "target": 90,
+          "targetProbability": 0.3430000000000141,
+          "monteCarlo95": [
+            0.3225139826846588,
+            0.3640879701616827
+          ]
+        },
+        "independent": {
+          "mean": 79.51576000000445,
+          "p10": 53.41,
+          "p50": 77.92,
+          "p90": 105.56,
+          "target": 90,
+          "targetProbability": 0.2880000000000141,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1017:1001,1002,1004,1009,1013",
+      "salary": 31000,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        }
+      ],
+      "additivePlayerP90": 143.51999999999998,
+      "selection": {
+        "joint": {
+          "mean": 80.75347000000416,
+          "p10": 49.74,
+          "p50": 78.12,
+          "p90": 114.66,
+          "target": 90,
+          "targetProbability": 0.3405000000000141,
+          "monteCarlo95": [
+            0.3200552231949871,
+            0.3615563148877607
+          ]
+        },
+        "independent": {
+          "mean": 80.75347000000434,
+          "p10": 57.54,
+          "p50": 79.86,
+          "p90": 104.88,
+          "target": 90,
+          "targetProbability": 0.3020000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 81.03211000000445,
+          "p10": 48.7,
+          "p50": 79.12,
+          "p90": 116.34,
+          "target": 90,
+          "targetProbability": 0.34900000000001413,
+          "monteCarlo95": [
+            0.3284176026246714,
+            0.3701613456542951
+          ]
+        },
+        "independent": {
+          "mean": 81.03211000000437,
+          "p10": 57.94,
+          "p50": 80.22,
+          "p90": 106.28,
+          "target": 90,
+          "targetProbability": 0.3075000000000141,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1009:1004,1012,1014,1015,1016",
+      "salary": 30250,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        }
+      ],
+      "additivePlayerP90": 134.78,
+      "selection": {
+        "joint": {
+          "mean": 69.0600300000038,
+          "p10": 35.74,
+          "p50": 64.94,
+          "p90": 110.06,
+          "target": 90,
+          "targetProbability": 0.22650000000001275,
+          "monteCarlo95": [
+            0.20869026558288367,
+            0.24535835927998706
+          ]
+        },
+        "independent": {
+          "mean": 69.06003000000375,
+          "p10": 44.52,
+          "p50": 68.06,
+          "p90": 94.3,
+          "target": 90,
+          "targetProbability": 0.1390000000000078,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 69.43164000000381,
+          "p10": 34.56,
+          "p50": 65.28,
+          "p90": 110.02,
+          "target": 90,
+          "targetProbability": 0.25000000000001404,
+          "monteCarlo95": [
+            0.23151413442483237,
+            0.26944438921582203
+          ]
+        },
+        "independent": {
+          "mean": 69.43164000000375,
+          "p10": 44.46,
+          "p50": 68.38,
+          "p90": 95.62,
+          "target": 90,
+          "targetProbability": 0.15050000000000846,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1012:1001,1006,1014,1015,1017",
+      "salary": 29050,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        }
+      ],
+      "additivePlayerP90": 129.95,
+      "selection": {
+        "joint": {
+          "mean": 67.80375000000376,
+          "p10": 38.6,
+          "p50": 64.5,
+          "p90": 100.8,
+          "target": 90,
+          "targetProbability": 0.18250000000001027,
+          "monteCarlo95": [
+            0.166185839376447,
+            0.20003148564716905
+          ]
+        },
+        "independent": {
+          "mean": 67.80375000000372,
+          "p10": 44.85,
+          "p50": 65.9,
+          "p90": 92.25,
+          "target": 90,
+          "targetProbability": 0.11950000000000673,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 67.82270000000355,
+          "p10": 38.3,
+          "p50": 65.75,
+          "p90": 101.4,
+          "target": 90,
+          "targetProbability": 0.195500000000011,
+          "monteCarlo95": [
+            0.17870981012232062,
+            0.21345767167198432
+          ]
+        },
+        "independent": {
+          "mean": 67.82270000000373,
+          "p10": 44.95,
+          "p50": 66.5,
+          "p90": 91.5,
+          "target": 90,
+          "targetProbability": 0.11500000000000647,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1014:1002,1005,1006,1008,1010",
+      "salary": 25800,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        }
+      ],
+      "additivePlayerP90": 139.05,
+      "selection": {
+        "joint": {
+          "mean": 75.07827500000406,
+          "p10": 45.5,
+          "p50": 72.1,
+          "p90": 109.15,
+          "target": 90,
+          "targetProbability": 0.25450000000001405,
+          "monteCarlo95": [
+            0.23589336070017392,
+            0.27404790951494923
+          ]
+        },
+        "independent": {
+          "mean": 75.07827500000415,
+          "p10": 52,
+          "p50": 73.75,
+          "p90": 99.55,
+          "target": 90,
+          "targetProbability": 0.2080000000000117,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 75.21810000000413,
+          "p10": 44.1,
+          "p50": 73.35,
+          "p90": 108.55,
+          "target": 90,
+          "targetProbability": 0.27300000000001406,
+          "monteCarlo95": [
+            0.25392446334754404,
+            0.2929458761181728
+          ]
+        },
+        "independent": {
+          "mean": 75.21810000000407,
+          "p10": 51.3,
+          "p50": 73.7,
+          "p90": 100.85,
+          "target": 90,
+          "targetProbability": 0.21900000000001232,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1001,1006,1007,1013,1017",
+      "salary": 26850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        }
+      ],
+      "additivePlayerP90": 133.7,
+      "selection": {
+        "joint": {
+          "mean": 75.20730000000411,
+          "p10": 49.8,
+          "p50": 73.25,
+          "p90": 104.5,
+          "target": 90,
+          "targetProbability": 0.23150000000001303,
+          "monteCarlo95": [
+            0.2135398114296834,
+            0.25048964296037535
+          ]
+        },
+        "independent": {
+          "mean": 75.20730000000412,
+          "p10": 51.75,
+          "p50": 73.9,
+          "p90": 99.9,
+          "target": 90,
+          "targetProbability": 0.2095000000000118,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 75.5380500000044,
+          "p10": 50.05,
+          "p50": 73.45,
+          "p90": 103.9,
+          "target": 90,
+          "targetProbability": 0.24250000000001365,
+          "monteCarlo95": [
+            0.22422149850379308,
+            0.2617657808460794
+          ]
+        },
+        "independent": {
+          "mean": 75.53805000000405,
+          "p10": 52.8,
+          "p50": 73.8,
+          "p90": 100.8,
+          "target": 90,
+          "targetProbability": 0.21400000000001204,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1012:1000,1004,1006,1013,1014",
+      "salary": 31950,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        }
+      ],
+      "additivePlayerP90": 136.77,
+      "selection": {
+        "joint": {
+          "mean": 68.92324000000382,
+          "p10": 33.61,
+          "p50": 65.48,
+          "p90": 110.25,
+          "target": 90,
+          "targetProbability": 0.23250000000001309,
+          "monteCarlo95": [
+            0.21451015952569644,
+            0.2515154607697999
+          ]
+        },
+        "independent": {
+          "mean": 68.9232400000038,
+          "p10": 45.03,
+          "p50": 67.85,
+          "p90": 94.1,
+          "target": 90,
+          "targetProbability": 0.14100000000000792,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 68.90071000000376,
+          "p10": 32.82,
+          "p50": 65.54,
+          "p90": 109.39,
+          "target": 90,
+          "targetProbability": 0.24800000000001396,
+          "monteCarlo95": [
+            0.22956868258992685,
+            0.26739750923985245
+          ]
+        },
+        "independent": {
+          "mean": 68.90071000000376,
+          "p10": 45.17,
+          "p50": 68.11,
+          "p90": 93.52,
+          "target": 90,
+          "targetProbability": 0.13850000000000778,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1017:1004,1005,1009,1011,1013",
+      "salary": 28400,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        }
+      ],
+      "additivePlayerP90": 135.32,
+      "selection": {
+        "joint": {
+          "mean": 73.29757000000403,
+          "p10": 41.84,
+          "p50": 70.3,
+          "p90": 109.24,
+          "target": 90,
+          "targetProbability": 0.24900000000001402,
+          "monteCarlo95": [
+            0.23054134102116292,
+            0.268421016714054
+          ]
+        },
+        "independent": {
+          "mean": 73.29757000000411,
+          "p10": 51.24,
+          "p50": 72.12,
+          "p90": 97.36,
+          "target": 90,
+          "targetProbability": 0.18050000000001015,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 73.93501000000398,
+          "p10": 41.1,
+          "p50": 71.64,
+          "p90": 110.7,
+          "target": 90,
+          "targetProbability": 0.26350000000001406,
+          "monteCarlo95": [
+            0.2446597918795603,
+            0.28324697148450034
+          ]
+        },
+        "independent": {
+          "mean": 73.9350100000041,
+          "p10": 50.32,
+          "p50": 72.9,
+          "p90": 98.26,
+          "target": 90,
+          "targetProbability": 0.19650000000001105,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1017:1003,1004,1005,1007,1008",
+      "salary": 24700,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        }
+      ],
+      "additivePlayerP90": 107.69999999999999,
+      "selection": {
+        "joint": {
+          "mean": 55.60240000000304,
+          "p10": 34.8,
+          "p50": 53.8,
+          "p90": 80.1,
+          "target": 90,
+          "targetProbability": 0.04050000000000227,
+          "monteCarlo95": [
+            0.03270494331440531,
+            0.05005682313707066
+          ]
+        },
+        "independent": {
+          "mean": 55.602400000003016,
+          "p10": 35.4,
+          "p50": 54.5,
+          "p90": 77.1,
+          "target": 90,
+          "targetProbability": 0.02900000000000162,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 54.79870000000307,
+          "p10": 34.2,
+          "p50": 52.8,
+          "p90": 77.3,
+          "target": 90,
+          "targetProbability": 0.03250000000000182,
+          "monteCarlo95": [
+            0.02558069882617188,
+            0.04121174038180324
+          ]
+        },
+        "independent": {
+          "mean": 54.79870000000306,
+          "p10": 35.4,
+          "p50": 53.6,
+          "p90": 75.5,
+          "target": 90,
+          "targetProbability": 0.019500000000001086,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1001,1004,1010,1016,1017",
+      "salary": 26650,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 122.5,
+      "selection": {
+        "joint": {
+          "mean": 67.6128000000037,
+          "p10": 48.9,
+          "p50": 66.6,
+          "p90": 87.9,
+          "target": 90,
+          "targetProbability": 0.0800000000000045,
+          "monteCarlo95": [
+            0.06889957451773855,
+            0.09271074519852289
+          ]
+        },
+        "independent": {
+          "mean": 67.6128000000037,
+          "p10": 46.9,
+          "p50": 66.2,
+          "p90": 90.2,
+          "target": 90,
+          "targetProbability": 0.1030000000000058,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 66.86675000000363,
+          "p10": 48,
+          "p50": 65.6,
+          "p90": 87.6,
+          "target": 90,
+          "targetProbability": 0.08250000000000464,
+          "monteCarlo95": [
+            0.07122770865268653,
+            0.09537302582716893
+          ]
+        },
+        "independent": {
+          "mean": 66.8667500000038,
+          "p10": 46.1,
+          "p50": 65.6,
+          "p90": 89.3,
+          "target": 90,
+          "targetProbability": 0.09050000000000509,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1009:1005,1006,1007,1011,1016",
+      "salary": 26650,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        }
+      ],
+      "additivePlayerP90": 134.78,
+      "selection": {
+        "joint": {
+          "mean": 72.50793000000385,
+          "p10": 46.1,
+          "p50": 69.7,
+          "p90": 102.74,
+          "target": 90,
+          "targetProbability": 0.21050000000001184,
+          "monteCarlo95": [
+            0.19319716849696048,
+            0.22891280187890858
+          ]
+        },
+        "independent": {
+          "mean": 72.50793000000398,
+          "p10": 48.54,
+          "p50": 70.74,
+          "p90": 99.12,
+          "target": 90,
+          "targetProbability": 0.1815000000000102,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 73.52509000000417,
+          "p10": 45.92,
+          "p50": 71.12,
+          "p90": 104.02,
+          "target": 90,
+          "targetProbability": 0.2330000000000131,
+          "monteCarlo95": [
+            0.2149953879021899,
+            0.2520283153460253
+          ]
+        },
+        "independent": {
+          "mean": 73.52509000000398,
+          "p10": 48.7,
+          "p50": 71.6,
+          "p90": 100.28,
+          "target": 90,
+          "targetProbability": 0.21300000000001199,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1001:1000,1002,1003,1004,1009",
+      "salary": 36900,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        }
+      ],
+      "additivePlayerP90": 165.44,
+      "selection": {
+        "joint": {
+          "mean": 93.44126000000496,
+          "p10": 53.15,
+          "p50": 89.15,
+          "p90": 141,
+          "target": 90,
+          "targetProbability": 0.49200000000001426,
+          "monteCarlo95": [
+            0.4701260841184968,
+            0.5139045886380316
+          ]
+        },
+        "independent": {
+          "mean": 93.44126000000509,
+          "p10": 66.69,
+          "p50": 91.95,
+          "p90": 122.51,
+          "target": 90,
+          "targetProbability": 0.5335000000000181,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 93.56212000000502,
+          "p10": 53.75,
+          "p50": 89.3,
+          "p90": 138.92,
+          "target": 90,
+          "targetProbability": 0.49300000000001426,
+          "monteCarlo95": [
+            0.47112351149483855,
+            0.5149033271671274
+          ]
+        },
+        "independent": {
+          "mean": 93.56212000000501,
+          "p10": 65.93,
+          "p50": 92.05,
+          "p90": 122.06,
+          "target": 90,
+          "targetProbability": 0.5350000000000182,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1000:1003,1008,1009,1015,1017",
+      "salary": 32350,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 139.3,
+      "selection": {
+        "joint": {
+          "mean": 75.75338000000427,
+          "p10": 41.22,
+          "p50": 72.3,
+          "p90": 115.16,
+          "target": 90,
+          "targetProbability": 0.3035000000000141,
+          "monteCarlo95": [
+            0.28374259404555163,
+            0.32401080553600886
+          ]
+        },
+        "independent": {
+          "mean": 75.75338000000424,
+          "p10": 50.6,
+          "p50": 74.76,
+          "p90": 102.58,
+          "target": 90,
+          "targetProbability": 0.23850000000001342,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 75.89045000000428,
+          "p10": 40.3,
+          "p50": 72.14,
+          "p90": 114.54,
+          "target": 90,
+          "targetProbability": 0.3045000000000141,
+          "monteCarlo95": [
+            0.28472205945192497,
+            0.325027506035073
+          ]
+        },
+        "independent": {
+          "mean": 75.89045000000428,
+          "p10": 51.3,
+          "p50": 74.66,
+          "p90": 103.02,
+          "target": 90,
+          "targetProbability": 0.23950000000001348,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1013:1003,1008,1010,1012,1014",
+      "salary": 31450,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        }
+      ],
+      "additivePlayerP90": 130.25,
+      "selection": {
+        "joint": {
+          "mean": 67.79662500000377,
+          "p10": 39.45,
+          "p50": 64.75,
+          "p90": 100.25,
+          "target": 90,
+          "targetProbability": 0.18000000000001012,
+          "monteCarlo95": [
+            0.16378097147757664,
+            0.19744593878244537
+          ]
+        },
+        "independent": {
+          "mean": 67.79662500000381,
+          "p10": 45.95,
+          "p50": 66.05,
+          "p90": 92.15,
+          "target": 90,
+          "targetProbability": 0.1190000000000067,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 67.93710000000377,
+          "p10": 38.6,
+          "p50": 64.6,
+          "p90": 102.3,
+          "target": 90,
+          "targetProbability": 0.18700000000001052,
+          "monteCarlo95": [
+            0.17051756940287205,
+            0.20468250219521322
+          ]
+        },
+        "independent": {
+          "mean": 67.93710000000375,
+          "p10": 45,
+          "p50": 66.5,
+          "p90": 93.6,
+          "target": 90,
+          "targetProbability": 0.12950000000000728,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1017:1002,1003,1007,1009,1011",
+      "salary": 28500,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        }
+      ],
+      "additivePlayerP90": 135.52,
+      "selection": {
+        "joint": {
+          "mean": 77.2032200000041,
+          "p10": 52.2,
+          "p50": 74.54,
+          "p90": 106.32,
+          "target": 90,
+          "targetProbability": 0.26200000000001405,
+          "monteCarlo95": [
+            0.24319799240912957,
+            0.2817145220967748
+          ]
+        },
+        "independent": {
+          "mean": 77.20322000000417,
+          "p10": 54.7,
+          "p50": 76.04,
+          "p90": 101.52,
+          "target": 90,
+          "targetProbability": 0.23550000000001325,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 77.98016000000447,
+          "p10": 50.8,
+          "p50": 76.6,
+          "p90": 106.8,
+          "target": 90,
+          "targetProbability": 0.27650000000001407,
+          "monteCarlo95": [
+            0.25734059205455545,
+            0.2965163280801926
+          ]
+        },
+        "independent": {
+          "mean": 77.98016000000439,
+          "p10": 54.68,
+          "p50": 77.06,
+          "p90": 101.78,
+          "target": 90,
+          "targetProbability": 0.2470000000000139,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1004:1005,1006,1008,1011,1012",
+      "salary": 27650,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        }
+      ],
+      "additivePlayerP90": 130.45000000000002,
+      "selection": {
+        "joint": {
+          "mean": 67.60645000000375,
+          "p10": 37.9,
+          "p50": 64.5,
+          "p90": 101.95,
+          "target": 90,
+          "targetProbability": 0.18800000000001058,
+          "monteCarlo95": [
+            0.17148068565540742,
+            0.20571555184811546
+          ]
+        },
+        "independent": {
+          "mean": 67.60645000000363,
+          "p10": 44.6,
+          "p50": 66.05,
+          "p90": 92.65,
+          "target": 90,
+          "targetProbability": 0.11500000000000647,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 67.87410000000361,
+          "p10": 39.05,
+          "p50": 66.15,
+          "p90": 99.65,
+          "target": 90,
+          "targetProbability": 0.18050000000001015,
+          "monteCarlo95": [
+            0.1642618495364823,
+            0.19796314367625853
+          ]
+        },
+        "independent": {
+          "mean": 67.87410000000362,
+          "p10": 45.05,
+          "p50": 66.45,
+          "p90": 92.65,
+          "target": 90,
+          "targetProbability": 0.11850000000000667,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1003:1006,1009,1010,1014,1016",
+      "salary": 31250,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        }
+      ],
+      "additivePlayerP90": 137.76999999999998,
+      "selection": {
+        "joint": {
+          "mean": 72.76577000000405,
+          "p10": 41.82,
+          "p50": 70.08,
+          "p90": 107.89,
+          "target": 90,
+          "targetProbability": 0.25000000000001404,
+          "monteCarlo95": [
+            0.23151413442483237,
+            0.26944438921582203
+          ]
+        },
+        "independent": {
+          "mean": 72.76577000000388,
+          "p10": 49.64,
+          "p50": 70.89,
+          "p90": 98.25,
+          "target": 90,
+          "targetProbability": 0.1865000000000105,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 72.970735000004,
+          "p10": 41.17,
+          "p50": 69.79,
+          "p90": 107.99,
+          "target": 90,
+          "targetProbability": 0.25000000000001404,
+          "monteCarlo95": [
+            0.23151413442483237,
+            0.26944438921582203
+          ]
+        },
+        "independent": {
+          "mean": 72.97073500000414,
+          "p10": 49,
+          "p50": 72.47,
+          "p90": 98.96,
+          "target": 90,
+          "targetProbability": 0.18200000000001024,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1014:1001,1002,1003,1006,1007",
+      "salary": 27800,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        }
+      ],
+      "additivePlayerP90": 136.75,
+      "selection": {
+        "joint": {
+          "mean": 73.67927500000393,
+          "p10": 45.9,
+          "p50": 71.1,
+          "p90": 105.55,
+          "target": 90,
+          "targetProbability": 0.231000000000013,
+          "monteCarlo95": [
+            0.2130546918734045,
+            0.24997667956393546
+          ]
+        },
+        "independent": {
+          "mean": 73.6792750000038,
+          "p10": 50.85,
+          "p50": 72.2,
+          "p90": 98.65,
+          "target": 90,
+          "targetProbability": 0.19150000000001077,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 73.56145000000403,
+          "p10": 45.65,
+          "p50": 71.1,
+          "p90": 104.95,
+          "target": 90,
+          "targetProbability": 0.22500000000001266,
+          "monteCarlo95": [
+            0.2072361233297278,
+            0.24381825267498652
+          ]
+        },
+        "independent": {
+          "mean": 73.56145000000407,
+          "p10": 50.05,
+          "p50": 71.6,
+          "p90": 99.15,
+          "target": 90,
+          "targetProbability": 0.1920000000000108,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1015:1000,1002,1011,1016,1017",
+      "salary": 26700,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        }
+      ],
+      "additivePlayerP90": 138.77,
+      "selection": {
+        "joint": {
+          "mean": 77.92444000000427,
+          "p10": 50.85,
+          "p50": 74.85,
+          "p90": 109.07,
+          "target": 90,
+          "targetProbability": 0.27800000000001407,
+          "monteCarlo95": [
+            0.2588051058002637,
+            0.2980460631926406
+          ]
+        },
+        "independent": {
+          "mean": 77.92444000000417,
+          "p10": 53.72,
+          "p50": 76.74,
+          "p90": 102.57,
+          "target": 90,
+          "targetProbability": 0.25800000000001405,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 78.91998500000429,
+          "p10": 50.72,
+          "p50": 76.78,
+          "p90": 110.15,
+          "target": 90,
+          "targetProbability": 0.2940000000000141,
+          "monteCarlo95": [
+            0.27444332139811883,
+            0.31434650208178544
+          ]
+        },
+        "independent": {
+          "mean": 78.91998500000442,
+          "p10": 55.01,
+          "p50": 77.66,
+          "p90": 105.06,
+          "target": 90,
+          "targetProbability": 0.26350000000001406,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1011:1002,1007,1009,1012,1014",
+      "salary": 29250,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        }
+      ],
+      "additivePlayerP90": 148.57,
+      "selection": {
+        "joint": {
+          "mean": 83.03772000000446,
+          "p10": 51.73,
+          "p50": 79.54,
+          "p90": 119.19,
+          "target": 90,
+          "targetProbability": 0.35100000000001413,
+          "monteCarlo95": [
+            0.3303862849386645,
+            0.372184995151177
+          ]
+        },
+        "independent": {
+          "mean": 83.0377200000045,
+          "p10": 58.11,
+          "p50": 81.77,
+          "p90": 108.93,
+          "target": 90,
+          "targetProbability": 0.34650000000001413,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 84.38241000000447,
+          "p10": 51.5,
+          "p50": 81.89,
+          "p90": 120.19,
+          "target": 90,
+          "targetProbability": 0.39200000000001417,
+          "monteCarlo95": [
+            0.3708307868310391,
+            0.41358329538173977
+          ]
+        },
+        "independent": {
+          "mean": 84.38241000000453,
+          "p10": 58.77,
+          "p50": 83.27,
+          "p90": 112.21,
+          "target": 90,
+          "targetProbability": 0.37250000000001415,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1013:1000,1002,1006,1007,1016",
+      "salary": 27050,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        }
+      ],
+      "additivePlayerP90": 129.77,
+      "selection": {
+        "joint": {
+          "mean": 69.46836500000362,
+          "p10": 43.83,
+          "p50": 66.64,
+          "p90": 99.39,
+          "target": 90,
+          "targetProbability": 0.1795000000000101,
+          "monteCarlo95": [
+            0.16330014148805058,
+            0.19692868581925263
+          ]
+        },
+        "independent": {
+          "mean": 69.46836500000377,
+          "p10": 46.47,
+          "p50": 68.07,
+          "p90": 93.35,
+          "target": 90,
+          "targetProbability": 0.1370000000000077,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 69.98011000000393,
+          "p10": 43.9,
+          "p50": 66.83,
+          "p90": 99.97,
+          "target": 90,
+          "targetProbability": 0.18800000000001058,
+          "monteCarlo95": [
+            0.17148068565540742,
+            0.20571555184811546
+          ]
+        },
+        "independent": {
+          "mean": 69.98011000000382,
+          "p10": 47.09,
+          "p50": 68.31,
+          "p90": 94.16,
+          "target": 90,
+          "targetProbability": 0.1405000000000079,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1015:1002,1007,1012,1013,1017",
+      "salary": 26500,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        }
+      ],
+      "additivePlayerP90": 121.14999999999999,
+      "selection": {
+        "joint": {
+          "mean": 64.34635000000353,
+          "p10": 40.95,
+          "p50": 61.15,
+          "p90": 92.15,
+          "target": 90,
+          "targetProbability": 0.11300000000000636,
+          "monteCarlo95": [
+            0.09986032758661821,
+            0.12762346700908422
+          ]
+        },
+        "independent": {
+          "mean": 64.34635000000354,
+          "p10": 42.4,
+          "p50": 62.75,
+          "p90": 87.8,
+          "target": 90,
+          "targetProbability": 0.07950000000000447,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 64.79262500000358,
+          "p10": 40.05,
+          "p50": 62.55,
+          "p90": 92.05,
+          "target": 90,
+          "targetProbability": 0.12400000000000698,
+          "monteCarlo95": [
+            0.11027238735126008,
+            0.13916923220425606
+          ]
+        },
+        "independent": {
+          "mean": 64.7926250000036,
+          "p10": 42.45,
+          "p50": 63.15,
+          "p90": 88.75,
+          "target": 90,
+          "targetProbability": 0.09300000000000523,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1009:1001,1002,1005,1006,1015",
+      "salary": 31050,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        }
+      ],
+      "additivePlayerP90": 155.78,
+      "selection": {
+        "joint": {
+          "mean": 86.02653000000475,
+          "p10": 49.16,
+          "p50": 81.7,
+          "p90": 127.74,
+          "target": 90,
+          "targetProbability": 0.4165000000000142,
+          "monteCarlo95": [
+            0.3950748629807535,
+            0.4382452839152439
+          ]
+        },
+        "independent": {
+          "mean": 86.02653000000473,
+          "p10": 59.32,
+          "p50": 84.9,
+          "p90": 113.84,
+          "target": 90,
+          "targetProbability": 0.4050000000000142,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 86.90774000000474,
+          "p10": 48.96,
+          "p50": 83.74,
+          "p90": 129.86,
+          "target": 90,
+          "targetProbability": 0.4365000000000142,
+          "monteCarlo95": [
+            0.41490660815975167,
+            0.4583368568449957
+          ]
+        },
+        "independent": {
+          "mean": 86.90774000000468,
+          "p10": 59.84,
+          "p50": 85.56,
+          "p90": 115.06,
+          "target": 90,
+          "targetProbability": 0.4245000000000142,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1000,1001,1002,1011,1013",
+      "salary": 29850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        }
+      ],
+      "additivePlayerP90": 149.42,
+      "selection": {
+        "joint": {
+          "mean": 85.38859000000471,
+          "p10": 56,
+          "p50": 82.88,
+          "p90": 118.28,
+          "target": 90,
+          "targetProbability": 0.39300000000001417,
+          "monteCarlo95": [
+            0.3718192497054655,
+            0.4145909984127509
+          ]
+        },
+        "independent": {
+          "mean": 85.38859000000473,
+          "p10": 60.34,
+          "p50": 84.52,
+          "p90": 110.7,
+          "target": 90,
+          "targetProbability": 0.3980000000000142,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 86.10581000000462,
+          "p10": 56.86,
+          "p50": 83.9,
+          "p90": 116.68,
+          "target": 90,
+          "targetProbability": 0.4060000000000142,
+          "monteCarlo95": [
+            0.3846777545964261,
+            0.4276826502924777
+          ]
+        },
+        "independent": {
+          "mean": 86.10581000000461,
+          "p10": 61.52,
+          "p50": 84.96,
+          "p90": 111.72,
+          "target": 90,
+          "targetProbability": 0.38450000000001416,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1011:1001,1003,1005,1013,1017",
+      "salary": 29650,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 140.35,
+      "selection": {
+        "joint": {
+          "mean": 77.95650000000423,
+          "p10": 48.45,
+          "p50": 75.5,
+          "p90": 112.85,
+          "target": 90,
+          "targetProbability": 0.2875000000000141,
+          "monteCarlo95": [
+            0.26808664838262286,
+            0.3077280967119377
+          ]
+        },
+        "independent": {
+          "mean": 77.9565000000041,
+          "p10": 54.25,
+          "p50": 76.4,
+          "p90": 104.5,
+          "target": 90,
+          "targetProbability": 0.24800000000001396,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 78.78220000000425,
+          "p10": 48.95,
+          "p50": 75.85,
+          "p90": 112.35,
+          "target": 90,
+          "targetProbability": 0.3080000000000141,
+          "monteCarlo95": [
+            0.28815106867261653,
+            0.3285850774834127
+          ]
+        },
+        "independent": {
+          "mean": 78.78220000000428,
+          "p10": 54.6,
+          "p50": 77.15,
+          "p90": 104.9,
+          "target": 90,
+          "targetProbability": 0.25950000000001405,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1006:1000,1003,1007,1011,1014",
+      "salary": 28500,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        }
+      ],
+      "additivePlayerP90": 137.51999999999998,
+      "selection": {
+        "joint": {
+          "mean": 72.83236500000402,
+          "p10": 41.06,
+          "p50": 69.78,
+          "p90": 107.93,
+          "target": 90,
+          "targetProbability": 0.25200000000001405,
+          "monteCarlo95": [
+            0.23346012399825408,
+            0.2714907314532753
+          ]
+        },
+        "independent": {
+          "mean": 72.832365000004,
+          "p10": 49.08,
+          "p50": 71.64,
+          "p90": 97.96,
+          "target": 90,
+          "targetProbability": 0.19350000000001089,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 73.1243600000041,
+          "p10": 42.04,
+          "p50": 69.67,
+          "p90": 109.73,
+          "target": 90,
+          "targetProbability": 0.25150000000001405,
+          "monteCarlo95": [
+            0.23297357642564231,
+            0.27097919607316834
+          ]
+        },
+        "independent": {
+          "mean": 73.1243600000039,
+          "p10": 49.2,
+          "p50": 71.52,
+          "p90": 98.62,
+          "target": 90,
+          "targetProbability": 0.18450000000001038,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1006,1011,1012,1016,1017",
+      "salary": 26350,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 133,
+      "selection": {
+        "joint": {
+          "mean": 74.5017500000041,
+          "p10": 48.9,
+          "p50": 72.25,
+          "p90": 103.5,
+          "target": 90,
+          "targetProbability": 0.22700000000001277,
+          "monteCarlo95": [
+            0.2091750541827102,
+            0.24587165363287933
+          ]
+        },
+        "independent": {
+          "mean": 74.5017500000041,
+          "p10": 50.65,
+          "p50": 72.95,
+          "p90": 99.2,
+          "target": 90,
+          "targetProbability": 0.21050000000001184,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 75.67445000000423,
+          "p10": 48.9,
+          "p50": 73.9,
+          "p90": 104.2,
+          "target": 90,
+          "targetProbability": 0.2435000000000137,
+          "monteCarlo95": [
+            0.22519340468519625,
+            0.26279004057011385
+          ]
+        },
+        "independent": {
+          "mean": 75.6744500000039,
+          "p10": 53.15,
+          "p50": 74.1,
+          "p90": 99.9,
+          "target": 90,
+          "targetProbability": 0.2220000000000125,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1004:1001,1002,1006,1012,1014",
+      "salary": 30450,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        }
+      ],
+      "additivePlayerP90": 143.95,
+      "selection": {
+        "joint": {
+          "mean": 76.7239000000042,
+          "p10": 43.95,
+          "p50": 73.9,
+          "p90": 112.4,
+          "target": 90,
+          "targetProbability": 0.2990000000000141,
+          "monteCarlo95": [
+            0.2793363946213316,
+            0.3194342583857602
+          ]
+        },
+        "independent": {
+          "mean": 76.72390000000415,
+          "p10": 52.95,
+          "p50": 75.2,
+          "p90": 103.25,
+          "target": 90,
+          "targetProbability": 0.23400000000001317,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 76.58040000000398,
+          "p10": 43.55,
+          "p50": 74.2,
+          "p90": 112.8,
+          "target": 90,
+          "targetProbability": 0.3030000000000141,
+          "monteCarlo95": [
+            0.2832529034543601,
+            0.32350241317448164
+          ]
+        },
+        "independent": {
+          "mean": 76.58040000000419,
+          "p10": 52.3,
+          "p50": 74.95,
+          "p90": 102.35,
+          "target": 90,
+          "targetProbability": 0.24800000000001396,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1006:1001,1008,1014,1015,1017",
+      "salary": 25300,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 125.7,
+      "selection": {
+        "joint": {
+          "mean": 66.58632500000355,
+          "p10": 39.55,
+          "p50": 64.35,
+          "p90": 97.3,
+          "target": 90,
+          "targetProbability": 0.15750000000000886,
+          "monteCarlo95": [
+            0.1421937787472893,
+            0.17411939864038659
+          ]
+        },
+        "independent": {
+          "mean": 66.58632500000365,
+          "p10": 45.1,
+          "p50": 64.65,
+          "p90": 90.65,
+          "target": 90,
+          "targetProbability": 0.10450000000000588,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 66.45040000000378,
+          "p10": 39.35,
+          "p50": 63.3,
+          "p90": 97.2,
+          "target": 90,
+          "targetProbability": 0.1530000000000086,
+          "monteCarlo95": [
+            0.13788945597125343,
+            0.16944097484195322
+          ]
+        },
+        "independent": {
+          "mean": 66.45040000000373,
+          "p10": 44.5,
+          "p50": 65.05,
+          "p90": 89.5,
+          "target": 90,
+          "targetProbability": 0.09650000000000543,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1000:1003,1007,1008,1011,1013",
+      "salary": 30550,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        }
+      ],
+      "additivePlayerP90": 136.68,
+      "selection": {
+        "joint": {
+          "mean": 74.546810000004,
+          "p10": 43.92,
+          "p50": 71.5,
+          "p90": 109.12,
+          "target": 90,
+          "targetProbability": 0.26450000000001406,
+          "monteCarlo95": [
+            0.24563448456151932,
+            0.2842684447079788
+          ]
+        },
+        "independent": {
+          "mean": 74.54681000000404,
+          "p10": 50.34,
+          "p50": 73.08,
+          "p90": 101.06,
+          "target": 90,
+          "targetProbability": 0.21450000000001207,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 74.98624000000403,
+          "p10": 44.98,
+          "p50": 72.6,
+          "p90": 108.92,
+          "target": 90,
+          "targetProbability": 0.25800000000001405,
+          "monteCarlo95": [
+            0.2393012771347648,
+            0.2776265737493896
+          ]
+        },
+        "independent": {
+          "mean": 74.9862400000041,
+          "p10": 50.64,
+          "p50": 73.64,
+          "p90": 101.58,
+          "target": 90,
+          "targetProbability": 0.22800000000001283,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1015:1003,1009,1010,1011,1014",
+      "salary": 31800,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        }
+      ],
+      "additivePlayerP90": 151.87,
+      "selection": {
+        "joint": {
+          "mean": 82.84377000000433,
+          "p10": 47,
+          "p50": 79.12,
+          "p90": 126.71,
+          "target": 90,
+          "targetProbability": 0.36700000000001415,
+          "monteCarlo95": [
+            0.34615008208917564,
+            0.3883598524876658
+          ]
+        },
+        "independent": {
+          "mean": 82.84377000000462,
+          "p10": 57.38,
+          "p50": 81.43,
+          "p90": 110.79,
+          "target": 90,
+          "targetProbability": 0.3370000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 83.72423500000473,
+          "p10": 45.78,
+          "p50": 79.49,
+          "p90": 129.65,
+          "target": 90,
+          "targetProbability": 0.37800000000001416,
+          "monteCarlo95": [
+            0.3570022244318936,
+            0.3994655351047603
+          ]
+        },
+        "independent": {
+          "mean": 83.72423500000458,
+          "p10": 57.73,
+          "p50": 82.14,
+          "p90": 111.09,
+          "target": 90,
+          "targetProbability": 0.36400000000001415,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1005:1001,1002,1010,1014,1017",
+      "salary": 28000,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        }
+      ],
+      "additivePlayerP90": 146.25,
+      "selection": {
+        "joint": {
+          "mean": 82.14885000000444,
+          "p10": 52.9,
+          "p50": 79.3,
+          "p90": 115.7,
+          "target": 90,
+          "targetProbability": 0.35050000000001413,
+          "monteCarlo95": [
+            0.3298940766275675,
+            0.37167912050955526
+          ]
+        },
+        "independent": {
+          "mean": 82.14885000000454,
+          "p10": 58.8,
+          "p50": 80.35,
+          "p90": 107.6,
+          "target": 90,
+          "targetProbability": 0.3125000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 82.12070000000442,
+          "p10": 52,
+          "p50": 79.7,
+          "p90": 116.35,
+          "target": 90,
+          "targetProbability": 0.3420000000000141,
+          "monteCarlo95": [
+            0.3215304021312198,
+            0.3630753848096842
+          ]
+        },
+        "independent": {
+          "mean": 82.12070000000467,
+          "p10": 58.1,
+          "p50": 80.2,
+          "p90": 108.9,
+          "target": 90,
+          "targetProbability": 0.3220000000000141,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1000:1005,1010,1011,1012,1017",
+      "salary": 32550,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        }
+      ],
+      "additivePlayerP90": 151.18,
+      "selection": {
+        "joint": {
+          "mean": 84.44506000000452,
+          "p10": 50.34,
+          "p50": 81.52,
+          "p90": 124.1,
+          "target": 90,
+          "targetProbability": 0.38800000000001417,
+          "monteCarlo95": [
+            0.36687787543247896,
+            0.4095515431585499
+          ]
+        },
+        "independent": {
+          "mean": 84.44506000000459,
+          "p10": 58.72,
+          "p50": 83.72,
+          "p90": 111.32,
+          "target": 90,
+          "targetProbability": 0.37750000000001416,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 84.92689000000458,
+          "p10": 50.4,
+          "p50": 81.44,
+          "p90": 123.94,
+          "target": 90,
+          "targetProbability": 0.39000000000001417,
+          "monteCarlo95": [
+            0.3688541428535059,
+            0.411567607548398
+          ]
+        },
+        "independent": {
+          "mean": 84.9268900000045,
+          "p10": 59.92,
+          "p50": 83.2,
+          "p90": 112.68,
+          "target": 90,
+          "targetProbability": 0.38000000000001416,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1005:1003,1009,1010,1011,1017",
+      "salary": 31000,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        }
+      ],
+      "additivePlayerP90": 145.87,
+      "selection": {
+        "joint": {
+          "mean": 81.0092200000044,
+          "p10": 48.21,
+          "p50": 78,
+          "p90": 119.97,
+          "target": 90,
+          "targetProbability": 0.3375000000000141,
+          "monteCarlo95": [
+            0.3171055588346784,
+            0.3585174815317569
+          ]
+        },
+        "independent": {
+          "mean": 81.00922000000445,
+          "p10": 56.33,
+          "p50": 78.83,
+          "p90": 108.28,
+          "target": 90,
+          "targetProbability": 0.2990000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 81.68531000000448,
+          "p10": 47.81,
+          "p50": 78.19,
+          "p90": 120.74,
+          "target": 90,
+          "targetProbability": 0.35050000000001413,
+          "monteCarlo95": [
+            0.3298940766275675,
+            0.37167912050955526
+          ]
+        },
+        "independent": {
+          "mean": 81.6853100000044,
+          "p10": 56.68,
+          "p50": 80.46,
+          "p90": 107.38,
+          "target": 90,
+          "targetProbability": 0.3260000000000141,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1013:1002,1004,1008,1010,1017",
+      "salary": 28450,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        }
+      ],
+      "additivePlayerP90": 132.45,
+      "selection": {
+        "joint": {
+          "mean": 73.39687500000404,
+          "p10": 45.65,
+          "p50": 71.3,
+          "p90": 103.6,
+          "target": 90,
+          "targetProbability": 0.2185000000000123,
+          "monteCarlo95": [
+            0.20093876758174017,
+            0.2371405300376297
+          ]
+        },
+        "independent": {
+          "mean": 73.3968750000043,
+          "p10": 51.2,
+          "p50": 71.8,
+          "p90": 97.55,
+          "target": 90,
+          "targetProbability": 0.18100000000001018,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 73.50675000000395,
+          "p10": 45.1,
+          "p50": 71.2,
+          "p90": 104.9,
+          "target": 90,
+          "targetProbability": 0.22700000000001277,
+          "monteCarlo95": [
+            0.2091750541827102,
+            0.24587165363287933
+          ]
+        },
+        "independent": {
+          "mean": 73.506750000004,
+          "p10": 50.35,
+          "p50": 72.5,
+          "p90": 98.55,
+          "target": 90,
+          "targetProbability": 0.18350000000001032,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1000,1001,1010,1013,1017",
+      "salary": 32850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        }
+      ],
+      "additivePlayerP90": 158.11999999999998,
+      "selection": {
+        "joint": {
+          "mean": 92.09539000000517,
+          "p10": 58.61,
+          "p50": 89.18,
+          "p90": 130.17,
+          "target": 90,
+          "targetProbability": 0.48900000000001426,
+          "monteCarlo95": [
+            0.46713432662965854,
+            0.5109078484105574
+          ]
+        },
+        "independent": {
+          "mean": 92.09539000000512,
+          "p10": 66.22,
+          "p50": 91.02,
+          "p90": 119.07,
+          "target": 90,
+          "targetProbability": 0.514500000000016,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 92.49361000000529,
+          "p10": 58.17,
+          "p50": 88.75,
+          "p90": 130.13,
+          "target": 90,
+          "targetProbability": 0.48500000000001425,
+          "monteCarlo95": [
+            0.46314654120599397,
+            0.506910970212472
+          ]
+        },
+        "independent": {
+          "mean": 92.49361000000492,
+          "p10": 66.56,
+          "p50": 91.45,
+          "p90": 119.99,
+          "target": 90,
+          "targetProbability": 0.5310000000000178,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1011:1000,1001,1012,1013,1016",
+      "salary": 32250,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        }
+      ],
+      "additivePlayerP90": 148.97,
+      "selection": {
+        "joint": {
+          "mean": 82.95044000000445,
+          "p10": 52.57,
+          "p50": 80.33,
+          "p90": 118.58,
+          "target": 90,
+          "targetProbability": 0.35800000000001414,
+          "monteCarlo95": [
+            0.3372798272570078,
+            0.3792646141708962
+          ]
+        },
+        "independent": {
+          "mean": 82.9504400000045,
+          "p10": 58.2,
+          "p50": 80.73,
+          "p90": 110.28,
+          "target": 90,
+          "targetProbability": 0.34600000000001413,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 84.12211000000464,
+          "p10": 53.72,
+          "p50": 81.29,
+          "p90": 117.84,
+          "target": 90,
+          "targetProbability": 0.39000000000001417,
+          "monteCarlo95": [
+            0.3688541428535059,
+            0.411567607548398
+          ]
+        },
+        "independent": {
+          "mean": 84.12211000000468,
+          "p10": 59,
+          "p50": 82.53,
+          "p90": 111.2,
+          "target": 90,
+          "targetProbability": 0.36200000000001414,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1011:1002,1007,1009,1010,1015",
+      "salary": 29750,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        }
+      ],
+      "additivePlayerP90": 156.17,
+      "selection": {
+        "joint": {
+          "mean": 90.06217000000491,
+          "p10": 59,
+          "p50": 86.61,
+          "p90": 127.27,
+          "target": 90,
+          "targetProbability": 0.4495000000000142,
+          "monteCarlo95": [
+            0.42781649310233605,
+            0.4713771286730988
+          ]
+        },
+        "independent": {
+          "mean": 90.06217000000491,
+          "p10": 63.94,
+          "p50": 88.99,
+          "p90": 115.74,
+          "target": 90,
+          "targetProbability": 0.48000000000001425,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 91.47796000000497,
+          "p10": 58.43,
+          "p50": 87.74,
+          "p90": 127.97,
+          "target": 90,
+          "targetProbability": 0.47250000000001424,
+          "monteCarlo95": [
+            0.45069374278171825,
+            0.494411694818779
+          ]
+        },
+        "independent": {
+          "mean": 91.47796000000523,
+          "p10": 64.96,
+          "p50": 90.18,
+          "p90": 118.36,
+          "target": 90,
+          "targetProbability": 0.5040000000000148,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1006:1001,1003,1007,1014,1016",
+      "salary": 26400,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        }
+      ],
+      "additivePlayerP90": 122.5,
+      "selection": {
+        "joint": {
+          "mean": 63.368125000003445,
+          "p10": 40.2,
+          "p50": 61.2,
+          "p90": 89.4,
+          "target": 90,
+          "targetProbability": 0.09650000000000543,
+          "monteCarlo95": [
+            0.0843220272921543,
+            0.11022502986382765
+          ]
+        },
+        "independent": {
+          "mean": 63.368125000003474,
+          "p10": 42,
+          "p50": 61.25,
+          "p90": 86.65,
+          "target": 90,
+          "targetProbability": 0.07800000000000439,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 63.09040000000344,
+          "p10": 40.7,
+          "p50": 60.8,
+          "p90": 88.9,
+          "target": 90,
+          "targetProbability": 0.09100000000000512,
+          "monteCarlo95": [
+            0.07916698061731058,
+            0.10440116405876453
+          ]
+        },
+        "independent": {
+          "mean": 63.090400000003406,
+          "p10": 41.5,
+          "p50": 61.9,
+          "p90": 86.25,
+          "target": 90,
+          "targetProbability": 0.07050000000000396,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1008:1012,1013,1014,1015,1017",
+      "salary": 25800,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 114.5,
+      "selection": {
+        "joint": {
+          "mean": 58.48210000000327,
+          "p10": 34.2,
+          "p50": 56,
+          "p90": 87.2,
+          "target": 90,
+          "targetProbability": 0.07900000000000444,
+          "monteCarlo95": [
+            0.06796926392040782,
+            0.09164488989041601
+          ]
+        },
+        "independent": {
+          "mean": 58.48210000000322,
+          "p10": 37.5,
+          "p50": 58,
+          "p90": 80.1,
+          "target": 90,
+          "targetProbability": 0.036500000000002045,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 58.60205000000323,
+          "p10": 32.8,
+          "p50": 56.2,
+          "p90": 87.6,
+          "target": 90,
+          "targetProbability": 0.0835000000000047,
+          "monteCarlo95": [
+            0.07215988199915511,
+            0.09643701838613795
+          ]
+        },
+        "independent": {
+          "mean": 58.6020500000032,
+          "p10": 38.1,
+          "p50": 57.3,
+          "p90": 80.3,
+          "target": 90,
+          "targetProbability": 0.03800000000000213,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1017:1001,1003,1005,1014,1015",
+      "salary": 27300,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        }
+      ],
+      "additivePlayerP90": 127.19999999999999,
+      "selection": {
+        "joint": {
+          "mean": 67.25395000000364,
+          "p10": 39.4,
+          "p50": 64.7,
+          "p90": 98.4,
+          "target": 90,
+          "targetProbability": 0.16750000000000942,
+          "monteCarlo95": [
+            0.15177506619530212,
+            0.18449977024674985
+          ]
+        },
+        "independent": {
+          "mean": 67.2539500000038,
+          "p10": 45.8,
+          "p50": 66.2,
+          "p90": 90.9,
+          "target": 90,
+          "targetProbability": 0.10950000000000616,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 66.92525000000362,
+          "p10": 39.3,
+          "p50": 64.1,
+          "p90": 98.5,
+          "target": 90,
+          "targetProbability": 0.1635000000000092,
+          "monteCarlo95": [
+            0.14793995204547666,
+            0.18035022077482488
+          ]
+        },
+        "independent": {
+          "mean": 66.92525000000363,
+          "p10": 45.1,
+          "p50": 65.1,
+          "p90": 89.9,
+          "target": 90,
+          "targetProbability": 0.10000000000000563,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1000,1002,1003,1008,1012",
+      "salary": 29850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        }
+      ],
+      "additivePlayerP90": 128.62,
+      "selection": {
+        "joint": {
+          "mean": 69.77584000000377,
+          "p10": 42.48,
+          "p50": 67.4,
+          "p90": 100.24,
+          "target": 90,
+          "targetProbability": 0.18900000000001063,
+          "monteCarlo95": [
+            0.17244398474294453,
+            0.20674841866601595
+          ]
+        },
+        "independent": {
+          "mean": 69.77584000000383,
+          "p10": 47.3,
+          "p50": 69.02,
+          "p90": 93.44,
+          "target": 90,
+          "targetProbability": 0.13550000000000761,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 69.73466000000396,
+          "p10": 42.2,
+          "p50": 66.72,
+          "p90": 99.72,
+          "target": 90,
+          "targetProbability": 0.19100000000001074,
+          "monteCarlo95": [
+            0.17437112699731383,
+            0.20881360822252187
+          ]
+        },
+        "independent": {
+          "mean": 69.73466000000379,
+          "p10": 47.92,
+          "p50": 68.74,
+          "p90": 93.3,
+          "target": 90,
+          "targetProbability": 0.13100000000000736,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1014:1000,1001,1003,1008,1012",
+      "salary": 32600,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        }
+      ],
+      "additivePlayerP90": 140.76999999999998,
+      "selection": {
+        "joint": {
+          "mean": 74.89096500000417,
+          "p10": 41.35,
+          "p50": 71.84,
+          "p90": 112.53,
+          "target": 90,
+          "targetProbability": 0.27800000000001407,
+          "monteCarlo95": [
+            0.2588051058002637,
+            0.2980460631926406
+          ]
+        },
+        "independent": {
+          "mean": 74.89096500000404,
+          "p10": 51.24,
+          "p50": 74.2,
+          "p90": 100.19,
+          "target": 90,
+          "targetProbability": 0.21000000000001182,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 74.62051000000413,
+          "p10": 41.33,
+          "p50": 71.57,
+          "p90": 113.05,
+          "target": 90,
+          "targetProbability": 0.27850000000001407,
+          "monteCarlo95": [
+            0.259293337819576,
+            0.2985559141260471
+          ]
+        },
+        "independent": {
+          "mean": 74.6205100000041,
+          "p10": 50.14,
+          "p50": 72.85,
+          "p90": 100.33,
+          "target": 90,
+          "targetProbability": 0.20050000000001128,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1000:1008,1009,1011,1012,1013",
+      "salary": 34350,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        }
+      ],
+      "additivePlayerP90": 152.4,
+      "selection": {
+        "joint": {
+          "mean": 83.92613000000436,
+          "p10": 46.18,
+          "p50": 80.9,
+          "p90": 126.24,
+          "target": 90,
+          "targetProbability": 0.39350000000001417,
+          "monteCarlo95": [
+            0.3723135163084498,
+            0.41509481476248533
+          ]
+        },
+        "independent": {
+          "mean": 83.92613000000475,
+          "p10": 58.14,
+          "p50": 82.56,
+          "p90": 111.36,
+          "target": 90,
+          "targetProbability": 0.36150000000001414,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 85.0554500000046,
+          "p10": 46.62,
+          "p50": 82.12,
+          "p90": 127.64,
+          "target": 90,
+          "targetProbability": 0.4065000000000142,
+          "monteCarlo95": [
+            0.3851726253557777,
+            0.4281858624858449
+          ]
+        },
+        "independent": {
+          "mean": 85.05545000000438,
+          "p10": 59.36,
+          "p50": 83.74,
+          "p90": 113.66,
+          "target": 90,
+          "targetProbability": 0.39200000000001417,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1013:1000,1003,1009,1015,1016",
+      "salary": 32450,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        }
+      ],
+      "additivePlayerP90": 137.49,
+      "selection": {
+        "joint": {
+          "mean": 72.02113500000398,
+          "p10": 39.32,
+          "p50": 68.08,
+          "p90": 110.78,
+          "target": 90,
+          "targetProbability": 0.25500000000001405,
+          "monteCarlo95": [
+            0.23638010735490192,
+            0.27455924581293994
+          ]
+        },
+        "independent": {
+          "mean": 72.02113500000395,
+          "p10": 48.42,
+          "p50": 70.62,
+          "p90": 98.05,
+          "target": 90,
+          "targetProbability": 0.1725000000000097,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 72.71267000000398,
+          "p10": 38.21,
+          "p50": 69.2,
+          "p90": 113.88,
+          "target": 90,
+          "targetProbability": 0.26700000000001406,
+          "monteCarlo95": [
+            0.2480717718528894,
+            0.2868215721802025
+          ]
+        },
+        "independent": {
+          "mean": 72.71267000000392,
+          "p10": 47.95,
+          "p50": 71.38,
+          "p90": 99.74,
+          "target": 90,
+          "targetProbability": 0.19300000000001086,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1016:1000,1003,1004,1010,1013",
+      "salary": 31850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        }
+      ],
+      "additivePlayerP90": 134.62,
+      "selection": {
+        "joint": {
+          "mean": 71.3176400000039,
+          "p10": 43.34,
+          "p50": 68.82,
+          "p90": 102.88,
+          "target": 90,
+          "targetProbability": 0.20150000000001134,
+          "monteCarlo95": [
+            0.18450021393706686,
+            0.21964426328986372
+          ]
+        },
+        "independent": {
+          "mean": 71.31764000000395,
+          "p10": 48.58,
+          "p50": 69.56,
+          "p90": 95.12,
+          "target": 90,
+          "targetProbability": 0.1530000000000086,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 71.18506000000407,
+          "p10": 43.06,
+          "p50": 67.56,
+          "p90": 103.9,
+          "target": 90,
+          "targetProbability": 0.20700000000001165,
+          "monteCarlo95": [
+            0.18981343495636663,
+            0.2253099547504708
+          ]
+        },
+        "independent": {
+          "mean": 71.18506000000397,
+          "p10": 48.2,
+          "p50": 69.68,
+          "p90": 96.5,
+          "target": 90,
+          "targetProbability": 0.16150000000000908,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1008,1010,1011,1015,1017",
+      "salary": 26950,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        }
+      ],
+      "additivePlayerP90": 143.5,
+      "selection": {
+        "joint": {
+          "mean": 83.61700000000454,
+          "p10": 55.9,
+          "p50": 80.65,
+          "p90": 114.25,
+          "target": 90,
+          "targetProbability": 0.36000000000001414,
+          "monteCarlo95": [
+            0.3392503057132234,
+            0.38128646752555556
+          ]
+        },
+        "independent": {
+          "mean": 83.61700000000458,
+          "p10": 59.5,
+          "p50": 82.5,
+          "p90": 108.95,
+          "target": 90,
+          "targetProbability": 0.35350000000001414,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 84.59240000000476,
+          "p10": 55.2,
+          "p50": 82.3,
+          "p90": 115.9,
+          "target": 90,
+          "targetProbability": 0.38200000000001416,
+          "monteCarlo95": [
+            0.36095134317425914,
+            0.40350107998414475
+          ]
+        },
+        "independent": {
+          "mean": 84.59240000000464,
+          "p10": 61.1,
+          "p50": 82.7,
+          "p90": 110.95,
+          "target": 90,
+          "targetProbability": 0.35100000000001413,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1013:1002,1003,1009,1014,1017",
+      "salary": 30350,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        }
+      ],
+      "additivePlayerP90": 137.37,
+      "selection": {
+        "joint": {
+          "mean": 74.20534500000412,
+          "p10": 40.8,
+          "p50": 70.64,
+          "p90": 110.97,
+          "target": 90,
+          "targetProbability": 0.27250000000001406,
+          "monteCarlo95": [
+            0.2534365680096883,
+            0.2924356885033098
+          ]
+        },
+        "independent": {
+          "mean": 74.20534500000392,
+          "p10": 49.91,
+          "p50": 73.12,
+          "p90": 98.68,
+          "target": 90,
+          "targetProbability": 0.20050000000001128,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 74.83796000000413,
+          "p10": 40.45,
+          "p50": 71.18,
+          "p90": 113.54,
+          "target": 90,
+          "targetProbability": 0.2950000000000141,
+          "monteCarlo95": [
+            0.27542170647315317,
+            0.3153642829121886
+          ]
+        },
+        "independent": {
+          "mean": 74.83796000000419,
+          "p10": 49.73,
+          "p50": 73.86,
+          "p90": 100.79,
+          "target": 90,
+          "targetProbability": 0.22150000000001246,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1015:1002,1006,1007,1013,1016",
+      "salary": 23900,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        }
+      ],
+      "additivePlayerP90": 120.25,
+      "selection": {
+        "joint": {
+          "mean": 62.77240000000345,
+          "p10": 40.45,
+          "p50": 60.45,
+          "p90": 88.3,
+          "target": 90,
+          "targetProbability": 0.08800000000000495,
+          "monteCarlo95": [
+            0.07636089079305694,
+            0.10121875616670534
+          ]
+        },
+        "independent": {
+          "mean": 62.7724000000035,
+          "p10": 40.1,
+          "p50": 61.25,
+          "p90": 86.3,
+          "target": 90,
+          "targetProbability": 0.07400000000000416,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 63.38062500000352,
+          "p10": 40.5,
+          "p50": 61.45,
+          "p90": 90.4,
+          "target": 90,
+          "targetProbability": 0.10350000000000582,
+          "monteCarlo95": [
+            0.09090135668780187,
+            0.11761886180624333
+          ]
+        },
+        "independent": {
+          "mean": 63.38062500000342,
+          "p10": 40.95,
+          "p50": 61.75,
+          "p90": 87.05,
+          "target": 90,
+          "targetProbability": 0.07900000000000444,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1016:1000,1004,1005,1008,1010",
+      "salary": 27850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        }
+      ],
+      "additivePlayerP90": 130.92000000000002,
+      "selection": {
+        "joint": {
+          "mean": 69.96709000000386,
+          "p10": 44.58,
+          "p50": 67.36,
+          "p90": 99.32,
+          "target": 90,
+          "targetProbability": 0.17900000000001007,
+          "monteCarlo95": [
+            0.16281935972426528,
+            0.19641138463031912
+          ]
+        },
+        "independent": {
+          "mean": 69.96709000000374,
+          "p10": 47.5,
+          "p50": 69.08,
+          "p90": 93.62,
+          "target": 90,
+          "targetProbability": 0.13650000000000767,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 69.66471000000378,
+          "p10": 44.88,
+          "p50": 66.64,
+          "p90": 98.46,
+          "target": 90,
+          "targetProbability": 0.17500000000000984,
+          "monteCarlo95": [
+            0.15897486087047577,
+            0.1922712198623582
+          ]
+        },
+        "independent": {
+          "mean": 69.66471000000386,
+          "p10": 47.4,
+          "p50": 68.14,
+          "p90": 92.96,
+          "target": 90,
+          "targetProbability": 0.12950000000000728,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1010:1000,1002,1007,1008,1013",
+      "salary": 30400,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        }
+      ],
+      "additivePlayerP90": 144.67000000000002,
+      "selection": {
+        "joint": {
+          "mean": 82.06464000000437,
+          "p10": 53.93,
+          "p50": 79.57,
+          "p90": 113.75,
+          "target": 90,
+          "targetProbability": 0.34850000000001413,
+          "monteCarlo95": [
+            0.32792549501682583,
+            0.3696553703094219
+          ]
+        },
+        "independent": {
+          "mean": 82.06464000000442,
+          "p10": 57.67,
+          "p50": 80.98,
+          "p90": 107.67,
+          "target": 90,
+          "targetProbability": 0.3235000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 82.24701000000455,
+          "p10": 53.88,
+          "p50": 79.64,
+          "p90": 115.81,
+          "target": 90,
+          "targetProbability": 0.35300000000001414,
+          "monteCarlo95": [
+            0.33235536907719954,
+            0.37420824282351695
+          ]
+        },
+        "independent": {
+          "mean": 82.24701000000441,
+          "p10": 57.96,
+          "p50": 80.98,
+          "p90": 107.63,
+          "target": 90,
+          "targetProbability": 0.3320000000000141,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1009:1000,1002,1005,1010,1017",
+      "salary": 33150,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        }
+      ],
+      "additivePlayerP90": 159.89999999999998,
+      "selection": {
+        "joint": {
+          "mean": 91.18122000000487,
+          "p10": 54.52,
+          "p50": 88.02,
+          "p90": 135.26,
+          "target": 90,
+          "targetProbability": 0.47800000000001425,
+          "monteCarlo95": [
+            0.45617128689721304,
+            0.49991306318319045
+          ]
+        },
+        "independent": {
+          "mean": 91.18122000000496,
+          "p10": 64.36,
+          "p50": 90.24,
+          "p90": 119.28,
+          "target": 90,
+          "targetProbability": 0.5050000000000149,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 91.7720500000051,
+          "p10": 52.06,
+          "p50": 89.42,
+          "p90": 136.16,
+          "target": 90,
+          "targetProbability": 0.49250000000001426,
+          "monteCarlo95": [
+            0.47062478687794324,
+            0.514403968831304
+          ]
+        },
+        "independent": {
+          "mean": 91.77205000000508,
+          "p10": 64.78,
+          "p50": 90.5,
+          "p90": 120.24,
+          "target": 90,
+          "targetProbability": 0.5080000000000152,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1000,1005,1009,1011,1015",
+      "salary": 30950,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        }
+      ],
+      "additivePlayerP90": 163.54000000000002,
+      "selection": {
+        "joint": {
+          "mean": 92.60126000000524,
+          "p10": 53.04,
+          "p50": 87.95,
+          "p90": 137.14,
+          "target": 90,
+          "targetProbability": 0.47550000000001424,
+          "monteCarlo95": [
+            0.4536811651658459,
+            0.49741277015096386
+          ]
+        },
+        "independent": {
+          "mean": 92.60126000000517,
+          "p10": 65.99,
+          "p50": 91.45,
+          "p90": 120.52,
+          "target": 90,
+          "targetProbability": 0.5275000000000174,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 94.06232000000519,
+          "p10": 53.1,
+          "p50": 90.64,
+          "p90": 140.19,
+          "target": 90,
+          "targetProbability": 0.5055000000000149,
+          "monteCarlo95": [
+            0.48359872896096123,
+            0.5273801835189748
+          ]
+        },
+        "independent": {
+          "mean": 94.0623200000052,
+          "p10": 66.89,
+          "p50": 92.77,
+          "p90": 122.48,
+          "target": 90,
+          "targetProbability": 0.5520000000000201,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1005:1006,1008,1009,1010,1011",
+      "salary": 28900,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        }
+      ],
+      "additivePlayerP90": 147.17,
+      "selection": {
+        "joint": {
+          "mean": 81.08057000000441,
+          "p10": 48,
+          "p50": 77.51,
+          "p90": 120.06,
+          "target": 90,
+          "targetProbability": 0.3365000000000141,
+          "monteCarlo95": [
+            0.3161225436773818,
+            0.357504330783616
+          ]
+        },
+        "independent": {
+          "mean": 81.08057000000446,
+          "p10": 56.37,
+          "p50": 79.22,
+          "p90": 108.42,
+          "target": 90,
+          "targetProbability": 0.3055000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 81.9752600000045,
+          "p10": 48.22,
+          "p50": 79.34,
+          "p90": 120.22,
+          "target": 90,
+          "targetProbability": 0.36000000000001414,
+          "monteCarlo95": [
+            0.3392503057132234,
+            0.38128646752555556
+          ]
+        },
+        "independent": {
+          "mean": 81.9752600000044,
+          "p10": 56.9,
+          "p50": 80.89,
+          "p90": 108.26,
+          "target": 90,
+          "targetProbability": 0.3240000000000141,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1001:1002,1006,1011,1013,1015",
+      "salary": 29900,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        }
+      ],
+      "additivePlayerP90": 153.7,
+      "selection": {
+        "joint": {
+          "mean": 86.66260000000459,
+          "p10": 53.35,
+          "p50": 83.5,
+          "p90": 123.5,
+          "target": 90,
+          "targetProbability": 0.4120000000000142,
+          "monteCarlo95": [
+            0.3906177218555585,
+            0.4337196784659702
+          ]
+        },
+        "independent": {
+          "mean": 86.66260000000482,
+          "p10": 60.25,
+          "p50": 85.1,
+          "p90": 114.65,
+          "target": 90,
+          "targetProbability": 0.4115000000000142,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 87.8370000000048,
+          "p10": 55,
+          "p50": 84.95,
+          "p90": 124.35,
+          "target": 90,
+          "targetProbability": 0.4300000000000142,
+          "monteCarlo95": [
+            0.408457332455799,
+            0.4518110541636046
+          ]
+        },
+        "independent": {
+          "mean": 87.83700000000478,
+          "p10": 62.15,
+          "p50": 86.2,
+          "p90": 115.4,
+          "target": 90,
+          "targetProbability": 0.4215000000000142,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1008:1001,1009,1011,1013,1016",
+      "salary": 29000,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        }
+      ],
+      "additivePlayerP90": 138.22,
+      "selection": {
+        "joint": {
+          "mean": 77.39437000000423,
+          "p10": 49.9,
+          "p50": 74.42,
+          "p90": 108.22,
+          "target": 90,
+          "targetProbability": 0.27250000000001406,
+          "monteCarlo95": [
+            0.2534365680096883,
+            0.2924356885033098
+          ]
+        },
+        "independent": {
+          "mean": 77.39437000000413,
+          "p10": 54.86,
+          "p50": 76.04,
+          "p90": 101.8,
+          "target": 90,
+          "targetProbability": 0.22650000000001275,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 78.46006000000436,
+          "p10": 50.82,
+          "p50": 76.02,
+          "p90": 109.2,
+          "target": 90,
+          "targetProbability": 0.27900000000001407,
+          "monteCarlo95": [
+            0.2597816001405334,
+            0.2990657347578084
+          ]
+        },
+        "independent": {
+          "mean": 78.46006000000415,
+          "p10": 55.88,
+          "p50": 77.54,
+          "p90": 103.22,
+          "target": 90,
+          "targetProbability": 0.2400000000000135,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1001,1005,1007,1009,1017",
+      "salary": 28250,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        }
+      ],
+      "additivePlayerP90": 143.22,
+      "selection": {
+        "joint": {
+          "mean": 81.84792000000452,
+          "p10": 54.63,
+          "p50": 79.68,
+          "p90": 112.26,
+          "target": 90,
+          "targetProbability": 0.3245000000000141,
+          "monteCarlo95": [
+            0.3043345034048297,
+            0.3453383801909181
+          ]
+        },
+        "independent": {
+          "mean": 81.84792000000424,
+          "p10": 57.53,
+          "p50": 80.53,
+          "p90": 107.66,
+          "target": 90,
+          "targetProbability": 0.3320000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 82.23651000000467,
+          "p10": 54.54,
+          "p50": 80.33,
+          "p90": 113.63,
+          "target": 90,
+          "targetProbability": 0.34600000000001413,
+          "monteCarlo95": [
+            0.3254653360603596,
+            0.3671251145022944
+          ]
+        },
+        "independent": {
+          "mean": 82.23651000000439,
+          "p10": 57.66,
+          "p50": 80.98,
+          "p90": 108.69,
+          "target": 90,
+          "targetProbability": 0.3245000000000141,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1003,1004,1013,1016,1017",
+      "salary": 27650,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        }
+      ],
+      "additivePlayerP90": 125.5,
+      "selection": {
+        "joint": {
+          "mean": 67.98705000000355,
+          "p10": 43.3,
+          "p50": 65.55,
+          "p90": 95.3,
+          "target": 90,
+          "targetProbability": 0.14200000000000798,
+          "monteCarlo95": [
+            0.12738805517520793,
+            0.15798455067818504
+          ]
+        },
+        "independent": {
+          "mean": 67.98705000000356,
+          "p10": 44.9,
+          "p50": 66.75,
+          "p90": 93.35,
+          "target": 90,
+          "targetProbability": 0.12950000000000728,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 68.22810000000375,
+          "p10": 42.95,
+          "p50": 66.1,
+          "p90": 96.85,
+          "target": 90,
+          "targetProbability": 0.15700000000000883,
+          "monteCarlo95": [
+            0.14171529226203636,
+            0.17359980217292073
+          ]
+        },
+        "independent": {
+          "mean": 68.22810000000376,
+          "p10": 44.6,
+          "p50": 67.2,
+          "p90": 93.25,
+          "target": 90,
+          "targetProbability": 0.13200000000000742,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1008:1004,1005,1007,1011,1015",
+      "salary": 23700,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        }
+      ],
+      "additivePlayerP90": 121.49999999999999,
+      "selection": {
+        "joint": {
+          "mean": 64.03490000000347,
+          "p10": 40.3,
+          "p50": 61.9,
+          "p90": 90.2,
+          "target": 90,
+          "targetProbability": 0.10150000000000571,
+          "monteCarlo95": [
+            0.08901954799400355,
+            0.11550833868916643
+          ]
+        },
+        "independent": {
+          "mean": 64.0349000000035,
+          "p10": 43.1,
+          "p50": 63.3,
+          "p90": 86.8,
+          "target": 90,
+          "targetProbability": 0.07350000000000413,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 64.18915000000352,
+          "p10": 40.9,
+          "p50": 62,
+          "p90": 89.7,
+          "target": 90,
+          "targetProbability": 0.0995000000000056,
+          "monteCarlo95": [
+            0.08713931829846105,
+            0.11339623657383371
+          ]
+        },
+        "independent": {
+          "mean": 64.18915000000345,
+          "p10": 42.7,
+          "p50": 63.1,
+          "p90": 86.3,
+          "target": 90,
+          "targetProbability": 0.07100000000000399,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1009:1002,1005,1010,1012,1015",
+      "salary": 33150,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        }
+      ],
+      "additivePlayerP90": 155.57999999999998,
+      "selection": {
+        "joint": {
+          "mean": 85.8212800000047,
+          "p10": 48.44,
+          "p50": 81.28,
+          "p90": 130.04,
+          "target": 90,
+          "targetProbability": 0.4035000000000142,
+          "monteCarlo95": [
+            0.38220374696247256,
+            0.4251662431628375
+          ]
+        },
+        "independent": {
+          "mean": 85.82128000000483,
+          "p10": 59.66,
+          "p50": 84.58,
+          "p90": 112.84,
+          "target": 90,
+          "targetProbability": 0.39250000000001417,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 86.77254000000472,
+          "p10": 47.16,
+          "p50": 83.1,
+          "p90": 132.32,
+          "target": 90,
+          "targetProbability": 0.4300000000000142,
+          "monteCarlo95": [
+            0.408457332455799,
+            0.4518110541636046
+          ]
+        },
+        "independent": {
+          "mean": 86.7725400000044,
+          "p10": 59.28,
+          "p50": 86.12,
+          "p90": 114.9,
+          "target": 90,
+          "targetProbability": 0.4400000000000142,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1009:1001,1008,1012,1015,1017",
+      "salary": 31850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        }
+      ],
+      "additivePlayerP90": 138.38,
+      "selection": {
+        "joint": {
+          "mean": 76.09938000000407,
+          "p10": 43.16,
+          "p50": 72.04,
+          "p90": 114.16,
+          "target": 90,
+          "targetProbability": 0.2890000000000141,
+          "monteCarlo95": [
+            0.269553134904489,
+            0.3092558590482278
+          ]
+        },
+        "independent": {
+          "mean": 76.09938000000398,
+          "p10": 51.04,
+          "p50": 74.5,
+          "p90": 102.6,
+          "target": 90,
+          "targetProbability": 0.24400000000001373,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 76.54794000000426,
+          "p10": 43.4,
+          "p50": 73.3,
+          "p90": 114.88,
+          "target": 90,
+          "targetProbability": 0.3000000000000141,
+          "monteCarlo95": [
+            0.28031535195499485,
+            0.3204514669575344
+          ]
+        },
+        "independent": {
+          "mean": 76.54794000000419,
+          "p10": 52.72,
+          "p50": 75.34,
+          "p90": 102.24,
+          "target": 90,
+          "targetProbability": 0.2365000000000133,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1013:1006,1008,1010,1011,1017",
+      "salary": 27550,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 132.04999999999998,
+      "selection": {
+        "joint": {
+          "mean": 72.97402500000393,
+          "p10": 46.15,
+          "p50": 70.15,
+          "p90": 103.95,
+          "target": 90,
+          "targetProbability": 0.2150000000000121,
+          "monteCarlo95": [
+            0.19755057667840203,
+            0.2335421402719362
+          ]
+        },
+        "independent": {
+          "mean": 72.97402500000386,
+          "p10": 51.3,
+          "p50": 70.95,
+          "p90": 97,
+          "target": 90,
+          "targetProbability": 0.1705000000000096,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 73.731250000004,
+          "p10": 46.2,
+          "p50": 71.3,
+          "p90": 104.25,
+          "target": 90,
+          "targetProbability": 0.2220000000000125,
+          "monteCarlo95": [
+            0.2043288527249293,
+            0.2407370255634722
+          ]
+        },
+        "independent": {
+          "mean": 73.73125000000393,
+          "p10": 51.85,
+          "p50": 71.8,
+          "p90": 98.6,
+          "target": 90,
+          "targetProbability": 0.17400000000000979,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1009:1000,1001,1002,1004,1016",
+      "salary": 33950,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        }
+      ],
+      "additivePlayerP90": 159.60000000000002,
+      "selection": {
+        "joint": {
+          "mean": 89.93022000000484,
+          "p10": 54.92,
+          "p50": 87.16,
+          "p90": 129.72,
+          "target": 90,
+          "targetProbability": 0.46200000000001423,
+          "monteCarlo95": [
+            0.4402439927914435,
+            0.48390170280196004
+          ]
+        },
+        "independent": {
+          "mean": 89.93022000000478,
+          "p10": 63.74,
+          "p50": 88.46,
+          "p90": 117.94,
+          "target": 90,
+          "targetProbability": 0.46950000000001424,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 90.399450000005,
+          "p10": 54.38,
+          "p50": 87.82,
+          "p90": 130.32,
+          "target": 90,
+          "targetProbability": 0.47850000000001425,
+          "monteCarlo95": [
+            0.4566693769961021,
+            0.5004130560370201
+          ]
+        },
+        "independent": {
+          "mean": 90.39945000000489,
+          "p10": 63.64,
+          "p50": 89.08,
+          "p90": 118.88,
+          "target": 90,
+          "targetProbability": 0.47800000000001425,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1001,1004,1005,1010,1011",
+      "salary": 28450,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        }
+      ],
+      "additivePlayerP90": 142.1,
+      "selection": {
+        "joint": {
+          "mean": 79.0962000000042,
+          "p10": 53.5,
+          "p50": 77,
+          "p90": 107.2,
+          "target": 90,
+          "targetProbability": 0.2900000000000141,
+          "monteCarlo95": [
+            0.27053093918631826,
+            0.310274220671836
+          ]
+        },
+        "independent": {
+          "mean": 79.0962000000043,
+          "p10": 56.1,
+          "p50": 77.5,
+          "p90": 104.6,
+          "target": 90,
+          "targetProbability": 0.27950000000001407,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 78.99865000000425,
+          "p10": 54.3,
+          "p50": 76.2,
+          "p90": 107.1,
+          "target": 90,
+          "targetProbability": 0.27500000000001407,
+          "monteCarlo95": [
+            0.25587635284278654,
+            0.2949863184338053
+          ]
+        },
+        "independent": {
+          "mean": 78.99865000000436,
+          "p10": 55.6,
+          "p50": 77.3,
+          "p90": 105.1,
+          "target": 90,
+          "targetProbability": 0.25950000000001405,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1003:1001,1004,1007,1013,1015",
+      "salary": 30750,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        }
+      ],
+      "additivePlayerP90": 128.15,
+      "selection": {
+        "joint": {
+          "mean": 66.50090000000361,
+          "p10": 39.35,
+          "p50": 63.35,
+          "p90": 98.2,
+          "target": 90,
+          "targetProbability": 0.16950000000000953,
+          "monteCarlo95": [
+            0.1536938853650671,
+            0.1865732828878601
+          ]
+        },
+        "independent": {
+          "mean": 66.50090000000358,
+          "p10": 43.5,
+          "p50": 65.25,
+          "p90": 91.6,
+          "target": 90,
+          "targetProbability": 0.1120000000000063,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 66.13062500000356,
+          "p10": 39.5,
+          "p50": 63.75,
+          "p90": 96.2,
+          "target": 90,
+          "targetProbability": 0.14800000000000832,
+          "monteCarlo95": [
+            0.13311243096854533,
+            0.16423717031747329
+          ]
+        },
+        "independent": {
+          "mean": 66.13062500000363,
+          "p10": 43.2,
+          "p50": 64.1,
+          "p90": 91.2,
+          "target": 90,
+          "targetProbability": 0.11100000000000625,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1010:1002,1005,1008,1012,1013",
+      "salary": 30500,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        }
+      ],
+      "additivePlayerP90": 141.55,
+      "selection": {
+        "joint": {
+          "mean": 78.10370000000431,
+          "p10": 48,
+          "p50": 75,
+          "p90": 111.75,
+          "target": 90,
+          "targetProbability": 0.2890000000000141,
+          "monteCarlo95": [
+            0.269553134904489,
+            0.3092558590482278
+          ]
+        },
+        "independent": {
+          "mean": 78.10370000000438,
+          "p10": 54.8,
+          "p50": 76.75,
+          "p90": 103.55,
+          "target": 90,
+          "targetProbability": 0.2470000000000139,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 78.60135000000444,
+          "p10": 48.3,
+          "p50": 75.65,
+          "p90": 113,
+          "target": 90,
+          "targetProbability": 0.3140000000000141,
+          "monteCarlo95": [
+            0.29403252603688834,
+            0.33468061555176587
+          ]
+        },
+        "independent": {
+          "mean": 78.60135000000423,
+          "p10": 54.15,
+          "p50": 77.55,
+          "p90": 104.2,
+          "target": 90,
+          "targetProbability": 0.26200000000001405,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1012:1000,1001,1002,1007,1010",
+      "salary": 34350,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1002
+        }
+      ],
+      "additivePlayerP90": 153.57,
+      "selection": {
+        "joint": {
+          "mean": 87.02969000000472,
+          "p10": 55.67,
+          "p50": 84.57,
+          "p90": 123,
+          "target": 90,
+          "targetProbability": 0.4200000000000142,
+          "monteCarlo95": [
+            0.3985428052945205,
+            0.44176392227050815
+          ]
+        },
+        "independent": {
+          "mean": 87.02969000000463,
+          "p10": 62.41,
+          "p50": 86.31,
+          "p90": 113.28,
+          "target": 90,
+          "targetProbability": 0.4145000000000142,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 87.14531000000468,
+          "p10": 55.24,
+          "p50": 83.9,
+          "p90": 123.84,
+          "target": 90,
+          "targetProbability": 0.4140000000000142,
+          "monteCarlo95": [
+            0.3925984449574302,
+            0.4357312871749735
+          ]
+        },
+        "independent": {
+          "mean": 87.1453100000049,
+          "p10": 62.61,
+          "p50": 85.75,
+          "p90": 114.1,
+          "target": 90,
+          "targetProbability": 0.4165000000000142,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1006:1007,1008,1009,1010,1016",
+      "salary": 26800,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        }
+      ],
+      "additivePlayerP90": 126.52,
+      "selection": {
+        "joint": {
+          "mean": 68.15149500000365,
+          "p10": 45.23,
+          "p50": 65.83,
+          "p90": 95,
+          "target": 90,
+          "targetProbability": 0.13600000000000764,
+          "monteCarlo95": [
+            0.12167290401776401,
+            0.1517227064030033
+          ]
+        },
+        "independent": {
+          "mean": 68.15149500000356,
+          "p10": 46.19,
+          "p50": 66.84,
+          "p90": 92.5,
+          "target": 90,
+          "targetProbability": 0.12150000000000684,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 68.35941000000375,
+          "p10": 45.04,
+          "p50": 66.23,
+          "p90": 95.29,
+          "target": 90,
+          "targetProbability": 0.1440000000000081,
+          "monteCarlo95": [
+            0.12929517927928574,
+            0.16006975838498244
+          ]
+        },
+        "independent": {
+          "mean": 68.35941000000368,
+          "p10": 46.58,
+          "p50": 67.12,
+          "p90": 92.08,
+          "target": 90,
+          "targetProbability": 0.11600000000000653,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1001,1009,1010,1015,1017",
+      "salary": 31950,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        }
+      ],
+      "additivePlayerP90": 157.92000000000002,
+      "selection": {
+        "joint": {
+          "mean": 91.99202000000511,
+          "p10": 58.28,
+          "p50": 89.44,
+          "p90": 131.38,
+          "target": 90,
+          "targetProbability": 0.48850000000001426,
+          "monteCarlo95": [
+            0.46663577690443814,
+            0.5104083151830591
+          ]
+        },
+        "independent": {
+          "mean": 91.99202000000496,
+          "p10": 66.42,
+          "p50": 90.47,
+          "p90": 119.38,
+          "target": 90,
+          "targetProbability": 0.5120000000000157,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 92.65486000000499,
+          "p10": 57.47,
+          "p50": 89.76,
+          "p90": 131.36,
+          "target": 90,
+          "targetProbability": 0.49700000000001426,
+          "monteCarlo95": [
+            0.47511409519802095,
+            0.518897407085695
+          ]
+        },
+        "independent": {
+          "mean": 92.65486000000513,
+          "p10": 67.7,
+          "p50": 90.72,
+          "p90": 120.72,
+          "target": 90,
+          "targetProbability": 0.5130000000000158,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1014:1000,1005,1007,1010,1017",
+      "salary": 26900,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1017
+        }
+      ],
+      "additivePlayerP90": 133.77,
+      "selection": {
+        "joint": {
+          "mean": 71.81526500000385,
+          "p10": 44.28,
+          "p50": 69.01,
+          "p90": 103.17,
+          "target": 90,
+          "targetProbability": 0.20700000000001165,
+          "monteCarlo95": [
+            0.18981343495636663,
+            0.2253099547504708
+          ]
+        },
+        "independent": {
+          "mean": 71.81526500000389,
+          "p10": 49.32,
+          "p50": 70.61,
+          "p90": 96.62,
+          "target": 90,
+          "targetProbability": 0.1635000000000092,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 71.27636000000395,
+          "p10": 43.22,
+          "p50": 68.47,
+          "p90": 102.33,
+          "target": 90,
+          "targetProbability": 0.21100000000001187,
+          "monteCarlo95": [
+            0.19368072087380134,
+            0.22942733245478653
+          ]
+        },
+        "independent": {
+          "mean": 71.27636000000376,
+          "p10": 48.64,
+          "p50": 69.68,
+          "p90": 96.14,
+          "target": 90,
+          "targetProbability": 0.15200000000000854,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1004,1005,1006,1008,1011",
+      "salary": 25850,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        }
+      ],
+      "additivePlayerP90": 141.3,
+      "selection": {
+        "joint": {
+          "mean": 78.10655000000432,
+          "p10": 47.85,
+          "p50": 75.5,
+          "p90": 111.55,
+          "target": 90,
+          "targetProbability": 0.2980000000000141,
+          "monteCarlo95": [
+            0.2783575510764868,
+            0.31841693602516746
+          ]
+        },
+        "independent": {
+          "mean": 78.10655000000425,
+          "p10": 54,
+          "p50": 76.6,
+          "p90": 104.65,
+          "target": 90,
+          "targetProbability": 0.26050000000001405,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 78.8917500000043,
+          "p10": 48.35,
+          "p50": 76,
+          "p90": 112.75,
+          "target": 90,
+          "targetProbability": 0.3240000000000141,
+          "monteCarlo95": [
+            0.30384366462725665,
+            0.3448311360157724
+          ]
+        },
+        "independent": {
+          "mean": 78.89175000000448,
+          "p10": 55,
+          "p50": 77.3,
+          "p90": 105.7,
+          "target": 90,
+          "targetProbability": 0.26550000000001406,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1003:1005,1008,1009,1012,1014",
+      "salary": 31250,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1008
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1014
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1012
+        }
+      ],
+      "additivePlayerP90": 131.27,
+      "selection": {
+        "joint": {
+          "mean": 67.25222000000369,
+          "p10": 34.24,
+          "p50": 63.47,
+          "p90": 104.42,
+          "target": 90,
+          "targetProbability": 0.20350000000001145,
+          "monteCarlo95": [
+            0.18643171083332186,
+            0.22170509820448395
+          ]
+        },
+        "independent": {
+          "mean": 67.25222000000385,
+          "p10": 44.29,
+          "p50": 65.58,
+          "p90": 92,
+          "target": 90,
+          "targetProbability": 0.1190000000000067,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 67.40773500000368,
+          "p10": 34.43,
+          "p50": 64.69,
+          "p90": 103.97,
+          "target": 90,
+          "targetProbability": 0.2115000000000119,
+          "monteCarlo95": [
+            0.19416431340181323,
+            0.22994182287949344
+          ]
+        },
+        "independent": {
+          "mean": 67.40773500000363,
+          "p10": 42.92,
+          "p50": 66.13,
+          "p90": 93.67,
+          "target": 90,
+          "targetProbability": 0.12700000000000713,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1012:1000,1001,1005,1006,1016",
+      "salary": 31250,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1012
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1001
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1000
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        }
+      ],
+      "additivePlayerP90": 137.76999999999998,
+      "selection": {
+        "joint": {
+          "mean": 72.56994000000415,
+          "p10": 42.1,
+          "p50": 69.28,
+          "p90": 109.54,
+          "target": 90,
+          "targetProbability": 0.2415000000000136,
+          "monteCarlo95": [
+            0.22324973094450187,
+            0.26074138249993295
+          ]
+        },
+        "independent": {
+          "mean": 72.56994000000392,
+          "p10": 48.31,
+          "p50": 71.08,
+          "p90": 97.11,
+          "target": 90,
+          "targetProbability": 0.18000000000001012,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 72.73301000000414,
+          "p10": 42.4,
+          "p50": 69.35,
+          "p90": 108.87,
+          "target": 90,
+          "targetProbability": 0.24650000000001387,
+          "monteCarlo95": [
+            0.22810994921022174,
+            0.2658619937614012
+          ]
+        },
+        "independent": {
+          "mean": 72.73301000000399,
+          "p10": 49.2,
+          "p50": 71.74,
+          "p90": 97.37,
+          "target": 90,
+          "targetProbability": 0.17200000000000967,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1007:1003,1009,1013,1015,1016",
+      "salary": 27650,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1007
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1016
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1013
+        }
+      ],
+      "additivePlayerP90": 118.51999999999998,
+      "selection": {
+        "joint": {
+          "mean": 60.90977000000339,
+          "p10": 38.4,
+          "p50": 58.2,
+          "p90": 87.5,
+          "target": 90,
+          "targetProbability": 0.08250000000000464,
+          "monteCarlo95": [
+            0.07122770865268653,
+            0.09537302582716893
+          ]
+        },
+        "independent": {
+          "mean": 60.90977000000329,
+          "p10": 39.04,
+          "p50": 60.02,
+          "p90": 83.84,
+          "target": 90,
+          "targetProbability": 0.055500000000003116,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 61.24141000000327,
+          "p10": 37.26,
+          "p50": 58.56,
+          "p90": 88.58,
+          "target": 90,
+          "targetProbability": 0.09400000000000529,
+          "monteCarlo95": [
+            0.08197718067883888,
+            0.10757946171354904
+          ]
+        },
+        "independent": {
+          "mean": 61.24141000000326,
+          "p10": 39.28,
+          "p50": 59.9,
+          "p90": 84.94,
+          "target": 90,
+          "targetProbability": 0.058500000000003285,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1009:1005,1006,1010,1011,1015",
+      "salary": 31050,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1005
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1010
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1011
+        }
+      ],
+      "additivePlayerP90": 155.98000000000002,
+      "selection": {
+        "joint": {
+          "mean": 85.7711300000046,
+          "p10": 48.7,
+          "p50": 80.64,
+          "p90": 130.24,
+          "target": 90,
+          "targetProbability": 0.4030000000000142,
+          "monteCarlo95": [
+            0.38170901476391733,
+            0.424662892408674
+          ]
+        },
+        "independent": {
+          "mean": 85.77113000000473,
+          "p10": 59.5,
+          "p50": 83.76,
+          "p90": 114.7,
+          "target": 90,
+          "targetProbability": 0.3945000000000142,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 86.98114000000467,
+          "p10": 47.66,
+          "p50": 83.32,
+          "p90": 131.2,
+          "target": 90,
+          "targetProbability": 0.4270000000000142,
+          "monteCarlo95": [
+            0.40548202535018785,
+            0.4487978635529033
+          ]
+        },
+        "independent": {
+          "mean": 86.98114000000471,
+          "p10": 59.86,
+          "p50": 86.16,
+          "p90": 115.22,
+          "target": 90,
+          "targetProbability": 0.4370000000000142,
+          "monteCarlo95": null
+        }
+      }
+    },
+    {
+      "key": "showdown:1002:1003,1004,1006,1009,1015",
+      "salary": 31150,
+      "lineup": [
+        {
+          "slot": "CPT",
+          "playerId": 1002
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1003
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1009
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1015
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1006
+        },
+        {
+          "slot": "FLEX",
+          "playerId": 1004
+        }
+      ],
+      "additivePlayerP90": 146.62,
+      "selection": {
+        "joint": {
+          "mean": 79.22467000000445,
+          "p10": 44.2,
+          "p50": 76.41,
+          "p90": 119.93,
+          "target": 90,
+          "targetProbability": 0.3345000000000141,
+          "monteCarlo95": [
+            0.3141568241587583,
+            0.3554777184913645
+          ]
+        },
+        "independent": {
+          "mean": 79.22467000000442,
+          "p10": 53.41,
+          "p50": 78.13,
+          "p90": 105.97,
+          "target": 90,
+          "targetProbability": 0.2845000000000141,
+          "monteCarlo95": null
+        }
+      },
+      "evaluation": {
+        "joint": {
+          "mean": 79.80631000000439,
+          "p10": 43.44,
+          "p50": 76.75,
+          "p90": 120.69,
+          "target": 90,
+          "targetProbability": 0.35350000000001414,
+          "monteCarlo95": [
+            0.3328477027136494,
+            0.37471399213978585
+          ]
+        },
+        "independent": {
+          "mean": 79.80631000000442,
+          "p10": 52.76,
+          "p50": 78.57,
+          "p90": 108.71,
+          "target": 90,
+          "targetProbability": 0.3040000000000141,
+          "monteCarlo95": null
+        }
+      }
+    }
+  ],
+  "execution": {
+    "elapsedMs": 1094.5837,
+    "heapUsedBytes": 138154592,
+    "nodeVersion": "v22.17.0",
+    "candidateSearch": {
+      "requested": 100,
+      "seed": 318864977,
+      "status": "complete",
+      "attempts": 100,
+      "nodes": 701
+    }
+  },
+  "poolWarnings": [
+    "Synthetic mechanics fixture — not historical NFL data"
+  ]
+}

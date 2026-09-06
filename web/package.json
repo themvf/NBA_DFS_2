@@ -36,6 +36,9 @@
     "test:nfl-dk-csv": "node --import tsx ./scripts/test-nfl-dk-csv.ts",
     "test:nfl-scoring": "node --import tsx ./scripts/test-nfl-scoring.ts",
     "test:nfl-dfs-workspace": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-dfs-workspace.ts",
+    "test:nfl-scenarios": "node --import tsx ./scripts/test-nfl-scenarios.ts",
+    "experiment:nfl-scenarios": "node --import tsx ./scripts/compare-nfl-scenarios.ts",
+    "demo:nfl-scenarios": "node --import tsx ./scripts/compare-nfl-scenarios.ts --demo",
     "test:survivor": "node --import tsx ./scripts/test-survivor-assignment.ts"
   },
   "dependencies": {
