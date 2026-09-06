@@ -10,6 +10,10 @@ on:
         description: Regular-season week
         required: true
         default: '1'
+      audit_contract:
+        description: Read-only period and identity probe instead of ingestion
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -31,11 +35,17 @@ jobs:
           python-version: '3.11'
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Probe identity and period contracts
+        if: ${{ inputs.audit_contract }}
+        run: python -m ingest.nfl_dfs_injury_probe
       - name: Capture injuries for the requested week
+        if: ${{ !inputs.audit_contract }}
         run: python -m ingest.nfl_dfs_availability --season "$CAPTURE_SEASON" --week "$CAPTURE_WEEK"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: nfl-availability-audit
-          path: artifacts/nfl-availability-audit.json
+          path: |
+            artifacts/nfl-availability-audit.json
+            artifacts/nfl-injury-contract-probe.json
           retention-days: 90
