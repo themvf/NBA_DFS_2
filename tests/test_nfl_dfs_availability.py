@@ -17,3 +17,12 @@ def test_official_report_contract():
     validate_report(valid,now)
     for patch in [{'url':'https://nfl.com.example.org/article'}, {'published_at':'2026-09-13T18:00:00Z'},{'kickoff':'2026-09-13T14:00:00Z'},{'published_at':'2026-09-12T12:00:00Z'},{'players':[]},{'players':valid['players']*2}]:
         with pytest.raises(ValueError): validate_report({**valid,**patch},now)
+
+def test_capture_contract_retains_limits():
+    from ingest.nfl_dfs_availability import capture_contract
+    contract=capture_contract(2026,1,{'week':1},{'injuries':[{'player_id':1}]},{'counts':{'matched':1},'decisions':[]},{'timestamp_timezone':'unverified'})
+    assert contract.model_eligible is False
+    assert contract.fallback_tier=='C' and contract.confidence_multiplier==0
+    assert contract.matched_count==1 and contract.unmatched_count==0
+    other=capture_contract(2026,2,{'week':2},{'injuries':[{'player_id':1}]},{'counts':{'matched':1},'decisions':[]},{})
+    assert other.dataset!=contract.dataset # identical payloads cannot borrow another week's metadata

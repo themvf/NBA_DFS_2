@@ -26,6 +26,17 @@ def validate_payload(payload, season, week):
     return payload['injuries']
 
 
+def capture_contract(season,week,params,payload,identities,provider_contract):
+    total=len(payload['injuries'])
+    matched=identities['counts'].get('matched',0)
+    return SnapshotProvenance(source='fantasypros',dataset=f'game-week-injuries-v2-{season}-{week}',
+        season=season,week=week,request_params=params,response_hash=response_hash(payload),row_count=total,
+        matched_count=matched,unmatched_count=total-matched,
+        missingness={'identity_audit':identities,'provider_contract':provider_contract},
+        fallback_tier='C',confidence_multiplier=0,model_eligible=False,
+        eligibility_reason='Injury evidence for review; provider timestamp timezone unverified')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--season', type=int)
@@ -58,12 +69,7 @@ def main():
         # The source store deduplicates by source/dataset/response hash, not request
         # parameters. Scope the dataset so identical week-zero/list responses cannot
         # silently reuse a different week's provenance.
-        source_id = persist_source_snapshot(db, SnapshotProvenance(source='fantasypros',
-            dataset=f'game-week-injuries-v2-{season}-{week}', season=season, week=week,
-            request_params=params, response_hash=response_hash(payload), row_count=len(rows),
-            matched_count=identities['counts'].get('matched',0), unmatched_count=len(rows)-identities['counts'].get('matched',0),
-            missingness={'identity_audit':identities,'provider_contract':provider_contract},
-            model_eligible=False, eligibility_reason='Injury evidence for review; provider timestamp timezone unverified'))
+        source_id = persist_source_snapshot(db,capture_contract(season,week,params,payload,identities,provider_contract))
         for decision in identities['decisions']:
             if decision['category']=='matched':
                 persist_injury_observation(db, player_id=decision['player_id'], season=season,source='fantasypros',
