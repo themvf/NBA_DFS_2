@@ -27,3 +27,9 @@ Cash and GPP use source-specific player tail estimates. Summed player tails are 
 From the repository root, run `python -m ingest.nfl_dfs_optimizer_release` with the saved research artifacts available. This regenerates `web/src/lib/nfl-dfs/calibrated-release.json`, including paired metrics and artifact digests, without fitting or database writes.
 
 From `web`, run `npm run test:nfl-calibrated`, `npm run test:nfl-dfs-workspace`, and `npm run build`. The calibrated tests cover identity and time rejection, source-specific objectives, actual lineup changes, historical fallback, empty coverage rejection, and Showdown captain scaling.
+
+## Roster availability increment
+
+The player pool now displays a roster-role/status badge with source and retrieval timestamp in its tooltip. Fresh (72-hour), exact player/team/position Sleeper roster evidence labels QB1 as expected starter and excludes listed QB2+ from all projection sources. OUT, IR, PUP, NFI, SUSPENDED and INACTIVE records also exclude players. Existing DK exclusions are never cleared. Questionable players remain eligible. Missing, future-dated, stale or mismatched records stay unresolved and do not assert availability. A listed starter is not game-day confirmation.
+
+Generation reloads roster evidence on the server and freezes each player's availability and effective exclusion in the saved input snapshot. This increment does not promote replacement starters, redistribute WR targets, or change projection means/ranges. Those require validated workload scenarios. Run `npm run test:nfl-availability` for the evidence resolver checks.

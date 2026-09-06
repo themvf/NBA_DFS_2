@@ -13,6 +13,8 @@ import {
   nflDfsSlateUploads,
 } from "@/db/schema";
 import { parseNflDkSalaryCsv } from "@/lib/nfl-dfs/dk-salary-csv";
+import { getNflRosterEvidence } from "@/db/nfl-dfs-availability";
+import { resolveAvailability, type Availability } from "@/lib/nfl-dfs/availability";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import {
@@ -29,6 +31,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   modelConfidence: number | null;
   historyGames: number | null;
   dkStatus: string | null;
+  availability?: Availability;
   gameInfo: string | null;
 };
 
@@ -89,6 +92,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     catch { calibrationWarning = "Calibrated forecasts could not be loaded; historical projections remain available."; }
   }
   const byPlayer = new Map(snapshots.map(s => [s.playerId, s]));
+  const roster = run ? await getNflRosterEvidence(run.season) : new Map();
   const now = Date.now();
   return {
     uploadId,
@@ -115,7 +119,8 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       captainSalary: row.captainSalary,
       avgFptsDk: numeric(row.avgFptsDk),
       dkStatus: row.dkStatus,
-      isOut: row.isOut,
+      isOut: row.isOut || Boolean(resolveAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now).blockedReason),
+      availability: resolveAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now),
       identityMethod: row.identityMethod,
       projectionStatus: row.projectionStatus,
       ourProj: numeric(row.ourProj),
@@ -305,6 +310,7 @@ export async function runNflOptimizer(
     ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, ownership: player.linestarOwnPct, custom: player.customProj,
+    availability: player.availability, isOut: player.isOut,
     calibrated: player.calibrated ?? null, calibrationReason: player.calibrationReason,
   }));
   const inputDigest = sha256(JSON.stringify({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));
