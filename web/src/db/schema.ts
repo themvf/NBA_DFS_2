@@ -917,6 +917,14 @@ export const nflDfsOptimizerRuns = pgTable(
   (t) => [index("idx_nfl_dfs_optimizer_runs_upload").on(t.uploadId, t.createdAt)],
 );
 
+export const nflDfsCompetitorBenchmarks = pgTable('nfl_dfs_competitor_benchmarks', {
+  digest: text('digest').primaryKey(),
+  uploadId: uuid('upload_id').notNull().references(()=>nflDfsSlateUploads.uploadId),
+  capturedAt: timestamp('captured_at',{withTimezone:true}).notNull(),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+});
+
 export const nflDfsLineups = pgTable(
   "nfl_dfs_lineups",
   {

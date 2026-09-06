@@ -37,6 +37,7 @@
     "test:nfl-scoring": "node --import tsx ./scripts/test-nfl-scoring.ts",
     "test:nfl-dfs-workspace": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-dfs-workspace.ts",
     "replay:nfl-workload": "node --import tsx ./scripts/replay-nfl-workload.ts",
+    "test:nfl-competitor-benchmark": "node --import tsx ./scripts/test-nfl-competitor-benchmark.ts",
     "test:nfl-absence-preview": "node --import tsx ./scripts/test-nfl-absence-preview.ts",
     "test:nfl-workload": "node --import tsx ./scripts/test-nfl-workload.ts",
     "test:nfl-availability": "node --import tsx ./scripts/test-nfl-availability.ts",

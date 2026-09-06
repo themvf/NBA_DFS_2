@@ -2,6 +2,7 @@
 
 import AvailabilityPanel from './availability-panel';
 import AbsencePreview from './absence-preview';
+import CompetitorPanel from './competitor-panel';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { applyNflComparison, loadNflSalaryCsv, loadLatestNflSlate, runNflOptimizer, type NflComparisonSource, type NflWorkspaceSlate } from "./actions";
@@ -78,6 +79,7 @@ export default function NflDfsClient() {
     <CalibratedProjections slate={slate} active={settings.projectionSource === "calibrated"} onChoose={() => setSettings({ ...settings, projectionSource: "calibrated" })} />
     {slate ? <>
       <AvailabilityPanel slate={slate} />
+      <CompetitorPanel key={`${slate.uploadId}-benchmark`} slate={slate} />
       <AbsencePreview key={`${slate.uploadId}-${slate.players[0]?.availability?.evaluatedAt}`} slate={slate} />
       <section className="grid grid-cols-2 gap-3 md:grid-cols-6"><Metric label="Format" value={slate.format.toUpperCase()} /><Metric label="Players" value={String(slate.players.length)} /><Metric label="Games" value={String(slate.games.length)} /><Metric label="Our model" value={`${slate.players.filter((p) => p.ourProj != null).length}/${slate.players.length}`} /><Metric label="Model" value={slate.modelVersion ?? "None"} small /><Metric label="As of" value={slate.modelAsOf ? new Date(slate.modelAsOf).toLocaleString() : "No run"} small /></section>
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"><div className="space-y-5">

@@ -3011,6 +3011,13 @@ TABLES = [
         input_evidence JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_competitor_benchmarks (
+        digest TEXT PRIMARY KEY,
+        upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id),
+        captured_at TIMESTAMPTZ NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_weekly_report_cards (
         report_digest TEXT PRIMARY KEY,
         season INTEGER NOT NULL,

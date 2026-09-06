@@ -17,6 +17,9 @@ import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from 
 import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
 import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
+import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
+import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
+import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import {
@@ -52,6 +55,60 @@ export type NflWorkspaceSlate = {
 };
 
 export type NflComparisonSource = "fantasypros" | "linestar" | "custom";
+
+export async function loadNflBenchmarks(uploadId:string) { return readNflBenchmarks(uploadId); }
+
+export async function freezeNflBenchmark(uploadId:string,source:Competitor) {
+  const slate=await workspaceSlate(uploadId);
+  if(slate.format!=='classic')return {ok:false as const,error:'The first benchmark supports Classic slates only.'};
+  if(!slate.modelAsOf||!slate.projectionRunId)return {ok:false as const,error:'Load a slate linked to our model first.'};
+  const raw=await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId,uploadId));
+  const upload=(await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId,uploadId)).limit(1))[0];
+  // Use values from the same query as their import evidence, avoiding mixed upload revisions.
+  const capturedAt=new Date().toISOString();
+  const evidence=Object.fromEntries(raw.map(p=>[String(p.dkPlayerId),p.comparisonEvidence as Partial<Record<Competitor,ImportEvidence>>]));
+  const players=slate.players.map(p=>{const row=raw.find(r=>r.dkPlayerId===p.dkPlayerId)!;return {...p,fantasyprosProj:row.fantasyprosProj,linestarProj:row.linestarProj};});
+  try {
+    const pool=benchmarkPool(players,evidence,source,Date.parse(capturedAt),slate.modelAsOf);
+    if(!pool.rows.length)return {ok:false as const,error:'No paired pregame players. Import current competitor projections and refresh forecasts.'};
+    const settings:NflOptimizerSettings={format:'classic',mode:'gpp',projectionSource:'custom',allowDkFallback:false,nLineups:5,minSalary:45000,maxExposure:1,minUnique:1,stackPassCatchers:1,bringBack:false,randomness:0,lockedPlayerIds:[],excludedPlayerIds:[],minExposureByPlayer:{},maxExposureByPlayer:{}};
+    const lineups:BenchmarkSnapshot['lineups']=[],lineupWarnings:string[]=[];
+    for(const variant of ['our','competitor'] as const) {
+      const inputs=pool.rows.map(r=>({...r.player,customProj:variant==='our'?r.player.ourProj:r.competitor,linestarOwnPct:null}));
+      const result=optimizeNflLineups(inputs,settings);
+      lineups.push(...result.lineups.map(l=>({source:variant,slots:l.slots.map(s=>({id:s.player.dkPlayerId,multiplier:s.multiplier}))})));
+      if(result.lineups.length!==5)lineupWarnings.push(`${variant}: ${result.lineups.length}/5 legal lineups; insufficient paired pool or constraints.`);
+    }
+    if(lineups.filter(l=>l.source==='our').length!==lineups.filter(l=>l.source==='competitor').length) {
+      lineups.length=0;lineupWarnings.push('Unequal portfolio sizes: lineup comparison withheld. Player comparison retained.');
+    }
+    const snapshot:BenchmarkSnapshot={version:'nfl-competitor-benchmark-v1',capturedAt,source,uploadId,modelAsOf:slate.modelAsOf,projectionRunId:slate.projectionRunId,optimizerVersion:NFL_OPTIMIZER_VERSION,...pool,settings,lineups,lineupWarnings,salaryDigest:upload.fileDigest,sourcePublicationTime:'unknown'};
+    const digest=sha256(JSON.stringify(snapshot));await saveNflBenchmark(digest,snapshot);
+    return {ok:true as const,digest,paired:pool.rows.length};
+  } catch(error) {return {ok:false as const,error:error instanceof Error?error.message:'Benchmark could not be saved.'};}
+}
+
+export async function previewNflTargetRedistribution(uploadId:string,team:string) {
+  const slate=await workspaceSlate(uploadId);
+  if(!slate.teams.includes(team)||!slate.projectionRunId)return {ok:false as const,error:'Choose a team in a model-linked salary slate.'};
+  const run=(await db.select().from(nflDfsProjectionRuns).where(eq(nflDfsProjectionRuns.runId,slate.projectionRunId)).limit(1))[0];
+  const [{default:context},{default:historical},roster]=await Promise.all([import('@/data/nfl-team-context.json'),import('@/data/nfl-player-context-2025.json'),getNflRosterEvidence(run.season,run.week)]);
+  const selected=context.teams.find(t=>benchmarkTeam(t.team)===benchmarkTeam(team));const now=Date.now();
+  if(!selected||context.season!==run.season||Date.parse(context.as_of)>now||now-Date.parse(context.as_of)>72*3600000)return {ok:false as const,error:'Refresh the full-roster team-context snapshot.'};
+  const members=selected.players.map(p=>{const e=roster.get(Number(p.id));return {...p,availability:resolveGameAvailability(e,team,p.position,now,run.week,e?.kickoff??null)};});
+  const qb=members.filter(p=>p.position==='QB'&&p.availability.role==='Expected starter · QB1'&&p.availability.fresh&&!p.availability.blockedReason);
+  const history=historical as unknown as PlayerContext;
+  const games=Object.entries(history.games).filter(([,g])=>benchmarkTeam(g.team)===benchmarkTeam(team)).sort((a,b)=>b[1].week-a[1].week).slice(0,4);
+  const qbs=games.map(([key])=>history.rows.filter(r=>r.gameKey===key&&(r.attempts??0)>0).sort((a,b)=>(b.attempts??0)-(a.attempts??0))[0]?.playerId);
+  const historicalQb=qbs.length===4&&qbs.every(q=>q&&q===qbs[0])?qbs[0]!:null;
+  const profile=selected.profiles.all;
+  if(!profile)return {ok:false as const,error:'Historical team passing budget unavailable.'};
+  const targets=profile.plays_per_game*(1-profile.designed_run_rate)*(1-profile.scramble_rate-profile.sack_rate)*profile.target_rate;
+  try {
+    const result=redistributeInjuryTargets(members,targets,qb.length===1?qb[0].identity:null,historicalQb,now);
+    return {ok:true as const,result:{...result,team,evaluatedAt:new Date(now).toISOString(),rosterDigest:context.roster_digest,recipeDigest:context.recipe_digest,coaching: selected.coaching,continuity:selected.continuity,priorWindow:selected.prior_role_window}};
+  }catch(error){return {ok:false as const,error:error instanceof Error?error.message:'Target scenario unavailable.'};}
+}
 
 export async function previewNflAbsence(uploadId: string, receiverId: number, teammateId: number) {
   const slate = await workspaceSlate(uploadId); // Re-read official evidence; never trust browser flags.
