@@ -36,6 +36,7 @@
     "test:nfl-dk-csv": "node --import tsx ./scripts/test-nfl-dk-csv.ts",
     "test:nfl-scoring": "node --import tsx ./scripts/test-nfl-scoring.ts",
     "test:nfl-dfs-workspace": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-dfs-workspace.ts",
+    "test:nfl-calibrated": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-calibrated.ts",
     "test:nfl-scenarios": "node --import tsx ./scripts/test-nfl-scenarios.ts",
     "test:nfl-scenario-lab": "node --import tsx ./scripts/test-nfl-scenario-lab.ts",
     "test:nfl-player-context": "node --import tsx ./scripts/test-nfl-player-context.ts",

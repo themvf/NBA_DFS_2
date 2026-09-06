@@ -13,6 +13,8 @@ import {
   nflDfsSlateUploads,
 } from "@/db/schema";
 import { parseNflDkSalaryCsv } from "@/lib/nfl-dfs/dk-salary-csv";
+import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
+import { readCalibratedProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import {
   NFL_OPTIMIZER_VERSION,
   optimizeNflLineups,
@@ -56,6 +58,7 @@ function sha256(value: string): string {
 }
 
 function numeric(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -79,6 +82,14 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     ? (await db.select().from(nflDfsProjectionRuns).where(eq(nflDfsProjectionRuns.runId, upload.projectionRunId)).limit(1))[0] ?? null
     : null;
   const rows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  let snapshots: CalibrationSnapshot[] = [];
+  let calibrationWarning: string | null = null;
+  if (run?.week) {
+    try { snapshots = await getCalibratedSnapshots(run.season, run.week); }
+    catch { calibrationWarning = "Calibrated forecasts could not be loaded; historical projections remain available."; }
+  }
+  const byPlayer = new Map(snapshots.map(s => [s.playerId, s]));
+  const now = Date.now();
   return {
     uploadId,
     projectionRunId: upload.projectionRunId,
@@ -87,7 +98,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
-    warnings: upload.warnings as string[],
+    warnings: [...upload.warnings as string[], ...(calibrationWarning ? [calibrationWarning] : [])],
     fileName: upload.fileName,
     players: rows.map((row) => ({
       id: row.id,
@@ -117,6 +128,10 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       linestarProj: numeric(row.linestarProj),
       linestarOwnPct: numeric(row.linestarOwnPct),
       customProj: numeric(row.customProj),
+      ...(() => {
+        const candidate = readCalibratedProjection(byPlayer.get(row.ffPlayerId ?? -1), row, run?.season ?? 0, run?.week ?? 0, now);
+        return { calibrated: candidate.projection, calibrationReason: candidate.reason };
+      })(),
     })),
   };
 }
@@ -237,6 +252,12 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
   return workspaceSlate(uploadId);
 }
 
+/** Resume an existing salary snapshot while reading the latest qualified candidates. */
+export async function loadLatestNflSlate(): Promise<NflWorkspaceSlate | null> {
+  const rows = await db.select({ uploadId: nflDfsSlateUploads.uploadId }).from(nflDfsSlateUploads).orderBy(desc(nflDfsSlateUploads.createdAt)).limit(1);
+  return rows[0] ? workspaceSlate(rows[0].uploadId) : null;
+}
+
 export async function applyNflComparison(
   uploadId: string,
   source: NflComparisonSource,
@@ -272,10 +293,11 @@ export async function applyNflComparison(
 export async function runNflOptimizer(
   uploadId: string,
   settings: NflOptimizerSettings,
-): Promise<{ runId: string; result: { lineups: NflGeneratedLineup[]; warnings: string[]; sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number } } }> {
+): Promise<{ runId: string; slate: NflWorkspaceSlate; result: { lineups: NflGeneratedLineup[]; warnings: string[]; sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number } } }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId);
   const result = optimizeNflLineups(slate.players, settings);
+  if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");
   const runId = randomUUID();
   const inputSnapshot = slate.players.map((player) => ({
     dkPlayerId: player.dkPlayerId, name: player.name, team: player.team, position: player.position,
@@ -283,6 +305,7 @@ export async function runNflOptimizer(
     ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, ownership: player.linestarOwnPct, custom: player.customProj,
+    calibrated: player.calibrated ?? null, calibrationReason: player.calibrationReason,
   }));
   const inputDigest = sha256(JSON.stringify({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));
   const status = result.lineups.length === settings.nLineups ? "complete" : result.lineups.length ? "partial" : "failed";
@@ -305,5 +328,5 @@ export async function runNflOptimizer(
     projectedOwnership: lineup.projectedOwnership,
     stackSummary: lineup.stackSummary,
   })));
-  return { runId, result };
+  return { runId, slate, result };
 }

@@ -44,8 +44,8 @@ export function buildLineupInsight(
   const previous = lineups.find((entry) => entry.lineupNumber === lineup.lineupNumber - 1) ?? null;
   const uniqueFromPrevious = previous ? lineup.playerIds.length - lineupOverlap(lineup, previous) : null;
   const reasons: NflLineupInsight["reasons"] = [];
-  if (mode === "gpp") reasons.push({ label: `Ceiling rank #${ceilingRank}`, detail: `${lineup.ceilingFpts.toFixed(1)} simulated ceiling points drive the tournament objective.`, tone: "ceiling" });
-  else reasons.push({ label: `Floor rank #${floorRank}`, detail: `${lineup.floorFpts.toFixed(1)} floor points drive the cash objective.`, tone: "floor" });
+  if (mode === "gpp") reasons.push({ label: `Ceiling rank #${ceilingRank}`, detail: `${lineup.ceilingFpts.toFixed(1)} summed player upper-tail points drive this heuristic; this is not lineup P90.`, tone: "ceiling" });
+  else reasons.push({ label: `Floor rank #${floorRank}`, detail: `${lineup.floorFpts.toFixed(1)} summed player lower-tail points drive this heuristic; this is not lineup P10.`, tone: "floor" });
   const stack = lineup.stackSummary;
   if (stack.quarterback && stack.passCatchers.length) reasons.push({ label: `${stack.passCatchers.length}-player QB stack`, detail: `${stack.quarterback} is paired with ${stack.passCatchers.join(" and ")}${stack.bringBack ? ` plus bring-back ${stack.bringBack}` : ""}.`, tone: "correlation" });
   reasons.push({ label: `${(lineup.totalSalary / 500).toFixed(1)}% cap used`, detail: `${(lineup.projectedFpts / (lineup.totalSalary / 1000)).toFixed(2)} projected points per $1K.`, tone: "value" });

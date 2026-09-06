@@ -1,0 +1,208 @@
+{
+  "evidence": "2023 fit, 2024 selection, 2025 retrospective diagnostic; fresh forward validation pending",
+  "limits": [
+    "Not a DK slate profitability backtest",
+    "Benchmark disables market inputs; not archived live projections",
+    "No current injury or roster counterfactual adjustment",
+    "Player marginals are not a joint lineup distribution",
+    "Previously inspected 2025 is not an untouched holdout"
+  ],
+  "positions": {
+    "DST": {
+      "enabledForOptIn": true,
+      "recipeDigest": "4a527756ddbee7785e910ad69057f3d5484e4bee5121a526c379df3a669abc88",
+      "seasons": {
+        "2024": {
+          "baseline": {
+            "boomBrier": 0.07813598345588234,
+            "coverage80": 0.7775735294117647,
+            "intervalScore80": 19.560110294117646,
+            "mae": 4.316369485294119,
+            "n": 544
+          },
+          "opportunity": {
+            "boomBrier": 0.07419798208997141,
+            "coverage80": 0.8069852941176471,
+            "intervalScore80": 18.92189328651367,
+            "mae": 4.22458242248495,
+            "n": 544
+          }
+        },
+        "2025": {
+          "baseline": {
+            "boomBrier": 0.07744260110294117,
+            "coverage80": 0.7996323529411765,
+            "intervalScore80": 20.734558823529408,
+            "mae": 4.384457720588236,
+            "n": 544
+          },
+          "opportunity": {
+            "boomBrier": 0.07173191098605886,
+            "coverage80": 0.8180147058823529,
+            "intervalScore80": 19.32004926097452,
+            "mae": 4.26371412359876,
+            "n": 544
+          }
+        }
+      }
+    },
+    "QB": {
+      "enabledForOptIn": true,
+      "recipeDigest": "9a8d14a3d978bdff6f40d765311e063529b1c9ab2871074150813b3d404224e5",
+      "seasons": {
+        "2024": {
+          "baseline": {
+            "boomBrier": 0.057987771739130445,
+            "coverage80": 0.718944099378882,
+            "intervalScore80": 29.667403726708077,
+            "mae": 6.773650776397514,
+            "n": 644
+          },
+          "opportunity": {
+            "boomBrier": 0.055681319760918335,
+            "coverage80": 0.8027950310559007,
+            "intervalScore80": 28.877101766095716,
+            "mae": 6.6575306149439815,
+            "n": 644
+          }
+        },
+        "2025": {
+          "baseline": {
+            "boomBrier": 0.05355090408805031,
+            "coverage80": 0.7515723270440252,
+            "intervalScore80": 30.577650943396225,
+            "mae": 7.054789308176101,
+            "n": 636
+          },
+          "opportunity": {
+            "boomBrier": 0.05035056060215212,
+            "coverage80": 0.779874213836478,
+            "intervalScore80": 29.739760699509546,
+            "mae": 6.9542815439436625,
+            "n": 636
+          }
+        }
+      }
+    },
+    "RB": {
+      "enabledForOptIn": false,
+      "recipeDigest": "072989d9f70586ce4281227cfce38acba283b04d2f8f7aa73912b4b5a6873fa2",
+      "seasons": {
+        "2024": {
+          "baseline": {
+            "boomBrier": 0.046514658090724435,
+            "coverage80": 0.7650643195666892,
+            "intervalScore80": 21.51726066350711,
+            "mae": 4.68762153012864,
+            "n": 1477
+          },
+          "opportunity": {
+            "boomBrier": 0.046685466368196295,
+            "coverage80": 0.8144888287068381,
+            "intervalScore80": 23.37771934989152,
+            "mae": 4.6088597547836425,
+            "n": 1477
+          }
+        },
+        "2025": {
+          "baseline": {
+            "boomBrier": 0.04836957531519575,
+            "coverage80": 0.787657597876576,
+            "intervalScore80": 22.09196416721964,
+            "mae": 4.7333970802919705,
+            "n": 1507
+          },
+          "opportunity": {
+            "boomBrier": 0.04796871551885599,
+            "coverage80": 0.8088918380889184,
+            "intervalScore80": 24.222978703956894,
+            "mae": 4.663953324524809,
+            "n": 1507
+          }
+        }
+      }
+    },
+    "TE": {
+      "enabledForOptIn": false,
+      "recipeDigest": "4418fb2bab3b4bee71ef2f61c76280e1b0e6a366c10e44297916d678dfdaa206",
+      "seasons": {
+        "2024": {
+          "baseline": {
+            "boomBrier": 0.03358305697278911,
+            "coverage80": 0.8112244897959183,
+            "intervalScore80": 16.549350340136055,
+            "mae": 3.6507313775510206,
+            "n": 1176
+          },
+          "opportunity": {
+            "boomBrier": 0.03530332527747941,
+            "coverage80": 0.8018707482993197,
+            "intervalScore80": 18.09546222578743,
+            "mae": 3.634065802983951,
+            "n": 1176
+          }
+        },
+        "2025": {
+          "baseline": {
+            "boomBrier": 0.032602377115229654,
+            "coverage80": 0.7993553585817889,
+            "intervalScore80": 17.437526188557616,
+            "mae": 3.692385334407736,
+            "n": 1241
+          },
+          "opportunity": {
+            "boomBrier": 0.03201871354020153,
+            "coverage80": 0.7937147461724415,
+            "intervalScore80": 18.68316620300216,
+            "mae": 3.650028191033644,
+            "n": 1241
+          }
+        }
+      }
+    },
+    "WR": {
+      "enabledForOptIn": false,
+      "recipeDigest": "82b17a2d2ebdf23bbfd33d5647441b77cc61473031b4ea8dccf5a02649cf065e",
+      "seasons": {
+        "2024": {
+          "baseline": {
+            "boomBrier": 0.04580060845431256,
+            "coverage80": 0.7997438087105039,
+            "intervalScore80": 22.708699402220326,
+            "mae": 4.846403586678053,
+            "n": 2342
+          },
+          "opportunity": {
+            "boomBrier": 0.04313136975488636,
+            "coverage80": 0.8035866780529461,
+            "intervalScore80": 24.463406006161563,
+            "mae": 4.743483255741747,
+            "n": 2342
+          }
+        },
+        "2025": {
+          "baseline": {
+            "boomBrier": 0.03458172120961061,
+            "coverage80": 0.8032311516155758,
+            "intervalScore80": 20.760865782932893,
+            "mae": 4.56365869925435,
+            "n": 2414
+          },
+          "opportunity": {
+            "boomBrier": 0.034221323152431454,
+            "coverage80": 0.8185584092792046,
+            "intervalScore80": 22.601479049742426,
+            "mae": 4.466434562543495,
+            "n": 2414
+          }
+        }
+      }
+    }
+  },
+  "predictionsDigest": "f2ca4d3a7caa8008ca4fc2ca57e4f4aac12bd78ccdcd1f4ceecd1947985f5be8",
+  "productionDefaultPromotion": false,
+  "rule": "Opt-in only: qualified opportunity recipe, >=100 paired rows per split, lower MAE, interval score and boom Brier in 2024 and 2025. Others retain the chosen fallback.",
+  "studyDigest": "5298a404d8447281db9d4f5d8c8361d62e82da61232d3a58bc5d47e32f9be970",
+  "studyId": "8bab909112d93a5d0f0c1bcfa2674262d7116aebe04d58402cfd7d5e717d033e",
+  "version": "nfl-dfs-calibrated-opt-in-v1"
+}

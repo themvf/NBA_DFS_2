@@ -2513,7 +2513,7 @@ TABLES = [
         failure_reason TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CHECK(mode IN ('cash','gpp')),
-        CHECK(projection_source IN ('our','dk_avg','fantasypros','linestar','custom')),
+        CHECK(projection_source IN ('our','calibrated','dk_avg','fantasypros','linestar','custom')),
         CHECK(status IN ('complete','partial','failed'))
     )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_lineups (
