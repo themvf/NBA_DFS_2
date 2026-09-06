@@ -1,0 +1,5879 @@
+{
+  "version": "nfl-receiving-components-v1",
+  "config": {
+    "catch_prior_targets": 30,
+    "yardage_prior_receptions": 20,
+    "td_prior_targets": 50,
+    "minimum_population_targets": 300,
+    "minimum_residuals": 100,
+    "maximum_residuals": 2000,
+    "team_games": 8
+  },
+  "seasons": {
+    "2024": {
+      "n": 1794,
+      "models": {
+        "production": {
+          "mae": 5.126422073578603,
+          "interval80": 24.274814938684514,
+          "brier25": 0.05332070791527314,
+          "below_p10": 0.07859531772575251,
+          "above_p90": 0.12263099219620958
+        },
+        "role": {
+          "mae": 5.227604082280799,
+          "interval80": 25.216311500109786,
+          "brier25": 0.051697541809153015,
+          "below_p10": 0.10033444816053512,
+          "above_p90": 0.11817168338907469
+        },
+        "candidate": {
+          "mae": 5.162844158434875,
+          "interval80": 24.59006014915055,
+          "brier25": 0.05075247848182837,
+          "below_p10": 0.09977703455964325,
+          "above_p90": 0.11482720178372352
+        }
+      },
+      "candidate_minus_production": {
+        "mae": {
+          "lower95": -0.05057276588003714,
+          "upper95": 0.12989196431057365
+        },
+        "interval80": {
+          "lower95": -0.396878562394482,
+          "upper95": 0.9367994058507181
+        },
+        "brier25": {
+          "lower95": -0.004355706527471314,
+          "upper95": -0.0008214007305907386
+        }
+      },
+      "component_mae": {
+        "receptions": 1.498545713902799,
+        "receiving_yards": 22.223116660334966,
+        "receiving_tds": 0.3384633524089289
+      }
+    },
+    "2025": {
+      "n": 1821,
+      "models": {
+        "production": {
+          "mae": 4.8440387699066445,
+          "interval80": 21.895032399780433,
+          "brier25": 0.04185091982427243,
+          "below_p10": 0.08621636463481604,
+          "above_p90": 0.11477210323997804
+        },
+        "role": {
+          "mae": 4.913429994105987,
+          "interval80": 23.013063472186325,
+          "brier25": 0.041974607935281946,
+          "below_p10": 0.10763316858868753,
+          "above_p90": 0.09774848984074684
+        },
+        "candidate": {
+          "mae": 4.85644518947233,
+          "interval80": 22.32690490576406,
+          "brier25": 0.04161368214034762,
+          "below_p10": 0.10323997803404723,
+          "above_p90": 0.09774848984074684
+        }
+      },
+      "candidate_minus_production": {
+        "mae": {
+          "lower95": -0.09541498348609724,
+          "upper95": 0.12564545900059151
+        },
+        "interval80": {
+          "lower95": -0.35793535455053005,
+          "upper95": 1.1045779091652788
+        },
+        "brier25": {
+          "lower95": -0.0015816716577386684,
+          "upper95": 0.0011299750915238446
+        }
+      },
+      "component_mae": {
+        "receptions": 1.4007321342674366,
+        "receiving_yards": 21.53245538828712,
+        "receiving_tds": 0.30720974988843974
+      }
+    }
+  },
+  "examples": [
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_ARI_LA",
+      "identity": "00-0038559",
+      "name": "Michael Wilson",
+      "team": "ARI",
+      "actual": 20.9,
+      "targets_baseline": 9.776769674415979,
+      "targets_candidate": 9.776769674415979,
+      "targets_actual": 8.0,
+      "components": {
+        "targets": 9.776769674415979,
+        "receptions": 6.175860939137801,
+        "receiving_yards": 79.21748361839909,
+        "receiving_tds": 0.5335757428526874,
+        "catch_rate": 0.6316872693952177,
+        "yards_per_reception": 12.826953909596687,
+        "td_per_target": 0.05457587328143341,
+        "points": {
+          "receptions": 6.175860939137801,
+          "receiving_yards": 7.921748361839909,
+          "receiving_tds": 3.2014544571161245,
+          "bonuses_and_other": 0.8709999455101496
+        },
+        "mean": 18.170063703603986,
+        "observed_targets": 87.0,
+        "observed_receptions": 55.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 99.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171417,
+      "candidate": {
+        "mean": 17.266584414786845,
+        "p10": 6.766508632077411,
+        "p50": 15.715095566894576,
+        "p90": 30.671968094812406
+      },
+      "boom_probability": 0.1888412017167382,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 14.3572,
+        "p10": 3.6,
+        "p90": 36.5
+      },
+      "role": {
+        "mean": 18.194349727495663,
+        "p10": 7.285108781062067,
+        "p50": 16.71898227853984,
+        "p90": 31.916211930594677
+      },
+      "role_boom_probability": 0.2088698140200286,
+      "production_boom_probability": 0.135,
+      "candidate_boom_probability": 0.1888412017167382
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NO_ATL",
+      "identity": "00-0036309",
+      "name": "Darnell Mooney",
+      "team": "ATL",
+      "actual": 5.0,
+      "targets_baseline": 4.352559034169833,
+      "targets_candidate": 4.352559034169833,
+      "targets_actual": 7.0,
+      "components": {
+        "targets": 4.352559034169833,
+        "receptions": 2.2983694713112497,
+        "receiving_yards": 31.184621320995618,
+        "receiving_tds": 0.17197033152565652,
+        "catch_rate": 0.5280501546947127,
+        "yards_per_reception": 13.56814981675004,
+        "td_per_target": 0.039510166358595195,
+        "points": {
+          "receptions": 2.2983694713112497,
+          "receiving_yards": 3.118462132099562,
+          "receiving_tds": 1.031821989153939,
+          "bonuses_and_other": -1.584387543440459e-16
+        },
+        "mean": 6.44865359256475,
+        "observed_targets": 38.0,
+        "observed_receptions": 17.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 20.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 7.527145232486336,
+        "p10": -1.3344510723909626,
+        "p50": 6.18355809359781,
+        "p90": 19.029443051564613
+      },
+      "boom_probability": 0.03824091778202677,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 7.484,
+        "p10": 1.78,
+        "p90": 16.4
+      },
+      "role": {
+        "mean": 6.691989308284732,
+        "p10": -2.355949016371345,
+        "p50": 5.4238960150125255,
+        "p90": 17.848454255760917
+      },
+      "role_boom_probability": 0.030592734225621414,
+      "production_boom_probability": 0.01,
+      "candidate_boom_probability": 0.03824091778202677
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NO_ATL",
+      "identity": "00-0035359",
+      "name": "David Sills",
+      "team": "ATL",
+      "actual": 2.1,
+      "targets_baseline": 3.948662659354947,
+      "targets_candidate": 3.948662659354947,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 3.948662659354947,
+        "receptions": 2.202377341243882,
+        "receiving_yards": 26.494699378464286,
+        "receiving_tds": 0.22376894548205814,
+        "catch_rate": 0.5577527206650926,
+        "yards_per_reception": 12.03004538881622,
+        "td_per_target": 0.05666955239944781,
+        "points": {
+          "receptions": 2.202377341243882,
+          "receiving_yards": 2.649469937846429,
+          "receiving_tds": 1.3426136728923488,
+          "bonuses_and_other": 0.0
+        },
+        "mean": 6.194460951982659,
+        "observed_targets": 29.0,
+        "observed_receptions": 14.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 11.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 7.316793586626605,
+        "p10": 2.6743641054133396,
+        "p50": 6.013793535872156,
+        "p90": 14.073717726305063
+      },
+      "boom_probability": 0.013215859030837005,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 3.736,
+        "p10": 0.0,
+        "p90": 9.5
+      },
+      "role": {
+        "mean": 6.629729749172476,
+        "p10": 1.829314839857375,
+        "p50": 5.4141917055597,
+        "p90": 13.18144406052789
+      },
+      "role_boom_probability": 0.011563876651982379,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.013215859030837005
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NO_ATL",
+      "identity": "00-0037238",
+      "name": "Drake London",
+      "team": "ATL",
+      "actual": 17.8,
+      "targets_baseline": 3.0728585212574178,
+      "targets_candidate": 3.0728585212574178,
+      "targets_actual": 8.0,
+      "components": {
+        "targets": 3.0728585212574178,
+        "receptions": 1.9357612700059001,
+        "receiving_yards": 26.473970409551665,
+        "receiving_tds": 0.13875331585292275,
+        "catch_rate": 0.6299545705129906,
+        "yards_per_reception": 13.676257924858149,
+        "td_per_target": 0.045154475838394506,
+        "points": {
+          "receptions": 1.9357612700059001,
+          "receiving_yards": 2.6473970409551666,
+          "receiving_tds": 0.8325198951175365,
+          "bonuses_and_other": 0.5403516390415756
+        },
+        "mean": 5.956029845120179,
+        "observed_targets": 27.0,
+        "observed_receptions": 17.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 78.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 7.078362479764124,
+        "p10": 2.4359329985508595,
+        "p50": 5.775362429009676,
+        "p90": 13.835286619442584
+      },
+      "boom_probability": 0.013215859030837005,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 18.5375,
+        "p10": 5.7,
+        "p90": 35.17
+      },
+      "role": {
+        "mean": 5.871390297424562,
+        "p10": 1.070975388109461,
+        "p50": 4.655852253811786,
+        "p90": 12.423104608779974
+      },
+      "role_boom_probability": 0.009911894273127754,
+      "production_boom_probability": 0.325,
+      "candidate_boom_probability": 0.013215859030837005
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_BAL_PIT",
+      "identity": "00-0039064",
+      "name": "Zay Flowers",
+      "team": "BAL",
+      "actual": 32.8,
+      "targets_baseline": 6.714901805186238,
+      "targets_candidate": 6.714901805186238,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 6.714901805186238,
+        "receptions": 4.496315487972557,
+        "receiving_yards": 62.2275244337743,
+        "receiving_tds": 0.29472458722338934,
+        "catch_rate": 0.6696025673078105,
+        "yards_per_reception": 13.83967041463842,
+        "td_per_target": 0.04389112391721939,
+        "points": {
+          "receptions": 4.496315487972557,
+          "receiving_yards": 6.222752443377431,
+          "receiving_tds": 1.768347523340336,
+          "bonuses_and_other": 1.6840537002621245
+        },
+        "mean": 14.171469154952447,
+        "observed_targets": 52.0,
+        "observed_receptions": 36.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "unknown",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 138.0,
+        "receiving_tds": 2.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 2000,
+      "calibration_offset": 0.5280012772588201,
+      "candidate": {
+        "mean": 14.699470432211267,
+        "p10": 7.3423939791324235,
+        "p50": 13.844312540955213,
+        "p90": 23.45851395645001
+      },
+      "boom_probability": 0.0765,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 14.4656,
+        "p10": 6.99,
+        "p90": 23.6
+      },
+      "role": {
+        "mean": 15.872124632769937,
+        "p10": 8.186378325888079,
+        "p50": 15.140705628010494,
+        "p90": 24.584342925007135
+      },
+      "role_boom_probability": 0.0925,
+      "production_boom_probability": 0.045,
+      "candidate_boom_probability": 0.0765
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_BAL_PIT",
+      "identity": "00-0030564",
+      "name": "DeAndre Hopkins",
+      "team": "BAL",
+      "actual": 0.0,
+      "targets_baseline": 2.6077696133486543,
+      "targets_candidate": 2.6077696133486543,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 2.6077696133486543,
+        "receptions": 1.5499885765263046,
+        "receiving_yards": 18.891529268430475,
+        "receiving_tds": 0.08971070245140676,
+        "catch_rate": 0.5943732792161628,
+        "yards_per_reception": 12.188173225617234,
+        "td_per_target": 0.03440131443828301,
+        "points": {
+          "receptions": 1.5499885765263046,
+          "receiving_yards": 1.8891529268430476,
+          "receiving_tds": 0.5382642147084405,
+          "bonuses_and_other": -1.7824359863705167e-16
+        },
+        "mean": 3.9774057180777924,
+        "observed_targets": 22.0,
+        "observed_receptions": 12.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "unknown",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 2000,
+      "calibration_offset": 0.5280012772588196,
+      "candidate": {
+        "mean": 4.505406995336612,
+        "p10": -2.851669457742231,
+        "p50": 3.650249104080558,
+        "p90": 13.264450519575353
+      },
+      "boom_probability": 0.016,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.3835,
+        "p10": 0.0,
+        "p90": 10.92
+      },
+      "role": {
+        "mean": 3.793582698158046,
+        "p10": -3.8921636087238154,
+        "p50": 3.062163693398601,
+        "p90": 12.505800990395244
+      },
+      "role_boom_probability": 0.0145,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.016
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_BAL_PIT",
+      "identity": "00-0040075",
+      "name": "LaJohntay Wester",
+      "team": "BAL",
+      "actual": 0.0,
+      "targets_baseline": 0.0,
+      "targets_candidate": 0.0,
+      "targets_actual": 0.0,
+      "components": {
+        "targets": 0.0,
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0,
+        "catch_rate": 0.6302470173080155,
+        "yards_per_reception": 12.601077160987575,
+        "td_per_target": 0.04953789279112754,
+        "points": {
+          "receptions": 0.0,
+          "receiving_yards": 0.0,
+          "receiving_tds": 0.0,
+          "bonuses_and_other": -0.075002149123458
+        },
+        "mean": -0.075002149123458,
+        "observed_targets": 0.0,
+        "observed_receptions": 0.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "unknown",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 2000,
+      "calibration_offset": 0.5280012772588203,
+      "candidate": {
+        "mean": 0.4529991281353623,
+        "p10": -6.904077324943482,
+        "p50": -0.40215876312069215,
+        "p90": 9.212042652374103
+      },
+      "boom_probability": 0.0065,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 0.0055,
+        "p10": 0.0,
+        "p90": 0.0
+      },
+      "role": {
+        "mean": 0.45749169995805905,
+        "p10": -7.2282546069238025,
+        "p50": -0.2739273048013855,
+        "p90": 9.169709992195257
+      },
+      "role_boom_probability": 0.006,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.0065
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NYJ_BUF",
+      "identity": "00-0036988",
+      "name": "Josh Palmer",
+      "team": "BUF",
+      "actual": 1.1,
+      "targets_baseline": 1.5949855400635395,
+      "targets_candidate": 1.5949855400635395,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 1.5949855400635395,
+        "receptions": 0.9391351172426949,
+        "receiving_yards": 11.131239611550722,
+        "receiving_tds": 0.06172829897427053,
+        "catch_rate": 0.5888047845281924,
+        "yards_per_reception": 11.852649748879685,
+        "td_per_target": 0.03870147874306839,
+        "points": {
+          "receptions": 0.9391351172426949,
+          "receiving_yards": 1.1131239611550723,
+          "receiving_tds": 0.3703697938456232,
+          "bonuses_and_other": -4.9512110732514344e-17
+        },
+        "mean": 2.4226288722433904,
+        "observed_targets": 14.0,
+        "observed_receptions": 7.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 1.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 3.5449615068873355,
+        "p10": -1.0974679743259292,
+        "p50": 2.241961456132887,
+        "p90": 10.301885646565795
+      },
+      "boom_probability": 0.006057268722466961,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 5.714,
+        "p10": 1.5,
+        "p90": 11.42
+      },
+      "role": {
+        "mean": 2.774461570016769,
+        "p10": -2.0259533392983324,
+        "p50": 1.5589235264039931,
+        "p90": 9.326175881372182
+      },
+      "role_boom_probability": 0.004405286343612335,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.006057268722466961
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NYJ_BUF",
+      "identity": "00-0036196",
+      "name": "Gabe Davis",
+      "team": "BUF",
+      "actual": 15.1,
+      "targets_baseline": 1.116528411768707,
+      "targets_candidate": 1.116528411768707,
+      "targets_actual": 7.0,
+      "components": {
+        "targets": 1.116528411768707,
+        "receptions": 0.7055209736606696,
+        "receiving_yards": 8.884901119926019,
+        "receiving_tds": 0.04533644652495583,
+        "catch_rate": 0.6318880614448894,
+        "yards_per_reception": 12.593390489620425,
+        "td_per_target": 0.040604830156661914,
+        "points": {
+          "receptions": 0.7055209736606696,
+          "receiving_yards": 0.8884901119926019,
+          "receiving_tds": 0.272018679149735,
+          "bonuses_and_other": -5.601655879971221e-17
+        },
+        "mean": 1.8660297648030064,
+        "observed_targets": 11.0,
+        "observed_receptions": 7.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 41.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 2.988362399446952,
+        "p10": -1.6540670817663132,
+        "p50": 1.6853623486925031,
+        "p90": 9.745286539125411
+      },
+      "boom_probability": 0.005506607929515419,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 5.4325,
+        "p10": 0.0,
+        "p90": 15.15
+      },
+      "role": {
+        "mean": 2.5309075847809828,
+        "p10": -2.2695073245341177,
+        "p50": 1.3153695411682076,
+        "p90": 9.082621896136395
+      },
+      "role_boom_probability": 0.003854625550660793,
+      "production_boom_probability": 0.035,
+      "candidate_boom_probability": 0.005506607929515419
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CAR_TB",
+      "identity": "00-0040124",
+      "name": "Tetairoa McMillan",
+      "team": "CAR",
+      "actual": 11.5,
+      "targets_baseline": 6.012185392285113,
+      "targets_candidate": 6.012185392285113,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 6.012185392285113,
+        "receptions": 3.470219683204623,
+        "receiving_yards": 47.38064750549212,
+        "receiving_tds": 0.4364318129281137,
+        "catch_rate": 0.5771977170992827,
+        "yards_per_reception": 13.653500882035745,
+        "td_per_target": 0.07259121009278036,
+        "points": {
+          "receptions": 3.470219683204623,
+          "receiving_yards": 4.738064750549213,
+          "receiving_tds": 2.6185908775686824,
+          "bonuses_and_other": 0.2675792681343341
+        },
+        "mean": 11.094454579456851,
+        "observed_targets": 53.0,
+        "observed_receptions": 29.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 85.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 12.172946219378437,
+        "p10": 3.3113499145011382,
+        "p50": 10.829359080489912,
+        "p90": 23.675244038456718
+      },
+      "boom_probability": 0.07361376673040153,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 13.0215,
+        "p10": 1.5,
+        "p90": 21.21
+      },
+      "role": {
+        "mean": 11.955841632939086,
+        "p10": 2.9079033082830072,
+        "p50": 10.687748339666879,
+        "p90": 23.112306580415268
+      },
+      "role_boom_probability": 0.07552581261950286,
+      "production_boom_probability": 0.085,
+      "candidate_boom_probability": 0.07361376673040153
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CAR_TB",
+      "identity": "00-0039491",
+      "name": "Jalen Coker",
+      "team": "CAR",
+      "actual": 16.7,
+      "targets_baseline": 3.9595417411194345,
+      "targets_candidate": 3.9595417411194345,
+      "targets_actual": 7.0,
+      "components": {
+        "targets": 3.9595417411194345,
+        "receptions": 2.8315613825713286,
+        "receiving_yards": 36.232501348562785,
+        "receiving_tds": 0.2215806399489665,
+        "catch_rate": 0.7151235086540078,
+        "yards_per_reception": 12.795944164085261,
+        "td_per_target": 0.05596118299445472,
+        "points": {
+          "receptions": 2.8315613825713286,
+          "receiving_yards": 3.6232501348562787,
+          "receiving_tds": 1.3294838396937991,
+          "bonuses_and_other": 0.02838188050930633
+        },
+        "mean": 7.812677237630712,
+        "observed_targets": 30.0,
+        "observed_receptions": 24.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 6.0,
+        "receiving_yards": 47.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 8.935009872274657,
+        "p10": 4.292580391061393,
+        "p50": 7.632009821520209,
+        "p90": 15.691934011953116
+      },
+      "boom_probability": 0.020374449339207047,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 7.9713,
+        "p10": 1.9,
+        "p90": 15.0
+      },
+      "role": {
+        "mean": 10.163622359112418,
+        "p10": 5.363207449797318,
+        "p50": 8.948084315499642,
+        "p90": 16.71533667046783
+      },
+      "role_boom_probability": 0.0236784140969163,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.020374449339207047
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CAR_TB",
+      "identity": "00-0039342",
+      "name": "Xavier Legette",
+      "team": "CAR",
+      "actual": 5.2,
+      "targets_baseline": 2.8134309401110964,
+      "targets_candidate": 2.8134309401110964,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 2.8134309401110964,
+        "receptions": 1.6030231423867392,
+        "receiving_yards": 21.083229638656604,
+        "receiving_tds": 0.12871056518992538,
+        "catch_rate": 0.5697751878435797,
+        "yards_per_reception": 13.152167976356106,
+        "td_per_target": 0.04574861367837338,
+        "points": {
+          "receptions": 1.6030231423867392,
+          "receiving_yards": 2.1083229638656604,
+          "receiving_tds": 0.7722633911395522,
+          "bonuses_and_other": 1.050310477494604e-17
+        },
+        "mean": 4.483609497391952,
+        "observed_targets": 26.0,
+        "observed_receptions": 13.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 22.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 5.605942132035897,
+        "p10": 0.9635126508226324,
+        "p50": 4.302942081281449,
+        "p90": 12.362866271714356
+      },
+      "boom_probability": 0.009361233480176211,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 5.805,
+        "p10": 1.1,
+        "p90": 18.3
+      },
+      "role": {
+        "mean": 4.970613965557484,
+        "p10": 0.17019905624238363,
+        "p50": 3.755075921944709,
+        "p90": 11.522328276912896
+      },
+      "role_boom_probability": 0.008259911894273128,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.009361233480176211
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DET_CHI",
+      "identity": "00-0040735",
+      "name": "Luther Burden III",
+      "team": "CHI",
+      "actual": 7.5,
+      "targets_baseline": 5.295528322219477,
+      "targets_candidate": 5.295528322219477,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 5.295528322219477,
+        "receptions": 3.722339519623551,
+        "receiving_yards": 50.94653286030392,
+        "receiving_tds": 0.20232960480377882,
+        "catch_rate": 0.7029212749188798,
+        "yards_per_reception": 13.68669692587748,
+        "td_per_target": 0.03820763340171843,
+        "points": {
+          "receptions": 3.722339519623551,
+          "receiving_yards": 5.094653286030392,
+          "receiving_tds": 1.213977628822673,
+          "bonuses_and_other": 0.8398661130021099
+        },
+        "mean": 10.870836547478726,
+        "observed_targets": 41.0,
+        "observed_receptions": 31.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 35.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 11.949328187400312,
+        "p10": 3.087731882523013,
+        "p50": 10.605741048511785,
+        "p90": 23.45162600647859
+      },
+      "boom_probability": 0.07074569789674952,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 11.1005,
+        "p10": 1.5,
+        "p90": 26.48
+      },
+      "role": {
+        "mean": 13.307847270968802,
+        "p10": 4.2599089463127235,
+        "p50": 12.039753977696595,
+        "p90": 24.464312218444984
+      },
+      "role_boom_probability": 0.0965583173996176,
+      "production_boom_probability": 0.11,
+      "candidate_boom_probability": 0.07074569789674952
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DET_CHI",
+      "identity": "00-0034827",
+      "name": "DJ Moore",
+      "team": "CHI",
+      "actual": 2.1,
+      "targets_baseline": 4.989065856483136,
+      "targets_candidate": 4.989065856483136,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 4.989065856483136,
+        "receptions": 2.781214228371063,
+        "receiving_yards": 37.08439269390386,
+        "receiving_tds": 0.42389454271286936,
+        "catch_rate": 0.5574619194005951,
+        "yards_per_reception": 13.333885723583371,
+        "td_per_target": 0.08496471181314065,
+        "points": {
+          "receptions": 2.781214228371063,
+          "receiving_yards": 3.708439269390386,
+          "receiving_tds": 2.5433672562772163,
+          "bonuses_and_other": 0.34263311574202737
+        },
+        "mean": 9.375653869780692,
+        "observed_targets": 38.0,
+        "observed_receptions": 19.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 11.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215838,
+      "candidate": {
+        "mean": 10.454145509702276,
+        "p10": 1.5925492048249787,
+        "p50": 9.110558370813752,
+        "p90": 21.95644332878056
+      },
+      "boom_probability": 0.06022944550669216,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 10.3994,
+        "p10": 0.6,
+        "p90": 22.9
+      },
+      "role": {
+        "mean": 11.679266703680337,
+        "p10": 2.6313283790242608,
+        "p50": 10.411173410408132,
+        "p90": 22.83573165115652
+      },
+      "role_boom_probability": 0.07361376673040153,
+      "production_boom_probability": 0.02,
+      "candidate_boom_probability": 0.06022944550669216
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DET_CHI",
+      "identity": "00-0036331",
+      "name": "Devin Duvernay",
+      "team": "CHI",
+      "actual": 0.0,
+      "targets_baseline": 0.31294053471813627,
+      "targets_candidate": 0.31294053471813627,
+      "targets_actual": 0.0,
+      "components": {
+        "targets": 0.31294053471813627,
+        "receptions": 0.19468236539826755,
+        "receiving_yards": 2.558882234995303,
+        "receiving_tds": 0.014906167941216499,
+        "catch_rate": 0.6221065787262645,
+        "yards_per_reception": 13.143883010464357,
+        "td_per_target": 0.047632589222238016,
+        "points": {
+          "receptions": 0.19468236539826755,
+          "receiving_yards": 0.2558882234995303,
+          "receiving_tds": 0.08943700764729899,
+          "bonuses_and_other": -5.601655879971221e-17
+        },
+        "mean": 0.5400075965450968,
+        "observed_targets": 2.0,
+        "observed_receptions": 1.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 1.6623402311890418,
+        "p10": -2.980089250024223,
+        "p50": 0.3593401804345935,
+        "p90": 8.419264370867502
+      },
+      "boom_probability": 0.003854625550660793,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 0.4575,
+        "p10": 0.0,
+        "p90": 1.4
+      },
+      "role": {
+        "mean": 1.4851870882102307,
+        "p10": -3.3152278211048705,
+        "p50": 0.2696490445974551,
+        "p90": 8.036901399565643
+      },
+      "role_boom_probability": 0.0016519823788546256,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.003854625550660793
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CLE_CIN",
+      "identity": "00-0036900",
+      "name": "Ja'Marr Chase",
+      "team": "CIN",
+      "actual": 23.6,
+      "targets_baseline": 10.063308367847783,
+      "targets_candidate": 10.063308367847783,
+      "targets_actual": 10.0,
+      "components": {
+        "targets": 10.063308367847783,
+        "receptions": 6.25704335642879,
+        "receiving_yards": 79.19563527032292,
+        "receiving_tds": 0.35755850228746494,
+        "catch_rate": 0.6217680237664196,
+        "yards_per_reception": 12.657037958503754,
+        "td_per_target": 0.03553090983774903,
+        "points": {
+          "receptions": 6.25704335642879,
+          "receiving_yards": 7.919563527032293,
+          "receiving_tds": 2.1453510137247895,
+          "bonuses_and_other": 1.5934961768394917
+        },
+        "mean": 17.915454074025362,
+        "observed_targets": 76.0,
+        "observed_receptions": 47.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 8.0,
+        "receiving_yards": 96.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171417,
+      "candidate": {
+        "mean": 17.01197478520822,
+        "p10": 6.511899002498787,
+        "p50": 15.460485937315951,
+        "p90": 30.417358465233782
+      },
+      "boom_probability": 0.18454935622317598,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 21.359,
+        "p10": 7.3,
+        "p90": 39.5
+      },
+      "role": {
+        "mean": 17.392255952856466,
+        "p10": 6.483015006422867,
+        "p50": 15.91688850390064,
+        "p90": 31.11411815595548
+      },
+      "role_boom_probability": 0.19599427753934193,
+      "production_boom_probability": 0.38,
+      "candidate_boom_probability": 0.18454935622317598
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CLE_CIN",
+      "identity": "00-0036410",
+      "name": "Tee Higgins",
+      "team": "CIN",
+      "actual": 18.7,
+      "targets_baseline": 4.7320756105203365,
+      "targets_candidate": 4.7320756105203365,
+      "targets_actual": 9.0,
+      "components": {
+        "targets": 4.7320756105203365,
+        "receptions": 3.0829085176494844,
+        "receiving_yards": 43.09787564830153,
+        "receiving_tds": 0.4360141997477751,
+        "catch_rate": 0.6514918127672287,
+        "yards_per_reception": 13.979615483744823,
+        "td_per_target": 0.0921401591256128,
+        "points": {
+          "receptions": 3.0829085176494844,
+          "receiving_yards": 4.309787564830153,
+          "receiving_tds": 2.6160851984866507,
+          "bonuses_and_other": 0.31534519167120145
+        },
+        "mean": 10.32412647263749,
+        "observed_targets": 42.0,
+        "observed_receptions": 28.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 6.0,
+        "receiving_yards": 67.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 11.402618112559075,
+        "p10": 2.5410218076817768,
+        "p50": 10.059030973670549,
+        "p90": 22.904915931637355
+      },
+      "boom_probability": 0.06692160611854685,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 15.3165,
+        "p10": 6.3,
+        "p90": 27.74
+      },
+      "role": {
+        "mean": 13.162361478668156,
+        "p10": 4.11442315401208,
+        "p50": 11.894268185395951,
+        "p90": 24.31882642614434
+      },
+      "role_boom_probability": 0.0965583173996176,
+      "production_boom_probability": 0.16,
+      "candidate_boom_probability": 0.06692160611854685
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CLE_CIN",
+      "identity": "00-0038619",
+      "name": "Andrei Iosivas",
+      "team": "CIN",
+      "actual": 3.0,
+      "targets_baseline": 3.5823455435276794,
+      "targets_candidate": 3.5823455435276794,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 3.5823455435276794,
+        "receptions": 2.284914568586935,
+        "receiving_yards": 28.96252276725601,
+        "receiving_tds": 0.197997327911824,
+        "catch_rate": 0.6378264019547617,
+        "yards_per_reception": 12.675538580493788,
+        "td_per_target": 0.05527030419205404,
+        "points": {
+          "receptions": 2.284914568586935,
+          "receiving_yards": 2.896252276725601,
+          "receiving_tds": 1.187983967470944,
+          "bonuses_and_other": 0.0698241600227515
+        },
+        "mean": 6.438974972806232,
+        "observed_targets": 31.0,
+        "observed_receptions": 20.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 10.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 7.5613076074501775,
+        "p10": 2.9188781262369123,
+        "p50": 6.258307556695729,
+        "p90": 14.318231747128635
+      },
+      "boom_probability": 0.013766519823788546,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 6.842,
+        "p10": 0.0,
+        "p90": 14.3
+      },
+      "role": {
+        "mean": 7.389788011108255,
+        "p10": 2.5893731017931545,
+        "p50": 6.17424996749548,
+        "p90": 13.941502322463668
+      },
+      "role_boom_probability": 0.014317180616740088,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.013766519823788546
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CLE_CIN",
+      "identity": "00-0036407",
+      "name": "Jerry Jeudy",
+      "team": "CLE",
+      "actual": 4.2,
+      "targets_baseline": 5.548348395763505,
+      "targets_candidate": 5.548348395763505,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 5.548348395763505,
+        "receptions": 3.2784468304252763,
+        "receiving_yards": 41.33847369450373,
+        "receiving_tds": 0.258743449910259,
+        "catch_rate": 0.5908869805163219,
+        "yards_per_reception": 12.609163983038076,
+        "td_per_target": 0.0466343191620456,
+        "points": {
+          "receptions": 3.2784468304252763,
+          "receiving_yards": 4.133847369450374,
+          "receiving_tds": 1.552460699461554,
+          "bonuses_and_other": -0.08919308937811131
+        },
+        "mean": 8.875561809959093,
+        "observed_targets": 46.0,
+        "observed_receptions": 26.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 17.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 9.954053449880679,
+        "p10": 1.09245714500338,
+        "p50": 8.610466310992152,
+        "p90": 21.456351268958958
+      },
+      "boom_probability": 0.05640535372848948,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 9.3965,
+        "p10": 2.7,
+        "p90": 19.8
+      },
+      "role": {
+        "mean": 9.285461936647147,
+        "p10": 0.23752361199107064,
+        "p50": 8.01736864337494,
+        "p90": 20.441926884123333
+      },
+      "role_boom_probability": 0.05162523900573614,
+      "production_boom_probability": 0.035,
+      "candidate_boom_probability": 0.05640535372848948
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CLE_CIN",
+      "identity": "00-0038979",
+      "name": "Cedric Tillman",
+      "team": "CLE",
+      "actual": 3.3,
+      "targets_baseline": 1.7640799411667776,
+      "targets_candidate": 1.7640799411667776,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 1.7640799411667776,
+        "receptions": 1.047466023551039,
+        "receiving_yards": 14.195748725733996,
+        "receiving_tds": 0.0652155246272376,
+        "catch_rate": 0.5937746918987333,
+        "yards_per_reception": 13.552467007577638,
+        "td_per_target": 0.03696857670979667,
+        "points": {
+          "receptions": 1.047466023551039,
+          "receiving_yards": 1.4195748725733996,
+          "receiving_tds": 0.3912931477634256,
+          "bonuses_and_other": -1.2263184908229826e-16
+        },
+        "mean": 2.858334043887864,
+        "observed_targets": 17.0,
+        "observed_receptions": 9.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 23.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 3.980666678531809,
+        "p10": -0.6617628026814555,
+        "p50": 2.677666627777361,
+        "p90": 10.737590818210268
+      },
+      "boom_probability": 0.006057268722466961,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.4355,
+        "p10": 0.0,
+        "p90": 9.75
+      },
+      "role": {
+        "mean": 3.9782204065478557,
+        "p10": -0.8221945027672455,
+        "p50": 2.76268236293508,
+        "p90": 10.529934717903268
+      },
+      "role_boom_probability": 0.006057268722466961,
+      "production_boom_probability": 0.01,
+      "candidate_boom_probability": 0.006057268722466961
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CLE_CIN",
+      "identity": "00-0040782",
+      "name": "Isaiah Bond",
+      "team": "CLE",
+      "actual": 2.7,
+      "targets_baseline": 1.5529233175244008,
+      "targets_candidate": 1.5529233175244008,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 1.5529233175244008,
+        "receptions": 0.9209356803447872,
+        "receiving_yards": 16.081716876779698,
+        "receiving_tds": 0.0620391522712628,
+        "catch_rate": 0.5930335837914397,
+        "yards_per_reception": 17.46236704691352,
+        "td_per_target": 0.03994991354123188,
+        "points": {
+          "receptions": 0.9209356803447872,
+          "receiving_yards": 1.60817168767797,
+          "receiving_tds": 0.37223491362757677,
+          "bonuses_and_other": 0.13762525227091532
+        },
+        "mean": 3.0389675339212494,
+        "observed_targets": 12.0,
+        "observed_receptions": 6.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 13.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 4.1613001685651945,
+        "p10": -0.48112931264807024,
+        "p50": 2.858300117810746,
+        "p90": 10.918224308243655
+      },
+      "boom_probability": 0.007158590308370044,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.2015,
+        "p10": 0.0,
+        "p90": 10.9
+      },
+      "role": {
+        "mean": 4.844133085438888,
+        "p10": 0.04371817612378659,
+        "p50": 3.628595041826112,
+        "p90": 11.3958473967943
+      },
+      "role_boom_probability": 0.007709251101321586,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.007158590308370044
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DAL_NYG",
+      "identity": "00-0036358",
+      "name": "CeeDee Lamb",
+      "team": "DAL",
+      "actual": 1.4,
+      "targets_baseline": 9.188514188514853,
+      "targets_candidate": 9.188514188514853,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 9.188514188514853,
+        "receptions": 5.734640985536532,
+        "receiving_yards": 79.85240315665182,
+        "receiving_tds": 0.33174201545201504,
+        "catch_rate": 0.6241097165311584,
+        "yards_per_reception": 13.924568836662901,
+        "td_per_target": 0.036103989028680464,
+        "points": {
+          "receptions": 5.734640985536532,
+          "receiving_yards": 7.985240315665182,
+          "receiving_tds": 1.9904520927120903,
+          "bonuses_and_other": 1.1466342942387604
+        },
+        "mean": 16.856967688152565,
+        "observed_targets": 74.0,
+        "observed_receptions": 46.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 4.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171452,
+      "candidate": {
+        "mean": 15.95348839933542,
+        "p10": 5.4534126166259895,
+        "p50": 14.401999551443154,
+        "p90": 29.358872079360985
+      },
+      "boom_probability": 0.16738197424892703,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 18.596,
+        "p10": 9.6,
+        "p90": 27.2
+      },
+      "role": {
+        "mean": 14.834650760884907,
+        "p10": 3.925409814451309,
+        "p50": 13.359283311929083,
+        "p90": 28.55651296398392
+      },
+      "role_boom_probability": 0.14163090128755365,
+      "production_boom_probability": 0.185,
+      "candidate_boom_probability": 0.16738197424892703
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DAL_NYG",
+      "identity": "00-0037247",
+      "name": "George Pickens",
+      "team": "DAL",
+      "actual": 1.9,
+      "targets_baseline": 8.380910411516984,
+      "targets_candidate": 8.380910411516984,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 8.380910411516984,
+        "receptions": 5.634910137028322,
+        "receiving_yards": 80.60547390368573,
+        "receiving_tds": 0.37935010997883967,
+        "catch_rate": 0.6723505992004007,
+        "yards_per_reception": 14.304660046663065,
+        "td_per_target": 0.0452635920624494,
+        "points": {
+          "receptions": 5.634910137028322,
+          "receiving_yards": 8.060547390368574,
+          "receiving_tds": 2.276100659873038,
+          "bonuses_and_other": 1.239882364768423
+        },
+        "mean": 17.211440552038358,
+        "observed_targets": 71.0,
+        "observed_receptions": 49.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 9.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171452,
+      "candidate": {
+        "mean": 16.307961263221213,
+        "p10": 5.807885480511782,
+        "p50": 14.756472415328947,
+        "p90": 29.713344943246778
+      },
+      "boom_probability": 0.17310443490701002,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 18.4518,
+        "p10": 6.3,
+        "p90": 32.6
+      },
+      "role": {
+        "mean": 16.70707163589426,
+        "p10": 5.797830689460663,
+        "p50": 15.231704186938437,
+        "p90": 30.428933838993274
+      },
+      "role_boom_probability": 0.1759656652360515,
+      "production_boom_probability": 0.32,
+      "candidate_boom_probability": 0.17310443490701002
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DAL_NYG",
+      "identity": "00-0039410",
+      "name": "Ryan Flournoy",
+      "team": "DAL",
+      "actual": 11.8,
+      "targets_baseline": 3.061038725862625,
+      "targets_candidate": 3.061038725862625,
+      "targets_actual": 7.0,
+      "components": {
+        "targets": 3.061038725862625,
+        "receptions": 2.1431250710226766,
+        "receiving_yards": 24.725471424587464,
+        "receiving_tds": 0.2574808482469366,
+        "catch_rate": 0.7001300091094819,
+        "yards_per_reception": 11.537110810237841,
+        "td_per_target": 0.08411551479943347,
+        "points": {
+          "receptions": 2.1431250710226766,
+          "receiving_yards": 2.4725471424587466,
+          "receiving_tds": 1.5448850894816197,
+          "bonuses_and_other": 0.3784142300054422
+        },
+        "mean": 6.538971532968485,
+        "observed_targets": 27.0,
+        "observed_receptions": 21.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 68.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 7.661304167612431,
+        "p10": 3.018874686399166,
+        "p50": 6.358304116857982,
+        "p90": 14.418228307290889
+      },
+      "boom_probability": 0.014317180616740088,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 8.4965,
+        "p10": 0.0,
+        "p90": 21.4
+      },
+      "role": {
+        "mean": 8.804226681842346,
+        "p10": 4.0038117725272455,
+        "p50": 7.588688638229571,
+        "p90": 15.355940993197759
+      },
+      "role_boom_probability": 0.019823788546255508,
+      "production_boom_probability": 0.075,
+      "candidate_boom_probability": 0.014317180616740088
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_LAC_DEN",
+      "identity": "00-0034348",
+      "name": "Courtland Sutton",
+      "team": "DEN",
+      "actual": 1.5,
+      "targets_baseline": 9.059790706282323,
+      "targets_candidate": 9.059790706282323,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 9.059790706282323,
+        "receptions": 5.181767161752532,
+        "receiving_yards": 67.36496653043768,
+        "receiving_tds": 0.5058561194915747,
+        "catch_rate": 0.5719521929087549,
+        "yards_per_reception": 13.000384700352706,
+        "td_per_target": 0.05583529861686532,
+        "points": {
+          "receptions": 5.181767161752532,
+          "receiving_yards": 6.736496653043769,
+          "receiving_tds": 3.0351367169494483,
+          "bonuses_and_other": 0.4500128947407481
+        },
+        "mean": 15.403413426486498,
+        "observed_targets": 66.0,
+        "observed_receptions": 36.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 5.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171435,
+      "candidate": {
+        "mean": 14.499934137669355,
+        "p10": 3.999858354959923,
+        "p50": 12.948445289777087,
+        "p90": 27.905317817694918
+      },
+      "boom_probability": 0.13733905579399142,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 14.2556,
+        "p10": 5.4,
+        "p90": 26.85
+      },
+      "role": {
+        "mean": 13.529683223127225,
+        "p10": 2.6204422766936313,
+        "p50": 12.054315774171405,
+        "p90": 27.251545426226244
+      },
+      "role_boom_probability": 0.12303290414878398,
+      "production_boom_probability": 0.14,
+      "candidate_boom_probability": 0.13733905579399142
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_LAC_DEN",
+      "identity": "00-0039868",
+      "name": "Troy Franklin",
+      "team": "DEN",
+      "actual": 0.0,
+      "targets_baseline": 5.796097686490442,
+      "targets_candidate": 5.796097686490442,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 5.796097686490442,
+        "receptions": 3.734991447288466,
+        "receiving_yards": 43.31308281647046,
+        "receiving_tds": 0.2621062491211533,
+        "catch_rate": 0.644397601509373,
+        "yards_per_reception": 11.596568138841375,
+        "td_per_target": 0.04522115797531694,
+        "points": {
+          "receptions": 3.734991447288466,
+          "receiving_yards": 4.331308281647046,
+          "receiving_tds": 1.57263749472692,
+          "bonuses_and_other": 0.14591175080885924
+        },
+        "mean": 9.784848974471291,
+        "observed_targets": 49.0,
+        "observed_receptions": 32.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 10.863340614392877,
+        "p10": 2.0017443095155785,
+        "p50": 9.519753475504352,
+        "p90": 22.365638433471155
+      },
+      "boom_probability": 0.0621414913957935,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 9.6555,
+        "p10": 2.8,
+        "p90": 20.8
+      },
+      "role": {
+        "mean": 11.257378126001688,
+        "p10": 2.209439801345612,
+        "p50": 9.989284832729481,
+        "p90": 22.413843073477874
+      },
+      "role_boom_probability": 0.07170172084130019,
+      "production_boom_probability": 0.05,
+      "candidate_boom_probability": 0.0621414913957935
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_LAC_DEN",
+      "identity": "00-0040134",
+      "name": "Pat Bryant",
+      "team": "DEN",
+      "actual": 7.1,
+      "targets_baseline": 3.2965940822565276,
+      "targets_candidate": 3.2965940822565276,
+      "targets_actual": 5.0,
+      "components": {
+        "targets": 3.2965940822565276,
+        "receptions": 2.137698987894225,
+        "receiving_yards": 27.417140842719906,
+        "receiving_tds": 0.10206645263918084,
+        "catch_rate": 0.6484568419873411,
+        "yards_per_reception": 12.825538580493788,
+        "td_per_target": 0.03096118299445471,
+        "points": {
+          "receptions": 2.137698987894225,
+          "receiving_yards": 2.7417140842719907,
+          "receiving_tds": 0.612398715835085,
+          "bonuses_and_other": -3.168775086880918e-16
+        },
+        "mean": 5.4918117880013,
+        "observed_targets": 30.0,
+        "observed_receptions": 20.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 31.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 6.614144422645245,
+        "p10": 1.9717149414319803,
+        "p50": 5.311144371890797,
+        "p90": 13.371068562323703
+      },
+      "boom_probability": 0.012665198237885462,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 6.2335,
+        "p10": 0.0,
+        "p90": 12.0
+      },
+      "role": {
+        "mean": 5.8524808985966805,
+        "p10": 1.0520659892815802,
+        "p50": 4.636942854983905,
+        "p90": 12.404195209952094
+      },
+      "role_boom_probability": 0.009911894273127754,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.012665198237885462
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DET_CHI",
+      "identity": "00-0036963",
+      "name": "Amon-Ra St. Brown",
+      "team": "DET",
+      "actual": 27.9,
+      "targets_baseline": 11.121917956855071,
+      "targets_candidate": 11.121917956855071,
+      "targets_actual": 15.0,
+      "components": {
+        "targets": 11.121917956855071,
+        "receptions": 6.486874447289906,
+        "receiving_yards": 85.106005781038,
+        "receiving_tds": 0.5416202315514318,
+        "catch_rate": 0.5832514205242519,
+        "yards_per_reception": 13.119724525667932,
+        "td_per_target": 0.04869845593651412,
+        "points": {
+          "receptions": 6.486874447289906,
+          "receiving_yards": 8.5106005781038,
+          "receiving_tds": 3.249721389308591,
+          "bonuses_and_other": 0.717592162875081
+        },
+        "mean": 18.964788577577377,
+        "observed_targets": 83.0,
+        "observed_receptions": 47.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 11.0,
+        "receiving_yards": 139.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171452,
+      "candidate": {
+        "mean": 18.06130928876023,
+        "p10": 7.561233506050801,
+        "p50": 16.509820440867966,
+        "p90": 31.466692968785797
+      },
+      "boom_probability": 0.20314735336194564,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 20.1994,
+        "p10": 6.2,
+        "p90": 44.4
+      },
+      "role": {
+        "mean": 17.046471759288977,
+        "p10": 6.137230812855381,
+        "p50": 15.571104310333155,
+        "p90": 30.76833396238799
+      },
+      "role_boom_probability": 0.1888412017167382,
+      "production_boom_probability": 0.3,
+      "candidate_boom_probability": 0.20314735336194564
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DET_CHI",
+      "identity": "00-0037240",
+      "name": "Jameson Williams",
+      "team": "DET",
+      "actual": 13.4,
+      "targets_baseline": 7.332428411584342,
+      "targets_candidate": 7.332428411584342,
+      "targets_actual": 8.0,
+      "components": {
+        "targets": 7.332428411584342,
+        "receptions": 4.7416990195565045,
+        "receiving_yards": 76.84998672150151,
+        "receiving_tds": 0.4397348729066806,
+        "catch_rate": 0.6466751195368234,
+        "yards_per_reception": 16.20726798654744,
+        "td_per_target": 0.05997124666255905,
+        "points": {
+          "receptions": 4.7416990195565045,
+          "receiving_yards": 7.684998672150151,
+          "receiving_tds": 2.638409237440084,
+          "bonuses_and_other": 1.060191238866326
+        },
+        "mean": 16.125298168013064,
+        "observed_targets": 58.0,
+        "observed_receptions": 38.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 6.0,
+        "receiving_yards": 74.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171435,
+      "candidate": {
+        "mean": 15.22181887919592,
+        "p10": 4.721743096486488,
+        "p50": 13.670330031303653,
+        "p90": 28.627202559221484
+      },
+      "boom_probability": 0.15021459227467812,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 13.29,
+        "p10": 2.0,
+        "p90": 29.4
+      },
+      "role": {
+        "mean": 15.44493211155379,
+        "p10": 4.535691165120194,
+        "p50": 13.969564662597968,
+        "p90": 29.166794314652805
+      },
+      "role_boom_probability": 0.15450643776824036,
+      "production_boom_probability": 0.185,
+      "candidate_boom_probability": 0.15021459227467812
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DET_CHI",
+      "identity": "00-0040669",
+      "name": "Isaac TeSlaa",
+      "team": "DET",
+      "actual": 2.8,
+      "targets_baseline": 3.013563234398569,
+      "targets_candidate": 3.013563234398569,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 3.013563234398569,
+        "receptions": 1.862828720224933,
+        "receiving_yards": 24.39266765946019,
+        "receiving_tds": 0.27883616512628956,
+        "catch_rate": 0.6181482103848093,
+        "yards_per_reception": 13.094423225617234,
+        "td_per_target": 0.09252706627937682,
+        "points": {
+          "receptions": 1.862828720224933,
+          "receiving_yards": 2.4392667659460194,
+          "receiving_tds": 1.6730169907577372,
+          "bonuses_and_other": -1.584387543440459e-16
+        },
+        "mean": 5.97511247692869,
+        "observed_targets": 20.0,
+        "observed_receptions": 12.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 18.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 7.097445111572635,
+        "p10": 2.45501563035937,
+        "p50": 5.7944450608181866,
+        "p90": 13.854369251251093
+      },
+      "boom_probability": 0.013215859030837005,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 6.4505,
+        "p10": 0.0,
+        "p90": 15.2
+      },
+      "role": {
+        "mean": 9.237460050943168,
+        "p10": 4.437045141628068,
+        "p50": 8.021922007330392,
+        "p90": 15.789174362298581
+      },
+      "role_boom_probability": 0.022026431718061675,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.013215859030837005
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_GB_MIN",
+      "identity": "00-0040667",
+      "name": "Matthew Golden",
+      "team": "GB",
+      "actual": 1.8,
+      "targets_baseline": 1.7157506101451183,
+      "targets_candidate": 1.7157506101451183,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 1.7157506101451183,
+        "receptions": 0.9766465282232535,
+        "receiving_yards": 13.40043197165412,
+        "receiving_tds": 0.06854408853361332,
+        "catch_rate": 0.5692240599819158,
+        "yards_per_reception": 13.72086172879006,
+        "td_per_target": 0.03994991354123188,
+        "points": {
+          "receptions": 0.9766465282232535,
+          "receiving_yards": 1.340043197165412,
+          "receiving_tds": 0.41126453120167994,
+          "bonuses_and_other": 0.07135447150248904
+        },
+        "mean": 2.7993087280928344,
+        "observed_targets": 12.0,
+        "observed_receptions": 5.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 8.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204549,
+      "candidate": {
+        "mean": 3.4754928033132892,
+        "p10": -0.9450881512083998,
+        "p50": 2.4585290171663035,
+        "p90": 9.146958571409845
+      },
+      "boom_probability": 0.005194805194805195,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.5,
+        "p10": 0.0,
+        "p90": 10.63
+      },
+      "role": {
+        "mean": 2.928311952263378,
+        "p10": -1.3431008206742048,
+        "p50": 1.907964089682944,
+        "p90": 8.286881716838897
+      },
+      "role_boom_probability": 0.003896103896103896,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.005194805194805195
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_GB_MIN",
+      "identity": "00-0037091",
+      "name": "Bo Melton",
+      "team": "GB",
+      "actual": 0.0,
+      "targets_baseline": 1.4415230434719757,
+      "targets_candidate": 1.4415230434719757,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 1.4415230434719757,
+        "receptions": 0.7862276221370825,
+        "receiving_yards": 11.761360592568792,
+        "receiving_tds": 0.08083909262330172,
+        "catch_rate": 0.545414536172392,
+        "yards_per_reception": 14.959230967489646,
+        "td_per_target": 0.056078945799296405,
+        "points": {
+          "receptions": 0.7862276221370825,
+          "receiving_yards": 1.1761360592568793,
+          "receiving_tds": 0.4850345557398103,
+          "bonuses_and_other": 0.286607238256164
+        },
+        "mean": 2.734005475389936,
+        "observed_targets": 12.0,
+        "observed_receptions": 4.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204544,
+      "candidate": {
+        "mean": 3.4101895506103905,
+        "p10": -1.0103914039112982,
+        "p50": 2.3932257644634056,
+        "p90": 9.081655318706948
+      },
+      "boom_probability": 0.005194805194805195,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 2.7405,
+        "p10": 0.0,
+        "p90": 5.12
+      },
+      "role": {
+        "mean": 3.857199263694347,
+        "p10": -0.41421350924323624,
+        "p50": 2.8368514011139125,
+        "p90": 9.215769028269865
+      },
+      "role_boom_probability": 0.005194805194805195,
+      "production_boom_probability": 0.01,
+      "candidate_boom_probability": 0.005194805194805195
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_IND_HOU",
+      "identity": "00-0040130",
+      "name": "Jayden Higgins",
+      "team": "HOU",
+      "actual": 10.3,
+      "targets_baseline": 4.45792435884054,
+      "targets_candidate": 4.45792435884054,
+      "targets_actual": 5.0,
+      "components": {
+        "targets": 4.45792435884054,
+        "receptions": 2.7568438716525834,
+        "receiving_yards": 36.452922109480774,
+        "receiving_tds": 0.26830309917012696,
+        "catch_rate": 0.6184142326653587,
+        "yards_per_reception": 13.222700960438923,
+        "td_per_target": 0.06018565537974041,
+        "points": {
+          "receptions": 2.7568438716525834,
+          "receiving_yards": 3.6452922109480776,
+          "receiving_tds": 1.6098185950207617,
+          "bonuses_and_other": -7.267038137035873e-17
+        },
+        "mean": 8.011954677621423,
+        "observed_targets": 41.0,
+        "observed_receptions": 25.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 23.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215838,
+      "candidate": {
+        "mean": 9.090446317543007,
+        "p10": 0.22885001266571026,
+        "p50": 7.746859178654483,
+        "p90": 20.592744136621288
+      },
+      "boom_probability": 0.05066921606118547,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 8.0955,
+        "p10": 1.4,
+        "p90": 16.8
+      },
+      "role": {
+        "mean": 9.98555194992446,
+        "p10": 0.9376136252683818,
+        "p50": 8.717458656652251,
+        "p90": 21.142016897400644
+      },
+      "role_boom_probability": 0.05736137667304015,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.05066921606118547
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_IND_HOU",
+      "identity": "00-0034775",
+      "name": "Christian Kirk",
+      "team": "HOU",
+      "actual": 0.7,
+      "targets_baseline": 3.4206734928900673,
+      "targets_candidate": 3.4206734928900673,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 3.4206734928900673,
+        "receptions": 1.949014881962992,
+        "receiving_yards": 21.20419183880652,
+        "receiving_tds": 0.15649107014607977,
+        "catch_rate": 0.5697751878435797,
+        "yards_per_reception": 10.879440703628832,
+        "td_per_target": 0.04574861367837338,
+        "points": {
+          "receptions": 1.949014881962992,
+          "receiving_yards": 2.120419183880652,
+          "receiving_tds": 0.9389464208764786,
+          "bonuses_and_other": -1.4077470803547332e-16
+        },
+        "mean": 5.008380486720123,
+        "observed_targets": 26.0,
+        "observed_receptions": 13.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": -3.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 6.130713121364068,
+        "p10": 1.488283640150803,
+        "p50": 4.82771307060962,
+        "p90": 12.887637261042528
+      },
+      "boom_probability": 0.009911894273127754,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 6.8253,
+        "p10": 1.57,
+        "p90": 16.4
+      },
+      "role": {
+        "mean": 4.681197515264368,
+        "p10": -0.1192173940507335,
+        "p50": 3.465659471651592,
+        "p90": 11.23291182661978
+      },
+      "role_boom_probability": 0.006607929515418502,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.009911894273127754
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_IND_HOU",
+      "identity": "00-0038618",
+      "name": "Xavier Hutchinson",
+      "team": "HOU",
+      "actual": 13.4,
+      "targets_baseline": 2.4993116814806955,
+      "targets_candidate": 2.4993116814806955,
+      "targets_actual": 9.0,
+      "components": {
+        "targets": 2.4993116814806955,
+        "receptions": 1.4234554512370394,
+        "receiving_yards": 18.358724295732593,
+        "receiving_tds": 0.08971785081797348,
+        "catch_rate": 0.5695389901885809,
+        "yards_per_reception": 12.897294593784535,
+        "td_per_target": 0.035897023761686624,
+        "points": {
+          "receptions": 1.4234554512370394,
+          "receiving_yards": 1.8358724295732594,
+          "receiving_tds": 0.538307104907841,
+          "bonuses_and_other": 0.24998427083633806
+        },
+        "mean": 4.047619256554478,
+        "observed_targets": 19.0,
+        "observed_receptions": 9.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 84.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 5.169951891198424,
+        "p10": 0.5275224099851585,
+        "p50": 3.866951840443975,
+        "p90": 11.926876030876883
+      },
+      "boom_probability": 0.00881057268722467,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.0275,
+        "p10": 0.0,
+        "p90": 7.2
+      },
+      "role": {
+        "mean": 4.083149736279554,
+        "p10": -0.7172651730355468,
+        "p50": 2.8676116926667787,
+        "p90": 10.634864047634967
+      },
+      "role_boom_probability": 0.006607929515418502,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.00881057268722467
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_IND_HOU",
+      "identity": "00-0038997",
+      "name": "Josh Downs",
+      "team": "IND",
+      "actual": 9.6,
+      "targets_baseline": 5.900283152130553,
+      "targets_candidate": 5.900283152130553,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 5.900283152130553,
+        "receptions": 3.3644955135110957,
+        "receiving_yards": 37.459660763005765,
+        "receiving_tds": 0.27231903108905237,
+        "catch_rate": 0.5702261106394866,
+        "yards_per_reception": 11.133812071550032,
+        "td_per_target": 0.046153552985117294,
+        "points": {
+          "receptions": 3.3644955135110957,
+          "receiving_yards": 3.7459660763005767,
+          "receiving_tds": 1.633914186534314,
+          "bonuses_and_other": -0.009553184707373411
+        },
+        "mean": 8.734822591638613,
+        "observed_targets": 47.0,
+        "observed_receptions": 25.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 61.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 411,
+      "calibration_offset": 0.1055701281175061,
+      "candidate": {
+        "mean": 8.84039271975612,
+        "p10": 1.1409442899467948,
+        "p50": 7.010332209531556,
+        "p90": 18.612855023656884
+      },
+      "boom_probability": 0.038929440389294405,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 9.145,
+        "p10": 1.79,
+        "p90": 16.7
+      },
+      "role": {
+        "mean": 7.8009666064399426,
+        "p10": -0.1001600553036619,
+        "p50": 6.080700864481821,
+        "p90": 17.825833677156858
+      },
+      "role_boom_probability": 0.038929440389294405,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.038929440389294405
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_IND_HOU",
+      "identity": "00-0036252",
+      "name": "Michael Pittman",
+      "team": "IND",
+      "actual": 3.1,
+      "targets_baseline": 5.626604293576471,
+      "targets_candidate": 5.626604293576471,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 5.626604293576471,
+        "receptions": 3.744637870162319,
+        "receiving_yards": 39.42229087964562,
+        "receiving_tds": 0.19369416145783094,
+        "catch_rate": 0.6655235866572897,
+        "yards_per_reception": 10.527664422177299,
+        "td_per_target": 0.034424699401548284,
+        "points": {
+          "receptions": 3.744637870162319,
+          "receiving_yards": 3.9422290879645625,
+          "receiving_tds": 1.1621649687469857,
+          "bonuses_and_other": 0.18920711500272064
+        },
+        "mean": 9.038239041876588,
+        "observed_targets": 51.0,
+        "observed_receptions": 35.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 11.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 411,
+      "calibration_offset": 0.10557012811750788,
+      "candidate": {
+        "mean": 9.143809169994096,
+        "p10": 1.44436074018477,
+        "p50": 7.313748659769531,
+        "p90": 18.91627147389486
+      },
+      "boom_probability": 0.0413625304136253,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 11.101,
+        "p10": 3.6,
+        "p90": 23.5
+      },
+      "role": {
+        "mean": 8.104617169694858,
+        "p10": 0.20349050795125478,
+        "p50": 6.384351427736737,
+        "p90": 18.129484240411774
+      },
+      "role_boom_probability": 0.038929440389294405,
+      "production_boom_probability": 0.025,
+      "candidate_boom_probability": 0.0413625304136253
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_IND_HOU",
+      "identity": "00-0037664",
+      "name": "Alec Pierce",
+      "team": "IND",
+      "actual": 32.2,
+      "targets_baseline": 4.850772856143276,
+      "targets_candidate": 4.850772856143276,
+      "targets_actual": 7.0,
+      "components": {
+        "targets": 4.850772856143276,
+        "receptions": 2.8397983350702853,
+        "receiving_yards": 46.51094558547516,
+        "receiving_tds": 0.3307152074701049,
+        "catch_rate": 0.5854321402565396,
+        "yards_per_reception": 16.378256515994476,
+        "td_per_target": 0.06817783831111976,
+        "points": {
+          "receptions": 2.8397983350702853,
+          "receiving_yards": 4.651094558547516,
+          "receiving_tds": 1.9842912448206294,
+          "bonuses_and_other": 0.18920711500272122
+        },
+        "mean": 9.664391253441153,
+        "observed_targets": 45.0,
+        "observed_receptions": 25.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 132.0,
+        "receiving_tds": 2.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 411,
+      "calibration_offset": 0.1055701281175061,
+      "candidate": {
+        "mean": 9.769961381558659,
+        "p10": 2.0705129517493344,
+        "p50": 7.939900871334095,
+        "p90": 19.542423685459422
+      },
+      "boom_probability": 0.051094890510948905,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 10.9712,
+        "p10": 0.0,
+        "p90": 24.6
+      },
+      "role": {
+        "mean": 11.156151433375534,
+        "p10": 3.2550247716319287,
+        "p50": 9.435885691417411,
+        "p90": 21.18101850409245
+      },
+      "role_boom_probability": 0.058394160583941604,
+      "production_boom_probability": 0.03,
+      "candidate_boom_probability": 0.051094890510948905
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_TEN_JAX",
+      "identity": "00-0034960",
+      "name": "Jakobi Meyers",
+      "team": "JAX",
+      "actual": 9.4,
+      "targets_baseline": 7.429367680716286,
+      "targets_candidate": 7.429367680716286,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 7.429367680716286,
+        "receptions": 4.886549515578621,
+        "receiving_yards": 59.240543636401185,
+        "receiving_tds": 0.38752251453150877,
+        "catch_rate": 0.657734241402829,
+        "yards_per_reception": 12.12318496876757,
+        "td_per_target": 0.052160901329108354,
+        "points": {
+          "receptions": 4.886549515578621,
+          "receiving_yards": 5.924054363640119,
+          "receiving_tds": 2.325135087189053,
+          "bonuses_and_other": -0.04895450916853544
+        },
+        "mean": 13.086784457239258,
+        "observed_targets": 55.0,
+        "observed_receptions": 37.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 44.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171435,
+      "candidate": {
+        "mean": 12.183305168422114,
+        "p10": 1.6832293857126823,
+        "p50": 10.631816320529847,
+        "p90": 25.588688848447678
+      },
+      "boom_probability": 0.1044349070100143,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 12.3704,
+        "p10": 6.95,
+        "p90": 21.3
+      },
+      "role": {
+        "mean": 10.718782783822013,
+        "p10": -0.1904581626115852,
+        "p50": 9.243415334866189,
+        "p90": 24.44064498692103
+      },
+      "role_boom_probability": 0.0944206008583691,
+      "production_boom_probability": 0.035,
+      "candidate_boom_probability": 0.1044349070100143
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_TEN_JAX",
+      "identity": "00-0038606",
+      "name": "Parker Washington",
+      "team": "JAX",
+      "actual": 19.7,
+      "targets_baseline": 5.633910599180509,
+      "targets_candidate": 5.633910599180509,
+      "targets_actual": 9.0,
+      "components": {
+        "targets": 5.633910599180509,
+        "receptions": 3.6704466292286133,
+        "receiving_yards": 54.67600860701621,
+        "receiving_tds": 0.33539494304773465,
+        "catch_rate": 0.6514918127672287,
+        "yards_per_reception": 14.896282150411489,
+        "td_per_target": 0.059531463473438885,
+        "points": {
+          "receptions": 3.6704466292286133,
+          "receiving_yards": 5.467600860701621,
+          "receiving_tds": 2.012369658286408,
+          "bonuses_and_other": 1.4186904334280321
+        },
+        "mean": 12.569107581644674,
+        "observed_targets": 42.0,
+        "observed_receptions": 28.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 87.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215838,
+      "candidate": {
+        "mean": 13.647599221566258,
+        "p10": 4.786002916688961,
+        "p50": 12.304012082677733,
+        "p90": 25.14989704064454
+      },
+      "boom_probability": 0.10420650095602295,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 11.923,
+        "p10": 3.6,
+        "p90": 22.0
+      },
+      "role": {
+        "mean": 14.783205709150415,
+        "p10": 5.735267384494339,
+        "p50": 13.51511241587821,
+        "p90": 25.9396706566266
+      },
+      "role_boom_probability": 0.11663479923518165,
+      "production_boom_probability": 0.095,
+      "candidate_boom_probability": 0.10420650095602295
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_TEN_JAX",
+      "identity": "00-0039893",
+      "name": "Brian Thomas Jr.",
+      "team": "JAX",
+      "actual": 7.9,
+      "targets_baseline": 3.98412621665329,
+      "targets_candidate": 3.98412621665329,
+      "targets_actual": 5.0,
+      "components": {
+        "targets": 3.98412621665329,
+        "receptions": 2.4123464855094907,
+        "receiving_yards": 33.77433564600299,
+        "receiving_tds": 0.18226825113155068,
+        "catch_rate": 0.6054894735578654,
+        "yards_per_reception": 14.00061552056433,
+        "td_per_target": 0.04574861367837338,
+        "points": {
+          "receptions": 2.4123464855094907,
+          "receiving_yards": 3.377433564600299,
+          "receiving_tds": 1.0936095067893041,
+          "bonuses_and_other": 0.07500214912345782
+        },
+        "mean": 6.958391706022551,
+        "observed_targets": 26.0,
+        "observed_receptions": 15.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 49.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 8.080724340666496,
+        "p10": 3.4382948594532317,
+        "p50": 6.777724289912048,
+        "p90": 14.837648480344956
+      },
+      "boom_probability": 0.017070484581497798,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 12.5245,
+        "p10": 4.67,
+        "p90": 23.9
+      },
+      "role": {
+        "mean": 7.722542792652618,
+        "p10": 2.9221278833375166,
+        "p50": 6.507004749039842,
+        "p90": 14.274257104008031
+      },
+      "role_boom_probability": 0.015969162995594713,
+      "production_boom_probability": 0.065,
+      "candidate_boom_probability": 0.017070484581497798
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_KC_LV",
+      "identity": "00-0035662",
+      "name": "Marquise Brown",
+      "team": "KC",
+      "actual": 9.4,
+      "targets_baseline": 2.552637276419411,
+      "targets_candidate": 2.552637276419411,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 2.552637276419411,
+        "receptions": 1.7142996482010093,
+        "receiving_yards": 23.14413147230307,
+        "receiving_tds": 0.12862682410310783,
+        "catch_rate": 0.6715798065151115,
+        "yards_per_reception": 13.500633624110337,
+        "td_per_target": 0.050389777384875024,
+        "points": {
+          "receptions": 1.7142996482010093,
+          "receiving_yards": 2.314413147230307,
+          "receiving_tds": 0.771760944618647,
+          "bonuses_and_other": -2.355206174476346e-17
+        },
+        "mean": 4.800473740049964,
+        "observed_targets": 19.0,
+        "observed_receptions": 14.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 64.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204549,
+      "candidate": {
+        "mean": 5.476657815270419,
+        "p10": 1.0560768607487294,
+        "p50": 4.459694029123433,
+        "p90": 11.148123583366976
+      },
+      "boom_probability": 0.005194805194805195,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 7.973,
+        "p10": 1.7,
+        "p90": 15.37
+      },
+      "role": {
+        "mean": 5.791830452398294,
+        "p10": 1.52041767946071,
+        "p50": 4.771482589817859,
+        "p90": 11.15040021697381
+      },
+      "role_boom_probability": 0.006493506493506494,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.005194805194805195
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_KC_LV",
+      "identity": "00-0033857",
+      "name": "JuJu Smith-Schuster",
+      "team": "KC",
+      "actual": 3.3,
+      "targets_baseline": 2.5059153041573126,
+      "targets_candidate": 2.5059153041573126,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 2.5059153041573126,
+        "receptions": 1.4754949207102461,
+        "receiving_yards": 16.122325500771915,
+        "receiving_tds": 0.09698262787577398,
+        "catch_rate": 0.5888047845281924,
+        "yards_per_reception": 10.92672382295376,
+        "td_per_target": 0.03870147874306839,
+        "points": {
+          "receptions": 1.4754949207102461,
+          "receiving_yards": 1.6122325500771915,
+          "receiving_tds": 0.5818957672546439,
+          "bonuses_and_other": -9.770928190403586e-17
+        },
+        "mean": 3.6696232380420812,
+        "observed_targets": 14.0,
+        "observed_receptions": 7.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 13.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204544,
+      "candidate": {
+        "mean": 4.345807313262536,
+        "p10": -0.07477364125915299,
+        "p50": 3.3288435271155503,
+        "p90": 10.017273081359093
+      },
+      "boom_probability": 0.005194805194805195,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 3.5035,
+        "p10": 0.0,
+        "p90": 8.77
+      },
+      "role": {
+        "mean": 3.042426907032652,
+        "p10": -1.2289858659049306,
+        "p50": 2.022079044452218,
+        "p90": 8.400996671608171
+      },
+      "role_boom_probability": 0.003896103896103896,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.005194805194805195
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_LAC_DEN",
+      "identity": "00-0030279",
+      "name": "Keenan Allen",
+      "team": "LAC",
+      "actual": 10.6,
+      "targets_baseline": 4.840525283092874,
+      "targets_candidate": 4.840525283092874,
+      "targets_actual": 13.0,
+      "components": {
+        "targets": 4.840525283092874,
+        "receptions": 3.15036892777702,
+        "receiving_yards": 35.20342386885864,
+        "receiving_tds": 0.13471315872280734,
+        "catch_rate": 0.6508320365107314,
+        "yards_per_reception": 11.174381374342424,
+        "td_per_target": 0.027830276848948055,
+        "points": {
+          "receptions": 3.15036892777702,
+          "receiving_yards": 3.5203423868858645,
+          "receiving_tds": 0.8082789523368441,
+          "bonuses_and_other": -1.3928567165294478e-16
+        },
+        "mean": 7.478990266999729,
+        "observed_targets": 39.0,
+        "observed_receptions": 26.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 7.0,
+        "receiving_yards": 36.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 8.557481906921314,
+        "p10": -0.3041143979559844,
+        "p50": 7.213894768032788,
+        "p90": 20.059779725999594
+      },
+      "boom_probability": 0.04397705544933078,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 9.964,
+        "p10": 2.7,
+        "p90": 20.2
+      },
+      "role": {
+        "mean": 7.428224772254348,
+        "p10": -1.6197135524017297,
+        "p50": 6.160131478982141,
+        "p90": 18.584689719730534
+      },
+      "role_boom_probability": 0.036328871892925434,
+      "production_boom_probability": 0.07,
+      "candidate_boom_probability": 0.04397705544933078
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_LAC_DEN",
+      "identity": "00-0040727",
+      "name": "Tre Harris",
+      "team": "LAC",
+      "actual": 4.8,
+      "targets_baseline": 3.007998819159456,
+      "targets_candidate": 3.007998819159456,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 3.007998819159456,
+        "receptions": 2.0771047777105607,
+        "receiving_yards": 24.98260469205061,
+        "receiving_tds": 0.10347911320788844,
+        "catch_rate": 0.6905271253700089,
+        "yards_per_reception": 12.0276092762095,
+        "td_per_target": 0.03440131443828301,
+        "points": {
+          "receptions": 2.0771047777105607,
+          "receiving_yards": 2.498260469205061,
+          "receiving_tds": 0.6208746792473306,
+          "bonuses_and_other": 0.18633810209707727
+        },
+        "mean": 5.3825780282600295,
+        "observed_targets": 22.0,
+        "observed_receptions": 17.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 28.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 6.504910662903975,
+        "p10": 1.8624811816907099,
+        "p50": 5.201910612149526,
+        "p90": 13.261834802582435
+      },
+      "boom_probability": 0.012114537444933921,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.9655,
+        "p10": 1.36,
+        "p90": 9.4
+      },
+      "role": {
+        "mean": 6.324857864556093,
+        "p10": 1.524442955240992,
+        "p50": 5.109319820943317,
+        "p90": 12.876572175911505
+      },
+      "role_boom_probability": 0.011563876651982379,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.012114537444933921
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_LAC_DEN",
+      "identity": "00-0040184",
+      "name": "KeAndre Lambert-Smith",
+      "team": "LAC",
+      "actual": 4.4,
+      "targets_baseline": 0.5729774691683301,
+      "targets_candidate": 0.5729774691683301,
+      "targets_actual": 5.0,
+      "components": {
+        "targets": 0.5729774691683301,
+        "receptions": 0.35233750488758014,
+        "receiving_yards": 4.4526098565018986,
+        "receiving_tds": 0.03689226465070271,
+        "catch_rate": 0.6149238388011902,
+        "yards_per_reception": 12.637342873625068,
+        "td_per_target": 0.06438693776956253,
+        "points": {
+          "receptions": 0.35233750488758014,
+          "receiving_yards": 0.4452609856501899,
+          "receiving_tds": 0.22135358790421625,
+          "bonuses_and_other": 0.0
+        },
+        "mean": 1.0189520784419863,
+        "observed_targets": 4.0,
+        "observed_receptions": 2.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 24.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 2.1412847130859314,
+        "p10": -2.5011447681273333,
+        "p50": 0.838284662331483,
+        "p90": 8.898208852764391
+      },
+      "boom_probability": 0.003854625550660793,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 1.402,
+        "p10": 0.0,
+        "p90": 4.21
+      },
+      "role": {
+        "mean": 2.66505414159563,
+        "p10": -2.1353607677194706,
+        "p50": 1.4495160979828547,
+        "p90": 9.216768452951042
+      },
+      "role_boom_probability": 0.004405286343612335,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.003854625550660793
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_ARI_LA",
+      "identity": "00-0039075",
+      "name": "Puka Nacua",
+      "team": "LAR",
+      "actual": 26.0,
+      "targets_baseline": 10.911115261107394,
+      "targets_candidate": 10.911115261107394,
+      "targets_actual": 11.0,
+      "components": {
+        "targets": 10.911115261107394,
+        "receptions": 7.492371612578,
+        "receiving_yards": 113.34820400833526,
+        "receiving_tds": 0.7006998065792656,
+        "catch_rate": 0.6866733082075042,
+        "yards_per_reception": 15.128481323330147,
+        "td_per_target": 0.06421889878451802,
+        "points": {
+          "receptions": 7.492371612578,
+          "receiving_yards": 11.334820400833527,
+          "receiving_tds": 4.204198839475593,
+          "bonuses_and_other": 1.5435908189111573
+        },
+        "mean": 24.574981671798277,
+        "observed_targets": 82.0,
+        "observed_receptions": 58.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 10.0,
+        "receiving_yards": 76.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171417,
+      "candidate": {
+        "mean": 23.671502382981135,
+        "p10": 13.171426600271701,
+        "p50": 22.120013535088866,
+        "p90": 37.0768860630067
+      },
+      "boom_probability": 0.38197424892703863,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 26.0762,
+        "p10": 13.56,
+        "p90": 45.27
+      },
+      "role": {
+        "mean": 25.54032616160475,
+        "p10": 14.631085215171149,
+        "p50": 24.064958712648924,
+        "p90": 39.26218836470376
+      },
+      "role_boom_probability": 0.46065808297567956,
+      "production_boom_probability": 0.495,
+      "candidate_boom_probability": 0.38197424892703863
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_ARI_LA",
+      "identity": "00-0040590",
+      "name": "Konata Mumpfield",
+      "team": "LAR",
+      "actual": 0.0,
+      "targets_baseline": 2.73257634754009,
+      "targets_candidate": 2.73257634754009,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 2.73257634754009,
+        "receptions": 1.5005419093556713,
+        "receiving_yards": 17.79329430036366,
+        "receiving_tds": 0.09809135807826945,
+        "catch_rate": 0.5491308269232748,
+        "yards_per_reception": 11.857912257848268,
+        "td_per_target": 0.035897023761686624,
+        "points": {
+          "receptions": 1.5005419093556713,
+          "receiving_yards": 1.779329430036366,
+          "receiving_tds": 0.5885481484696167,
+          "bonuses_and_other": 0.0
+        },
+        "mean": 3.868419487861654,
+        "observed_targets": 19.0,
+        "observed_receptions": 8.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 4.990752122505599,
+        "p10": 0.34832264129233437,
+        "p50": 3.6877520717511505,
+        "p90": 11.747676262184058
+      },
+      "boom_probability": 0.008259911894273128,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 2.6995,
+        "p10": 0.0,
+        "p90": 7.0
+      },
+      "role": {
+        "mean": 3.2922437197327246,
+        "p10": -1.5081711895823766,
+        "p50": 2.076705676119949,
+        "p90": 9.843958031088137
+      },
+      "role_boom_probability": 0.005506607929515419,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.008259911894273128
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_ARI_LA",
+      "identity": "00-0038359",
+      "name": "Xavier Smith",
+      "team": "LAR",
+      "actual": 1.6,
+      "targets_baseline": 2.3697470368017193,
+      "targets_candidate": 2.3697470368017193,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 2.3697470368017193,
+        "receptions": 1.6276165442929862,
+        "receiving_yards": 24.72052201960238,
+        "receiving_tds": 0.09030174973167364,
+        "catch_rate": 0.6868313448720104,
+        "yards_per_reception": 15.188173225617234,
+        "td_per_target": 0.038106071377790415,
+        "points": {
+          "receptions": 1.6276165442929862,
+          "receiving_yards": 2.4720522019602384,
+          "receiving_tds": 0.5418104983900418,
+          "bonuses_and_other": -3.908371276161434e-16
+        },
+        "mean": 4.641479244643266,
+        "observed_targets": 15.0,
+        "observed_receptions": 12.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 6.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 5.763811879287211,
+        "p10": 1.1213823980739464,
+        "p50": 4.460811828532763,
+        "p90": 12.520736018965671
+      },
+      "boom_probability": 0.009911894273127754,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 2.9895,
+        "p10": 0.0,
+        "p90": 10.7
+      },
+      "role": {
+        "mean": 6.614240250121923,
+        "p10": 1.8138253408068226,
+        "p50": 5.398702206509148,
+        "p90": 13.165954561477337
+      },
+      "role_boom_probability": 0.011563876651982379,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.009911894273127754
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_KC_LV",
+      "identity": "00-0038563",
+      "name": "Tre Tucker",
+      "team": "LV",
+      "actual": 5.4,
+      "targets_baseline": 5.1346129828166545,
+      "targets_candidate": 5.1346129828166545,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 5.1346129828166545,
+        "receptions": 2.947648412716703,
+        "receiving_yards": 33.65950866235829,
+        "receiving_tds": 0.19196245544249252,
+        "catch_rate": 0.5740741167019242,
+        "yards_per_reception": 11.41910565627329,
+        "td_per_target": 0.0373859638661976,
+        "points": {
+          "receptions": 2.947648412716703,
+          "receiving_yards": 3.3659508662358295,
+          "receiving_tds": 1.151774732654955,
+          "bonuses_and_other": 0.24037312346581316
+        },
+        "mean": 7.705747135073301,
+        "observed_targets": 43.0,
+        "observed_receptions": 23.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 30.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 411,
+      "calibration_offset": 0.10557012811750877,
+      "candidate": {
+        "mean": 7.811317263190809,
+        "p10": 0.11186883338148235,
+        "p50": 5.981256752966243,
+        "p90": 17.583779567091568
+      },
+      "boom_probability": 0.0340632603406326,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 8.857,
+        "p10": 3.22,
+        "p90": 14.7
+      },
+      "role": {
+        "mean": 6.8490615843256,
+        "p10": -1.0520650774180051,
+        "p50": 5.128795842367477,
+        "p90": 16.873928655042512
+      },
+      "role_boom_probability": 0.031630170316301706,
+      "production_boom_probability": 0.035,
+      "candidate_boom_probability": 0.0340632603406326
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_KC_LV",
+      "identity": "00-0032211",
+      "name": "Tyler Lockett",
+      "team": "LV",
+      "actual": 1.5,
+      "targets_baseline": 3.252798932592463,
+      "targets_candidate": 3.252798932592463,
+      "targets_actual": 5.0,
+      "components": {
+        "targets": 3.252798932592463,
+        "receptions": 2.2381169368881833,
+        "receiving_yards": 25.54846201728465,
+        "receiving_tds": 0.14499537400365947,
+        "catch_rate": 0.6880588020558701,
+        "yards_per_reception": 11.415159590725645,
+        "td_per_target": 0.04457557230200483,
+        "points": {
+          "receptions": 2.2381169368881833,
+          "receiving_yards": 2.554846201728465,
+          "receiving_tds": 0.8699722440219568,
+          "bonuses_and_other": -2.245601399127404e-16
+        },
+        "mean": 5.662935382638604,
+        "observed_targets": 28.0,
+        "observed_receptions": 21.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 5.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204549,
+      "candidate": {
+        "mean": 6.339119457859059,
+        "p10": 1.91853850333737,
+        "p50": 5.322155671712074,
+        "p90": 12.010585225955616
+      },
+      "boom_probability": 0.006493506493506494,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 5.7145,
+        "p10": 0.0,
+        "p90": 10.2
+      },
+      "role": {
+        "mean": 6.637083645163069,
+        "p10": 2.365670872225487,
+        "p50": 5.616735782582635,
+        "p90": 11.995653409738589
+      },
+      "role_boom_probability": 0.006493506493506494,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.006493506493506494
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_KC_LV",
+      "identity": "00-0040729",
+      "name": "Jack Bech",
+      "team": "LV",
+      "actual": 0.0,
+      "targets_baseline": 2.447401736497344,
+      "targets_candidate": 2.447401736497344,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 2.447401736497344,
+        "receptions": 1.661494721530271,
+        "receiving_yards": 20.291459597654576,
+        "receiving_tds": 0.09047695883539164,
+        "catch_rate": 0.6788810748774566,
+        "yards_per_reception": 12.212774036962166,
+        "td_per_target": 0.03696857670979667,
+        "points": {
+          "receptions": 1.661494721530271,
+          "receiving_yards": 2.0291459597654575,
+          "receiving_tds": 0.5428617530123498,
+          "bonuses_and_other": -1.6653822570646514e-17
+        },
+        "mean": 4.233502434308078,
+        "observed_targets": 17.0,
+        "observed_receptions": 13.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204549,
+      "candidate": {
+        "mean": 4.909686509528533,
+        "p10": 0.48910555500684383,
+        "p50": 3.8927227233815476,
+        "p90": 10.581152277625089
+      },
+      "boom_probability": 0.005194805194805195,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.014,
+        "p10": 0.0,
+        "p90": 11.0
+      },
+      "role": {
+        "mean": 5.06203258479636,
+        "p10": 0.7906198118587779,
+        "p50": 4.041684722215926,
+        "p90": 10.420602349371878
+      },
+      "role_boom_probability": 0.006493506493506494,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.005194805194805195
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_MIA_NE",
+      "identity": "00-0039880",
+      "name": "Malik Washington",
+      "team": "MIA",
+      "actual": 11.8,
+      "targets_baseline": 2.9188781806421082,
+      "targets_candidate": 2.9188781806421082,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 2.9188781806421082,
+        "receptions": 2.032608212615321,
+        "receiving_yards": 22.89473957696712,
+        "receiving_tds": 0.13902235479167965,
+        "catch_rate": 0.6963662362120843,
+        "yards_per_reception": 11.263724821572408,
+        "td_per_target": 0.047628693692553105,
+        "points": {
+          "receptions": 2.032608212615321,
+          "receiving_yards": 2.289473957696712,
+          "receiving_tds": 0.8341341287500779,
+          "bonuses_and_other": 1.3010000158670962
+        },
+        "mean": 6.457216314929207,
+        "observed_targets": 23.0,
+        "observed_receptions": 18.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 6.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204549,
+      "candidate": {
+        "mean": 7.133400390149662,
+        "p10": 2.712819435627973,
+        "p50": 6.1164366040026765,
+        "p90": 12.804866158246218
+      },
+      "boom_probability": 0.007792207792207792,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 6.211,
+        "p10": 1.59,
+        "p90": 10.2
+      },
+      "role": {
+        "mean": 6.965067284216357,
+        "p10": 2.6936545112787735,
+        "p50": 5.944719421635922,
+        "p90": 12.323637048791875
+      },
+      "role_boom_probability": 0.006493506493506494,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.007792207792207792
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_MIA_NE",
+      "identity": "00-0034418",
+      "name": "Cedrick Wilson Jr.",
+      "team": "MIA",
+      "actual": 0.0,
+      "targets_baseline": 0.9136184140921554,
+      "targets_candidate": 0.9136184140921554,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 0.9136184140921554,
+        "receptions": 0.5813508908207342,
+        "receiving_yards": 7.1220702529703965,
+        "receiving_tds": 0.04040958129401532,
+        "catch_rate": 0.6363169588677907,
+        "yards_per_reception": 12.250897634156312,
+        "td_per_target": 0.044230261420649584,
+        "points": {
+          "receptions": 0.5813508908207342,
+          "receiving_yards": 0.7122070252970397,
+          "receiving_tds": 0.24245748776409193,
+          "bonuses_and_other": -7.002069849964027e-18
+        },
+        "mean": 1.5360154038818659,
+        "observed_targets": 6.0,
+        "observed_receptions": 4.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204547,
+      "candidate": {
+        "mean": 2.2121994791023205,
+        "p10": -2.2083814754193685,
+        "p50": 1.1952356929553352,
+        "p90": 7.883665247198877
+      },
+      "boom_probability": 0.003896103896103896,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 3.5549,
+        "p10": 0.0,
+        "p90": 7.24
+      },
+      "role": {
+        "mean": 2.109195433269291,
+        "p10": -2.1622173396682913,
+        "p50": 1.0888475706888572,
+        "p90": 7.467765197844808
+      },
+      "role_boom_probability": 0.003896103896103896,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.003896103896103896
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_GB_MIN",
+      "identity": "00-0036322",
+      "name": "Justin Jefferson",
+      "team": "MIN",
+      "actual": 21.4,
+      "targets_baseline": 6.995204472679761,
+      "targets_candidate": 6.995204472679761,
+      "targets_actual": 11.0,
+      "components": {
+        "targets": 6.995204472679761,
+        "receptions": 3.8082060493033674,
+        "receiving_yards": 42.74684424768635,
+        "receiving_tds": 0.1604294857498268,
+        "catch_rate": 0.5444023922640961,
+        "yards_per_reception": 11.224929453464316,
+        "td_per_target": 0.02293420962552201,
+        "points": {
+          "receptions": 3.8082060493033674,
+          "receiving_yards": 4.274684424768635,
+          "receiving_tds": 0.9625769144989608,
+          "bonuses_and_other": -7.839132115496779e-17
+        },
+        "mean": 9.045467388570962,
+        "observed_targets": 58.0,
+        "observed_receptions": 29.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 8.0,
+        "receiving_yards": 101.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 411,
+      "calibration_offset": 0.10557012811750788,
+      "candidate": {
+        "mean": 9.15103751668847,
+        "p10": 1.4515890868791441,
+        "p50": 7.320977006463905,
+        "p90": 18.92349982058923
+      },
+      "boom_probability": 0.0413625304136253,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 12.0628,
+        "p10": 3.1,
+        "p90": 22.32
+      },
+      "role": {
+        "mean": 7.812580897816836,
+        "p10": -0.08854576392676972,
+        "p50": 6.092315155858713,
+        "p90": 17.83744796853375
+      },
+      "role_boom_probability": 0.038929440389294405,
+      "production_boom_probability": 0.07,
+      "candidate_boom_probability": 0.0413625304136253
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_GB_MIN",
+      "identity": "00-0038994",
+      "name": "Jordan Addison",
+      "team": "MIN",
+      "actual": 1.8,
+      "targets_baseline": 3.815531165413772,
+      "targets_candidate": 3.815531165413772,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 3.815531165413772,
+        "receptions": 1.955852431540029,
+        "receiving_yards": 25.581599837740225,
+        "receiving_tds": 0.14419782452268956,
+        "catch_rate": 0.5126029238783398,
+        "yards_per_reception": 13.079514295256619,
+        "td_per_target": 0.03779233303865627,
+        "points": {
+          "receptions": 1.955852431540029,
+          "receiving_yards": 2.5581599837740225,
+          "receiving_tds": 0.8651869471361373,
+          "bonuses_and_other": 2.6517264124380904
+        },
+        "mean": 8.03092577488828,
+        "observed_targets": 42.0,
+        "observed_receptions": 18.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 8.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204549,
+      "candidate": {
+        "mean": 8.707109850108735,
+        "p10": 4.286528895587045,
+        "p50": 7.690146063961749,
+        "p90": 14.378575618205291
+      },
+      "boom_probability": 0.011688311688311689,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 11.0915,
+        "p10": 4.6,
+        "p90": 18.9
+      },
+      "role": {
+        "mean": 8.339915359846538,
+        "p10": 4.068502586908956,
+        "p50": 7.319567497266105,
+        "p90": 13.698485124422056
+      },
+      "role_boom_probability": 0.007792207792207792,
+      "production_boom_probability": 0.04,
+      "candidate_boom_probability": 0.011688311688311689
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_GB_MIN",
+      "identity": "00-0037291",
+      "name": "Jalen Nailor",
+      "team": "MIN",
+      "actual": 7.9,
+      "targets_baseline": 2.2905495783134446,
+      "targets_candidate": 2.2905495783134446,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 2.2905495783134446,
+        "receptions": 1.4158991226321354,
+        "receiving_yards": 20.752724735638008,
+        "receiving_tds": 0.1792156958157575,
+        "catch_rate": 0.6181482103848093,
+        "yards_per_reception": 14.656923225617234,
+        "td_per_target": 0.07824135199366253,
+        "points": {
+          "receptions": 1.4158991226321354,
+          "receiving_yards": 2.075272473563801,
+          "receiving_tds": 1.075294174894545,
+          "bonuses_and_other": 0.15920625535333785
+        },
+        "mean": 4.725672026443819,
+        "observed_targets": 20.0,
+        "observed_receptions": 12.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 49.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.676184075220454,
+      "candidate": {
+        "mean": 5.401856101664273,
+        "p10": 0.9812751471425848,
+        "p50": 4.3848923155172885,
+        "p90": 11.07332186976083
+      },
+      "boom_probability": 0.005194805194805195,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 5.92,
+        "p10": 0.0,
+        "p90": 19.5
+      },
+      "role": {
+        "mean": 6.311652893131232,
+        "p10": 2.0402401201936495,
+        "p50": 5.291305030550799,
+        "p90": 11.67022265770675
+      },
+      "role_boom_probability": 0.006493506493506494,
+      "production_boom_probability": 0.03,
+      "candidate_boom_probability": 0.005194805194805195
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_MIA_NE",
+      "identity": "00-0031588",
+      "name": "Stefon Diggs",
+      "team": "NE",
+      "actual": 7.3,
+      "targets_baseline": 6.251196814371535,
+      "targets_candidate": 6.251196814371535,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 6.251196814371535,
+        "receptions": 4.603022712259403,
+        "receiving_yards": 57.6928707258147,
+        "receiving_tds": 0.3423714632344336,
+        "catch_rate": 0.7363426314905058,
+        "yards_per_reception": 12.533692386995858,
+        "td_per_target": 0.054768946395563775,
+        "points": {
+          "receptions": 4.603022712259403,
+          "receiving_yards": 5.76928707258147,
+          "receiving_tds": 2.0542287794066016,
+          "bonuses_and_other": 1.4391521433881438
+        },
+        "mean": 13.865690707635618,
+        "observed_targets": 50.0,
+        "observed_receptions": 40.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 43.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 14.944182347557204,
+        "p10": 6.082586042679905,
+        "p50": 13.600595208668679,
+        "p90": 26.44648016663548
+      },
+      "boom_probability": 0.11663479923518165,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 14.474,
+        "p10": 5.3,
+        "p90": 25.8
+      },
+      "role": {
+        "mean": 16.54981730592216,
+        "p10": 7.501878981266083,
+        "p50": 15.281724012649953,
+        "p90": 27.706282253398346
+      },
+      "role_boom_probability": 0.13957934990439771,
+      "production_boom_probability": 0.205,
+      "candidate_boom_probability": 0.11663479923518165
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_MIA_NE",
+      "identity": "00-0040131",
+      "name": "Kyle Williams",
+      "team": "NE",
+      "actual": 0.5,
+      "targets_baseline": 2.36432152130302,
+      "targets_candidate": 2.36432152130302,
+      "targets_actual": 0.0,
+      "components": {
+        "targets": 2.36432152130302,
+        "receptions": 1.3829949950690326,
+        "receiving_yards": 21.78323524966205,
+        "receiving_tds": 0.1961990888820044,
+        "catch_rate": 0.5849437069400101,
+        "yards_per_reception": 15.75076940070541,
+        "td_per_target": 0.08298325211449056,
+        "points": {
+          "receptions": 1.3829949950690326,
+          "receiving_yards": 2.178323524966205,
+          "receiving_tds": 1.1771945332920264,
+          "bonuses_and_other": -2.4860610637139546e-16
+        },
+        "mean": 4.738513053327264,
+        "observed_targets": 16.0,
+        "observed_receptions": 8.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 5.860845687971208,
+        "p10": 1.218416206757944,
+        "p50": 4.557845637216761,
+        "p90": 12.617769827649667
+      },
+      "boom_probability": 0.009911894273127754,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 5.3875,
+        "p10": 0.0,
+        "p90": 14.2
+      },
+      "role": {
+        "mean": 7.225053813040674,
+        "p10": 2.4246389037255733,
+        "p50": 6.009515769427899,
+        "p90": 13.776768124396087
+      },
+      "role_boom_probability": 0.013766519823788546,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.009911894273127754
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_MIA_NE",
+      "identity": "00-0038621",
+      "name": "DeMario Douglas",
+      "team": "NE",
+      "actual": 4.9,
+      "targets_baseline": 2.0606975097912517,
+      "targets_candidate": 2.0606975097912517,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 2.0606975097912517,
+        "receptions": 1.4259778861320105,
+        "receiving_yards": 20.697928180286375,
+        "receiving_tds": 0.1038380887759475,
+        "catch_rate": 0.6919879697804177,
+        "yards_per_reception": 14.514901234850043,
+        "td_per_target": 0.050389777384875024,
+        "points": {
+          "receptions": 1.4259778861320105,
+          "receiving_yards": 2.069792818028638,
+          "receiving_tds": 0.623028532655685,
+          "bonuses_and_other": 0.3681093985336564
+        },
+        "mean": 4.48690863534999,
+        "observed_targets": 19.0,
+        "observed_receptions": 15.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 29.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 5.609241269993935,
+        "p10": 0.9668117887806704,
+        "p50": 4.306241219239487,
+        "p90": 12.366165409672394
+      },
+      "boom_probability": 0.009361233480176211,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 6.8915,
+        "p10": 1.6,
+        "p90": 16.1
+      },
+      "role": {
+        "mean": 5.723219278367272,
+        "p10": 0.9228043690521706,
+        "p50": 4.507681234754496,
+        "p90": 12.274933589722684
+      },
+      "role_boom_probability": 0.00881057268722467,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.009361233480176211
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NO_ATL",
+      "identity": "00-0034860",
+      "name": "Dante Pettis",
+      "team": "NO",
+      "actual": 11.0,
+      "targets_baseline": 1.2006141460659594,
+      "targets_candidate": 1.2006141460659594,
+      "targets_actual": 5.0,
+      "components": {
+        "targets": 1.2006141460659594,
+        "receptions": 0.7639711421983407,
+        "receiving_yards": 10.15513553164462,
+        "receiving_tds": 0.05310347754582735,
+        "catch_rate": 0.6363169588677907,
+        "yards_per_reception": 13.29256430082298,
+        "td_per_target": 0.044230261420649584,
+        "points": {
+          "receptions": 0.7639711421983407,
+          "receiving_yards": 1.015513553164462,
+          "receiving_tds": 0.31862086527496414,
+          "bonuses_and_other": -0.21213811299504726
+        },
+        "mean": 1.8859674476427195,
+        "observed_targets": 6.0,
+        "observed_receptions": 4.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 60.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439448,
+      "candidate": {
+        "mean": 3.0083000822866643,
+        "p10": -1.6341293989266001,
+        "p50": 1.7053000315322162,
+        "p90": 9.765224221965124
+      },
+      "boom_probability": 0.005506607929515419,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 3.2185,
+        "p10": 0.0,
+        "p90": 7.3
+      },
+      "role": {
+        "mean": 2.9986398022706964,
+        "p10": -1.8017751070444044,
+        "p50": 1.7831017586579212,
+        "p90": 9.550354113626108
+      },
+      "role_boom_probability": 0.005506607929515419,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.005506607929515419
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DAL_NYG",
+      "identity": "00-0035535",
+      "name": "Darius Slayton",
+      "team": "NYG",
+      "actual": 9.4,
+      "targets_baseline": 3.7477989527326216,
+      "targets_candidate": 3.7477989527326216,
+      "targets_actual": 9.0,
+      "components": {
+        "targets": 3.7477989527326216,
+        "receptions": 2.3290057941772946,
+        "receiving_yards": 33.68229338973386,
+        "receiving_tds": 0.1608728652949513,
+        "catch_rate": 0.6214329593318109,
+        "yards_per_reception": 14.4620908517885,
+        "td_per_target": 0.04292462517970835,
+        "points": {
+          "receptions": 2.3290057941772946,
+          "receiving_yards": 3.3682293389733857,
+          "receiving_tds": 0.9652371917697078,
+          "bonuses_and_other": 0.25227615333696113
+        },
+        "mean": 6.91474847825735,
+        "observed_targets": 31.0,
+        "observed_receptions": 19.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 34.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 8.037081112901294,
+        "p10": 3.39465163168803,
+        "p50": 6.7340810621468465,
+        "p90": 14.794005252579755
+      },
+      "boom_probability": 0.017070484581497798,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 7.0255,
+        "p10": 1.8,
+        "p90": 14.1
+      },
+      "role": {
+        "mean": 7.660519548943493,
+        "p10": 2.8601046396283927,
+        "p50": 6.444981505330718,
+        "p90": 14.212233860298907
+      },
+      "role_boom_probability": 0.015418502202643172,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.017070484581497798
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DAL_NYG",
+      "identity": "00-0036165",
+      "name": "Isaiah Hodgins",
+      "team": "NYG",
+      "actual": 0.0,
+      "targets_baseline": 1.7988977479970025,
+      "targets_candidate": 1.7988977479970025,
+      "targets_actual": 2.0,
+      "components": {
+        "targets": 1.7988977479970025,
+        "receptions": 1.1064143762443943,
+        "receiving_yards": 13.535930393657878,
+        "receiving_tds": 0.09335190950926592,
+        "catch_rate": 0.6150512876434141,
+        "yards_per_reception": 12.234051440658384,
+        "td_per_target": 0.05189394984412503,
+        "points": {
+          "receptions": 1.1064143762443943,
+          "receiving_yards": 1.353593039365788,
+          "receiving_tds": 0.5601114570555955,
+          "bonuses_and_other": -2.0408558642165136e-16
+        },
+        "mean": 3.0201188726657775,
+        "observed_targets": 17.0,
+        "observed_receptions": 10.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 4.142451507309723,
+        "p10": -0.49997797390354215,
+        "p50": 2.839451456555274,
+        "p90": 10.899375646988183
+      },
+      "boom_probability": 0.007158590308370044,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 5.3245,
+        "p10": 0.0,
+        "p90": 12.2
+      },
+      "role": {
+        "mean": 3.7553508485825815,
+        "p10": -1.0450640607325192,
+        "p50": 2.5398128049698063,
+        "p90": 10.307065159937993
+      },
+      "role_boom_probability": 0.006057268722466961,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.007158590308370044
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_DAL_NYG",
+      "identity": "00-0035645",
+      "name": "Gunner Olszewski",
+      "team": "NYG",
+      "actual": 21.2,
+      "targets_baseline": 0.38441117012812137,
+      "targets_candidate": 0.38441117012812137,
+      "targets_actual": 9.0,
+      "components": {
+        "targets": 0.38441117012812137,
+        "receptions": 0.2363835924132418,
+        "receiving_yards": 3.169920555708334,
+        "receiving_tds": 0.024751058088964065,
+        "catch_rate": 0.6149238388011902,
+        "yards_per_reception": 13.410070146352341,
+        "td_per_target": 0.06438693776956253,
+        "points": {
+          "receptions": 0.2363835924132418,
+          "receiving_yards": 0.31699205557083343,
+          "receiving_tds": 0.1485063485337844,
+          "bonuses_and_other": 0.438149303898345
+        },
+        "mean": 1.1400313004162046,
+        "observed_targets": 4.0,
+        "observed_receptions": 2.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 8.0,
+        "receiving_yards": 102.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439448,
+      "candidate": {
+        "mean": 2.2623639350601494,
+        "p10": -2.380065546153115,
+        "p50": 0.9593638843057013,
+        "p90": 9.01928807473861
+      },
+      "boom_probability": 0.003854625550660793,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 1.3343,
+        "p10": 0.0,
+        "p90": 5.32
+      },
+      "role": {
+        "mean": 2.6027860548021153,
+        "p10": -2.197628854512985,
+        "p50": 1.3872480111893404,
+        "p90": 9.154500366157528
+      },
+      "role_boom_probability": 0.004405286343612335,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.003854625550660793
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NYJ_BUF",
+      "identity": "00-0039890",
+      "name": "Adonai Mitchell",
+      "team": "NYJ",
+      "actual": 0.0,
+      "targets_baseline": 7.161459915095116,
+      "targets_candidate": 7.161459915095116,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 7.161459915095116,
+        "receptions": 3.615055299930248,
+        "receiving_yards": 45.43644229073108,
+        "receiving_tds": 0.305343823859878,
+        "catch_rate": 0.5047930649322407,
+        "yards_per_reception": 12.568671436812535,
+        "td_per_target": 0.04263709180529883,
+        "points": {
+          "receptions": 3.615055299930248,
+          "receiving_yards": 4.5436442290731085,
+          "receiving_tds": 1.832062943159268,
+          "bonuses_and_other": 0.258205450193804
+        },
+        "mean": 10.248967922356428,
+        "observed_targets": 55.0,
+        "observed_receptions": 24.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171435,
+      "candidate": {
+        "mean": 9.345488633539285,
+        "p10": -1.1545871491701474,
+        "p50": 7.793999785647017,
+        "p90": 22.750872313564848
+      },
+      "boom_probability": 0.07010014306151645,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 7.3283,
+        "p10": 0.0,
+        "p90": 17.4
+      },
+      "role": {
+        "mean": 7.459772462888105,
+        "p10": -3.449468483545492,
+        "p50": 5.984405013932282,
+        "p90": 21.18163466598712
+      },
+      "role_boom_probability": 0.06151645207439199,
+      "production_boom_probability": 0.08,
+      "candidate_boom_probability": 0.07010014306151645
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NYJ_BUF",
+      "identity": "00-0037614",
+      "name": "John Metchie III",
+      "team": "NYJ",
+      "actual": 5.0,
+      "targets_baseline": 4.98437514589712,
+      "targets_candidate": 4.98437514589712,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 4.98437514589712,
+        "receptions": 3.1976482979814436,
+        "receiving_yards": 33.92437515336774,
+        "receiving_tds": 0.2479391374689428,
+        "catch_rate": 0.6415344359891495,
+        "yards_per_reception": 10.609163983038076,
+        "td_per_target": 0.04974327377284864,
+        "points": {
+          "receptions": 3.1976482979814436,
+          "receiving_yards": 3.3924375153367743,
+          "receiving_tds": 1.4876348248136568,
+          "bonuses_and_other": -0.005360418834706726
+        },
+        "mean": 8.072360219297169,
+        "observed_targets": 40.0,
+        "observed_receptions": 26.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 20.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 9.150851859218754,
+        "p10": 0.28925555434145567,
+        "p50": 7.807264720330228,
+        "p90": 20.653149678297034
+      },
+      "boom_probability": 0.05162523900573614,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 5.2494,
+        "p10": 0.54,
+        "p90": 12.982
+      },
+      "role": {
+        "mean": 7.743834278878452,
+        "p10": -1.3041040457776258,
+        "p50": 6.475740985606245,
+        "p90": 18.900299226354637
+      },
+      "role_boom_probability": 0.036328871892925434,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.05162523900573614
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_NYJ_BUF",
+      "identity": "00-0039451",
+      "name": "Isaiah Williams",
+      "team": "NYJ",
+      "actual": 7.4,
+      "targets_baseline": 3.587596789430905,
+      "targets_candidate": 3.587596789430905,
+      "targets_actual": 7.0,
+      "components": {
+        "targets": 3.587596789430905,
+        "receptions": 2.4074346815461,
+        "receiving_yards": 24.70924709729897,
+        "receiving_tds": 0.11848132342174769,
+        "catch_rate": 0.6710438276225539,
+        "yards_per_reception": 10.263724821572408,
+        "td_per_target": 0.03302526186075169,
+        "points": {
+          "receptions": 2.4074346815461,
+          "receiving_yards": 2.470924709729897,
+          "receiving_tds": 0.7108879405304862,
+          "bonuses_and_other": 1.2713126061632332
+        },
+        "mean": 6.860559937969716,
+        "observed_targets": 25.0,
+        "observed_receptions": 18.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 24.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 7.982892572613662,
+        "p10": 3.3404630914003968,
+        "p50": 6.679892521859213,
+        "p90": 14.739816712292122
+      },
+      "boom_probability": 0.017070484581497798,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 3.8875,
+        "p10": 0.0,
+        "p90": 10.4
+      },
+      "role": {
+        "mean": 7.292930794800059,
+        "p10": 2.4925158854849574,
+        "p50": 6.077392751187283,
+        "p90": 13.84464510615547
+      },
+      "role_boom_probability": 0.013766519823788546,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.017070484581497798
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_WAS_PHI",
+      "identity": "00-0036912",
+      "name": "DeVonta Smith",
+      "team": "PHI",
+      "actual": 8.2,
+      "targets_baseline": 6.236613393175333,
+      "targets_candidate": 6.236613393175333,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 6.236613393175333,
+        "receptions": 3.6311501365454673,
+        "receiving_yards": 45.027826226470644,
+        "receiving_tds": 0.26846789489319384,
+        "catch_rate": 0.5822310776100055,
+        "yards_per_reception": 12.40043086439503,
+        "td_per_target": 0.04304706384188824,
+        "points": {
+          "receptions": 3.6311501365454673,
+          "receiving_yards": 4.502782622647064,
+          "receiving_tds": 1.6108073693591631,
+          "bonuses_and_other": -2.7047187194347036e-16
+        },
+        "mean": 9.744740128551694,
+        "observed_targets": 54.0,
+        "observed_receptions": 30.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 52.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215838,
+      "candidate": {
+        "mean": 10.823231768473278,
+        "p10": 1.961635463595981,
+        "p50": 9.479644629584755,
+        "p90": 22.325529587551557
+      },
+      "boom_probability": 0.0621414913957935,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 12.585,
+        "p10": 4.5,
+        "p90": 22.4
+      },
+      "role": {
+        "mean": 9.946131934291207,
+        "p10": 0.8981936096351291,
+        "p50": 8.678038641019,
+        "p90": 21.10259688176739
+      },
+      "role_boom_probability": 0.05736137667304015,
+      "production_boom_probability": 0.085,
+      "candidate_boom_probability": 0.0621414913957935
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_WAS_PHI",
+      "identity": "00-0037741",
+      "name": "Jahan Dotson",
+      "team": "PHI",
+      "actual": 7.0,
+      "targets_baseline": 1.6168187634765223,
+      "targets_candidate": 1.6168187634765223,
+      "targets_actual": 8.0,
+      "components": {
+        "targets": 1.6168187634765223,
+        "receptions": 0.9519906236499323,
+        "receiving_yards": 11.389388162301287,
+        "receiving_tds": 0.06257327700608074,
+        "catch_rate": 0.5888047845281924,
+        "yards_per_reception": 11.963760859990796,
+        "td_per_target": 0.03870147874306839,
+        "points": {
+          "receptions": 0.9519906236499323,
+          "receiving_yards": 1.1389388162301288,
+          "receiving_tds": 0.3754396620364845,
+          "bonuses_and_other": -3.9609688586011477e-17
+        },
+        "mean": 2.4663691019165457,
+        "observed_targets": 14.0,
+        "observed_receptions": 7.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 40.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 3.5887017365604903,
+        "p10": -1.053727744652774,
+        "p50": 2.2857016858060426,
+        "p90": 10.345625876238952
+      },
+      "boom_probability": 0.006057268722466961,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 2.951,
+        "p10": 0.0,
+        "p90": 7.46
+      },
+      "role": {
+        "mean": 2.6060040209986046,
+        "p10": -2.1944108883164963,
+        "p50": 1.390465977385829,
+        "p90": 9.157718332354017
+      },
+      "role_boom_probability": 0.004405286343612335,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.006057268722466961
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_WAS_PHI",
+      "identity": "00-0040024",
+      "name": "Darius Cooper",
+      "team": "PHI",
+      "actual": 6.3,
+      "targets_baseline": 0.940772298163612,
+      "targets_candidate": 0.940772298163612,
+      "targets_actual": 5.0,
+      "components": {
+        "targets": 0.940772298163612,
+        "receptions": 0.6508944954302882,
+        "receiving_yards": 7.786238863152682,
+        "receiving_tds": 0.041610604685081855,
+        "catch_rate": 0.6918725144233462,
+        "yards_per_reception": 11.962367046913519,
+        "td_per_target": 0.044230261420649584,
+        "points": {
+          "receptions": 0.6508944954302882,
+          "receiving_yards": 0.7786238863152682,
+          "receiving_tds": 0.24966362811049114,
+          "bonuses_and_other": -4.16579189981167e-17
+        },
+        "mean": 1.6791820098560475,
+        "observed_targets": 6.0,
+        "observed_receptions": 6.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 33.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 2.8015146444999925,
+        "p10": -1.8409148367132722,
+        "p50": 1.4985145937455442,
+        "p90": 9.558438784178453
+      },
+      "boom_probability": 0.004405286343612335,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 2.3715,
+        "p10": 0.0,
+        "p90": 4.9
+      },
+      "role": {
+        "mean": 2.9841587351529033,
+        "p10": -1.816256174162198,
+        "p50": 1.7686206915401275,
+        "p90": 9.535873046508316
+      },
+      "role_boom_probability": 0.005506607929515419,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.004405286343612335
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_BAL_PIT",
+      "identity": "00-0034272",
+      "name": "Marquez Valdes-Scantling",
+      "team": "PIT",
+      "actual": 8.4,
+      "targets_baseline": 2.39298496801978,
+      "targets_candidate": 2.39298496801978,
+      "targets_actual": 7.0,
+      "components": {
+        "targets": 2.39298496801978,
+        "receptions": 1.3002289544731906,
+        "receiving_yards": 15.499849582044172,
+        "receiving_tds": 0.13000244699760877,
+        "catch_rate": 0.5433502390736469,
+        "yards_per_reception": 11.92086172879006,
+        "td_per_target": 0.05432647874306839,
+        "points": {
+          "receptions": 1.3002289544731906,
+          "receiving_yards": 1.5499849582044174,
+          "receiving_tds": 0.7800146819856526,
+          "bonuses_and_other": -9.420824697905384e-17
+        },
+        "mean": 3.6302285946632606,
+        "observed_targets": 14.0,
+        "observed_receptions": 5.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 5.0,
+        "receiving_yards": 34.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 4.752561229307206,
+        "p10": 0.110131748093941,
+        "p50": 3.4495611785527576,
+        "p90": 11.509485368985665
+      },
+      "boom_probability": 0.007709251101321586,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.9764,
+        "p10": 0.0,
+        "p90": 9.1
+      },
+      "role": {
+        "mean": 3.4367544877791354,
+        "p10": -1.3636604215359653,
+        "p50": 2.22121644416636,
+        "p90": 9.988468799134548
+      },
+      "role_boom_probability": 0.005506607929515419,
+      "production_boom_probability": 0.02,
+      "candidate_boom_probability": 0.007709251101321586
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_BAL_PIT",
+      "identity": "00-0037837",
+      "name": "Calvin Austin III",
+      "team": "PIT",
+      "actual": 14.5,
+      "targets_baseline": 1.9216277176166676,
+      "targets_candidate": 1.9216277176166676,
+      "targets_actual": 7.0,
+      "components": {
+        "targets": 1.9216277176166676,
+        "receptions": 1.0944419098097844,
+        "receiving_yards": 13.058637192991506,
+        "receiving_tds": 0.06898071584040115,
+        "catch_rate": 0.5695389901885809,
+        "yards_per_reception": 11.931777352405224,
+        "td_per_target": 0.035897023761686624,
+        "points": {
+          "receptions": 1.0944419098097844,
+          "receiving_yards": 1.3058637192991507,
+          "receiving_tds": 0.41388429504240687,
+          "bonuses_and_other": -1.0963038708565173e-16
+        },
+        "mean": 2.814189924151342,
+        "observed_targets": 19.0,
+        "observed_receptions": 9.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 55.0,
+        "receiving_tds": 1.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 3.936522558795287,
+        "p10": -0.7059069224179777,
+        "p50": 2.633522508040839,
+        "p90": 10.693446698473746
+      },
+      "boom_probability": 0.006057268722466961,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.4495,
+        "p10": 0.0,
+        "p90": 10.9
+      },
+      "role": {
+        "mean": 3.1035731641666238,
+        "p10": -1.6968417451484774,
+        "p50": 1.8880351205538481,
+        "p90": 9.655287475522035
+      },
+      "role_boom_probability": 0.005506607929515419,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.006057268722466961
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_BAL_PIT",
+      "identity": "00-0030035",
+      "name": "Adam Thielen",
+      "team": "PIT",
+      "actual": 7.3,
+      "targets_baseline": 1.8115112101876043,
+      "targets_candidate": 1.8115112101876043,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 1.8115112101876043,
+        "receptions": 1.188855507139609,
+        "receiving_yards": 13.842589539391271,
+        "receiving_tds": 0.07355610501655675,
+        "catch_rate": 0.6562783053473285,
+        "yards_per_reception": 11.643626543562553,
+        "td_per_target": 0.040604830156661914,
+        "points": {
+          "receptions": 1.188855507139609,
+          "receiving_yards": 1.3842589539391272,
+          "receiving_tds": 0.44133663009934054,
+          "bonuses_and_other": -7.776208576010149e-17
+        },
+        "mean": 3.014451091178077,
+        "observed_targets": 11.0,
+        "observed_receptions": 8.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 43.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 4.136783725822022,
+        "p10": -0.5056457553912428,
+        "p50": 2.833783675067574,
+        "p90": 10.893707865500481
+      },
+      "boom_probability": 0.007158590308370044,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 5.3195,
+        "p10": 0.0,
+        "p90": 10.28
+      },
+      "role": {
+        "mean": 3.5054824077946467,
+        "p10": -1.294932501520454,
+        "p50": 2.2899443641818715,
+        "p90": 10.05719671915006
+      },
+      "role_boom_probability": 0.005506607929515419,
+      "production_boom_probability": 0.025,
+      "candidate_boom_probability": 0.007158590308370044
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_SEA_SF",
+      "identity": "00-0038543",
+      "name": "Jaxon Smith-Njigba",
+      "team": "SEA",
+      "actual": 14.4,
+      "targets_baseline": 10.286517298930503,
+      "targets_candidate": 10.286517298930503,
+      "targets_actual": 8.0,
+      "components": {
+        "targets": 10.286517298930503,
+        "receptions": 7.172168460616278,
+        "receiving_yards": 96.87414882940709,
+        "receiving_tds": 0.6920454234206977,
+        "catch_rate": 0.6972397218796271,
+        "yards_per_reception": 13.506953909596687,
+        "td_per_target": 0.06727694158378077,
+        "points": {
+          "receptions": 7.172168460616278,
+          "receiving_yards": 9.68741488294071,
+          "receiving_tds": 4.152272540524186,
+          "bonuses_and_other": 1.048164402365656
+        },
+        "mean": 22.06002028644683,
+        "observed_targets": 76.0,
+        "observed_receptions": 55.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 6.0,
+        "receiving_yards": 84.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 699,
+      "calibration_offset": -0.9034792888171452,
+      "candidate": {
+        "mean": 21.156540997629683,
+        "p10": 10.656465214920253,
+        "p50": 19.605052149737418,
+        "p90": 34.56192467765525
+      },
+      "boom_probability": 0.2761087267525036,
+      "tier": "7+ targets",
+      "production": {
+        "mean": 21.4284,
+        "p10": 5.26,
+        "p90": 33.2
+      },
+      "role": {
+        "mean": 20.740522726847605,
+        "p10": 9.831281780414008,
+        "p50": 19.265155277891783,
+        "p90": 34.46238492994662
+      },
+      "role_boom_probability": 0.2761087267525036,
+      "production_boom_probability": 0.275,
+      "candidate_boom_probability": 0.2761087267525036
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_SEA_SF",
+      "identity": "00-0033908",
+      "name": "Cooper Kupp",
+      "team": "SEA",
+      "actual": 4.9,
+      "targets_baseline": 4.187002737655079,
+      "targets_candidate": 4.187002737655079,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 4.187002737655079,
+        "receptions": 2.6108193296372644,
+        "receiving_yards": 33.30523792328876,
+        "receiving_tds": 0.17330675445667643,
+        "catch_rate": 0.6235532893631323,
+        "yards_per_reception": 12.756623005359792,
+        "td_per_target": 0.04139160285186163,
+        "points": {
+          "receptions": 2.6108193296372644,
+          "receiving_yards": 3.3305237923288757,
+          "receiving_tds": 1.0398405267400586,
+          "bonuses_and_other": 0.1783861787562225
+        },
+        "mean": 7.1595698274624215,
+        "observed_targets": 34.0,
+        "observed_receptions": 21.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 29.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215874,
+      "candidate": {
+        "mean": 8.238061467384009,
+        "p10": -0.6235348374932914,
+        "p50": 6.894474328495481,
+        "p90": 19.740359286462287
+      },
+      "boom_probability": 0.04206500956022945,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 8.2955,
+        "p10": 2.59,
+        "p90": 15.0
+      },
+      "role": {
+        "mean": 7.368935220218923,
+        "p10": -1.6790031044371547,
+        "p50": 6.100841926946716,
+        "p90": 18.525400167695107
+      },
+      "role_boom_probability": 0.036328871892925434,
+      "production_boom_probability": 0.015,
+      "candidate_boom_probability": 0.04206500956022945
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_SEA_SF",
+      "identity": "00-0037545",
+      "name": "Rashid Shaheed",
+      "team": "SEA",
+      "actual": 1.2,
+      "targets_baseline": 2.8898004926708487,
+      "targets_candidate": 2.8898004926708487,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 2.8898004926708487,
+        "receptions": 1.7290154751095084,
+        "receiving_yards": 22.274883137008786,
+        "receiving_tds": 0.09543641799578403,
+        "catch_rate": 0.5983165548952811,
+        "yards_per_reception": 12.882986565286808,
+        "td_per_target": 0.03302526186075169,
+        "points": {
+          "receptions": 1.7290154751095084,
+          "receiving_yards": 2.2274883137008787,
+          "receiving_tds": 0.5726185079747041,
+          "bonuses_and_other": 2.616338599248435
+        },
+        "mean": 7.145460896033526,
+        "observed_targets": 25.0,
+        "observed_receptions": 14.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 2.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 8.267793530677471,
+        "p10": 3.6253640494642068,
+        "p50": 6.964793479923023,
+        "p90": 15.02471767035593
+      },
+      "boom_probability": 0.01762114537444934,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 8.3166,
+        "p10": 1.8,
+        "p90": 16.7
+      },
+      "role": {
+        "mean": 7.685243908161954,
+        "p10": 2.884828998846854,
+        "p50": 6.469705864549179,
+        "p90": 14.236958219517367
+      },
+      "role_boom_probability": 0.015418502202643172,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.01762114537444934
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_SEA_SF",
+      "identity": "00-0036259",
+      "name": "Jauan Jennings",
+      "team": "SF",
+      "actual": 7.5,
+      "targets_baseline": 5.80176042686728,
+      "targets_candidate": 5.80176042686728,
+      "targets_actual": 6.0,
+      "components": {
+        "targets": 5.80176042686728,
+        "receptions": 3.860953336047227,
+        "receiving_yards": 47.207187530656064,
+        "receiving_tds": 0.6202493134309809,
+        "catch_rate": 0.6654796220415444,
+        "yards_per_reception": 12.22682157018399,
+        "td_per_target": 0.10690708815873855,
+        "points": {
+          "receptions": 3.860953336047227,
+          "receiving_yards": 4.720718753065607,
+          "receiving_tds": 3.721495880585885,
+          "bonuses_and_other": -0.07500214912345811
+        },
+        "mean": 12.22816582057526,
+        "observed_targets": 48.0,
+        "observed_receptions": 33.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 35.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215838,
+      "candidate": {
+        "mean": 13.306657460496844,
+        "p10": 4.4450611556195465,
+        "p50": 11.96307032160832,
+        "p90": 24.808955279575123
+      },
+      "boom_probability": 0.09177820267686425,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 13.4035,
+        "p10": 3.6,
+        "p90": 18.7
+      },
+      "role": {
+        "mean": 16.143631621234984,
+        "p10": 7.095693296578906,
+        "p50": 14.875538327962776,
+        "p90": 27.30009656871117
+      },
+      "role_boom_probability": 0.13575525812619502,
+      "production_boom_probability": 0.05,
+      "candidate_boom_probability": 0.09177820267686425
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_SEA_SF",
+      "identity": "00-0033307",
+      "name": "Kendrick Bourne",
+      "team": "SF",
+      "actual": 0.0,
+      "targets_baseline": 1.8718756714761406,
+      "targets_candidate": 1.8718756714761406,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 1.8718756714761406,
+        "receptions": 1.2148651815084548,
+        "receiving_yards": 15.668474137646061,
+        "receiving_tds": 0.07359426693008328,
+        "catch_rate": 0.6490095469590805,
+        "yards_per_reception": 12.897294593784535,
+        "td_per_target": 0.0393157879294663,
+        "points": {
+          "receptions": 1.2148651815084548,
+          "receiving_yards": 1.5668474137646062,
+          "receiving_tds": 0.4415656015804997,
+          "bonuses_and_other": -1.6653822570646514e-17
+        },
+        "mean": 3.2232781968535607,
+        "observed_targets": 13.0,
+        "observed_receptions": 9.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 0.0,
+        "receiving_yards": 0.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439446,
+      "candidate": {
+        "mean": 4.345610831497505,
+        "p10": -0.296818649715759,
+        "p50": 3.0426107807430576,
+        "p90": 11.102534971175967
+      },
+      "boom_probability": 0.007709251101321586,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 7.049,
+        "p10": 1.78,
+        "p90": 19.3
+      },
+      "role": {
+        "mean": 3.9563007145430444,
+        "p10": -0.8441141947720563,
+        "p50": 2.7407626709302693,
+        "p90": 10.508015025898457
+      },
+      "role_boom_probability": 0.006057268722466961,
+      "production_boom_probability": 0.04,
+      "candidate_boom_probability": 0.007709251101321586
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_SEA_SF",
+      "identity": "00-0032775",
+      "name": "Demarcus Robinson",
+      "team": "SF",
+      "actual": 5.4,
+      "targets_baseline": 1.8218424345269435,
+      "targets_candidate": 1.8218424345269435,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 1.8218424345269435,
+        "receptions": 1.210813102017106,
+        "receiving_yards": 15.46800236166157,
+        "receiving_tds": 0.09745160299573953,
+        "catch_rate": 0.6646091226497881,
+        "yards_per_reception": 12.774888490959725,
+        "td_per_target": 0.0534906867624058,
+        "points": {
+          "receptions": 1.210813102017106,
+          "receiving_yards": 1.546800236166157,
+          "receiving_tds": 0.5847096179744372,
+          "bonuses_and_other": 0.07568284600108832
+        },
+        "mean": 3.4180058021587887,
+        "observed_targets": 15.0,
+        "observed_receptions": 11.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 24.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 4.540338436802734,
+        "p10": -0.10209104441053096,
+        "p50": 3.237338386048285,
+        "p90": 11.297262576481193
+      },
+      "boom_probability": 0.007709251101321586,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 4.918,
+        "p10": 0.0,
+        "p90": 10.3
+      },
+      "role": {
+        "mean": 5.719089381545954,
+        "p10": 0.918674472230854,
+        "p50": 4.503551337933179,
+        "p90": 12.270803692901367
+      },
+      "role_boom_probability": 0.00881057268722467,
+      "production_boom_probability": 0.015,
+      "candidate_boom_probability": 0.007709251101321586
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CAR_TB",
+      "identity": "00-0040129",
+      "name": "Emeka Egbuka",
+      "team": "TB",
+      "actual": 1.8,
+      "targets_baseline": 6.848169995901952,
+      "targets_candidate": 6.848169995901952,
+      "targets_actual": 3.0,
+      "components": {
+        "targets": 6.848169995901952,
+        "receptions": 3.5299991352012987,
+        "receiving_yards": 45.59740648691453,
+        "receiving_tds": 0.21450779774344428,
+        "catch_rate": 0.5154660496619832,
+        "yards_per_reception": 12.917115483744823,
+        "td_per_target": 0.03132337513113853,
+        "points": {
+          "receptions": 3.5299991352012987,
+          "receiving_yards": 4.559740648691453,
+          "receiving_tds": 1.2870467864606656,
+          "bonuses_and_other": 0.18920711500272097
+        },
+        "mean": 9.565993685356139,
+        "observed_targets": 61.0,
+        "observed_receptions": 28.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 8.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 10.644485325277724,
+        "p10": 1.7828890204004257,
+        "p50": 9.300898186389198,
+        "p90": 22.146783144356004
+      },
+      "boom_probability": 0.0621414913957935,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 10.947,
+        "p10": 4.4,
+        "p90": 23.61
+      },
+      "role": {
+        "mean": 8.763520469254033,
+        "p10": -0.2844178554020447,
+        "p50": 7.495427175981826,
+        "p90": 19.919985416730217
+      },
+      "role_boom_probability": 0.0497131931166348,
+      "production_boom_probability": 0.095,
+      "candidate_boom_probability": 0.0621414913957935
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CAR_TB",
+      "identity": "00-0033921",
+      "name": "Chris Godwin Jr.",
+      "team": "TB",
+      "actual": 1.8,
+      "targets_baseline": 5.595170998178434,
+      "targets_candidate": 5.595170998178434,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 5.595170998178434,
+        "receptions": 3.8070400142507177,
+        "receiving_yards": 45.68626312534839,
+        "receiving_tds": 0.2912673377807713,
+        "catch_rate": 0.6804153108975828,
+        "yards_per_reception": 12.000468330864162,
+        "td_per_target": 0.052056914413446245,
+        "points": {
+          "receptions": 3.8070400142507177,
+          "receiving_yards": 4.568626312534839,
+          "receiving_tds": 1.7476040266846278,
+          "bonuses_and_other": 0.9364229354789737
+        },
+        "mean": 11.059693288949159,
+        "observed_targets": 36.0,
+        "observed_receptions": 26.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 8.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 12.138184928870745,
+        "p10": 3.276588623993446,
+        "p50": 10.79459778998222,
+        "p90": 23.640482747949022
+      },
+      "boom_probability": 0.07265774378585087,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 13.663,
+        "p10": 4.41,
+        "p90": 26.8
+      },
+      "role": {
+        "mean": 13.121460080449395,
+        "p10": 4.073521755793317,
+        "p50": 11.853366787177187,
+        "p90": 24.27792502792558
+      },
+      "role_boom_probability": 0.0965583173996176,
+      "production_boom_probability": 0.19,
+      "candidate_boom_probability": 0.07265774378585087
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_CAR_TB",
+      "identity": "00-0040237",
+      "name": "Tez Johnson",
+      "team": "TB",
+      "actual": 3.2,
+      "targets_baseline": 1.8395263118864,
+      "targets_candidate": 1.8395263118864,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 1.8395263118864,
+        "receptions": 1.1844790600503612,
+        "receiving_yards": 12.733947317187686,
+        "receiving_tds": 0.1481601734837285,
+        "catch_rate": 0.6439043858175096,
+        "yards_per_reception": 10.750673225617234,
+        "td_per_target": 0.08054256822877026,
+        "points": {
+          "receptions": 1.1844790600503612,
+          "receiving_yards": 1.2733947317187688,
+          "receiving_tds": 0.888961040902371,
+          "bonuses_and_other": 0.10703170725373365
+        },
+        "mean": 3.453866539925235,
+        "observed_targets": 18.0,
+        "observed_receptions": 12.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 17.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.1223326346439455,
+      "candidate": {
+        "mean": 4.57619917456918,
+        "p10": -0.0662303066440848,
+        "p50": 3.2731991238147318,
+        "p90": 11.33312331424764
+      },
+      "boom_probability": 0.007709251101321586,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 6.7635,
+        "p10": 0.0,
+        "p90": 15.8
+      },
+      "role": {
+        "mean": 4.687169871413288,
+        "p10": -0.1132450379018135,
+        "p50": 3.471631827800512,
+        "p90": 11.2388841827687
+      },
+      "role_boom_probability": 0.006607929515418502,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.007709251101321586
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_TEN_JAX",
+      "identity": "00-0040705",
+      "name": "Chimere Dike",
+      "team": "TEN",
+      "actual": 5.7,
+      "targets_baseline": 5.358969079779833,
+      "targets_candidate": 5.358969079779833,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 5.358969079779833,
+        "receptions": 3.3614065049401343,
+        "receiving_yards": 34.28795558414515,
+        "receiving_tds": 0.3261167669621615,
+        "catch_rate": 0.6272487217034352,
+        "yards_per_reception": 10.2004787382167,
+        "td_per_target": 0.06085438488395975,
+        "points": {
+          "receptions": 3.3614065049401343,
+          "receiving_yards": 3.4287955584145156,
+          "receiving_tds": 1.9567006017729691,
+          "bonuses_and_other": 0.8616042857500305
+        },
+        "mean": 9.608506950877649,
+        "observed_targets": 40.0,
+        "observed_receptions": 25.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 27.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215856,
+      "candidate": {
+        "mean": 10.686998590799234,
+        "p10": 1.8254022859219359,
+        "p50": 9.343411451910708,
+        "p90": 22.189296409877514
+      },
+      "boom_probability": 0.0621414913957935,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 8.3815,
+        "p10": 0.9,
+        "p90": 16.9
+      },
+      "role": {
+        "mean": 10.812412049422152,
+        "p10": 1.7644737247660753,
+        "p50": 9.544318756149945,
+        "p90": 21.968876996898338
+      },
+      "role_boom_probability": 0.06405353728489484,
+      "production_boom_probability": 0.005,
+      "candidate_boom_probability": 0.0621414913957935
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_TEN_JAX",
+      "identity": "00-0040170",
+      "name": "Elic Ayomanor",
+      "team": "TEN",
+      "actual": 8.0,
+      "targets_baseline": 4.133834533678958,
+      "targets_candidate": 4.133834533678958,
+      "targets_actual": 10.0,
+      "components": {
+        "targets": 4.133834533678958,
+        "receptions": 2.260768137936539,
+        "receiving_yards": 28.422476711910857,
+        "receiving_tds": 0.22569197152000445,
+        "catch_rate": 0.5468937180522656,
+        "yards_per_reception": 12.5720440919929,
+        "td_per_target": 0.054596276092150946,
+        "points": {
+          "receptions": 2.260768137936539,
+          "receiving_yards": 2.842247671191086,
+          "receiving_tds": 1.3541518291200267,
+          "bonuses_and_other": -2.444330527578199e-16
+        },
+        "mean": 6.457167638247651,
+        "observed_targets": 32.0,
+        "observed_receptions": 15.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 3.0,
+        "receiving_yards": 50.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1046,
+      "calibration_offset": 1.0784916399215847,
+      "candidate": {
+        "mean": 7.535659278169236,
+        "p10": -1.3259370267080617,
+        "p50": 6.192072139280711,
+        "p90": 19.037957097247514
+      },
+      "boom_probability": 0.03824091778202677,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 7.094,
+        "p10": 1.77,
+        "p90": 13.7
+      },
+      "role": {
+        "mean": 7.6927870705404855,
+        "p10": -1.355151254115592,
+        "p50": 6.424693777268279,
+        "p90": 18.84925201801667
+      },
+      "role_boom_probability": 0.036328871892925434,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.03824091778202677
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_TEN_JAX",
+      "identity": "00-0036133",
+      "name": "James Proche",
+      "team": "TEN",
+      "actual": 1.5,
+      "targets_baseline": 1.558478110730304,
+      "targets_candidate": 1.558478110730304,
+      "targets_actual": 1.0,
+      "components": {
+        "targets": 1.558478110730304,
+        "receptions": 0.9087603897190165,
+        "receiving_yards": 11.342112768684414,
+        "receiving_tds": 0.06328173898907934,
+        "catch_rate": 0.5831075736400113,
+        "yards_per_reception": 12.48086172879006,
+        "td_per_target": 0.040604830156661914,
+        "points": {
+          "receptions": 0.9087603897190165,
+          "receiving_yards": 1.1342112768684414,
+          "receiving_tds": 0.379690433934476,
+          "bonuses_and_other": -2.355206174476346e-17
+        },
+        "mean": 2.4226621005219338,
+        "observed_targets": 11.0,
+        "observed_receptions": 5.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "stable",
+      "component_actuals": {
+        "receptions": 1.0,
+        "receiving_yards": 5.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 1816,
+      "calibration_offset": 1.122332634643945,
+      "candidate": {
+        "mean": 3.544994735165879,
+        "p10": -1.097434746047386,
+        "p50": 2.2419946844114307,
+        "p90": 10.30191887484434
+      },
+      "boom_probability": 0.006057268722466961,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 1.046,
+        "p10": 0.0,
+        "p90": 3.8
+      },
+      "role": {
+        "mean": 2.151741330111652,
+        "p10": -2.6486735792034484,
+        "p50": 0.936203286498877,
+        "p90": 8.703455641467064
+      },
+      "role_boom_probability": 0.0027533039647577094,
+      "production_boom_probability": 0.0,
+      "candidate_boom_probability": 0.006057268722466961
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_WAS_PHI",
+      "identity": "00-0035719",
+      "name": "Deebo Samuel Sr.",
+      "team": "WSH",
+      "actual": 4.1,
+      "targets_baseline": 5.5166400543222025,
+      "targets_candidate": 5.5166400543222025,
+      "targets_actual": 5.0,
+      "components": {
+        "targets": 5.5166400543222025,
+        "receptions": 3.818059999821168,
+        "receiving_yards": 45.60215534325283,
+        "receiving_tds": 0.25997280302691655,
+        "catch_rate": 0.6920988069232062,
+        "yards_per_reception": 11.943802702259463,
+        "td_per_target": 0.047125206732172395,
+        "points": {
+          "receptions": 3.818059999821168,
+          "receiving_yards": 4.560215534325283,
+          "receiving_tds": 1.5598368181614992,
+          "bonuses_and_other": 0.5442032038520664
+        },
+        "mean": 10.482315556160017,
+        "observed_targets": 45.0,
+        "observed_receptions": 33.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 20.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 411,
+      "calibration_offset": 0.10557012811750788,
+      "candidate": {
+        "mean": 10.587885684277525,
+        "p10": 2.888437254468199,
+        "p50": 8.757825174052961,
+        "p90": 20.360347988178287
+      },
+      "boom_probability": 0.0535279805352798,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 11.639,
+        "p10": 4.9,
+        "p90": 22.6
+      },
+      "role": {
+        "mean": 10.695821256955206,
+        "p10": 2.7946945952116025,
+        "p50": 8.975555514997085,
+        "p90": 20.72068832767212
+      },
+      "role_boom_probability": 0.05596107055961071,
+      "production_boom_probability": 0.035,
+      "candidate_boom_probability": 0.0535279805352798
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_WAS_PHI",
+      "identity": "00-0035659",
+      "name": "Terry McLaurin",
+      "team": "WSH",
+      "actual": 9.7,
+      "targets_baseline": 4.9988806316587215,
+      "targets_candidate": 4.9988806316587215,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 4.9988806316587215,
+        "receptions": 3.0691135616043796,
+        "receiving_yards": 42.96920251094668,
+        "receiving_tds": 0.26328778710182504,
+        "catch_rate": 0.6139601618344687,
+        "yards_per_reception": 14.000525444384182,
+        "td_per_target": 0.05266934870066326,
+        "points": {
+          "receptions": 3.0691135616043796,
+          "receiving_yards": 4.296920251094668,
+          "receiving_tds": 1.5797267226109502,
+          "bonuses_and_other": -1.1203311759942443e-16
+        },
+        "mean": 8.945760535309997,
+        "observed_targets": 35.0,
+        "observed_receptions": 21.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 4.0,
+        "receiving_yards": 57.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 411,
+      "calibration_offset": 0.10557012811750788,
+      "candidate": {
+        "mean": 9.051330663427505,
+        "p10": 1.3518822336181788,
+        "p50": 7.22127015320294,
+        "p90": 18.823792967328266
+      },
+      "boom_probability": 0.0413625304136253,
+      "tier": "4\u20137 targets",
+      "production": {
+        "mean": 13.066,
+        "p10": 4.7,
+        "p90": 22.6
+      },
+      "role": {
+        "mean": 9.638552705913543,
+        "p10": 1.7374260441699398,
+        "p50": 7.918286963955422,
+        "p90": 19.66341977663046
+      },
+      "role_boom_probability": 0.043795620437956206,
+      "production_boom_probability": 0.06,
+      "candidate_boom_probability": 0.0413625304136253
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "game_id": "2025_18_WAS_PHI",
+      "identity": "00-0037742",
+      "name": "Treylon Burks",
+      "team": "WSH",
+      "actual": 3.2,
+      "targets_baseline": 2.6193533637210633,
+      "targets_candidate": 2.6193533637210633,
+      "targets_actual": 4.0,
+      "components": {
+        "targets": 2.6193533637210633,
+        "receptions": 1.468333671929084,
+        "receiving_yards": 19.404110401740144,
+        "receiving_tds": 0.1339296421974372,
+        "catch_rate": 0.5605710524841764,
+        "yards_per_reception": 13.215055114991126,
+        "td_per_target": 0.051130803522887895,
+        "points": {
+          "receptions": 1.468333671929084,
+          "receiving_yards": 1.9404110401740144,
+          "receiving_tds": 0.8035778531846232,
+          "bonuses_and_other": -1.4004139699928054e-17
+        },
+        "mean": 4.212322565287722,
+        "observed_targets": 18.0,
+        "observed_receptions": 8.0,
+        "population_targets": 29755.0
+      },
+      "qb_state": "changed",
+      "component_actuals": {
+        "receptions": 2.0,
+        "receiving_yards": 12.0,
+        "receiving_tds": 0.0
+      },
+      "cutoff_exclusive": [
+        2025,
+        18
+      ],
+      "residual_rows": 770,
+      "calibration_offset": 0.6761840752204549,
+      "candidate": {
+        "mean": 4.888506640508177,
+        "p10": 0.46792568598648765,
+        "p50": 3.8715428543611914,
+        "p90": 10.559972408604734
+      },
+      "boom_probability": 0.005194805194805195,
+      "tier": "Under 4 targets",
+      "production": {
+        "mean": 3.747,
+        "p10": 0.0,
+        "p90": 8.8
+      },
+      "role": {
+        "mean": 4.101200893596225,
+        "p10": -0.1702118793413581,
+        "p50": 3.0808530310157907,
+        "p90": 9.459770658171744
+      },
+      "role_boom_probability": 0.005194805194805195,
+      "production_boom_probability": 0.01,
+      "candidate_boom_probability": 0.005194805194805195
+    }
+  ],
+  "excluded": {
+    "population_warmup": 143,
+    "insufficient_prior_role": 2120,
+    "residual_warmup": 184
+  },
+  "production_pairing": {
+    "candidate_unmatched": 0,
+    "production_unmatched": 1141
+  },
+  "role_unmatched": 0,
+  "sources": [
+    {
+      "season": 2023,
+      "sha256": "ac776fbd7c9fefdb4069b72304f4c5fa05ae417acd49f6e4e27be14b9d7a4bbc",
+      "rows": 17806,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2023.parquet"
+    },
+    {
+      "season": 2024,
+      "sha256": "847569d194ca3d96b5efcf91e6eac5e18780fc47568a713fd545a82d29d155c1",
+      "rows": 18130,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.parquet"
+    },
+    {
+      "season": 2025,
+      "sha256": "2a461becaa9adb3c93a3074a3a31f1e960162a50163371a2d34e28393b5fff10",
+      "rows": 18540,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.parquet"
+    }
+  ],
+  "production_sha256": "f2ca4d3a7caa8008ca4fc2ca57e4f4aac12bd78ccdcd1f4ceecd1947985f5be8",
+  "role_comparator_sha256": "7f6cf9934564f880eb0c8f10dd1dab267fe0f919afe241e326ffc6c5e6aa55c6",
+  "passes_screen": false,
+  "optimizer_enabled": false,
+  "improves_role": true,
+  "limits": [
+    "Previously inspected 2024/2025; diagnostic, not untouched validation.",
+    "Identical projected targets to the frozen role model; only workload-to-points estimation changes.",
+    "Catch, yardage and TD rates shrink toward WR population evidence strictly before the target week.",
+    "Bonuses and other scoring use prior team-game averages, not bonuses awarded at mean yardage.",
+    "Uncentered prior residuals add a separately reported calibration offset to component points.",
+    "Recorded WR games only; no missing/DNP evaluation outcomes or rookies without sufficient history.",
+    "No current coaching, injury, defense, historical salary or contest-payout adjustment."
+  ],
+  "recipe_sha256": {
+    "model/nfl_dfs_receiving_components.py": "6ef3a0ac8260b1c6d2ea8748d765d7d18aa4d1bdbfdbb7640a9999f823e33282",
+    "ingest/nfl_dfs_receiving_components.py": "0b07031b8a4eae96e91db990b61442e91c511e717bcad4705af8066525475eed",
+    "model/nfl_dfs_role_context.py": "a62fa52eb5d0f296dddaa30c5c034d55d41c9269c24cf30d15a2ae7246d5354e",
+    "model/nfl_dfs_target_share.py": "84cbaf0b45a912b33aa69f0d4f3a2c5dd16b71b4a50ecab80e26ff91d4837657",
+    "ingest/nfl_dfs_target_share.py": "39ca098e361e2d70ea87d049ecfab43136a5e1d5ab908103d6e2ccec60c6b097",
+    "ingest/nfl_dfs_volume_benchmark.py": "ff68a72743e6548cbad405c7d80cbe7869f18ca2010fe69e931b2d01864457cd"
+  },
+  "predictions_sha256": "f8b0c940a96d1747d1d0e8cee2df02e15ab6caad591667c6c251336908f5c765"
+}
