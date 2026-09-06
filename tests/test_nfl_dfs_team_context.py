@@ -41,3 +41,14 @@ def test_play_profile_excludes_clock_and_penalty_plays():
     p=play_profile(frame)
     assert p['plays']==4 and p['designed_run_rate']==.25
     assert p['scramble_rate']==pytest.approx(1/3) and p['target_rate']==1
+
+
+def test_prior_shares_use_team_games_not_only_player_appearances():
+    import pandas as pd
+    from ingest.nfl_dfs_team_context import prior_role_shares
+    base={'play_type':'pass','qb_kneel':0,'qb_spike':0,'two_point_attempt':0,'qb_dropback':1,'sack':0,'qb_scramble':0,'rusher_player_id':None}
+    frame=pd.DataFrame([{**base,'game_id':str(w),'week':w,'receiver_player_id':'a' if w==9 else 'b'} for w in range(1,10)])
+    r=prior_role_shares(frame)
+    assert r['weeks']==list(range(2,10))
+    assert r['players']['a']['target_share']==1/8
+    assert sum(p['target_share'] for p in r['players'].values())==1

@@ -27,6 +27,19 @@ def play_profile(frame):
             'sack_rate':float((drop & x.sack.eq(1)).sum()/n) if n else 0.,'target_rate':float(target.sum()/a) if a else 0.}
 
 
+def prior_role_shares(rows):
+    """Last eight TEAM games, including zeros when a player did not participate."""
+    weeks=sorted(rows.week.unique())[-8:]
+    x=rows[rows.week.isin(weeks) & rows.play_type.isin(['pass','run']) & rows.qb_kneel.ne(1) & rows.qb_spike.ne(1) & rows.two_point_attempt.ne(1)]
+    targets=x[x.qb_dropback.eq(1) & x.sack.ne(1) & x.qb_scramble.ne(1) & x.receiver_player_id.notna()]
+    runs=x[x.qb_dropback.ne(1)]
+    target_counts=targets.receiver_player_id.value_counts().to_dict()
+    carry_counts=runs.rusher_player_id.value_counts().to_dict()
+    return {'weeks': [int(w) for w in weeks], 'games':int(x.game_id.nunique()), 'targets':len(targets),'designed_runs':len(runs),
+            'players':{pid:{'target_share':target_counts.get(pid,0)/len(targets) if len(targets) else 0.,
+                            'carry_share':carry_counts.get(pid,0)/len(runs) if len(runs) else 0.} for pid in sorted(set(target_counts)|set(carry_counts))}}
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source-root',type=Path,required=True);parser.add_argument('--season',type=int,default=2026);args=parser.parse_args()
     now=datetime.now(timezone.utc);prior=args.season-1
@@ -48,15 +61,18 @@ def main():
     coaching=json.loads((ROOT/'web/src/data/nfl-coaching-evidence.json').read_text())
     teams=[]
     for team,rows in plays.groupby('posteam'):
+        prior_shares=prior_role_shares(rows)
         profiles={'all':play_profile(rows),'neutral':play_profile(rows[rows.score_differential.between(-7,7)&rows.qtr.le(3)]),
                   'trailing':play_profile(rows[rows.score_differential.lt(-7)]),'leading':play_profile(rows[rows.score_differential.gt(7)])}
         members=[]
         for member in roster:
             if member['team']!=team:continue
             role=roster_role(member,old.get(member['identity'],[]),args.season,now)
-            members.append({'id':str(member['id']),'identity':member['identity'],'name':member['name'],'position':member['position'],**role})
+            shares=prior_shares['players'].get(member['identity'])
+            members.append({'id':str(member['id']),'identity':member['identity'],'name':member['name'],'position':member['position'],**role,
+                            'prior_target_share':shares['target_share'] if shares else None,'prior_carry_share':shares['carry_share'] if shares else None})
         coach=coaching.get(team)
-        teams.append({'team':team,'profiles':profiles,'coaching':coach,'continuity':coaching_status(coach,now,args.season),
+        teams.append({'team':team,'profiles':profiles,'coaching':coach,'continuity':coaching_status(coach,now,args.season),'prior_role_window':{k:v for k,v in prior_shares.items() if k!='players'},
                       'players':sorted(members,key=lambda r:(r['position'],r['name']))})
     result={'season':args.season,'historical_season':prior,'as_of':now.isoformat(),'teams':teams,'sources':evidence,'optimizer_enabled':False,
             'roster_digest':hashlib.sha256(json.dumps(roster,default=str,sort_keys=True).encode()).hexdigest(),
