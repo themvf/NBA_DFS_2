@@ -26,3 +26,28 @@ def test_capture_contract_retains_limits():
     assert contract.matched_count==1 and contract.unmatched_count==0
     other=capture_contract(2026,2,{'week':2},{'injuries':[{'player_id':1}]},{'counts':{'matched':1},'decisions':[]},{})
     assert other.dataset!=contract.dataset # identical payloads cannot borrow another week's metadata
+
+def test_capture_saves_only_resolved_observations(monkeypatch,tmp_path):
+    import json
+    from types import SimpleNamespace
+    from ingest import nfl_dfs_availability as capture
+    class DB:
+        def execute(self,*args):
+            return [{'id':1,'canonical_name':'Mike Woods','team_abbrev':'DEN','position':'WR','yahoo_id':'34158','fantasypros_player_id':None}]
+        def close(self,error=False): assert not error
+    class Client:
+        def __init__(self,*args): pass
+        def get(self,*args):
+            return {'injuries':[{'player_id':2,'yahoo_id':'34158','name':'Michael Woods II','team_id':'DEN','position_id':'WR'}, {'player_id':3,'name':'Unmatched','team_id':'FA','position_id':'WR'}]}
+    saved=[]
+    monkeypatch.setenv('FANTASYPROS_API_KEY','unit-test-placeholder')
+    monkeypatch.setattr(capture,'load_config',lambda:SimpleNamespace(database_url='unused'))
+    monkeypatch.setattr(capture,'RefreshDatabase',lambda _:DB())
+    monkeypatch.setattr(capture,'FantasyProsClient',Client)
+    monkeypatch.setattr(capture,'persist_source_snapshot',lambda db,contract:7)
+    monkeypatch.setattr(capture,'persist_injury_observation',lambda db,**kwargs:saved.append(kwargs))
+    out=tmp_path/'report.json'
+    monkeypatch.setattr('sys.argv',['capture','--season','2026','--week','1','--output',str(out)])
+    capture.main()
+    assert len(saved)==1 and saved[0]['player_id']==1 and saved[0]['reconcile_current'] is False
+    report=json.loads(out.read_text());assert report['identity_audit']['counts']=={'matched':1,'provider_nonteam':1}
