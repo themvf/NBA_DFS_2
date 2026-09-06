@@ -20,9 +20,10 @@ import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
+import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/workload-selection";
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
-import { readCalibratedProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
+import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import {
   NFL_OPTIMIZER_VERSION,
   optimizeNflLineups,
@@ -33,6 +34,7 @@ import {
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
   ffPlayerId: number | null;
+  workloadEligible?: boolean;
   identityMethod: string;
   modelConfidence: number | null;
   historyGames: number | null;
@@ -202,6 +204,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       dkStatus: row.dkStatus,
       isOut: row.isOut || Boolean(availability(row).blockedReason),
       availability: availability(row),
+      workloadEligible:workloadPoolEligible({...row,availability:availability(row)},now),
       identityMethod: row.identityMethod,
       projectionStatus: row.projectionStatus,
       ourProj: numeric(row.ourProj),
@@ -217,7 +220,9 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       ...(() => {
         const candidate = readCalibratedProjection(byPlayer.get(row.ffPlayerId ?? -1), row, run?.season ?? 0, run?.week ?? 0, now);
         const workload=readWorkloadProjection(workloadReport as WorkloadReport,{identity:identityMap.get(row.ffPlayerId??-1)??null,position:row.position,team:row.team,gameInfo:row.gameInfo,isOut:row.isOut,availability:availability(row)},run?.season??0,run?.week??0,now);
-        return { calibrated: candidate.projection, calibrationReason: candidate.reason, workload:workload.projection,workloadReason:workload.reason };
+        const positionCandidate=readPositionWorkloadProjection(byPlayer.get(row.ffPlayerId??-1),row,run?.season??0,run?.week??0,now);
+        const eligiblePosition=workloadPoolEligible({...row,availability:availability(row)},now)&&positionCandidate.projection&&Date.parse(positionCandidate.projection.kickoff)===Date.parse(availability(row).kickoff??'');
+        return { positionWorkload:eligiblePosition?positionCandidate.projection:null,positionWorkloadReason:positionCandidate.projection&&!eligiblePosition?'Current roster, starting role or schedule evidence is unresolved.':positionCandidate.reason, calibrated: candidate.projection, calibrationReason: candidate.reason, workload:workload.projection,workloadReason:workload.reason };
       })(),
     })),
   };
@@ -389,6 +394,7 @@ export async function runNflOptimizer(
 
 export async function compareNflWorkload(uploadId:string, settings:NflOptimizerSettings) {
   await ensureNflDfsTables();
+  validateWorkloadPositions(settings.workloadPositions);
   const slate=await workspaceSlate(uploadId);
   // One server-read cohort, both sources, identical controls and deterministic search.
   if(!Number.isInteger(settings.nLineups)||settings.nLineups<1||settings.nLineups>150)throw new Error('Lineup count must be 1–150.');
@@ -396,7 +402,7 @@ export async function compareNflWorkload(uploadId:string, settings:NflOptimizerS
   const common=slate.players.filter(p=>(p.ourProj!==null&&p.ourProj>0||settings.allowDkFallback&&p.avgFptsDk!==null&&p.avgFptsDk>0)&&workloadPoolEligible(p,now));
   const pairedSlate={...slate,players:common};
   const paired={...settings,format:slate.format,randomness:0,nLineups:Math.min(5,settings.nLineups)};
-  if(!common.some(p=>p.workload&&!p.isOut))throw new Error('No eligible pregame workload forecasts for comparison.');
+  if(!common.some(p=>selectedWorkload(p,settings.workloadPositions)&&!p.isOut))throw new Error('No eligible pregame workload forecasts for comparison.');
   const baseline=await saveOptimizerResult(pairedSlate,{...paired,projectionSource:'our'});
   const candidate=await saveOptimizerResult(pairedSlate,{...paired,projectionSource:'workload'});
   return {baseline,candidate,settings:paired,excludedFromComparison:slate.players.length-common.length,comparedAt:new Date().toISOString(),note:'Identical frozen player inputs and settings; up to five lineups, randomness zero. Generated scores are predictions, not measured performance.'};
@@ -409,7 +415,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   const result = optimizeNflLineups(eligible, settings);
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");
-  if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "workload" && (Date.parse(s.player.workload!.kickoff) <= Date.now() || Date.now()-Date.parse(s.player.workload!.capturedAt)>72*3600000)))) throw new Error("A workload forecast expired during optimization. Refresh forecasts before regenerating.");
+  if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "workload" && (Date.parse(selectedWorkload(s.player,settings.workloadPositions)!.kickoff) <= Date.now() || Date.now()-Date.parse(selectedWorkload(s.player,settings.workloadPositions)!.capturedAt)>72*3600000)))) throw new Error("A workload forecast expired during optimization. Refresh forecasts before regenerating.");
   if(settings.projectionSource==='workload'&&result.lineups.some(l=>l.slots.some(s=>!workloadPoolEligible(slate.players.find(p=>p.dkPlayerId===s.player.dkPlayerId)!,Date.now()))))throw new Error('Roster or kickoff evidence expired during optimization. Refresh the slate.');
   const runId = randomUUID();
   const inputSnapshot = slate.players.map((player) => ({
@@ -421,7 +427,9 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     availability: player.availability, isOut: player.isOut,
     injuryCoverageSnapshotId: slate.injuryCoverage?.snapshotId ?? null,
     calibrated: player.calibrated ?? null, calibrationReason: player.calibrationReason,
+    workloadEligible:player.workloadEligible,
     workload: player.workload ?? null, workloadReason: player.workloadReason,
+    positionWorkload:player.positionWorkload??null,positionWorkloadReason:player.positionWorkloadReason,
   }));
   const inputDigest = sha256(JSON.stringify({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));
   const status = result.lineups.length === settings.nLineups ? "complete" : result.lineups.length ? "partial" : "failed";

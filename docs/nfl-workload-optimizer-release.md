@@ -1,5 +1,7 @@
 # Experimental WR workload optimizer source
 
+The subsequent [combined position release](nfl-position-workload-release.md) adds independent QB/RB/TE controls. This document preserves the initial WR release and its verification.
+
 ## What changes
 NFL DFS (`/dfs/nfl`) now offers **WR workload (experimental)** in Portfolio settings, with a **Use experimental WR workload** shortcut and a player-change table. The existing volume/share model's unadjusted WR mean, P10, and P90 now drive real optimizer selections. Cash uses P10; GPP uses P90. No boom probability is invented for this model. Other players keep explicitly labeled historical projections, with optional DK fallback only when enabled. The default source remains historical.
 

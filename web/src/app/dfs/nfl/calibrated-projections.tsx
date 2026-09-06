@@ -6,7 +6,7 @@ export default function CalibratedProjections({ slate, active, onChoose }: { sla
   const qualified = slate?.players.filter(p => p.calibrated && !p.isOut) ?? [];
   return <section className="space-y-4 rounded-2xl border border-teal-200 bg-teal-50/50 p-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-teal-800">Optimizer projection upgrade · opt-in</p><h2 className="mt-1 text-xl font-bold">Calibrated QB and defense projections</h2></div><button disabled={!qualified.length || active} onClick={onChoose} className="rounded-lg bg-teal-800 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{active ? "Selected for next optimization" : "Use calibrated projections"}</button></div>
-    <p className="text-sm text-slate-700">QB workload and historical defense calibration improved both point error and interval quality in our historical comparison. Other positions retain the historical baseline because their candidate ranges worsened. Forward validation is pending; this is an experimental source.</p>
+    <p className="text-sm text-slate-700">QB workload and historical defense calibration improved both point error and interval quality in our historical comparison. In this separate source, other positions retain the historical baseline because their candidate ranges worsened. Forward validation is pending; this is an experimental source.</p>
     <div className="grid gap-4 sm:grid-cols-2">{(["QB", "DST"] as const).map(position => {
       const evidence = calibratedRelease.positions[position].seasons["2025"];
       const gain = 100 * (1 - evidence.opportunity.mae / evidence.baseline.mae);

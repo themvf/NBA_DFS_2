@@ -4,6 +4,7 @@ export { release as calibratedRelease };
 export const CALIBRATED_MAX_AGE_HOURS = 72;
 export type CalibratedProjection = {
   mean: number; p10: number; p50: number; p90: number; boom: number;
+  priorOpportunity?: number;
   baselineMean: number; baselineP10: number; baselineP90: number;
   snapshotId: string; capturedAt: string; kickoff: string;
   recipeDigest: string; studyDigest: string; releaseVersion: string;
@@ -16,9 +17,20 @@ const finite = (v: unknown): v is number => typeof v === "number" && Number.isFi
 
 /** No inferred missing values, fuzzy identity or cross-week candidate reuse. */
 export function readCalibratedProjection(snapshot: CalibrationSnapshot | undefined, target: CalibrationTarget, season: number, week: number, now: number): { projection: CalibratedProjection | null; reason: string } {
+  return readPinnedProjection(snapshot,target,season,week,now,false);
+}
+
+/** Explicit experimental access for RB/TE; the calibrated release gate stays unchanged. */
+export function readPositionWorkloadProjection(snapshot: CalibrationSnapshot | undefined, target: CalibrationTarget, season:number, week:number, now:number) {
+  if(!['QB','RB','TE'].includes(target.position))return {projection:null,reason:'This position uses a different workload recipe or the historical baseline.'};
+  const result=readPinnedProjection(snapshot,target,season,week,now,true);
+  return result.projection ? {...result,projection:{...result.projection,releaseVersion:"nfl-dfs-position-workload-opt-in-v1"},reason:target.position==='QB'?'Pinned QB workload candidate; experimental.':'Experimental candidate: historical range quality worsened; enable this position explicitly.'} : result;
+}
+
+function readPinnedProjection(snapshot: CalibrationSnapshot | undefined, target: CalibrationTarget, season:number, week:number, now:number, experimental:boolean): {projection:CalibratedProjection|null;reason:string} {
   const no = (reason: string) => ({ projection: null, reason });
   const policy = release.positions[target.position as keyof typeof release.positions];
-  if (!policy?.enabledForOptIn) return no("Position retains baseline: candidate interval scores did not qualify (or unsupported).");
+  if (!policy || (!experimental && !policy.enabledForOptIn)) return no("Position retains baseline: candidate interval scores did not qualify (or unsupported).");
   if (!snapshot) return no("No frozen candidate for this player and week.");
   if (snapshot.playerId !== target.ffPlayerId || snapshot.season !== season || snapshot.week !== week) return no("Candidate identity/week mismatch.");
   const p = record(snapshot.payload), candidate = record(p.candidate);
@@ -37,5 +49,5 @@ export function readCalibratedProjection(snapshot: CalibrationSnapshot | undefin
   if (![candidate.prediction, candidate.p10, candidate.median, candidate.p90, candidate.boom_probability, p.baseline, p.p10, p.p90].every(finite)) return no("Candidate distribution is incomplete.");
   const mean = candidate.prediction as number, p10 = candidate.p10 as number, p50 = candidate.median as number, p90 = candidate.p90 as number, boom = candidate.boom_probability as number;
   if (p10 > p50 || p50 > p90 || boom < 0 || boom > 1 || mean <= 0) return no("Invalid candidate distribution.");
-  return { projection: { mean, p10, p50, p90, boom, baselineMean: p.baseline as number, baselineP10: p.p10 as number, baselineP90: p.p90 as number, snapshotId: snapshot.id, capturedAt: snapshot.capturedAt, kickoff: snapshot.kickoff, recipeDigest: policy.recipeDigest, studyDigest: release.studyDigest, releaseVersion: release.version }, reason: "Pinned pregame candidate · experimental" };
+  return { projection: { mean, p10, p50, p90, boom, ...(finite(p.prior_opportunity)?{priorOpportunity:p.prior_opportunity}:{}), baselineMean: p.baseline as number, baselineP10: p.p10 as number, baselineP90: p.p90 as number, snapshotId: snapshot.id, capturedAt: snapshot.capturedAt, kickoff: snapshot.kickoff, recipeDigest: policy.recipeDigest, studyDigest: release.studyDigest, releaseVersion: release.version }, reason: "Pinned pregame candidate · experimental" };
 }
