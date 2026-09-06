@@ -1,4 +1,5 @@
 """Read-only FantasyPros period/identity probe. Never changes player mappings."""
+import argparse
 import json
 import os
 from collections import Counter
@@ -12,9 +13,14 @@ from ingest.ff_fantasypros import FantasyProsClient, response_hash, normalize_na
 
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--season',type=int,default=2026)
+    parser.add_argument('--week',type=int,default=1)
+    args=parser.parse_args()
+    if not 1 <= args.week <= 18: parser.error('week must be 1 through 18')
     client=FantasyProsClient(os.environ.get('FANTASYPROS_API_KEY',''))
     payloads=[]
-    for year,week in [(2026,1),(2026,0),(2025,1)]:
+    for year,week in [(args.season,args.week),(args.season,0),(args.season-1,args.week)]:
         params={'year':year,'week':week,'include_probabilities':'true'}
         payload=client.get('nfl/injuries',params)
         payloads.append({'request':params,'captured_at':datetime.now(timezone.utc).isoformat(),
@@ -23,7 +29,7 @@ def main():
     conn.set_session(readonly=True)
     try:
         with conn.cursor() as q:
-            q.execute("SELECT id,canonical_name,normalized_name,team_abbrev,position,fantasypros_player_id,gsis_id,metadata->'sleeper'->>'yahoo_id' yahoo_id FROM ff_players WHERE season=2026")
+            q.execute("SELECT id,canonical_name,normalized_name,team_abbrev,position,fantasypros_player_id,gsis_id,COALESCE(yahoo_id,metadata->'sleeper'->>'yahoo_id') yahoo_id FROM ff_players WHERE season=%s", (args.season,))
             players=list(q.fetchall())
     finally:
         conn.close()

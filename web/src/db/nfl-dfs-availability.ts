@@ -3,6 +3,25 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { RosterEvidence } from "@/lib/nfl-dfs/availability";
 
+export type InjuryCoverage = { snapshotId: string; capturedAt: string; counts: Record<string,number>; limited: boolean | null;
+  unresolved: {name: string; team: string; position: string; category: string}[] };
+
+export async function getNflInjuryCoverage(season: number, week: number | null): Promise<InjuryCoverage | null> {
+  if (!week) return null;
+  try {
+    const result = await db.execute(sql`SELECT id,fetched_at,missingness FROM ff_source_snapshots
+      WHERE source='fantasypros' AND dataset=${`game-week-injuries-v2-${season}-${week}`} AND fetched_at<=NOW()
+      ORDER BY fetched_at DESC,id DESC LIMIT 1`);
+    const row=result.rows[0];
+    if (!row) return null;
+    const detail=row.missingness as {identity_audit?: {counts: Record<string,number>; decisions: {name: string; team: string; position: string; category: string}[]}; provider_contract?: {public_api_limited?: boolean}};
+    if (!detail.identity_audit) return null;
+    return {snapshotId:String(row.id),capturedAt:new Date(row.fetched_at as string).toISOString(),counts:detail.identity_audit.counts,
+      limited:detail.provider_contract?.public_api_limited ?? null,
+      unresolved:detail.identity_audit.decisions.filter(d=>!['matched','outside_skill_pool'].includes(d.category)).map(d=>({name:d.name,team:d.team,position:d.position,category:d.category}))};
+  } catch { return null; }
+}
+
 export async function getNflRosterEvidence(season: number, week?: number | null): Promise<Map<number, RosterEvidence>> {
   const result = await db.execute(sql`SELECT id, team_abbrev, position, fetched_at,
     metadata->'sleeper' AS sleeper FROM ff_players WHERE season=${season}`);

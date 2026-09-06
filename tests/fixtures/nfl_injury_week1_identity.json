@@ -1,0 +1,228 @@
+{
+  "source": "GitHub read-only probe 34055408478, September 6 2026",
+  "rows": [
+    {
+      "player_id": 18566,
+      "yahoo_id": "32418",
+      "name": "David Sills V",
+      "team_id": "TB",
+      "position_id": "WR"
+    },
+    {
+      "player_id": 23893,
+      "yahoo_id": "34158",
+      "name": "Michael Woods II",
+      "team_id": "DEN",
+      "position_id": "WR"
+    },
+    {
+      "player_id": 28722,
+      "yahoo_id": "43206",
+      "name": "Quentin Moore",
+      "team_id": "WAS",
+      "position_id": "TE"
+    },
+    {
+      "player_id": 27473,
+      "yahoo_id": "41961",
+      "name": "Robbie Ouzts",
+      "team_id": "SEA",
+      "position_id": "TE"
+    },
+    {
+      "player_id": 26384,
+      "yahoo_id": "41133",
+      "name": "Carter Bradley",
+      "team_id": "JAC",
+      "position_id": "QB"
+    },
+    {
+      "player_id": 24904,
+      "yahoo_id": "34356",
+      "name": "Irv Charles",
+      "team_id": "SEA",
+      "position_id": "WR"
+    },
+    {
+      "player_id": 11180,
+      "yahoo_id": "25785",
+      "name": "Russell Wilson",
+      "team_id": "FA",
+      "position_id": "QB"
+    },
+    {
+      "player_id": 12088,
+      "yahoo_id": "27560",
+      "name": "Teddy Bridgewater",
+      "team_id": "FA",
+      "position_id": "QB"
+    },
+    {
+      "player_id": 13429,
+      "yahoo_id": "27277",
+      "name": "Adam Thielen",
+      "team_id": "FA",
+      "position_id": "WR"
+    },
+    {
+      "player_id": 14084,
+      "yahoo_id": "28545",
+      "name": "C.J. Uzomah",
+      "team_id": "FA",
+      "position_id": "TE"
+    },
+    {
+      "player_id": 17246,
+      "yahoo_id": "31005",
+      "name": "Nick Chubb",
+      "team_id": "FA",
+      "position_id": "RB"
+    },
+    {
+      "player_id": 18463,
+      "yahoo_id": "31891",
+      "name": "Parris Campbell",
+      "team_id": "FA",
+      "position_id": "WR"
+    },
+    {
+      "player_id": 20118,
+      "yahoo_id": "33607",
+      "name": "Seth Williams",
+      "team_id": "LV",
+      "position_id": "WR"
+    },
+    {
+      "player_id": 24289,
+      "yahoo_id": "42436",
+      "name": "Jacoby Jones",
+      "team_id": "WAS",
+      "position_id": "WR"
+    },
+    {
+      "player_id": 26205,
+      "yahoo_id": "40914",
+      "name": "Ja'Lynn Polk",
+      "team_id": "FA",
+      "position_id": "WR"
+    },
+    {
+      "player_id": 27323,
+      "yahoo_id": "42890",
+      "name": "Le'Veon Moss",
+      "team_id": "FA",
+      "position_id": "RB"
+    },
+    {
+      "player_id": 28182,
+      "yahoo_id": "",
+      "name": "Trinidad Chambliss",
+      "team_id": "FA",
+      "position_id": "QB"
+    }
+  ],
+  "players": [
+    {
+      "id": 156,
+      "canonical_name": "Adam Thielen",
+      "team_abbrev": "MIN",
+      "position": "WR",
+      "fantasypros_player_id": null,
+      "yahoo_id": "27277"
+    },
+    {
+      "id": 162,
+      "canonical_name": "Teddy Bridgewater",
+      "team_abbrev": "DET",
+      "position": "QB",
+      "fantasypros_player_id": null,
+      "yahoo_id": "27560"
+    },
+    {
+      "id": 406,
+      "canonical_name": "Mike Woods",
+      "team_abbrev": "DEN",
+      "position": "WR",
+      "fantasypros_player_id": null,
+      "yahoo_id": "34158"
+    },
+    {
+      "id": 263,
+      "canonical_name": "David Sills",
+      "team_abbrev": "TB",
+      "position": "WR",
+      "fantasypros_player_id": null,
+      "yahoo_id": "32418"
+    },
+    {
+      "id": 271,
+      "canonical_name": "Parris Campbell",
+      "team_abbrev": "DAL",
+      "position": "WR",
+      "fantasypros_player_id": null,
+      "yahoo_id": "31891"
+    },
+    {
+      "id": 385,
+      "canonical_name": "Irvin Charles",
+      "team_abbrev": "SEA",
+      "position": "WR",
+      "fantasypros_player_id": null,
+      "yahoo_id": "34356"
+    },
+    {
+      "id": 620,
+      "canonical_name": "Carter Bradley",
+      "team_abbrev": "JAX",
+      "position": "QB",
+      "fantasypros_player_id": null,
+      "yahoo_id": "41133"
+    },
+    {
+      "id": 668,
+      "canonical_name": "Ja'Lynn Polk",
+      "team_abbrev": "NO",
+      "position": "WR",
+      "fantasypros_player_id": null,
+      "yahoo_id": "40914"
+    },
+    {
+      "id": 748,
+      "canonical_name": "Jacoby Jones",
+      "team_abbrev": "WSH",
+      "position": "WR",
+      "fantasypros_player_id": null,
+      "yahoo_id": null
+    },
+    {
+      "id": 818,
+      "canonical_name": "Robbie Ouzts",
+      "team_abbrev": "SEA",
+      "position": "RB",
+      "fantasypros_player_id": null,
+      "yahoo_id": null
+    },
+    {
+      "id": 946,
+      "canonical_name": "Le'Veon Moss",
+      "team_abbrev": "MIA",
+      "position": "RB",
+      "fantasypros_player_id": null,
+      "yahoo_id": null
+    },
+    {
+      "id": 955,
+      "canonical_name": "Quentin Moore",
+      "team_abbrev": "WSH",
+      "position": "TE",
+      "fantasypros_player_id": null,
+      "yahoo_id": null
+    }
+  ],
+  "expected_counts": {
+    "matched": 6,
+    "provider_nonteam": 9,
+    "position_conflict": 1,
+    "missing_identity": 1
+  }
+}

@@ -13,7 +13,7 @@ import {
   nflDfsSlateUploads,
 } from "@/db/schema";
 import { parseNflDkSalaryCsv } from "@/lib/nfl-dfs/dk-salary-csv";
-import { getNflRosterEvidence } from "@/db/nfl-dfs-availability";
+import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
 import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
@@ -36,6 +36,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
 };
 
 export type NflWorkspaceSlate = {
+  injuryCoverage?: InjuryCoverage | null;
   uploadId: string;
   projectionRunId: string | null;
   modelVersion: string | null;
@@ -93,9 +94,11 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   }
   const byPlayer = new Map(snapshots.map(s => [s.playerId, s]));
   const roster = run ? await getNflRosterEvidence(run.season, run.week) : new Map();
+  const injuryCoverage = run ? await getNflInjuryCoverage(run.season,run.week) : null;
   const now = Date.now();
   const availability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
   return {
+    injuryCoverage,
     uploadId,
     projectionRunId: upload.projectionRunId,
     modelVersion: run?.modelVersion ?? null,
@@ -312,6 +315,7 @@ export async function runNflOptimizer(
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, ownership: player.linestarOwnPct, custom: player.customProj,
     availability: player.availability, isOut: player.isOut,
+    injuryCoverageSnapshotId: slate.injuryCoverage?.snapshotId ?? null,
     calibrated: player.calibrated ?? null, calibrationReason: player.calibrationReason,
   }));
   const inputDigest = sha256(JSON.stringify({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));

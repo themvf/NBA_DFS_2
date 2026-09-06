@@ -8,9 +8,10 @@ from pathlib import Path
 
 from config import load_config
 from ingest.ff_fantasypros import FantasyProsClient, RefreshDatabase, response_hash
-from ingest.ff_injuries import persist_fantasypros_injury_observations
+from ingest.ff_injuries import persist_injury_observation
 from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapshot
 from ingest.nfl_dfs_weekly import target_season
+from model.nfl_dfs_injury_identity import audit
 
 
 def validate_payload(payload, season, week):
@@ -48,16 +49,30 @@ def main():
         params = {'year': season, 'week': week, 'include_probabilities': 'true'}
         payload = FantasyProsClient(os.environ['FANTASYPROS_API_KEY']).get('nfl/injuries', params)
         rows = validate_payload(payload, season, week)
+        players = db.execute("""SELECT id,canonical_name,normalized_name,team_abbrev,position,fantasypros_player_id,
+          COALESCE(yahoo_id,metadata->'sleeper'->>'yahoo_id') yahoo_id FROM ff_players WHERE season=%s""", (season,))
+        identities = audit(rows,players)
+        provider_contract = {'period': 'documented_request_not_echoed' if payload.get('week') is None else 'echoed',
+                             'timestamp_timezone': 'unverified', 'public_api_limited': payload.get('public_api_limited'),
+                             'tier': payload.get('tier'), 'reference': 'https://api.fantasypros.com/public/v2/docs'}
         # The source store deduplicates by source/dataset/response hash, not request
         # parameters. Scope the dataset so identical week-zero/list responses cannot
         # silently reuse a different week's provenance.
         source_id = persist_source_snapshot(db, SnapshotProvenance(source='fantasypros',
-            dataset=f'game-week-injuries-{season}-{week}', season=season, week=week,
+            dataset=f'game-week-injuries-v2-{season}-{week}', season=season, week=week,
             request_params=params, response_hash=response_hash(payload), row_count=len(rows),
-            model_eligible=True, eligibility_reason='Week-requested injury observations; provider coverage unverified'))
-        counts = persist_fantasypros_injury_observations(db, season=season, source_snapshot_id=source_id, rows=rows)
+            matched_count=identities['counts'].get('matched',0), unmatched_count=len(rows)-identities['counts'].get('matched',0),
+            missingness={'identity_audit':identities,'provider_contract':provider_contract},
+            model_eligible=False, eligibility_reason='Injury evidence for review; provider timestamp timezone unverified'))
+        for decision in identities['decisions']:
+            if decision['category']=='matched':
+                persist_injury_observation(db, player_id=decision['player_id'], season=season,source='fantasypros',
+                    source_snapshot_id=source_id,row={**decision['source'],'identity_method':decision['method']},reconcile_current=False)
+        counts = {'source_rows':len(rows),'matched':identities['counts'].get('matched',0),
+                  'unmatched':len(rows)-identities['counts'].get('matched',0),'events':0}
         report.update(status='captured' if rows else 'empty_unverified', source_snapshot_id=source_id,
                       response_hash=response_hash(payload), counts=counts,
+                      identity_audit=identities, provider_contract=provider_contract,
                       positions=dict(Counter(str(row.get('position_id','unknown')) for row in rows)),
                       practice_rows=sum(any(row.get(f'practice_{i}') is not None for i in [1,2,3]) for row in rows),
                       undated_rows=sum(not any(row.get(k) for k in ['updated_at','last_updated','last_updated_ts','news_updated']) for row in rows),
@@ -74,7 +89,7 @@ def main():
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
-        print(json.dumps(report))
+        print(json.dumps({k:v for k,v in report.items() if k!='identity_audit'}))
     if failed:
         raise SystemExit(1)
 
