@@ -13,3 +13,9 @@ for (const bad of [undefined,{...e,team:'BUF'},{...e,fetchedAt:'2025-01-01'},{..
 }
 assert.equal(resolveAvailability({...e,sleeper:{team:'NO',position:'QB',status:'Active'}},'NO','QB',now).role,'QB role unresolved');
 console.log('NFL availability: starter, backup, unavailable, questionable, stale, future and identity checks passed');
+for (const [alias, canonical] of [['WAS','WSH'],['LA','LAR'],['AZ','ARI'],['JAC','JAX']]) {
+ const aliased = {...e,team:canonical,sleeper:{team:alias,position:'QB',status:'Active',injury_status:'Out'}};
+ assert.equal(resolveAvailability(aliased,canonical,'QB',now).blockedReason,'Unavailable: OUT');
+ assert.equal(resolveAvailability(aliased,'BUF','QB',now).fresh,false);
+}
+assert.equal(resolveAvailability({...e,sleeper:{team:'NO',position:'QB',injury_status:'Questionable',status:'IR'}},'NO','QB',now).blockedReason,'Unavailable: IR');

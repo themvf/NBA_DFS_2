@@ -1,0 +1,171 @@
+{
+  "version": "nfl-volume-production-comparison-v1",
+  "seasons": {
+    "2024": {
+      "n": 1958,
+      "production": {
+        "mae": 5.060237078651685,
+        "interval80": 23.915223697650664,
+        "below_p10": 0.07967313585291114,
+        "above_p90": 0.12359550561797752
+      },
+      "candidate": {
+        "mae": 4.970882099305267,
+        "interval80": 26.425482790207422,
+        "below_p10": 0.06843718079673136,
+        "above_p90": 0.12563840653728295
+      }
+    },
+    "2025": {
+      "n": 2019,
+      "production": {
+        "mae": 4.705848984645864,
+        "interval80": 21.277173848439823,
+        "below_p10": 0.0861812778603269,
+        "above_p90": 0.10846953937592868
+      },
+      "candidate": {
+        "mae": 4.514500291099518,
+        "interval80": 24.100211783466783,
+        "below_p10": 0.06488360574541853,
+        "above_p90": 0.11144130757800892
+      }
+    }
+  },
+  "tiers": {
+    "2024": {
+      "Under 4 targets": {
+        "n": 913,
+        "production": {
+          "mae": 3.294455093099671,
+          "interval80": 16.67555312157722,
+          "below_p10": 0.04600219058050383,
+          "above_p90": 0.12157721796276014
+        },
+        "candidate": {
+          "mae": 3.094950299337649,
+          "interval80": 19.903154710142356,
+          "below_p10": 0.0032858707557502738,
+          "above_p90": 0.0624315443592552
+        }
+      },
+      "4\u20137 targets": {
+        "n": 649,
+        "production": {
+          "mae": 6.12078027734977,
+          "interval80": 27.144092449922958,
+          "below_p10": 0.10323574730354391,
+          "above_p90": 0.12942989214175654
+        },
+        "candidate": {
+          "mae": 6.132478187166196,
+          "interval80": 28.913427601738462,
+          "below_p10": 0.09244992295839753,
+          "above_p90": 0.17719568567026195
+        }
+      },
+      "7+ targets": {
+        "n": 396,
+        "production": {
+          "mae": 7.3932330808080815,
+          "interval80": 35.31492929292929,
+          "below_p10": 0.11868686868686869,
+          "above_p90": 0.11868686868686869
+        },
+        "candidate": {
+          "mae": 7.392220160791865,
+          "interval80": 37.385607422570445,
+          "below_p10": 0.17929292929292928,
+          "above_p90": 0.18686868686868688
+        }
+      }
+    },
+    "2025": {
+      "Under 4 targets": {
+        "n": 1010,
+        "production": {
+          "mae": 3.1610130693069305,
+          "interval80": 14.709142574257424,
+          "below_p10": 0.04554455445544554,
+          "above_p90": 0.12475247524752475
+        },
+        "candidate": {
+          "mae": 2.8935907759930934,
+          "interval80": 18.404509380345914,
+          "below_p10": 0.0049504950495049506,
+          "above_p90": 0.06534653465346535
+        }
+      },
+      "4\u20137 targets": {
+        "n": 600,
+        "production": {
+          "mae": 5.4460825,
+          "interval80": 24.322253333333332,
+          "below_p10": 0.11166666666666666,
+          "above_p90": 0.09666666666666666
+        },
+        "candidate": {
+          "mae": 5.322149318835903,
+          "interval80": 25.332729456569815,
+          "below_p10": 0.07,
+          "above_p90": 0.14
+        }
+      },
+      "7+ targets": {
+        "n": 409,
+        "production": {
+          "mae": 7.43480782396088,
+          "interval80": 33.02940831295843,
+          "below_p10": 0.1491442542787286,
+          "above_p90": 0.08557457212713937
+        },
+        "candidate": {
+          "mae": 7.332420079890859,
+          "interval80": 36.35729937097351,
+          "below_p10": 0.20537897310513448,
+          "above_p90": 0.18337408312958436
+        }
+      }
+    }
+  },
+  "unmatched": {
+    "candidate_unmatched": 0,
+    "production_unmatched": 779
+  },
+  "study_sha256": "f2ca4d3a7caa8008ca4fc2ca57e4f4aac12bd78ccdcd1f4ceecd1947985f5be8",
+  "sources": [
+    {
+      "season": 2023,
+      "sha256": "ac776fbd7c9fefdb4069b72304f4c5fa05ae417acd49f6e4e27be14b9d7a4bbc",
+      "rows": 17806,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2023.parquet"
+    },
+    {
+      "season": 2024,
+      "sha256": "847569d194ca3d96b5efcf91e6eac5e18780fc47568a713fd545a82d29d155c1",
+      "rows": 18130,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.parquet"
+    },
+    {
+      "season": 2025,
+      "sha256": "2a461becaa9adb3c93a3074a3a31f1e960162a50163371a2d34e28393b5fff10",
+      "rows": 18540,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.parquet"
+    }
+  ],
+  "recipe_sha256": {
+    "model/nfl_dfs_target_share.py": "84cbaf0b45a912b33aa69f0d4f3a2c5dd16b71b4a50ecab80e26ff91d4837657",
+    "ingest/nfl_dfs_target_share.py": "39ca098e361e2d70ea87d049ecfab43136a5e1d5ab908103d6e2ccec60c6b097",
+    "ingest/nfl_dfs_volume_benchmark.py": "ff68a72743e6548cbad405c7d80cbe7869f18ca2010fe69e931b2d01864457cd"
+  },
+  "passes_mean_and_interval_screen": false,
+  "optimizer_enabled": false,
+  "limits": [
+    "Production algorithm replay with market inputs disabled; not archived live projections.",
+    "2024 and 2025 were previously inspected; no untouched holdout.",
+    "Only paired recorded WR games; missing/DNP games excluded.",
+    "Workload tiers use prior targets, never target-game outcomes.",
+    "No historical injury adjustment, contest payout test, or joint lineup calibration."
+  ],
+  "paired_predictions_sha256": "e2299d921377eae3ae5bea20dd7f12dd6c657adb2b71f2f6a1ffd370eb5680ef"
+}
