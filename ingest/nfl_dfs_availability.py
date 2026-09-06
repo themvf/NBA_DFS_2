@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from config import load_config
-from ingest.ff_fantasypros import FantasyProsClient, RefreshDatabase, snapshot, response_hash
+from ingest.ff_fantasypros import FantasyProsClient, RefreshDatabase, response_hash
 from ingest.ff_injuries import persist_fantasypros_injury_observations
+from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapshot
 from ingest.nfl_dfs_weekly import target_season
 
 
@@ -46,7 +47,13 @@ def main():
         params = {'year': season, 'week': week, 'include_probabilities': 'true'}
         payload = FantasyProsClient(os.environ['FANTASYPROS_API_KEY']).get('nfl/injuries', params)
         rows = validate_payload(payload, season, week)
-        source_id = snapshot(db, dataset='injuries', season=season, payload=payload, params=params)
+        # The source store deduplicates by source/dataset/response hash, not request
+        # parameters. Scope the dataset so identical week-zero/list responses cannot
+        # silently reuse a different week's provenance.
+        source_id = persist_source_snapshot(db, SnapshotProvenance(source='fantasypros',
+            dataset=f'game-week-injuries-{season}-{week}', season=season, week=week,
+            request_params=params, response_hash=response_hash(payload), row_count=len(rows),
+            model_eligible=True, eligibility_reason='Week-requested injury observations; provider coverage unverified'))
         counts = persist_fantasypros_injury_observations(db, season=season, source_snapshot_id=source_id, rows=rows)
         report.update(status='captured' if rows else 'empty_unverified', source_snapshot_id=source_id,
                       response_hash=response_hash(payload), counts=counts,
