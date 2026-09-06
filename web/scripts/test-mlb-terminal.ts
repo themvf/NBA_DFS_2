@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { marketTrail, normalizeMlbDate, quote, summarizeSignals, type MlbCapture, type MlbTerminalSignal } from "../src/lib/mlb-terminal";
+import { sportsbookTrails, marketTrail, normalizeMlbDate, quote, summarizeSignals, type MlbCapture, type MlbTerminalSignal } from "../src/lib/mlb-terminal";
 assert.equal(normalizeMlbDate("2026-02-30", new Date("2026-09-06T02:00:00Z")), "2026-09-05");
 assert.equal(normalizeMlbDate("2026-09-06"), "2026-09-06");
 assert.equal(quote({ spread_home: -1.5, spread_price: 120 }, "run_line", "home")?.price, 120);
@@ -36,3 +36,12 @@ assert.equal(summarizeSignals([
   { ...signal, type: "mlb_total_steam", details: { market: "total", signal_version: "v1" }, grade: { verified_clv: .5, clv_unit: "runs" } },
 ]).length, 1);
 console.log("MLB terminal date, quote, matched-book history and scorecard checks passed");
+
+const books = sportsbookTrails(h, "moneyline", "home");
+assert.deepEqual(books.map((series) => series.key), ["draftkings", "fanduel"]);
+assert.equal(books[1].points[0].value, null, "A book arriving later must leave a gap");
+assert.notEqual(books[0].points[1].value, books[1].points[1].value, "Book disagreement must remain visible");
+assert.equal(sportsbookTrails([h[1]], "moneyline", "home")[1].color, books[1].color);
+assert.deepEqual(sportsbookTrails(pricedHistory, "total", "over")[0].points.map((p) => p.value), [8, 8.5, 8.5]);
+assert.equal(sportsbookTrails([{ ...h[0], books: { draftkings: { ml_home: -110 } } }], "moneyline", "home").length, 0, "Unpaired prices cannot become fair probabilities");
+assert.equal(sportsbookTrails([], "run_line", "away").length, 0);

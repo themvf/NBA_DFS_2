@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowLeft, ArrowRight, RefreshCw, Search } from "lucide-react";
-import { fmtPrice, marketTrail, number, quote, signalMarket, signalOutcome, summarizeSignals,
+import { fmtPrice, marketTrail, sportsbookTrails, number, quote, signalMarket, signalOutcome, summarizeSignals,
   type MlbMarket, type MlbSide, type MlbTerminalBoard, type MlbTerminalSignal } from "@/lib/mlb-terminal";
 import styles from "./mlb-terminal.module.css";
 
@@ -35,26 +35,56 @@ function TrailChart({ points, market, priceView = false }: { points: ReturnType<
   </svg>;
 }
 
+function SportsbookChart({ series, market }: { series: ReturnType<typeof sportsbookTrails>; market: MlbMarket }) {
+  const [hidden, setHidden] = useState<string[]>([]);
+  const visible = series.filter((book) => !hidden.includes(book.key));
+  const points = visible.flatMap((book) => book.points.filter((p) => p.value != null));
+  const values = points.map((p) => p.value!);
+  const percentage = market === "moneyline";
+  const min = Math.min(...values), max = Math.max(...values);
+  const pad = Math.max((max - min) * .2, percentage ? .3 : .25);
+  const times = points.map((p) => Date.parse(p.at));
+  const start = Math.min(...times), end = Math.max(...times);
+  const x = (at: string) => 55 + (Date.parse(at) - start) / Math.max(end - start, 1) * 660;
+  const y = (value: number) => 205 - (value - min + pad) / (max - min + pad * 2) * 165;
+  return <>
+    <div className={styles.bookLegend} role="group" aria-label="Show or hide sportsbooks">
+      {series.map((book) => <button key={book.key} aria-pressed={!hidden.includes(book.key)} onClick={() => setHidden((current) => current.includes(book.key) ? current.filter((key) => key !== book.key) : [...current, book.key])}><span style={{ background: book.color }} />{book.title}</button>)}
+      {!!hidden.length && <button onClick={() => setHidden([])}>Show all</button>}
+    </div>
+    {!points.length ? <div className={styles.empty}>{series.length ? "Choose a sportsbook above to show its history." : "No sportsbook observations for this selection."}</div> : <svg className={styles.chart} viewBox="0 0 760 250" role="img" aria-label={`${MARKETS[market]} history by sportsbook`}>
+      <title>{MARKETS[market]} history — individual sportsbooks</title>
+      {[min - pad, (min + max) / 2, max + pad].map((v) => <g key={v}><line x1="55" x2="720" y1={y(v)} y2={y(v)} stroke="#283330" /><text x="4" y={y(v) + 4} fill="#93a39c" fontSize="11">{v.toFixed(1)}{percentage ? "%" : ""}</text></g>)}
+      {visible.map((book) => <g key={book.key}>
+        {book.points.slice(1).map((point, index) => { const before = book.points[index]; return before.value == null || point.value == null ? null : <line key={point.at} x1={x(before.at)} y1={y(before.value)} x2={x(point.at)} y2={y(point.value)} stroke={book.color} strokeWidth="2" />; })}
+        {book.points.map((point) => point.value == null ? null : <circle key={point.at} cx={x(point.at)} cy={y(point.value)} r="3" fill={book.color}><title>{`${book.title} · ${time(point.at)} ET: ${point.value.toFixed(2)}${percentage ? "%" : " runs"} at ${fmtPrice(point.price)}`}</title></circle>)}
+      </g>)}
+      <text x="55" y="237" fill="#93a39c" fontSize="11">{time(new Date(start).toISOString())} ET</text><text x="715" y="237" textAnchor="end" fill="#93a39c" fontSize="11">{time(new Date(end).toISOString())} ET</text>
+    </svg>}
+  </>;
+}
+
 export default function MlbTerminalClient({ board }: { board: MlbTerminalBoard }) {
   const router = useRouter(); const [pending, refresh] = useTransition();
   const [query, setQuery] = useState(""); const [selected, setSelected] = useState<number | null>(null);
   const [market, setMarket] = useState<MlbMarket>("moneyline"); const [side, setSide] = useState<MlbSide>("home");
-  const [book, setBook] = useState(""); const [filter, setFilter] = useState("all"); const [clock, setClock] = useState(board.asOf);
+  const [book, setBook] = useState("all"); const [filter, setFilter] = useState("all"); const [clock, setClock] = useState(board.asOf);
   const [priceMode, setPriceMode] = useState(false);
   useEffect(() => { const timer = window.setInterval(() => { setClock(new Date().toISOString()); if (document.visibilityState === "visible") refresh(() => router.refresh()); }, 60_000); return () => clearInterval(timer); }, [router]);
   const todaySignals = board.signals.filter((signal) => signal.date === board.date);
   const games = board.games.filter((game) => `${game.away} ${game.home}`.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || (filter === "signals" ? todaySignals.some((s) => s.matchupId === game.id) : game.startsAt != null && Date.parse(game.startsAt) > Date.parse(clock))));
   const game = games.find((g) => g.id === selected) ?? games[0];
   const history = game?.history ?? []; const latest = history.at(-1);
-  const priceView = priceMode && market !== "moneyline" && !!book;
-  const trail = marketTrail(history, market, side, book, priceView);
+  const allBooks = book === "all";
+  const priceView = priceMode && market !== "moneyline" && !!book && !allBooks;
+  const trail = marketTrail(history, market, side, allBooks ? "" : book, priceView);
   const first = trail.points[0]; const current = trail.points.at(-1);
   const gameSignals = todaySignals.filter((s) => s.matchupId === game?.id && signalMarket(s) === market);
   const summary = summarizeSignals(board.signals);
   const started = !!game?.startsAt && Date.parse(game.startsAt) <= Date.parse(clock);
   const age = latest ? Math.max(0, Math.floor((Date.parse(clock) - Date.parse(latest.capturedAt)) / 60_000)) : null;
   const moveDate = (delta: number) => { const next = new Date(`${board.date}T12:00:00Z`); next.setUTCDate(next.getUTCDate() + delta); router.push(`/vegas?sport=mlb&date=${next.toISOString().slice(0, 10)}`); };
-  function chooseMarket(next: MlbMarket) { setMarket(next); setSide(next === "total" ? "over" : "home"); setBook(""); setPriceMode(false); }
+  function chooseMarket(next: MlbMarket) { setMarket(next); setSide(next === "total" ? "over" : "home"); setBook("all"); setPriceMode(false); }
   const formatValue = (value: number | undefined) => value == null ? "—" : `${value.toFixed(1)}${market === "moneyline" || priceView ? "%" : " runs"}`;
   return <div className={styles.terminal}>
     <header className={styles.topbar}><strong className={styles.brand}><Activity size={17} /> MLB LINE TERMINAL</strong><label className={styles.search}><Search size={15} /><input aria-label="Search MLB teams" placeholder="Find a team…" value={query} onChange={(e) => setQuery(e.target.value)} /></label><span className={styles.clock}>{time(clock)} ET</span><button onClick={() => refresh(() => router.refresh())} disabled={pending} aria-label="Refresh stored MLB data"><RefreshCw size={15} className={pending ? styles.spin : ""} /></button></header>
@@ -62,16 +92,17 @@ export default function MlbTerminalClient({ board }: { board: MlbTerminalBoard }
     <div className={styles.shell}>
       <aside className={styles.watch}><div className={styles.heading}><span>GAME WATCHLIST</span><span>{games.length}</span></div><select aria-label="Filter games" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">All games</option><option value="upcoming">Upcoming</option><option value="signals">With signals</option></select>
         {!games.length && <p className={styles.empty}>No games in this view.</p>}
-        {games.map((g) => { const t = marketTrail(g.history, "moneyline", "home"); const last = t.points.at(-1); return <button className={styles.game} aria-pressed={game?.id === g.id} key={g.id} onClick={() => { setSelected(g.id); setBook(""); }}><span>{time(g.startsAt)} ET</span><strong>{g.away} <small>@</small> {g.home}</strong><div><span>{g.status}</span><b>{last ? `${last.value.toFixed(1)}% H` : "No quote"}</b></div><small>Game {g.gamePk ?? g.id} · {g.history.length} captures</small></button>; })}
+        {games.map((g) => { const t = marketTrail(g.history, "moneyline", "home"); const last = t.points.at(-1); return <button className={styles.game} aria-pressed={game?.id === g.id} key={g.id} onClick={() => { setSelected(g.id); setBook("all"); }}><span>{time(g.startsAt)} ET</span><strong>{g.away} <small>@</small> {g.home}</strong><div><span>{g.status}</span><b>{last ? `${last.value.toFixed(1)}% H` : "No quote"}</b></div><small>Game {g.gamePk ?? g.id} · {g.history.length} captures</small></button>; })}
       </aside>
       <main className={styles.instrument}>
         {game ? <><div className={styles.gameHeader}><div><span className={styles.eyebrow}>{game.park ?? "MLB"} · {time(game.startsAt)} ET</span><h1>{game.away} <small>at</small> {game.home}</h1><p>{game.awayStarter ?? "Starter unconfirmed"} / {game.homeStarter ?? "Starter unconfirmed"}</p></div><div className={styles.gameStatus}>{game.status}{game.homeScore != null && game.awayScore != null && <strong>{game.awayScore} – {game.homeScore}</strong>}</div></div>
           <div className={styles.tabs} role="group" aria-label="Market">{(Object.keys(MARKETS) as MlbMarket[]).map((key) => <button key={key} aria-pressed={market === key} onClick={() => chooseMarket(key)}>{MARKETS[key]}</button>)}</div>
-          <div className={styles.controls}><div role="group" aria-label="Selection">{(market === "total" ? ["over", "under"] as const : ["away", "home"] as const).map((s) => <button key={s} aria-pressed={side === s} onClick={() => setSide(s)}>{s === "home" ? game.home : s === "away" ? game.away : s}</button>)}</div><select aria-label="Chart bookmaker" value={book} onChange={(e) => setBook(e.target.value)}><option value="">Matched-book consensus</option>{Object.keys(latest?.books ?? {}).filter((key) => key !== "polymarket").sort().map((key) => <option key={key}>{key}</option>)}</select></div>
+          <div className={styles.controls}><div role="group" aria-label="Selection">{(market === "total" ? ["over", "under"] as const : ["away", "home"] as const).map((s) => <button key={s} aria-pressed={side === s} onClick={() => setSide(s)}>{s === "home" ? game.home : s === "away" ? game.away : s}</button>)}</div><select aria-label="Chart bookmaker" value={book} onChange={(e) => setBook(e.target.value)}><option value="all">Individual sportsbooks</option><option value="">Matched-book consensus</option>{sportsbookTrails(history, market, side).map((series) => series.key).map((key) => <option key={key}>{key}</option>)}</select></div>
+          {allBooks && <p className={styles.caption}>Summary: matched-book consensus. Chart: individual sportsbooks.</p>}
           <div className={styles.metrics}><div><span>FIRST OBSERVED</span><strong>{formatValue(first?.value)}</strong></div><div><span>LATEST</span><strong>{formatValue(current?.value)}</strong></div><div><span>CHANGE</span><strong>{first && current && trail.points.length >= 2 ? `${signed(current.value - first.value)} ${market === "moneyline" || priceView ? "pp" : "runs"}` : "Awaiting captures"}</strong></div><div><span>COMPARABLE BOOKS</span><strong>{trail.books.length}</strong></div></div>
-          {market !== "moneyline" && <div className={styles.controls} role="group" aria-label="Chart measure"><button aria-pressed={!priceView} onClick={() => setPriceMode(false)}>Line history</button><button disabled={!book} aria-pressed={priceView} onClick={() => setPriceMode(true)}>Price at latest line</button></div>}
-          <TrailChart points={trail.points} market={market} priceView={priceView} />
-          <p className={styles.caption}>Observed pregame {priceView ? "offered-price implied probability at the selected book's latest line" : market === "moneyline" ? "fair probability" : "line"}; {priceView ? "other handicaps/totals are excluded" : "fixed bookmaker set across this chart"}. {book && market !== "moneyline" && first && current ? `Price: ${fmtPrice(first.price)} → ${fmtPrice(current.price)}. ` : ""}Select a book to inspect prices at its exact line.</p>
+          {market !== "moneyline" && <div className={styles.controls} role="group" aria-label="Chart measure"><button aria-pressed={!priceView} onClick={() => setPriceMode(false)}>Line history</button><button disabled={!book || allBooks} aria-pressed={priceView} onClick={() => setPriceMode(true)}>Price at latest line</button></div>}
+          {allBooks ? <SportsbookChart key={`${game.id}:${market}:${side}`} series={sportsbookTrails(history, market, side)} market={market} /> : <TrailChart points={trail.points} market={market} priceView={priceView} />}
+          {allBooks ? <p className={styles.caption}>Each color is one sportsbook. Tap its name to hide or show it. Missing quotes leave gaps; identical lines overlap. Select a single book to inspect prices at its exact line.</p> : <p className={styles.caption}>Observed pregame {priceView ? "offered-price implied probability at the selected book's latest line" : market === "moneyline" ? "fair probability" : "line"}; {priceView ? "other handicaps/totals are excluded" : "fixed bookmaker set across this chart"}. {book && market !== "moneyline" && first && current ? `Price: ${fmtPrice(first.price)} → ${fmtPrice(current.price)}. ` : ""}Select a book to inspect prices at its exact line.</p>}
           <div className={styles.heading}><span>EXACT BOOK QUOTES</span><span>{started ? "LAST PREGAME" : age == null ? "NO CAPTURE" : `${age}m SINCE CAPTURE`}</span></div>
           <div className={styles.tableWrap}><table><thead><tr><th>Book</th><th>Line</th><th>Price</th><th>Fair probability</th><th>Book updated · ET</th><th>Verified close</th></tr></thead><tbody>{Object.entries(latest?.books ?? {}).filter(([key]) => key !== "polymarket").map(([key, value]) => { const q = quote(value, market, side); const close = game.close?.books[key] && quote(game.close.books[key], market, side); return <tr key={key}><td><button className={styles.bookButton} onClick={() => setBook(key)}>{String(value.title ?? key)}</button></td><td>{q?.line ?? "—"}</td><td>{fmtPrice(q?.price)}</td><td>{q?.fair != null ? `${(q.fair * 100).toFixed(1)}%` : "—"}</td><td>{time(q?.updatedAt ?? null)}</td><td>{close ? `${close.line == null ? "" : `${close.line} / `}${fmtPrice(close.price)}` : "Unavailable"}</td></tr>; })}</tbody></table>{!latest && <p className={styles.empty}>No stored pregame quotes for this game.</p>}</div>
         </> : <div className={styles.empty}>Select a date with MLB games to inspect the market.</div>}
