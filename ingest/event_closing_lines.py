@@ -81,7 +81,7 @@ def _as_utc(value: datetime | str) -> datetime:
 def nfl_checkpoint_schedule(scheduled_start: datetime | str) -> list[dict]:
     """Build the frozen ET calendar cadence for one NFL kickoff.
 
-    Calendar-day slots express the requested D-3/D-2/D-1/game-day cadence.
+    Calendar-day slots cover D-7 through game day.
     The final three jobs are event-relative. Each target has a durable window
     so a five-minute scheduler does not need to fire on the exact minute.
     """
@@ -99,7 +99,7 @@ def nfl_checkpoint_schedule(scheduled_start: datetime | str) -> list[dict]:
                 "due_until": min(due_utc, kickoff),
             })
 
-    for days_before, hours_between in ((7, 12), (6, 12), (5, 12), (4, 12), (3, 6), (2, 6), (1, 3)):
+    for days_before, hours_between in ((7, 3), (6, 3), (5, 3), (4, 3), (3, 3), (2, 3), (1, 1)):
         local_date = kickoff_et.date() - timedelta(days=days_before)
         for hour in range(0, 24, hours_between):
             local_target = datetime.combine(local_date, time(hour=hour), tzinfo=EASTERN)
@@ -126,7 +126,12 @@ def nfl_checkpoint_schedule(scheduled_start: datetime | str) -> list[dict]:
 def _seed_nfl_checkpoints(db: DatabaseManager, now: datetime) -> int:
     events = db.execute(
         """
-        SELECT id AS matchup_id, event_id, commence_time AS scheduled_start_at
+        SELECT id AS matchup_id, event_id, commence_time AS scheduled_start_at,
+               EXISTS (SELECT 1 FROM game_odds_history h
+                 WHERE h.sport='nfl' AND h.matchup_id=nfl_matchups.id
+                   AND h.captured_at < nfl_matchups.commence_time
+                   AND h.books IS NOT NULL AND h.books - 'polymarket' <> '{}'::jsonb
+               ) AS has_capture
         FROM nfl_matchups
         WHERE event_id IS NOT NULL
           AND commence_time BETWEEN %s - INTERVAL '8 hours' AND %s + INTERVAL '8 days'
@@ -137,7 +142,14 @@ def _seed_nfl_checkpoints(db: DatabaseManager, now: datetime) -> int:
     )
     values: list[tuple] = []
     for event in events:
-        for job in nfl_checkpoint_schedule(event["scheduled_start_at"]):
+        jobs = nfl_checkpoint_schedule(event["scheduled_start_at"])
+        kickoff = _as_utc(event["scheduled_start_at"])
+        # One discovery probe per kickoff identity. Empty markets are retried
+        # by calendar cadence, never by an unbounded five-minute probe loop.
+        if not event.get("has_capture", False) and now < kickoff <= now + timedelta(days=7):
+            jobs.append({"checkpoint": "nfl_first_observed", "target_at": now,
+                         "due_until": min(now + timedelta(minutes=20), kickoff)})
+        for job in jobs:
             values.append((
                 "nfl", event["matchup_id"], str(event["event_id"]), job["checkpoint"],
                 event["scheduled_start_at"], job["target_at"], job["due_until"],
@@ -360,6 +372,7 @@ def due_checkpoints(db: DatabaseManager, now: datetime | None = None) -> list[di
         LEFT JOIN tennis_matches tm ON c.sport='tennis' AND tm.id=c.matchup_id
         LEFT JOIN nfl_matchups nm ON c.sport='nfl' AND nm.id=c.matchup_id
         WHERE c.status IN ('pending', 'attempted', 'failed')
+          AND (c.checkpoint <> 'nfl_first_observed' OR c.attempted_at IS NULL)
           AND c.target_at <= %s AND c.due_until >= %s
           AND c.scheduled_start_at > %s
         ORDER BY c.sport, c.scheduled_start_at, c.matchup_id
@@ -580,7 +593,7 @@ def capture_due_checkpoints(
                 })
             _audit_usage(
                 db, sport="nfl", event_count=len(event_ids), audit=audit,
-                metadata={"season_type": season_type, "event_ids": sorted(event_ids),
+                metadata={"cadence_version": "nfl-week-v2", "season_type": season_type, "event_ids": sorted(event_ids),
                           "error": str(exc)},
             )
             _mark_failure(db, jobs, f"provider request failed: {exc}")
@@ -589,7 +602,7 @@ def capture_due_checkpoints(
             continue
         _audit_usage(
             db, sport="nfl", event_count=len(event_ids), audit=audit,
-            metadata={"season_type": season_type, "event_ids": sorted(event_ids)},
+            metadata={"cadence_version": "nfl-week-v2", "season_type": season_type, "event_ids": sorted(event_ids)},
         )
         result["groups"] += 1
         result["paid_requests"] += int(audit.get("request_count") or 1)

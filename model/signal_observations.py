@@ -165,7 +165,7 @@ if __name__ == "__main__":
         IF NOT EXISTS (SELECT 1 FROM pg_constraint
             WHERE conrelid='odds_capture_checkpoints'::regclass
               AND conname='odds_capture_checkpoints_checkpoint_check'
-              AND pg_get_constraintdef(oid) LIKE '%%nfl_t_minus_%%') THEN
+              AND pg_get_constraintdef(oid) LIKE '%%nfl_first_observed%%') THEN
             ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_checkpoint_check;
     """ + checkpoint_check + "; END IF; END $migration$")
     print("Movement observation schema ready.")

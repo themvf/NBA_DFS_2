@@ -1,0 +1,30 @@
+{
+  "LV": {
+    "season": 2026,
+    "checked_at": "2026-09-06T16:36:53.152056+00:00",
+    "head_coach": "Klint Kubiak",
+    "coordinator": "Andrew Janocko",
+    "head_coach_changed": true,
+    "coordinator_changed": true,
+    "play_caller_same": false,
+    "sources": [
+      "https://www.raiders.com/news/klint-kubiak-named-head-coach-of-the-las-vegas-raiders",
+      "https://www.raiders.com/news/raiders-name-andrew-janocko-offensive-coordinator"
+    ],
+    "note": "New staff: 2025 Raiders play mix is not attributed to the current staff."
+  },
+  "SF": {
+    "season": 2026,
+    "checked_at": "2026-09-06T16:36:53.152056+00:00",
+    "head_coach": "Kyle Shanahan",
+    "coordinator": "Klay Kubiak",
+    "head_coach_same": true,
+    "coordinator_same": true,
+    "play_caller_same": false,
+    "sources": [
+      "https://media.49ers.1rmg.com/wp-content/uploads/2025/05/22104836/2025-Training-Camp-Release.pdf",
+      "https://www.49ers.com/news/7-takeaways-from-49ers-coordinators-ahead-of-rookie-minicamp"
+    ],
+    "note": "Head coach and offensive coordinator continuity supported; current play-calling continuity not independently verified."
+  }
+}

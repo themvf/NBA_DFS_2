@@ -79,3 +79,27 @@ The daily credit cap and monthly reserve can defer due work. Deferrals are store
 ## 2026-09-06 movement pilot update
 
 NFL now additionally seeds D-7 through D-4 twice daily and five-minute targets in the final two hours. Existing checkpoints and quota guards remain. See [phase-one contract](nfl-movement-intelligence-phase-one.md) for lifecycle semantics, quota evidence and deployment checks.
+
+
+## Early-week expansion — 2026-09-06
+
+This supersedes the earlier calendar frequencies above. D−7 through D−2 now
+have three-hour ET targets (00:00, 03:00, …, 21:00); D−1 is hourly. Game day
+remains hourly, with five-minute targets in the final two hours. Targets remain
+best-effort under GitHub scheduling and existing daily-credit/reserve guards.
+Existing checkpoint identities and audit records are preserved.
+
+Newly discovered, uncaptured fixtures within seven days receive one immediate
+`nfl_first_observed` probe per kickoff identity. A quote-free response does not
+count as a capture; later attempts use the regular calendar cadence. The free
+events endpoint cannot identify the instant sportsbooks first post quotes, so
+this is first observed coverage, not a guaranteed true opener. Discovery probes
+share the normal batching and budget checks and cannot retry every five minutes.
+
+The NFL page defaults to upcoming games through seven calendar days ahead.
+Selected-day navigation remains available. Fresh cards retain the 30-minute
+cutoff; Developing this week shows dated observations from the past seven days,
+with direction/support explicitly tied to the recorded time. Newer failed
+lifecycle observations suppress older cards. Cadence health uses 20/80/200-minute
+grace thresholds for final-two-hours/day-before-or-game-day/earlier coverage.
+No detector thresholds or API budget limits changed.
