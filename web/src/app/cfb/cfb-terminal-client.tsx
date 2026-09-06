@@ -7,6 +7,7 @@ import type { CfbBookQuote, CfbResearchBoard, CfbResearchContext, CfbResearchRec
 import MarketSignalScorecard from "@/components/market-signal-scorecard";
 import MovementIntelligence from "@/components/movement-intelligence";
 import { buildMovementInsights, cfbIntelligenceEvents } from "@/lib/movement-intelligence";
+import SportsbookHistory from "@/components/sportsbook-history";
 import styles from "./cfb-terminal.module.css";
 import { movementKind, movementSeries, movementSignals } from "@/lib/cfb-movement";
 
@@ -18,7 +19,6 @@ type MarketView = { label: string; current: string; open: string; close: string;
 type PaperPosition = { id: string; game: string; market: string; book: string; entry: string; observedAt: string };
 
 const MARKET_LABELS: Record<MarketKey, string> = { spread: "SPREAD", total: "TOTAL", moneyline: "MONEYLINE" };
-const SERIES_COLORS = ["#f6a800", "#59b6ff", "#c58cff", "#5fd0a5", "#ff718b"];
 const BOOK_PRIORITY = ["pinnacle", "draftkings", "fanduel", "betmgm", "bovada"];
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -60,10 +60,10 @@ function fairHome(book: CfbBookQuote): number | null {
   const home = probability(Number(book.ml_home)); const away = probability(Number(book.ml_away));
   return home + away > 0 ? home / (home + away) : null;
 }
-function valueFor(book: CfbBookQuote, market: MarketKey): number | null {
-  if (market === "spread") return book.spread_home == null ? null : Number(book.spread_home);
+function valueFor(book: CfbBookQuote, market: MarketKey, side: SelectionSide = "home"): number | null {
+  if (market === "spread") { const line = side === "away" ? book.spread_away : book.spread_home; return line == null ? null : Number(line); }
   if (market === "total") return book.total_line == null ? null : Number(book.total_line);
-  return fairHome(book);
+  const home = fairHome(book); return home == null ? null : side === "away" ? 1-home : home;
 }
 function bookTitle(key: string, quote?: CfbBookQuote): string {
   if (quote?.title) return quote.title;
@@ -106,17 +106,17 @@ function buildBookRows(game: CfbTerminalRow, market: MarketKey, side: SelectionS
 }
 
 function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSide, asOf: string): MarketView {
-  const currentValues = Object.values(game.currentBooks ?? {}).flatMap((book) => { const value = valueFor(book, market); return value == null ? [] : [value]; });
-  const openingValues = Object.values(game.openingBooks ?? {}).flatMap((book) => { const value = valueFor(book, market); return value == null ? [] : [value]; });
-  const closingValues = Object.values(game.closingBooks ?? {}).flatMap((book) => { const value = valueFor(book, market); return value == null ? [] : [value]; });
+  const currentValues = Object.values(game.currentBooks ?? {}).flatMap((book) => { const value = valueFor(book, market, side); return value == null ? [] : [value]; });
+  const openingValues = Object.values(game.openingBooks ?? {}).flatMap((book) => { const value = valueFor(book, market, side); return value == null ? [] : [value]; });
+  const closingValues = Object.values(game.closingBooks ?? {}).flatMap((book) => { const value = valueFor(book, market, side); return value == null ? [] : [value]; });
   const current = lowerMedian(currentValues); const opening = lowerMedian(openingValues);
   const closing = lowerMedian(closingValues);
   const bookKeys = Array.from(new Set(game.history.flatMap((point) => Object.keys(point.books))));
-  const orderedBooks = [...BOOK_PRIORITY.filter((book) => bookKeys.includes(book)), ...bookKeys.filter((book) => !BOOK_PRIORITY.includes(book)).sort()].slice(0, 3);
-  const history = game.history.map((point) => ({ capturedAt: point.capturedAt, time: fmtEt(point.capturedAt, true), values: Object.fromEntries(orderedBooks.flatMap((key) => { const value = valueFor(point.books[key] ?? {}, market); return value == null ? [] : [[key, value]]; })) }));
+  const orderedBooks = [...BOOK_PRIORITY.filter((book) => bookKeys.includes(book)), ...bookKeys.filter((book) => !BOOK_PRIORITY.includes(book)).sort()].filter(book => book !== "polymarket");
+  const history = game.history.map((point) => ({ capturedAt: point.capturedAt, time: fmtEt(point.capturedAt, true), values: Object.fromEntries(orderedBooks.flatMap((key) => { const value = valueFor(point.books[key] ?? {}, market, side); return value == null ? [] : [[key, value]]; })) }));
   const movement = current != null && opening != null ? current - opening : null;
   let currentLabel = "NO MARKET"; let openingLabel = "—"; let closingLabel = game.closeQuality && !game.closingBooks ? "UNAVAILABLE" : "PENDING";
-  if (current != null) currentLabel = market === "spread" ? `${game.homeTeam} ${signed(current)}` : market === "total" ? current.toFixed(1) : `${game.homeTeam} ${(current * 100).toFixed(1)}%`;
+  if (current != null) currentLabel = market === "spread" ? `${side === "away" ? game.awayTeam : game.homeTeam} ${signed(current)}` : market === "total" ? current.toFixed(1) : `${side === "away" ? game.awayTeam : game.homeTeam} ${(current * 100).toFixed(1)}%`;
   if (opening != null) openingLabel = market === "spread" ? signed(opening) : market === "total" ? opening.toFixed(1) : `${(opening * 100).toFixed(1)}%`;
   if (closing != null) closingLabel = market === "spread" ? signed(closing) : market === "total" ? closing.toFixed(1) : `${(closing * 100).toFixed(1)}%`;
   const closingMovement = closing != null && opening != null ? closing - opening : null;
@@ -125,32 +125,13 @@ function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSid
     label: `Full-game ${market}`, current: currentLabel, open: openingLabel, close: closingLabel,
     move: movement == null ? "Awaiting two captures" : market === "moneyline" ? `${signed(movement * 100)}pp` : `${signed(movement)} pts`,
     closeMove: closingMovement == null ? "CLV close pending" : market === "moneyline" ? `${signed(closingMovement * 100)}pp open→close` : `${signed(closingMovement)} pts open→close`,
-    axisLabel: market === "moneyline" ? `Vig-free ${game.homeTeam} probability` : market === "spread" ? `${game.homeTeam} spread` : "Game total",
+    axisLabel: market === "moneyline" ? `Vig-free ${side === "away" ? game.awayTeam : game.homeTeam} probability` : market === "spread" ? `${side === "away" ? game.awayTeam : game.homeTeam} spread` : "Game total",
     series: orderedBooks, history, books: buildBookRows(game, market, side, asOf), selectedLineBookCount, marketBookCount: currentValues.length,
   };
 }
 
-function displayTick(value: number, market: MarketKey): string { return market === "moneyline" ? `${(value * 100).toFixed(0)}%` : signed(value); }
-
 function MarketChart({ market, marketKey, signals }: { market: MarketView; marketKey: MarketKey; signals: LineAlertRow[] }) {
-  const width = 760; const height = 300; const frame = { left: 62, right: 738, top: 26, bottom: 250 };
-  const values = market.history.flatMap((point) => Object.values(point.values));
-  if (!values.length) return <div className={styles.empty}>No eligible pregame history for this market yet.</div>;
-  const rawMin = Math.min(...values); const rawMax = Math.max(...values);
-  const padding = Math.max((rawMax - rawMin) * 0.25, marketKey === "moneyline" ? 0.008 : 0.4);
-  const min = rawMin - padding; const max = rawMax + padding;
-  const x = (index: number) => frame.left + (index / Math.max(market.history.length - 1, 1)) * (frame.right - frame.left);
-  const y = (value: number) => frame.top + ((max - value) / Math.max(max - min, 0.001)) * (frame.bottom - frame.top);
-  const ticks = Array.from({ length: 5 }, (_, index) => max - (index / 4) * (max - min));
-  return <svg className={styles.marketChart} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${market.axisLabel} movement`}><title>{market.axisLabel}</title>
-    {ticks.map((tick) => <g key={tick}><line x1={frame.left} x2={frame.right} y1={y(tick)} y2={y(tick)} className={styles.chartGrid} /><text x={frame.left - 9} y={y(tick) + 4} textAnchor="end">{displayTick(tick, marketKey)}</text></g>)}
-    <line x1={frame.left} x2={frame.right} y1={frame.bottom} y2={frame.bottom} className={styles.chartAxis} /><line x1={frame.left} x2={frame.left} y1={frame.top} y2={frame.bottom} className={styles.chartAxis} />
-    {market.history.map((point, index) => <text key={`${point.time}-${index}`} x={x(index)} y={frame.bottom + 24} textAnchor={index === 0 ? "start" : index === market.history.length - 1 ? "end" : "middle"} className={styles.chartTime}>{point.time}</text>)}
-    {market.series.map((series, seriesIndex) => market.history.slice(1).map((point, index) => { const before = market.history[index].values[series]; const after = point.values[series]; return before == null || after == null ? null : <line key={`${series}-${index}`} x1={x(index)} y1={y(before)} x2={x(index + 1)} y2={y(after)} stroke={SERIES_COLORS[seriesIndex]} strokeWidth={seriesIndex === 0 ? 2.6 : 1.9} vectorEffect="non-scaling-stroke" />; }))}
-    {market.series.map((series, seriesIndex) => market.history.map((point, index) => { const value = point.values[series]; return value == null ? null : <circle key={`${series}-point-${index}`} cx={x(index)} cy={y(value)} r={seriesIndex === 0 ? 4.5 : 3.5} fill={SERIES_COLORS[seriesIndex]} stroke="#07100e" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />; }))}
-    {signals.map((signal, signalIndex) => { const observedAt = signalObservedAt(signal); const at = new Date(observedAt).getTime(); const nearest = market.history.reduce((best, point, index) => Math.abs(new Date(point.capturedAt).getTime() - at) < Math.abs(new Date(market.history[best].capturedAt).getTime() - at) ? index : best, 0); const sx = x(nearest); return <g key={`${signal.alertType}-${observedAt}`}><line x1={sx} x2={sx} y1={frame.top} y2={frame.bottom} stroke={signal.alertType === "reversal" ? "#ff6464" : "#f6a800"} strokeDasharray="4 4" opacity="0.85" /><text x={Math.min(sx + 4, frame.right - 90)} y={frame.top + 11 + signalIndex * 11} className={styles.signalChartLabel}>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</text></g>; })}
-    {market.series.map((series, index) => <g key={series} transform={`translate(${frame.left + index * 150}, 291)`}><line x1="0" x2="18" y1="-4" y2="-4" stroke={SERIES_COLORS[index]} strokeWidth={index === 0 ? 2.6 : 1.9} /><text x="24" y="0" className={styles.legendLabel}>{bookTitle(series)}</text></g>)}
-  </svg>;
+  return <SportsbookHistory label={market.axisLabel} percentage={marketKey === "moneyline"} points={market.history.map(p=>({at:p.capturedAt,values:Object.fromEntries(Object.entries(p.values).map(([k,v])=>[k,marketKey==="moneyline"?v*100:v]))}))} markers={signals.map(signal=>({at:signalObservedAt(signal),label:SIGNAL_LABELS[signal.alertType]??signal.alertType}))}/>;
 }
 
 function signalMagnitude(signal: LineAlertRow): string | null {
@@ -323,8 +304,8 @@ export default function CfbTerminalClient({ board, observations, signals, backte
       </div></aside>
       <main className={styles.instrumentPane}>{!game || !market ? <section className={styles.chartSection}><div className={styles.empty}>Load the canonical CFB schedule to begin. No sample quotes are substituted.</div></section> : <>
         <section className={styles.instrumentHeader}><div className={styles.instrumentTop}><div><div className={styles.instrumentTitle}>{game.awayTeam} @ {game.homeTeam}</div><div className={styles.instrumentMeta}>{game.venue ?? "Venue TBD"} · {game.commenceTime ? fmtEt(game.commenceTime) : "Kickoff TBD"} · {game.network ?? "Network TBD"} · {market.label}</div></div><div className={styles.primaryQuote}><strong>{market.current}</strong><span>OPEN {market.open} · {market.move.toUpperCase()} · CLV CLOSE {market.close}</span></div></div><div className={styles.marketTabs}>{(Object.keys(MARKET_LABELS) as MarketKey[]).map((key) => <button key={key} type="button" data-active={marketKey === key} onClick={() => chooseMarket(key)}>{MARKET_LABELS[key]}</button>)}</div><div className={styles.marketTabs}>{sideOptions.map((option) => <button key={option} type="button" data-active={side === option} onClick={() => chooseSide(option)}>{option === "home" ? game.homeTeam : option === "away" ? game.awayTeam : option.toUpperCase()}</button>)}</div></section>
-        <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{market.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)} · ${marketSignals.length} signals` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><MarketChart market={market} marketKey={marketKey} signals={marketSignals} /></div></section>
-        <section className={styles.lowerGrid}><div className={styles.ladderPane}><div className={styles.sectionTitle}><span>BOOK LADDER</span><span>OBSERVED QUOTES</span></div><div className={styles.bookHeader}><span>BOOK</span><span>UPDATED</span><span>LINE</span><span>PRICE</span></div>{market.books.map((item) => <button key={item.key} type="button" className={styles.bookRow} data-selected={quote?.key === item.key} onClick={() => { setSelectedBook(item.key); setLockMessage(null); }}><span>{item.book}{!item.fresh ? <em>STALE</em> : null}</span><span>{item.updatedAt ? fmtEt(item.updatedAt, true) : "—"}</span><span>{item.line}</span><span>{item.price}</span></button>)}{!market.books.length ? <div className={styles.empty}>This market or side is not quoted by the captured books.</div> : null}<div className={styles.paperAction}><button type="button" disabled={!quote?.fresh} onClick={addPaperPosition}><BookOpen aria-hidden="true" /> {quote?.fresh ? `RECORD PAPER ${quote.book.toUpperCase()} ${quote.line} ${quote.price}` : "PAPER ENTRY DISABLED · QUOTE NOT ≤5M FRESH"}</button><div aria-live="polite">{lockMessage ?? "Displayed quotes are observations, not verified execution availability."}</div></div></div>
+        <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{market.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)} · ${marketSignals.length} signals` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><MarketChart key={`${game.matchupId}:${marketKey}:${side}`} market={market} marketKey={marketKey} signals={marketSignals} /></div></section>
+        <section className={styles.lowerGrid}><div className={styles.ladderPane}><div className={styles.sectionTitle}><span>EXACT BOOK QUOTES</span><span>OBSERVED QUOTES</span></div><div className={styles.bookHeader}><span>BOOK</span><span>UPDATED</span><span>LINE</span><span>PRICE</span></div>{market.books.map((item) => <button key={item.key} type="button" className={styles.bookRow} data-selected={quote?.key === item.key} onClick={() => { setSelectedBook(item.key); setLockMessage(null); }}><span>{item.book}{!item.fresh ? <em>STALE</em> : null}</span><span>{item.updatedAt ? fmtEt(item.updatedAt, true) : "—"}</span><span>{item.line}</span><span>{item.price}</span></button>)}{!market.books.length ? <div className={styles.empty}>This market or side is not quoted by the captured books.</div> : null}<div className={styles.paperAction}><button type="button" disabled={!quote?.fresh} onClick={addPaperPosition}><BookOpen aria-hidden="true" /> {quote?.fresh ? `RECORD PAPER ${quote.book.toUpperCase()} ${quote.line} ${quote.price}` : "PAPER ENTRY DISABLED · QUOTE NOT ≤5M FRESH"}</button><div aria-live="polite">{lockMessage ?? "Displayed quotes are observations, not verified execution availability."}</div></div></div>
           <div className={styles.catalystPane}><div className={styles.sectionTitle}><span>MARKET QUALITY</span><span>AUDIT</span></div><div className={styles.catalystRow}><span>NOW</span><strong>SUPPORT</strong><p>{market.selectedLineBookCount} books at selected consensus line · {market.marketBookCount} books in market</p></div><div className={styles.catalystRow}><span>OPEN</span><strong>HISTORY</strong><p>{game.captures} accepted pregame captures; post-kickoff rows excluded</p></div><div className={styles.catalystRow}><span>CLOSE</span><strong>{game.closeQuality ? `GRADE ${game.closeQuality}` : "PENDING"}</strong><p>{game.closingCapturedAt ? `${market.closeMove}; ${Math.round((game.closeLeadSeconds ?? 0) / 60)}m before ${game.closeBoundarySource}` : "Frozen only after the scheduled CFB kickoff boundary; no latest-row proxy."}</p></div><div className={styles.catalystRow}><span>MAP</span><strong>IDENTITY</strong><p>CFBD game {game.cfbdGameId} · Odds event {game.oddsEventId ?? "provider event unavailable"}</p></div></div></section>
         <HistoryPanel context={researchContext} game={game} />
         <section className={styles.blotter}><div className={styles.sectionTitle}><span>SESSION PAPER BLOTTER</span><span>{positions.length} OPEN</span></div>{!positions.length ? <div className={styles.blotterEmpty}>A paper position can be recorded only from an observation no more than five minutes old.</div> : <div className={styles.blotterTableWrap}><table><thead><tr><th>Game</th><th>Market</th><th>Book</th><th>Entry</th><th>Observed</th></tr></thead><tbody>{positions.map((position) => <tr key={position.id}><td>{position.game}</td><td>{position.market}</td><td>{position.book}</td><td>{position.entry}</td><td>{fmtEt(position.observedAt)}</td></tr>)}</tbody></table></div>}</section>
