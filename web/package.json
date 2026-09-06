@@ -38,6 +38,7 @@
     "test:nfl-dfs-workspace": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-dfs-workspace.ts",
     "test:nfl-scenarios": "node --import tsx ./scripts/test-nfl-scenarios.ts",
     "test:nfl-scenario-lab": "node --import tsx ./scripts/test-nfl-scenario-lab.ts",
+    "test:nfl-player-context": "node --import tsx ./scripts/test-nfl-player-context.ts",
     "experiment:nfl-scenarios": "node --import tsx ./scripts/compare-nfl-scenarios.ts",
     "demo:nfl-scenarios": "node --import tsx ./scripts/compare-nfl-scenarios.ts --demo",
     "test:survivor": "node --import tsx ./scripts/test-survivor-assignment.ts"
