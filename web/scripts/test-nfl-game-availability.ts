@@ -23,3 +23,5 @@ assert.equal(resolve({...roster,injuries:[official]}).officialConfirmed,true);
 assert.match(resolve({...roster,injuries:[official]}).blockedReason!,/Official list/);
 assert.equal(resolve({...roster,injuries:[{...official,kickoff:'2026-09-14T17:00:00Z'}]}).officialConfirmed,false);
 assert.equal(resolve({...roster,injuries:[{...official,status:'ACTIVE'}]}).blockedReason,null);
+assert.equal(resolve({...roster,injuries:[{...injury,updatedAt:null}]}).blockedReason,null);
+assert.equal(resolve({...roster,injuries:[{...injury,updatedAt:null}]}).freshFantasyPros,false);

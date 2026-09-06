@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -57,6 +58,9 @@ def main():
         counts = persist_fantasypros_injury_observations(db, season=season, source_snapshot_id=source_id, rows=rows)
         report.update(status='captured' if rows else 'empty_unverified', source_snapshot_id=source_id,
                       response_hash=response_hash(payload), counts=counts,
+                      positions=dict(Counter(str(row.get('position_id','unknown')) for row in rows)),
+                      practice_rows=sum(any(row.get(f'practice_{i}') is not None for i in [1,2,3]) for row in rows),
+                      undated_rows=sum(not any(row.get(k) for k in ['updated_at','last_updated','last_updated_ts','news_updated']) for row in rows),
                       period_confirmed=payload.get('week') is not None,
                       limits=['A requested week is not proof of provider coverage.', 'Missing players are not cleared.',
                               'Reported availability is not official game-day confirmation.'])

@@ -4,7 +4,7 @@ The NFL DFS slate now combines its Sleeper role evidence with explicit week-scop
 
 The daily projection workflow captures FantasyPros injuries using the inferred next eligible week, or its explicit week input. The dedicated `Capture NFL game-week availability` manual workflow refreshes only this feed. Both retain sanitized audit artifacts. An empty/missing feed never clears a player. Week zero, wrong-team observations, future observations and expired evidence cannot drive new exclusions. The collector validates any returned season/week fields; absence of a provider period is disclosed rather than treated as confirmed coverage. Provider probabilities are retained upstream but are not used as calibrated participation probabilities.
 
-Freshness is 24 hours for injury evidence, tightened to two hours within six hours of canonical kickoff. Provider update time, when supplied, must also pass. Roster freshness remains the existing 72-hour research criterion with a separate game-day refresh warning. Generic roster retrieval time is not proof of provider recency. Late/unknown kickoff snapshots have explicit warnings and cannot be presented as verified pregame evidence.
+Freshness is 24 hours for injury evidence, tightened to two hours within six hours of canonical kickoff. A timezone-resolved provider update time is required and must also pass. Missing timestamps or dates with an unverified timezone remain display-only. Roster freshness remains the existing 72-hour research criterion with a separate game-day refresh warning. Generic roster retrieval time is not proof of provider recency. Late/unknown kickoff snapshots have explicit warnings and cannot be presented as verified pregame evidence.
 
 ## Official game-day confirmation
 
@@ -23,3 +23,10 @@ The app shows coverage counts and an expandable player evidence table. Official 
 - Live capture: `python -m ingest.nfl_dfs_availability --season 2026 --week 1`
 
 The live collector requires DATABASE_URL and FANTASYPROS_API_KEY. Missing credentials fail with a sanitized audit, while the daily projection pipeline treats this feed as optional. A successful API call alone does not establish complete player coverage or provider freshness. The manual capture workflow does not provide near-kickoff monitoring or late swap.
+
+
+## Live verification, September 6, 2026
+
+The first GitHub Week 1 capture succeeded: 224 source injury records, 70 matched canonical players, 154 unmatched, zero ambiguous matches. It did not echo a provider week. All 70 persisted observations lacked a resolved provider update timestamp; the raw feed instead supplies `injury_update_date` without a timezone and separate practice_1/2/3 fields. The UI now preserves those practice values and shows raw dates as timezone-unverified. These observations cannot newly change eligibility. Reconcile the provider date contract and unmatched position coverage before claiming a complete feed.
+
+The 719-player saved slate rendered the new panel successfully. Python report validation, TypeScript availability/workspace tests, lint, typecheck and production build passed. No official inactive observations were fabricated or imported during verification.
