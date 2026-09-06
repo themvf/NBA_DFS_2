@@ -1378,6 +1378,9 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
                                           "details": dict(details)})
     if sport == "mlb":
         details = {**details, **_mlb_model_signal_context(db, r, side, alert_prob)}
+        capture_policies = {book.get("capture_policy") for book in (r.get("books") or {}).values() if book.get("capture_policy")}
+        if len(capture_policies) == 1:
+            details["capture_policy"] = next(iter(capture_policies))
     if sport == "cfb":
         details = {
             "signal_version": _CFB_SIGNAL_VERSION,
@@ -2512,6 +2515,17 @@ def settle(db: DatabaseManager, sport: str) -> int:
                     winner_side=m["winner"],
                     completion_status=m["completion_status"],
                 )
+        elif sport == "mlb":
+            from model.mlb_terminal_signals import settlement as mlb_settlement
+            m = db.execute_one(
+                "SELECT home_score, away_score, game_status, game_date FROM mlb_matchups WHERE id=%s",
+                (a["matchup_id"],),
+            )
+            if m:
+                outcome, mlb_reason = mlb_settlement(
+                    "moneyline", a["side"], None, m["game_status"], m["home_score"], m["away_score"],
+                    rescheduled=m["game_date"] != a["game_date"],
+                )
         else:
             hs_col, as_col = _SCORE_COLS[sport]
             m = db.execute_one(
@@ -2527,6 +2541,8 @@ def settle(db: DatabaseManager, sport: str) -> int:
         if clv_pp is None and outcome is None:
             continue
         g = _grade_alert_prices(db, a)
+        if sport == "mlb" and m:
+            g["grading_json"] = {**(g["grading_json"] or {}), "settlement_reason": mlb_reason}
         if sport == "tennis" and m:
             g["grading_json"] = {
                 **(g["grading_json"] or {}),
@@ -2904,6 +2920,8 @@ def _run_cli(db, args):
         if args.sport == "mlb":
             scan_props(db)
             settle_props(db)
+            from model.mlb_terminal_signals import run as run_mlb_terminal_signals
+            run_mlb_terminal_signals(db)
         if args.sport == "soccer":
             settle_props_soccer(db)
         if args.sport == "tennis":

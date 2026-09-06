@@ -832,6 +832,7 @@ def fetch_odds(
     bookmakers: str | None = None,
     markets: str = "h2h,totals,spreads",
     request_audit: dict | None = None,
+    capture_policy: str | None = None,
 ) -> int:
     """Fetch Vegas totals + moneylines from The Odds API and update mlb_matchups.
 
@@ -907,6 +908,8 @@ def fetch_odds(
             params["regions"] = MLB_ODDS_REGIONS
         if event_ids:
             params["eventIds"] = ",".join(sorted(set(event_ids)))
+        if request_audit is not None:
+            request_audit["endpoint"] = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
         resp = requests.get(
             "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/",
             params=params,
@@ -923,7 +926,8 @@ def fetch_odds(
         resp.raise_for_status()
         games = resp.json()
     except requests.RequestException as e:
-        logger.warning("Odds API request failed: %s", e)
+        logger.warning("Odds API request failed (%s, HTTP %s)", type(e).__name__,
+                       e.response.status_code if e.response is not None else "unavailable")
         return 0
 
     # Build lookup: home team name → ALL matchup rows for that home team today.
@@ -1056,6 +1060,13 @@ def fetch_odds(
                         book["spread_home"] = float(home_outcome["point"])
                         book["spread_price"] = home_outcome.get("price")
 
+        # Additive terminal metadata; legacy model/DFS scalar calculations stay intact.
+        from ingest.mlb_terminal_quotes import enrich_terminal_books
+        enrich_terminal_books(g, books)
+        if capture_policy:
+            for book_quote in books.values():
+                book_quote["capture_policy"] = capture_policy
+
         home_ml    = consensus_american(home_prices)
         away_ml    = consensus_american(away_prices)
         vegas_total_raw = sum(total_points) / len(total_points) if total_points else None
@@ -1114,6 +1125,14 @@ def fetch_odds(
 
     if history_rows:
         insert_game_odds_history_rows(db, history_rows)
+        # Observe every accepted capture, including final checkpoint purchases.
+        # A detector failure cannot discard odds or break downstream schedule/DFS work;
+        # the regular line-alert job retries and reports failures independently.
+        try:
+            from model.mlb_terminal_signals import run as scan_terminal_signals
+            scan_terminal_signals(db, scan_only=True)
+        except Exception:
+            logger.exception("MLB terminal signal scan failed after odds were saved")
     msg = f"Odds: {updated} matchups updated with Vegas lines for {target_date}"
     if skipped_live:
         msg += f" ({skipped_live} in-play games skipped — closing lines frozen)"
@@ -1305,7 +1324,11 @@ if __name__ == "__main__":
     db = DatabaseManager(config.database_url)
 
     fetch_schedule(db, args.date)
-    fetch_odds(db, config.odds_api.api_key, args.date)
+    if args.require_fresh_upcoming_odds:
+        from ingest.mlb_terminal_capture import capture_movement
+        capture_movement(db, config.odds_api.api_key, args.date or date.today().isoformat())
+    else:
+        fetch_odds(db, config.odds_api.api_key, args.date)
     fetch_scores(db, args.date)
     target_date = args.date or date.today().isoformat()
     if args.require_fresh_upcoming_odds and not verify_fresh_upcoming_odds(db, target_date):

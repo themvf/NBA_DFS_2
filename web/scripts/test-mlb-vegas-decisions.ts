@@ -238,7 +238,8 @@ assert.ok(missingDistribution.blockers.some((reason) => reason.includes("distrib
 const board = buildMlbDecisionBoard([base], actionableOptions);
 assert.equal(board.length, 2, "one exact-book moneyline and total decision should be returned");
 
-const serverSource = readFileSync(new URL("../src/app/vegas/mlb-vegas-content.tsx", import.meta.url), "utf8");
+// The preserved model/combined-signal view now lives behind Model diagnostics.
+const serverSource = readFileSync(new URL("../src/app/vegas/mlb-diagnostics-content.tsx", import.meta.url), "utf8");
 const clientSource = readFileSync(new URL("../src/app/vegas/mlb-vegas-client.tsx", import.meta.url), "utf8");
 const querySource = readFileSync(new URL("../src/db/queries.ts", import.meta.url), "utf8");
 assert.doesNotMatch(serverSource, /buildMlbDecisionBoard/, "the simplified MLB movement board must not be gated by the legacy decision service");
