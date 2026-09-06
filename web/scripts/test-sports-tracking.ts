@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import {trackingFilters,trackingTotals,type TrackingGroup} from "../src/lib/sports-tracking";
+const now=new Date("2026-09-06T02:00:00Z");
+assert.equal(trackingFilters({},now).to,"2026-09-05");
+assert.equal(trackingFilters({sport:"invalid",result:"bad",page:"-8"},now).sport,"all");
+assert.equal(trackingFilters({page:"-8"},now).page,1);
+assert.equal(trackingFilters({from:"2026-02-30"},now).from,"2026-06-08");
+assert.deepEqual([trackingFilters({from:"2026-09-06",to:"2026-09-01"},now).from,trackingFilters({from:"2026-09-06",to:"2026-09-01"},now).to],["2026-09-01","2026-09-06"]);
+const group:TrackingGroup={sport:"mlb",signal:"steam",market:"moneyline",version:"v1",total:7,wins:2,losses:1,pushes:1,draws:1,voids:1,pending:1,unavailable:0,units:1.4,priced:3,events:6};
+const total=trackingTotals([group,{...group,units:null,priced:0}]);assert.equal(total.wins,4);assert.equal(total.losses,2);assert.equal(total.pushes,2);assert.equal(total.draws,2);assert.equal(total.pending,2);assert.equal(total.priced,3);assert.equal(total.units,1.4);assert.equal(trackingTotals([]).priced,0);
+console.log("Tracking filter and result aggregation checks passed");
