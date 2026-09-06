@@ -20,7 +20,7 @@
     "coordinator": "Klay Kubiak",
     "head_coach_same": true,
     "coordinator_same": true,
-    "play_caller_same": false,
+    "play_caller_same": null,
     "sources": [
       "https://media.49ers.1rmg.com/wp-content/uploads/2025/05/22104836/2025-Training-Camp-Release.pdf",
       "https://www.49ers.com/news/7-takeaways-from-49ers-coordinators-ahead-of-rookie-minicamp"
@@ -55,5 +55,405 @@
       "https://www.chiefs.com/team/coaches-roster/"
     ],
     "note": "Andy Reid returns; Eric Bieniemy replaces the previous offensive coordinator. Current play-calling continuity not independently verified in this record."
+  },
+  "ARI": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Mike LaFleur",
+    "coordinator": "Nathaniel Hackett",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.azcardinals.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "CHI": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Ben Johnson",
+    "coordinator": "Press Taylor",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.chicagobears.com/news/press-taylor-excited-for-new-opportunity-as-bears-offensive-coordinator"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "CIN": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Zac Taylor",
+    "coordinator": "Dan Pitcher",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.bengals.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "CLE": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Todd Monken",
+    "coordinator": "Travis Switzer",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.clevelandbrowns.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "DAL": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Brian Schottenheimer",
+    "coordinator": "Klayton Adams",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.dallascowboys.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "DEN": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Sean Payton",
+    "coordinator": "Davis Webb",
+    "play_caller": "Davis Webb",
+    "play_caller_same": false,
+    "sources": [
+      "https://www.denverbroncos.com/team/coaches-roster/",
+      "https://www.denverbroncos.com/news/i-wouldn-t-do-it-if-i-didn-t-think-it-was-going-to-help-our-team-win-hc-sean-payton-announces-oc-davis-webb-to-call-plays-for-broncos-offense"
+    ],
+    "note": "Sean Payton announced Davis Webb will take over offensive play calling in 2026.",
+    "effective_season": 2026,
+    "effective_date": null,
+    "play_caller_changed": true,
+    "previous_play_caller": "Sean Payton"
+  },
+  "DET": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Dan Campbell",
+    "coordinator": "Drew Petzing",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.detroitlions.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "GB": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Matt LaFleur",
+    "coordinator": "Adam Stenavich",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.packers.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "HOU": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "DeMeco Ryans",
+    "coordinator": "Nick Caley",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.houstontexans.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "IND": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Shane Steichen",
+    "coordinator": "Jim Bob Cooter",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.colts.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "JAX": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Liam Coen",
+    "coordinator": "Grant Udinski",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.jaguars.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "LAC": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Jim Harbaugh",
+    "coordinator": "Mike McDaniel",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.chargers.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "LAR": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Sean McVay",
+    "coordinator": "Nate Scheelhaase",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.therams.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "MIA": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Jeff Hafley",
+    "coordinator": "Bobby Slowik",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.miamidolphins.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "MIN": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Kevin O'Connell",
+    "coordinator": "Wes Phillips",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.vikings.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "NE": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Mike Vrabel",
+    "coordinator": "Josh McDaniels",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.patriots.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "NO": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Kellen Moore",
+    "coordinator": "Doug Nussmeier",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.neworleanssaints.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "NYG": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "John Harbaugh",
+    "coordinator": "Matt Nagy",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.giants.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "NYJ": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Aaron Glenn",
+    "coordinator": "Frank Reich",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.newyorkjets.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "PHI": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Nick Sirianni",
+    "coordinator": "Sean Mannion",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.philadelphiaeagles.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "PIT": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Mike McCarthy",
+    "coordinator": "Brian Angelichio",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.steelers.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "SEA": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Mike Macdonald",
+    "coordinator": "Brian Fleury",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.seahawks.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "TB": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Todd Bowles",
+    "coordinator": "Zac Robinson",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.buccaneers.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "TEN": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Robert Saleh",
+    "coordinator": "Brian Daboll",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.tennesseetitans.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "WSH": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Dan Quinn",
+    "coordinator": "David Blough",
+    "play_caller": null,
+    "play_caller_same": null,
+    "sources": [
+      "https://www.commanders.com/team/coaches-roster/"
+    ],
+    "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+    "effective_season": 2026,
+    "effective_date": null
+  },
+  "ATL": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Kevin Stefanski",
+    "coordinator": "Tommy Rees",
+    "play_caller": "Tommy Rees",
+    "sources": [
+      "https://www.atlantafalcons.com/news/tommy-rees-offensive-play-caller-kevin-stefanski"
+    ],
+    "effective_season": 2026,
+    "announcement_date": "2026-01-28",
+    "effective_date": null,
+    "note": "Official announcement identifies current offensive play caller."
+  },
+  "BAL": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Jesse Minter",
+    "coordinator": "Declan Doyle",
+    "play_caller": "Declan Doyle",
+    "sources": [
+      "https://www.baltimoreravens.com/news/declan-doyle-ravens-hiring-offensive-coordinator-jesse-minter"
+    ],
+    "effective_season": 2026,
+    "announcement_date": "2026-02-02",
+    "effective_date": null,
+    "note": "Official announcement identifies current offensive play caller."
+  },
+  "CAR": {
+    "season": 2026,
+    "checked_at": "2026-09-06T18:01:19.034826+00:00",
+    "head_coach": "Dave Canales",
+    "coordinator": "Brad Idzik",
+    "play_caller": "Brad Idzik",
+    "sources": [
+      "https://www.panthers.com/news/dave-canales-offensive-coordinator-brad-idzik-to-call-plays-in-2026"
+    ],
+    "effective_season": 2026,
+    "announcement_date": "2026-02-24",
+    "effective_date": null,
+    "note": "Official announcement identifies current offensive play caller.",
+    "head_coach_same": true,
+    "coordinator_same": true,
+    "play_caller_changed": true,
+    "play_caller_same": false,
+    "previous_play_caller": "Dave Canales"
   }
 }

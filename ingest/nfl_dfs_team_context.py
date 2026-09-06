@@ -27,6 +27,36 @@ def play_profile(frame):
             'sack_rate':float((drop & x.sack.eq(1)).sum()/n) if n else 0.,'target_rate':float(target.sum()/a) if a else 0.}
 
 
+def measured_tendencies(rows):
+    """Observed binary rates retain their eligible and known denominators."""
+    x=rows[rows.play_type.isin(['pass','run']) & rows.qb_kneel.ne(1) & rows.qb_spike.ne(1) & rows.two_point_attempt.ne(1)]
+    def binary(frame, column):
+        values=frame[column] if column in frame else pd.Series(dtype=float)
+        known=values[values.isin([0,1])]
+        return {'eligible':len(frame),'known':len(known),'rate':float(known.mean()) if len(known) else None}
+    red=x[x.yardline_100.between(1,20)] if 'yardline_100' in x else x.iloc[:0]
+    goal=x[x.yardline_100.between(1,5)] if 'yardline_100' in x else x.iloc[:0]
+    return {'shotgun':binary(x,'shotgun'),'no_huddle':binary(x,'no_huddle'),
+            'red_zone_dropback':binary(red,'qb_dropback'),'inside_five_dropback':binary(goal,'qb_dropback')}
+
+
+def participation_audit(plays, participation):
+    columns=['offense_formation','offense_personnel','defense_personnel','route','defense_coverage_type']
+    available=[c for c in columns if c in participation]
+    right=participation.rename(columns={'nflverse_game_id':'game_id'})
+    result=plays.merge(right[['game_id','play_id',*available]],on=['game_id','play_id'],how='left',validate='one_to_one',suffixes=('_pbp',''))
+    result=result[result.play_type.isin(['pass','run']) & result.qb_kneel.ne(1) & result.qb_spike.ne(1) & result.two_point_attempt.ne(1)]
+    audits={}
+    for team,rows in result.groupby('posteam'):
+        audits[team]={}
+        for column in columns:
+            values=rows[column].astype('string').str.strip() if column in rows else pd.Series(dtype='string')
+            known=values.notna() & ~values.str.lower().isin(['','unknown','na','n/a','none','null','nan'])
+            counts=values[known].value_counts()
+            audits[team][column]={'eligible':len(rows),'known':int(known.sum()),'categories':{str(k):int(v) for k,v in counts.items()}}
+    return audits
+
+
 def prior_role_shares(rows):
     """Last eight TEAM games, including zeros when a player did not participate."""
     weeks=sorted(rows.week.unique())[-8:]
@@ -51,7 +81,9 @@ def main():
         evidence[key]={'url':source['url'],'sha256':source['responseHash']}
         return pd.read_csv(path) if path.suffix=='.csv' else pd.read_parquet(path)
     plays=read(f'play-by-play:{prior}');plays=plays[plays.season_type=='REG'].copy();plays['posteam']=plays.posteam.map(normalize_team)
+    audits=participation_audit(plays,read(f'participation:{prior}'))
     stats=read(f'weekly-stats:{prior}');stats=stats[stats.season_type=='REG'].copy();stats['team']=stats.team.map(normalize_team)
+    schedule=read('schedule:all');schedule=schedule[(schedule.season==prior)&(schedule.game_type=='REG')]
     old=stats.groupby('player_id').team.agg(lambda s:sorted(set(s))).to_dict()
     with psycopg2.connect(load_config().database_url) as c:
         c.set_session(readonly=True)
@@ -71,13 +103,24 @@ def main():
             shares=prior_shares['players'].get(member['identity'])
             members.append({'id':str(member['id']),'identity':member['identity'],'name':member['name'],'position':member['position'],**role,
                             'prior_target_share':shares['target_share'] if shares else None,'prior_carry_share':shares['carry_share'] if shares else None})
-        coach=coaching.get(team)
-        teams.append({'team':team,'profiles':profiles,'coaching':coach,'continuity':coaching_status(coach,now,args.season),'prior_role_window':{k:v for k,v in prior_shares.items() if k!='players'},
+        coach=dict(coaching.get(team) or {})
+        history=[]
+        for side in ['home','away']:
+            for _,game in schedule[schedule[f'{side}_team'].map(normalize_team)==team].iterrows():
+                name=game[f'{side}_coach']
+                if pd.notna(name):history.append({'week':int(game.week),'date':str(game.gameday),'name':name})
+        coach['previous_head_coach_history']=sorted(history,key=lambda r:r['week'])
+        previous={r['name'] for r in history}
+        if previous:
+            coach['head_coach_same']=previous=={coach.get('head_coach')}
+            coach['head_coach_changed']=coach.get('head_coach') not in previous
+        teams.append({'team':team,'participation_audit':audits[team],'tendencies':measured_tendencies(rows),'profiles':profiles,'coaching':coach,'continuity':coaching_status(coach,now,args.season),'prior_role_window':{k:v for k,v in prior_shares.items() if k!='players'},
                       'players':sorted(members,key=lambda r:(r['position'],r['name']))})
     result={'season':args.season,'historical_season':prior,'as_of':now.isoformat(),'teams':teams,'sources':evidence,'optimizer_enabled':False,
             'roster_digest':hashlib.sha256(json.dumps(roster,default=str,sort_keys=True).encode()).hexdigest(),
-            'recipe_digest':hashlib.sha256((ROOT/'model/nfl_dfs_team_context.py').read_bytes().replace(b'\r\n',b'\n')).hexdigest(),
-            'limits':['Historical play mix is a scenario reference, not a current forecast.','Neutral: within seven points through quarter three; leading/trailing: beyond seven points, all quarters.','Sacks and scrambles consume designed dropbacks; kneels, spikes, no-play and two-point plays excluded.','Role shares require explicit assumptions. Departures and rookies never receive automatic transferred shares.','Roster retrieval is not official game-day confirmation. Coaching evidence must be current and complete for continuity status.']}
+            'recipe_digest':hashlib.sha256(b''.join((ROOT/path).read_bytes().replace(b'\r\n',b'\n') for path in ['model/nfl_dfs_team_context.py','ingest/nfl_dfs_team_context.py'])).hexdigest(),
+            'coaching_digest':hashlib.sha256(json.dumps(coaching,sort_keys=True).encode()).hexdigest(),
+            'limits':['Historical play mix is a scenario reference, not a current forecast.','Participation coverage is an availability audit only. Route labels do not establish routes run for every receiver; coverage labels are not player-level matchup advantages.','Neutral: within seven points through quarter three; leading/trailing: beyond seven points, all quarters.','Sacks and scrambles consume designed dropbacks; kneels, spikes, no-play and two-point plays excluded.','Role shares require explicit assumptions. Departures and rookies never receive automatic transferred shares.','Roster retrieval is not official game-day confirmation. Coaching evidence must be current and complete for continuity status.']}
     (ROOT/'web/src/data/nfl-team-context.json').write_text(json.dumps(result,indent=2,allow_nan=False)+'\n',encoding='utf-8')
     print(json.dumps({'teams':len(teams),'players':sum(len(t['players']) for t in teams),'continuity':{t['team']:t['continuity'] for t in teams},'examples':[p for t in teams for p in t['players'] if p['name'] in ['Mike Evans','Kirk Cousins']]},indent=2))
 

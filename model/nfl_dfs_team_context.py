@@ -13,7 +13,7 @@ def coaching_status(record, now, season):
         return 'unresolved'
     if captured.tzinfo is None or captured>now or (now-captured).total_seconds()>30*86400:
         return 'unresolved'
-    if record.get('head_coach_changed') or record.get('coordinator_changed'):
+    if record.get('head_coach_changed') or record.get('coordinator_changed') or record.get('play_caller_changed'):
         return 'changed'
     if record.get('head_coach_same') and record.get('coordinator_same') and record.get('play_caller_same'):
         return 'continuity_verified'

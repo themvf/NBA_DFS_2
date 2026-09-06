@@ -52,3 +52,41 @@ def test_prior_shares_use_team_games_not_only_player_appearances():
     assert r['weeks']==list(range(2,10))
     assert r['players']['a']['target_share']==1/8
     assert sum(p['target_share'] for p in r['players'].values())==1
+
+
+def test_play_caller_change_overrides_title_continuity():
+    r={'season':2026,'checked_at':NOW.isoformat(),'head_coach_same':True,'coordinator_same':True,'play_caller_changed':True}
+    assert coaching_status(r,NOW,2026)=='changed'
+
+
+def test_tendency_missing_is_not_zero_and_zone_denominators_are_explicit():
+    import pandas as pd
+    from ingest.nfl_dfs_team_context import measured_tendencies
+    base={'play_type':'pass','qb_kneel':0,'qb_spike':0,'two_point_attempt':0,'qb_dropback':1,'yardline_100':10}
+    rows=pd.DataFrame([{**base,'shotgun':1},{**base,'shotgun':None},{**base,'shotgun':0,'yardline_100':40},{**base,'shotgun':1,'play_type':'no_play'}])
+    r=measured_tendencies(rows)
+    assert r['shotgun']=={'eligible':3,'known':2,'rate':.5}
+    assert r['no_huddle']=={'eligible':3,'known':0,'rate':None}
+    assert r['red_zone_dropback']=={'eligible':2,'known':2,'rate':1.}
+    assert r['inside_five_dropback']['rate'] is None
+
+
+def test_participation_audit_rejects_duplicate_keys_and_preserves_missing():
+    import pandas as pd
+    from ingest.nfl_dfs_team_context import participation_audit
+    p=pd.DataFrame([{'game_id':'g','play_id':1,'posteam':'SF','play_type':'pass','qb_kneel':0,'qb_spike':0,'two_point_attempt':0}])
+    r=pd.DataFrame([{'nflverse_game_id':'g','play_id':1,'offense_formation':'UNKNOWN'}])
+    assert participation_audit(p,r)['SF']['offense_formation']['known']==0
+    with pytest.raises(pd.errors.MergeError):participation_audit(p,pd.concat([r,r]))
+
+
+def test_published_team_profiles_cover_league_and_conserve_audit_counts():
+    import json
+    from pathlib import Path
+    r=json.loads(Path('web/src/data/nfl-team-context.json').read_text())
+    assert len(r['teams'])==32
+    for team in r['teams']:
+        assert team['coaching']['sources'] and team['coaching']['head_coach'] and team['coaching']['coordinator']
+        assert len(team['coaching']['previous_head_coach_history'])==17
+        for audit in team['participation_audit'].values():
+            assert sum(audit['categories'].values())==audit['known']<=audit['eligible']

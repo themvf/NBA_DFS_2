@@ -33,3 +33,12 @@ Both target and carry shares can be explicitly overridden for each currently eli
 This is an automatic historical-reference allocation plus explicit role assumptions, **not an automatic forecast of rookie or newcomer usage**, and remains disconnected from the optimizer. Coaching evidence now also includes BUF and KC: Buffalo changed head coach/OC titles while Brady retained play-calling, and Kansas City changed OC under returning head coach Reid. The other 28 teams remain unresolved; complete all-team coaching verification is still pending. Staff-change status and retained play-calling are deliberately separate facts.
 
 Validation: Python tests cover team-game denominators and opportunity accounting; `node --import tsx scripts/test-nfl-role-allocation.ts` from `web/` tests conservation, newcomers, unavailable/stale inputs, invalid overrides, reproducibility and every current team’s reference allocation.
+
+
+## September 6: league staff directory and measured tendencies
+
+All 32 teams now have source-linked current head coach and offensive coordinator records. The hash-verified 2025 schedule supplies all 17 games of prior head-coach history per team, preserving midseason changes. This is not complete coordinator/play-caller history: unresolved fields remain null. Carolina and Denver explicitly changed play callers, independently of head-coach continuity. Announcement dates are not treated as exact effective dates.
+
+The existing team-context screen includes shotgun, no-huddle, red-zone and inside-five dropback bars. Every measure preserves eligible and recorded denominators. Missing values remain unavailable. Participation joins reject duplicate game/play keys and report availability of formation, personnel, route and coverage fields. Those labels are not treated as individual route participation or matchup advantages.
+
+Remaining work: verify unresolved current play callers and prior coordinator/caller timelines; derive positional target and designed-carry splits with historical identities; define pace within possessions; then validate role-conditioned DFS ranges before optimizer integration. This release does not claim improved lineup returns or activate historical tendencies as current projections.
