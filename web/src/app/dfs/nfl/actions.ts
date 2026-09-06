@@ -15,6 +15,8 @@ import {
 import { parseNflDkSalaryCsv } from "@/lib/nfl-dfs/dk-salary-csv";
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
 import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
+import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
+import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import {
@@ -50,6 +52,20 @@ export type NflWorkspaceSlate = {
 };
 
 export type NflComparisonSource = "fantasypros" | "linestar" | "custom";
+
+export async function previewNflAbsence(uploadId: string, receiverId: number, teammateId: number) {
+  const slate = await workspaceSlate(uploadId); // Re-read official evidence; never trust browser flags.
+  const receiver = slate.players.find(p=>p.dkPlayerId===receiverId);
+  const teammate = slate.players.find(p=>p.dkPlayerId===teammateId);
+  if (!receiver || !teammate) return {ok:false as const,error:'Both players must belong to this saved salary slate.'};
+  const { default: history } = await import('@/data/nfl-player-context-2025.json');
+  try {
+    const result = previewAbsence(history as unknown as PlayerContext, receiver, teammate, Date.now());
+    return {ok:true as const,result:{...result,uploadId,projectionRunId:slate.projectionRunId,digest:sha256(JSON.stringify(result))}};
+  } catch (error) {
+    return {ok:false as const,error:error instanceof Error ? error.message : 'Scenario evidence is unavailable.'};
+  }
+}
 export type NflComparisonRow = { name: string; team?: string | null; projection?: number | null; ownership?: number | null };
 
 function normalizeName(value: string): string {

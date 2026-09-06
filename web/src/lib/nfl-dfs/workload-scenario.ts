@@ -9,15 +9,18 @@ export function teammatePresence(data: PlayerContext, row: ContextRow, teammateI
   return game.plays > 0 && game.covered === game.plays ? 'absent' : 'unknown';
 }
 
-function weightedRange(values: { points: number; weight: number }[]) {
+function weightedRange(values: { points: number; weight: number }[], salary?: number) {
   const sorted = [...values].sort((a,b) => a.points-b.points);
   const total = sorted.reduce((s,v) => s+v.weight,0);
   const q = (p: number) => { let cumulative=0; for (const v of sorted) { cumulative+=v.weight; if (cumulative >= p*total) return v.points; } return sorted.at(-1)!.points; };
-  return {mean: sorted.reduce((s,v)=>s+v.points*v.weight,0)/total, p10:q(.1),p50:q(.5),p90:q(.9)};
+  const mean = sorted.reduce((s,v)=>s+v.points*v.weight,0)/total;
+  const hit = (target: number) => sorted.reduce((s,v)=>s+(v.points>=target?v.weight:0),0)/total;
+  return {mean, p10:q(.1),p50:q(.5),p90:q(.9), salaryHits: salary === undefined ? null : [2,3,4].map(multiple=>({multiple,target:multiple*salary/1000,probability:hit(multiple*salary/1000)}))};
 }
 
 /** Condition empirical draws, not sums of quantiles. Unknown personnel never implies absence. */
-export function workloadScenario(data: PlayerContext, playerId: string, teammateId: string, team: string, beforeWeek: number, state: Exclude<Presence,'unknown'>) {
+export function workloadScenario(data: PlayerContext, playerId: string, teammateId: string, team: string, beforeWeek: number, state: Exclude<Presence,'unknown'>, salary?: number) {
+  if (salary !== undefined && (!Number.isFinite(salary) || salary <= 0)) throw new Error('Invalid salary');
   if (playerId === teammateId) throw new Error('Choose a different teammate');
   const rows = data.rows.filter(r => r.playerId===playerId && data.games[r.gameKey]?.team===team && data.games[r.gameKey].week<beforeWeek && contextPoints(r)!==null && r.targets!==null && Number.isFinite(r.targets));
   const paired = rows.filter(r=>teammatePresence(data,r,teammateId)!=='unknown');
@@ -26,8 +29,8 @@ export function workloadScenario(data: PlayerContext, playerId: string, teammate
   if (rows.length<6 || matches.length<3 || other<3) return {available:false as const, history:rows.length, matching:matches.length, other, reason:'Needs 6 scored prior games and at least 3 observed games in each teammate state.'};
   const weight=matches.length/(matches.length+8);
   const meanTargets=(rs:ContextRow[])=>rs.reduce((s,r)=>s+r.targets!,0)/rs.length;
-  const baseline = weightedRange(rows.map(r=>({points:contextPoints(r)!,weight:1/rows.length})));
-  const scenario = weightedRange([...rows.map(r=>({points:contextPoints(r)!,weight:(1-weight)/rows.length})),...matches.map(r=>({points:contextPoints(r)!,weight:weight/matches.length}))]);
+  const baseline = weightedRange(rows.map(r=>({points:contextPoints(r)!,weight:1/rows.length})), salary);
+  const scenario = weightedRange([...rows.map(r=>({points:contextPoints(r)!,weight:(1-weight)/rows.length})),...matches.map(r=>({points:contextPoints(r)!,weight:weight/matches.length}))], salary);
   return {available:true as const, history:rows.length,matching:matches.length,other,weight, baseline,scenario,baselineTargets:meanTargets(rows),scenarioTargets:(1-weight)*meanTargets(rows)+weight*meanTargets(matches),beforeWeek};
 }
 
