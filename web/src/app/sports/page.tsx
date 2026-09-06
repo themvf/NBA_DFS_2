@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function SportsPage(){return <div className="space-y-6"><h1 className="text-3xl font-bold">Sports</h1><p className="text-muted-foreground">Your sports research and results in one place.</p><Link href="/sports/tracking" className="block rounded-lg border p-6 hover:bg-accent"><h2 className="text-xl font-semibold">Tracking →</h2><p className="mt-2 text-muted-foreground">Line-movement records across MLB, NFL, college football and tennis.</p></Link></div>;}

@@ -63,17 +63,18 @@ const PAGE_LINKS: Array<{
 export function SportNav() {
   const pathname    = usePathname();
   const searchParams = useSearchParams();
+  const sportsSection = pathname === "/sports" || pathname.startsWith("/sports/");
   const currentSport = (pathname === "/cfb" || pathname.startsWith("/cfb/")
     ? "cfb"
     : pathname === "/nfl" || pathname.startsWith("/nfl/") || pathname.startsWith("/dfs/nfl") || pathname.startsWith("/fantasy-football")
     ? "nfl"
     : searchParams.get("sport") ?? "nba") as NavSport;
-  const visiblePageLinks = PAGE_LINKS.filter((link) => !link.sports || link.sports.includes(currentSport));
+  const visiblePageLinks = sportsSection ? [{href:"/sports/tracking",label:"Tracking"}] : PAGE_LINKS.filter((link) => !link.sports || link.sports.includes(currentSport));
 
   const sportHref = (sport: NavSport): string => {
     if (sport === "cfb") return "/cfb";
     if (sport === "nfl") return "/nfl";
-    if (currentSport === "nfl" || currentSport === "cfb") {
+    if (sportsSection || currentSport === "nfl" || currentSport === "cfb") {
       return sport === "nba" || sport === "mlb" ? `/dfs?sport=${sport}` : `/vegas?sport=${sport}`;
     }
     return `${pathname}?sport=${sport}`;
@@ -91,10 +92,11 @@ export function SportNav() {
           DFS
         </Link>
 
+        <Link href="/sports" className={`rounded px-3 py-1.5 text-sm font-medium ${sportsSection ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-accent"}`}>Sports</Link>
         {/* Sport selector — primary navigation */}
         <div className="flex items-center gap-1">
           {SPORTS.map(({ sport, label, icon }) => {
-            const active = currentSport === sport;
+            const active = !sportsSection && currentSport === sport;
             return (
               <Link
                 key={sport}
@@ -118,7 +120,7 @@ export function SportNav() {
         {/* Page links — carry current sport forward */}
         <nav className="flex items-center gap-1 text-sm">
           {visiblePageLinks.map((l) => {
-            const href = currentSport === "nfl" || currentSport === "cfb" ? l.href : `${l.href}?sport=${currentSport}`;
+            const href = sportsSection || currentSport === "nfl" || currentSport === "cfb" ? l.href : `${l.href}?sport=${currentSport}`;
             // Prefer the most specific matching href so nested routes (e.g.
             // /vegas/wimbledon under /vegas) don't also highlight their parent.
             const matches = (p: string) => pathname === p || pathname.startsWith(`${p}/`);
