@@ -90,3 +90,32 @@ def test_published_team_profiles_cover_league_and_conserve_audit_counts():
         assert len(team['coaching']['previous_head_coach_history'])==17
         for audit in team['participation_audit'].values():
             assert sum(audit['categories'].values())==audit['known']<=audit['eligible']
+
+
+def test_caller_confirmation_expires_independently_of_staff_titles():
+    from model.nfl_dfs_team_context import caller_evidence_status
+    r={'play_caller':'A','caller_evidence':{'season':2026,'checked_at':NOW.isoformat(),'source':'https://team.example/announcement','status':'reported'}}
+    assert caller_evidence_status(r,NOW,2026)=='reported'
+    assert caller_evidence_status(r,NOW+timedelta(days=31),2026)=='unresolved'
+    assert caller_evidence_status(r,NOW-timedelta(days=1),2026)=='unresolved'
+    r['caller_evidence']['status']='team_confirmed'
+    assert caller_evidence_status(r,NOW,2026)=='team_confirmed'
+
+
+def test_positional_opportunities_keep_unknown_and_use_game_identity():
+    import pandas as pd
+    from ingest.nfl_dfs_team_context import positional_opportunities
+    b={'play_type':'run','qb_kneel':0,'qb_spike':0,'two_point_attempt':0,'qb_dropback':0,'sack':0,'qb_scramble':0,'receiver_player_id':None,'yardline_100':3}
+    rows=pd.DataFrame([{**b,'game_id':'one','rusher_player_id':'a'},{**b,'game_id':'two','rusher_player_id':'a'},{**b,'game_id':'one','rusher_player_id':None}])
+    stats=pd.DataFrame([{'game_id':'one','player_id':'a','position':'RB'},{'game_id':'two','player_id':'a','position':'WR'}])
+    r=positional_opportunities(rows,stats)['inside_five_carries']
+    assert r['opportunities']==3 and r['positions']['RB']==r['positions']['WR']==r['positions']['Unknown']==1
+    with pytest.raises(ValueError):positional_opportunities(rows,pd.concat([stats,stats]))
+
+
+def test_clock_spacing_does_not_bridge_drives_quarters_or_penalties():
+    import pandas as pd
+    from ingest.nfl_dfs_team_context import possession_clock_spacing
+    b={'game_id':'g','play_type':'run','qb_kneel':0,'qb_spike':0,'two_point_attempt':0,'drive':1,'qtr':1}
+    rows=pd.DataFrame([{**b,'play_id':1,'game_seconds_remaining':3600},{**b,'play_id':2,'game_seconds_remaining':3570},{**b,'play_id':3,'game_seconds_remaining':3540,'play_type':'no_play'},{**b,'play_id':4,'game_seconds_remaining':3510},{**b,'play_id':5,'game_seconds_remaining':3480,'drive':2},{**b,'play_id':6,'game_seconds_remaining':3450,'drive':2,'qtr':2}])
+    assert possession_clock_spacing(rows)=={'pairs':1,'mean_seconds':30.,'median_seconds':30.}

@@ -1,10 +1,51 @@
 {
   "season": 2026,
   "historical_season": 2025,
-  "as_of": "2026-09-06T18:03:26.478698+00:00",
+  "as_of": "2026-09-06T18:19:07.837724+00:00",
   "teams": [
     {
       "team": "ARI",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 617,
+          "positions": {
+            "QB": 0,
+            "RB": 124,
+            "FB": 0,
+            "WR": 275,
+            "TE": 218,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 325,
+          "positions": {
+            "QB": 26,
+            "RB": 292,
+            "FB": 0,
+            "WR": 7,
+            "TE": 0,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 18,
+          "positions": {
+            "QB": 3,
+            "RB": 14,
+            "FB": 0,
+            "WR": 1,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 822,
+        "mean_seconds": 28.55839416058394,
+        "median_seconds": 36.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1070,
@@ -276,14 +317,20 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Mike LaFleur",
         "coordinator": "Nathaniel Hackett",
-        "play_caller": null,
+        "play_caller": "Mike LaFleur",
         "play_caller_same": null,
         "sources": [
           "https://www.azcardinals.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.azcardinals.com/news/mike-lafleur-felt-right-in-taking-cardinals-coaching-job-2026",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -956,6 +1003,47 @@
     },
     {
       "team": "ATL",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 519,
+          "positions": {
+            "QB": 0,
+            "RB": 119,
+            "FB": 0,
+            "WR": 272,
+            "TE": 127,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 449,
+          "positions": {
+            "QB": 7,
+            "RB": 439,
+            "FB": 0,
+            "WR": 1,
+            "TE": 2,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 21,
+          "positions": {
+            "QB": 1,
+            "RB": 20,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 779,
+        "mean_seconds": 30.12451861360719,
+        "median_seconds": 37.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1032,
@@ -1229,7 +1317,13 @@
         "effective_season": 2026,
         "announcement_date": "2026-01-28",
         "effective_date": null,
-        "note": "Official announcement identifies current offensive play caller.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.atlantafalcons.com/news/tommy-rees-offensive-play-caller-kevin-stefanski",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -1841,6 +1935,47 @@
     },
     {
       "team": "BAL",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 407,
+          "positions": {
+            "QB": 0,
+            "RB": 73,
+            "FB": 0,
+            "WR": 211,
+            "TE": 123,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 453,
+          "positions": {
+            "QB": 41,
+            "RB": 392,
+            "FB": 0,
+            "WR": 10,
+            "TE": 10,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 32,
+          "positions": {
+            "QB": 1,
+            "RB": 28,
+            "FB": 0,
+            "WR": 0,
+            "TE": 3,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 715,
+        "mean_seconds": 32.19020979020979,
+        "median_seconds": 38.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 954,
@@ -2126,7 +2261,13 @@
         "effective_season": 2026,
         "announcement_date": "2026-02-02",
         "effective_date": null,
-        "note": "Official announcement identifies current offensive play caller.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.baltimoreravens.com/news/declan-doyle-ravens-offense-vision-lamar-jackson-play-caller",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -2838,6 +2979,47 @@
     },
     {
       "team": "BUF",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 479,
+          "positions": {
+            "QB": 0,
+            "RB": 88,
+            "FB": 0,
+            "WR": 270,
+            "TE": 121,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 472,
+          "positions": {
+            "QB": 46,
+            "RB": 419,
+            "FB": 0,
+            "WR": 7,
+            "TE": 0,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 40,
+          "positions": {
+            "QB": 14,
+            "RB": 25,
+            "FB": 0,
+            "WR": 1,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 818,
+        "mean_seconds": 33.020782396088016,
+        "median_seconds": 39.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1056,
@@ -3140,7 +3322,13 @@
           "https://www.buffalobills.com/news/bills-name-pete-carmichael-as-offensive-coordinator",
           "https://www.buffalobills.com/team/coaches-roster/joe-brady"
         ],
-        "note": "Head coach and coordinator titles changed; Joe Brady retains primary play-calling. Staff change does not imply a wholly new offensive system.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.buffalobills.com/news/bills-name-pete-carmichael-as-offensive-coordinator",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -3830,6 +4018,47 @@
     },
     {
       "team": "CAR",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 480,
+          "positions": {
+            "QB": 0,
+            "RB": 92,
+            "FB": 0,
+            "WR": 289,
+            "TE": 99,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 409,
+          "positions": {
+            "QB": 7,
+            "RB": 391,
+            "FB": 0,
+            "WR": 10,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 10,
+          "positions": {
+            "QB": 0,
+            "RB": 10,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 764,
+        "mean_seconds": 31.267015706806284,
+        "median_seconds": 37.5
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 991,
@@ -4125,12 +4354,18 @@
         "effective_season": 2026,
         "announcement_date": "2026-02-24",
         "effective_date": null,
-        "note": "Official announcement identifies current offensive play caller.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "head_coach_same": true,
         "coordinator_same": true,
         "play_caller_changed": true,
         "play_caller_same": false,
         "previous_play_caller": "Dave Canales",
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.panthers.com/news/dave-canales-offensive-coordinator-brad-idzik-to-call-plays-in-2026",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -4892,6 +5127,47 @@
     },
     {
       "team": "CHI",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 532,
+          "positions": {
+            "QB": 2,
+            "RB": 79,
+            "FB": 0,
+            "WR": 315,
+            "TE": 136,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 450,
+          "positions": {
+            "QB": 24,
+            "RB": 400,
+            "FB": 0,
+            "WR": 25,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 26,
+          "positions": {
+            "QB": 2,
+            "RB": 24,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 836,
+        "mean_seconds": 29.56578947368421,
+        "median_seconds": 36.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1090,
@@ -5180,14 +5456,25 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Ben Johnson",
         "coordinator": "Press Taylor",
-        "play_caller": null,
+        "play_caller": "Ben Johnson",
         "play_caller_same": null,
         "sources": [
           "https://www.chicagobears.com/news/press-taylor-excited-for-new-opportunity-as-bears-offensive-coordinator"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "coordinator_changed": true,
+        "previous_coordinator": "Declan Doyle",
+        "previous_coordinator_source": "https://www.chicagobears.com/news/bears-hc-ben-johnson-believes-in-new-oc-running-backs-coach",
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -5278,7 +5565,7 @@
         "head_coach_same": true,
         "head_coach_changed": false
       },
-      "continuity": "partial_continuity",
+      "continuity": "changed",
       "prior_role_window": {
         "weeks": [
           11,
@@ -5874,6 +6161,47 @@
     },
     {
       "team": "CIN",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 608,
+          "positions": {
+            "QB": 0,
+            "RB": 111,
+            "FB": 0,
+            "WR": 367,
+            "TE": 129,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 357,
+          "positions": {
+            "QB": 14,
+            "RB": 334,
+            "FB": 0,
+            "WR": 8,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 19,
+          "positions": {
+            "QB": 3,
+            "RB": 16,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 786,
+        "mean_seconds": 29.739185750636132,
+        "median_seconds": 37.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1044,
@@ -6152,14 +6480,22 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Zac Taylor",
         "coordinator": "Dan Pitcher",
-        "play_caller": null,
+        "play_caller": "Zac Taylor",
         "play_caller_same": null,
         "sources": [
           "https://www.bengals.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -6789,6 +7125,47 @@
     },
     {
       "team": "CLE",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 522,
+          "positions": {
+            "QB": 0,
+            "RB": 120,
+            "FB": 0,
+            "WR": 232,
+            "TE": 169,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 385,
+          "positions": {
+            "QB": 6,
+            "RB": 353,
+            "FB": 0,
+            "WR": 19,
+            "TE": 7,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 22,
+          "positions": {
+            "QB": 2,
+            "RB": 18,
+            "FB": 0,
+            "WR": 1,
+            "TE": 1,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 756,
+        "mean_seconds": 29.444444444444443,
+        "median_seconds": 37.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1024,
@@ -7073,14 +7450,33 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Todd Monken",
         "coordinator": "Travis Switzer",
-        "play_caller": null,
+        "play_caller": "Todd Monken",
         "play_caller_same": null,
         "sources": [
-          "https://www.clevelandbrowns.com/team/coaches-roster/"
+          "https://www.clevelandbrowns.com/team/coaches-roster/",
+          "https://www.clevelandbrowns.com/news/browns-interview-offensive-coordinator-tommy-rees-for-head-coach"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.clevelandbrowns.com/news/todd-monken-jacked-to-lead-the-browns-into-their-next-chapter-team-coverage",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "historical_caller_changes": [
+          {
+            "season": 2025,
+            "effective_week": 10,
+            "previous": "Kevin Stefanski",
+            "next": "Tommy Rees",
+            "source_date": "2026-01-08",
+            "source": "https://www.clevelandbrowns.com/news/browns-interview-offensive-coordinator-tommy-rees-for-head-coach",
+            "checked_at": "2026-09-06T18:19:06.812564+00:00",
+            "usage": "Retrospective event attribution only; not a complete season timeline or pregame capture."
+          }
+        ],
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -7821,6 +8217,47 @@
     },
     {
       "team": "DAL",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 607,
+          "positions": {
+            "QB": 0,
+            "RB": 82,
+            "FB": 0,
+            "WR": 387,
+            "TE": 138,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 420,
+          "positions": {
+            "QB": 13,
+            "RB": 383,
+            "FB": 0,
+            "WR": 22,
+            "TE": 1,
+            "Unknown": 1
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 28,
+          "positions": {
+            "QB": 3,
+            "RB": 25,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 834,
+        "mean_seconds": 28.670263788968825,
+        "median_seconds": 34.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1101,
@@ -8128,14 +8565,20 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Brian Schottenheimer",
         "coordinator": "Klayton Adams",
-        "play_caller": null,
+        "play_caller": "Brian Schottenheimer",
         "play_caller_same": null,
         "sources": [
           "https://www.dallascowboys.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.dallascowboys.com/news/brian-schottenheimer-could-not-be-more-happy-with-cowboys-offseason",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -8880,6 +9323,47 @@
     },
     {
       "team": "DEN",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 584,
+          "positions": {
+            "QB": 1,
+            "RB": 109,
+            "FB": 8,
+            "WR": 351,
+            "TE": 114,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 402,
+          "positions": {
+            "QB": 30,
+            "RB": 344,
+            "FB": 10,
+            "WR": 17,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 20,
+          "positions": {
+            "QB": 1,
+            "RB": 18,
+            "FB": 1,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 826,
+        "mean_seconds": 29.819612590799032,
+        "median_seconds": 37.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1073,
@@ -9180,11 +9664,18 @@
           "https://www.denverbroncos.com/team/coaches-roster/",
           "https://www.denverbroncos.com/news/i-wouldn-t-do-it-if-i-didn-t-think-it-was-going-to-help-our-team-win-hc-sean-payton-announces-oc-davis-webb-to-call-plays-for-broncos-offense"
         ],
-        "note": "Sean Payton announced Davis Webb will take over offensive play calling in 2026.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
         "play_caller_changed": true,
         "previous_play_caller": "Sean Payton",
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.denverbroncos.com/news/i-wouldn-t-do-it-if-i-didn-t-think-it-was-going-to-help-our-team-win-hc-sean-payton-announces-oc-davis-webb-to-call-plays-for-broncos-offense",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "coordinator_changed": true,
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -9835,6 +10326,47 @@
     },
     {
       "team": "DET",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 550,
+          "positions": {
+            "QB": 0,
+            "RB": 123,
+            "FB": 0,
+            "WR": 335,
+            "TE": 92,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 426,
+          "positions": {
+            "QB": 6,
+            "RB": 407,
+            "FB": 0,
+            "WR": 12,
+            "TE": 0,
+            "Unknown": 1
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 26,
+          "positions": {
+            "QB": 0,
+            "RB": 26,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 806,
+        "mean_seconds": 30.602977667493796,
+        "median_seconds": 37.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1050,
@@ -10105,14 +10637,34 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Dan Campbell",
         "coordinator": "Drew Petzing",
-        "play_caller": null,
+        "play_caller": "Drew Petzing",
         "play_caller_same": null,
         "sources": [
-          "https://www.detroitlions.com/team/coaches-roster/"
+          "https://www.detroitlions.com/team/coaches-roster/",
+          "https://www.detroitlions.com/news/notebook-campbell-calls-plays-in-lions-win-over-commanders"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.detroitlions.com/news/goff-on-working-with-new-oc-petzing-it-s-been-awesome",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "coordinator_changed": true,
+        "historical_caller_changes": [
+          {
+            "season": 2025,
+            "effective_week": 10,
+            "previous": "John Morton",
+            "next": "Dan Campbell",
+            "source_date": "2025-11-09",
+            "source": "https://www.detroitlions.com/news/notebook-campbell-calls-plays-in-lions-win-over-commanders",
+            "checked_at": "2026-09-06T18:19:06.812564+00:00",
+            "usage": "Retrospective event attribution only; not a complete season timeline or pregame capture."
+          }
+        ],
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -10203,7 +10755,7 @@
         "head_coach_same": true,
         "head_coach_changed": false
       },
-      "continuity": "partial_continuity",
+      "continuity": "changed",
       "prior_role_window": {
         "weeks": [
           11,
@@ -10821,6 +11373,47 @@
     },
     {
       "team": "GB",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 460,
+          "positions": {
+            "QB": 0,
+            "RB": 78,
+            "FB": 0,
+            "WR": 284,
+            "TE": 98,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 439,
+          "positions": {
+            "QB": 21,
+            "RB": 386,
+            "FB": 0,
+            "WR": 31,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 26,
+          "positions": {
+            "QB": 2,
+            "RB": 24,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 766,
+        "mean_seconds": 31.573107049608357,
+        "median_seconds": 38.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 991,
@@ -11103,14 +11696,20 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Matt LaFleur",
         "coordinator": "Adam Stenavich",
-        "play_caller": null,
+        "play_caller": "Matt LaFleur",
         "play_caller_same": null,
         "sources": [
           "https://www.packers.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.packers.com/news/5-things-learned-from-matt-lafleur-at-the-2026-nfl-annual-meeting-march-30",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -11832,6 +12431,47 @@
     },
     {
       "team": "HOU",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 553,
+          "positions": {
+            "QB": 0,
+            "RB": 77,
+            "FB": 0,
+            "WR": 346,
+            "TE": 130,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 429,
+          "positions": {
+            "QB": 16,
+            "RB": 399,
+            "FB": 0,
+            "WR": 10,
+            "TE": 4,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 24,
+          "positions": {
+            "QB": 3,
+            "RB": 21,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 803,
+        "mean_seconds": 30.25280199252802,
+        "median_seconds": 37.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1072,
@@ -12121,14 +12761,22 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "DeMeco Ryans",
         "coordinator": "Nick Caley",
-        "play_caller": null,
+        "play_caller": "Nick Caley",
         "play_caller_same": null,
         "sources": [
           "https://www.houstontexans.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -12915,6 +13563,47 @@
     },
     {
       "team": "IND",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 530,
+          "positions": {
+            "QB": 1,
+            "RB": 77,
+            "FB": 0,
+            "WR": 312,
+            "TE": 139,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 405,
+          "positions": {
+            "QB": 20,
+            "RB": 373,
+            "FB": 0,
+            "WR": 5,
+            "TE": 6,
+            "Unknown": 1
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 34,
+          "positions": {
+            "QB": 6,
+            "RB": 25,
+            "FB": 0,
+            "WR": 0,
+            "TE": 3,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 769,
+        "mean_seconds": 31.1222366710013,
+        "median_seconds": 38.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1004,
@@ -13176,14 +13865,20 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Shane Steichen",
         "coordinator": "Jim Bob Cooter",
-        "play_caller": null,
+        "play_caller": "Shane Steichen",
         "play_caller_same": null,
         "sources": [
           "https://www.colts.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.colts.com/video/one-on-one-with-shane-steichen-at-the-2026-nfl-combine-daniel-jones-alec-pierce-anthony-richardson-riley-leonard-lou-anarumo",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -13945,6 +14640,47 @@
     },
     {
       "team": "JAX",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 547,
+          "positions": {
+            "QB": 0,
+            "RB": 78,
+            "FB": 0,
+            "WR": 319,
+            "TE": 105,
+            "Unknown": 45
+          }
+        },
+        "designed_carries": {
+          "opportunities": 426,
+          "positions": {
+            "QB": 31,
+            "RB": 373,
+            "FB": 0,
+            "WR": 21,
+            "TE": 0,
+            "Unknown": 1
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 30,
+          "positions": {
+            "QB": 8,
+            "RB": 20,
+            "FB": 0,
+            "WR": 2,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 802,
+        "mean_seconds": 31.18204488778055,
+        "median_seconds": 39.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1070,
@@ -14216,14 +14952,22 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Liam Coen",
         "coordinator": "Grant Udinski",
-        "play_caller": null,
+        "play_caller": "Liam Coen",
         "play_caller_same": null,
         "sources": [
           "https://www.jaguars.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -14890,6 +15634,47 @@
     },
     {
       "team": "KC",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 549,
+          "positions": {
+            "QB": 1,
+            "RB": 89,
+            "FB": 0,
+            "WR": 312,
+            "TE": 147,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 359,
+          "positions": {
+            "QB": 5,
+            "RB": 336,
+            "FB": 0,
+            "WR": 17,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 21,
+          "positions": {
+            "QB": 2,
+            "RB": 16,
+            "FB": 0,
+            "WR": 2,
+            "TE": 1,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 801,
+        "mean_seconds": 30.164794007490638,
+        "median_seconds": 37.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1045,
@@ -15177,7 +15962,16 @@
           "https://www.chiefs.com/news/chiefs-name-eric-bieniemy-as-offensive-coordinator",
           "https://www.chiefs.com/team/coaches-roster/"
         ],
-        "note": "Andy Reid returns; Eric Bieniemy replaces the previous offensive coordinator. Current play-calling continuity not independently verified in this record.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
+        "play_caller": "Andy Reid",
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -15876,6 +16670,47 @@
     },
     {
       "team": "LAC",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 544,
+          "positions": {
+            "QB": 0,
+            "RB": 70,
+            "FB": 0,
+            "WR": 370,
+            "TE": 99,
+            "Unknown": 5
+          }
+        },
+        "designed_carries": {
+          "opportunities": 398,
+          "positions": {
+            "QB": 32,
+            "RB": 359,
+            "FB": 0,
+            "WR": 6,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 19,
+          "positions": {
+            "QB": 2,
+            "RB": 17,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 827,
+        "mean_seconds": 31.26360338573156,
+        "median_seconds": 38.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1079,
@@ -16181,14 +17016,20 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Jim Harbaugh",
         "coordinator": "Mike McDaniel",
-        "play_caller": null,
+        "play_caller": "Mike McDaniel",
         "play_caller_same": null,
         "sources": [
           "https://www.chargers.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.chargers.com/news/mike-mcdaniel-justin-herbert-training-camp-day-3-2026",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -16932,6 +17773,47 @@
     },
     {
       "team": "LAR",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 581,
+          "positions": {
+            "QB": 0,
+            "RB": 64,
+            "FB": 0,
+            "WR": 367,
+            "TE": 150,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 432,
+          "positions": {
+            "QB": 5,
+            "RB": 413,
+            "FB": 0,
+            "WR": 13,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 32,
+          "positions": {
+            "QB": 1,
+            "RB": 31,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 807,
+        "mean_seconds": 30.722428748451055,
+        "median_seconds": 37.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1056,
@@ -17159,14 +18041,24 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Sean McVay",
         "coordinator": "Nate Scheelhaase",
-        "play_caller": null,
-        "play_caller_same": null,
+        "play_caller": "Sean McVay",
+        "play_caller_same": true,
         "sources": [
           "https://www.therams.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.therams.com/news/top-takeaways-from-sean-mcvay-s-post-2026-nfl-combine-press-conference-finalized-coaching-staff-pending-free-agents-and-more",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "coordinator_changed": true,
+        "previous_coordinator": "Mike LaFleur",
+        "previous_coordinator_source": "https://www.azcardinals.com/news/cardinals-choose-mike-lafleur-as-new-head-coach-2026",
+        "previous_play_caller": "Sean McVay",
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -17257,7 +18149,7 @@
         "head_coach_same": true,
         "head_coach_changed": false
       },
-      "continuity": "partial_continuity",
+      "continuity": "changed",
       "prior_role_window": {
         "weeks": [
           11,
@@ -17830,6 +18722,47 @@
     },
     {
       "team": "LV",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 494,
+          "positions": {
+            "QB": 0,
+            "RB": 95,
+            "FB": 0,
+            "WR": 242,
+            "TE": 156,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 341,
+          "positions": {
+            "QB": 19,
+            "RB": 307,
+            "FB": 0,
+            "WR": 12,
+            "TE": 2,
+            "Unknown": 1
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 11,
+          "positions": {
+            "QB": 1,
+            "RB": 10,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 696,
+        "mean_seconds": 30.808908045977013,
+        "median_seconds": 37.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 939,
@@ -18103,9 +19036,31 @@
         "play_caller_same": false,
         "sources": [
           "https://www.raiders.com/news/klint-kubiak-named-head-coach-of-the-las-vegas-raiders",
-          "https://www.raiders.com/news/raiders-name-andrew-janocko-offensive-coordinator"
+          "https://www.raiders.com/news/raiders-name-andrew-janocko-offensive-coordinator",
+          "https://www.raiders.com/news/raiders-greg-olson-interim-offensive-coordinator-pete-carroll-2025-coaching-staff"
         ],
-        "note": "New staff: 2025 Raiders play mix is not attributed to the current staff.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
+        "play_caller": "Klint Kubiak",
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "historical_caller_changes": [
+          {
+            "season": 2025,
+            "effective_week": 13,
+            "previous": "Chip Kelly",
+            "next": "Greg Olson",
+            "source_date": "2025-11-24",
+            "source": "https://www.raiders.com/news/raiders-greg-olson-interim-offensive-coordinator-pete-carroll-2025-coaching-staff",
+            "checked_at": "2026-09-06T18:19:06.812564+00:00",
+            "usage": "Retrospective event attribution only; not a complete season timeline or pregame capture."
+          }
+        ],
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -18850,6 +19805,47 @@
     },
     {
       "team": "MIA",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 462,
+          "positions": {
+            "QB": 1,
+            "RB": 103,
+            "FB": 11,
+            "WR": 245,
+            "TE": 102,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 409,
+          "positions": {
+            "QB": 8,
+            "RB": 378,
+            "FB": 2,
+            "WR": 19,
+            "TE": 2,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 16,
+          "positions": {
+            "QB": 0,
+            "RB": 15,
+            "FB": 0,
+            "WR": 0,
+            "TE": 1,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 711,
+        "mean_seconds": 32.52180028129395,
+        "median_seconds": 40.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 939,
@@ -19133,14 +20129,22 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Jeff Hafley",
         "coordinator": "Bobby Slowik",
-        "play_caller": null,
+        "play_caller": "Bobby Slowik",
         "play_caller_same": null,
         "sources": [
           "https://www.miamidolphins.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -19902,6 +20906,47 @@
     },
     {
       "team": "MIN",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 468,
+          "positions": {
+            "QB": 0,
+            "RB": 78,
+            "FB": 2,
+            "WR": 294,
+            "TE": 94,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 368,
+          "positions": {
+            "QB": 13,
+            "RB": 345,
+            "FB": 3,
+            "WR": 6,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 15,
+          "positions": {
+            "QB": 1,
+            "RB": 12,
+            "FB": 2,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 698,
+        "mean_seconds": 30.722063037249285,
+        "median_seconds": 38.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 939,
@@ -20163,14 +21208,22 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Kevin O'Connell",
         "coordinator": "Wes Phillips",
-        "play_caller": null,
+        "play_caller": "Kevin O'Connell",
         "play_caller_same": null,
         "sources": [
           "https://www.vikings.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -20934,6 +21987,47 @@
     },
     {
       "team": "NE",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 482,
+          "positions": {
+            "QB": 1,
+            "RB": 83,
+            "FB": 0,
+            "WR": 283,
+            "TE": 115,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 401,
+          "positions": {
+            "QB": 20,
+            "RB": 371,
+            "FB": 0,
+            "WR": 10,
+            "TE": 0,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 26,
+          "positions": {
+            "QB": 2,
+            "RB": 24,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 785,
+        "mean_seconds": 31.907006369426753,
+        "median_seconds": 38.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1014,
@@ -21245,14 +22339,22 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Mike Vrabel",
         "coordinator": "Josh McDaniels",
-        "play_caller": null,
+        "play_caller": "Josh McDaniels",
         "play_caller_same": null,
         "sources": [
           "https://www.patriots.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -21956,6 +23058,47 @@
     },
     {
       "team": "NO",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 565,
+          "positions": {
+            "QB": 2,
+            "RB": 77,
+            "FB": 0,
+            "WR": 344,
+            "TE": 142,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 391,
+          "positions": {
+            "QB": 32,
+            "RB": 300,
+            "FB": 0,
+            "WR": 7,
+            "TE": 52,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 12,
+          "positions": {
+            "QB": 2,
+            "RB": 7,
+            "FB": 0,
+            "WR": 0,
+            "TE": 3,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 814,
+        "mean_seconds": 26.91031941031941,
+        "median_seconds": 30.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1061,
@@ -22230,14 +23373,22 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Kellen Moore",
         "coordinator": "Doug Nussmeier",
-        "play_caller": null,
+        "play_caller": "Kellen Moore",
         "play_caller_same": null,
         "sources": [
           "https://www.neworleanssaints.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -23003,6 +24154,47 @@
     },
     {
       "team": "NYG",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 503,
+          "positions": {
+            "QB": 1,
+            "RB": 99,
+            "FB": 0,
+            "WR": 301,
+            "TE": 102,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 451,
+          "positions": {
+            "QB": 51,
+            "RB": 396,
+            "FB": 0,
+            "WR": 3,
+            "TE": 0,
+            "Unknown": 1
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 28,
+          "positions": {
+            "QB": 7,
+            "RB": 21,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 815,
+        "mean_seconds": 29.761963190184048,
+        "median_seconds": 34.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1075,
@@ -23268,14 +24460,20 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "John Harbaugh",
         "coordinator": "Matt Nagy",
-        "play_caller": null,
+        "play_caller": "Matt Nagy",
         "play_caller_same": null,
         "sources": [
           "https://www.giants.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.giants.com/news/presser-points-dominic-zvada-wins-giants-kicker-competition-ben-sauls-john-harbaugh",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -24054,6 +25252,47 @@
     },
     {
       "team": "NYJ",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 472,
+          "positions": {
+            "QB": 1,
+            "RB": 84,
+            "FB": 9,
+            "WR": 271,
+            "TE": 106,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 393,
+          "positions": {
+            "QB": 48,
+            "RB": 333,
+            "FB": 1,
+            "WR": 11,
+            "TE": 0,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 9,
+          "positions": {
+            "QB": 3,
+            "RB": 6,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 761,
+        "mean_seconds": 28.938239159001313,
+        "median_seconds": 35.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1001,
@@ -24307,14 +25546,22 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Aaron Glenn",
         "coordinator": "Frank Reich",
-        "play_caller": null,
+        "play_caller": "Frank Reich",
         "play_caller_same": null,
         "sources": [
           "https://www.newyorkjets.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -25049,6 +26296,47 @@
     },
     {
       "team": "PHI",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 464,
+          "positions": {
+            "QB": 0,
+            "RB": 69,
+            "FB": 0,
+            "WR": 291,
+            "TE": 104,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 419,
+          "positions": {
+            "QB": 54,
+            "RB": 364,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 1
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 31,
+          "positions": {
+            "QB": 11,
+            "RB": 20,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 745,
+        "mean_seconds": 30.829530201342283,
+        "median_seconds": 37.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 992,
@@ -25323,14 +26611,20 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Nick Sirianni",
         "coordinator": "Sean Mannion",
-        "play_caller": null,
+        "play_caller": "Sean Mannion",
         "play_caller_same": null,
         "sources": [
           "https://www.philadelphiaeagles.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.philadelphiaeagles.com/news/eagles-2026-offense-sean-mannion-jalen-hurts-dave-spadaro",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -26064,6 +27358,47 @@
     },
     {
       "team": "PIT",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 522,
+          "positions": {
+            "QB": 1,
+            "RB": 132,
+            "FB": 4,
+            "WR": 233,
+            "TE": 151,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 382,
+          "positions": {
+            "QB": 3,
+            "RB": 353,
+            "FB": 15,
+            "WR": 2,
+            "TE": 9,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 27,
+          "positions": {
+            "QB": 0,
+            "RB": 23,
+            "FB": 4,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 737,
+        "mean_seconds": 31.099050203527817,
+        "median_seconds": 38.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 973,
@@ -26332,14 +27667,20 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Mike McCarthy",
         "coordinator": "Brian Angelichio",
-        "play_caller": null,
+        "play_caller": "Mike McCarthy",
         "play_caller_same": null,
         "sources": [
           "https://www.steelers.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.steelers.com/news/steelers-welcome-mccarthy-back-home",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -27055,6 +28396,47 @@
     },
     {
       "team": "SEA",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 455,
+          "positions": {
+            "QB": 0,
+            "RB": 63,
+            "FB": 0,
+            "WR": 290,
+            "TE": 102,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 476,
+          "positions": {
+            "QB": 13,
+            "RB": 435,
+            "FB": 0,
+            "WR": 18,
+            "TE": 10,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 27,
+          "positions": {
+            "QB": 0,
+            "RB": 26,
+            "FB": 0,
+            "WR": 0,
+            "TE": 1,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 741,
+        "mean_seconds": 31.483130904183536,
+        "median_seconds": 38.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 994,
@@ -27347,14 +28729,24 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Mike Macdonald",
         "coordinator": "Brian Fleury",
-        "play_caller": null,
-        "play_caller_same": null,
+        "play_caller": "Brian Fleury",
+        "play_caller_same": false,
         "sources": [
           "https://www.seahawks.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.seahawks.com/news/takeaways-from-seahawks-coordinators-brian-fleury-aden-durde-jay-harbaugh",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "coordinator_changed": true,
+        "previous_coordinator": "Klint Kubiak",
+        "previous_coordinator_source": "https://www.seahawks.com/news/seahawks-offensive-coordinator-brian-fleury-not-looking-for-huge-changes-but-to-maintain-what-made-seattle-s-offense-successful",
+        "play_caller_changed": true,
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -27445,7 +28837,7 @@
         "head_coach_same": true,
         "head_coach_changed": false
       },
-      "continuity": "partial_continuity",
+      "continuity": "changed",
       "prior_role_window": {
         "weeks": [
           11,
@@ -28066,6 +29458,47 @@
     },
     {
       "team": "SF",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 550,
+          "positions": {
+            "QB": 0,
+            "RB": 141,
+            "FB": 28,
+            "WR": 250,
+            "TE": 130,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 436,
+          "positions": {
+            "QB": 25,
+            "RB": 403,
+            "FB": 2,
+            "WR": 5,
+            "TE": 1,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 25,
+          "positions": {
+            "QB": 2,
+            "RB": 22,
+            "FB": 1,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 827,
+        "mean_seconds": 31.11124546553809,
+        "median_seconds": 37.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1060,
@@ -28338,7 +29771,16 @@
           "https://media.49ers.1rmg.com/wp-content/uploads/2025/05/22104836/2025-Training-Camp-Release.pdf",
           "https://www.49ers.com/news/7-takeaways-from-49ers-coordinators-ahead-of-rookie-minicamp"
         ],
-        "note": "Head coach and offensive coordinator continuity supported; current play-calling continuity not independently verified.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
+        "play_caller": "Kyle Shanahan",
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -29045,6 +30487,47 @@
     },
     {
       "team": "TB",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 541,
+          "positions": {
+            "QB": 0,
+            "RB": 91,
+            "FB": 0,
+            "WR": 363,
+            "TE": 86,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 419,
+          "positions": {
+            "QB": 5,
+            "RB": 398,
+            "FB": 0,
+            "WR": 16,
+            "TE": 0,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 19,
+          "positions": {
+            "QB": 0,
+            "RB": 19,
+            "FB": 0,
+            "WR": 0,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 803,
+        "mean_seconds": 31.31631382316314,
+        "median_seconds": 40.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 1057,
@@ -29343,14 +30826,24 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Todd Bowles",
         "coordinator": "Zac Robinson",
-        "play_caller": null,
-        "play_caller_same": null,
+        "play_caller": "Zac Robinson",
+        "play_caller_same": false,
         "sources": [
           "https://www.buccaneers.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.buccaneers.com/news/buccaneers-offensive-preview-training-camp-2026",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "coordinator_changed": true,
+        "previous_coordinator": "Josh Grizzard",
+        "previous_coordinator_source": "https://www.buccaneers.com/news/buccaneers-offensive-preview-training-camp-2026",
+        "play_caller_changed": true,
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -29441,7 +30934,7 @@
         "head_coach_same": true,
         "head_coach_changed": false
       },
-      "continuity": "partial_continuity",
+      "continuity": "changed",
       "prior_role_window": {
         "weeks": [
           11,
@@ -30052,6 +31545,47 @@
     },
     {
       "team": "TEN",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 530,
+          "positions": {
+            "QB": 0,
+            "RB": 93,
+            "FB": 0,
+            "WR": 296,
+            "TE": 140,
+            "Unknown": 1
+          }
+        },
+        "designed_carries": {
+          "opportunities": 349,
+          "positions": {
+            "QB": 10,
+            "RB": 328,
+            "FB": 0,
+            "WR": 11,
+            "TE": 0,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 10,
+          "positions": {
+            "QB": 0,
+            "RB": 8,
+            "FB": 0,
+            "WR": 2,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 745,
+        "mean_seconds": 29.78791946308725,
+        "median_seconds": 37.0
+      },
+      "caller_status": "reported",
       "participation_audit": {
         "offense_formation": {
           "eligible": 995,
@@ -30321,14 +31855,35 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Robert Saleh",
         "coordinator": "Brian Daboll",
-        "play_caller": null,
+        "play_caller": "Brian Daboll",
         "play_caller_same": null,
         "sources": [
-          "https://www.tennesseetitans.com/team/coaches-roster/"
+          "https://www.tennesseetitans.com/team/coaches-roster/",
+          "https://www.tennesseetitans.com/news/titans-hc-brian-callahan-hands-off-play-calling-duties-to-qbs-coach-bo-hardegree"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "reported",
+          "source": "https://g.espncdn.com/s/ffldraftkit/26/NFLDK2026_CS_ClayProjections2026.pdf",
+          "source_date": "2026-09-02",
+          "page": 74,
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "historical_caller_changes": [
+          {
+            "season": 2025,
+            "effective_week": 4,
+            "previous": "Brian Callahan",
+            "next": "Bo Hardegree",
+            "source_date": "2025-09-23",
+            "source": "https://www.tennesseetitans.com/news/titans-hc-brian-callahan-hands-off-play-calling-duties-to-qbs-coach-bo-hardegree",
+            "checked_at": "2026-09-06T18:19:06.812564+00:00",
+            "usage": "Retrospective event attribution only; not a complete season timeline or pregame capture."
+          }
+        ],
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -30999,6 +32554,47 @@
     },
     {
       "team": "WSH",
+      "positional_opportunities": {
+        "targets": {
+          "opportunities": 432,
+          "positions": {
+            "QB": 0,
+            "RB": 55,
+            "FB": 0,
+            "WR": 273,
+            "TE": 104,
+            "Unknown": 0
+          }
+        },
+        "designed_carries": {
+          "opportunities": 408,
+          "positions": {
+            "QB": 44,
+            "RB": 345,
+            "FB": 0,
+            "WR": 19,
+            "TE": 0,
+            "Unknown": 0
+          }
+        },
+        "inside_five_carries": {
+          "opportunities": 32,
+          "positions": {
+            "QB": 4,
+            "RB": 27,
+            "FB": 0,
+            "WR": 1,
+            "TE": 0,
+            "Unknown": 0
+          }
+        }
+      },
+      "clock_spacing": {
+        "pairs": 732,
+        "mean_seconds": 31.00409836065574,
+        "median_seconds": 37.0
+      },
+      "caller_status": "team_confirmed",
       "participation_audit": {
         "offense_formation": {
           "eligible": 972,
@@ -31293,14 +32889,24 @@
         "checked_at": "2026-09-06T18:01:19.034826+00:00",
         "head_coach": "Dan Quinn",
         "coordinator": "David Blough",
-        "play_caller": null,
-        "play_caller_same": null,
+        "play_caller": "David Blough",
+        "play_caller_same": false,
         "sources": [
           "https://www.commanders.com/team/coaches-roster/"
         ],
-        "note": "Current staff titles verified. Prior coordinator and play-calling continuity remain unresolved; titles do not establish play-calling responsibility.",
+        "note": "Current staff titles have official sources. Play-caller evidence is independently labeled; historical coordinator/caller continuity requires its own evidence.",
         "effective_season": 2026,
         "effective_date": null,
+        "caller_evidence": {
+          "status": "team_confirmed",
+          "source": "https://www.commanders.com/news/david-blough-builds-commanders-playbook",
+          "checked_at": "2026-09-06T18:13:22.285146+00:00",
+          "season": 2026
+        },
+        "coordinator_changed": true,
+        "previous_coordinator": "Kliff Kingsbury",
+        "previous_coordinator_source": "https://www.commanders.com/news/jayden-daniels-david-blough-washington-commanders-offense",
+        "play_caller_changed": true,
         "previous_head_coach_history": [
           {
             "week": 1,
@@ -31391,7 +32997,7 @@
         "head_coach_same": true,
         "head_coach_changed": false
       },
-      "continuity": "partial_continuity",
+      "continuity": "changed",
       "prior_role_window": {
         "weeks": [
           10,
@@ -32049,8 +33655,8 @@
   },
   "optimizer_enabled": false,
   "roster_digest": "a279fd9cfabb1ed9a5689ea79bd06253e9a49324611fff74223f7be03b5052a1",
-  "recipe_digest": "db9672adce8042523370ca05d329e5a7e9de81ef07c2a7a86e1084d779781818",
-  "coaching_digest": "b0e1abbdb51766d610baad9b0a9cf38654ef246b1ea35ee676b01e7c5fa92b94",
+  "recipe_digest": "9ef0a68f73d8053baad33ded6b0e4e1f58c105318ce1022cdb6d00db235d735f",
+  "coaching_digest": "1912ea6522e4c9ffcfc5f789c19ebe9414eb34c04fc03221adaac98741cb480b",
   "limits": [
     "Historical play mix is a scenario reference, not a current forecast.",
     "Participation coverage is an availability audit only. Route labels do not establish routes run for every receiver; coverage labels are not player-level matchup advantages.",

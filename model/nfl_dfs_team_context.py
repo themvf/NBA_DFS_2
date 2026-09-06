@@ -20,6 +20,19 @@ def coaching_status(record, now, season):
     return 'partial_continuity' if record.get('head_coach_same') else 'unresolved'
 
 
+def caller_evidence_status(record, now, season):
+    evidence=(record or {}).get('caller_evidence') or {}
+    try:
+        checked=datetime.fromisoformat(evidence['checked_at'])
+    except (KeyError,TypeError,ValueError):
+        return 'unresolved'
+    if evidence.get('season')!=season or not evidence.get('source') or not record.get('play_caller'):
+        return 'unresolved'
+    if checked.tzinfo is None or checked>now or (now-checked).total_seconds()>30*86400:
+        return 'unresolved'
+    return evidence['status'] if evidence.get('status') in ['team_confirmed','reported'] else 'unresolved'
+
+
 def roster_role(member, historical_teams, season, now):
     source=member.get('sleeper') or {}
     captured=member.get('fetched_at')

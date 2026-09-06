@@ -9,7 +9,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from config import load_config
 from model.nfl_dfs_target_share import normalize_team
-from model.nfl_dfs_team_context import coaching_status,roster_role
+from model.nfl_dfs_team_context import coaching_status,roster_role,caller_evidence_status
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -55,6 +55,39 @@ def participation_audit(plays, participation):
             counts=values[known].value_counts()
             audits[team][column]={'eligible':len(rows),'known':int(known.sum()),'categories':{str(k):int(v) for k,v in counts.items()}}
     return audits
+
+
+def positional_opportunities(rows, stats):
+    """Use identities and positions from the same historical game, never current rosters."""
+    keys=['game_id','player_id']
+    if stats.duplicated(keys).any():raise ValueError('Duplicate historical position identity')
+    positions={(r.game_id,r.player_id):r.position for r in stats.itertuples()}
+    x=rows[rows.play_type.isin(['pass','run']) & rows.qb_kneel.ne(1) & rows.qb_spike.ne(1) & rows.two_point_attempt.ne(1)]
+    def split(frame,column):
+        counts={p:0 for p in ['QB','RB','FB','WR','TE','Unknown']}
+        for r in frame.itertuples():
+            pos=positions.get((r.game_id,getattr(r,column)))
+            counts[pos if pos in counts else 'Unknown']+=1
+        return {'opportunities':len(frame),'positions':counts}
+    targets=x[x.qb_dropback.eq(1)&x.sack.ne(1)&x.qb_scramble.ne(1)&x.receiver_player_id.notna()]
+    runs=x[x.qb_dropback.ne(1)]
+    return {'targets':split(targets,'receiver_player_id'),'designed_carries':split(runs,'rusher_player_id'),
+            'inside_five_carries':split(runs[runs.yardline_100.between(1,5)],'rusher_player_id')}
+
+
+def possession_clock_spacing(rows):
+    """Clock spacing between adjacent offensive snaps in the same drive and quarter.
+
+    Includes elapsed play time, unlike a snap-to-snap wall-clock pace measure.
+    All rows are retained before shifting so intervening no-play rows break a pair.
+    """
+    x=rows.sort_values(['game_id','play_id']).copy()
+    eligible=x.play_type.isin(['pass','run'])&x.qb_kneel.ne(1)&x.qb_spike.ne(1)&x.two_point_attempt.ne(1)
+    previous=x.shift(1)
+    delta=previous.game_seconds_remaining-x.game_seconds_remaining
+    mask=eligible & eligible.shift(1,fill_value=False) & x.game_id.eq(previous.game_id) & x.drive.eq(previous.drive) & x.qtr.eq(previous.qtr) & x.drive.notna() & delta.between(0,60)
+    values=delta[mask]
+    return {'pairs':len(values),'mean_seconds':float(values.mean()) if len(values) else None,'median_seconds':float(values.median()) if len(values) else None}
 
 
 def prior_role_shares(rows):
@@ -114,7 +147,7 @@ def main():
         if previous:
             coach['head_coach_same']=previous=={coach.get('head_coach')}
             coach['head_coach_changed']=coach.get('head_coach') not in previous
-        teams.append({'team':team,'participation_audit':audits[team],'tendencies':measured_tendencies(rows),'profiles':profiles,'coaching':coach,'continuity':coaching_status(coach,now,args.season),'prior_role_window':{k:v for k,v in prior_shares.items() if k!='players'},
+        teams.append({'team':team,'positional_opportunities':positional_opportunities(rows,stats[stats.team==team]),'clock_spacing':possession_clock_spacing(rows),'caller_status':caller_evidence_status(coach,now,args.season),'participation_audit':audits[team],'tendencies':measured_tendencies(rows),'profiles':profiles,'coaching':coach,'continuity':coaching_status(coach,now,args.season),'prior_role_window':{k:v for k,v in prior_shares.items() if k!='players'},
                       'players':sorted(members,key=lambda r:(r['position'],r['name']))})
     result={'season':args.season,'historical_season':prior,'as_of':now.isoformat(),'teams':teams,'sources':evidence,'optimizer_enabled':False,
             'roster_digest':hashlib.sha256(json.dumps(roster,default=str,sort_keys=True).encode()).hexdigest(),
