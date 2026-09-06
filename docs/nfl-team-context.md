@@ -50,3 +50,20 @@ python -m pytest tests/test_nfl_dfs_team_context.py tests/test_nfl_dfs_role_cont
 The role replay archives prediction draws' summaries, hashes sources/recipes and verifies the frozen comparator digest. UI data is a generated snapshot, not an automated refresh service.
 
 Remaining work: independently confirm the reported callers and complete historical coordinator/caller timelines; improve the workload-to-points component rather than merely widening ranges; then validate current-role forecasts prospectively, especially rookies, arrivals and injury replacements, before optimizer activation.
+
+## Receiving-component diagnostic
+
+The receiving-component replay holds projected targets fixed and estimates catches, yards per catch and touchdowns per target separately. Rates shrink toward strictly earlier WR rates using 30 target, 20 reception and 50 target prior weights. Historical bonuses/other scoring remain separate; mean yardage does not automatically earn a bonus. Prior-week residuals supply ranges and an explicit mean correction.
+
+| Season | Paired games | Component MAE | Interval score | 25-point Brier |
+|---|---:|---:|---:|---:|
+| 2024 | 1,794 | 5.163 | 24.590 | 0.05075 |
+| 2025 | 1,821 | 4.856 | 22.327 | 0.04161 |
+
+All three metrics improve over the previous role experiment in both seasons, but point and interval error still trail production. Optimizer activation remains disabled. Whole-week bootstrap intervals accompany the comparison; the 2025 probability improvement is uncertain. Previously inspected seasons are diagnostic, not untouched validation. No salary-multiple or contest-winning improvement is established.
+
+The team-context page adds historical receiver selection, component expectations, points contribution bars and floor/median/ceiling estimates. Examples are selected by projected targets, never actual performance. Source, recipe and paired-prediction hashes are archived. Current coaching and roster observations never enter historical replay.
+
+Reproduce with `python -m ingest.nfl_dfs_receiving_components --source-root "C:/Docs/_AI Python Projects/NBADFS_v2"`. Verify with `python -m pytest tests/test_nfl_dfs_receiving_components.py tests/test_nfl_dfs_role_context.py -q`.
+
+Next: investigate residual calibration and receiving efficiency errors before prospective validation. Rookies, arrivals and injury replacements still require separately validated opportunity estimates.
