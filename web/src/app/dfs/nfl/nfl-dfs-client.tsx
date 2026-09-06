@@ -1,5 +1,6 @@
 "use client";
 
+import AvailabilityPanel from './availability-panel';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { applyNflComparison, loadNflSalaryCsv, loadLatestNflSlate, runNflOptimizer, type NflComparisonSource, type NflWorkspaceSlate } from "./actions";
@@ -75,6 +76,7 @@ export default function NflDfsClient() {
     <button disabled={pending} onClick={resumeSlate} className="rounded-lg border border-teal-700 px-4 py-2 text-sm font-bold text-teal-800 disabled:opacity-50">Resume latest saved slate / refresh forecasts</button>
     <CalibratedProjections slate={slate} active={settings.projectionSource === "calibrated"} onChoose={() => setSettings({ ...settings, projectionSource: "calibrated" })} />
     {slate ? <>
+      <AvailabilityPanel slate={slate} />
       <section className="grid grid-cols-2 gap-3 md:grid-cols-6"><Metric label="Format" value={slate.format.toUpperCase()} /><Metric label="Players" value={String(slate.players.length)} /><Metric label="Games" value={String(slate.games.length)} /><Metric label="Our model" value={`${slate.players.filter((p) => p.ourProj != null).length}/${slate.players.length}`} /><Metric label="Model" value={slate.modelVersion ?? "None"} small /><Metric label="As of" value={slate.modelAsOf ? new Date(slate.modelAsOf).toLocaleString() : "No run"} small /></section>
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"><div className="space-y-5">
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-wrap items-end gap-3 border-b p-4"><div className="mr-auto"><h2 className="font-bold">2. Player pool & controls</h2><p className="text-xs text-slate-500">Lock or exclude players. OUT/IR players are removed automatically. Our / Player P10 / Player P90 show the historical baseline; calibrated changes appear above.</p></div><label className="flex min-h-10 min-w-56 items-center gap-2 rounded-lg border px-3"><Search className="h-4 w-4 text-slate-400" /><input className="w-full text-sm outline-none" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} /></label><select className="min-h-10 rounded-lg border bg-white px-3 text-sm" value={position} onChange={(e) => setPosition(e.target.value)}><option>ALL</option>{POSITIONS.map((p) => <option key={p}>{p}</option>)}</select></div>

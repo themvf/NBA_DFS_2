@@ -14,7 +14,7 @@ import {
 } from "@/db/schema";
 import { parseNflDkSalaryCsv } from "@/lib/nfl-dfs/dk-salary-csv";
 import { getNflRosterEvidence } from "@/db/nfl-dfs-availability";
-import { resolveAvailability, type Availability } from "@/lib/nfl-dfs/availability";
+import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import {
@@ -92,8 +92,9 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     catch { calibrationWarning = "Calibrated forecasts could not be loaded; historical projections remain available."; }
   }
   const byPlayer = new Map(snapshots.map(s => [s.playerId, s]));
-  const roster = run ? await getNflRosterEvidence(run.season) : new Map();
+  const roster = run ? await getNflRosterEvidence(run.season, run.week) : new Map();
   const now = Date.now();
+  const availability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
   return {
     uploadId,
     projectionRunId: upload.projectionRunId,
@@ -119,8 +120,8 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       captainSalary: row.captainSalary,
       avgFptsDk: numeric(row.avgFptsDk),
       dkStatus: row.dkStatus,
-      isOut: row.isOut || Boolean(resolveAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now).blockedReason),
-      availability: resolveAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now),
+      isOut: row.isOut || Boolean(availability(row).blockedReason),
+      availability: availability(row),
       identityMethod: row.identityMethod,
       projectionStatus: row.projectionStatus,
       ourProj: numeric(row.ourProj),

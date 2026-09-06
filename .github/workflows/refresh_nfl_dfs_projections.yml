@@ -37,6 +37,20 @@ jobs:
         id: results
         run: |
           python -c "import os,sys; sys.argv=['weekly','--phase','results']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; main()"
+      - name: Capture game-week injury evidence
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+        run: |
+          python -c "import os,sys; sys.argv=['availability']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_availability import main; main()"
+      - name: Retain availability coverage audit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-availability-audit
+          path: artifacts/nfl-availability-audit.json
+          retention-days: 90
       - name: Build immutable projection snapshot
         if: ${{ !cancelled() }}
         run: |

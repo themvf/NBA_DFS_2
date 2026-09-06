@@ -1,0 +1,41 @@
+name: Capture NFL game-week availability
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: NFL season
+        required: true
+        default: '2026'
+      week:
+        description: Regular-season week
+        required: true
+        default: '1'
+permissions:
+  contents: read
+concurrency:
+  group: nfl-availability-capture
+  cancel-in-progress: false
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+      CAPTURE_SEASON: ${{ inputs.season }}
+      CAPTURE_WEEK: ${{ inputs.week }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Capture injuries for the requested week
+        run: python -m ingest.nfl_dfs_availability --season "$CAPTURE_SEASON" --week "$CAPTURE_WEEK"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nfl-availability-audit
+          path: artifacts/nfl-availability-audit.json
+          retention-days: 90
