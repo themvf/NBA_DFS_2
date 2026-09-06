@@ -74,6 +74,17 @@ def test_nfl_calendar_cadence_respects_dst_offset() -> None:
     assert keyed["game_day_12"]["target_at"] == datetime(2026, 11, 1, 17, tzinfo=timezone.utc)
 
 
+def test_every_nfl_checkpoint_is_allowed_by_schema_migration():
+    import re
+    from db.schema import INDEXES
+    ddl = next(sql for sql in INDEXES if sql.startswith(
+        "ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check"))
+    patterns = re.findall(r"checkpoint ~ '([^']+)'", ddl)
+    for job in closes.nfl_checkpoint_schedule(datetime(2026, 9, 13, 17, tzinfo=timezone.utc)):
+        name = job["checkpoint"]
+        assert f"'{name}'" in ddl or any(re.fullmatch(pattern, name) for pattern in patterns), name
+
+
 def test_verified_cohort_boundary_is_machine_readable() -> None:
     assert closes.VERIFIED_CLV_START_AT == datetime(2026, 8, 31, 4, tzinfo=timezone.utc)
     actual = closes.classify_clv_cohort(

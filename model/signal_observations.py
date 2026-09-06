@@ -156,4 +156,16 @@ if __name__ == "__main__":
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
     db.execute(SCHEMA)
     db.execute(INDEX)
+    # The worker uses --existing-schema; migrate the checkpoint allowlist too.
+    # A single DO statement makes replacement atomic, and skips DDL once current.
+    from db.schema import INDEXES
+    checkpoint_check = next(sql for sql in INDEXES
+                            if sql.startswith("ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check"))
+    db.execute("""DO $migration$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint
+            WHERE conrelid='odds_capture_checkpoints'::regclass
+              AND conname='odds_capture_checkpoints_checkpoint_check'
+              AND pg_get_constraintdef(oid) LIKE '%%nfl_t_minus_%%') THEN
+            ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_checkpoint_check;
+    """ + checkpoint_check + "; END IF; END $migration$")
     print("Movement observation schema ready.")

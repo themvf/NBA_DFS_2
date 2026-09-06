@@ -74,7 +74,7 @@ GitHub jobs can run late, so five-minute targets are not a latency guarantee.
 ## Deployment and verification
 
 Run `python -m model.signal_observations` for targeted additive DDL before deploying
-web readers/scanners. It deliberately avoids global schema initialization. The
+web readers/scanners. The targeted migration also expands the checkpoint-name constraint for D-7 through D-4 and the NFL five-minute windows. It deliberately avoids global schema initialization. The
 shared capture workflow also ensures this table, and normal full schema setup
 includes the same DDL. Existing fallback scan workflows continue to function.
 
