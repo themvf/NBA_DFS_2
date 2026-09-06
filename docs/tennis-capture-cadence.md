@@ -10,6 +10,14 @@ Overlapping due jobs in the same tournament are grouped into one paid request;
 one capture can satisfy overlapping checkpoints. Tennis has 21 checkpoint names
 per schedule version versus the previous four.
 
+The shared worker runs Tennis signal detection and grading immediately after
+the capture step, using the stored odds. Market Intelligence can pick up those
+signals on its next page refresh instead of waiting for the separate 15-minute
+settlement job. This adds no paid odds requests. Existing scans in the Tennis
+refresh and settlement workflows remain as fallback paths; the unique alert
+key prevents duplicate signal rows when scans overlap. Scheduler delays and
+earlier workflow failures can still delay detection.
+
 Provider schedule changes supersede pending/attempted/failed checkpoints for
 the old start, without rewriting accepted captures or frozen closes. New slots
 are seeded for updated schedules on the next worker pass. Match starts depend
