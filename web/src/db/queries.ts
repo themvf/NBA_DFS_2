@@ -8347,7 +8347,7 @@ export type NflHealthIssue = {
   detail: string;
 };
 
-export async function getNflPipelineHealth(gameDate: string): Promise<NflHealthIssue[]> {
+export async function getNflPipelineHealth(gameDate: string, throughDate?: string): Promise<NflHealthIssue[]> {
   await ensureOddsHistoryTables();
   const rows = await db.execute(sql`
     WITH latest AS (
@@ -8361,7 +8361,7 @@ export async function getNflPipelineHealth(gameDate: string): Promise<NflHealthI
       JOIN nfl_teams ht ON ht.team_id = m.home_team_id
       JOIN nfl_teams at ON at.team_id = m.away_team_id
       LEFT JOIN latest l ON l.matchup_id = m.id
-      WHERE m.game_date = ${gameDate}::date
+      WHERE m.game_date BETWEEN ${gameDate}::date AND ${throughDate ?? gameDate}::date
     )
     SELECT 'error' AS severity, 'missing_capture' AS code, id AS "matchupId", matchup,
            'Upcoming game has no odds capture' AS detail
@@ -8369,10 +8369,14 @@ export async function getNflPipelineHealth(gameDate: string): Promise<NflHealthI
       AND commence_time <= NOW() + INTERVAL '48 hours' AND latest_capture IS NULL
     UNION ALL
     SELECT 'error', 'stale_capture', id, matchup,
-           'Latest capture is older than 35 minutes'
+           'Latest capture exceeds the scheduled cadence plus worker grace'
     FROM base WHERE commence_time > NOW()
-      AND commence_time <= NOW() + INTERVAL '48 hours'
-      AND latest_capture < NOW() - INTERVAL '35 minutes'
+      AND commence_time <= NOW() + INTERVAL '7 days'
+      AND latest_capture < NOW() - CASE
+        WHEN commence_time <= NOW() + INTERVAL '2 hours' THEN INTERVAL '20 minutes'
+        WHEN (commence_time AT TIME ZONE 'America/New_York')::date
+          <= (NOW() AT TIME ZONE 'America/New_York')::date + 1 THEN INTERVAL '80 minutes'
+        ELSE INTERVAL '200 minutes' END
     UNION ALL
     SELECT 'error', 'post_kickoff_capture', b.id, b.matchup,
            'Odds history contains a capture after kickoff'
@@ -8419,7 +8423,7 @@ export async function getNflPipelineHealth(gameDate: string): Promise<NflHealthI
  * pretend that the MLB matchup/model tables apply to football. Once the NFL
  * capture job writes sport='nfl' rows, the page fills in without a UI change.
  */
-export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoardRow[]> {
+export async function getNflVegasBoard(gameDate?: string, throughDate?: string): Promise<NflVegasBoardRow[]> {
   const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
   await ensureOddsHistoryTables();
   const rows = await db.execute(sql`
@@ -8431,7 +8435,7 @@ export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoard
         COUNT(*) OVER (PARTITION BY h.matchup_id) AS capture_count
       FROM game_odds_history h
       JOIN nfl_matchups m ON m.id = h.matchup_id
-      WHERE h.sport = 'nfl' AND h.game_date = ${targetDate}::date
+      WHERE h.sport = 'nfl' AND m.game_date BETWEEN ${targetDate}::date AND ${throughDate ?? targetDate}::date
         AND h.captured_at <= m.commence_time
     ),
     opening AS (SELECT * FROM captures WHERE first_rank = 1),
@@ -8481,7 +8485,7 @@ export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoard
     LEFT JOIN latest ON latest.matchup_id = m.id
     LEFT JOIN opening ON opening.matchup_id = m.id
     LEFT JOIN trails ON trails.matchup_id = m.id
-    WHERE m.game_date = ${targetDate}::date
+    WHERE m.game_date BETWEEN ${targetDate}::date AND ${throughDate ?? targetDate}::date
     ORDER BY ABS(COALESCE(latest.vegas_prob_home - opening.vegas_prob_home, 0)) DESC,
              m.commence_time
   `);

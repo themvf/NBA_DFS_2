@@ -24,3 +24,5 @@
 .focus button:focus-visible,.focus a:focus-visible,.focus input:focus-visible,.focus summary:focus-visible { outline:2px solid #52dbd1; outline-offset:-2px; }
 .identity { overflow-wrap:anywhere; }
 @media(max-width:760px) { .links { margin-left:0; } .toolbar { gap:5px; } }
+
+.viewControls { flex-wrap:wrap; }

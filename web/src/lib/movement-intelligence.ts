@@ -86,8 +86,8 @@ function explanation(signal: LineAlertRow, selection: string): string {
 
 // A stable book cohort prevents a book entering/leaving the feed from creating
 // an apparent move. No fallback to mixed-book consensus or Polymarket.
-export function comparableTrail(captures: Capture[], now: number, start: number) {
-  const ordered = captures.filter(c => Number.isFinite(c.time) && c.time <= now && c.time < start && c.time >= now - 24 * 60 * 60_000)
+export function comparableTrail(captures: Capture[], now: number, start: number, windowMs = 24 * 60 * 60_000) {
+  const ordered = captures.filter(c => Number.isFinite(c.time) && c.time <= now && c.time < start && c.time >= now - windowMs)
     .slice().sort((a, b) => a.time - b.time);
   if (ordered.length < 2) return [];
   const keys = Object.keys(ordered[0].books).filter(key => key !== "polymarket" && key !== "pinnacle" && ordered.every(c => numeric(c.books[key]) != null));
@@ -98,7 +98,8 @@ export function comparableTrail(captures: Capture[], now: number, start: number)
   });
 }
 
-export function buildMovementInsights(events: IntelligenceEvent[], signals: LineAlertRow[], now: number): MovementInsight[] {
+export function buildMovementInsights(events: IntelligenceEvent[], signals: LineAlertRow[], now: number, mode: "recent" | "developing" = "recent"): MovementInsight[] {
+  const windowMs = mode === "developing" ? 7 * 24 * 60 * 60_000 : INTELLIGENCE_WINDOW_MS;
   if (!Number.isFinite(now)) return [];
   const eventMap = new Map(events.map(event => [event.id, event]));
   const groups = new Map<string, LineAlertRow[]>();
@@ -107,10 +108,15 @@ export function buildMovementInsights(events: IntelligenceEvent[], signals: Line
     if (!event || event.completed || !Number.isFinite(event.start) || event.start <= now || !market || !event.markets[market]) continue;
     if (!labels[signal.alertType] || signal.origin !== "prospective" || signal.details?.origin === "retrospective" || signal.outcome != null) continue;
     if (["unavailable", "reversed", "faded", "expired"].includes(String(signal.details?.lifecycle_state))) continue;
-    if (!Number.isFinite(at) || at > now || now - at > INTELLIGENCE_WINDOW_MS) continue;
+    if (!Number.isFinite(at) || at > now || now - at > windowMs) continue;
     if (!(market === "total" ? ["over", "under"] : ["home", "away"]).includes(signal.side)) continue;
     const latest = Math.max(...event.markets[market]!.map(c => c.time).filter(t => Number.isFinite(t) && t <= now && t < event.start));
-    if (!Number.isFinite(latest) || now - latest > INTELLIGENCE_WINDOW_MS) continue;
+    if (!Number.isFinite(latest) || now - latest > windowMs) continue;
+    // A newer lifecycle failure must not resurrect another older trigger.
+    if (mode === "developing" && signals.some(other => other.matchupId === signal.matchupId
+      && insightMarket(other) === market && other.origin === "prospective"
+      && observed(other) >= at && observed(other) <= now
+      && ["unavailable", "reversed", "faded", "expired"].includes(String(other.details?.lifecycle_state)))) continue;
     const key = `${event.id}:${market}`;
     groups.set(key, [...(groups.get(key) ?? []), signal]);
   }
@@ -121,11 +127,11 @@ export function buildMovementInsights(events: IntelligenceEvent[], signals: Line
     const latest = group[0], event = eventMap.get(latest.matchupId)!, market = insightMarket(latest)!;
     const selection = latest.side === "home" ? event.home : latest.side === "away" ? event.away : latest.side.toUpperCase();
     const conflicting = group.some(a => observed(a) === observed(latest) && a.side !== latest.side);
-    const trail = comparableTrail(event.markets[market]!, now, event.start);
+    const trail = comparableTrail(event.markets[market]!, mode === "developing" ? observed(latest) : now, event.start, mode === "developing" ? windowMs : undefined);
     return {
       key, matchupId: event.id, market, side: latest.side as IntelligenceSide, fixture: `${event.away} @ ${event.home}`,
       selection, label: conflicting ? "MIXED DIRECTION" : labels[latest.alertType], types: [...new Set(group.map(a => labels[a.alertType]))],
-      explanation: conflicting ? "Simultaneous signals point to opposing sides. Inspect the recorded evidence before assigning direction." : explanation(latest, selection),
+      explanation: conflicting ? "Simultaneous signals point to opposing sides. Inspect the recorded evidence before assigning direction." : (mode === "developing" ? "At the recorded observation: " : "") + explanation(latest, selection),
       observedAt: observed(latest), ...support(latest), metric: magnitude(latest),
       trailLabel: market === "total" ? "Total points" : `${event.home} ${market === "spread" ? "spread" : "probability"}`,
       trail,

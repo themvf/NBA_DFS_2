@@ -50,15 +50,15 @@ def test_nfl_calendar_cadence_for_sunday_early_game() -> None:
     jobs = closes.nfl_checkpoint_schedule(kickoff)
     keyed = {job["checkpoint"]: job for job in jobs}
 
-    assert len(jobs) == 64
+    assert len(jobs) == 112
     for lead in range(120, 0, -5):
         job = keyed[f"nfl_t_minus_{lead}m"]
         assert (kickoff - job["target_at"]).total_seconds() == lead * 60
         assert (job["due_until"] - job["target_at"]).total_seconds() == 300
     assert "d_minus_7_00" in keyed
-    assert {f"d_minus_3_{hour:02d}" for hour in (0, 6, 12, 18)} <= set(keyed)
-    assert {f"d_minus_2_{hour:02d}" for hour in (0, 6, 12, 18)} <= set(keyed)
-    assert {f"d_minus_1_{hour:02d}" for hour in range(0, 24, 3)} <= set(keyed)
+    assert {f"d_minus_3_{hour:02d}" for hour in range(0, 24, 3)} <= set(keyed)
+    assert {f"d_minus_2_{hour:02d}" for hour in range(0, 24, 3)} <= set(keyed)
+    assert {f"d_minus_1_{hour:02d}" for hour in range(24)} <= set(keyed)
     assert {f"game_day_{hour:02d}" for hour in range(13)} <= set(keyed)
     assert keyed["game_day_12"]["target_at"] == datetime(2026, 9, 13, 16, tzinfo=timezone.utc)
     assert keyed["t_minus_30m"]["target_at"] == datetime(2026, 9, 13, 16, 30, tzinfo=timezone.utc)
@@ -370,3 +370,30 @@ def test_clv_report_requires_explicit_legacy_opt_in() -> None:
     db = QueryCaptureDb()
     assert clv_report._collect(db, "mlb", None, include_legacy=True) == []
     assert "LEFT JOIN event_closing_lines" in db.sql
+
+
+def test_discovery_probe_is_bounded_and_skips_captured_or_distant_events():
+    from datetime import timedelta
+    now = datetime(2026, 9, 6, 15, tzinfo=timezone.utc)
+    class Db:
+        inserted = []
+        def execute(self, sql, params=()):
+            if "SELECT id AS matchup_id" in sql:
+                return [dict(matchup_id=i, event_id=str(i), scheduled_start_at=now + timedelta(days=days), has_capture=captured)
+                        for i, days, captured in [(1, 2, False), (2, 2, True), (3, 8, False), (4, -0.1, False)]]
+            self.inserted = list(zip(*[iter(params)] * 7))
+            assert "ON CONFLICT" in sql
+            return []
+    db = Db()
+    closes._seed_nfl_checkpoints(db, now)
+    probes = [r for r in db.inserted if r[3] == "nfl_first_observed"]
+    assert len(probes) == 1 and probes[0][1] == 1
+    assert probes[0][5] == now and probes[0][6] == now + timedelta(minutes=20)
+    class DueDb:
+        def execute(self, sql, params=()):
+            assert "c.checkpoint <> 'nfl_first_observed' OR c.attempted_at IS NULL" in sql
+            return []
+    assert closes.due_checkpoints(DueDb(), now) == []
+    from db.schema import INDEXES
+    ddl = next(sql for sql in INDEXES if sql.startswith("ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check"))
+    assert "checkpoint = 'nfl_first_observed'" in ddl

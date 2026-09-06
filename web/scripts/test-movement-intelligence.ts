@@ -71,3 +71,14 @@ const held = select([alert({ details: { market: "spread", lifecycle_state: "held
 assert.equal(held.support, 3);
 assert.equal(held.metric, "1.0 pts retained");
 assert.match(held.explanation, /holding/);
+
+// Week context never relaxes the default fresh view or resurrects failed moves.
+const weekly = alert({ createdAt: new Date(now - 2 * 86400000).toISOString() });
+assert.equal(select([weekly]).length, 0);
+assert.equal(buildMovementInsights([event()], [weekly], now, "developing").length, 1);
+assert.match(buildMovementInsights([event()], [weekly], now, "developing")[0].explanation, /At the recorded observation/);
+assert.equal(buildMovementInsights([event()], [alert({ createdAt: new Date(now - 8 * 86400000).toISOString() })], now, "developing").length, 0);
+assert.equal(buildMovementInsights([event()], [weekly, alert({details: {market:"spread", lifecycle_state:"faded"}})], now, "developing").length, 0);
+assert.equal(buildMovementInsights([{...event(), completed:true}], [weekly], now, "developing").length, 0);
+
+assert.equal(buildMovementInsights([event()], [weekly], now, "developing")[0].trail.length, 0); // No later captures in an as-of trail.
