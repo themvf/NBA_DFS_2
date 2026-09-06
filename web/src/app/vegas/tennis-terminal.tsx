@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { TennisMatchRow, MlbLineMovementRow, LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow } from "@/db/queries";
+import SportsbookHistory from "@/components/sportsbook-history";
 import MarketSignalScorecard from "@/components/market-signal-scorecard";
 import MovementIntelligence from "@/components/movement-intelligence";
 import { buildMovementInsights, tennisIntelligenceEvents } from "@/lib/movement-intelligence";
@@ -85,8 +86,9 @@ export default function TennisTerminal({ matchups, movement, alerts, observation
   const [tour,setTour] = useState("ALL");
   const [selected,setSelected] = useState<number | null>(null);
   const [market,setMarket] = useState("moneyline");
+  const [side,setSide] = useState<"home"|"away">("home");
   const [now,setNow] = useState<number | null>(null);
-  useEffect(() => { const initial = setTimeout(() => setNow(Date.now()),0); const id = setInterval(() => { setNow(Date.now()); router.refresh(); },60000); return () => { clearTimeout(initial); clearInterval(id); }; },[router]);
+  useEffect(() => { const initial = setTimeout(() => setNow(Date.now()),0); const id = setInterval(() => { setNow(Date.now()); if (document.visibilityState === "visible") router.refresh(); },60000); return () => { clearTimeout(initial); clearInterval(id); }; },[router]);
   const rows = useMemo(() => matchups.filter(m => (tour === "ALL" || m.tour === tour) &&
     `${m.homePlayer} ${m.awayPlayer} ${m.matchDate}`.toLowerCase().includes(search.toLowerCase())),[matchups,tour,search]);
   const intelligence = useMemo(() => buildMovementInsights(tennisIntelligenceEvents(rows, movement), observations ?? alerts, now ?? NaN), [rows, movement, observations, alerts, now]);
@@ -96,7 +98,7 @@ export default function TennisTerminal({ matchups, movement, alerts, observation
   const age = history && now ? (now-Date.parse(history.closeCapturedAt))/60000 : null;
   const pastScheduledStart = now != null && match?.commenceTime != null && Date.parse(match.commenceTime) <= now;
   const status = !history ? "NO LOADED TRAIL" : pastScheduledStart ? "SAVED PRE-MATCH" : age != null && age > 30 ? "STALE" : "OBSERVED";
-  const delta = history ? (history.closeProb-history.openProb)*100 : null;
+
   return <div className={s.terminal}>
     <header className={s.topbar}><h1>TENNIS LINE TERMINAL</h1><label className={s.search}><Search size={14}/><input aria-label="Search tennis players or date" placeholder="SEARCH PLAYER OR MATCH" value={search} onChange={e=>setSearch(e.target.value)}/></label><span className={s.amber}>RESEARCH · {queryDate ?? "UPCOMING BOARD"}</span></header>
     <MovementIntelligence items={intelligence} selectedKey={`${match?.id}:${market}`} loading={now == null} onSelect={(item) => { setSelected(item.matchupId); setMarket(item.market); }} />
@@ -118,7 +120,7 @@ export default function TennisTerminal({ matchups, movement, alerts, observation
         <div className={s.matchHeader}><div><div className={s.eyebrow}>{match.tour} / MATCH MARKET</div><h2>{match.awayPlayer} <span>vs</span> {match.homePlayer}</h2><p>{time(match.commenceTime)} · {match.completionStatus} · Scheduled start</p></div><div className={s.primaryQuote}>{ml(match.homeMl)}<small>{match.homePlayer} · moneyline</small></div></div>
         <div className={s.tabs} aria-label="Selected market">{["moneyline","total","handicap"].map(t=><button key={t} aria-pressed={market===t} onClick={()=>setMarket(t)}>{t.toUpperCase()}</button>)}</div>
         <div className={s.heading}>{market === "moneyline" ? `${match.homePlayer} · SPORTSBOOK PROBABILITY` : `${market.toUpperCase()} · LATEST QUOTES`}<span>{market !== "moneyline" ? "CURRENT QUOTES ONLY" : history ? `${history.captures} PRE-MATCH CAPTURES` : "CAPTURES UNAVAILABLE"}</span></div>
-        {market === "moneyline" ? <div className={s.chartArea}><Trail row={history}/><div className={s.chartFoot}><span>● Sportsbook trail · {delta == null ? "—" : `${delta>=0?"+":""}${delta.toFixed(1)}pp since first capture`}</span><span>Dashed = gap &gt;30m · independently scaled</span></div></div> : <div className={s.marketQuotes}>
+        {market === "moneyline" ? <div><div className={s.tabs} role="group" aria-label="Select player">{(["away","home"] as const).map(value=><button key={value} aria-pressed={side===value} onClick={()=>setSide(value)}>{value==="home"?match.homePlayer:match.awayPlayer}</button>)}</div><SportsbookHistory key={`${match.id}:${side}`} label={`${side==="home"?match.homePlayer:match.awayPlayer} fair probability`} percentage points={(history?.trail??[]).map(p=>({at:p.capturedAt,values:Object.fromEntries(Object.entries(p.bookHomeProbs??{}).map(([k,v])=>[k,(side==="away"?1-v:v)*100]))}))}/></div> : <div className={s.marketQuotes}>
           <div><small>{market === "total" ? "TOTAL GAMES" : `${match.homePlayer} HANDICAP`}</small><strong>{market === "total" ? match.totalGamesLine ?? "—" : match.setHandicap ?? "—"}</strong></div>
           <div><small>{market === "total" ? "OVER / UNDER" : "HOME / AWAY PRICE"}</small><strong>{market === "total" ? `${ml(match.overOdds)} / ${ml(match.underOdds)}` : `${ml(match.handicapHomeOdds)} / ${ml(match.handicapAwayOdds)}`}</strong></div>
           <p>Current quotes only. No reconstructed {market} path is supplied to this board.</p>

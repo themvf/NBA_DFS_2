@@ -1168,3 +1168,7 @@
     gap: 5px;
   }
 }
+
+/* MLB terminal proportions and interaction styling; research panels remain below the board. */
+.shell{grid-template-columns:210px minmax(0,1fr) 250px;min-height:650px}.instrumentHeader{padding:25px 20px 0;background:#070909}.instrumentTitle{font-size:31px;letter-spacing:-.04em}.instrumentTop{flex-wrap:wrap}.instrumentMeta{margin:8px 0 14px;line-height:1.7}.marketTabs{gap:6px;flex-wrap:wrap}.marketTabs button{padding:10px 13px}.marketTabs button[data-active=true]{color:#f6a800;background:#292416;border-color:#8f7433;font-weight:normal}.chartSection{padding:0}.chartLabelRow{padding:12px 20px;margin:0}.chartWrap{height:auto}.lowerGrid{grid-template-columns:minmax(0,1fr)}.sectionTitle{background:#0d1111;color:#93a39c;padding:12px}.watchPane{max-height:900px;overflow:auto}
+@media(min-width:1600px){.shell{grid-template-columns:245px minmax(0,1fr) 285px}}@media(max-width:1100px){.shell{grid-template-columns:180px minmax(0,1fr)}.pulsePane{grid-column:1/-1}.instrumentTitle{font-size:26px}}@media(max-width:650px){.shell{display:block}.watchPane{max-height:260px;overflow:auto}.instrumentHeader{padding:20px 12px 0}.instrumentTop{display:block}.primaryQuote{text-align:left;margin:10px 0}.chartLabelRow{flex-wrap:wrap;padding:12px}.lowerGrid{display:block}.bookRow,.bookHeader{grid-template-columns:minmax(70px,1fr) minmax(65px,1fr) 70px 50px}}
