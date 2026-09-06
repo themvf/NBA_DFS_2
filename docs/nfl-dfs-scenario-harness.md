@@ -1,10 +1,20 @@
 # NFL scenario ranking harness
 
 First implementation slice, 2026-09-05. This is a command-line research
-tool, not a production projection model, portfolio optimizer, or DK entry
+tool with a browser workspace added on 2026-09-06, not a production projection model, portfolio optimizer, or DK entry
 exporter. The user waived Jira synchronization for this implementation.
 
 ## Run the synthetic experiment
+
+Open **NFL DFS → Scenario Lab** (`/dfs/nfl/scenarios`), also linked from
+Model Lab. Run a Classic or Showdown demo, or provide a salary CSV and two
+scenario JSON banks. Files are processed locally in a cancellable web worker.
+The scatter plot, joint/independent histogram, roster, player exposure bars
+and overlap grid support manual inspection. A review set is not an optimized
+portfolio. Export evidence saves settings, results, hashes and review choices.
+Browser limits are 150 candidates, 3,000 draws per bank and 40 MB combined files.
+Browser hashes use JSON serialization; CLI hashes use canonical sorted keys.
+The encoding is labeled in each report. Changing inputs marks prior results stale.
 
 From `web`:
 
@@ -113,6 +123,7 @@ generator/source evidence and the later model-validation gates.
 
 ```powershell
 npm run test:nfl-scenarios
+npm run test:nfl-scenario-lab
 npm run test:nfl-scoring
 npm run test:nfl-dk-csv
 npx tsc --noEmit --incremental false
@@ -125,10 +136,11 @@ scoring, scenario/source cutoff failures, selection/evaluation isolation,
 preserved ablation marginals and synthetic football accounting. A
 controlled counterexample has summed player P90 = 60 but lineup P90 = 30.
 
-No historical NFL salary/scenario/standings snapshots were found in the
-repository inspection. The generated reports are therefore **synthetic
+No verified historical salary/scenario/standings bundle was used for these
+experiments. The generated reports are therefore **synthetic
 mechanics evidence only**. Historical evaluation remains pending verified
 point-in-time data. Contest fields, calibrated ownership, tie/payout
-evaluation, joint portfolio selection, late swap, Kelly sizing and UI
-remain later slices. Kelly stays disabled until its payout and bankroll
+evaluation, joint portfolio selection, late swap and Kelly sizing
+remain later slices of this scenario workflow. The existing NFL slate workspace
+and historical Model Lab are separate from this research comparison. Kelly stays disabled until its payout and bankroll
 validation prerequisites are implemented.
