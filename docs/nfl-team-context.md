@@ -1,44 +1,52 @@
-# Current roster and team opportunity foundation
+# NFL team context and role projection validation
 
-`/dfs/nfl/model/team-context` joins the existing volume/share research navigation. It contains 2025 play distributions for 32 teams and a frozen current roster snapshot. It does not change optimizer projections.
+The existing `/dfs/nfl/model/team-context` page joins current roster evidence, historical play distributions and a paired DFS projection diagnostic. Historical references and manual allocations are not activated optimizer projections.
 
-## Play accounting
+## Coaching evidence
 
-Read hash-verified 2025 regular-season play-by-play and weekly-stat sources. Retain pass/run plays; exclude kneels, spikes, two-point attempts and no-play rows. `qb_dropback` defines designed dropbacks, including sacks and scrambles. Remaining eligible plays are designed runs. Targets require a receiver identity on a non-sack, non-scramble dropback.
+All 32 teams have source-linked current head coaches and offensive coordinators, plus current offensive play-caller assignments. Nineteen caller assignments have direct team confirmation; thirteen are explicitly labeled reported from Mike Clay's September 2, 2026 ESPN coaching directory (page 74). Titles and calling responsibility are separate evidence. Caller evidence has its own season, source and checked timestamp, and expires after 30 days. A reported assignment must not be presented as independently team-confirmed.
 
-Neutral means score differential within seven points and Q1–Q3. Leading/trailing means beyond seven points in any quarter. These descriptive states are not causal coaching effects; situation-specific play counts must not substitute for full-game volume. Unknown score states are retained in overall data but excluded from situation profiles.
+The hash-verified 2025 schedule supplies each team's 17-game head-coach history, including midseason changes. Selected caller-change events are recorded for CLE (week 10), DET (week 10), LV (week 13), and TEN (week 4). These event records are retrospective attribution, not complete caller timelines or archived pregame observations. Historical coordinator/caller coverage remains incomplete. In particular, do not apply 2026 coaching assignments to 2024/2025 replay rows or treat a full-season team's rates as one coach's rates.
 
-For a user-supplied total play count: designed runs = plays × run rate; dropbacks = plays − runs; attempts = dropbacks × (1 − scramble rate − sack rate); targets = attempts × receiver-identified target rate. A supplied carry share applies to designed runs, including designed quarterback runs. A target share applies to the allocatable target budget. The remainder belongs to other players. These are expected counts under explicit assumptions, not probabilistic forecasts. RB receiving work and QB fantasy production are not estimated by this first calculator.
+## Historical opportunity accounting
 
-## Roster and movement
+The CLI reads hash-verified prior-season regular-season play-by-play, weekly statistics, participation and schedule caches. Eligible plays are pass/run plays excluding kneels, spikes, no-play and two-point plays. Designed dropbacks include sacks and scrambles; neither becomes a receiver target or designed running-back carry.
 
-Read `ff_players` directly using read-only psycopg2, retaining ff identity even without GSIS history. Match team aliases, position and roster retrieval age (72 hours). Out/IR/PUP/NFI/suspended/inactive records cannot drive calculator output. Questionable does not mean absent. Provider rookie year identifies rookies; missing NFL history alone does not. Compare recorded 2025 teams to the current team to identify movement. Never transfer prior target/carry shares automatically to rookies or arrivals.
+Situation views: neutral is within seven points in Q1â€“Q3; leading/trailing is beyond seven points in any quarter. Overall play counts retain unknown score states. These are descriptive game situations, not causal coaching effects.
 
-Verified examples on September 6: Kirk Cousins is listed QB1 for LV with ATL historical games; Mike Evans is listed WR1/Questionable for SF with TB historical games. The official Raiders starter announcement and 49ers signing announcement independently support these movements. This snapshot is not an automated news monitor or official game-day availability feed.
+Charts show shotgun, no-huddle, red-zone and inside-five dropbacks with recorded/eligible denominators. Positional target, designed-carry and inside-five carry splits match player identity and position in the same historical game. Unknown identities stay in the denominator rather than being redistributed. Positions are never borrowed from the current roster. Duplicate identity joins fail.
 
-## Coaching
+Clock spacing uses adjacent eligible snaps in the same drive and quarter with a nonnegative game-clock delta no greater than 60 seconds. Intervening no-play rows break a pair. It includes play duration and excludes outlying gaps; it is not wall-clock pace or a full-game play forecast. Formation, personnel, route and coverage counts are an availability audit; route labels do not establish routes run by every receiver or individual matchup advantages.
 
-Source-bearing `web/src/data/nfl-coaching-evidence.json` records season, checked timestamp, staff identities and continuity evidence. Full continuity requires affirmative head-coach, coordinator and play-caller continuity; changed staff takes priority. Evidence expires after 30 days and cannot be used before capture or in another season.
+## Current roles and allocations
 
-First evidence coverage: LV changed head coach/coordinator, SF returning head coach/coordinator with play-calling continuity not independently established. The remaining 30 teams are unresolved. This is deliberately incomplete coaching coverage; do not describe it as all-team verified continuity. Historical rates are accessible as manual scenario references regardless, with no automatic scheme attribution or optimizer adjustment. Previous-team coordinator tendencies are not transferred to a new team in this increment.
+The read-only roster query uses `ff_players`. Team aliases, position and capture age (72 hours) must match. Out/IR/PUP/NFI/suspended/inactive players cannot drive allocations. Questionable does not mean absent. Rookie flags require provider rookie-year evidence. Prior-team history never transfers a target or carry share automatically to a newcomer.
 
-Reproduce with `python -m ingest.nfl_dfs_team_context --source-root "C:/Docs/_AI Python Projects/NBADFS_v2" --season 2026`. The CLI reads existing caches/DB and writes the UI snapshot. Roster and model hashes accompany source hashes. Refresh coaching evidence only after checking its linked primary sources. Next work: complete attributable coaching/play-caller evidence, establish current-player role shares, then test component projections against the frozen benchmark before activation.
+The allocation reference uses the last eight prior-season team games. Non-participation contributes zero usage within known team games. Departures, missing identities and unavailable players leave unallocated opportunity. Shares can be overridden explicitly; sums above 100% fail with the required reduction. Save scenario exports assumptions, roster evidence and hashes. This is not an automatic rookie role forecast or official game-day confirmation.
 
-## Whole-team role allocation increment
+## Role-context projection diagnostic
 
-The page now seeds eligible returning players from the final eight 2025 team games. Shares are summed observed opportunities divided by summed team opportunities, including games in which the player had zero work. Targets and designed carries use the same play definitions as team profiles. The reference excludes earlier weeks and never transfers old-team usage to arrivals. Unidentified carriers, departures, excluded players and unassigned newcomer roles leave a visible remainder instead of redistributing it automatically.
+`model/nfl_dfs_role_context.py` tests team-game workload denominators and residual ranges conditioned on prior target workload and the observed primary QB in the prior four team games. Tied or missing QB evidence stays unknown. It does not infer injuries, use target-game starters, or apply a coaching multiplier. Forecasts within a week finish before that week's outcomes enter residual history.
 
-Both target and carry shares can be explicitly overridden for each currently eligible player. This supports RB receiving work and designed quarterback carries in separate columns. Totals above 100% fail with the percentage-point reduction needed. Stale, unavailable, duplicate or mismatched roster identities fail closed. Reset restores prior references; Save scenario downloads the exact budgets, overrides, roster members, digest, timestamp and results. These exports are reproducible with `allocateRoles` at their saved timestamp, but do not grant permission to reuse stale inputs on a later slate. Changing teams resets overrides.
+On exactly paired recorded WR games against the frozen production-algorithm replay (market inputs disabled):
 
-This is an automatic historical-reference allocation plus explicit role assumptions, **not an automatic forecast of rookie or newcomer usage**, and remains disconnected from the optimizer. Coaching evidence now also includes BUF and KC: Buffalo changed head coach/OC titles while Brady retained play-calling, and Kansas City changed OC under returning head coach Reid. The other 28 teams remain unresolved; complete all-team coaching verification is still pending. Staff-change status and retained play-calling are deliberately separate facts.
+| Season | Games | Existing / candidate MAE | Existing / candidate interval score | Existing / candidate 25-point Brier |
+|---|---:|---:|---:|---:|
+| 2024 | 1,794 | 5.126 / 5.228 | 24.275 / 25.216 | 0.05332 / 0.05170 |
+| 2025 | 1,821 | 4.844 / 4.913 | 21.895 / 23.013 | 0.04185 / 0.04197 |
 
-Validation: Python tests cover team-game denominators and opportunity accounting; `node --import tsx scripts/test-nfl-role-allocation.ts` from `web/` tests conservation, newcomers, unavailable/stale inputs, invalid overrides, reproducibility and every current team’s reference allocation.
+A matched ablation keeps the workload estimates but pools residuals across all contexts: interval scores worsen to 26.974 (2024) and 25.312 (2025), versus 25.216 / 23.013 with workload-plus-QB conditioning. Conditioning helps this candidate's ranges, but does not rescue it against production. This does not isolate QB history from workload conditioning.
 
+Lower is better for all three measures. The candidate fails the joint accuracy screen and remains disabled. Both seasons were previously inspected; this is a diagnostic, not untouched validation. Missing/DNP evaluation outcomes, players without four prior recorded games, and unmatched baseline rows are excluded. There is no historical salary-multiple, contest payout or lineup-distribution validation.
 
-## September 6: league staff directory and measured tendencies
+Reproduce from the worktree:
 
-All 32 teams now have source-linked current head coach and offensive coordinator records. The hash-verified 2025 schedule supplies all 17 games of prior head-coach history per team, preserving midseason changes. This is not complete coordinator/play-caller history: unresolved fields remain null. Carolina and Denver explicitly changed play callers, independently of head-coach continuity. Announcement dates are not treated as exact effective dates.
+```powershell
+python -m ingest.nfl_dfs_team_context --source-root "C:/Docs/_AI Python Projects/NBADFS_v2" --season 2026
+python -m ingest.nfl_dfs_role_context --source-root "C:/Docs/_AI Python Projects/NBADFS_v2"
+python -m pytest tests/test_nfl_dfs_team_context.py tests/test_nfl_dfs_role_context.py -q
+```
 
-The existing team-context screen includes shotgun, no-huddle, red-zone and inside-five dropback bars. Every measure preserves eligible and recorded denominators. Missing values remain unavailable. Participation joins reject duplicate game/play keys and report availability of formation, personnel, route and coverage fields. Those labels are not treated as individual route participation or matchup advantages.
+The role replay archives prediction draws' summaries, hashes sources/recipes and verifies the frozen comparator digest. UI data is a generated snapshot, not an automated refresh service.
 
-Remaining work: verify unresolved current play callers and prior coordinator/caller timelines; derive positional target and designed-carry splits with historical identities; define pace within possessions; then validate role-conditioned DFS ranges before optimizer integration. This release does not claim improved lineup returns or activate historical tendencies as current projections.
+Remaining work: independently confirm the reported callers and complete historical coordinator/caller timelines; improve the workload-to-points component rather than merely widening ranges; then validate current-role forecasts prospectively, especially rookies, arrivals and injury replacements, before optimizer activation.

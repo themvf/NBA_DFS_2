@@ -1,0 +1,202 @@
+{
+  "version": "nfl-role-context-v1",
+  "config": {
+    "team_games": 8,
+    "minimum_player_games": 4,
+    "minimum_residuals": 100,
+    "maximum_residuals": 2000,
+    "qb_window": 4
+  },
+  "seasons": {
+    "2024": {
+      "n": 1794,
+      "production": {
+        "mae": 5.1264220735785955,
+        "interval80": 24.274814938684504,
+        "below_p10": 0.07859531772575251,
+        "above_p90": 0.12263099219620958
+      },
+      "candidate": {
+        "mae": 5.227604082280819,
+        "interval80": 25.216311500109875,
+        "below_p10": 0.10033444816053512,
+        "above_p90": 0.11817168338907469
+      },
+      "candidate_brier25": 0.05169754180915334,
+      "production_brier25": 0.05332070791527313,
+      "qb_states": {
+        "stable": {
+          "n": 1264,
+          "production": {
+            "mae": 5.27883710443038,
+            "interval80": 24.977053797468354,
+            "below_p10": 0.08069620253164557,
+            "above_p90": 0.127373417721519
+          },
+          "candidate": {
+            "mae": 5.371686207581581,
+            "interval80": 25.45563681586293,
+            "below_p10": 0.0949367088607595,
+            "above_p90": 0.1115506329113924
+          }
+        },
+        "changed": {
+          "n": 513,
+          "production": {
+            "mae": 4.793064132553606,
+            "interval80": 22.6304522417154,
+            "below_p10": 0.07602339181286549,
+            "above_p90": 0.11306042884990253
+          },
+          "candidate": {
+            "mae": 4.950735244404773,
+            "interval80": 24.88842637168713,
+            "below_p10": 0.11500974658869395,
+            "above_p90": 0.13840155945419103
+          }
+        },
+        "unknown": {
+          "n": 17,
+          "production": {
+            "mae": 3.853482352941177,
+            "interval80": 21.68235294117647,
+            "below_p10": 0.0,
+            "above_p90": 0.058823529411764705
+          },
+          "candidate": {
+            "mae": 2.8695986381778367,
+            "interval80": 17.316186310051343,
+            "below_p10": 0.058823529411764705,
+            "above_p90": 0.0
+          }
+        }
+      },
+      "pooled_residual_ablation": {
+        "mae": 5.210898014356417,
+        "interval80": 26.973771440413337,
+        "below_p10": 0.10033444816053512,
+        "above_p90": 0.10479375696767002
+      },
+      "pooled_brier25": 0.05267785381533717,
+      "targets_mae": 2.0563669300099274
+    },
+    "2025": {
+      "n": 1821,
+      "production": {
+        "mae": 4.844038769906645,
+        "interval80": 21.89503239978034,
+        "below_p10": 0.08621636463481604,
+        "above_p90": 0.11477210323997804
+      },
+      "candidate": {
+        "mae": 4.913429994105982,
+        "interval80": 23.01306347218655,
+        "below_p10": 0.10763316858868753,
+        "above_p90": 0.09774848984074684
+      },
+      "candidate_brier25": 0.04197460793528205,
+      "production_brier25": 0.04185091982427238,
+      "qb_states": {
+        "stable": {
+          "n": 1227,
+          "production": {
+            "mae": 4.980471067644662,
+            "interval80": 22.692319478402606,
+            "below_p10": 0.08801955990220049,
+            "above_p90": 0.12387938060309699
+          },
+          "candidate": {
+            "mae": 5.074481422490376,
+            "interval80": 23.503636463101184,
+            "below_p10": 0.10513447432762836,
+            "above_p90": 0.09698451507742462
+          }
+        },
+        "changed": {
+          "n": 580,
+          "production": {
+            "mae": 4.538233103448276,
+            "interval80": 20.158824137931038,
+            "below_p10": 0.08275862068965517,
+            "above_p90": 0.09482758620689655
+          },
+          "candidate": {
+            "mae": 4.5818951177842635,
+            "interval80": 21.85848878834655,
+            "below_p10": 0.11379310344827587,
+            "above_p90": 0.1
+          }
+        },
+        "unknown": {
+          "n": 14,
+          "production": {
+            "mae": 5.555814285714284,
+            "interval80": 23.947142857142858,
+            "below_p10": 0.07142857142857142,
+            "above_p90": 0.14285714285714285
+          },
+          "candidate": {
+            "mae": 4.533438968316607,
+            "interval80": 27.85022467039713,
+            "below_p10": 0.07142857142857142,
+            "above_p90": 0.07142857142857142
+          }
+        }
+      },
+      "pooled_residual_ablation": {
+        "mae": 4.924617019392995,
+        "interval80": 25.311771595595577,
+        "below_p10": 0.10049423393739704,
+        "above_p90": 0.09170785282811642
+      },
+      "pooled_brier25": 0.042687405134541466,
+      "targets_mae": 1.9008881365351535
+    }
+  },
+  "excluded": {
+    "insufficient_prior_role": 2263,
+    "residual_warmup": 184
+  },
+  "unmatched": {
+    "candidate_unmatched": 0,
+    "production_unmatched": 1141
+  },
+  "sources": [
+    {
+      "season": 2023,
+      "sha256": "ac776fbd7c9fefdb4069b72304f4c5fa05ae417acd49f6e4e27be14b9d7a4bbc",
+      "rows": 17806,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2023.parquet"
+    },
+    {
+      "season": 2024,
+      "sha256": "847569d194ca3d96b5efcf91e6eac5e18780fc47568a713fd545a82d29d155c1",
+      "rows": 18130,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.parquet"
+    },
+    {
+      "season": 2025,
+      "sha256": "2a461becaa9adb3c93a3074a3a31f1e960162a50163371a2d34e28393b5fff10",
+      "rows": 18540,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.parquet"
+    }
+  ],
+  "study_sha256": "f2ca4d3a7caa8008ca4fc2ca57e4f4aac12bd78ccdcd1f4ceecd1947985f5be8",
+  "optimizer_enabled": false,
+  "passes_screen": false,
+  "limits": [
+    "Previously inspected 2024/2025 diagnostic; no untouched holdout.",
+    "Evaluation includes recorded WR games only, not DNPs or rookies without four prior games.",
+    "Quarterback context uses only the prior four team games; it does not predict current injuries or starting QB.",
+    "2026 coaching records are never applied to historical games.",
+    "No historical salary-multiple, contest payout or joint-lineup calibration."
+  ],
+  "predictions_sha256": "7f6cf9934564f880eb0c8f10dd1dab267fe0f919afe241e326ffc6c5e6aa55c6",
+  "recipe_sha256": {
+    "model/nfl_dfs_role_context.py": "a62fa52eb5d0f296dddaa30c5c034d55d41c9269c24cf30d15a2ae7246d5354e",
+    "ingest/nfl_dfs_role_context.py": "1894821b83a1354b15387fad5df2b10699edbce50ff8fa27f0fc8268825d1a6e",
+    "ingest/nfl_dfs_target_share.py": "39ca098e361e2d70ea87d049ecfab43136a5e1d5ab908103d6e2ccec60c6b097",
+    "ingest/nfl_dfs_volume_benchmark.py": "ff68a72743e6548cbad405c7d80cbe7869f18ca2010fe69e931b2d01864457cd",
+    "model/nfl_dfs_target_share.py": "84cbaf0b45a912b33aa69f0d4f3a2c5dd16b71b4a50ecab80e26ff91d4837657"
+  }
+}
