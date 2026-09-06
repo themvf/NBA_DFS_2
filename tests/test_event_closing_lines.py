@@ -50,7 +50,12 @@ def test_nfl_calendar_cadence_for_sunday_early_game() -> None:
     jobs = closes.nfl_checkpoint_schedule(kickoff)
     keyed = {job["checkpoint"]: job for job in jobs}
 
-    assert len(jobs) == 32
+    assert len(jobs) == 64
+    for lead in range(120, 0, -5):
+        job = keyed[f"nfl_t_minus_{lead}m"]
+        assert (kickoff - job["target_at"]).total_seconds() == lead * 60
+        assert (job["due_until"] - job["target_at"]).total_seconds() == 300
+    assert "d_minus_7_00" in keyed
     assert {f"d_minus_3_{hour:02d}" for hour in (0, 6, 12, 18)} <= set(keyed)
     assert {f"d_minus_2_{hour:02d}" for hour in (0, 6, 12, 18)} <= set(keyed)
     assert {f"d_minus_1_{hour:02d}" for hour in range(0, 24, 3)} <= set(keyed)

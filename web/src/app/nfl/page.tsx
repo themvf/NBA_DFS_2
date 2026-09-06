@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import {
   getLineAlertBacktest,
   getLineAlerts,
+  getMovementSignalObservations,
   getLineMovementHistory,
   getNflPipelineHealth,
   getNflVegasBoard,
@@ -30,12 +31,13 @@ export default async function NflPage({
   const evaluatedAt = new Date().toISOString();
   const queryDate = date ?? easternDate(new Date(evaluatedAt));
   const matchups = await getNflVegasBoard(queryDate);
-  const [lineAlerts, lineAlertBacktest, lineMovementHistory, health, detectorHealth] = await Promise.all([
-    getLineAlerts("nfl", 100),
+  const [lineAlerts, lineAlertBacktest, lineMovementHistory, health, detectorHealth, observations] = await Promise.all([
+    getLineAlerts("nfl", 100, undefined, matchups.map(row => row.matchupId)),
     getLineAlertBacktest("nfl"),
     getLineMovementHistory("nfl", 1, 100),
     getNflPipelineHealth(queryDate),
     getDetectorHealth("nfl"),
+    getMovementSignalObservations("nfl", matchups.map(row => row.matchupId)),
   ]);
 
   return (
@@ -44,6 +46,7 @@ export default async function NflPage({
       evaluatedAt={evaluatedAt}
       matchups={matchups}
       lineAlerts={lineAlerts}
+      observations={observations}
       lineAlertBacktest={lineAlertBacktest}
       lineMovementHistory={lineMovementHistory}
       health={health}

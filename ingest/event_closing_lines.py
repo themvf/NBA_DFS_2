@@ -99,7 +99,7 @@ def nfl_checkpoint_schedule(scheduled_start: datetime | str) -> list[dict]:
                 "due_until": min(due_utc, kickoff),
             })
 
-    for days_before, hours_between in ((3, 6), (2, 6), (1, 3)):
+    for days_before, hours_between in ((7, 12), (6, 12), (5, 12), (4, 12), (3, 6), (2, 6), (1, 3)):
         local_date = kickoff_et.date() - timedelta(days=days_before)
         for hour in range(0, 24, hours_between):
             local_target = datetime.combine(local_date, time(hour=hour), tzinfo=EASTERN)
@@ -115,6 +115,11 @@ def nfl_checkpoint_schedule(scheduled_start: datetime | str) -> list[dict]:
     add("t_minus_30m", kickoff - timedelta(minutes=30), kickoff - timedelta(minutes=20))
     add("t_minus_15m", kickoff - timedelta(minutes=15), kickoff - timedelta(minutes=5))
     add("closing_candidate", kickoff - timedelta(minutes=5), kickoff)
+    # Narrow five-minute windows avoid treating a late scheduler run as a
+    # recovered earlier observation. Existing jobs remain for close grading.
+    for lead in range(120, 0, -5):
+        add(f"nfl_t_minus_{lead}m", kickoff - timedelta(minutes=lead),
+            kickoff - timedelta(minutes=lead - 5))
     return jobs
 
 
@@ -124,7 +129,7 @@ def _seed_nfl_checkpoints(db: DatabaseManager, now: datetime) -> int:
         SELECT id AS matchup_id, event_id, commence_time AS scheduled_start_at
         FROM nfl_matchups
         WHERE event_id IS NOT NULL
-          AND commence_time BETWEEN %s - INTERVAL '8 hours' AND %s + INTERVAL '4 days'
+          AND commence_time BETWEEN %s - INTERVAL '8 hours' AND %s + INTERVAL '8 days'
           AND completed = FALSE
           AND COALESCE(game_status, '') NOT IN ('Postponed', 'Cancelled')
         """,

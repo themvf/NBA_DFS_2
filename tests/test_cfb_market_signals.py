@@ -97,6 +97,21 @@ class SettlementDb:
     def __init__(self) -> None:
         self.updates = []
 
+    # Verified-close reads now use a bounded cursor transaction in production.
+    def connect(self):
+        from contextlib import nullcontext
+        owner = self
+        class Cursor:
+            def execute(self, sql, params=None):
+                if "verified_clv_closes" in sql:
+                    self.result = owner.execute_one(sql, params)
+            def fetchone(self):
+                return self.result
+        class Connection:
+            def cursor(self):
+                return Cursor()
+        return nullcontext(Connection())
+
     def execute(self, sql, params=None):
         if "SELECT a.*, m.home_score" in sql:
             assert "m.completed = TRUE" in sql

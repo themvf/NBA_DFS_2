@@ -34,7 +34,8 @@ export function insightMarket(signal: LineAlertRow): IntelligenceMarket | null {
   return "moneyline";
 }
 function observed(signal: LineAlertRow): number {
-  return Date.parse(typeof signal.details?.trigger_capture_at === "string" ? signal.details.trigger_capture_at : signal.createdAt);
+  const at = signal.details?.observation_capture_at ?? signal.details?.trigger_capture_at;
+  return Date.parse(typeof at === "string" ? at : signal.createdAt);
 }
 function count(value: unknown): number | null {
   if (Array.isArray(value)) return new Set(value.filter(v => typeof v === "string")).size;
@@ -42,6 +43,10 @@ function count(value: unknown): number | null {
   return n != null && Number.isInteger(n) && n >= 0 ? n : null;
 }
 function support(signal: LineAlertRow) {
+  if (signal.details?.lifecycle_state && signal.details.lifecycle_state !== "triggered") {
+    const n = count(signal.details.comparable_books);
+    if (n != null) return { support: n, supportLabel: `${n} comparable books` };
+  }
   for (const [key, noun] of [["books_moved", "books moved"], ["comparable_books", "comparable books"], ["overlap_books", "comparable books"], ["consensus_support", "books at trigger line"]]) {
     const n = count(signal.details?.[key]);
     if (n != null) return { support: n, supportLabel: `${n} ${noun}` };
@@ -49,6 +54,9 @@ function support(signal: LineAlertRow) {
   return { support: 0, supportLabel: "Book support unavailable" };
 }
 function magnitude(signal: LineAlertRow): string {
+  const retained = numeric(signal.details?.retained_move);
+  if (retained != null) return signal.details?.units === "probability"
+    ? `${(Math.abs(retained) * 100).toFixed(1)} pp retained` : `${Math.abs(retained).toFixed(1)} pts retained`;
   for (const key of ["reversal_leg_pp", "drift_pp", "avg_move_pp", "move_pp", "price_move_pp", "retail_follow_pp"]) {
     const n = numeric(signal.details?.[key]);
     if (n != null) return `${Math.abs(n).toFixed(1)} pp`;
@@ -61,6 +69,10 @@ function magnitude(signal: LineAlertRow): string {
   return keyNumber != null ? `Crossed ${keyNumber}` : "Recorded movement";
 }
 function explanation(signal: LineAlertRow, selection: string): string {
+  const state = signal.details?.lifecycle_state;
+  if (state === "weakened") return `The move toward ${selection} has partially retraced since its first observation.`;
+  if (state === "strengthened") return `The move toward ${selection} has extended since its first observation across comparable books.`;
+  if (state === "held" || state === "confirmed") return `The move toward ${selection} is holding across comparable books since its first observation.`;
   const type = signal.alertType;
   if (type === "reversal") return `An earlier move reversed toward ${selection}. The original direction has lost support.`;
   if (type.endsWith("steam")) return `Multiple books moved toward ${selection} within the detector's capture interval.`;
@@ -94,6 +106,7 @@ export function buildMovementInsights(events: IntelligenceEvent[], signals: Line
     const event = eventMap.get(signal.matchupId), market = insightMarket(signal), at = observed(signal);
     if (!event || event.completed || !Number.isFinite(event.start) || event.start <= now || !market || !event.markets[market]) continue;
     if (!labels[signal.alertType] || signal.origin !== "prospective" || signal.details?.origin === "retrospective" || signal.outcome != null) continue;
+    if (["unavailable", "reversed", "faded", "expired"].includes(String(signal.details?.lifecycle_state))) continue;
     if (!Number.isFinite(at) || at > now || now - at > INTELLIGENCE_WINDOW_MS) continue;
     if (!(market === "total" ? ["over", "under"] : ["home", "away"]).includes(signal.side)) continue;
     const latest = Math.max(...event.markets[market]!.map(c => c.time).filter(t => Number.isFinite(t) && t <= now && t < event.start));
@@ -127,7 +140,7 @@ function quoteValue(book: CfbBookQuote, market: IntelligenceMarket): number | nu
   const implied = (v: number) => v > 0 ? 100 / (v + 100) : -v / (-v + 100);
   return implied(h) / (implied(h) + implied(a));
 }
-export function cfbIntelligenceEvents(games: Pick<CfbTerminalRow, "matchupId" | "homeTeam" | "awayTeam" | "commenceTime" | "completed" | "history">[]): IntelligenceEvent[] {
+export function cfbIntelligenceEvents(games: (Pick<CfbTerminalRow, "matchupId" | "homeTeam" | "awayTeam" | "commenceTime" | "completed"> & { history: { capturedAt: string; books: Record<string, CfbBookQuote> }[] })[]): IntelligenceEvent[] {
   return games.map(game => ({
     id: game.matchupId, home: game.homeTeam, away: game.awayTeam, start: Date.parse(game.commenceTime ?? ""), completed: game.completed,
     markets: Object.fromEntries((["spread", "total", "moneyline"] as const).map(market => [market, game.history.flatMap(c => {

@@ -33,3 +33,7 @@ interval than the contextual sparkline. Tennis only has a moneyline history
 adapter; unsupported total/handicap trails are not invented.
 
 Validation: `cd web` then `node --import tsx scripts/test-movement-intelligence.ts`.
+
+## 2026-09-06 lifecycle integration
+
+NFL now shares the four-card strip. NFL, CFB and Tennis cards consume current append-only lifecycle observations; their original first-breach audit rows remain unchanged. See [phase-one contract](nfl-movement-intelligence-phase-one.md).

@@ -282,7 +282,7 @@ function WatchGame({ item, signals, active, asOf, onChoose }: { item: CfbTermina
   </button>;
 }
 
-export default function CfbTerminalClient({ board, signals, backtest, research, scorecard, captureHealth }: { board: CfbTerminalBoard; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null }) {
+export default function CfbTerminalClient({ board, observations, signals, backtest, research, scorecard, captureHealth }: { board: CfbTerminalBoard; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null }) {
   const router = useRouter();
   const [gameId, setGameId] = useState(board.games[0]?.matchupId ?? 0);
   const [marketKey, setMarketKey] = useState<MarketKey>("spread");
@@ -299,7 +299,7 @@ export default function CfbTerminalClient({ board, signals, backtest, research, 
   const marketSignals = useMemo(() => gameSignals.filter((item) => signalMarket(item) === marketKey), [gameSignals, marketKey]);
   const researchContext = game ? research[game.matchupId] ?? null : null;
   const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized) && (movementFilter === "all" || movementSignals(signals, item.matchupId).some((signal) => movementKind(signal.alertType) === movementFilter))); }, [board.games, query, movementFilter, signals]);
-  const intelligence = useMemo(() => buildMovementInsights(cfbIntelligenceEvents(filteredGames), signals, Math.max(observedNow, Date.parse(board.asOf))), [filteredGames, signals, observedNow, board.asOf]);
+  const intelligence = useMemo(() => buildMovementInsights(cfbIntelligenceEvents(filteredGames), observations ?? signals, Math.max(observedNow, Date.parse(board.asOf))), [filteredGames, observations, signals, observedNow, board.asOf]);
   function chooseGame(id: number) { setGameId(id); setSelectedBook(""); setLockMessage(null); }
   function chooseMarket(next: MarketKey) { setMarketKey(next); setSide(selectionFor(next)); setSelectedBook(""); setLockMessage(null); }
   function chooseSide(next: SelectionSide) { setSide(next); setSelectedBook(""); setLockMessage(null); }

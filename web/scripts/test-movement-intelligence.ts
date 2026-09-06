@@ -63,3 +63,11 @@ assert.equal(tennis[0].completed, false);
 assert.equal(tennis[0].markets.total, undefined);
 assert.equal(buildMovementInsights(tennis, [alert({ alertType: "walking", details: { market: "moneyline", drift_pp: 3 } })], now)[0].metric, "3.0 pp");
 console.log("Movement intelligence checks passed: grouping, ranking, direction, expiry, provenance, market routing, and comparable trails.");
+
+for (const lifecycle_state of ["unavailable", "reversed", "faded", "expired"]) {
+  assert.equal(select([alert({ details: { market: "spread", lifecycle_state } })]).length, 0);
+}
+const held = select([alert({ details: { market: "spread", lifecycle_state: "held", comparable_books: 3, books_moved: 8, retained_move: 1, units: "points" } })])[0];
+assert.equal(held.support, 3);
+assert.equal(held.metric, "1.0 pts retained");
+assert.match(held.explanation, /holding/);

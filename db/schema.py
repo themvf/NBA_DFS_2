@@ -4687,3 +4687,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_event_closing_lines_cohort ON event_closing_lines(clv_cohort, sport, scheduled_start_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_odds_api_usage_day ON odds_api_usage(requested_at DESC, sport, purpose)",
 ]
+
+# Shared observation DDL is dependency-free and also used by the targeted migration.
+from db.market_signal_schema import SCHEMA as MOVEMENT_OBSERVATION_SCHEMA, INDEX as MOVEMENT_OBSERVATION_INDEX
+MIGRATIONS.extend([MOVEMENT_OBSERVATION_SCHEMA, MOVEMENT_OBSERVATION_INDEX])

@@ -27,6 +27,8 @@ jobs:
           python-version: "3.11"
           cache: "pip"
       - run: pip install -r requirements.txt
+      - name: Ensure append-only movement observation storage
+        run: python -m model.signal_observations
       - name: Capture due checkpoints and freeze verified closes
         run: python -m ingest.event_closing_lines --existing-schema
       # Scan the stored Tennis captures immediately; this makes no paid odds

@@ -6,6 +6,7 @@ import {
   getLineMovement,
   getLineMovementHistory,
   getLineAlerts,
+  getMovementSignalObservations,
   getLineAlertBacktest,
   getDetectorHealth,
   getMarketCaptureHealth,
@@ -47,7 +48,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
   // Tennis (Wimbledon MVP): fixtures + our-model-vs-market + rated moneyline bets.
   if (sport === "tennis") {
     const matchesPromise = getTennisVegasMatchups(date);
-    const [matchups, bets, backtest, legacyBetSummary, sportsbookMovement, polymarketMovement, lineAlerts, lineAlertBacktest, eloDashboard, detectorHealth, scorecard, captureHealth] = await Promise.all([
+    const [matchups, bets, backtest, legacyBetSummary, sportsbookMovement, polymarketMovement, lineAlerts, lineAlertBacktest, eloDashboard, detectorHealth, scorecard, captureHealth, observations] = await Promise.all([
       matchesPromise,
       getTennisBets(300),
       getTennisBetBacktest(),
@@ -60,8 +61,9 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       getDetectorHealth("tennis"),
       getMarketSignalScorecard("tennis"),
       getMarketCaptureHealth("tennis", date),
+      matchesPromise.then(matches => getMovementSignalObservations("tennis", matches.map(m => m.id))),
     ]);
-    return <TennisVegasClient matchups={matchups} bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} sportsbookMovement={sportsbookMovement} polymarketMovement={polymarketMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} eloDashboard={eloDashboard} detectorHealth={detectorHealth} scorecard={scorecard} captureHealth={captureHealth} queryDate={date ?? null} />;
+    return <TennisVegasClient observations={observations} matchups={matchups} bets={bets} backtest={backtest} legacyBetSummary={legacyBetSummary} sportsbookMovement={sportsbookMovement} polymarketMovement={polymarketMovement} lineAlerts={lineAlerts} lineAlertBacktest={lineAlertBacktest} eloDashboard={eloDashboard} detectorHealth={detectorHealth} scorecard={scorecard} captureHealth={captureHealth} queryDate={date ?? null} />;
   }
 
   // Soccer: focused fixtures view + star-rated bet ledger + backtest, rather

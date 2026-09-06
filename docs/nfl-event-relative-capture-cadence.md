@@ -75,3 +75,7 @@ Only A/B/C rows enter the verified CLV cohort. A missing closing candidate may f
 GitHub scheduled jobs can start late. Twenty-minute standard windows and durable reconciliation tolerate ordinary delay; the final five-minute window remains best-effort. The system exposes missed checkpoints rather than fabricating observations.
 
 The daily credit cap and monthly reserve can defer due work. Deferrals are stored as failures with an explicit quota reason and remain auditable. Before adapting this cadence to CFB, measure NFL capture completion, provider cost, and the marginal signal value of each time bucket.
+
+## 2026-09-06 movement pilot update
+
+NFL now additionally seeds D-7 through D-4 twice daily and five-minute targets in the final two hours. Existing checkpoints and quota guards remain. See [phase-one contract](nfl-movement-intelligence-phase-one.md) for lifecycle semantics, quota evidence and deployment checks.

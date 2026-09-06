@@ -8306,6 +8306,7 @@ export async function getSpreadCoverage(): Promise<SpreadCoverageRow[]> {
 // ---------------------------------------------------------------------------
 
 export type NflVegasBoardRow = {
+  completed: boolean;
   matchupId: number;
   gameDate: string;
   eventId: string | null;
@@ -8330,6 +8331,7 @@ export type NflVegasBoardRow = {
   pinnaclePolymarketDeltaPp: number | null;
   latestCapturedAt: string | null;
   trail: Array<{
+    books: Record<string, CfbBookQuote>;
     capturedAt: string;
     homeProb: number | null;
     homeSpread: number | null;
@@ -8439,12 +8441,14 @@ export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoard
         'capturedAt', captured_at::text,
         'homeProb', vegas_prob_home,
         'homeSpread', home_spread,
-        'total', COALESCE(vegas_total_raw, vegas_total)
+        'total', COALESCE(vegas_total_raw, vegas_total),
+        'books', books
       ) ORDER BY captured_at) AS trail
       FROM captures GROUP BY matchup_id
     )
     SELECT
       m.id AS "matchupId",
+      m.completed,
       m.game_date::text AS "gameDate",
       m.event_id AS "eventId",
       m.season_type AS "seasonType",
@@ -8488,6 +8492,7 @@ export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoard
       const point = item as Record<string, unknown>;
       return [{
         capturedAt: String(point.capturedAt),
+        books: (point.books as Record<string, CfbBookQuote>) ?? {},
         homeProb: point.homeProb != null ? Number(point.homeProb) : null,
         homeSpread: point.homeSpread != null ? Number(point.homeSpread) : null,
         total: point.total != null ? Number(point.total) : null,
@@ -8495,6 +8500,7 @@ export async function getNflVegasBoard(gameDate?: string): Promise<NflVegasBoard
     }) : [];
     return {
       matchupId: Number(record.matchupId),
+      completed: Boolean(record.completed),
       gameDate: String(record.gameDate),
       eventId: record.eventId != null ? String(record.eventId) : null,
       seasonType: record.seasonType != null ? String(record.seasonType) : null,
@@ -11002,6 +11008,26 @@ export async function getLineAlerts(
       origin: String(rec.origin ?? "prospective"),
     };
   });
+}
+
+/** Current observations are separate from immutable first-breach audit rows. */
+export async function getMovementSignalObservations(sport: string, matchupIds: number[]): Promise<LineAlertRow[]> {
+  if (!matchupIds.length) return [];
+  const rows = await db.execute(sql`
+    SELECT DISTINCT ON (o.matchup_id, o.market, o.alert_type, o.side, o.detector_version)
+      o.matchup_id, o.observed_at::text, o.alert_type, o.side, o.details_json,
+      h.away_team_name || ' @ ' || h.home_team_name AS matchup
+    FROM market_signal_observations o JOIN game_odds_history h ON h.id=o.history_id
+    WHERE o.sport=${sport} AND o.observed_at <= NOW()
+      AND o.matchup_id IN (${sql.join(matchupIds.map(id => sql`${id}`), sql`, `)})
+    ORDER BY o.matchup_id, o.market, o.alert_type, o.side, o.detector_version, o.observed_at DESC, o.id DESC
+  `);
+  return rows.rows.map(r => ({
+    matchupId: Number(r.matchup_id), createdAt: String(r.observed_at), matchup: String(r.matchup),
+    commenceTime: null, alertType: String(r.alert_type), side: String(r.side),
+    alertProb: null, sharpProb: null, details: r.details_json as Record<string, unknown>,
+    clvPp: null, outcome: null, origin: "prospective",
+  }));
 }
 
 /** Prospective-only, fixed-family audit. Zero-observation detectors remain

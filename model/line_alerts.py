@@ -113,6 +113,9 @@ _LATE_MOVE_PP = 1.0
 _ALERT_SPORTS = ("mlb", "nfl", "cfb", "soccer", "tennis")
 
 TOP_TEN_SIGNAL_TYPES = {
+    "nfl": ("steam", "walking", "reversal", "reference_led", "price_pressure",
+            "pinnacle_divergence", "book_disagreement", "market_convergence",
+            "late_move", "key_cross"),
     "tennis": ("steam", "walking", "reversal", "reference_led", "price_pressure",
                "pinnacle_divergence", "book_disagreement", "market_convergence",
                "late_move", "favorite_flip"),
@@ -140,6 +143,9 @@ _HEALTH_MIN_DAYS = 14          # don't judge a detector before it's had this lon
 _HEALTH_OPPORTUNITY_DAYS = 14  # "has this sport had eligible games recently"
 
 DETECTOR_REGISTRY: list[dict] = [
+    *[{"sport": "nfl", "alert_type": kind, "deployed_at": date(2026, 9, 6)}
+      for kind in ("reversal", "reference_led", "price_pressure", "key_cross",
+                   "book_disagreement", "market_convergence", "late_move")],
     # Generic scan() detectors (moneyline-based, reused across every sport).
     # pinnacle_divergence/dk_value/steam shipped 2026-07-02 (263ec4d/6d6fe75);
     # walking followed 2026-07-07 (c889b1d); NFL joined _ALERT_SPORTS and
@@ -830,8 +836,8 @@ def _cfb_signal_details(market: str, current: dict, previous: dict | None, openi
     }
 
 
-def _cfb_market_signals(history: list[dict]) -> list[dict]:
-    """Prospective CFB spread/total observations from immutable captures.
+def _cfb_market_signals(history: list[dict], *, sport: str = "cfb") -> list[dict]:
+    """Prospective football spread/total observations from immutable captures.
 
     Every result includes the exact source history ids and rule version. The
     detector emits candidates only; profitability is learned later from CLV,
@@ -851,6 +857,8 @@ def _cfb_market_signals(history: list[dict]) -> list[dict]:
         if not cur or cur["market_books"] < _CFB_MIN_BOOKS or cur["support"] < _CFB_MIN_BOOKS:
             continue
         base = _cfb_signal_details(market, current, previous, opening)
+        if sport == "nfl":
+            base.update(signal_version="nfl-structure-v1", detector_version="nfl-structure-v1")
 
         if prev and prev["market_books"] >= _CFB_MIN_BOOKS and prev["support"] >= _CFB_MIN_BOOKS:
             elapsed = (current["captured_at"] - previous["captured_at"]).total_seconds() / 60
@@ -869,7 +877,7 @@ def _cfb_market_signals(history: list[dict]) -> list[dict]:
                 })
 
             if market == "spread":
-                crossed = [key for key in _CFB_KEY_NUMBERS
+                crossed = [key for key in ((3.0, 7.0) if sport == "nfl" else _CFB_KEY_NUMBERS)
                            if (abs(prev["line"]) < key <= abs(cur["line"]))
                            or (abs(cur["line"]) < key <= abs(prev["line"]))]
                 if crossed:
@@ -1051,6 +1059,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
     )
     new_alerts: list[dict] = []
     for r in rows:
+        r["movement_candidates"] = []
         books = r["books"] or {}
         label = f"{r['away_team_name']} @ {r['home_team_name']}"
         # ── Pinnacle divergence ──
@@ -1206,20 +1215,20 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         details=walking_details,
                     ))
         structure_history = None
-        if sport in ("tennis", "cfb"):
+        if sport in ("tennis", "cfb", "nfl"):
             structure_history = db.execute(
                 """
                 SELECT id AS history_id, captured_at, capture_key, books
                 FROM game_odds_history
                 WHERE sport=%s AND matchup_id=%s AND books IS NOT NULL
-                  AND captured_at < %s
+                  AND captured_at < %s AND captured_at <= %s
                   AND EXISTS (
                     SELECT 1 FROM jsonb_object_keys(books) AS source(book_key)
                     WHERE source.book_key <> 'polymarket'
                   )
                 ORDER BY captured_at, id
                 """,
-                (sport, r["matchup_id"], r["commence_time"]),
+                (sport, r["matchup_id"], r["commence_time"], r["captured_at"]),
             )
             allowed = ({"reversal", "reference_led", "price_pressure", "book_disagreement",
                         "market_convergence", "late_move", "favorite_flip"}
@@ -1265,8 +1274,11 @@ def scan(db: DatabaseManager, sport: str) -> int:
                     sharp_prob=None,
                     details={**signal["details"], **priced},
                 ))
-        if sport == "cfb":
-            for signal in _cfb_market_signals(structure_history or []):
+        if sport in ("cfb", "nfl"):
+            for signal in _cfb_market_signals(structure_history or [], sport=sport):
+                # Preserve NFL's existing steam/drift definitions and audit cohort.
+                if sport == "nfl" and signal["alert_type"].endswith(("_steam", "_walking")):
+                    continue
                 details = signal["details"]
                 priced = freeze_execution_price(
                     books, market=details["market"], side=signal["side"],
@@ -1282,17 +1294,20 @@ def scan(db: DatabaseManager, sport: str) -> int:
                     **details,
                     **priced,
                     "evidence_key": (
-                        f"{_CFB_SIGNAL_VERSION}:{signal['alert_type']}:"
+                        f"{details['signal_version']}:{signal['alert_type']}:"
                         f"{signal['side']}:{r['history_id']}"
                     ),
                 }
                 new_alerts.extend(_insert(
-                    db, sport="cfb", r=r, label=label,
+                    db, sport=sport, r=r, label=label,
                     alert_type=signal["alert_type"], side=signal["side"],
                     alert_prob=(1 / float(priced["exec_decimal"])
                                 if priced.get("exec_decimal") else None),
                     sharp_prob=None, details=details,
                 ))
+        if sport in ("nfl", "cfb", "tennis"):
+            from model.signal_observations import record_observations
+            record_observations(db, sport, r)
     if new_alerts:
         print(f"Line alerts ({sport}): {len(new_alerts)} new — "
               + ", ".join(f"{a['alert_type']}:{a['matchup']}/{a['side']}" for a in new_alerts))
@@ -1358,6 +1373,9 @@ def _mlb_model_signal_context(db, r, side: str, alert_prob: float | None) -> dic
 
 def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, details) -> list[dict]:
     """First-breach insert; returns [alert] only when a NEW row was created."""
+    if "movement_candidates" in r:
+        r["movement_candidates"].append({"alert_type": alert_type, "side": side,
+                                          "details": dict(details)})
     if sport == "mlb":
         details = {**details, **_mlb_model_signal_context(db, r, side, alert_prob)}
     if sport == "cfb":

@@ -75,7 +75,8 @@ function Trail({ row, mini = false }: { row?: MlbLineMovementRow; mini?: boolean
   return <div><div className={s.bookLegend}><span className={s.consensusKey}>CONSENSUS</span>{availableBooks.map((book,i)=><button key={book} aria-pressed={visibleBooks.includes(book)} onClick={()=>setHiddenByMatch(current=>{const hidden=current[matchupId] ?? []; return {...current,[matchupId]:hidden.includes(book)?hidden.filter(v=>v!==book):[...hidden,book]};})} style={{"--book-color":BOOK_COLORS[i]} as CSSProperties}>{bookLabel(book)}</button>)}</div>{graphic}<div className={s.bookNote}>Consensus is bold · individual books use no-vig moneyline probability · top 8 by coverage shown</div></div>;
 }
 
-export default function TennisTerminal({ matchups, movement, alerts, queryDate, scorecard, captureHealth, children }: {
+export default function TennisTerminal({ matchups, movement, alerts, observations, queryDate, scorecard, captureHealth, children }: {
+  observations?: LineAlertRow[];
   matchups: TennisMatchRow[]; movement: MlbLineMovementRow[]; alerts: LineAlertRow[];
   queryDate: string | null; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth; children: ReactNode;
 }) {
@@ -88,7 +89,7 @@ export default function TennisTerminal({ matchups, movement, alerts, queryDate, 
   useEffect(() => { const initial = setTimeout(() => setNow(Date.now()),0); const id = setInterval(() => { setNow(Date.now()); router.refresh(); },60000); return () => { clearTimeout(initial); clearInterval(id); }; },[router]);
   const rows = useMemo(() => matchups.filter(m => (tour === "ALL" || m.tour === tour) &&
     `${m.homePlayer} ${m.awayPlayer} ${m.matchDate}`.toLowerCase().includes(search.toLowerCase())),[matchups,tour,search]);
-  const intelligence = useMemo(() => buildMovementInsights(tennisIntelligenceEvents(rows, movement), alerts, now ?? NaN), [rows, movement, alerts, now]);
+  const intelligence = useMemo(() => buildMovementInsights(tennisIntelligenceEvents(rows, movement), observations ?? alerts, now ?? NaN), [rows, movement, observations, alerts, now]);
   const match = rows.find(m => m.id === selected) ?? rows.find(m => movement.some(r => r.matchupId === m.id && r.trail.length > 0)) ?? rows[0];
   const history = movement.find(r => r.matchupId === match?.id);
   const tape = alerts.filter(a => a.matchupId === match?.id).sort((a,b) => Date.parse(alertObservedAt(b))-Date.parse(alertObservedAt(a)));
