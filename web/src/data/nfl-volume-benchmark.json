@@ -155,7 +155,7 @@
   ],
   "recipe_sha256": {
     "model/nfl_dfs_target_share.py": "84cbaf0b45a912b33aa69f0d4f3a2c5dd16b71b4a50ecab80e26ff91d4837657",
-    "ingest/nfl_dfs_target_share.py": "39ca098e361e2d70ea87d049ecfab43136a5e1d5ab908103d6e2ccec60c6b097",
+    "ingest/nfl_dfs_target_share.py": "b02134f7750729df64a900b2a902241fd95a128832a4504559a7249a47fc4bfa",
     "ingest/nfl_dfs_volume_benchmark.py": "ff68a72743e6548cbad405c7d80cbe7869f18ca2010fe69e931b2d01864457cd"
   },
   "passes_mean_and_interval_screen": false,

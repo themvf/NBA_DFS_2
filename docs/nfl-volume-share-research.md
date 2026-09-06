@@ -1,6 +1,6 @@
 # Pass-volume and target-share research release
 
-The report lives at `/dfs/nfl/model/workload`, linked from Model Lab and the WR context panel. It contains team budgets, WR target/point estimates, player P10/P50/P90, retrospective scoring comparisons and source digests. It does not activate a new optimizer source.
+The report lives at `/dfs/nfl/model/workload`, linked from Model Lab and the WR context panel. It contains team budgets, WR target/point estimates, player P10/P50/P90, retrospective scoring comparisons and source digests. The unadjusted WR forecasts now also feed an opt-in optimizer source; see [workload optimizer release](nfl-workload-optimizer-release.md). The default source remains unchanged.
 
 ## Model
 

@@ -51,8 +51,8 @@ export function buildLineupInsight(
   reasons.push({ label: `${(lineup.totalSalary / 500).toFixed(1)}% cap used`, detail: `${(lineup.projectedFpts / (lineup.totalSalary / 1000)).toFixed(2)} projected points per $1K.`, tone: "value" });
   if (uniqueFromPrevious != null) reasons.push({ label: `${uniqueFromPrevious} unique vs prior`, detail: `Lineup ${lineup.lineupNumber} changes ${uniqueFromPrevious} roster spots from lineup ${lineup.lineupNumber - 1}.`, tone: "diversity" });
   const direct = sourceCounts[selectedSource] ?? 0;
-  const fallback = sourceCounts.dk_avg_fallback ?? 0;
-  reasons.push({ label: `${direct}/${lineup.slots.length} direct-source`, detail: fallback ? `${fallback} roster spot${fallback === 1 ? "" : "s"} use the disclosed DK Avg fallback.` : "Every roster spot uses the selected projection source.", tone: "source" });
+  const fallback = (sourceCounts.dk_avg_fallback ?? 0) + (sourceCounts.our_fallback ?? 0);
+  reasons.push({ label: `${direct}/${lineup.slots.length} direct-source`, detail: fallback ? `${fallback} roster spot${fallback === 1 ? "" : "s"} use disclosed historical or DK Avg fallback.` : "Every roster spot uses the selected projection source.", tone: "source" });
   return {
     lineupNumber: lineup.lineupNumber, projectionRank, floorRank, ceilingRank,
     salaryUsedPct: lineup.totalSalary / 500, valuePerThousand: lineup.projectedFpts / (lineup.totalSalary / 1000),

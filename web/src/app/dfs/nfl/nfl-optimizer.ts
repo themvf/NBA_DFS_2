@@ -1,9 +1,10 @@
 import "server-only";
+import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
 
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v2-calibrated";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v3-workload";
 
-export type NflProjectionSource = "our" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
+export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
 export type NflSlateFormat = "classic" | "showdown";
 
@@ -29,6 +30,8 @@ export type NflOptimizerPlayer = {
   linestarProj: number | null;
   linestarOwnPct: number | null;
   customProj: number | null;
+  workload?: WorkloadProjection | null;
+  workloadReason?: string;
   calibrated?: CalibratedProjection | null;
   calibrationReason?: string;
 };
@@ -100,12 +103,16 @@ function finite(value: number | null | undefined): number | null {
 }
 
 function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSettings): { value: number; source: ResolvedPlayer["resolvedSource"] } | null {
+  if (settings.projectionSource === "workload") {
+    if (player.workload && finite(player.workload.mean) !== null && player.workload.mean > 0) return { value: player.workload.mean, source: "workload" };
+    if (finite(player.ourProj) !== null && player.ourProj! > 0) return { value: player.ourProj!, source: "our_fallback" };
+  }
   if (settings.projectionSource === "calibrated") {
     if (player.calibrated && finite(player.calibrated.mean) !== null && player.calibrated.mean > 0) return { value: player.calibrated.mean, source: "calibrated" };
     if (finite(player.ourProj) !== null && player.ourProj! > 0) return { value: player.ourProj!, source: "our_fallback" };
   }
   const direct = settings.projectionSource === "our" ? finite(player.ourProj)
-    : settings.projectionSource === "calibrated" ? null
+    : settings.projectionSource === "calibrated" || settings.projectionSource === "workload" ? null
     : settings.projectionSource === "dk_avg" ? finite(player.avgFptsDk)
     : settings.projectionSource === "fantasypros" ? finite(player.fantasyprosProj)
     : settings.projectionSource === "linestar" ? finite(player.linestarProj)
@@ -130,15 +137,15 @@ function jitter(seed: number, lineup: number, playerId: number): number {
 function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineupNumber: number): number {
   const historical = player.resolvedSource === "our" || player.resolvedSource === "our_fallback";
   const base = settings.mode === "cash"
-    ? (player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
-    : (player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
+    ? (player.resolvedSource === "workload" ? player.workload!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
+    : (player.resolvedSource === "workload" ? player.workload!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
   const ownershipPenalty = settings.mode === "gpp" ? (finite(player.linestarOwnPct) ?? 0) * 0.025 : 0;
   const boomBonus = settings.mode === "gpp" ? (player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
   return base + boomBonus - ownershipPenalty + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
 }
 
 function validateSettings(settings: NflOptimizerSettings): void {
-  if (!["our", "calibrated", "dk_avg", "fantasypros", "linestar", "custom"].includes(settings.projectionSource)) throw new Error("Unknown projection source.");
+  if (!["our", "workload", "calibrated", "dk_avg", "fantasypros", "linestar", "custom"].includes(settings.projectionSource)) throw new Error("Unknown projection source.");
   if (!Number.isInteger(settings.nLineups) || settings.nLineups < 1 || settings.nLineups > 150) throw new Error("Lineup count must be between 1 and 150.");
   if (settings.minSalary < 0 || settings.minSalary > 50000) throw new Error("Minimum salary must be between $0 and $50,000.");
   if (settings.maxExposure <= 0 || settings.maxExposure > 1) throw new Error("Maximum exposure must be greater than 0 and at most 100%.");
@@ -280,8 +287,8 @@ function buildOne(
     playerIds: chosen.map((entry) => entry.player.dkPlayerId),
     totalSalary: chosen.reduce((sum, entry) => sum + entry.salary, 0),
     projectedFpts: chosen.reduce((sum, entry) => sum + entry.projection, 0),
-    floorFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "calibrated" ? entry.player.calibrated!.p10 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.floorFpts ?? entry.projection / entry.multiplier * .74 : entry.projection / entry.multiplier * .74) * entry.multiplier, 0),
-    ceilingFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "calibrated" ? entry.player.calibrated!.p90 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.ceilingFpts ?? entry.projection / entry.multiplier * 1.28 : entry.projection / entry.multiplier * 1.28) * entry.multiplier, 0),
+    floorFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "workload" ? entry.player.workload!.p10 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p10 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.floorFpts ?? entry.projection / entry.multiplier * .74 : entry.projection / entry.multiplier * .74) * entry.multiplier, 0),
+    ceilingFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "workload" ? entry.player.workload!.p90 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p90 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.ceilingFpts ?? entry.projection / entry.multiplier * 1.28 : entry.projection / entry.multiplier * 1.28) * entry.multiplier, 0),
     projectedOwnership: chosen.some((entry) => entry.player.linestarOwnPct != null)
       ? chosen.reduce((sum, entry) => sum + (entry.player.linestarOwnPct ?? 0), 0)
       : null,
@@ -315,6 +322,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   if (settings.projectionSource === "calibrated") {
     if (!coverage.direct) throw new Error("No qualified pregame calibrated projections are available. Refresh forecasts or choose the historical model.");
     warnings.push("Calibrated QB/DST is experimental; forward validation is pending.");
+  }
+  if (settings.projectionSource === "workload") {
+    if (!coverage.direct) throw new Error("No eligible pregame WR workload projections. Refresh the workload snapshot or select the historical source.");
+    warnings.push(`${coverage.direct} WR workload forecasts available; other players retain disclosed fallback. Experimental ranges worsened historical interval scores. No injury redistribution or workload boom bonus.`);
   }
   warnings.push("Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions.");
   const exposureCounts = new Map<number, number>();

@@ -1074,11 +1074,11 @@ export async function ensureNflDfsTables(): Promise<void> {
       await db.execute(sql.raw(`DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'nfl_dfs_optimizer_runs'::regclass
           AND conname = 'nfl_dfs_optimizer_runs_projection_source_check'
-          AND pg_get_constraintdef(oid) LIKE '%calibrated%') THEN
+          AND pg_get_constraintdef(oid) LIKE '%workload%') THEN
         ALTER TABLE nfl_dfs_optimizer_runs
         DROP CONSTRAINT IF EXISTS nfl_dfs_optimizer_runs_projection_source_check,
         ADD CONSTRAINT nfl_dfs_optimizer_runs_projection_source_check
-        CHECK (projection_source IN ('our','calibrated','dk_avg','fantasypros','linestar','custom'));
+        CHECK (projection_source IN ('our','calibrated','workload','dk_avg','fantasypros','linestar','custom'));
         END IF;
       END $$`));
     })().catch((error) => {

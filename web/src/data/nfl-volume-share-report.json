@@ -1,6 +1,12 @@
 {
   "version": "nfl-dfs-volume-share-v1",
-  "as_of": "2026-09-06 15:23:38.876080+00:00",
+  "season": 2026,
+  "week": 1,
+  "history_cutoff_exclusive": [
+    2026,
+    1
+  ],
+  "as_of": "2026-09-06 22:22:08.438149+00:00",
   "config": {
     "games": 8,
     "half_life": 4,
@@ -28,7 +34,7 @@
       "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.parquet"
     }
   ],
-  "roster_evidence_digest": "f1fd8f5a36a154cb9874ee26fc7eeb8b60608d307ee2e01c12b461e14ec95ab4",
+  "roster_evidence_digest": "b292456d3094a9e5f1bafccfd086119bf68003a03a88a722142395aac68bfe03",
   "recipe_digest": "84cbaf0b45a912b33aa69f0d4f3a2c5dd16b71b4a50ecab80e26ff91d4837657",
   "replay": {
     "2024": {
@@ -69,9 +75,9 @@
   "availability_audit": [
     {
       "season": 2026,
-      "n": 27151,
+      "n": 29435,
       "first_capture": "2026-08-26 09:23:02.495640+00:00",
-      "latest_capture": "2026-09-06 11:56:12.581007+00:00"
+      "latest_capture": "2026-09-06 21:36:34.226001+00:00"
     }
   ],
   "historical_pregame_availability_rows": 0,
@@ -90,7 +96,7 @@
           "identity": "00-0037156",
           "name": "Irvin Charles",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -98,7 +104,7 @@
           "identity": "00-0038752",
           "name": "Jake Bobo",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -106,7 +112,7 @@
           "identity": "00-0039165",
           "name": "Zach Charbonnet",
           "status": "PUP",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -114,7 +120,7 @@
           "identity": "00-0040649",
           "name": "Robbie Ouzts",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -135,7 +141,7 @@
           "p90": 27.983538501333715,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -156,7 +162,7 @@
           "p90": 14.46971001957155,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -177,7 +183,7 @@
           "p90": 14.077543054438411,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -198,7 +204,7 @@
           "p90": 9.986346073458172,
           "availability": {
             "status": "IR",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": true
           },
@@ -220,7 +226,7 @@
           "identity": "00-0038720",
           "name": "Julian Hill",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -228,7 +234,7 @@
           "identity": "00-0040570",
           "name": "Jeremiah Webb",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -249,7 +255,7 @@
           "p90": 16.58113761955393,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -270,7 +276,7 @@
           "p90": 12.776339227885455,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -291,7 +297,7 @@
           "p90": 12.047219072361523,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -312,7 +318,7 @@
           "p90": 11.892645628231447,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -334,7 +340,7 @@
           "identity": "00-0041414",
           "name": "Matthew Caldwell",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -355,7 +361,7 @@
           "p90": 29.787295915710917,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -376,7 +382,7 @@
           "p90": 22.0434053210482,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -397,7 +403,7 @@
           "p90": 12.500723089392451,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -418,7 +424,7 @@
           "p90": 11.335863842453048,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -439,7 +445,7 @@
           "p90": 10.079323275900528,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -460,7 +466,7 @@
           "p90": 9.545437339215015,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -482,7 +488,7 @@
           "identity": "00-0034775",
           "name": "Christian Kirk",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -490,7 +496,7 @@
           "identity": "00-0039363",
           "name": "Isaac Guerendo",
           "status": "PUP",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -498,7 +504,7 @@
           "identity": "00-0039916",
           "name": "Ricky Pearsall",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -519,7 +525,7 @@
           "p90": 16.088970043475477,
           "availability": {
             "status": "IR",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": true
           },
@@ -540,7 +546,7 @@
           "p90": 12.875969274507565,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -562,7 +568,7 @@
           "identity": "00-0037197",
           "name": "Isiah Pacheco",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -570,7 +576,7 @@
           "identity": "00-0041446",
           "name": "Kendrick Law",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -591,7 +597,7 @@
           "p90": 28.414305423802855,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -612,7 +618,7 @@
           "p90": 23.525059468540853,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -633,7 +639,7 @@
           "p90": 15.77746251408768,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -654,7 +660,7 @@
           "p90": 9.550679336589631,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -676,7 +682,7 @@
           "identity": "00-0037276",
           "name": "Ty Chandler",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -684,7 +690,7 @@
           "identity": "00-0039623",
           "name": "Mason Tipton",
           "status": "PUP",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -692,7 +698,7 @@
           "identity": "00-0040244",
           "name": "Moliki Matavao",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -700,7 +706,7 @@
           "identity": "00-0041029",
           "name": "Jordyn Tyson",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -721,7 +727,7 @@
           "p90": 24.807706931526287,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -742,7 +748,7 @@
           "p90": 15.662290502350174,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -763,7 +769,7 @@
           "p90": 13.205630295723566,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -784,7 +790,7 @@
           "p90": 10.605507480369711,
           "availability": {
             "status": "PUP",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": true
           },
@@ -806,7 +812,7 @@
           "identity": "00-0038977",
           "name": "Tank Dell",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -814,7 +820,7 @@
           "identity": "00-0040130",
           "name": "Jayden Higgins",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -822,7 +828,7 @@
           "identity": "00-0040211",
           "name": "Graham Mertz",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -843,7 +849,7 @@
           "p90": 21.03830507279752,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -864,7 +870,7 @@
           "p90": 16.429689973866598,
           "availability": {
             "status": "IR",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": true
           },
@@ -885,7 +891,7 @@
           "p90": 13.168329418468769,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -906,7 +912,7 @@
           "p90": 12.05468045845793,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -928,7 +934,7 @@
           "identity": "00-0038679",
           "name": "Tyrell Shavers",
           "status": "PUP",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -949,7 +955,7 @@
           "p90": 15.310599434173831,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -970,7 +976,7 @@
           "p90": 14.05031884370383,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -991,7 +997,7 @@
           "p90": 12.694837729110294,
           "availability": {
             "status": "PUP",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": true
           },
@@ -1012,7 +1018,7 @@
           "p90": 10.46625580562263,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1034,7 +1040,7 @@
           "identity": "00-0035045",
           "name": "D.J. Montgomery",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1042,7 +1048,7 @@
           "identity": "00-0038394",
           "name": "Will Mallory",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1050,7 +1056,7 @@
           "identity": "00-0040352",
           "name": "Coleman Owen",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1058,7 +1064,7 @@
           "identity": "00-0040853",
           "name": "Carson Towt",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1079,7 +1085,7 @@
           "p90": 22.626665417586324,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1100,7 +1106,7 @@
           "p90": 15.709639121828449,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1121,7 +1127,7 @@
           "p90": 10.1352431130148,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1142,7 +1148,7 @@
           "p90": 8.67197505856195,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1164,7 +1170,7 @@
           "identity": "00-0037327",
           "name": "Skylar Thompson",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1172,7 +1178,7 @@
           "identity": "00-0040888",
           "name": "Adam Randall",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1193,7 +1199,7 @@
           "p90": 26.432237157956845,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1214,7 +1220,7 @@
           "p90": 12.752922368698286,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1235,7 +1241,7 @@
           "p90": 10.841400835052854,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1256,7 +1262,7 @@
           "p90": 8.67197505856195,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1278,7 +1284,7 @@
           "identity": "00-0039534",
           "name": "Carter Bradley",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1299,7 +1305,7 @@
           "p90": 23.230047030166535,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1320,7 +1326,7 @@
           "p90": 18.70688423309511,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1341,7 +1347,7 @@
           "p90": 15.714942409735041,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1363,7 +1369,7 @@
           "identity": "00-0039379",
           "name": "Jamari Thrash",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1371,7 +1377,7 @@
           "identity": "00-0040704",
           "name": "Dillon Gabriel",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1379,7 +1385,7 @@
           "identity": "00-0041087",
           "name": "Joe Royer",
           "status": "PUP",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1400,7 +1406,7 @@
           "p90": 14.483527587151581,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1421,7 +1427,7 @@
           "p90": 11.746278067753046,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1442,7 +1448,7 @@
           "p90": 11.321318262001164,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1480,7 +1486,7 @@
           "identity": "00-0039626",
           "name": "Cole Burgess",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1501,7 +1507,7 @@
           "p90": 19.753645896054888,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1522,7 +1528,7 @@
           "p90": 9.26051669211557,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1544,7 +1550,7 @@
           "identity": "00-0036984",
           "name": "Trey Sermon",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1552,7 +1558,7 @@
           "identity": "00-0040432",
           "name": "Beaux Collins",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1573,7 +1579,7 @@
           "p90": 22.116300564918312,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1594,7 +1600,7 @@
           "p90": 9.942382513524947,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1616,7 +1622,7 @@
           "identity": "00-0040901",
           "name": "Jaren Kanak",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1637,7 +1643,7 @@
           "p90": 17.385847225866268,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1658,7 +1664,7 @@
           "p90": 15.882754096150826,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1708,7 +1714,7 @@
           "p90": 14.838031168619752,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1729,7 +1735,7 @@
           "p90": 14.49076027466677,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1750,7 +1756,7 @@
           "p90": 9.382953141816714,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1772,7 +1778,7 @@
           "identity": "00-0040644",
           "name": "Trevor Etienne",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1780,7 +1786,7 @@
           "identity": "00-0041047",
           "name": "Chris Brazzell II",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1801,7 +1807,7 @@
           "p90": 19.317945820899755,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1822,7 +1828,7 @@
           "p90": 19.084006610642227,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1843,7 +1849,7 @@
           "p90": 12.55770208063857,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1864,7 +1870,7 @@
           "p90": 11.081667838290388,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1885,7 +1891,7 @@
           "p90": 9.923689105058477,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1907,7 +1913,7 @@
           "identity": "00-0037031",
           "name": "Nikola Kalinic",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1915,7 +1921,7 @@
           "identity": "00-0037329",
           "name": "Brittain Brown",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -1923,7 +1929,7 @@
           "identity": "00-0041170",
           "name": "Hayden Large",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -1944,7 +1950,7 @@
           "p90": 20.94906216680296,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1965,7 +1971,7 @@
           "p90": 13.724647268232014,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -1999,7 +2005,7 @@
           "p90": 26.557501127019155,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2020,7 +2026,7 @@
           "p90": 22.76299524703509,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2041,7 +2047,7 @@
           "p90": 12.922424178049539,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2063,7 +2069,7 @@
           "identity": "00-0035359",
           "name": "David Sills",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2071,7 +2077,7 @@
           "identity": "00-0037570",
           "name": "Dennis Houston",
           "status": "QUESTIONABLE",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2092,7 +2098,7 @@
           "p90": 17.511890845617188,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2113,7 +2119,7 @@
           "p90": 17.282280125479023,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2134,7 +2140,7 @@
           "p90": 13.346426318537354,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2155,7 +2161,7 @@
           "p90": 11.926608868129193,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2176,7 +2182,7 @@
           "p90": 8.67197505856195,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2198,7 +2204,7 @@
           "identity": "00-0036670",
           "name": "Jermar Jefferson",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2206,7 +2212,7 @@
           "identity": "00-0040504",
           "name": "Bryson Nesbit",
           "status": "QUESTIONABLE",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2227,7 +2233,7 @@
           "p90": 17.8738619901313,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2248,7 +2254,7 @@
           "p90": 14.39362050127898,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2269,7 +2275,7 @@
           "p90": 9.193792617088404,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2290,7 +2296,7 @@
           "p90": 8.67197505856195,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2312,7 +2318,7 @@
           "identity": "00-0039144",
           "name": "Luke Musgrave",
           "status": "PUP",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2320,7 +2326,7 @@
           "identity": "00-0039936",
           "name": "Thomas Yassmin",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2328,7 +2334,7 @@
           "identity": "00-0040009",
           "name": "Savion Williams",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2349,7 +2355,7 @@
           "p90": 16.745817556947753,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2370,7 +2376,7 @@
           "p90": 13.178379801055549,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2391,7 +2397,7 @@
           "p90": 10.476908383624675,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2412,7 +2418,7 @@
           "p90": 10.23388257236234,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2433,7 +2439,7 @@
           "p90": 9.570270976191312,
           "availability": {
             "status": "IR",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": true
           },
@@ -2455,7 +2461,7 @@
           "identity": "00-0037086",
           "name": "Grant Calcaterra",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2463,7 +2469,7 @@
           "identity": "00-0039236",
           "name": "Johnny Wilson",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2484,7 +2490,7 @@
           "p90": 16.11186049366465,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2505,7 +2511,7 @@
           "p90": 11.57298018039366,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2526,7 +2532,7 @@
           "p90": 9.355334990603305,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2548,7 +2554,7 @@
           "identity": "00-0033955",
           "name": "Jeremy McNichols",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2556,7 +2562,7 @@
           "identity": "00-0040317",
           "name": "Jacoby Jones",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2577,7 +2583,7 @@
           "p90": 18.656621823071053,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2598,7 +2604,7 @@
           "p90": 11.622389821480922,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2619,7 +2625,7 @@
           "p90": 10.583723318462164,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2641,7 +2647,7 @@
           "identity": "00-0038590",
           "name": "Justin Shorter",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2649,7 +2655,7 @@
           "identity": "00-0039244",
           "name": "Chris Collier",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2657,7 +2663,7 @@
           "identity": "00-0040488",
           "name": "Carter Runyon",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2665,7 +2671,7 @@
           "identity": "00-0040581",
           "name": "Dont'e Thornton Jr.",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2673,7 +2679,7 @@
           "identity": "00-0041005",
           "name": "Corey Rucker",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2694,7 +2700,7 @@
           "p90": 13.964451473319457,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2715,7 +2721,7 @@
           "p90": 12.004777866248492,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2736,7 +2742,7 @@
           "p90": 9.87239602929869,
           "availability": {
             "status": "IR",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": true
           },
@@ -2758,7 +2764,7 @@
           "identity": "00-0037078",
           "name": "Cole Turner",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2766,7 +2772,7 @@
           "identity": "00-0038809",
           "name": "Ben Sims",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2787,7 +2793,7 @@
           "p90": 13.921145127592798,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2809,7 +2815,7 @@
           "identity": "00-0040629",
           "name": "Dalevon Campbell",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2830,7 +2836,7 @@
           "p90": 18.661251931924117,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2851,7 +2857,7 @@
           "p90": 16.59298376533348,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2872,7 +2878,7 @@
           "p90": 12.817308094127958,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2893,7 +2899,7 @@
           "p90": 10.308463613528152,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2914,7 +2920,7 @@
           "p90": 9.066170870241214,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -2936,7 +2942,7 @@
           "identity": "00-0033553",
           "name": "James Conner",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2944,7 +2950,7 @@
           "identity": "00-0039737",
           "name": "Tip Reiman",
           "status": "PUP",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2952,7 +2958,7 @@
           "identity": "00-0039921",
           "name": "Trey Benson",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -2960,7 +2966,7 @@
           "identity": "00-0041366",
           "name": "Jameson Geers",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -2981,7 +2987,7 @@
           "p90": 25.601577978998254,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3002,7 +3008,7 @@
           "p90": 15.85548261284189,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3039,7 +3045,7 @@
           "p90": 9.69554580045105,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3061,7 +3067,7 @@
           "identity": "00-0035645",
           "name": "Gunner Olszewski",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -3069,7 +3075,7 @@
           "identity": "00-0037837",
           "name": "Calvin Austin III",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -3090,7 +3096,7 @@
           "p90": 14.398789209957402,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3111,7 +3117,7 @@
           "p90": 12.714978012335045,
           "availability": {
             "status": "IR",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": true
           },
@@ -3148,7 +3154,7 @@
           "p90": 9.634482233491706,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3170,7 +3176,7 @@
           "identity": "00-0038735",
           "name": "Princeton Fant",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -3178,7 +3184,7 @@
           "identity": "00-0040938",
           "name": "DJ Rogers",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -3199,7 +3205,7 @@
           "p90": 20.94666348367097,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3220,7 +3226,7 @@
           "p90": 19.064441802035095,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3241,7 +3247,7 @@
           "p90": 18.386071911786185,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3262,7 +3268,7 @@
           "p90": 13.771732817506233,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3283,7 +3289,7 @@
           "p90": 9.595299692470036,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3305,7 +3311,7 @@
           "identity": "00-0040120",
           "name": "Jimmy Holiday",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -3313,7 +3319,7 @@
           "identity": "00-0040953",
           "name": "Jeff Caldwell",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         },
@@ -3321,7 +3327,7 @@
           "identity": "00-0040955",
           "name": "John Michael Gyllenborg",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -3342,7 +3348,7 @@
           "p90": 19.746302002744553,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3363,7 +3369,7 @@
           "p90": 13.094352817013188,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3384,7 +3390,7 @@
           "p90": 11.238084029896134,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3405,7 +3411,7 @@
           "p90": 8.67197505856195,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3427,7 +3433,7 @@
           "identity": "00-0040240",
           "name": "Caleb Lohner",
           "status": "IR",
-          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "captured_at": "2026-09-06T21:22:17.154361+00:00",
           "source": "Sleeper roster; retrieval timestamp",
           "out": true
         }
@@ -3448,7 +3454,7 @@
           "p90": 18.759295140965637,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3469,7 +3475,7 @@
           "p90": 15.748842250136963,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3490,7 +3496,7 @@
           "p90": 15.597958377624506,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3511,7 +3517,7 @@
           "p90": 12.830527404600597,
           "availability": {
             "status": "QUESTIONABLE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3532,7 +3538,7 @@
           "p90": 12.447517791479111,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3553,7 +3559,7 @@
           "p90": 11.483593164072573,
           "availability": {
             "status": "ACTIVE",
-            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "captured_at": "2026-09-06T21:22:17.154361+00:00",
             "source": "Sleeper roster; retrieval timestamp",
             "out": false
           },
@@ -3570,5 +3576,5 @@
     "Half redistribution is an unvalidated scenario, not an activated injury adjustment.",
     "Player residual ranges are not joint-lineup percentiles. No Kelly sizing."
   ],
-  "snapshot_digest": "f6ea0700b4693b81832d30cdf0a9259522d216f89446db8a6344954f553d0d3e"
+  "snapshot_digest": "c251addf81f229b087c3bf4e33ec0bf2dab93d0ad495103d45f8680e0cad5400"
 }

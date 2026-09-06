@@ -9,11 +9,12 @@ import { applyNflComparison, loadNflSalaryCsv, loadLatestNflSlate, runNflOptimiz
 import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
 import { parseNflComparisonCsv } from "@/lib/nfl-dfs/comparison-csv";
 import { exportNflDkEntries } from "@/lib/nfl-dfs/entry-export";
+import WorkloadProjections from "./workload-projections";
 import CalibratedProjections from "./calibrated-projections";
 import NflLineupVisualizations from "./nfl-lineup-visualizations";
 
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"] as const;
-const SOURCE_LABELS: Record<NflProjectionSource, string> = { our: "Our historical model", calibrated: "Calibrated QB/DST (experimental)", dk_avg: "DK average", fantasypros: "FantasyPros", linestar: "LineStar", custom: "Custom" };
+const SOURCE_LABELS: Record<NflProjectionSource, string> = { our: "Our historical model", workload: "WR workload (experimental)", calibrated: "Calibrated QB/DST (experimental)", dk_avg: "DK average", fantasypros: "FantasyPros", linestar: "LineStar", custom: "Custom" };
 const points = (value: number | null) => value == null ? "—" : value.toFixed(1);
 const pct = (value: number | null) => value == null ? "—" : `${value.toFixed(1)}%`;
 const dollars = (value: number) => `$${value.toLocaleString()}`;
@@ -76,6 +77,7 @@ export default function NflDfsClient() {
     <section className="grid gap-3 md:grid-cols-4"><Status icon={<FileUp className="h-5 w-5" />} title="Persisted intake" text="Salary pools and source files are fingerprinted and saved." good /><Status icon={<BarChart3 className="h-5 w-5" />} title="Source comparison" text="Our model, DK, FantasyPros, LineStar, or custom—always labeled." good /><Status icon={<ShieldCheck className="h-5 w-5" />} title="Auditable optimizer" text="Settings, input snapshot, digest, and every lineup are retained." good /><Status icon={<AlertTriangle className="h-5 w-5" />} title="No claimed edge yet" text="The historical model has not beaten its recency baseline." /></section>
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end"><div><h2 className="font-bold text-slate-950">1. Load the DraftKings player pool</h2><p className="mt-1 text-sm text-slate-600">Upload the salary CSV—not the entries-only file. It is saved and linked to the latest model snapshot.</p></div><input ref={salaryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => loadSalary(e.target.files?.[0] ?? null)} /><button disabled={pending} onClick={() => salaryRef.current?.click()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-50"><FileUp className="h-4 w-4" />{slate ? "Replace salaries" : "Upload salaries"}</button></div>{message ? <Notice good>{message}</Notice> : null}{error ? <Notice>{error}</Notice> : null}</section>
     <button disabled={pending} onClick={resumeSlate} className="rounded-lg border border-teal-700 px-4 py-2 text-sm font-bold text-teal-800 disabled:opacity-50">Resume latest saved slate / refresh forecasts</button>
+    <WorkloadProjections key={slate?.uploadId??'no-slate'} slate={slate} active={settings.projectionSource === 'workload'} onChoose={()=>setSettings({...settings,projectionSource:'workload'})} settings={{...settings,format:slate?.format??'classic',lockedPlayerIds:locked,excludedPlayerIds:excluded,minExposureByPlayer:Object.fromEntries(Object.entries(targetExposure).map(([id,pct])=>[id,Math.round(pct/100*Math.min(5,settings.nLineups))/Math.min(5,settings.nLineups)])),maxExposureByPlayer:Object.fromEntries(Object.entries(targetExposure).map(([id,pct])=>[id,Math.round(pct/100*Math.min(5,settings.nLineups))/Math.min(5,settings.nLineups)]))}} />
     <CalibratedProjections slate={slate} active={settings.projectionSource === "calibrated"} onChoose={() => setSettings({ ...settings, projectionSource: "calibrated" })} />
     {slate ? <>
       <AvailabilityPanel slate={slate} />

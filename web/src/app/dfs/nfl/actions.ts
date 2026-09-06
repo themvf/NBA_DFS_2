@@ -1,7 +1,7 @@
 "use server";
 
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { ensureNflDfsTables } from "@/db/ensure-schema";
 import {
@@ -20,6 +20,7 @@ import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
+import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import {
@@ -168,6 +169,9 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const byPlayer = new Map(snapshots.map(s => [s.playerId, s]));
   const roster = run ? await getNflRosterEvidence(run.season, run.week) : new Map();
   const injuryCoverage = run ? await getNflInjuryCoverage(run.season,run.week) : null;
+  const {default:workloadReport}=await import('@/data/nfl-volume-share-report.json');
+  const identities=run ? await db.execute(sql`SELECT id, gsis_id FROM ff_players WHERE season=${run.season} AND gsis_id IS NOT NULL`) : {rows:[]};
+  const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
   const now = Date.now();
   const availability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
   return {
@@ -212,7 +216,8 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       customProj: numeric(row.customProj),
       ...(() => {
         const candidate = readCalibratedProjection(byPlayer.get(row.ffPlayerId ?? -1), row, run?.season ?? 0, run?.week ?? 0, now);
-        return { calibrated: candidate.projection, calibrationReason: candidate.reason };
+        const workload=readWorkloadProjection(workloadReport as WorkloadReport,{identity:identityMap.get(row.ffPlayerId??-1)??null,position:row.position,team:row.team,gameInfo:row.gameInfo,isOut:row.isOut,availability:availability(row)},run?.season??0,run?.week??0,now);
+        return { calibrated: candidate.projection, calibrationReason: candidate.reason, workload:workload.projection,workloadReason:workload.reason };
       })(),
     })),
   };
@@ -378,11 +383,37 @@ export async function runNflOptimizer(
 ): Promise<{ runId: string; slate: NflWorkspaceSlate; result: { lineups: NflGeneratedLineup[]; warnings: string[]; sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number } } }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId);
-  const result = optimizeNflLineups(slate.players, settings);
+  if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");
+  return saveOptimizerResult(slate,settings);
+}
+
+export async function compareNflWorkload(uploadId:string, settings:NflOptimizerSettings) {
+  await ensureNflDfsTables();
+  const slate=await workspaceSlate(uploadId);
+  // One server-read cohort, both sources, identical controls and deterministic search.
+  if(!Number.isInteger(settings.nLineups)||settings.nLineups<1||settings.nLineups>150)throw new Error('Lineup count must be 1–150.');
+  const now=Date.now();
+  const common=slate.players.filter(p=>(p.ourProj!==null&&p.ourProj>0||settings.allowDkFallback&&p.avgFptsDk!==null&&p.avgFptsDk>0)&&workloadPoolEligible(p,now));
+  const pairedSlate={...slate,players:common};
+  const paired={...settings,format:slate.format,randomness:0,nLineups:Math.min(5,settings.nLineups)};
+  if(!common.some(p=>p.workload&&!p.isOut))throw new Error('No eligible pregame workload forecasts for comparison.');
+  const baseline=await saveOptimizerResult(pairedSlate,{...paired,projectionSource:'our'});
+  const candidate=await saveOptimizerResult(pairedSlate,{...paired,projectionSource:'workload'});
+  return {baseline,candidate,settings:paired,excludedFromComparison:slate.players.length-common.length,comparedAt:new Date().toISOString(),note:'Identical frozen player inputs and settings; up to five lineups, randomness zero. Generated scores are predictions, not measured performance.'};
+}
+
+async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizerSettings) {
+  const uploadId=slate.uploadId;
+  const now=Date.now();
+  const eligible= settings.projectionSource==='workload' ? slate.players.filter(p=>workloadPoolEligible(p,now)) : slate.players;
+  const result = optimizeNflLineups(eligible, settings);
+  if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");
+  if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "workload" && (Date.parse(s.player.workload!.kickoff) <= Date.now() || Date.now()-Date.parse(s.player.workload!.capturedAt)>72*3600000)))) throw new Error("A workload forecast expired during optimization. Refresh forecasts before regenerating.");
+  if(settings.projectionSource==='workload'&&result.lineups.some(l=>l.slots.some(s=>!workloadPoolEligible(slate.players.find(p=>p.dkPlayerId===s.player.dkPlayerId)!,Date.now()))))throw new Error('Roster or kickoff evidence expired during optimization. Refresh the slate.');
   const runId = randomUUID();
   const inputSnapshot = slate.players.map((player) => ({
-    dkPlayerId: player.dkPlayerId, name: player.name, team: player.team, position: player.position,
+    dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
     salary: player.salary, captainSalary: player.captainSalary, status: player.dkStatus,
     ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
@@ -390,9 +421,11 @@ export async function runNflOptimizer(
     availability: player.availability, isOut: player.isOut,
     injuryCoverageSnapshotId: slate.injuryCoverage?.snapshotId ?? null,
     calibrated: player.calibrated ?? null, calibrationReason: player.calibrationReason,
+    workload: player.workload ?? null, workloadReason: player.workloadReason,
   }));
   const inputDigest = sha256(JSON.stringify({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));
   const status = result.lineups.length === settings.nLineups ? "complete" : result.lineups.length ? "partial" : "failed";
+  try {
   await db.insert(nflDfsOptimizerRuns).values({
     runId, uploadId, projectionRunId: slate.projectionRunId,
     optimizerVersion: NFL_OPTIMIZER_VERSION, mode: settings.mode,
@@ -412,5 +445,6 @@ export async function runNflOptimizer(
     projectedOwnership: lineup.projectedOwnership,
     stackSummary: lineup.stackSummary,
   })));
+  } catch { throw new Error("Unable to save optimizer results. Refresh the slate and retry; an incomplete run may remain saved."); }
   return { runId, slate, result };
 }
