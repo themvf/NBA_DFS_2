@@ -44,6 +44,7 @@ export type EfficiencyReport = {
   as_of_at: string;
   dataset_digest: string;
   workload_run_digest: string;
+  workload_dataset_digest?: string;
   production_changed: false;
   coherence_scope: "team_coupled_offense_plus_separate_dst";
   forecasts: {

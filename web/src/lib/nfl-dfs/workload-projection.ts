@@ -4,15 +4,16 @@ import { salaryMatchesKickoff, benchmarkTeam } from './competitor-benchmark';
 export type WorkloadProjection = {
   mean: number; p10: number; p50: number; p90: number; targets: number;
   baselineTargets: number; historyGames: number; snapshotId: string;
+  referenceMean?:number;
   recipeDigest: string; rosterDigest: string; capturedAt: string; kickoff: string;
-  identity: string; season: number; week: number; injuryAdjusted: false;
+  identity: string; season: number; week: number; injuryAdjusted: boolean;
 };
 export type WorkloadReport = {
   version: string; season: number; week: number; history_cutoff_exclusive: number[];
   as_of: string; snapshot_digest: string; recipe_digest: string; roster_evidence_digest: string;
   sources: {season:number}[];
   forward: {team:string; kickoff:string; players: {identity:string; history_games:number;
-    targets_baseline:number; targets_volume:number; fpts_volume:number; p10:number; p50:number; p90:number}[]}[];
+    targets_baseline:number; targets_volume:number; fpts_baseline?:number; fpts_volume:number; p10:number; p50:number; p90:number}[]}[];
 };
 export type WorkloadTarget = {identity:string|null; position:string; team:string; gameInfo:string|null; isOut:boolean; availability?:Availability};
 export function readWorkloadProjection(report:WorkloadReport, target:WorkloadTarget, season:number, week:number, now:number): {projection:WorkloadProjection|null; reason:string} {
@@ -34,7 +35,7 @@ export function readWorkloadProjection(report:WorkloadReport, target:WorkloadTar
   if(matches.length!==1)return no('No unique same-team historical workload forecast.');
   const p=matches[0];
   if(![p.fpts_volume,p.p10,p.p50,p.p90,p.targets_volume,p.targets_baseline,p.history_games].every(Number.isFinite)||p.fpts_volume<=0||p.targets_volume<0||p.targets_baseline<0||p.history_games<4||p.p10>p.p50||p.p50>p.p90)return no('Workload projection or distribution is invalid.');
-  return {projection:{mean:p.fpts_volume,p10:p.p10,p50:p.p50,p90:p.p90,targets:p.targets_volume,baselineTargets:p.targets_baseline,historyGames:p.history_games,snapshotId:report.snapshot_digest,recipeDigest:report.recipe_digest,rosterDigest:report.roster_evidence_digest,capturedAt:report.as_of,kickoff:game.kickoff,identity:target.identity,season,week,injuryAdjusted:false},reason:'Unadjusted WR workload forecast; experimental.'};
+  return {projection:{mean:p.fpts_volume,p10:p.p10,p50:p.p50,p90:p.p90,targets:p.targets_volume,baselineTargets:p.targets_baseline,...(Number.isFinite(p.fpts_baseline)?{referenceMean:p.fpts_baseline}:{}),historyGames:p.history_games,snapshotId:report.snapshot_digest,recipeDigest:report.recipe_digest,rosterDigest:report.roster_evidence_digest,capturedAt:report.as_of,kickoff:game.kickoff,identity:target.identity,season,week,injuryAdjusted:false},reason:'Unadjusted WR workload forecast; experimental.'};
 }
 
 /** Shared pregame cohort for both arms; unresolved QB roles must not become starters. */

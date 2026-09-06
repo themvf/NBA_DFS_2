@@ -2,8 +2,9 @@ import "server-only";
 import {selectedWorkload,validateWorkloadPositions,WORKLOAD_POSITIONS,type WorkloadPositions} from "@/lib/nfl-dfs/workload-selection";
 import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
+import type { SituationSettings, ProjectionAudit, SituationEvidence } from '@/lib/nfl-dfs/projection-audit';
 
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v4-position-workload";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v5-audited-situations";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -37,6 +38,8 @@ export type NflOptimizerPlayer = {
   positionWorkloadReason?: string;
   calibrated?: CalibratedProjection | null;
   calibrationReason?: string;
+  situationEvidence?: SituationEvidence;
+  projectionAudit?: ProjectionAudit;
 };
 
 export type NflOptimizerSettings = {
@@ -45,6 +48,7 @@ export type NflOptimizerSettings = {
   projectionSource: NflProjectionSource;
   allowDkFallback: boolean;
   workloadPositions?: WorkloadPositions;
+  situations?: SituationSettings;
   nLineups: number;
   minSalary: number;
   maxExposure: number;
@@ -127,6 +131,13 @@ function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSetting
   return settings.allowDkFallback && fallback != null && fallback > 0
     ? { value: fallback, source: "dk_avg_fallback" }
     : null;
+}
+
+export function resolveProjectionAudit(player:NflOptimizerPlayer,settings:NflOptimizerSettings):ProjectionAudit {
+  const resolved=projectionFor(player,settings);
+  if(resolved?.source==='workload'&&player.projectionAudit)return {...player.projectionAudit,excluded:player.isOut||settings.excludedPlayerIds.includes(player.dkPlayerId)};
+  const baseline=finite(player.ourProj),final=resolved?.value??null,delta=baseline!=null&&final!=null?final-baseline:0;
+  return {version:'nfl-projection-audit-v1',baseline,final,source:resolved?.source??'unavailable',excluded:player.isOut||settings.excludedPlayerIds.includes(player.dkPlayerId)||!resolved,modelSnapshot:resolved?.source==='calibrated'?player.calibrated:null,evidence:player.projectionAudit?.evidence??null,assumption:null,rangeMethod:resolved?.source==='calibrated'?'Pinned calibrated player ranges.':resolved?.source==='our'||resolved?.source==='our_fallback'?'Historical player ranges.':'Source supplies a mean only; optimizer uses 0.74 × mean / 1.28 × mean range heuristics.',steps:[{label:'Selected projection source',status:delta?'applied':'not_applied',points:delta,reason:resolved?`${resolved.source}: ${baseline===null?'historical baseline unavailable; no comparative delta claimed':final===baseline?'historical estimate retained':'source replacement, not an inferred injury or matchup effect'}.`:'No usable projection; excluded.'},...(player.projectionAudit?.steps.filter(s=>s.label==='Situation adjustments')??[])]};
 }
 
 function safe(value: string): string {
@@ -313,7 +324,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     const resolved = projectionFor(player, settings);
     if (!resolved) { coverage.excluded++; continue; }
     if (resolved.source === "dk_avg_fallback" || resolved.source === "our_fallback") coverage.fallback++; else coverage.direct++;
-    pool.push({ ...player, projection: resolved.value, resolvedSource: resolved.source });
+    pool.push({ ...player, projectionAudit:resolveProjectionAudit(player,settings), projection: resolved.value, resolvedSource: resolved.source });
   }
   for (const [rawId, target] of Object.entries(settings.minExposureByPlayer)) {
     if (target > 0 && !pool.some((player) => player.dkPlayerId === Number(rawId))) {
@@ -333,7 +344,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   if (settings.projectionSource === "workload") {
     if (!coverage.direct) throw new Error("No eligible pregame forecasts for the enabled workload positions. Refresh the workload snapshot or select the historical source.");
     const counts=WORKLOAD_POSITIONS.map(pos=>`${pos}: ${pool.filter(p=>p.resolvedSource==='workload'&&p.position===pos).length}`).join(', ');
-    warnings.push(`Workload coverage — ${counts}. Other players retain disclosed fallback. RB/WR/TE candidate ranges worsened historical interval scores. No injury redistribution; WR has no invented boom bonus.`);
+    warnings.push(`Workload coverage — ${counts}. Other players retain disclosed fallback. RB/WR/TE candidate ranges worsened historical interval scores. Situation effects, when enabled, are listed in each player audit; WR has no invented boom bonus.`);
   }
   warnings.push("Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions.");
   const exposureCounts = new Map<number, number>();

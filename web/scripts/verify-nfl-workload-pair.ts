@@ -10,7 +10,8 @@ async function main(){
   const baseline=rows.find(r=>r.run_id===baselineId)!,candidate=rows.find(r=>r.run_id===candidateId)!;
   assert.ok(baseline&&candidate);assert.equal(baseline.projection_source,'our');assert.equal(candidate.projection_source,'workload');
   assert.equal(baseline.upload_id,candidate.upload_id);assert.equal(baseline.optimizer_version,candidate.optimizer_version);
-  assert.deepEqual(baseline.input_snapshot,candidate.input_snapshot,'both runs must freeze the identical cohort');
+  const rawInputs=(value:unknown)=>(value as Record<string,unknown>[]).map(p=>{const raw={...p};delete raw.projectionAudit;return raw;});
+  assert.deepEqual(rawInputs(baseline.input_snapshot),rawInputs(candidate.input_snapshot),'both runs must freeze identical source evidence; derived source-specific audits may differ');
   const bs={...(baseline.settings as Record<string,unknown>)},cs={...(candidate.settings as Record<string,unknown>)};delete bs.projectionSource;delete cs.projectionSource;assert.deepEqual(bs,cs);assert.equal(bs.randomness,0);
   type Slot={slot:string;dkPlayerId:number;source:string;salary:number};
   const lineups=(await db.execute(sql`SELECT run_id,lineup_number,slots,total_salary FROM nfl_dfs_lineups WHERE run_id IN (${baselineId}::uuid,${candidateId}::uuid) ORDER BY lineup_number`)).rows;

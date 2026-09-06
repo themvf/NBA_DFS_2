@@ -5,7 +5,7 @@ export default function AvailabilityPanel({ slate }: { slate: NflWorkspaceSlate 
   const coverage=slate.injuryCoverage;
   return <section className="rounded-xl border border-amber-200 bg-white p-5">
     <h2 className="font-bold">Game-week availability and roles</h2>
-    <p className="my-2 text-sm">Evidence is refreshed when you resume the slate and again when generating lineups. Each saved optimizer run freezes the observations, timestamps, warnings and exclusions it used. Injury status does not automatically change projected targets or carries.</p>
+    <p className="my-2 text-sm">Evidence is refreshed when you resume the slate and again when generating lineups. Each saved optimizer run freezes the observations, timestamps, warnings and exclusions it used. The experimental workload source can use a verified inactive WR/TE under the explicit redistribution hypothesis; applied point changes appear in the projection explanation.</p>
     <div className="my-3 grid grid-cols-2 gap-3 md:grid-cols-4">{[
       ['Players', players.length], ['Excluded', players.filter(p => p.isOut).length],
       ['Fresh FantasyPros evidence', `${players.filter(p => p.availability?.freshFantasyPros).length} / ${players.filter(p => p.availability?.evidence?.some(e => e.source === 'fantasypros')).length} observed`],

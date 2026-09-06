@@ -21,12 +21,16 @@ import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnap
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
 import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/workload-selection";
+import { prepareProjectionAudits, validateSituations, type SituationTeam } from '@/lib/nfl-dfs/projection-audit';
+import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
+import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import {
   NFL_OPTIMIZER_VERSION,
   optimizeNflLineups,
+  resolveProjectionAudit,
   type NflGeneratedLineup,
   type NflOptimizerPlayer,
   type NflOptimizerSettings,
@@ -44,6 +48,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
 };
 
 export type NflWorkspaceSlate = {
+  situationTeams?: SituationTeam[];
   injuryCoverage?: InjuryCoverage | null;
   uploadId: string;
   projectionRunId: string | null;
@@ -175,8 +180,10 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const identities=run ? await db.execute(sql`SELECT id, gsis_id FROM ff_players WHERE season=${run.season} AND gsis_id IS NOT NULL`) : {rows:[]};
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
   const now = Date.now();
+  const situations=run?.week?await loadSituationContext(run.season,run.week,roster,now):null;
   const availability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
   return {
+    situationTeams:situations?.teams??[],
     injuryCoverage,
     uploadId,
     projectionRunId: upload.projectionRunId,
@@ -192,6 +199,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       dkPlayerId: row.dkPlayerId,
       captainDkPlayerId: row.captainDkPlayerId,
       ffPlayerId: row.ffPlayerId,
+      situationEvidence:situations?.rates.get(`${benchmarkTeam(row.team)}:${identityMap.get(row.ffPlayerId??-1)}:${row.position}`)??{team:null,rates:null,ratesDigest:null,ratesAsOf:null,reason:situations?.failure??'No model-linked situation evidence.'},
       name: row.name,
       position: row.position as NflWorkspacePlayer["position"],
       team: row.team,
@@ -411,7 +419,9 @@ export async function compareNflWorkload(uploadId:string, settings:NflOptimizerS
 async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizerSettings) {
   const uploadId=slate.uploadId;
   const now=Date.now();
-  const eligible= settings.projectionSource==='workload' ? slate.players.filter(p=>workloadPoolEligible(p,now)) : slate.players;
+  validateSituations(settings.situations,slate.teams);
+  const prepared= settings.projectionSource==='workload'?prepareProjectionAudits(slate.players,slate.situationTeams??[],settings.workloadPositions,settings.situations,now):slate.players;
+  const eligible= settings.projectionSource==='workload' ? prepared.filter(p=>workloadPoolEligible(p,now)) : prepared;
   const result = optimizeNflLineups(eligible, settings);
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");
@@ -420,6 +430,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   const runId = randomUUID();
   const inputSnapshot = slate.players.map((player) => ({
     dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
+    id:player.id,captainDkPlayerId:player.captainDkPlayerId,opponent:player.opponent,gameKey:player.gameKey,boomRate:player.boomRate,projectionStatus:player.projectionStatus,
     salary: player.salary, captainSalary: player.captainSalary, status: player.dkStatus,
     ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
@@ -430,8 +441,12 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     workloadEligible:player.workloadEligible,
     workload: player.workload ?? null, workloadReason: player.workloadReason,
     positionWorkload:player.positionWorkload??null,positionWorkloadReason:player.positionWorkloadReason,
+    situationEvidence:player.situationEvidence,
+    situationTeamEvidence:slate.players.find(p=>p.team===player.team)?.dkPlayerId===player.dkPlayerId?slate.situationTeams?.find(t=>t.team===benchmarkTeam(player.team)):undefined,
+    projectionAudit:resolveProjectionAudit(prepared.find(p=>p.dkPlayerId===player.dkPlayerId)!,settings),
+    baselineSource:{runId:slate.projectionRunId,modelVersion:slate.modelVersion,asOf:slate.modelAsOf},
   }));
-  const inputDigest = sha256(JSON.stringify({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));
+  const inputDigest = sha256(canonicalAuditJson({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));
   const status = result.lineups.length === settings.nLineups ? "complete" : result.lineups.length ? "partial" : "failed";
   try {
   await db.insert(nflDfsOptimizerRuns).values({
@@ -444,7 +459,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   if (result.lineups.length) await db.insert(nflDfsLineups).values(result.lineups.map((lineup) => ({
     runId,
     lineupNumber: lineup.lineupNumber,
-    slots: lineup.slots.map((entry) => ({ slot: entry.slot, dkPlayerId: entry.player.dkPlayerId, captainDkPlayerId: entry.player.captainDkPlayerId, name: entry.player.name, team: entry.player.team, salary: entry.salary, projection: entry.projection, source: entry.projectionSource })),
+    slots: lineup.slots.map((entry) => ({ slot: entry.slot, dkPlayerId: entry.player.dkPlayerId, captainDkPlayerId: entry.player.captainDkPlayerId, name: entry.player.name, team: entry.player.team, salary: entry.salary, projection: entry.projection, source: entry.projectionSource, multiplier:entry.multiplier, projectionAudit:entry.player.projectionAudit })),
     playerIds: lineup.playerIds,
     totalSalary: lineup.totalSalary,
     projectedFpts: lineup.projectedFpts,
@@ -455,4 +470,14 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   })));
   } catch { throw new Error("Unable to save optimizer results. Refresh the slate and retry; an incomplete run may remain saved."); }
   return { runId, slate, result };
+}
+
+export async function readNflOptimizerAudit(runId:string) {
+  if(!/^[0-9a-f-]{36}$/.test(runId))throw new Error('Invalid optimizer run identifier.');
+  try {
+    const run=(await db.select().from(nflDfsOptimizerRuns).where(eq(nflDfsOptimizerRuns.runId,runId)).limit(1))[0];
+    if(!run)throw new Error('Missing run.');
+    const lineups=await db.select().from(nflDfsLineups).where(eq(nflDfsLineups.runId,runId));
+    return {run,lineups,digestMethod:'SHA-256 of recursively key-sorted JSON {settings,inputSnapshot,optimizerVersion}; applies to v5-audited-situations and later.'};
+  }catch{throw new Error('Saved optimizer audit could not be loaded.');}
 }

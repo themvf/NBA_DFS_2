@@ -2,15 +2,17 @@ import release from "./calibrated-release.json";
 
 export { release as calibratedRelease };
 export const CALIBRATED_MAX_AGE_HOURS = 72;
+export type CalibrationTerm = {name:string; input:number; center:number; scale:number; coefficient:number; points:number};
 export type CalibratedProjection = {
   mean: number; p10: number; p50: number; p90: number; boom: number;
   priorOpportunity?: number;
+  explanationTerms?: CalibrationTerm[];
   baselineMean: number; baselineP10: number; baselineP90: number;
   snapshotId: string; capturedAt: string; kickoff: string;
   recipeDigest: string; studyDigest: string; releaseVersion: string;
 };
 export type CalibrationTarget = { ffPlayerId: number | null; position: string; team: string; opponent: string | null; gameInfo: string | null };
-export type CalibrationSnapshot = { id: string; playerId: number; season: number; week: number; capturedAt: string; kickoff: string; payload: unknown };
+export type CalibrationSnapshot = { id: string; playerId: number; season: number; week: number; capturedAt: string; kickoff: string; payload: unknown; explanationTerms?:CalibrationTerm[] };
 type RecordValue = Record<string, unknown>;
 const record = (v: unknown): RecordValue => v !== null && typeof v === "object" && !Array.isArray(v) ? v as RecordValue : {};
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -49,5 +51,7 @@ function readPinnedProjection(snapshot: CalibrationSnapshot | undefined, target:
   if (![candidate.prediction, candidate.p10, candidate.median, candidate.p90, candidate.boom_probability, p.baseline, p.p10, p.p90].every(finite)) return no("Candidate distribution is incomplete.");
   const mean = candidate.prediction as number, p10 = candidate.p10 as number, p50 = candidate.median as number, p90 = candidate.p90 as number, boom = candidate.boom_probability as number;
   if (p10 > p50 || p50 > p90 || boom < 0 || boom > 1 || mean <= 0) return no("Invalid candidate distribution.");
-  return { projection: { mean, p10, p50, p90, boom, ...(finite(p.prior_opportunity)?{priorOpportunity:p.prior_opportunity}:{}), baselineMean: p.baseline as number, baselineP10: p.p10 as number, baselineP90: p.p90 as number, snapshotId: snapshot.id, capturedAt: snapshot.capturedAt, kickoff: snapshot.kickoff, recipeDigest: policy.recipeDigest, studyDigest: release.studyDigest, releaseVersion: release.version }, reason: "Pinned pregame candidate · experimental" };
+  const terms=snapshot.explanationTerms;
+  const validTerms=terms?.length&&terms.every(t=>[t.input,t.center,t.scale,t.coefficient,t.points].every(finite)&&t.scale>0&&Math.abs((t.input-t.center)/t.scale*t.coefficient-t.points)<1e-8)&&Math.abs((p.baseline as number)+terms.reduce((s,t)=>s+t.points,0)-mean)<1e-8;
+  return { projection: { mean, p10, p50, p90, boom, ...(validTerms?{explanationTerms:terms}:{}), ...(finite(p.prior_opportunity)?{priorOpportunity:p.prior_opportunity}:{}), baselineMean: p.baseline as number, baselineP10: p.p10 as number, baselineP90: p.p90 as number, snapshotId: snapshot.id, capturedAt: snapshot.capturedAt, kickoff: snapshot.kickoff, recipeDigest: policy.recipeDigest, studyDigest: release.studyDigest, releaseVersion: release.version }, reason: "Pinned pregame candidate · experimental" };
 }
