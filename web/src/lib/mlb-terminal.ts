@@ -110,3 +110,19 @@ export function summarizeSignals(signals: MlbTerminalSignal[]) {
   }
   return [...groups.values()].sort((a, b) => a.type.localeCompare(b.type));
 }
+
+
+const MLB_BOOK_COLORS = ["#52dbd1", "#f6a800", "#a78bfa", "#60a5fa", "#f472b6", "#4ade80", "#fb923c", "#e879f9", "#cbd5e1"];
+/** Per-book observations retain missing captures as gaps, with stable colors across games. */
+export function sportsbookTrails(history: MlbCapture[], market: MlbMarket, side: MlbSide) {
+  return MLB_TERMINAL_BOOKS.map((key, index) => {
+    const latest = history.findLast((capture) => capture.books[key]);
+    return {
+      key, title: String(latest?.books[key].title ?? key), color: MLB_BOOK_COLORS[index],
+      points: history.map((capture) => {
+        const q = capture.books[key] && quote(capture.books[key], market, side);
+        return { at: capture.capturedAt, value: q ? market === "moneyline" ? q.fair == null ? null : q.fair * 100 : q.line : null, price: q?.price ?? null };
+      }),
+    };
+  }).filter((series) => series.points.some((point) => point.value != null));
+}
