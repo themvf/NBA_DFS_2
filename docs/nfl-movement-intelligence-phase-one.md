@@ -14,7 +14,7 @@ health includes each newly enabled family. Sampling only establishes observed
 ordering, not true first-mover identity or professional betting activity.
 
 NFL now uses the same four-card black/amber movement strip as CFB and Tennis.
-Selection highlights the game and describes the chosen market. All three strips
+Selection opens the chosen game, market and side in the terminal chart and book ladder. NFL shares the CFB three-column terminal styling: market watch, instrument workspace and data pulse; detailed audits remain below. All three strips
 read current lifecycle observations; first-breach signal tapes and outcome audits
 continue to read immutable `line_alerts` rows. NFL exposes the latest observation
 states, including failed moves and missing comparable data, in a separate panel.

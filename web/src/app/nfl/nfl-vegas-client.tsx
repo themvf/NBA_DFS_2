@@ -1,213 +1,86 @@
 "use client";
 
-import {
-  Activity,
-  AlertTriangle,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  ShieldCheck,
-  Target,
-  TrendingDown,
-  TrendingUp,
-} from "lucide-react";
+import { Activity, Radio, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import MovementIntelligence from "@/components/movement-intelligence";
-import { buildMovementInsights, cfbIntelligenceEvents } from "@/lib/movement-intelligence";
 import { useRouter } from "next/navigation";
-import type {
-  LineAlertBacktestRow,
-  LineAlertRow,
-  LineMovementHistoryRow,
-  NflHealthIssue,
-  NflVegasBoardRow,
-  DetectorHealthRow,
-} from "@/db/queries";
-import {
-  MIN_SETTLED_FOR_CI,
-  disclosure,
-  multiplicityNote,
-  verdict,
-} from "@/lib/alert-audit-policy";
-import DetectorHealthPanel from "../vegas/detector-health-panel";
+import type { LineAlertBacktestRow, LineAlertRow, LineMovementHistoryRow, NflHealthIssue, NflVegasBoardRow, DetectorHealthRow } from "@/db/queries";
+import MovementIntelligence from "@/components/movement-intelligence";
+import { buildMovementInsights, cfbIntelligenceEvents, insightMarket, type IntelligenceMarket as Market, type IntelligenceSide as Side } from "@/lib/movement-intelligence";
+import { nflMarket, nflBookName, NFL_BOOK_COLORS, nflSigned as signed, nflPercent as pct, nflPrice } from "@/lib/nfl-terminal";
+import { MIN_SETTLED_FOR_CI, disclosure, multiplicityNote, verdict } from "@/lib/alert-audit-policy";
+import s from "../cfb/cfb-terminal.module.css";
+import n from "./nfl-terminal.module.css";
 
-type Props = {
-  queryDate: string;
-  evaluatedAt: string;
-  matchups: NflVegasBoardRow[];
-  lineAlerts: LineAlertRow[];
-  observations: LineAlertRow[];
-  lineAlertBacktest: LineAlertBacktestRow[];
-  lineMovementHistory: LineMovementHistoryRow[];
-  health: NflHealthIssue[];
-  detectorHealth: DetectorHealthRow[];
-};
+type Props = { queryDate:string; evaluatedAt:string; matchups:NflVegasBoardRow[]; lineAlerts:LineAlertRow[]; observations:LineAlertRow[]; lineAlertBacktest:LineAlertBacktestRow[]; lineMovementHistory:LineMovementHistoryRow[]; health:NflHealthIssue[]; detectorHealth:DetectorHealthRow[] };
+const markets: Market[] = ["spread", "total", "moneyline"];
+function time(value:string | null, compact=false) {
+  if (!value || !Number.isFinite(Date.parse(value))) return "—";
+  return new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York", ...(compact ? {hour:"numeric",minute:"2-digit"} : {month:"short",day:"numeric",hour:"numeric",minute:"2-digit",timeZoneName:"short"})}).format(new Date(value));
+}
+function shifted(date:string, days:number) { const value=new Date(`${date}T12:00:00Z`); value.setUTCDate(value.getUTCDate()+days); return value.toISOString().slice(0,10); }
+function label(type:string) { return type.replaceAll("_"," ").toUpperCase(); }
+function value(v:number | null, market:Market) { return market === "moneyline" ? pct(v) : market === "spread" ? signed(v) : v == null ? "—" : v.toFixed(1); }
+function state(o:LineAlertRow, now:number) { return now-Date.parse(o.createdAt)>1_800_000 ? "EXPIRED" : label(String(o.details?.lifecycle_state ?? "triggered")); }
 
-function pct(value: number | null): string {
-  return value == null || !Number.isFinite(value) ? "—" : `${(value * 100).toFixed(1)}%`;
+function Chart({view, market, axis, mini=false}:{view:ReturnType<typeof nflMarket>; market:Market; axis:string; mini?:boolean}) {
+  const points=view.points;
+  const values=points.flatMap(p=>Object.values(p.values));
+  if (!values.length) return <div className={n.empty}>{mini ? "No captures" : "No captured quotes for this market and side."}</div>;
+  const width=760,left=mini?4:62,right=mini?756:736,top=mini?4:24,bottom=mini?88:255;
+  const low=Math.min(...values),high=Math.max(...values),padding=Math.max((high-low)*.2,market==="moneyline"?.005:.25);
+  const first=points[0].time,last=points.at(-1)!.time;
+  const x=(t:number)=>last===first?(left+right)/2:left+(t-first)/(last-first)*(right-left);
+  const y=(v:number)=>bottom-(v-low+padding)/(high-low+padding*2)*(bottom-top);
+  const series=mini?view.series.slice(0,1):view.series;
+  const tickIds=[...new Set([0,Math.floor((points.length-1)/2),points.length-1])];
+  return <svg className={mini?n.mini:n.chart} viewBox={`0 0 ${width} ${mini?92:292}`} role="img" aria-label={`${axis} ${mini?"sparkline":"movement chart"}`}>
+    {!mini && Array.from({length:5},(_,i)=>high+padding-i*(high-low+padding*2)/4).map(t=><g key={t}><line x1={left} x2={right} y1={y(t)} y2={y(t)} stroke="#27302f"/><text x={left-10} y={y(t)+4} textAnchor="end">{value(t,market)}</text></g>)}
+    {series.map((book,bi)=>points.slice(1).map((p,i)=>{const prev=points[i],a=prev.values[book],b=p.values[book];return a==null||b==null?null:<line key={`${book}-${i}`} x1={x(prev.time)} x2={x(p.time)} y1={y(a)} y2={y(b)} stroke={mini?market==="total"?"#c58cff":"#59b6ff":NFL_BOOK_COLORS[bi]} strokeWidth={mini?7:2} strokeDasharray={p.time-prev.time>1_800_000?mini?"12 12":"5 5":undefined}/>;}))}
+    {series.map((book,bi)=>points.map((p,i)=>p.values[book]==null?null:<circle key={`${book}-${i}`} cx={x(p.time)} cy={y(p.values[book])} r={mini?3:2.5} fill={NFL_BOOK_COLORS[bi]}><title>{`${nflBookName(book)} · ${time(new Date(p.time).toISOString())} · ${value(p.values[book],market)}`}</title></circle>))}
+    {!mini && tickIds.map(i=><text key={i} x={x(points[i].time)} y="280" textAnchor={i===0?"start":i===points.length-1?"end":"middle"}>{time(new Date(points[i].time).toISOString(),true)}</text>)}
+  </svg>;
 }
 
-function signed(value: number | null, suffix = ""): string {
-  return value == null || !Number.isFinite(value) ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(1)}${suffix}`;
-}
-
-function moneyline(value: number | null): string {
-  return value == null ? "—" : value > 0 ? `+${value}` : String(value);
-}
-
-function shiftDate(date: string, days: number): string {
-  const parsed = new Date(`${date}T12:00:00Z`);
-  parsed.setUTCDate(parsed.getUTCDate() + days);
-  return parsed.toISOString().slice(0, 10);
-}
-
-function fmtEt(value: string | null): string {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  }).format(parsed);
-}
-
-function alertTone(type: string): string {
-  if (type === "pinnacle_polymarket_delta") return "border-fuchsia-200 bg-fuchsia-100 text-fuchsia-900";
-  if (type === "pinnacle_divergence") return "border-violet-200 bg-violet-100 text-violet-900";
-  if (type === "steam") return "border-orange-200 bg-orange-100 text-orange-900";
-  if (type === "walking") return "border-blue-200 bg-blue-100 text-blue-900";
-  return "border-emerald-200 bg-emerald-100 text-emerald-900";
-}
-
-function SummaryCard({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: string }) {
-  return <div className={`rounded-xl border p-4 shadow-sm ${tone}`}><div className="text-[10px] font-bold uppercase tracking-wide">{label}</div><div className="mt-1 text-2xl font-black">{value}</div><div className="mt-1 text-xs">{detail}</div></div>;
-}
-
-function MovementSparkline({ trail }: { trail: NflVegasBoardRow["trail"] }) {
-  const values = trail.flatMap((point) => point.homeProb == null ? [] : [point.homeProb]);
-  if (values.length < 2) return <span className="text-slate-400">—</span>;
-  const width = 84;
-  const height = 24;
-  const min = Math.min(...values) - 0.002;
-  const max = Math.max(...values) + 0.002;
-  const span = Math.max(max - min, 0.004);
-  const points = values.map((value, index) => {
-    const x = index * width / (values.length - 1);
-    const y = height - ((value - min) / span) * height;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-  return <svg role="img" aria-label="Home win probability movement" viewBox={`0 0 ${width} ${height}`} className="h-6 w-20 text-emerald-700"><polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg>;
-}
-
-export default function NflVegasClient({ queryDate, evaluatedAt, matchups, lineAlerts, observations, lineAlertBacktest, lineMovementHistory, health, detectorHealth }: Props) {
-  const [selectedKey, setSelectedKey] = useState("");
-  const intelligence = useMemo(() => buildMovementInsights(cfbIntelligenceEvents(matchups.map(row => ({ ...row, history: row.trail }))), observations, Date.parse(evaluatedAt)), [matchups, observations, evaluatedAt]);
-  const selected = intelligence.find(item => item.key === selectedKey);
-  const router = useRouter();
-  const [isRefreshing, startRefresh] = useTransition();
-  const navigateDate = (date: string) => router.push(`/nfl?date=${date}`);
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") startRefresh(() => router.refresh());
-    }, 60_000);
-    return () => window.clearInterval(id);
-  }, [router]);
-  const alertsByMatchup = useMemo(() => {
-    const grouped = new Map<number, LineAlertRow[]>();
-    for (const alert of lineAlerts) grouped.set(alert.matchupId, [...(grouped.get(alert.matchupId) ?? []), alert]);
-    return grouped;
-  }, [lineAlerts]);
-  const capturedGames = matchups.filter((row) => row.captures >= 2).length;
-  const notableMoves = matchups.filter((row) => Math.abs(row.movementPp ?? 0) >= 1).length;
-  const matchupIds = new Set(matchups.map((row) => row.matchupId));
-  const sharpGames = new Set(lineAlerts.filter((alert) => matchupIds.has(alert.matchupId)).map((alert) => alert.matchupId)).size;
-
-  return (
-    <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
-      <header className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-5 text-white shadow-lg sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200"><Target className="h-4 w-4" /> Vegas Analysis — NFL</div>
-            <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">NFL Line Movement</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-300">Track moneyline movement, spreads, totals, and sharp-market alerts from the NFL odds ledger.</p>
-          </div>
-          <div className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-right"><div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Page evaluated</div><div className="mt-1 text-sm font-bold tabular-nums">{fmtEt(evaluatedAt)}</div></div>
-        </div>
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => navigateDate(shiftDate(queryDate, -1))} className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-white/20 bg-white/10 hover:bg-white/15" aria-label="Previous date"><ChevronLeft className="h-5 w-5" /></button>
-          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 text-xs font-semibold"><CalendarDays className="h-4 w-4" /><input type="date" value={queryDate} onChange={(event) => navigateDate(event.target.value)} className="bg-transparent text-sm font-semibold text-white [color-scheme:dark]" /></label>
-          <button type="button" onClick={() => navigateDate(shiftDate(queryDate, 1))} className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-white/20 bg-white/10 hover:bg-white/15" aria-label="Next date"><ChevronRight className="h-5 w-5" /></button>
-          <Link href="/dfs/nfl/model" className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white hover:bg-white/15">Model Lab</Link>
-          <Link href="/dfs/nfl/review" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white hover:bg-white/15">Weekly player review</Link>
-          <Link href="/dfs/nfl" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white hover:bg-white/15">NFL DFS workspace</Link>
-          <button type="button" onClick={() => startRefresh(() => router.refresh())} disabled={isRefreshing} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-400 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />{isRefreshing ? "Refreshing" : "Refresh page"}</button>
-        </div>
-      </header>
-
-      <MovementIntelligence items={intelligence} selectedKey={selected?.key ?? ""} onSelect={item => {
-        setSelectedKey(item.key);
-        document.getElementById(`nfl-game-${item.matchupId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }} />
-      <details className="rounded-xl border border-slate-200 bg-white p-4 text-xs">
-        <summary className="cursor-pointer font-bold">Movement observation states · {observations.length}</summary>
-        <p className="my-2 text-slate-500">Latest state per signal and market. Observations older than 30 minutes expire from the cards. Original triggers remain in the audit below.</p>
-        {observations.map((o, i) => <div key={i} className="border-t py-2">{o.matchup} · {String(o.details?.market)} · {o.alertType.replaceAll("_", " ")} → {o.side} · <strong>{Date.parse(evaluatedAt) - Date.parse(o.createdAt) > 30 * 60_000 ? "expired" : String(o.details?.lifecycle_state)}</strong> · {fmtEt(o.createdAt)}</div>)}
-        {!observations.length && <p>Awaiting qualifying prospective captures.</p>}
-      </details>
-
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryCard label="Games" value={matchups.length} detail="On the selected date" tone="border-slate-200 bg-white text-slate-950" />
-        <SummaryCard label="Movement ready" value={capturedGames} detail="Two or more captures" tone="border-blue-200 bg-blue-50 text-blue-950" />
-        <SummaryCard label="Notable moves" value={notableMoves} detail="At least 1 percentage point" tone="border-amber-200 bg-amber-50 text-amber-950" />
-        <SummaryCard label="Sharp signals" value={sharpGames} detail="Tracked alert games" tone="border-violet-200 bg-violet-50 text-violet-950" />
-      </section>
-
-      {health.length > 0 ? <section className={`rounded-xl border p-4 shadow-sm ${health.some((issue) => issue.severity === "error") ? "border-red-200 bg-red-50 text-red-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}><div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" /><div><h2 className="font-bold">NFL pipeline health needs attention</h2><ul className="mt-2 space-y-1 text-sm">{health.map((issue) => <li key={`${issue.matchupId}-${issue.code}`}><strong>{issue.matchup}:</strong> {issue.detail}</li>)}</ul></div></div></section> : null}
-
-      {matchups.length > 0 && capturedGames === 0 ? <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-sm"><div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" /><div><h2 className="font-bold">NFL games are scheduled but have no odds captures</h2><p className="mt-1 text-sm text-amber-900">The schedule is loaded for {queryDate}; the capture workflow has not written a usable pregame snapshot yet.</p></div></div></section> : null}
-
-      <section>
-        {selected && <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"><strong>{selected.fixture} · {selected.market.toUpperCase()} · {selected.selection}</strong> — {selected.explanation}</p>}
-        <div className="mb-3"><h2 className="text-lg font-bold text-slate-950">NFL movement board</h2><p className="mt-1 text-sm text-slate-600">Opening and current values are vig-free home win probabilities. Pin−Poly is Pinnacle minus Polymarket on the home team; positive values mean Pinnacle is more bullish on the home side.</p></div>
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-[1200px] w-full text-xs">
-            <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Game</th><th className="px-3 py-3">Open → current</th><th className="px-3 py-3 text-right">Movement</th><th className="px-3 py-3 text-right">Pin vs Poly</th><th className="px-3 py-3 text-right">Home spread</th><th className="px-3 py-3 text-right">Total</th><th className="px-3 py-3 text-right">Moneylines</th><th className="px-3 py-3">Sharp signals</th><th className="px-3 py-3">Updated</th></tr></thead>
-            <tbody>{matchups.map((row) => {
-              const move = row.movementPp ?? 0;
-              const alerts = alertsByMatchup.get(row.matchupId) ?? [];
-              const MoveIcon = move > 0 ? TrendingUp : move < 0 ? TrendingDown : Activity;
-              return <tr id={`nfl-game-${row.matchupId}`} key={row.matchupId} className={`border-t border-slate-100 hover:bg-slate-50/80 ${selected?.matchupId === row.matchupId ? "bg-amber-50 ring-1 ring-inset ring-amber-400" : ""}`}><td className="px-3 py-3"><div className="flex items-center gap-2 font-bold text-slate-950">{row.awayTeam} @ {row.homeTeam}{row.seasonType === "preseason" ? <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] uppercase text-amber-800">Preseason</span> : null}</div><div className="mt-0.5 text-[10px] text-slate-500">{fmtEt(row.commenceTime)} · {row.captures} capture{row.captures === 1 ? "" : "s"}</div></td><td className="whitespace-nowrap px-3 py-3 tabular-nums">{pct(row.openHomeProb)} → {pct(row.currentHomeProb)}</td><td className={`px-3 py-3 text-right font-black tabular-nums ${move > 0 ? "text-emerald-700" : move < 0 ? "text-red-700" : "text-slate-500"}`}><div className="flex items-center justify-end gap-2"><MovementSparkline trail={row.trail} /><span className="inline-flex items-center gap-1"><MoveIcon className="h-4 w-4" />{signed(row.movementPp, "pp")}</span></div></td><td className="whitespace-nowrap px-3 py-3 text-right tabular-nums" title="Vig-free home win probabilities"><div>Pin {pct(row.pinnacleHomeProb)} · Poly {pct(row.polymarketHomeProb)}</div><div className={`mt-0.5 font-black ${(row.pinnaclePolymarketDeltaPp ?? 0) > 0 ? "text-violet-700" : (row.pinnaclePolymarketDeltaPp ?? 0) < 0 ? "text-fuchsia-700" : "text-slate-400"}`}>Δ {signed(row.pinnaclePolymarketDeltaPp, "pp")}</div></td><td className="px-3 py-3 text-right font-semibold tabular-nums"><div>{signed(row.openHomeSpread)} → {signed(row.homeSpread)}</div><div className="mt-0.5 text-[10px] text-slate-500">Δ {signed(row.spreadMove)}</div></td><td className="px-3 py-3 text-right font-semibold tabular-nums"><div>{row.openTotal?.toFixed(1) ?? "—"} → {row.vegasTotal?.toFixed(1) ?? "—"}</div><div className="mt-0.5 text-[10px] text-slate-500">Δ {signed(row.totalMove)}</div></td><td className="px-3 py-3 text-right tabular-nums"><div>A {moneyline(row.awayMl)}</div><div>H {moneyline(row.homeMl)}</div></td><td className="max-w-[240px] px-3 py-3"><div className="flex flex-wrap gap-1">{alerts.map((alert) => <span key={`${alert.alertType}-${alert.side}`} className={`rounded-full border px-2 py-1 text-[10px] font-bold capitalize ${alertTone(alert.alertType)}`}>{alert.alertType.replaceAll("_", " ")} → {alert.side}</span>)}{alerts.length === 0 ? <span className="text-slate-400">None</span> : null}</div></td><td className="whitespace-nowrap px-3 py-3 text-slate-600">{fmtEt(row.latestCapturedAt)}</td></tr>;
-            })}</tbody>
-          </table>
-          {matchups.length === 0 ? <div className="px-4 py-14 text-center text-sm text-slate-500">No NFL games are available for this date.</div> : null}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-950">Sharp-signal accrual</h2><p className="mt-1 text-sm text-slate-600">NFL alerts use the same frozen-at-breach audit ledger as the MLB page, and the same {MIN_SETTLED_FOR_CI}-alert disclosure floor.</p></div><ShieldCheck className="h-5 w-5 text-slate-400" /></div>
-        {multiplicityNote(lineAlertBacktest.length) ? <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-900">{multiplicityNote(lineAlertBacktest.length)}</p> : null}
-        {/* Rates, CLV and beat-close are WITHHELD below the floor — rendered as a
-            lock, never as a greyed number. A greyed percentage is still a
-            percentage; the eye reads it and it gets quoted back later. Raw
-            W-L-P is always shown: "2-6" is an observation, "25.0%" is an
-            inference the sample cannot support. Fixed sort order — sorting by
-            performance is a false-discovery machine, it mechanically puts the
-            luckiest detector on top and frames it as a ranking. */}
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><table className="min-w-[760px] w-full text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Signal</th><th className="px-3 py-3 text-right">Fired</th><th className="px-3 py-3 text-right">Graded</th><th className="px-3 py-3 text-right">Priced</th><th className="px-3 py-3 text-right">W-L-P</th><th className="px-3 py-3 text-right">Avg CLV</th><th className="px-3 py-3 text-right">Beat close</th><th className="px-3 py-3 text-right">Win rate</th><th className="px-3 py-3 text-right">Status</th></tr></thead><tbody>{lineAlertBacktest.map((row) => { const isLine = row.alertType.startsWith("spread_") || row.alertType.startsWith("total_") || ["key_cross", "reversal", "reference_led", "price_pressure"].includes(row.alertType); const d = disclosure(row); const v = verdict(row); const lock = <span className="cursor-help text-slate-400" title={d.reason}>🔒 {d.lockLabel}</span>; return <tr key={row.alertType} className="border-t border-slate-100"><td className="px-3 py-3 font-semibold capitalize">{row.alertType.replaceAll("_", " ")}</td><td className="px-3 py-3 text-right">{row.n}</td><td className="px-3 py-3 text-right">{row.nClv}</td><td className="px-3 py-3 text-right" title="Alerts carrying a frozen executable price. Price freezing shipped 2026-08-15; earlier alerts are structurally unpriced.">{row.nFrozenPrice}{row.nExecBooks > 1 ? <span className="text-slate-400"> · {row.nExecBooks} books</span> : null}</td><td className="px-3 py-3 text-right tabular-nums">{row.wins}-{row.losses}-{row.pushes}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? signed(row.avgClvPp, isLine ? " pts" : "pp") : lock}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? pct(row.beatClose) : lock}</td><td className="px-3 py-3 text-right tabular-nums">{d.disclosable ? pct(row.winRate) : lock}</td><td className="px-3 py-3 text-right"><span className={`cursor-help rounded-full px-2 py-0.5 text-[10px] font-semibold ${v.cls}`} title={v.tip}>{v.label}</span></td></tr>; })}</tbody></table>{lineAlertBacktest.length === 0 ? <div className="px-4 py-10 text-center text-sm text-slate-500">No settled NFL alert rows yet.</div> : null}</div>
-      </section>
-
-      <DetectorHealthPanel health={detectorHealth} />
-
-      <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <summary className="cursor-pointer font-bold text-slate-950">Recent NFL open-to-close results ({lineMovementHistory.length})</summary>
-        <div className="mt-4 overflow-x-auto"><table className="min-w-[760px] w-full text-xs"><thead className="text-left text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="py-2">Date</th><th className="py-2">Game</th><th className="py-2 text-right">Open</th><th className="py-2 text-right">Close</th><th className="py-2">Moved toward</th><th className="py-2">Score</th><th className="py-2">Moved side won</th></tr></thead><tbody>{lineMovementHistory.map((row) => <tr key={`${row.matchupId}-${row.gameDate}`} className="border-t border-slate-100"><td className="py-2">{row.gameDate}</td><td className="py-2 font-semibold">{row.matchup}</td><td className="py-2 text-right">{pct(row.openProb)}</td><td className="py-2 text-right">{pct(row.closeProb)}</td><td className="py-2 capitalize">{row.movedToward ?? "quiet"}</td><td className="py-2">{row.score ?? "pending"}</td><td className="py-2">{row.movedSideWon == null ? "—" : row.movedSideWon ? "Yes" : "No"}</td></tr>)}</tbody></table>{lineMovementHistory.length === 0 ? <div className="py-8 text-center text-sm text-slate-500">No completed NFL movement history yet.</div> : null}</div>
-      </details>
+export default function NflVegasClient({queryDate,evaluatedAt,matchups,lineAlerts,observations,lineAlertBacktest,lineMovementHistory,health,detectorHealth}:Props) {
+  const router=useRouter(); const [refreshing,startRefresh]=useTransition();
+  const [query,setQuery]=useState(""); const [filter,setFilter]=useState("all"); const [gameId,setGameId]=useState<number|null>(null);
+  const [market,setMarket]=useState<Market>("spread"); const [side,setSide]=useState<Side>("home");
+  const now=Date.parse(evaluatedAt);
+  useEffect(()=>{const id=window.setInterval(()=>{if(document.visibilityState==="visible")startRefresh(()=>router.refresh());},60000);return()=>window.clearInterval(id);},[router]);
+  const filtered=useMemo(()=>matchups.filter(g=>`${g.awayTeam} ${g.homeTeam}`.toLowerCase().includes(query.trim().toLowerCase()) && (filter==="all" || observations.some(o=>o.matchupId===g.matchupId && (filter==="walk" ? o.alertType.includes("walking") : o.alertType.includes(filter))))),[matchups,query,filter,observations]);
+  const game=filtered.find(g=>g.matchupId===gameId) ?? filtered[0];
+  const view=useMemo(()=>game?nflMarket(game,market,side,now):null,[game,market,side,now]);
+  const insights=useMemo(()=>buildMovementInsights(cfbIntelligenceEvents(filtered.map(g=>({...g,history:g.trail}))),observations,now),[filtered,observations,now]);
+  const tape=observations.filter(o=>o.matchupId===game?.matchupId).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));
+  const selectedSignals=lineAlerts.filter(o=>o.matchupId===game?.matchupId && insightMarket(o)===market);
+  const selection=market==="total"?side.toUpperCase():side==="away"?game?.awayTeam:game?.homeTeam;
+  const recent=matchups.filter(g=>g.latestCapturedAt && now-Date.parse(g.latestCapturedAt)<=1_800_000).length;
+  const feed=!matchups.length?"NO GAMES":!recent?"STALE":health.length||recent<matchups.length?"PARTIAL":"CURRENT";
+  const chooseMarket=(next:Market)=>{setMarket(next);setSide(next==="total"?"over":"home");};
+  return <div className={`${s.terminal} ${n.focus}`}>
+    <header className={s.topbar}><div className={s.brand}>NFL LINE TERMINAL</div><label className={s.command}><Search aria-hidden="true"/><span className={s.srOnly}>Search NFL market watch</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="SEARCH TEAM OR GAME"/></label><div className={s.marketOpen}><Radio aria-hidden="true"/> MARKET BOARD</div><div className={s.shadowMode}>{feed} · AS OF {time(evaluatedAt,true)}</div></header>
+    <div className={n.toolbar}><button aria-label="Previous date" onClick={()=>router.push(`/nfl?date=${shifted(queryDate,-1)}`)}>←</button><label>DATE<input aria-label="NFL board date" type="date" value={queryDate} onChange={e=>{if(e.target.value)router.push(`/nfl?date=${e.target.value}`);}}/></label><button aria-label="Next date" onClick={()=>router.push(`/nfl?date=${shifted(queryDate,1)}`)}>→</button><button disabled={refreshing} onClick={()=>startRefresh(()=>router.refresh())}>{refreshing?"REFRESHING…":"REFRESH"}</button><span>{matchups.length} GAMES · {recent} RECENT CAPTURES</span><div className={n.links}><Link href="/dfs/nfl/model">MODEL LAB</Link><Link href="/dfs/nfl/review">PLAYER REVIEW</Link><Link href="/dfs/nfl">NFL DFS</Link></div></div>
+    <MovementIntelligence items={insights} selectedKey={`${game?.matchupId}:${market}`} onSelect={item=>{setGameId(item.matchupId);setMarket(item.market);setSide(item.side);}}/>
+    <div className={s.shell}>
+      <aside className={s.watchPane} aria-label="NFL market watch"><div className={s.sectionTitle}><span>MARKET WATCH</span><span>{queryDate}</span></div><div className={s.movementFilters}>{["all","steam","walk","reversal"].map(f=><button key={f} aria-pressed={filter===f} onClick={()=>setFilter(f)}>{f.toUpperCase()}</button>)}</div><p className={s.watchLegend}>S = home spread · T = total. Sparklines follow the first available reference/retail series; dashed gaps exceed 30m.</p><div className={s.watchHeader}><span>GAME</span><span>LINE</span><span>MOVE</span></div><div className={s.watchList}>
+        {filtered.map(g=>{const spread=nflMarket(g,"spread","home",now),total=nflMarket(g,"total","over",now);const signals=observations.filter(o=>o.matchupId===g.matchupId);return <button key={g.matchupId} className={s.watchRow} data-active={game?.matchupId===g.matchupId} aria-pressed={game?.matchupId===g.matchupId} onClick={()=>setGameId(g.matchupId)}><span className={s.watchGame}><strong>{g.awayTeam} @ {g.homeTeam}</strong><small>{time(g.commenceTime,true)} · {g.captures} captures{g.seasonType==="preseason"?" · PRESEASON":""}</small></span><span className={s.watchLine}>{value(spread.current,"spread")}</span><span className={s.neutral}>{signed(spread.move)}</span><span className={s.miniCharts}>{([spread,total] as const).map((v,i)=><span key={i} className={s.miniChart}><span>{i?"TOTAL":"HOME SPREAD"}<b>{signed(v.move)}</b></span><Chart view={v} market={i?"total":"spread"} axis={i?"Total":"Home spread"} mini/></span>)}</span><span className={s.movementBadges}>{signals.length?signals.slice(0,2).map((o,i)=><span key={i}>{label(o.alertType)} · {state(o,now)}</span>):<small>{g.captures<2?"INSUFFICIENT HISTORY":"NO RECORDED MOVEMENT SIGNAL"}</small>}</span><span className={s.watchHealth}>OBS {time(g.latestCapturedAt)}{g.completed?" · FINAL":g.latestCapturedAt&&now-Date.parse(g.latestCapturedAt)>1_800_000?" · STALE":""}</span></button>;})}
+        {!filtered.length&&<div className={s.empty}>{matchups.length?"No games match this search and filter.":"No NFL games on this date. Choose another date above."}</div>}
+      </div></aside>
+      <main className={s.instrumentPane} aria-label="Selected NFL market">{game&&view?<>
+        <section className={s.instrumentHeader}><div className={s.instrumentTop}><div><h1 className={s.instrumentTitle}>{game.awayTeam} @ {game.homeTeam}</h1><div className={s.instrumentMeta}>{time(game.commenceTime)} · {game.seasonType ?? "NFL"} · {game.completed?"FINAL":"PREGAME"}</div></div><div className={s.primaryQuote}><strong>{selection} {value(view.current,market)}</strong><span>FIRST OBS {value(view.open,market)} · MOVE {market==="moneyline"?`${signed(view.move==null?null:view.move*100)}pp`:`${signed(view.move)} PTS`}</span></div></div><div className={s.marketTabs} aria-label="Select NFL market">{markets.map(m=><button key={m} data-active={market===m} aria-pressed={market===m} onClick={()=>chooseMarket(m)}>{m.toUpperCase()}</button>)}</div><div className={s.marketTabs} aria-label="Select NFL side">{(market==="total"?["over","under"]:["home","away"]).map(v=><button key={v} data-active={side===v} aria-pressed={side===v} onClick={()=>setSide(v as Side)}>{v==="home"?game.homeTeam:v==="away"?game.awayTeam:v.toUpperCase()}</button>)}</div></section>
+        <section className={s.chartSection}><div className={s.chartLabelRow}><span>{selection} {market==="moneyline"?"no-vig probability":market}</span><span>OBS {time(game.latestCapturedAt)} · {selectedSignals.length} FIRST TRIGGERS</span></div><div className={s.chartWrap}><Chart view={view} market={market} axis={`${selection} ${market}`}/></div><div className={n.legend}>{view.series.map((book,i)=><span key={book}><i style={{background:NFL_BOOK_COLORS[i]}}/>{nflBookName(book)}</span>)}</div><p className={s.watchLegend}>Exact-book observations · elapsed-time axis · dashed gaps exceed 30m · up to five books by fixed display priority.</p></section>
+        <section className={s.lowerGrid}><div className={s.ladderPane}><div className={s.sectionTitle}><span>BOOK LADDER</span><span>OBSERVED QUOTES</span></div><div className={s.bookHeader}><span>BOOK</span><span>UPDATED</span><span>LINE</span><span>PRICE</span></div>{view.books.map(b=><div key={b.key} className={s.bookRow}><span>{b.name}{!b.fresh&&<em>STALE</em>}</span><span>{time(b.updatedAt,true)}</span><span>{market==="moneyline"?"ML":value(b.value,market)}</span><span>{nflPrice(b.price)}</span></div>)}{!view.books.length&&<div className={s.empty}>No quotes available for this market and side.</div>}<p className={s.watchLegend}>Book order is fixed. Quotes are observations; freshness requires both book update and capture within five minutes.</p></div><div className={s.catalystPane}><div className={s.sectionTitle}><span>MARKET QUALITY</span><span>AUDIT</span></div><div className={s.catalystRow}><span>NOW</span><strong>SUPPORT</strong><p>{view.books.length} books in market{market!=="moneyline"?` · ${view.support} at median line`:" · paired no-vig prices"}</p></div><div className={s.catalystRow}><span>OPEN</span><strong>HISTORY</strong><p>{game.captures} pregame captures. First observed quote may differ from the market opener.</p></div><div className={s.catalystRow}><span>MAP</span><strong>IDENTITY</strong><p className={n.identity}>Odds event {game.eventId ?? "unavailable"}</p></div><div className={s.catalystRow}><span>CADENCE</span><strong>5M TARGET</strong><p>Final two hours; earlier sampling is slower. Scheduler delays and quota limits can leave gaps.</p></div></div></section>
+      </>:<div className={s.empty}>Select an available game to inspect its captured markets.</div>}</main>
+      <aside className={s.pulsePane} aria-label="NFL data pulse"><div className={s.sectionTitle}><span>DATA PULSE</span><span>{feed}</span></div><article className={s.pulseRow} data-tone={health.length?"critical":"market"}><div><span>{time(evaluatedAt,true)}</span><strong><Activity aria-hidden="true"/> FEED STATE</strong></div><h3>{recent}/{matchups.length} games recently captured</h3><p>Recent means a capture within 30 minutes. Page refresh reads stored data.</p></article>{health.map((h,i)=><article key={i} className={s.pulseRow} data-tone={h.severity==="error"?"critical":"market"}><h3>{h.matchup}</h3><p>{h.detail}</p></article>)}
+        {game&&<><div className={s.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>{markets.map(m=>{const v=nflMarket(game,m,m==="total"?"over":"home",now);return <button key={m} className={`${s.relatedRow} ${n.related}`} onClick={()=>chooseMarket(m)}><span>{m.toUpperCase()}</span><strong>{m==="total"?"":game.homeTeam+" "}{value(v.current,m)}</strong><small>{m==="moneyline"?`${signed(v.move==null?null:v.move*100)}pp`:`${signed(v.move)} pts`}</small></button>;})}<article className={s.pulseRow}><h3>REFERENCE / EXCHANGE</h3><p>Pinnacle {pct(game.pinnacleHomeProb)} · Polymarket {pct(game.polymarketHomeProb)} · Δ {signed(game.pinnaclePolymarketDeltaPp)}pp, home probability. Separate sources.</p></article><div className={s.sectionTitle}><span>SIGNAL TAPE</span><span>{tape.length} OBSERVATIONS</span></div>{tape.map((o,i)=><article key={i} className={s.signalRow} data-tone={["REVERSED","FADED","WEAKENED"].includes(state(o,now))?"risk":"market"}><div><strong>{label(o.alertType)}</strong><span>{time(o.createdAt,true)}</span></div><p>{String(o.details?.market).toUpperCase()} · {o.side.toUpperCase()} · {state(o,now)}</p><small>First observed {time(String(o.details?.first_observed_at ?? o.createdAt),true)} · comparable books {String(o.details?.comparable_books ?? "—")}</small></article>)}{!tape.length&&<div className={s.signalEmpty}>No qualifying movement observations for this game.</div>}</>}
+        <div className={s.disclosure}><div><strong>Research terminal</strong><p>Recorded movement is not a validated betting edge. Original triggers and graded results remain in the audits below.</p></div></div>
+      </aside>
     </div>
-  );
+    <details className={n.audit}><summary>PROSPECTIVE SIGNAL AUDIT · {lineAlertBacktest.length} DETECTORS</summary><p>Immutable first-breach ledger · {MIN_SETTLED_FOR_CI}-alert disclosure floor. {multiplicityNote(lineAlertBacktest.length)}</p><div className={n.scroll}><table><thead><tr>{["Signal","Fired","Graded","Priced","W-L-P","Avg CLV","Beat close","Win rate","Status"].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{lineAlertBacktest.map(r=>{const d=disclosure(r),v=verdict(r);const lock=<span title={d.reason}>{d.lockLabel}</span>;const isLine=r.alertType.startsWith("spread_")||r.alertType.startsWith("total_")||["key_cross","reversal","reference_led","price_pressure"].includes(r.alertType);return <tr key={r.alertType}><td>{label(r.alertType)}</td><td>{r.n}</td><td>{r.nClv}</td><td>{r.nFrozenPrice} · {r.nExecBooks} books</td><td>{r.wins}-{r.losses}-{r.pushes}</td><td>{d.disclosable?`${signed(r.avgClvPp)}${isLine?" pts":"pp"}`:lock}</td><td>{d.disclosable?pct(r.beatClose):lock}</td><td>{d.disclosable?pct(r.winRate):lock}</td><td title={v.tip}>{v.label}</td></tr>;})}</tbody></table></div>{!lineAlertBacktest.length&&<p>No graded NFL alerts yet.</p>}</details>
+    <details className={n.audit}><summary>ORIGINAL SIGNAL TRIGGERS · {lineAlerts.length}</summary><div className={n.scroll}><table><thead><tr><th>Game</th><th>Signal</th><th>Market / side</th><th>Observed</th><th>Result</th></tr></thead><tbody>{lineAlerts.map((o,i)=><tr key={i}><td>{o.matchup}</td><td>{label(o.alertType)}</td><td>{insightMarket(o)} / {o.side}</td><td>{time(typeof o.details?.trigger_capture_at==="string"?o.details.trigger_capture_at:o.createdAt)}</td><td>{o.outcome ?? "pending"}</td></tr>)}</tbody></table></div></details>
+    <details className={n.audit}><summary>DETECTOR HEALTH · {detectorHealth.length} TRACKED</summary><p>Never-fired detectors with sufficient age and opportunities require investigation. New detectors are withheld from judgment.</p><div className={n.scroll}><table><thead><tr><th>Detector</th><th>Deployed</th><th>Alerts ever</th><th>Last alert</th><th>Status</th></tr></thead><tbody>{detectorHealth.map(d=><tr key={`${d.sport}-${d.alertType}`}><td>{label(d.alertType)}</td><td>{d.deployedAt}</td><td>{d.alertsEver}</td><td>{time(d.lastAlertAt)}</td><td>{label(d.status)}</td></tr>)}</tbody></table></div></details>
+    <details className={n.audit}><summary>OPEN-TO-CLOSE RESULTS · {lineMovementHistory.length} GAMES</summary><div className={n.scroll}><table><thead><tr><th>Date</th><th>Game</th><th>Open</th><th>Close</th><th>Moved toward</th><th>Score</th><th>Moved side won</th></tr></thead><tbody>{lineMovementHistory.map(r=><tr key={`${r.matchupId}-${r.gameDate}`}><td>{r.gameDate}</td><td>{r.matchup}</td><td>{pct(r.openProb)}</td><td>{pct(r.closeProb)}</td><td>{r.movedToward ?? "quiet"}</td><td>{r.score ?? "pending"}</td><td>{r.movedSideWon==null?"—":r.movedSideWon?"Yes":"No"}</td></tr>)}</tbody></table></div>{!lineMovementHistory.length&&<p>No completed NFL movement history yet.</p>}</details>
+    <footer className={s.ticker}><span><strong>STATUS</strong> {feed}</span><span><strong>BOARD</strong> {matchups.length} GAMES</span><span><strong>QUOTES</strong> OBSERVED BOOK MEDIAN · NO-VIG MONEYLINES</span><span><strong>REFRESH</strong> 60 SECONDS</span></footer>
+  </div>;
 }
