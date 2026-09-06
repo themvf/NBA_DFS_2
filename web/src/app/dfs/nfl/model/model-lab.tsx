@@ -31,7 +31,7 @@ export default function ModelLab({ report, digest, viewedAt, workload, workloadD
   }
   return <main className="min-h-screen bg-slate-950 px-4 py-7 text-slate-100 sm:px-8">
     <div className="mx-auto max-w-7xl space-y-6">
-      <nav className="flex flex-wrap gap-5 text-sm text-teal-300"><Link href="/dfs/nfl">← NFL DFS</Link><Link href="/dfs/nfl/history">Player Context →</Link><Link href="/dfs/nfl/scenarios">Scenario Lab →</Link><Link href="/dfs/nfl/review">Weekly player review →</Link></nav>
+      <nav className="flex flex-wrap gap-5 text-sm text-teal-300"><Link href="/dfs/nfl">← NFL DFS</Link><Link href="/dfs/nfl/model/workload">Pass volume / target shares</Link><Link href="/dfs/nfl/history">Player Context →</Link><Link href="/dfs/nfl/scenarios">Scenario Lab →</Link><Link href="/dfs/nfl/review">Weekly player review →</Link></nav>
       <header className="flex flex-wrap items-start justify-between gap-5">
         <div><p className="text-xs font-bold uppercase tracking-[.25em] text-teal-400">NFL / Model development</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight">Model Lab</h1>

@@ -1,0 +1,3574 @@
+{
+  "version": "nfl-dfs-volume-share-v1",
+  "as_of": "2026-09-06 15:23:38.876080+00:00",
+  "config": {
+    "games": 8,
+    "half_life": 4,
+    "min_player_games": 4,
+    "redistribution_fraction": 0.5,
+    "residual_min": 100
+  },
+  "sources": [
+    {
+      "season": 2023,
+      "sha256": "ac776fbd7c9fefdb4069b72304f4c5fa05ae417acd49f6e4e27be14b9d7a4bbc",
+      "rows": 17806,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2023.parquet"
+    },
+    {
+      "season": 2024,
+      "sha256": "847569d194ca3d96b5efcf91e6eac5e18780fc47568a713fd545a82d29d155c1",
+      "rows": 18130,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.parquet"
+    },
+    {
+      "season": 2025,
+      "sha256": "2a461becaa9adb3c93a3074a3a31f1e960162a50163371a2d34e28393b5fff10",
+      "rows": 18540,
+      "url": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.parquet"
+    }
+  ],
+  "roster_evidence_digest": "f1fd8f5a36a154cb9874ee26fc7eeb8b60608d307ee2e01c12b461e14ec95ab4",
+  "recipe_digest": "84cbaf0b45a912b33aa69f0d4f3a2c5dd16b71b4a50ecab80e26ff91d4837657",
+  "replay": {
+    "2024": {
+      "n": 1958,
+      "baseline": {
+        "mae": 5.085080847208958,
+        "interval_score80": 26.48643696858807,
+        "coverage80": 0.7997957099080695,
+        "targets_mae": 2.00254475353821
+      },
+      "candidate": {
+        "mae": 4.970882099305267,
+        "interval_score80": 26.425482790207422,
+        "coverage80": 0.8059244126659857,
+        "targets_mae": 2.0348047239585454
+      }
+    },
+    "2025": {
+      "n": 2019,
+      "baseline": {
+        "mae": 4.713965434078265,
+        "interval_score80": 24.34527162683318,
+        "coverage80": 0.807825656265478,
+        "targets_mae": 1.872839623903164
+      },
+      "candidate": {
+        "mae": 4.514500291099518,
+        "interval_score80": 24.100211783466783,
+        "coverage80": 0.8236750866765725,
+        "targets_mae": 1.8510862368440684
+      }
+    }
+  },
+  "excluded": {
+    "insufficient_prior_role": 1825,
+    "residual_warmup": 184
+  },
+  "availability_audit": [
+    {
+      "season": 2026,
+      "n": 27151,
+      "first_capture": "2026-08-26 09:23:02.495640+00:00",
+      "latest_capture": "2026-09-06 11:56:12.581007+00:00"
+    }
+  ],
+  "historical_pregame_availability_rows": 0,
+  "forward": [
+    {
+      "team": "SEA",
+      "kickoff": "2026-09-10 00:20:00+00:00",
+      "attempts": 30.199320247422776,
+      "target_budget": 28.798160631350832,
+      "unallocated_targets": 1.3826296412290922,
+      "unmatched_historical_targets": 4.113760590044365,
+      "removed_share": 0.09602207994658549,
+      "redistributed_share": 0.04801103997329274,
+      "out_players": [
+        {
+          "identity": "00-0037156",
+          "name": "Irvin Charles",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0038752",
+          "name": "Jake Bobo",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039165",
+          "name": "Zach Charbonnet",
+          "status": "PUP",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040649",
+          "name": "Robbie Ouzts",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0038543",
+          "name": "Jaxon Smith-Njigba",
+          "history_games": 8,
+          "targets_baseline": 9.84735048999443,
+          "targets_volume": 9.520073122576882,
+          "targets_if_out": 10.02569234302167,
+          "fpts_baseline": 20.031573651090373,
+          "fpts_volume": 19.311563442771767,
+          "fpts_if_out": 20.423925727750298,
+          "p10": 12.768063090694604,
+          "p50": 18.10245065179624,
+          "p90": 27.983538501333715,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0033908",
+          "name": "Cooper Kupp",
+          "history_games": 8,
+          "targets_baseline": 4.071027996759369,
+          "targets_volume": 3.8712434574653933,
+          "targets_if_out": 4.076848506283108,
+          "fpts_baseline": 6.08656632353175,
+          "fpts_volume": 5.797734961009602,
+          "fpts_if_out": 6.094981117300355,
+          "p10": -0.7457653910675616,
+          "p50": 4.588622170034074,
+          "p90": 14.46971001957155,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0037545",
+          "name": "Rashid Shaheed",
+          "history_games": 8,
+          "targets_baseline": 2.6867691672176206,
+          "targets_volume": 2.4765455774908376,
+          "targets_if_out": 2.608077029840435,
+          "fpts_baseline": 5.8167653373820505,
+          "fpts_volume": 5.405567995876463,
+          "fpts_if_out": 5.662843516672276,
+          "p10": -1.1379323562007007,
+          "p50": 4.196455204900935,
+          "p90": 14.077543054438411,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038752",
+          "name": "Jake Bobo",
+          "history_games": 8,
+          "targets_baseline": 0.4833376315802493,
+          "targets_volume": 0.4628722280784686,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 1.374948609261494,
+          "fpts_volume": 1.3143710148962233,
+          "fpts_if_out": 0.0,
+          "p10": -5.22912933718094,
+          "p50": 0.10525822392069539,
+          "p90": 9.986346073458172,
+          "availability": {
+            "status": "IR",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": true
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "NE",
+      "kickoff": "2026-09-10 00:20:00+00:00",
+      "attempts": 29.54316997925212,
+      "target_budget": 28.17292317222419,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 9.938833996171613,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0038720",
+          "name": "Julian Hill",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040570",
+          "name": "Jeremiah Webb",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0033555",
+          "name": "Mack Hollins",
+          "history_games": 8,
+          "targets_baseline": 6.706941842859084,
+          "targets_volume": 5.460677228165633,
+          "targets_if_out": 5.460677228165633,
+          "fpts_baseline": 9.890967663965297,
+          "fpts_volume": 7.909162560991984,
+          "fpts_if_out": 7.909162560991984,
+          "p10": 1.3656622089148205,
+          "p50": 6.700049770016456,
+          "p90": 16.58113761955393,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040131",
+          "name": "Kyle Williams",
+          "history_games": 8,
+          "targets_baseline": 1.8883504584363509,
+          "targets_volume": 1.5508431185479066,
+          "targets_if_out": 1.5508431185479066,
+          "fpts_baseline": 5.125886384719196,
+          "fpts_volume": 4.104364169323505,
+          "fpts_if_out": 4.104364169323505,
+          "p10": -2.4391361827536584,
+          "p50": 2.895251378347977,
+          "p90": 12.776339227885455,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038621",
+          "name": "DeMario Douglas",
+          "history_games": 8,
+          "targets_baseline": 2.051740075900956,
+          "targets_volume": 1.8890751126344365,
+          "targets_if_out": 1.8890751126344365,
+          "fpts_baseline": 3.709723844516353,
+          "fpts_volume": 3.375244013799573,
+          "fpts_if_out": 3.375244013799573,
+          "p10": -3.1682563382775903,
+          "p50": 2.166131222824045,
+          "p90": 12.047219072361523,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040563",
+          "name": "Efton Chism III",
+          "history_games": 8,
+          "targets_baseline": 0.5689104705074925,
+          "targets_volume": 0.6047433036838106,
+          "targets_if_out": 0.6047433036838106,
+          "fpts_baseline": 3.095255653552385,
+          "fpts_volume": 3.220670569669498,
+          "fpts_if_out": 3.220670569669498,
+          "p10": -3.3228297824076654,
+          "p50": 2.01155777869397,
+          "p90": 11.892645628231447,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "LAR",
+      "kickoff": "2026-09-11 00:35:00+00:00",
+      "attempts": 37.58421238672961,
+      "target_budget": 36.23338811372842,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 0.0,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0041414",
+          "name": "Matthew Caldwell",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0039075",
+          "name": "Puka Nacua",
+          "history_games": 8,
+          "targets_baseline": 11.204042018719413,
+          "targets_volume": 8.660125756361662,
+          "targets_if_out": 8.660125756361662,
+          "fpts_baseline": 27.13884671974318,
+          "fpts_volume": 21.115320857148966,
+          "fpts_if_out": 21.115320857148966,
+          "p10": 14.571820505071802,
+          "p50": 19.906208066173438,
+          "p90": 29.787295915710917,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0031381",
+          "name": "Davante Adams",
+          "history_games": 8,
+          "targets_baseline": 7.3303507116183955,
+          "targets_volume": 6.348893287486778,
+          "targets_if_out": 6.348893287486778,
+          "fpts_baseline": 15.688667875732595,
+          "fpts_volume": 13.37143026248625,
+          "fpts_if_out": 13.37143026248625,
+          "p10": 6.827929910409086,
+          "p50": 12.162317471510722,
+          "p90": 22.0434053210482,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038359",
+          "name": "Xavier Smith",
+          "history_games": 8,
+          "targets_baseline": 2.3813235562342765,
+          "targets_volume": 1.9083188592838758,
+          "targets_if_out": 1.9083188592838758,
+          "fpts_baseline": 4.858228841840198,
+          "fpts_volume": 3.8287480308305026,
+          "fpts_if_out": 3.8287480308305026,
+          "p10": -2.7147523212466607,
+          "p50": 2.6196352398549747,
+          "p90": 12.500723089392451,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036849",
+          "name": "Tutu Atwell",
+          "history_games": 8,
+          "targets_baseline": 2.0587638107399764,
+          "targets_volume": 1.5006013289406916,
+          "targets_if_out": 1.5006013289406916,
+          "fpts_baseline": 3.8248667460336097,
+          "fpts_volume": 2.6638887838910974,
+          "fpts_if_out": 2.6638887838910974,
+          "p10": -3.879611568186066,
+          "p50": 1.4547759929155695,
+          "p90": 11.335863842453048,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040590",
+          "name": "Konata Mumpfield",
+          "history_games": 8,
+          "targets_baseline": 2.8124529008328896,
+          "targets_volume": 1.9693858227574548,
+          "targets_if_out": 1.9693858227574548,
+          "fpts_baseline": 2.0818018797989266,
+          "fpts_volume": 1.4073482173385787,
+          "fpts_if_out": 1.4073482173385787,
+          "p10": -5.136152134738585,
+          "p50": 0.1982354263630508,
+          "p90": 10.079323275900528,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039751",
+          "name": "Jordan Whittington",
+          "history_games": 8,
+          "targets_baseline": 0.759480006495646,
+          "targets_volume": 0.6191199754232193,
+          "targets_if_out": 0.6191199754232193,
+          "fpts_baseline": 1.066457323377651,
+          "fpts_volume": 0.8734622806530644,
+          "fpts_if_out": 0.8734622806530644,
+          "p10": -5.670038071424099,
+          "p50": -0.3356505103224635,
+          "p90": 9.545437339215015,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "SF",
+      "kickoff": "2026-09-11 00:35:00+00:00",
+      "attempts": 30.944760317541743,
+      "target_budget": 29.692882587538413,
+      "unallocated_targets": 2.207486031774485,
+      "unmatched_historical_targets": 7.732207677938004,
+      "removed_share": 0.14868789012090922,
+      "redistributed_share": 0.07434394506045461,
+      "out_players": [
+        {
+          "identity": "00-0034775",
+          "name": "Christian Kirk",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039363",
+          "name": "Isaac Guerendo",
+          "status": "PUP",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039916",
+          "name": "Ricky Pearsall",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0039916",
+          "name": "Ricky Pearsall",
+          "history_games": 8,
+          "targets_baseline": 5.761914786917692,
+          "targets_volume": 4.41497206354897,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 9.665803705668262,
+          "fpts_volume": 7.416994984913527,
+          "fpts_if_out": 0.0,
+          "p10": 0.8734946328363632,
+          "p50": 6.207882193937999,
+          "p90": 16.088970043475477,
+          "availability": {
+            "status": "IR",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": true
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0032775",
+          "name": "Demarcus Robinson",
+          "history_games": 8,
+          "targets_baseline": 2.35515215678294,
+          "targets_volume": 1.9291028545594544,
+          "targets_if_out": 2.0975688201801046,
+          "fpts_baseline": 5.089229988343301,
+          "fpts_volume": 4.203994215945615,
+          "fpts_if_out": 4.554029055624077,
+          "p10": -2.3395061361315483,
+          "p50": 2.994881424970087,
+          "p90": 12.875969274507565,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "DET",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 38.853099194140555,
+      "target_budget": 36.39379749263733,
+      "unallocated_targets": 4.040523192987126e-15,
+      "unmatched_historical_targets": 7.940809612933942,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0037197",
+          "name": "Isiah Pacheco",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0041446",
+          "name": "Kendrick Law",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0036963",
+          "name": "Amon-Ra St. Brown",
+          "history_games": 8,
+          "targets_baseline": 11.897287079483162,
+          "targets_volume": 11.719520462241862,
+          "targets_if_out": 11.719520462241862,
+          "fpts_baseline": 20.040188208351882,
+          "fpts_volume": 19.742330365240903,
+          "fpts_if_out": 19.742330365240903,
+          "p10": 13.19883001316374,
+          "p50": 18.533217574265375,
+          "p90": 28.414305423802855,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0037240",
+          "name": "Jameson Williams",
+          "history_games": 8,
+          "targets_baseline": 7.35672500910498,
+          "targets_volume": 7.2366842476948845,
+          "targets_if_out": 7.2366842476948845,
+          "fpts_baseline": 15.112291071057651,
+          "fpts_volume": 14.853084409978903,
+          "fpts_if_out": 14.853084409978903,
+          "p10": 8.30958405790174,
+          "p50": 13.643971619003375,
+          "p90": 23.525059468540853,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040669",
+          "name": "Isaac TeSlaa",
+          "history_games": 8,
+          "targets_baseline": 2.7365155281233227,
+          "targets_volume": 2.6112183102399755,
+          "targets_if_out": 2.6112183102399755,
+          "fpts_baseline": 7.440031027274267,
+          "fpts_volume": 7.10548745552573,
+          "fpts_if_out": 7.10548745552573,
+          "p10": 0.5619871034485667,
+          "p50": 5.896374664550202,
+          "p90": 15.77746251408768,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0035544",
+          "name": "Tom Kennedy",
+          "history_games": 8,
+          "targets_baseline": 0.35677235751244535,
+          "targets_volume": 0.4624759358040431,
+          "targets_if_out": 0.4624759358040431,
+          "fpts_baseline": 0.6778674792736461,
+          "fpts_volume": 0.8787042780276818,
+          "fpts_if_out": 0.8787042780276818,
+          "p10": -5.664796074049482,
+          "p50": -0.3304085129478461,
+          "p90": 9.550679336589631,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "NO",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 34.55578053388337,
+      "target_budget": 33.17585815124465,
+      "unallocated_targets": 1.5823911568105173,
+      "unmatched_historical_targets": 7.216192846338339,
+      "removed_share": 0.09539413567520025,
+      "redistributed_share": 0.047697067837600124,
+      "out_players": [
+        {
+          "identity": "00-0037276",
+          "name": "Ty Chandler",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039623",
+          "name": "Mason Tipton",
+          "status": "PUP",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040244",
+          "name": "Moliki Matavao",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0041029",
+          "name": "Jordyn Tyson",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0037239",
+          "name": "Chris Olave",
+          "history_games": 8,
+          "targets_baseline": 9.922714074332468,
+          "targets_volume": 7.034024318918669,
+          "targets_if_out": 7.404906653802947,
+          "fpts_baseline": 22.427535586810833,
+          "fpts_volume": 16.13573187296434,
+          "fpts_if_out": 16.943544081821877,
+          "p10": 9.592231520887175,
+          "p50": 14.926619081988811,
+          "p90": 24.807706931526287,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039424",
+          "name": "Devaughn Vele",
+          "history_games": 8,
+          "targets_baseline": 5.225006447370374,
+          "targets_volume": 3.9100458105539206,
+          "targets_if_out": 4.11621042613854,
+          "fpts_baseline": 9.264841950713983,
+          "fpts_volume": 6.990315443788225,
+          "fpts_if_out": 7.346924508583243,
+          "p10": 0.4468150917110613,
+          "p50": 5.781202652812697,
+          "p90": 15.662290502350174,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0037231",
+          "name": "Kevin Austin Jr.",
+          "history_games": 8,
+          "targets_baseline": 4.479419786279203,
+          "targets_volume": 3.1727113352932053,
+          "targets_if_out": 3.3399985857484684,
+          "fpts_baseline": 6.332557204685673,
+          "fpts_volume": 4.533655237161617,
+          "fpts_if_out": 4.763954018621696,
+          "p10": -2.0098451149155463,
+          "p50": 3.324542446186089,
+          "p90": 13.205630295723566,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039623",
+          "name": "Mason Tipton",
+          "history_games": 8,
+          "targets_baseline": 2.510486693653268,
+          "targets_volume": 1.4543844255750018,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 3.200855143501682,
+          "fpts_volume": 1.9335324218077623,
+          "fpts_if_out": 0.0,
+          "p10": -4.609967930269401,
+          "p50": 0.7244196308322344,
+          "p90": 10.605507480369711,
+          "availability": {
+            "status": "PUP",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": true
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "HOU",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 31.937181208108473,
+      "target_budget": 29.23965184554091,
+      "unallocated_targets": 1.8594631474509902,
+      "unmatched_historical_targets": 5.1769569726977025,
+      "removed_share": 0.1271877761933451,
+      "redistributed_share": 0.06359388809667255,
+      "out_players": [
+        {
+          "identity": "00-0038977",
+          "name": "Tank Dell",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040130",
+          "name": "Jayden Higgins",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040211",
+          "name": "Graham Mertz",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0036554",
+          "name": "Nico Collins",
+          "history_games": 8,
+          "targets_baseline": 7.087476766479458,
+          "targets_volume": 5.457573662204963,
+          "targets_if_out": 5.855217415680272,
+          "fpts_baseline": 16.014208390468966,
+          "fpts_volume": 12.36633001423557,
+          "fpts_if_out": 13.256294605346977,
+          "p10": 5.822829662158407,
+          "p50": 11.157217223260043,
+          "p90": 21.03830507279752,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040130",
+          "name": "Jayden Higgins",
+          "history_games": 8,
+          "targets_baseline": 4.443199591238335,
+          "targets_volume": 3.718926294901987,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 9.10226329106751,
+          "fpts_volume": 7.75771491530465,
+          "fpts_if_out": 0.0,
+          "p10": 1.2142145632274866,
+          "p50": 6.548602124329122,
+          "p90": 16.429689973866598,
+          "availability": {
+            "status": "IR",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": true
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038618",
+          "name": "Xavier Hutchinson",
+          "history_games": 8,
+          "targets_baseline": 3.970135054611692,
+          "targets_volume": 3.3482790554985513,
+          "targets_if_out": 3.5922376960445566,
+          "fpts_baseline": 5.3025462444713565,
+          "fpts_volume": 4.49635435990682,
+          "fpts_if_out": 4.812629311757535,
+          "p10": -2.047145992170343,
+          "p50": 3.287241568931292,
+          "p90": 13.168329418468769,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040138",
+          "name": "Jaylin Noel",
+          "history_games": 8,
+          "targets_baseline": 1.4400873669742529,
+          "targets_volume": 1.2857549569579045,
+          "targets_if_out": 1.3794362261041029,
+          "fpts_baseline": 3.7236397238411874,
+          "fpts_volume": 3.3827053998959817,
+          "fpts_if_out": 3.589655839918947,
+          "p10": -3.1607949521811816,
+          "p50": 2.173592608920454,
+          "p90": 12.05468045845793,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "BUF",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 28.240988204585033,
+      "target_budget": 27.03754083473703,
+      "unallocated_targets": 0.8697206684529164,
+      "unmatched_historical_targets": 4.617695522942274,
+      "removed_share": 0.06433430272146085,
+      "redistributed_share": 0.03216715136073042,
+      "out_players": [
+        {
+          "identity": "00-0038679",
+          "name": "Tyrell Shavers",
+          "status": "PUP",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0037261",
+          "name": "Khalil Shakir",
+          "history_games": 8,
+          "targets_baseline": 5.614168318136211,
+          "targets_volume": 4.044782561524214,
+          "targets_if_out": 4.183837710447837,
+          "fpts_baseline": 9.163288418857267,
+          "fpts_volume": 6.638624375611881,
+          "fpts_if_out": 6.862321789097709,
+          "p10": 0.09512402353471788,
+          "p50": 5.429511584636353,
+          "p90": 15.310599434173831,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039901",
+          "name": "Keon Coleman",
+          "history_games": 8,
+          "targets_baseline": 4.3032351299253735,
+          "targets_volume": 2.97948794543846,
+          "targets_if_out": 3.0819194442068283,
+          "fpts_baseline": 7.528538536159812,
+          "fpts_volume": 5.37834378514188,
+          "fpts_if_out": 5.544725760168337,
+          "p10": -1.1651565669352837,
+          "p50": 4.169230994166352,
+          "p90": 14.05031884370383,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038679",
+          "name": "Tyrell Shavers",
+          "history_games": 8,
+          "targets_baseline": 2.407223307914072,
+          "targets_volume": 1.7394413369058312,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 5.46738051309775,
+          "fpts_volume": 4.022862670548345,
+          "fpts_if_out": 0.0,
+          "p10": -2.5206376815288185,
+          "p50": 2.813749879572817,
+          "p90": 12.694837729110294,
+          "availability": {
+            "status": "PUP",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": true
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036988",
+          "name": "Josh Palmer",
+          "history_games": 8,
+          "targets_baseline": 2.5418511958775123,
+          "targets_volume": 1.7625770817605377,
+          "targets_if_out": 1.823172531544423,
+          "fpts_baseline": 2.8518670447908594,
+          "fpts_volume": 1.7942807470606796,
+          "fpts_if_out": 1.8765174289102382,
+          "p10": -4.749219605016484,
+          "p50": 0.5851679560851517,
+          "p90": 10.46625580562263,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "IND",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 31.952249369844818,
+      "target_budget": 30.836807855509456,
+      "unallocated_targets": 0.7297646741351481,
+      "unmatched_historical_targets": 6.50508551142232,
+      "removed_share": 0.04733075340058343,
+      "redistributed_share": 0.023665376700291715,
+      "out_players": [
+        {
+          "identity": "00-0035045",
+          "name": "D.J. Montgomery",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0038394",
+          "name": "Will Mallory",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040352",
+          "name": "Coleman Owen",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040853",
+          "name": "Carson Towt",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0037664",
+          "name": "Alec Pierce",
+          "history_games": 8,
+          "targets_baseline": 4.989058419859933,
+          "targets_volume": 4.540233634248358,
+          "targets_if_out": 4.653018149593379,
+          "fpts_baseline": 15.245924742245366,
+          "fpts_volume": 13.954690359024374,
+          "fpts_if_out": 14.27916273394005,
+          "p10": 7.41119000694721,
+          "p50": 12.745577568048846,
+          "p90": 22.626665417586324,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038997",
+          "name": "Josh Downs",
+          "history_games": 8,
+          "targets_baseline": 5.362867203491465,
+          "targets_volume": 4.91454078798381,
+          "targets_if_out": 5.036623514461796,
+          "fpts_baseline": 7.615151184194215,
+          "fpts_volume": 7.037664063266498,
+          "fpts_if_out": 7.194918241896476,
+          "p10": 0.49416371118933483,
+          "p50": 5.82855127229097,
+          "p90": 15.709639121828449,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0035021",
+          "name": "Ashton Dulin",
+          "history_games": 8,
+          "targets_baseline": 0.9788188052863236,
+          "targets_volume": 0.8784332355480363,
+          "targets_if_out": 0.9002545061511396,
+          "fpts_baseline": 1.6383851038851953,
+          "fpts_volume": 1.4632680544528498,
+          "fpts_if_out": 1.501334048727152,
+          "p10": -5.080232297624314,
+          "p50": 0.25415526347732187,
+          "p90": 10.1352431130148,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0032951",
+          "name": "Laquon Treadwell",
+          "history_games": 6,
+          "targets_baseline": 0.0,
+          "targets_volume": 0.0,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 0.0,
+          "fpts_volume": 0.0,
+          "fpts_if_out": 0.0,
+          "p10": -6.543500352077164,
+          "p50": -1.209112790975528,
+          "p90": 8.67197505856195,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "BAL",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 21.768323719703826,
+      "target_budget": 21.04552836929399,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 6.974357184505527,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0037327",
+          "name": "Skylar Thompson",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040888",
+          "name": "Adam Randall",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0039064",
+          "name": "Zay Flowers",
+          "history_games": 8,
+          "targets_baseline": 6.401949376353701,
+          "targets_volume": 5.972768537814339,
+          "targets_if_out": 5.972768537814339,
+          "fpts_baseline": 18.85137184660458,
+          "fpts_volume": 17.760262099394893,
+          "fpts_if_out": 17.760262099394893,
+          "p10": 11.21676174731773,
+          "p50": 16.551149308419365,
+          "p90": 26.432237157956845,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039792",
+          "name": "Devontez Walker",
+          "history_games": 8,
+          "targets_baseline": 1.0515631249443458,
+          "targets_volume": 0.9162772070109778,
+          "targets_if_out": 0.9162772070109778,
+          "fpts_baseline": 4.554448022903124,
+          "fpts_volume": 4.080947310136335,
+          "fpts_if_out": 4.080947310136335,
+          "p10": -2.462553041940828,
+          "p50": 2.8718345191608075,
+          "p90": 12.752922368698286,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036550",
+          "name": "Rashod Bateman",
+          "history_games": 8,
+          "targets_baseline": 2.0770495472522867,
+          "targets_volume": 1.6072374304136932,
+          "targets_if_out": 1.6072374304136932,
+          "fpts_baseline": 2.9054647595380336,
+          "fpts_volume": 2.169425776490904,
+          "fpts_if_out": 2.169425776490904,
+          "p10": -4.37407457558626,
+          "p50": 0.960312985515376,
+          "p90": 10.841400835052854,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040075",
+          "name": "LaJohntay Wester",
+          "history_games": 8,
+          "targets_baseline": 0.0,
+          "targets_volume": 0.0,
+          "targets_if_out": 0.0,
+          "fpts_baseline": -0.075002149123458,
+          "fpts_volume": 0.0,
+          "fpts_if_out": 0.0,
+          "p10": -6.543500352077164,
+          "p50": -1.209112790975528,
+          "p90": 8.67197505856195,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "JAX",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 32.15921890179138,
+      "target_budget": 31.092489339900098,
+      "unallocated_targets": 3.4519597558069324e-15,
+      "unmatched_historical_targets": 7.818020066706361,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0039534",
+          "name": "Carter Bradley",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0038606",
+          "name": "Parker Washington",
+          "history_games": 8,
+          "targets_baseline": 7.105608378718204,
+          "targets_volume": 6.093560598056802,
+          "targets_if_out": 6.093560598056802,
+          "fpts_baseline": 17.000877497083376,
+          "fpts_volume": 14.558071971604583,
+          "fpts_if_out": 14.558071971604583,
+          "p10": 8.01457161952742,
+          "p50": 13.348959180629056,
+          "p90": 23.230047030166535,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0034960",
+          "name": "Jakobi Meyers",
+          "history_games": 8,
+          "targets_baseline": 7.385581435421075,
+          "targets_volume": 6.427416929739881,
+          "targets_if_out": 6.427416929739881,
+          "fpts_baseline": 11.71169705947525,
+          "fpts_volume": 10.03490917453316,
+          "fpts_if_out": 10.03490917453316,
+          "p10": 3.491408822455997,
+          "p50": 8.825796383557632,
+          "p90": 18.70688423309511,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039893",
+          "name": "Brian Thomas Jr.",
+          "history_games": 8,
+          "targets_baseline": 5.362860868765356,
+          "targets_volume": 4.43656844772428,
+          "targets_if_out": 4.43656844772428,
+          "fpts_baseline": 8.503493540628554,
+          "fpts_volume": 7.042967351173091,
+          "fpts_if_out": 7.042967351173091,
+          "p10": 0.49946699909592723,
+          "p50": 5.833854560197563,
+          "p90": 15.714942409735041,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "CLE",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 27.59864090397476,
+      "target_budget": 25.683898976184423,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 5.532750227419608,
+      "removed_share": 0.0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0039379",
+          "name": "Jamari Thrash",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040704",
+          "name": "Dillon Gabriel",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0041087",
+          "name": "Joe Royer",
+          "status": "PUP",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0036407",
+          "name": "Jerry Jeudy",
+          "history_games": 8,
+          "targets_baseline": 5.179708784635549,
+          "targets_volume": 4.4647051719703255,
+          "targets_if_out": 4.4647051719703255,
+          "fpts_baseline": 6.780382423751009,
+          "fpts_volume": 5.811552528589631,
+          "fpts_if_out": 5.811552528589631,
+          "p10": -0.7319478234875328,
+          "p50": 4.602439737614103,
+          "p90": 14.483527587151581,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040782",
+          "name": "Isaiah Bond",
+          "history_games": 8,
+          "targets_baseline": 1.7108123397526662,
+          "targets_volume": 1.434175085877288,
+          "targets_if_out": 1.434175085877288,
+          "fpts_baseline": 3.6769770265624557,
+          "fpts_volume": 3.074303009191096,
+          "fpts_if_out": 3.074303009191096,
+          "p10": -3.4691973428860674,
+          "p50": 1.865190218215568,
+          "p90": 11.746278067753046,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039920",
+          "name": "Malachi Corley",
+          "history_games": 8,
+          "targets_baseline": 1.5299579001944006,
+          "targets_volume": 1.3300845429454793,
+          "targets_if_out": 1.3300845429454793,
+          "fpts_baseline": 3.0218344601303864,
+          "fpts_volume": 2.649343203439215,
+          "fpts_if_out": 2.649343203439215,
+          "p10": -3.8941571486379485,
+          "p50": 1.4402304124636869,
+          "p90": 11.321318262001164,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040259",
+          "name": "Gage Larvadain",
+          "history_games": 8,
+          "targets_baseline": 0.9011316292981066,
+          "targets_volume": 0.64275556677255,
+          "targets_if_out": 0.64275556677255,
+          "fpts_baseline": 0.9244481476416224,
+          "fpts_volume": 0.6689429302552385,
+          "fpts_if_out": 0.6689429302552385,
+          "p10": -5.874557421821925,
+          "p50": -0.5401698607202894,
+          "p90": 9.34091798881719,
+          "availability": null,
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "PIT",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 36.51064545761157,
+      "target_budget": 34.747689881096996,
+      "unallocated_targets": 3.857768535852845e-15,
+      "unmatched_historical_targets": 19.295596584928283,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0039626",
+          "name": "Cole Burgess",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0035640",
+          "name": "DK Metcalf",
+          "history_games": 8,
+          "targets_baseline": 7.214531879735736,
+          "targets_volume": 6.6947005188216195,
+          "targets_if_out": 6.6947005188216195,
+          "fpts_baseline": 11.890194257771856,
+          "fpts_volume": 11.081670837492936,
+          "fpts_if_out": 11.081670837492936,
+          "p10": 4.5381704854157725,
+          "p50": 9.872558046517408,
+          "p90": 19.753645896054888,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036862",
+          "name": "Ben Skowronek",
+          "history_games": 8,
+          "targets_baseline": 0.3214002225441157,
+          "targets_volume": 0.33358104484632073,
+          "targets_if_out": 0.33358104484632073,
+          "fpts_baseline": 0.5666161534096508,
+          "fpts_volume": 0.5885416335536198,
+          "fpts_if_out": 0.5885416335536198,
+          "p10": -5.954958718523544,
+          "p50": -0.6205711574219082,
+          "p90": 9.26051669211557,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "ATL",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 30.8989332272913,
+      "target_budget": 29.338324048951637,
+      "unallocated_targets": 3.2572082863060056e-15,
+      "unmatched_historical_targets": 8.749888395734994,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0036984",
+          "name": "Trey Sermon",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040432",
+          "name": "Beaux Collins",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0037238",
+          "name": "Drake London",
+          "history_games": 8,
+          "targets_baseline": 8.245536145320651,
+          "targets_volume": 6.526995874027039,
+          "targets_if_out": 6.526995874027039,
+          "fpts_baseline": 17.08763088149882,
+          "fpts_volume": 13.444325506356362,
+          "fpts_if_out": 13.444325506356362,
+          "p10": 6.9008251542791985,
+          "p50": 12.235212715380834,
+          "p90": 22.116300564918312,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038953",
+          "name": "Dylan Drummond",
+          "history_games": 6,
+          "targets_baseline": 1.4113425648009725,
+          "targets_volume": 1.2810782389233042,
+          "targets_if_out": 1.2810782389233042,
+          "fpts_baseline": 1.4030402231293502,
+          "fpts_volume": 1.270407454962997,
+          "fpts_if_out": 1.270407454962997,
+          "p10": -5.273092897114167,
+          "p50": 0.06129466398746897,
+          "p90": 9.942382513524947,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "TEN",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 33.83704511323608,
+      "target_budget": 31.684722163685006,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 10.581613427090089,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0040901",
+          "name": "Jaren Kanak",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0040705",
+          "name": "Chimere Dike",
+          "history_games": 8,
+          "targets_baseline": 5.040742188697847,
+          "targets_volume": 4.919045078992785,
+          "targets_if_out": 4.919045078992785,
+          "fpts_baseline": 8.930552387023088,
+          "fpts_volume": 8.713872167304318,
+          "fpts_if_out": 8.713872167304318,
+          "p10": 2.170371815227155,
+          "p50": 7.50475937632879,
+          "p90": 17.385847225866268,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040170",
+          "name": "Elic Ayomanor",
+          "history_games": 8,
+          "targets_baseline": 5.688839392029494,
+          "targets_volume": 5.433226291927067,
+          "targets_if_out": 5.433226291927067,
+          "fpts_baseline": 7.5382072467676995,
+          "fpts_volume": 7.2107790375888765,
+          "fpts_if_out": 7.2107790375888765,
+          "p10": 0.6672786855117131,
+          "p50": 6.001666246613349,
+          "p90": 15.882754096150826,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036176",
+          "name": "Mason Kinsey",
+          "history_games": 8,
+          "targets_baseline": 0.5568004087616648,
+          "targets_volume": 0.46379464712150886,
+          "targets_if_out": 0.46379464712150886,
+          "fpts_baseline": 1.0876305705317337,
+          "fpts_volume": 0.9295207757434686,
+          "fpts_if_out": 0.9295207757434686,
+          "p10": -5.613979576333695,
+          "p50": -0.27959201523205934,
+          "p90": 9.601495834305418,
+          "availability": null,
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "NYJ",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 30.497519613179325,
+      "target_budget": 29.42214522544236,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 11.042426659826116,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [],
+      "players": [
+        {
+          "identity": "00-0039890",
+          "name": "Adonai Mitchell",
+          "history_games": 8,
+          "targets_baseline": 6.887319112681096,
+          "targets_volume": 5.680696099625978,
+          "targets_if_out": 5.680696099625978,
+          "fpts_baseline": 7.595280265176537,
+          "fpts_volume": 6.166056110057802,
+          "fpts_if_out": 6.166056110057802,
+          "p10": -0.37744424201936116,
+          "p50": 4.956943319082274,
+          "p90": 14.838031168619752,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039451",
+          "name": "Isaiah Williams",
+          "history_games": 8,
+          "targets_baseline": 4.519557826621116,
+          "targets_volume": 4.038711060345087,
+          "targets_if_out": 4.038711060345087,
+          "fpts_baseline": 6.512135230702836,
+          "fpts_volume": 5.81878521610482,
+          "fpts_if_out": 5.81878521610482,
+          "p10": -0.724715135972343,
+          "p50": 4.609672425129292,
+          "p90": 14.49076027466677,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040582",
+          "name": "Arian Smith",
+          "history_games": 8,
+          "targets_baseline": 1.2691521204563736,
+          "targets_volume": 1.1328419978516884,
+          "targets_if_out": 1.1328419978516884,
+          "fpts_baseline": 0.8213892825645588,
+          "fpts_volume": 0.7109780832547637,
+          "fpts_if_out": 0.7109780832547637,
+          "p10": -5.8325222688224,
+          "p50": -0.4981347077207642,
+          "p90": 9.382953141816714,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "CAR",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 29.193357019748166,
+      "target_budget": 26.531569516010133,
+      "unallocated_targets": 0.06641744633385303,
+      "unmatched_historical_targets": 3.413304518394905,
+      "removed_share": 0.005006672997145802,
+      "redistributed_share": 0.002503336498572901,
+      "out_players": [
+        {
+          "identity": "00-0040644",
+          "name": "Trevor Etienne",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0041047",
+          "name": "Chris Brazzell II",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0040124",
+          "name": "Tetairoa McMillan",
+          "history_games": 8,
+          "targets_baseline": 6.232036516935502,
+          "targets_volume": 5.664231128299048,
+          "targets_if_out": 5.6784819540433125,
+          "fpts_baseline": 11.78800952514245,
+          "fpts_volume": 10.645970762337807,
+          "fpts_if_out": 10.674633743929101,
+          "p10": 4.1024704102606435,
+          "p50": 9.43685797136228,
+          "p90": 19.317945820899755,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039491",
+          "name": "Jalen Coker",
+          "history_games": 8,
+          "targets_baseline": 4.641784392714659,
+          "targets_volume": 4.476660197255653,
+          "targets_if_out": 4.4879231741614936,
+          "fpts_baseline": 10.792275879956712,
+          "fpts_volume": 10.412031552080277,
+          "fpts_if_out": 10.437967685010673,
+          "p10": 3.868531200003114,
+          "p50": 9.20291876110475,
+          "p90": 19.084006610642227,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039342",
+          "name": "Xavier Legette",
+          "history_games": 8,
+          "targets_baseline": 3.1765555466901105,
+          "targets_volume": 2.8483287640243207,
+          "targets_if_out": 2.8554949682202775,
+          "fpts_baseline": 4.362263684317323,
+          "fpts_volume": 3.8857270220766207,
+          "fpts_if_out": 3.8961312889092694,
+          "p10": -2.6577733300005426,
+          "p50": 2.6766142311010928,
+          "p90": 12.55770208063857,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040218",
+          "name": "Jimmy Horn Jr.",
+          "history_games": 8,
+          "targets_baseline": 1.1806440082216583,
+          "targets_volume": 1.277753471725773,
+          "targets_if_out": 1.2809682137900082,
+          "fpts_baseline": 2.2455777864064843,
+          "fpts_volume": 2.4096927797284384,
+          "fpts_if_out": 2.4151256938169956,
+          "p10": -4.133807572348726,
+          "p50": 1.2005799887529105,
+          "p90": 11.081667838290388,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038840",
+          "name": "Brycen Tremayne",
+          "history_games": 8,
+          "targets_baseline": 0.8157357413274735,
+          "targets_volume": 0.7355196793635778,
+          "targets_if_out": 0.7373701975618412,
+          "fpts_baseline": 1.3880813518351494,
+          "fpts_volume": 1.2517140464965266,
+          "fpts_if_out": 1.2548599274335743,
+          "p10": -5.291786305580637,
+          "p50": 0.04260125552099869,
+          "p90": 9.923689105058477,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "CHI",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 34.69144216475257,
+      "target_budget": 30.710864753255116,
+      "unallocated_targets": 0.19371272450743313,
+      "unmatched_historical_targets": 8.979056148495122,
+      "removed_share": 0.01261525691730337,
+      "redistributed_share": 0.006307628458651685,
+      "out_players": [
+        {
+          "identity": "00-0037031",
+          "name": "Nikola Kalinic",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0037329",
+          "name": "Brittain Brown",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0041170",
+          "name": "Hayden Large",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0040735",
+          "name": "Luther Burden III",
+          "history_games": 8,
+          "targets_baseline": 5.907484255021199,
+          "targets_volume": 5.471826363497905,
+          "targets_if_out": 5.506781580228765,
+          "fpts_baseline": 13.18906429449644,
+          "fpts_volume": 12.27708710824101,
+          "fpts_if_out": 12.35026002859761,
+          "p10": 5.733586756163847,
+          "p50": 11.067974317265483,
+          "p90": 20.94906216680296,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040277",
+          "name": "Jahdae Walker",
+          "history_games": 6,
+          "targets_baseline": 2.088306972175202,
+          "targets_volume": 1.8655104941597127,
+          "targets_if_out": 1.8774277808762747,
+          "fpts_baseline": 5.64753880597142,
+          "fpts_volume": 5.052672209670064,
+          "fpts_if_out": 5.084491365203284,
+          "p10": -1.4908281424070995,
+          "p50": 3.843559418694536,
+          "p90": 13.724647268232014,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "CIN",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 37.85902701961482,
+      "target_budget": 35.87337020526342,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 5.363760754659324,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [],
+      "players": [
+        {
+          "identity": "00-0036900",
+          "name": "Ja'Marr Chase",
+          "history_games": 8,
+          "targets_baseline": 10.746942747350493,
+          "targets_volume": 9.086219648776472,
+          "targets_if_out": 9.086219648776472,
+          "fpts_baseline": 20.87868979263131,
+          "fpts_volume": 17.885526068457203,
+          "fpts_if_out": 17.885526068457203,
+          "p10": 11.34202571638004,
+          "p50": 16.676413277481675,
+          "p90": 26.557501127019155,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036410",
+          "name": "Tee Higgins",
+          "history_games": 8,
+          "targets_baseline": 6.789822121620209,
+          "targets_volume": 5.71163632182672,
+          "targets_if_out": 5.71163632182672,
+          "fpts_baseline": 16.959401278489782,
+          "fpts_volume": 14.091020188473141,
+          "fpts_if_out": 14.091020188473141,
+          "p10": 7.547519836395978,
+          "p50": 12.881907397497613,
+          "p90": 22.76299524703509,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038619",
+          "name": "Andrei Iosivas",
+          "history_games": 8,
+          "targets_baseline": 3.256758331887836,
+          "targets_volume": 2.8326333371225223,
+          "targets_if_out": 2.8326333371225223,
+          "fpts_baseline": 4.932190777739981,
+          "fpts_volume": 4.250449119487588,
+          "fpts_if_out": 4.250449119487588,
+          "p10": -2.293051232589575,
+          "p50": 3.0413363285120605,
+          "p90": 12.922424178049539,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "TB",
+      "kickoff": "2026-09-13 17:00:00+00:00",
+      "attempts": 30.70032105338213,
+      "target_budget": 29.610404681530706,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 7.313389292089156,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0035359",
+          "name": "David Sills",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0037570",
+          "name": "Dennis Houston",
+          "status": "QUESTIONABLE",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0033921",
+          "name": "Chris Godwin Jr.",
+          "history_games": 8,
+          "targets_baseline": 5.016746364570268,
+          "targets_volume": 4.0293025828422095,
+          "targets_if_out": 4.0293025828422095,
+          "fpts_baseline": 10.776268959029284,
+          "fpts_volume": 8.839915787055238,
+          "fpts_if_out": 8.839915787055238,
+          "p10": 2.296415434978075,
+          "p50": 7.63080299607971,
+          "p90": 17.511890845617188,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039855",
+          "name": "Jalen McMillan",
+          "history_games": 8,
+          "targets_baseline": 4.505711829624108,
+          "targets_volume": 3.297692411187751,
+          "targets_if_out": 3.297692411187751,
+          "fpts_baseline": 12.020636809733556,
+          "fpts_volume": 8.610305066917071,
+          "fpts_if_out": 8.610305066917071,
+          "p10": 2.066804714839908,
+          "p50": 7.401192275941543,
+          "p90": 17.282280125479023,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040129",
+          "name": "Emeka Egbuka",
+          "history_games": 8,
+          "targets_baseline": 5.547125127437882,
+          "targets_volume": 4.7198600210030515,
+          "targets_if_out": 4.7198600210030515,
+          "fpts_baseline": 5.470896685974426,
+          "fpts_volume": 4.674451259975403,
+          "fpts_if_out": 4.674451259975403,
+          "p10": -1.86904909210176,
+          "p50": 3.4653384689998754,
+          "p90": 13.346426318537354,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040237",
+          "name": "Tez Johnson",
+          "history_games": 8,
+          "targets_baseline": 1.9543149549719578,
+          "targets_volume": 1.5598929463008975,
+          "targets_if_out": 1.5598929463008975,
+          "fpts_baseline": 4.159728524201887,
+          "fpts_volume": 3.2546338095672427,
+          "fpts_if_out": 3.2546338095672427,
+          "p10": -3.2888665425099206,
+          "p50": 2.0455210185917148,
+          "p90": 11.926608868129193,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039589",
+          "name": "Kameron Johnson",
+          "history_games": 8,
+          "targets_baseline": 0.10606905649752363,
+          "targets_volume": 0.09375413967803034,
+          "targets_if_out": 0.09375413967803034,
+          "fpts_baseline": 0.0,
+          "fpts_volume": 0.0,
+          "fpts_if_out": 0.0,
+          "p10": -6.543500352077164,
+          "p50": -1.209112790975528,
+          "p90": 8.67197505856195,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "MIN",
+      "kickoff": "2026-09-13 20:25:00+00:00",
+      "attempts": 24.466504103496412,
+      "target_budget": 23.584192499343636,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 4.964803182810986,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0036670",
+          "name": "Jermar Jefferson",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040504",
+          "name": "Bryson Nesbit",
+          "status": "QUESTIONABLE",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0036322",
+          "name": "Justin Jefferson",
+          "history_games": 8,
+          "targets_baseline": 7.411658138057481,
+          "targets_volume": 6.472630772876965,
+          "targets_if_out": 6.472630772876965,
+          "fpts_baseline": 10.39626384342176,
+          "fpts_volume": 9.20188693156935,
+          "fpts_if_out": 9.20188693156935,
+          "p10": 2.6583865794921864,
+          "p50": 7.992774140593822,
+          "p90": 17.8738619901313,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038994",
+          "name": "Jordan Addison",
+          "history_games": 8,
+          "targets_baseline": 3.667989272545993,
+          "targets_volume": 2.9768212359716313,
+          "targets_if_out": 2.9768212359716313,
+          "fpts_baseline": 6.866138397397517,
+          "fpts_volume": 5.72164544271703,
+          "fpts_if_out": 5.72164544271703,
+          "p10": -0.8218549093601336,
+          "p50": 4.512532651741502,
+          "p90": 14.39362050127898,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040154",
+          "name": "Tai Felton",
+          "history_games": 8,
+          "targets_baseline": 0.32839047700313867,
+          "targets_volume": 0.2930521859046193,
+          "targets_if_out": 0.2930521859046193,
+          "fpts_baseline": 0.5854264825037883,
+          "fpts_volume": 0.5218175585264534,
+          "fpts_if_out": 0.5218175585264534,
+          "p10": -6.021682793550711,
+          "p50": -0.6872952324490745,
+          "p90": 9.193792617088404,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040506",
+          "name": "Myles Price",
+          "history_games": 8,
+          "targets_baseline": 0.0,
+          "targets_volume": 0.0,
+          "targets_if_out": 0.0,
+          "fpts_baseline": -0.1522621277123517,
+          "fpts_volume": 0.0,
+          "fpts_if_out": 0.0,
+          "p10": -6.543500352077164,
+          "p50": -1.209112790975528,
+          "p90": 8.67197505856195,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "GB",
+      "kickoff": "2026-09-13 20:25:00+00:00",
+      "attempts": 24.056161307704052,
+      "target_budget": 22.87277524863331,
+      "unallocated_targets": 0.9594133414578412,
+      "unmatched_historical_targets": 8.145246943296527,
+      "removed_share": 0.08389129268562781,
+      "redistributed_share": 0.041945646342813905,
+      "out_players": [
+        {
+          "identity": "00-0039144",
+          "name": "Luke Musgrave",
+          "status": "PUP",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039936",
+          "name": "Thomas Yassmin",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040009",
+          "name": "Savion Williams",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0038124",
+          "name": "Christian Watson",
+          "history_games": 8,
+          "targets_baseline": 5.910048637992388,
+          "targets_volume": 3.1503962989257017,
+          "targets_if_out": 3.294642727258251,
+          "fpts_baseline": 14.832054928738476,
+          "fpts_volume": 8.073842498385801,
+          "fpts_if_out": 8.427092794153385,
+          "p10": 1.5303421463086377,
+          "p50": 6.864729707410273,
+          "p90": 16.745817556947753,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039146",
+          "name": "Jayden Reed",
+          "history_games": 8,
+          "targets_baseline": 4.04930529547891,
+          "targets_volume": 2.136596845636128,
+          "targets_if_out": 2.234424685224024,
+          "fpts_baseline": 8.5290697010692,
+          "fpts_volume": 4.5064047424936,
+          "fpts_if_out": 4.712148917626893,
+          "p10": -2.0370956095835635,
+          "p50": 3.297291951518072,
+          "p90": 13.178379801055549,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040667",
+          "name": "Matthew Golden",
+          "history_games": 8,
+          "targets_baseline": 2.6139913671796013,
+          "targets_volume": 1.8364917258383862,
+          "targets_if_out": 1.9205787253707314,
+          "fpts_baseline": 2.6416710343156513,
+          "fpts_volume": 1.8049333250627244,
+          "fpts_if_out": 1.8954269531308672,
+          "p10": -4.738567027014439,
+          "p50": 0.5958205340871965,
+          "p90": 10.476908383624675,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0037091",
+          "name": "Bo Melton",
+          "history_games": 8,
+          "targets_baseline": 1.4901111199765562,
+          "targets_volume": 0.9424736127636337,
+          "targets_if_out": 0.9856264226133621,
+          "fpts_baseline": 2.568718007830301,
+          "fpts_volume": 1.5619075138003897,
+          "fpts_if_out": 1.6412422949856595,
+          "p10": -4.981592838276774,
+          "p50": 0.3527947228248618,
+          "p90": 10.23388257236234,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040009",
+          "name": "Savion Williams",
+          "history_games": 8,
+          "targets_baseline": 0.703611653957036,
+          "targets_volume": 0.3085390661770986,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 2.0703445947098427,
+          "fpts_volume": 0.8982959176293617,
+          "fpts_if_out": 0.0,
+          "p10": -5.645204434447802,
+          "p50": -0.31081687334616626,
+          "p90": 9.570270976191312,
+          "availability": {
+            "status": "IR",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": true
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "PHI",
+      "kickoff": "2026-09-13 20:25:00+00:00",
+      "attempts": 32.038909861590355,
+      "target_budget": 29.037698397836824,
+      "unallocated_targets": 0.6634529799696718,
+      "unmatched_historical_targets": 11.749450046715948,
+      "removed_share": 0.045695975685118004,
+      "redistributed_share": 0.022847987842559002,
+      "out_players": [
+        {
+          "identity": "00-0037086",
+          "name": "Grant Calcaterra",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039236",
+          "name": "Johnny Wilson",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0036912",
+          "name": "DeVonta Smith",
+          "history_games": 8,
+          "targets_baseline": 5.895259884107912,
+          "targets_volume": 4.922330216963116,
+          "targets_if_out": 5.040180857941996,
+          "fpts_baseline": 8.777186801119372,
+          "fpts_volume": 7.439885435102702,
+          "fpts_if_out": 7.601872296526614,
+          "p10": 0.8963850830255383,
+          "p50": 6.230772644127174,
+          "p90": 16.11186049366465,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040024",
+          "name": "Darius Cooper",
+          "history_games": 6,
+          "targets_baseline": 2.1780934835574746,
+          "targets_volume": 1.8464486716400088,
+          "targets_if_out": 1.8906564248576772,
+          "fpts_baseline": 3.449726537913335,
+          "fpts_volume": 2.9010051218317097,
+          "fpts_if_out": 2.97414885897367,
+          "p10": -3.6424952302454536,
+          "p50": 1.6918923308561817,
+          "p90": 11.57298018039366,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0037132",
+          "name": "Britain Covey",
+          "history_games": 8,
+          "targets_baseline": 0.9235546011036471,
+          "targets_volume": 0.7170639511801054,
+          "targets_if_out": 0.7342319270258139,
+          "fpts_baseline": 0.848552451980189,
+          "fpts_volume": 0.6833599320413557,
+          "fpts_if_out": 0.6970943127179224,
+          "p10": -5.860140420035808,
+          "p50": -0.5257528589341722,
+          "p90": 9.355334990603305,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "WSH",
+      "kickoff": "2026-09-13 20:25:00+00:00",
+      "attempts": 25.25953805556752,
+      "target_budget": 22.404714177107042,
+      "unallocated_targets": 0.80701363725714,
+      "unmatched_historical_targets": 9.382950458730917,
+      "removed_share": 0.07203962798880413,
+      "redistributed_share": 0.036019813994402065,
+      "out_players": [
+        {
+          "identity": "00-0033955",
+          "name": "Jeremy McNichols",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040317",
+          "name": "Jacoby Jones",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0035659",
+          "name": "Terry McLaurin",
+          "history_games": 8,
+          "targets_baseline": 5.639227543044829,
+          "targets_volume": 4.769802538876243,
+          "targets_if_out": 4.954947729794241,
+          "fpts_baseline": 11.828937677607149,
+          "fpts_volume": 9.984646764509105,
+          "fpts_if_out": 10.377390924818135,
+          "p10": 3.4411464124319413,
+          "p50": 8.775533973533577,
+          "p90": 18.656621823071053,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0037742",
+          "name": "Treylon Burks",
+          "history_games": 8,
+          "targets_baseline": 2.958539353778759,
+          "targets_volume": 2.705620951086693,
+          "targets_if_out": 2.810642637720014,
+          "fpts_baseline": 3.283807202831241,
+          "fpts_volume": 2.950414762918972,
+          "fpts_if_out": 3.0888524407538043,
+          "p10": -3.5930855891581914,
+          "p50": 1.741301971943444,
+          "p90": 11.622389821480922,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040164",
+          "name": "Jaylin Lane",
+          "history_games": 8,
+          "targets_baseline": 1.000935223586109,
+          "targets_volume": 0.8367947240037895,
+          "targets_if_out": 0.8692758419687601,
+          "fpts_baseline": 2.199740227349193,
+          "fpts_volume": 1.911748259900214,
+          "fpts_if_out": 1.9687378577842078,
+          "p10": -4.631752092176949,
+          "p50": 0.7026354689246861,
+          "p90": 10.583723318462164,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "LV",
+      "kickoff": "2026-09-13 20:25:00+00:00",
+      "attempts": 28.865372112036557,
+      "target_budget": 27.61073726114723,
+      "unallocated_targets": 1.1639147822099118,
+      "unmatched_historical_targets": 4.681600816240044,
+      "removed_share": 0.08430885211078562,
+      "redistributed_share": 0.04215442605539281,
+      "out_players": [
+        {
+          "identity": "00-0038590",
+          "name": "Justin Shorter",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039244",
+          "name": "Chris Collier",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040488",
+          "name": "Carter Runyon",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040581",
+          "name": "Dont'e Thornton Jr.",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0041005",
+          "name": "Corey Rucker",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0038563",
+          "name": "Tre Tucker",
+          "history_games": 8,
+          "targets_baseline": 5.5240798202780965,
+          "targets_volume": 4.425531079316722,
+          "targets_if_out": 4.629263225323522,
+          "fpts_baseline": 6.596406007289921,
+          "fpts_volume": 5.292476414757507,
+          "fpts_if_out": 5.534297614148187,
+          "p10": -1.251023937319656,
+          "p50": 4.083363623781979,
+          "p90": 13.964451473319457,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040729",
+          "name": "Jack Bech",
+          "history_games": 8,
+          "targets_baseline": 2.6486785250045353,
+          "targets_volume": 2.3527147394250862,
+          "targets_if_out": 2.4610234631046195,
+          "fpts_baseline": 3.7705176695172016,
+          "fpts_volume": 3.3328028076865426,
+          "fpts_if_out": 3.492985709549431,
+          "p10": -3.2106975443906207,
+          "p50": 2.1236900167110146,
+          "p90": 12.004777866248492,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040581",
+          "name": "Dont'e Thornton Jr.",
+          "history_games": 8,
+          "targets_baseline": 2.2338273338955092,
+          "targets_volume": 1.963526890747542,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 1.337072861439323,
+          "fpts_volume": 1.2004209707367397,
+          "fpts_if_out": 0.0,
+          "p10": -5.343079381340424,
+          "p50": -0.008691820238788228,
+          "p90": 9.87239602929869,
+          "availability": {
+            "status": "IR",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": true
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "MIA",
+      "kickoff": "2026-09-13 20:25:00+00:00",
+      "attempts": 24.363327881270784,
+      "target_budget": 23.531821835161058,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 14.88266430111065,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0037078",
+          "name": "Cole Turner",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0038809",
+          "name": "Ben Sims",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0039880",
+          "name": "Malik Washington",
+          "history_games": 8,
+          "targets_baseline": 2.944308598418,
+          "targets_volume": 2.274507401556979,
+          "targets_if_out": 2.274507401556979,
+          "fpts_baseline": 6.728314378765603,
+          "fpts_volume": 5.249170069030848,
+          "fpts_if_out": 5.249170069030848,
+          "p10": -1.2943302830463153,
+          "p50": 4.04005727805532,
+          "p90": 13.921145127592798,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "LAC",
+      "kickoff": "2026-09-13 20:25:00+00:00",
+      "attempts": 31.7127480526435,
+      "target_budget": 29.46964339966453,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 8.210256950091926,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0040629",
+          "name": "Dalevon Campbell",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0038544",
+          "name": "Quentin Johnston",
+          "history_games": 8,
+          "targets_baseline": 5.456028110507556,
+          "targets_volume": 4.53801932247363,
+          "targets_if_out": 4.53801932247363,
+          "fpts_baseline": 11.821121682211682,
+          "fpts_volume": 9.989276873362167,
+          "fpts_if_out": 9.989276873362167,
+          "p10": 3.4457765212850036,
+          "p50": 8.780164082386639,
+          "p90": 18.661251931924117,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039915",
+          "name": "Ladd McConkey",
+          "history_games": 8,
+          "targets_baseline": 4.396910397854358,
+          "targets_volume": 4.088264138225574,
+          "targets_if_out": 4.088264138225574,
+          "fpts_baseline": 8.53911345302812,
+          "fpts_volume": 7.921008706771528,
+          "fpts_if_out": 7.921008706771528,
+          "p10": 1.3775083546943647,
+          "p50": 6.711895915796,
+          "p90": 16.59298376533348,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040727",
+          "name": "Tre Harris",
+          "history_games": 8,
+          "targets_baseline": 3.6019774276029217,
+          "targets_volume": 2.987094674232777,
+          "targets_if_out": 2.987094674232777,
+          "fpts_baseline": 5.051102629953567,
+          "fpts_volume": 4.145333035566008,
+          "fpts_if_out": 4.145333035566008,
+          "p10": -2.3981673165111554,
+          "p50": 2.93622024459048,
+          "p90": 12.817308094127958,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040184",
+          "name": "KeAndre Lambert-Smith",
+          "history_games": 8,
+          "targets_baseline": 1.7996743539006022,
+          "targets_volume": 1.2668728905417432,
+          "targets_if_out": 1.2668728905417432,
+          "fpts_baseline": 2.4163161513368965,
+          "fpts_volume": 1.6364885549662027,
+          "fpts_if_out": 1.6364885549662027,
+          "p10": -4.907011797110961,
+          "p50": 0.4273757639906748,
+          "p90": 10.308463613528152,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038573",
+          "name": "Derius Davis",
+          "history_games": 8,
+          "targets_baseline": 0.4443452461610516,
+          "targets_volume": 0.34001649230195513,
+          "targets_if_out": 0.34001649230195513,
+          "fpts_baseline": 0.4985245655383611,
+          "fpts_volume": 0.39419581167926465,
+          "fpts_if_out": 0.39419581167926465,
+          "p10": -6.149304540397899,
+          "p50": -0.8149169792962633,
+          "p90": 9.066170870241214,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "ARI",
+      "kickoff": "2026-09-13 20:25:00+00:00",
+      "attempts": 38.66416924445547,
+      "target_budget": 36.114635027059556,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 7.796063510706355,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0033553",
+          "name": "James Conner",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039737",
+          "name": "Tip Reiman",
+          "status": "PUP",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0039921",
+          "name": "Trey Benson",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0041366",
+          "name": "Jameson Geers",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0038559",
+          "name": "Michael Wilson",
+          "history_games": 8,
+          "targets_baseline": 9.900229886091994,
+          "targets_volume": 7.870356588026876,
+          "targets_if_out": 7.870356588026876,
+          "fpts_baseline": 21.047016371625208,
+          "fpts_volume": 16.929602920436306,
+          "fpts_if_out": 16.929602920436306,
+          "p10": 10.386102568359142,
+          "p50": 15.720490129460778,
+          "p90": 25.601577978998254,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039849",
+          "name": "Marvin Harrison Jr.",
+          "history_games": 8,
+          "targets_baseline": 5.372182248175918,
+          "targets_volume": 4.59386230819294,
+          "targets_if_out": 4.59386230819294,
+          "fpts_baseline": 8.520187451207226,
+          "fpts_volume": 7.183507554279939,
+          "fpts_if_out": 7.183507554279939,
+          "p10": 0.6400072022027755,
+          "p50": 5.974394763304411,
+          "p90": 15.85548261284189,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039521",
+          "name": "Xavier Weaver",
+          "history_games": 8,
+          "targets_baseline": 1.9778835817002147,
+          "targets_volume": 1.5602794351079023,
+          "targets_if_out": 1.5602794351079023,
+          "fpts_baseline": 2.2400178377389226,
+          "fpts_volume": 1.8313623514307311,
+          "fpts_if_out": 1.8313623514307311,
+          "p10": -4.712138000646433,
+          "p50": 0.6222495604552032,
+          "p90": 10.503337409992682,
+          "availability": null,
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038640",
+          "name": "Jalen Brooks",
+          "history_games": 4,
+          "targets_baseline": 1.2426406871192852,
+          "targets_volume": 0.9149067382780804,
+          "targets_if_out": 0.9149067382780804,
+          "fpts_baseline": 1.41138924801786,
+          "fpts_volume": 1.0235707418891011,
+          "fpts_if_out": 1.0235707418891011,
+          "p10": -5.519929610188063,
+          "p50": -0.1855420490864268,
+          "p90": 9.69554580045105,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "NYG",
+      "kickoff": "2026-09-14 00:20:00+00:00",
+      "attempts": 29.260657173010554,
+      "target_budget": 28.382155278660477,
+      "unallocated_targets": 0.8061635094486646,
+      "unmatched_historical_targets": 10.618865677581564,
+      "removed_share": 0.05680777245657505,
+      "redistributed_share": 0.028403886228287524,
+      "out_players": [
+        {
+          "identity": "00-0035645",
+          "name": "Gunner Olszewski",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0037837",
+          "name": "Calvin Austin III",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0035535",
+          "name": "Darius Slayton",
+          "history_games": 8,
+          "targets_baseline": 5.243876129485041,
+          "targets_volume": 3.957988315134089,
+          "targets_if_out": 4.0771816741472,
+          "fpts_baseline": 7.899964557648561,
+          "fpts_volume": 5.726814151395452,
+          "fpts_if_out": 5.92825092812761,
+          "p10": -0.8166862006817116,
+          "p50": 4.517701360419924,
+          "p90": 14.398789209957402,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0035645",
+          "name": "Gunner Olszewski",
+          "history_games": 8,
+          "targets_baseline": 2.3007025322928043,
+          "targets_volume": 1.6123270188973247,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 6.045646178128252,
+          "fpts_volume": 4.043002953773096,
+          "fpts_if_out": 0.0,
+          "p10": -2.5004973983040677,
+          "p50": 2.8338901627975677,
+          "p90": 12.714978012335045,
+          "availability": {
+            "status": "IR",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": true
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036165",
+          "name": "Isaiah Hodgins",
+          "history_games": 8,
+          "targets_baseline": 2.516839319376361,
+          "targets_volume": 1.789065979157251,
+          "targets_if_out": 1.8429430415872874,
+          "fpts_baseline": 3.1782102032695745,
+          "fpts_volume": 2.1142748916159233,
+          "fpts_if_out": 2.193038025739834,
+          "p10": -4.42922546046124,
+          "p50": 0.9051621006403954,
+          "p90": 10.786249950177872,
+          "availability": null,
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038938",
+          "name": "Jalin Hyatt",
+          "history_games": 8,
+          "targets_baseline": 2.0508856811023097,
+          "targets_volume": 1.5053883035836344,
+          "targets_if_out": 1.5507225173904542,
+          "fpts_baseline": 1.2962232176470638,
+          "fpts_volume": 0.9625071749297566,
+          "fpts_if_out": 0.9902410469056934,
+          "p10": -5.580993177147407,
+          "p50": -0.24660561604577136,
+          "p90": 9.634482233491706,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "DAL",
+      "kickoff": "2026-09-14 00:20:00+00:00",
+      "attempts": 34.530119557769325,
+      "target_budget": 33.41869217968394,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 2.1946409536500164,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0038735",
+          "name": "Princeton Fant",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040938",
+          "name": "DJ Rogers",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0037247",
+          "name": "George Pickens",
+          "history_games": 8,
+          "targets_baseline": 7.118122811180309,
+          "targets_volume": 6.052086920178381,
+          "targets_if_out": 6.052086920178381,
+          "fpts_baseline": 14.562565452720854,
+          "fpts_volume": 12.274688425109023,
+          "fpts_if_out": 12.274688425109023,
+          "p10": 5.731188073031859,
+          "p50": 11.065575634133495,
+          "p90": 20.94666348367097,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036358",
+          "name": "CeeDee Lamb",
+          "history_games": 8,
+          "targets_baseline": 7.225207920051405,
+          "targets_volume": 5.932493276289493,
+          "targets_if_out": 5.932493276289493,
+          "fpts_baseline": 12.846572638614807,
+          "fpts_volume": 10.392466743473145,
+          "fpts_if_out": 10.392466743473145,
+          "p10": 3.8489663913959817,
+          "p50": 9.183353952497617,
+          "p90": 19.064441802035095,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039410",
+          "name": "Ryan Flournoy",
+          "history_games": 8,
+          "targets_baseline": 4.840096121065226,
+          "targets_volume": 4.318049714503032,
+          "targets_if_out": 4.318049714503032,
+          "fpts_baseline": 10.971614520796109,
+          "fpts_volume": 9.714096853224236,
+          "fpts_if_out": 9.714096853224236,
+          "p10": 3.1705965011470725,
+          "p50": 8.504984062248708,
+          "p90": 18.386071911786185,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0037801",
+          "name": "KaVontae Turpin",
+          "history_games": 8,
+          "targets_baseline": 1.909484304742562,
+          "targets_volume": 1.671832856071111,
+          "targets_if_out": 1.671832856071111,
+          "fpts_baseline": 5.745872635019792,
+          "fpts_volume": 5.099757758944285,
+          "fpts_if_out": 5.099757758944285,
+          "p10": -1.4437425931328787,
+          "p50": 3.8906449679687567,
+          "p90": 13.771732817506233,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039062",
+          "name": "Jonathan Mingo",
+          "history_games": 8,
+          "targets_baseline": 1.2391973876250275,
+          "targets_volume": 1.1568466437204894,
+          "targets_if_out": 1.1568466437204894,
+          "fpts_baseline": 0.9989375896749799,
+          "fpts_volume": 0.9233246339080858,
+          "fpts_if_out": 0.9233246339080858,
+          "p10": -5.620175718169078,
+          "p50": -0.2857881570674421,
+          "p90": 9.595299692470036,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "KC",
+      "kickoff": "2026-09-15 00:15:00+00:00",
+      "attempts": 31.08448661146316,
+      "target_budget": 28.820741253094024,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 7.307121588324268,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0040120",
+          "name": "Jimmy Holiday",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040953",
+          "name": "Jeff Caldwell",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        },
+        {
+          "identity": "00-0040955",
+          "name": "John Michael Gyllenborg",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0039067",
+          "name": "Rashee Rice",
+          "history_games": 8,
+          "targets_baseline": 9.95900003155808,
+          "targets_volume": 6.537752466496638,
+          "targets_if_out": 6.537752466496638,
+          "fpts_baseline": 17.789621844322436,
+          "fpts_volume": 11.074326944182605,
+          "fpts_if_out": 11.074326944182605,
+          "p10": 4.530826592105441,
+          "p50": 9.865214153207077,
+          "p90": 19.746302002744553,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039894",
+          "name": "Xavier Worthy",
+          "history_games": 8,
+          "targets_baseline": 4.442595442882402,
+          "targets_volume": 3.3351887150326798,
+          "targets_if_out": 3.3351887150326798,
+          "fpts_baseline": 5.88969167285212,
+          "fpts_volume": 4.422377758451239,
+          "fpts_if_out": 4.422377758451239,
+          "p10": -2.1211225936259246,
+          "p50": 3.2132649674757108,
+          "p90": 13.094352817013188,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038104",
+          "name": "Tyquan Thornton",
+          "history_games": 8,
+          "targets_baseline": 2.064391644213567,
+          "targets_volume": 1.362600309808582,
+          "targets_if_out": 1.362600309808582,
+          "fpts_baseline": 3.994460746064331,
+          "fpts_volume": 2.566108971334185,
+          "fpts_if_out": 2.566108971334185,
+          "p10": -3.9773913807429784,
+          "p50": 1.356996180358657,
+          "p90": 11.238084029896134,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038519",
+          "name": "Nikko Remigio",
+          "history_games": 8,
+          "targets_baseline": 0.0,
+          "targets_volume": 0.0,
+          "targets_if_out": 0.0,
+          "fpts_baseline": 0.0,
+          "fpts_volume": 0.0,
+          "fpts_if_out": 0.0,
+          "p10": -6.543500352077164,
+          "p50": -1.209112790975528,
+          "p90": 8.67197505856195,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    },
+    {
+      "team": "DEN",
+      "kickoff": "2026-09-15 00:15:00+00:00",
+      "attempts": 35.65707592492699,
+      "target_budget": 34.5498343174666,
+      "unallocated_targets": 0.0,
+      "unmatched_historical_targets": 0.8454486279782789,
+      "removed_share": 0,
+      "redistributed_share": 0.0,
+      "out_players": [
+        {
+          "identity": "00-0040240",
+          "name": "Caleb Lohner",
+          "status": "IR",
+          "captured_at": "2026-09-06T11:40:32.996545+00:00",
+          "source": "Sleeper roster; retrieval timestamp",
+          "out": true
+        }
+      ],
+      "players": [
+        {
+          "identity": "00-0034348",
+          "name": "Courtland Sutton",
+          "history_games": 8,
+          "targets_baseline": 7.71771280676865,
+          "targets_volume": 6.440736113659387,
+          "targets_if_out": 6.440736113659387,
+          "fpts_baseline": 12.19021234637878,
+          "fpts_volume": 10.08732008240369,
+          "fpts_if_out": 10.08732008240369,
+          "p10": 3.543819730326526,
+          "p50": 8.878207291428161,
+          "p90": 18.759295140965637,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0040134",
+          "name": "Pat Bryant",
+          "history_games": 8,
+          "targets_baseline": 5.262846843140747,
+          "targets_volume": 4.671647918387007,
+          "targets_if_out": 4.671647918387007,
+          "fpts_baseline": 8.065230522188958,
+          "fpts_volume": 7.076867191575014,
+          "fpts_if_out": 7.076867191575014,
+          "p10": 0.5333668394978502,
+          "p50": 5.867754400599486,
+          "p90": 15.748842250136963,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0039868",
+          "name": "Troy Franklin",
+          "history_games": 8,
+          "targets_baseline": 4.292026811385657,
+          "targets_volume": 3.7521795056336855,
+          "targets_if_out": 3.7521795056336855,
+          "fpts_baseline": 7.907155797266765,
+          "fpts_volume": 6.925983319062556,
+          "fpts_if_out": 6.925983319062556,
+          "p10": 0.382482966985393,
+          "p50": 5.7168705280870284,
+          "p90": 15.597958377624506,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0038976",
+          "name": "Marvin Mims Jr.",
+          "history_games": 8,
+          "targets_baseline": 2.9043246823496514,
+          "targets_volume": 2.7143446102721454,
+          "targets_if_out": 2.7143446102721454,
+          "fpts_baseline": 4.481518468570407,
+          "fpts_volume": 4.158552346038647,
+          "fpts_if_out": 4.158552346038647,
+          "p10": -2.3849480060385164,
+          "p50": 2.949439555063119,
+          "p90": 12.830527404600597,
+          "availability": {
+            "status": "QUESTIONABLE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0035406",
+          "name": "Lil'Jordan Humphrey",
+          "history_games": 8,
+          "targets_baseline": 2.944558844860713,
+          "targets_volume": 2.4628786591348817,
+          "targets_if_out": 2.4628786591348817,
+          "fpts_baseline": 4.511825302526646,
+          "fpts_volume": 3.775542732917161,
+          "fpts_if_out": 3.775542732917161,
+          "p10": -2.7679576191600024,
+          "p50": 2.566429941941633,
+          "p90": 12.447517791479111,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        },
+        {
+          "identity": "00-0036959",
+          "name": "Michael Bandy",
+          "history_games": 5,
+          "targets_baseline": 0.9431432501017466,
+          "targets_volume": 0.8115409238412609,
+          "targets_if_out": 0.8115409238412609,
+          "fpts_baseline": 3.2722262474223243,
+          "fpts_volume": 2.8116181055106244,
+          "fpts_if_out": 2.8116181055106244,
+          "p10": -3.731882246566539,
+          "p50": 1.6025053145350965,
+          "p90": 11.483593164072573,
+          "availability": {
+            "status": "ACTIVE",
+            "captured_at": "2026-09-06T11:40:32.996545+00:00",
+            "source": "Sleeper roster; retrieval timestamp",
+            "out": false
+          },
+          "source": "research_volume_share"
+        }
+      ]
+    }
+  ],
+  "optimizer_enabled": false,
+  "limits": [
+    "2024 and 2025 retrospective diagnostics; previously inspected seasons.",
+    "Historical replay uses no target-week roster or injury outcomes. Recorded stat rows exclude missing/DNP observations.",
+    "Current Sleeper roster evidence is pregame retrieval evidence, not official game-day confirmation.",
+    "Half redistribution is an unvalidated scenario, not an activated injury adjustment.",
+    "Player residual ranges are not joint-lineup percentiles. No Kelly sizing."
+  ],
+  "snapshot_digest": "f6ea0700b4693b81832d30cdf0a9259522d216f89446db8a6344954f553d0d3e"
+}
