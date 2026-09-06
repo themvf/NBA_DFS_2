@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { contextPoints, historicalRange, participationLabel, type PlayerContext } from "@/lib/nfl-dfs/player-context";
+import WorkloadScenarios from "./workload-scenarios";
 import styles from "./player-history.module.css";
 
 export default function PlayerHistory({ data, selectedId }: { data: PlayerContext; selectedId: string }) {
@@ -31,6 +32,7 @@ export default function PlayerHistory({ data, selectedId }: { data: PlayerContex
       <div className={styles.chart} aria-label="Weekly DraftKings points"><div className={styles.chartBars}>{rows.map(r => { const score = contextPoints(r); const g = data.games[r.gameKey]; return <button key={r.gameKey} aria-pressed={selected?.gameKey === r.gameKey} onClick={() => setGameKey(r.gameKey)} aria-label={`Week ${g.week} vs ${g.opponent}: ${score === null ? "score unavailable" : `${score.toFixed(1)} DK points`}`}><b>{score === null ? "—" : score.toFixed(1)}</b><span className={styles.barSpace}><i style={{ height: `${Math.max(2, Math.abs(score ?? 0) / max * 100)}%`, background: score === null ? "#cbd5e1" : score < 0 ? "#dc2626" : undefined }} /></span><span>W{g.week}</span><small>{g.opponent}</small></button>; })}</div></div>
       <p className={styles.note}>Select a week to inspect its roster. Gray means unavailable; red means a negative score. Bar heights show score magnitude.</p>
     </section>
+    {player.position === "WR" && <WorkloadScenarios data={data} playerId={selectedId} />}
     {game && selected && <section className={styles.panel}>
       <div className={styles.heading}><div><span>WEEK {game.week} · {game.date}</span><h2>{game.team} vs {game.opponent}</h2></div><strong>{contextPoints(selected)?.toFixed(1) ?? "—"} DK points</strong></div>
       <div className={styles.metrics}><div><b>{(player.position === "QB" ? selected.attempts : selected.targets) ?? "—"}</b>{player.position === "QB" ? "Pass attempts" : "Targets"}</div><div><b>{(player.position === "QB" ? selected.stats?.rushYds : selected.stats?.receptions) ?? "—"}</b>{player.position === "QB" ? "Rushing yards" : "Receptions"}</div><div><b>{(player.position === "QB" ? selected.stats?.passYds : selected.stats?.recYds) ?? "—"}</b>{player.position === "QB" ? "Passing yards" : "Receiving yards"}</div><div><b>{selected.stats ? selected.stats.passTds + selected.stats.rushTds + selected.stats.recTds : "—"}</b>Pass / rush / receiving TDs</div></div>

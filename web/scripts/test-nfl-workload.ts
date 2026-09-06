@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {workloadScenario,teammatePresence} from '../src/lib/nfl-dfs/workload-scenario';
+import type {PlayerContext} from '../src/lib/nfl-dfs/player-context';
+const original=JSON.parse(fs.readFileSync('src/data/nfl-player-context-2025.json','utf8')) as PlayerContext;
+const stats={...original.rows.find(r=>r.stats!==null)!.stats!};
+for(const key of Object.keys(stats)) stats[key as keyof typeof stats]=0;
+const data:PlayerContext={...original,players:[{id:'wr',name:'Receiver',position:'WR'},{id:'mate',name:'Teammate',position:'WR'}],games:{},rows:[]};
+for(let week=1;week<=8;week++) {
+ const gameKey=String(week);
+ data.games[gameKey]={week,date:'2025-01-01',team:'A',opponent:'B',plays:50,covered:50,roster:[{id:'mate',name:'Teammate',position:'WR',status:'ACT',recordedPlays:week<=4?30:0}]};
+ data.rows.push({playerId:'wr',gameKey,stats:{...stats,receptions:week<=4?4:10},targets:week<=4?5:12,attempts:null});
+}
+const result=workloadScenario(data,'wr','mate','A',9,'absent');
+assert.ok(result.available);
+assert.ok(result.scenarioTargets>result.baselineTargets&&result.scenarioTargets<12);
+assert.ok(result.scenario.mean>result.baseline.mean);
+assert.ok(result.scenario.p10<=result.scenario.p50&&result.scenario.p50<=result.scenario.p90);
+assert.equal(result.matching,4);
+assert.equal(workloadScenario(data,'wr','mate','A',5,'absent').available,false);
+assert.equal(workloadScenario(data,'wr','mate','OTHER',9,'absent').available,false);
+const frozen=workloadScenario(data,'wr','mate','A',8,'absent');
+data.rows[7].targets=999;data.rows[7].stats!.receptions=999;
+assert.deepEqual(workloadScenario(data,'wr','mate','A',8,'absent'),frozen,'target and later weeks cannot alter estimate');
+data.games['5'].covered=49;
+assert.equal(teammatePresence(data,data.rows[4],'mate'),'unknown');
+data.games['6'].roster=[];
+assert.equal(teammatePresence(data,data.rows[5],'mate'),'unknown');
+assert.equal(workloadScenario(data,'wr','mate','A',9,'absent').available,false);
+assert.throws(()=>workloadScenario(data,'wr','wr','A',9,'present'));
+console.log('WR workload: shrinkage, missing personnel, cutoff leakage, team isolation and range ordering passed');

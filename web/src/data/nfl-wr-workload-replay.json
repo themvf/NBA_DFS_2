@@ -1,0 +1,32 @@
+{
+  "version": "wr-workload-scenario-v1",
+  "season": 2025,
+  "n": 63,
+  "metrics": {
+    "baselineError": 5.478160931660931,
+    "candidateError": 5.542051315479813,
+    "baselineInterval": 23.572380952380975,
+    "candidateInterval": 24.861904761904764
+  },
+  "absent": {
+    "n": 30,
+    "baselineError": 4.011009487734488,
+    "candidateError": 4.118507103445882,
+    "baselineInterval": 18.451999999999998,
+    "candidateInterval": 18.81333333333333
+  },
+  "excluded": {
+    "no_prior_teammate": 150,
+    "insufficient_split_history": 2280,
+    "unknown_target_participation": 10
+  },
+  "optimizerEnabled": false,
+  "limits": [
+    "Target-week participation is an oracle, not a pregame injury report.",
+    "2025 retrospective diagnostic, not untouched validation.",
+    "No verified routes; no causal injury effect or automatic redistribution.",
+    "Small samples shrink toward player baseline with 8 prior-equivalent games."
+  ],
+  "sourceDigest": "a821b73c23dc33d156df5882fb1e01525aa60999e11209f90050297ef5a68843",
+  "recipeDigest": "5701e8c4ce3afa889a6702fd17b41bee4f32b7960b47db3150abd4cffe429012"
+}
