@@ -6,11 +6,13 @@ cannot race. Checkpoint and full-refresh observations can satisfy freshness.
 """
 from __future__ import annotations
 
+from ingest.sportsbook_policy import BOOKMAKERS as SELECTED_BOOKMAKERS
+
 import json
 import os
 
-BOOKMAKERS = "draftkings,fanduel,betmgm,betrivers,pinnacle,fanatics,williamhill_us,bovada,betonlineag,polymarket"
-POLICY = "mlb-movement-ten-books-v1"
+BOOKMAKERS = SELECTED_BOOKMAKERS
+POLICY = "mlb-movement-six-books-v2"
 
 
 def capture_movement(db, api_key, game_date):

@@ -1,3 +1,4 @@
+import { selectedSportsbooks } from "./sportsbook-policy";
 import type { CfbBookQuote, CfbTerminalRow, LineAlertRow, MlbLineMovementRow, TennisMatchRow } from "@/db/queries";
 
 export type IntelligenceMarket = "spread" | "total" | "moneyline";
@@ -150,7 +151,7 @@ export function cfbIntelligenceEvents(games: (Pick<CfbTerminalRow, "matchupId" |
   return games.map(game => ({
     id: game.matchupId, home: game.homeTeam, away: game.awayTeam, start: Date.parse(game.commenceTime ?? ""), completed: game.completed,
     markets: Object.fromEntries((["spread", "total", "moneyline"] as const).map(market => [market, game.history.flatMap(c => {
-      const books = Object.fromEntries(Object.entries(c.books).flatMap(([key, book]) => {
+      const books = Object.fromEntries(Object.entries(selectedSportsbooks(c.books)).flatMap(([key, book]) => {
         const value = quoteValue(book, market);
         return value == null ? [] : [[key, value]];
       }));
@@ -162,6 +163,6 @@ export function tennisIntelligenceEvents(matches: Pick<TennisMatchRow, "id" | "h
   return matches.map(match => ({
     id: match.id, home: match.homePlayer, away: match.awayPlayer, start: Date.parse(match.commenceTime ?? ""),
     completed: match.winner != null || !["scheduled", "pending", "not_started", "unknown"].includes(match.completionStatus.toLowerCase()),
-    markets: { moneyline: (movement.find(row => row.matchupId === match.id)?.trail ?? []).map(point => ({ time: Date.parse(point.capturedAt), books: point.bookHomeProbs ?? {} })) },
+    markets: { moneyline: (movement.find(row => row.matchupId === match.id)?.trail ?? []).map(point => ({ time: Date.parse(point.capturedAt), books: selectedSportsbooks(point.bookHomeProbs) })) },
   }));
 }

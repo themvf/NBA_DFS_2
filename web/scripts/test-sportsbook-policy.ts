@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import {selectedSportsbooks, SPORTSBOOK_KEYS} from "../src/lib/sportsbook-policy";
+import {nflMarket} from "../src/lib/nfl-terminal";
+import {MLB_TERMINAL_BOOKS} from "../src/lib/mlb-terminal";
+import {movementSeries} from "../src/lib/cfb-movement";
+assert.equal(SPORTSBOOK_KEYS.length,6);
+assert.deepEqual(MLB_TERMINAL_BOOKS,SPORTSBOOK_KEYS);
+assert.deepEqual(selectedSportsbooks({caesars:1,williamhill_us:2,coral:9}),{williamhill_us:2});
+const books={draftkings:{spread_home:-3},fanduel:{spread_home:-3},coral:{spread_home:100},bovada:{spread_home:100},polymarket:{spread_home:100}};
+const capturedAt="2026-09-07T12:00:00Z",commenceTime="2026-09-10T12:00:00Z";
+const result=nflMarket({commenceTime,trail:[{capturedAt,books}]},"spread","home",Date.parse(capturedAt));
+assert.equal(result.current,-3);assert.equal(result.books.length,2);
+assert.equal(movementSeries({commenceTime,history:[{capturedAt,books}]},"spread")[0].value,-3);
+console.log("Six-book policy passed: aliases, exclusions, NFL and CFB consensus, MLB universe.");

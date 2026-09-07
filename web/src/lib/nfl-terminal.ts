@@ -1,8 +1,9 @@
+import { selectedSportsbooks, SPORTSBOOK_KEYS, SPORTSBOOK_NAMES } from "./sportsbook-policy";
 import type { CfbBookQuote, NflVegasBoardRow } from "@/db/queries";
 import type { IntelligenceMarket, IntelligenceSide } from "./movement-intelligence";
 
-export const NFL_BOOK_COLORS = ["#f6a800", "#59b6ff", "#c58cff", "#5fd0a5", "#ff718b"];
-export const nflBookName = (key: string) => ({ pinnacle: "Pinnacle", draftkings: "DraftKings", fanduel: "FanDuel", betmgm: "BetMGM" }[key] ?? key.replaceAll("_", " "));
+export const NFL_BOOK_COLORS = ["#f6a800", "#59b6ff", "#c58cff", "#5fd0a5", "#ff718b", "#fb923c"];
+export const nflBookName = (key: string) => (SPORTSBOOK_NAMES[key] ?? key.replaceAll("_", " "));
 export const nflSigned = (n: number | null, digits = 1): string => n == null || !Number.isFinite(n) ? "—" : `${n > 0 ? "+" : ""}${n.toFixed(digits)}`;
 export const nflPrice = (n: number | null | undefined): string => n == null ? "—" : nflSigned(n, 0);
 export const nflPercent = (n: number | null): string => n == null ? "—" : `${(n * 100).toFixed(1)}%`;
@@ -21,15 +22,15 @@ export function nflMarket(game: MarketGame, market: IntelligenceMarket, side: In
   const history = game.trail.filter(p => Number.isFinite(Date.parse(p.capturedAt)) && Date.parse(p.capturedAt) <= now && Date.parse(p.capturedAt) < Date.parse(game.commenceTime))
     .slice().sort((a,b) => Date.parse(a.capturedAt)-Date.parse(b.capturedAt));
   const latest = history.at(-1);
-  const points = history.map(p => ({ time: Date.parse(p.capturedAt), values: Object.fromEntries(Object.entries(p.books ?? {}).flatMap(([key,q]) => {
+  const points = history.map(p => ({ time: Date.parse(p.capturedAt), values: Object.fromEntries(Object.entries(selectedSportsbooks(p.books)).flatMap(([key,q]) => {
     const value = nflQuoteValue(q, market, side); return key === "polymarket" || value == null ? [] : [[key,value]];
   })) as Record<string,number> }));
   const all = [...new Set(points.flatMap(p => Object.keys(p.values)))];
-  const priority = ["pinnacle", "draftkings", "fanduel", "betmgm"];
-  const series = [...priority.filter(k => all.includes(k)), ...all.filter(k => !priority.includes(k)).sort()].slice(0,5);
+  const priority = SPORTSBOOK_KEYS;
+  const series = [...priority.filter(k => all.includes(k)), ...all.filter(k => !priority.includes(k)).sort()].slice(0,6);
   const current = points.length ? median(Object.values(points.at(-1)!.values)) : null;
   const open = points.length ? median(Object.values(points[0].values)) : null;
-  const books = Object.entries(latest?.books ?? {}).filter(([key]) => key !== "polymarket").flatMap(([key,q]) => {
+  const books = Object.entries(selectedSportsbooks(latest?.books)).filter(([key]) => key !== "polymarket").flatMap(([key,q]) => {
     const value = nflQuoteValue(q,market,side);
     const price = market === "moneyline" ? side === "away" ? q.ml_away : q.ml_home : market === "spread" ? side === "away" ? q.spread_away_price : q.spread_home_price : side === "under" ? q.under : q.over;
     if (value == null) return [];

@@ -284,7 +284,7 @@ def test_targeted_odds_capture_uses_named_books_and_event_ids(monkeypatch) -> No
 
     assert updated == 1
     assert observed["eventIds"] == "nfl-event-1"
-    assert observed["bookmakers"] == "draftkings,fanduel,pinnacle"
+    assert set(observed["bookmakers"].split(",")) == {"draftkings", "fanduel", "pinnacle"}
     assert "regions" not in observed
     assert audit["request_count"] == 1
     assert audit["requests_last"] == 1

@@ -30,6 +30,8 @@ Usage:
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import BOOKMAKERS
+
 import argparse
 import logging
 from datetime import datetime, timezone
@@ -38,7 +40,7 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
-from ingest.nfl_schedule import ODDS_API_BASE, NFL_ODDS_REGIONS, _extract_markets, _parse_iso
+from ingest.nfl_schedule import ODDS_API_BASE, _extract_markets, _parse_iso
 from model.soccer_bet_rating import american_to_prob
 
 logger = logging.getLogger(__name__)
@@ -67,7 +69,7 @@ def fetch_season_odds(db: DatabaseManager, api_key: str, season: int) -> dict:
         f"{ODDS_API_BASE}/sports/{SPORT_KEY}/odds/",
         params={
             "apiKey": api_key,
-            "regions": NFL_ODDS_REGIONS,
+            "bookmakers": BOOKMAKERS,
             "markets": "h2h,spreads,totals",
             "oddsFormat": "american",
             "dateFormat": "iso",

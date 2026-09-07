@@ -56,8 +56,8 @@ assert.equal(select([alert({ details: { overlap_books: ["a", "a", "b"] } })])[0]
 
 // Adapters preserve the market basis. ML uses paired no-vig probability, not
 // an arithmetic average of American odds, and unavailable tennis markets stay out.
-const cfb = cfbIntelligenceEvents([{ matchupId: 1, homeTeam: "H", awayTeam: "A", commenceTime: new Date(now + 3600000).toISOString(), completed: false, history: [{ capturedAt: new Date(now).toISOString(), books: { a: { ml_home: -150, ml_away: 130 } } }] }]);
-assert.ok(Math.abs(cfb[0].markets.moneyline![0].books.a - (.6 / (.6 + 100 / 230))) < 1e-10);
+const cfb = cfbIntelligenceEvents([{ matchupId: 1, homeTeam: "H", awayTeam: "A", commenceTime: new Date(now + 3600000).toISOString(), completed: false, history: [{ capturedAt: new Date(now).toISOString(), books: { draftkings: { ml_home: -150, ml_away: 130 } } }] }]);
+assert.ok(Math.abs(cfb[0].markets.moneyline![0].books.draftkings - (.6 / (.6 + 100 / 230))) < 1e-10);
 const tennis = tennisIntelligenceEvents([{ id: 1, homePlayer: "H", awayPlayer: "A", commenceTime: new Date(now + 3600000).toISOString(), completionStatus: "scheduled", winner: null }], [{ matchupId: 1, trail: [{ capturedAt: new Date(now).toISOString(), homeProb: .6, bookHomeProbs: { a: .6, b: .61 } }] }]);
 assert.equal(tennis[0].completed, false);
 assert.equal(tennis[0].markets.total, undefined);

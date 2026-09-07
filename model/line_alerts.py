@@ -43,6 +43,8 @@ Usage:
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import selected_books
+
 import argparse
 import json
 import logging
@@ -1060,6 +1062,8 @@ def scan(db: DatabaseManager, sport: str) -> int:
     new_alerts: list[dict] = []
     for r in rows:
         r["movement_candidates"] = []
+        if sport in ("mlb", "tennis", "cfb", "nfl"):
+            r["books"] = selected_books(r["books"])
         books = r["books"] or {}
         label = f"{r['away_team_name']} @ {r['home_team_name']}"
         # ── Pinnacle divergence ──
@@ -1141,6 +1145,8 @@ def scan(db: DatabaseManager, sport: str) -> int:
             """,
             (sport, r["matchup_id"], r["captured_at"]),
         )
+        if prev and sport in ("mlb", "tennis", "cfb", "nfl"):
+            prev["books"] = selected_books(prev["books"])
         if prev and prev["books"]:
             pb = prev["books"]
             for side in _sides(books):
@@ -1178,6 +1184,8 @@ def scan(db: DatabaseManager, sport: str) -> int:
             """,
             (sport, r["matchup_id"]),
         )
+        if first and sport in ("mlb", "tennis", "cfb", "nfl"):
+            first["books"] = selected_books(first["books"])
         if first and first["books"]:
             fb = first["books"]
             for side in _sides(books):
@@ -1230,6 +1238,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
                 """,
                 (sport, r["matchup_id"], r["commence_time"], r["captured_at"]),
             )
+            structure_history = [{**row, "books": selected_books(row["books"])} for row in structure_history]
             allowed = ({"reversal", "reference_led", "price_pressure", "book_disagreement",
                         "market_convergence", "late_move", "favorite_flip"}
                        if sport == "tennis"

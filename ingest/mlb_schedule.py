@@ -15,6 +15,8 @@ Usage:
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import requested_bookmakers, selected_event
+
 import argparse
 import hashlib
 import json
@@ -902,10 +904,7 @@ def fetch_odds(
             "oddsFormat": "american",
             "dateFormat": "iso",
         }
-        if bookmakers:
-            params["bookmakers"] = bookmakers
-        else:
-            params["regions"] = MLB_ODDS_REGIONS
+        params["bookmakers"] = requested_bookmakers(bookmakers)
         if event_ids:
             params["eventIds"] = ",".join(sorted(set(event_ids)))
         if request_audit is not None:
@@ -971,6 +970,7 @@ def fetch_odds(
     now = datetime.now(timezone.utc)
     history_rows: list[dict] = []
     for g in games:
+        g = selected_event(g)
         # In-play guard: after first pitch the odds feed serves LIVE prices.
         # Writing them replaces the pre-game closing line that predictions,
         # the bet ledger reference, and CLV history all assume (the 30-min

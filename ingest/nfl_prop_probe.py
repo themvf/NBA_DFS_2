@@ -50,6 +50,8 @@ Usage:
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import BOOKMAKER_KEYS
+
 import argparse
 import logging
 import math
@@ -79,16 +81,8 @@ MARKETS: tuple[str, ...] = (
     "player_anytime_td",
 )
 
-# Same 10-book slate ingest/mlb_prop_odds.py settled on. Ten is the cap:
-# an 11th book doubles the credit cost for zero extra markets.
-BOOKMAKERS: tuple[str, ...] = (
-    # executable
-    "draftkings", "betmgm", "fanatics", "williamhill_us", "fanduel", "betrivers",
-    # reference (NOT bettable here)
-    "pinnacle",
-    # high-coverage; executability unconfirmed -> treat as reference until known
-    "espnbet", "hardrockbet", "fliff",
-)
+# Shared six-book universe; ten remains the provider billing boundary.
+BOOKMAKERS = BOOKMAKER_KEYS
 assert len(BOOKMAKERS) <= 10, "an 11th book doubles the credit cost"
 
 EXECUTION_BOOK = "draftkings"

@@ -1,4 +1,5 @@
 "use client";
+import { selectedSportsbooks } from "@/lib/sportsbook-policy";
 import { useState } from "react";
 import s from "./sportsbook-history.module.css";
 export type BookHistoryPoint = { at: string; values: Record<string, number | null> };
@@ -9,7 +10,7 @@ function color(key:string) { const index=Object.keys(names).indexOf(key); return
 const time=(at:string)=>new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}).format(new Date(at));
 export default function SportsbookHistory({points:input, percentage=false, label, markers=[]}:{points:BookHistoryPoint[]; percentage?:boolean; label:string; markers?:{at:string; label:string}[]}) {
   const [selected,setSelected]=useState("all"); const [hidden,setHidden]=useState<string[]>([]);
-  const points=input.filter(p=>Number.isFinite(Date.parse(p.at))).slice().sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+  const points=input.map(p=>({...p,values:selectedSportsbooks(p.values)})).filter(p=>Number.isFinite(Date.parse(p.at))).slice().sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
   const books=[...new Set(points.flatMap(p=>Object.keys(p.values)))].filter(k=>k!=="polymarket" && points.some(p=>Number.isFinite(p.values[k])));
   const matched=books.filter(k=>points.every(p=>Number.isFinite(p.values[k])));
   const consensus=points.map(p=>{const values=matched.map(k=>p.values[k]!).sort((a,b)=>a-b);return values.length ? percentage ? values.reduce((a,b)=>a+b,0)/values.length : values[Math.floor((values.length-1)/2)] : null;});

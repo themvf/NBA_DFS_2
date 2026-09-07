@@ -1,3 +1,4 @@
+import { SPORTSBOOK_KEYS } from "./sportsbook-policy";
 /** MLB-only display contract. No database or paid API dependencies. */
 export type MlbMarket = "moneyline" | "run_line" | "total";
 export type MlbSide = "home" | "away" | "over" | "under";
@@ -22,7 +23,7 @@ export type MlbTerminalBoard = {
 export const MLB_GAME_SIGNALS = ["pinnacle_divergence", "pinnacle_polymarket_delta", "steam", "walking", "dk_value",
   "mlb_total_price_steam", "mlb_total_price_walking", "mlb_total_price_reversal", "mlb_run_line_points_steam", "mlb_run_line_points_walking", "mlb_run_line_points_reversal",
   "mlb_total_steam", "mlb_total_walking", "mlb_total_reversal", "mlb_run_line_steam", "mlb_run_line_walking", "mlb_run_line_reversal", "mlb_moneyline_reversal"];
-export const MLB_TERMINAL_BOOKS = ["draftkings", "fanduel", "betmgm", "betrivers", "pinnacle", "fanatics", "williamhill_us", "bovada", "betonlineag"];
+export const MLB_TERMINAL_BOOKS = SPORTSBOOK_KEYS;
 export function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

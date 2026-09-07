@@ -1,4 +1,5 @@
 "use server";
+import { SPORTSBOOK_QUERY } from "@/lib/sportsbook-policy";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
@@ -84,7 +85,7 @@ export async function fetchVegasOdds(date: string, sport: Sport = "nba"): Promis
 
   const oddsUrl = new URL(`https://api.the-odds-api.com/v4/sports/${sportKey}/odds/`);
   oddsUrl.searchParams.set("apiKey", oddsKey);
-  oddsUrl.searchParams.set("regions", "us");
+  oddsUrl.searchParams.set(isMlb ? "bookmakers" : "regions", isMlb ? SPORTSBOOK_QUERY : "us");
   oddsUrl.searchParams.set("markets", "h2h,spreads,totals");
   oddsUrl.searchParams.set("oddsFormat", "american");
 

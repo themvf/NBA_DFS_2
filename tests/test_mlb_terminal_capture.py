@@ -43,8 +43,9 @@ def test_no_purchase_when_locked_covered_empty_or_budget_reserved(monkeypatch, k
 def test_partially_covered_slate_is_purchased_and_usage_audited(monkeypatch):
     def fetch(db, key, date, *, bookmakers, request_audit, capture_policy):
         assert bookmakers == BOOKMAKERS and len(bookmakers.split(",")) <= 10
-        assert 'polymarket' in bookmakers and 'pinnacle' in bookmakers
-        assert capture_policy == 'mlb-movement-ten-books-v1'
+        assert 'polymarket' not in bookmakers and 'pinnacle' in bookmakers
+        assert len(bookmakers.split(',')) == 6
+        assert capture_policy == 'mlb-movement-six-books-v2'
         request_audit.update(status=200, endpoint="/sports/baseball_mlb/odds", requests_last="3", requests_used="103", requests_remaining="897")
         return 2
     monkeypatch.setattr(mlb_schedule, "fetch_odds", fetch)

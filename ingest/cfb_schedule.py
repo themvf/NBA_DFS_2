@@ -6,6 +6,8 @@ Only accepted, mapped, pre-kickoff quotes reach ``game_odds_history``.
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import BOOKMAKER_KEYS, selected_event
+
 import argparse
 import json
 import logging
@@ -42,10 +44,7 @@ logger = logging.getLogger(__name__)
 CFBD_BASE = "https://api.collegefootballdata.com"
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 CFB_SPORT_KEY = "americanfootball_ncaaf"
-CFB_BOOKMAKERS = (
-    "draftkings", "fanduel", "betmgm", "williamhill_us", "fanatics",
-    "espnbet", "hardrockbet", "betrivers", "pinnacle", "bovada",
-)
+CFB_BOOKMAKERS = BOOKMAKER_KEYS
 CFB_MARKETS = "h2h,spreads,totals"
 # Reviewed against official athletics identities, not fuzzy name similarity:
 # citadelsports.com, geauxcolonels.com, lionsports.net.
@@ -395,6 +394,7 @@ def fetch_odds(
     history_rows: list[dict] = []
     team_cache = _team_cache(db)
     for event in response.json() or []:
+        event = selected_event(event)
         event_id = str(event.get("id") or "")
         if event_id not in event_ids:
             continue

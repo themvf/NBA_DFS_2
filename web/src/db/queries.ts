@@ -1,3 +1,4 @@
+import { selectedSportsbooks } from "@/lib/sportsbook-policy";
 import { db } from ".";
 import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
@@ -8496,7 +8497,7 @@ export async function getNflVegasBoard(gameDate?: string, throughDate?: string):
       const point = item as Record<string, unknown>;
       return [{
         capturedAt: String(point.capturedAt),
-        books: (point.books as Record<string, CfbBookQuote>) ?? {},
+        books: selectedSportsbooks(point.books as Record<string, CfbBookQuote>),
         homeProb: point.homeProb != null ? Number(point.homeProb) : null,
         homeSpread: point.homeSpread != null ? Number(point.homeSpread) : null,
         total: point.total != null ? Number(point.total) : null,
@@ -10484,7 +10485,7 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
       const point = item as Record<string, unknown>;
       return [{
         capturedAt: String(point.capturedAt),
-        books: point.books && typeof point.books === "object" ? point.books as CfbBookMap : {},
+        books: selectedSportsbooks(point.books && typeof point.books === "object" ? point.books as CfbBookMap : {}),
       }];
     }) : [];
     return {
@@ -10507,9 +10508,9 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
       wentToOvertime: Boolean(r.wentToOvertime),
       overtimePeriods: Number(r.overtimePeriods ?? 0),
       captures: Number(r.captures ?? 0),
-      openingBooks: r.openingBooks && typeof r.openingBooks === "object" ? r.openingBooks as CfbBookMap : null,
-      currentBooks: r.currentBooks && typeof r.currentBooks === "object" ? r.currentBooks as CfbBookMap : null,
-      closingBooks: r.closingBooks && typeof r.closingBooks === "object" ? r.closingBooks as CfbBookMap : null,
+      openingBooks: r.openingBooks && typeof r.openingBooks === "object" ? selectedSportsbooks(r.openingBooks as CfbBookMap) : null,
+      currentBooks: r.currentBooks && typeof r.currentBooks === "object" ? selectedSportsbooks(r.currentBooks as CfbBookMap) : null,
+      closingBooks: r.closingBooks && typeof r.closingBooks === "object" ? selectedSportsbooks(r.closingBooks as CfbBookMap) : null,
       openingCapturedAt: r.openingCapturedAt != null ? String(r.openingCapturedAt) : null,
       latestCapturedAt: r.latestCapturedAt != null ? String(r.latestCapturedAt) : null,
       closingCapturedAt: r.closingCapturedAt != null ? String(r.closingCapturedAt) : null,
@@ -10732,7 +10733,7 @@ export async function getLineMovement(
           const books = point.books && typeof point.books === "object"
             ? point.books as Record<string, unknown>
             : {};
-          const bookHomeProbs = Object.fromEntries(Object.entries(books).flatMap(([book, raw]) => {
+          const bookHomeProbs = Object.fromEntries(Object.entries(selectedSportsbooks(books)).flatMap(([book, raw]) => {
             if (!raw || typeof raw !== "object") return [];
             const quote = raw as Record<string, unknown>;
             const homeMl = Number(quote.ml_home), awayMl = Number(quote.ml_away);

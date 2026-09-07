@@ -40,6 +40,8 @@ Usage:
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import BOOKMAKERS as SELECTED_BOOKMAKERS
+
 import argparse
 import logging
 import time
@@ -146,14 +148,9 @@ MARKETS = ",".join((
 # bovada + betonlineag (offshore), betparx (regional, 6 markets),
 # ballybet (one-sided quotes only), polymarket (posts ZERO MLB player props --
 # 0/15 events across all 16 markets on the 2026-08-15 probe).
-BOOKMAKERS = ",".join((
-    # executable
-    "draftkings", "betmgm", "fanatics", "williamhill_us", "fanduel", "betrivers",
-    # reference (NOT bettable here)
-    "pinnacle",
-    # high-coverage; executability unconfirmed -> treat as reference until known
-    "espnbet", "hardrockbet", "fliff",
-))
+# The coverage research above is historical. The user-selected six-book
+# universe supersedes that earlier ten-book acquisition list (2026-09-07).
+BOOKMAKERS = SELECTED_BOOKMAKERS
 assert len(BOOKMAKERS.split(",")) <= 10, "11th book doubles the credit cost"
 SLEEP_BETWEEN_CALLS = 0.5
 

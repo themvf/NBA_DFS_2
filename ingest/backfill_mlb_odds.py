@@ -12,6 +12,8 @@ Usage:
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import BOOKMAKERS
+
 import argparse
 import logging
 import time
@@ -80,7 +82,7 @@ def _dates_with_games(db: DatabaseManager, start: str, end: str, missing_only: b
 def _fetch_historical_odds(api_key: str, snapshot: str) -> tuple[list[dict], int | None]:
     params = {
         "apiKey": api_key,
-        "regions": "us",
+        "bookmakers": BOOKMAKERS,
         "markets": "h2h,totals,spreads",
         "oddsFormat": "american",
         "dateFormat": "iso",
