@@ -13748,3 +13748,139 @@ export async function getMlbPropProgram(
     lastAlertAt: r.lastAlertAt != null ? String(r.lastAlertAt) : null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// NFL pick'em / confidence pools
+// ---------------------------------------------------------------------------
+
+export type PickemSlateGame = {
+  gameId: number;
+  week: number;
+  homeTeamId: number;
+  awayTeamId: number;
+  homeAbbrev: string;
+  awayAbbrev: string;
+  homeName: string;
+  awayName: string;
+  /**
+   * P(home wins), CONDITIONAL ON NO TIE.
+   *
+   * Pools score a tie as a loss for both sides or void the game; either way a
+   * three-outcome probability cannot be dropped into a two-outcome pick, so
+   * the tie mass is renormalised away rather than silently assigned to one
+   * side. `pTie` is carried through so the page can show which games this
+   * actually moved (it is ~0.4% at most, and zero for the great majority).
+   */
+  pHome: number;
+  pTie: number | null;
+  provenance: string;
+  spread: number | null;
+  spreadSource: string | null;
+  horizonWeeks: number | null;
+  kickoff: string | null;
+  completed: boolean;
+  /** True/false once played; null before, and null for a tie. */
+  homeWon: boolean | null;
+  modelVersion: string | null;
+  computedAt: string | null;
+};
+
+export type PickemSlate = {
+  season: number;
+  weeks: number[];
+  games: PickemSlateGame[];
+  modelVersion: string | null;
+  computedAt: string | null;
+};
+
+/**
+ * One row per GAME (not per team-side) for a season, with the win probability
+ * the survivor pipeline already computes.
+ *
+ * Deliberately reads `nfl_game_win_probs` rather than re-deriving anything: a
+ * pick'em pool and a survivor pool are asking about the same event, and two
+ * pages in this app disagreeing about the same game's win probability would be
+ * a defect, not a feature. Provenance rides along so a modeled far-out week is
+ * never rendered like a quoted one.
+ */
+export async function getNflPickemSlate(season = 2026): Promise<PickemSlate> {
+  const rows = await db.execute(sql`
+    SELECT
+      g.id AS "gameId", g.week, g.kickoff::text AS kickoff, g.completed,
+      g.home_score AS "homeScore", g.away_score AS "awayScore",
+      g.home_team_id AS "homeTeamId", g.away_team_id AS "awayTeamId",
+      h.abbreviation AS "homeAbbrev", h.name AS "homeName",
+      a.abbreviation AS "awayAbbrev", a.name AS "awayName",
+      w.p_win AS "pWin", w.p_tie AS "pTie", w.provenance,
+      w.spread_used AS spread, w.spread_source AS "spreadSource",
+      w.horizon_weeks AS "horizonWeeks",
+      w.model_version AS "modelVersion", w.computed_at::text AS "computedAt"
+    FROM nfl_season_games g
+    JOIN nfl_teams h ON h.team_id = g.home_team_id
+    JOIN nfl_teams a ON a.team_id = g.away_team_id
+    LEFT JOIN nfl_game_win_probs w
+      ON w.game_id = g.id AND w.team_id = g.home_team_id
+    WHERE g.season = ${season}
+    ORDER BY g.week, g.kickoff NULLS LAST, a.abbreviation
+  `);
+
+  const weeks = new Set<number>();
+  let modelVersion: string | null = null;
+  let computedAt: string | null = null;
+  const games: PickemSlateGame[] = [];
+
+  for (const raw of rows.rows) {
+    const record = raw as Record<string, unknown>;
+    const week = Number(record.week);
+    weeks.add(week);
+
+    const pWin = record.pWin != null ? Number(record.pWin) : null;
+    const pTie = record.pTie != null ? Number(record.pTie) : null;
+    if (pWin == null || !Number.isFinite(pWin)) continue;
+
+    // Renormalise away the tie mass -- see the pHome doc comment.
+    const denom = 1 - (pTie ?? 0);
+    const pHome = denom > 1e-9 ? Math.min(Math.max(pWin / denom, 1e-4), 1 - 1e-4) : pWin;
+
+    modelVersion ??= record.modelVersion != null ? String(record.modelVersion) : null;
+    const stamp = record.computedAt != null ? String(record.computedAt) : null;
+    if (stamp && (!computedAt || stamp > computedAt)) computedAt = stamp;
+
+    const homeScore = record.homeScore != null ? Number(record.homeScore) : null;
+    const awayScore = record.awayScore != null ? Number(record.awayScore) : null;
+    const homeWon =
+      homeScore != null && awayScore != null && homeScore !== awayScore
+        ? homeScore > awayScore
+        : null;
+
+    games.push({
+      gameId: Number(record.gameId),
+      week,
+      homeTeamId: Number(record.homeTeamId),
+      awayTeamId: Number(record.awayTeamId),
+      homeAbbrev: String(record.homeAbbrev),
+      awayAbbrev: String(record.awayAbbrev),
+      homeName: String(record.homeName),
+      awayName: String(record.awayName),
+      pHome,
+      pTie,
+      provenance: String(record.provenance ?? "unknown"),
+      spread: record.spread != null ? Number(record.spread) : null,
+      spreadSource: record.spreadSource != null ? String(record.spreadSource) : null,
+      horizonWeeks: record.horizonWeeks != null ? Number(record.horizonWeeks) : null,
+      kickoff: record.kickoff != null ? String(record.kickoff) : null,
+      completed: Boolean(record.completed),
+      homeWon,
+      modelVersion: record.modelVersion != null ? String(record.modelVersion) : null,
+      computedAt: stamp,
+    });
+  }
+
+  return {
+    season,
+    weeks: [...weeks].sort((a, b) => a - b),
+    games,
+    modelVersion,
+    computedAt,
+  };
+}
