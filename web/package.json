@@ -53,6 +53,7 @@
     "test:survivor": "node --import tsx ./scripts/test-survivor-assignment.ts",
     "test:pickem": "node --import tsx ./scripts/test-pickem-strategy.ts",
     "test:pickem-grading": "node --import tsx ./scripts/test-pickem-grading.ts",
+    "analyze:upsets": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-upset-anatomy.ts",
     "analyze:situational": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-situational.ts",
     "analyze:underdogs": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-underdog-picks.ts",
     "analyze:pickem-2025": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-pickem-2025.ts",
