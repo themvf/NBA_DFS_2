@@ -289,6 +289,51 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------
+  console.log("\n\nWHY STEP A FAILS — 'hot' does not stay hot");
+  console.log("-".repeat(80));
+  console.log("  Per TEAM rather than per game. Does a team entering a week on an");
+  console.log("  upswing actually play above its own season baseline that week?\n");
+
+  const tr: number[] = [];
+  const nextDev: number[] = [];
+  const trThenTr: Array<[number, number]> = [];
+  for (const [key, list] of hist) {
+    const [seasonStr, team] = [key.slice(0, 4), key.slice(5)];
+    const season = Number(seasonStr);
+    for (const g of list) {
+      const t = trend(season, team, g.week);
+      if (t === null) continue;
+      const prior = list.filter((x) => x.week < g.week);
+      const baseline = mean(prior.map((x) => x.epaPerPlay));
+      tr.push(t);
+      nextDev.push(g.epaPerPlay - baseline);
+      const tNext = trend(season, team, g.week + 1);
+      if (tNext !== null) trThenTr.push([t, tNext]);
+    }
+  }
+  console.log(
+    `  corr(trend entering week, that week's EPA above baseline) = ` +
+    `${corr(tr, nextDev).toFixed(4)}   n=${tr.length}   <-- THE number`,
+  );
+  console.log(
+    `  corr(trend this week, trend next week)                    = ` +
+    `${corr(trThenTr.map((x) => x[0]), trThenTr.map((x) => x[1])).toFixed(4)}   n=${trThenTr.length}   <-- NOT momentum`,
+  );
+  console.log("\n  The second number is an artefact and is shown only so it cannot be");
+  console.log(`  misread elsewhere: consecutive ${FORM_WINDOW}-game windows share ${FORM_WINDOW - 1} of their`);
+  console.log("  games, so they are correlated by construction whether or not form");
+  console.log("  is real. A 'hot team stays hot' claim built on it would be measuring");
+  console.log("  window overlap. The first number has no such overlap -- the game");
+  console.log("  being predicted is not in the window predicting it -- and it is zero.");
+  console.log("\n  The reason is structural, not bad luck. 'Trend' is defined as");
+  console.log("  recent form MINUS the season baseline, and subtracting the baseline");
+  console.log("  removes exactly the persistent part of a team -- the part that is");
+  console.log("  real, and the part the closing line is built from. What is left is");
+  console.log("  the week-to-week wobble, which the upset study measured at 78% of");
+  console.log("  all variation in weekly EPA. A 3-game hot streak is mostly a report");
+  console.log("  on which three weeks happened to go well, not a change in quality.");
+
+  // -------------------------------------------------------------------------
   console.log("\n\nSTEP B — DOES IT BEAT THE CLOSING LINE?");
   console.log("-".repeat(80));
   console.log("  Market-anchored logistic fit on 2023-24, scored once on 2025.");
