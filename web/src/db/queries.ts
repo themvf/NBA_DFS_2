@@ -13884,3 +13884,181 @@ export async function getNflPickemSlate(season = 2026): Promise<PickemSlate> {
     computedAt,
   };
 }
+
+export type PickemPoolRow = {
+  id: number;
+  name: string;
+  season: number;
+  format: "confidence" | "straight";
+  poolEntries: number;
+  notes: string | null;
+};
+
+export type PickemLedgerGame = {
+  gameId: number;
+  homeAbbrev: string;
+  awayAbbrev: string;
+  pHome: number;
+  provenance: string;
+  baselinePickHome: boolean;
+  baselineConfidence: number;
+  recommendedPickHome: boolean;
+  recommendedConfidence: number;
+  fieldHomeShare: number | null;
+  fieldSource: "observed" | "modeled";
+  homeWon: boolean | null;
+};
+
+export type PickemLedgerRow = {
+  id: number;
+  poolId: number | null;
+  poolName: string | null;
+  season: number;
+  week: number;
+  format: "confidence" | "straight";
+  objective: "ev" | "win";
+  poolEntries: number;
+  modelVersion: string;
+  baselineExpectedPoints: number | null;
+  recommendedExpectedPoints: number | null;
+  baselinePrizeShare: number | null;
+  recommendedPrizeShare: number | null;
+  fieldModel: Record<string, unknown>;
+  deviations: Array<Record<string, unknown>>;
+  locksAt: string | null;
+  frozenAt: string;
+  supersededBy: number | null;
+  status: "pending" | "settled" | "void";
+  gamesTotal: number;
+  gamesGraded: number;
+  baselineActualPoints: number | null;
+  recommendedActualPoints: number | null;
+  baselineCorrect: number | null;
+  recommendedCorrect: number | null;
+  maxPossiblePoints: number | null;
+  brier: number | null;
+  coinflipBrier: number | null;
+  settledAt: string | null;
+  finishRank: number | null;
+  poolWinningScore: number | null;
+  wonPool: boolean | null;
+  games: PickemLedgerGame[];
+};
+
+export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, name, season, format, pool_entries AS "poolEntries", notes
+      FROM pickem_pools WHERE season = ${season} ORDER BY created_at
+    `);
+    return rows.rows.map((raw) => {
+      const r = raw as Record<string, unknown>;
+      return {
+        id: Number(r.id),
+        name: String(r.name),
+        season: Number(r.season),
+        format: String(r.format) as "confidence" | "straight",
+        poolEntries: Number(r.poolEntries),
+        notes: r.notes != null ? String(r.notes) : null,
+      };
+    });
+  } catch {
+    // The table is created lazily by the first server action. An empty list is
+    // the correct answer before that happens, not a page failure.
+    return [];
+  }
+}
+
+/**
+ * The append-only recommendation ledger, newest first, with every frozen game.
+ *
+ * Superseded rows are returned too. They are the record of what the tool said
+ * before it changed its mind, which is exactly what an audit trail is for --
+ * the caller filters them out of summaries rather than the query hiding them.
+ */
+export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]> {
+  try {
+    const rows = await db.execute(sql`
+      SELECT r.*, p.name AS "poolName"
+      FROM pickem_recommendations r
+      LEFT JOIN pickem_pools p ON p.id = r.pool_id
+      WHERE r.season = ${season}
+      ORDER BY r.week DESC, r.frozen_at DESC
+    `);
+    if (rows.rows.length === 0) return [];
+
+    const ids = rows.rows.map((raw) => Number((raw as Record<string, unknown>).id));
+    const gameRows = await db.execute(sql`
+      SELECT g.*, h.abbreviation AS "homeAbbrev", a.abbreviation AS "awayAbbrev"
+      FROM pickem_recommendation_games g
+      JOIN nfl_teams h ON h.team_id = g.home_team_id
+      JOIN nfl_teams a ON a.team_id = g.away_team_id
+      WHERE g.recommendation_id = ANY(${sql.raw(`ARRAY[${ids.join(",")}]`)})
+      ORDER BY g.recommended_confidence DESC
+    `);
+
+    const byRec = new Map<number, PickemLedgerGame[]>();
+    for (const raw of gameRows.rows) {
+      const r = raw as Record<string, unknown>;
+      const recId = Number(r.recommendation_id);
+      if (!byRec.has(recId)) byRec.set(recId, []);
+      byRec.get(recId)!.push({
+        gameId: Number(r.game_id),
+        homeAbbrev: String(r.homeAbbrev),
+        awayAbbrev: String(r.awayAbbrev),
+        pHome: Number(r.p_home),
+        provenance: String(r.provenance),
+        baselinePickHome: Boolean(r.baseline_pick_home),
+        baselineConfidence: Number(r.baseline_confidence),
+        recommendedPickHome: Boolean(r.recommended_pick_home),
+        recommendedConfidence: Number(r.recommended_confidence),
+        fieldHomeShare: r.field_home_share != null ? Number(r.field_home_share) : null,
+        fieldSource: String(r.field_source) as "observed" | "modeled",
+        homeWon: r.home_won == null ? null : Boolean(r.home_won),
+      });
+    }
+
+    return rows.rows.map((raw) => {
+      const r = raw as Record<string, unknown>;
+      const id = Number(r.id);
+      const num = (key: string) => (r[key] != null ? Number(r[key]) : null);
+      return {
+        id,
+        poolId: r.pool_id != null ? Number(r.pool_id) : null,
+        poolName: r.poolName != null ? String(r.poolName) : null,
+        season: Number(r.season),
+        week: Number(r.week),
+        format: String(r.format) as "confidence" | "straight",
+        objective: String(r.objective) as "ev" | "win",
+        poolEntries: Number(r.pool_entries),
+        modelVersion: String(r.model_version),
+        baselineExpectedPoints: num("baseline_expected_points"),
+        recommendedExpectedPoints: num("recommended_expected_points"),
+        baselinePrizeShare: num("baseline_prize_share"),
+        recommendedPrizeShare: num("recommended_prize_share"),
+        fieldModel: (r.field_model_json ?? {}) as Record<string, unknown>,
+        deviations: (r.deviations_json ?? []) as Array<Record<string, unknown>>,
+        locksAt: r.locks_at != null ? String(r.locks_at) : null,
+        frozenAt: String(r.frozen_at),
+        supersededBy: r.superseded_by != null ? Number(r.superseded_by) : null,
+        status: String(r.status) as "pending" | "settled" | "void",
+        gamesTotal: Number(r.games_total),
+        gamesGraded: Number(r.games_graded),
+        baselineActualPoints: num("baseline_actual_points"),
+        recommendedActualPoints: num("recommended_actual_points"),
+        baselineCorrect: num("baseline_correct"),
+        recommendedCorrect: num("recommended_correct"),
+        maxPossiblePoints: num("max_possible_points"),
+        brier: num("brier"),
+        coinflipBrier: num("coinflip_brier"),
+        settledAt: r.settled_at != null ? String(r.settled_at) : null,
+        finishRank: num("finish_rank"),
+        poolWinningScore: num("pool_winning_score"),
+        wonPool: r.won_pool == null ? null : Boolean(r.won_pool),
+        games: byRec.get(id) ?? [],
+      };
+    });
+  } catch {
+    return [];
+  }
+}

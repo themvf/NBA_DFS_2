@@ -51,7 +51,9 @@
     "experiment:nfl-scenarios": "node --import tsx ./scripts/compare-nfl-scenarios.ts",
     "demo:nfl-scenarios": "node --import tsx ./scripts/compare-nfl-scenarios.ts --demo",
     "test:survivor": "node --import tsx ./scripts/test-survivor-assignment.ts",
-    "test:pickem": "node --import tsx ./scripts/test-pickem-strategy.ts"
+    "test:pickem": "node --import tsx ./scripts/test-pickem-strategy.ts",
+    "test:pickem-grading": "node --import tsx ./scripts/test-pickem-grading.ts",
+    "verify:pickem-ledger": "node --env-file=.env.local -r ./scripts/server-only-stub.cjs --import tsx ./scripts/verify-pickem-ledger.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

@@ -1,12 +1,12 @@
 export const dynamic = "force-dynamic";
 
-import { getNflPickemSlate } from "@/db/queries";
+import { getNflPickemSlate, getPickemLedger, getPickemPools } from "@/db/queries";
 import PickemClient from "./pickem-client";
 
 export const metadata = {
   title: "NFL Pick'em Pools",
   description:
-    "Confidence and straight pick'em strategy: the EV-optimal entry, the exact price of every deviation from it, and what the field simulation thinks that price buys.",
+    "Confidence and straight pick'em strategy: the EV-optimal entry, the exact price of every deviation from it, what the field simulation thinks that price buys, and a ledger that grades all of it against real results.",
 };
 
 export default async function PickemPage({
@@ -18,7 +18,11 @@ export default async function PickemPage({
   const parsedSeason = Number(season);
   const targetSeason = Number.isFinite(parsedSeason) && parsedSeason > 2000 ? parsedSeason : 2026;
 
-  const slate = await getNflPickemSlate(targetSeason);
+  const [slate, pools, ledger] = await Promise.all([
+    getNflPickemSlate(targetSeason),
+    getPickemPools(targetSeason),
+    getPickemLedger(targetSeason),
+  ]);
 
   // Default to the first week that still has an unplayed game -- the week the
   // user actually has to submit. Falls back to the last week of the season.
@@ -33,6 +37,8 @@ export default async function PickemPage({
   return (
     <PickemClient
       slate={slate}
+      pools={pools}
+      ledger={ledger}
       initialWeek={targetWeek}
       loadedAt={new Date().toISOString()}
     />

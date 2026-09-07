@@ -15,15 +15,43 @@
  * answer; a user who reads to the bottom gets a more ambitious one and is told
  * exactly how much of it rests on an unmeasured field model.
  *
- * Picks live in this browser. There is no ledger here yet -- unlike the
- * survivor page, nothing on this page has ever been settled against a real
- * pool, and freezing recommendations into a database implies a grading
- * pipeline that does not exist.
+ * Working picks live in this browser. Freezing a card writes it to the
+ * append-only ledger at the bottom of the page, which is what makes any of
+ * this gradable: it stores the recommended entry AND the max-points baseline
+ * it deviated from, so "was deviating worth it" is a paired comparison against
+ * a counterfactual frozen before kickoff rather than one rebuilt afterwards.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Copy, Download, FlaskConical, Info, RotateCcw, Sparkles } from "lucide-react";
-import type { PickemSlate, PickemSlateGame } from "@/db/queries";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Download,
+  FlaskConical,
+  Info,
+  Lock,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import type { PickemLedgerRow, PickemPoolRow, PickemSlate, PickemSlateGame } from "@/db/queries";
+import {
+  ledgerVerdict,
+  summarizeLedger,
+  type GradedGameRow,
+  type SettledWeek,
+} from "@/lib/nfl/pickem-grading";
+import {
+  createPickemPool,
+  deletePickemPool,
+  freezePickemRecommendation,
+  recordPickemFinish,
+  settlePickemRecommendations,
+  voidPickemRecommendation,
+  type ActionResult,
+} from "./actions";
 import {
   DEFAULT_SIMS,
   DEVIATION_MIN_POOL,
@@ -52,6 +80,8 @@ import {
 
 type Props = {
   slate: PickemSlate;
+  pools: PickemPoolRow[];
+  ledger: PickemLedgerRow[];
   initialWeek: number;
   loadedAt: string;
 };
@@ -78,7 +108,7 @@ function pct(x: number, digits = 1): string {
   return `${(x * 100).toFixed(digits)}%`;
 }
 
-export default function PickemClient({ slate, initialWeek, loadedAt }: Props) {
+export default function PickemClient({ slate, pools, ledger, initialWeek, loadedAt }: Props) {
   const [week, setWeek] = useState(initialWeek);
   const [format, setFormat] = useState<PoolFormat>("confidence");
   const [poolEntries, setPoolEntries] = useState(50);
@@ -86,6 +116,32 @@ export default function PickemClient({ slate, initialWeek, loadedAt }: Props) {
   const [favoriteBias, setFavoriteBias] = useState(FIELD_FAVORITE_BIAS);
   const [overrides, setOverrides] = useState<Stored["overrides"]>({});
   const [hydrated, setHydrated] = useState(false);
+
+  const [poolId, setPoolId] = useState<number | null>(null);
+  const [showNewPool, setShowNewPool] = useState(false);
+  const [newPoolName, setNewPoolName] = useState("");
+  const [toast, setToast] = useState<ActionResult | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const run = (fn: () => Promise<ActionResult>) => {
+    startTransition(async () => {
+      setToast(await fn());
+    });
+  };
+
+  const activePool = pools.find((p) => p.id === poolId) ?? null;
+
+  // Selecting a pool adopts its rules. Done here rather than in an effect so
+  // the state change is a direct consequence of the click: a ledger row has to
+  // record the pool it was advising, not whatever the controls last said.
+  const selectPool = (id: number | null) => {
+    setPoolId(id);
+    const pool = pools.find((p) => p.id === id);
+    if (pool) {
+      setFormat(pool.format);
+      setPoolEntries(pool.poolEntries);
+    }
+  };
 
   // ---- local persistence -------------------------------------------------
   // Restore is deferred off the render pass and re-run on cross-tab writes,
@@ -301,6 +357,103 @@ export default function PickemClient({ slate, initialWeek, loadedAt }: Props) {
       ? plan.baselineEval.expectedPoints - plan.recommendedEval.expectedPoints
       : 0;
 
+  // ---- ledger ------------------------------------------------------------
+  // Superseded rows stay visible as audit history but never enter a summary:
+  // they are what the tool said before it changed its mind, not what it
+  // advised. Void rows are excluded for the same reason.
+  const liveLedger = useMemo(
+    () => ledger.filter((r) => r.supersededBy == null && r.status !== "void"),
+    [ledger],
+  );
+
+  const ledgerSummary = useMemo(() => {
+    const weeks: SettledWeek[] = liveLedger
+      .filter((r) => r.gamesGraded > 0)
+      .map((r) => ({
+        week: r.week,
+        objective: r.objective,
+        baselinePoints: r.baselineActualPoints ?? 0,
+        recommendedPoints: r.recommendedActualPoints ?? 0,
+        expectedPointsDelta:
+          (r.recommendedExpectedPoints ?? 0) - (r.baselineExpectedPoints ?? 0),
+        gamesGraded: r.gamesGraded,
+        brier: r.brier,
+        coinflipBrier: r.coinflipBrier,
+        wonPool: r.wonPool,
+        finishRank: r.finishRank,
+      }));
+    const rows: GradedGameRow[] = liveLedger.flatMap((r) =>
+      r.games.map((g) => ({
+        gameId: g.gameId,
+        pHome: g.pHome,
+        provenance: g.provenance,
+        homeWon: g.homeWon,
+        baselinePickHome: g.baselinePickHome,
+        baselineConfidence: g.baselineConfidence,
+        recommendedPickHome: g.recommendedPickHome,
+        recommendedConfidence: g.recommendedConfidence,
+      })),
+    );
+    return summarizeLedger(weeks, rows);
+  }, [liveLedger]);
+
+  const frozenThisWeek = liveLedger.find(
+    (r) => r.week === week && (r.poolId ?? null) === poolId,
+  );
+
+  const weekHasStarted = weekGames.some(
+    (g) => g.kickoff != null && new Date(g.kickoff) <= new Date(),
+  );
+
+  const freezeCard = () => {
+    if (!plan || !activeEntry || !baseline || games.length === 0) return;
+    const frozen = games.map((g, i) => {
+      const src = weekGames[i];
+      const field = fieldHomeShare(g, fieldModel);
+      return {
+        gameId: g.gameId,
+        homeTeamId: src.homeTeamId,
+        awayTeamId: src.awayTeamId,
+        pHome: g.pHome,
+        provenance: g.provenance,
+        kickoff: g.kickoff,
+        baselinePickHome: baseline.pickHome[i],
+        baselineConfidence: baseline.confidence[i],
+        // The entry as it stands on screen, manual overrides included -- the
+        // ledger records what was actually advised, not what the optimizer
+        // would have said if left alone.
+        recommendedPickHome: activeEntry.pickHome[i],
+        recommendedConfidence: activeEntry.confidence[i],
+        fieldHomeShare: field.share,
+        fieldSource: field.source,
+      };
+    });
+    run(() =>
+      freezePickemRecommendation({
+        poolId,
+        season: slate.season,
+        week,
+        format,
+        objective,
+        poolEntries,
+        sims: DEFAULT_SIMS,
+        modelVersion: MODEL_VERSION,
+        baselineExpectedPoints: plan.baselineEval.expectedPoints,
+        recommendedExpectedPoints: activeEval?.expectedPoints ?? plan.recommendedEval.expectedPoints,
+        baselinePrizeShare: plan.baselineEval.prizeShare,
+        recommendedPrizeShare: activeEval?.prizeShare ?? plan.recommendedEval.prizeShare,
+        fieldModel: {
+          favoriteBias,
+          skillSigma: FIELD_SKILL_SIGMA,
+          observedGames: games.length - modeledFieldCount,
+          modeledGames: modeledFieldCount,
+        },
+        deviations: plan.deviations,
+        games: frozen,
+      }),
+    );
+  };
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-4 p-4">
       {/* ---------------------------------------------------------------- */}
@@ -386,7 +539,56 @@ export default function PickemClient({ slate, initialWeek, loadedAt }: Props) {
           </button>
         </div>
 
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          Pool
+          <select
+            value={poolId ?? ""}
+            onChange={(e) => selectPool(e.target.value === "" ? null : Number(e.target.value))}
+            className="h-8 rounded border bg-background px-2 text-sm"
+          >
+            <option value="">Scratchpad (no pool)</option>
+            {pools.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          onClick={() => setShowNewPool((v) => !v)}
+          className="inline-flex items-center gap-1 rounded border px-2 py-1.5 text-xs hover:bg-accent"
+        >
+          <Plus className="h-3 w-3" /> Pool
+        </button>
+        {activePool && (
+          <button
+            onClick={() => {
+              if (confirm(`Delete "${activePool.name}" and every ledger row under it?`)) {
+                selectPool(null);
+                run(() => deletePickemPool(activePool.id));
+              }
+            }}
+            className="inline-flex items-center gap-1 rounded border px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+            title="Deletes the pool and its ledger rows"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={freezeCard}
+            disabled={pending || games.length === 0 || weekHasStarted}
+            className="inline-flex items-center gap-1.5 rounded border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-500/20 disabled:opacity-40 dark:text-emerald-400"
+            title={
+              weekHasStarted
+                ? "This week has already started — a card frozen after kickoff is hindsight."
+                : "Freeze this card and the max-points baseline into the ledger"
+            }
+          >
+            <Lock className="h-3.5 w-3.5" />
+            {frozenThisWeek ? "Re-freeze" : "Freeze card"}
+          </button>
           <button
             onClick={copyCard}
             className="inline-flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs hover:bg-accent"
@@ -409,6 +611,68 @@ export default function PickemClient({ slate, initialWeek, loadedAt }: Props) {
           )}
         </div>
       </div>
+
+      {showNewPool && (
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Pool name
+            <input
+              value={newPoolName}
+              onChange={(e) => setNewPoolName(e.target.value)}
+              placeholder="Office pool"
+              className="h-8 w-56 rounded border bg-background px-2 text-sm"
+            />
+          </label>
+          <span className="pb-1.5 text-xs text-muted-foreground">
+            Adopts the current format ({format}) and {poolEntries} entries.
+          </span>
+          <button
+            onClick={() => {
+              run(async () => {
+                const result = await createPickemPool({
+                  name: newPoolName,
+                  season: slate.season,
+                  format,
+                  poolEntries,
+                  notes: null,
+                });
+                if (result.ok) {
+                  setNewPoolName("");
+                  setShowNewPool(false);
+                }
+                return result;
+              });
+            }}
+            disabled={pending}
+            className="h-8 rounded border px-2.5 text-xs hover:bg-accent disabled:opacity-40"
+          >
+            Create
+          </button>
+        </div>
+      )}
+
+      {toast && (
+        <div
+          className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
+            toast.ok
+              ? "border-emerald-500/40 bg-emerald-500/5"
+              : "border-rose-500/40 bg-rose-500/5"
+          }`}
+        >
+          {toast.ok ? (
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          ) : (
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+          )}
+          <span>{toast.ok ? toast.message : toast.error}</span>
+          <button
+            onClick={() => setToast(null)}
+            className="ml-auto text-xs text-muted-foreground hover:underline"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
 
       {/* ---- pool-size advisory ----------------------------------------- */}
       <div className="rounded-lg border bg-card p-3 text-sm">
@@ -764,6 +1028,262 @@ export default function PickemClient({ slate, initialWeek, loadedAt }: Props) {
           </p>
         </section>
       )}
+
+      {/* ---- the ledger --------------------------------------------------- */}
+      <section className="rounded-lg border bg-card">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+          <h2 className="text-sm font-semibold">
+            Recommendation ledger
+            <span className="ml-2 font-normal text-muted-foreground">
+              append-only, frozen before kickoff, graded against real results
+            </span>
+          </h2>
+          <button
+            onClick={() => run(() => settlePickemRecommendations(slate.season))}
+            disabled={pending || liveLedger.length === 0}
+            className="inline-flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs hover:bg-accent disabled:opacity-40"
+          >
+            <Check className="h-3.5 w-3.5" /> Settle completed weeks
+          </button>
+        </header>
+
+        <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+          Every row stores <strong className="text-foreground">both</strong> entries — the one
+          recommended and the max-points baseline it deviated from. That is the point: rebuilding
+          the baseline after the results are known would compare against a card the model might no
+          longer produce, so the counterfactual is frozen at the same instant as the recommendation.
+          Points and calibration settle automatically from real scores; whether the entry actually{" "}
+          <em>won</em> is the one thing we cannot see, so it is entered by hand and an absent value
+          stays absent rather than becoming a loss.
+        </p>
+
+        {liveLedger.length === 0 ? (
+          <p className="p-4 text-sm text-muted-foreground">
+            Nothing frozen yet. Set the week and objective above, then{" "}
+            <strong className="text-foreground">Freeze card</strong> before the first kickoff. A card
+            can only be frozen while every game is still ahead of it.
+          </p>
+        ) : (
+          <>
+            <div className="grid gap-3 border-b p-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Stat
+                label="Settled weeks"
+                value={String(ledgerSummary.settledWeeks)}
+                sub={`${ledgerSummary.gamesGraded} games graded`}
+              />
+              <Stat
+                label="Calibration (Brier)"
+                value={ledgerSummary.brier != null ? ledgerSummary.brier.toFixed(4) : "—"}
+                sub={
+                  ledgerSummary.coinflipBrier != null
+                    ? `vs ${ledgerSummary.coinflipBrier.toFixed(4)} for a coin flip on the same games`
+                    : "Nothing graded yet"
+                }
+              />
+              <Stat
+                label="Paired points delta"
+                value={
+                  ledgerSummary.settledWeeks > 0
+                    ? `${ledgerSummary.totalPointsDelta >= 0 ? "+" : ""}${ledgerSummary.totalPointsDelta.toFixed(0)}`
+                    : "—"
+                }
+                sub={
+                  ledgerSummary.settledWeeks > 0
+                    ? `Priced at ${ledgerSummary.totalExpectedPointsDelta.toFixed(1)} before kickoff — that is the bar, not zero`
+                    : "Recommended minus baseline"
+                }
+              />
+              <Stat
+                label="Pools won"
+                value={
+                  ledgerSummary.reportedFinishes > 0
+                    ? `${ledgerSummary.poolsWon} / ${ledgerSummary.reportedFinishes}`
+                    : "Not reported"
+                }
+                sub={
+                  ledgerSummary.reportedFinishes > 0
+                    ? "Descriptive only — see the verdict below"
+                    : "The only decisive measurement, and it needs your input"
+                }
+                highlight={ledgerSummary.reportedFinishes > 0}
+              />
+            </div>
+
+            <p className="border-b bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              {ledgerVerdict(ledgerSummary)}
+            </p>
+
+            {ledgerSummary.calibration.length > 0 && (
+              <div className="border-b px-3 py-2">
+                <div className="mb-1.5 text-xs font-semibold">
+                  Favourite reliability
+                  <span className="ml-2 font-normal text-muted-foreground">
+                    folded onto the favourite so a bin cannot average to 50% and look calibrated
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ledgerSummary.calibration.map((b) => (
+                    <div key={b.label} className="rounded border px-2 py-1 text-xs">
+                      <span className="font-mono">{b.label}</span>
+                      <span className="ml-2 text-muted-foreground">n={b.n}</span>
+                      <span className="ml-2 font-mono tabular-nums">
+                        said {pct(b.meanForecast, 0)} · went {pct(b.hitRate, 0)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Wk</th>
+                    <th className="px-3 py-2 font-medium">Pool</th>
+                    <th className="px-3 py-2 font-medium">Objective</th>
+                    <th className="px-3 py-2 text-right font-medium">Baseline</th>
+                    <th className="px-3 py-2 text-right font-medium">Recommended</th>
+                    <th className="px-3 py-2 text-right font-medium">Delta</th>
+                    <th className="px-3 py-2 text-right font-medium">Brier</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">Finish</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveLedger.map((r) => {
+                    const delta =
+                      r.recommendedActualPoints != null && r.baselineActualPoints != null
+                        ? r.recommendedActualPoints - r.baselineActualPoints
+                        : null;
+                    const priced =
+                      (r.recommendedExpectedPoints ?? 0) - (r.baselineExpectedPoints ?? 0);
+                    return (
+                      <tr key={r.id} className="border-t align-top">
+                        <td className="px-3 py-2 font-mono tabular-nums">{r.week}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {r.poolName ?? "Scratchpad"}
+                          <div className="font-mono text-[10px]">
+                            {r.poolEntries} entries · {r.format}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase ${
+                              r.objective === "win"
+                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {r.objective === "win" ? "max win" : "max pts"}
+                          </span>
+                          {priced < -0.005 && (
+                            <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                              paid {priced.toFixed(2)} EV
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono tabular-nums">
+                          {r.baselineActualPoints != null
+                            ? r.baselineActualPoints.toFixed(0)
+                            : r.baselineExpectedPoints?.toFixed(1) ?? "—"}
+                          {r.baselineActualPoints == null && (
+                            <span className="ml-1 text-[9px] uppercase text-muted-foreground">exp</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono tabular-nums">
+                          {r.recommendedActualPoints != null
+                            ? r.recommendedActualPoints.toFixed(0)
+                            : r.recommendedExpectedPoints?.toFixed(1) ?? "—"}
+                          {r.recommendedActualPoints == null && (
+                            <span className="ml-1 text-[9px] uppercase text-muted-foreground">exp</span>
+                          )}
+                        </td>
+                        <td
+                          className={`px-3 py-2 text-right font-mono tabular-nums ${
+                            delta == null
+                              ? "text-muted-foreground"
+                              : delta > 0
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : delta < 0
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-muted-foreground"
+                          }`}
+                        >
+                          {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(0)}`}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
+                          {r.brier != null ? r.brier.toFixed(3) : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="font-mono text-[10px] uppercase text-muted-foreground">
+                            {r.status === "settled"
+                              ? "settled"
+                              : `${r.gamesGraded}/${r.gamesTotal} graded`}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.gamesGraded === 0 ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : r.wonPool != null ? (
+                            <span
+                              className={`font-mono text-xs ${
+                                r.wonPool
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {r.wonPool ? "WON" : `lost${r.finishRank ? ` (#${r.finishRank})` : ""}`}
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={1}
+                                placeholder="rank"
+                                className="h-7 w-16 rounded border bg-background px-1.5 text-xs"
+                                onKeyDown={(e) => {
+                                  if (e.key !== "Enter") return;
+                                  const rank = Number((e.target as HTMLInputElement).value);
+                                  if (!Number.isFinite(rank) || rank < 1) return;
+                                  run(() =>
+                                    recordPickemFinish({
+                                      recommendationId: r.id,
+                                      finishRank: rank,
+                                      winningScore: null,
+                                      wonPool: rank === 1,
+                                    }),
+                                  );
+                                }}
+                                title="Your finishing position, then Enter. Rank 1 records a win."
+                              />
+                              <button
+                                onClick={() => run(() => voidPickemRecommendation(r.id))}
+                                className="text-[10px] text-muted-foreground hover:underline"
+                                title="Exclude this row from every summary. It stays in the ledger."
+                              >
+                                void
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {ledger.length > liveLedger.length && (
+              <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                {ledger.length - liveLedger.length} superseded or voided row
+                {ledger.length - liveLedger.length === 1 ? "" : "s"} kept in the ledger and excluded
+                from every number above. Changing a recommendation appends; it never overwrites.
+              </p>
+            )}
+          </>
+        )}
+      </section>
 
       {/* ---- the strategy, written out ----------------------------------- */}
       <section className="rounded-lg border bg-card p-4">
