@@ -41,6 +41,12 @@
  */
 
 import { neon } from "@neondatabase/serverless";
+import {
+  evOptimalEntry,
+  optimizeEntry,
+  simulateWorld,
+  type PickemGame,
+} from "../src/lib/nfl/pickem-strategy";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -275,18 +281,32 @@ async function main() {
     console.log("  honest result, not a failure of the script.");
   } else {
     console.log("\n  Confirmation on 2025:\n");
+    let confirmed = 0;
     for (const seg of advanced) {
+      const disc = bootstrapGap(discovery.filter(seg.test))!;
       const b = bootstrapGap(confirm.filter(seg.test));
       if (!b || b.n < 30) {
         console.log(`  ${seg.name.padEnd(38)} too few 2025 games (${b?.n ?? 0})`);
         continue;
       }
+      // The pre-registered rule is CI-excludes-zero AND same sign. Checking
+      // only the CI would report a sign flip as a confirmation, which is the
+      // opposite of what a replication means -- a segment that was +8pp and is
+      // now -8pp has not replicated, it has reversed.
       const excl = b.lo > 0 || b.hi < 0;
+      const sameDirection = Math.sign(b.gap) === Math.sign(disc.gap);
+      const verdict = excl && sameDirection
+        ? "CONFIRMS"
+        : excl && !sameDirection
+          ? "FAILS (sign flip)"
+          : "FAILS";
+      if (excl && sameDirection) confirmed += 1;
       console.log(
         `  ${seg.name.padEnd(38)}${String(b.n).padStart(5)}  ${pp(b.gap).padStart(12)}  ` +
-        `[${pp(b.lo)}, ${pp(b.hi)}]`.padStart(24) + `  ${excl ? "CONFIRMS" : "FAILS"}`,
+        `[${pp(b.lo)}, ${pp(b.hi)}]`.padStart(24) + `  ${verdict}`,
       );
     }
+    console.log(`\n  ${confirmed} segment(s) confirmed.`);
     const fp = 1 - Math.pow(0.95, SEGMENTS.length);
     console.log(
       `\n  Multiple comparisons: ${SEGMENTS.length} segments screened, so ` +
@@ -305,7 +325,7 @@ async function main() {
     byWeek.get(g.week)!.push(g);
   }
 
-  console.log("  wk  games  chalk  best   chalk%   flips available (p<=60%)");
+  console.log("  wk  games  chalk   max   chalk%   flips available (p<=60%)");
   let chalkTotal = 0;
   let gamesTotal = 0;
   const chalkScores: number[] = [];
@@ -355,11 +375,14 @@ async function main() {
   // -------------------------------------------------------------------------
   console.log("\n\n4. HOW OFTEN DOES CHALK ACTUALLY WIN A POOL?");
   console.log("-".repeat(78));
-  console.log("Real 2025 results. Rivals simulated as independent pickers who take");
-  console.log("the favourite with probability sigmoid(1.3 * logit(p)) -- the same");
-  console.log("stated-prior field model the page uses, and its weakest assumption.\n");
+  console.log("Real 2025 results. Rivals are a MIX: a fraction submit exact chalk");
+  console.log("(all favourites), the rest deviate independently with probability");
+  console.log("sigmoid(1.3 * logit(p)). The chalk fraction is swept because it is");
+  console.log("the assumption the whole conclusion turns on -- a field where nobody");
+  console.log("submits chalk is far more differentiated than a real pool, and that");
+  console.log("alone would make chalk look worse than it is.\n");
 
-  const SIMS = 20000;
+  const SIMS = 8000;
   let seed = 424242;
   const rnd = () => {
     seed ^= seed << 13; seed >>>= 0;
@@ -368,42 +391,125 @@ async function main() {
     return seed / 4294967296;
   };
 
-  for (const poolSize of [10, 25, 50, 200, 1000]) {
-    let chalkWins = 0;
-    let weeksCounted = 0;
-    for (const week of byWeek.keys()) {
+  for (const chalkFraction of [0, 0.25, 0.5]) {
+    console.log(`  ${(chalkFraction * 100).toFixed(0)}% of rivals submit exact chalk:`);
+    for (const poolSize of [10, 25, 50, 200, 1000]) {
+      let chalkWins = 0;
+      let weeksCounted = 0;
+      for (const week of byWeek.keys()) {
+        const set = byWeek.get(week)!.filter((g) => favWon(g) !== null);
+        if (set.length === 0) continue;
+        weeksCounted += 1;
+        const chalkScore = set.filter((g) => favWon(g) === true).length;
+        const shares = set.map((g) => {
+          const p = favProb(g);
+          const l = Math.log(p / (1 - p));
+          return 1 / (1 + Math.exp(-1.3 * l));
+        });
+        const rivals = poolSize - 1;
+        const chalkRivals = Math.round(rivals * chalkFraction);
+        const noisyRivals = rivals - chalkRivals;
+
+        let winShare = 0;
+        for (let s = 0; s < SIMS; s += 1) {
+          // Every chalk rival scores exactly what we score, so they are pure
+          // tie mass -- which is the whole reason the fraction matters.
+          let best = chalkRivals > 0 ? chalkScore : -1;
+          let ties = chalkRivals;
+          for (let k = 0; k < noisyRivals; k += 1) {
+            let score = 0;
+            for (let i = 0; i < set.length; i += 1) {
+              const tookFav = rnd() < shares[i];
+              if (tookFav === (favWon(set[i]) === true)) score += 1;
+            }
+            if (score > best) { best = score; ties = 1; }
+            else if (score === best) ties += 1;
+          }
+          if (chalkScore > best) winShare += 1;
+          else if (chalkScore === best) winShare += 1 / (1 + ties);
+        }
+        chalkWins += winShare / SIMS;
+      }
+      console.log(
+        `    Pool of ${String(poolSize).padStart(4)}: chalk won ` +
+        `${chalkWins.toFixed(2)} of ${weeksCounted} weeks ` +
+        `(${((chalkWins / weeksCounted) * 100).toFixed(1)}%)  vs ` +
+        // 1/N is the FAIR SHARE by symmetry -- what every entry would win if no
+        // entry were better than any other. It is deliberately not called "a
+        // random entry": an actually random card scores about 50% and does far
+        // worse than either. Chalk landing under 1/N means chalk is losing to
+        // the field, not merely failing to beat it.
+        `${((1 / poolSize) * 100).toFixed(1)}% fair share (1/N)`,
+      );
+    }
+    console.log("");
+  }
+
+  // -------------------------------------------------------------------------
+  console.log("\n\n5. WOULD THE PAGE'S OPTIMIZER HAVE BEATEN CHALK IN 2025?");
+  console.log("-".repeat(78));
+  console.log("Runs the real engine (pickem-strategy.ts) on every 2025 week in");
+  console.log("straight format, then scores both entries against REAL results.\n");
+  console.log("Read the two columns differently. Correct picks is a fact with no");
+  console.log("assumptions in it. Prize share is measured against the same field");
+  console.log("model the optimizer optimised against, so it is CIRCULAR by");
+  console.log("construction and can only ever flatter the optimizer -- it is");
+  console.log("reported to show the size of the claim, never as evidence for it.\n");
+
+  for (const poolSize of [25, 50, 200]) {
+    let chalkCorrect = 0;
+    let optCorrect = 0;
+    let chalkShare = 0;
+    let optShare = 0;
+    let flips = 0;
+    let weeks = 0;
+
+    for (const week of [...byWeek.keys()].sort((a, b) => a - b)) {
       const set = byWeek.get(week)!.filter((g) => favWon(g) !== null);
       if (set.length === 0) continue;
-      weeksCounted += 1;
-      const chalkScore = set.filter((g) => favWon(g) === true).length;
-      const shares = set.map((g) => {
-        const p = favProb(g);
-        const l = Math.log(p / (1 - p));
-        return 1 / (1 + Math.exp(-1.3 * l));
+      weeks += 1;
+
+      const games: PickemGame[] = set.map((g, i) => ({
+        gameId: i,
+        week,
+        homeAbbrev: "H",
+        awayAbbrev: "A",
+        pHome: g.pHome,
+        provenance: "market_ml_novig",
+        kickoff: null,
+        completed: true,
+        homeWon: g.homeWon,
+        fieldHomePct: null,
+      }));
+
+      const world = simulateWorld(games, "straight", { favoriteBias: 1.3, skillSigma: 0.35 }, {
+        sims: 2000,
+        poolEntries: poolSize,
+        sampleOpponents: 150,
+        seed: 990001 + week,
       });
-      let winShare = 0;
-      for (let s = 0; s < SIMS; s += 1) {
-        let best = -1;
-        let ties = 0;
-        for (let k = 0; k < poolSize - 1; k += 1) {
-          let score = 0;
-          for (let i = 0; i < set.length; i += 1) {
-            const tookFav = rnd() < shares[i];
-            if (tookFav === (favWon(set[i]) === true)) score += 1;
-          }
-          if (score > best) { best = score; ties = 1; }
-          else if (score === best) ties += 1;
-        }
-        if (chalkScore > best) winShare += 1;
-        else if (chalkScore === best) winShare += 1 / (1 + ties);
+      const plan = optimizeEntry(games, "straight", world, { maxDeviations: 4 });
+      const chalk = evOptimalEntry(games, "straight");
+
+      for (let i = 0; i < games.length; i += 1) {
+        const homeWon = games[i].homeWon === true;
+        if (chalk.pickHome[i] === homeWon) chalkCorrect += 1;
+        if (plan.recommended.pickHome[i] === homeWon) optCorrect += 1;
+        if (chalk.pickHome[i] !== plan.recommended.pickHome[i]) flips += 1;
       }
-      chalkWins += winShare / SIMS;
+      chalkShare += plan.baselineEval.prizeShare;
+      optShare += plan.recommendedEval.prizeShare;
     }
+
     console.log(
-      `  Pool of ${String(poolSize).padStart(4)}: the all-favourites entry won ` +
-      `${chalkWins.toFixed(2)} of ${weeksCounted} weeks ` +
-      `(${((chalkWins / weeksCounted) * 100).toFixed(1)}%), vs ` +
-      `${((1 / poolSize) * 100).toFixed(1)}% for a random entry.`,
+      `  Pool of ${String(poolSize).padStart(3)}: ` +
+      `chalk ${chalkCorrect}/${gamesTotal} correct, optimizer ${optCorrect}/${gamesTotal} ` +
+      `(${optCorrect - chalkCorrect >= 0 ? "+" : ""}${optCorrect - chalkCorrect}), ` +
+      `${flips} flips over ${weeks} weeks`,
+    );
+    console.log(
+      `              modelled prize share ${(chalkShare / weeks * 100).toFixed(2)}% -> ` +
+      `${(optShare / weeks * 100).toFixed(2)}% per week (CIRCULAR -- see above)`,
     );
   }
 
