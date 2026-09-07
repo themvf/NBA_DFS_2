@@ -85,7 +85,7 @@ function normCdf(z: number): number {
 function fitLogistic(X: number[][], y: number[], ridge = 1e-4): number[] {
   const n = X.length;
   const k = X[0].length;
-  let w = new Array<number>(k).fill(0);
+  const w = new Array<number>(k).fill(0);
   for (let iter = 0; iter < 60; iter += 1) {
     const g = new Array<number>(k).fill(0);
     const H: number[][] = Array.from({ length: k }, () => new Array<number>(k).fill(0));
@@ -131,7 +131,7 @@ function solve(A: number[][], b: number[]): number[] | null {
       for (let j = c; j <= k; j += 1) M[r][j] -= f * M[c][j];
     }
   }
-  return M.map((row, i) => row[k] / row[i][i]);
+  return M.map((row, i) => row[k] / M[i][i]);
 }
 
 function logLoss(w: number[], X: number[][], y: number[]): number[] {
@@ -353,21 +353,54 @@ async function main() {
     if (dogWon) cheapWins += 1;
     cheapCost += 2 * Math.max(target.pHomeMl, 1 - target.pHomeMl) - 1;
   }
+  // Expected dog wins over those same games = sum(1 - p_fav) = n/2 - cost/2.
+  const expectedDogWins = cheapCount / 2 - cheapCost / 2;
   console.log(
-    `  Taking the single weakest favourite's dog every week in 2025: ` +
-    `${cheapWins}/${cheapCount} hit.`,
+    `  Strategy: every week, flip the ONE game with the weakest favourite.\n`,
+  );
+  console.log(`    Realised   : ${cheapWins} of ${cheapCount} flips hit`);
+  console.log(`    Expected   : ${expectedDogWins.toFixed(1)} (from the frozen closing prices)`);
+  console.log(
+    `    EV cost    : ${(cheapCost / cheapCount).toFixed(3)} wins per week, ` +
+    `${cheapCost.toFixed(1)} across the season`,
   );
   console.log(
-    `  Expected cost of that flip: ${(cheapCost / cheapCount).toFixed(3)} wins per week ` +
-    `(${cheapCost.toFixed(1)} over the season).`,
+    `\n  ${cheapWins} vs ${expectedDogWins.toFixed(1)} is noise at n=18, not an edge — ` +
+    `the point is the cost line.`,
   );
   console.log(
-    `  Realised: ${cheapWins} wins vs ${(cheapCount - cheapCost / 2 - cheapCount / 2).toFixed(1)} ` +
-    `expected from those same games as favourites.`,
+    `  One flip a week cost about ${cheapCost.toFixed(0)} win${Math.round(cheapCost) === 1 ? "" : "s"} ` +
+    `across a whole season. That is the price of not being identical.`,
   );
-  console.log("\n  The lesson is not that this beats the market — it does not.");
-  console.log("  It is that this is the CHEAPEST way to stop being identical to");
-  console.log("  everyone else, which is the thing that was actually costing you.");
+
+  console.log("\n  The tradeoff, if you want a second dog (2025 averages):\n");
+  console.log("    dog by spread     n    dog win %   flip costs   field on fav*");
+  for (const [lo, hi, lab] of [
+    [0, 2.5, "pk to 2"],
+    [2.5, 4.5, "2.5 to 4"],
+    [4.5, 7.5, "4.5 to 7"],
+    [7.5, 99, "7.5+"],
+  ] as Array<[number, number, string]>) {
+    const cell = conf.filter((g) => Math.abs(g.spread) >= lo && Math.abs(g.spread) < hi);
+    if (cell.length === 0) continue;
+    const pFav = cell.reduce((a, g) => a + Math.max(g.pHomeMl, 1 - g.pHomeMl), 0) / cell.length;
+    // Field share on the favourite under the page's stated-prior field model.
+    const share = sigmoid(1.3 * logit(pFav));
+    console.log(
+      `    ${lab.padEnd(14)}${String(cell.length).padStart(4)}` +
+      `${((1 - pFav) * 100).toFixed(1).padStart(11)}%` +
+      `${(2 * pFav - 1).toFixed(3).padStart(13)}` +
+      `${(share * 100).toFixed(0).padStart(14)}%`,
+    );
+  }
+  console.log("\n    * modelled, not observed — this repo has no pick-share feed.");
+  console.log("      It is the one number here that is an assumption.");
+  console.log("\n  Bigger dogs separate you from more of the field but cost far more.");
+  console.log("  The cheap band buys most of the separation for a fraction of the");
+  console.log("  price, which is why the optimizer keeps landing there.");
+  console.log("\n  The lesson is not that any of this beats the market — it does not.");
+  console.log("  It is that flipping is the cheapest way to stop being identical to");
+  console.log("  everyone else, which is what was actually costing you.");
 
   console.log("\n" + "=".repeat(78));
 }
