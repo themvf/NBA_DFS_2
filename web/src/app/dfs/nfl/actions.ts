@@ -12,6 +12,7 @@ import {
   nflDfsSlatePlayers,
   nflDfsSlateUploads,
 } from "@/db/schema";
+import { matchNflIdentity } from "@/lib/nfl-dfs/identity";
 import { parseNflDkSalaryCsv } from "@/lib/nfl-dfs/dk-salary-csv";
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
 import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
@@ -247,15 +248,7 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
   const projectionRows = run
     ? await db.select().from(nflDfsPlayerProjections).where(eq(nflDfsPlayerProjections.runId, run.runId))
     : [];
-  const byIdentity = new Map<string, typeof projectionRows>();
-  for (const projection of projectionRows) {
-    const keys = [
-      `${projection.normalizedName}|${projection.position}|${projection.team ?? ""}`,
-      `${projection.normalizedName}|${projection.position}|`,
-      projection.position === "DST" ? `dst|DST|${projection.team ?? ""}` : "",
-    ].filter(Boolean);
-    for (const key of keys) byIdentity.set(key, [...(byIdentity.get(key) ?? []), projection]);
-  }
+  const identityCandidates = projectionRows.map(row => ({...row, name: row.playerName, gsisId: row.playerGsisId}));
   const signature = sha256(`${slate.format}|${slate.games.join("|")}`);
   const existing = await db.select({ uploadId: nflDfsSlateUploads.uploadId })
     .from(nflDfsSlateUploads)
@@ -278,17 +271,9 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
   }
   for (const player of slate.players) {
     const normalized = normalizeName(player.name);
-    const teamKey = `${normalized}|${player.position}|${player.teamAbbrev}`;
-    const broadKey = `${normalized}|${player.position}|`;
-    const dstKey = `dst|DST|${player.teamAbbrev}`;
-    let matches = byIdentity.get(player.position === "DST" ? dstKey : teamKey) ?? [];
-    let identityMethod = player.position === "DST" ? "exact_name_position_team" : "exact_name_position_team";
-    if (matches.length !== 1 && player.position !== "DST") {
-      matches = byIdentity.get(broadKey) ?? [];
-      identityMethod = "exact_name_position";
-    }
-    const projection = matches.length === 1 ? matches[0] : null;
-    if (!projection) identityMethod = matches.length > 1 ? "ambiguous" : "unmatched";
+    const decision = matchNflIdentity({name: player.name, position: player.position, team: player.teamAbbrev}, identityCandidates);
+    const projection = decision.match;
+    const identityMethod = decision.method;
     const values = {
       uploadId,
       dkPlayerId: player.dkPlayerId,
@@ -417,6 +402,9 @@ export async function compareNflWorkload(uploadId:string, settings:NflOptimizerS
 }
 
 async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizerSettings) {
+  if (slate.players.some(p=>p.identityMethod==='exact_name_position')) {
+    throw new Error('This salary upload contains legacy player matches without team verification. Reload its salary CSV before optimizing.');
+  }
   const uploadId=slate.uploadId;
   const now=Date.now();
   validateSituations(settings.situations,slate.teams);
@@ -429,7 +417,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   if(settings.projectionSource==='workload'&&result.lineups.some(l=>l.slots.some(s=>!workloadPoolEligible(slate.players.find(p=>p.dkPlayerId===s.player.dkPlayerId)!,Date.now()))))throw new Error('Roster or kickoff evidence expired during optimization. Refresh the slate.');
   const runId = randomUUID();
   const inputSnapshot = slate.players.map((player) => ({
-    dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
+    dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, identityMethod: player.identityMethod, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
     id:player.id,captainDkPlayerId:player.captainDkPlayerId,opponent:player.opponent,gameKey:player.gameKey,boomRate:player.boomRate,projectionStatus:player.projectionStatus,
     salary: player.salary, captainSalary: player.captainSalary, status: player.dkStatus,
     ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,

@@ -91,3 +91,42 @@ Two consecutive runs produced the same digest, and two persistence attempts left
 one database report containing both cases. Nineteen focused scoring, solver and
 historical-model tests passed. The generated report was rendered and checked at
 1500px and 390px widths with no horizontal overflow.
+
+## Identity correction, v2
+
+The follow-up report `750ce4efa7865417ec38798456a64117ffd8670def7272eeeb52669a0bf877f9`
+is saved separately in Neon. It reconciles 28/53 Showdown and 249/504 Classic
+players. Explicit FB→RB aliases recover Kyle Juszczyk (5.0), Andrew Beck (7.1),
+Alec Ingold (0.0), and Adam Prentice (0.8). A unique same-game/team/name WR→RB
+reclassification recovers Velus Jones Jr. (0.0). Those zeros come from actual
+stat rows, not from treating a missing row as zero. Both hindsight optima remain
+unchanged. The initial report above is retained as historical evidence.
+
+Historical RB/WR/TE reclassifications can share realized DK scoring; the live
+projection matcher deliberately does not transfer a position-specific model
+across those roles. It only accepts explicit position aliases.
+
+### Upcoming-season salary matching
+
+`web/src/lib/nfl-dfs/identity.ts` centralizes the salary-import policy. It normalizes
+accents, suffixes, team aliases and explicit position aliases. A supplied GSIS ID
+must resolve uniquely and pass team/position checks; a conflicting ID never falls
+back to name. The actual DK CSV import uses unique name/team/position because its
+roster-entry IDs are not a verified permanent-ID crosswalk. It does not pretend
+those IDs are GSIS IDs or the archive's separate DK player-ID namespace.
+
+The old cross-team name/position fallback is removed. A transferred player needs
+a projection for the correct team; otherwise the import stores `team_conflict`
+and no linked projection. Duplicate candidates, position conflicts, missing teams
+and missing identities remain explicit. New rookies without a matching projection
+remain unmatched; the matcher does not invent history or a veteran counterpart.
+
+Each player row displays its matching explanation. Saved optimizer snapshots
+retain `identityMethod`. Old uploads using the unverified name/position fallback
+must be reloaded before generating more lineups. Existing saved runs are preserved.
+
+Checks: seven Python pilot tests, ten TypeScript identity assertions, existing NFL
+CSV/workspace suites and TypeScript compilation passed. This release does not
+complete a provider-wide permanent-ID crosswalk or resolve missing participation
+records; it fixes the demonstrated historical mismatches and the live import's
+unsafe team fallback.

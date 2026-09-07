@@ -15,6 +15,32 @@ K_FIELDS = ('pat_made', 'fg_made_0_19', 'fg_made_20_29', 'fg_made_30_39',
             'fg_made_40_49', 'fg_made_50_59', 'fg_made_60_')
 
 
+def scoring_position(value):
+    """Provider position aliases; does not change DK roster-slot eligibility."""
+    value = (value or '').strip().upper()
+    return {'FB': 'RB', 'HB': 'RB', 'PK': 'K', 'DEF': 'DST', 'D/ST': 'DST'}.get(value, value)
+
+
+def match_game_result(entry, rows):
+    """Resolve physical identity within one game. No fuzzy or cross-team match.
+
+    RB/WR/TE reclassifications share realized scoring, but this fallback must
+    never be used to attach a position-specific live projection.
+    """
+    same = [r for r in rows if r['game_id'] == entry['game_id']
+            and team_key(r['team']) == team_key(entry['team_nflverse'])
+            and normalized_name(r['player_name']) == normalized_name(entry['player_name'])]
+    if len(same) != 1:
+        return None, 'ambiguous' if same else 'unmatched'
+    row = same[0]
+    source, target = scoring_position(row['position']), scoring_position(entry['position'])
+    if source == target:
+        return row, 'exact_name_game_team_position' if row['position'] == entry['position'] else 'position_alias'
+    if source in {'RB','WR','TE'} and target in {'RB','WR','TE'}:
+        return row, 'same_scoring_skill_position_reclassification'
+    return None, 'position_conflict'
+
+
 def normalized_name(name):
     value = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode().lower()
     words = re.sub(r'[^a-z0-9 ]', '', value).split()
@@ -28,6 +54,7 @@ def team_key(team):
 
 
 def checked_points(position, stats):
+    position = scoring_position(position)
     fields = K_FIELDS if position == 'K' else OFFENSE_FIELDS
     if position not in ('QB', 'RB', 'WR', 'TE', 'K'):
         raise ValueError('DST requires the component-backed results ledger')

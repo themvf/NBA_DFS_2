@@ -1,6 +1,6 @@
 import pytest
 
-from model.nfl_archive_case_study import checked_points, normalized_name, solve_lineup
+from model.nfl_archive_case_study import checked_points, normalized_name, solve_lineup, match_game_result
 from model.nfl_dfs_historical import OFFENSE_FIELDS, HistoricalWeek, project_player
 
 
@@ -69,3 +69,14 @@ def test_target_week_outcomes_cannot_change_projection():
 def test_suffix_and_accents_normalize_without_fuzzy_matching():
     assert normalized_name('Brian Robinson Jr.')==normalized_name('Brian Robinson')
     assert normalized_name('Eddy Piñeiro')==normalized_name('Eddy Pineiro')
+
+
+def test_result_identity_alias_and_skill_reclassification_with_game_guard():
+    entry=dict(player_name='Kyle Juszczyk',position='RB',team_nflverse='SF',game_id='one')
+    row=dict(player_name='Kyle Juszczyk',position='FB',team='SF',game_id='one')
+    assert match_game_result(entry,[row])==(row,'position_alias')
+    row['position']='WR'
+    assert match_game_result(entry,[row])[1]=='same_scoring_skill_position_reclassification'
+    assert match_game_result(entry,[row,row])[1]=='ambiguous'
+    assert match_game_result(dict(entry,game_id='two'),[row])[0] is None
+    assert match_game_result(dict(entry,team_nflverse='LA'),[row])[0] is None

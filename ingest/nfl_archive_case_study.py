@@ -18,11 +18,11 @@ import numpy as np
 from psycopg2.extras import RealDictCursor, Json
 
 from config import load_config
-from model.nfl_archive_case_study import checked_points, normalized_name, solve_lineup, team_key
+from model.nfl_archive_case_study import checked_points, normalized_name, solve_lineup, team_key, scoring_position, match_game_result
 from model.nfl_dfs_historical import HistoricalWeek, artifact_digest, project_player
 
 SLATES = (134423, 134675)
-VERSION = 'nfl-archive-pilot-v1'
+VERSION = 'nfl-archive-pilot-v2-identity'
 
 
 def identity_id(value):
@@ -38,13 +38,10 @@ def query(conn, sql, params=()):
 def run(conn):
     raw = query(conn, "SELECT * FROM nfl_dk_archive_player_stats WHERE game_id LIKE '2025_%%' ORDER BY game_id,gsis_id")
     identities = defaultdict(set)
-    actual = defaultdict(list)
     history = []
     for row in raw:
-        pos, stats = row['position'], row['stats']
+        pos, stats = scoring_position(row['position']), row['stats']
         identities[(normalized_name(row['player_name']), pos)].add(row['gsis_id'])
-        actual[(row['game_id'], team_key(row['team']), pos,
-                normalized_name(row['player_name']))].append(row)
         if pos not in ('QB', 'RB', 'WR', 'TE', 'K') or int(stats['week']) >= 5:
             continue
         checked_points(pos, stats)
@@ -82,15 +79,16 @@ def run(conn):
                             'actual_status': 'reconstructed_dk', 'source_digest': source['input_digest'],
                             'scoring_version': source['scoring_version'], 'components': source['scoring_evidence']}
                 else:
-                    matches = actual[(entry['game_id'], team, pos, normalized_name(entry['player_name']))]
+                    matched_source, match_method = match_game_result(entry, raw)
                     ids = identities[(normalized_name(entry['player_name']), pos)]
                     gsis = next(iter(ids)) if len(ids) == 1 else None
-                    if len(matches) == 1:
-                        source = matches[0]
+                    if matched_source:
+                        source = matched_source
                         gsis = source['gsis_id']
                         try:
                             points = checked_points(pos, source['stats'])
-                            evidence = {'identity_method': 'unique normalized name + game + team + position',
+                            evidence = {'identity_method': match_method,
+                                'source_position': source['position'], 'dk_position': pos,
                                 'matched_name': source['player_name'], 'gsis_id': gsis,
                                 'actual_status': 'reconstructed_dk', 'source_sha256': source['source_sha256'],
                                 'stats': source['stats']}

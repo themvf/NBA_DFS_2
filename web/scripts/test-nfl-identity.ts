@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {matchNflIdentity} from '../src/lib/nfl-dfs/identity';
+const candidate={name:'Brian Robinson',position:'RB',team:'WAS',gsisId:'gsis-1'};
+assert.equal(matchNflIdentity({name:'Brian Robinson Jr.',position:'RB',team:'WSH'},[candidate]).match,candidate);
+assert.equal(matchNflIdentity({name:'Brian Robinson',position:'RB',team:'SF'},[candidate]).method,'team_conflict');
+assert.equal(matchNflIdentity({name:'Brian Robinson',position:'RB',team:'WSH'},[candidate,candidate]).method,'ambiguous');
+assert.equal(matchNflIdentity({name:'Different provider name',position:'RB',team:'WSH',gsisId:'gsis-1'},[candidate]).method,'gsis_id');
+assert.equal(matchNflIdentity({...candidate,gsisId:'wrong'},[candidate]).method,'identifier_conflict');
+assert.equal(matchNflIdentity({...candidate,position:'FB'},[candidate]).match,candidate);
+assert.equal(matchNflIdentity({...candidate,position:'WR'},[candidate]).method,'position_conflict');
+assert.equal(matchNflIdentity({...candidate,team:null},[candidate]).method,'missing_team');
+assert.equal(matchNflIdentity({name:'Rams',position:'DST',team:'LAR'},[{name:'Los Angeles Rams',position:'DEF',team:'LA'}]).method,'team_position_dst');
+assert.equal(matchNflIdentity({name:'New Rookie',position:'WR',team:'NYG'},[candidate]).method,'unmatched');
+console.log('10 NFL identity checks passed');
