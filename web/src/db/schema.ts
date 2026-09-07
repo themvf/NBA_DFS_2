@@ -874,6 +874,7 @@ export const nflDfsSlatePlayers = pgTable(
     dkStatus: text("dk_status"),
     isOut: boolean("is_out").notNull().default(false),
     identityMethod: text("identity_method").notNull(),
+    identityEvidence: jsonb("identity_evidence").notNull().default({}),
     projectionStatus: text("projection_status").notNull(),
     ourProj: doublePrecision("our_proj"),
     floorFpts: doublePrecision("floor_fpts"),

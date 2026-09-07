@@ -12,7 +12,8 @@ import {
   nflDfsSlatePlayers,
   nflDfsSlateUploads,
 } from "@/db/schema";
-import { matchNflIdentity } from "@/lib/nfl-dfs/identity";
+import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdentities } from "@/lib/nfl-dfs/identity";
+import { getNflIdentityRoster } from "@/db/nfl-identity";
 import { parseNflDkSalaryCsv } from "@/lib/nfl-dfs/dk-salary-csv";
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
 import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
@@ -41,6 +42,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   ffPlayerId: number | null;
   workloadEligible?: boolean;
   identityMethod: string;
+  identityEvidence?: unknown;
   modelConfidence: number | null;
   historyGames: number | null;
   dkStatus: string | null;
@@ -215,6 +217,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       availability: availability(row),
       workloadEligible:workloadPoolEligible({...row,availability:availability(row)},now),
       identityMethod: row.identityMethod,
+      identityEvidence: row.identityEvidence,
       projectionStatus: row.projectionStatus,
       ourProj: numeric(row.ourProj),
       floorFpts: numeric(row.floorFpts),
@@ -249,6 +252,16 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
     ? await db.select().from(nflDfsPlayerProjections).where(eq(nflDfsPlayerProjections.runId, run.runId))
     : [];
   const identityCandidates = projectionRows.map(row => ({...row, name: row.playerName, gsisId: row.playerGsisId}));
+  const identityRoster = run ? await getNflIdentityRoster(run.season) : {available:false,candidates:[]};
+  const identityDecisions = slate.players.map(player=>{
+    const incoming={name:player.name,position:player.position,team:player.teamAbbrev};
+    const permanent=identityRoster.available&&player.position!=='DST'?resolveNflRosterIdentity(incoming,identityRoster.candidates):null;
+    const decision=permanent&&!permanent.gsisId?{match:null,method:permanent.method}
+      :matchNflIdentity({...incoming,gsisId:permanent?.gsisId},identityCandidates);
+    return {decision,permanent};
+  });
+  assertUniqueNflSalaryIdentities(identityDecisions.map(({decision},i)=>({name:slate.players[i].name,
+    gsisId:decision.match?.gsisId,localPlayerId:decision.match?.playerId})));
   const signature = sha256(`${slate.format}|${slate.games.join("|")}`);
   const existing = await db.select({ uploadId: nflDfsSlateUploads.uploadId })
     .from(nflDfsSlateUploads)
@@ -269,9 +282,9 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
       projectionRunId: run?.runId ?? null,
     });
   }
-  for (const player of slate.players) {
+  for (const [playerIndex,player] of slate.players.entries()) {
     const normalized = normalizeName(player.name);
-    const decision = matchNflIdentity({name: player.name, position: player.position, team: player.teamAbbrev}, identityCandidates);
+    const {decision,permanent}=identityDecisions[playerIndex];
     const projection = decision.match;
     const identityMethod = decision.method;
     const values = {
@@ -293,6 +306,12 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
       dkStatus: player.status,
       isOut: player.isOut,
       identityMethod,
+      identityEvidence: {version:'nfl-identity-registry-v1', method:identityMethod, gsisId:permanent?.gsisId ?? null,
+        projectionRunId:run?.runId ?? null, projectionRowId:projection?.id ?? null,
+        registryAvailable:identityRoster.available,
+        roster:identityRoster.candidates.filter(p=>Boolean(permanent?.gsisId&&p.gsisId===permanent.gsisId)
+          || [p.name,...p.aliases].some(name=>normalizeName(name)===normalized)),
+        salaryEntry:{name:player.name,team:player.teamAbbrev,position:player.position,dkRosterEntryId:player.dkPlayerId}},
       projectionStatus: projection?.projectionStatus ?? "unmatched",
       ourProj: projection?.modelProjFpts ?? null,
       floorFpts: projection?.floorFpts ?? null,
@@ -322,6 +341,7 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
         dkStatus: values.dkStatus,
         isOut: values.isOut,
         identityMethod: values.identityMethod,
+        identityEvidence: values.identityEvidence,
         projectionStatus: values.projectionStatus,
         ourProj: values.ourProj,
         floorFpts: values.floorFpts,
@@ -417,7 +437,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   if(settings.projectionSource==='workload'&&result.lineups.some(l=>l.slots.some(s=>!workloadPoolEligible(slate.players.find(p=>p.dkPlayerId===s.player.dkPlayerId)!,Date.now()))))throw new Error('Roster or kickoff evidence expired during optimization. Refresh the slate.');
   const runId = randomUUID();
   const inputSnapshot = slate.players.map((player) => ({
-    dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, identityMethod: player.identityMethod, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
+    dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, identityMethod: player.identityMethod, identityEvidence:player.identityEvidence, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
     id:player.id,captainDkPlayerId:player.captainDkPlayerId,opponent:player.opponent,gameKey:player.gameKey,boomRate:player.boomRate,projectionStatus:player.projectionStatus,
     salary: player.salary, captainSalary: player.captainSalary, status: player.dkStatus,
     ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,

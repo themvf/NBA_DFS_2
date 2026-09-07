@@ -2,6 +2,8 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { RosterEvidence } from "@/lib/nfl-dfs/availability";
+import {getNflIdentityRoster} from '@/db/nfl-identity';
+import {nflIdentityLocalLinks} from '@/lib/nfl-dfs/identity';
 
 export type InjuryCoverage = { snapshotId: string; capturedAt: string; counts: Record<string,number>; limited: boolean | null;
   unresolved: {name: string; team: string; position: string; category: string}[] };
@@ -28,6 +30,8 @@ export async function getNflRosterEvidence(season: number, week?: number | null)
   const roster = new Map<number, RosterEvidence>(result.rows.map(r => [Number(r.id), { team: String(r.team_abbrev ?? ""), position: String(r.position), fetchedAt: new Date(r.fetched_at as string).toISOString(), sleeper: r.sleeper }]));
   if (!week) return roster;
   try {
+    const identityRoster=await getNflIdentityRoster(season);
+    const identityLinks=nflIdentityLocalLinks(identityRoster.candidates);
     const observations = await db.execute(sql`SELECT DISTINCT ON (o.player_id, o.source)
       o.id, o.player_id, o.source, CASE WHEN o.source='nfl_official' THEN o.raw_payload->>'status' WHEN NULLIF(TRIM(o.source_status),'') IS NULL THEN 'UNKNOWN' ELSE o.normalized_status END normalized_status, o.practice_status, o.observed_at,
       o.provider_updated_at, o.response_hash,
@@ -40,11 +44,14 @@ export async function getNflRosterEvidence(season: number, week?: number | null)
         AND s.request_params->>'week'=${String(week)} AND o.observed_at<=NOW()
       ORDER BY o.player_id, o.source, o.observed_at DESC, o.id DESC`);
     for (const row of observations.rows) {
-      const player = roster.get(Number(row.player_id));
+      for(const localId of identityLinks.get(Number(row.player_id))??[Number(row.player_id)]) {
+      const player = roster.get(localId);
       if (player) player.injuries = [...(player.injuries ?? []), {id: String(row.id), source: String(row.source), status: String(row.normalized_status),
+        identityBridge:localId===Number(row.player_id)?undefined:{sourceLocalId:Number(row.player_id),targetLocalId:localId,method:'resolved_gsis_same_team_position'},
         practice: row.practice_status ? String(row.practice_status) : [1,2,3].filter(i => row[`practice_${i}`] != null).map(i => `Report ${i}: ${row[`practice_${i}`]}`).join('; ') || null, team: String(row.team), week,
         observedAt: new Date(row.observed_at as string).toISOString(), updatedAt: row.provider_updated_at ? new Date(row.provider_updated_at as string).toISOString() : null,
         hash: String(row.response_hash), unverifiedUpdate: row.unverified_update ? String(row.unverified_update) : undefined, reportType: row.report_type ? String(row.report_type) : undefined, kickoff: row.kickoff ? String(row.kickoff) : undefined, url: row.url ? String(row.url) : undefined}];
+      }
     }
   } catch { for (const player of roster.values()) player.injuryReadFailed = true; }
   const games = await db.execute(sql`SELECT g.kickoff, h.abbreviation home, a.abbreviation away

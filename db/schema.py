@@ -2477,6 +2477,7 @@ TABLES = [
         dk_status TEXT,
         is_out BOOLEAN NOT NULL DEFAULT FALSE,
         identity_method TEXT NOT NULL,
+        identity_evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
         projection_status TEXT NOT NULL,
         our_proj DOUBLE PRECISION,
         floor_fpts DOUBLE PRECISION,
@@ -2494,7 +2495,7 @@ TABLES = [
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(upload_id, dk_player_id),
         CHECK(position IN ('QB','RB','WR','TE','K','DST')),
-        CHECK(identity_method IN ('gsis_id','exact_name_position_team','exact_name_position','unmatched','ambiguous')),
+        CHECK(identity_method IN ('gsis_id','exact_name_position_team','exact_name_position','unmatched','ambiguous','team_position_dst','team_conflict','position_conflict','missing_team','identifier_conflict')),
         CHECK(projection_status IN ('historical','position_prior','unavailable','unmatched'))
     )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_optimizer_runs (

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {matchNflIdentity} from '../src/lib/nfl-dfs/identity';
+import {matchNflIdentity,resolveNflRosterIdentity,nflIdentityLocalLinks,assertUniqueNflSalaryIdentities,type NflRosterIdentity} from '../src/lib/nfl-dfs/identity';
 const candidate={name:'Brian Robinson',position:'RB',team:'WAS',gsisId:'gsis-1'};
 assert.equal(matchNflIdentity({name:'Brian Robinson Jr.',position:'RB',team:'WSH'},[candidate]).match,candidate);
 assert.equal(matchNflIdentity({name:'Brian Robinson',position:'RB',team:'SF'},[candidate]).method,'team_conflict');
@@ -12,3 +12,20 @@ assert.equal(matchNflIdentity({...candidate,team:null},[candidate]).method,'miss
 assert.equal(matchNflIdentity({name:'Rams',position:'DST',team:'LAR'},[{name:'Los Angeles Rams',position:'DEF',team:'LA'}]).method,'team_position_dst');
 assert.equal(matchNflIdentity({name:'New Rookie',position:'WR',team:'NYG'},[candidate]).method,'unmatched');
 console.log('10 NFL identity checks passed');
+const roster:NflRosterIdentity={name:'Andrew Ogletree',aliases:['Drew Ogletree'],team:'IND',position:'TE',gsisId:'00-0037292',registryStatus:'resolved'};
+assert.equal(resolveNflRosterIdentity({name:'Drew Ogletree',team:'IND',position:'TE'},[roster]).gsisId,'00-0037292');
+assert.equal(resolveNflRosterIdentity({name:'Drew Ogletree',team:'NYJ',position:'TE'},[roster]).method,'team_conflict');
+assert.equal(resolveNflRosterIdentity({name:'Drew Ogletree',team:'IND',position:'TE'},[{...roster,registryStatus:'conflict'}]).method,'identifier_conflict');
+assert.equal(resolveNflRosterIdentity({name:'Drew Ogletree',team:'IND',position:'TE'},[roster,{...roster,gsisId:'00-0037293'}]).method,'ambiguous');
+assert.equal(resolveNflRosterIdentity({name:'New Rookie',team:'IND',position:'TE'},[roster]).method,'unmatched');
+assert.equal(resolveNflRosterIdentity({name:'Andrew Ogletree',team:'IND',position:'WR'},[roster]).method,'position_conflict');
+console.log('6 permanent roster identity checks passed');
+const links=nflIdentityLocalLinks([{...roster,localPlayerId:1},{...roster,localPlayerId:2},{...roster,localPlayerId:3,team:'NYJ'},
+  {...roster,localPlayerId:4,registryStatus:'conflict'}]);
+assert.deepEqual(links.get(1),[1,2]);
+assert.deepEqual(links.get(3),[3]);
+assert.equal(links.has(4),false);
+console.log('3 injury identity bridge checks passed');
+assert.throws(()=>assertUniqueNflSalaryIdentities([{name:'Drew',gsisId:'00-0037292'},{name:'Andrew',gsisId:'00-0037292'}]),/same player/);
+assert.doesNotThrow(()=>assertUniqueNflSalaryIdentities([{name:'A',gsisId:'00-0037292'},{name:'B',gsisId:'00-0037293'}]));
+console.log('2 duplicate salary identity checks passed');

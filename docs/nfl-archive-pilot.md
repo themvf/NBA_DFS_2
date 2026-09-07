@@ -1,5 +1,10 @@
 # 2025 archive pilot: one Showdown and one Classic
 
+**Update:** Both pools are now fully reconciled (53/53 and 504/504).
+See [the permanent identity registry and participation reconciliation](nfl-player-identity-registry.md)
+for the current results, source evidence and queries. The initial passes below
+are preserved to explain what changed.
+
 Run the first two case studies with:
 
 ```powershell
