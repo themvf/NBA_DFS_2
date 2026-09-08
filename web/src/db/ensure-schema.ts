@@ -17,6 +17,7 @@ let ensureOddsApiPropFetchLogPromise: Promise<void> | null = null;
 let ensureMlbGamePredictionTablesPromise: Promise<void> | null = null;
 let ensureFantasyFootballTablesPromise: Promise<void> | null = null;
 let ensureSurvivorTablesPromise: Promise<void> | null = null;
+let ensurePickemTablesPromise: Promise<void> | null = null;
 let ensureNflDfsTablesPromise: Promise<void> | null = null;
 
 const FANTASY_FOOTBALL_DDLS = [
@@ -1048,6 +1049,134 @@ export async function ensureSurvivorTables(): Promise<void> {
     });
   }
   await ensureSurvivorTablesPromise;
+}
+
+/**
+ * Pick'em / confidence pool ledger.
+ *
+ * Owned entirely by the web app -- unlike the survivor tables, no Python job
+ * writes here, and settlement is a server action rather than a scheduled
+ * script. That is a deliberate scope choice: settlement is a pure function of
+ * nfl_season_games scores, so inventing a Python entrypoint nobody schedules
+ * would add a moving part without adding a guarantee.
+ *
+ * The structural decision worth calling out is that a recommendation freezes
+ * BOTH entries -- the provably-optimal max-points baseline and whatever was
+ * actually recommended. Without the counterfactual frozen at the same instant,
+ * "was deviating worth it" can only be answered by rebuilding the baseline
+ * after the results are known, from a model that may since have changed.
+ */
+const PICKEM_DDLS = [
+  `CREATE TABLE IF NOT EXISTS pickem_pools (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      season INTEGER NOT NULL,
+      format TEXT NOT NULL DEFAULT 'confidence',
+      pool_entries INTEGER NOT NULL DEFAULT 50,
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (format IN ('confidence', 'straight')),
+      CHECK (pool_entries >= 1)
+  )`,
+  // Append-only. A changed recommendation for the same pool-week inserts a new
+  // row and marks the old one superseded; nothing is ever rewritten, because
+  // the question this table has to answer later is "what did it say, and when".
+  `CREATE TABLE IF NOT EXISTS pickem_recommendations (
+      id SERIAL PRIMARY KEY,
+      pool_id INTEGER REFERENCES pickem_pools(id) ON DELETE CASCADE,
+      season INTEGER NOT NULL,
+      week INTEGER NOT NULL,
+      format TEXT NOT NULL,
+      objective TEXT NOT NULL,
+      pool_entries INTEGER NOT NULL,
+      sims INTEGER NOT NULL,
+      model_version TEXT NOT NULL,
+      baseline_expected_points DOUBLE PRECISION,
+      recommended_expected_points DOUBLE PRECISION,
+      baseline_prize_share DOUBLE PRECISION,
+      recommended_prize_share DOUBLE PRECISION,
+      field_model_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      deviations_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      -- First kickoff of the week. A card frozen after this is hindsight.
+      locks_at TIMESTAMPTZ,
+      frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      -- SET NULL, not the default RESTRICT: if the row that superseded this
+      -- one is removed, this one is live again. Without it, deleting a
+      -- superseding row fails against its own foreign key.
+      superseded_by INTEGER REFERENCES pickem_recommendations(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      games_total INTEGER NOT NULL DEFAULT 0,
+      games_graded INTEGER NOT NULL DEFAULT 0,
+      baseline_actual_points DOUBLE PRECISION,
+      recommended_actual_points DOUBLE PRECISION,
+      baseline_correct INTEGER,
+      recommended_correct INTEGER,
+      max_possible_points DOUBLE PRECISION,
+      brier DOUBLE PRECISION,
+      coinflip_brier DOUBLE PRECISION,
+      settled_at TIMESTAMPTZ,
+      -- Reported by hand: we cannot see your pool's field, so this is never
+      -- inferred and an absent value stays absent rather than becoming a loss.
+      finish_rank INTEGER,
+      pool_winning_score DOUBLE PRECISION,
+      won_pool BOOLEAN,
+      CHECK (objective IN ('ev', 'win')),
+      CHECK (format IN ('confidence', 'straight')),
+      CHECK (status IN ('pending', 'settled', 'void'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS pickem_recommendation_games (
+      id SERIAL PRIMARY KEY,
+      recommendation_id INTEGER NOT NULL REFERENCES pickem_recommendations(id) ON DELETE CASCADE,
+      game_id INTEGER NOT NULL,
+      home_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+      away_team_id INTEGER NOT NULL REFERENCES nfl_teams(team_id),
+      p_home DOUBLE PRECISION NOT NULL,
+      provenance TEXT NOT NULL,
+      kickoff TIMESTAMPTZ,
+      baseline_pick_home BOOLEAN NOT NULL,
+      baseline_confidence INTEGER NOT NULL,
+      recommended_pick_home BOOLEAN NOT NULL,
+      recommended_confidence INTEGER NOT NULL,
+      field_home_share DOUBLE PRECISION,
+      field_source TEXT NOT NULL DEFAULT 'modeled',
+      home_won BOOLEAN,
+      baseline_correct BOOLEAN,
+      recommended_correct BOOLEAN,
+      UNIQUE(recommendation_id, game_id),
+      CHECK (field_source IN ('observed', 'modeled'))
+  )`,
+  // Migration for tables created before the ON DELETE rule above existed. The
+  // CREATE is IF NOT EXISTS and never re-runs, so the constraint has to be
+  // swapped explicitly. Idempotent: it only acts when the current definition
+  // lacks the rule.
+  `DO $$ BEGIN
+ IF EXISTS (SELECT 1 FROM pg_constraint
+   WHERE conrelid = 'pickem_recommendations'::regclass
+     AND conname = 'pickem_recommendations_superseded_by_fkey'
+     AND pg_get_constraintdef(oid) NOT LIKE '%ON DELETE SET NULL%') THEN
+  ALTER TABLE pickem_recommendations DROP CONSTRAINT pickem_recommendations_superseded_by_fkey;
+  ALTER TABLE pickem_recommendations ADD CONSTRAINT pickem_recommendations_superseded_by_fkey
+   FOREIGN KEY (superseded_by) REFERENCES pickem_recommendations(id) ON DELETE SET NULL;
+ END IF;
+END $$;`,
+  `CREATE INDEX IF NOT EXISTS idx_pickem_recs_pool ON pickem_recommendations(pool_id, week, frozen_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_pickem_recs_live ON pickem_recommendations(season, status) WHERE superseded_by IS NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_pickem_rec_games ON pickem_recommendation_games(recommendation_id)`,
+];
+
+export async function ensurePickemTables(): Promise<void> {
+  if (!ensurePickemTablesPromise) {
+    ensurePickemTablesPromise = (async () => {
+      for (const ddl of PICKEM_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensurePickemTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensurePickemTablesPromise;
 }
 
 const NFL_DFS_DDLS = [
