@@ -34,6 +34,8 @@ Usage:
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import requested_bookmakers, selected_event
+
 import argparse
 import logging
 from datetime import datetime, timezone
@@ -177,10 +179,7 @@ def fetch_tournament(
             "oddsFormat": "american",
             "dateFormat": "iso",
         }
-        if bookmakers:
-            params["bookmakers"] = bookmakers
-        else:
-            params["regions"] = REGIONS
+        params["bookmakers"] = requested_bookmakers(bookmakers)
         if event_ids:
             params["eventIds"] = ",".join(sorted(set(event_ids)))
         resp = requests.get(
@@ -209,6 +208,7 @@ def fetch_tournament(
     capture_key = captured_at.isoformat()
     history_rows: list[dict] = []
     for ev in events:
+        ev = selected_event(ev)
         commence_iso = ev.get("commence_time")
         home = ev.get("home_team")
         away = ev.get("away_team")

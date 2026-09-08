@@ -1,4 +1,5 @@
 "use client";
+import { SPORTSBOOK_KEYS, SPORTSBOOK_NAMES, selectedSportsbooks } from "@/lib/sportsbook-policy";
 
 import { Activity, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -19,7 +20,7 @@ type MarketView = { label: string; current: string; open: string; close: string;
 type PaperPosition = { id: string; game: string; market: string; book: string; entry: string; observedAt: string };
 
 const MARKET_LABELS: Record<MarketKey, string> = { spread: "SPREAD", total: "TOTAL", moneyline: "MONEYLINE" };
-const BOOK_PRIORITY = ["pinnacle", "draftkings", "fanduel", "betmgm", "bovada"];
+const BOOK_PRIORITY = SPORTSBOOK_KEYS;
 
 const SIGNAL_LABELS: Record<string, string> = {
   spread_steam: "SPREAD STEAM", total_steam: "TOTAL STEAM",
@@ -66,6 +67,7 @@ function valueFor(book: CfbBookQuote, market: MarketKey, side: SelectionSide = "
   const home = fairHome(book); return home == null ? null : side === "away" ? 1-home : home;
 }
 function bookTitle(key: string, quote?: CfbBookQuote): string {
+  if (SPORTSBOOK_NAMES[key]) return SPORTSBOOK_NAMES[key];
   if (quote?.title) return quote.title;
   return key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -80,7 +82,7 @@ function quoteFresh(updatedAt: string | null, capturedAt: string | null, asOf: s
 function selectionFor(market: MarketKey): SelectionSide { return market === "total" ? "over" : "home"; }
 
 function buildBookRows(game: CfbTerminalRow, market: MarketKey, side: SelectionSide, asOf: string): BookRow[] {
-  return Object.entries(game.currentBooks ?? {}).flatMap(([key, quote]) => {
+  return Object.entries(selectedSportsbooks(game.currentBooks)).flatMap(([key, quote]) => {
     let line: string; let price: number | null | undefined;
     if (market === "spread") {
       const point = side === "away" ? quote.spread_away : quote.spread_home;
@@ -112,7 +114,7 @@ function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSid
   const current = lowerMedian(currentValues); const opening = lowerMedian(openingValues);
   const closing = lowerMedian(closingValues);
   const bookKeys = Array.from(new Set(game.history.flatMap((point) => Object.keys(point.books))));
-  const orderedBooks = [...BOOK_PRIORITY.filter((book) => bookKeys.includes(book)), ...bookKeys.filter((book) => !BOOK_PRIORITY.includes(book)).sort()].filter(book => book !== "polymarket");
+  const orderedBooks = [...BOOK_PRIORITY.filter((book) => bookKeys.includes(book)), ...bookKeys.filter((book) => !BOOK_PRIORITY.includes(book)).sort()].filter(book => SPORTSBOOK_KEYS.includes(book));
   const history = game.history.map((point) => ({ capturedAt: point.capturedAt, time: fmtEt(point.capturedAt, true), values: Object.fromEntries(orderedBooks.flatMap((key) => { const value = valueFor(point.books[key] ?? {}, market, side); return value == null ? [] : [[key, value]]; })) }));
   const movement = current != null && opening != null ? current - opening : null;
   let currentLabel = "NO MARKET"; let openingLabel = "—"; let closingLabel = game.closeQuality && !game.closingBooks ? "UNAVAILABLE" : "PENDING";

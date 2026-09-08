@@ -12,6 +12,8 @@ Usage:
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import requested_bookmakers, selected_event
+
 import argparse
 import logging
 from datetime import datetime, timezone
@@ -273,10 +275,7 @@ def fetch_odds(
             "dateFormat": "iso",
             "eventIds": ",".join(requested_ids),
         }
-        if bookmakers:
-            params["bookmakers"] = bookmakers
-        else:
-            params["regions"] = NFL_ODDS_REGIONS
+        params["bookmakers"] = requested_bookmakers(bookmakers)
         response = requests.get(
             f"{ODDS_API_BASE}/sports/{sport_key}/odds/",
             params=params,
@@ -316,6 +315,7 @@ def fetch_odds(
     updated = 0
 
     for event in games:
+        event = selected_event(event)
         event_id = str(event.get("id") or "").strip()
         if event_id not in eligible_event_ids:
             continue

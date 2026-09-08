@@ -1,3 +1,4 @@
+import { selectedSportsbooks } from "./sportsbook-policy";
 import type { CfbTerminalRow, LineAlertRow } from "@/db/queries";
 
 export function movementKind(type: string): "steam" | "walk" | "reversal" | null {
@@ -17,7 +18,7 @@ export function movementSeries(game: Pick<CfbTerminalRow, "history" | "commenceT
   return game.history.flatMap((capture) => {
     const time = Date.parse(capture.capturedAt);
     if (!Number.isFinite(time) || time >= kickoff) return [];
-    const values = Object.values(capture.books).flatMap((book) => {
+    const values = Object.values(selectedSportsbooks(capture.books)).flatMap((book) => {
       const value = book[key];
       return value != null && Number.isFinite(Number(value)) ? [Number(value)] : [];
     }).sort((a, b) => a - b);

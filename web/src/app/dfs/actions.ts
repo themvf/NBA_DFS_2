@@ -1,4 +1,5 @@
 "use server";
+import { SPORTSBOOK_QUERY } from "@/lib/sportsbook-policy";
 
 /**
  * Server actions for the NBA DFS optimizer page.
@@ -3259,7 +3260,7 @@ async function fetchMlbPlayerProps(): Promise<{ ok: boolean; message: string }> 
 
       const qs = new URLSearchParams({
         apiKey: oddsApiKey,
-        regions: "us",
+        bookmakers: SPORTSBOOK_QUERY,
         markets: Object.keys(MLB_PROP_MARKET_TO_STAT).join(","),
         oddsFormat: "american",
       });
@@ -3972,7 +3973,7 @@ export async function auditMlbPropCoverage(gameKeys: string[]): Promise<MlbPropC
 
       const qs = new URLSearchParams({
         apiKey: oddsApiKey,
-        regions: "us",
+        bookmakers: SPORTSBOOK_QUERY,
         markets: Object.keys(MLB_PROP_MARKET_TO_STAT).join(","),
         oddsFormat: "american",
       });
@@ -6822,7 +6823,7 @@ async function ensureMatchupsForMlbSlate(
     try {
       const oddsUrl = new URL("https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/");
       oddsUrl.searchParams.set("apiKey", oddsKey);
-      oddsUrl.searchParams.set("regions", "us");
+      oddsUrl.searchParams.set("bookmakers", SPORTSBOOK_QUERY);
       oddsUrl.searchParams.set("markets", "h2h,totals");
       oddsUrl.searchParams.set("oddsFormat", "american");
       const oddsResp = await fetch(oddsUrl.toString(), { next: { revalidate: 0 } });

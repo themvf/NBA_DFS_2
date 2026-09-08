@@ -7,6 +7,8 @@ game_odds_history rows remain the source of truth for the captured prices.
 
 from __future__ import annotations
 
+from ingest.sportsbook_policy import BOOKMAKERS as SELECTED_BOOKMAKERS
+
 import argparse
 import json
 import logging
@@ -29,10 +31,7 @@ logger = logging.getLogger(__name__)
 
 MARKETS = "h2h,totals,spreads"
 # Ten or fewer explicit books are billed as one region by The Odds API.
-BOOKMAKERS = (
-    "draftkings,fanduel,betmgm,fanatics,caesars,betrivers,"
-    "betonlineag,pinnacle"
-)
+BOOKMAKERS = SELECTED_BOOKMAKERS
 VERIFIED_CLV_START_AT = datetime(2026, 8, 31, 4, 0, tzinfo=timezone.utc)
 CLV_METHODOLOGY_VERSION = "event-close-v1"
 VERIFIED_CLV_COHORT = "verified_clv_v1"

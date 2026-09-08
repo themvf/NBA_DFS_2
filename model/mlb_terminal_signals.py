@@ -8,6 +8,8 @@ descriptive hypotheses, not validated betting recommendations.
 """
 from __future__ import annotations
 
+from ingest.sportsbook_policy import selected_books
+
 import json
 import math
 from datetime import datetime, timezone
@@ -170,6 +172,7 @@ def run(db, *, scan_only=False, settle_only=False):
         ORDER BY h.matchup_id,h.captured_at,h.id""")
     groups = {}
     for row in rows:
+        row = {**row, "books": selected_books(row["books"])}
         groups.setdefault(row["matchup_id"], []).append(row)
     inserted = 0
     for history in groups.values():
