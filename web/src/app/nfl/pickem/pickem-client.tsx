@@ -55,6 +55,7 @@ import {
 import {
   DEFAULT_SIMS,
   DEVIATION_MIN_POOL,
+  FIELD_CHALK_FRACTION,
   FIELD_FAVORITE_BIAS,
   FIELD_SKILL_SIGMA,
   MAX_DEVIATIONS,
@@ -94,6 +95,7 @@ type Stored = {
   poolEntries: number;
   objective: Objective;
   favoriteBias: number;
+  chalkFraction: number;
   overrides: Record<number, { pickHome?: boolean; confidence?: number; fieldHomePct?: number | null }>;
 };
 
@@ -114,6 +116,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
   const [poolEntries, setPoolEntries] = useState(50);
   const [objective, setObjective] = useState<Objective>(defaultObjective());
   const [favoriteBias, setFavoriteBias] = useState(FIELD_FAVORITE_BIAS);
+  const [chalkFraction, setChalkFraction] = useState(FIELD_CHALK_FRACTION);
   const [overrides, setOverrides] = useState<Stored["overrides"]>({});
   const [hydrated, setHydrated] = useState(false);
 
@@ -160,6 +163,9 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
           if (typeof parsed.favoriteBias === "number" && Number.isFinite(parsed.favoriteBias)) {
             setFavoriteBias(Math.min(Math.max(parsed.favoriteBias, 1), 2));
           }
+          if (typeof parsed.chalkFraction === "number" && Number.isFinite(parsed.chalkFraction)) {
+            setChalkFraction(Math.min(Math.max(parsed.chalkFraction, 0), 1));
+          }
           if (parsed.overrides && typeof parsed.overrides === "object") setOverrides(parsed.overrides);
         }
       } catch {
@@ -185,12 +191,12 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ week, format, poolEntries, objective, favoriteBias, overrides }),
+        JSON.stringify({ week, format, poolEntries, objective, favoriteBias, chalkFraction, overrides }),
       );
     } catch {
       /* ignore */
     }
-  }, [hydrated, week, format, poolEntries, objective, favoriteBias, overrides]);
+  }, [hydrated, week, format, poolEntries, objective, favoriteBias, chalkFraction, overrides]);
 
   // ---- the slate ---------------------------------------------------------
   const weekGames: PickemSlateGame[] = useMemo(
@@ -216,8 +222,8 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
   );
 
   const fieldModel = useMemo(
-    () => ({ favoriteBias, skillSigma: FIELD_SKILL_SIGMA }),
-    [favoriteBias],
+    () => ({ favoriteBias, skillSigma: FIELD_SKILL_SIGMA, chalkFraction }),
+    [favoriteBias, chalkFraction],
   );
 
   // ---- the two entries ---------------------------------------------------
@@ -445,6 +451,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
         fieldModel: {
           favoriteBias,
           skillSigma: FIELD_SKILL_SIGMA,
+          chalkFraction,
           observedGames: games.length - modeledFieldCount,
           modeledGames: modeledFieldCount,
         },
@@ -1340,7 +1347,8 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
             </p>
             <p className="rounded border border-amber-500/40 bg-amber-500/5 p-2 text-foreground">
               <strong>The honest gap.</strong> The field model — how much harder the public backs
-              favourites (currently {favoriteBias.toFixed(2)}) and how much opponents&apos; rankings
+              favourites (currently {favoriteBias.toFixed(2)}), how many play straight chalk
+              (currently {pct(chalkFraction, 0)}), and how much opponents&apos; rankings
               scatter ({FIELD_SKILL_SIGMA}) — is a stated prior, not a measurement. There is no
               pick&apos;em pick-share feed in this repo, and the survivor popularity feed is a
               different distribution that it would be wrong to substitute. No pick&apos;em entry here
@@ -1371,6 +1379,37 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
               : `A 60% favourite draws ${pct(1 / (1 + Math.exp(-favoriteBias * Math.log(0.6 / 0.4))), 0)} of the field.`}
           </span>
         </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t pt-3">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Rivals playing straight chalk
+            <input
+              type="range"
+              min={0}
+              max={0.75}
+              step={0.05}
+              value={chalkFraction}
+              onChange={(e) => setChalkFraction(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="font-mono tabular-nums">{pct(chalkFraction, 0)}</span>
+          </label>
+          <span className="max-w-2xl text-xs text-muted-foreground">
+            {chalkFraction <= 0.001
+              ? "Nobody else takes every favourite — the conservative case, and the one where deviating looks worst."
+              : `About ${Math.round((poolEntries - 1) * chalkFraction)} of your ${poolEntries - 1} rivals submit the identical all-favourites card. They all score the same, so matching them splits the prize every way at once — which is what makes deviating worth anything.`}
+          </span>
+        </div>
+
+        <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-muted-foreground">
+          <strong className="text-foreground">This slider changes the answer, so it is worth a
+          moment.</strong>{" "}
+          At 0% the best card at a 50-entry pool is often no deviation at all; at 25% it is one flip
+          worth several times as much. It is a stated prior either way — there is no pick-share feed
+          here — but 0% is not the neutral choice it looks like: drawing every rival independently
+          gives roughly a one-in-a-thousand chance of landing on chalk over a 16-game slate, and real
+          pools are nothing like that.
+        </p>
 
         <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
           Win probabilities come from <code className="font-mono">nfl_game_win_probs</code>, the same

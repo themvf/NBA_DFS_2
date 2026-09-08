@@ -482,7 +482,7 @@ async function main() {
         fieldHomePct: null,
       }));
 
-      const world = simulateWorld(games, "straight", { favoriteBias: 1.3, skillSigma: 0.35 }, {
+      const world = simulateWorld(games, "straight", { favoriteBias: 1.3, skillSigma: 0.35, chalkFraction: 0 }, {
         sims: 2000,
         poolEntries: poolSize,
         sampleOpponents: 150,

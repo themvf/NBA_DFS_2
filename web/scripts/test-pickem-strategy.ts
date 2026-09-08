@@ -197,7 +197,11 @@ console.log("\nClosed-form prize share vs direct rival simulation");
   const rivals = 24;
   const entry = evOptimalEntry(games, format);
 
-  const world = simulateWorld(games, format, DEFAULT_FIELD, {
+  // The brute force below draws every rival independently, so it contains no
+  // chalk block. The field is pinned to match; the chalk path gets its own
+  // brute-force check immediately after.
+  const noChalk = { ...DEFAULT_FIELD, chalkFraction: 0 };
+  const world = simulateWorld(games, format, noChalk, {
     sims: 20000,
     poolEntries: rivals + 1,
     sampleOpponents: 400,
@@ -208,7 +212,7 @@ console.log("\nClosed-form prize share vs direct rival simulation");
   // Direct: draw `rivals` explicit opponents per sim and count wins/ties.
   const rng = makeRng(99);
   const n = games.length;
-  const shares = games.map((g) => fieldHomeShare(g, DEFAULT_FIELD).share);
+  const shares = games.map((g) => fieldHomeShare(g, noChalk).share);
   const sims = 40000;
   let total = 0;
   for (let s = 0; s < sims; s += 1) {
@@ -236,6 +240,91 @@ console.log("\nClosed-form prize share vs direct rival simulation");
     `formula ${viaFormula.toFixed(4)} vs direct ${viaDirect.toFixed(4)}`,
   );
   check("prize share is a probability", viaFormula > 0 && viaFormula < 1);
+}
+
+{
+  // Chalk rivals against brute force. This is the path that decides whether
+  // deviating is worth anything, so it gets the same treatment as the original
+  // closed form rather than being trusted because it type-checks.
+  const games = [game(0, 0.78), game(1, 0.64), game(2, 0.57), game(3, 0.52)];
+  const format: PoolFormat = "straight";
+  const poolEntries = 21;
+  const field = { favoriteBias: 1.3, skillSigma: 0.35, chalkFraction: 0.4 };
+  const entry: Entry = { pickHome: [true, true, true, false], confidence: [1, 1, 1, 1] };
+
+  const world = simulateWorld(games, format, field, {
+    sims: 30000, poolEntries, sampleOpponents: 400, seed: 21,
+  });
+  const viaFormula = evaluateEntry(games, entry, world).prizeShare;
+
+  const chalkEntry = evOptimalEntry(games, format);
+  const chalkRivals = Math.round((poolEntries - 1) * field.chalkFraction);
+  const noisyRivals = poolEntries - 1 - chalkRivals;
+  const shares = games.map((g) => fieldHomeShare(g, field).share);
+  const rng = makeRng(4242);
+  const sims = 120000;
+  let total = 0;
+  for (let s = 0; s < sims; s += 1) {
+    const outcome = games.map((g) => rng() < g.pHome);
+    const score = (e: Entry) =>
+      e.pickHome.reduce((a, ph, i) => a + (ph === outcome[i] ? e.confidence[i] : 0), 0);
+    const mine = score(entry);
+    const chalkScore = score(chalkEntry);
+    let best = -1;
+    let ties = 0;
+    if (chalkRivals > 0) { best = chalkScore; ties = chalkRivals; }
+    for (let k = 0; k < noisyRivals; k += 1) {
+      let sc = 0;
+      for (let i = 0; i < games.length; i += 1) {
+        if ((rng() < shares[i]) === outcome[i]) sc += 1;
+      }
+      if (sc > best) { best = sc; ties = 1; }
+      else if (sc === best) ties += 1;
+    }
+    if (mine > best) total += 1;
+    else if (mine === best) total += 1 / (1 + ties);
+  }
+  const viaDirect = total / sims;
+  check(
+    "chalk-rival prize share agrees with an explicit brute force",
+    close(viaFormula, viaDirect, 0.02),
+    `formula ${viaFormula.toFixed(4)} vs direct ${viaDirect.toFixed(4)}`,
+  );
+  check(
+    "chalk rivals are counted as a tie block, not sampled",
+    world.chalkRivals === chalkRivals && world.noisyRivals === noisyRivals,
+    `${world.chalkRivals}/${world.noisyRivals} vs ${chalkRivals}/${noisyRivals}`,
+  );
+  check("no NaN leaks out of the chalk path", Number.isFinite(viaFormula));
+}
+
+{
+  // Chalk rivals make being identical to them expensive: the same slate, the
+  // same entry, evaluated against a field with and without a chalk block.
+  const games = [game(0, 0.80), game(1, 0.66), game(2, 0.58), game(3, 0.54), game(4, 0.51)];
+  const opts = { sims: 8000, poolEntries: 60, sampleOpponents: 250, seed: 909 };
+  const chalk = evOptimalEntry(games, "straight");
+  const flipped: Entry = { pickHome: [...chalk.pickHome], confidence: [...chalk.confidence] };
+  flipped.pickHome[4] = !flipped.pickHome[4];
+
+  const bare = simulateWorld(games, "straight", { favoriteBias: 1.3, skillSigma: 0.35, chalkFraction: 0 }, opts);
+  const withChalk = simulateWorld(games, "straight", { favoriteBias: 1.3, skillSigma: 0.35, chalkFraction: 0.4 }, opts);
+
+  const chalkBare = evaluateEntry(games, chalk, bare).prizeShare;
+  const chalkVs = evaluateEntry(games, chalk, withChalk).prizeShare;
+  const flipBare = evaluateEntry(games, flipped, bare).prizeShare;
+  const flipVs = evaluateEntry(games, flipped, withChalk).prizeShare;
+
+  check(
+    "a chalk block makes the chalk card much worse",
+    chalkVs < chalkBare,
+    `${(chalkVs * 100).toFixed(2)}% vs ${(chalkBare * 100).toFixed(2)}%`,
+  );
+  check(
+    "a chalk block makes flipping relatively better",
+    flipVs / chalkVs > flipBare / chalkBare,
+    `ratio ${(flipVs / chalkVs).toFixed(2)} vs ${(flipBare / chalkBare).toFixed(2)}`,
+  );
 }
 
 {
@@ -343,6 +432,65 @@ const slate: PickemGame[] = [
 }
 
 // ---------------------------------------------------------------------------
+console.log("\nParity sawtooth and search lookahead");
+// ---------------------------------------------------------------------------
+
+{
+  // With a chalk block in the field, an EVEN number of flips can land level
+  // with the whole block and split the prize, so k=2 scores worse than k=1 and
+  // k=3. A purely greedy climb stops at one flip and never reaches three; the
+  // two-move lookahead exists to get past that. The sawtooth itself is
+  // emergent from the field model, not a coded rule.
+  const probs = [0.88, 0.79, 0.72, 0.66, 0.61, 0.58, 0.565, 0.555, 0.545, 0.535, 0.525, 0.515, 0.508, 0.504];
+  const slate2 = probs.map((p, i) => game(i, p));
+  const field = { favoriteBias: 1.3, skillSigma: 0.35, chalkFraction: 0.25 };
+  const world = simulateWorld(slate2, "straight", field, {
+    sims: 6000, poolEntries: 50, sampleOpponents: 250, seed: 11,
+  });
+  const chalk = evOptimalEntry(slate2, "straight");
+  const order = slate2
+    .map((_, i) => i)
+    .sort(
+      (a, b) =>
+        Math.max(slate2[a].pHome, 1 - slate2[a].pHome) -
+        Math.max(slate2[b].pHome, 1 - slate2[b].pHome),
+    );
+  const kShare = (k: number) => {
+    const e: Entry = { pickHome: [...chalk.pickHome], confidence: [...chalk.confidence] };
+    for (let j = 0; j < k; j += 1) e.pickHome[order[j]] = !e.pickHome[order[j]];
+    return evaluateEntry(slate2, e, world).prizeShare;
+  };
+  const s0 = kShare(0);
+  const s1 = kShare(1);
+  const s2 = kShare(2);
+  const s3 = kShare(3);
+
+  check(
+    "a chalk block makes zero flips far worse than one",
+    s0 < s1 / 2,
+    `${(s0 * 100).toFixed(2)}% vs ${(s1 * 100).toFixed(2)}%`,
+  );
+  check(
+    "two flips score worse than one -- parity effect is emergent, not coded",
+    s2 < s1,
+    `k=2 ${(s2 * 100).toFixed(2)}% vs k=1 ${(s1 * 100).toFixed(2)}%`,
+  );
+  check("three flips beat both", s3 > s1 && s3 > s2, `k=3 ${(s3 * 100).toFixed(2)}%`);
+
+  const plan = optimizeEntry(slate2, "straight", world, { maxDeviations: 4 });
+  check(
+    "the optimizer crosses the sawtooth instead of stopping at one flip",
+    plan.deviations.length >= 3,
+    `chose ${plan.deviations.length}`,
+  );
+  check(
+    "and lands at least as good as the best fixed-k card",
+    plan.recommendedEval.prizeShare >= s3 - 1e-9,
+    `${(plan.recommendedEval.prizeShare * 100).toFixed(2)}% vs ${(s3 * 100).toFixed(2)}%`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 console.log("\nField model");
 // ---------------------------------------------------------------------------
 
@@ -361,7 +509,7 @@ console.log("\nField model");
   );
   check(
     "bias 1.0 makes the field a mirror of the market",
-    close(fieldHomeShare(modeled, { favoriteBias: 1, skillSigma: 0 }).share, 0.7, 1e-9),
+    close(fieldHomeShare(modeled, { favoriteBias: 1, skillSigma: 0, chalkFraction: 0 }).share, 0.7, 1e-9),
   );
   check(
     "the modeled field is symmetric about a coin flip",

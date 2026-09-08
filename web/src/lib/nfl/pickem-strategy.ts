@@ -85,6 +85,24 @@ export type FieldModel = {
    * exactly our order; larger values scatter their confidence assignments.
    */
   skillSigma: number;
+  /**
+   * Fraction of rivals who submit the EXACT all-favourites card.
+   *
+   * Without this the model has no chalk entrants at all: drawing each game
+   * independently gives a rival probability product(share_g) of landing on
+   * chalk, which over a 16-game slate is about one in a thousand. Real pools
+   * are nothing like that -- taking every favourite is the single most common
+   * entry there is, and it is the premise this whole page exists to argue
+   * with.
+   *
+   * It matters because chalk rivals are pure TIE MASS: they all score
+   * identically, so whenever you match them the prize splits every way at
+   * once. That is what makes being identical expensive, and a model without
+   * them systematically understates the value of deviating.
+   *
+   * Also a STATED PRIOR. 0 is the conservative setting.
+   */
+  chalkFraction: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -208,9 +226,15 @@ export type SimulatedWorld = {
   opponents: number;
   /** poolEntries - 1, may exceed `opponents`; the tail is handled analytically. */
   rivalCount: number;
+  /** Rivals who submit the exact all-favourites card. Deterministic tie mass. */
+  chalkRivals: number;
+  /** rivalCount - chalkRivals; these are the ones `oppScores` samples. */
+  noisyRivals: number;
+  /** Score the all-favourites card achieves in sim s. */
+  chalkScores: Float64Array;
   /** outcomes[s][g] === true when HOME won in sim s. */
   outcomes: boolean[][];
-  /** Sorted opponent scores for sim s. */
+  /** Sorted NOISY opponent scores for sim s. */
   oppScores: Float64Array[];
   fieldSources: Array<"observed" | "modeled">;
 };
@@ -230,6 +254,15 @@ export function simulateWorld(
   const shares = games.map((g) => fieldHomeShare(g, model));
   const fieldSources = shares.map((s) => s.source);
 
+  // Chalk rivals submit the EV-optimal card itself -- every favourite, and in
+  // a confidence pool ranked by probability. They are scored analytically in
+  // evaluateEntry rather than sampled, because they have no randomness in them.
+  const chalkFraction = Math.min(Math.max(model.chalkFraction ?? 0, 0), 1);
+  const chalkRivals = Math.round(rivalCount * chalkFraction);
+  const noisyRivals = rivalCount - chalkRivals;
+  const chalkEntry = evOptimalEntry(games, format);
+  const chalkScores = new Float64Array(sims);
+
   const outcomes: boolean[][] = new Array(sims);
   const oppScores: Float64Array[] = new Array(sims);
 
@@ -243,6 +276,12 @@ export function simulateWorld(
     const outcome = new Array<boolean>(n);
     for (let g = 0; g < n; g += 1) outcome[g] = rng() < games[g].pHome;
     outcomes[s] = outcome;
+
+    let chalkScore = 0;
+    for (let g = 0; g < n; g += 1) {
+      if (chalkEntry.pickHome[g] === outcome[g]) chalkScore += chalkEntry.confidence[g];
+    }
+    chalkScores[s] = chalkScore;
 
     const scores = new Float64Array(opponents);
     for (let k = 0; k < opponents; k += 1) {
@@ -270,7 +309,10 @@ export function simulateWorld(
     oppScores[s] = scores;
   }
 
-  return { sims, opponents, rivalCount, outcomes, oppScores, fieldSources };
+  return {
+    sims, opponents, rivalCount, chalkRivals, noisyRivals,
+    chalkScores, outcomes, oppScores, fieldSources,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +347,46 @@ function prizeShare(x: number, y: number, rivals: number): number {
   return (Math.pow(x + y, R + 1) - Math.pow(y, R + 1)) / ((R + 1) * x);
 }
 
+/**
+ * Same quantity when `c` rivals are ALREADY tied with us -- the chalk block.
+ *
+ *   sum_j C(R,j) x^j y^(R-j) / (c+1+j)  =  (x+y)^R * E_{j~Bin(R,q)}[1/(c+1+j)]
+ *
+ * with q = x/(x+y). Reduces to prizeShare when c = 0. Above ~30 expected ties
+ * the sum is replaced by the delta-method value 1/(c+1+Rq); 1/(c+1+j) is smooth
+ * and j's relative spread is small there, so the approximation is tight exactly
+ * where the exact sum would be slowest.
+ *
+ * The chalk block is why deviating pays at all. Those rivals score identically
+ * to one another, so matching them splits the prize every way at once -- an
+ * entry that ties 20 chalk players wins a twentieth of what an entry that beats
+ * them by one point wins.
+ */
+function prizeShareWithTies(x: number, y: number, rivals: number, c: number): number {
+  if (c <= 0) return prizeShare(x, y, rivals);
+  if (rivals <= 0) return 1 / (1 + c);
+  if (x < EPS) return Math.pow(y, rivals) / (1 + c);
+  // Someone is above us in every draw: no share at all.
+  if (x + y < EPS) return 0;
+  const q = x / (x + y);
+  const base = Math.pow(x + y, rivals);
+  if (rivals * q > 30) return base / (c + 1 + rivals * q);
+  // y == 0 means no noisy rival can finish BELOW us, so the only surviving
+  // term is j = rivals (all of them level). Without this guard the recursion
+  // below divides by 1 - q == 0 and produces NaN, which then propagates
+  // silently through every prize-share number on the page.
+  if (q > 1 - 1e-12) return base / (c + 1 + rivals);
+  let pmf = Math.pow(1 - q, rivals);
+  let sum = pmf / (c + 1);
+  let mass = pmf;
+  for (let j = 0; j < rivals && mass < 1 - 1e-12; j += 1) {
+    pmf *= ((rivals - j) / (j + 1)) * (q / (1 - q));
+    sum += pmf / (c + 2 + j);
+    mass += pmf;
+  }
+  return base * sum;
+}
+
 export type EntryEvaluation = {
   expectedPoints: number;
   /** Expected share of a winner-take-all prize. The objective. */
@@ -335,14 +417,19 @@ export function evaluateEntry(
     scoreTotal += score;
     scoreSq += score * score;
 
+    // A chalk rival outscoring us settles the sim: no share at all.
+    const chalkScore = world.chalkScores[s];
+    if (world.chalkRivals > 0 && chalkScore > score) continue;
+    const tiedChalk = world.chalkRivals > 0 && chalkScore === score ? world.chalkRivals : 0;
+
     const opp = world.oppScores[s];
     // opp is sorted: binary search the block equal to `score`.
     const lo = lowerBound(opp, score);
     const hi = upperBound(opp, score);
     const y = lo / world.opponents;
     const x = (hi - lo) / world.opponents;
-    shareTotal += prizeShare(x, y, world.rivalCount);
-    tiedTotal += Math.pow(Math.min(1, x + y), world.rivalCount);
+    shareTotal += prizeShareWithTies(x, y, world.noisyRivals, tiedChalk);
+    tiedTotal += Math.pow(Math.min(1, x + y), world.noisyRivals);
   }
 
   const mean = scoreTotal / world.sims;
@@ -474,6 +561,56 @@ export function optimizeEntry(
             `Swap confidence ${current.confidence[i]} and ${current.confidence[j]} ` +
             `(${games[i].awayAbbrev}@${games[i].homeAbbrev} / ${games[j].awayAbbrev}@${games[j].homeAbbrev})`,
         });
+      }
+    }
+
+    // Two-move lookahead. The single-move search above cannot cross the
+    // odd/even sawtooth that a chalk block creates: with one flip already
+    // taken, the step to two flips can land level with the whole chalk block
+    // and score WORSE, so a purely greedy climb stops there and never reaches
+    // three, which is better than either. Measured on a 2025-shaped slate at
+    // 50 entries with 25% chalk: k=1 3.84%, k=2 3.47%, k=3 4.62%. Only pairs
+    // of FLIPS are considered -- that is where the parity effect lives, and
+    // enumerating pairs of confidence swaps as well would square an already
+    // quadratic search for no known benefit.
+    if (best === null && deviations.length + 2 <= maxDeviations) {
+      let bestPair: { entry: Entry; ev: EntryEvaluation; devs: Deviation[] } | null = null;
+      for (let i = 0; i < n; i += 1) {
+        for (let j = i + 1; j < n; j += 1) {
+          const pair: Entry = {
+            pickHome: [...current.pickHome],
+            confidence: [...current.confidence],
+          };
+          pair.pickHome[i] = !pair.pickHome[i];
+          pair.pickHome[j] = !pair.pickHome[j];
+          const ev = evaluateEntry(games, pair, world);
+          const gain = ev.prizeShare - currentEval.prizeShare;
+          if (gain <= minShareGain) continue;
+          if (bestPair && gain <= bestPair.devs[0].shareGain + bestPair.devs[1].shareGain) continue;
+          const mk = (idx: number): Deviation => {
+            const from = current.pickHome[idx] ? games[idx].homeAbbrev : games[idx].awayAbbrev;
+            const to = current.pickHome[idx] ? games[idx].awayAbbrev : games[idx].homeAbbrev;
+            return {
+              kind: "flip",
+              i: idx,
+              j: null,
+              evCost: flipCost(games, current, idx),
+              // The gain is a property of the PAIR; splitting it evenly is a
+              // presentation choice, and the rows say so by both naming the
+              // partner move.
+              shareGain: gain / 2,
+              description: `Take ${to} over ${from} (paired with the other flip below)`,
+            };
+          };
+          bestPair = { entry: pair, ev, devs: [mk(i), mk(j)] };
+        }
+      }
+      if (bestPair !== null) {
+        const chosenPair = bestPair as { entry: Entry; ev: EntryEvaluation; devs: Deviation[] };
+        current = chosenPair.entry;
+        currentEval = chosenPair.ev;
+        deviations.push(...chosenPair.devs);
+        continue;
       }
     }
 

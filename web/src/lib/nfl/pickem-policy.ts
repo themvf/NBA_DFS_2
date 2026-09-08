@@ -57,10 +57,49 @@ export const FIELD_FAVORITE_BIAS = 1.3;
  */
 export const FIELD_SKILL_SIGMA = 0.35;
 
+/**
+ * Fraction of rivals assumed to submit the exact all-favourites card.
+ *
+ * The previous implicit value was 0 -- not by choice but by omission, because
+ * the field had no chalk concept at all. That is a worse prior than any
+ * non-zero number: drawing each game independently gives a rival about a one
+ * in a thousand chance of landing on chalk over a 16-game slate, while in a
+ * real pool taking every favourite is the most common entry there is.
+ *
+ * 0.25 is a stated prior and remains unmeasured. It is exposed in the UI
+ * because the recommendation genuinely turns on it: `analyze-nfl-how-many-dogs`
+ * found that at 0% chalk the best card at a 50-entry pool is zero flips, while
+ * at 25% it is one flip worth 5.6x as much. Set it to 0 for the conservative
+ * case.
+ */
+export const FIELD_CHALK_FRACTION = 0.25;
+
 export const DEFAULT_FIELD: FieldModel = {
   favoriteBias: FIELD_FAVORITE_BIAS,
   skillSigma: FIELD_SKILL_SIGMA,
+  chalkFraction: FIELD_CHALK_FRACTION,
 };
+
+/**
+ * The odd/even sawtooth is NOT hard-coded, deliberately.
+ *
+ * An even number of side flips can land you exactly level with the chalk block
+ * and split the prize with all of it; an odd number cannot, because
+ *
+ *     yourScore - chalkScore = 2 * (dogs that hit) - k
+ *
+ * is zero only for even k. Once the field model carries a chalk block the
+ * simulator reproduces this on its own -- measured on a 2025-shaped slate at a
+ * 50-entry pool with 25% chalk: k=0 0.65%, k=1 3.84%, k=2 3.47%, k=3 4.62%,
+ * k=4 3.86%. A constant asserting the same thing would be a second source of
+ * truth that could silently drift from the model, so there isn't one.
+ *
+ * What the sawtooth DOES require is a search that can cross it: a purely
+ * greedy hill-climb stops at one flip because the step to two looks like a
+ * loss, and never reaches three. That is why `optimizeEntry` falls back to a
+ * two-move lookahead before giving up.
+ */
+export const LOOKAHEAD_PAIRS = true;
 
 /** Monte Carlo size. 4,000 keeps a full re-optimize under ~1s in the browser. */
 export const DEFAULT_SIMS = 4000;

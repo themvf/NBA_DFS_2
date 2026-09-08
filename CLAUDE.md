@@ -6488,3 +6488,120 @@ issues may not claim the empty snapshot/cadence state as verified functionality.
 - Advisor availability is checked on the server before rendering. A provider without its deployment credential is shown as `Connection needed` with a disabled action; API credentials remain server-only (`OPENAI_API_KEY`, `DEEPSEEK_API_KEY`) and must be configured in Vercel Production and Preview before redeployment.
 - LLM recommendations identify the server-authoritative ranking snapshot's model version as their active projection evidence until V2 passes its promotion gate. They may interpret the supplied evidence but must not invent absent injury, air-yard, role, schedule, correlation, or matchup data. Provider authentication, billing, rate-limit, timeout, malformed-output, and illegal-player failures remain isolated and visible on the affected provider card.
 - Jira dependency chain: `SCRUM-34` source contracts → `SCRUM-35` immutable historical population → `SCRUM-43` chronological validation harness/baselines → `SCRUM-36` V2 model → simulation/decision/backend/UI issues → `SCRUM-41` final champion-versus-challenger gate.
+
+---
+
+## NFL Pick'em Pools — `/nfl/pickem` (2026-09-07)
+
+Straight and confidence pick'em, alongside the survivor page it shares
+`nfl_game_win_probs` with (tie mass renormalised away — a pool scores two
+outcomes, not three). Two pages disagreeing about the same game would be a
+defect, so this one computes no probabilities of its own.
+
+### What is proved, and what is modelled
+
+**Proved, no assumptions:** the EV-optimal entry is the probability-sorted one
+(rearrangement inequality); the exact cost of any deviation is
+`(c_i − c_j)(p_i − p_j)` for a confidence swap and `c(2p − 1)` for a side flip;
+and expected prize share against R rivals has a closed form given one rival's
+score distribution, which is what lets a 5,000-entry pool cost the same to
+evaluate as a 20-entry one. `test:pickem` checks the first against exhaustive
+search over all `n! · 2^n` entries and the second against brute-force rivals.
+
+**Modelled, and never badged otherwise:** the field. There is no pick'em
+pick-share feed in this repo, and the survivor popularity feed is a DIFFERENT
+distribution (concentrated on a handful of teams, warped by future-team value)
+that it would be wrong to substitute. `PICKEM_IS_VALIDATED = false`; the
+default objective stays `ev` because a tool that defaults to its unvalidated
+mode asserts something it has not earned.
+
+### The chalk block, and why omitting it was a real bug
+
+`FieldModel.chalkFraction` is the fraction of rivals submitting the exact
+all-favourites card. It was added after the studies below, and its absence had
+been silently distorting every recommendation: drawing each rival
+independently gives about a **one-in-a-thousand** chance of landing on chalk
+over a 16-game slate, so the old model effectively asserted that nobody plays
+the favourites — in a pool where that is the single most common entry.
+
+It matters because chalk rivals are pure TIE MASS. They all score identically,
+so matching them splits the prize every way at once. Measured on a real 2025
+slate at 50 entries: the chalk card's win rate is **4.87% at 0% chalk rivals
+and 0.51% at 25%**, and the optimizer's improvement goes from **+0.96pp to
++5.63pp**. 0.25 is a stated prior, exposed as a UI slider, and 0 is the
+conservative setting — not the neutral one it looks like.
+
+**The parity sawtooth is emergent, not coded.** With a chalk block, an EVEN
+number of side flips can land exactly level with the whole block, because
+`yourScore − chalkScore = 2·(dogs that hit) − k` is zero only for even k. The
+simulator reproduces this unaided (50 entries, 25% chalk: k=0 0.65%, k=1
+3.84%, k=2 3.47%, k=3 4.62%). A constant asserting the same thing would be a
+second source of truth that could drift, so there isn't one — but
+`optimizeEntry` needs a **two-move lookahead** to cross the sawtooth, because
+a purely greedy climb stops at one flip and never reaches three.
+
+### Five studies, 2023-2025, all pre-registered before the confirmation season
+
+Discovery 2023-24, confirmation 2025, walk-forward throughout. **No predictive
+edge was found in any of them**, which is the fifth through ninth independent
+confirmed negative against closing lines in this repo.
+
+| Study | Command | Result |
+|---|---|---|
+| 10-segment calibration screen | `analyze:pickem-2025` | 0 of 10 confirmed. Late-season favourites REVERSED (+8.3pp discovery → −8.5pp confirmation, CI excluding zero) — a textbook false positive |
+| Underdog selection from lines | `analyze:underdogs` | Totals and spread-vs-ML disagreement both null. Killed at the mechanism: `SD(margin − spread)` is flat at 12.6 across every total band, `corr = −0.036` |
+| Situational angles | `analyze:situational` | Unanswerable, not merely unanswered. A 2pp effect needs 4,901 games; international games are 15 over three seasons and would need 36pp |
+| Upset anatomy | `analyze:upsets` | Dogs win by OUTPLAYING favourites (80% also won the EPA battle), not out-lucking them. Only 9.7% "stole it" on turnovers |
+| Form divergence | `analyze:form` | Dies at step A — trend does not predict the game, never mind the price. `corr(trend, next week's EPA above baseline) = −0.005` over n=1,152 |
+
+**The synthesis, which is the durable part.** EPA is both the strongest
+separator of upsets and the most persistent statistic measured (split-half
+r=0.593). So upsets are driven by real team quality — which is exactly what the
+closing line encodes. What remains is the wobble, and variance decomposition of
+weekly EPA puts that at **21.9% between teams vs 78.1% within a team week to
+week**. A good team plays like a bad one roughly one week in four and nobody
+knows which. That is a complete explanation of why no feature beat the market,
+rather than an admission that we did not look hard enough.
+
+**Do not re-run these on new slices.** The cumulative family is ~20 tests on the
+same 816 games and has already produced one sign-flipping false positive. A new
+idea needs its own pre-registration and a stated mechanism, and any survivor
+should be trusted less than its own CI implies.
+
+### The practical answer
+
+`analyze:how-many-dogs`. Take every favourite, then flip the **cheapest** game
+— the one closest to a coin flip, not the one that feels due. Flip **one or
+three, never two** (parity). One flip a week cost about **one correct pick
+across the whole 2025 season**. Selection is by price, not by prediction,
+because five studies say prediction is not available.
+
+**A methodological trap recorded so it is not repeated:** the first version of
+that script scored candidate cards against the ACTUAL 2025 results. With
+outcomes fixed that is backfitting — "best k" becomes whichever flips happened
+to hit — and the tell was a U-shaped result that a real cost/benefit tradeoff
+cannot produce. It now draws outcomes from the market's own probabilities over
+20,000 simulated seasons while keeping the real slates, because slate SHAPE
+determines how cheap the available flips are.
+
+### Ledger
+
+`pickem_pools` / `pickem_recommendations` / `pickem_recommendation_games`,
+owned entirely by the web app (settlement is a server action, not a scheduled
+script — it is a pure function of `nfl_season_games` scores). Every row freezes
+BOTH entries: the recommended card and the max-points baseline it deviated
+from. Without the counterfactual frozen at the same instant, "was deviating
+worth it" can only be answered by rebuilding the baseline after results are
+known, from a model that may since have changed.
+
+Three refusals the ledger enforces: a card cannot be frozen after the week's
+first kickoff (checked against the schedule, not trusted from the client); a
+recommendation is never rewritten, only superseded; and settlement leaves ties
+ungraded rather than scoring them as misses, which would penalise both entries
+and corrupt the paired delta. `won_pool` is never inferred — we cannot see your
+pool's field, so an unreported week stays unreported rather than becoming a
+loss. `ledgerVerdict()` refuses to quote a rate below 30 settled weeks, which an
+18-week season cannot reach.
+
+Verify with `verify:pickem-ledger` (30 assertions against the live database,
+using the real `ensurePickemTables` DDL rather than a copy).
