@@ -53,6 +53,7 @@
     "test:survivor": "node --import tsx ./scripts/test-survivor-assignment.ts",
     "test:pickem": "node --import tsx ./scripts/test-pickem-strategy.ts",
     "test:pickem-grading": "node --import tsx ./scripts/test-pickem-grading.ts",
+    "capture:nfl-lines": "node --env-file=.env.local --import tsx ./scripts/capture-nfl-line-snapshots.ts",
     "analyze:archetype-pricing": "node --import tsx ./scripts/analyze-nfl-archetype-pricing.ts",
     "analyze:archetypes": "node --import tsx ./scripts/analyze-nfl-archetypes.ts",
     "analyze:how-many-dogs": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-how-many-dogs.ts",
