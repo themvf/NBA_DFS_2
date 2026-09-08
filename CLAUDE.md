@@ -6584,6 +6584,43 @@ cannot produce. It now draws outcomes from the market's own probabilities over
 20,000 simulated seasons while keeping the real slates, because slate SHAPE
 determines how cheap the available flips are.
 
+### Game archetypes — a field-perception model (`lib/nfl/pickem-archetypes.ts`)
+
+Fifteen composable tags describing how the ROOM will read a matchup, surfaced
+as chips in a `Room reads` column and summarised in a crowded / quiet /
+contrarian panel. Measured over 2020-2025 by `analyze:archetypes`, **14 of 15
+have a market gap whose CI includes zero** — the line prices rest, travel,
+kickoff slot and last week's result because all of it is public months ahead.
+That is the point rather than a disappointment: an archetype the MARKET has
+priced but the ROOM will react to is where rivals' cards drift from the price
+and yours does not. Leverage from the market being right, which is the only
+kind this repo has found.
+
+`visibility` and `lean` are STATED PRIORS, not measurements — there is no
+pick-share feed. They are the weakest part of the feature and are labelled
+wherever they surface.
+
+Three things worth not rediscovering:
+
+- **Symmetric archetypes are degenerate under a tagged-team metric.**
+  Divisional, primetime and neutral-site tag BOTH sides, so implied sums to 1
+  across the pair and the gap is 0.0pp with a zero-width CI by construction.
+  Four archetypes reported exactly that and it read as a finding. They collapse
+  to one row per game and report the FAVOURITE's gap, marked `(fav)`.
+- **Result-based archetypes need last week's score**, so they silently do not
+  fire on an unplayed season. The UI says so explicitly rather than letting
+  missing data look like a quiet slate.
+- **Neutral-site is inferred from a sub-11am ET kickoff** — `nfl_season_games`
+  has no `location` column and a London kickoff is the only thing that early.
+  A heuristic, labelled as one.
+
+One cell survived out-of-sample: travelling three time zones, +8.0pp overall
+and **+9.6pp [+0.7, +17.9] in 2020-2022, which no earlier study here had
+seen** — travellers beat their price, opposite to the folklore. It is one
+survivor of fifteen at ~54% false-positive odds on the sixth pass over
+overlapping games. A candidate for a pre-registered study, explicitly not a
+reason to pick a team.
+
 ### Ledger
 
 `pickem_pools` / `pickem_recommendations` / `pickem_recommendation_games`,

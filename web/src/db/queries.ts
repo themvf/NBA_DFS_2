@@ -13783,6 +13783,13 @@ export type PickemSlateGame = {
   homeWon: boolean | null;
   modelVersion: string | null;
   computedAt: string | null;
+  // ---- archetype context (see lib/nfl/pickem-archetypes.ts) --------------
+  divGame: boolean;
+  roof: string | null;
+  homeRest: number | null;
+  awayRest: number | null;
+  homeScore: number | null;
+  awayScore: number | null;
 };
 
 export type PickemSlate = {
@@ -13809,6 +13816,7 @@ export async function getNflPickemSlate(season = 2026): Promise<PickemSlate> {
       g.id AS "gameId", g.week, g.kickoff::text AS kickoff, g.completed,
       g.home_score AS "homeScore", g.away_score AS "awayScore",
       g.home_team_id AS "homeTeamId", g.away_team_id AS "awayTeamId",
+      g.div_game AS "divGame", g.roof, g.home_rest AS "homeRest", g.away_rest AS "awayRest",
       h.abbreviation AS "homeAbbrev", h.name AS "homeName",
       a.abbreviation AS "awayAbbrev", a.name AS "awayName",
       w.p_win AS "pWin", w.p_tie AS "pTie", w.provenance,
@@ -13873,6 +13881,12 @@ export async function getNflPickemSlate(season = 2026): Promise<PickemSlate> {
       homeWon,
       modelVersion: record.modelVersion != null ? String(record.modelVersion) : null,
       computedAt: stamp,
+      divGame: Boolean(record.divGame),
+      roof: record.roof != null ? String(record.roof) : null,
+      homeRest: record.homeRest != null ? Number(record.homeRest) : null,
+      awayRest: record.awayRest != null ? Number(record.awayRest) : null,
+      homeScore,
+      awayScore,
     });
   }
 

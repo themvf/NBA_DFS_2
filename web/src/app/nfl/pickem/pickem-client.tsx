@@ -68,6 +68,13 @@ import {
   type Objective,
 } from "@/lib/nfl/pickem-policy";
 import {
+  archetype,
+  narrativeRead,
+  tagArchetypes,
+  type ArchetypeCode,
+  type TeamGameContext,
+} from "@/lib/nfl/pickem-archetypes";
+import {
   cheapDifferentiation,
   evOptimalEntry,
   evaluateEntry,
@@ -269,6 +276,107 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
     [games, baseline, format],
   );
 
+  // ---- archetypes --------------------------------------------------------
+  // Built from the WHOLE season's games, not just this week's, because half
+  // the archetypes depend on a team's previous game (off a bye, off a
+  // blowout, off Monday night). The slate query already returns every game in
+  // the season, so no extra fetch is needed.
+  //
+  // Neutral-site games are inferred from a pre-11am ET kickoff. nfl_season_games
+  // has no `location` column, and a London kickoff is the only thing on the NFL
+  // calendar that starts that early -- a heuristic, and labelled as one rather
+  // than presented as a fact.
+  const archetypesByGame = useMemo(() => {
+    const etParts = (iso: string | null) => {
+      if (!iso) return { weekday: -1, hour: -1 };
+      const d = new Date(iso);
+      const fmt = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        weekday: "short",
+        hour: "numeric",
+        hour12: false,
+      });
+      const parts = fmt.formatToParts(d);
+      const wd = parts.find((p) => p.type === "weekday")?.value ?? "";
+      const hr = Number(parts.find((p) => p.type === "hour")?.value ?? -1);
+      const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      return { weekday: map[wd] ?? -1, hour: Number.isFinite(hr) ? hr : -1 };
+    };
+
+    // One entry per team-game across the season, ordered so `prev` is available.
+    type Slot = {
+      gameId: number;
+      week: number;
+      team: string;
+      opp: string;
+      isHome: boolean;
+      impliedWin: number;
+      rest: number;
+      oppRest: number;
+      weekday: number;
+      hourEt: number;
+      neutralSite: boolean;
+      div: boolean;
+      roof: string | null;
+      margin: number | null;
+      won: boolean | null;
+    };
+    const slots: Slot[] = [];
+    for (const g of slate.games) {
+      const { weekday, hour } = etParts(g.kickoff);
+      const neutral = hour >= 0 && hour < 11;
+      const margin =
+        g.homeScore != null && g.awayScore != null ? g.homeScore - g.awayScore : null;
+      slots.push({
+        gameId: g.gameId, week: g.week, team: g.homeAbbrev, opp: g.awayAbbrev, isHome: true,
+        impliedWin: g.pHome, rest: g.homeRest ?? 7, oppRest: g.awayRest ?? 7,
+        weekday, hourEt: hour, neutralSite: neutral, div: g.divGame, roof: g.roof,
+        margin, won: g.homeWon,
+      });
+      slots.push({
+        gameId: g.gameId, week: g.week, team: g.awayAbbrev, opp: g.homeAbbrev, isHome: false,
+        impliedWin: 1 - g.pHome, rest: g.awayRest ?? 7, oppRest: g.homeRest ?? 7,
+        weekday, hourEt: hour, neutralSite: neutral, div: g.divGame, roof: g.roof,
+        margin: margin == null ? null : -margin, won: g.homeWon == null ? null : !g.homeWon,
+      });
+    }
+
+    const byTeam = new Map<string, Slot[]>();
+    for (const s of slots) {
+      if (!byTeam.has(s.team)) byTeam.set(s.team, []);
+      byTeam.get(s.team)!.push(s);
+    }
+    for (const list of byTeam.values()) list.sort((a, b) => a.week - b.week);
+
+    const out = new Map<number, { home: ArchetypeCode[]; away: ArchetypeCode[] }>();
+    for (const list of byTeam.values()) {
+      list.forEach((s, i) => {
+        const p = i > 0 ? list[i - 1] : undefined;
+        const ctx: TeamGameContext = {
+          team: s.team, opp: s.opp, isHome: s.isHome, week: s.week,
+          impliedWin: s.impliedWin, rest: s.rest, oppRest: s.oppRest,
+          weekday: s.weekday, hourEt: s.hourEt, neutralSite: s.neutralSite,
+          div: s.div, roof: s.roof,
+          // Only a PLAYED previous game can carry a result-based archetype.
+          prev:
+            p && p.margin != null && p.won != null
+              ? {
+                  neutralSite: p.neutralSite, weekday: p.weekday,
+                  margin: p.margin, won: p.won, hourEt: p.hourEt,
+                }
+              : p
+                ? { neutralSite: p.neutralSite, weekday: p.weekday, margin: 0, won: false, hourEt: p.hourEt }
+                : undefined,
+        };
+        const tags = tagArchetypes(ctx);
+        if (!out.has(s.gameId)) out.set(s.gameId, { home: [], away: [] });
+        if (s.isHome) out.get(s.gameId)!.home = tags;
+        else out.get(s.gameId)!.away = tags;
+      });
+    }
+    return out;
+  }, [slate.games]);
+
   const provenanceMix = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const g of weekGames) {
@@ -307,10 +415,26 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
           fieldSource: field.source,
           /** Positive = we are on the pick the field is lighter on. */
           leverage: p - fieldOnMyPick,
+          // Archetypes are attached to the FAVOURITE and UNDERDOG, not to home
+          // and away: the read is about which side the room is drawn to, and
+          // "the room likes the favourite here" is the sentence that matters.
+          ...(() => {
+            const tags = archetypesByGame.get(g.gameId) ?? { home: [], away: [] };
+            const homeIsFav = g.pHome >= 0.5;
+            const favTags = homeIsFav ? tags.home : tags.away;
+            const dogTags = homeIsFav ? tags.away : tags.home;
+            return {
+              favAbbrev: homeIsFav ? g.homeAbbrev : g.awayAbbrev,
+              dogAbbrev: homeIsFav ? g.awayAbbrev : g.homeAbbrev,
+              favTags,
+              dogTags,
+              read: narrativeRead(favTags, dogTags),
+            };
+          })(),
         };
       })
       .sort((a, b) => b.confidence - a.confidence || b.p - a.p);
-  }, [games, weekGames, activeEntry, baseline, fieldModel]);
+  }, [games, weekGames, activeEntry, baseline, fieldModel, archetypesByGame]);
 
   const toggleSide = (gameId: number, current: boolean) => {
     setOverrides((prev) => ({ ...prev, [gameId]: { ...prev[gameId], pickHome: !current } }));
@@ -854,6 +978,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
                   <th className="px-3 py-2 font-medium">Source</th>
                   <th className="px-3 py-2 text-right font-medium">Field on my side</th>
                   <th className="px-3 py-2 text-right font-medium">Leverage</th>
+                  <th className="px-3 py-2 font-medium">Room reads</th>
                   <th className="px-3 py-2 font-medium">Result</th>
                 </tr>
               </thead>
@@ -970,6 +1095,43 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
                         )}
                       </td>
                       <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span
+                            className={`rounded px-1.5 py-0.5 font-mono text-[9px] uppercase ${
+                              r.read.verdict === "crowded"
+                                ? "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                                : r.read.verdict === "contrarian"
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                                  : "bg-muted text-muted-foreground"
+                            }`}
+                            title={r.read.note}
+                          >
+                            {r.read.verdict}
+                          </span>
+                          {r.favTags.slice(0, 2).map((c) => (
+                            <span
+                              key={`f-${c}`}
+                              className="rounded border px-1 py-0.5 text-[9px] text-muted-foreground"
+                              title={`${r.favAbbrev} (favourite) — ${archetype(c).label}. ${archetype(c).story} Market gap over 2020-25: ${archetype(c).measuredGapPp >= 0 ? "+" : ""}${archetype(c).measuredGapPp}pp on n=${archetype(c).measuredN}.`}
+                            >
+                              {r.favAbbrev} {archetype(c).short}
+                            </span>
+                          ))}
+                          {r.dogTags.slice(0, 2).map((c) => (
+                            <span
+                              key={`d-${c}`}
+                              className="rounded border border-dashed px-1 py-0.5 text-[9px] text-muted-foreground"
+                              title={`${r.dogAbbrev} (underdog) — ${archetype(c).label}. ${archetype(c).story} Market gap over 2020-25: ${archetype(c).measuredGapPp >= 0 ? "+" : ""}${archetype(c).measuredGapPp}pp on n=${archetype(c).measuredN}.`}
+                            >
+                              {r.dogAbbrev} {archetype(c).short}
+                            </span>
+                          ))}
+                          {r.favTags.length + r.dogTags.length === 0 && (
+                            <span className="text-[10px] text-muted-foreground">no story</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
                         {correct == null ? (
                           <span className="text-xs text-muted-foreground">—</span>
                         ) : correct ? (
@@ -988,6 +1150,128 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
           </div>
         )}
       </section>
+
+      {/* ---- how the room reads the slate --------------------------------- */}
+      {rows.length > 0 && (
+        <section className="rounded-lg border bg-card">
+          <header className="border-b px-3 py-2">
+            <h2 className="text-sm font-semibold">
+              What the room is looking at
+              <span className="ml-2 font-normal text-muted-foreground">
+                archetypes predict your opponents, not the winner
+              </span>
+            </h2>
+          </header>
+          <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+            Measured across 3,220 team-games from 2020-2025, <strong className="text-foreground">14
+            of 15 archetypes had a market gap whose CI includes zero</strong> — the closing line
+            already prices rest, travel, kickoff slot and last week&apos;s result, because all of it
+            is public months ahead. Your rivals are not running a model, so they do not. An
+            archetype the market has priced but the room will react to is where their card drifts
+            from the price and yours does not. Hover a chip for its measured gap.
+          </p>
+
+          {(() => {
+            // Result-based archetypes (off a blowout, off a primetime win) need
+            // LAST week's score. Before a game is played there is nothing to read,
+            // and they silently do not fire -- which would otherwise look like
+            // "this slate has no stories" rather than "this data does not exist yet".
+            const priorPlayed = slate.games.some(
+              (g) => g.week < week && g.homeScore != null && g.awayScore != null,
+            );
+            if (priorPlayed || week <= 1) return null;
+            return (
+              <p className="border-b bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                <strong className="text-foreground">Result-based archetypes are unavailable for
+                this week.</strong>{" "}
+                Off a blowout win or loss, and off a primetime win, all read last week&apos;s score,
+                and no earlier {slate.season} game has one yet. They will start firing once results
+                land — their absence here is missing data, not a quiet slate.
+              </p>
+            );
+          })()}
+
+          <div className="grid gap-3 p-3 sm:grid-cols-3">
+            {(["crowded", "quiet", "contrarian"] as const).map((v) => {
+              const hits = rows.filter((r) => r.read.verdict === v);
+              const tone =
+                v === "crowded"
+                  ? "border-rose-500/40"
+                  : v === "contrarian"
+                    ? "border-amber-500/40"
+                    : "border-emerald-500/40";
+              const blurb =
+                v === "crowded"
+                  ? "Loud story on the favourite. A poor flip target — expensive AND contested."
+                  : v === "contrarian"
+                    ? "Loud story on the underdog. Cheap to flip, but others will be there too."
+                    : "No loud story. The flip is exactly as contrarian as its price says.";
+              return (
+                <div key={v} className={`rounded-lg border ${tone} p-2.5`}>
+                  <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {v}
+                  </div>
+                  <div className="mt-1 text-lg font-bold tabular-nums">{hits.length}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">{blurb}</p>
+                  {hits.length > 0 && (
+                    <p className="mt-1.5 font-mono text-[10px] text-muted-foreground">
+                      {/* Real away@home, not dog@favourite -- the "@" reads as a
+                          matchup and must not assert a home side that is wrong. */}
+                      {hits.slice(0, 6).map((r) => `${r.game.awayAbbrev}@${r.game.homeAbbrev}`).join(", ")}
+                      {hits.length > 6 ? ` +${hits.length - 6}` : ""}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {(() => {
+            // The hunt: cheap by price AND quiet by narrative. Cheapest first.
+            const targets = rows
+              .filter((r) => r.p >= 0.5 && r.p <= 0.62 && r.read.verdict !== "contrarian")
+              .sort((a, b) => a.p - b.p)
+              .slice(0, 4);
+            return (
+              <div className="border-t px-3 py-2">
+                <div className="mb-1 text-xs font-semibold">Cheapest uncrowded flips this week</div>
+                {targets.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Nothing in the cheap band is free of a loud underdog story this week. Take the
+                    cheapest game anyway — price decides whether to flip; archetypes only break ties.
+                  </p>
+                ) : (
+                  <ul className="space-y-1 text-xs">
+                    {targets.map((r) => (
+                      <li key={r.game.gameId} className="text-muted-foreground">
+                        <span className="font-semibold text-foreground">
+                          {r.dogAbbrev} over {r.favAbbrev}
+                        </span>{" "}
+                        — favourite at {pct(r.p)}, costs{" "}
+                        <span className="font-mono">{(2 * r.p - 1).toFixed(3)}</span> expected wins,{" "}
+                        {r.read.verdict === "crowded"
+                          ? "and the room is on the favourite — good, that is who you are fading"
+                          : "no loud story either way"}
+                        .
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })()}
+
+          <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+            <strong className="text-foreground">Visibility is a stated prior, not a
+            measurement.</strong>{" "}
+            There is no pick-share feed here, so how loudly an archetype announces itself is a
+            judgement. One archetype did show a market gap excluding zero — travelling three time
+            zones, +8.0pp, and +9.6pp in 2020-2022 which no earlier study had seen — but it is one
+            survivor out of fifteen at roughly 54% false-positive odds. It is a candidate for a
+            pre-registered study, not a reason to pick a team.
+          </p>
+        </section>
+      )}
 
       {/* ---- cheap differentiation --------------------------------------- */}
       {cheap.length > 0 && (
