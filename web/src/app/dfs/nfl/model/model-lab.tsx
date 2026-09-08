@@ -35,12 +35,18 @@ export default function ModelLab({ report, digest, viewedAt, workload, workloadD
       <header className="flex flex-wrap items-start justify-between gap-5">
         <div><p className="text-xs font-bold uppercase tracking-[.25em] text-teal-400">NFL / Model development</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight">Model Lab</h1>
-          <p className="mt-3 max-w-2xl text-slate-300">The inputs behind the next projection. Coverage first; workload and efficiency follow.</p></div>
+          <p className="mt-3 max-w-2xl text-slate-300">Understand the data behind projections. Build and save your lineups in the NFL workspace.</p></div>
         <div className="space-y-3 text-right"><span className="inline-block rounded-full border border-teal-800 bg-teal-950 px-3 py-1 text-xs text-teal-200">RESEARCH · PRODUCTION UNCHANGED</span>
           <div><button className="rounded-lg border border-slate-500 px-4 py-2 text-sm hover:bg-slate-800" onClick={download}>Export evidence JSON</button></div></div>
       </header>
-      <section aria-label="Development stages" className="grid gap-2 sm:grid-cols-5">
-        {["01 / Input coverage", "02 / Workload", "03 / Efficiency", "04 / Distributions", "05 / Comparison"].map((label, i) => {
+      <section className="grid gap-4 md:grid-cols-3" aria-label="Choose what to do">
+        <Link href="/dfs/nfl" className="rounded-2xl border border-teal-600 bg-teal-950 p-6 hover:bg-teal-900"><h2 className="text-xl font-semibold">Build my lineups</h2><p className="mt-3 text-sm text-slate-300">Start here. Choose a saved slate, review players, then generate and save.</p><span className="mt-4 block text-teal-300">Open saved slates →</span></Link>
+        <div className="rounded-2xl border border-slate-700 p-6"><h2 className="text-xl font-semibold">Understand a projection</h2><p className="mt-3 text-sm text-slate-300">Workload shows expected opportunities. Efficiency shows what players may do with them.</p><span className="mt-4 block text-sm text-teal-300">Open model details below.</span></div>
+        <Link href="/dfs/nfl/scenarios" className="rounded-2xl border border-slate-700 p-6 hover:bg-slate-900"><h2 className="text-xl font-semibold">Explore lineup risk</h2><p className="mt-3 text-sm text-slate-300">Try a demo to see how players from the same game can rise or fall together.</p><span className="mt-4 block text-teal-300">Try Scenario Lab →</span></Link>
+      </section>
+      <details className="rounded-2xl border border-slate-700 p-5"><summary className="cursor-pointer text-lg font-semibold">Model details: opportunities, efficiency and data coverage</summary><div className="mt-6 space-y-6">
+      <section aria-label="Development stages" className="grid gap-2 sm:grid-cols-3">
+        {["Data coverage", "Player opportunities", "Scoring efficiency"].map((label, i) => {
           const target = i === 0 ? "Coverage" : i === 1 ? "Workload" : "Efficiency";
           const enabled = i === 0 || i === 1 && !!workload || i === 2 && !!efficiency;
           const status = i === 0 ? "Saved evidence" : i === 1 ? workload ? "Saved evidence" : workloadFailed ? "Unavailable" : "No saved run" : i === 2 ? efficiency ? "Saved · shadow research" : efficiencyFailed ? "Unavailable" : "No saved run" : "Not implemented";
@@ -91,6 +97,7 @@ export default function ModelLab({ report, digest, viewedAt, workload, workloadD
         </div></details>
       </>}
       </>}
+    </div></details>
     </div>
   </main>;
 }

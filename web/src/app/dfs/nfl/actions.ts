@@ -1,7 +1,8 @@
 "use server";
 
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { ensureNflDfsTables } from "@/db/ensure-schema";
 import {
@@ -361,6 +362,38 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
 export async function loadLatestNflSlate(): Promise<NflWorkspaceSlate | null> {
   const rows = await db.select({ uploadId: nflDfsSlateUploads.uploadId }).from(nflDfsSlateUploads).orderBy(desc(nflDfsSlateUploads.createdAt)).limit(1);
   return rows[0] ? workspaceSlate(rows[0].uploadId) : null;
+}
+
+export async function listSavedNflSlates() {
+  const rows = await db.select({ uploadId: nflDfsSlateUploads.uploadId, signature: nflDfsSlateUploads.slateSignature,
+    format: nflDfsSlateUploads.format, games: nflDfsSlateUploads.games,
+    gameInfo: sql<string | null>`(select min(game_info) from nfl_dfs_slate_players p where p.upload_id = nfl_dfs_slate_uploads.upload_id)`,
+  }).from(nflDfsSlateUploads).orderBy(desc(nflDfsSlateUploads.createdAt));
+  const seen = new Set<string>();
+  return rows.map(row => ({ uploadId: row.uploadId, label: savedSlateLabel(row.format, row.gameInfo, row.games as string[]) }))
+    .filter(row => { if (seen.has(row.label)) return false; seen.add(row.label); return true; });
+}
+
+export async function loadSavedNflWorkspace(uploadId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  const slate = await workspaceSlate(uploadId);
+  const uploads = await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  const runs = await db.select({ runId: nflDfsOptimizerRuns.runId, createdAt: nflDfsOptimizerRuns.createdAt,
+    count: nflDfsOptimizerRuns.generatedLineups, mode: nflDfsOptimizerRuns.mode, source: nflDfsOptimizerRuns.projectionSource,
+  }).from(nflDfsOptimizerRuns).innerJoin(nflDfsSlateUploads, eq(nflDfsOptimizerRuns.uploadId, nflDfsSlateUploads.uploadId))
+    .where(and(or(eq(nflDfsSlateUploads.slateSignature, uploads[0].slateSignature), eq(nflDfsSlateUploads.fileDigest, uploads[0].fileDigest)), sql`${nflDfsOptimizerRuns.status} in ('complete','partial')`,
+      sql`${nflDfsOptimizerRuns.generatedLineups} > 0`)).orderBy(desc(nflDfsOptimizerRuns.createdAt)).limit(100);
+  return { slate, runs: runs.map(run => ({ ...run, createdAt: run.createdAt.toISOString() })) };
+}
+
+export async function loadSavedNflLineups(uploadId: string, runId: string) {
+  const { run, lineups } = await readNflOptimizerAudit(runId);
+  const selected = (await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1))[0];
+  const original = (await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, run.uploadId)).limit(1))[0];
+  if (!selected || !original || (selected.slateSignature !== original.slateSignature && selected.fileDigest !== original.fileDigest)) throw new Error('This lineup set belongs to a different slate.');
+  if (lineups.length !== run.generatedLineups) throw new Error('Saved lineup set is incomplete.');
+  return { runId, settings: run.settings as NflOptimizerSettings,
+    lineups: restoreSavedLineups(run.inputSnapshot, lineups.sort((a, b) => a.lineupNumber - b.lineupNumber)) };
 }
 
 export async function applyNflComparison(
