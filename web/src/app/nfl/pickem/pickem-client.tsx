@@ -37,6 +37,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { PickemLedgerRow, PickemPoolRow, PickemSlate, PickemSlateGame } from "@/db/queries";
+import PickemTabs from "./pickem-tabs";
 import {
   ledgerVerdict,
   summarizeLedger,
@@ -609,6 +610,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
           whether that price is worth paying against a field of your pool&apos;s size.
         </p>
       </header>
+      <PickemTabs active="board" />
 
       {/* ---- controls --------------------------------------------------- */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3">
