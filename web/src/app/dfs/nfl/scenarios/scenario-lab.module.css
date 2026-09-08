@@ -123,3 +123,9 @@
 @media(max-width:1000px) { .workspace { grid-template-columns:230px minmax(0,1fr); gap:16px; }.controls { padding:16px; }.policyGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }.roster { grid-template-columns:1fr; }.metrics strong { font-size:18px; }.metrics > div { padding:10px; } }
 @media(max-width:700px) { .hero { padding:28px 24px; }.heroAside { display:none; }.workspace { grid-template-columns:1fr; }.controls { padding:20px; }.controls form { max-width:none; }.empty { min-height:340px; padding:24px; }.panel { padding:16px; }.panelHeading { flex-wrap:wrap; }.candidateSelect { width:100%; }.reviewGrid { grid-template-columns:1fr; }.metrics strong { font-size:17px; }.metrics small { font-size:8px; }.provenance dl { grid-template-columns:1fr; gap:0; }.provenance dd { margin-bottom:8px; }.footer svg { flex-shrink:0; } }
 @media(prefers-reduced-motion:reduce) { .lab * { scroll-behavior:auto; transition:none; animation:none; } }
+
+.quickStart { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; padding:24px; margin-top:20px; background:#f0fdfa; border:1px solid #99f6e4; border-radius:15px; }
+.quickStart strong { font-size:15px; }
+.quickStart p { margin:8px 0 0; font-size:13px; line-height:1.6; color:#526872; }
+.quickStart a { grid-column:1 / -1; font-size:14px; font-weight:700; color:#0f766e; text-decoration:underline; }
+@media(max-width:640px) { .quickStart { grid-template-columns:1fr; gap:16px; } }
