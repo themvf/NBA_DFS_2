@@ -204,16 +204,32 @@ async function main() {
     const p = todo[i];
     const url = `${API}?apiKey=${KEY}&regions=${REGIONS}&markets=${MARKETS}` +
       `&oddsFormat=american&date=${p.iso}`;
-    let res: Response;
-    try {
-      res = await fetch(url);
-    } catch (e) {
-      console.error(`  ${p.iso} ${p.label}: network error, stopping — ${String(e)}`);
-      break;
+    // Transient 5xx and network blips are retried; 4xx is not. The provider
+    // returned a single 502 mid-run on the first execution and aborting the
+    // whole 300-call job over it was the wrong trade -- a rejected call costs
+    // no credits, so retrying is free, while restarting a long run is not.
+    // A 4xx (bad key, exhausted quota) is real and still stops immediately.
+    let res: Response | null = null;
+    let fatal = false;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        const r = await fetch(url);
+        if (r.ok) { res = r; break; }
+        if (r.status >= 400 && r.status < 500) {
+          console.error(`  ${p.iso} ${p.label}: HTTP ${r.status} — client error, stopping.`);
+          console.error(`  body: ${(await r.text()).slice(0, 200)}`);
+          fatal = true;
+          break;
+        }
+        console.error(`  ${p.iso} ${p.label}: HTTP ${r.status}, retry ${attempt + 1}/3`);
+      } catch (e) {
+        console.error(`  ${p.iso} ${p.label}: network error, retry ${attempt + 1}/3 — ${String(e).slice(0, 80)}`);
+      }
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     }
-    if (!res.ok) {
-      console.error(`  ${p.iso} ${p.label}: HTTP ${res.status} — stopping so credits are not burned on a broken loop.`);
-      console.error(`  body: ${(await res.text()).slice(0, 200)}`);
+    if (fatal) break;
+    if (!res) {
+      console.error(`  ${p.iso} ${p.label}: still failing after retries — stopping. Re-run to resume free.`);
       break;
     }
     const cost = Number(res.headers.get("x-requests-last") ?? 0);
@@ -230,6 +246,9 @@ async function main() {
     const snapAt = body.timestamp;
     const events = body.data ?? [];
 
+    // Batched into one round trip per snapshot. Individually these are ~7,500
+    // HTTP queries and the inserts would dominate the runtime, not the fetches.
+    const inserts: ReturnType<typeof sql>[] = [];
     for (const ev of events) {
       const spreads: number[] = [];
       const homeMls: number[] = [];
@@ -251,7 +270,7 @@ async function main() {
       const hs = median(spreads);
       const hm = median(homeMls);
       const am = median(awayMls);
-      await sql`
+      inserts.push(sql`
         INSERT INTO nfl_line_snapshots
           (season, label, requested_at, snapshot_at, event_id, commence_time,
            home_team, away_team, book_count, home_spread, home_ml, away_ml,
@@ -262,9 +281,10 @@ async function main() {
                 ${am == null ? null : Math.round(am)}, ${lead},
                 ${JSON.stringify(ev.bookmakers ?? [])}::jsonb)
         ON CONFLICT (snapshot_at, event_id) DO NOTHING
-      `;
+      `);
       stored += 1;
     }
+    if (inserts.length > 0) await sql.transaction(inserts);
 
     await sql`
       INSERT INTO nfl_line_snapshot_runs (requested_at, season, label, snapshot_at, events, credits)
