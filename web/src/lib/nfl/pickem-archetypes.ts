@@ -1,8 +1,8 @@
 /**
  * Game archetypes — a model of how the ROOM will read a matchup.
  *
- * These do not predict winners. `analyze-nfl-archetypes` measured all fifteen
- * across 2020-2025 (3,220 team-games) and fourteen had a market gap whose CI
+ * These do not predict winners. `analyze-nfl-archetypes` measured all seventeen
+ * across 2020-2025 (3,220 team-games) and sixteen had a market gap whose CI
  * includes zero: the closing line prices every one of them, because rest,
  * travel, kickoff slot and last week's result are public months ahead.
  *
@@ -21,6 +21,8 @@
 export type Visibility = "loud" | "moderate" | "quiet";
 
 export type ArchetypeCode =
+  | "ALTITUDE"
+  | "ALTITUDE_OFF"
   | "OFF_INTERNATIONAL"
   | "AT_INTERNATIONAL"
   | "WEST_TEAM_EARLY"
@@ -74,6 +76,9 @@ export type TeamGameContext = {
     won: boolean;
     hourEt: number;
   };
+  /** Opponent and venue of the team's previous game, for hangover archetypes. */
+  prevOpp?: string;
+  prevWasAway?: boolean;
 };
 
 const NORTHERN = new Set([
@@ -97,7 +102,7 @@ export function timezoneOf(abbrev: string): number {
  * They are carried here so the UI can show what the market did with each
  * archetype rather than asserting the situation matters. Only CROSS_COUNTRY
  * had a CI excluding zero, and it is flagged as unconfirmed everywhere it
- * appears — one survivor out of fifteen at ~54% false-positive odds.
+ * appears — one survivor out of seventeen.
  */
 export const ARCHETYPES: ArchetypeDef[] = [
   {
@@ -187,6 +192,32 @@ export const ARCHETYPES: ArchetypeDef[] = [
     measuredGapPp: -1.0,
     measuredN: 574,
     test: (t) => t.div,
+  },
+  {
+    code: "ALTITUDE",
+    label: "Visiting Denver (5,280 ft)",
+    short: "altitude",
+    visibility: "loud",
+    lean: "against",
+    story:
+      "Altitude is cited in every Denver home broadcast and has been for decades. " +
+      "The market prices it: visitors went 43.1% against a 44.5% price.",
+    measuredGapPp: -1.4,
+    measuredN: 51,
+    test: (t) => !t.isHome && t.opp === "DEN",
+  },
+  {
+    code: "ALTITUDE_OFF",
+    label: "Week after visiting Denver",
+    short: "post-altitude",
+    visibility: "quiet",
+    lean: "against",
+    story:
+      "A hangover nobody tracks, because it needs looking two games back. " +
+      "Quiet by construction, so it moves the room very little.",
+    measuredGapPp: 5.9,
+    measuredN: 46,
+    test: (t) => t.prevOpp === "DEN" && t.prevWasAway === true,
   },
   {
     code: "AT_INTERNATIONAL",
