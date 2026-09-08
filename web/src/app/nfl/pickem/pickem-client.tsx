@@ -357,6 +357,8 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
           impliedWin: s.impliedWin, rest: s.rest, oppRest: s.oppRest,
           weekday: s.weekday, hourEt: s.hourEt, neutralSite: s.neutralSite,
           div: s.div, roof: s.roof,
+          prevOpp: p?.opp,
+          prevWasAway: p ? !p.isHome : undefined,
           // Only a PLAYED previous game can carry a result-based archetype.
           prev:
             p && p.margin != null && p.won != null

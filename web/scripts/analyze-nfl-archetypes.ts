@@ -74,6 +74,8 @@ type TeamGame = {
   neutralSite: boolean; div: boolean; roof: string;
   /** Filled in a second pass from the team's own previous game. */
   prev?: { neutralSite: boolean; weekday: string; margin: number; won: boolean; hourEt: number };
+  prevOpp?: string;
+  prevWasAway?: boolean;
 };
 
 const implied = (a: number) => (a < 0 ? -a / (-a + 100) : 100 / (a + 100));
@@ -138,6 +140,20 @@ const ARCHETYPES: Archetype[] = [
     visibility: "loud",
     story: "The single most repeated angle in football media.",
     test: (t) => tz(t.team) === 3 && !t.isHome && t.hourEt === 13,
+  },
+  {
+    code: "ALTITUDE",
+    label: "Visiting Denver (5,280 ft)",
+    visibility: "loud",
+    story: "Altitude is cited in every Denver home broadcast, for decades.",
+    test: (t) => !t.isHome && t.opp === "DEN",
+  },
+  {
+    code: "ALTITUDE_OFF",
+    label: "Week after visiting Denver",
+    visibility: "quiet",
+    story: "A hangover nobody tracks; requires looking two games back.",
+    test: (t) => t.prevOpp === "DEN" && t.prevWasAway === true,
   },
   {
     code: "CROSS_COUNTRY",
@@ -336,6 +352,8 @@ async function main() {
         neutralSite: p.neutralSite, weekday: p.weekday, margin: p.margin,
         won: p.won, hourEt: p.hourEt,
       };
+      list[i].prevOpp = p.opp;
+      list[i].prevWasAway = !p.isHome;
     }
   }
 
