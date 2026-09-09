@@ -51,6 +51,7 @@
     "experiment:nfl-scenarios": "node --import tsx ./scripts/compare-nfl-scenarios.ts",
     "demo:nfl-scenarios": "node --import tsx ./scripts/compare-nfl-scenarios.ts --demo",
     "test:survivor": "node --import tsx ./scripts/test-survivor-assignment.ts",
+    "test:archetypes": "node --import tsx ./scripts/test-pickem-archetypes.ts",
     "test:pickem": "node --import tsx ./scripts/test-pickem-strategy.ts",
     "test:pickem-grading": "node --import tsx ./scripts/test-pickem-grading.ts",
     "analyze:line-movement": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-line-movement.ts",

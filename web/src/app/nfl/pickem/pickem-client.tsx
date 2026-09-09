@@ -71,8 +71,11 @@ import {
 import {
   archetype,
   narrativeRead,
+  buildStandings,
   tagArchetypes,
   type ArchetypeCode,
+  type StandingsGame,
+  type StandingsRow,
   type TeamGameContext,
 } from "@/lib/nfl/pickem-archetypes";
 import {
@@ -116,6 +119,18 @@ const PROVENANCE_LABEL: Record<string, string> = {
 
 function pct(x: number, digits = 1): string {
   return `${(x * 100).toFixed(digits)}%`;
+}
+
+/**
+ * An unmeasured archetype says so. Rendering a null gap as "+0.0pp" would read
+ * as a measured null result, which is a stronger claim than we have.
+ */
+function gapNote(c: ArchetypeCode): string {
+  const a = archetype(c);
+  if (a.measuredGapPp == null || a.measuredN == null) {
+    return "Market gap: not yet measured (added after the 2020-25 pass).";
+  }
+  return `Market gap over 2020-25: ${a.measuredGapPp >= 0 ? "+" : ""}${a.measuredGapPp}pp on n=${a.measuredN}.`;
 }
 
 export default function PickemClient({ slate, pools, ledger, initialWeek, loadedAt }: Props) {
@@ -342,6 +357,22 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
       });
     }
 
+    // Standings as of the start of each week. A pick'em card is submitted
+    // before the week's first kickoff, so the records the room reads are the
+    // ones through the completed PRIOR week -- computing them per week rather
+    // than once keeps the current week's own results out of its own tags.
+    const standingsGames: StandingsGame[] = slate.games.map((g) => ({
+      week: g.week,
+      home: g.homeAbbrev,
+      away: g.awayAbbrev,
+      homeScore: g.homeScore,
+      awayScore: g.awayScore,
+    }));
+    const standingsByWeek = new Map<number, Map<string, StandingsRow>>();
+    for (const wk of new Set(slate.games.map((g) => g.week))) {
+      standingsByWeek.set(wk, buildStandings(standingsGames, wk));
+    }
+
     const byTeam = new Map<string, Slot[]>();
     for (const s of slots) {
       if (!byTeam.has(s.team)) byTeam.set(s.team, []);
@@ -358,6 +389,8 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
           impliedWin: s.impliedWin, rest: s.rest, oppRest: s.oppRest,
           weekday: s.weekday, hourEt: s.hourEt, neutralSite: s.neutralSite,
           div: s.div, roof: s.roof,
+          record: standingsByWeek.get(s.week)?.get(s.team),
+          oppRecord: standingsByWeek.get(s.week)?.get(s.opp),
           prevOpp: p?.opp,
           prevWasAway: p ? !p.isHome : undefined,
           // Only a PLAYED previous game can carry a result-based archetype.
@@ -1116,7 +1149,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
                             <span
                               key={`f-${c}`}
                               className="rounded border px-1 py-0.5 text-[9px] text-muted-foreground"
-                              title={`${r.favAbbrev} (favourite) — ${archetype(c).label}. ${archetype(c).story} Market gap over 2020-25: ${archetype(c).measuredGapPp >= 0 ? "+" : ""}${archetype(c).measuredGapPp}pp on n=${archetype(c).measuredN}.`}
+                              title={`${r.favAbbrev} (favourite) — ${archetype(c).label}. ${archetype(c).story} ${gapNote(c)}`}
                             >
                               {r.favAbbrev} {archetype(c).short}
                             </span>
@@ -1125,7 +1158,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
                             <span
                               key={`d-${c}`}
                               className="rounded border border-dashed px-1 py-0.5 text-[9px] text-muted-foreground"
-                              title={`${r.dogAbbrev} (underdog) — ${archetype(c).label}. ${archetype(c).story} Market gap over 2020-25: ${archetype(c).measuredGapPp >= 0 ? "+" : ""}${archetype(c).measuredGapPp}pp on n=${archetype(c).measuredN}.`}
+                              title={`${r.dogAbbrev} (underdog) — ${archetype(c).label}. ${archetype(c).story} ${gapNote(c)}`}
                             >
                               {r.dogAbbrev} {archetype(c).short}
                             </span>

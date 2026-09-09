@@ -37,7 +37,15 @@ export type ArchetypeCode =
   | "IN_PRIMETIME"
   | "HOME_DOG"
   | "DIVISIONAL"
-  | "COLD_OUTDOOR_LATE";
+  | "COLD_OUTDOOR_LATE"
+  // Added 2026-09-09. Unmeasured: measuredGapPp/measuredN are null until
+  // `analyze:archetypes` is re-run against a pre-registered plan.
+  | "MARQUEE_BRAND"
+  | "FLYOVER_FADE"
+  | "HEAVY_FAVORITE"
+  | "RECORD_GAP"
+  | "UNDEFEATED"
+  | "WINLESS";
 
 export type ArchetypeDef = {
   code: ArchetypeCode;
@@ -48,9 +56,13 @@ export type ArchetypeDef = {
   /** Which way the story pushes the room's opinion of the TAGGED team. */
   lean: "toward" | "against" | "neutral";
   story: string;
-  /** Measured market gap over 2020-2025, in percentage points. */
-  measuredGapPp: number;
-  measuredN: number;
+  /**
+   * Measured market gap over 2020-2025, in percentage points, and its sample.
+   * NULL means "not yet measured" and must render as such -- never as 0.0pp,
+   * which would read as a measured null result rather than an absent one.
+   */
+  measuredGapPp: number | null;
+  measuredN: number | null;
   test: (t: TeamGameContext) => boolean;
 };
 
@@ -79,7 +91,108 @@ export type TeamGameContext = {
   /** Opponent and venue of the team's previous game, for hangover archetypes. */
   prevOpp?: string;
   prevWasAway?: boolean;
+  /**
+   * Season-to-date record for each side as of the START of this week, from
+   * `buildStandings`. Absent means unknown, and every record archetype fails
+   * closed on absence rather than assuming 0-0.
+   */
+  record?: StandingsRow;
+  oppRecord?: StandingsRow;
 };
+
+// ---------------------------------------------------------------------------
+// Standings -- the input the room actually starts from
+// ---------------------------------------------------------------------------
+
+export type StandingsRow = {
+  wins: number;
+  losses: number;
+  ties: number;
+  games: number;
+  pointsFor: number;
+  pointsAgainst: number;
+};
+
+export type StandingsGame = {
+  week: number;
+  home: string;
+  away: string;
+  homeScore: number | null;
+  awayScore: number | null;
+};
+
+/**
+ * Season-to-date records from completed games in weeks STRICTLY BEFORE
+ * `throughWeekExclusive`.
+ *
+ * The cutoff is a week boundary, not a kickoff timestamp, and that is the
+ * correct cutoff for this tool rather than a convenient one: a pick'em card is
+ * submitted before the week's first kickoff, so the standings the entrant reads
+ * are exactly the ones through the completed prior week. Using the game's own
+ * week would leak its result into the tag that is supposed to explain why the
+ * room picked it.
+ *
+ * A team with no completed games is ABSENT from the map rather than 0-0, so a
+ * caller cannot silently treat "unknown" as "even".
+ */
+export function buildStandings(
+  games: StandingsGame[],
+  throughWeekExclusive: number,
+): Map<string, StandingsRow> {
+  const out = new Map<string, StandingsRow>();
+  const row = (team: string): StandingsRow => {
+    let r = out.get(team);
+    if (!r) {
+      r = { wins: 0, losses: 0, ties: 0, games: 0, pointsFor: 0, pointsAgainst: 0 };
+      out.set(team, r);
+    }
+    return r;
+  };
+
+  for (const g of games) {
+    if (g.week >= throughWeekExclusive) continue;
+    if (g.homeScore == null || g.awayScore == null) continue;
+    const h = row(g.home);
+    const a = row(g.away);
+    h.games += 1;
+    a.games += 1;
+    h.pointsFor += g.homeScore;
+    h.pointsAgainst += g.awayScore;
+    a.pointsFor += g.awayScore;
+    a.pointsAgainst += g.homeScore;
+    if (g.homeScore > g.awayScore) {
+      h.wins += 1;
+      a.losses += 1;
+    } else if (g.homeScore < g.awayScore) {
+      h.losses += 1;
+      a.wins += 1;
+    } else {
+      h.ties += 1;
+      a.ties += 1;
+    }
+  }
+  return out;
+}
+
+/** Win differential as a standings table shows it, ties counting as neither. */
+function winDiff(r: StandingsRow): number {
+  return r.wins - r.losses;
+}
+
+/**
+ * Brand sets: franchises the room over- and under-backs irrespective of
+ * quality, by national television share and fanbase size.
+ *
+ * These are a STATED PRIOR and a blunt one -- the same caveat that covers
+ * `visibility`, doubly. They are frozen deliberately and must not be tuned
+ * against outcomes: a set fitted to results stops measuring the room and
+ * starts measuring the season. A franchise's national profile does drift over
+ * a decade, so revisit by judgement and version the change, never by fitting.
+ */
+export const MARQUEE_TEAMS: readonly string[] = ["DAL", "KC", "SF", "GB", "PIT", "PHI", "BUF", "BAL", "NE", "NYG"];
+export const FLYOVER_TEAMS: readonly string[] = ["JAX", "CAR", "ARI", "TEN", "WSH", "LV", "HOU", "IND"];
+const MARQUEE = new Set<string>(MARQUEE_TEAMS);
+const FLYOVER = new Set<string>(FLYOVER_TEAMS);
 
 const NORTHERN = new Set([
   "GB", "CHI", "BUF", "NE", "CLE", "PIT", "DEN", "NYJ", "NYG", "PHI", "WSH", "BAL", "CIN", "KC",
@@ -299,6 +412,102 @@ export const ARCHETYPES: ArchetypeDef[] = [
     measuredN: 342,
     test: (t) => t.rest - t.oppRest >= 3,
   },
+
+  // -------------------------------------------------------------------------
+  // Added 2026-09-09. UNMEASURED -- measuredGapPp/measuredN are null until
+  // `analyze:archetypes` is re-run under a pre-registered plan. Note that
+  // re-running it grows the family from 17 to 23 tests over the same 3,220
+  // team-games, so any new survivor deserves LESS trust than CROSS_COUNTRY,
+  // which already sits at roughly 54% false-positive odds. A calibrated market
+  // (CI including zero) is the desired outcome here, not a disappointing one:
+  // it is the precondition for the leverage these tags exist to capture.
+  // -------------------------------------------------------------------------
+
+  {
+    code: "MARQUEE_BRAND",
+    label: "Marquee franchise",
+    short: "marquee",
+    visibility: "loud",
+    lean: "toward",
+    story:
+      "The only archetype here with no schedule or market correlation at all -- " +
+      "a pure statement about the room. If brand does not shift picks, the " +
+      "visibility model underpinning this whole file is suspect, which is worth " +
+      "knowing either way. Two marquee teams meeting cancels to no signal.",
+    measuredGapPp: null,
+    measuredN: null,
+    test: (t) => MARQUEE.has(t.team),
+  },
+  {
+    code: "FLYOVER_FADE",
+    label: "Low-profile franchise",
+    short: "low profile",
+    visibility: "moderate",
+    lean: "against",
+    story: "The complement of the marquee set: quality the room does not watch and does not back.",
+    measuredGapPp: null,
+    measuredN: null,
+    test: (t) => FLYOVER.has(t.team),
+  },
+  {
+    code: "HEAVY_FAVORITE",
+    label: "Heavy favourite (80%+)",
+    short: "heavy fav",
+    visibility: "loud",
+    lean: "toward",
+    story:
+      "Roughly a 9.5-point spread -- where a game stops reading as a contest and " +
+      "confidence entrants start stacking their top points. This tag is defined " +
+      "ON price, so a market-gap measurement of it is close to meaningless; it " +
+      "earns its place as a strategy input, not as an observation about the market.",
+    measuredGapPp: null,
+    measuredN: null,
+    test: (t) => t.impliedWin >= 0.8,
+  },
+  {
+    code: "UNDEFEATED",
+    label: "Undefeated",
+    short: "undefeated",
+    visibility: "loud",
+    lean: "toward",
+    story:
+      "An unbeaten team gets picked on reputation for weeks after the price has " +
+      "caught up. Three wins is where the national column gets written; at 2-0 " +
+      "nobody has noticed yet. A tie breaks the framing in the room's eyes too.",
+    measuredGapPp: null,
+    measuredN: null,
+    test: (t) => !!t.record && t.record.losses === 0 && t.record.ties === 0 && t.record.wins >= 3,
+  },
+  {
+    code: "WINLESS",
+    label: "Winless",
+    short: "winless",
+    visibility: "loud",
+    lean: "against",
+    story: "Faded well past the point where the price has it as a live dog.",
+    measuredGapPp: null,
+    measuredN: null,
+    test: (t) => !!t.record && t.record.wins === 0 && t.record.ties === 0 && t.record.losses >= 3,
+  },
+  {
+    code: "RECORD_GAP",
+    label: "Much better record",
+    short: "record edge",
+    visibility: "loud",
+    lean: "toward",
+    story:
+      "The record is the first and often the only number a casual entrant looks " +
+      "at, and they read it as a strength rating rather than the schedule-and- " +
+      "variance artefact the line has already digested. Win differential rather " +
+      "than win percentage because that is what the standings graphic shows; a " +
+      "4-game gap is about two games of separation, where 2 fires on half the " +
+      "board by midseason and 6 waits until week 9. Week 5 floor because the " +
+      "room already treats a 3-0 vs 1-2 split as noise.",
+    measuredGapPp: null,
+    measuredN: null,
+    test: (t) =>
+      t.week >= 5 && !!t.record && !!t.oppRecord && winDiff(t.record) - winDiff(t.oppRecord) >= 4,
+  },
 ];
 
 const BY_CODE = new Map(ARCHETYPES.map((a) => [a.code, a]));
@@ -308,8 +517,24 @@ export function archetype(code: ArchetypeCode): ArchetypeDef {
   return a;
 }
 
+/**
+ * Pairs where the second tag restates the first. `narrativeRead` SUMS tag
+ * weights, so leaving both in would double-count one story and inflate the
+ * room's heat -- the failure this file warns about and then has to enforce.
+ */
+const SUPPRESSES: ReadonlyArray<readonly [ArchetypeCode, ArchetypeCode]> = [
+  // An undefeated team almost always also has a large record gap. One story.
+  ["UNDEFEATED", "RECORD_GAP"],
+];
+
 export function tagArchetypes(ctx: TeamGameContext): ArchetypeCode[] {
-  return ARCHETYPES.filter((a) => a.test(ctx)).map((a) => a.code);
+  const tags = ARCHETYPES.filter((a) => a.test(ctx)).map((a) => a.code);
+  const present = new Set(tags);
+  const dropped = new Set<ArchetypeCode>();
+  for (const [winner, loser] of SUPPRESSES) {
+    if (present.has(winner)) dropped.add(loser);
+  }
+  return tags.filter((c) => !dropped.has(c));
 }
 
 // ---------------------------------------------------------------------------

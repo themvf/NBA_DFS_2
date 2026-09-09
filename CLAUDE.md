@@ -6621,6 +6621,57 @@ survivor of fifteen at ~54% false-positive odds on the sixth pass over
 overlapping games. A candidate for a pre-registered study, explicitly not a
 reason to pick a team.
 
+### Record archetypes — the family the first seventeen missed (2026-09-09)
+
+Candidate survey in [`docs/nfl-pickem-archetype-candidates.md`](docs/nfl-pickem-archetype-candidates.md).
+Its finding: the original seventeen all model the SCHEDULE — rest, travel,
+kickoff slot, prior-week margin — and **none reads win-loss record**, which is
+the first and often only number a casual entrant looks at. The taxonomy was
+modelling the part of the room's thinking a sharp person would guess at and
+omitting the part the room starts from.
+
+Six added: `MARQUEE_BRAND`, `FLYOVER_FADE`, `HEAVY_FAVORITE`, `RECORD_GAP`,
+`UNDEFEATED`, `WINLESS`. Four things about them are load-bearing:
+
+- **They carry `measuredGapPp: null`, and the field is now nullable.** They
+  post-date the 2020-2025 pass and both UI surfaces render "not measured"
+  rather than `+0.0pp`, which would read as a measured null result — a
+  stronger claim than we have. Measuring them takes the family from 17 to 23
+  tests over the same 3,220 team-games, so **pre-register before re-running
+  `analyze:archetypes`**, and expect and want CIs including zero: a calibrated
+  market is the precondition for the leverage these tags exist to capture, not
+  a disappointing outcome.
+- **`buildStandings(games, throughWeekExclusive)` cuts on a WEEK boundary, not
+  a kickoff timestamp**, and that is the correct cutoff rather than the
+  convenient one — a card is submitted before the week's first kickoff, so the
+  standings the room reads are the ones through the completed prior week. Using
+  the game's own week would leak its result into the tag meant to explain why
+  the room picked it. A team with no completed games is ABSENT from the map,
+  never 0-0, and every record archetype fails closed on a missing record.
+- **`tagArchetypes` now applies a suppression table**, because `narrativeRead`
+  SUMS tag weights and `UNDEFEATED` + `RECORD_GAP` are one story told twice.
+  The file had warned about summed tags for a year without enforcing it. Add a
+  `SUPPRESSES` pair whenever a new tag restates an existing one.
+- **The brand sets are a frozen stated prior and must never be tuned against
+  outcomes.** A set fitted to results stops measuring the room and starts
+  measuring the season. `MARQUEE_BRAND` is also the only archetype in the file
+  with no schedule or market correlation whatsoever, which makes it the
+  cleanest available test of whether the `visibility` priors describe anything
+  real — if brand does not shift picks, the whole visibility model is suspect.
+
+Deliberately NOT built: `SURFACE_CHANGE` and `SANDWICH_GAME` (sharp-community
+constructs with no plausible casual-entrant story), clinch/elimination logic
+(needs the full tiebreaker cascade; only an approximation is available), and
+`DOME_TEAM_OUTDOOR_COLD` — which should probably REPLACE the symmetric
+`COLD_OUTDOOR_LATE` rather than join it, and changing a measured tag is its own
+decision. `docs/` also records nine blocked candidates with their missing
+sources; a **betting-handle / public-bet% feed is the highest-value of them by
+a wide margin**, since it is the only thing that would convert the entire
+`visibility` column from stated prior into measurement.
+
+Tests: `npm run test:archetypes` (40 assertions; the leak tests on
+`buildStandings` and the suppression assertions are the load-bearing ones).
+
 ### Ledger
 
 `pickem_pools` / `pickem_recommendations` / `pickem_recommendation_games`,

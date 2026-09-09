@@ -231,10 +231,20 @@ export default function MethodPage() {
                       {a.lean === "toward" ? "toward the tagged team" : a.lean === "against" ? "against the tagged team" : "neither side"}
                     </td>
                     <td className="px-2 py-1.5 text-right font-mono tabular-nums">
-                      {a.measuredGapPp >= 0 ? "+" : ""}
-                      {a.measuredGapPp.toFixed(1)}pp
+                      {a.measuredGapPp == null ? (
+                        <span className="text-muted-foreground" title="Added after the 2020-2025 measurement pass. Not yet measured -- which is not the same as measured at zero.">
+                          not measured
+                        </span>
+                      ) : (
+                        <>
+                          {a.measuredGapPp >= 0 ? "+" : ""}
+                          {a.measuredGapPp.toFixed(1)}pp
+                        </>
+                      )}
                     </td>
-                    <td className="px-2 py-1.5 text-right font-mono tabular-nums">{a.measuredN}</td>
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums">
+                      {a.measuredN ?? <span className="text-muted-foreground">&mdash;</span>}
+                    </td>
                   </tr>
                 ))}
             </tbody>
