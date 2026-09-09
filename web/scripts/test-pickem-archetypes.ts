@@ -25,8 +25,10 @@ import {
   archetype,
   buildStandings,
   narrativeRead,
+  tagSeason,
   tagArchetypes,
   type ArchetypeCode,
+  type SeasonGame,
   type StandingsGame,
   type TeamGameContext,
 } from "../src/lib/nfl/pickem-archetypes";
@@ -221,6 +223,83 @@ const rec = (wins: number, losses: number, ties = 0, pf = 0, pa = 0) => ({
 // ---------------------------------------------------------------------------
 // Registry integrity
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// tagSeason -- the whole-season pass, which is what a completed prior season
+// exercises. 2026 has no played games, so every result- and record-based
+// archetype is dormant there; only a prior season proves they fire at all.
+// ---------------------------------------------------------------------------
+
+console.log("\ntagSeason (completed prior season)");
+
+function sg(
+  gameId: number,
+  week: number,
+  home: string,
+  away: string,
+  homeScore: number | null,
+  awayScore: number | null,
+  over: Partial<SeasonGame> = {},
+): SeasonGame {
+  return {
+    gameId, week, homeAbbrev: home, awayAbbrev: away, homeScore, awayScore,
+    pHome: 0.5, kickoff: `2024-09-0${Math.min(week, 9)}T17:00:00Z`,
+    homeRest: 7, awayRest: 7, divGame: false, roof: "outdoors",
+    ...over,
+  };
+}
+
+{
+  const season: SeasonGame[] = [
+    sg(1, 1, "KC", "BUF", 31, 10),
+    sg(2, 2, "KC", "MIN", 28, 7),
+    sg(3, 2, "BUF", "MIA", 10, 20),
+    sg(4, 3, "KC", "DEN", 30, 27),
+    sg(5, 3, "BUF", "NYJ", 14, 17),
+    sg(6, 4, "KC", "LV", 24, 3),
+    sg(7, 4, "BUF", "NE", 13, 16),
+    sg(8, 5, "KC", "BUF", 21, 20),
+  ];
+  const tags = tagSeason(season);
+
+  const wk5 = tags.get(8)!;
+  check("UNDEFEATED fires on a real completed season", wk5.home.includes("UNDEFEATED"), wk5.home.join(","));
+  check("WINLESS fires on the other side", wk5.away.includes("WINLESS"), wk5.away.join(","));
+  check("OFF_BLOWOUT_WIN reads last week's real score", wk5.home.includes("OFF_BLOWOUT_WIN"), wk5.home.join(","));
+  check("suppression still applies through the season pass", !wk5.home.includes("RECORD_GAP"), wk5.home.join(","));
+
+  const wk1 = tags.get(1)!;
+  check(
+    "week 1 carries no record or result archetype",
+    !(["UNDEFEATED", "WINLESS", "RECORD_GAP", "OFF_BLOWOUT_WIN", "OFF_BLOWOUT_LOSS"] as ArchetypeCode[]).some(
+      (c) => wk1.home.includes(c) || wk1.away.includes(c),
+    ),
+    `${wk1.home.join(",")} | ${wk1.away.join(",")}`,
+  );
+
+  const standings = buildStandings(
+    season.map((g) => ({ week: g.week, home: g.homeAbbrev, away: g.awayAbbrev, homeScore: g.homeScore, awayScore: g.awayScore })),
+    5,
+  );
+  check("season pass does not leak the current week", standings.get("KC")!.wins === 4);
+}
+
+{
+  const future: SeasonGame[] = [sg(1, 1, "KC", "BUF", null, null), sg(2, 2, "KC", "DEN", null, null)];
+  const tags = tagSeason(future);
+  check("an unplayed season still returns a tag map", tags.size === 2);
+  check(
+    "no record archetype on an unplayed season",
+    !tags.get(2)!.home.some((c) => (["UNDEFEATED", "WINLESS", "RECORD_GAP"] as ArchetypeCode[]).includes(c)),
+  );
+}
+
+{
+  const season: SeasonGame[] = [sg(1, 1, "MIA", "JAX", 40, 3), sg(2, 2, "JAX", "MIA", 10, 13)];
+  const tags = tagSeason(season);
+  check("OFF_BLOWOUT_WIN attaches to the winner, away side", tags.get(2)!.away.includes("OFF_BLOWOUT_WIN"), tags.get(2)!.away.join(","));
+  check("OFF_BLOWOUT_LOSS attaches to the loser, home side", tags.get(2)!.home.includes("OFF_BLOWOUT_LOSS"), tags.get(2)!.home.join(","));
+}
 
 console.log("\nregistry");
 

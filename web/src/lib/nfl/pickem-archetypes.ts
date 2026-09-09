@@ -614,3 +614,158 @@ export function narrativeRead(
       "price suggests. This is the clean case.",
   };
 }
+
+// ---------------------------------------------------------------------------
+// Whole-season tagging
+// ---------------------------------------------------------------------------
+
+/**
+ * One game as the pick'em slate carries it. A subset of PickemSlateGame, so a
+ * slate row is assignable without conversion.
+ */
+export type SeasonGame = {
+  gameId: number;
+  week: number;
+  homeAbbrev: string;
+  awayAbbrev: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  pHome: number;
+  kickoff: string | null;
+  homeRest: number | null;
+  awayRest: number | null;
+  divGame: boolean;
+  roof: string | null;
+};
+
+export type GameTags = { home: ArchetypeCode[]; away: ArchetypeCode[] };
+
+/** Weekday (0=Sun) and hour in ET, or -1 when the kickoff is unknown. */
+function etParts(iso: string | null): { weekday: number; hour: number } {
+  if (!iso) return { weekday: -1, hour: -1 };
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { weekday: -1, hour: -1 };
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "numeric",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(d);
+  const wd = parts.find((p) => p.type === "weekday")?.value ?? "";
+  const hr = Number(parts.find((p) => p.type === "hour")?.value ?? -1);
+  const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return { weekday: map[wd] ?? -1, hour: Number.isFinite(hr) ? hr : -1 };
+}
+
+/**
+ * Tag every team-game in a season.
+ *
+ * Whole-season rather than per-week because half the archetypes read the
+ * team's PREVIOUS game (off a bye, off a blowout, off Monday night) and the
+ * record archetypes read every completed week before this one.
+ *
+ * A completed prior season is the only thing that exercises the result- and
+ * record-based tags at all: an unplayed season has no scores, so those tags
+ * are correctly dormant there and the taxonomy looks half-empty. That is not
+ * a defect, and it is why this function is tested against a played fixture
+ * rather than only against the live 2026 slate.
+ */
+export function tagSeason(games: SeasonGame[]): Map<number, GameTags> {
+  type Slot = {
+    gameId: number;
+    week: number;
+    team: string;
+    opp: string;
+    isHome: boolean;
+    impliedWin: number;
+    rest: number;
+    oppRest: number;
+    weekday: number;
+    hourEt: number;
+    neutralSite: boolean;
+    div: boolean;
+    roof: string | null;
+    margin: number | null;
+    won: boolean | null;
+  };
+
+  const slots: Slot[] = [];
+  for (const g of games) {
+    const { weekday, hour } = etParts(g.kickoff);
+    // No location column exists, and a sub-11am ET kickoff is the only thing
+    // that early -- a labelled heuristic, not a fact.
+    const neutral = hour >= 0 && hour < 11;
+    const margin =
+      g.homeScore != null && g.awayScore != null ? g.homeScore - g.awayScore : null;
+    const homeWon = margin == null || margin === 0 ? null : margin > 0;
+    slots.push({
+      gameId: g.gameId, week: g.week, team: g.homeAbbrev, opp: g.awayAbbrev, isHome: true,
+      impliedWin: g.pHome, rest: g.homeRest ?? 7, oppRest: g.awayRest ?? 7,
+      weekday, hourEt: hour, neutralSite: neutral, div: g.divGame, roof: g.roof,
+      margin, won: homeWon,
+    });
+    slots.push({
+      gameId: g.gameId, week: g.week, team: g.awayAbbrev, opp: g.homeAbbrev, isHome: false,
+      impliedWin: 1 - g.pHome, rest: g.awayRest ?? 7, oppRest: g.homeRest ?? 7,
+      weekday, hourEt: hour, neutralSite: neutral, div: g.divGame, roof: g.roof,
+      margin: margin == null ? null : -margin, won: homeWon == null ? null : !homeWon,
+    });
+  }
+
+  const standingsGames: StandingsGame[] = games.map((g) => ({
+    week: g.week,
+    home: g.homeAbbrev,
+    away: g.awayAbbrev,
+    homeScore: g.homeScore,
+    awayScore: g.awayScore,
+  }));
+  const standingsByWeek = new Map<number, Map<string, StandingsRow>>();
+  for (const wk of new Set(games.map((g) => g.week))) {
+    standingsByWeek.set(wk, buildStandings(standingsGames, wk));
+  }
+
+  const byTeam = new Map<string, Slot[]>();
+  for (const s of slots) {
+    if (!byTeam.has(s.team)) byTeam.set(s.team, []);
+    byTeam.get(s.team)!.push(s);
+  }
+  for (const list of byTeam.values()) list.sort((a, b) => a.week - b.week);
+
+  const out = new Map<number, GameTags>();
+  for (const g of games) out.set(g.gameId, { home: [], away: [] });
+
+  for (const list of byTeam.values()) {
+    list.forEach((s, i) => {
+      const p = i > 0 ? list[i - 1] : undefined;
+      const ctx: TeamGameContext = {
+        team: s.team, opp: s.opp, isHome: s.isHome, week: s.week,
+        impliedWin: s.impliedWin, rest: s.rest, oppRest: s.oppRest,
+        weekday: s.weekday, hourEt: s.hourEt, neutralSite: s.neutralSite,
+        div: s.div, roof: s.roof,
+        record: standingsByWeek.get(s.week)?.get(s.team),
+        oppRecord: standingsByWeek.get(s.week)?.get(s.opp),
+        prevOpp: p?.opp,
+        prevWasAway: p ? !p.isHome : undefined,
+        // Only a PLAYED previous game can carry a result-based archetype. An
+        // unplayed one still carries its slot and weekday, so OFF_MONDAY and
+        // OFF_INTERNATIONAL keep working on a future schedule.
+        prev: p
+          ? {
+              neutralSite: p.neutralSite,
+              weekday: p.weekday,
+              hourEt: p.hourEt,
+              margin: p.margin ?? 0,
+              won: p.won ?? false,
+            }
+          : undefined,
+      };
+      const tags = tagArchetypes(ctx);
+      const entry = out.get(s.gameId);
+      if (!entry) return;
+      if (s.isHome) entry.home = tags;
+      else entry.away = tags;
+    });
+  }
+  return out;
+}

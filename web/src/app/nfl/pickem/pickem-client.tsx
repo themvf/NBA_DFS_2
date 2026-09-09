@@ -71,12 +71,8 @@ import {
 import {
   archetype,
   narrativeRead,
-  buildStandings,
-  tagArchetypes,
+  tagSeason,
   type ArchetypeCode,
-  type StandingsGame,
-  type StandingsRow,
-  type TeamGameContext,
 } from "@/lib/nfl/pickem-archetypes";
 import {
   cheapDifferentiation,
@@ -99,6 +95,17 @@ type Props = {
 };
 
 const STORAGE_KEY = "nfl-pickem-v1";
+
+/**
+ * Seasons offered in the picker. 2020 is the earliest the archetype study
+ * covers, and the current season is the default.
+ *
+ * A season only renders if `nfl_season_games` AND `nfl_game_win_probs` are
+ * both populated for it -- the slate query drops any game with no win
+ * probability. Listing a season here does not populate it; see the empty
+ * state, which names the two commands rather than showing a blank page.
+ */
+const SELECTABLE_SEASONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020];
 
 type Stored = {
   week: number;
@@ -293,125 +300,13 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
   );
 
   // ---- archetypes --------------------------------------------------------
-  // Built from the WHOLE season's games, not just this week's, because half
-  // the archetypes depend on a team's previous game (off a bye, off a
-  // blowout, off Monday night). The slate query already returns every game in
-  // the season, so no extra fetch is needed.
-  //
-  // Neutral-site games are inferred from a pre-11am ET kickoff. nfl_season_games
-  // has no `location` column, and a London kickoff is the only thing on the NFL
-  // calendar that starts that early -- a heuristic, and labelled as one rather
-  // than presented as a fact.
-  const archetypesByGame = useMemo(() => {
-    const etParts = (iso: string | null) => {
-      if (!iso) return { weekday: -1, hour: -1 };
-      const d = new Date(iso);
-      const fmt = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        weekday: "short",
-        hour: "numeric",
-        hour12: false,
-      });
-      const parts = fmt.formatToParts(d);
-      const wd = parts.find((p) => p.type === "weekday")?.value ?? "";
-      const hr = Number(parts.find((p) => p.type === "hour")?.value ?? -1);
-      const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-      return { weekday: map[wd] ?? -1, hour: Number.isFinite(hr) ? hr : -1 };
-    };
-
-    // One entry per team-game across the season, ordered so `prev` is available.
-    type Slot = {
-      gameId: number;
-      week: number;
-      team: string;
-      opp: string;
-      isHome: boolean;
-      impliedWin: number;
-      rest: number;
-      oppRest: number;
-      weekday: number;
-      hourEt: number;
-      neutralSite: boolean;
-      div: boolean;
-      roof: string | null;
-      margin: number | null;
-      won: boolean | null;
-    };
-    const slots: Slot[] = [];
-    for (const g of slate.games) {
-      const { weekday, hour } = etParts(g.kickoff);
-      const neutral = hour >= 0 && hour < 11;
-      const margin =
-        g.homeScore != null && g.awayScore != null ? g.homeScore - g.awayScore : null;
-      slots.push({
-        gameId: g.gameId, week: g.week, team: g.homeAbbrev, opp: g.awayAbbrev, isHome: true,
-        impliedWin: g.pHome, rest: g.homeRest ?? 7, oppRest: g.awayRest ?? 7,
-        weekday, hourEt: hour, neutralSite: neutral, div: g.divGame, roof: g.roof,
-        margin, won: g.homeWon,
-      });
-      slots.push({
-        gameId: g.gameId, week: g.week, team: g.awayAbbrev, opp: g.homeAbbrev, isHome: false,
-        impliedWin: 1 - g.pHome, rest: g.awayRest ?? 7, oppRest: g.homeRest ?? 7,
-        weekday, hourEt: hour, neutralSite: neutral, div: g.divGame, roof: g.roof,
-        margin: margin == null ? null : -margin, won: g.homeWon == null ? null : !g.homeWon,
-      });
-    }
-
-    // Standings as of the start of each week. A pick'em card is submitted
-    // before the week's first kickoff, so the records the room reads are the
-    // ones through the completed PRIOR week -- computing them per week rather
-    // than once keeps the current week's own results out of its own tags.
-    const standingsGames: StandingsGame[] = slate.games.map((g) => ({
-      week: g.week,
-      home: g.homeAbbrev,
-      away: g.awayAbbrev,
-      homeScore: g.homeScore,
-      awayScore: g.awayScore,
-    }));
-    const standingsByWeek = new Map<number, Map<string, StandingsRow>>();
-    for (const wk of new Set(slate.games.map((g) => g.week))) {
-      standingsByWeek.set(wk, buildStandings(standingsGames, wk));
-    }
-
-    const byTeam = new Map<string, Slot[]>();
-    for (const s of slots) {
-      if (!byTeam.has(s.team)) byTeam.set(s.team, []);
-      byTeam.get(s.team)!.push(s);
-    }
-    for (const list of byTeam.values()) list.sort((a, b) => a.week - b.week);
-
-    const out = new Map<number, { home: ArchetypeCode[]; away: ArchetypeCode[] }>();
-    for (const list of byTeam.values()) {
-      list.forEach((s, i) => {
-        const p = i > 0 ? list[i - 1] : undefined;
-        const ctx: TeamGameContext = {
-          team: s.team, opp: s.opp, isHome: s.isHome, week: s.week,
-          impliedWin: s.impliedWin, rest: s.rest, oppRest: s.oppRest,
-          weekday: s.weekday, hourEt: s.hourEt, neutralSite: s.neutralSite,
-          div: s.div, roof: s.roof,
-          record: standingsByWeek.get(s.week)?.get(s.team),
-          oppRecord: standingsByWeek.get(s.week)?.get(s.opp),
-          prevOpp: p?.opp,
-          prevWasAway: p ? !p.isHome : undefined,
-          // Only a PLAYED previous game can carry a result-based archetype.
-          prev:
-            p && p.margin != null && p.won != null
-              ? {
-                  neutralSite: p.neutralSite, weekday: p.weekday,
-                  margin: p.margin, won: p.won, hourEt: p.hourEt,
-                }
-              : p
-                ? { neutralSite: p.neutralSite, weekday: p.weekday, margin: 0, won: false, hourEt: p.hourEt }
-                : undefined,
-        };
-        const tags = tagArchetypes(ctx);
-        if (!out.has(s.gameId)) out.set(s.gameId, { home: [], away: [] });
-        if (s.isHome) out.get(s.gameId)!.home = tags;
-        else out.get(s.gameId)!.away = tags;
-      });
-    }
-    return out;
-  }, [slate.games]);
+  // Tagged across the WHOLE season, not just this week: half the archetypes
+  // read the team's previous game and the record archetypes read every
+  // completed week before this one. The slate query already returns the full
+  // season, so no extra fetch is needed. Logic lives in the lib so it is
+  // testable (`npm run test:archetypes`) -- a prior completed season is the
+  // only thing that exercises the result- and record-based tags at all.
+  const archetypesByGame = useMemo(() => tagSeason(slate.games), [slate.games]);
 
   const provenanceMix = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -647,6 +542,26 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
 
       {/* ---- controls --------------------------------------------------- */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3">
+        {/*
+          Season navigates by URL rather than client state: the slate, pools
+          and ledger are all fetched server-side per season, so changing it is
+          a new request, not a filter over data already in the browser.
+        */}
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          Season
+          <select
+            value={slate.season}
+            onChange={(e) => {
+              window.location.href = `/nfl/pickem?season=${e.target.value}`;
+            }}
+            className="h-8 rounded border bg-background px-2 text-sm"
+          >
+            {SELECTABLE_SEASONS.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </label>
+
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           Week
           <select
@@ -997,11 +912,28 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
 
         {rows.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">
-            No games with a win probability for week {week} of {slate.season}. The survivor pipeline
-            (<code className="font-mono">ingest/refresh_nfl_survivor.py</code>) populates{" "}
-            <code className="font-mono">nfl_game_win_probs</code>, which this page reads rather than
-            computing its own — two pages in this app disagreeing about the same game would be a
-            defect.
+            {slate.weeks.length === 0 ? (
+              <>
+                No games at all for {slate.season}. A prior season has to be loaded before it can be
+                browsed — this page reads the database, not nflverse directly. Run{" "}
+                <code className="font-mono">python -m ingest.nfl_season_schedule --season{" "}
+                {slate.season}</code>{" "}
+                for the schedule, then{" "}
+                <code className="font-mono">python -m model.nfl_survivor_model --season{" "}
+                {slate.season}</code>{" "}
+                for the win probabilities. Both default to 2026, so an older season is never loaded
+                as a side effect of the scheduled refresh.
+              </>
+            ) : (
+              <>
+                No games with a win probability for week {week} of {slate.season}. The survivor
+                pipeline (<code className="font-mono">ingest/refresh_nfl_survivor.py</code>)
+                populates <code className="font-mono">nfl_game_win_probs</code>, which this page
+                reads rather than computing its own — two pages in this app disagreeing about the
+                same game would be a defect. For a completed season the probabilities come from
+                nflverse&rsquo;s own closing moneylines, so no live odds feed is needed.
+              </>
+            )}
           </p>
         ) : (
           <div className="overflow-x-auto">
