@@ -14091,6 +14091,11 @@ export type NflArchetypePlayRow = {
   clock: string | null; down: number | null; ydstogo: number | null;
   yardline100: number | null; playType: string | null; yardsGained: number | null;
   playArchetype: string; turnoverType: string | null; hadSack: boolean | null;
+  goalLine: boolean | null; penaltyType: string | null; penaltyTeam: string | null;
+  penaltyFirstDown: boolean | null; formation: string | null;
+  personnelGrouping: string | null; defendersInBox: number | null;
+  passRushers: number | null; blitz: boolean | null; pressure: boolean | null;
+  coverageType: string | null; manZone: string | null;
   distanceBucket: string | null; success: boolean | null;
   explosive: boolean | null; shotgun: boolean | null; noHuddle: boolean | null;
   epa: number | null; wp: number | null; description: string | null;
@@ -14138,6 +14143,9 @@ export async function getNflArchetypePlays(gameId: string): Promise<NflArchetype
   const rows = await db.execute(sql`
     SELECT play_id, drive, posteam, quarter, clock, down, ydstogo, yardline_100,
            play_type, yards_gained, play_archetype, turnover_type, had_sack,
+           goal_line, penalty_type, penalty_team, penalty_first_down,
+           formation, personnel_grouping, defenders_in_box, pass_rushers,
+           blitz, pressure, coverage_type, man_zone,
            distance_bucket, success, explosive,
            shotgun, no_huddle, epa, wp, description, drive_archetype, drive_qb,
            drive_qb_is_starter, drive_start_bucket, drive_end_bucket, drive_result,
@@ -14153,6 +14161,12 @@ export async function getNflArchetypePlays(gameId: string): Promise<NflArchetype
     ydstogo: num(r.ydstogo), yardline100: num(r.yardline_100), playType: str(r.play_type),
     yardsGained: num(r.yards_gained), playArchetype: String(r.play_archetype),
     turnoverType: str(r.turnover_type), hadSack: bool(r.had_sack),
+    goalLine: bool(r.goal_line), penaltyType: str(r.penalty_type),
+    penaltyTeam: str(r.penalty_team), penaltyFirstDown: bool(r.penalty_first_down),
+    formation: str(r.formation), personnelGrouping: str(r.personnel_grouping),
+    defendersInBox: num(r.defenders_in_box), passRushers: num(r.pass_rushers),
+    blitz: bool(r.blitz), pressure: bool(r.pressure),
+    coverageType: str(r.coverage_type), manZone: str(r.man_zone),
     distanceBucket: str(r.distance_bucket), success: bool(r.success),
     explosive: bool(r.explosive), shotgun: bool(r.shotgun), noHuddle: bool(r.no_huddle),
     epa: num(r.epa), wp: num(r.wp), description: str(r.description),

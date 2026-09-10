@@ -13,7 +13,7 @@ type Props = { games: NflArchetypeGameRow[]; gameId: string | null; plays: NflAr
 // only channel.
 const PLAY_TONE: Record<string, string> = {
   EARLY_DOWN_EXPLOSIVE: "good", EARLY_DOWN_SUCCESS: "good", LATE_DOWN_CONVERSION: "good",
-  GOAL_LINE_PUNCH: "good", EARLY_DOWN_FAILURE: "warn", LATE_DOWN_FAILURE: "warn",
+  EARLY_DOWN_FAILURE: "warn", LATE_DOWN_FAILURE: "warn",
   SACK: "warn", TURNOVER_PLAY: "bad", PENALTY: "warn",
   SPECIAL_TEAMS: "mute", KNEEL: "mute", SPIKE: "mute", NON_PLAY: "mute", EARLY_DOWN_MODEST: "",
 };
@@ -87,7 +87,8 @@ export default function PbpArchetypeClient({ games, gameId, plays }: Props) {
       <table className={p.table}>
         <thead><tr>
           {["Q", "Clock", "Off", "Dr", "Dn", "Dist", "Yd", "Type", "Gain",
-            "PLAY ARCHETYPE", "DRIVE ARCHETYPE", "Drive flags", "Drive QB", "EPA", "Description"]
+            "Pers", "Box", "PLAY ARCHETYPE", "Pre-snap", "DRIVE ARCHETYPE", "Drive flags",
+            "Drive QB", "EPA", "Description"]
             .map(h => <th key={h}>{h}</th>)}
         </tr></thead>
         <tbody>
@@ -109,10 +110,23 @@ export default function PbpArchetypeClient({ games, gameId, plays }: Props) {
               <td data-gain={r.yardsGained == null ? "" : r.yardsGained > 0 ? "pos" : r.yardsGained < 0 ? "neg" : ""}>
                 {num(r.yardsGained)}{r.explosive ? " ⚡" : ""}
               </td>
+              {/* Personnel and box: what down-and-distance cannot say. Blank
+                  where nflverse publishes no participation for the season. */}
+              <td className={p.mono}>{r.personnelGrouping ?? "—"}</td>
+              <td className={p.mono}>{r.defendersInBox == null ? "—" : r.defendersInBox.toFixed(0)}</td>
               <td><span className={p.chip} data-tone={PLAY_TONE[r.playArchetype] ?? ""}>{label(r.playArchetype)}</span>
                 {r.hadSack && r.playArchetype !== "SACK"
                   ? <span className={p.flag} data-tone="bad" title="Strip sack: this play was both a sack and a lost fumble. TURNOVER_PLAY outranks SACK, so without this flag the sack would vanish from the count.">+SACK</span>
                   : null}</td>
+              <td className={p.flags}>
+                {r.goalLine ? <span className={p.flag} data-tone="good" title="Snap from inside the opponent's 5, run or pass">G-LINE</span> : null}
+                {r.pressure ? <span className={p.flag} data-tone="bad" title="Quarterback was pressured">PRESS</span> : null}
+                {r.blitz ? <span className={p.flag} data-tone="warn" title="Five or more pass rushers">BLITZ</span> : null}
+                {r.formation && r.formation !== "SHOTGUN" ? <span className={p.flag}>{r.formation.replace("_", " ")}</span> : null}
+                {r.coverageType ? <span className={p.flag}>{r.coverageType.replace("COVER_", "C")}</span> : null}
+                {r.penaltyFirstDown ? <span className={p.flag} data-tone="warn" title="Penalty moved the chains">PEN 1ST</span> : null}
+                {!r.goalLine && !r.pressure && !r.blitz && !r.coverageType && !r.penaltyFirstDown && (!r.formation || r.formation === "SHOTGUN") ? <span className={p.none}>—</span> : null}
+              </td>
               <td>{r.driveArchetype
                 ? <span className={p.chip} data-tone={DRIVE_TONE[r.driveArchetype] ?? ""}>{label(r.driveArchetype)}</span>
                 : <span className={p.none} title="This play sits on a possession the drive labeller does not recognise as a drive — a conversion attempt after a return touchdown. Left blank rather than guessed.">no drive</span>}</td>
