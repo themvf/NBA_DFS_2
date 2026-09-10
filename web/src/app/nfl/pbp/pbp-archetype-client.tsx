@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import type { NflArchetypeGameRow, NflArchetypePlayRow } from "@/db/queries";
-import s from "../cfb/cfb-terminal.module.css";
-import n from "./nfl-terminal.module.css";
+import s from "../../cfb/cfb-terminal.module.css";
+import n from "../nfl-terminal.module.css";
 import p from "./pbp-archetype.module.css";
 
 type Props = { games: NflArchetypeGameRow[]; gameId: string | null; plays: NflArchetypePlayRow[] };
@@ -61,7 +61,7 @@ export default function PbpArchetypeClient({ games, gameId, plays }: Props) {
 
     <section className={p.controls}>
       <label>GAME
-        <select value={gameId ?? ""} onChange={e => { window.location.search = `?tab=pbp&game=${encodeURIComponent(e.target.value)}`; }}>
+        <select value={gameId ?? ""} onChange={e => { window.location.search = `?game=${encodeURIComponent(e.target.value)}`; }}>
           {!gameId && <option value="">Select…</option>}
           {games.map(g => <option key={g.gameId} value={g.gameId}>
             {g.season} {g.week ? `WK${g.week}` : ""} · {g.awayTeam} @ {g.homeTeam}
