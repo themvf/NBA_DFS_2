@@ -13,6 +13,14 @@ Re-running a game REPLACES its rows. These are derived labels, not
 observations: there is no audit value in retaining a superseded labelling,
 and the labeller versions are stamped per row so two labellings stay
 comparable.
+
+`--relabel-stale` makes that self-healing. Bumping a labeller version used to
+leave the table on the old labelling until somebody remembered to dispatch
+the workflow -- and since the web deploy is instant while the ingest is not,
+that opened a window where the page expected columns the stored rows did not
+have. Stale mode asks the table which games disagree with the CURRENT
+versions and relabels exactly those, so a version bump repairs itself and no
+season list has to be maintained anywhere.
 """
 from __future__ import annotations
 
@@ -38,6 +46,26 @@ COLUMNS = (
     "drive_had_penalty", "drive_failed_short", "drive_plays", "drive_net_yards", "drive_epa",
     "play_labeller_version", "drive_labeller_version",
 )
+
+
+def stale_games(db: DatabaseManager) -> dict[int, list[str]]:
+    """Games whose stored labelling disagrees with the current versions.
+
+    Grouped by season so each season's play-by-play is downloaded once, not
+    once per game. An empty result means the table is already current --
+    which is the common case, and must be a clean no-op rather than a
+    full rebuild.
+    """
+    rows = db.execute(
+        """SELECT season, game_id FROM nfl_pbp_archetypes
+           WHERE play_labeller_version <> %s OR drive_labeller_version <> %s
+           GROUP BY season, game_id ORDER BY season, game_id""",
+        (PLAY_VERSION, DRIVE_VERSION),
+    )
+    out: dict[int, list[str]] = {}
+    for row in rows:
+        out.setdefault(int(row["season"]), []).append(str(row["game_id"]))
+    return out
 
 
 def build_rows(pbp: pd.DataFrame) -> list[tuple]:
@@ -120,11 +148,42 @@ def write(db: DatabaseManager, rows: list[tuple]) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--season", type=int, required=True)
+    parser.add_argument("--season", type=int)
     parser.add_argument("--game", help="game_id substring, e.g. NE_SEA. Omit for the whole season.")
     parser.add_argument("--cache", type=Path)
     parser.add_argument("--database-url")
+    parser.add_argument(
+        "--relabel-stale", action="store_true",
+        help="Relabel every game whose stored labeller version is not the current one.",
+    )
     args = parser.parse_args()
+    if not args.relabel_stale and args.season is None:
+        parser.error("--season is required unless --relabel-stale is given")
+
+    url = args.database_url or load_config().database_url
+    if not url:
+        raise SystemExit("no DATABASE_URL configured")
+    db = DatabaseManager(url)
+
+    if args.relabel_stale:
+        stale = stale_games(db)
+        if not stale:
+            print(f"{PLAY_VERSION} + {DRIVE_VERSION}: nothing stale, no work to do")
+            return
+        total = 0
+        for season, game_ids in stale.items():
+            pbp = load_pbp(season, args.cache)
+            pbp = pbp[pbp["game_id"].isin(game_ids)]
+            if pbp.empty:
+                # The rows name a game the current release no longer carries.
+                # Say so rather than deleting evidence or silently skipping.
+                print(f"  WARNING season {season}: {len(game_ids)} stale games "
+                      f"absent from the nflverse release; left as-is")
+                continue
+            total += write(db, build_rows(pbp))
+            print(f"  season {season}: relabelled {len(game_ids)} games")
+        print(f"{PLAY_VERSION} + {DRIVE_VERSION}: relabelled {total} plays")
+        return
 
     pbp = load_pbp(args.season, args.cache)
     if args.game:
@@ -132,12 +191,7 @@ def main() -> None:
     if pbp.empty:
         raise SystemExit("no plays matched")
 
-    url = args.database_url or load_config().database_url
-    if not url:
-        raise SystemExit("no DATABASE_URL configured")
-
     rows = build_rows(pbp)
-    db = DatabaseManager(url)
     written = write(db, rows)
     print(f"{PLAY_VERSION} + {DRIVE_VERSION}: wrote {written} plays "
           f"across {len(set(r[0] for r in rows))} games")

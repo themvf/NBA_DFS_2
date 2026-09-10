@@ -9,6 +9,18 @@ name: Refresh NFL PBP Archetypes
 # run then picks up the whole preceding week. Change it freely.
 
 on:
+  # A labeller change relabels the table on merge. Without this, a version
+  # bump left the stored rows on the old labelling until the weekly cron,
+  # while the web deploy went out immediately -- a window where the page
+  # expected columns the data did not have yet. The relabel is driven by what
+  # the table says is stale, so this trigger needs no season list.
+  push:
+    branches: [main]
+    paths:
+      - "model/nfl_play_archetypes.py"
+      - "model/nfl_drive_archetypes.py"
+      - "ingest/nfl_pbp_archetypes.py"
+
   workflow_dispatch:
     inputs:
       season:
@@ -46,7 +58,15 @@ jobs:
           # The labellers read nflverse's parquet release directly.
           pip install "pandas>=2" "pyarrow>=15"
 
+      # On a push this relabels only what disagrees with the current versions,
+      # so an unrelated edit to these files is a cheap no-op rather than a
+      # full-season rebuild.
+      - name: Relabel stale games
+        if: github.event_name == 'push'
+        run: python -m ingest.nfl_pbp_archetypes --relabel-stale
+
       - name: Label plays and drives
+        if: github.event_name != 'push'
         run: |
           if [ -n "${{ inputs.game }}" ]; then
             python -m ingest.nfl_pbp_archetypes \
