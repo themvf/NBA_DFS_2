@@ -46,8 +46,18 @@ GAVE IT AWAY (possession lost, sometimes with points against)
                        point of view -- the row belongs to the team that lost
                        the ball, never the team that scored.
 
-NOT A TEAM TRAIT
-  CENSORED_CLOCK       Ended on the half or game clock. See rule 1.
+CLOCK
+  CLOCK_EXPIRED        A real possession that ran out of half or game clock.
+                       IS a team trait and counts in the denominator. Splitting
+                       this out was not cosmetic: of 210 clock-ended drives in
+                       2025 only 35 were one-play kneels, while 112 ran 4+
+                       plays and 51.8% of those died inside the opponent's 40.
+                       Discarding them threw away real two-minute possessions
+                       in scoring range from every rate.
+
+  KNEEL_DOWN           Victory formation or a spike-out. <=2 plays on a clock
+                       ending. NOT a team trait -- excluded from denominators.
+                       See rule 1.
 
 =============================================================================
 MODIFIERS -- carried alongside, never folded into the archetype
@@ -62,6 +72,15 @@ MODIFIERS -- carried alongside, never folded into the archetype
                         "this offence generates big plays" claim needs.
   reached_red_zone      bool.
   start_bucket          short_field / normal / long_field.
+  end_bucket            red_zone / scoring_range / midfield / own_territory --
+                        where the possession DIED. Added because the terminal
+                        label alone is a genuine mixture: 53.7% of
+                        TURNOVER_ON_DOWNS and 37.3% of TURNOVER_GIVEAWAY end
+                        inside the opponent's 40, and those are worth several
+                        expected points more than the same label at midfield.
+                        Carried as a modifier rather than as new terminal
+                        labels, per rule 2 -- `TURNOVER_GIVEAWAY x red_zone` is
+                        conditionable without doubling the taxonomy.
   garbage_time          bool, from win probability at drive start.
 
 =============================================================================
@@ -113,6 +132,10 @@ METHODICAL_FIRST_DOWNS = 3     # first downs that mark a drive as sustained
 THREE_AND_OUT_PLAYS = 3        # plays at or under this, with no first down
 SHORT_FIELD_YARDLINE = 60      # start inside opponent's 60 (yardline_100 <= 60)
 LONG_FIELD_YARDLINE = 85       # start behind own 15 (yardline_100 >= 85)
+RED_ZONE_YARDLINE = 20         # end inside opponent's 20
+SCORING_RANGE_YARDLINE = 40    # end inside opponent's 40 (rough FG range)
+MIDFIELD_YARDLINE = 60         # end past own 40
+KNEEL_MAX_PLAYS = 2            # plays at or under this on a clock ending
 GARBAGE_WP = 0.05              # win prob outside [wp, 1-wp] at drive start
 MIN_QB_ATTEMPTS = 2            # attempts before a passer counts as a QB, not a
                                # gadget-play thrower. `passer_player_name`
@@ -234,6 +257,8 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             "quarter": int(_first(ordered, "qtr", 0) or 0),
             "start_yardline_100": start_yl,
             "start_bucket": _start_bucket(start_yl),
+            "end_yardline_100": end_yl,
+            "end_bucket": _end_bucket(end_yl),
             "start_transition": _first(ordered, "drive_start_transition"),
             "plays": plays,
             "snaps": n_snaps,
@@ -272,7 +297,9 @@ def _archetype(
 ) -> str:
     """Terminal state first. Trajectory only breaks ties within a terminal state."""
     if result in CENSORED:
-        return "CENSORED_CLOCK"                 # rule 1: never a stall
+        # A kneel and a two-minute drive that died on the opponent's 25 are
+        # both "the clock ended it" and are not remotely the same event.
+        return "KNEEL_DOWN" if plays <= KNEEL_MAX_PLAYS else "CLOCK_EXPIRED"
     if result in AGAINST:
         return "SCORE_AGAINST"                  # points AGAINST -- not a plain turnover
     if result == SCORED_TD:
@@ -436,11 +463,24 @@ def _start_bucket(yardline_100: float) -> str:
     return "normal"
 
 
+def _end_bucket(yardline_100: float) -> str:
+    """Where the possession died. See `end_bucket` in the module docstring."""
+    if pd.isna(yardline_100):
+        return "unknown"
+    if yardline_100 <= RED_ZONE_YARDLINE:
+        return "red_zone"
+    if yardline_100 <= SCORING_RANGE_YARDLINE:
+        return "scoring_range"
+    if yardline_100 <= MIDFIELD_YARDLINE:
+        return "midfield"
+    return "own_territory"
+
+
 def summarise(drives: pd.DataFrame) -> pd.DataFrame:
     """Mix per (team, QUARTERBACK) -- see rule 5. Keying this on team alone is
-    how a backup's game gets recorded as a team trait. Censored drives are
-    excluded from the denominator; they are an artefact of the clock."""
-    live = drives[drives["archetype"] != "CENSORED_CLOCK"]
+    how a backup's game gets recorded as a team trait. Only KNEEL_DOWN is
+    excluded from the denominator; CLOCK_EXPIRED is a real possession."""
+    live = drives[drives["archetype"] != "KNEEL_DOWN"]
     rows = []
     for (team, qb), group in live.groupby(["team", "qb"], dropna=False):
         n = len(group)
@@ -459,6 +499,12 @@ def summarise(drives: pd.DataFrame) -> pd.DataFrame:
                 (counts.get("TURNOVER_GIVEAWAY", 0) + counts.get("SCORE_AGAINST", 0)) / n, 3
             ),
             "red_zone_trip_rate": round(group["reached_red_zone"].mean(), 3),
+            # a possession that reached scoring range and produced nothing
+            "wasted_range_rate": round((
+                group["archetype"].isin(["TURNOVER_GIVEAWAY", "TURNOVER_ON_DOWNS",
+                                         "MISSED_FG", "CLOCK_EXPIRED"])
+                & group["end_bucket"].isin(["red_zone", "scoring_range"])
+            ).mean(), 3),
             "score_rate": round(group["result"].isin([SCORED_TD, SCORED_FG]).mean(), 3),
             "plays_per_drive": round(group["plays"].mean(), 2),
             "yards_per_drive": round(group["net_yards"].mean(), 1),
@@ -481,9 +527,9 @@ def main() -> None:
         raise SystemExit("no plays matched")
 
     drives = label_drives(pbp)
-    cols = ["drive", "team", "qb", "quarter", "start_yardline_100", "start_bucket", "plays",
+    cols = ["drive", "team", "qb", "quarter", "start_bucket", "plays",
             "net_yards", "first_downs", "max_play", "explosive_plays",
-            "explosive_dependence", "result", "epa", "archetype"]
+            "explosive_dependence", "end_bucket", "result", "epa", "archetype"]
     print(f"{VERSION}  |  {sorted(pbp['game_id'].unique())}\n")
     print(drives[cols].to_string(index=False))
     print("\n--- archetype counts ---\n")
@@ -492,7 +538,7 @@ def main() -> None:
     if not injuries.empty:
         print("\n--- in-game injury events (from play-by-play text) ---\n")
         print(injuries.to_string(index=False))
-    print("\n--- mix per (team, QB) (censored drives excluded) ---\n")
+    print("\n--- mix per (team, QB) (kneel-downs excluded) ---\n")
     print(summarise(drives).to_string(index=False))
     check = reconcile(pbp, drives)
     print("\n--- reconciliation vs actual final score ---")
