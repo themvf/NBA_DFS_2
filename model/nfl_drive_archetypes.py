@@ -76,6 +76,20 @@ FOUR DEFINITIONAL RULES -- frozen so a later screen cannot quietly move them
    work.
 4. GARBAGE TIME IS FLAGGED, NEVER SILENTLY DROPPED. The threshold is frozen
    below. Choosing it after seeing a result is the totals-mirage failure mode.
+5. A DRIVE BELONGS TO A (TEAM, QUARTERBACK) PAIR, NOT A TEAM. A mid-game QB
+   injury reassigns the rest of the game to a different player, and a team-level
+   rate then describes a backup while claiming to describe the team. The 2026
+   opener is the worked example: Sam Darnold was hurt on a sack at 12:27 of the
+   first quarter and 9 of Seattle's 10 drives were Drew Lock's. Carrying that
+   week's "Seattle" mix forward would feed the wrong quarterback into the next
+   week's feature -- the same attribution error this project already recorded
+   for `mlb_matchups.our_prob_home` and `mlb_bets.event_commence`.
+
+   Note the asymmetry that makes this worse than a pregame injury: a pregame
+   injury is IN the closing line, so the market prices it. A mid-game injury is
+   in neither the line nor any pregame feature, so for a residual-against-the-
+   close screen it is irreducible noise in the dependent variable. It does not
+   bias the estimate; it destroys power, and it is not rare.
 """
 from __future__ import annotations
 
@@ -94,6 +108,16 @@ THREE_AND_OUT_PLAYS = 3        # plays at or under this, with no first down
 SHORT_FIELD_YARDLINE = 60      # start inside opponent's 60 (yardline_100 <= 60)
 LONG_FIELD_YARDLINE = 85       # start behind own 15 (yardline_100 >= 85)
 GARBAGE_WP = 0.05              # win prob outside [wp, 1-wp] at drive start
+MIN_QB_ATTEMPTS = 2            # attempts before a passer counts as a QB, not a
+                               # gadget-play thrower. `passer_player_name`
+                               # records ANYONE who throws, so a receiver on a
+                               # trick play otherwise enters the QB roster: at
+                               # >=1 attempt 21.5% of 2025 team-games look like
+                               # they used two QBs, at >=2 12.1%, at >=5 6.8%.
+                               # Set at 2 because a starter hurt early may throw
+                               # very few passes -- Darnold threw 3 in the 2026
+                               # opener before leaving -- so a high bar would
+                               # discard exactly the case this field exists for.
 
 SCRIMMAGE = ("run", "pass")
 
@@ -137,6 +161,9 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
     drive_col = "fixed_drive" if "fixed_drive" in pbp else "drive"
     frame = pbp[pbp["posteam"].notna()].dropna(subset=[drive_col]).copy()
 
+    quarterbacks = _quarterbacks(frame)
+    starters = _starters(frame, quarterbacks)
+
     rows: list[dict] = []
     for (game_id, team, drive_no), group in frame.groupby(
         ["game_id", "posteam", drive_col], sort=True
@@ -158,6 +185,8 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             # drive's true end, or a scoring play reads as zero yards gained.
             last_gain = _num(snaps.loc[[snap_yl.index[-1]]], "yards_gained").fillna(0.0).iloc[0]
             end_yl = float(snap_yl.iloc[-1]) - float(last_gain)
+
+        qb = _drive_qb(ordered, quarterbacks.get(team, frozenset()))
 
         gains = _num(scrimmage, "yards_gained").dropna()
         max_gain = float(gains.max()) if not gains.empty else 0.0
@@ -184,6 +213,8 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
         rows.append({
             "game_id": game_id,
             "team": team,
+            "qb": qb,
+            "qb_is_starter": (qb is not None and qb == starters.get((game_id, team))),
             "drive": int(drive_no),
             "quarter": int(_first(ordered, "qtr", 0) or 0),
             "start_yardline_100": start_yl,
@@ -233,6 +264,71 @@ def _archetype(
     return "STALLED"
 
 
+def _quarterbacks(frame: pd.DataFrame) -> dict[str, frozenset[str]]:
+    """Everyone who threw a pass for a team. Used so a kneel-only or
+    scramble-only drive can still be attributed to the right quarterback."""
+    if "passer_player_name" not in frame:
+        return {}
+    passers = frame.dropna(subset=["passer_player_name"])
+    counts = passers.groupby(["posteam", "passer_player_name"]).size()
+    counts = counts[counts >= MIN_QB_ATTEMPTS]
+    return {
+        team: frozenset(group.index.get_level_values("passer_player_name"))
+        for team, group in counts.groupby(level="posteam")
+    }
+
+
+def _starters(frame: pd.DataFrame, quarterbacks: dict[str, frozenset[str]]) -> dict:
+    """The quarterback on a team's FIRST snap of the game -- not the one with
+    the most snaps. A starter hurt early is still the starter, and the market
+    priced the game on him."""
+    out: dict[tuple[str, str], str | None] = {}
+    for (game_id, team), group in frame.groupby(["game_id", "posteam"]):
+        ordered = group.sort_values("play_id")
+        # FIRST, not most frequent. _drive_qb takes the mode, which would hand
+        # the label to whoever played most -- i.e. the backup, in exactly the
+        # games where this field matters.
+        first_drive = ordered[ordered["fixed_drive"] == ordered["fixed_drive"].min()]
+        out[(game_id, team)] = _drive_qb(first_drive, quarterbacks.get(team, frozenset()))
+    return out
+
+
+def _drive_qb(ordered: pd.DataFrame, roster: frozenset[str]) -> str | None:
+    """The passer on the drive; falls back to a rusher who is a known passer
+    for that team, so a kneel-down or scramble-only drive is still attributed."""
+    if "passer_player_name" in ordered:
+        passers = ordered["passer_player_name"].dropna()
+        if not passers.empty:
+            return str(passers.mode().iloc[0])
+    if "rusher_player_name" in ordered:
+        for name in ordered["rusher_player_name"].dropna():
+            if name in roster:
+                return str(name)
+    return None
+
+
+def in_game_injuries(pbp: pd.DataFrame) -> pd.DataFrame:
+    """Injury and return events the play-by-play states outright. Free, and the
+    only in-game availability signal in this project -- `docs/NFL Injury.md`
+    and `ff_player_injury_observations` cover PREGAME roster status only."""
+    desc = pbp["desc"].astype(str)
+    hurt = desc.str.extract(r"([A-Z]{2,3})-([\w.\'-]+) was injured during the play")
+    back = desc.str.extract(r"Injury Update: ([A-Z]{2,3})-([\w.\'-]+) has returned")
+    rows = []
+    for frame, event in ((hurt, "injured"), (back, "returned")):
+        hit = frame.dropna()
+        for idx in hit.index:
+            play = pbp.loc[idx]
+            rows.append({
+                "game_id": play.get("game_id"), "qtr": play.get("qtr"),
+                "clock": play.get("time"), "team": hit.loc[idx, 0],
+                "player": hit.loc[idx, 1], "event": event,
+                "drive": play.get("fixed_drive"),
+            })
+    out = pd.DataFrame(rows)
+    return out.sort_values(["game_id", "drive"]).reset_index(drop=True) if not out.empty else out
+
+
 def _start_bucket(yardline_100: float) -> str:
     if pd.isna(yardline_100):
         return "unknown"
@@ -244,18 +340,20 @@ def _start_bucket(yardline_100: float) -> str:
 
 
 def summarise(drives: pd.DataFrame) -> pd.DataFrame:
-    """Team-level mix. Censored drives are excluded from the denominator --
-    they are an artefact of the clock, not a team trait."""
+    """Mix per (team, QUARTERBACK) -- see rule 5. Keying this on team alone is
+    how a backup's game gets recorded as a team trait. Censored drives are
+    excluded from the denominator; they are an artefact of the clock."""
     live = drives[drives["archetype"] != "CENSORED_CLOCK"]
     rows = []
-    for team, group in live.groupby("team"):
+    for (team, qb), group in live.groupby(["team", "qb"], dropna=False):
         n = len(group)
         snaps = int(group["snaps"].sum())
         counts = group["archetype"].value_counts()
         rows.append({
             "team": team,
+            "qb": qb,
+            "starter": bool(group["qb_is_starter"].all()),
             "live_drives": n,
-            "censored": int((drives["team"] == team).sum() - n),
             # the two explosiveness measures, deliberately side by side
             "expl_dependence_rate": round(group["explosive_dependence"].mean(), 3),
             "expl_per_snap": round(int(group["explosive_plays"].sum()) / snaps, 3) if snaps else 0.0,
@@ -286,14 +384,18 @@ def main() -> None:
         raise SystemExit("no plays matched")
 
     drives = label_drives(pbp)
-    cols = ["drive", "team", "quarter", "start_yardline_100", "start_bucket", "plays",
+    cols = ["drive", "team", "qb", "quarter", "start_yardline_100", "start_bucket", "plays",
             "net_yards", "first_downs", "max_play", "explosive_plays",
             "explosive_dependence", "result", "epa", "archetype"]
     print(f"{VERSION}  |  {sorted(pbp['game_id'].unique())}\n")
     print(drives[cols].to_string(index=False))
     print("\n--- archetype counts ---\n")
     print(drives.groupby(["team", "archetype"]).size().unstack(fill_value=0).to_string())
-    print("\n--- team mix (censored drives excluded) ---\n")
+    injuries = in_game_injuries(pbp)
+    if not injuries.empty:
+        print("\n--- in-game injury events (from play-by-play text) ---\n")
+        print(injuries.to_string(index=False))
+    print("\n--- mix per (team, QB) (censored drives excluded) ---\n")
     print(summarise(drives).to_string(index=False))
 
 
