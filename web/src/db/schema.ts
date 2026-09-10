@@ -2434,3 +2434,47 @@ export type DkPlayer = typeof dkPlayers.$inferSelect;
 export type DkLineup = typeof dkLineups.$inferSelect;
 export type OptimizerJob = typeof optimizerJobs.$inferSelect;
 export type OptimizerJobLineup = typeof optimizerJobLineups.$inferSelect;
+
+// Play-by-play archetypes. Written ONLY by `ingest/nfl_pbp_archetypes.py`
+// (model.nfl_play_archetypes + model.nfl_drive_archetypes); read-only here,
+// the same single-writer rule as mlb_matchups and ff_player_week_stats.
+export const nflPbpArchetypes = pgTable("nfl_pbp_archetypes", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  gameId: text("game_id").notNull(),
+  playId: integer("play_id").notNull(),
+  season: integer("season").notNull(),
+  week: integer("week"),
+  seasonType: text("season_type"),
+  homeTeam: text("home_team").notNull(),
+  awayTeam: text("away_team").notNull(),
+  posteam: text("posteam").notNull(),
+  drive: integer("drive"),
+  quarter: integer("quarter"),
+  clock: text("clock"),
+  down: integer("down"),
+  ydstogo: integer("ydstogo"),
+  yardline100: integer("yardline_100"),
+  playType: text("play_type"),
+  yardsGained: doublePrecision("yards_gained"),
+  playArchetype: text("play_archetype").notNull(),
+  distanceBucket: text("distance_bucket"),
+  success: boolean("success"),
+  explosive: boolean("explosive"),
+  shotgun: boolean("shotgun"),
+  noHuddle: boolean("no_huddle"),
+  epa: doublePrecision("epa"),
+  wp: doublePrecision("wp"),
+  description: text("description"),
+  driveArchetype: text("drive_archetype"),
+  driveQb: text("drive_qb"),
+  driveQbIsStarter: boolean("drive_qb_is_starter"),
+  driveStartBucket: text("drive_start_bucket"),
+  driveEndBucket: text("drive_end_bucket"),
+  driveResult: text("drive_result"),
+  drivePlays: integer("drive_plays"),
+  driveNetYards: doublePrecision("drive_net_yards"),
+  driveEpa: doublePrecision("drive_epa"),
+  playLabellerVersion: text("play_labeller_version").notNull(),
+  driveLabellerVersion: text("drive_labeller_version").notNull(),
+  labelledAt: timestamp("labelled_at", { withTimezone: true }),
+});
