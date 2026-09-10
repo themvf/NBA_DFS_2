@@ -42,10 +42,3 @@
   .note { max-width:none; }
   .count { margin-left:0; }
 }
-
-.tabs { display:flex; gap:2px; background:#070909; border-bottom:1px solid #27302f;
-  margin:-1.5rem -1rem 0; padding:0 12px; }
-.tabs a { padding:11px 16px; font-size:10px; letter-spacing:.1em; font-weight:700;
-  color:#87928e; text-decoration:none; border-bottom:2px solid transparent; }
-.tabs a:hover { color:#e8ecea; }
-.tabs a[data-active="true"] { color:#f6a800; border-bottom-color:#f6a800; }
