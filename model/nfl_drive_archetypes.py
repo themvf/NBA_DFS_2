@@ -36,9 +36,15 @@ GAVE IT AWAY (possession lost, sometimes with points against)
   TURNOVER_ON_DOWNS    Failed 4th-down attempt. A decision, not variance --
                        kept separate because it is coaching aggression, and
                        it correlates with game script rather than with talent.
-  DEFENSIVE_SCORE      Pick-six, scoop-and-score, or safety. Points for the
-                       OPPONENT. Folding this into a turnover loses the fact
-                       that the drive had negative scoring value.
+  SCORE_AGAINST        The possession ended with the OPPONENT scoring -- a
+                       pick-six, scoop-and-score, punt or kick return TD, or a
+                       safety. Folding this into a turnover loses the fact that
+                       the possession had negative scoring value. Named
+                       SCORE_AGAINST rather than DEFENSIVE_SCORE because a
+                       return touchdown is a special-teams score, and because
+                       the name must describe it from the POSSESSING team's
+                       point of view -- the row belongs to the team that lost
+                       the ball, never the team that scored.
 
 NOT A TEAM TRAIT
   CENSORED_CLOCK       Ended on the half or game clock. See rule 1.
@@ -127,7 +133,7 @@ SCRIMMAGE = ("run", "pass")
 SCORED_TD = "Touchdown"
 SCORED_FG = "Field goal"
 CENSORED = ("End of half", "End of game")
-DEFENSIVE = ("Opp touchdown", "Safety")
+AGAINST = ("Opp touchdown", "Safety")
 
 PBP_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/pbp/"
@@ -186,6 +192,16 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             last_gain = _num(snaps.loc[[snap_yl.index[-1]]], "yards_gained").fillna(0.0).iloc[0]
             end_yl = float(snap_yl.iloc[-1]) - float(last_gain)
 
+        if scrimmage.empty and snaps.empty:
+            # Not a drive. `posteam` flips mid-drive on a return touchdown's
+            # conversion attempt and on some kickoff rows, so grouping by
+            # (game, posteam, drive) invents a 0-snap possession for the team
+            # that did NOT have the ball. Across 2025 that is 311 rows, 68 of
+            # them labelled SCORE_AGAINST -- i.e. crediting the team that
+            # SCORED with a points-against archetype, the exact inversion of
+            # what the label means.
+            continue
+
         qb = _drive_qb(ordered, quarterbacks.get(team, frozenset()))
 
         gains = _num(scrimmage, "yards_gained").dropna()
@@ -214,7 +230,6 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             "game_id": game_id,
             "team": team,
             "qb": qb,
-            "qb_is_starter": (qb is not None and qb == starters.get((game_id, team))),
             "drive": int(drive_no),
             "quarter": int(_first(ordered, "qtr", 0) or 0),
             "start_yardline_100": start_yl,
@@ -236,7 +251,20 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             "archetype": _archetype(result, plays, first_downs, red_zone, dependence),
         })
 
-    return pd.DataFrame(rows).sort_values(["game_id", "drive"]).reset_index(drop=True)
+    out = pd.DataFrame(rows).sort_values(["game_id", "team", "drive"])
+    # A drive with no pass and no QB carry (a one-play goal-line rush) has no
+    # identified quarterback. Carry the team's most recent known QB forward and
+    # FLAG it, rather than leaving a null that splits the team's summary row.
+    out["qb_inferred"] = out["qb"].isna()
+    out["qb"] = out.groupby(["game_id", "team"])["qb"].ffill().bfill()
+    # AFTER the fill, never before. Computing this per drive inside the loop
+    # stamped a carry-forward drive False, and `summarise` aggregates with
+    # .all(), so one null drive flipped an entire team's starter flag.
+    out["qb_is_starter"] = [
+        qb is not None and qb == starters.get((game, team))
+        for game, team, qb in zip(out["game_id"], out["team"], out["qb"])
+    ]
+    return out.sort_values(["game_id", "drive"]).reset_index(drop=True)
 
 
 def _archetype(
@@ -245,8 +273,8 @@ def _archetype(
     """Terminal state first. Trajectory only breaks ties within a terminal state."""
     if result in CENSORED:
         return "CENSORED_CLOCK"                 # rule 1: never a stall
-    if result in DEFENSIVE:
-        return "DEFENSIVE_SCORE"                # points AGAINST -- not a plain turnover
+    if result in AGAINST:
+        return "SCORE_AGAINST"                  # points AGAINST -- not a plain turnover
     if result == SCORED_TD:
         if dependence:
             return "EXPLOSIVE_TD"
@@ -329,6 +357,75 @@ def in_game_injuries(pbp: pd.DataFrame) -> pd.DataFrame:
     return out.sort_values(["game_id", "drive"]).reset_index(drop=True) if not out.empty else out
 
 
+def reconcile(pbp: pd.DataFrame, drives: pd.DataFrame) -> pd.DataFrame:
+    """Do the labelled scoring drives add up to the real final score?
+
+    This has caught nothing yet because it was done by hand each time. Doing it
+    by hand does not scale to six seasons, and a labelling bug that changes the
+    points attributed to a team is exactly the class of defect that produces
+    plausible numbers rather than an error.
+
+    Points from the possessing team's own drives only. SCORE_AGAINST points go
+    to the OPPONENT and are added back to them, which is what makes this a real
+    check on the archetype rather than a restatement of the box score.
+    """
+    value = {"Touchdown": 7, "Field goal": 3}
+    rows = []
+    kick_return = _kick_return_tds(pbp)
+    for game_id, game in drives.groupby("game_id"):
+        plays = pbp[pbp["game_id"] == game_id]
+        last = plays.sort_values("play_id").iloc[-1]
+        actual = {
+            str(last.get("home_team")): float(last.get("total_home_score") or 0),
+            str(last.get("away_team")): float(last.get("total_away_score") or 0),
+        }
+        labelled = {team: 0.0 for team in actual}
+        for _, drive in game.iterrows():
+            team = str(drive["team"])
+            if drive["archetype"] == "SCORE_AGAINST":
+                other = next((t for t in actual if t != team), None)
+                if other:
+                    # A safety is 2, not 7. Getting this wrong put exactly 11
+                    # of 544 team-games at a clean +5 -- a constant offset,
+                    # which is what a miscoded scoring rule looks like as
+                    # opposed to noise.
+                    labelled[other] += 2 if str(drive["result"]) == "Safety" else 7
+            elif team in labelled:
+                labelled[team] += value.get(str(drive["result"]), 0)
+        for team, points in labelled.items():
+            returns = kick_return.get((game_id, team), 0)
+            rows.append({
+                "game_id": game_id, "team": team,
+                "labelled": points, "kick_return_td": returns,
+                "actual": actual.get(team),
+                # Kickoff-return touchdowns belong to NO drive -- the receiving
+                # team never snapped the ball, so no drive result covers them.
+                # They are reported as their own column rather than folded into
+                # `labelled`, because this is a check and a check that absorbs
+                # its own residuals stops being one.
+                "delta": points + returns * 7 - (actual.get(team) or 0),
+            })
+    return pd.DataFrame(rows)
+
+
+def _kick_return_tds(pbp: pd.DataFrame) -> dict[tuple[str, str], int]:
+    """Kickoff touchdowns, keyed by the team that ACTUALLY SCORED.
+
+    Keyed on `td_team`, not `posteam`. Assuming the receiving team scored is
+    wrong whenever the kicking team recovers a muff in the end zone -- once in
+    2025, which put both teams in that game off by a mirrored 6 and -7.
+    """
+    if "play_type" not in pbp:
+        return {}
+    kicks = pbp[
+        (pbp["play_type"] == "kickoff")
+        & (pd.to_numeric(pbp.get("sp"), errors="coerce") == 1)
+        & pbp["desc"].astype(str).str.contains("TOUCHDOWN", na=False)
+    ]
+    team = "td_team" if "td_team" in kicks else "posteam"
+    return kicks.dropna(subset=[team]).groupby(["game_id", team]).size().to_dict()
+
+
 def _start_bucket(yardline_100: float) -> str:
     if pd.isna(yardline_100):
         return "unknown"
@@ -359,7 +456,7 @@ def summarise(drives: pd.DataFrame) -> pd.DataFrame:
             "expl_per_snap": round(int(group["explosive_plays"].sum()) / snaps, 3) if snaps else 0.0,
             "three_and_out_rate": round(counts.get("THREE_AND_OUT", 0) / n, 3),
             "giveaway_rate": round(
-                (counts.get("TURNOVER_GIVEAWAY", 0) + counts.get("DEFENSIVE_SCORE", 0)) / n, 3
+                (counts.get("TURNOVER_GIVEAWAY", 0) + counts.get("SCORE_AGAINST", 0)) / n, 3
             ),
             "red_zone_trip_rate": round(group["reached_red_zone"].mean(), 3),
             "score_rate": round(group["result"].isin([SCORED_TD, SCORED_FG]).mean(), 3),
@@ -397,6 +494,12 @@ def main() -> None:
         print(injuries.to_string(index=False))
     print("\n--- mix per (team, QB) (censored drives excluded) ---\n")
     print(summarise(drives).to_string(index=False))
+    check = reconcile(pbp, drives)
+    print("\n--- reconciliation vs actual final score ---")
+    print("(delta is expected to be non-zero: two-point conversions, missed")
+    print(" extra points and return-TD values are not modelled. A LARGE or")
+    print(" one-sided delta is the signal, not a delta of zero.)\n")
+    print(check.to_string(index=False))
 
 
 if __name__ == "__main__":
