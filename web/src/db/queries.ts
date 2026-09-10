@@ -14076,3 +14076,84 @@ export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]>
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// NFL play-by-play archetypes (read-only; Python owns the table)
+// ---------------------------------------------------------------------------
+export type NflArchetypeGameRow = {
+  gameId: string; season: number; week: number | null; seasonType: string | null;
+  homeTeam: string; awayTeam: string; plays: number;
+  playVersion: string; driveVersion: string; labelledAt: string | null;
+};
+
+export type NflArchetypePlayRow = {
+  playId: number; drive: number | null; posteam: string; quarter: number | null;
+  clock: string | null; down: number | null; ydstogo: number | null;
+  yardline100: number | null; playType: string | null; yardsGained: number | null;
+  playArchetype: string; distanceBucket: string | null; success: boolean | null;
+  explosive: boolean | null; shotgun: boolean | null; noHuddle: boolean | null;
+  epa: number | null; wp: number | null; description: string | null;
+  driveArchetype: string | null; driveQb: string | null;
+  driveQbIsStarter: boolean | null; driveStartBucket: string | null;
+  driveEndBucket: string | null; driveResult: string | null;
+  drivePlays: number | null; driveNetYards: number | null; driveEpa: number | null;
+};
+
+// `db.execute` returns a bare array under some drivers and `{ rows }` under
+// others, and this file already contains both access patterns. Normalising is
+// not defensive clutter: the local verification here runs node-postgres while
+// production runs neon-http, and a query that only works under one of them
+// would pass every check available in this environment and fail in Vercel.
+function resultRows(result: unknown): Record<string, unknown>[] {
+  if (Array.isArray(result)) return result as Record<string, unknown>[];
+  const rows = (result as { rows?: unknown })?.rows;
+  return Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
+}
+
+export async function getNflArchetypeGames(limit = 60): Promise<NflArchetypeGameRow[]> {
+  const rows = await db.execute(sql`
+    SELECT game_id, MAX(season) season, MAX(week) week, MAX(season_type) season_type,
+           MAX(home_team) home_team, MAX(away_team) away_team, COUNT(*)::int plays,
+           MAX(play_labeller_version) play_version, MAX(drive_labeller_version) drive_version,
+           MAX(labelled_at) labelled_at
+    FROM nfl_pbp_archetypes
+    GROUP BY game_id
+    ORDER BY MAX(season) DESC, MAX(week) DESC NULLS LAST, game_id
+    LIMIT ${limit}`);
+  return resultRows(rows).map(r => ({
+    gameId: String(r.game_id), season: Number(r.season),
+    week: r.week == null ? null : Number(r.week),
+    seasonType: r.season_type == null ? null : String(r.season_type),
+    homeTeam: String(r.home_team), awayTeam: String(r.away_team),
+    plays: Number(r.plays), playVersion: String(r.play_version),
+    driveVersion: String(r.drive_version),
+    labelledAt: r.labelled_at == null ? null : new Date(r.labelled_at as string).toISOString(),
+  }));
+}
+
+export async function getNflArchetypePlays(gameId: string): Promise<NflArchetypePlayRow[]> {
+  const rows = await db.execute(sql`
+    SELECT play_id, drive, posteam, quarter, clock, down, ydstogo, yardline_100,
+           play_type, yards_gained, play_archetype, distance_bucket, success, explosive,
+           shotgun, no_huddle, epa, wp, description, drive_archetype, drive_qb,
+           drive_qb_is_starter, drive_start_bucket, drive_end_bucket, drive_result,
+           drive_plays, drive_net_yards, drive_epa
+    FROM nfl_pbp_archetypes WHERE game_id = ${gameId} ORDER BY play_id`);
+  const num = (v: unknown) => (v == null ? null : Number(v));
+  const str = (v: unknown) => (v == null ? null : String(v));
+  const bool = (v: unknown) => (v == null ? null : Boolean(v));
+  return resultRows(rows).map(r => ({
+    playId: Number(r.play_id), drive: num(r.drive), posteam: String(r.posteam),
+    quarter: num(r.quarter), clock: str(r.clock), down: num(r.down),
+    ydstogo: num(r.ydstogo), yardline100: num(r.yardline_100), playType: str(r.play_type),
+    yardsGained: num(r.yards_gained), playArchetype: String(r.play_archetype),
+    distanceBucket: str(r.distance_bucket), success: bool(r.success),
+    explosive: bool(r.explosive), shotgun: bool(r.shotgun), noHuddle: bool(r.no_huddle),
+    epa: num(r.epa), wp: num(r.wp), description: str(r.description),
+    driveArchetype: str(r.drive_archetype), driveQb: str(r.drive_qb),
+    driveQbIsStarter: bool(r.drive_qb_is_starter), driveStartBucket: str(r.drive_start_bucket),
+    driveEndBucket: str(r.drive_end_bucket), driveResult: str(r.drive_result),
+    drivePlays: num(r.drive_plays), driveNetYards: num(r.drive_net_yards),
+    driveEpa: num(r.drive_epa),
+  }));
+}

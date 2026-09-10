@@ -2945,6 +2945,73 @@ TABLES = [
     )
     """,
 
+    # ---------------------------------------------------------------
+    # Play-by-play archetypes
+    # ---------------------------------------------------------------
+    # One row per PLAY, carrying both its own transition archetype and the
+    # terminal archetype of the drive it belongs to, so a game reads as a
+    # single ordered table without a join. Written only by
+    # `ingest/nfl_pbp_archetypes.py`; the web app reads it and never writes.
+    #
+    # Keyed on (nflverse game_id, play_id), which is nflverse's own identity.
+    # Re-running the ingest for a game REPLACES that game's rows rather than
+    # appending: these are derived labels, not observations, so there is no
+    # audit value in keeping a superseded labelling -- the labeller version is
+    # stamped on every row instead, and a version change is what makes two
+    # labellings comparable.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_pbp_archetypes (
+        id BIGSERIAL PRIMARY KEY,
+        game_id TEXT NOT NULL,
+        play_id INTEGER NOT NULL,
+        season INTEGER NOT NULL,
+        week INTEGER,
+        season_type TEXT,
+        home_team TEXT NOT NULL,
+        away_team TEXT NOT NULL,
+        posteam TEXT NOT NULL,
+        drive INTEGER,
+        quarter INTEGER,
+        clock TEXT,
+        down INTEGER,
+        ydstogo INTEGER,
+        yardline_100 INTEGER,
+        play_type TEXT,
+        yards_gained DOUBLE PRECISION,
+        play_archetype TEXT NOT NULL,
+        distance_bucket TEXT,
+        success BOOLEAN,
+        explosive BOOLEAN,
+        shotgun BOOLEAN,
+        no_huddle BOOLEAN,
+        epa DOUBLE PRECISION,
+        wp DOUBLE PRECISION,
+        description TEXT,
+        drive_archetype TEXT,
+        drive_qb TEXT,
+        drive_qb_is_starter BOOLEAN,
+        drive_start_bucket TEXT,
+        drive_end_bucket TEXT,
+        drive_result TEXT,
+        drive_plays INTEGER,
+        drive_net_yards DOUBLE PRECISION,
+        drive_epa DOUBLE PRECISION,
+        play_labeller_version TEXT NOT NULL,
+        drive_labeller_version TEXT NOT NULL,
+        labelled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(game_id, play_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_game
+        ON nfl_pbp_archetypes(game_id, play_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_season
+        ON nfl_pbp_archetypes(season, week)
+    """,
+
+
     # Versioned realized DraftKings scoring derived from immutable nflverse
     # player-week payloads.  Rows are append-only by input digest: if an
     # upstream source row is corrected, a new result is inserted rather than
