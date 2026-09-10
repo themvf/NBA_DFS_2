@@ -1,0 +1,56 @@
+name: Refresh NFL PBP Archetypes
+
+# Populates `nfl_pbp_archetypes`, which backs the PBP Archetype tab on /nfl.
+# Without this the tab deploys correctly and shows an empty state, because the
+# table is created by schema init but never written to.
+#
+# The weekly slot is a DEFAULT, not a measured choice: Tuesday 09:00 UTC is
+# after Monday night's game has finished and been published by nflverse, so a
+# run then picks up the whole preceding week. Change it freely.
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season to label (e.g. 2026)"
+        required: true
+        default: "2026"
+      game:
+        description: "Optional game_id substring (e.g. NE_SEA). Blank = whole season."
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 9 * * 2"
+
+concurrency:
+  group: nfl-pbp-archetypes
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # The labellers read nflverse's parquet release directly.
+          pip install "pandas>=2" "pyarrow>=15"
+
+      - name: Label plays and drives
+        run: |
+          if [ -n "${{ inputs.game }}" ]; then
+            python -m ingest.nfl_pbp_archetypes \
+              --season "${{ inputs.season || 2026 }}" --game "${{ inputs.game }}"
+          else
+            python -m ingest.nfl_pbp_archetypes --season "${{ inputs.season || 2026 }}"
+          fi
