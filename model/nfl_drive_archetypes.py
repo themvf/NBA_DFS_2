@@ -186,7 +186,19 @@ PBP_URL = (
 
 def load_pbp(season: int, cache: Path | None = None) -> pd.DataFrame:
     if cache and cache.exists():
-        return pd.read_parquet(cache)
+        cached = pd.read_parquet(cache)
+        # A cache file is for ONE season, but the path is a plain argument with
+        # no season in it. Returning it for whichever season was asked would
+        # label one season's games against another season's plays and report
+        # the rest as "absent from the release" -- silently wrong, and it takes
+        # a mismatched cache to notice. Check rather than trust.
+        seasons = set(pd.to_numeric(cached.get("season"), errors="coerce").dropna().astype(int))
+        if seasons and seasons != {season}:
+            raise SystemExit(
+                f"--cache holds season(s) {sorted(seasons)} but season {season} was "
+                f"requested; refusing to label one season against another's plays"
+            )
+        return cached
     frame = pd.read_parquet(PBP_URL.format(season=season))
     if cache:
         frame.to_parquet(cache)
