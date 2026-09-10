@@ -83,6 +83,25 @@ MODIFIERS -- carried alongside, never folded into the archetype
                         conditionable without doubling the taxonomy.
   garbage_time          bool, from win probability at drive start.
 
+  had_sack              a sack occurred on this drive
+  had_penalty           a flag wiped out a play on this drive
+  failed_short          the drive's last snap was 3rd/4th down with <= 2 to go
+  turnover_type         interception / fumble_lost / None
+
+                        These four are INDEPENDENT FLAGS, deliberately not a
+                        single `stall_cause` field, and deliberately not new
+                        terminal labels. Subdividing STALLED by cause was
+                        considered and rejected on measurement: the causes
+                        OVERLAP (100 of 791 stalled drives in 2025 had both a
+                        sack and a penalty), one proposed cell is far too thin
+                        to be a team trait (a short-yardage stop happens 1.3
+                        times per team per SEASON), and the outcomes barely
+                        separate (drive EPA -1.64 to -1.22 across all four).
+                        A single-valued cause field would merely relocate the
+                        arbitrary precedence instead of removing it, so a drive
+                        is simply STALLED + had_sack + had_penalty at once, all
+                        three true, none of them ranked.
+
 =============================================================================
 FOUR DEFINITIONAL RULES -- frozen so a later screen cannot quietly move them
 =============================================================================
@@ -123,7 +142,7 @@ from pathlib import Path
 
 import pandas as pd
 
-VERSION = "nfl-drive-archetype-v2"
+VERSION = "nfl-drive-archetype-v3"
 
 # --- frozen thresholds -------------------------------------------------------
 EXPLOSIVE_PLAY_YARDS = 20      # a single scrimmage gain of at least this many
@@ -136,6 +155,7 @@ RED_ZONE_YARDLINE = 20         # end inside opponent's 20
 SCORING_RANGE_YARDLINE = 40    # end inside opponent's 40 (rough FG range)
 MIDFIELD_YARDLINE = 60         # end past own 40
 KNEEL_MAX_PLAYS = 2            # plays at or under this on a clock ending
+SHORT_YARDAGE = 2              # yards to go that count as short on a late down
 GARBAGE_WP = 0.05              # win prob outside [wp, 1-wp] at drive start
 MIN_QB_ATTEMPTS = 2            # attempts before a passer counts as a QB, not a
                                # gadget-play thrower. `passer_player_name`
@@ -239,6 +259,19 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
         plays = int(plays) if plays is not None else int(len(scrimmage))
         first_downs = int(_first(ordered, "drive_first_downs", 0) or 0)
         red_zone = bool(_first(ordered, "drive_inside20", 0) or 0)
+        sacked = bool((_num(ordered, "sack").fillna(0) == 1).any())
+        penalised = bool((ordered.get("play_type", pd.Series(dtype=object)) == "no_play").any())
+        last_snap = snaps.iloc[-1] if not snaps.empty else None
+        failed_short = bool(
+            last_snap is not None
+            and pd.notna(last_snap.get("down"))
+            and float(last_snap["down"]) >= 3
+            and pd.notna(last_snap.get("ydstogo"))
+            and float(last_snap["ydstogo"]) <= SHORT_YARDAGE
+        )
+        interception = bool((_num(ordered, "interception").fillna(0) == 1).any())
+        fumble = bool((_num(ordered, "fumble_lost").fillna(0) == 1).any())
+
         wp = _first(ordered, "wp")
         wp = float(wp) if wp is not None else float("nan")
 
@@ -273,6 +306,10 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             "epa": round(float(_num(ordered, "epa").sum()), 2),
             "wp_at_start": wp,
             "garbage_time": bool(pd.notna(wp) and (wp < GARBAGE_WP or wp > 1 - GARBAGE_WP)),
+            "had_sack": sacked,
+            "had_penalty": penalised,
+            "failed_short": failed_short,
+            "turnover_type": "interception" if interception else ("fumble_lost" if fumble else None),
             "archetype": _archetype(result, plays, first_downs, red_zone, dependence),
         })
 
@@ -495,6 +532,8 @@ def summarise(drives: pd.DataFrame) -> pd.DataFrame:
             "expl_dependence_rate": round(group["explosive_dependence"].mean(), 3),
             "expl_per_snap": round(int(group["explosive_plays"].sum()) / snaps, 3) if snaps else 0.0,
             "three_and_out_rate": round(counts.get("THREE_AND_OUT", 0) / n, 3),
+            "sack_drive_rate": round(group["had_sack"].mean(), 3),
+            "penalty_drive_rate": round(group["had_penalty"].mean(), 3),
             "giveaway_rate": round(
                 (counts.get("TURNOVER_GIVEAWAY", 0) + counts.get("SCORE_AGAINST", 0)) / n, 3
             ),

@@ -12,9 +12,12 @@ design, so it is stated rather than left implicit in the code.
 
   SPECIAL_TEAMS          Punt, field goal, kickoff, extra point. Not a
                          scrimmage transition.
-  KNEEL_SPIKE            Victory formation or a clock stop. A deliberate
-                         non-play; counting it as a failed run would slander
-                         every offence that ever led late.
+  KNEEL                  Victory formation. Burns clock while ahead.
+  SPIKE                  Clock stop. Preserves time while trying to score.
+                         Split from a single KNEEL_SPIKE label because they are
+                         opposite game states and nflverse distinguishes them
+                         at source (2025: 433 kneels, 79 spikes), so collapsing
+                         them discarded free information.
   PENALTY                A flag wiped the play out (`no_play`). The down did
                          not resolve, so no outcome label can apply.
   TURNOVER_PLAY          Interception or lost fumble. Ranked above SACK and
@@ -33,7 +36,7 @@ design, so it is stated rather than left implicit in the code.
   EARLY_DOWN_EXPLOSIVE   1st or 2nd down, gain >= 20.
   EARLY_DOWN_SUCCESS     1st or 2nd down, meets the standard success
                          threshold (40% of the distance on 1st, 60% on 2nd).
-  EARLY_DOWN_STUFF       1st or 2nd down, gain <= 0.
+  EARLY_DOWN_FAILURE       1st or 2nd down, gain <= 0.
   EARLY_DOWN_MODEST      1st or 2nd down, positive but not successful. The
                          residual bucket, and named so it reads as one.
 
@@ -52,6 +55,18 @@ MODIFIERS -- carried alongside, never folded into the archetype
   explosive                      gain >= 20
   shotgun, no_huddle             available in nflverse, carried untouched
   epa, wp                        nflverse's own, never recomputed here
+  turnover_type                  interception / fumble_lost / None. The
+                                 mechanism, kept off the terminal label so a
+                                 play that is somehow both (4 in 2025: a pick
+                                 the returner fumbles back) needs no arbitrary
+                                 tiebreak.
+  had_sack                       TRUE on a sack, INCLUDING one that also lost
+                                 the ball. TURNOVER_PLAY outranks SACK, so
+                                 without this flag every strip-sack disappears
+                                 from the sack count -- 75 of 1,287 sacks in
+                                 2025, i.e. a taxonomy-derived sack rate was
+                                 5.8% low. Overlapping causes belong in flags,
+                                 never in a precedence order.
 
 SUCCESS is the conventional 40/60/100 percent-of-distance rule, not something
 invented here. It is stated as a constant so a later screen cannot move it
@@ -61,7 +76,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v1"
+VERSION = "nfl-play-archetype-v2"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
@@ -110,6 +125,8 @@ def label_plays(pbp: pd.DataFrame) -> pd.DataFrame:
         "distance_bucket": _distance_bucket(togo, down),
         "success": success.fillna(False),
         "explosive": explosive.fillna(False),
+        "turnover_type": _turnover_type(frame),
+        "had_sack": (_num(frame, "sack").fillna(0) == 1),
         "shotgun": _num(frame, "shotgun").fillna(0).astype(bool),
         "no_huddle": _num(frame, "no_huddle").fillna(0).astype(bool),
         "epa": _num(frame, "epa").round(3),
@@ -132,7 +149,7 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     label = pd.Series("EARLY_DOWN_MODEST", index=frame.index, dtype=object)
     # Assigned in REVERSE precedence so that earlier rules overwrite later
     # ones -- the top of the documented list ends up winning.
-    label[down.notna() & (down <= 2) & (gain <= 0)] = "EARLY_DOWN_STUFF"
+    label[down.notna() & (down <= 2) & (gain <= 0)] = "EARLY_DOWN_FAILURE"
     label[down.notna() & (down <= 2) & success] = "EARLY_DOWN_SUCCESS"
     label[down.notna() & (down <= 2) & explosive] = "EARLY_DOWN_EXPLOSIVE"
     label[down.notna() & (down >= 3) & ~converted] = "LATE_DOWN_FAILURE"
@@ -141,12 +158,23 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     label[sack] = "SACK"
     label[interception | fumble_lost] = "TURNOVER_PLAY"
     label[play_type == "no_play"] = "PENALTY"
-    label[play_type.isin(("qb_kneel", "qb_spike"))] = "KNEEL_SPIKE"
+    label[play_type == "qb_spike"] = "SPIKE"
+    label[play_type == "qb_kneel"] = "KNEEL"
     label[play_type.isin(SPECIAL_TEAMS_PLAYS)] = "SPECIAL_TEAMS"
     # A row with no down and no recognised play type is not a snap at all
     # (game start, end of quarter markers). Never call it an early-down play.
     label[down.isna() & ~play_type.isin(SPECIAL_TEAMS_PLAYS + ("qb_kneel", "qb_spike", "no_play"))] = "NON_PLAY"
     return label
+
+
+def _turnover_type(frame: pd.DataFrame) -> pd.Series:
+    """Mechanism of a lost possession, as a modifier rather than a label."""
+    interception = _num(frame, "interception").fillna(0) == 1
+    fumble = _num(frame, "fumble_lost").fillna(0) == 1
+    out = pd.Series(None, index=frame.index, dtype=object)
+    out[fumble] = "fumble_lost"
+    out[interception] = "interception"   # 4 plays a season carry both flags
+    return out
 
 
 def _distance_bucket(togo: pd.Series, down: pd.Series) -> pd.Series:
