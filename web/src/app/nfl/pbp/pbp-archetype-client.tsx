@@ -13,9 +13,9 @@ type Props = { games: NflArchetypeGameRow[]; gameId: string | null; plays: NflAr
 // only channel.
 const PLAY_TONE: Record<string, string> = {
   EARLY_DOWN_EXPLOSIVE: "good", EARLY_DOWN_SUCCESS: "good", LATE_DOWN_CONVERSION: "good",
-  GOAL_LINE_PUNCH: "good", EARLY_DOWN_STUFF: "warn", LATE_DOWN_FAILURE: "warn",
+  GOAL_LINE_PUNCH: "good", EARLY_DOWN_FAILURE: "warn", LATE_DOWN_FAILURE: "warn",
   SACK: "warn", TURNOVER_PLAY: "bad", PENALTY: "warn",
-  SPECIAL_TEAMS: "mute", KNEEL_SPIKE: "mute", NON_PLAY: "mute", EARLY_DOWN_MODEST: "",
+  SPECIAL_TEAMS: "mute", KNEEL: "mute", SPIKE: "mute", NON_PLAY: "mute", EARLY_DOWN_MODEST: "",
 };
 const DRIVE_TONE: Record<string, string> = {
   METHODICAL_TD: "good", EXPLOSIVE_TD: "good", SHORT_FIELD_TD: "good",
@@ -87,7 +87,7 @@ export default function PbpArchetypeClient({ games, gameId, plays }: Props) {
       <table className={p.table}>
         <thead><tr>
           {["Q", "Clock", "Off", "Dr", "Dn", "Dist", "Yd", "Type", "Gain",
-            "PLAY ARCHETYPE", "DRIVE ARCHETYPE", "Drive QB", "EPA", "Description"]
+            "PLAY ARCHETYPE", "DRIVE ARCHETYPE", "Drive flags", "Drive QB", "EPA", "Description"]
             .map(h => <th key={h}>{h}</th>)}
         </tr></thead>
         <tbody>
@@ -109,10 +109,23 @@ export default function PbpArchetypeClient({ games, gameId, plays }: Props) {
               <td data-gain={r.yardsGained == null ? "" : r.yardsGained > 0 ? "pos" : r.yardsGained < 0 ? "neg" : ""}>
                 {num(r.yardsGained)}{r.explosive ? " ⚡" : ""}
               </td>
-              <td><span className={p.chip} data-tone={PLAY_TONE[r.playArchetype] ?? ""}>{label(r.playArchetype)}</span></td>
+              <td><span className={p.chip} data-tone={PLAY_TONE[r.playArchetype] ?? ""}>{label(r.playArchetype)}</span>
+                {r.hadSack && r.playArchetype !== "SACK"
+                  ? <span className={p.flag} data-tone="bad" title="Strip sack: this play was both a sack and a lost fumble. TURNOVER_PLAY outranks SACK, so without this flag the sack would vanish from the count.">+SACK</span>
+                  : null}</td>
               <td>{r.driveArchetype
                 ? <span className={p.chip} data-tone={DRIVE_TONE[r.driveArchetype] ?? ""}>{label(r.driveArchetype)}</span>
                 : <span className={p.none} title="This play sits on a possession the drive labeller does not recognise as a drive — a conversion attempt after a return touchdown. Left blank rather than guessed.">no drive</span>}</td>
+              {/* Independent flags, shown together because they ARE together:
+                  a drive can be sacked AND penalised AND stopped short, and
+                  none of the three outranks the others. */}
+              <td className={p.flags}>
+                {r.driveHadSack ? <span className={p.flag} data-tone="bad" title="A sack occurred on this drive">SACK</span> : null}
+                {r.driveHadPenalty ? <span className={p.flag} data-tone="warn" title="A penalty wiped out a play on this drive">PEN</span> : null}
+                {r.driveFailedShort ? <span className={p.flag} data-tone="warn" title="Final snap was 3rd/4th down with 2 or fewer to go">SHORT</span> : null}
+                {r.driveTurnoverType ? <span className={p.flag} data-tone="bad">{r.driveTurnoverType === "interception" ? "INT" : "FUM"}</span> : null}
+                {!r.driveHadSack && !r.driveHadPenalty && !r.driveFailedShort && !r.driveTurnoverType ? <span className={p.none}>—</span> : null}
+              </td>
               <td>{r.driveQb ?? "—"}{r.driveQbIsStarter === false ? <span className={p.backup} title="Not this team's starting quarterback">◦</span> : null}</td>
               <td data-gain={r.epa == null ? "" : r.epa > 0 ? "pos" : r.epa < 0 ? "neg" : ""}>{num(r.epa, 2)}</td>
               <td className={p.desc} title={r.description ?? ""}>{r.description ?? "—"}</td>

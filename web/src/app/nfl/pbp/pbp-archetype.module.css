@@ -42,3 +42,10 @@
   .note { max-width:none; }
   .count { margin-left:0; }
 }
+
+.flags { white-space:nowrap; }
+.flag { display:inline-block; margin-right:3px; padding:1px 5px; border-radius:2px;
+  font-size:8px; letter-spacing:.06em; background:#1b2322; color:#c3ccc8;
+  border:1px solid #27302f; }
+.flag[data-tone="warn"] { background:#2c2410; color:#f6a800; border-color:#544213; }
+.flag[data-tone="bad"]  { background:#2e1414; color:#ff6464; border-color:#5a2222; }

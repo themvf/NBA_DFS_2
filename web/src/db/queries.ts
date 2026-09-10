@@ -14090,12 +14090,15 @@ export type NflArchetypePlayRow = {
   playId: number; drive: number | null; posteam: string; quarter: number | null;
   clock: string | null; down: number | null; ydstogo: number | null;
   yardline100: number | null; playType: string | null; yardsGained: number | null;
-  playArchetype: string; distanceBucket: string | null; success: boolean | null;
+  playArchetype: string; turnoverType: string | null; hadSack: boolean | null;
+  distanceBucket: string | null; success: boolean | null;
   explosive: boolean | null; shotgun: boolean | null; noHuddle: boolean | null;
   epa: number | null; wp: number | null; description: string | null;
   driveArchetype: string | null; driveQb: string | null;
   driveQbIsStarter: boolean | null; driveStartBucket: string | null;
   driveEndBucket: string | null; driveResult: string | null;
+  driveTurnoverType: string | null; driveHadSack: boolean | null;
+  driveHadPenalty: boolean | null; driveFailedShort: boolean | null;
   drivePlays: number | null; driveNetYards: number | null; driveEpa: number | null;
 };
 
@@ -14134,9 +14137,11 @@ export async function getNflArchetypeGames(limit = 60): Promise<NflArchetypeGame
 export async function getNflArchetypePlays(gameId: string): Promise<NflArchetypePlayRow[]> {
   const rows = await db.execute(sql`
     SELECT play_id, drive, posteam, quarter, clock, down, ydstogo, yardline_100,
-           play_type, yards_gained, play_archetype, distance_bucket, success, explosive,
+           play_type, yards_gained, play_archetype, turnover_type, had_sack,
+           distance_bucket, success, explosive,
            shotgun, no_huddle, epa, wp, description, drive_archetype, drive_qb,
            drive_qb_is_starter, drive_start_bucket, drive_end_bucket, drive_result,
+           drive_turnover_type, drive_had_sack, drive_had_penalty, drive_failed_short,
            drive_plays, drive_net_yards, drive_epa
     FROM nfl_pbp_archetypes WHERE game_id = ${gameId} ORDER BY play_id`);
   const num = (v: unknown) => (v == null ? null : Number(v));
@@ -14147,10 +14152,13 @@ export async function getNflArchetypePlays(gameId: string): Promise<NflArchetype
     quarter: num(r.quarter), clock: str(r.clock), down: num(r.down),
     ydstogo: num(r.ydstogo), yardline100: num(r.yardline_100), playType: str(r.play_type),
     yardsGained: num(r.yards_gained), playArchetype: String(r.play_archetype),
+    turnoverType: str(r.turnover_type), hadSack: bool(r.had_sack),
     distanceBucket: str(r.distance_bucket), success: bool(r.success),
     explosive: bool(r.explosive), shotgun: bool(r.shotgun), noHuddle: bool(r.no_huddle),
     epa: num(r.epa), wp: num(r.wp), description: str(r.description),
     driveArchetype: str(r.drive_archetype), driveQb: str(r.drive_qb),
+    driveTurnoverType: str(r.drive_turnover_type), driveHadSack: bool(r.drive_had_sack),
+    driveHadPenalty: bool(r.drive_had_penalty), driveFailedShort: bool(r.drive_failed_short),
     driveQbIsStarter: bool(r.drive_qb_is_starter), driveStartBucket: str(r.drive_start_bucket),
     driveEndBucket: str(r.drive_end_bucket), driveResult: str(r.drive_result),
     drivePlays: num(r.drive_plays), driveNetYards: num(r.drive_net_yards),
