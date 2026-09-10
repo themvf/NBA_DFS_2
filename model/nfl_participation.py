@@ -19,9 +19,12 @@ columns, including `was_pressure` (100% populated), `defense_coverage_type`
 `time_to_throw` and `ngs_air_yards`. Those were initially recorded elsewhere
 in this project as data that does not exist, which was wrong: the check was
 run against the base play-by-play and the absence generalised to every
-source. They are deliberately not loaded yet -- pressure is the largest
-outcome split in the data (EPA -0.535 against +0.242) and deserves its own
-change rather than a footnote in this one.
+source. Pressure IS loaded, because it is the largest outcome split anywhere in the
+data (EPA -0.535 against +0.242) and it is 100% populated. Coverage shell and
+man/zone are loaded too but are roughly half populated, so they are carried
+as NULL-where-unknown rather than filled. `route` and `time_to_throw` are
+left for later: their per-play semantics need checking before they are worth
+storing.
 
 PERSONNEL IS TRANSLATED INTO COACH NOTATION. The source ships a verbose
 roster string; "11 personnel" is what anyone in football actually says, and
@@ -83,7 +86,8 @@ def attach(pbp: pd.DataFrame, participation: pd.DataFrame) -> pd.DataFrame:
     reported identical means.
     """
     fields = ["game_id", "play_id", "offense_formation", "offense_personnel",
-              "defense_personnel", "defenders_in_box", "number_of_pass_rushers"]
+              "defense_personnel", "defenders_in_box", "number_of_pass_rushers",
+              "was_pressure", "defense_coverage_type", "defense_man_zone_type"]
     available = [f for f in fields if f in participation.columns]
     merged = pbp.merge(
         participation[available].drop_duplicates(subset=["game_id", "play_id"]),
@@ -92,13 +96,26 @@ def attach(pbp: pd.DataFrame, participation: pd.DataFrame) -> pd.DataFrame:
     if len(merged) != len(pbp):
         raise RuntimeError(f"participation join changed row count {len(pbp)} -> {len(merged)}")
 
-    box = pd.to_numeric(merged.get("defenders_in_box"), errors="coerce")
-    rushers = pd.to_numeric(merged.get("number_of_pass_rushers"), errors="coerce")
-    merged["personnel_grouping"] = merged.get("offense_personnel").map(personnel_grouping)
+    # `offense_formation` is participation's own signal that a row is an
+    # offensive snap, and it is the ONLY trustworthy gate here. Kickoffs carry
+    # a populated `offense_personnel` -- but it describes the KICK COVERAGE
+    # UNIT ("1 DE, 1 FS, 3 ILB, 1 RB, 1 SS, 3 TE, 1 WR"), which a personnel
+    # parser happily reads as "13 personnel" on every kickoff in the league.
+    # A field being populated is not a field being applicable.
+    snap = merged.get("offense_formation").notna() if "offense_formation" in merged else False
+
+    box = pd.to_numeric(merged.get("defenders_in_box"), errors="coerce").where(snap)
+    rushers = pd.to_numeric(merged.get("number_of_pass_rushers"), errors="coerce").where(snap)
+    merged["personnel_grouping"] = merged.get("offense_personnel").map(personnel_grouping).where(snap)
     merged["defenders_in_box"] = box
     merged["pass_rushers"] = rushers
+    for column in ("defense_coverage_type", "defense_man_zone_type"):
+        if column in merged:
+            merged[column] = merged[column].where(snap)
     # NULL where unknown, never False: "we did not observe a blitz" and "there
     # was no blitz" are different claims and only one of them is supported.
     merged["blitz"] = rushers.where(rushers.isna(), rushers >= BLITZ_RUSHERS).astype("boolean")
     merged["heavy_blitz"] = rushers.where(rushers.isna(), rushers >= HEAVY_BLITZ_RUSHERS).astype("boolean")
+    if "was_pressure" in merged:
+        merged["pressure"] = merged["was_pressure"].astype("boolean").where(snap)
     return merged

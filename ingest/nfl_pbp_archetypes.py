@@ -33,12 +33,16 @@ from psycopg2.extras import execute_batch
 from config import load_config
 from db.database import DatabaseManager
 from model.nfl_drive_archetypes import VERSION as DRIVE_VERSION, label_drives, load_pbp
+from model.nfl_participation import load_participation
 from model.nfl_play_archetypes import VERSION as PLAY_VERSION, label_plays
 
 COLUMNS = (
     "game_id", "play_id", "season", "week", "season_type", "home_team", "away_team",
     "posteam", "drive", "quarter", "clock", "down", "ydstogo", "yardline_100",
     "play_type", "yards_gained", "play_archetype", "turnover_type", "had_sack",
+    "goal_line", "penalty_type", "penalty_team", "penalty_first_down",
+    "formation", "personnel_grouping", "defenders_in_box", "pass_rushers",
+    "blitz", "pressure", "coverage_type", "man_zone",
     "distance_bucket", "success",
     "explosive", "shotgun", "no_huddle", "epa", "wp", "description",
     "drive_archetype", "drive_qb", "drive_qb_is_starter", "drive_start_bucket",
@@ -68,9 +72,9 @@ def stale_games(db: DatabaseManager) -> dict[int, list[str]]:
     return out
 
 
-def build_rows(pbp: pd.DataFrame) -> list[tuple]:
+def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> list[tuple]:
     """Join the two label layers onto one row per play."""
-    plays = label_plays(pbp)
+    plays = label_plays(pbp, participation)
     drives = label_drives(pbp).set_index(["game_id", "team", "drive"])
 
     meta = pbp.drop_duplicates("game_id").set_index("game_id")
@@ -90,6 +94,12 @@ def build_rows(pbp: pd.DataFrame) -> list[tuple]:
             _int(play.down), _int(play.ydstogo), _int(play.yardline_100),
             _text(play.play_type), _float(play.yards_gained), play.play_archetype,
             _text(play.turnover_type), bool(play.had_sack),
+            bool(play.goal_line), _text(getattr(play, "penalty_type", None)),
+            _text(getattr(play, "penalty_team", None)), bool(play.penalty_first_down),
+            _text(getattr(play, "formation", None)), _text(getattr(play, "personnel_grouping", None)),
+            _float(getattr(play, "defenders_in_box", None)), _float(getattr(play, "pass_rushers", None)),
+            _bool(getattr(play, "blitz", None)), _bool(getattr(play, "pressure", None)),
+            _text(getattr(play, "coverage_type", None)), _text(getattr(play, "man_zone", None)),
             play.distance_bucket, bool(play.success), bool(play.explosive),
             bool(play.shotgun), bool(play.no_huddle), _float(play.epa),
             _float(play.wp), _text(play.description),
@@ -103,6 +113,21 @@ def build_rows(pbp: pd.DataFrame) -> list[tuple]:
             PLAY_VERSION, DRIVE_VERSION,
         ))
     return rows
+
+
+def _participation(season: int) -> pd.DataFrame | None:
+    """Participation is enrichment, not a dependency.
+
+    A failure here must not stop the archetypes being written: the labels are
+    computable without it and the columns are simply absent, which the schema
+    allows. Silently substituting False would be worse than a missing column.
+    """
+    try:
+        return load_participation(season)
+    except Exception as exc:  # noqa: BLE001 - any transport failure degrades the same way
+        print(f"  WARNING season {season}: participation unavailable ({exc}); "
+              f"formation/personnel/pressure columns will be NULL")
+        return None
 
 
 def _get(drive, field):
@@ -180,7 +205,7 @@ def main() -> None:
                 print(f"  WARNING season {season}: {len(game_ids)} stale games "
                       f"absent from the nflverse release; left as-is")
                 continue
-            total += write(db, build_rows(pbp))
+            total += write(db, build_rows(pbp, _participation(season)))
             print(f"  season {season}: relabelled {len(game_ids)} games")
         print(f"{PLAY_VERSION} + {DRIVE_VERSION}: relabelled {total} plays")
         return
@@ -191,7 +216,7 @@ def main() -> None:
     if pbp.empty:
         raise SystemExit("no plays matched")
 
-    rows = build_rows(pbp)
+    rows = build_rows(pbp, _participation(args.season))
     written = write(db, rows)
     print(f"{PLAY_VERSION} + {DRIVE_VERSION}: wrote {written} plays "
           f"across {len(set(r[0] for r in rows))} games")

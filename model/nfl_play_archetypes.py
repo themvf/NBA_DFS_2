@@ -26,9 +26,6 @@ design, so it is stated rather than left implicit in the code.
   SACK                   Kept separate from a stuffed run: it is a negative
                          play AND a quarterback/protection event, and the two
                          have different persistence.
-  GOAL_LINE_PUNCH        A rush from inside the opponent's 5, any down. A
-                         1-yard gain here is a near-touchdown, not the
-                         "modest" gain the yardage alone suggests.
 
   LATE_DOWN_CONVERSION   3rd or 4th down, line to gain reached.
   LATE_DOWN_FAILURE      3rd or 4th down, short of it.
@@ -40,11 +37,15 @@ design, so it is stated rather than left implicit in the code.
   EARLY_DOWN_MODEST      1st or 2nd down, positive but not successful. The
                          residual bucket, and named so it reads as one.
 
-Late downs rank ABOVE goal line except for a rush inside the 5, because on
-3rd and 4th down the conversion is the decision-relevant fact and field
-position is already carried as a modifier. GOAL_LINE_PUNCH outranks both
-because a 1-yard rush at the 2 is a different event from a 1-yard rush at
-midfield on any down.
+GOAL_LINE_PUNCH WAS REMOVED IN v3, and removing it made the taxonomy both
+smaller and more truthful. It labelled a goal-line RUSH only, so 24.5
+goal-line runs a team-season got a terminal label while 20.9 goal-line PASS
+snaps scattered across seven labels that never mention the goal line. A
+goal-line conversion rate could not be computed from the taxonomy at all,
+because 46% of the denominator was not in it. Goal line is a field-position
+fact about any snap, so it is now the `goal_line` modifier -- the same
+terminal-state-versus-modifier rule the rest of the file follows, applied to
+a label written before that rule existed.
 
 =============================================================================
 MODIFIERS -- carried alongside, never folded into the archetype
@@ -54,7 +55,36 @@ MODIFIERS -- carried alongside, never folded into the archetype
   success                        the standard down-weighted success criterion
   explosive                      gain >= 20
   shotgun, no_huddle             available in nflverse, carried untouched
+
+  PARTICIPATION MODIFIERS (v3) -- from nflverse's separate participation
+  release, joined on (game_id, play_id). Present on 99.8% of scrimmage snaps
+  and on none of the kickoffs, punts, kicks or kneels, which is structural
+  rather than missing. They record what down-and-distance cannot: holding
+  1st-and-10 fixed and letting personnel move, pass rate spans 55.6% in 11
+  personnel to 26.2% in 22, and the box answers 6.05 to 6.89. That is the
+  pre-snap conversation, and the taxonomy previously recorded neither half.
+
+  formation                      SHOTGUN / SINGLEBACK / EMPTY / I_FORM / ...
+  personnel_grouping             coach notation -- "11", "12", "21"
+  defenders_in_box               count
+  pass_rushers                   count; blitz is >= 5, heavy >= 6
+  blitz, heavy_blitz             nullable booleans, NULL where unobserved
+  pressure                       the quarterback was pressured. The largest
+                                 outcome split in the data.
+  coverage_type, man_zone        shell and man/zone, ~49% populated, NULL
+                                 where unknown rather than guessed
   epa, wp                        nflverse's own, never recomputed here
+  goal_line                      snap from inside the opponent's GOAL_LINE
+                                 yardline, run or pass. Replaces the old
+                                 rush-only GOAL_LINE_PUNCH label.
+  penalty_type / penalty_team    what the flag was and who it was on.
+                                 PENALTY carried 81 plays a team-season with
+                                 no attributes at all.
+  penalty_first_down             the flag moved the chains. The old docstring
+                                 claimed "the down did not resolve, so no
+                                 outcome label can apply" -- false 22.8 times
+                                 a team-season, on defensive penalties that
+                                 produced a first down.
   turnover_type                  interception / fumble_lost / None. The
                                  mechanism, kept off the terminal label so a
                                  play that is somehow both (4 in 2025: a pick
@@ -76,7 +106,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v2"
+VERSION = "nfl-play-archetype-v3"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
@@ -94,8 +124,15 @@ def _num(frame: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(frame[column], errors="coerce")
 
 
-def label_plays(pbp: pd.DataFrame) -> pd.DataFrame:
-    """One row per play, in game order, with archetype and modifiers."""
+def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> pd.DataFrame:
+    """One row per play, in game order, with archetype and modifiers.
+
+    `participation` is optional so the labeller still runs without it; the
+    participation columns are then absent rather than silently False.
+    """
+    if participation is not None:
+        from model.nfl_participation import attach
+        pbp = attach(pbp, participation)
     frame = pbp[pbp["posteam"].notna()].copy()
     frame = frame.sort_values("play_id")
 
@@ -125,6 +162,10 @@ def label_plays(pbp: pd.DataFrame) -> pd.DataFrame:
         "distance_bucket": _distance_bucket(togo, down),
         "success": success.fillna(False),
         "explosive": explosive.fillna(False),
+        "goal_line": (yardline.notna() & (yardline <= GOAL_LINE_YARDLINE)),
+        "penalty_type": frame.get("penalty_type"),
+        "penalty_team": frame.get("penalty_team"),
+        "penalty_first_down": (_num(frame, "first_down_penalty").fillna(0) == 1),
         "turnover_type": _turnover_type(frame),
         "had_sack": (_num(frame, "sack").fillna(0) == 1),
         "shotgun": _num(frame, "shotgun").fillna(0).astype(bool),
@@ -135,6 +176,14 @@ def label_plays(pbp: pd.DataFrame) -> pd.DataFrame:
     })
     out["play_archetype"] = _archetypes(frame, down, togo, gain, yardline, play_type,
                                         success, explosive, converted)
+    for source, name in (
+        ("offense_formation", "formation"), ("personnel_grouping", "personnel_grouping"),
+        ("defenders_in_box", "defenders_in_box"), ("pass_rushers", "pass_rushers"),
+        ("blitz", "blitz"), ("pressure", "pressure"),
+        ("defense_coverage_type", "coverage_type"), ("defense_man_zone_type", "man_zone"),
+    ):
+        if source in frame:
+            out[name] = frame[source].values
     return out.reset_index(drop=True)
 
 
@@ -144,7 +193,6 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     sack = _num(frame, "sack").fillna(0) == 1
     interception = _num(frame, "interception").fillna(0) == 1
     fumble_lost = _num(frame, "fumble_lost").fillna(0) == 1
-    rush = play_type == "run"
 
     label = pd.Series("EARLY_DOWN_MODEST", index=frame.index, dtype=object)
     # Assigned in REVERSE precedence so that earlier rules overwrite later
@@ -154,7 +202,6 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     label[down.notna() & (down <= 2) & explosive] = "EARLY_DOWN_EXPLOSIVE"
     label[down.notna() & (down >= 3) & ~converted] = "LATE_DOWN_FAILURE"
     label[down.notna() & (down >= 3) & converted] = "LATE_DOWN_CONVERSION"
-    label[rush & yardline.notna() & (yardline <= GOAL_LINE_YARDLINE)] = "GOAL_LINE_PUNCH"
     label[sack] = "SACK"
     label[interception | fumble_lost] = "TURNOVER_PLAY"
     label[play_type == "no_play"] = "PENALTY"
