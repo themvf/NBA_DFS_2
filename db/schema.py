@@ -3329,6 +3329,17 @@ MIGRATIONS = [
     # Fantasy Football roster-aware V2 source provenance. These columns make
     # cutoff eligibility and degraded-data behavior explicit while preserving
     # the original response identity columns used by the live champion.
+    # nfl_pbp_archetypes gained modifier columns at play-v2 / drive-v3.
+    # CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so the DDL
+    # above only covers a fresh database; every deployment that already ran the
+    # ingest needs these. Verifying the taxonomy change locally against a
+    # DROPPED table tested the greenfield path and could not have caught this.
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS turnover_type TEXT",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS had_sack BOOLEAN",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_turnover_type TEXT",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_had_sack BOOLEAN",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_had_penalty BOOLEAN",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_failed_short BOOLEAN",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS week INTEGER",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS contract_key TEXT",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS source_published_at TIMESTAMPTZ",
