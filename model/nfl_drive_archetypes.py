@@ -142,7 +142,7 @@ from pathlib import Path
 
 import pandas as pd
 
-VERSION = "nfl-drive-archetype-v3"
+VERSION = "nfl-drive-archetype-v4"
 
 # --- frozen thresholds -------------------------------------------------------
 EXPLOSIVE_PLAY_YARDS = 20      # a single scrimmage gain of at least this many
@@ -297,6 +297,18 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
         rows.append({
             "game_id": game_id,
             "team": team,
+            # CONTEXT, carried for the same reason as at play level: the frame
+            # could not say which season or week it was, who the opponent was,
+            # whether the team was home, or what the score was. `wp_at_start`
+            # is not a substitute -- it mixes score with time remaining.
+            "season": _first(ordered, "season"),
+            "week": _first(ordered, "week"),
+            "season_type": _first(ordered, "season_type"),
+            "defteam": _first(ordered, "defteam"),
+            "posteam_type": _first(ordered, "posteam_type"),
+            "score_differential_start": _first(ordered, "score_differential"),
+            "game_seconds_remaining_start": _first(ordered, "game_seconds_remaining"),
+            "roof": _first(ordered, "roof"),
             "qb": qb,
             "drive": int(drive_no),
             "quarter": int(_first(ordered, "qtr", 0) or 0),
