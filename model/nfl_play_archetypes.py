@@ -5,7 +5,7 @@ archetype is a transition: what this snap did to the down-distance-field-
 position state. Both are needed for the state machine to be a state machine.
 
 =============================================================================
-THE TAXONOMY -- 12 archetypes, mutually exclusive and exhaustive
+THE TAXONOMY -- 14 archetypes, mutually exclusive and exhaustive
 =============================================================================
 Precedence runs top to bottom; the first match wins. The ordering is the
 design, so it is stated rather than left implicit in the code.
@@ -18,6 +18,15 @@ design, so it is stated rather than left implicit in the code.
                          opposite game states and nflverse distinguishes them
                          at source (2025: 433 kneels, 79 spikes), so collapsing
                          them discarded free information.
+  TWO_POINT              A two-point conversion attempt. It has no down, so
+                         v3 swept all 130 of them (4.1 a team-season) into
+                         NON_PLAY -- "not a snap at all" -- when they are
+                         run/pass plays with participation on every one and
+                         128 of 130 inside the 3. That is the GOAL_LINE_PUNCH
+                         error repeated: a real football event with nowhere
+                         to live because the rule was written against a
+                         different case. Ranked above the down labels because
+                         it cannot reach them; there is no down.
   PENALTY                A flag wiped the play out (`no_play`). The down did
                          not resolve, so no outcome label can apply.
   TURNOVER_PLAY          Interception or lost fumble. Ranked above SACK and
@@ -64,19 +73,41 @@ MODIFIERS -- carried alongside, never folded into the archetype
   personnel to 26.2% in 22, and the box answers 6.05 to 6.89. That is the
   pre-snap conversation, and the taxonomy previously recorded neither half.
 
-  formation                      SHOTGUN / SINGLEBACK / EMPTY / I_FORM / ...
+  formation                      SHOTGUN / UNDER CENTER / PISTOL -- the three
+                                 values this release actually ships. An
+                                 earlier docstring listed SINGLEBACK, EMPTY
+                                 and I_FORM, which belong to a different
+                                 charting source and are not here. Not
+                                 redundant with `shotgun`: PISTOL is coded
+                                 shotgun=1 but runs 26.2% pass on 1st-and-10
+                                 against SHOTGUN's 65.7%.
   personnel_grouping             coach notation -- "11", "12", "21"
   defenders_in_box               count
   pass_rushers                   count; blitz is >= 5, heavy >= 6
-  blitz, heavy_blitz             nullable booleans, NULL where unobserved
+  blitz, heavy_blitz             nullable booleans, NULL where unobserved --
+                                 and unobserved is 39% of snaps, because the
+                                 source writes 0 rushers rather than a null on
+                                 a non-dropback. See nfl_participation.
   pressure                       the quarterback was pressured. The largest
-                                 outcome split in the data.
-  coverage_type, man_zone        shell and man/zone, ~49% populated, NULL
-                                 where unknown rather than guessed
+                                 outcome split in the data. Dropbacks only; a
+                                 handoff has no quarterback to pressure.
+  n_ol, n_wr                     line and receiver counts, because two-digit
+                                 personnel notation cannot express a six-OL
+                                 jumbo look and silently calls it 11 or 12.
+  coverage_type, man_zone        shell and man/zone, ~48% and ~61% populated,
+                                 NULL where unknown rather than guessed
   epa, wp                        nflverse's own, never recomputed here
   goal_line                      snap from inside the opponent's GOAL_LINE
                                  yardline, run or pass. Replaces the old
-                                 rush-only GOAL_LINE_PUNCH label.
+                                 rush-only GOAL_LINE_PUNCH label. Set to the
+                                 3, not the 5: measured on 2025, the 4 and the
+                                 5 are indistinguishable from ordinary red
+                                 zone (jumbo personnel .183/.157 against the
+                                 red zone's .156, pass rate ABOVE the red-zone
+                                 average), while TD rate cliffs between the 2
+                                 and the 3 (.460 -> .326) and personnel cliffs
+                                 between the 3 and the 4. At <=5 the flag was
+                                 40% red-zone padding. 26.3 a team-season.
   penalty_type / penalty_team    what the flag was and who it was on.
                                  PENALTY carried 81 plays a team-season with
                                  no attributes at all.
@@ -106,12 +137,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v3"
+VERSION = "nfl-play-archetype-v4"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
 LONG_DISTANCE = 7
-GOAL_LINE_YARDLINE = 5
+GOAL_LINE_YARDLINE = 3
 # Conventional success thresholds: share of the distance needed, by down.
 SUCCESS_SHARE = {1: 0.40, 2: 0.60, 3: 1.00, 4: 1.00}
 
@@ -179,7 +210,8 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
     for source, name in (
         ("offense_formation", "formation"), ("personnel_grouping", "personnel_grouping"),
         ("defenders_in_box", "defenders_in_box"), ("pass_rushers", "pass_rushers"),
-        ("blitz", "blitz"), ("pressure", "pressure"),
+        ("blitz", "blitz"), ("heavy_blitz", "heavy_blitz"), ("pressure", "pressure"),
+        ("n_ol", "n_ol"), ("n_wr", "n_wr"),
         ("defense_coverage_type", "coverage_type"), ("defense_man_zone_type", "man_zone"),
     ):
         if source in frame:
@@ -202,6 +234,7 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     label[down.notna() & (down <= 2) & explosive] = "EARLY_DOWN_EXPLOSIVE"
     label[down.notna() & (down >= 3) & ~converted] = "LATE_DOWN_FAILURE"
     label[down.notna() & (down >= 3) & converted] = "LATE_DOWN_CONVERSION"
+    label[_num(frame, "two_point_attempt").fillna(0) == 1] = "TWO_POINT"
     label[sack] = "SACK"
     label[interception | fumble_lost] = "TURNOVER_PLAY"
     label[play_type == "no_play"] = "PENALTY"
@@ -210,7 +243,9 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     label[play_type.isin(SPECIAL_TEAMS_PLAYS)] = "SPECIAL_TEAMS"
     # A row with no down and no recognised play type is not a snap at all
     # (game start, end of quarter markers). Never call it an early-down play.
-    label[down.isna() & ~play_type.isin(SPECIAL_TEAMS_PLAYS + ("qb_kneel", "qb_spike", "no_play"))] = "NON_PLAY"
+    two_point = _num(frame, "two_point_attempt").fillna(0) == 1
+    label[down.isna() & ~two_point
+          & ~play_type.isin(SPECIAL_TEAMS_PLAYS + ("qb_kneel", "qb_spike", "no_play"))] = "NON_PLAY"
     return label
 
 

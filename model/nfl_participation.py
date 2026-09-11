@@ -20,9 +20,15 @@ columns, including `was_pressure` (100% populated), `defense_coverage_type`
 in this project as data that does not exist, which was wrong: the check was
 run against the base play-by-play and the absence generalised to every
 source. Pressure IS loaded, because it is the largest outcome split anywhere in the
-data (EPA -0.535 against +0.242) and it is 100% populated. Coverage shell and
-man/zone are loaded too but are roughly half populated, so they are carried
-as NULL-where-unknown rather than filled. `route` and `time_to_throw` are
+data: measured on 2025 over the population this module actually emits it for
+(dropbacks, n=21280), EPA -0.406 under pressure against +0.253 clean. Over ALL snaps
+it reads -0.406 / +0.108 -- a figure worth quoting only with its population
+attached, since an earlier version of this docstring claimed -0.535 / +0.242
+and neither population reproduces that. Coverage shell
+is ~48% populated and NULL where unknown; `defense_man_zone_type` ships an
+EMPTY STRING rather than a null on 39% of snaps, which `.notna()` scores as
+populated and a groupby turns into a phantom third category, so it is
+normalised to NA here. `route` and `time_to_throw` are
 left for later: their per-play semantics need checking before they are worth
 storing.
 
@@ -38,7 +44,7 @@ from pathlib import Path
 
 import pandas as pd
 
-VERSION = "nfl-participation-v1"
+VERSION = "nfl-participation-v2"
 
 PARTICIPATION_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/"
@@ -77,6 +83,18 @@ def personnel_grouping(personnel: str | None) -> str | None:
     return f"{backs}{ends}"
 
 
+def _count_of(position: str):
+    """Per-snap count of one position group from the verbose roster string."""
+    def count(personnel):
+        if not isinstance(personnel, str) or not personnel.strip():
+            return None
+        counts = {pos: int(n) for n, pos in _COUNT.findall(personnel)}
+        if position == "OL":
+            return sum(counts.get(p, 0) for p in ("C", "G", "T", "OL"))
+        return counts.get(position, 0)
+    return count
+
+
 def attach(pbp: pd.DataFrame, participation: pd.DataFrame) -> pd.DataFrame:
     """Join participation onto play-by-play, one row in, one row out.
 
@@ -106,16 +124,33 @@ def attach(pbp: pd.DataFrame, participation: pd.DataFrame) -> pd.DataFrame:
 
     box = pd.to_numeric(merged.get("defenders_in_box"), errors="coerce").where(snap)
     rushers = pd.to_numeric(merged.get("number_of_pass_rushers"), errors="coerce").where(snap)
+    # ZERO IS A SENTINEL, NOT AN OBSERVATION. 39% of snaps carry
+    # `number_of_pass_rushers = 0`, and 14,055 of those 14,075 are
+    # non-dropbacks -- there is no such thing as a play rushed by nobody. The
+    # NaN guard below is meticulous and was useless, because the column ships
+    # no NaNs at all: every uncharted snap became `blitz = False` and the
+    # league blitz rate read 16.6% against a true 27.4%. Team RANK survived
+    # (Spearman 0.93), the level did not.
+    rushers = rushers.where(rushers > 0)
     merged["personnel_grouping"] = merged.get("offense_personnel").map(personnel_grouping).where(snap)
     merged["defenders_in_box"] = box
     merged["pass_rushers"] = rushers
     for column in ("defense_coverage_type", "defense_man_zone_type"):
         if column in merged:
-            merged[column] = merged[column].where(snap)
+            merged[column] = merged[column].replace("", pd.NA).where(snap)
+    merged["n_ol"] = merged.get("offense_personnel").map(_count_of("OL")).where(snap)
+    merged["n_wr"] = merged.get("offense_personnel").map(_count_of("WR")).where(snap)
     # NULL where unknown, never False: "we did not observe a blitz" and "there
     # was no blitz" are different claims and only one of them is supported.
     merged["blitz"] = rushers.where(rushers.isna(), rushers >= BLITZ_RUSHERS).astype("boolean")
     merged["heavy_blitz"] = rushers.where(rushers.isna(), rushers >= HEAVY_BLITZ_RUSHERS).astype("boolean")
     if "was_pressure" in merged:
-        merged["pressure"] = merged["was_pressure"].astype("boolean").where(snap)
+        # A handoff has no quarterback to pressure, so `pressure = False` on
+        # one is a fabricated observation of the same kind as the blitz
+        # sentinel above -- it dragged the naive rate to 18.4% against a true
+        # dropback rate of 29.7%. Restricted to dropbacks, plus the penalty-
+        # wiped rows (`no_play`) that were dropbacks before the flag.
+        was = merged["was_pressure"].astype("boolean")
+        dropback = pd.to_numeric(merged.get("qb_dropback"), errors="coerce") == 1
+        merged["pressure"] = was.where(snap & (dropback | was.fillna(False)))
     return merged
