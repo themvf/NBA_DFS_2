@@ -100,17 +100,32 @@ MODIFIERS -- carried alongside, never folded into the archetype
   goal_line                      snap from inside the opponent's GOAL_LINE
                                  yardline, run or pass. Replaces the old
                                  rush-only GOAL_LINE_PUNCH label. Set to the
-                                 3, not the 5: measured on 2025, the 4 and the
-                                 5 are indistinguishable from ordinary red
-                                 zone (jumbo personnel .183/.157 against the
-                                 red zone's .156, pass rate ABOVE the red-zone
-                                 average), while TD rate cliffs between the 2
-                                 and the 3 (.460 -> .326) and personnel cliffs
-                                 between the 3 and the 4. At <=5 the flag was
-                                 40% red-zone padding. 26.3 a team-season.
+                                 2, after moving 5 -> 3 -> 2 across three
+                                 measurements. TD rate is the only criterion
+                                 that actually separates: .549 / .460 /
+                                 .322 / .342 / .314 from the 1 out to the 5 --
+                                 one break, between the 2 and the 3, with the
+                                 3, 4 and 5 flat together. The "personnel
+                                 cliff" cited for the 3 does not exist; heavy
+                                 personnel declines smoothly (.75 / .63 / .54
+                                 / .48 / .48), which is a gradient and
+                                 adjudicates nothing. 19.1 snaps a
+                                 team-season, above the usable floor.
   penalty_type / penalty_team    what the flag was and who it was on.
                                  PENALTY carried 81 plays a team-season with
                                  no attributes at all.
+  outcome                        CONVERSION / EXPLOSIVE / SUCCESS / MODEST /
+                                 FAILURE, computed for EVERY scrimmage snap
+                                 with a down, whatever else happened on it.
+                                 Its own axis, because the archetype label is
+                                 outranked on late downs by SACK, TURNOVER,
+                                 PENALTY, KNEEL and SPIKE -- all of which are
+                                 third-down ATTEMPTS -- so a third-down rate
+                                 read off the label alone was high by 4.6
+                                 points, one-directionally, in both seasons
+                                 checked. Denominators come from the
+                                 single-valued axes; numerators may come from
+                                 here.
   st_outcome                     kick outcome -- made/missed/blocked,
                                  touchback/fair_catch/downed/returned. Its own
                                  axis, NULL on scrimmage snaps. SPECIAL_TEAMS
@@ -171,12 +186,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v5"
+VERSION = "nfl-play-archetype-v6"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
 LONG_DISTANCE = 7
-GOAL_LINE_YARDLINE = 3
+GOAL_LINE_YARDLINE = 2
 # Conventional success thresholds: share of the distance needed, by down.
 SUCCESS_SHARE = {1: 0.40, 2: 0.60, 3: 1.00, 4: 1.00}
 
@@ -285,6 +300,7 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
     })
     out["play_archetype"] = _archetypes(frame, down, togo, gain, yardline, play_type,
                                         success, explosive, converted)
+    out["outcome"] = _outcome(frame, down, play_type, gain, success, explosive, converted)
     for source, name in (
         ("offense_formation", "formation"), ("personnel_grouping", "personnel_grouping"),
         ("defenders_in_box", "defenders_in_box"), ("pass_rushers", "pass_rushers"),
@@ -295,6 +311,57 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
         if source in frame:
             out[name] = frame[source].values
     return out.reset_index(drop=True)
+
+
+def _outcome(frame, down, play_type, gain, success, explosive, converted) -> pd.Series:
+    """What the snap DID, computed for every scrimmage snap with a down --
+    independently of whatever else happened on it.
+
+    THIS FIXES A ONE-DIRECTIONAL BIAS, not a cosmetic gap. `play_archetype`
+    is outranked on late downs by SACK, TURNOVER_PLAY, PENALTY, KNEEL and
+    SPIKE, and every one of those is a third-down ATTEMPT. They leave the
+    conversion count alone and walk off with a piece of the denominator, so a
+    third-down rate read off the label was high EVERY time:
+
+                      taxonomy   nflverse truth   bias
+        3rd down 2025   .4411        .3952       +4.6 pp
+        4th down 2025   .6083        .5497       +5.9 pp
+        3rd down 2024   .4446        .3979       +4.7 pp
+
+    The arithmetic is exact: on 4th down LATE_DOWN_CONVERSION matches
+    nflverse's own `fourth_down_converted` to the play, while the failure side
+    is missing precisely the sacks, turnovers and kneels the precedence order
+    took. 153 late-down snaps a team-season sat outside the two labels that
+    claim to cover late downs.
+
+    This is the `had_sack` lesson finished rather than half-applied. That flag
+    recovered the SACK and left the DOWN still swallowed; snap type and
+    outcome are different facts and were sharing one column, so an event won
+    and the outcome vanished. They are now separate axes.
+
+    Rates: take the DENOMINATOR from the single-valued axes (down, play_type)
+    and the NUMERATOR from here. A sack lands in the third-down denominator
+    automatically, because it still has a down and still has an outcome.
+    """
+    # `no_play` is excluded and that exclusion is load-bearing: a flag wiped
+    # the snap out, so the down did not resolve and there was no attempt.
+    # Including them overshot the correction to -12.8 pp on fourth down, in
+    # the opposite direction to the bug being fixed -- which is why this is
+    # graded against nflverse's own converted/failed denominator rather than
+    # against "looks better than before".
+    scrimmage = down.notna() & ~play_type.isin(
+        SPECIAL_TEAMS_PLAYS + ("qb_kneel", "qb_spike", "no_play")
+    )
+    out = pd.Series(None, index=frame.index, dtype=object)
+    out[scrimmage] = "MODEST"
+    out[scrimmage & (gain <= 0)] = "FAILURE"
+    out[scrimmage & success] = "SUCCESS"
+    out[scrimmage & explosive] = "EXPLOSIVE"
+    # On a late down the line to gain is the only question, so CONVERSION
+    # outranks the gradations above it.
+    out[scrimmage & (down >= 3) & converted] = "CONVERSION"
+    out[scrimmage & (down >= 3) & ~converted] = "FAILURE"
+    return out
 
 
 def _archetypes(frame, down, togo, gain, yardline, play_type,
@@ -312,10 +379,14 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     label[down.notna() & (down <= 2) & explosive] = "EARLY_DOWN_EXPLOSIVE"
     label[down.notna() & (down >= 3) & ~converted] = "LATE_DOWN_FAILURE"
     label[down.notna() & (down >= 3) & converted] = "LATE_DOWN_CONVERSION"
-    label[_num(frame, "two_point_attempt").fillna(0) == 1] = "TWO_POINT"
     label[sack] = "SACK"
     label[interception | fumble_lost] = "TURNOVER_PLAY"
     label[play_type == "no_play"] = "PENALTY"
+    # Documented above PENALTY/TURNOVER_PLAY/SACK and implemented below all
+    # three until v6, which had no effect in 2025 or 2024 -- no two-point try
+    # was flagged, picked or sacked in either season -- but was a latent
+    # disagreement between the docstring and the code.
+    label[_num(frame, "two_point_attempt").fillna(0) == 1] = "TWO_POINT"
     label[play_type == "qb_spike"] = "SPIKE"
     label[play_type == "qb_kneel"] = "KNEEL"
     label[play_type.isin(SPECIAL_TEAMS_PLAYS)] = "SPECIAL_TEAMS"

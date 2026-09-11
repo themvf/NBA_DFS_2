@@ -24,8 +24,14 @@ data: measured on 2025 over the population this module actually emits it for
 (dropbacks, n=21280), EPA -0.406 under pressure against +0.253 clean. Over ALL snaps
 it reads -0.406 / +0.108 -- a figure worth quoting only with its population
 attached, since an earlier version of this docstring claimed -0.535 / +0.242
-and neither population reproduces that. Coverage shell
-is ~48% populated and NULL where unknown; `defense_man_zone_type` ships an
+and neither population reproduces that. Coverage shell reads
+~48% of ALL rows, which the file previously reported as partial data -- it is
+not. It is 99.7% of DROPBACKS and 0.0% of everything else, as are man/zone,
+pass rushers and pressure: all four are NGS dropback charting and all four
+land on exactly the same 60.2% of scrimmage snaps. A reader told "48%
+populated, unknown" will treat a complete field as half-charted. That is the
+blitz-sentinel error one level up -- not missing data, a different
+population. NULL where unknown holds; `defense_man_zone_type` ships an
 EMPTY STRING rather than a null on 39% of snaps, which `.notna()` scores as
 populated and a groupby turns into a phantom third category, so it is
 normalised to NA here. `route` and `time_to_throw` are
