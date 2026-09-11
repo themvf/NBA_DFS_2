@@ -35,9 +35,10 @@ from db.database import DatabaseManager
 from model.nfl_drive_archetypes import VERSION as DRIVE_VERSION, label_drives, load_pbp
 from model.nfl_participation import VERSION as PARTICIPATION_VERSION, load_participation
 from model.nfl_play_archetypes import VERSION as PLAY_VERSION, label_plays
+from model.nfl_play_participants import VERSION as PARTICIPANTS_VERSION, participants
 
 COLUMNS = (
-    "game_id", "play_id", "outcome", "converted", "scramble", "two_point_result", "drive_no_first_down", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
+    "game_id", "play_id", "passer", "rusher", "receiver", "qb_hit", "injury_on_play", "penalty_side", "outcome", "converted", "scramble", "two_point_result", "drive_no_first_down", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
     "posteam", "drive", "quarter", "clock", "down", "ydstogo", "yardline_100",
     "play_type", "yards_gained", "play_archetype", "turnover_type", "had_sack",
     "goal_line", "penalty_type", "penalty_team", "penalty_first_down",
@@ -97,7 +98,14 @@ def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> 
         # are NULL, which is the honest answer, not a guessed archetype.
         drive = drives.loc[key] if key in drives.index else None
         rows.append((
-            play.game_id, _int(play.play_id), _text(play.outcome),
+            play.game_id, _int(play.play_id),
+            _text(getattr(play, "passer", None)),
+            _text(getattr(play, "rusher", None)),
+            _text(getattr(play, "receiver", None)),
+            _bool(getattr(play, "qb_hit", None)),
+            _bool(getattr(play, "injury_on_play", None)),
+            _text(getattr(play, "penalty_side", None)),
+            _text(play.outcome),
             bool(play.converted), bool(play.scramble), _text(getattr(play, 'two_point_result', None)),
             _bool(_get(drive, 'no_first_down')),
             _text(_get(drive, "score_against_mechanism")), _int(game.get("season")),
@@ -183,6 +191,39 @@ def _text(value):
     return None if value is None or (not isinstance(value, str) and pd.isna(value)) else str(value)
 
 
+PARTICIPANT_COLUMNS = ("game_id", "play_id", "season", "week", "team", "side",
+                       "role", "player_id", "player_name", "participants_version")
+
+
+def participant_rows(pbp: pd.DataFrame) -> list[tuple]:
+    """Long-form attribution for the same games -- see model.nfl_play_participants."""
+    frame = participants(pbp)
+    return [
+        (r.game_id, _int(r.play_id), _int(r.season), _int(r.week), _text(r.team),
+         _text(r.side), _text(r.role), _text(r.player_id), _text(r.player_name),
+         PARTICIPANTS_VERSION)
+        for r in frame.itertuples(index=False)
+    ]
+
+
+def write_participants(db: DatabaseManager, rows: list[tuple]) -> int:
+    """Replace each game's attribution wholesale, for the same reason as write()."""
+    if not rows:
+        return 0
+    games = sorted({row[0] for row in rows})
+    placeholders = ",".join(["%s"] * len(PARTICIPANT_COLUMNS))
+    with db.connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM nfl_pbp_play_participants WHERE game_id = ANY(%s)", (games,))
+            execute_batch(cursor, (
+                f"INSERT INTO nfl_pbp_play_participants ({','.join(PARTICIPANT_COLUMNS)}) "
+                f"VALUES ({placeholders}) ON CONFLICT DO NOTHING"
+            ), rows, page_size=1000)
+        connection.commit()
+    return len(rows)
+
+
 def write(db: DatabaseManager, rows: list[tuple]) -> int:
     if not rows:
         return 0
@@ -239,6 +280,7 @@ def main() -> None:
                       f"absent from the nflverse release; left as-is")
                 continue
             total += write(db, build_rows(pbp, _participation(season)))
+            write_participants(db, participant_rows(pbp))
             print(f"  season {season}: relabelled {len(game_ids)} games")
         print(f"{PLAY_VERSION} + {DRIVE_VERSION}: relabelled {total} plays")
         return
@@ -251,8 +293,10 @@ def main() -> None:
 
     rows = build_rows(pbp, _participation(args.season))
     written = write(db, rows)
+    credited = write_participants(db, participant_rows(pbp))
     print(f"{PLAY_VERSION} + {DRIVE_VERSION}: wrote {written} plays "
           f"across {len(set(r[0] for r in rows))} games")
+    print(f"{PARTICIPANTS_VERSION}: wrote {credited} player credits")
 
 
 if __name__ == "__main__":

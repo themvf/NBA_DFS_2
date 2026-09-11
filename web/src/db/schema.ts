@@ -2466,6 +2466,12 @@ export const nflPbpArchetypes = pgTable("nfl_pbp_archetypes", {
   formation: text("formation"),
   personnelGrouping: text("personnel_grouping"),
   defendersInBox: doublePrecision("defenders_in_box"),
+  passer: text("passer"),
+  rusher: text("rusher"),
+  receiver: text("receiver"),
+  qbHit: boolean("qb_hit"),
+  injuryOnPlay: boolean("injury_on_play"),
+  penaltySide: text("penalty_side"),
   outcome: text("outcome"),
   converted: boolean("converted"),
   scramble: boolean("scramble"),
@@ -2523,4 +2529,19 @@ export const nflPbpArchetypes = pgTable("nfl_pbp_archetypes", {
   playLabellerVersion: text("play_labeller_version").notNull(),
   driveLabellerVersion: text("drive_labeller_version").notNull(),
   labelledAt: timestamp("labelled_at", { withTimezone: true }),
+});
+
+// WHO was on the play, both sides. Long form -- one row per player per role --
+// because a play has one passer and can have six tacklers. Python owns writes.
+export const nflPbpPlayParticipants = pgTable("nfl_pbp_play_participants", {
+  gameId: text("game_id").notNull(),
+  playId: integer("play_id").notNull(),
+  season: integer("season"),
+  week: integer("week"),
+  team: text("team"),
+  side: text("side"),
+  role: text("role").notNull(),
+  playerId: text("player_id"),
+  playerName: text("player_name").notNull(),
+  participantsVersion: text("participants_version"),
 });

@@ -139,6 +139,22 @@ MODIFIERS -- carried alongside, never folded into the archetype
                                  checked. Denominators come from the
                                  single-valued axes; numerators may come from
                                  here.
+  passer / rusher / receiver     who handled the ball. Full attribution --
+                                 every tackler, rusher and defensive back --
+                                 is in `nfl_play_participants`, long form,
+                                 because a play has one passer and can have
+                                 six tacklers.
+  qb_hit                         the quarterback was hit. NOT zero-sum, which
+                                 is why it is here and not left to a GROUP BY:
+                                 a hit without a sack means the defence won
+                                 the rep AND the offence survived the play,
+                                 and both are true. 55 a team-season.
+  injury_on_play                 somebody was hurt on this snap. Harms one
+                                 side without being the other's gain, so it
+                                 cannot be recovered by flipping any
+                                 aggregation. 30 a team-season.
+  penalty_side                   offense / defense, read from `penalty_team`
+                                 rather than assumed.
   st_outcome                     kick outcome -- made/missed/blocked,
                                  touchback/fair_catch/downed/returned. Its own
                                  axis, NULL on scrimmage snaps. SPECIAL_TEAMS
@@ -224,7 +240,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v7"
+VERSION = "nfl-play-archetype-v8"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
@@ -342,6 +358,31 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
         # matches this column exactly; named here so nobody has to know that.
         "scramble": _num(frame, "qb_scramble").fillna(0).astype(bool),
         "two_point_result": frame.get("two_point_conv_result"),
+        # THE BALL-HANDLERS. Full attribution -- including every defender --
+        # lives in nfl_play_participants, one row per player per role, because
+        # a play has one passer and can have six tacklers. These three are
+        # carried here as well because they are 1:1 with the snap and are the
+        # join key most analysis reaches for first.
+        "passer": frame.get("passer_player_name"),
+        "rusher": frame.get("rusher_player_name"),
+        "receiver": frame.get("receiver_player_name"),
+        # NOT ZERO-SUM. Everything else in this frame is: a conversion for the
+        # offence IS a conversion allowed by the defence, so a defensive rate
+        # is a GROUP BY on `defteam` away and needs no mirrored label. These
+        # three are different -- no amount of flipping the aggregation
+        # produces them.
+        #
+        # `qb_hit` without a sack is the clearest case: the defence won the
+        # rep and the offence survived the play, and BOTH are true. 1,769 a
+        # season, 55 a team-season. Today a pass rush that beats the line all
+        # afternoon without finishing is indistinguishable from one that is
+        # not there.
+        "qb_hit": _num(frame, "qb_hit").fillna(0).astype(bool),
+        "injury_on_play": frame.get("desc", pd.Series("", index=frame.index))
+                          .fillna("").str.contains("was injured during the play"),
+        # Which unit was flagged. `penalty_team` is stated in the source, so
+        # it is read rather than inferred -- both units commit fouls.
+        "penalty_side": _penalty_side(frame),
         # SPECIAL_TEAMS is the second-largest label in the taxonomy -- 232.5
         # snaps a team-season -- and was completely opaque: `play_type`
         # recovered punt/FG/kickoff/XP, but the RESULT of any of them was
@@ -471,6 +512,18 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     label[down.isna() & ~two_point
           & ~play_type.isin(SPECIAL_TEAMS_PLAYS + ("qb_kneel", "qb_spike", "no_play"))] = "NON_PLAY"
     return label
+
+
+def _penalty_side(frame: pd.DataFrame) -> pd.Series:
+    """Which unit was flagged -- offence or defence. NULL when no flag."""
+    team = frame.get("penalty_team")
+    if team is None:
+        return pd.Series(None, index=frame.index, dtype=object)
+    out = pd.Series(None, index=frame.index, dtype=object)
+    flagged = team.notna()
+    out[flagged] = "defense"
+    out[flagged & team.eq(frame.get("posteam"))] = "offense"
+    return out
 
 
 def _st_outcome(frame: pd.DataFrame, play_type: pd.Series) -> pd.Series:
