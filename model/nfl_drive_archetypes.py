@@ -142,7 +142,7 @@ from pathlib import Path
 
 import pandas as pd
 
-VERSION = "nfl-drive-archetype-v4"
+VERSION = "nfl-drive-archetype-v5"
 
 # --- frozen thresholds -------------------------------------------------------
 EXPLOSIVE_PLAY_YARDS = 20      # a single scrimmage gain of at least this many
@@ -284,6 +284,10 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
         interception = bool((_num(ordered, "interception").fillna(0) == 1).any())
         fumble = bool((_num(ordered, "fumble_lost").fillna(0) == 1).any())
 
+        types = ordered.get("play_type", pd.Series(dtype=object)).astype(str)
+        knelt = bool(types.isin(("qb_kneel", "qb_spike")).any())
+        mechanism = _score_against_mechanism(ordered, result)
+
         wp = _first(ordered, "wp")
         wp = float(wp) if wp is not None else float("nan")
 
@@ -334,7 +338,9 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             "had_penalty": penalised,
             "failed_short": failed_short,
             "turnover_type": "interception" if interception else ("fumble_lost" if fumble else None),
-            "archetype": _archetype(result, plays, first_downs, red_zone, dependence),
+            "archetype": _archetype(result, plays, first_downs, red_zone, dependence,
+                                    kneeled=knelt),
+            "score_against_mechanism": mechanism,
         })
 
     out = pd.DataFrame(rows).sort_values(["game_id", "team", "drive"])
@@ -354,13 +360,24 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
 
 
 def _archetype(
-    result: str, plays: int, first_downs: int, red_zone: bool, dependence: bool
+    result: str, plays: int, first_downs: int, red_zone: bool, dependence: bool,
+    kneeled: bool = True,
 ) -> str:
     """Terminal state first. Trajectory only breaks ties within a terminal state."""
     if result in CENSORED:
         # A kneel and a two-minute drive that died on the opponent's 25 are
         # both "the clock ended it" and are not remotely the same event.
-        return "KNEEL_DOWN" if plays <= KNEEL_MAX_PLAYS else "CLOCK_EXPIRED"
+        #
+        # `plays <= 2` alone was the wrong test, because it asks how SHORT the
+        # possession was rather than whether anybody knelt. 62 of 230
+        # KNEEL_DOWN drives contained no kneel and no spike -- mean +5.9 net
+        # yards, four of them dying inside the opponent's 40 -- and
+        # `summarise` drops KNEEL_DOWN from every denominator, so those were
+        # real possessions excluded from every rate. The play labeller already
+        # identifies KNEEL and SPIKE; gate on their presence.
+        if plays <= KNEEL_MAX_PLAYS and kneeled:
+            return "KNEEL_DOWN"
+        return "CLOCK_EXPIRED"
     if result in AGAINST:
         return "SCORE_AGAINST"                  # points AGAINST -- not a plain turnover
     if result == SCORED_TD:
@@ -496,6 +513,31 @@ def reconcile(pbp: pd.DataFrame, drives: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _score_against_mechanism(ordered: pd.DataFrame, result: str) -> str | None:
+    """HOW the opponent scored on this possession -- a modifier, not a label.
+
+    SCORE_AGAINST is a mixture of four different events. In 2025: 48 pick-sixes
+    and fumble returns, 17 punt-return or blocked-punt touchdowns, 3 blocked
+    field-goal returns and 12 safeties. Thirty-two of 81 are not offensive
+    giveaways at all, and none of them carried anything to tell them apart --
+    so `summarise().giveaway_rate`, which is keyed on the QUARTERBACK, was
+    charging him for blocked punts.
+    """
+    if result not in AGAINST:
+        return None
+    types = ordered.get("play_type", pd.Series(dtype=object)).astype(str)
+    if (_num(ordered, "safety").fillna(0) == 1).any():
+        return "safety"
+    kick = types.isin(("punt", "field_goal", "extra_point"))
+    if bool((kick & (_num(ordered, "touchdown").fillna(0) == 1)).any()):
+        return "punt" if bool((types == "punt").any()) else "field_goal"
+    if (_num(ordered, "interception").fillna(0) == 1).any():
+        return "pass_return"
+    if (_num(ordered, "fumble_lost").fillna(0) == 1).any():
+        return "fumble_return"
+    return None
+
+
 def _kick_return_tds(pbp: pd.DataFrame) -> dict[tuple[str, str], int]:
     """Kickoff touchdowns, keyed by the team that ACTUALLY SCORED.
 
@@ -558,9 +600,17 @@ def summarise(drives: pd.DataFrame) -> pd.DataFrame:
             "three_and_out_rate": round(counts.get("THREE_AND_OUT", 0) / n, 3),
             "sack_drive_rate": round(group["had_sack"].mean(), 3),
             "penalty_drive_rate": round(group["had_penalty"].mean(), 3),
-            "giveaway_rate": round(
-                (counts.get("TURNOVER_GIVEAWAY", 0) + counts.get("SCORE_AGAINST", 0)) / n, 3
-            ),
+            # OFFENSIVE giveaways only. SCORE_AGAINST also holds punt-return
+            # and blocked-kick touchdowns and safeties -- 32 of 81 in 2025,
+            # one a team-season -- and this row is keyed on the QUARTERBACK,
+            # who did not block that punt. `score_against_mechanism` keeps the
+            # rest visible rather than discarding them.
+            "giveaway_rate": round((
+                counts.get("TURNOVER_GIVEAWAY", 0)
+                + int((group["archetype"].eq("SCORE_AGAINST")
+                       & group["score_against_mechanism"].isin(
+                           ["pass_return", "fumble_return"])).sum())
+            ) / n, 3),
             "red_zone_trip_rate": round(group["reached_red_zone"].mean(), 3),
             # a possession that reached scoring range and produced nothing
             "wasted_range_rate": round((

@@ -2466,6 +2466,8 @@ export const nflPbpArchetypes = pgTable("nfl_pbp_archetypes", {
   formation: text("formation"),
   personnelGrouping: text("personnel_grouping"),
   defendersInBox: doublePrecision("defenders_in_box"),
+  outcome: text("outcome"),
+  driveScoreAgainstMechanism: text("drive_score_against_mechanism"),
   defteam: text("defteam"),
   posteamType: text("posteam_type"),
   divGame: boolean("div_game"),

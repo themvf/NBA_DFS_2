@@ -37,7 +37,7 @@ from model.nfl_participation import load_participation
 from model.nfl_play_archetypes import VERSION as PLAY_VERSION, label_plays
 
 COLUMNS = (
-    "game_id", "play_id", "season", "week", "season_type", "home_team", "away_team",
+    "game_id", "play_id", "outcome", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
     "posteam", "drive", "quarter", "clock", "down", "ydstogo", "yardline_100",
     "play_type", "yards_gained", "play_archetype", "turnover_type", "had_sack",
     "goal_line", "penalty_type", "penalty_team", "penalty_first_down",
@@ -88,7 +88,8 @@ def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> 
         # are NULL, which is the honest answer, not a guessed archetype.
         drive = drives.loc[key] if key in drives.index else None
         rows.append((
-            play.game_id, _int(play.play_id), _int(game.get("season")),
+            play.game_id, _int(play.play_id), _text(play.outcome),
+            _text(_get(drive, "score_against_mechanism")), _int(game.get("season")),
             _int(game.get("week")), _text(game.get("season_type")),
             _text(game.get("home_team")), _text(game.get("away_team")),
             play.team, _int(play.drive), _int(play.quarter), _text(play.clock),
