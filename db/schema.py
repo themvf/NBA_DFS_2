@@ -2960,6 +2960,36 @@ TABLES = [
     # stamped on every row instead, and a version change is what makes two
     # labellings comparable.
     """
+    -- WHO was on the play, both sides of the ball. One row per player per
+    -- role, because a play has one passer and can have six tacklers: a wide
+    -- column per role would truncate or leave a ragged solo_tackle_2 /
+    -- assist_tackle_4 tail for every consumer to coalesce. Long form also
+    -- makes the multi-description property structural -- a receiver who
+    -- fumbles gets two honest rows instead of one row that has to choose.
+    --
+    -- The archetype tables describe WHAT happened, always from the offence's
+    -- chair. The outcome half of "the defence has no story" needs no table:
+    -- it is zero-sum and `defteam` makes it a GROUP BY. This is the other
+    -- half, which is not recoverable by any aggregation -- a sack is in the
+    -- data and who made it was not.
+    CREATE TABLE IF NOT EXISTS nfl_pbp_play_participants (
+        game_id TEXT NOT NULL,
+        play_id INTEGER NOT NULL,
+        season INTEGER,
+        week INTEGER,
+        team TEXT,
+        side TEXT,
+        role TEXT NOT NULL,
+        player_id TEXT,
+        player_name TEXT NOT NULL,
+        participants_version TEXT,
+        PRIMARY KEY (game_id, play_id, role, player_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_nfl_participants_player
+        ON nfl_pbp_play_participants (player_name, role);
+    CREATE INDEX IF NOT EXISTS idx_nfl_participants_team
+        ON nfl_pbp_play_participants (team, side, role);
+
     CREATE TABLE IF NOT EXISTS nfl_pbp_archetypes (
         id BIGSERIAL PRIMARY KEY,
         game_id TEXT NOT NULL,
@@ -2988,6 +3018,12 @@ TABLES = [
         formation TEXT,
         personnel_grouping TEXT,
         defenders_in_box DOUBLE PRECISION,
+        passer TEXT,
+        rusher TEXT,
+        receiver TEXT,
+        qb_hit BOOLEAN,
+        injury_on_play BOOLEAN,
+        penalty_side TEXT,
         outcome TEXT,
         converted BOOLEAN,
         scramble BOOLEAN,
@@ -3389,6 +3425,12 @@ MIGRATIONS = [
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS scramble BOOLEAN",
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS two_point_result TEXT",
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_no_first_down BOOLEAN",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS passer TEXT",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS rusher TEXT",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS receiver TEXT",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS qb_hit BOOLEAN",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS injury_on_play BOOLEAN",
+    "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS penalty_side TEXT",
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS outcome TEXT",
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_score_against_mechanism TEXT",
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS defteam TEXT",
