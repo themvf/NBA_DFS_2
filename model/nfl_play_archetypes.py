@@ -111,6 +111,40 @@ MODIFIERS -- carried alongside, never folded into the archetype
   penalty_type / penalty_team    what the flag was and who it was on.
                                  PENALTY carried 81 plays a team-season with
                                  no attributes at all.
+  st_outcome                     kick outcome -- made/missed/blocked,
+                                 touchback/fair_catch/downed/returned. Its own
+                                 axis, NULL on scrimmage snaps. SPECIAL_TEAMS
+                                 is 232.5 snaps a team-season and carried no
+                                 result at all: a 22-yard field goal and a
+                                 blocked 58-yarder were the same row.
+  kick_distance, return_yards    magnitude for the above.
+  season, week, season_type      which games these plays are. Without
+                                 `season`, concatenated years are
+                                 indistinguishable except by parsing game_id.
+  defteam, home_team,            who it was against and where.
+  posteam_type, div_game
+  score_differential             up 21 and down 21 are different games; `wp`
+                                 mixes score with time and cannot be unpicked.
+  game_seconds_remaining,        real clock. `clock` is the string "2:31",
+  half_seconds_remaining         which does not sort across quarters, so
+                                 two-minute offence (128 snaps a team-season)
+                                 could not be identified at all.
+  roof, surface, temp, wind      conditions.
+  spread_line, total_line        the market's pre-game view, carried as
+                                 context only -- nothing here claims it is
+                                 beatable, and no label is derived from it.
+  qb_dropback                    the REAL pass/run split. `play_type == run`
+                                 counts a scramble as a run and a sack as
+                                 neither: 38 scrambles and 40 sacks a
+                                 team-season, so a pass rate off `play_type`
+                                 is wrong.
+  first_down                     moved the chains. Invisible before: on early
+                                 downs, 1st-and-10 for 12 and 1st-and-10 for 5
+                                 were both EARLY_DOWN_SUCCESS.
+  tackled_for_loss               EARLY_DOWN_FAILURE lumps negative plays with
+                                 zero-gain incompletions, and the EPA gap
+                                 between those two is larger than the gap
+                                 between FAILURE and MODEST.
   penalty_first_down             the flag moved the chains. The old docstring
                                  claimed "the down did not resolve, so no
                                  outcome label can apply" -- false 22.8 times
@@ -137,7 +171,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v4"
+VERSION = "nfl-play-archetype-v5"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
@@ -204,6 +238,50 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
         "epa": _num(frame, "epa").round(3),
         "wp": _num(frame, "wp").round(4),
         "description": frame.get("desc"),
+        # CONTEXT. Every one of these is in the source and none of them
+        # survived into v4, so the frame could not answer who the opponent
+        # was, which week it was, whether the team was home, or whether it was
+        # up 21 or down 21. `wp` mixes score and time and cannot be unpicked
+        # into either. Worst of the set is `season`: the loader guards
+        # carefully against labelling one season's drives with another
+        # season's plays, and then emitted a frame in which six concatenated
+        # seasons are indistinguishable except by parsing `game_id`.
+        "season": _num(frame, "season").astype("Int64"),
+        "week": _num(frame, "week").astype("Int64"),
+        "season_type": frame.get("season_type"),
+        "defteam": frame.get("defteam"),
+        "home_team": frame.get("home_team"),
+        "posteam_type": frame.get("posteam_type"),
+        "div_game": _num(frame, "div_game").fillna(0).astype(bool),
+        "score_differential": _num(frame, "score_differential").astype("Int64"),
+        # `clock` ships as the string "2:31", which does not even sort across
+        # quarters, so two-minute offence -- 128 snaps a team-season -- could
+        # not be identified at all.
+        "game_seconds_remaining": _num(frame, "game_seconds_remaining").astype("Int64"),
+        "half_seconds_remaining": _num(frame, "half_seconds_remaining").astype("Int64"),
+        "roof": frame.get("roof"),
+        "surface": frame.get("surface"),
+        "temp": _num(frame, "temp"),
+        "wind": _num(frame, "wind"),
+        "spread_line": _num(frame, "spread_line"),
+        "total_line": _num(frame, "total_line"),
+        # `play_type == "run"` counts a scramble as a run and a sack as
+        # neither, so any pass rate derived from it is wrong by roughly 38
+        # scrambles and 40 sacks a team-season. Dropback is the real split.
+        "qb_dropback": _num(frame, "qb_dropback").fillna(0).astype(bool),
+        # Moving the chains was invisible on early downs: 1st-and-10 for 12
+        # and 1st-and-10 for 5 are both EARLY_DOWN_SUCCESS.
+        "first_down": _num(frame, "first_down").fillna(0).astype(bool),
+        "tackled_for_loss": _num(frame, "tackled_for_loss").fillna(0).astype(bool),
+        # SPECIAL_TEAMS is the second-largest label in the taxonomy -- 232.5
+        # snaps a team-season -- and was completely opaque: `play_type`
+        # recovered punt/FG/kickoff/XP, but the RESULT of any of them was
+        # nowhere. A 22-yard field goal and a blocked 58-yarder were the same
+        # row. NULL on every scrimmage snap, because a kick outcome is not a
+        # fact about a handoff.
+        "st_outcome": _st_outcome(frame, play_type),
+        "kick_distance": _num(frame, "kick_distance"),
+        "return_yards": _num(frame, "return_yards").where(play_type.isin(SPECIAL_TEAMS_PLAYS)),
     })
     out["play_archetype"] = _archetypes(frame, down, togo, gain, yardline, play_type,
                                         success, explosive, converted)
@@ -247,6 +325,45 @@ def _archetypes(frame, down, togo, gain, yardline, play_type,
     label[down.isna() & ~two_point
           & ~play_type.isin(SPECIAL_TEAMS_PLAYS + ("qb_kneel", "qb_spike", "no_play"))] = "NON_PLAY"
     return label
+
+
+def _st_outcome(frame: pd.DataFrame, play_type: pd.Series) -> pd.Series:
+    """Outcome of a kick, as its own axis. NULL on every scrimmage snap.
+
+    Deliberately one value per kick and mutually exclusive, because a kick
+    has exactly one fate. The source's punt columns are not exclusive --
+    `punt_inside_twenty` co-occurs with downed, fair-catch and out-of-bounds,
+    since it describes WHERE the ball stopped rather than HOW -- so it is
+    carried as its own flag rather than folded in here, which would be a
+    precedence order discarding one of two true facts.
+
+    Six extra points in 2025 come back NULL, and that is right: each was
+    wiped by a penalty and replayed, so nflverse nulls the result. A kick
+    that did not count has no outcome.
+    """
+    out = pd.Series(None, index=frame.index, dtype=object)
+    fg = frame.get("field_goal_result")
+    xp = frame.get("extra_point_result")
+    if fg is not None:
+        out[play_type == "field_goal"] = fg[play_type == "field_goal"]
+    if xp is not None:
+        out[play_type == "extra_point"] = xp[play_type == "extra_point"]
+
+    punt = play_type == "punt"
+    ret = _num(frame, "return_yards").fillna(0)
+    out[punt] = "returned"
+    for flag, label in (("punt_fair_catch", "fair_catch"), ("punt_out_of_bounds", "out_of_bounds"),
+                        ("punt_downed", "downed"), ("touchback", "touchback"),
+                        ("punt_blocked", "blocked")):
+        out[punt & (_num(frame, flag).fillna(0) == 1)] = label
+    out[punt & (ret == 0) & out.isin(["returned"])] = "no_return"
+
+    kick = play_type == "kickoff"
+    out[kick] = "returned"
+    out[kick & (_num(frame, "touchback").fillna(0) == 1)] = "touchback"
+    out[kick & (_num(frame, "kickoff_out_of_bounds").fillna(0) == 1)] = "out_of_bounds"
+    out[kick & (_num(frame, "kickoff_fair_catch").fillna(0) == 1)] = "fair_catch"
+    return out
 
 
 def _turnover_type(frame: pd.DataFrame) -> pd.Series:
