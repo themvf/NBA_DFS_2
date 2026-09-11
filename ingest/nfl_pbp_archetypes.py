@@ -38,7 +38,7 @@ from model.nfl_play_archetypes import VERSION as PLAY_VERSION, label_plays
 from model.nfl_play_participants import VERSION as PARTICIPANTS_VERSION, participants
 
 COLUMNS = (
-    "game_id", "play_id", "penalty_yards", "air_yards", "yards_after_catch", "xyac_mean_yardage", "pass_length", "pass_location", "run_location", "run_gap", "cp", "cpoe", "xpass", "pass_oe", "series", "series_success", "series_result", "goal_to_go", "out_of_bounds", "timeout_team", "home_coach", "away_coach", "drive_time_of_possession", "drive_yards_penalized", "drive_inside_twenty", "passer", "rusher", "receiver", "qb_hit", "injury_on_play", "penalty_side", "outcome", "converted", "scramble", "two_point_result", "drive_no_first_down", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
+    "game_id", "play_id", "wiped_event", "wiped_yards", "wiped_touchdown", "wiped_turnover", "wiped_sack", "wiped_defender", "drive_injuries", "penalty_yards", "air_yards", "yards_after_catch", "xyac_mean_yardage", "pass_length", "pass_location", "run_location", "run_gap", "cp", "cpoe", "xpass", "pass_oe", "series", "series_success", "series_result", "goal_to_go", "out_of_bounds", "timeout_team", "home_coach", "away_coach", "drive_time_of_possession", "drive_yards_penalized", "drive_inside_twenty", "passer", "rusher", "receiver", "qb_hit", "injury_on_play", "penalty_side", "outcome", "converted", "scramble", "two_point_result", "drive_no_first_down", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
     "posteam", "drive", "quarter", "clock", "down", "ydstogo", "yardline_100",
     "play_type", "yards_gained", "play_archetype", "turnover_type", "had_sack",
     "goal_line", "penalty_type", "penalty_team", "penalty_first_down",
@@ -99,6 +99,13 @@ def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> 
         drive = drives.loc[key] if key in drives.index else None
         rows.append((
             play.game_id, _int(play.play_id),
+            _text(getattr(play, "wiped_event", None)),
+            _float(getattr(play, "wiped_yards", None)),
+            _bool(getattr(play, "wiped_touchdown", None)),
+            _bool(getattr(play, "wiped_turnover", None)),
+            _bool(getattr(play, "wiped_sack", None)),
+            _text(getattr(play, "wiped_defender", None)),
+            _int(_get(drive, "injuries")),
             _float(getattr(play, "penalty_yards", None)),
             _float(getattr(play, "air_yards", None)),
             _float(getattr(play, "yards_after_catch", None)),

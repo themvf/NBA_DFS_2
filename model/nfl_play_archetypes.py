@@ -155,6 +155,20 @@ MODIFIERS -- carried alongside, never folded into the archetype
                                  coach actually speaks in.
   goal_to_go                     distinct from `goal_line`: 1,773 snaps a
                                  season are goal-to-go from outside the 2.
+  wiped_event                    what the penalty erased -- interception /
+                                 sack / fumble / completion / run /
+                                 incompletion / scramble. NULL on a pre-snap
+                                 flag, where nothing happened to erase.
+  wiped_yards                    the offence's yardage on the wiped snap.
+                                 Counted only before a turnover marker: an
+                                 interceptor's 75-yard return is not the
+                                 quarterback's 75-yard play.
+  wiped_touchdown /              independent booleans, so a strip-sack that
+  wiped_turnover / wiped_sack    was also erased loses neither half.
+  wiped_defender                 who the flag took the credit from. Named on
+                                 107 of 125; NULL where the text does not say,
+                                 because a guessed defender is worse than an
+                                 absent one.
   penalty_yards                  magnitude. A 5-yard false start and a
                                  15-yard DPI were the same row.
   home_coach / away_coach        who was making the decisions.
@@ -243,6 +257,14 @@ The rule, stated once so the fifth version of this bug has to be deliberate:
   DENOMINATORS come only from SINGLE-VALUED fields -- down, play_type,
   outcome, the archetype label. One row, one value, no overlap.
 
+  A FLAG MUST BE TRUE FOR THE RIGHT REASON. Independence is not enough: a
+  flag describing a possession is FALSE whenever that possession did not
+  survive the snap. `success` was true on 54 plays where the offence lost
+  the ball, which the rule as first written permitted.
+
+  AND A FACT ERASED BY A PENALTY IS STILL A FACT. It needs a field, not an
+  exclusion -- see the `wiped_*` columns.
+
   NUMERATORS come only from FLAGS -- converted, explosive, success,
   first_down, had_sack, penalty_first_down, tackled_for_loss, scramble,
   goal_line, turnover_type. Each is independent. A play may set any number
@@ -259,7 +281,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v9"
+VERSION = "nfl-play-archetype-v10"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
@@ -295,10 +317,23 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
     yardline = _num(frame, "yardline_100")
     play_type = frame.get("play_type", pd.Series("", index=frame.index)).astype(str)
 
+    # THE POSSESSION MUST SURVIVE THE SNAP. 54 plays set `success = True`
+    # while the offence lost the ball on that same snap -- mean EPA -4.216 --
+    # and 8 of them also set `converted`. A success rate built exactly as this
+    # module's own enforcement rule instructs ("take numerators from flags")
+    # therefore counted a fumbled 7-yard catch as a success.
+    #
+    # The rule governed WHICH AXIS a fact lives on and said nothing about
+    # whether a flag is true FOR THE RIGHT REASON. Amended in the docstring,
+    # and enforced here: a flag describing a possession is false whenever that
+    # possession did not survive.
+    lost = ((_num(frame, "interception").fillna(0) == 1)
+            | (_num(frame, "fumble_lost").fillna(0) == 1))
+
     share = down.map(SUCCESS_SHARE)
-    success = (gain >= (togo * share)) & down.notna() & togo.notna()
+    success = (gain >= (togo * share)) & down.notna() & togo.notna() & ~lost
     explosive = gain >= EXPLOSIVE_PLAY_YARDS
-    converted = (gain >= togo) & togo.notna()
+    converted = (gain >= togo) & togo.notna() & ~lost
 
     out = pd.DataFrame({
         "game_id": frame.get("game_id"),
@@ -455,6 +490,15 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
         "kick_distance": _num(frame, "kick_distance"),
         "return_yards": _num(frame, "return_yards").where(play_type.isin(SPECIAL_TEAMS_PLAYS)),
     })
+    # WHAT THE FLAG ERASED. nflverse zeroes every structured column on a
+    # `no_play` row, so 49 touchdowns, 87 sacks and 26 interceptions a season
+    # survive only in the description string. Recovered as a PARALLEL record:
+    # never mixed into `yards_gained` or any rate built on it, because the
+    # yardage genuinely did not count and the scoreboard is right.
+    from model.nfl_wiped_plays import wiped
+    for column, values in wiped(frame).items():
+        out[column] = values.values
+
     out["play_archetype"] = _archetypes(frame, down, togo, gain, yardline, play_type,
                                         success, explosive, converted)
     out["outcome"] = _outcome(frame, down, play_type, gain, success, explosive, converted)

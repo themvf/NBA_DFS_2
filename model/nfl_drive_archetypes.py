@@ -180,7 +180,7 @@ from pathlib import Path
 
 import pandas as pd
 
-VERSION = "nfl-drive-archetype-v8"
+VERSION = "nfl-drive-archetype-v9"
 
 # --- frozen thresholds -------------------------------------------------------
 EXPLOSIVE_PLAY_YARDS = 20      # a single scrimmage gain of at least this many
@@ -376,6 +376,14 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             "time_of_possession": _first(ordered, "drive_time_of_possession"),
             "yards_penalized": _first(ordered, "drive_yards_penalized"),
             "inside_twenty": _first(ordered, "drive_inside20"),
+            # `in_game_injuries()` has existed in this module since it was
+            # written and is called from main() to PRINT. Nothing consumed it,
+            # so 954 injury events a season -- 29.8 a team-season, on 19.3% of
+            # drives -- were collected and discarded. A quarterback change
+            # cascades into every later drive, and this is the column that
+            # lets someone find the boundary.
+            "injuries": int(ordered.get("desc", pd.Series(dtype=object))
+                            .fillna("").str.contains("was injured during the play").sum()),
             "qb": qb,
             "drive": int(drive_no),
             "quarter": int(_first(ordered, "qtr", 0) or 0),
