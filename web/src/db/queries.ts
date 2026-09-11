@@ -14090,7 +14090,8 @@ export type NflArchetypePlayRow = {
   playId: number; drive: number | null; posteam: string; quarter: number | null;
   clock: string | null; down: number | null; ydstogo: number | null;
   yardline100: number | null; playType: string | null; yardsGained: number | null;
-  playArchetype: string; turnoverType: string | null; hadSack: boolean | null;
+  playArchetype: string; outcome: string | null; stOutcome: string | null;
+  turnoverType: string | null; hadSack: boolean | null;
   goalLine: boolean | null; penaltyType: string | null; penaltyTeam: string | null;
   penaltyFirstDown: boolean | null; formation: string | null;
   personnelGrouping: string | null; defendersInBox: number | null;
@@ -14142,7 +14143,8 @@ export async function getNflArchetypeGames(limit = 60): Promise<NflArchetypeGame
 export async function getNflArchetypePlays(gameId: string): Promise<NflArchetypePlayRow[]> {
   const rows = await db.execute(sql`
     SELECT play_id, drive, posteam, quarter, clock, down, ydstogo, yardline_100,
-           play_type, yards_gained, play_archetype, turnover_type, had_sack,
+           play_type, yards_gained, play_archetype, outcome, st_outcome,
+           turnover_type, had_sack,
            goal_line, penalty_type, penalty_team, penalty_first_down,
            formation, personnel_grouping, defenders_in_box, pass_rushers,
            blitz, pressure, coverage_type, man_zone,
@@ -14160,6 +14162,7 @@ export async function getNflArchetypePlays(gameId: string): Promise<NflArchetype
     quarter: num(r.quarter), clock: str(r.clock), down: num(r.down),
     ydstogo: num(r.ydstogo), yardline100: num(r.yardline_100), playType: str(r.play_type),
     yardsGained: num(r.yards_gained), playArchetype: String(r.play_archetype),
+    outcome: str(r.outcome), stOutcome: str(r.st_outcome),
     turnoverType: str(r.turnover_type), hadSack: bool(r.had_sack),
     goalLine: bool(r.goal_line), penaltyType: str(r.penalty_type),
     penaltyTeam: str(r.penalty_team), penaltyFirstDown: bool(r.penalty_first_down),

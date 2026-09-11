@@ -14,15 +14,53 @@ Every drive gets exactly one. Terminal state decides the family; trajectory
 only breaks ties inside a family.
 
 SCORED (offense put points on the board)
-  METHODICAL_TD        TD with >=3 first downs, no single play carrying the
-                       drive. A sustained, converted possession.
-  EXPLOSIVE_TD         TD where one gain of 20+ yards was >=50% of the net
-                       yards. One play did the work.
-  SHORT_FIELD_TD       TD with <3 first downs and no explosive play -- the
-                       drive was handed good position rather than earning it.
-  RED_ZONE_SETTLE_FG   FG after reaching inside the 20. Got there, didn't
-                       finish. The archetype red-zone offences are judged on.
-  LONG_FG              FG without reaching the 20. A kick, not a settle.
+  TOUCHDOWN            The possession reached the end zone. 43.2 a
+                       team-season.
+  FIELD_GOAL           The possession ended in a made kick. 30.5 a
+                       team-season.
+
+THE FIVE LABELS THESE REPLACE WERE DELETED IN v7, and deleting them made the
+taxonomy both smaller and more truthful. METHODICAL_TD / EXPLOSIVE_TD /
+SHORT_FIELD_TD / RED_ZONE_SETTLE_FG / LONG_FG all reconstruct EXACTLY from
+columns already in this frame -- `plays`, `first_downs`, `explosive_
+dependence`, `reached_red_zone` -- at 100.0%, zero mismatches. So they carried
+no information. Three separate findings say they were worse than redundant:
+
+  SHORT_FIELD_TD fired 2.5 times a team-season, already below this project's
+  own ~5/team-season floor, and nobody noticed for as long as it existed.
+
+  METHODICAL_TD MISDESCRIBED 59.5% OF ITS OWN MEMBERS. Of 29.2 a team-season,
+  17.4 had a gain of 20+ on them. A coach reading "METHODICAL" concludes the
+  team grinds it out; most of those drives had a chunk play in them. The label
+  did not merely fail to inform, it asserted something false about the
+  majority of the drives inside it.
+
+  EXPLOSIVE_TD WAS NAMED FOR THE WRONG VARIABLE. Its test is a ratio -- one
+  20+ gain being >=50% of net yards -- and what actually separated it from
+  METHODICAL_TD was drive LENGTH (4.89 plays against 9.20) at near-identical
+  net yards (65 vs 69). It was SHORT_TD_DRIVE wearing an explosiveness name,
+  and this module's own docstring already conceded the mechanism (the ratio
+  "RISES WHEN DRIVES ARE SHORT") before shipping it as a terminal label
+  anyway.
+
+The field-goal pair is the honest hard case, and it is collapsed for
+consistency rather than because it is obviously right. RED_ZONE_SETTLE_FG
+(16.8/team-season) and LONG_FG (13.7) both clear the floor and are genuinely
+different events in a coaching meeting -- one is a red-zone failure, the other
+a drive that died at the fringe. But `reached_red_zone` reproduces the split
+exactly, so they fail the same reconstruction test, and a rule enforced on
+touchdowns and suspended on field goals is not a rule.
+
+Nothing a football reader valued is lost: "twelve-play, eighty-yard drive" is
+MORE recoverable now than before, because it is no longer hidden behind a
+label that claimed to mean it and did not.
+
+After the collapse every label clears the ~5/team-season floor except
+SCORE_AGAINST at 2.5. That is recorded rather than fixed, and the difference
+from SHORT_FIELD_TD matters: SHORT_FIELD_TD was a TRAJECTORY description that
+could be folded into a flag, whereas SCORE_AGAINST is how the possession
+actually ENDED and has nothing to fold into. A thin terminal state is a
+property of the sport; a thin trajectory label is a design choice.
 
 FAILED, NO GIVEAWAY (possession changes, no points either way)
   THREE_AND_OUT        <=3 plays, 0 first downs, punt.
@@ -142,7 +180,7 @@ from pathlib import Path
 
 import pandas as pd
 
-VERSION = "nfl-drive-archetype-v6"
+VERSION = "nfl-drive-archetype-v7"
 
 # --- frozen thresholds -------------------------------------------------------
 EXPLOSIVE_PLAY_YARDS = 20      # a single scrimmage gain of at least this many
@@ -414,11 +452,9 @@ def _archetype(
     if result in AGAINST:
         return "SCORE_AGAINST"                  # points AGAINST -- not a plain turnover
     if result == SCORED_TD:
-        if dependence:
-            return "EXPLOSIVE_TD"
-        return "METHODICAL_TD" if first_downs >= METHODICAL_FIRST_DOWNS else "SHORT_FIELD_TD"
+        return "TOUCHDOWN"
     if result == SCORED_FG:
-        return "RED_ZONE_SETTLE_FG" if red_zone else "LONG_FG"
+        return "FIELD_GOAL"
     if result == "Missed field goal":
         return "MISSED_FG"
     if result == "Turnover on downs":

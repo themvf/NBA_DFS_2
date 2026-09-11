@@ -16,10 +16,18 @@ const PLAY_TONE: Record<string, string> = {
   EARLY_DOWN_FAILURE: "warn", LATE_DOWN_FAILURE: "warn",
   SACK: "warn", TURNOVER_PLAY: "bad", PENALTY: "warn",
   SPECIAL_TEAMS: "mute", KNEEL: "mute", SPIKE: "mute", NON_PLAY: "mute", EARLY_DOWN_MODEST: "",
+  TWO_POINT: "",
+};
+// The outcome axis, which is what a rate should actually be read from -- the
+// archetype label is outranked on late downs by SACK/TURNOVER/PENALTY, all of
+// which are third-down attempts, so a conversion rate off the label alone runs
+// 4.6 points high. Until now this column reached Postgres and stopped there.
+const OUTCOME_TONE: Record<string, string> = {
+  CONVERSION: "good", EXPLOSIVE: "good", SUCCESS: "good",
+  FAILURE: "warn", MODEST: "",
 };
 const DRIVE_TONE: Record<string, string> = {
-  METHODICAL_TD: "good", EXPLOSIVE_TD: "good", SHORT_FIELD_TD: "good",
-  RED_ZONE_SETTLE_FG: "", LONG_FG: "", MISSED_FG: "warn", STALLED: "warn",
+  TOUCHDOWN: "good", FIELD_GOAL: "", MISSED_FG: "warn", STALLED: "warn",
   THREE_AND_OUT: "warn", TURNOVER_GIVEAWAY: "bad", TURNOVER_ON_DOWNS: "bad",
   SCORE_AGAINST: "bad", CLOCK_EXPIRED: "mute", KNEEL_DOWN: "mute",
 };
@@ -87,7 +95,7 @@ export default function PbpArchetypeClient({ games, gameId, plays }: Props) {
       <table className={p.table}>
         <thead><tr>
           {["Q", "Clock", "Off", "Dr", "Dn", "Dist", "Yd", "Type", "Gain",
-            "Pers", "Box", "PLAY ARCHETYPE", "Pre-snap", "DRIVE ARCHETYPE", "Drive flags",
+            "Pers", "Box", "PLAY ARCHETYPE", "OUTCOME", "Pre-snap", "DRIVE ARCHETYPE", "Drive flags",
             "Drive QB", "EPA", "Description"]
             .map(h => <th key={h}>{h}</th>)}
         </tr></thead>
@@ -118,6 +126,16 @@ export default function PbpArchetypeClient({ games, gameId, plays }: Props) {
                 {r.hadSack && r.playArchetype !== "SACK"
                   ? <span className={p.flag} data-tone="bad" title="Strip sack: this play was both a sack and a lost fumble. TURNOVER_PLAY outranks SACK, so without this flag the sack would vanish from the count.">+SACK</span>
                   : null}</td>
+              {/* The outcome axis. Read rates from HERE, not from the
+                  archetype: the label is outranked on late downs by SACK,
+                  TURNOVER and PENALTY -- all of which are third-down attempts
+                  -- so a conversion rate off the label runs 4.6 points high.
+                  Kicks show their own result instead; a kick has no down. */}
+              <td>{r.outcome
+                ? <span className={p.chip} data-tone={OUTCOME_TONE[r.outcome] ?? ""}>{label(r.outcome)}</span>
+                : r.stOutcome
+                  ? <span className={p.flag} title="Special-teams result">{label(r.stOutcome)}</span>
+                  : <span className={p.none}>—</span>}</td>
               <td className={p.flags}>
                 {r.goalLine ? <span className={p.flag} data-tone="good" title="Snap from inside the opponent's 5, run or pass">G-LINE</span> : null}
                 {r.pressure ? <span className={p.flag} data-tone="bad" title="Quarterback was pressured">PRESS</span> : null}
