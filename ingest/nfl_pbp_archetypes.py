@@ -33,11 +33,11 @@ from psycopg2.extras import execute_batch
 from config import load_config
 from db.database import DatabaseManager
 from model.nfl_drive_archetypes import VERSION as DRIVE_VERSION, label_drives, load_pbp
-from model.nfl_participation import load_participation
+from model.nfl_participation import VERSION as PARTICIPATION_VERSION, load_participation
 from model.nfl_play_archetypes import VERSION as PLAY_VERSION, label_plays
 
 COLUMNS = (
-    "game_id", "play_id", "outcome", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
+    "game_id", "play_id", "outcome", "converted", "scramble", "two_point_result", "drive_no_first_down", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
     "posteam", "drive", "quarter", "clock", "down", "ydstogo", "yardline_100",
     "play_type", "yards_gained", "play_archetype", "turnover_type", "had_sack",
     "goal_line", "penalty_type", "penalty_team", "penalty_first_down",
@@ -49,7 +49,7 @@ COLUMNS = (
     "drive_archetype", "drive_qb", "drive_qb_is_starter", "drive_start_bucket",
     "drive_end_bucket", "drive_result", "drive_turnover_type", "drive_had_sack",
     "drive_had_penalty", "drive_failed_short", "drive_plays", "drive_net_yards", "drive_epa",
-    "play_labeller_version", "drive_labeller_version",
+    "play_labeller_version", "drive_labeller_version", "participation_labeller_version",
 )
 
 
@@ -64,8 +64,9 @@ def stale_games(db: DatabaseManager) -> dict[int, list[str]]:
     rows = db.execute(
         """SELECT season, game_id FROM nfl_pbp_archetypes
            WHERE play_labeller_version <> %s OR drive_labeller_version <> %s
+              OR participation_labeller_version IS DISTINCT FROM %s
            GROUP BY season, game_id ORDER BY season, game_id""",
-        (PLAY_VERSION, DRIVE_VERSION),
+        (PLAY_VERSION, DRIVE_VERSION, PARTICIPATION_VERSION),
     )
     out: dict[int, list[str]] = {}
     for row in rows:
@@ -75,6 +76,14 @@ def stale_games(db: DatabaseManager) -> dict[int, list[str]]:
 
 def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> list[tuple]:
     """Join the two label layers onto one row per play."""
+    # NULL when participation was not attached, NOT the current version. A
+    # game labelled while nflverse had not yet published participation (2026
+    # 404s today) must stay stale, so the next run picks it up once the
+    # release lands. Stamping the version on a row that never saw the data
+    # would mark it permanently done -- the same "ran fine, found nothing,
+    # structurally could not have" failure the detector-health work exists to
+    # catch.
+    participation_version = None if participation is None else PARTICIPATION_VERSION
     plays = label_plays(pbp, participation)
     drives = label_drives(pbp).set_index(["game_id", "team", "drive"])
 
@@ -89,6 +98,8 @@ def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> 
         drive = drives.loc[key] if key in drives.index else None
         rows.append((
             play.game_id, _int(play.play_id), _text(play.outcome),
+            bool(play.converted), bool(play.scramble), _text(getattr(play, 'two_point_result', None)),
+            _bool(_get(drive, 'no_first_down')),
             _text(_get(drive, "score_against_mechanism")), _int(game.get("season")),
             _int(game.get("week")), _text(game.get("season_type")),
             _text(game.get("home_team")), _text(game.get("away_team")),
@@ -132,7 +143,7 @@ def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> 
             _bool(_get(drive, "had_penalty")), _bool(_get(drive, "failed_short")),
             _int(_get(drive, "plays")), _float(_get(drive, "net_yards")),
             _float(_get(drive, "epa")),
-            PLAY_VERSION, DRIVE_VERSION,
+            PLAY_VERSION, DRIVE_VERSION, participation_version,
         ))
     return rows
 

@@ -8,7 +8,7 @@ Source is the nflverse play-by-play release the V2 fantasy pipeline already
 downloads (`ingest/ff_v2_historical_context.py`), not a PFR scrape.
 
 =============================================================================
-THE TAXONOMY -- 12 archetypes, mutually exclusive and exhaustive
+THE TAXONOMY -- 13 archetypes, mutually exclusive and exhaustive
 =============================================================================
 Every drive gets exactly one. Terminal state decides the family; trajectory
 only breaks ties inside a family.
@@ -142,14 +142,15 @@ from pathlib import Path
 
 import pandas as pd
 
-VERSION = "nfl-drive-archetype-v5"
+VERSION = "nfl-drive-archetype-v6"
 
 # --- frozen thresholds -------------------------------------------------------
 EXPLOSIVE_PLAY_YARDS = 20      # a single scrimmage gain of at least this many
 EXPLOSIVE_SHARE = 0.50         # ...carrying at least this share of net yards
 METHODICAL_FIRST_DOWNS = 3     # first downs that mark a drive as sustained
 THREE_AND_OUT_PLAYS = 3        # plays at or under this, with no first down
-SHORT_FIELD_YARDLINE = 60      # start inside opponent's 60 (yardline_100 <= 60)
+SHORT_FIELD_YARDLINE = 60
+PLUS_TERRITORY_YARDLINE = 40      # start inside opponent's 60 (yardline_100 <= 60)
 LONG_FIELD_YARDLINE = 85       # start behind own 15 (yardline_100 >= 85)
 RED_ZONE_YARDLINE = 20         # end inside opponent's 20
 SCORING_RANGE_YARDLINE = 40    # end inside opponent's 40 (rough FG range)
@@ -281,11 +282,26 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             and pd.notna(last_snap.get("ydstogo"))
             and float(last_snap["ydstogo"]) <= SHORT_YARDAGE
         )
-        interception = bool((_num(ordered, "interception").fillna(0) == 1).any())
-        fumble = bool((_num(ordered, "fumble_lost").fillna(0) == 1).any())
+        # SCRIMMAGE SNAPS ONLY. A punt returner who muffs the catch is
+        # recorded by nflverse against the PUNTING team's drive -- the team
+        # that GAINED the ball -- so 17 drives and 31 plays carried a
+        # `turnover_type` naming the wrong team entirely. Below the cell floor,
+        # but `drive_turnover_type` is rendered on the web page, and two fields
+        # in this frame disagreed about who lost the ball (`giveaway_rate` 636,
+        # `turnover_type` 653). `score_against_mechanism` already fixed the
+        # rate; this fixes the field it was derived from.
+        scrim = ordered.get("play_type", pd.Series(dtype=object)).astype(str).isin(
+            ("run", "pass", "no_play"))
+        interception = bool((_num(ordered, "interception").fillna(0) == 1).loc[scrim].any())
+        fumble = bool((_num(ordered, "fumble_lost").fillna(0) == 1).loc[scrim].any())
 
         types = ordered.get("play_type", pd.Series(dtype=object)).astype(str)
-        knelt = bool(types.isin(("qb_kneel", "qb_spike")).any())
+        # KNEELS ONLY. A two-play spike drive at the end of a half is a team
+        # TRYING TO SCORE, and KNEEL_DOWN is dropped from every denominator in
+        # summarise() -- so admitting spikes here would silently delete a
+        # two-minute possession from every rate. It does not fire in 2025;
+        # closed before it does.
+        knelt = bool(types.eq("qb_kneel").any())
         mechanism = _score_against_mechanism(ordered, result)
 
         wp = _first(ordered, "wp")
@@ -337,6 +353,23 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             "had_sack": sacked,
             "had_penalty": penalised,
             "failed_short": failed_short,
+            # THE OFFENCE MADE NO FIRST DOWN. A flag, because THREE_AND_OUT is
+            # reached LAST in _archetype() and every earlier branch steals from
+            # it: of 1,517 live drives with <=3 plays and no first down, 199
+            # went to TURNOVER_GIVEAWAY, 43 to SCORE_AGAINST and 5 to a field
+            # goal. A three-play possession that ends in an interception is the
+            # clearest case of an offence going nowhere, and it was subtracted
+            # from the numerator while staying in the denominator --
+            # `three_and_out_rate` read 4.24pp low, one-directionally, 7.7
+            # drives a team-season. Identical arithmetic to the late-down bug
+            # at play level, opposite sign, 1.9x the magnitude.
+            #
+            # THREE_AND_OUT the LABEL is not wrong -- it conventionally means a
+            # punt, and it still does. The statistic was wrong, because nothing
+            # else answered "how often did this offence fail to move the
+            # chains" and people reach for the nearest field that looks like
+            # it. That is what this flag is for.
+            "no_first_down": bool(first_downs == 0 and result not in CENSORED),
             "turnover_type": "interception" if interception else ("fumble_lost" if fumble else None),
             "archetype": _archetype(result, plays, first_downs, red_zone, dependence,
                                     kneeled=knelt),
@@ -557,8 +590,24 @@ def _kick_return_tds(pbp: pd.DataFrame) -> dict[tuple[str, str], int]:
 
 
 def _start_bucket(yardline_100: float) -> str:
+    """Where the possession began.
+
+    `short_field` used to be everything from your own 40 forward, and score
+    rate inside that ONE bucket ran .811 down to .494 -- so a bucket that
+    exists to condition on field position conditioned on nothing. The step is
+    at the OPPONENT'S 40 (.70 -> .56), not at midfield, which is flat
+    (.538 -> .524): crossing the 50 changes the PUNT math, not the call
+    sheet -- you still need 15 more yards before the kicking decision is live.
+    Two reviewers measured this independently and agreed on where the step is;
+    one preferred to name the boundary at the 50 because that is the line a
+    football person can say out loud. The data decides it, so it is the 40.
+    One cut, not two: breaking again near the opponent's 30 lands both halves
+    near the cell floor.
+    """
     if pd.isna(yardline_100):
         return "unknown"
+    if yardline_100 <= PLUS_TERRITORY_YARDLINE:
+        return "plus_territory"
     if yardline_100 <= SHORT_FIELD_YARDLINE:
         return "short_field"
     if yardline_100 >= LONG_FIELD_YARDLINE:
@@ -597,7 +646,11 @@ def summarise(drives: pd.DataFrame) -> pd.DataFrame:
             # the two explosiveness measures, deliberately side by side
             "expl_dependence_rate": round(group["explosive_dependence"].mean(), 3),
             "expl_per_snap": round(int(group["explosive_plays"].sum()) / snaps, 3) if snaps else 0.0,
+            # Label-faithful: a punt after three plays, which is what the term
+            # means. It is NOT "the offence went nowhere" -- see no_first_down.
             "three_and_out_rate": round(counts.get("THREE_AND_OUT", 0) / n, 3),
+            # The unbiased version. No precedence order can take from it.
+            "no_first_down_rate": round(group["no_first_down"].mean(), 3),
             "sack_drive_rate": round(group["had_sack"].mean(), 3),
             "penalty_drive_rate": round(group["had_penalty"].mean(), 3),
             # OFFENSIVE giveaways only. SCORE_AGAINST also holds punt-return
@@ -614,8 +667,13 @@ def summarise(drives: pd.DataFrame) -> pd.DataFrame:
             "red_zone_trip_rate": round(group["reached_red_zone"].mean(), 3),
             # a possession that reached scoring range and produced nothing
             "wasted_range_rate": round((
+                # SCORE_AGAINST belongs here too -- a pick-six from the
+                # opponent's 25 is the most wasted a possession can be. It was
+                # omitted by an enumeration that had to list archetypes by
+                # name, which is the enumeration problem this file keeps
+                # hitting. 0.5 a team-season.
                 group["archetype"].isin(["TURNOVER_GIVEAWAY", "TURNOVER_ON_DOWNS",
-                                         "MISSED_FG", "CLOCK_EXPIRED"])
+                                         "MISSED_FG", "CLOCK_EXPIRED", "SCORE_AGAINST"])
                 & group["end_bucket"].isin(["red_zone", "scoring_range"])
             ).mean(), 3),
             "score_rate": round(group["result"].isin([SCORED_TD, SCORED_FG]).mean(), 3),

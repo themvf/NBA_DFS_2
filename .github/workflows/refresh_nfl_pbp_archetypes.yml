@@ -19,6 +19,7 @@ on:
     paths:
       - "model/nfl_play_archetypes.py"
       - "model/nfl_drive_archetypes.py"
+      - "model/nfl_participation.py"
       - "ingest/nfl_pbp_archetypes.py"
 
   workflow_dispatch:
