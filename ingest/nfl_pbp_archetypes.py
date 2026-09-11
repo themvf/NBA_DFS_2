@@ -38,7 +38,7 @@ from model.nfl_play_archetypes import VERSION as PLAY_VERSION, label_plays
 from model.nfl_play_participants import VERSION as PARTICIPANTS_VERSION, participants
 
 COLUMNS = (
-    "game_id", "play_id", "passer", "rusher", "receiver", "qb_hit", "injury_on_play", "penalty_side", "outcome", "converted", "scramble", "two_point_result", "drive_no_first_down", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
+    "game_id", "play_id", "penalty_yards", "air_yards", "yards_after_catch", "xyac_mean_yardage", "pass_length", "pass_location", "run_location", "run_gap", "cp", "cpoe", "xpass", "pass_oe", "series", "series_success", "series_result", "goal_to_go", "out_of_bounds", "timeout_team", "home_coach", "away_coach", "drive_time_of_possession", "drive_yards_penalized", "drive_inside_twenty", "passer", "rusher", "receiver", "qb_hit", "injury_on_play", "penalty_side", "outcome", "converted", "scramble", "two_point_result", "drive_no_first_down", "drive_score_against_mechanism", "season", "week", "season_type", "home_team", "away_team",
     "posteam", "drive", "quarter", "clock", "down", "ydstogo", "yardline_100",
     "play_type", "yards_gained", "play_archetype", "turnover_type", "had_sack",
     "goal_line", "penalty_type", "penalty_team", "penalty_first_down",
@@ -99,6 +99,29 @@ def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> 
         drive = drives.loc[key] if key in drives.index else None
         rows.append((
             play.game_id, _int(play.play_id),
+            _float(getattr(play, "penalty_yards", None)),
+            _float(getattr(play, "air_yards", None)),
+            _float(getattr(play, "yards_after_catch", None)),
+            _float(getattr(play, "xyac_mean_yardage", None)),
+            _text(getattr(play, "pass_length", None)),
+            _text(getattr(play, "pass_location", None)),
+            _text(getattr(play, "run_location", None)),
+            _text(getattr(play, "run_gap", None)),
+            _float(getattr(play, "cp", None)),
+            _float(getattr(play, "cpoe", None)),
+            _float(getattr(play, "xpass", None)),
+            _float(getattr(play, "pass_oe", None)),
+            _int(getattr(play, "series", None)),
+            _bool(getattr(play, "series_success", None)),
+            _text(getattr(play, "series_result", None)),
+            _bool(getattr(play, "goal_to_go", None)),
+            _bool(getattr(play, "out_of_bounds", None)),
+            _text(getattr(play, "timeout_team", None)),
+            _text(getattr(play, "home_coach", None)),
+            _text(getattr(play, "away_coach", None)),
+            _text(_get(drive, "time_of_possession")),
+            _float(_get(drive, "yards_penalized")),
+            _float(_get(drive, "inside_twenty")),
             _text(getattr(play, "passer", None)),
             _text(getattr(play, "rusher", None)),
             _text(getattr(play, "receiver", None)),

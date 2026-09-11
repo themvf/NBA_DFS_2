@@ -139,6 +139,25 @@ MODIFIERS -- carried alongside, never folded into the archetype
                                  checked. Denominators come from the
                                  single-valued axes; numerators may come from
                                  here.
+  air_yards / yards_after_catch  the THROW and the run after it, split.
+  xyac_mean_yardage              nflverse's expectation for the latter, so a
+                                 receiver is measured against the catch he
+                                 made rather than the league.
+  pass_length / pass_location    short|deep, left|middle|right.
+  run_location / run_gap         where the run went. end 5.46 yds, tackle
+                                 4.62, guard 4.11 -- not interchangeable.
+  cp / cpoe / xpass / pass_oe    nflverse's own expectations, carried rather
+                                 than recomputed. `pass_oe` is the sharpest
+                                 team-identity measure in the release.
+  series / series_success        one set of downs -- the layer between play
+  series_result                  and drive this taxonomy never had. 489 a
+                                 team-season, 2.2 plays each, and the unit a
+                                 coach actually speaks in.
+  goal_to_go                     distinct from `goal_line`: 1,773 snaps a
+                                 season are goal-to-go from outside the 2.
+  penalty_yards                  magnitude. A 5-yard false start and a
+                                 15-yard DPI were the same row.
+  home_coach / away_coach        who was making the decisions.
   passer / rusher / receiver     who handled the ball. Full attribution --
                                  every tackler, rusher and defensive back --
                                  is in `nfl_play_participants`, long form,
@@ -240,7 +259,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v8"
+VERSION = "nfl-play-archetype-v9"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
@@ -383,6 +402,49 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
         # Which unit was flagged. `penalty_team` is stated in the source, so
         # it is read rather than inferred -- both units commit fouls.
         "penalty_side": _penalty_side(frame),
+        "penalty_yards": _num(frame, "penalty_yards"),
+        # HOW THE PASS WAS EARNED. The taxonomy could not tell a 38-yard post
+        # from a 9-yard throw the receiver took 22 more with -- both were one
+        # `explosive` flag. Measured on 2025 those are opposite offences and
+        # the board could not separate them: LA averages 9.66 air yards an
+        # attempt and PIT 6.15, while PIT gets 6.39 yards after the catch and
+        # NO 4.28. `xyac_mean_yardage` is nflverse's EXPECTATION for the run
+        # after the catch, so a receiver can be measured against it rather
+        # than against the league.
+        "air_yards": _num(frame, "air_yards"),
+        "yards_after_catch": _num(frame, "yards_after_catch"),
+        "xyac_mean_yardage": _num(frame, "xyac_mean_yardage"),
+        "pass_length": frame.get("pass_length"),
+        "pass_location": frame.get("pass_location"),
+        # WHERE THE RUN WENT. Carried nothing about this at all, and the gaps
+        # are not interchangeable: end 5.46 yards, tackle 4.62, guard 4.11.
+        "run_location": frame.get("run_location"),
+        "run_gap": frame.get("run_gap"),
+        # NFLVERSE'S OWN EXPECTATIONS, carried rather than recomputed -- the
+        # same rule this module already applies to `epa`. `pass_oe` is pass
+        # rate against what the situation predicts and is the sharpest team
+        # identity measure in the release (ARI +3.99, BAL -8.84); `cpoe` is
+        # completion percentage over expected (NE +7.86, CLE -5.68).
+        "cp": _num(frame, "cp"),
+        "cpoe": _num(frame, "cpoe"),
+        "xpass": _num(frame, "xpass"),
+        "pass_oe": _num(frame, "pass_oe"),
+        # THE MISSING LAYER BETWEEN PLAY AND DRIVE. A series is one set of
+        # downs -- 489 a team-season, 2.2 plays each -- and it is the unit a
+        # coach actually talks in ("we went three-and-out", "we converted").
+        # This taxonomy had a play layer and a drive layer and nothing in
+        # between, and nflverse computes the whole thing already.
+        "series": _num(frame, "series").astype("Int64"),
+        "series_success": _num(frame, "series_success").fillna(0).astype(bool),
+        "series_result": frame.get("series_result"),
+        # Goal-to-go is NOT the goal_line flag: 1,773 snaps a season are
+        # goal-to-go from outside the 2, where the defence has no depth to
+        # give but the offence still has room to work.
+        "goal_to_go": _num(frame, "goal_to_go").fillna(0).astype(bool),
+        "out_of_bounds": _num(frame, "out_of_bounds").fillna(0).astype(bool),
+        "timeout_team": frame.get("timeout_team"),
+        "home_coach": frame.get("home_coach"),
+        "away_coach": frame.get("away_coach"),
         # SPECIAL_TEAMS is the second-largest label in the taxonomy -- 232.5
         # snaps a team-season -- and was completely opaque: `play_type`
         # recovered punt/FG/kickoff/XP, but the RESULT of any of them was

@@ -180,7 +180,7 @@ from pathlib import Path
 
 import pandas as pd
 
-VERSION = "nfl-drive-archetype-v7"
+VERSION = "nfl-drive-archetype-v8"
 
 # --- frozen thresholds -------------------------------------------------------
 EXPLOSIVE_PLAY_YARDS = 20      # a single scrimmage gain of at least this many
@@ -367,6 +367,15 @@ def label_drives(pbp: pd.DataFrame) -> pd.DataFrame:
             "score_differential_start": _first(ordered, "score_differential"),
             "game_seconds_remaining_start": _first(ordered, "game_seconds_remaining"),
             "roof": _first(ordered, "roof"),
+            # Clock and penalty yardage, both computed by nflverse per drive
+            # and both absent here. `yards_penalized` is a partial answer to
+            # the erased-play problem: it says how much of this possession was
+            # given back to a flag, which is the difference between an offence
+            # that stalls and one that keeps getting called back. 33.4 drives
+            # a team-season carry some, averaging 10.9 yards.
+            "time_of_possession": _first(ordered, "drive_time_of_possession"),
+            "yards_penalized": _first(ordered, "drive_yards_penalized"),
+            "inside_twenty": _first(ordered, "drive_inside20"),
             "qb": qb,
             "drive": int(drive_no),
             "quarter": int(_first(ordered, "qtr", 0) or 0),
