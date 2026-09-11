@@ -18,3 +18,6 @@ _tmp_NBA_Daily/
 refresh_stats.log
 model/explore_nba_xgboost.py
 artifacts/nfl_volume_share/
+
+# Generated audit artifacts from labeller review runs (never source)
+.audit_*.parquet
