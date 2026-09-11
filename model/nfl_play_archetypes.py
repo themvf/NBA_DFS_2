@@ -114,6 +114,19 @@ MODIFIERS -- carried alongside, never folded into the archetype
   penalty_type / penalty_team    what the flag was and who it was on.
                                  PENALTY carried 81 plays a team-season with
                                  no attributes at all.
+  converted                      reached the line to gain on a late down.
+                                 THE numerator for a conversion rate --
+                                 `outcome` cannot be, because CONVERSION and
+                                 EXPLOSIVE compete there and one has to lose.
+  scramble                       a called pass the quarterback ran. nflverse
+                                 types it "run"; no coach does. 35.9 a
+                                 team-season at +0.480 EPA against a designed
+                                 run's -0.048, so a rushing rate that counts
+                                 them is wrong one way.
+  two_point_result               success / failure on a TWO_POINT snap. The
+                                 label shipped result-blind -- the same
+                                 opacity `st_outcome` was built to fix,
+                                 reproduced in the commit that added it.
   outcome                        CONVERSION / EXPLOSIVE / SUCCESS / MODEST /
                                  FAILURE, computed for EVERY scrimmage snap
                                  with a down, whatever else happened on it.
@@ -178,6 +191,31 @@ MODIFIERS -- carried alongside, never folded into the archetype
                                  5.8% low. Overlapping causes belong in flags,
                                  never in a precedence order.
 
+=============================================================================
+THE ENFORCEMENT RULE -- read before adding anything to this module
+=============================================================================
+This taxonomy has now produced the same bug four times, in four places, and
+the shape is always identical: a column claims to cover a population, a
+precedence order quietly removes part of it, and a rate computed off that
+column is wrong in the SAME DIRECTION every time. It was GOAL_LINE_PUNCH
+(rush-only, so goal-line pass snaps had nowhere to live), then the late-down
+labels (outranked by SACK/TURNOVER/PENALTY, all of which are third-down
+ATTEMPTS, +4.59pp), then `outcome` itself (CONVERSION overwriting EXPLOSIVE,
+-27% of explosive plays), then three-and-out at drive level (-4.24pp).
+
+The rule, stated once so the fifth version of this bug has to be deliberate:
+
+  DENOMINATORS come only from SINGLE-VALUED fields -- down, play_type,
+  outcome, the archetype label. One row, one value, no overlap.
+
+  NUMERATORS come only from FLAGS -- converted, explosive, success,
+  first_down, had_sack, penalty_first_down, tackled_for_loss, scramble,
+  goal_line, turnover_type. Each is independent. A play may set any number
+  of them, and none can be taken by a precedence order.
+
+Any new fact that can CO-OCCUR with an existing label is a flag. If it needs
+a precedence order to coexist, that is the proof it is a flag, not a label.
+
 SUCCESS is the conventional 40/60/100 percent-of-distance rule, not something
 invented here. It is stated as a constant so a later screen cannot move it
 quietly.
@@ -186,7 +224,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-VERSION = "nfl-play-archetype-v6"
+VERSION = "nfl-play-archetype-v7"
 
 EXPLOSIVE_PLAY_YARDS = 20
 SHORT_DISTANCE = 3
@@ -288,6 +326,22 @@ def label_plays(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) ->
         # and 1st-and-10 for 5 are both EARLY_DOWN_SUCCESS.
         "first_down": _num(frame, "first_down").fillna(0).astype(bool),
         "tackled_for_loss": _num(frame, "tackled_for_loss").fillna(0).astype(bool),
+        # The line to gain was reached on a late down. A FLAG, not a reading of
+        # `outcome` -- see _outcome's note on why a single-valued column cannot
+        # serve as the numerator for two overlapping facts.
+        "converted": (down.notna() & (down >= 3) & converted
+                      & ~play_type.isin(SPECIAL_TEAMS_PLAYS + ("qb_kneel", "qb_spike", "no_play"))),
+        # nflverse types a scramble as play_type == "run". No coach has ever
+        # called one a run: it is a called pass where protection or coverage
+        # failed, the line was pass-setting and the receivers were running
+        # routes. It is a dropback outcome, the way a sack is -- which this
+        # taxonomy already gets right for sacks. 35.9 a team-season, 7.7% of
+        # rows typed "run", and they carry +0.480 EPA against a designed run's
+        # -0.048, so a rushing rate that includes them is wrong one way.
+        # Recoverable since v5 as (qb_dropback & play_type == "run"), which
+        # matches this column exactly; named here so nobody has to know that.
+        "scramble": _num(frame, "qb_scramble").fillna(0).astype(bool),
+        "two_point_result": frame.get("two_point_conv_result"),
         # SPECIAL_TEAMS is the second-largest label in the taxonomy -- 232.5
         # snaps a team-season -- and was completely opaque: `play_type`
         # recovered punt/FG/kickoff/XP, but the RESULT of any of them was
@@ -339,9 +393,30 @@ def _outcome(frame, down, play_type, gain, success, explosive, converted) -> pd.
     outcome are different facts and were sharing one column, so an event won
     and the outcome vanished. They are now separate axes.
 
-    Rates: take the DENOMINATOR from the single-valued axes (down, play_type)
-    and the NUMERATOR from here. A sack lands in the third-down denominator
-    automatically, because it still has a down and still has an outcome.
+    WHAT THIS COLUMN IS NOT. It is SINGLE-VALUED and therefore ORDERED, and an
+    ordering among facts that are not mutually exclusive costs something: a
+    third-down gain of 25 is both explosive and a conversion, and this column
+    can only say one. CONVERSION wins, so 544 explosive plays -- 27% of them,
+    17 a team-season -- do not appear as EXPLOSIVE here. An earlier version of
+    this docstring said `outcome` was computed "whatever else happened on it"
+    and told readers to take numerators from it. That was false for EXPLOSIVE,
+    and it was the same precedence mistake this axis exists to undo, rebuilt
+    one level down.
+
+    So: the DENOMINATOR comes from the single-valued axes (down, play_type)
+    and the NUMERATOR comes from the FLAGS -- `converted`, `explosive`,
+    `success`, `first_down`, `had_sack`, `tackled_for_loss` -- each of which
+    is independent and none of which can be stolen by a precedence order. A
+    sack still lands in the third-down denominator automatically, because it
+    still has a down. `outcome` is a readable one-word summary of a snap and
+    a legitimate GROUPING key; it is not a numerator.
+
+    Residual against nflverse's own converted/failed denominator is +0.51pp on
+    third down and +0.24pp on fourth, and it is fully explained rather than
+    slop: it is 61 third-down kneels and 9 spikes, which nflverse counts as
+    third-down failures and this axis excludes. Zero unexplained plays on
+    fourth down. Excluding a kneel from an attempt rate is the right side of
+    that disagreement.
     """
     # `no_play` is excluded and that exclusion is load-bearing: a flag wiped
     # the snap out, so the down did not resolve and there was no attempt.
@@ -438,9 +513,17 @@ def _st_outcome(frame: pd.DataFrame, play_type: pd.Series) -> pd.Series:
 
 
 def _turnover_type(frame: pd.DataFrame) -> pd.Series:
-    """Mechanism of a lost possession, as a modifier rather than a label."""
-    interception = _num(frame, "interception").fillna(0) == 1
-    fumble = _num(frame, "fumble_lost").fillna(0) == 1
+    """Mechanism of a lost possession, as a modifier rather than a label.
+
+    SCRIMMAGE SNAPS ONLY. nflverse records a punt returner's muff against the
+    PUNTING team's row -- the team that gained the ball -- so 31 plays carried
+    a turnover naming the wrong side entirely. This column is rendered on the
+    web page, so the inversion was visible.
+    """
+    scrim = frame.get("play_type", pd.Series("", index=frame.index)).astype(str).isin(
+        ("run", "pass", "no_play"))
+    interception = (_num(frame, "interception").fillna(0) == 1) & scrim
+    fumble = (_num(frame, "fumble_lost").fillna(0) == 1) & scrim
     out = pd.Series(None, index=frame.index, dtype=object)
     out[fumble] = "fumble_lost"
     out[interception] = "interception"   # 4 plays a season carry both flags
