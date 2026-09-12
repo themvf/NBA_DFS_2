@@ -64,7 +64,9 @@
     "analyze:situational": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-situational.ts",
     "analyze:underdogs": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-underdog-picks.ts",
     "analyze:pickem-2025": "node --env-file=.env.local --import tsx ./scripts/analyze-nfl-pickem-2025.ts",
-    "verify:pickem-ledger": "node --env-file=.env.local -r ./scripts/server-only-stub.cjs --import tsx ./scripts/verify-pickem-ledger.ts"
+    "verify:pickem-ledger": "node --env-file=.env.local -r ./scripts/server-only-stub.cjs --import tsx ./scripts/verify-pickem-ledger.ts",
+    "optimize:nfl": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/run-nfl-cash-optimizer.ts",
+    "test:nfl-cash-optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-cash-optimizer.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

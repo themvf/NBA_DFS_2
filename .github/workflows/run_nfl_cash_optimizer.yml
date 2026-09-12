@@ -1,0 +1,88 @@
+name: Run NFL DFS cash optimizer
+
+# Manual only, and deliberately so: this answers "what should I play now", which is a
+# question with a decision time attached. A schedule would produce lineups nobody asked
+# for against whatever slate happened to be saved.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Objective
+        required: true
+        default: cash
+        type: choice
+        options: [cash, gpp]
+      lineups:
+        description: How many lineups (cash only needs 1 -- see the job summary)
+        required: false
+        default: '1'
+        type: string
+      upload_id:
+        description: Saved slate upload ID (blank uses the most recent upload)
+        required: false
+        type: string
+      randomness:
+        description: Jitter applied to each score, 0-0.25 (leave 0 for cash)
+        required: false
+        default: '0'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nfl-cash-optimizer
+  cancel-in-progress: false
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # `npm install`, not `npm ci`: package-lock.json is out of sync with package.json
+      # on this repo (missing @swc/helpers, chokidar), so `npm ci` refuses outright.
+      # Fixing the lockfile is a separate change and not one to make on a game day.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      # Fail before touching the slate if the reporting logic itself is broken.
+      - name: Verify optimizer runner
+        run: npm run test:nfl-cash-optimizer
+      - name: Run optimizer
+        id: optimize
+        # `shell: bash` is load-bearing: it sets pipefail. The default shell does not,
+        # and the pipe into tee would then swallow a non-zero exit and report the run
+        # green with an empty lineup -- the same masking that hid the MLB prop outage.
+        shell: bash
+        run: |
+          npm run optimize:nfl --silent -- \
+            --mode "${{ inputs.mode }}" \
+            --lineups "${{ inputs.lineups || '1' }}" \
+            --randomness "${{ inputs.randomness || '0' }}" \
+            ${{ inputs.upload_id && format('--upload "{0}"', inputs.upload_id) || '' }} \
+            | tee lineup.txt
+      - name: Publish lineup to the run summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo '## NFL ${{ inputs.mode }} lineup'
+            echo '```'
+            cat lineup.txt 2>/dev/null || echo 'No output; see the Run optimizer step log.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: nfl-lineup
+          path: web/lineup.txt
+          retention-days: 30
