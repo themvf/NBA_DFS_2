@@ -14106,6 +14106,32 @@ export type NflArchetypePlayRow = {
   driveTurnoverType: string | null; driveHadSack: boolean | null;
   driveHadPenalty: boolean | null; driveFailedShort: boolean | null;
   drivePlays: number | null; driveNetYards: number | null; driveEpa: number | null;
+  driveInjuries: number | null; driveTimeOfPossession: string | null;
+  driveYardsPenalized: number | null;
+  // who handled the ball -- full attribution is a separate query
+  passer: string | null; rusher: string | null; receiver: string | null;
+  // how the pass or run was earned
+  airYards: number | null; yardsAfterCatch: number | null;
+  xyacMeanYardage: number | null; passLength: string | null; passLocation: string | null;
+  runLocation: string | null; runGap: string | null;
+  // nflverse's own expectations, carried not recomputed
+  cpoe: number | null; passOe: number | null;
+  // the layer between play and drive
+  series: number | null; seriesSuccess: boolean | null; seriesResult: string | null;
+  // not zero-sum: no aggregation on the other side produces these
+  qbHit: boolean | null; injuryOnPlay: boolean | null; penaltySide: string | null;
+  penaltyYards: number | null; goalToGo: boolean | null; scramble: boolean | null;
+  converted: boolean | null; firstDown: boolean | null;
+  // what a flag erased -- stored parallel, never mixed into yardsGained
+  wipedEvent: string | null; wipedYards: number | null; wipedTouchdown: boolean | null;
+  wipedTurnover: boolean | null; wipedSack: boolean | null; wipedDefender: string | null;
+};
+
+// One row per player per role per play. Long form, because a play has one
+// passer and can have six tacklers -- see model/nfl_play_participants.py.
+export type NflArchetypeParticipantRow = {
+  playId: number; team: string | null; side: string | null;
+  role: string; playerName: string;
 };
 
 // `db.execute` returns a bare array under some drivers and `{ rows }` under
@@ -14152,7 +14178,16 @@ export async function getNflArchetypePlays(gameId: string): Promise<NflArchetype
            shotgun, no_huddle, epa, wp, description, drive_archetype, drive_qb,
            drive_qb_is_starter, drive_start_bucket, drive_end_bucket, drive_result,
            drive_turnover_type, drive_had_sack, drive_had_penalty, drive_failed_short,
-           drive_plays, drive_net_yards, drive_epa
+           drive_plays, drive_net_yards, drive_epa,
+           drive_injuries, drive_time_of_possession, drive_yards_penalized,
+           passer, rusher, receiver,
+           air_yards, yards_after_catch, xyac_mean_yardage, pass_length, pass_location,
+           run_location, run_gap, cpoe, pass_oe,
+           series, series_success, series_result,
+           qb_hit, injury_on_play, penalty_side, penalty_yards, goal_to_go,
+           scramble, converted, first_down,
+           wiped_event, wiped_yards, wiped_touchdown, wiped_turnover, wiped_sack,
+           wiped_defender
     FROM nfl_pbp_archetypes WHERE game_id = ${gameId} ORDER BY play_id`);
   const num = (v: unknown) => (v == null ? null : Number(v));
   const str = (v: unknown) => (v == null ? null : String(v));
@@ -14178,7 +14213,43 @@ export async function getNflArchetypePlays(gameId: string): Promise<NflArchetype
     driveHadPenalty: bool(r.drive_had_penalty), driveFailedShort: bool(r.drive_failed_short),
     driveQbIsStarter: bool(r.drive_qb_is_starter), driveStartBucket: str(r.drive_start_bucket),
     driveEndBucket: str(r.drive_end_bucket), driveResult: str(r.drive_result),
+    driveInjuries: num(r.drive_injuries),
+    driveTimeOfPossession: str(r.drive_time_of_possession),
+    driveYardsPenalized: num(r.drive_yards_penalized),
+    passer: str(r.passer), rusher: str(r.rusher), receiver: str(r.receiver),
+    airYards: num(r.air_yards), yardsAfterCatch: num(r.yards_after_catch),
+    xyacMeanYardage: num(r.xyac_mean_yardage),
+    passLength: str(r.pass_length), passLocation: str(r.pass_location),
+    runLocation: str(r.run_location), runGap: str(r.run_gap),
+    cpoe: num(r.cpoe), passOe: num(r.pass_oe),
+    series: num(r.series), seriesSuccess: bool(r.series_success),
+    seriesResult: str(r.series_result),
+    qbHit: bool(r.qb_hit), injuryOnPlay: bool(r.injury_on_play),
+    penaltySide: str(r.penalty_side), penaltyYards: num(r.penalty_yards),
+    goalToGo: bool(r.goal_to_go), scramble: bool(r.scramble),
+    converted: bool(r.converted), firstDown: bool(r.first_down),
+    wipedEvent: str(r.wiped_event), wipedYards: num(r.wiped_yards),
+    wipedTouchdown: bool(r.wiped_touchdown), wipedTurnover: bool(r.wiped_turnover),
+    wipedSack: bool(r.wiped_sack), wipedDefender: str(r.wiped_defender),
     drivePlays: num(r.drive_plays), driveNetYards: num(r.drive_net_yards),
     driveEpa: num(r.drive_epa),
+  }));
+}
+
+/** Every player credited on every play of one game, both sides of the ball. */
+export async function getNflArchetypeParticipants(
+  gameId: string,
+): Promise<NflArchetypeParticipantRow[]> {
+  const rows = await db.execute(sql`
+    SELECT play_id, team, side, role, player_name
+      FROM nfl_pbp_play_participants
+     WHERE game_id = ${gameId}
+     ORDER BY play_id, side, role, player_name`);
+  return resultRows(rows).map(r => ({
+    playId: Number(r.play_id),
+    team: r.team == null ? null : String(r.team),
+    side: r.side == null ? null : String(r.side),
+    role: String(r.role),
+    playerName: String(r.player_name),
   }));
 }

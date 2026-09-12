@@ -49,3 +49,38 @@
   border:1px solid #27302f; }
 .flag[data-tone="warn"] { background:#2c2410; color:#f6a800; border-color:#544213; }
 .flag[data-tone="bad"]  { background:#2e1414; color:#ff6464; border-color:#5a2222; }
+
+/* --- attribution + the expansion --------------------------------------
+   A row is the scannable summary; the expansion is every other true fact
+   the frame holds about that snap. Forty columns in one table is not a
+   table anyone reads. */
+.who { color:#c3ccc8; font-size:10px; max-width:190px; overflow:hidden;
+  text-overflow:ellipsis; }
+.table tbody tr[role="button"] { cursor:pointer; }
+.table tbody tr[role="button"]:focus-visible { outline:2px solid #f6a800;
+  outline-offset:-2px; }
+.openRow td { background:#131b1a; }
+
+.detailRow td { padding:0; border-bottom:2px solid #3a4644; background:#0b1010;
+  white-space:normal; }
+.detail { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:1px; background:#1b2322; }
+.panel { background:#0d1313; padding:12px 14px; }
+.panel h4 { margin:0 0 8px; font-size:9px; letter-spacing:.1em; color:#87928e;
+  text-transform:uppercase; font-weight:600; }
+.panel[data-tone="bad"] h4 { color:#ff6464; }
+.panel dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:0;
+  font-size:11px; }
+.panel dt { color:#6f7a76; white-space:nowrap; }
+.panel dd { margin:0; color:#dbe2de; font-variant-numeric:tabular-nums; }
+.vs { color:#87928e; }
+
+.credits { display:flex; flex-direction:column; gap:8px; }
+.side { display:flex; flex-wrap:wrap; gap:4px; align-items:baseline; }
+.sideName { font-size:8px; letter-spacing:.1em; text-transform:uppercase;
+  color:#6f7a76; min-width:62px; }
+.side[data-side="defense"] .sideName { color:#f6a800; }
+.credit { font-size:10px; color:#dbe2de; background:#141a19; border:1px solid #222b2a;
+  border-radius:2px; padding:1px 6px; }
+.credit em { font-style:normal; color:#6f7a76; margin-right:4px; }
+.empty { margin:0; font-size:10px; line-height:1.5; color:#6f7a76; max-width:34ch; }
