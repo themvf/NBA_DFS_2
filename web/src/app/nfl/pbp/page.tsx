@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { getNflArchetypeGames, getNflArchetypePlays } from "@/db/queries";
+import { getNflArchetypeGames, getNflArchetypeParticipants, getNflArchetypePlays } from "@/db/queries";
 import PbpArchetypeClient from "./pbp-archetype-client";
 
 export const metadata = { title: "NFL PBP Archetypes" };
@@ -14,6 +14,8 @@ export default async function NflPbpArchetypePage({
   const games = await getNflArchetypeGames();
   // Default to the most recently labelled game rather than an empty table.
   const selected = game && games.some(row => row.gameId === game) ? game : games[0]?.gameId ?? null;
-  const plays = selected ? await getNflArchetypePlays(selected) : [];
-  return <PbpArchetypeClient games={games} gameId={selected} plays={plays} />;
+  const [plays, participants] = selected
+    ? await Promise.all([getNflArchetypePlays(selected), getNflArchetypeParticipants(selected)])
+    : [[], []];
+  return <PbpArchetypeClient games={games} gameId={selected} plays={plays} participants={participants} />;
 }
