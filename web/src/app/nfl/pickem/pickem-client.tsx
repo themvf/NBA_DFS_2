@@ -234,6 +234,18 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
     [slate.games, week],
   );
 
+  // Check each remaining game: a fresh timestamp elsewhere in the season
+  // must not conceal an old probability on this card.
+  const staleProbabilityCount = weekGames.filter((g) => {
+    const parseStamp = (value: string) => Date.parse(
+      value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"),
+    );
+    const now = Date.parse(loadedAt);
+    if (g.completed || (g.kickoff && parseStamp(g.kickoff) <= now)) return false;
+    const computed = g.computedAt ? parseStamp(g.computedAt) : NaN;
+    return !Number.isFinite(computed) || now - computed > 30 * 60 * 60 * 1000;
+  }).length;
+
   const games: PickemGame[] = useMemo(
     () =>
       weekGames.map((g) => ({
@@ -694,6 +706,14 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
           )}
         </div>
       </div>
+
+      {staleProbabilityCount > 0 && (
+        <div role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          {staleProbabilityCount} remaining game{staleProbabilityCount === 1 ? " has" : "s have"}{" "}
+          missing or over-30-hour-old win probabilities. Refresh the data before using this card;
+          reloading the page alone does not update probabilities.
+        </div>
+      )}
 
       {showNewPool && (
         <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">

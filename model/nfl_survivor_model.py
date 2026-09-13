@@ -299,7 +299,9 @@ def _american_pair_to_prob(home_ml: int | None, away_ml: int | None) -> float | 
     return None if total <= 0 else home_raw / total
 
 
-def compute_and_store(db: DatabaseManager, season: int, fit: dict) -> dict:
+def compute_and_store(
+    db: DatabaseManager, season: int, fit: dict, *, game_ids: set[int] | None = None,
+) -> dict:
     games = db.execute(
         """
         SELECT g.id, g.week, g.home_team_id, g.away_team_id,
@@ -383,6 +385,10 @@ def compute_and_store(db: DatabaseManager, season: int, fit: dict) -> dict:
     counts = {"market_ml_novig": 0, "market_spread": 0, "model_spread": 0, "blocked": 0}
 
     for game in games:
+        # Daily refreshes fit against the full grid but only rewrite today's
+        # upcoming games. Other probabilities retain their original timestamp.
+        if game_ids is not None and game["id"] not in game_ids:
+            continue
         provenance = "blocked"
         horizon: int | None = None
         sigma: float | None = None

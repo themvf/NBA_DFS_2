@@ -39,5 +39,5 @@ jobs:
             TARGET_DATE="$(TZ=America/New_York date +%F)"
           fi
           echo "NFL_TARGET_DATE=$TARGET_DATE" >> "$GITHUB_ENV"
-      - name: Refresh NFL schedule, odds, scores, and alerts
+      - name: Refresh NFL schedule, odds, scores, alerts, and pickem probabilities
         run: python -m ingest.refresh_nfl_vegas --date "$NFL_TARGET_DATE"

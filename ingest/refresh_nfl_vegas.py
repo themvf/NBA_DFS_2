@@ -24,6 +24,36 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+def _refresh_pickem_probabilities(db: DatabaseManager, target_date: str) -> dict:
+    """Use today's captured odds without buying another Odds API response."""
+    from ingest.nfl_season_schedule import load_season, fetch_schedule
+    from model.nfl_survivor_model import compute_and_store, fit_spread_prob, historical_games
+
+    day = datetime.strptime(target_date, "%Y-%m-%d")
+    season = day.year - 1 if day.month <= 3 else day.year
+    upcoming = db.execute(
+        """SELECT id FROM nfl_matchups
+           WHERE game_date = %s AND season_type = 'regular'
+             AND commence_time > NOW() AND NOT completed
+             AND COALESCE(game_status, '') NOT IN ('Postponed', 'Cancelled')""",
+        (target_date,),
+    )
+    if not upcoming:
+        return {"skipped": "no upcoming games"}
+    # The daily event fetch may have created IDs since the weekly schedule ran.
+    schedule = fetch_schedule()
+    load_season(db, season, schedule)
+    linked = db.execute(
+        """SELECT id, matchup_id FROM nfl_season_games
+           WHERE season = %s AND matchup_id = ANY(%s)""",
+        (season, [row["id"] for row in upcoming]),
+    )
+    if {row["matchup_id"] for row in linked} != {row["id"] for row in upcoming}:
+        raise RuntimeError("Upcoming NFL games are missing season-schedule links")
+    fit = fit_spread_prob(historical_games(schedule))
+    return compute_and_store(db, season, fit, game_ids={row["id"] for row in linked})
+
+
 def _stage(label: str, fn: Callable[[], T]) -> tuple[bool, T | None]:
     try:
         result = fn()
@@ -55,6 +85,14 @@ def run_refresh(db: DatabaseManager, api_key: str, target_date: str) -> int:
         if label == "nfl_data_health" and ok and isinstance(result, dict) and result.get("status") != "pass":
             ok = False
         stages.append((label, ok, result))
+    # A failed capture must not make old odds look newly computed. Alert or
+    # settlement failures, however, do not block independent probabilities.
+    required = {"nfl_events", "nfl_odds", "nfl_freshness"}
+    if all(ok for label, ok, _ in stages if label in required):
+        ok, result = _stage("nfl_pickem_probabilities", lambda: _refresh_pickem_probabilities(db, target_date))
+        stages.append(("nfl_pickem_probabilities", ok, result))
+    else:
+        print("nfl_pickem_probabilities: SKIPPED (events, odds, or freshness failed)")
     failures = [label for label, ok, _ in stages if not ok]
     if failures:
         print(f"NFL Vegas refresh finished with failures: {', '.join(failures)}")
