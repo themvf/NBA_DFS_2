@@ -35,6 +35,16 @@ const num = (flag: string, fallback: number) => {
 const money = (value: number) => `$${value.toLocaleString("en-US")}`;
 
 /**
+ * Narrows saved slates to the Classic ones by their display label.
+ *
+ * listSavedNflSlates() exposes only uploadId and label, so this is the only way to
+ * avoid loading every upload. It is a HEURISTIC over a display string -- the
+ * authoritative `format` field is still checked after the slate loads. Tested against
+ * savedSlateLabel() itself so a label change cannot silently stop matching.
+ */
+export const CLASSIC_LABEL = /·\s*Classic\s*·/i;
+
+/**
  * Whether a slot's cash score came from a MODELLED floor or from the flat fallback.
  *
  * `objective()` resolves the cash base as p10/floor `?? projection * 0.74`. That 0.74
@@ -100,11 +110,37 @@ export async function main() {
   const minUnique = num("--min-unique", 2);
 
   // Deferred so the server-only stub and env are in place before the module graph loads.
-  const { loadLatestNflSlate, loadSavedNflWorkspace } = await import("../src/app/dfs/nfl/actions");
+  const { listSavedNflSlates, loadSavedNflWorkspace } = await import("../src/app/dfs/nfl/actions");
+  const saved = await listSavedNflSlates(); // newest first
+  if (!saved.length) throw new Error("No saved NFL salary slate was found. Upload one on /dfs/nfl first.");
+
+  if (process.argv.includes("--list")) {
+    console.log("Saved slates, newest first:");
+    for (const entry of saved) console.log(`  ${entry.uploadId}  ${entry.label}`);
+    return;
+  }
+
   const requested = arg("--upload");
-  const slate = requested ? (await loadSavedNflWorkspace(requested)).slate : await loadLatestNflSlate();
-  if (!slate) throw new Error("No saved NFL salary slate was found. Upload one on /dfs/nfl first.");
-  if (slate.format !== "classic") throw new Error(`Saved slate is ${slate.format}; this runner is Classic-only.`);
+  let slate;
+  if (requested) {
+    slate = (await loadSavedNflWorkspace(requested)).slate;
+    if (slate.format !== "classic") throw new Error(`Slate ${requested} is ${slate.format}; this runner is Classic-only.`);
+  } else {
+    // Take the newest CLASSIC slate, not merely the newest slate. Showdown and Classic
+    // uploads share one table, so "most recent upload" is regularly a Showdown file and
+    // a Classic-only runner that grabbed it would refuse a slate that is sitting right
+    // there. The label is a display string, so it only narrows the candidates -- the
+    // authoritative `format` is checked after loading.
+    const candidates = saved.filter(entry => CLASSIC_LABEL.test(entry.label));
+    for (const entry of candidates.length ? candidates : saved) {
+      const loaded = (await loadSavedNflWorkspace(entry.uploadId)).slate;
+      if (loaded.format === "classic") { slate = loaded; break; }
+    }
+    if (!slate) {
+      throw new Error(`No saved Classic slate found among ${saved.length} upload(s). Available:\n` +
+        saved.map(entry => `  ${entry.uploadId}  ${entry.label}`).join("\n"));
+    }
+  }
 
   // Same refusal as the page: an unverified legacy match can put the wrong human in a lineup.
   if (slate.players.some(p => p.identityMethod === "exact_name_position")) {

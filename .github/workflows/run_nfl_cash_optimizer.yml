@@ -58,6 +58,13 @@ jobs:
       # Fail before touching the slate if the reporting logic itself is broken.
       - name: Verify optimizer runner
         run: npm run test:nfl-cash-optimizer
+      # Always log the saved slates. Classic and Showdown uploads share one table, so
+      # "which slate did this use" is the first question when a run looks wrong -- the
+      # first live run failed precisely because the newest upload was a Showdown file.
+      - name: List saved slates
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: npm run optimize:nfl --silent -- --list
       - name: Run optimizer
         id: optimize
         # `shell: bash` is load-bearing: it sets pipefail. The default shell does not,

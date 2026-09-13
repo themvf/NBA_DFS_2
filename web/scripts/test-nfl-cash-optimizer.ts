@@ -10,7 +10,8 @@
 import assert from "node:assert/strict";
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings, type NflLineupSlot }
   from "../src/app/dfs/nfl/nfl-optimizer";
-import { floorProvenance } from "./run-nfl-cash-optimizer";
+import { floorProvenance, CLASSIC_LABEL } from "./run-nfl-cash-optimizer";
+import { savedSlateLabel } from "../src/lib/nfl-dfs/saved-workspace";
 
 const player = (over: Partial<NflOptimizerPlayer> & { dkPlayerId: number; position: NflOptimizerPlayer["position"] }): NflOptimizerPlayer => ({
   id: over.dkPlayerId, captainDkPlayerId: null, name: `P${over.dkPlayerId}`, team: "AAA", opponent: "BBB",
@@ -71,3 +72,12 @@ assert.deepEqual(optimizeNflLineups(pool, settings).lineups[0].playerIds, first.
   "repeat run differed; the optimizer is supposed to be deterministic");
 console.log(`Classic cash solve: ${result.lineups.length} lineups, 9 slots, $${first.totalSalary} salary, deterministic on rerun.`);
 console.log("All cash optimizer runner checks passed.");
+
+// The Classic-label filter must agree with the real label generator. A Showdown upload
+// is routinely the most recent one, so picking "newest slate" instead of "newest Classic
+// slate" makes the runner refuse a Classic slate that is sitting right there -- which is
+// exactly how the first live run failed.
+assert.equal(CLASSIC_LABEL.test(savedSlateLabel("classic", "NO@DET 09/13/2026 01:00PM ET", Array(12).fill("GAME"))), true);
+assert.equal(CLASSIC_LABEL.test(savedSlateLabel("showdown", "NE@SEA 09/09/2026 08:20PM ET", ["NE@SEA"])), false);
+assert.equal(CLASSIC_LABEL.test(savedSlateLabel("classic", "NO@DET 09/13/2026 01:00PM ET", ["NO@DET"])), true);
+console.log("Classic label filter agrees with savedSlateLabel for classic and showdown.");
