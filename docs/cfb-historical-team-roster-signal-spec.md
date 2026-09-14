@@ -346,8 +346,10 @@ Each hypothesis is entered in the registry before its outcome window is evaluate
 | CFB-H001 | Non-neutral home favorites of 14–16.5 cover above the market break-even rate | ATS | Season, closing/reference classification, FBS-only |
 | CFB-H002 | Teams with high OL and QB continuity outperform the first-half spread in Weeks 0–3 | 1H ATS | Opponent talent, favorite size, coach continuity |
 | CFB-H003 | Large favorites with low returning defensive production allow more points than market expectation | Opponent team-total error | Pace, opponent offense, garbage time |
+|  | *Registered 2026-09-14 (§24.2). Frozen; blocked on returning defensive production.* | | |
 | CFB-H004 | A verified cross-book spread move without a total move predicts positive CLV | CLV | Timestamp alignment, book count, stale quotes |
 | CFB-H005 | Teams in Year 1 of a new offensive coordinator are overvalued when returning QB continuity is low | ATS/CLV | Talent, transfers, opponent, week |
+|  | *Registered 2026-09-14 (§24.3). Frozen; blocked on offensive coordinator identity.* | | |
 
 The examples are research candidates, not claims.
 
@@ -904,8 +906,105 @@ adjustment. A team with no observed history scores 0.
   corpus is outstanding.
 - `talent_composite`, `transfers_in`/`transfers_out`, `transfer_rating_in`/`out`,
   `returning_quarterbacks` and `returning_offensive_line` are captured and stored
-  but consumed by nothing. `CFB-H001` — the only registered hypothesis — is a
-  market-bucket ATS claim, the family this project has already returned five
-  confirmed negatives against in other sports. The drafted `CFB-H003` and
-  `CFB-H005` in §12 test the roster and continuity data that is genuinely
-  distinctive to college football and remain unregistered.
+  but consumed by nothing. `CFB-H001` — still the only *evaluable* hypothesis —
+  is a market-bucket ATS claim, the family this project has already returned
+  five confirmed negatives against in other sports. `CFB-H003` and `CFB-H005`
+  were registered on 2026-09-14 (§24) but remain blocked on inputs this project
+  does not yet ingest.
+
+## 24. Hypothesis Registration — CFB-H003 and CFB-H005 (2026-09-14)
+
+Both §9 candidates are now frozen in `HYPOTHESIS_DEFINITIONS`
+(`research/cfb_hypotheses.py`) with the full §10.1 preregistration fields, and
+`refresh_cfb_research.yml` calls `register-all` rather than `register-default`
+so they reach the registry. **Neither can be evaluated yet.** Both are frozen
+specifically *because* their features do not exist: a definition fixed before
+its data cannot be shaped by the result, which is what preregistration is for.
+
+Run `python -m research.cfb_hypotheses status` for current readiness. It reads
+the catalog only and needs no database.
+
+### 24.1 Each hypothesis has its own multiple-testing family
+
+`spread-buckets-v1` (H001), `roster-continuity-v1` (H003) and
+`coaching-regime-v1` (H005) are declared separately, so a roster or coaching
+result is never drawn from the spread-bucket pool under §10.3.
+
+### 24.2 CFB-H003 — market side ready, feature missing
+
+Outcome is the implied opponent team total error, in points:
+
+```text
+opponent_total_error = opponent_points
+                     - (canonical_total / 2 - abs(canonical_home_spread) / 2)
+```
+
+Population is non-neutral FBS-versus-FBS games with a favorite of at least 21.0
+points and both a canonical reference spread and total. Direction is `greater`
+with a baseline of 0 and a minimum meaningful effect of 1.0 points.
+
+The market side is available: `ingest/cfb_history.py` already stores
+`market_type='total'` alongside spreads with canonical-reference selection, so
+implied team totals are derivable today.
+
+**Missing: `returning_defensive_production_pct`.** Verified against CFBD's
+published schema — `/player/returning` carries only `totalPPA`,
+`totalPassingPPA`, `totalReceivingPPA`, `totalRushingPPA`, the matching
+`percent*` fields, and `usage`/`passingUsage`/`receivingUsage`/`rushingUsage`.
+Every one is offensive. There is no defensive returning production in the
+source the roster job already calls.
+
+**Enabler:** ingest prior-season per-player defensive statistics and derive the
+returning share against the point-in-time roster snapshot. Roster headcount
+continuity by defensive position group is computable from data already held,
+but it is **not** a substitute — it is unweighted by production, so
+substituting it silently would repeat the mislabeled-fallback error this
+project has already recorded once. It would be a different hypothesis with its
+own registration.
+
+### 24.3 CFB-H005 — feature structurally absent
+
+Claim: teams in year one under a new offensive coordinator, with no returning
+quarterback, cover **below** the -110 break-even rate. Direction is `less`,
+because "overvalued" predicts under-performance; a test written in the
+`greater` direction would be testing the opposite claim.
+
+**Missing: `offensive_coordinator_regime`.** `cfb_staff_regimes.role` permits
+`OFFENSIVE_COORDINATOR`, but no writer ever produces one — `ingest/cfb_rosters.py`
+records `HEAD_COACH` only, from CFBD `/coaches`, and CFBD exposes no coordinator
+identity at any endpoint. The table is structurally empty for this role, so the
+population would silently resolve to zero games.
+
+The other half is ready: `returning_quarterbacks` is already computed in
+`summarize_roster()` and stored per snapshot.
+
+**Enabler:** a coordinator-identity source with per-team start and end seasons
+and a genuine `available_at`, ingested as `OFFENSIVE_COORDINATOR` regimes. §22's
+open question about licensed point-in-time staff history applies directly.
+
+### 24.4 The evaluator now fails closed
+
+`evaluate()`, `snapshot_qualified()` and `settle_prospective()` reuse one
+hardcoded cohort: H001's 14.0-16.5 spread band graded ATS against -110. Before
+this change they keyed results by whichever hypothesis id was passed, so
+`evaluate CFB-H003` would have stored **H001's cohort results under H003** and
+manufactured a backtest for a hypothesis whose feature does not exist.
+
+A hypothesis now declares an `evaluator`, and all three entry points refuse any
+whose evaluator is not implemented, naming the missing inputs in the error.
+`snapshot_qualified()` is driven by that same declaration instead of a
+hardcoded key comparison.
+
+### 24.5 Frozen definitions cannot drift silently
+
+Re-registration previously performed a no-op conflict update, so a definition
+edited in code would diverge from the frozen registry row with nothing to
+detect it. `definition_drift()` now compares name, claim, outcome, population,
+features, buckets, minimums, split, test, promotion and family, and `register()`
+raises rather than proceeding, naming the changed fields and stating that a
+change requires a new version.
+
+`data_readiness` is deliberately excluded from that comparison and is the one
+thing a re-registration refreshes: it records whether our pipeline can supply an
+input today, which legitimately changes when an enabler ships. It is an
+operational fact, not part of the claim under test.

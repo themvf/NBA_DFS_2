@@ -56,49 +56,341 @@ def allowed_transition(current: str, target: str) -> bool:
         return False
 
 
-def register_default(db: DatabaseManager) -> int:
-    definition = {
-        "hypothesis_key": DEFAULT_KEY,
-        "version": DEFAULT_VERSION,
+# Every registered hypothesis, with the complete preregistration fields §10.1
+# of the historical/roster spec requires.  Definitions are frozen at
+# registration: a changed population, feature, threshold or test is a new
+# version, never an edit to an existing row.
+#
+# ``evaluator`` names the implemented evaluation routine.  ``None`` means the
+# definition is frozen but no routine can score it yet; ``data_readiness``
+# then names exactly which input is missing and what would supply it.  A
+# hypothesis registered this way is preregistration working as intended — the
+# claim is fixed before the data exists to test it, so the definition cannot
+# be shaped by the result.
+HYPOTHESIS_DEFINITIONS: dict[tuple[str, str], dict] = {
+    ("CFB-H001", "v1"): {
         "name": "Non-neutral home favorites 14.0-16.5",
         "claim": "The registered cohort covers above the -110 market break-even rate.",
-        "outcome": {"market": "full_game_spread", "perspective": "home", "overtime": "included"},
+        "evaluator": "spread_bucket_ats",
+        # Frozen as originally registered. It predates the convention of
+        # storing an explicit formula, and adding one now would alter a frozen
+        # definition; that is a new version, not an edit.
+        "outcome": {
+            "market": "full_game_spread", "perspective": "home",
+            "overtime": "included",
+        },
         "population": {
             "home_spread_min": -16.5, "home_spread_max": -14.0,
             "neutral_site": False, "home_classification": "fbs",
             "away_classification": "fbs", "line_designation": "historical_reference",
         },
+        "features": {},
         "buckets": {"version": DEFINITION_VERSION, "favorite_low": 14.0, "favorite_high": 16.5},
         "minimums": {"holdout_n": 40, "prospective_n": 100},
         "split": {"method": "expanding_walk_forward", "start": 2016, "holdout": 2025},
         "test": {"alpha": 0.05, "direction": "greater", "baseline": MARKET_BREAK_EVEN_110},
+        "family": "spread-buckets-v1",
         "promotion": {"requires_positive_prospective_clv": True, "manual_review": True},
-    }
+        "data_readiness": {"state": "READY", "missing_inputs": [], "enabler": None},
+        "notes": "Frozen before evaluation; descriptive unless later promotion gates pass.",
+    },
+    ("CFB-H003", "v1"): {
+        "name": "Large favorites with low returning defensive production",
+        "claim": (
+            "Among large favorites, teams in the bottom quartile of returning "
+            "defensive production allow more points than the market's implied "
+            "opponent team total."
+        ),
+        "evaluator": None,
+        "outcome": {
+            "market": "implied_opponent_team_total", "perspective": "favorite",
+            "overtime": "included",
+            "formula": (
+                "opponent_total_error = opponent_points "
+                "- (canonical_total / 2 - abs(canonical_home_spread) / 2)"
+            ),
+            "units": "points",
+        },
+        "population": {
+            "favorite_size_min": 21.0, "neutral_site": False,
+            "home_classification": "fbs", "away_classification": "fbs",
+            "line_designation": "historical_reference",
+            "requires_canonical_spread": True, "requires_canonical_total": True,
+        },
+        "features": {
+            "returning_defensive_production_pct": {
+                "definition": (
+                    "Share of the team's prior-season defensive production "
+                    "(havoc and tackle share by DL/LB/SECONDARY) accounted for "
+                    "by players present on the point-in-time roster snapshot."
+                ),
+                "selection": "bottom_quartile_within_season",
+                "availability": "roster snapshot available_at <= kickoff",
+            },
+            "controls": ["pace", "opponent_offense", "garbage_time"],
+        },
+        "buckets": {"version": DEFINITION_VERSION, "favorite_low": 21.0, "favorite_high": None},
+        "minimums": {"holdout_n": 60, "prospective_n": 100},
+        "split": {"method": "expanding_walk_forward", "start": 2016, "holdout": 2025},
+        "test": {
+            "alpha": 0.05, "direction": "greater", "baseline": 0.0,
+            "statistic": "mean_opponent_total_error",
+            "minimum_meaningful_effect_points": 1.0,
+        },
+        "family": "roster-continuity-v1",
+        "promotion": {"requires_positive_prospective_clv": True, "manual_review": True},
+        "data_readiness": {
+            "state": "BLOCKED_MISSING_FEATURE",
+            "available_inputs": [
+                "canonical reference spread and total (cfb_historical_game_lines)",
+                "final scores (cfb_matchups)",
+                "point-in-time roster snapshots with position groups",
+            ],
+            "missing_inputs": ["returning_defensive_production_pct"],
+            "reason": (
+                "CFBD /player/returning carries only offensive measures "
+                "(passing, receiving and rushing PPA and usage). It exposes no "
+                "defensive returning production, so the feature cannot be read "
+                "from the source the roster job already calls."
+            ),
+            "enabler": (
+                "Ingest prior-season per-player defensive statistics and derive "
+                "the returning share against the point-in-time roster. Roster "
+                "headcount continuity is NOT a substitute: it is unweighted by "
+                "production and would be a different hypothesis needing its own "
+                "registration."
+            ),
+        },
+        "notes": (
+            "Frozen 2026-09-14 before its feature exists, so the definition "
+            "cannot be shaped by the data. Not evaluable until the enabler ships."
+        ),
+    },
+    ("CFB-H005", "v1"): {
+        "name": "Year-one offensive coordinator with low returning QB continuity",
+        "claim": (
+            "Teams in year one under a new offensive coordinator, with no "
+            "returning quarterback, cover below the -110 market break-even rate."
+        ),
+        "evaluator": None,
+        "outcome": {
+            "market": "full_game_spread", "perspective": "subject_team",
+            "overtime": "included",
+            "formula": "team_cover = (team_score - opponent_score) + team_spread > 0",
+            "secondary": "verified_line_clv",
+        },
+        "population": {
+            "neutral_site": None, "home_classification": "fbs",
+            "away_classification": "fbs",
+            "line_designation": "historical_reference",
+            "requires_canonical_spread": True,
+        },
+        "features": {
+            "offensive_coordinator_year_one": {
+                "definition": (
+                    "The team's OFFENSIVE_COORDINATOR regime has "
+                    "start_season equal to the game season and start_week at or "
+                    "before the game week."
+                ),
+                "availability": "cfb_staff_regimes.available_at <= kickoff",
+            },
+            "returning_quarterbacks": {
+                "definition": (
+                    "Count of quarterbacks on the point-in-time roster snapshot "
+                    "who appeared on the most recent prior-season snapshot."
+                ),
+                "threshold": 0,
+            },
+            "controls": ["talent_composite", "transfers_in", "opponent", "week"],
+        },
+        "buckets": {},
+        "minimums": {"holdout_n": 40, "prospective_n": 100},
+        "split": {"method": "expanding_walk_forward", "start": 2016, "holdout": 2025},
+        "test": {
+            "alpha": 0.05, "direction": "less", "baseline": MARKET_BREAK_EVEN_110,
+            "statistic": "ats_cover_rate",
+            "minimum_meaningful_effect": 0.03,
+        },
+        "family": "coaching-regime-v1",
+        "promotion": {"requires_positive_prospective_clv": True, "manual_review": True},
+        "data_readiness": {
+            "state": "BLOCKED_MISSING_FEATURE",
+            "available_inputs": [
+                "canonical reference spread (cfb_historical_game_lines)",
+                "final scores (cfb_matchups)",
+                "returning quarterback counts (cfb_roster_snapshots.summary_json)",
+            ],
+            "missing_inputs": ["offensive_coordinator_regime"],
+            "reason": (
+                "cfb_staff_regimes permits the OFFENSIVE_COORDINATOR role but no "
+                "writer produces one: ingest.cfb_rosters records HEAD_COACH only, "
+                "from CFBD /coaches, and CFBD exposes no coordinator identity. "
+                "The table is structurally empty for this role."
+            ),
+            "enabler": (
+                "A coordinator-identity source with per-team start and end "
+                "seasons and a real available_at, ingested as "
+                "OFFENSIVE_COORDINATOR staff regimes."
+            ),
+        },
+        "notes": (
+            "Direction is 'less': the claim is that these teams are OVERVALUED, "
+            "so they are predicted to cover below break-even. Frozen 2026-09-14 "
+            "before its feature exists. Not evaluable until the enabler ships."
+        ),
+    },
+}
+
+IMPLEMENTED_EVALUATORS = frozenset({"spread_bucket_ats"})
+
+
+def definition_for(key: str, version: str) -> dict:
+    try:
+        return HYPOTHESIS_DEFINITIONS[(key, version)]
+    except KeyError:
+        raise ValueError(f"no registered definition for {key} {version}") from None
+
+
+def is_evaluable(key: str, version: str) -> bool:
+    return definition_for(key, version).get("evaluator") in IMPLEMENTED_EVALUATORS
+
+
+def _require_evaluable(key: str, version: str) -> dict:
+    """Refuse to score a hypothesis whose evaluator is not implemented.
+
+    Without this the walk-forward routine would run its hardcoded H001 cohort
+    and store those results under whichever hypothesis id was requested.
+    """
+    definition = definition_for(key, version)
+    if definition.get("evaluator") not in IMPLEMENTED_EVALUATORS:
+        readiness = definition.get("data_readiness") or {}
+        raise ValueError(
+            f"{key} {version} has no implemented evaluator "
+            f"({readiness.get('state', 'UNKNOWN')}); "
+            f"missing inputs: {', '.join(readiness.get('missing_inputs') or ['unknown'])}"
+        )
+    return definition
+
+
+_DEFINITIONAL_COLUMNS = (
+    ("name", "name"), ("claim", "claim"),
+    ("outcome", "outcome_definition_json"), ("population", "population_filter_json"),
+    ("buckets", "bucket_definition_json"), ("minimums", "min_sample_json"),
+    ("split", "split_plan_json"), ("test", "test_plan_json"),
+    ("promotion", "promotion_rules_json"), ("family", "multiple_test_family"),
+)
+
+
+def definition_drift(definition: dict, stored: dict) -> list[str]:
+    """Name the frozen fields where the catalog and the registry disagree.
+
+    ``data_readiness`` is excluded on purpose: it records whether our pipeline
+    can supply an input today, which legitimately changes when an enabler
+    ships. It is an operational fact, not part of the claim being tested.
+    """
+    drift = []
+    for field, column in _DEFINITIONAL_COLUMNS:
+        if column not in stored:
+            continue
+        wanted = definition.get(field) if field != "buckets" else definition.get("buckets", {})
+        if _json(wanted) != _json(stored[column]):
+            drift.append(field)
+    features = dict(stored.get("feature_definition_json") or {})
+    features.pop("data_readiness", None)
+    features.pop("evaluator", None)
+    if "feature_definition_json" in stored and _json(definition.get("features", {})) != _json(features):
+        drift.append("features")
+    return drift
+
+
+def register(db: DatabaseManager, key: str = DEFAULT_KEY, version: str = DEFAULT_VERSION) -> int:
+    """Freeze one catalog definition into the registry.
+
+    Re-registration is deliberately inert on every definitional column: the
+    conflict clause touches nothing, so a frozen population, feature, threshold
+    or test can never be rewritten by a later run. Changing any of them means
+    registering a new version.
+    """
+    definition = definition_for(key, version)
+    existing = db.execute_one(
+        "SELECT * FROM cfb_hypotheses WHERE hypothesis_key=%s AND version=%s",
+        (key, version),
+    )
+    if existing:
+        drift = definition_drift(definition, dict(existing))
+        if drift:
+            raise ValueError(
+                f"{key} {version} is already frozen and the catalog now differs on: "
+                f"{', '.join(drift)}. A changed claim, population, feature, "
+                f"threshold or test is a NEW version, never an edit to a frozen row."
+            )
     row = db.execute_one(
         """
         INSERT INTO cfb_hypotheses (
             hypothesis_key, version, name, claim, status,
             outcome_definition_json, population_filter_json,
-            bucket_definition_json, min_sample_json, split_plan_json,
-            test_plan_json, promotion_rules_json, multiple_test_family,
-            frozen_at, notes
+            feature_definition_json, bucket_definition_json, min_sample_json,
+            split_plan_json, test_plan_json, promotion_rules_json,
+            multiple_test_family, frozen_at, notes
         ) VALUES (%s, %s, %s, %s, 'PREREGISTERED', %s::jsonb, %s::jsonb,
                   %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
-                  'spread-buckets-v1', NOW(), %s)
+                  %s::jsonb, %s, NOW(), %s)
         ON CONFLICT (hypothesis_key, version) DO UPDATE SET
-            notes=cfb_hypotheses.notes
+            -- Refresh only the operational keys. Readiness and the evaluator
+            -- describe what this pipeline can do today, not the claim under
+            -- test, so they may change; every definitional column is left
+            -- untouched and is instead guarded by definition_drift above.
+            feature_definition_json=cfb_hypotheses.feature_definition_json
+                || jsonb_build_object(
+                    'data_readiness', EXCLUDED.feature_definition_json->'data_readiness',
+                    'evaluator', EXCLUDED.feature_definition_json->'evaluator'
+                )
         RETURNING id
         """,
         (
-            definition["hypothesis_key"], definition["version"], definition["name"],
-            definition["claim"], _json(definition["outcome"]), _json(definition["population"]),
-            _json(definition["buckets"]), _json(definition["minimums"]),
+            key, version, definition["name"], definition["claim"],
+            _json(definition["outcome"]), _json(definition["population"]),
+            _json({
+                **definition.get("features", {}),
+                "data_readiness": definition.get("data_readiness", {}),
+                "evaluator": definition.get("evaluator"),
+            }),
+            _json(definition.get("buckets", {})), _json(definition["minimums"]),
             _json(definition["split"]), _json(definition["test"]),
-            _json(definition["promotion"]),
-            "Frozen before evaluation; descriptive unless later promotion gates pass.",
+            _json(definition["promotion"]), definition["family"],
+            definition["notes"],
         ),
     )
     return int(row["id"])
+
+
+def register_default(db: DatabaseManager) -> int:
+    """Register CFB-H001 only; retained so existing callers keep working."""
+    return register(db, DEFAULT_KEY, DEFAULT_VERSION)
+
+
+def register_all(db: DatabaseManager) -> dict[str, int]:
+    return {
+        f"{key}-{version}": register(db, key, version)
+        for key, version in sorted(HYPOTHESIS_DEFINITIONS)
+    }
+
+
+def readiness_report() -> list[dict]:
+    """Describe every registered definition and whether it can be scored."""
+    return [
+        {
+            "hypothesis": f"{key}-{version}",
+            "name": definition["name"],
+            "family": definition["family"],
+            "evaluator": definition.get("evaluator"),
+            "evaluable": definition.get("evaluator") in IMPLEMENTED_EVALUATORS,
+            "readiness": (definition.get("data_readiness") or {}).get("state"),
+            "missing_inputs": (definition.get("data_readiness") or {}).get("missing_inputs") or [],
+        }
+        for key, version in sorted(HYPOTHESIS_DEFINITIONS)
+        for definition in [HYPOTHESIS_DEFINITIONS[(key, version)]]
+    ]
 
 
 def _hypothesis(db: DatabaseManager, key: str, version: str) -> dict:
@@ -132,6 +424,7 @@ def _cohort_rows(db: DatabaseManager) -> list[dict]:
 
 
 def evaluate(db: DatabaseManager, key: str = DEFAULT_KEY, version: str = DEFAULT_VERSION) -> list[dict]:
+    _require_evaluable(key, version)
     hypothesis = _hypothesis(db, key, version)
     if not hypothesis.get("frozen_at"):
         raise ValueError("hypothesis must be frozen before evaluation")
@@ -236,7 +529,12 @@ def snapshot_qualified(db: DatabaseManager, through_date: date) -> int:
     )
     written = 0
     for hypothesis in hypotheses:
-        if hypothesis["hypothesis_key"] != DEFAULT_KEY or hypothesis["version"] != DEFAULT_VERSION:
+        # Only a hypothesis with an implemented evaluator may freeze a pregame
+        # snapshot; the qualifying query below is H001's cohort definition.
+        try:
+            if not is_evaluable(str(hypothesis["hypothesis_key"]), str(hypothesis["version"])):
+                continue
+        except ValueError:
             continue
         for game in games:
             context = db.execute_one(
@@ -284,6 +582,7 @@ def settle_prospective(
     A missing verified close never receives a latest-row proxy. Such games can
     contribute to ATS outcomes, but not to the CLV estimate or promotion gate.
     """
+    _require_evaluable(key, version)
     hypothesis = _hypothesis(db, key, version)
     rows = db.execute(
         """
@@ -372,6 +671,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("register-default")
+    sub.add_parser("register-all")
+    sub.add_parser("status")
     evaluate_parser = sub.add_parser("evaluate")
     evaluate_parser.add_argument("key", nargs="?", default=DEFAULT_KEY)
     evaluate_parser.add_argument("--version", default=DEFAULT_VERSION)
@@ -387,9 +688,16 @@ def main() -> None:
     settle_parser.add_argument("--version", default=DEFAULT_VERSION)
     settle_parser.add_argument("--through-date", type=date.fromisoformat)
     args = parser.parse_args()
+    if args.command == "status":
+        # A pure read of the frozen catalog; deliberately needs no database so
+        # readiness can be inspected anywhere, including before deployment.
+        print(json.dumps(readiness_report(), indent=2))
+        return
     db = DatabaseManager(load_config().database_url or "")
     if args.command == "register-default":
         print(json.dumps({"hypothesis_id": register_default(db)}))
+    elif args.command == "register-all":
+        print(json.dumps(register_all(db), indent=2, sort_keys=True))
     elif args.command == "evaluate":
         print(json.dumps(evaluate(db, args.key, args.version), indent=2, default=str))
     elif args.command == "advance":

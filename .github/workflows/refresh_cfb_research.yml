@@ -56,9 +56,12 @@ jobs:
       - name: Build upcoming point-in-time features
         if: inputs.mode == 'current' || inputs.mode == 'all' || github.event_name == 'schedule'
         run: python -m model.cfb_team_features --through-date "$(date -u -d '+14 days' +%F)"
-      - name: Register frozen default hypothesis
+      - name: Register every frozen hypothesis definition
         if: inputs.mode == 'backfill' || inputs.mode == 'evaluate' || inputs.mode == 'all'
-        run: python -m research.cfb_hypotheses register-default
+        run: python -m research.cfb_hypotheses register-all
+      - name: Report hypothesis data readiness
+        if: inputs.mode == 'backfill' || inputs.mode == 'evaluate' || inputs.mode == 'all'
+        run: python -m research.cfb_hypotheses status
       - name: Run walk-forward evaluation
         if: inputs.mode == 'evaluate' || inputs.mode == 'all'
         run: python -m research.cfb_hypotheses evaluate CFB-H001
