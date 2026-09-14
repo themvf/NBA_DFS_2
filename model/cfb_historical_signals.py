@@ -181,6 +181,115 @@ def blend_feature(current: float | None, prior: float | None, effective_games: f
     return current * current_weight + prior * prior_weight
 
 
+@dataclass(frozen=True)
+class OpponentAdjustment:
+    """Simple Rating System output for one season of FBS-versus-FBS games.
+
+    ``ratings`` is a points-per-game quality estimate centred on zero, so a
+    rating of +7 means "about a touchdown better than the average team in this
+    population".  ``strength_of_schedule`` is the mean rating of the opponents
+    a team actually played, which is the quantity raw points-for/against hides.
+
+    The only free parameters are numerical (iteration cap and convergence
+    tolerance).  Home-field advantage is estimated from the supplied games
+    rather than assumed, so this introduces no hand-set statistical constant.
+
+    ``components`` counts the connected components of the schedule graph.
+    Ratings are only comparable *within* a component: two teams that share no
+    chain of common opponents have no observed link, and the zero-centring
+    that makes the solve well posed assigns their relative level arbitrarily.
+    Early in a season the graph is heavily fragmented, so a caller comparing
+    two teams must check this rather than assume one national scale.
+    """
+
+    ratings: Mapping[int, float]
+    strength_of_schedule: Mapping[int, float]
+    home_field_advantage: float
+    teams: int
+    games: int
+    components: int
+    iterations: int
+    converged: bool
+
+
+def _schedule_components(schedule: Mapping[int, Sequence[tuple[int, float]]]) -> int:
+    """Count connected components of the schedule graph via union-find."""
+    parent = {team_id: team_id for team_id in schedule}
+
+    def find(team_id: int) -> int:
+        while parent[team_id] != team_id:
+            parent[team_id] = parent[parent[team_id]]
+            team_id = parent[team_id]
+        return team_id
+
+    for team_id, opponents in schedule.items():
+        for opponent, _ in opponents:
+            left, right = find(team_id), find(opponent)
+            if left != right:
+                parent[left] = right
+    return len({find(team_id) for team_id in parent})
+
+
+def opponent_adjusted_ratings(
+    games: Iterable[Mapping[str, object]], *,
+    max_iterations: int = 200, tolerance: float = 1e-6,
+) -> OpponentAdjustment:
+    """Solve an iterative SRS over completed games.
+
+    Callers must pass only games that were final *before* the decision time and
+    that belong to the intended population; this function applies no
+    point-in-time or classification filter of its own.
+    """
+    played: list[tuple[int, int, float, bool]] = []
+    for row in games:
+        if row.get("home_score") is None or row.get("away_score") is None:
+            continue
+        home_id = int(row["home_team_id"])
+        away_id = int(row["away_team_id"])
+        margin = float(row["home_score"]) - float(row["away_score"])
+        played.append((home_id, away_id, margin, bool(row.get("neutral_site"))))
+    if not played:
+        return OpponentAdjustment({}, {}, 0.0, 0, 0, 0, 0, True)
+
+    sited = [margin for _, _, margin, neutral in played if not neutral]
+    home_field_advantage = sum(sited) / len(sited) if sited else 0.0
+
+    schedule: dict[int, list[tuple[int, float]]] = {}
+    for home_id, away_id, margin, neutral in played:
+        shift = 0.0 if neutral else home_field_advantage
+        schedule.setdefault(home_id, []).append((away_id, margin - shift))
+        schedule.setdefault(away_id, []).append((home_id, -margin + shift))
+
+    ratings = {team_id: 0.0 for team_id in schedule}
+    iterations = 0
+    converged = False
+    for iterations in range(1, max_iterations + 1):
+        updated = {
+            team_id: sum(
+                adjusted + ratings[opponent] for opponent, adjusted in opponents
+            ) / len(opponents)
+            for team_id, opponents in schedule.items()
+        }
+        centre = sum(updated.values()) / len(updated)
+        updated = {team_id: value - centre for team_id, value in updated.items()}
+        shift = max(abs(updated[team_id] - ratings[team_id]) for team_id in updated)
+        ratings = updated
+        if shift < tolerance:
+            converged = True
+            break
+
+    strength_of_schedule = {
+        team_id: sum(ratings[opponent] for opponent, _ in opponents) / len(opponents)
+        for team_id, opponents in schedule.items()
+    }
+    return OpponentAdjustment(
+        ratings=ratings, strength_of_schedule=strength_of_schedule,
+        home_field_advantage=home_field_advantage, teams=len(ratings),
+        games=len(played), components=_schedule_components(schedule),
+        iterations=iterations, converged=converged,
+    )
+
+
 def walk_forward_splits(seasons: Sequence[int], min_train_seasons: int = 4) -> list[tuple[tuple[int, ...], int]]:
     ordered = tuple(sorted(set(int(season) for season in seasons)))
     if min_train_seasons < 1:

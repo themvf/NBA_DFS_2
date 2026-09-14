@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from model.cfb_historical_signals import (
+    opponent_adjusted_ratings,
     benjamini_hochberg,
     blend_feature,
     cohort_summary,
@@ -96,3 +97,91 @@ def test_promotion_requires_every_frozen_prospective_gate() -> None:
     assert not promotion_eligible(**{**valid, "prospective_n": 99})
     assert not promotion_eligible(**{**valid, "avg_clv": -0.01})
     assert not promotion_eligible(**{**valid, "status": "BACKTESTED"})
+
+
+def _chain() -> list[dict]:
+    """A beats B by 10 at home, B beats C by 10 at home, A beats C by 20 neutral."""
+    return [
+        {"home_team_id": 1, "away_team_id": 2, "home_score": 20, "away_score": 10,
+         "neutral_site": False},
+        {"home_team_id": 2, "away_team_id": 3, "home_score": 20, "away_score": 10,
+         "neutral_site": False},
+        {"home_team_id": 1, "away_team_id": 3, "home_score": 30, "away_score": 10,
+         "neutral_site": True},
+    ]
+
+
+def test_srs_orders_teams_through_a_transitive_chain() -> None:
+    adjustment = opponent_adjusted_ratings(_chain())
+    assert adjustment.converged
+    assert adjustment.ratings[1] > adjustment.ratings[2] > adjustment.ratings[3]
+    assert adjustment.games == 3
+    assert adjustment.teams == 3
+
+
+def test_srs_ratings_are_centred_on_zero() -> None:
+    adjustment = opponent_adjusted_ratings(_chain())
+    assert sum(adjustment.ratings.values()) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_srs_estimates_home_field_from_the_population_not_a_constant() -> None:
+    # Both sited games are 10-point home wins, so the estimate is 10.
+    assert opponent_adjusted_ratings(_chain()).home_field_advantage == pytest.approx(10.0)
+    flat = [
+        {"home_team_id": 1, "away_team_id": 2, "home_score": 20, "away_score": 20,
+         "neutral_site": False},
+    ]
+    assert opponent_adjusted_ratings(flat).home_field_advantage == pytest.approx(0.0)
+
+
+def test_srs_separates_record_from_schedule_strength() -> None:
+    """Two unbeaten teams, one of which has played nobody."""
+    games = [
+        # Team 1 beats the two strongest opponents by a field goal each.
+        {"home_team_id": 1, "away_team_id": 2, "home_score": 23, "away_score": 20,
+         "neutral_site": True},
+        {"home_team_id": 1, "away_team_id": 3, "home_score": 23, "away_score": 20,
+         "neutral_site": True},
+        # Team 4 beats the two weakest opponents by forty each.
+        {"home_team_id": 4, "away_team_id": 5, "home_score": 50, "away_score": 10,
+         "neutral_site": True},
+        {"home_team_id": 4, "away_team_id": 6, "home_score": 50, "away_score": 10,
+         "neutral_site": True},
+        # Links that establish 2 and 3 are far better than 5 and 6.
+        {"home_team_id": 2, "away_team_id": 5, "home_score": 45, "away_score": 10,
+         "neutral_site": True},
+        {"home_team_id": 3, "away_team_id": 6, "home_score": 45, "away_score": 10,
+         "neutral_site": True},
+    ]
+    adjustment = opponent_adjusted_ratings(games)
+    assert adjustment.strength_of_schedule[1] > adjustment.strength_of_schedule[4]
+    assert adjustment.ratings[1] > adjustment.ratings[4]
+
+
+def test_srs_ignores_games_without_a_final_score() -> None:
+    games = _chain() + [
+        {"home_team_id": 1, "away_team_id": 2, "home_score": None, "away_score": None,
+         "neutral_site": False},
+    ]
+    assert opponent_adjusted_ratings(games).games == 3
+
+
+def test_srs_on_an_empty_population_reports_nothing_rather_than_zeroes() -> None:
+    adjustment = opponent_adjusted_ratings([])
+    assert adjustment.ratings == {}
+    assert adjustment.teams == 0
+    assert adjustment.converged
+
+
+def test_srs_reports_a_fragmented_early_season_schedule() -> None:
+    """Ratings from unlinked components are not on one comparable scale."""
+    linked = [
+        {"home_team_id": 1, "away_team_id": 2, "home_score": 20, "away_score": 10},
+        {"home_team_id": 2, "away_team_id": 3, "home_score": 20, "away_score": 10},
+    ]
+    assert opponent_adjusted_ratings(linked).components == 1
+    isolated_pair = linked + [
+        {"home_team_id": 8, "away_team_id": 9, "home_score": 30, "away_score": 0},
+    ]
+    assert opponent_adjusted_ratings(isolated_pair).components == 2
+    assert opponent_adjusted_ratings([]).components == 0

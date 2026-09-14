@@ -120,13 +120,23 @@ def summarize_roster(
 
 
 def _previous_player_ids(db: DatabaseManager, team_id: int, season: int) -> set[str]:
+    """Return the roster of the team's most recent prior-season snapshot.
+
+    Scoped to a single snapshot on purpose.  The season runs weekly captures,
+    so a union across every prior-season snapshot counts anyone who ever
+    appeared on the roster as "returning" and inflates the continuity
+    percentage the terminal displays.
+    """
     rows = db.execute(
         """
         SELECT rp.source_player_id
         FROM cfb_roster_players rp
-        JOIN cfb_roster_snapshots rs ON rs.id=rp.snapshot_id
-        WHERE rs.team_id=%s AND rs.season=%s
-        ORDER BY rs.captured_at DESC
+        WHERE rp.snapshot_id = (
+            SELECT rs.id FROM cfb_roster_snapshots rs
+            WHERE rs.team_id=%s AND rs.season=%s
+            ORDER BY rs.captured_at DESC, rs.id DESC
+            LIMIT 1
+        )
         """,
         (team_id, season - 1),
     )

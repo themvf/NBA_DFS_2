@@ -174,6 +174,15 @@ function TeamFeatureCard({ feature }: { feature: CfbTeamFeatureContext | null })
   if (!feature) return <div className={styles.historyEmpty}>No pre-kickoff feature snapshot yet.</div>;
   const margin = featureNumber(feature.features, "blended", "margin");
   const pointsFor = featureNumber(feature.features, "blended", "points_for");
+  const adjustedMargin = featureNumber(feature.features, "blended", "opponent_adjusted_margin");
+  const adjusted = feature.features.opponent_adjusted && typeof feature.features.opponent_adjusted === "object"
+    && !Array.isArray(feature.features.opponent_adjusted)
+    ? (feature.features.opponent_adjusted as Record<string, unknown>).current_season as Record<string, unknown> | null
+    : null;
+  const sos = adjusted && Number.isFinite(Number(adjusted.strength_of_schedule)) ? Number(adjusted.strength_of_schedule) : null;
+  // Ratings are only comparable inside one connected component of the schedule
+  // graph, which is heavily fragmented in the opening weeks.
+  const components = adjusted && Number.isFinite(Number(adjusted.schedule_components)) ? Number(adjusted.schedule_components) : null;
   const roster = feature.features.roster && typeof feature.features.roster === "object" && !Array.isArray(feature.features.roster)
     ? feature.features.roster as Record<string, unknown> : null;
   const continuity = roster && Number.isFinite(Number(roster.roster_continuity_pct)) ? Number(roster.roster_continuity_pct) : null;
@@ -185,10 +194,13 @@ function TeamFeatureCard({ feature }: { feature: CfbTeamFeatureContext | null })
     <dl>
       <div><dt>Blended margin</dt><dd>{margin == null ? "—" : signed(margin)}</dd></div>
       <div><dt>Blended points</dt><dd>{pointsFor == null ? "—" : pointsFor.toFixed(1)}</dd></div>
+      <div><dt>Opp-adjusted margin</dt><dd>{adjustedMargin == null ? "—" : signed(adjustedMargin)}</dd></div>
+      <div><dt>Schedule strength</dt><dd>{sos == null ? "—" : signed(sos)}</dd></div>
       <div><dt>Roster continuity</dt><dd>{continuity == null ? "—" : `${(continuity * 100).toFixed(0)}%`}</dd></div>
       <div><dt>Returning PPA</dt><dd>{Number.isFinite(returningPpa) ? `${(returningPpa * 100).toFixed(0)}%` : "—"}</dd></div>
     </dl>
     <small>Completeness {feature.sourceCompleteness == null ? "—" : `${(feature.sourceCompleteness * 100).toFixed(0)}%`} · snapshot {feature.asOf ? fmtEt(feature.asOf) : "—"}</small>
+    <small>FBS-vs-FBS only · opponent-adjusted via SRS{components != null && components > 1 ? ` · ${components} unlinked schedule groups, ratings compare only within one` : ""} · descriptive context</small>
   </article>;
 }
 

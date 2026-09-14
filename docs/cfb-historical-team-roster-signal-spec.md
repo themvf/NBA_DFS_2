@@ -815,3 +815,97 @@ The first release is complete when:
 - What minimum prospective duration is required for sparse team-specific hypotheses when 100 observations is unrealistic?
 
 Until these questions are resolved, the historical dashboard may ship as descriptive context, but no candidate signal should be promoted.
+
+## 23. Implementation Status — `cfb-team-context-v2` (2026-09-14)
+
+Three defects between this specification and `model/cfb_team_features.py` were
+found in review and fixed. The feature version was bumped from
+`cfb-team-context-v1` to `cfb-team-context-v2`: the semantics of every numeric
+field changed, so the two cohorts must never be pooled. Existing v1 rows are
+retained as audit history under the unchanged
+`(game_id, team_id, feature_version, as_of_at)` identity.
+
+### 23.1 The FBS-versus-FBS population is now enforced
+
+`ingest/cfb_schedule.py` requests CFBD with `classification=fbs`, which returns
+every game where *either* team is FBS. FBS-versus-FCS games therefore land in
+`cfb_matchups`, and the FCS opponent is stored with its own classification. The
+v1 feature builder applied no classification filter, so a 63-3 September tune-up
+entered `points_for`, `margin` and `win_rate` identically to a conference game.
+Nearly every FBS team plays exactly one such game, in the weeks when
+`current_weight` is most sensitive to a single result.
+
+`partition_fbs_games()` now enforces §4.1's canonical population. A game with a
+missing classification on either side is excluded but counted separately as
+`excluded_unknown_classification`, so an upstream gap surfaces as an unknown
+count rather than as a quietly smaller sample. Both counts are reported in
+`features_json.population` and in the job's summary.
+
+This also removes a divergence: `research/cfb_hypotheses.py` already filtered to
+`home_classification='fbs' AND away_classification='fbs'`, so the two modules had
+been describing different populations.
+
+### 23.2 Opponent adjustment now exists (§7.3, "opponent-adjusted rating")
+
+`opponent_adjusted_ratings()` in `model/cfb_historical_signals.py` solves an
+iterative Simple Rating System over the eligible games and returns a
+zero-centred points-per-game rating, each team's realized strength of schedule,
+and the connectivity of the schedule graph. It lives in the leakage-safe
+primitives module: no database or network access, so it is testable directly and
+shared between ingestion and research.
+
+Two properties are deliberate:
+
+- **Home-field advantage is estimated from the supplied games**, not assumed, so
+  the solve introduces no hand-set statistical constant. The only free
+  parameters are numerical (iteration cap, convergence tolerance).
+- **Seasons are solved independently.** Rosters turn over far too much between
+  years for a pooled multi-season solve to describe either season. The prior
+  context averages a team's rating across the earlier seasons that have one,
+  mirroring how `preseason_prior` pools raw production over the same window.
+
+`blended.opponent_adjusted_margin` uses the same current/prior weights as every
+other blended field.
+
+**Known limitation, surfaced rather than hidden.** SRS ratings are comparable
+only *within* a connected component of the schedule graph. Two teams sharing no
+chain of common opponents have no observed link, and the zero-centring that makes
+the solve well posed then assigns their relative level arbitrarily. The opening
+weeks are heavily fragmented, so `schedule_components` is stored on every feature
+row and the terminal states the count whenever it exceeds one. This is a real
+early-season caveat and must not be presented as a single national scale.
+
+### 23.3 Returning-player continuity was overstated
+
+`_previous_player_ids()` selected every prior-season snapshot row with an
+`ORDER BY captured_at DESC` and no `LIMIT`, returning the union across all of
+them. Because the research workflow captures weekly, anyone who appeared on any
+prior-season snapshot counted as returning, inflating `returning_roster_count`
+and `roster_continuity_pct` — the one roster field the terminal displays. The
+lookup is now scoped to the single most recent prior-season snapshot.
+
+### 23.4 `source_completeness` reported presence, not completeness
+
+v1 computed `(2 + roster_present) / 3`, so a team with no completed games and no
+prior seasons still scored 0.667. It now counts the four components that are
+actually present: current season, prior window, roster snapshot, and opponent
+adjustment. A team with no observed history scores 0.
+
+### 23.5 Not addressed here
+
+- `cfb_roster_players.depth_role`, `.availability_status` and
+  `.availability_confidence` are still written as NULL on every row; the annual
+  CFBD roster carries no availability, as `summarize_roster()` records in
+  `availability_source`. The injury and depth-chart features in §6 remain
+  unpopulated, and no feature consumes them.
+- `season_blend_weights(prior_games=4.0)` and `PRIOR_STRENGTH=20.0` remain
+  judgment settings that have never been fitted. §7.2 requires weighting rules
+  to be versioned and backtested; a walk-forward screen against the existing
+  corpus is outstanding.
+- `talent_composite`, `transfers_in`/`transfers_out`, `transfer_rating_in`/`out`,
+  `returning_quarterbacks` and `returning_offensive_line` are captured and stored
+  but consumed by nothing. `CFB-H001` — the only registered hypothesis — is a
+  market-bucket ATS claim, the family this project has already returned five
+  confirmed negatives against in other sports. The drafted `CFB-H003` and
+  `CFB-H005` in §12 test the roster and continuity data that is genuinely
+  distinctive to college football and remain unregistered.
