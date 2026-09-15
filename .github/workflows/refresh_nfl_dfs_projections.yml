@@ -80,5 +80,10 @@ jobs:
       - name: Publish the weekly review to the run summary
         if: ${{ !cancelled() }}
         continue-on-error: true
+        # `shell: bash` sets pipefail, without which the pipe into tee would
+        # swallow a non-zero exit and report a green step over an empty summary.
+        # tee, not `>>`: the digest belongs in BOTH the run summary (readable on
+        # a phone) and the job log (readable by anything without database access).
+        shell: bash
         run: |
-          python -c "import os,sys; sys.argv=['digest']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_review_digest import main; sys.exit(main())" >> "$GITHUB_STEP_SUMMARY"
+          python -c "import os,sys; sys.argv=['digest']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_review_digest import main; sys.exit(main())" | tee -a "$GITHUB_STEP_SUMMARY"
