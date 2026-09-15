@@ -61,18 +61,88 @@ def stale_games(db: DatabaseManager) -> dict[int, list[str]]:
     once per game. An empty result means the table is already current --
     which is the common case, and must be a clean no-op rather than a
     full rebuild.
+
+    PARTICIPATION IS DELIBERATELY NOT CHECKED HERE; see
+    `participation_stale`. A game labelled while nflverse had not published
+    participation is not WRONG, it is as good as that game can currently be,
+    and treating it as stale made every run relabel the whole season forever
+    -- so the "nothing to do" fast path never fired and a busy log became
+    indistinguishable from a log doing real work.
     """
     rows = db.execute(
         """SELECT season, game_id FROM nfl_pbp_archetypes
            WHERE play_labeller_version <> %s OR drive_labeller_version <> %s
-              OR participation_labeller_version IS DISTINCT FROM %s
            GROUP BY season, game_id ORDER BY season, game_id""",
-        (PLAY_VERSION, DRIVE_VERSION, PARTICIPATION_VERSION),
+        (PLAY_VERSION, DRIVE_VERSION),
     )
     out: dict[int, list[str]] = {}
     for row in rows:
         out.setdefault(int(row["season"]), []).append(str(row["game_id"]))
     return out
+
+
+def participation_stale(db: DatabaseManager, season: int) -> list[str]:
+    """Games in `season` that predate participation, now that it EXISTS.
+
+    Only the caller knows whether the release is available -- it has just
+    tried to fetch it -- so this is asked only in that case. The distinction
+    is the point: "we have not attached participation" and "participation is
+    attachable and we have not attached it" are different states, and only
+    the second is work.
+    """
+    rows = db.execute(
+        """SELECT game_id FROM nfl_pbp_archetypes
+           WHERE season = %s AND participation_labeller_version IS DISTINCT FROM %s
+           GROUP BY game_id ORDER BY game_id""",
+        (season, PARTICIPATION_VERSION),
+    )
+    return [str(r["game_id"]) for r in rows]
+
+
+def seasons_present(db: DatabaseManager) -> list[int]:
+    """Seasons the table already carries. The scope for picking up new games."""
+    rows = db.execute("SELECT DISTINCT season FROM nfl_pbp_archetypes ORDER BY season")
+    return [int(r["season"]) for r in rows if r["season"] is not None]
+
+
+def missing_games(db: DatabaseManager, cache: Path | None = None) -> dict[int, list[str]]:
+    """Games the nflverse release carries that this table has never labelled.
+
+    WHY THIS EXISTS. `stale_games` refreshes games already in the table, and
+    that is all the merge-triggered path could ever do -- so a week of real
+    football could be played and the pipeline had no way to notice. Week 1 of
+    2026 is the case that exposed it: the Wednesday opener was ingested by a
+    one-off season run when it was the only game played, and the thirteen
+    Sunday games and Monday night then sat outside the table with every
+    automatic path reporting "nothing stale, no work to do" -- which was true,
+    and useless. A pipeline that only heals what it already knows about is
+    half a pipeline.
+
+    SCOPED TO THE LATEST SEASON PRESENT, and only that one. Keeping the
+    current season complete is routine; backfilling a historical one is a
+    deliberate act with a real cost, and conflating them would mean a single
+    game labelled once for a test quietly triggering a 285-game rebuild on
+    the next unrelated merge. Older seasons stay the job of an explicit
+    `--season` run, which is exactly the kind of decision a person should
+    make on purpose.
+    """
+    seasons = seasons_present(db)
+    found: dict[int, list[str]] = {}
+    for season in seasons[-1:]:
+        rows = db.execute(
+            "SELECT DISTINCT game_id FROM nfl_pbp_archetypes WHERE season = %s",
+            (season,),
+        )
+        have = {str(r["game_id"]) for r in rows}
+        try:
+            released = load_pbp(season, cache)
+        except Exception as exc:  # noqa: BLE001 - a missing release is not fatal
+            print(f"  WARNING season {season}: release unavailable ({exc}); skipped")
+            continue
+        new = sorted(set(released["game_id"].dropna().astype(str)) - have)
+        if new:
+            found[season] = new
+    return found
 
 
 def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> list[tuple]:
@@ -283,7 +353,8 @@ def main() -> None:
     parser.add_argument("--database-url")
     parser.add_argument(
         "--relabel-stale", action="store_true",
-        help="Relabel every game whose stored labeller version is not the current one.",
+        help="Label every game the table disagrees with the release about: a stale "
+             "labeller version, or a game that has been played and never labelled.",
     )
     args = parser.parse_args()
     if not args.relabel_stale and args.season is None:
@@ -296,11 +367,32 @@ def main() -> None:
 
     if args.relabel_stale:
         stale = stale_games(db)
+        # Newly-played games are handled on the same pass: both are "the table
+        # disagrees with the release", and splitting them into two flags meant
+        # the automatic path silently covered only one of the two.
+        fresh = missing_games(db, args.cache)
+        for season, ids in fresh.items():
+            merged = sorted(set(stale.get(season, [])) | set(ids))
+            stale[season] = merged
+            print(f"  season {season}: {len(ids)} newly-played game(s) not yet labelled")
         if not stale:
-            print(f"{PLAY_VERSION} + {DRIVE_VERSION}: nothing stale, no work to do")
+            print(f"{PLAY_VERSION} + {DRIVE_VERSION}: nothing stale or missing, no work to do")
             return
         total = 0
-        for season, game_ids in stale.items():
+        for season in sorted(set(stale) | set(seasons_present(db))):
+            game_ids = stale.get(season, [])
+            # Fetching participation first is what lets the two "stale" ideas
+            # stay separate: only once the release is in hand can a game
+            # labelled without it be called out of date.
+            part = _participation(season)
+            if part is not None:
+                extra = [g for g in participation_stale(db, season) if g not in game_ids]
+                if extra:
+                    print(f"  season {season}: {len(extra)} game(s) predate participation, "
+                          f"which is now published")
+                    game_ids = sorted(set(game_ids) | set(extra))
+            if not game_ids:
+                continue
             pbp = load_pbp(season, args.cache)
             pbp = pbp[pbp["game_id"].isin(game_ids)]
             if pbp.empty:
@@ -309,10 +401,10 @@ def main() -> None:
                 print(f"  WARNING season {season}: {len(game_ids)} stale games "
                       f"absent from the nflverse release; left as-is")
                 continue
-            total += write(db, build_rows(pbp, _participation(season)))
+            total += write(db, build_rows(pbp, part))
             write_participants(db, participant_rows(pbp))
-            print(f"  season {season}: relabelled {len(game_ids)} games")
-        print(f"{PLAY_VERSION} + {DRIVE_VERSION}: relabelled {total} plays")
+            print(f"  season {season}: labelled {len(game_ids)} games")
+        print(f"{PLAY_VERSION} + {DRIVE_VERSION}: wrote {total} plays")
         return
 
     pbp = load_pbp(args.season, args.cache)
