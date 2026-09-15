@@ -17,7 +17,7 @@ const player = (over: Partial<NflOptimizerPlayer> & { dkPlayerId: number; positi
   id: over.dkPlayerId, captainDkPlayerId: null, name: `P${over.dkPlayerId}`, team: "AAA", opponent: "BBB",
   gameKey: "AAA@BBB", salary: 5000, isOut: false, projectionStatus: "ok", ourProj: 12, floorFpts: 8,
   ceilingFpts: 20, boomRate: 0.2, avgFptsDk: 11, fantasyprosProj: null, linestarProj: null,
-  linestarOwnPct: null, customProj: null, ...over,
+  linestarOwnPct: null, customProj: null, captainSalary: null, ...over,
 });
 
 const slot = (over: Partial<NflLineupSlot> & { player: NflOptimizerPlayer }): NflLineupSlot =>
