@@ -24,16 +24,35 @@ def target_season(value: int | None, now: datetime) -> int:
     return value or (now.year - 1 if now.month <= 3 else now.year)
 
 
-def latest_report(db: DatabaseManager, season: int, week: int | None):
-    """The newest report card for the week — the same row the web page reads."""
-    if week is None:
-        weeks = db.execute("SELECT MAX(week) week FROM nfl_dfs_weekly_report_cards WHERE season=%s", (season,))
-        week = weeks[0]["week"] if weeks else None
-        if week is None:
-            return None, None
-    rows = db.execute("""SELECT payload FROM nfl_dfs_weekly_report_cards
-        WHERE season=%s AND week=%s ORDER BY created_at DESC, report_digest DESC LIMIT 1""", (season, week))
-    return (rows[0]["payload"] if rows else None), week
+_PAYLOAD_SQL = """SELECT payload FROM nfl_dfs_weekly_report_cards
+    WHERE season=%s AND week=%s ORDER BY created_at DESC, report_digest DESC LIMIT 1"""
+
+
+def latest_report(db: DatabaseManager, season: int, week: int | None, lookback: int = 4):
+    """The most recent week that actually has scored rows.
+
+    MAX(week) is the wrong default in season: the upcoming week's report card
+    exists from the moment projections are frozen, so it would always win and
+    the digest would report an unplayed week every time. Walk back from the
+    newest week to the first with a scored row, and fall back to the newest if
+    nothing is scored yet (preseason, or a week still in progress).
+    """
+    if week is not None:
+        rows = db.execute(_PAYLOAD_SQL, (season, week))
+        return (rows[0]["payload"] if rows else None), week
+    weeks = [r["week"] for r in db.execute(
+        "SELECT DISTINCT week FROM nfl_dfs_weekly_report_cards WHERE season=%s ORDER BY week DESC LIMIT %s",
+        (season, lookback))]
+    newest = None
+    for candidate in weeks:
+        rows = db.execute(_PAYLOAD_SQL, (season, candidate))
+        if not rows:
+            continue
+        payload = rows[0]["payload"]
+        newest = newest or (payload, candidate)
+        if any(r.get("actual") is not None for r in payload.get("rows", [])):
+            return payload, candidate
+    return newest if newest else (None, None)
 
 
 def main() -> int:
