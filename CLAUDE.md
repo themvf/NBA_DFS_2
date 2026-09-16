@@ -287,15 +287,42 @@ cron; Hobby caps at once/day with ±59min imprecision). The dispatch route itsel
 single outbound HTTPS call (~1-2s), well under a cent/month even at ~90 invocations/day,
 fully absorbed by the $20/month usage credit already included with the Pro seat.
 
-**Known residual issue, not fixed here:** `db/database.py`'s `_ensure_schema()` runs
-schema DDL (with a 4-attempt/lock-timeout retry) on every single script invocation
-across every Python workflow in this repo; it occasionally hard-fails a job
-(`psycopg2.errors.LockNotAvailable`) when contending with another concurrent writer —
-observed once in the sampled runs above, after that run's actual odds capture had
-already committed. Low priority (doesn't touch the capture step itself, rare), but a
-real fix (schema init as a separate one-time migration rather than per-invocation)
-touches every Python entrypoint in the repo and deserves its own change, not a
-drive-by edit inside this fix.
+**Per-invocation schema DDL — FIXED 2026-09-14, after it stopped being rare.**
+`db/database.py`'s `_ensure_schema()` ran all 641 DDL statements (148 tables, 262
+migrations, 231 indexes) on **every single script invocation across every Python
+workflow**, and occasionally hard-failed a job with
+`psycopg2.errors.LockNotAvailable`. Filed originally as low-priority and rare; by
+the 2026 CFB season it was failing the 15-minute CFB terminal ~4x/week (5 failures
+2026-09-09 to 09-13), each one dropping a settlement pass.
+
+**The mechanism, which the original note did not name:** `ALTER TABLE ... ADD COLUMN
+IF NOT EXISTS` takes `ACCESS EXCLUSIVE` **even when the column already exists and the
+statement does nothing**. So every startup queued 262 no-op exclusive locks against
+tables a concurrent capture was writing. The existing advisory lock did not help —
+it serializes schema initializers against *each other*, not against data writers,
+which is what was actually holding the table.
+
+**The fix is a fingerprint, not a migration runner.** `_ensure_schema()` hashes the
+DDL it would apply, stores it in a one-row `schema_state` table nothing else writes,
+and returns immediately when it matches. Applying still takes the advisory lock and
+re-checks the fingerprint under it (double-checked locking), so a queue of workers
+starting together pays for the DDL once. `NBA_DFS_FORCE_SCHEMA=1` reapplies
+regardless — the escape hatch for a table dropped out of band, which a fingerprint
+cannot see. Deliberately NOT the "separate one-time migration" the old note
+proposed: that touches every Python entrypoint in the repo, while this changes one
+method and no caller.
+
+Verified against a real PostgreSQL 16, not only the mocked tests: the real 641-
+statement schema applies cold in 1.2s (167 tables) and a warm start costs **5ms**;
+with a concurrent writer holding `SHARE ROW EXCLUSIVE` on a migrated table — the
+exact failing condition — startup now **succeeds in 3ms** where it previously
+blocked for 30s and then failed. Changed DDL still waits on that lock rather than
+skipping (confirmed: still blocked past 120s), because a genuinely-needed migration
+must never be silently skipped to avoid a lock.
+
+**Standing rule:** never put unconditional DDL in a constructor. A statement that is
+a no-op semantically is not a no-op for locking, and a startup path that every
+workflow runs will eventually contend with every writer.
 
 ## NBA Lineup Structure (DraftKings)
 ```
