@@ -133,23 +133,24 @@ def _players(db: DatabaseManager, season: int, teams: list[str]) -> list[dict[st
     )
 
 
-def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[int, dict[str, Any]]:
-    """Week-scoped FantasyPros injury status, with the time WE captured it.
+def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[int, list[dict[str, Any]]]:
+    """Every week-scoped FantasyPros capture per player, newest first.
 
-    FantasyPros rather than Sleeper because it is scoped to a game week: its
-    row answers "was this player out for this game", which is the question the
-    pre-kickoff rule asks. Sleeper stores current state only, so it cannot say
-    what stood at a past kickoff.
+    Deliberately NOT one row per player. Kickoffs within a week are days apart —
+    Thursday night against Sunday afternoon — so "the latest capture" is the
+    wrong row for anyone whose game has already started. The caller picks the
+    newest capture that precedes each player's own kickoff, which keeps a
+    Thursday player correctly ruled out when Sunday's run looks at him again.
 
-    `fetched_at` is our own clock, not the provider's. That is what makes the
-    pre-kickoff test provable without trusting a provider timestamp whose
-    timezone is unverified.
+    FantasyPros rather than Sleeper because it is week-scoped: its row answers
+    "was this player out for this game". `fetched_at` is our own clock, which
+    is what makes the pregame test provable without trusting a provider
+    timestamp whose timezone is unverified.
     """
     if week is None:
         return {}
     rows = db.execute(
-        """SELECT DISTINCT ON (o.player_id)
-                  o.player_id, o.normalized_status, s.fetched_at
+        """SELECT o.player_id, o.normalized_status, s.fetched_at
            FROM ff_player_injury_observations o
            JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
            WHERE o.season = %s AND o.source = 'fantasypros'
@@ -157,8 +158,25 @@ def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[in
            ORDER BY o.player_id, s.fetched_at DESC, o.id DESC""",
         (season, f"game-week-injuries-v2-{season}-{week}%"),
     )
-    return {int(r["player_id"]): {"status": r["normalized_status"], "captured_at": r["fetched_at"]}
-            for r in rows}
+    observed: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        observed.setdefault(int(row["player_id"]), []).append(
+            {"status": row["normalized_status"], "captured_at": row["fetched_at"]})
+    return observed
+
+
+def status_before_kickoff(captures, commence) -> str | None:
+    """The newest status we had captured before this player's game started.
+
+    No commence time means no pregame test is possible, so nothing is applied —
+    absence of a kickoff is not permission to use a status of unknown vintage.
+    """
+    if not captures or commence is None:
+        return None
+    eligible = [c for c in captures if c.get("captured_at") is not None and c["captured_at"] < commence]
+    if not eligible:
+        return None
+    return max(eligible, key=lambda c: c["captured_at"]).get("status")
 
 
 def build_week(
@@ -205,13 +223,12 @@ def build_week(
     observed = _availability(db, season, week)
     statuses: dict[int, str] = {}
     for player in projections:
-        seen = observed.get(int(player["player_id"])) if player.get("player_id") else None
-        if not seen or not seen.get("status"):
+        if not player.get("player_id"):
             continue
-        commence, captured = player.get("commence_time"), seen.get("captured_at")
-        if commence is not None and captured is not None and captured >= commence:
-            continue  # published after kickoff; unusable for a pregame decision
-        statuses[int(player["player_id"])] = seen["status"]
+        status = status_before_kickoff(
+            observed.get(int(player["player_id"])), player.get("commence_time"))
+        if status:
+            statuses[int(player["player_id"])] = status
     projections, availability_report = apply_availability(projections, statuses)
 
     snapshot_rows = db.execute(

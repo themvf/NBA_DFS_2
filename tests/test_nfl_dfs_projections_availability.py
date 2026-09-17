@@ -91,3 +91,37 @@ def test_the_manifest_records_what_was_done():
     report = manifest["availability"]
     assert report["version"] and report["transfers"][0]["opportunity_key"] == "attempts"
     assert "multiplier" in report["transfers"][0]
+
+
+# ── picking the right capture when kickoffs differ within a week ────────
+from ingest.nfl_dfs_projections import status_before_kickoff
+
+THURS = datetime(2026, 9, 18, 0, 15, tzinfo=timezone.utc)   # Thu night kickoff
+SUN = datetime(2026, 9, 20, 17, 0, tzinfo=timezone.utc)     # Sun afternoon
+
+def cap(status, when):
+    return {"status": status, "captured_at": when}
+
+def test_a_thursday_player_stays_out_when_sundays_run_looks_again():
+    """The bug the Thursday question found: after kickoff, the latest capture
+    is post-game, and taking it would silently un-zero a ruled-out player."""
+    captures = [cap("HEALTHY", SUN - timedelta(hours=2)),   # newest, but post-Thursday
+                cap("OUT", THURS - timedelta(hours=8))]     # the one that was true pregame
+    assert status_before_kickoff(captures, THURS) == "OUT"
+
+def test_a_sunday_player_gets_sundays_later_capture():
+    """Same week, same capture list — the Sunday player should use the newer one."""
+    captures = [cap("HEALTHY", SUN - timedelta(hours=2)),
+                cap("OUT", THURS - timedelta(hours=8))]
+    assert status_before_kickoff(captures, SUN) == "HEALTHY"
+
+def test_only_post_kickoff_captures_means_no_status():
+    assert status_before_kickoff([cap("OUT", THURS + timedelta(hours=1))], THURS) is None
+
+def test_no_kickoff_time_means_no_pregame_claim():
+    """Absence of a kickoff is not permission to use a status of unknown vintage."""
+    assert status_before_kickoff([cap("OUT", THURS)], None) is None
+
+def test_no_captures_at_all():
+    assert status_before_kickoff([], SUN) is None
+    assert status_before_kickoff(None, SUN) is None
