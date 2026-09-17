@@ -2,7 +2,23 @@ name: Refresh NFL DFS Projections
 
 on:
   schedule:
+    # Twice daily. Times are UTC, so the Eastern clock shifts an hour at the
+    # DST boundary; both slots stay comfortably pregame either way.
+    #
+    # 13:35 UTC = 09:35 ET — the morning pass, ahead of Sunday's early games.
+    # 21:35 UTC = 17:35 ET (16:35 in winter) — added for Thursday night. A
+    #   Thursday game kicks off at 20:15 ET, and its final game status is filed
+    #   on Wednesday, so the morning pass alone gave Thursday exactly one
+    #   chance to see it. This is the second. It also picks up Saturday evening
+    #   news ahead of Sunday, and Sunday afternoon news ahead of the night game.
+    #
+    # The projection has to be rebuilt, not just the injury feed re-captured:
+    # the zero-and-replace rule runs inside build_week, so a fresher status
+    # only reaches a projection when the projection is rebuilt. A second pass
+    # also moves the report card's "last accepted pregame forecast" closer to
+    # kickoff for every game, not only Thursday's.
     - cron: "35 13 * * *"
+    - cron: "35 21 * * *"
   workflow_dispatch:
     inputs:
       season:
