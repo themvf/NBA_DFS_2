@@ -1,4 +1,4 @@
-name: Compare Injury Sources
+name: Injury Source Checks
 
 # Dispatch only. This answers a one-off question — do Sleeper and FantasyPros
 # disagree about who is out — and re-answers it whenever the question comes
@@ -11,7 +11,7 @@ on:
         required: false
         type: string
       week:
-        description: "Game week (default 1)"
+        description: "Game week (blank = every week, for the gap report)"
         required: false
         type: string
 
@@ -30,6 +30,12 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Size the inactive gap
+        # How many Questionable players never took the field, and what we spent
+        # projecting them. Decides whether an inactive feed is worth building.
+        shell: bash
+        run: |
+          python -c "import os,sys; sys.argv=['gap']; [(sys.argv.extend([f,str(int(os.environ[k]))])) for k,f in [('SEASON','--season'),('WEEK','--week')] if os.environ.get(k)]; from ingest.nfl_inactive_gap import main; sys.exit(main())" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Compare Sleeper and FantasyPros injury status
         # tee, not >>, so the result lands in the run summary AND the job log.
         # shell: bash for pipefail — otherwise tee's zero exit hides a failure.
