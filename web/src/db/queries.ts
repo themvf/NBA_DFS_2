@@ -14253,3 +14253,26 @@ export async function getNflArchetypeParticipants(
     playerName: String(r.player_name),
   }));
 }
+
+/** Ball-carrying participation for one week, for the weekly review's removal
+ * proposals. Filtered to the three offensive ball roles in SQL rather than in
+ * the client: a week of every tackler and blocker is roughly an order of
+ * magnitude more rows than the panel can use, and shipping them to the browser
+ * to discard them there would be the whole cost for none of the benefit. */
+export async function getNflWeekBallParticipants(
+  season: number, week: number,
+): Promise<NflArchetypeParticipantRow[]> {
+  const rows = await db.execute(sql`
+    SELECT play_id, team, side, role, player_name
+      FROM nfl_pbp_play_participants
+     WHERE season = ${season} AND week = ${week}
+       AND role IN ('passer', 'rusher', 'receiver')
+     ORDER BY play_id, role, player_name`);
+  return resultRows(rows).map(r => ({
+    playId: Number(r.play_id),
+    team: r.team == null ? null : String(r.team),
+    side: r.side == null ? null : String(r.side),
+    role: String(r.role),
+    playerName: String(r.player_name),
+  }));
+}

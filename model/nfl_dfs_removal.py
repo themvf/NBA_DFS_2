@@ -70,10 +70,16 @@ def team_offensive_plays(rows: Iterable[Mapping[str, Any]]) -> dict[str, list[in
     De-duplication matters: the table is one row per player per role, so a
     single snap contributes a passer row and a receiver row and would
     otherwise be counted twice, deflating every share computed from it.
+
+    Counted from BALL_ROLES only, so the denominator is "snaps where somebody
+    threw, carried or was thrown to" rather than every credited offensive
+    player. That is a slight undercount of true snaps, and it is the
+    definition the TypeScript port uses too — the two must agree exactly, or
+    a tag recorded from one becomes unexplainable by the other.
     """
     seen: dict[str, set[int]] = defaultdict(set)
     for row in rows:
-        if row.get("side") != "offense":
+        if row.get("side") != "offense" or row.get("role") not in BALL_ROLES:
             continue
         team, play = row.get("team"), row.get("play_id")
         if team is None or play is None:
