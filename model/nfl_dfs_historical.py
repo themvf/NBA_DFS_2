@@ -20,7 +20,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 
 
-MODEL_VERSION = "nfl-dfs-historical-v2"
+MODEL_VERSION = "nfl-dfs-historical-v3"
 MODEL_CONFIG = {
     "player_half_life_games": 6.0,
     "prior_equivalent_games": 4.0,
@@ -41,6 +41,11 @@ SUPPORTED_POSITIONS = SKILL_POSITIONS + ("K", "DST")
 BOOM_THRESHOLDS = {"QB": 30.0, "RB": 25.0, "WR": 25.0, "TE": 20.0, "K": 15.0, "DST": 15.0}
 
 OFFENSE_FIELDS = (
+    # Opportunity. Never scored — draftkings_points does not read these — but
+    # carried so a projection can express "35 attempts", which the pre-kickoff
+    # replacement rule needs in order to transfer volume without transferring
+    # the starter's efficiency along with it.
+    "attempts", "carries",
     "passing_yards", "passing_tds", "passing_interceptions",
     "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds",
     "receptions", "passing_2pt_conversions", "rushing_2pt_conversions",

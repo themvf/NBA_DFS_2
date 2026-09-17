@@ -20,6 +20,7 @@ from psycopg2.extras import Json, execute_values
 
 from config import load_config
 from db.database import DatabaseManager
+from model.nfl_dfs_availability import apply as apply_availability
 from model.nfl_dfs_historical import (
     MODEL_CONFIG,
     MODEL_VERSION,
@@ -122,13 +123,42 @@ def _players(db: DatabaseManager, season: int, teams: list[str]) -> list[dict[st
     if not teams:
         return []
     return db.execute(
-        """SELECT id,gsis_id,canonical_name,normalized_name,position,team_abbrev
+        """SELECT id,gsis_id,canonical_name,normalized_name,position,team_abbrev,
+                  NULLIF(metadata->'sleeper'->>'depth_chart_order','')::int AS depth_order
            FROM ff_players
            WHERE season=%s AND active AND team_abbrev=ANY(%s)
              AND position=ANY(%s)
            ORDER BY position,canonical_name""",
         (season, teams, ["QB", "RB", "WR", "TE", "K", "DST"]),
     )
+
+
+def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[int, dict[str, Any]]:
+    """Week-scoped FantasyPros injury status, with the time WE captured it.
+
+    FantasyPros rather than Sleeper because it is scoped to a game week: its
+    row answers "was this player out for this game", which is the question the
+    pre-kickoff rule asks. Sleeper stores current state only, so it cannot say
+    what stood at a past kickoff.
+
+    `fetched_at` is our own clock, not the provider's. That is what makes the
+    pre-kickoff test provable without trusting a provider timestamp whose
+    timezone is unverified.
+    """
+    if week is None:
+        return {}
+    rows = db.execute(
+        """SELECT DISTINCT ON (o.player_id)
+                  o.player_id, o.normalized_status, s.fetched_at
+           FROM ff_player_injury_observations o
+           JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
+           WHERE o.season = %s AND o.source = 'fantasypros'
+             AND s.dataset LIKE %s
+           ORDER BY o.player_id, s.fetched_at DESC, o.id DESC""",
+        (season, f"game-week-injuries-v2-{season}-{week}%"),
+    )
+    return {int(r["player_id"]): {"status": r["normalized_status"], "captured_at": r["fetched_at"]}
+            for r in rows}
 
 
 def build_week(
@@ -162,11 +192,28 @@ def build_week(
         projections.append({
             **projection.as_dict(),
             "normalized_name": player["normalized_name"],
+            # Carried so the replacement rule can resolve the next man up.
+            "depth_order": player.get("depth_order"),
             "team": player["team_abbrev"],
             "opponent": env["opponent"],
             "event_id": env["event_id"],
             "commence_time": env["commence_time"],
         })
+    # Pre-kickoff availability. A status only counts if WE captured it before
+    # this player's own kickoff — so a Tuesday run uses Tuesday's truth and a
+    # Sunday-morning run uses Sunday's, with no list to maintain in between.
+    observed = _availability(db, season, week)
+    statuses: dict[int, str] = {}
+    for player in projections:
+        seen = observed.get(int(player["player_id"])) if player.get("player_id") else None
+        if not seen or not seen.get("status"):
+            continue
+        commence, captured = player.get("commence_time"), seen.get("captured_at")
+        if commence is not None and captured is not None and captured >= commence:
+            continue  # published after kickoff; unusable for a pregame decision
+        statuses[int(player["player_id"])] = seen["status"]
+    projections, availability_report = apply_availability(projections, statuses)
+
     snapshot_rows = db.execute(
         """SELECT DISTINCT ON (season,dataset)
                   id,response_hash,season,dataset
@@ -186,6 +233,7 @@ def build_week(
         "history_rows": len(history),
         "source_evidence": source_evidence,
         "projections": projections,
+        "availability": availability_report,
         "prop_inputs": [],
     }
     manifest["artifact_digest"] = artifact_digest(manifest)

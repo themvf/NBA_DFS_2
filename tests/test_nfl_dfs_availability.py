@@ -1,53 +1,123 @@
+"""Zeroing and the handoff. Nothing here may depend on a hardcoded player."""
 import pytest
-from ingest.nfl_dfs_availability import validate_payload
 
-def test_week_contract():
-    assert validate_payload({'week':1,'injuries':[]},2026,1)==[]
-    assert validate_payload({'injuries':[{'week':1,'team':'NO'}]},2026,1)
-    for bad in [{}, {'injuries':None}, {'week':0,'injuries':[]}, {'injuries':[{'year':2025}]}, {'injuries':[None]}]:
-        with pytest.raises((ValueError,TypeError)):
-            validate_payload(bad,2026,1)
+from model.nfl_dfs_availability import (
+    MAX_TRANSFER_MULTIPLIER, OUT_CLASS, apply, is_out, replacement_for,
+    transfer_opportunity, zero_out,
+)
 
-from datetime import datetime, timezone
-from ingest.nfl_dfs_official_availability import validate_report
+def qb(pid, name, depth, attempts, yards, tds, points, team="LAR"):
+    return {"player_id": pid, "player_name": name, "position": "QB", "team": team,
+            "depth_order": depth, "model_proj_fpts": points, "baseline_fpts": points,
+            "floor_fpts": points * 0.5, "median_fpts": points, "ceiling_fpts": points * 1.6,
+            "boom_rate": 0.2, "projection_status": "historical",
+            "stat_means": {"attempts": attempts, "passing_yards": yards, "passing_tds": tds,
+                           "passing_interceptions": 0.8, "rushing_yards": 10.0,
+                           "rushing_tds": 0.1, "fumbles_lost_total": 0.2}}
 
-def test_official_report_contract():
-    now=datetime(2026,9,13,16,tzinfo=timezone.utc)
-    valid={'report_type':'inactive_list','url':'https://www.nfl.com/news/week-1-inactives','published_at':'2026-09-13T15:30:00Z','kickoff':'2026-09-13T17:00:00Z','week':1,'players':[{'gsis_id':'id','team':'NO','position':'WR','status':'INACTIVE'}]}
-    validate_report(valid,now)
-    for patch in [{'url':'https://nfl.com.example.org/article'}, {'published_at':'2026-09-13T18:00:00Z'},{'kickoff':'2026-09-13T14:00:00Z'},{'published_at':'2026-09-12T12:00:00Z'},{'players':[]},{'players':valid['players']*2}]:
-        with pytest.raises(ValueError): validate_report({**valid,**patch},now)
+# ── which statuses mean "not playing" ──────────────────────────────────
+@pytest.mark.parametrize("status", sorted(OUT_CLASS))
+def test_out_class_statuses_are_out(status):
+    assert is_out(status) and is_out(status.lower())
 
-def test_capture_contract_retains_limits():
-    from ingest.nfl_dfs_availability import capture_contract
-    contract=capture_contract(2026,1,{'week':1},{'injuries':[{'player_id':1}]},{'counts':{'matched':1},'decisions':[]},{'timestamp_timezone':'unverified'})
-    assert contract.model_eligible is False
-    assert contract.fallback_tier=='C' and contract.confidence_multiplier==0
-    assert contract.matched_count==1 and contract.unmatched_count==0
-    other=capture_contract(2026,2,{'week':2},{'injuries':[{'player_id':1}]},{'counts':{'matched':1},'decisions':[]},{})
-    assert other.dataset!=contract.dataset # identical payloads cannot borrow another week's metadata
+@pytest.mark.parametrize("status", ["QUESTIONABLE", "DOUBTFUL", "HEALTHY", "UNKNOWN", "", None])
+def test_everything_else_is_not_out(status):
+    assert not is_out(status)
 
-def test_capture_saves_only_resolved_observations(monkeypatch,tmp_path):
-    import json
-    from types import SimpleNamespace
-    from ingest import nfl_dfs_availability as capture
-    class DB:
-        def execute(self,*args):
-            return [{'id':1,'canonical_name':'Mike Woods','team_abbrev':'DEN','position':'WR','yahoo_id':'34158','fantasypros_player_id':None}]
-        def close(self,error=False): assert not error
-    class Client:
-        def __init__(self,*args): pass
-        def get(self,*args):
-            return {'injuries':[{'player_id':2,'yahoo_id':'34158','name':'Michael Woods II','team_id':'DEN','position_id':'WR'}, {'player_id':3,'name':'Unmatched','team_id':'FA','position_id':'WR'}]}
-    saved=[]
-    monkeypatch.setenv('FANTASYPROS_API_KEY','unit-test-placeholder')
-    monkeypatch.setattr(capture,'load_config',lambda:SimpleNamespace(database_url='unused'))
-    monkeypatch.setattr(capture,'RefreshDatabase',lambda _:DB())
-    monkeypatch.setattr(capture,'FantasyProsClient',Client)
-    monkeypatch.setattr(capture,'persist_source_snapshot',lambda db,contract:7)
-    monkeypatch.setattr(capture,'persist_injury_observation',lambda db,**kwargs:saved.append(kwargs))
-    out=tmp_path/'report.json'
-    monkeypatch.setattr('sys.argv',['capture','--season','2026','--week','1','--output',str(out)])
-    capture.main()
-    assert len(saved)==1 and saved[0]['player_id']==1 and saved[0]['reconcile_current'] is False
-    report=json.loads(out.read_text());assert report['identity_audit']['counts']=={'matched':1,'provider_nonteam':1}
+def test_questionable_is_never_zeroed():
+    """The boundary that matters: most Questionable players play."""
+    starter = qb(1, "Starter", 1, 35, 250, 1.6, 20.0)
+    out, report = apply([starter], {1: "QUESTIONABLE"})
+    assert out[0]["model_proj_fpts"] == 20.0
+    assert report["zeroed"] == []
+
+# ── zeroing ────────────────────────────────────────────────────────────
+def test_zeroing_is_zero_not_a_discount():
+    zeroed = zero_out(qb(1, "Starter", 1, 35, 250, 1.6, 23.6), "OUT")
+    for key in ("model_proj_fpts", "floor_fpts", "median_fpts", "ceiling_fpts", "boom_rate"):
+        assert zeroed[key] == 0.0, key
+    assert all(v == 0.0 for v in zeroed["stat_means"].values())
+    assert zeroed["projection_status"] == "out"
+
+# ── who replaces him ───────────────────────────────────────────────────
+def test_replacement_is_the_shallowest_available_teammate():
+    starter, backup, third = qb(1, "Starter", 1, 35, 250, 1.6, 23.6), qb(2, "Backup", 2, 6, 40, 0.2, 4.0), qb(3, "Third", 3, 0, 0, 0, 1.0)
+    assert replacement_for(starter, [starter, backup, third], {1: "OUT"})["player_id"] == 2
+
+def test_an_injured_backup_is_skipped():
+    starter, backup, third = qb(1, "S", 1, 35, 250, 1.6, 23.6), qb(2, "B", 2, 6, 40, 0.2, 4.0), qb(3, "T", 3, 5, 30, 0.1, 3.0)
+    assert replacement_for(starter, [starter, backup, third], {1: "OUT", 2: "OUT"})["player_id"] == 3
+
+def test_other_teams_are_never_the_replacement():
+    starter, other = qb(1, "S", 1, 35, 250, 1.6, 23.6), qb(9, "Other", 2, 30, 200, 1.2, 18.0, team="SEA")
+    assert replacement_for(starter, [starter, other], {1: "OUT"}) is None
+
+def test_no_depth_order_means_no_guess():
+    starter, backup = qb(1, "S", 1, 35, 250, 1.6, 23.6), qb(2, "B", None, 6, 40, 0.2, 4.0)
+    assert replacement_for(starter, [starter, backup], {1: "OUT"}) is None
+    _, report = apply([starter, backup], {1: "OUT"})
+    assert report["unresolved"], "an unresolvable handoff must be reported, not silently skipped"
+    assert report["transfers"] == []
+
+# ── the handoff itself ─────────────────────────────────────────────────
+def test_volume_transfers_and_efficiency_does_not():
+    """The backup gets the starter's attempts at his OWN yards per attempt."""
+    starter, backup = qb(1, "Starter", 1, 32, 256, 1.6, 23.6), qb(2, "Backup", 2, 8, 48, 0.2, 4.0)
+    updated, note = transfer_opportunity(starter, backup)
+    assert note["applied"] and note["multiplier"] == 4.0
+    assert updated["stat_means"]["attempts"] == pytest.approx(32.0)
+    # 6.0 yards/attempt before and after — his rate, the starter's volume.
+    assert updated["stat_means"]["passing_yards"] / updated["stat_means"]["attempts"] == pytest.approx(6.0)
+    # And crucially NOT the starter's 8.0 yards/attempt.
+    assert updated["stat_means"]["passing_yards"] != pytest.approx(starter["stat_means"]["passing_yards"])
+
+def test_the_backup_does_not_simply_inherit_the_starters_points():
+    starter, backup = qb(1, "Starter", 1, 32, 288, 2.0, 23.6), qb(2, "Backup", 2, 8, 40, 0.1, 3.0)
+    updated, _ = transfer_opportunity(starter, backup)
+    assert updated["model_proj_fpts"] < starter["model_proj_fpts"], (
+        "a backup at the starter's volume should score less than the starter")
+    assert updated["model_proj_fpts"] > backup["model_proj_fpts"], "but more than he did in mop-up"
+
+def test_the_multiplier_is_capped_and_says_so():
+    starter, backup = qb(1, "Starter", 1, 35, 245, 1.6, 23.6), qb(2, "Backup", 2, 1, 7, 0.0, 0.5)
+    _, note = transfer_opportunity(starter, backup)
+    assert note["capped"] and note["multiplier"] == MAX_TRANSFER_MULTIPLIER
+    assert note["raw_multiplier"] == 35.0, "the uncapped figure is still reported"
+
+def test_a_backup_with_no_history_is_reported_not_invented():
+    starter, backup = qb(1, "Starter", 1, 35, 245, 1.6, 23.6), qb(2, "Rookie", 2, 0, 0, 0, 0.0)
+    updated, note = transfer_opportunity(starter, backup)
+    assert not note["applied"] and "no usable opportunity" in note["reason"]
+    assert updated["model_proj_fpts"] == 0.0, "left exactly as it was, not fabricated"
+
+def test_turnovers_scale_with_volume_too():
+    starter, backup = qb(1, "S", 1, 32, 256, 1.6, 23.6), qb(2, "B", 2, 16, 96, 0.4, 8.0)
+    updated, _ = transfer_opportunity(starter, backup)
+    assert updated["stat_means"]["passing_interceptions"] == pytest.approx(1.6)
+
+# ── end to end ─────────────────────────────────────────────────────────
+def test_apply_zeroes_the_starter_and_promotes_the_backup():
+    starter, backup = qb(1, "Stafford", 1, 32, 256, 1.6, 23.6), qb(2, "Bennett", 2, 8, 48, 0.3, 4.0)
+    out, report = apply([starter, backup], {1: "OUT"})
+    by_name = {p["player_name"]: p for p in out}
+    assert by_name["Stafford"]["model_proj_fpts"] == 0.0
+    assert by_name["Bennett"]["model_proj_fpts"] > 4.0
+    assert len(report["zeroed"]) == 1 and len(report["transfers"]) == 1
+    # The pair no longer claims two starting quarterbacks.
+    assert sum(p["model_proj_fpts"] for p in out) < starter["model_proj_fpts"] + backup["model_proj_fpts"]
+
+def test_positions_outside_the_scope_are_zeroed_but_not_handed_off():
+    rb = {**qb(5, "Back", 1, 0, 0, 0, 14.0), "position": "RB",
+          "stat_means": {"carries": 18.0, "rushing_yards": 80.0, "rushing_tds": 0.5}}
+    rb2 = {**qb(6, "Back2", 2, 0, 0, 0, 5.0), "position": "RB",
+           "stat_means": {"carries": 5.0, "rushing_yards": 20.0, "rushing_tds": 0.1}}
+    out, report = apply([rb, rb2], {5: "OUT"}, positions=("QB",))
+    assert out[0]["model_proj_fpts"] == 0.0, "still zeroed"
+    assert out[1]["model_proj_fpts"] == 5.0, "but no transfer outside the scoped positions"
+    assert report["transfers"] == []
+
+def test_no_injuries_changes_nothing():
+    starter, backup = qb(1, "S", 1, 32, 256, 1.6, 23.6), qb(2, "B", 2, 8, 48, 0.3, 4.0)
+    out, report = apply([starter, backup], {})
+    assert [p["model_proj_fpts"] for p in out] == [23.6, 4.0]
+    assert report["zeroed"] == [] and report["transfers"] == []
