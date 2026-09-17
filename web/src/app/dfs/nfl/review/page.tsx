@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getNflWeeklyReports } from "@/db/nfl-dfs-report-card";
-import { getNflWeekBallParticipants } from "@/db/queries";
+import { getNflWeekBallParticipants, getNflWeekPlayContext } from "@/db/queries";
 import WeeklyReview from "./weekly-review";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +25,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
   // instead of an empty panel that reads like "nobody left the game".
   const shown = reports.reports.at(-1)?.week;
   let participants = null;
+  let playContext = null;
   try {
-    if (shown) participants = await getNflWeekBallParticipants(season, shown);
+    if (shown) {
+      [participants, playContext] = await Promise.all([
+        getNflWeekBallParticipants(season, shown),
+        getNflWeekPlayContext(season, shown),
+      ]);
+    }
   } catch (error) {
-    console.error("NFL week participation unavailable", error);
+    console.error("NFL week play-by-play unavailable", error);
+    participants = null;
+    playContext = null;
   }
-  return <WeeklyReview key={`${season}:${reports.reports[0]?.week}`} reports={reports.reports} availableWeeks={reports.weeks} season={season} viewedAt={now.getTime()} participants={participants} />;
+  return <WeeklyReview key={`${season}:${reports.reports[0]?.week}`} reports={reports.reports} availableWeeks={reports.weeks} season={season} viewedAt={now.getTime()} participants={participants} playContext={playContext} />;
 }

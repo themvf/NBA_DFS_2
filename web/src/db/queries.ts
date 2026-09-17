@@ -14254,25 +14254,45 @@ export async function getNflArchetypeParticipants(
   }));
 }
 
-/** Ball-carrying participation for one week, for the weekly review's removal
- * proposals. Filtered to the three offensive ball roles in SQL rather than in
- * the client: a week of every tackler and blocker is roughly an order of
- * magnitude more rows than the panel can use, and shipping them to the browser
- * to discard them there would be the whole cost for none of the benefit. */
+/** Ball-carrying participation for one week, for the weekly review's
+ * availability proposals. Filtered to the three offensive ball roles in SQL:
+ * a week of every tackler and blocker is an order of magnitude more rows than
+ * the panel can use, and shipping them to discard them there would be the
+ * whole cost for none of the benefit. */
 export async function getNflWeekBallParticipants(
   season: number, week: number,
-): Promise<NflArchetypeParticipantRow[]> {
+): Promise<{ gameId: string; playId: number; team: string | null; side: string | null; role: string; playerName: string }[]> {
   const rows = await db.execute(sql`
-    SELECT play_id, team, side, role, player_name
+    SELECT game_id, play_id, team, side, role, player_name
       FROM nfl_pbp_play_participants
      WHERE season = ${season} AND week = ${week}
        AND role IN ('passer', 'rusher', 'receiver')
      ORDER BY play_id, role, player_name`);
   return resultRows(rows).map(r => ({
-    playId: Number(r.play_id),
+    gameId: String(r.game_id), playId: Number(r.play_id),
     team: r.team == null ? null : String(r.team),
     side: r.side == null ? null : String(r.side),
-    role: String(r.role),
-    playerName: String(r.player_name),
+    role: String(r.role), playerName: String(r.player_name),
+  }));
+}
+
+/** Quarter per play, plus the text of the handful of plays that record an
+ * injury. The injured player's NAME lives only in that text -- the stored
+ * `injury_on_play` boolean is derived from the same phrase but drops the
+ * name, which is the only part that can be attached to a projection. */
+export async function getNflWeekPlayContext(
+  season: number, week: number,
+): Promise<{ gameId: string; playId: number; quarter: number | null; clock: string | null; description: string | null }[]> {
+  const rows = await db.execute(sql`
+    SELECT game_id, play_id, quarter, clock,
+           CASE WHEN description ILIKE '%was injured during the play%'
+                THEN description ELSE NULL END AS description
+      FROM nfl_pbp_archetypes
+     WHERE season = ${season} AND week = ${week}`);
+  return resultRows(rows).map(r => ({
+    gameId: String(r.game_id), playId: Number(r.play_id),
+    quarter: r.quarter == null ? null : Number(r.quarter),
+    clock: r.clock == null ? null : String(r.clock),
+    description: r.description == null ? null : String(r.description),
   }));
 }
