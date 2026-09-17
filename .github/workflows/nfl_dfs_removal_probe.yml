@@ -1,0 +1,56 @@
+name: NFL DFS Removal Probe
+
+# Dispatch only. Asks, for a given week, whether the players who missed their
+# projection left the game or simply did not produce. Read-only: it writes no
+# tag, no projection and no score. Every verdict is a proposal for a human.
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "NFL season year (blank = current)"
+        required: false
+        type: string
+      week:
+        description: "Game week (blank = newest scored week)"
+        required: false
+        type: string
+      player:
+        description: "Name substring — search one player instead of the worst misses"
+        required: false
+        type: string
+      limit:
+        description: "How many shortfalls to list (default 15)"
+        required: false
+        type: string
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Probe
+        # tee, not >>, so the table lands in the run summary (readable on a
+        # phone) AND in the job log.
+        shell: bash
+        env:
+          SEASON: ${{ inputs.season }}
+          WEEK: ${{ inputs.week }}
+          PLAYER: ${{ inputs.player }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          # `if`, not `[ -n .. ] && ..`: under `set -e` a false test on the
+          # last line would fail the whole step when the input is blank.
+          args=()
+          if [ -n "$SEASON" ]; then args+=(--season "$SEASON"); fi
+          if [ -n "$WEEK" ];   then args+=(--week "$WEEK"); fi
+          if [ -n "$PLAYER" ]; then args+=(--player "$PLAYER"); fi
+          if [ -n "$LIMIT" ];  then args+=(--limit "$LIMIT"); fi
+          python -m ingest.nfl_dfs_removal_probe "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
