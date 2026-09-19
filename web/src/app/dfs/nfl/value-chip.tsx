@@ -32,7 +32,14 @@ const TIER_STYLE: Record<ValueTier, { className: string; Icon: typeof ChevronsUp
   unknown: { className: "bg-transparent text-slate-300 ring-transparent", Icon: null },
 };
 
-const fmtX = (v: number | null) => (v === null ? "—" : `${v.toFixed(2)}×`);
+// A projection that rounds to zero from below would otherwise render as
+// "-0.00x". Genuinely negative multiples (DK scores can go negative on
+// turnovers) are left alone -- only the signed zero is normalised.
+const fmtX = (v: number | null) => {
+  if (v === null) return "—";
+  const rounded = Number(v.toFixed(2)) || 0;
+  return `${rounded.toFixed(2)}×`;
+};
 
 /** The full sentence a hover should give, assembled once so both surfaces agree. */
 export function valueTooltip(a: ValueAssessment, position: string): string {
