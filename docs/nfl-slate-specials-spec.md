@@ -1,6 +1,8 @@
 # NFL Slate Specials — Our Own Numbers for DK's Sunday Exotics
 
 **Status: SPEC, for review. Nothing built. No edge claimed.**
+**Implementation hand-off (supersedes this doc where they differ):**
+[`nfl-slate-specials-handoff.md`](nfl-slate-specials-handoff.md).
 Registered 2026-09-19, before any of these markets has been priced by us,
 scraped into a ledger, or backtested.
 
