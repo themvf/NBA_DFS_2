@@ -51,6 +51,10 @@ from psycopg2.extras import Json
 
 from config import load_config
 from db.database import DatabaseManager
+# Reused, not reimplemented: the same "next scheduled regular-season week" the
+# projection run itself targets, so a scheduled board can never drift onto a
+# different week than the projections it reads.
+from ingest.nfl_dfs_projections import infer_target_week
 from model.nfl_dfs_research import implied_totals
 from model.nfl_slate_specials import (
     ASCENDING_FAMILIES,
@@ -458,18 +462,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--season", type=int, required=True)
-    parser.add_argument("--week", type=int, required=True)
-    parser.add_argument("--scope", default="sunday_all", choices=sorted(SLATE_SCOPES))
+    parser.add_argument("--week", type=int, help="omit to target the next scheduled week")
+    parser.add_argument("--scope", default="both", choices=[*sorted(SLATE_SCOPES), "both"],
+                        help="'both' publishes the all-Sunday and 1pm-only boards")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     db = DatabaseManager(load_config().database_url)
+
+    scopes = sorted(SLATE_SCOPES) if args.scope == "both" else [args.scope]
     try:
-        report = run(season=args.season, week=args.week, scope=args.scope, db=db, dry_run=args.dry_run)
+        week = args.week if args.week is not None else infer_target_week(db, args.season)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    _print(report)
-    return 0
+    if args.week is None:
+        print(f"targeting week {week} (next scheduled)")
+
+    failed = False
+    for scope in scopes:
+        try:
+            report = run(season=args.season, week=week, scope=scope, db=db, dry_run=args.dry_run)
+        except ValueError as exc:
+            print(f"ERROR ({scope}): {exc}", file=sys.stderr)
+            failed = True
+            continue
+        _print(report)
+        print()
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

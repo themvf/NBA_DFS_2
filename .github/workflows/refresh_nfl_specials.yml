@@ -1,0 +1,70 @@
+name: Refresh NFL Slate Specials
+
+# Publishes the weekly specials board: our ranking and expected stat for each
+# of DK's nine slate questions.
+#
+# Timed to land AFTER refresh_nfl_dfs_projections (35 13 and 35 21 UTC), whose
+# player projections are this board's input for the six player topics. Running
+# first would rank yesterday's numbers.
+#
+#   Thursday 14:00 UTC  -- the week's lines are posted; first look at the slate.
+#   Sunday   14:00 UTC  -- 10:00 ET, comfortably before a 13:00 ET kickoff, and
+#                          after the 13:35 UTC projection refresh.
+#
+# Cheap and unmetered: it reads our own schedule and projection tables and
+# calls no paid API. The DK market capture is a separate, manual paste
+# (ingest/nfl_specials_market.py) and is deliberately NOT run here -- those
+# markets are not on The Odds API and need a human with a DK session.
+
+on:
+  schedule:
+    - cron: "0 14 * * 4"
+    - cron: "0 14 * * 0"
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season year (default 2026)"
+        required: false
+        type: string
+      week:
+        description: "Week number (blank = next scheduled week)"
+        required: false
+        type: string
+      scope:
+        description: "Slate scope"
+        required: false
+        default: both
+        type: choice
+        options: [both, sunday_all, sunday_1pm]
+      dry_run:
+        description: "Report what would publish, write nothing"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: refresh-nfl-specials
+  cancel-in-progress: false
+
+jobs:
+  refresh-nfl-specials:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Publish the slate-specials board
+        run: |
+          SEASON="${{ inputs.season }}"
+          if [ -z "$SEASON" ]; then SEASON="2026"; fi
+          SCOPE="${{ inputs.scope }}"
+          if [ -z "$SCOPE" ]; then SCOPE="both"; fi
+          FLAGS="--season $SEASON --scope $SCOPE"
+          if [ -n "${{ inputs.week }}" ]; then FLAGS="$FLAGS --week ${{ inputs.week }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then FLAGS="$FLAGS --dry-run"; fi
+          python -m model.nfl_specials_board $FLAGS
