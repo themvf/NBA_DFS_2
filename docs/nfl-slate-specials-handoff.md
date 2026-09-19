@@ -12,6 +12,34 @@ silent default**, and **bump the version rather than tune in place**.
 
 ---
 
+## 0a. Reframed 2026-09-19 — read this first
+
+**The product is a weekly projection board, not a bet ledger.** For each of the
+nine DK specials topics, show **our ranking of the candidates and the expected
+stat behind it**, every week, persisted so the topics accumulate a record.
+
+Two things follow, and they invert parts of this document:
+
+1. **A market price is optional.** It may not be obtainable at all for these
+   topics. `ingest/nfl_specials_market.py` captures DK's board when someone can
+   paste one, and the overround it measures tells you how far to trust a DK
+   implied probability — but **nothing downstream requires it**. A board with no
+   market beside it is still the product.
+2. **The 50,000-draw simulator is not on the critical path.** A *ranking with
+   expected stats* needs none of it: `nfl_dfs_player_projections.stat_means`
+   already carries passing/receiving/rushing yards and touchdowns weekly, and
+   `model/nfl_dfs_research.implied_totals()` gives team points from the
+   schedule's total and spread. That board is built and shipped (§11). The
+   simulator's remaining job is to turn an order into P(leads the slate), which
+   a mean cannot do — see §12 for the measurement that settles this.
+
+So the ledger (`nfl_specials_bets`), the star rubric, EV, `max_stars=2` and the
+P5 uncap path are **deferred, not deleted**. The tables remain; no code writes
+them. Sections 3.3, 3.4's settlement half, and the P4/P5 rows below describe
+work that is no longer next.
+
+---
+
 ## 0. Ten-minute orientation
 
 You are building one Python simulator that draws ~50,000 "Sundays" and reads
@@ -41,8 +69,11 @@ markets, and measure DK's overround before modelling anything.
   `mlb_matchups`, `youtube_picks`.
 - New tables go in `db/schema.py` (`TABLES` list). The web app never runs DDL
   for Python-owned tables.
-- DB access via `DatabaseManager` in `db/database.py`; queries as functions
-  in `db/queries.py`, not inline SQL in model code.
+- DB access via `DatabaseManager` in `db/database.py`. For **NFL ingest** the
+  living convention is inline SQL in the ingest module — see
+  `ingest/nfl_dfs_projections.py`, which does this throughout; `db/queries.py`
+  carries only three NFL functions, all from the older odds path. Keep the pure
+  logic in separate functions so it is testable without a database.
 - Every persisted rating carries `model_version` and frozen `inputs_json`.
 - New scheduled work is a workflow in `.github/workflows/`, mirroring
   `refresh_nfl_survivor.yml` (secrets, `pip install -r requirements.txt`,
@@ -157,10 +188,30 @@ CREATE TABLE IF NOT EXISTS nfl_specials_bet_snapshots (
 );
 ```
 
-Add the two `_ensure_lock_trigger`-style protections used on
-`mlb_game_prediction_snapshots`: reject UPDATE/DELETE on `nfl_specials_probs`
-and `nfl_specials_sim_runs`. `nfl_specials_bets` is updatable only while
-`locked = FALSE`; add the same trigger pattern `soccer_bets` uses.
+Add the `_ensure_lock_trigger`-style protections used on
+`mlb_game_prediction_snapshots`: reject UPDATE/DELETE on `nfl_specials_probs`,
+`nfl_specials_sim_runs` and `nfl_specials_bet_snapshots`.
+
+> **Corrected 2026-09-19, and this one is a trap.** This section used to say
+> "`nfl_specials_bets` is updatable only while `locked = FALSE`; add the same
+> trigger pattern `soccer_bets` uses." Both halves are wrong. `soccer_bets`
+> has **no trigger at all** — its lock is enforced in Python, in
+> `soccer_bet_rating.record_bet`. And a blanket *no UPDATE when locked* trigger
+> would **break settlement every Monday**: settlement happens after kickoff by
+> definition, so the row it must write is always locked. Such a trigger passes
+> every test written before Sunday and fails in production on the first one
+> that matters.
+>
+> What is implemented instead is **field-level**: on a locked row the 13
+> decision fields (`our_prob`, `market_prob`, `market_decimal`, `overround`,
+> `edge`, `ev`, `stars`, `inputs_json`, `run_id`, `capture_key`,
+> `selection_key`, `selection_label`, `event_commence`) are frozen, and so is
+> `locked` itself, so a row cannot be quietly re-opened. `status`,
+> `result_detail`, `settled_at` and `updated_at` stay writable. Doing it in the database rather than only in Python means a
+> future caller who forgets `WHERE locked = FALSE` fails loudly instead of
+> quietly rewriting a committed decision. `DELETE` is rejected outright
+> — supersede instead. Verified against a real PostgreSQL 16: see the log
+> in §11.
 
 ---
 
@@ -195,8 +246,11 @@ Public entry points:
 ```python
 def build_slate(season: int, week: int, scope: str, conn) -> Slate
     # Loads games from nfl_season_games + nfl_game_win_probs (latest
-    # model_version, one row per (game, team)); loads the latest COMPLETE
-    # nfl_dfs_projection_runs run for the week and its player rows;
+    # model_version, one row per (game, team)); loads the latest populated
+    # nfl_dfs_projection_runs run for the week and its player rows.
+    # NB nfl_dfs_projection_runs has NO status column: "complete" is
+    # player_count > 0, ordered the way every other consumer orders it,
+    # ORDER BY as_of_at DESC, created_at DESC LIMIT 1;
     # applies availability (§3.3). Any game with provenance BLOCKED, or
     # with no projection rows for either team, is carried in Slate.games
     # with included=False and a reason. Never dropped silently.
@@ -281,9 +335,19 @@ Who is on the field: `nfl_dfs_player_projections` for the projection run,
 after the redistribution layer. Redistribution currently lives in the web
 read path (`web/src/lib/nfl-dfs/opportunity-redistribution.ts`); for Python
 use `model/nfl_dfs_availability.py::apply()` **with
-`positions=("QB","RB","WR","TE")`**, not its default `("QB",)`, and source the
-OUT flag from `nfl_dfs_official_availability` (the FantasyPros feed is empty
-in practice — see CLAUDE.md "Out-Player Opportunity Redistribution").
+`positions=("QB","RB","WR","TE")`**, not its default `("QB",)`.
+
+> **Corrected 2026-09-19.** An earlier draft told you to source the OUT flag
+> from `nfl_dfs_official_availability`. **No such table exists** — it appears
+> nowhere in `db/schema.py` nor in any `.py`/`.ts` file in this repo. `apply()`
+> is also pure: it takes `statuses: Mapping[int, str]` keyed by `ff_players.id`
+> and never reads a table at all. The OUT flag we actually have is DK's, on
+> **`nfl_dfs_slate_players.dk_status` / `.is_out`** (reached via `upload_id`
+> → `nfl_dfs_slate_uploads`) — which is what CLAUDE.md's "Out-Player
+> Opportunity Redistribution" section already says: the FantasyPros feed
+> carried 0 OUT rows on a slate where DK flagged 77. Build the `statuses` map
+> by joining `nfl_dfs_slate_players.ff_player_id` to
+> `nfl_dfs_player_projections.player_id` — both are FKs to `ff_players(id)`.
 
 #### Layer C — event timing (timing families only)
 
@@ -325,8 +389,12 @@ matching at grade time:
 - game: `f"{away}@{home}"`
 - player: `nfl_dfs_player_projections.player_gsis_id` when present, else
   `normalized_name|team`. Fuzzy-match DK's printed name to the projection row
-  **once, at capture ingest**, with `_levenshtein`; store the resolved key on
-  the capture row. Unresolved → capture row keeps `selection_key =
+  **once, at capture ingest**; store the resolved key on
+  the capture row. (Implemented with `rapidfuzz`, as `ingest/dk_slate.py` and
+  `ingest/mlb_slate.py` already do, rather than the `_levenshtein` first named
+  here: that is a private function inside `ingest/nba_schedule.py`, and
+  importing an NBA internal into an NFL module — to dodge a dependency already
+  in `requirements.txt` — is the wrong trade.) Unresolved → capture row keeps `selection_key =
   'UNRESOLVED:' + label` and is excluded from de-vig with a logged count.
 
 #### 3.5 Readouts
@@ -410,10 +478,11 @@ Settles from **our own PBP tables**, no external feed:
   Note OT and the ±jitter caveat: if two games' first TDs fall within 120
   wall-seconds of each other by this reconstruction, settle `unresolved`
   and log it — DK settles on broadcast wall clock we do not have.
-- **Voids:** a player selection with no `nfl_dfs_official_availability`
-  ACTIVE record for that game settles `void`, not `lost`. Missing
-  availability data entirely → `unresolved`. Never DNP-as-loss (CLAUDE.md,
-  soccer ATGS).
+- **Voids:** a player selection whose DK slate row for that game is flagged
+  OUT (`nfl_dfs_slate_players.is_out` / `.dk_status`) settles `void`, not
+  `lost`. No slate row for the player at all → `unresolved`. Never
+  DNP-as-loss (CLAUDE.md, soccer ATGS). The `nfl_dfs_official_availability`
+  table originally named here does not exist — see the correction in §3.1.
 
 Runs after `refresh_nfl_pbp_archetypes.yml` completes (Monday). Idempotent.
 
@@ -455,6 +524,16 @@ up dead on `/vegas/detectors`.
 ---
 
 ## 5. Web UI
+
+> **Superseded 2026-09-19 by §0a's reframe; the page as BUILT is described in
+> §11.** Everything below was written for the bet-ledger product and still
+> describes stars, EV, edge columns and a P5 gate state. The shipped page is a
+> projection board: ranked lists with expected stats, DK's price as an optional
+> extra column, and no probability or star anywhere. Keep reading this section
+> only for the parts the reframe did not touch — the route, the nav entry, and
+> the rule that a selection on DK's board but absent from our run is LISTED
+> rather than hidden.
+
 
 Route: `/nfl/specials`. Nav: add `{ href: "/nfl/specials", label: "Slate
 Specials", sports: ["nfl"] }` to `PAGE_LINKS` in
@@ -564,7 +643,7 @@ Minimum set, all on synthetic fixtures:
 
 | P | Build | Gate (all must pass before the next phase starts) |
 |---|---|---|
-| **P0** | §3.2 capture tool. Paste every family for two Sundays. | Overround table per family in the tab. Any family > 200% is labelled calibration-only in `FAMILIES_CALIBRATION_ONLY` and never rated above 1★. |
+| **P0** | §3.2 capture tool. Paste every family for two Sundays. **Code shipped 2026-09-19 (§11); the gate now waits on the two Sundays of pastes, which only a human with a DK session can supply.** | Overround table per family in the tab. Any family > 200% is labelled calibration-only in `FAMILIES_CALIBRATION_ONLY` and never rated above 1★. |
 | **P0.5** | Layer A only + `highest/lowest_scoring_team`. No player layer. | KS tests §Layer A; team-points PIT uniform on 2024-25 held out. |
 | **P1** | Layer B conditioned; `highest/lowest_scoring_game`. Tab live with these four families. | Consistency test 9; tie_rule read and stored for both game families. |
 | **P2** | Empirical yardage tails; `most_passing/receiving_yards`. | Simulated slate-max yardage matches observed 2020-25 slate-max distribution (KS p > 0.05). |
@@ -627,3 +706,246 @@ Expect calibration to pass and market-relative to fail. The product is a
 coherent joint distribution of a Sunday, graded for free against DK's
 board, not a source of bets. Build it for that, and let the ledger say
 otherwise if it can.
+
+---
+
+## 11. Implementation log
+
+### P0 → shipped 2026-09-19 (code), gate open (data)
+
+**State per CLAUDE.md's delivery contract: Built + Tested.** Not Backtested, not
+validated, and no number has been measured yet — P0's gate needs two Sundays of
+real DK pastes, and nobody can fabricate those.
+
+| Requirement (§7 P0) | Implementation | Evidence |
+|---|---|---|
+| Five tables + append-only / lock protections | `db/schema.py` (`TABLES`, `MIGRATIONS`, `INDEXES`) | Applied through the real `DatabaseManager._ensure_schema()` against PostgreSQL 16.13: 5 tables, 5 triggers, 7 indexes; idempotent on re-apply; `_ensure_schema()` still completes in 0.8s |
+| Frozen family contract | `model/nfl_slate_specials.py` (constants only) | `test_families_are_frozen`, `test_every_family_declares_what_its_selections_are`, `test_calibration_only_is_empty_until_p0_measures_it` |
+| Both paste layouts | `ingest/nfl_specials_market.py::parse_board_text` | Two-column, row, team-context, unicode-minus/thousands-separator, numbered-board, and `San Francisco 49ers` (digits that are not a price) all covered |
+| Refuse prices inside (-100, 100) | same, whole-capture refusal | `test_refuses_a_price_inside_the_impossible_band` |
+| Selection keys (§3.4) | `resolve_team` / `resolve_game` / `resolve_player` | Live run resolved 8/8 teams, 4/4 games, 5/12 players against seeded fixtures |
+| Idempotent on identical `raw_text` | content-derived `capture_key` | Live: re-running the same paste wrote 0 rows and left the count at 24; a moved price wrote a new capture |
+| Print family overround | `compute_overround`, `--dry-run` | `-110/-110` two-way returns the textbook 4.76% |
+
+`python3 -m pytest tests/test_nfl_slate_specials.py` → **37 passed**. Full
+suite: **876 passed, 3 failed**, and those 3
+(`test_alert_audit_floor_is_shared.py`, `test_tennis_walking_study.py`) fail
+identically on clean `49f6a03` — pre-existing, unrelated to this work.
+Two mutations were injected to confirm the tests have teeth: trusting DK's
+print order for game keys, and guessing the best fuzzy match instead of
+refusing an ambiguous one. Both were caught.
+
+**Two guards added that this document did not specify**, because P0 measures
+exactly one number and both of these corrupt it silently:
+
+1. **A board whose implied probabilities sum below 100% is refused as
+   truncated.** No book prices a mutually-exclusive market under 100% — that
+   is a free arbitrage — so a sub-100% sum means the paste is partial. Without
+   this, pasting the top 20 of a 250-selection first-TD board records a
+   generous-looking *negative* overround, which is the one output P0 exists to
+   produce. Deliberately no `--allow-partial` flag: a flag that suppresses this
+   would be set once and then always. If DK ever genuinely posts a sub-100%
+   exclusive board, that is a finding worth a code change and a note here.
+2. **A duplicated selection key within one capture is refused**, since a
+   double-counted row inflates the overround directly.
+
+**Design decisions worth knowing before extending it:**
+
+- A capture **always succeeds if the prices parse**, even when no projection
+  run exists and every player is `UNRESOLVED:<label>`. Market prices are
+  perishable and unrecoverable; identities can be resolved any time later. The
+  inverse (refusing the capture) loses the only thing that cannot be re-fetched.
+- `capture_key` is content-derived, so the tool measures **overround, not quote
+  persistence**: re-pasting a genuinely unchanged board records no second
+  observation. That is the spec's stated idempotency requirement, and the cost
+  is accepted and noted rather than hidden. Persistence would need a
+  time-keyed capture.
+- Game keys come from **our schedule**, never DK's print order: a board reading
+  "Ravens vs Chiefs" stores `KC@BAL`. This is the single cheapest defence
+  against the mis-settlement §3.5 warns about.
+- An ambiguous name resolves to nothing. Two live `M. Williams` stay
+  unresolved rather than being assigned to the higher-scoring fuzzy match.
+- `american_to_prob` is **imported** from `model/soccer_bet_rating.py`, not
+  reimplemented (§0: "Do not fork any of them. Import."). A test asserts it is
+  the same function object.
+- There is no re-resolution pass. Back-filling `selection_key` on old captures
+  once a projection run lands is a separate job and is **not** built.
+
+### The weekly board → shipped 2026-09-19
+
+**State: Built + Tested.** Never yet run against real projections — this
+container has no production database, so every verification below is against
+seeded fixtures in a local PostgreSQL 16.13.
+
+| Requirement | Implementation | Evidence |
+|---|---|---|
+| Ranked board, all 9 topics, weekly | `model/nfl_specials_board.py` | Live run produced 40 ranked rows for `sunday_1pm` and 46 for `sunday_all` across all nine families |
+| Ranking contract, measured not guessed | `RANKING_STAT`, `BOARD_DEPTH`, `ASCENDING_FAMILIES` in `model/nfl_slate_specials.py` | §12 |
+| Scope excludes, never down-weights | `games_in_scope` | A 16:25 ET kickoff is absent from `sunday_1pm` (4 games) and present in `sunday_all` (5) |
+| Team points from the schedule | imports `nfl_dfs_research.implied_totals` | Cross-checked against the helper: SF@PHI total 44.0 spread -1.5 → SF 22.75, PHI 21.25, i.e. the **away** favourite out-projects its host |
+| No silent defaults | blocked rows | A game with no total yields `expected_value NULL`, `rank NULL`, `block_reason='no_quoted_total'` — never a 0 that still takes a rank |
+| Ruled-out players off the board | `projection_status='out'` filter | A 400-yard OUT projection is excluded; a 70-yard active one ranks |
+| Append-only | triggers | `UPDATE` on a board row and `DELETE` on a run both rejected live |
+
+Two mutations confirmed the tests bite: flipping the spread sign to the
+book convention, and ranking `lowest_*` descending. Both caught. Suite: **53
+tests** in this file, **892 passed** overall (the same 3 unrelated failures).
+
+**Deliberate design points:**
+
+- **`method` distinguishes the two kinds of run.** `expected_stats` carries no
+  `seed`/`n_draws` and no probabilities; `simulated` will carry both. A CHECK
+  enforces that a simulated run cannot omit them. Writing `seed=0` for a run
+  that drew nothing would be a fiction.
+- **`nfl_specials_sim_runs` and `nfl_specials_probs` were consolidated into
+  `nfl_specials_runs` and `nfl_specials_board_rows`.** `probs` required
+  `our_prob` and `mc_se` NOT NULL, which a means board can only satisfy by
+  writing a fake zero — the exact silent default CLAUDE.md forbids. Neither old
+  table had ever been written by any code, so this is a consolidation, not a
+  migration. One home, not two.
+- **A missing spread is recorded, not assumed away.** With a total but no
+  spread the split is even, which is the honest expectation, and
+  `context_json.spread_available=false` says the split carries no team
+  information. Better than blocking a whole board over one unpriced game.
+- **Expected touchdowns excludes passing touchdowns** — the passer does not
+  score the touchdown he throws. A pure pocket passer returns `None` for the
+  first-TD proxy rather than a zero that would still occupy a rank.
+
+### The `/nfl/specials` page → shipped 2026-09-19
+
+**State: Built + Tested,** and rendered against real query output. Not yet run
+end to end through Neon (see the limitation below).
+
+| Piece | File |
+|---|---|
+| Pure shaping, family metadata, bar scaling, calibration notes | `web/src/lib/nfl/specials-board.ts` |
+| Read-only query (run + rows + optional captures + weeks) | `getNflSpecialsBoard` in `web/src/db/queries.ts` |
+| Server component | `web/src/app/nfl/specials/page.tsx` |
+| Client renderer | `web/src/app/nfl/specials/specials-client.tsx` |
+| Nav entry | `web/src/components/sport-nav.tsx` |
+| Tests (41) | `web/scripts/test-nfl-specials.ts`, `npm run test:nfl-specials` |
+
+**The layout follows from §12's measurement, not from taste.** Our top-ranked
+name leads 11-16% of the time, so:
+
+- every topic renders a DEEP ranked list and no single name is presented as a
+  pick;
+- the measured hit rate sits in each panel header ("our top-ranked name led the
+  week 4.4% of the time and the actual leader sat around 25th"), and a family
+  with no measurement says so rather than borrowing a number;
+- nothing on the page is a probability. `p_leads` is NULL on an
+  `expected_stats` run and a test asserts none is rendered;
+- the three timing families carry a `proxy` badge and a one-line explanation of
+  what they are a proxy for.
+
+**The magnitude bar is scaled within each family's own range, not from zero.**
+These ranges are narrow by nature — an 18-to-26 point team board anchored at
+zero makes every bar identical and hides the only thing the bar is for. It is a
+single-series monochrome encoding (so no categorical palette and no legend),
+redundant with the number beside it (so `aria-hidden`), and carries a 6% floor
+so the last row stays visible. Read it as "how far ahead is the leader", never
+as probability.
+
+**DK's price is an optional column.** It appears only when a capture exists for
+that family, and the panel header then also shows the board's overround,
+because on a board summing far above 100% a raw implied percentage is a price
+with margin in it. A row we rank but DK never priced shows an em dash rather
+than being dropped.
+
+**A bug this found, which only running it could.** `nfl_season_games` is UNIQUE
+on `(season, week, home_team_id, away_team_id)`, which permits BOTH `CIN@NYG`
+and `NYG@CIN` in one week. With both in scope each team got two rows and the
+insert died on `nfl_specials_board_rows`' UNIQUE constraint, taking the entire
+board build with it. `dedupe_or_block()` now converts a duplicated selection
+key into blocked rows with reason `duplicate_selection_in_scope`, so a data
+anomaly costs one row's visibility rather than the whole board. Regression test:
+`test_a_team_in_two_scoped_games_is_blocked_rather_than_crashing`.
+
+**Verification performed, and its limit.** The web app talks to Neon over HTTP,
+which cannot reach a local Unix-socket PostgreSQL, so the two halves were
+verified separately rather than together:
+
+- the four SQL statements were extracted *verbatim from the shipped source* and
+  run against real PostgreSQL 16.13 — 92 rows, correct camelCase aliases, and
+  the SQL's overround (8.2%) matching `ingest/nfl_specials_market.py`'s
+  independently-computed report exactly;
+- the real client component was then rendered against that real query output
+  and screenshotted in both light and dark mode, with the panel tabs, bars,
+  blocked list and DK column inspected.
+
+What has NOT happened: a single request travelling page → Neon → database.
+That needs a Neon-backed environment.
+
+`npm run build` passes and registers the route as dynamic; `npm run lint`
+reports nothing in these files.
+
+**Not started:** P0.5 onward — the board is persisted but
+nothing renders it yet — plus P0.5 onward — `build_slate`, `simulate`, `readout`, the score
+table, the ledger, settlement, the backtest, the workflow, and the `/nfl`
+tab. Nothing in the `nfl_specials_sim_runs` / `_probs` / `_bets` /
+`_bet_snapshots` tables is written by any code yet; they exist so the FK chain
+and the immutability guarantees are settled before anything depends on them.
+
+---
+
+## 12. What a mean can and cannot say (measured 2026-09-19)
+
+The board ranks by expected stat. Before choosing that key it was tested against
+the question it is actually being asked → *who leads the slate?* — on the
+2023-2025 regular seasons from nflverse weekly stats, walk-forward, with each
+week's ranking built only from prior weeks (minimum three games of history).
+45 slates, a median of ~840 candidates each. Week-level rather than
+Sunday-only, so a real 1pm slate is a subset; the effect does not flip.
+
+| topic | our #1 actually led | leader's median rank by mean | top-5 | top-10 | top-20 |
+|---|---|---|---|---|---|
+| most receiving yards | **11.1%** | 15th | 24.4% | 37.8% | 60.0% |
+| most passing yards | **15.6%** | 11th | 28.9% | 46.7% | 77.8% |
+| any touchdown (first-TD proxy) | **4.4%** | 25th | 26.7% | 33.3% | 46.7% |
+
+Both halves of this matter and they pull in opposite directions:
+
+- **The ordering is genuinely informative.** Picking one of ~840 candidates at
+  random leads ~0.1% of the time. 11% is roughly **90x chance**. This is not a
+  weak signal.
+- **Our number one is nonetheless an underdog**, and the eventual leader
+  typically sits 11th to 25th on our list. The slate leader is whoever spiked,
+  and a mean does not know who that will be.
+
+Consequences, all of them already implemented:
+
+1. **Never print a single pick.** "Our pick: X" asserts confidence of ~90% where
+   the data supports 11%. `BOARD_DEPTH` publishes 32-60 deep precisely because
+   a shallow list hides the actual leader most weeks.
+2. **`p_leads` stays NULL on an `expected_stats` run.** A probability derived
+   from a ranking would be fabricated. The column exists for a `simulated` run
+   to fill honestly.
+3. **The timing families are flagged `is_proxy`.** Expected touchdowns is the
+   weakest of the three (4.4%, median rank 25) and is not the question asked
+   — P(scores first) needs drive order and clock, which is Layer C. The board
+   ranks them and says so; it does not pretend.
+
+### A ranking key that was screened and rejected
+
+The obvious objection — "rank by ceiling, not mean, since the leader is a spike"
+— was tested on the same slates, with three variance-aware keys: the prior
+maximum, the prior 90th percentile, and empirical P(stat >= a slate-winning
+threshold).
+
+| key | receiving: #1 led | leader median rank | passing: #1 led | leader median rank |
+|---|---|---|---|---|
+| **mean** | **11.1%** | 15 | **15.6%** | 11 |
+| prior max | 4.4% | 16 | 2.2% | 10 |
+| prior p90 | 8.9% | 15 | 6.7% | 10 |
+| P(>= threshold) | 4.4% | 17 | 4.4% | 11 |
+
+**None beat the mean**, so the mean stays — the incumbent needs no evidence to
+keep its place. Read this narrowly: at 45 slates the standard error on an 11%
+rate is ~4.7pp, so these gaps are inside noise, and the three alternatives are
+crude stand-ins for a real predictive distribution rather than the calibrated
+per-player one the DFS model can produce. The honest claim is **"no evidence a
+variance proxy beats the mean"**, not "variance does not matter". This was a
+design screen on 8 comparisons, not an edge study, and nothing was promoted.
+
+Reproduce with the nflverse weekly release
+(`stats_player/stats_player_week_{season}.csv`, fetched with `curl -L`).

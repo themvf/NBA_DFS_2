@@ -37,6 +37,7 @@ const PAGE_LINKS: Array<{
   { href: "/dfs/nfl", label: "NFL DFS", sports: ["nfl"] },
   { href: "/nfl/survivor", label: "Survivor Pool", sports: ["nfl"] },
   { href: "/nfl/pickem", label: "Pick'em Pools", sports: ["nfl"] },
+  { href: "/nfl/specials", label: "Slate Specials", sports: ["nfl"] },
   { href: "/nfl/pbp", label: "PBP Archetypes", sports: ["nfl"] },
   { href: "/cfb", label: "Line Terminal", sports: ["cfb"] },
   { href: "/fantasy-football/nfl", label: "NFL Teams", sports: ["nfl"] },
