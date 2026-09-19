@@ -14347,12 +14347,14 @@ export async function getNflSpecialsBoard(
   }
 
   const runRows = await db.execute(sql`
-    SELECT run_id::text AS "runId", model_version AS "modelVersion", method,
-           generated_at::text AS "generatedAt", projection_run_id::text AS "projectionRunId",
-           git_sha AS "gitSha", games_json AS "gamesJson", blocked_reasons AS "blockedReasons"
-      FROM nfl_specials_runs
-     WHERE season = ${season} AND week = ${week} AND slate_scope = ${scope}
-     ORDER BY generated_at DESC
+    SELECT r.run_id::text AS "runId", r.model_version AS "modelVersion", r.method,
+           r.generated_at::text AS "generatedAt", r.projection_run_id::text AS "projectionRunId",
+           r.git_sha AS "gitSha", r.games_json AS "gamesJson", r.blocked_reasons AS "blockedReasons",
+           pr.as_of_at::text AS "projectionAsOf"
+      FROM nfl_specials_runs r
+      LEFT JOIN nfl_dfs_projection_runs pr ON pr.run_id = r.projection_run_id
+     WHERE r.season = ${season} AND r.week = ${week} AND r.slate_scope = ${scope}
+     ORDER BY r.generated_at DESC
      LIMIT 1
   `);
   const runRaw = runRows.rows[0] as Record<string, unknown> | undefined;
@@ -14366,6 +14368,7 @@ export async function getNflSpecialsBoard(
     generatedAt: String(runRaw.generatedAt),
     projectionRunId: runRaw.projectionRunId ? String(runRaw.projectionRunId) : null,
     gitSha: runRaw.gitSha ? String(runRaw.gitSha) : null,
+    projectionAsOf: runRaw.projectionAsOf ? String(runRaw.projectionAsOf) : null,
     games: Array.isArray(runRaw.gamesJson) ? (runRaw.gamesJson as SpecialsRun["games"]) : [],
     blockedReasons: Array.isArray(runRaw.blockedReasons)
       ? (runRaw.blockedReasons as Array<Record<string, unknown>>)

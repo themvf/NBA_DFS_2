@@ -44,6 +44,8 @@ export type SpecialsRun = {
   method: string;
   generatedAt: string;
   projectionRunId: string | null;
+  /** Data cutoff of the projection run the player topics were ranked from. */
+  projectionAsOf: string | null;
   gitSha: string | null;
   games: Array<{ game: string; kickoff: string | null; total: number | null; spread: number | null }>;
   blockedReasons: Array<Record<string, unknown>>;
@@ -254,3 +256,46 @@ export function calibrationNote(meta: FamilyMeta): string {
 }
 
 export const BOARD_IS_VALIDATED = false;
+
+/**
+ * Hours before a board's projections count as stale.
+ *
+ * refresh_nfl_dfs_projections runs twice a day, so a board built on the
+ * Thursday or Sunday cron should be ranking projections a few hours old at
+ * most. 36 hours means roughly three refreshes have been missed -- past the
+ * point where a scheduled run is quietly ranking last week's numbers.
+ *
+ * This exists because the upstream workflow currently reports FAILURE on every
+ * run for a shadow-research step that is unrelated to the projection build.
+ * A permanently red workflow cannot signal a real outage, so the board checks
+ * its own input rather than trusting that someone is watching the red X.
+ */
+export const PROJECTION_STALE_AFTER_HOURS = 36;
+
+export function projectionAgeHours(run: SpecialsRun | null): number | null {
+  if (!run?.projectionAsOf) return null;
+  const asOf = Date.parse(run.projectionAsOf.replace(" ", "T"));
+  const generated = Date.parse(run.generatedAt.replace(" ", "T"));
+  if (!Number.isFinite(asOf) || !Number.isFinite(generated)) return null;
+  return (generated - asOf) / 3_600_000;
+}
+
+/**
+ * A warning when the board ranked projections that were already old, or when
+ * it could not tell. Null when the input was fresh.
+ */
+export function stalenessWarning(run: SpecialsRun | null): string | null {
+  if (!run) return null;
+  if (!run.projectionRunId) {
+    return "No projection run was attached, so the six player topics are empty.";
+  }
+  const age = projectionAgeHours(run);
+  if (age === null) return null;
+  if (age < PROJECTION_STALE_AFTER_HOURS) return null;
+  const days = Math.floor(age / 24);
+  const label = days >= 1 ? `${days} day${days === 1 ? "" : "s"}` : `${Math.round(age)} hours`;
+  return (
+    `Player topics were ranked from projections ${label} old. ` +
+    `refresh_nfl_dfs_projections runs twice daily, so this board is not ranking current numbers.`
+  );
+}

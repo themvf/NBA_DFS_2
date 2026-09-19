@@ -591,3 +591,19 @@ def test_a_team_in_two_scoped_games_is_blocked_rather_than_crashing() -> None:
     # And the helper leaves a clean family untouched.
     clean = [BoardRow("f", "a", "A", "s", False, expected_value=1.0)]
     assert dedupe_or_block(clean, "f") == (clean, [])
+
+
+def test_the_stale_threshold_matches_the_web_constant() -> None:
+    """Two languages, one number. refresh_nfl_dfs_projections reports FAILURE on
+    every run for an unrelated shadow step, so its red X cannot flag a real
+    outage of the projection build this board reads -- both the CI log and the
+    page judge the projections themselves, and must agree on when to complain.
+    """
+    from pathlib import Path
+    from model.nfl_specials_board import PROJECTION_STALE_AFTER_HOURS
+
+    assert PROJECTION_STALE_AFTER_HOURS == 36
+    ts = Path("web/src/lib/nfl/specials-board.ts").read_text()
+    assert "export const PROJECTION_STALE_AFTER_HOURS = 36;" in ts, (
+        "the TypeScript constant drifted from the Python one"
+    )

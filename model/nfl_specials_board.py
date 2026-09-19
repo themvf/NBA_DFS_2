@@ -43,7 +43,7 @@ import subprocess
 import sys
 import uuid
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable, Sequence
 from zoneinfo import ZoneInfo
 
@@ -69,6 +69,8 @@ from model.nfl_slate_specials import (
 
 BOARD_MODEL_VERSION = "nfl-specials-board-v1"
 BOARD_METHOD = "expected_stats"
+# Mirrors PROJECTION_STALE_AFTER_HOURS in web/src/lib/nfl/specials-board.ts.
+PROJECTION_STALE_AFTER_HOURS = 36
 EASTERN = ZoneInfo("America/New_York")
 
 # Touchdown-scoring routes we count toward the first-TD proxy. Passing TDs are
@@ -110,6 +112,7 @@ class Inputs:
     games: tuple[Game, ...]
     players: tuple[Player, ...]
     projection_run_id: str | None
+    projection_as_of: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +139,7 @@ class Board:
     excluded: tuple[dict[str, Any], ...]
     blocked: tuple[dict[str, Any], ...]
     projection_run_id: str | None
+    projection_as_of: datetime | None = None
 
 
 # ── pure construction ────────────────────────────────────────────────────────
@@ -329,7 +333,8 @@ def build_board(inputs: Inputs, *, season: int, week: int, scope: str) -> Board:
 
     return Board(season=season, week=week, scope=scope, rows=tuple(rows),
                  games_in_scope=kept, excluded=tuple(excluded), blocked=tuple(blocked),
-                 projection_run_id=inputs.projection_run_id)
+                 projection_run_id=inputs.projection_run_id,
+                 projection_as_of=inputs.projection_as_of)
 
 
 # ── database ─────────────────────────────────────────────────────────────────
@@ -348,7 +353,7 @@ def load_inputs(db: DatabaseManager, season: int, week: int) -> Inputs:
         (season, week),
     )
     run = db.execute_one(
-        """SELECT run_id FROM nfl_dfs_projection_runs
+        """SELECT run_id, as_of_at FROM nfl_dfs_projection_runs
             WHERE season = %s AND week = %s AND player_count > 0
             ORDER BY as_of_at DESC, created_at DESC LIMIT 1""",
         (season, week),
@@ -376,6 +381,7 @@ def load_inputs(db: DatabaseManager, season: int, week: int) -> Inputs:
         ) for row in games),
         players=tuple(players),
         projection_run_id=run_id,
+        projection_as_of=run["as_of_at"] if run else None,
     )
 
 
@@ -423,6 +429,10 @@ def run(*, season: int, week: int, scope: str, db: DatabaseManager,
         "season": season, "week": week, "scope": scope,
         "games_in_scope": len(board.games_in_scope),
         "projection_run_id": board.projection_run_id,
+        "projection_age_hours": (
+            (datetime.now(timezone.utc) - board.projection_as_of).total_seconds() / 3600
+            if board.projection_as_of else None
+        ),
         "rows": len(published),
         "blocked": len(board.blocked),
         "excluded": len(board.excluded),
@@ -445,6 +455,13 @@ def _print(report: dict[str, Any]) -> None:
     print(f"specials board  {report['season']} week {report['week']}  {report['scope']}")
     print(f"  games in scope   {report['games_in_scope']}")
     print(f"  projection run   {report['projection_run_id'] or 'NONE (player families empty)'}")
+    age = report.get("projection_age_hours")
+    if age is not None:
+        # refresh_nfl_dfs_projections is permanently red for an unrelated
+        # shadow step, so its status cannot flag a real outage. Say the age
+        # here, where a scheduled run's log will show it.
+        flag = "  <- STALE" if age >= PROJECTION_STALE_AFTER_HOURS else ""
+        print(f"  projections age  {age:.1f}h{flag}")
     print(f"  rows published   {report['rows']}   blocked {report['blocked']}   excluded {report['excluded']}")
     for family in FAMILIES:
         count = report["per_family"][family]

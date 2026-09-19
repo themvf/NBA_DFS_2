@@ -29,6 +29,8 @@ import {
   formatAmerican,
   formatExpected,
   impliedProb,
+  projectionAgeHours,
+  stalenessWarning,
   type FamilyPanel,
   type SpecialsBoard,
 } from "@/lib/nfl/specials-board";
@@ -78,6 +80,10 @@ export default function SpecialsClient({
       : firstPopulated ?? FAMILY_META[0].family,
   );
   const active = panels.find((panel) => panel.meta.family === activeFamily) ?? panels[0];
+  // Checked here rather than trusted upstream: refresh_nfl_dfs_projections
+  // reports FAILURE on every run for an unrelated shadow step, so its red X
+  // cannot signal a real outage of the projection build this board reads.
+  const stale = stalenessWarning(board.run);
 
   const href = (params: Record<string, string | number>) => {
     const search = new URLSearchParams({
@@ -163,6 +169,13 @@ export default function SpecialsClient({
         <EmptyState board={board} />
       ) : (
         <>
+          {stale && (
+            <div className="flex items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{stale}</span>
+            </div>
+          )}
+
           {/* ── family tabs ───────────────────────────────────────────── */}
           <nav className="space-y-2 rounded border bg-card p-3">
             {GROUPS.map((group) => (
@@ -211,6 +224,15 @@ export default function SpecialsClient({
                   ["Model version", board.run.modelVersion],
                   ["Generated", board.run.generatedAt],
                   ["Projection run", board.run.projectionRunId ?? "none — player topics are empty"],
+                  [
+                    "Projections as of",
+                    board.run.projectionAsOf
+                      ? `${board.run.projectionAsOf.slice(0, 16).replace("T", " ")}` +
+                        (projectionAgeHours(board.run) !== null
+                          ? ` (${Math.round(projectionAgeHours(board.run)!)}h before this board)`
+                          : "")
+                      : "unknown",
+                  ],
                   ["Commit", board.run.gitSha?.slice(0, 12) ?? "unknown"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex gap-2">
