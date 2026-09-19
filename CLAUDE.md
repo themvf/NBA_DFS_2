@@ -6699,11 +6699,37 @@ using the real `ensurePickemTables` DDL rather than a copy).
 ## CFBD Drives + Plays Backfill (2026-09-19)
 
 `ingest/cfb_plays.py` backfills CollegeFootballData's `/drives` and `/plays`
-into `cfb_drives` / `cfb_plays`. Built and unit-tested; **not yet run against
-real data** — it needs `CFBD_API_KEY` and `DATABASE_URL`, neither of which is
-available in the environment it was written in. Run it via the manual
-`backfill_cfb_plays.yml` workflow, then record the audit artifact's real
-coverage numbers here.
+into `cfb_drives` / `cfb_plays`, via the manual `backfill_cfb_plays.yml`
+workflow.
+
+**Ran 2026-09-19 (run 35437340135), 2022-2025, ~14 minutes:**
+
+| season | games | drives | plays | plays/game |
+|---|---:|---:|---:|---:|
+| 2022 | 896 | 21,917 | 160,282 | 178.9 |
+| 2023 | 910 | 21,866 | 158,995 | 174.7 |
+| 2024 | 919 | 21,766 | 162,751 | 177.1 |
+| 2025 | 934 | 21,762 | 166,236 | 178.0 |
+| total | 3,659 | 87,311 | 648,264 | |
+
+**`skipped` was empty in all four seasons** — zero plays orphaned to a game
+missing from the schedule, zero offense/defense names unmapped to a team id
+across 648k plays. Those were the two silent-loss paths worth counting and
+neither fired.
+
+Week discovery behaved as designed including where it looks odd: 2023
+postseason w11-15 and 2025 postseason w13-14 each returned 0 drives and 0
+plays. The schedule lists those weeks and the feed has nothing in them — the
+"weeks come from the schedule" rule is what makes those known-empty rather
+than possibly-missed.
+
+**Still unmeasured: the audit metrics.** The run was launched with
+`audit_only` unticked, so it went straight to the write pass; play->drive link
+rate and `down`/`distance`/`ppa`/`wallclock` coverage come only from
+`audit_rows()` and have never been computed. Re-running with `audit_only`
+ticked costs **zero CFBD requests** — the run saved the `cfb-plays-2022-2025`
+Actions cache (170MB), so the audit replays from gzipped cache. Do that before
+building anything on drive-level completeness.
 
 **Why these two endpoints and not the rest of the unused surface.** A play
 that happened is a fact: re-fetching 2022 today returns the events it returned
