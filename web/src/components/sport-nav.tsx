@@ -50,6 +50,7 @@ const PAGE_LINKS: Array<{
   { href: "/analytics", label: "Analytics", sports: ["nba", "mlb"] },
   { href: "/vegas", label: "Vegas" },
   { href: "/vegas/detectors", label: "Detectors" },
+  { href: "/health", label: "Pipeline Health" },
   { href: "/vegas/mlb-props", label: "Vegas Props", sports: ["mlb"] },
   { href: "/vegas/mlb-props-v2", label: "Vegas Prop 2", sports: ["mlb"] },
   { href: "/vegas/wimbledon", label: "Wimbledon", sports: ["tennis"] },
