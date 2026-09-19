@@ -502,6 +502,83 @@ TABLES = [
     )
     """,
 
+    # ── CFBD drive + play backfill ────────────────────────────────
+    # A play that happened is a fact: these rows are leak-proof by
+    # construction and carry no as-of ambiguity, unlike ratings/talent
+    # endpoints which return end-of-season state for a past season.
+    # Append-only by identity (cfbd_drive_id / cfbd_play_id); a re-run
+    # refreshes mutable fields but never duplicates an event.
+    """
+    CREATE TABLE IF NOT EXISTS cfb_drives (
+        id BIGSERIAL PRIMARY KEY,
+        cfbd_drive_id BIGINT NOT NULL UNIQUE,
+        game_id INTEGER NOT NULL REFERENCES cfb_matchups(id) ON DELETE CASCADE,
+        cfbd_game_id BIGINT NOT NULL,
+        season INTEGER NOT NULL,
+        season_type TEXT NOT NULL,
+        drive_number INTEGER,
+        offense_name TEXT NOT NULL,
+        defense_name TEXT NOT NULL,
+        offense_team_id INTEGER REFERENCES cfb_teams(team_id),
+        defense_team_id INTEGER REFERENCES cfb_teams(team_id),
+        is_home_offense BOOLEAN,
+        scoring BOOLEAN,
+        drive_result TEXT,
+        start_period INTEGER,
+        start_yards_to_goal INTEGER,
+        start_seconds_remaining INTEGER,
+        end_period INTEGER,
+        end_yards_to_goal INTEGER,
+        end_seconds_remaining INTEGER,
+        play_count INTEGER,
+        yards INTEGER,
+        start_offense_score INTEGER,
+        start_defense_score INTEGER,
+        end_offense_score INTEGER,
+        end_defense_score INTEGER,
+        source_payload_hash TEXT NOT NULL,
+        ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_plays (
+        id BIGSERIAL PRIMARY KEY,
+        cfbd_play_id BIGINT NOT NULL UNIQUE,
+        game_id INTEGER NOT NULL REFERENCES cfb_matchups(id) ON DELETE CASCADE,
+        cfbd_game_id BIGINT NOT NULL,
+        cfbd_drive_id BIGINT,
+        season INTEGER NOT NULL,
+        season_type TEXT NOT NULL,
+        week INTEGER,
+        drive_number INTEGER,
+        play_number INTEGER,
+        offense_name TEXT NOT NULL,
+        defense_name TEXT NOT NULL,
+        offense_team_id INTEGER REFERENCES cfb_teams(team_id),
+        defense_team_id INTEGER REFERENCES cfb_teams(team_id),
+        offense_score INTEGER,
+        defense_score INTEGER,
+        period INTEGER,
+        clock_seconds_remaining INTEGER,
+        game_seconds_remaining INTEGER,
+        offense_timeouts INTEGER,
+        defense_timeouts INTEGER,
+        yardline INTEGER,
+        yards_to_goal INTEGER,
+        down INTEGER,
+        distance INTEGER,
+        yards_gained INTEGER,
+        scoring BOOLEAN,
+        play_type TEXT,
+        play_text TEXT,
+        ppa DOUBLE PRECISION,
+        wallclock TIMESTAMPTZ,
+        source_payload_hash TEXT NOT NULL,
+        ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
     """
     CREATE TABLE IF NOT EXISTS cfb_hypotheses (
         id BIGSERIAL PRIMARY KEY,
@@ -4504,6 +4581,12 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cfb_hypothesis_status ON cfb_hypotheses(status, hypothesis_key)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_hypothesis_results_eval ON cfb_hypothesis_results(hypothesis_id, evaluation_type, evaluated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_signal_snapshots_game ON cfb_game_signal_snapshots(game_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_drives_game ON cfb_drives(game_id, drive_number)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_drives_season ON cfb_drives(season, season_type)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_plays_game ON cfb_plays(game_id, period, play_number)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_plays_drive ON cfb_plays(cfbd_drive_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_plays_season ON cfb_plays(season, season_type, week)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_plays_endgame ON cfb_plays(game_seconds_remaining) WHERE game_seconds_remaining IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",

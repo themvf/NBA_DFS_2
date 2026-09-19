@@ -6693,3 +6693,54 @@ loss. `ledgerVerdict()` refuses to quote a rate below 30 settled weeks, which an
 
 Verify with `verify:pickem-ledger` (30 assertions against the live database,
 using the real `ensurePickemTables` DDL rather than a copy).
+
+---
+
+## CFBD Drives + Plays Backfill (2026-09-19)
+
+`ingest/cfb_plays.py` backfills CollegeFootballData's `/drives` and `/plays`
+into `cfb_drives` / `cfb_plays`. Built and unit-tested; **not yet run against
+real data** — it needs `CFBD_API_KEY` and `DATABASE_URL`, neither of which is
+available in the environment it was written in. Run it via the manual
+`backfill_cfb_plays.yml` workflow, then record the audit artifact's real
+coverage numbers here.
+
+**Why these two endpoints and not the rest of the unused surface.** A play
+that happened is a fact: re-fetching 2022 today returns the events it returned
+then, so drives and plays are leak-proof by construction and need no
+point-in-time snapshot discipline. `ratings/sp`, `ratings/fpi`, `talent` and
+`player/returning` are the opposite — queried for a past season they return
+**end-of-season** state, so joining them to a week-3 game is a leak, and any
+backtest built on them without a captured-at-the-time snapshot is invalid.
+That asymmetry is the whole reason this backfill is cheap and the ratings
+families are not.
+
+**What it does not claim.** Nothing here is a signal, a feature, or evidence
+of an edge. It is the raw material the score-range and endgame ideas depend
+on. Whether CFBD's LIVE feed arrives fast enough to beat an in-play book is a
+separate latency measurement against a stopwatch, deliberately not attempted
+here — and the in-play question is the only place in this family where being
+*faster* rather than *smarter* is even on the table.
+
+**Design decisions worth not rediscovering:**
+- **Weeks come from the season's own `/games` payload**, never a blind 1..20
+  probe. An empty week then means the week genuinely had no plays, rather than
+  that the range was guessed wrong — the same class of distinction the
+  detector-health work exists to preserve.
+- **Parent games are upserted from the play feed itself**, not inherited from
+  `ingest.cfb_history`'s ingest, which keeps only completed FBS-vs-FBS games
+  that also carry betting lines. Tying play coverage to line coverage would
+  make a data property of one source silently govern another.
+- **`game_seconds_remaining` is derived, and overtime is 0, never negative.**
+  A negative value would silently corrupt any endgame slice that filters on a
+  threshold.
+- **A play whose game is not in the schedule is skipped and COUNTED**, not
+  written; an unmapped team name keeps the play with a NULL team id and the
+  raw name preserved, and is also counted. Both appear in the audit's
+  `skipped` map rather than vanishing.
+- **`classification=fbs`** bounds the team universe and row volume to the
+  cohort every other CFB table here is built on. Widening it is a scope
+  decision, not a default.
+- Caches are gzipped per `(endpoint, season, season_type, week)`, and the
+  `/games` cache is shared with `ingest.cfb_history` so the schedule costs
+  nothing extra.
