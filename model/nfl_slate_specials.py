@@ -81,3 +81,51 @@ def selection_kind(family: str) -> str:
     if family not in SELECTION_KIND:
         raise ValueError(f"unknown specials family {family!r}; expected one of {list(FAMILIES)}")
     return SELECTION_KIND[family]
+
+# What each family ranks by, and where that number comes from. `proxy` means the
+# ranking stat is a stand-in for the question rather than an answer to it.
+#
+# Measured over 2023-2025 regular seasons (walk-forward, means from prior weeks
+# only), the highest projected player led the week:
+#
+#     most_receiving_yards   11.1%   actual leader's median rank 15   top-20: 60%
+#     most_passing_yards     15.6%   actual leader's median rank 11   top-20: 78%
+#     any touchdown (proxy)   4.4%   actual leader's median rank 25   top-20: 47%
+#
+# That is ~90x better than chance among ~840 candidates, so the ordering carries
+# real signal -- and the leader is still usually not our number one. Four
+# ranking keys were screened (mean, prior max, prior p90, P(>= a slate-winning
+# threshold)); none beat the mean, so the mean stays. Present these as deep
+# ranked lists, never as a pick.
+RANKING_STAT: dict[str, tuple[str, bool]] = {
+    "highest_scoring_game": ("expected_total_points", False),
+    "lowest_scoring_game": ("expected_total_points", False),
+    "highest_scoring_team": ("implied_team_points", False),
+    "lowest_scoring_team": ("implied_team_points", False),
+    "most_passing_yards": ("passing_yards", False),
+    "most_receiving_yards": ("receiving_yards", False),
+    # Expected touchdowns is not P(scores first): that needs drive order and
+    # clock, which is Layer C. Ranked and labelled as a proxy until then.
+    "first_td_scorer": ("expected_touchdowns", True),
+    "first_qb_td_pass": ("passing_tds", True),
+    "first_qb_int": ("passing_interceptions", True),
+}
+
+# Families ranked ascending -- the question asks for the lowest, not the highest.
+ASCENDING_FAMILIES: frozenset[str] = frozenset({"lowest_scoring_game", "lowest_scoring_team"})
+
+# How deep to publish. Chosen from the coverage measured above: a shallow list
+# would hide the actual leader most weeks.
+BOARD_DEPTH: dict[str, int] = {
+    "highest_scoring_game": 16, "lowest_scoring_game": 16,
+    "highest_scoring_team": 32, "lowest_scoring_team": 32,
+    "most_passing_yards": 32, "most_receiving_yards": 50,
+    "first_td_scorer": 60, "first_qb_td_pass": 32, "first_qb_int": 32,
+}
+
+
+def ranking_stat(family: str) -> tuple[str, bool]:
+    """Return ``(stat_key, is_proxy)`` for a family."""
+    if family not in RANKING_STAT:
+        raise ValueError(f"unknown specials family {family!r}; expected one of {list(FAMILIES)}")
+    return RANKING_STAT[family]

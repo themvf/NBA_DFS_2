@@ -3528,18 +3528,25 @@ TABLES = [
     )
     """,
 
-    # One simulator run: everything a reader needs to replay it exactly.
+    # One board run: everything a reader needs to replay it exactly.
     # Append-only (trigger below) -- a re-run appends a new run_id rather than
     # rewriting, so "what did we say before kickoff" stays answerable.
+    #
+    # `method` distinguishes the two ways a board gets built. 'expected_stats'
+    # ranks candidates by their projected mean and carries no probabilities;
+    # 'simulated' adds P(leads) from the joint draws. seed/n_draws are NULL for
+    # the former, which is why they are nullable -- writing seed=0 for a run
+    # that never drew anything would be a fiction.
     """
-    CREATE TABLE IF NOT EXISTS nfl_specials_sim_runs (
+    CREATE TABLE IF NOT EXISTS nfl_specials_runs (
         run_id UUID PRIMARY KEY,
         season INTEGER NOT NULL,
         week INTEGER NOT NULL,
         slate_scope TEXT NOT NULL,
         model_version TEXT NOT NULL,
-        seed BIGINT NOT NULL,
-        n_draws INTEGER NOT NULL,
+        method TEXT NOT NULL,
+        seed BIGINT,
+        n_draws INTEGER,
         projection_run_id UUID,
         winprob_model_version TEXT,
         pbp_labeller_version TEXT,
@@ -3548,28 +3555,49 @@ TABLES = [
         generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         git_sha TEXT,
         CHECK (slate_scope IN ('sunday_all', 'sunday_1pm')),
-        CHECK (n_draws > 0)
+        CHECK (method IN ('expected_stats', 'simulated')),
+        CHECK (n_draws IS NULL OR n_draws > 0),
+        CHECK (method <> 'simulated' OR (seed IS NOT NULL AND n_draws IS NOT NULL))
     )
     """,
 
-    # Our probability for every selection in every family, per run.
-    # Append-only. status='blocked' carries its reason rather than a silent
-    # default probability -- a family we cannot read is not a family at 0%.
+    # What we project for every selection in every family, per run, ranked.
+    # This is the product: each DK specials topic, every week, with our order
+    # and the expected stat behind it.
+    #
+    # `expected_value` is the ranked quantity and is the only thing an
+    # 'expected_stats' run produces. The probability columns stay NULL until a
+    # 'simulated' run fills them, because P(leads the slate) is not a function
+    # of the mean -- measured over 2023-25, the highest projected receiving
+    # yards led the week only 11% of the time and the actual leader sat 15th by
+    # mean. A ranking is honest; a probability derived from a ranking is not.
+    #
+    # `is_proxy` marks a family whose ranking stat is a stand-in rather than the
+    # question asked: first_td_scorer ranked by expected touchdowns is not
+    # P(scores first), which needs drive timing. Surfaced, never silently
+    # equated.
     """
-    CREATE TABLE IF NOT EXISTS nfl_specials_probs (
+    CREATE TABLE IF NOT EXISTS nfl_specials_board_rows (
         id BIGSERIAL PRIMARY KEY,
-        run_id UUID NOT NULL REFERENCES nfl_specials_sim_runs(run_id) ON DELETE CASCADE,
+        run_id UUID NOT NULL REFERENCES nfl_specials_runs(run_id) ON DELETE CASCADE,
         family TEXT NOT NULL,
+        rank INTEGER,
         selection_key TEXT NOT NULL,
         selection_label TEXT NOT NULL,
-        our_prob DOUBLE PRECISION NOT NULL,
+        stat_key TEXT NOT NULL,
+        expected_value DOUBLE PRECISION,
+        is_proxy BOOLEAN NOT NULL DEFAULT FALSE,
+        p_leads DOUBLE PRECISION,
         p_tie DOUBLE PRECISION,
-        mc_se DOUBLE PRECISION NOT NULL,
+        mc_se DOUBLE PRECISION,
+        context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
         status TEXT NOT NULL,
         block_reason TEXT,
         UNIQUE(run_id, family, selection_key),
         CHECK (status IN ('ok', 'blocked')),
-        CHECK (our_prob >= 0 AND our_prob <= 1),
+        CHECK (status <> 'ok' OR (expected_value IS NOT NULL AND rank IS NOT NULL)),
+        CHECK (status <> 'blocked' OR block_reason IS NOT NULL),
+        CHECK (p_leads IS NULL OR (p_leads >= 0 AND p_leads <= 1)),
         CHECK (p_tie IS NULL OR (p_tie >= 0 AND p_tie <= 1))
     )
     """,
@@ -3588,7 +3616,7 @@ TABLES = [
         selection_key TEXT NOT NULL,
         selection_label TEXT NOT NULL,
         model_version TEXT NOT NULL,
-        run_id UUID REFERENCES nfl_specials_sim_runs(run_id),
+        run_id UUID REFERENCES nfl_specials_runs(run_id),
         capture_key TEXT,
         our_prob DOUBLE PRECISION NOT NULL,
         market_prob DOUBLE PRECISION,
@@ -4599,21 +4627,21 @@ MIGRATIONS = [
     "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_captured_at TIMESTAMPTZ",
 
     # ── NFL slate specials: freeze what has to stay frozen ────────
-    # A simulator run and its probabilities are evidence of what we said at a
-    # point in time. Re-running appends a new run_id; it never rewrites.
+    # A board run and its rows are evidence of what we projected at a point in
+    # time. Re-running appends a new run_id; it never rewrites.
     """CREATE OR REPLACE FUNCTION reject_nfl_specials_run_mutation()
     RETURNS trigger AS $$
     BEGIN
-        RAISE EXCEPTION 'NFL specials simulator runs and probabilities are append-only';
+        RAISE EXCEPTION 'NFL specials board runs and rows are append-only';
     END;
     $$ LANGUAGE plpgsql""",
-    "DROP TRIGGER IF EXISTS nfl_specials_sim_runs_immutable ON nfl_specials_sim_runs",
-    """CREATE TRIGGER nfl_specials_sim_runs_immutable
-    BEFORE UPDATE OR DELETE ON nfl_specials_sim_runs
+    "DROP TRIGGER IF EXISTS nfl_specials_runs_immutable ON nfl_specials_runs",
+    """CREATE TRIGGER nfl_specials_runs_immutable
+    BEFORE UPDATE OR DELETE ON nfl_specials_runs
     FOR EACH ROW EXECUTE FUNCTION reject_nfl_specials_run_mutation()""",
-    "DROP TRIGGER IF EXISTS nfl_specials_probs_immutable ON nfl_specials_probs",
-    """CREATE TRIGGER nfl_specials_probs_immutable
-    BEFORE UPDATE OR DELETE ON nfl_specials_probs
+    "DROP TRIGGER IF EXISTS nfl_specials_board_rows_immutable ON nfl_specials_board_rows",
+    """CREATE TRIGGER nfl_specials_board_rows_immutable
+    BEFORE UPDATE OR DELETE ON nfl_specials_board_rows
     FOR EACH ROW EXECUTE FUNCTION reject_nfl_specials_run_mutation()""",
     "DROP TRIGGER IF EXISTS nfl_specials_bet_snapshots_immutable ON nfl_specials_bet_snapshots",
     """CREATE TRIGGER nfl_specials_bet_snapshots_immutable
@@ -5246,8 +5274,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_odds_api_usage_day ON odds_api_usage(requested_at DESC, sport, purpose)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_specials_captures_wk ON nfl_specials_market_captures(season, week, family, slate_scope)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_specials_captures_key ON nfl_specials_market_captures(capture_key)",
-    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_runs_wk ON nfl_specials_sim_runs(season, week, slate_scope, model_version, generated_at DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_probs_family ON nfl_specials_probs(run_id, family)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_runs_wk ON nfl_specials_runs(season, week, slate_scope, model_version, generated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_board_rows_family ON nfl_specials_board_rows(run_id, family, rank)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bets_wk ON nfl_specials_bets(season, week, slate_scope, family, status)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bets_settle ON nfl_specials_bets(status, locked, event_commence)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bet_snapshots_bet ON nfl_specials_bet_snapshots(bet_id, captured_at DESC)",

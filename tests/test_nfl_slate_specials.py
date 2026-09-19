@@ -375,3 +375,190 @@ def test_run_refuses_a_malformed_paste_rather_than_recording_part_of_it(tmp_path
     paste.write_text(padded(("Christian McCaffrey", 50)))
     with pytest.raises(ValueError, match="between -100 and"):
         run(season=2026, week=3, family="first_td_scorer", scope="sunday_1pm", file_path=paste, db=None)
+
+
+# ══ the weekly board ═════════════════════════════════════════════════════════
+# The product: each topic, every week, with our order and the expected stat.
+# Probabilities are deliberately absent -- see model/nfl_specials_board.py for
+# the measurement that says a mean cannot be dressed up as P(leads).
+
+from datetime import timezone
+
+from model.nfl_dfs_research import implied_totals
+from model.nfl_specials_board import (
+    BOARD_METHOD,
+    BOARD_MODEL_VERSION,
+    Game,
+    Inputs,
+    Player,
+    build_board,
+    build_player_rows,
+    build_team_rows,
+    games_in_scope,
+    player_stat,
+)
+
+ONE_PM_ET = datetime(2026, 9, 20, 17, 0, tzinfo=timezone.utc)   # 13:00 America/New_York
+LATE_ET = datetime(2026, 9, 20, 20, 25, tzinfo=timezone.utc)    # 16:25 America/New_York
+
+
+def game(away: str, home: str, total=48.5, spread=2.5, kickoff=ONE_PM_ET, spread_available=True) -> Game:
+    return Game(game_id=1, home=home, away=away, kickoff=kickoff, total=total,
+                spread=spread, spread_available=spread_available, source="nflverse")
+
+
+def player(name, team, position, means, status="historical") -> Player:
+    return Player(gsis_id=f"00-{abs(hash(name)) % 100000:05d}", name=name,
+                  normalized_name=name.lower().replace(" ", ""), team=team,
+                  position=position, stat_means=means, projection_status=status)
+
+
+def test_board_version_is_distinct_from_the_simulator_version() -> None:
+    """A means board and a 50k-draw sim must never share an evidence cohort."""
+    assert BOARD_MODEL_VERSION == "nfl-specials-board-v1"
+    assert BOARD_MODEL_VERSION != S.MODEL_VERSION
+    assert BOARD_METHOD == "expected_stats"
+
+
+def test_the_ranking_contract_covers_every_family() -> None:
+    assert set(S.RANKING_STAT) == set(S.FAMILIES)
+    assert set(S.BOARD_DEPTH) == set(S.FAMILIES)
+    assert S.ASCENDING_FAMILIES == frozenset({"lowest_scoring_game", "lowest_scoring_team"})
+    proxies = {family for family, (_, is_proxy) in S.RANKING_STAT.items() if is_proxy}
+    assert proxies == set(S.TIMING_FAMILIES), (
+        "exactly the timing families are proxies: expected touchdowns is not "
+        "P(scores first), which needs drive order and clock"
+    )
+
+
+def test_a_late_kickoff_is_excluded_from_the_one_pm_board_entirely() -> None:
+    kept, dropped = games_in_scope([game("KC", "BAL"), game("NYG", "CIN", kickoff=LATE_ET)], "sunday_1pm")
+    assert [g.away for g in kept] == ["KC"]
+    assert dropped[0]["reason"] == "out_of_scope"
+    kept_all, _ = games_in_scope([game("KC", "BAL"), game("NYG", "CIN", kickoff=LATE_ET)], "sunday_all")
+    assert len(kept_all) == 2
+
+
+def test_a_game_with_no_kickoff_time_is_dropped_not_guessed() -> None:
+    kept, dropped = games_in_scope([game("KC", "BAL", kickoff=None)], "sunday_1pm")
+    assert kept == ()
+    assert dropped[0]["reason"] == "no_kickoff_time"
+
+
+def test_team_points_follow_the_nflverse_spread_sign_and_not_the_book_one() -> None:
+    """The sign-inversion bug this would otherwise hide: a POSITIVE spread means
+    the HOME team is favoured, so an away favourite must out-project its host."""
+    rows, _ = build_team_rows("highest_scoring_team", [game("SF", "PHI", total=44.0, spread=-1.5)])
+    values = {row.selection_key: row.expected_value for row in rows}
+    assert values["SF"] == pytest.approx(22.75), "away favourite gets the larger share"
+    assert values["PHI"] == pytest.approx(21.25)
+    assert values["SF"] > values["PHI"]
+    # and agrees with the shared helper rather than a local re-derivation
+    home, away = implied_totals(44.0, -1.5)
+    assert (values["PHI"], values["SF"]) == pytest.approx((home, away))
+
+
+def test_lowest_scoring_families_rank_ascending() -> None:
+    games = [game("KC", "BAL", total=48.5), game("BUF", "NYJ", total=41.5)]
+    board = build_board(Inputs(tuple(games), (), None), season=2026, week=3, scope="sunday_1pm")
+    lowest = [r for r in board.rows if r.family == "lowest_scoring_game" and r.status == "ok"]
+    highest = [r for r in board.rows if r.family == "highest_scoring_game" and r.status == "ok"]
+    assert min(lowest, key=lambda r: r.rank).expected_value == 41.5
+    assert min(highest, key=lambda r: r.rank).expected_value == 48.5
+
+
+def test_a_game_without_a_total_is_blocked_with_a_reason_not_ranked_at_zero() -> None:
+    rows, blocked = build_team_rows("highest_scoring_team", [game("CIN", "NYG", total=None, spread=None)])
+    assert all(row.status == "blocked" for row in rows)
+    assert all(row.expected_value is None and row.rank is None for row in rows)
+    assert {row.block_reason for row in rows} == {"no_quoted_total"}
+    assert len(blocked) == 2, "one per team"
+
+
+def test_a_missing_spread_is_recorded_rather_than_silently_assumed() -> None:
+    rows, _ = build_team_rows("highest_scoring_team",
+                              [game("KC", "BAL", total=48.0, spread=None, spread_available=False)])
+    assert {row.expected_value for row in rows} == {24.0}, "an even split with no spread"
+    assert all(row.context["spread_available"] is False for row in rows), (
+        "the reader must be able to see the split carries no team information"
+    )
+
+
+def test_a_player_ruled_out_never_heads_the_board() -> None:
+    rows, excluded = build_player_rows(
+        "most_receiving_yards",
+        [player("Hurt Guy", "BUF", "WR", {"receiving_yards": 400.0}, status="out"),
+         player("Fit Guy", "BUF", "WR", {"receiving_yards": 70.0})],
+        {"BUF"},
+    )
+    assert [row.selection_label for row in rows] == ["Fit Guy"]
+    assert excluded[0]["reason"] == "out"
+
+
+def test_a_zero_expectation_player_does_not_occupy_a_rank() -> None:
+    rows, excluded = build_player_rows(
+        "most_receiving_yards", [player("Zero Guy", "BUF", "WR", {"receiving_yards": 0.0})], {"BUF"})
+    assert rows == []
+    assert excluded[0]["reason"] == "zero_expectation"
+
+
+def test_a_player_outside_the_slate_is_not_on_the_board() -> None:
+    rows, _ = build_player_rows(
+        "most_receiving_yards", [player("Bye Guy", "DAL", "WR", {"receiving_yards": 90.0})], {"BUF"})
+    assert rows == []
+
+
+def test_expected_touchdowns_counts_rushing_and_receiving_but_not_passing() -> None:
+    """The passer does not score the touchdown he throws."""
+    scorer = player("Dual Threat", "BAL", "QB",
+                    {"rushing_tds": 0.5, "receiving_tds": 0.1, "passing_tds": 2.0})
+    assert player_stat(scorer, "expected_touchdowns") == pytest.approx(0.6)
+    thrower = player("Pocket Passer", "KC", "QB", {"passing_tds": 2.4})
+    assert player_stat(thrower, "expected_touchdowns") is None, (
+        "no rushing or receiving expectation means no first-TD candidacy, "
+        "rather than a zero that would still take a rank"
+    )
+
+
+def test_a_quarterback_family_excludes_non_quarterbacks() -> None:
+    rows, _ = build_player_rows(
+        "most_passing_yards",
+        [player("QB One", "KC", "QB", {"passing_yards": 280.0}),
+         player("RB One", "KC", "RB", {"passing_yards": 15.0})],
+        {"KC"},
+    )
+    assert [row.selection_label for row in rows] == ["QB One"]
+
+
+def test_the_board_publishes_no_probability_from_an_expected_stats_run() -> None:
+    """A mean is not P(leads): measured 11.1% for the top receiving projection."""
+    board = build_board(
+        Inputs((game("KC", "BAL"),),
+               (player("Chase", "BAL", "WR", {"receiving_yards": 92.0}),), None),
+        season=2026, week=3, scope="sunday_1pm")
+    published = [row for row in board.rows if row.status == "ok"]
+    assert published, "sanity: the board is not empty"
+    assert all(not hasattr(row, "p_leads") or getattr(row, "p_leads", None) is None
+               for row in published)
+    assert all(row.expected_value is not None and row.rank is not None for row in published)
+
+
+def test_the_board_is_ranked_from_one_with_no_gaps_per_family() -> None:
+    games = [game("KC", "BAL", total=48.5), game("BUF", "NYJ", total=41.5)]
+    players = [player(f"WR {i}", "BAL", "WR", {"receiving_yards": 90.0 - i}) for i in range(5)]
+    board = build_board(Inputs(tuple(games), tuple(players), None),
+                        season=2026, week=3, scope="sunday_1pm")
+    for family in S.FAMILIES:
+        ranks = sorted(r.rank for r in board.rows if r.family == family and r.status == "ok")
+        assert ranks == list(range(1, len(ranks) + 1)), f"{family} ranks must be 1..n"
+
+
+def test_board_depth_truncates_a_long_family() -> None:
+    depth = S.BOARD_DEPTH["most_receiving_yards"]
+    players = [player(f"WR {i}", "BAL", "WR", {"receiving_yards": 200.0 - i})
+               for i in range(depth + 25)]
+    board = build_board(Inputs((game("KC", "BAL"),), tuple(players), None),
+                        season=2026, week=3, scope="sunday_1pm")
+    published = [r for r in board.rows if r.family == "most_receiving_yards" and r.status == "ok"]
+    assert len(published) == depth
+    assert published[0].expected_value == 200.0, "truncation keeps the top, not an arbitrary slice"

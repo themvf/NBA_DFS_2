@@ -12,6 +12,34 @@ silent default**, and **bump the version rather than tune in place**.
 
 ---
 
+## 0a. Reframed 2026-09-19 — read this first
+
+**The product is a weekly projection board, not a bet ledger.** For each of the
+nine DK specials topics, show **our ranking of the candidates and the expected
+stat behind it**, every week, persisted so the topics accumulate a record.
+
+Two things follow, and they invert parts of this document:
+
+1. **A market price is optional.** It may not be obtainable at all for these
+   topics. `ingest/nfl_specials_market.py` captures DK's board when someone can
+   paste one, and the overround it measures tells you how far to trust a DK
+   implied probability — but **nothing downstream requires it**. A board with no
+   market beside it is still the product.
+2. **The 50,000-draw simulator is not on the critical path.** A *ranking with
+   expected stats* needs none of it: `nfl_dfs_player_projections.stat_means`
+   already carries passing/receiving/rushing yards and touchdowns weekly, and
+   `model/nfl_dfs_research.implied_totals()` gives team points from the
+   schedule's total and spread. That board is built and shipped (§11). The
+   simulator's remaining job is to turn an order into P(leads the slate), which
+   a mean cannot do — see §12 for the measurement that settles this.
+
+So the ledger (`nfl_specials_bets`), the star rubric, EV, `max_stars=2` and the
+P5 uncap path are **deferred, not deleted**. The tables remain; no code writes
+them. Sections 3.3, 3.4's settlement half, and the P4/P5 rows below describe
+work that is no longer next.
+
+---
+
 ## 0. Ten-minute orientation
 
 You are building one Python simulator that draws ~50,000 "Sundays" and reads
@@ -733,8 +761,113 @@ exactly one number and both of these corrupt it silently:
 - There is no re-resolution pass. Back-filling `selection_key` on old captures
   once a projection run lands is a separate job and is **not** built.
 
-**Not started:** P0.5 onward — `build_slate`, `simulate`, `readout`, the score
+### The weekly board → shipped 2026-09-19
+
+**State: Built + Tested.** Never yet run against real projections — this
+container has no production database, so every verification below is against
+seeded fixtures in a local PostgreSQL 16.13.
+
+| Requirement | Implementation | Evidence |
+|---|---|---|
+| Ranked board, all 9 topics, weekly | `model/nfl_specials_board.py` | Live run produced 40 ranked rows for `sunday_1pm` and 46 for `sunday_all` across all nine families |
+| Ranking contract, measured not guessed | `RANKING_STAT`, `BOARD_DEPTH`, `ASCENDING_FAMILIES` in `model/nfl_slate_specials.py` | §12 |
+| Scope excludes, never down-weights | `games_in_scope` | A 16:25 ET kickoff is absent from `sunday_1pm` (4 games) and present in `sunday_all` (5) |
+| Team points from the schedule | imports `nfl_dfs_research.implied_totals` | Cross-checked against the helper: SF@PHI total 44.0 spread -1.5 → SF 22.75, PHI 21.25, i.e. the **away** favourite out-projects its host |
+| No silent defaults | blocked rows | A game with no total yields `expected_value NULL`, `rank NULL`, `block_reason='no_quoted_total'` — never a 0 that still takes a rank |
+| Ruled-out players off the board | `projection_status='out'` filter | A 400-yard OUT projection is excluded; a 70-yard active one ranks |
+| Append-only | triggers | `UPDATE` on a board row and `DELETE` on a run both rejected live |
+
+Two mutations confirmed the tests bite: flipping the spread sign to the
+book convention, and ranking `lowest_*` descending. Both caught. Suite: **53
+tests** in this file, **892 passed** overall (the same 3 unrelated failures).
+
+**Deliberate design points:**
+
+- **`method` distinguishes the two kinds of run.** `expected_stats` carries no
+  `seed`/`n_draws` and no probabilities; `simulated` will carry both. A CHECK
+  enforces that a simulated run cannot omit them. Writing `seed=0` for a run
+  that drew nothing would be a fiction.
+- **`nfl_specials_sim_runs` and `nfl_specials_probs` were consolidated into
+  `nfl_specials_runs` and `nfl_specials_board_rows`.** `probs` required
+  `our_prob` and `mc_se` NOT NULL, which a means board can only satisfy by
+  writing a fake zero — the exact silent default CLAUDE.md forbids. Neither old
+  table had ever been written by any code, so this is a consolidation, not a
+  migration. One home, not two.
+- **A missing spread is recorded, not assumed away.** With a total but no
+  spread the split is even, which is the honest expectation, and
+  `context_json.spread_available=false` says the split carries no team
+  information. Better than blocking a whole board over one unpriced game.
+- **Expected touchdowns excludes passing touchdowns** — the passer does not
+  score the touchdown he throws. A pure pocket passer returns `None` for the
+  first-TD proxy rather than a zero that would still occupy a rank.
+
+**Not started:** the `/nfl/specials` page (§5) — the board is persisted but
+nothing renders it yet — plus P0.5 onward — `build_slate`, `simulate`, `readout`, the score
 table, the ledger, settlement, the backtest, the workflow, and the `/nfl`
 tab. Nothing in the `nfl_specials_sim_runs` / `_probs` / `_bets` /
 `_bet_snapshots` tables is written by any code yet; they exist so the FK chain
 and the immutability guarantees are settled before anything depends on them.
+
+---
+
+## 12. What a mean can and cannot say (measured 2026-09-19)
+
+The board ranks by expected stat. Before choosing that key it was tested against
+the question it is actually being asked → *who leads the slate?* — on the
+2023-2025 regular seasons from nflverse weekly stats, walk-forward, with each
+week's ranking built only from prior weeks (minimum three games of history).
+45 slates, a median of ~840 candidates each. Week-level rather than
+Sunday-only, so a real 1pm slate is a subset; the effect does not flip.
+
+| topic | our #1 actually led | leader's median rank by mean | top-5 | top-10 | top-20 |
+|---|---|---|---|---|---|
+| most receiving yards | **11.1%** | 15th | 24.4% | 37.8% | 60.0% |
+| most passing yards | **15.6%** | 11th | 28.9% | 46.7% | 77.8% |
+| any touchdown (first-TD proxy) | **4.4%** | 25th | 26.7% | 33.3% | 46.7% |
+
+Both halves of this matter and they pull in opposite directions:
+
+- **The ordering is genuinely informative.** Picking one of ~840 candidates at
+  random leads ~0.1% of the time. 11% is roughly **90x chance**. This is not a
+  weak signal.
+- **Our number one is nonetheless an underdog**, and the eventual leader
+  typically sits 11th to 25th on our list. The slate leader is whoever spiked,
+  and a mean does not know who that will be.
+
+Consequences, all of them already implemented:
+
+1. **Never print a single pick.** "Our pick: X" asserts confidence of ~90% where
+   the data supports 11%. `BOARD_DEPTH` publishes 32-60 deep precisely because
+   a shallow list hides the actual leader most weeks.
+2. **`p_leads` stays NULL on an `expected_stats` run.** A probability derived
+   from a ranking would be fabricated. The column exists for a `simulated` run
+   to fill honestly.
+3. **The timing families are flagged `is_proxy`.** Expected touchdowns is the
+   weakest of the three (4.4%, median rank 25) and is not the question asked
+   — P(scores first) needs drive order and clock, which is Layer C. The board
+   ranks them and says so; it does not pretend.
+
+### A ranking key that was screened and rejected
+
+The obvious objection — "rank by ceiling, not mean, since the leader is a spike"
+— was tested on the same slates, with three variance-aware keys: the prior
+maximum, the prior 90th percentile, and empirical P(stat >= a slate-winning
+threshold).
+
+| key | receiving: #1 led | leader median rank | passing: #1 led | leader median rank |
+|---|---|---|---|---|
+| **mean** | **11.1%** | 15 | **15.6%** | 11 |
+| prior max | 4.4% | 16 | 2.2% | 10 |
+| prior p90 | 8.9% | 15 | 6.7% | 10 |
+| P(>= threshold) | 4.4% | 17 | 4.4% | 11 |
+
+**None beat the mean**, so the mean stays — the incumbent needs no evidence to
+keep its place. Read this narrowly: at 45 slates the standard error on an 11%
+rate is ~4.7pp, so these gaps are inside noise, and the three alternatives are
+crude stand-ins for a real predictive distribution rather than the calibrated
+per-player one the DFS model can produce. The honest claim is **"no evidence a
+variance proxy beats the mean"**, not "variance does not matter". This was a
+design screen on 8 comparisons, not an edge study, and nothing was promoted.
+
+Reproduce with the nflverse weekly release
+(`stats_player/stats_player_week_{season}.csv`, fetched with `curl -L`).
