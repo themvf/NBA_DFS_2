@@ -39,6 +39,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import uuid
@@ -56,18 +57,20 @@ from db.database import DatabaseManager
 # different week than the projections it reads.
 from ingest.nfl_dfs_projections import infer_target_week
 from model.nfl_dfs_research import implied_totals
+from model.nfl_team_event_fit import ARTIFACT as EVENT_ARTIFACT, probability as event_probability
 from model.nfl_slate_specials import (
     ASCENDING_FAMILIES,
     BOARD_DEPTH,
     FAMILIES,
     FAMILY_POSITIONS,
+    PROPOSITION_EVENT,
     SLATE_SCOPES,
     in_scope,
     ranking_stat,
     selection_kind,
 )
 
-BOARD_MODEL_VERSION = "nfl-specials-board-v1"
+BOARD_MODEL_VERSION = "nfl-specials-board-v2"
 BOARD_METHOD = "expected_stats"
 # Mirrors PROJECTION_STALE_AFTER_HOURS in web/src/lib/nfl/specials-board.ts.
 PROJECTION_STALE_AFTER_HOURS = 36
@@ -307,6 +310,68 @@ def dedupe_or_block(rows: list[BoardRow], family: str) -> tuple[list[BoardRow], 
     return kept, blocked
 
 
+def load_event_fits() -> dict[str, Any]:
+    """Fitted per-team event rates, or {} when the artifact has not been built."""
+    if not EVENT_ARTIFACT.exists():
+        return {}
+    return json.loads(EVENT_ARTIFACT.read_text())
+
+
+def build_proposition_rows(
+    family: str, games: Sequence[Game], artifact: dict[str, Any],
+) -> tuple[list[BoardRow], list[dict[str, Any]]]:
+    """P(every team in the window does X), by multiplying a fitted per-team rate.
+
+    Fails closed on purpose. "All teams" is a conjunction over every team in the
+    window, so one team whose implied total is unknown makes the whole
+    proposition unknown -- there is no defensible way to answer it from the
+    other fifteen. A blocked row says which game is missing.
+    """
+    stat_key, _ = ranking_stat(family)
+    event_key = PROPOSITION_EVENT[family]
+    fits = (artifact.get("events") or {})
+    fit = fits.get(event_key)
+    label = f"Yes - {fit['dk_market']}" if fit and fit.get("dk_market") else "Yes"
+
+    if not fit:
+        return [BoardRow(family, "yes", "Yes", stat_key, False, status="blocked",
+                         block_reason="event_rates_artifact_missing")], [
+            {"family": family, "selection": "yes", "reason": "event_rates_artifact_missing"}]
+    if not games:
+        return [BoardRow(family, "yes", label, stat_key, False, status="blocked",
+                         block_reason="no_games_in_scope")], [
+            {"family": family, "selection": "yes", "reason": "no_games_in_scope"}]
+
+    missing = [f"{g.away}@{g.home}" for g in games if g.total is None]
+    if missing:
+        return [BoardRow(family, "yes", label, stat_key, False, status="blocked",
+                         block_reason=f"no_quoted_total: {', '.join(missing[:3])}")], [
+            {"family": family, "selection": "yes", "reason": "no_quoted_total"}]
+
+    per_team: list[dict[str, Any]] = []
+    joint = 1.0
+    for game in games:
+        home_points, away_points = implied_totals(game.total, game.spread or 0.0)
+        for team, implied in ((game.home, home_points), (game.away, away_points)):
+            p = event_probability(fit, implied)
+            joint *= p
+            per_team.append({"team": team, "implied": round(implied, 1), "p": round(p, 4)})
+
+    weakest = min(per_team, key=lambda t: t["p"])
+    return [BoardRow(
+        family, "yes", label, stat_key, False, rank=1, expected_value=joint,
+        context={
+            "teams": len(per_team),
+            "weakest_team": weakest["team"],
+            "weakest_p": weakest["p"],
+            "per_team": sorted(per_team, key=lambda t: t["p"]),
+            "event": event_key,
+            "fit_kind": fit.get("kind"),
+            "independence": "per-team rates multiplied; measured mildly optimistic",
+        },
+    )], []
+
+
 def build_board(inputs: Inputs, *, season: int, week: int, scope: str) -> Board:
     kept, dropped = games_in_scope(inputs.games, scope)
     teams = {team for game in kept for team in (game.home, game.away)}
@@ -314,9 +379,12 @@ def build_board(inputs: Inputs, *, season: int, week: int, scope: str) -> Board:
     excluded: list[dict[str, Any]] = list(dropped)
     blocked: list[dict[str, Any]] = []
 
+    artifact = load_event_fits()
     for family in FAMILIES:
         kind = selection_kind(family)
-        if kind == "game":
+        if kind == "proposition":
+            family_rows, family_blocked = build_proposition_rows(family, kept, artifact)
+        elif kind == "game":
             family_rows, family_blocked = build_game_rows(family, kept)
         elif kind == "team":
             family_rows, family_blocked = build_team_rows(family, kept)
@@ -469,7 +537,11 @@ def _print(report: dict[str, Any]) -> None:
         _, is_proxy = ranking_stat(family)
         tag = "  [proxy]" if is_proxy else ""
         if leader:
-            print(f"  {family:22} {count:3} ranked   top: {leader[0]} ({leader[1]:.1f}){tag}")
+            # A proposition's value IS a probability; printing it as "0.3" reads
+            # like a stat line rather than a 30% chance.
+            shown = (f"{leader[1] * 100:.1f}%" if selection_kind(family) == "proposition"
+                     else f"{leader[1]:.1f}")
+            print(f"  {family:22} {count:3} ranked   top: {leader[0]} ({shown}){tag}")
         else:
             print(f"  {family:22} {count:3} ranked   -- nothing to rank{tag}")
     print(f"  run_id           {report['run_id'] or 'not written (dry run)'}")

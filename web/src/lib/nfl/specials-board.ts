@@ -4,11 +4,13 @@
  * Pure: no database, no React. The page renders what these functions return so
  * the honesty rules below are testable rather than aspirational.
  *
- * The board answers nine DK specials questions with OUR RANKING and the
- * expected stat behind it. It deliberately publishes no probability, because a
- * mean cannot be turned into one. Measured on 2023-2025 (walk-forward, means
- * from prior weeks only, 45 slates, ~840 candidates each), the player with the
- * highest projected stat actually led the week:
+ * The board answers DK's specials questions in two shapes. A "who leads"
+ * question gets OUR RANKING and the expected stat behind it, and deliberately
+ * publishes no probability, because a mean cannot be turned into one. An "all
+ * teams to score" question is a single yes/no event, so it gets a probability
+ * and no ranking. Measured on 2023-2025 (walk-forward, means from prior weeks
+ * only, 45 slates, ~840 candidates each), the player with the highest projected
+ * stat actually led the week:
  *
  *     most receiving yards   11.1%    actual leader's median rank 15
  *     most passing yards     15.6%    actual leader's median rank 11
@@ -88,7 +90,9 @@ export type FamilyMeta = {
   isProxy: boolean;
   proxyNote?: string;
   ascending: boolean;
-  group: "Games" | "Teams" | "Players";
+  /** "ranked" answers which selection wins; "proposition" answers yes/no. */
+  kind: "ranked" | "proposition";
+  group: "Games" | "Teams" | "Players" | "All teams to score";
   topOneLedPct: number | null;
   leaderMedianRank: number | null;
 };
@@ -97,38 +101,44 @@ export const FAMILY_META: readonly FamilyMeta[] = [
   {
     family: "highest_scoring_game", label: "Highest scoring game",
     question: "Which game produces the most combined points?",
-    unit: "pts", decimals: 1, isProxy: false, ascending: false, group: "Games",
+    unit: "pts", decimals: 1, isProxy: false, kind: "ranked", ascending: false, group: "Games",
     topOneLedPct: null, leaderMedianRank: null,
   },
   {
     family: "lowest_scoring_game", label: "Lowest scoring game",
     question: "Which game produces the fewest combined points?",
-    unit: "pts", decimals: 1, isProxy: false, ascending: true, group: "Games",
+    unit: "pts", decimals: 1, isProxy: false, kind: "ranked", ascending: true, group: "Games",
     topOneLedPct: null, leaderMedianRank: null,
   },
   {
     family: "highest_scoring_team", label: "Highest scoring team",
     question: "Which team scores the most points?",
-    unit: "pts", decimals: 1, isProxy: false, ascending: false, group: "Teams",
+    unit: "pts", decimals: 1, isProxy: false, kind: "ranked", ascending: false, group: "Teams",
     topOneLedPct: null, leaderMedianRank: null,
   },
   {
     family: "lowest_scoring_team", label: "Lowest scoring team",
     question: "Which team scores the fewest points?",
-    unit: "pts", decimals: 1, isProxy: false, ascending: true, group: "Teams",
+    unit: "pts", decimals: 1, isProxy: false, kind: "ranked", ascending: true, group: "Teams",
     topOneLedPct: null, leaderMedianRank: null,
   },
   {
     family: "most_passing_yards", label: "Most passing yards",
     question: "Which quarterback throws for the most yards?",
-    unit: "yds", decimals: 0, isProxy: false, ascending: false, group: "Players",
+    unit: "yds", decimals: 0, isProxy: false, kind: "ranked", ascending: false, group: "Players",
     topOneLedPct: 15.6, leaderMedianRank: 11,
   },
   {
     family: "most_receiving_yards", label: "Most receiving yards",
     question: "Which player gains the most receiving yards?",
-    unit: "yds", decimals: 0, isProxy: false, ascending: false, group: "Players",
+    unit: "yds", decimals: 0, isProxy: false, kind: "ranked", ascending: false, group: "Players",
     topOneLedPct: 11.1, leaderMedianRank: 15,
+  },
+  {
+    family: "most_rushing_yards", label: "Most rushing yards",
+    question: "Which player gains the most rushing yards?",
+    unit: "yds", decimals: 0, isProxy: false, kind: "ranked", ascending: false, group: "Players",
+    topOneLedPct: null, leaderMedianRank: null,
   },
   {
     family: "first_td_scorer", label: "First touchdown scorer",
@@ -136,22 +146,35 @@ export const FAMILY_META: readonly FamilyMeta[] = [
     unit: "TD", decimals: 2, isProxy: true,
     proxyNote:
       "Ranked by expected touchdowns, which is not P(scores first) — that needs drive order and clock.",
-    ascending: false, group: "Players", topOneLedPct: 4.4, leaderMedianRank: 25,
+    kind: "ranked", ascending: false, group: "Players", topOneLedPct: 4.4, leaderMedianRank: 25,
   },
   {
     family: "first_qb_td_pass", label: "First QB touchdown pass",
     question: "Which quarterback throws the first touchdown pass?",
     unit: "TD", decimals: 2, isProxy: true,
     proxyNote: "Ranked by expected touchdown passes, not by who is first.",
-    ascending: false, group: "Players", topOneLedPct: null, leaderMedianRank: null,
+    kind: "ranked", ascending: false, group: "Players", topOneLedPct: null, leaderMedianRank: null,
   },
   {
     family: "first_qb_int", label: "First QB interception",
     question: "Which quarterback throws the first interception?",
     unit: "INT", decimals: 2, isProxy: true,
     proxyNote: "Ranked by expected interceptions, not by who is first.",
-    ascending: false, group: "Players", topOneLedPct: null, leaderMedianRank: null,
+    kind: "ranked", ascending: false, group: "Players", topOneLedPct: null, leaderMedianRank: null,
   },
+  ...( [
+    ["all_teams_td", "All teams to score 1+ TD", "Does every team in the window score a touchdown?"],
+    ["all_teams_two_td", "All teams to score 2+ TDs", "Does every team score at least twice?"],
+    ["all_teams_fg", "All teams to kick 1+ FG", "Does every team make a field goal?"],
+    ["all_teams_td_and_fg", "All teams: 1+ TD and 1+ FG", "Does every team manage both?"],
+    ["all_teams_passing_td", "All teams to throw 1+ passing TD", "Does every team throw a touchdown?"],
+    ["all_teams_rushing_td", "All teams to run in 1+ rushing TD", "Does every team run one in?"],
+    ["all_teams_score", "All teams to score", "Does every team score at all?"],
+  ] as const).map(([family, label, question]) => ({
+    family, label, question, unit: "%", decimals: 1, isProxy: false,
+    kind: "proposition" as const, ascending: false, group: "All teams to score" as const,
+    topOneLedPct: null, leaderMedianRank: null,
+  })),
 ] as const;
 
 export const FAMILY_ORDER: readonly string[] = FAMILY_META.map((meta) => meta.family);
@@ -245,6 +268,14 @@ export function impliedProb(american: number | null): number | null {
  * have one and says the ranking is unmeasured where we do not.
  */
 export function calibrationNote(meta: FamilyMeta): string {
+  if (meta.kind === "proposition") {
+    return (
+      "A probability, not a ranking: a fitted per-team rate multiplied across every team in " +
+      "the window. Checked against 89 real Sunday 1pm windows, independence runs mildly " +
+      "optimistic (32.9% predicted vs 31.5% observed for touchdowns), and no correction is " +
+      "fitted to a sample that small."
+    );
+  }
   if (meta.topOneLedPct === null) {
     return "Hit rate for this topic has not been measured — read the order as an ordering, not a forecast.";
   }
@@ -254,6 +285,16 @@ export function calibrationNote(meta: FamilyMeta): string {
     `Informative ordering, not a pick.`
   );
 }
+
+export const SCOPE_LABELS: Record<string, string> = {
+  sunday_all: "All Sunday games",
+  sunday_1pm: "1pm ET only",
+  sunday_late: "4.05 & 4.25pm ET",
+  // DK's combined market; excludes Sunday Night Football, unlike sunday_all.
+  sunday_main: "1pm, 4.05 & 4.25pm ET",
+};
+
+export const SCOPES = ["sunday_1pm", "sunday_late", "sunday_main", "sunday_all"] as const;
 
 export const BOARD_IS_VALIDATED = false;
 

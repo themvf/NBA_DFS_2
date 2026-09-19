@@ -3,13 +3,22 @@
 /**
  * NFL slate specials: what we project for each of DK's nine questions.
  *
- * The page is organised around one measured fact. Our top-ranked name leads the
- * slate only 11-16% of the time, and the player who actually leads sits around
- * 11th to 25th on our list (docs/nfl-slate-specials-handoff.md §12). So this is
- * deliberately NOT a pick page: every topic renders a deep ranked list, the
- * measured hit rate sits in the panel header where it cannot be missed, and no
- * probability is shown anywhere, because the board ranks by expected stat and a
- * mean cannot be restated as P(leads).
+ * Two panel shapes, because DK asks two kinds of question.
+ *
+ * A "who leads" topic renders FamilyTable. It is organised around one measured
+ * fact: our top-ranked name leads the slate only 11-16% of the time, and the
+ * player who actually leads sits around 11th to 25th on our list
+ * (docs/nfl-slate-specials-handoff.md §12). So it is deliberately NOT a pick
+ * page -- every such topic renders a deep ranked list, the measured hit rate
+ * sits in the panel header where it cannot be missed, and no probability is
+ * shown, because the board ranks by expected stat and a mean cannot be restated
+ * as P(leads).
+ *
+ * An "all teams to score" topic renders PropositionPanel. It is one yes/no
+ * event, not a race, so it has no ranking and DOES carry a probability -- a
+ * per-team rate fitted on implied total and multiplied across the window. The
+ * independence that multiplication assumes is mildly optimistic (measured), so
+ * the panel discloses it instead of correcting for it on n=89.
  *
  * DK's price appears beside our ranking when somebody managed to paste the
  * board, and is simply absent when nobody did. That is the normal case: these
@@ -32,13 +41,15 @@ import {
   projectionAgeHours,
   stalenessWarning,
   type FamilyPanel,
+  SCOPE_LABELS,
+  SCOPES,
   type SpecialsBoard,
 } from "@/lib/nfl/specials-board";
 
-const GROUPS = ["Games", "Teams", "Players"] as const;
+const GROUPS = ["Games", "Teams", "Players", "All teams to score"] as const;
 
 function scopeLabel(scope: string): string {
-  return scope === "sunday_1pm" ? "Sunday 1pm ET only" : "All Sunday games";
+  return SCOPE_LABELS[scope] ?? scope;
 }
 
 /** Team/opponent/position context, whichever the row carries. */
@@ -112,12 +123,13 @@ export default function SpecialsClient({
           )}
         </div>
         <p className="max-w-4xl text-sm text-muted-foreground">
-          Our ranking and expected stat for each of DraftKings&apos; slate questions, kept week to
-          week. These are <strong className="font-semibold text-foreground">orderings, not picks</strong>
-          {" "}— measured on 2023-25, the top-ranked name led the slate 11-16% of the time and the
-          eventual leader usually sat 11th to 25th on the list. There are no probabilities on this
-          page because the board ranks by expected stat, and a mean cannot be restated as a chance
-          of winning.
+          What we project for each of DraftKings&apos; slate questions, kept week to week. The
+          &ldquo;who leads&rdquo; topics are{" "}
+          <strong className="font-semibold text-foreground">orderings, not picks</strong> and carry
+          no probability: measured on 2023-25 the top-ranked name led the slate 11-16% of the time
+          and the eventual leader usually sat 11th to 25th on the list, and a mean cannot be
+          restated as a chance of winning. The &ldquo;all teams to score&rdquo; topics are the
+          opposite shape — a single yes/no with one fitted probability, and no ranking.
         </p>
       </header>
 
@@ -146,7 +158,7 @@ export default function SpecialsClient({
           Slate
         </span>
         <div className="flex gap-1">
-          {["sunday_all", "sunday_1pm"].map((scope) => (
+          {SCOPES.map((scope) => (
             <Link
               key={scope}
               href={`/nfl/specials?season=${board.season}&week=${board.week}&scope=${scope}`}
@@ -209,7 +221,9 @@ export default function SpecialsClient({
             ))}
           </nav>
 
-          <FamilyTable panel={active} />
+          {active.meta.kind === "proposition"
+            ? <PropositionPanel panel={active} />
+            : <FamilyTable panel={active} />}
 
           {/* ── provenance ────────────────────────────────────────────── */}
           <details className="rounded border bg-card">
@@ -419,19 +433,116 @@ function FamilyTable({ panel }: { panel: FamilyPanel }) {
   );
 }
 
+/* ── a yes/no proposition ─────────────────────────────────────────────── */
+
+function PropositionPanel({ panel }: { panel: FamilyPanel }) {
+  const { meta, ranked, blocked, capture } = panel;
+  const row = ranked[0];
+  const teams = (row?.context?.per_team as Array<{ team: string; implied: number; p: number }>) ?? [];
+  const market = row?.marketAmerican ?? null;
+  const dkImplied = impliedProb(market);
+
+  return (
+    <section className="rounded border bg-card">
+      <header className="space-y-2 border-b p-3">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-lg font-semibold">{meta.label}</h2>
+          <span className="text-sm text-muted-foreground">{meta.question}</span>
+        </div>
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+          <Ruler className="mt-0.5 h-3 w-3 shrink-0" />
+          <span>{calibrationNote(meta)}</span>
+        </p>
+      </header>
+
+      {!row || row.status !== "ok" || row.expectedValue === null ? (
+        <p className="p-6 text-center text-sm text-muted-foreground">
+          {blocked[0]?.blockReason
+            ? `Cannot be answered: ${blocked[0].blockReason}`
+            : "Nothing to show for this slate."}
+        </p>
+      ) : (
+        <div className="space-y-4 p-4">
+          <div className="flex flex-wrap items-end gap-8">
+            <div>
+              <div className="font-mono text-4xl font-semibold tabular-nums">
+                {((row.expectedValue ?? 0) * 100).toFixed(1)}%
+              </div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                our probability &middot; {String(row.context.teams ?? teams.length)} teams
+              </div>
+            </div>
+            {market !== null && (
+              <div>
+                <div className="font-mono text-4xl font-semibold tabular-nums text-muted-foreground">
+                  {dkImplied === null ? "—" : `${(dkImplied * 100).toFixed(1)}%`}
+                </div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  DK {formatAmerican(market)} &middot; before removing margin
+                </div>
+              </div>
+            )}
+          </div>
+
+          {row.context.weakest_team ? (
+            <p className="text-sm">
+              It rides on{" "}
+              <strong className="font-semibold">{String(row.context.weakest_team)}</strong> at{" "}
+              <span className="font-mono">
+                {(Number(row.context.weakest_p) * 100).toFixed(0)}%
+              </span>{" "}
+              — a conjunction is only as strong as its weakest member.
+            </p>
+          ) : null}
+
+          <div>
+            <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">
+              Per team, weakest first
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {teams.map((t) => (
+                <span
+                  key={t.team}
+                  className="rounded border px-1.5 py-0.5 font-mono text-[11px]"
+                  title={`implied total ${t.implied}`}
+                >
+                  {t.team} <span className="text-muted-foreground">{(t.p * 100).toFixed(0)}%</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ── explainers ───────────────────────────────────────────────────────── */
 
 function HowToRead() {
   return (
     <details className="rounded border bg-card">
       <summary className="cursor-pointer p-3 text-sm font-semibold">
-        How to read this — and why there are no probabilities
+        How to read this — why one half of the board has probabilities and the other does not
       </summary>
       <div className="space-y-3 border-t p-3 text-sm text-muted-foreground">
         <p>
-          Each topic is ranked by an expected stat taken from the weekly NFL DFS projections
-          (player yards and touchdowns) or from the schedule&apos;s total and spread (team and game
-          points). The ordering is genuinely informative — but it is not a forecast of the winner.
+          The board answers two different kinds of question, and they are not interchangeable.
+        </p>
+        <p>
+          A <strong className="font-semibold text-foreground">&ldquo;who leads&rdquo;</strong> topic
+          is ranked by an expected stat taken from the weekly NFL DFS projections (player yards and
+          touchdowns) or from the schedule&apos;s total and spread (team and game points). The
+          ordering is genuinely informative — but it is not a forecast of the winner, and no
+          probability is shown, because the rank comes from a mean.
+        </p>
+        <p>
+          An <strong className="font-semibold text-foreground">&ldquo;all teams to score&rdquo;</strong>{" "}
+          topic has no ranking at all: it is one yes/no event, so it gets one probability, fitted
+          per team from the implied total and multiplied across the window. The independence that
+          multiplication assumes is not exactly true — checked against 89 real Sunday 1pm windows it
+          runs mildly optimistic — so each panel says so rather than quietly fitting a correction to
+          a sample that small.
         </p>
         <table className="w-full text-left text-xs">
           <thead className="uppercase tracking-wider">

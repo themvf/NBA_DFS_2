@@ -98,7 +98,7 @@ console.log("\nThe family contract");
 // ---------------------------------------------------------------------------
 
 {
-  check("nine families are described", FAMILY_META.length === 9, String(FAMILY_META.length));
+  check("seventeen families are described", FAMILY_META.length === 17, String(FAMILY_META.length));
   check(
     "family order matches Python's FAMILIES tuple so the two boards are diffable",
     FAMILY_ORDER.join(",") ===
@@ -109,10 +109,34 @@ console.log("\nThe family contract");
         "lowest_scoring_team",
         "most_passing_yards",
         "most_receiving_yards",
+        "most_rushing_yards",
         "first_td_scorer",
         "first_qb_td_pass",
         "first_qb_int",
+        "all_teams_td",
+        "all_teams_two_td",
+        "all_teams_fg",
+        "all_teams_td_and_fg",
+        "all_teams_passing_td",
+        "all_teams_rushing_td",
+        "all_teams_score",
       ].join(","),
+  );
+  check(
+    "ranked and proposition families are distinguished",
+    FAMILY_META.filter((m) => m.kind === "proposition").length === 7 &&
+      FAMILY_META.filter((m) => m.kind === "ranked").length === 10,
+  );
+  check(
+    "a proposition carries no hit-rate claim, since it is not a ranking",
+    FAMILY_META.filter((m) => m.kind === "proposition").every((m) => m.topOneLedPct === null),
+  );
+  check(
+    "a proposition's note says it is a probability and discloses the independence gap",
+    (() => {
+      const note = calibrationNote(familyMeta("all_teams_td")!);
+      return note.includes("probability") && note.includes("optimistic");
+    })(),
   );
   const proxies = FAMILY_META.filter((m) => m.isProxy).map((m) => m.family);
   check(
@@ -130,7 +154,7 @@ console.log("\nThe family contract");
       .map((m) => m.family)
       .join(",") === "lowest_scoring_game,lowest_scoring_team",
   );
-  check("an unknown family resolves to null rather than a default", familyMeta("most_rushing_yards") === null);
+  check("an unknown family resolves to null rather than a default", familyMeta("longest_field_goal") === null);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +163,7 @@ console.log("\nPanels");
 
 {
   const panels = buildPanels(board([row({ family: "most_receiving_yards", selectionKey: "a" })]));
-  check("one panel per family, always", panels.length === 9);
+  check("one panel per family, always", panels.length === 17, String(panels.length));
   check(
     "panels keep family order",
     panels.map((p) => p.meta.family).join(",") === FAMILY_ORDER.join(","),
@@ -269,7 +293,7 @@ console.log("\nFormatting and the optional market");
 
 {
   const noRun = board([], { run: null, rows: [], weeksInScope: [], weeksAnyScope: [] });
-  check("a board with no run still yields panels rather than throwing", buildPanels(noRun).length === 9);
+  check("a board with no run still yields panels rather than throwing", buildPanels(noRun).length === 17);
   check(
     "and none of them claim any rows",
     buildPanels(noRun).every((p) => p.ranked.length === 0),

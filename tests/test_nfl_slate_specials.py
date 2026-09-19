@@ -87,24 +87,29 @@ def padded(*pairs: tuple[str, int]) -> str:
 def test_families_are_frozen() -> None:
     assert S.MODEL_VERSION == "nfl-specials-v1"
     assert S.N_DRAWS == 50_000
-    assert S.FAMILIES == (
+    assert S.RANKED_FAMILIES == (
         "highest_scoring_game", "lowest_scoring_game",
         "highest_scoring_team", "lowest_scoring_team",
-        "most_passing_yards", "most_receiving_yards",
+        "most_passing_yards", "most_receiving_yards", "most_rushing_yards",
         "first_td_scorer", "first_qb_td_pass", "first_qb_int",
     )
-    assert S.MAGNITUDE_FAMILIES + S.TIMING_FAMILIES == S.FAMILIES
-    assert len(S.MAGNITUDE_FAMILIES) == 6, "magnitude families need Layers A+B only"
+    assert S.PROPOSITION_FAMILIES == (
+        "all_teams_td", "all_teams_two_td", "all_teams_fg", "all_teams_td_and_fg",
+        "all_teams_passing_td", "all_teams_rushing_td", "all_teams_score",
+    )
+    assert S.FAMILIES == S.RANKED_FAMILIES + S.PROPOSITION_FAMILIES
+    assert S.MAGNITUDE_FAMILIES + S.TIMING_FAMILIES == S.RANKED_FAMILIES
     assert len(S.TIMING_FAMILIES) == 3, "timing families need Layer C, which is P3"
+    assert set(S.PROPOSITION_EVENT) == set(S.PROPOSITION_FAMILIES)
 
 
 def test_every_family_declares_what_its_selections_are() -> None:
     assert set(S.SELECTION_KIND) == set(S.FAMILIES)
-    assert set(S.SELECTION_KIND.values()) == {"game", "team", "player"}
+    assert set(S.SELECTION_KIND.values()) == {"game", "team", "player", "proposition"}
     assert S.selection_kind("highest_scoring_game") == "game"
     assert S.selection_kind("first_td_scorer") == "player"
     with pytest.raises(ValueError):
-        S.selection_kind("most_rushing_yards")
+        S.selection_kind("longest_field_goal")
 
 
 def test_calibration_only_is_empty_until_p0_measures_it() -> None:
@@ -121,6 +126,15 @@ def test_scope_excludes_by_kickoff_and_never_downweights() -> None:
     assert not S.in_scope("sunday_1pm", late), "a 4:25 game is not in the 1pm market at all"
     assert S.in_scope("sunday_all", late)
     assert not S.in_scope("sunday_all", monday)
+
+    # DK's "1pm, 4.05pm & 4.25pm" market is sunday_main and EXCLUDES Sunday
+    # Night Football. Comparing our sunday_all number to it would compare a
+    # 15-game slate against a 14-game one.
+    snf = datetime(2026, 9, 20, 20, 20)
+    assert S.in_scope("sunday_late", late) and not S.in_scope("sunday_late", one_pm)
+    assert S.in_scope("sunday_main", one_pm) and S.in_scope("sunday_main", late)
+    assert not S.in_scope("sunday_main", snf), "sunday_main must exclude SNF"
+    assert S.in_scope("sunday_all", snf)
     with pytest.raises(ValueError):
         S.in_scope("monday_night", monday)
 
@@ -353,7 +367,7 @@ def test_run_rejects_an_unknown_family_or_scope(tmp_path: Path) -> None:
     paste = tmp_path / "p.txt"
     paste.write_text(padded(("Patrick Mahomes", 650)))
     with pytest.raises(ValueError, match="unknown family"):
-        run(season=2026, week=3, family="most_rushing_yards", scope="sunday_1pm", file_path=paste, db=None)
+        run(season=2026, week=3, family="longest_field_goal", scope="sunday_1pm", file_path=paste, db=None)
     with pytest.raises(ValueError, match="unknown scope"):
         run(season=2026, week=3, family="first_td_scorer", scope="monday_night", file_path=paste, db=None)
 
@@ -416,7 +430,7 @@ def player(name, team, position, means, status="historical") -> Player:
 
 def test_board_version_is_distinct_from_the_simulator_version() -> None:
     """A means board and a 50k-draw sim must never share an evidence cohort."""
-    assert BOARD_MODEL_VERSION == "nfl-specials-board-v1"
+    assert BOARD_MODEL_VERSION == "nfl-specials-board-v2"
     assert BOARD_MODEL_VERSION != S.MODEL_VERSION
     assert BOARD_METHOD == "expected_stats"
 
@@ -607,3 +621,111 @@ def test_the_stale_threshold_matches_the_web_constant() -> None:
     assert "export const PROJECTION_STALE_AFTER_HOURS = 36;" in ts, (
         "the TypeScript constant drifted from the Python one"
     )
+
+
+# ══ "All teams to score ..." propositions ════════════════════════════════════
+# A different KIND of question from everything above: there is nothing to rank,
+# so the only honest answer is a probability. It comes from a fitted per-team
+# rate multiplied across the window (model/nfl_team_event_fit.py), never from a
+# projected mean.
+
+from model.nfl_specials_board import build_proposition_rows, load_event_fits
+from model.nfl_team_event_fit import probability as event_probability
+
+FITS = {"events": {
+    "td": {"kind": "logistic", "coef": 0.25, "intercept": -3.5, "dk_market": "All Teams to Score 1+ TD"},
+    "fg": {"kind": "flat", "rate": 0.83, "dk_market": "All Teams to Score 1+ FG"},
+}}
+
+
+def test_a_flat_event_ignores_the_implied_total() -> None:
+    """Measured: field-goal rate sits at 80-86% across every implied-total band,
+    because weak offences stall in FG range while strong ones score TDs."""
+    flat = FITS["events"]["fg"]
+    assert event_probability(flat, 17.0) == event_probability(flat, 28.0) == 0.83
+
+
+def test_a_logistic_event_rises_with_the_implied_total() -> None:
+    td = FITS["events"]["td"]
+    assert event_probability(td, 28.0) > event_probability(td, 17.0)
+    assert 0 < event_probability(td, 17.0) < 1
+
+
+def test_a_probability_is_clamped_rather_than_reaching_certainty() -> None:
+    assert event_probability({"kind": "flat", "rate": 1.0}, None) == 0.999
+    assert event_probability({"kind": "flat", "rate": 0.0}, None) == 0.001
+
+
+def test_the_proposition_is_the_product_across_every_team() -> None:
+    games = [game("KC", "BAL", total=48.0, spread=0.0), game("SF", "PHI", total=44.0, spread=0.0)]
+    rows, blocked = build_proposition_rows("all_teams_fg", games, FITS)
+    assert blocked == [] and len(rows) == 1
+    row = rows[0]
+    assert row.status == "ok" and row.rank == 1 and row.selection_key == "yes"
+    assert row.expected_value == pytest.approx(0.83 ** 4), "four teams, flat 83% each"
+    assert row.context["teams"] == 4
+
+
+def test_more_teams_can_only_lower_the_probability() -> None:
+    two = build_proposition_rows("all_teams_fg", [game("KC", "BAL")], FITS)[0][0]
+    four = build_proposition_rows(
+        "all_teams_fg", [game("KC", "BAL"), game("SF", "PHI")], FITS)[0][0]
+    assert four.expected_value < two.expected_value
+
+
+def test_the_weakest_team_is_named_because_that_is_what_it_rides_on() -> None:
+    games = [game("KC", "BAL", total=52.0, spread=0.0), game("CLE", "NYJ", total=34.0, spread=0.0)]
+    row = build_proposition_rows("all_teams_td", games, FITS)[0][0]
+    assert row.context["weakest_team"] in {"CLE", "NYJ"}, row.context["weakest_team"]
+    assert row.context["weakest_p"] == min(t["p"] for t in row.context["per_team"])
+
+
+def test_one_game_without_a_total_blocks_the_whole_proposition() -> None:
+    """A conjunction over every team cannot be answered from the other fifteen."""
+    games = [game("KC", "BAL", total=48.0), game("CIN", "NYG", total=None, spread=None)]
+    rows, blocked = build_proposition_rows("all_teams_td", games, FITS)
+    assert rows[0].status == "blocked"
+    assert "no_quoted_total" in (rows[0].block_reason or "")
+    assert rows[0].expected_value is None and rows[0].rank is None
+    assert blocked
+
+
+def test_a_missing_artifact_blocks_rather_than_guessing_a_rate() -> None:
+    rows, blocked = build_proposition_rows("all_teams_td", [game("KC", "BAL")], {})
+    assert rows[0].status == "blocked"
+    assert rows[0].block_reason == "event_rates_artifact_missing"
+    assert blocked
+
+
+def test_an_empty_window_blocks() -> None:
+    rows, _ = build_proposition_rows("all_teams_td", [], FITS)
+    assert rows[0].status == "blocked" and rows[0].block_reason == "no_games_in_scope"
+
+
+def test_the_shipped_artifact_matches_what_was_measured() -> None:
+    """Tamper-evident: FG and any-points must stay FLAT. Conditioning them on the
+    implied total would be false precision -- measured, the total moves a field
+    goal by 2.3pp across the whole range."""
+    artifact = load_event_fits()
+    if not artifact:
+        pytest.skip("artifacts/nfl_team_event_rates.json not built in this checkout")
+    events = artifact["events"]
+    assert set(events) >= set(S.PROPOSITION_EVENT.values())
+    assert events["fg"]["kind"] == "flat", "the data shows no slope; do not invent one"
+    assert events["any_points"]["kind"] == "flat"
+    assert events["td"]["kind"] == "logistic", "touchdowns clearly do depend on the total"
+    assert events["td"]["at_high"] > events["td"]["at_low"]
+    assert artifact["team_games"] > 2000
+    assert "independence" in artifact["independence_note"].lower()
+
+
+def test_the_board_publishes_every_proposition_family() -> None:
+    board = build_board(
+        Inputs((game("KC", "BAL", total=48.0), game("SF", "PHI", total=44.0)), (), None),
+        season=2026, week=2, scope="sunday_1pm")
+    published = {r.family for r in board.rows if r.status == "ok"}
+    if load_event_fits():
+        assert set(S.PROPOSITION_FAMILIES) <= published
+        for family in S.PROPOSITION_FAMILIES:
+            row = next(r for r in board.rows if r.family == family)
+            assert 0 <= (row.expected_value or 0) <= 1, f"{family} must be a probability"
