@@ -40,6 +40,7 @@
     "test:nfl-player-pool-filter": "node --import tsx ./scripts/test-nfl-player-pool-filter.ts",
     "test:nfl-salary-value": "node --import tsx ./scripts/test-nfl-salary-value.ts",
     "test:nfl-player-pool-sort": "node --import tsx ./scripts/test-nfl-player-pool-sort.ts",
+    "test:nfl-out-projection": "node --import tsx ./scripts/test-nfl-out-projection.ts",
     "test:nfl-removal": "node --import tsx ./scripts/test-nfl-removal.ts",
     "test:nfl-availability-board": "node --import tsx ./scripts/test-nfl-availability-board.ts",
     "test:nfl-dfs-workspace": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-dfs-workspace.ts",
