@@ -14329,11 +14329,22 @@ export async function getNflSpecialsBoard(
   week: number,
   scope: string,
 ): Promise<SpecialsBoard> {
+  // Both facts in one pass: which weeks have a board in THIS scope, and which
+  // have one in any scope. Without the second, a week whose board exists only
+  // for the 1pm slate is invisible on the all-Sunday view and the page can
+  // only say "nothing here", which is true but unhelpful.
   const weekRows = await db.execute(sql`
-    SELECT DISTINCT week FROM nfl_specials_runs
-     WHERE season = ${season} ORDER BY week
+    SELECT DISTINCT week, slate_scope AS "slateScope"
+      FROM nfl_specials_runs WHERE season = ${season} ORDER BY week
   `);
-  const weeksAvailable = weekRows.rows.map((r) => Number((r as Record<string, unknown>).week));
+  const weeksInScope: number[] = [];
+  const weeksAnyScope: number[] = [];
+  for (const raw of weekRows.rows) {
+    const r = raw as Record<string, unknown>;
+    const w = Number(r.week);
+    if (!weeksAnyScope.includes(w)) weeksAnyScope.push(w);
+    if (r.slateScope === scope && !weeksInScope.includes(w)) weeksInScope.push(w);
+  }
 
   const runRows = await db.execute(sql`
     SELECT run_id::text AS "runId", model_version AS "modelVersion", method,
@@ -14346,7 +14357,7 @@ export async function getNflSpecialsBoard(
   `);
   const runRaw = runRows.rows[0] as Record<string, unknown> | undefined;
   if (!runRaw) {
-    return { season, week, scope, run: null, rows: [], captures: [], weeksAvailable };
+    return { season, week, scope, run: null, rows: [], captures: [], weeksInScope, weeksAnyScope };
   }
   const run: SpecialsRun = {
     runId: String(runRaw.runId),
@@ -14431,5 +14442,5 @@ export async function getNflSpecialsBoard(
     };
   });
 
-  return { season, week, scope, run, rows, captures, weeksAvailable };
+  return { season, week, scope, run, rows, captures, weeksInScope, weeksAnyScope };
 }

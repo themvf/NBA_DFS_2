@@ -83,7 +83,8 @@ function board(rows: SpecialsRow[], over: Partial<SpecialsBoard> = {}): Specials
     },
     rows,
     captures: [],
-    weeksAvailable: [3],
+    weeksInScope: [3],
+    weeksAnyScope: [3],
     ...over,
   };
 }
@@ -263,12 +264,32 @@ console.log("\nFormatting and the optional market");
 }
 
 {
-  const noRun = board([], { run: null, rows: [], weeksAvailable: [] });
+  const noRun = board([], { run: null, rows: [], weeksInScope: [], weeksAnyScope: [] });
   check("a board with no run still yields panels rather than throwing", buildPanels(noRun).length === 9);
   check(
     "and none of them claim any rows",
     buildPanels(noRun).every((p) => p.ranked.length === 0),
   );
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nThe page never invents a week");
+// ---------------------------------------------------------------------------
+
+{
+  // Mirrors the server component's resolution order. It used to end in `?? 1`,
+  // which made an empty database announce "no board for week 1" -- naming a
+  // week nobody asked about. 0 means "no week to show".
+  const resolve = (requested: number | null, inScope: number[], anyScope: number[]) =>
+    requested ?? inScope[inScope.length - 1] ?? anyScope[anyScope.length - 1] ?? 0;
+
+  check("an explicit week always wins", resolve(2, [5], [5]) === 2);
+  check("otherwise the newest week in this scope", resolve(null, [1, 2], [1, 2, 3]) === 2);
+  check(
+    "falling back to another scope rather than showing nothing",
+    resolve(null, [], [1, 2]) === 2,
+  );
+  check("and 0 when nothing exists, never a fabricated week 1", resolve(null, [], []) === 0);
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

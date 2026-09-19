@@ -118,11 +118,11 @@ export default function SpecialsClient({
       {/* ── week / scope controls ─────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 rounded border bg-card p-3 text-sm">
         <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Week</span>
-        {board.weeksAvailable.length === 0 && (
-          <span className="text-muted-foreground">no board has been generated yet</span>
+        {board.weeksInScope.length === 0 && (
+          <span className="text-muted-foreground">no board for this slate yet</span>
         )}
         <div className="flex flex-wrap gap-1">
-          {board.weeksAvailable.map((week) => (
+          {board.weeksInScope.map((week) => (
             <Link
               key={week}
               href={href({ week })}
@@ -493,18 +493,37 @@ function PasteProcedure({ board }: { board: SpecialsBoard }) {
 }
 
 function EmptyState({ board }: { board: SpecialsBoard }) {
+  const otherScope = board.scope === "sunday_all" ? "sunday_1pm" : "sunday_all";
+  const existsElsewhere = board.week > 0 && board.weeksAnyScope.includes(board.week);
+  const nothingAtAll = board.weeksAnyScope.length === 0;
   return (
     <div className="space-y-3 rounded border border-dashed bg-card p-6 text-sm">
       <p className="font-semibold">
-        No board has been generated for {board.season} week {board.week} ({scopeLabel(board.scope)}).
+        {nothingAtAll
+          ? `No boards have been generated for ${board.season} yet.`
+          : `No board has been generated for ${board.season} week ${board.week} (${scopeLabel(board.scope)}).`}
       </p>
+      {existsElsewhere && (
+        <p>
+          Week {board.week} does have a board for the other slate {"\u2014"}{" "}
+          <Link
+            href={`/nfl/specials?season=${board.season}&week=${board.week}&scope=${otherScope}`}
+            className="underline underline-offset-2"
+          >
+            view {scopeLabel(otherScope).toLowerCase()}
+          </Link>
+          .
+        </p>
+      )}
       <p className="text-muted-foreground">
         The board is built by a Python job from the week&apos;s schedule and the latest NFL DFS
         projection run. Nothing is rendered above because there is no run to render — the page does
         not invent a placeholder.
       </p>
       <pre className="overflow-x-auto rounded bg-muted p-2 font-mono text-xs text-foreground">
-        {`python -m model.nfl_specials_board --season ${board.season} --week ${board.week} --scope ${board.scope}`}
+        {`python -m model.nfl_specials_board --season ${board.season}${
+          board.week > 0 ? ` --week ${board.week}` : ""
+        } --scope ${board.scope}`}
       </pre>
       <p className="text-xs text-muted-foreground">
         Add <code className="rounded bg-muted px-1 font-mono">--dry-run</code> to inspect what it
