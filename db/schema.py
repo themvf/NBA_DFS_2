@@ -3502,6 +3502,131 @@ TABLES = [
         CHECK (result IN ('pending', 'won', 'lost', 'push', 'void'))
     )
     """,
+
+    # ── NFL slate specials ────────────────────────────────────────
+    # DK's specials board, pasted by hand: these markets are NOT on The Odds
+    # API, and DK's own board endpoint is cookie-gated behind bot detection
+    # (same constraint as ff_dk_bestball_adp). Append-only; one row per
+    # (capture, family, selection). P0 of the programme is nothing but the
+    # overround measured off these rows for two Sundays, before any model.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_specials_market_captures (
+        id BIGSERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        family TEXT NOT NULL,
+        slate_scope TEXT NOT NULL,
+        selection_key TEXT NOT NULL,
+        selection_label TEXT NOT NULL,
+        american INTEGER NOT NULL,
+        book TEXT NOT NULL DEFAULT 'draftkings',
+        captured_at TIMESTAMPTZ NOT NULL,
+        capture_key TEXT NOT NULL,
+        raw_text TEXT,
+        CHECK (american <= -100 OR american >= 100),
+        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm'))
+    )
+    """,
+
+    # One simulator run: everything a reader needs to replay it exactly.
+    # Append-only (trigger below) -- a re-run appends a new run_id rather than
+    # rewriting, so "what did we say before kickoff" stays answerable.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_specials_sim_runs (
+        run_id UUID PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        slate_scope TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        seed BIGINT NOT NULL,
+        n_draws INTEGER NOT NULL,
+        projection_run_id UUID,
+        winprob_model_version TEXT,
+        pbp_labeller_version TEXT,
+        games_json JSONB NOT NULL,
+        blocked_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        git_sha TEXT,
+        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm')),
+        CHECK (n_draws > 0)
+    )
+    """,
+
+    # Our probability for every selection in every family, per run.
+    # Append-only. status='blocked' carries its reason rather than a silent
+    # default probability -- a family we cannot read is not a family at 0%.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_specials_probs (
+        id BIGSERIAL PRIMARY KEY,
+        run_id UUID NOT NULL REFERENCES nfl_specials_sim_runs(run_id) ON DELETE CASCADE,
+        family TEXT NOT NULL,
+        selection_key TEXT NOT NULL,
+        selection_label TEXT NOT NULL,
+        our_prob DOUBLE PRECISION NOT NULL,
+        p_tie DOUBLE PRECISION,
+        mc_se DOUBLE PRECISION NOT NULL,
+        status TEXT NOT NULL,
+        block_reason TEXT,
+        UNIQUE(run_id, family, selection_key),
+        CHECK (status IN ('ok', 'blocked')),
+        CHECK (our_prob >= 0 AND our_prob <= 1),
+        CHECK (p_tie IS NULL OR (p_tie >= 0 AND p_tie <= 1))
+    )
+    """,
+
+    # The ledger. One ACTIVE row per (family, slate, selection, version),
+    # locked at the slate's first kickoff. After lock the DECISION fields are
+    # frozen by trigger and only the settlement fields may move -- see
+    # reject_nfl_specials_locked_bet_mutation() in MIGRATIONS.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_specials_bets (
+        id BIGSERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        slate_scope TEXT NOT NULL,
+        family TEXT NOT NULL,
+        selection_key TEXT NOT NULL,
+        selection_label TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        run_id UUID REFERENCES nfl_specials_sim_runs(run_id),
+        capture_key TEXT,
+        our_prob DOUBLE PRECISION NOT NULL,
+        market_prob DOUBLE PRECISION,
+        market_decimal DOUBLE PRECISION,
+        overround DOUBLE PRECISION,
+        edge DOUBLE PRECISION,
+        ev DOUBLE PRECISION,
+        stars SMALLINT NOT NULL,
+        inputs_json JSONB NOT NULL,
+        event_commence TIMESTAMPTZ NOT NULL,
+        locked BOOLEAN NOT NULL DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        result_detail TEXT,
+        settled_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season, week, slate_scope, family, selection_key, model_version),
+        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm')),
+        CHECK (status IN ('pending', 'won', 'lost', 'push', 'void', 'unresolved')),
+        CHECK (stars >= 1 AND stars <= 5)
+    )
+    """,
+
+    # Append-only audit trail of how each recommendation evolved before lock.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_specials_bet_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        bet_id BIGINT NOT NULL REFERENCES nfl_specials_bets(id) ON DELETE CASCADE,
+        run_id UUID,
+        capture_key TEXT,
+        stars SMALLINT,
+        our_prob DOUBLE PRECISION,
+        market_prob DOUBLE PRECISION,
+        edge DOUBLE PRECISION,
+        ev DOUBLE PRECISION,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
 ]
 
 MIGRATIONS = [
@@ -4472,6 +4597,77 @@ MIGRATIONS = [
     "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_book_count INTEGER",
     "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_overround DOUBLE PRECISION",
     "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_captured_at TIMESTAMPTZ",
+
+    # ── NFL slate specials: freeze what has to stay frozen ────────
+    # A simulator run and its probabilities are evidence of what we said at a
+    # point in time. Re-running appends a new run_id; it never rewrites.
+    """CREATE OR REPLACE FUNCTION reject_nfl_specials_run_mutation()
+    RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'NFL specials simulator runs and probabilities are append-only';
+    END;
+    $$ LANGUAGE plpgsql""",
+    "DROP TRIGGER IF EXISTS nfl_specials_sim_runs_immutable ON nfl_specials_sim_runs",
+    """CREATE TRIGGER nfl_specials_sim_runs_immutable
+    BEFORE UPDATE OR DELETE ON nfl_specials_sim_runs
+    FOR EACH ROW EXECUTE FUNCTION reject_nfl_specials_run_mutation()""",
+    "DROP TRIGGER IF EXISTS nfl_specials_probs_immutable ON nfl_specials_probs",
+    """CREATE TRIGGER nfl_specials_probs_immutable
+    BEFORE UPDATE OR DELETE ON nfl_specials_probs
+    FOR EACH ROW EXECUTE FUNCTION reject_nfl_specials_run_mutation()""",
+    "DROP TRIGGER IF EXISTS nfl_specials_bet_snapshots_immutable ON nfl_specials_bet_snapshots",
+    """CREATE TRIGGER nfl_specials_bet_snapshots_immutable
+    BEFORE UPDATE OR DELETE ON nfl_specials_bet_snapshots
+    FOR EACH ROW EXECUTE FUNCTION reject_nfl_specials_run_mutation()""",
+
+    # A locked ledger row is a decision that has already been committed, so the
+    # decision fields cannot move. Settlement, however, happens AFTER kickoff
+    # by definition -- so status/result_detail/settled_at/updated_at stay
+    # writable. A blanket "no UPDATE when locked" trigger would pass every test
+    # written before Sunday and then fail settlement every Monday. soccer_bets
+    # enforces this in Python only; doing it in the database means a future
+    # caller that forgets `WHERE locked = FALSE` fails loudly instead of
+    # quietly rewriting history.
+    """CREATE OR REPLACE FUNCTION reject_nfl_specials_locked_bet_mutation()
+    RETURNS trigger AS $$
+    BEGIN
+        IF OLD.locked AND (
+               NEW.our_prob       IS DISTINCT FROM OLD.our_prob
+            OR NEW.market_prob    IS DISTINCT FROM OLD.market_prob
+            OR NEW.market_decimal IS DISTINCT FROM OLD.market_decimal
+            OR NEW.overround      IS DISTINCT FROM OLD.overround
+            OR NEW.edge           IS DISTINCT FROM OLD.edge
+            OR NEW.ev             IS DISTINCT FROM OLD.ev
+            OR NEW.stars          IS DISTINCT FROM OLD.stars
+            OR NEW.inputs_json    IS DISTINCT FROM OLD.inputs_json
+            OR NEW.run_id         IS DISTINCT FROM OLD.run_id
+            OR NEW.capture_key    IS DISTINCT FROM OLD.capture_key
+            OR NEW.selection_key  IS DISTINCT FROM OLD.selection_key
+            OR NEW.selection_label IS DISTINCT FROM OLD.selection_label
+            OR NEW.event_commence IS DISTINCT FROM OLD.event_commence
+            OR NEW.locked         IS DISTINCT FROM OLD.locked
+        ) THEN
+            RAISE EXCEPTION
+                'NFL specials bet % is locked; only settlement fields may change', OLD.id;
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql""",
+    "DROP TRIGGER IF EXISTS nfl_specials_bets_locked ON nfl_specials_bets",
+    """CREATE TRIGGER nfl_specials_bets_locked
+    BEFORE UPDATE ON nfl_specials_bets
+    FOR EACH ROW EXECUTE FUNCTION reject_nfl_specials_locked_bet_mutation()""",
+    """CREATE OR REPLACE FUNCTION reject_nfl_specials_bet_delete()
+    RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION
+            'NFL specials bet % cannot be deleted; supersede it instead', OLD.id;
+    END;
+    $$ LANGUAGE plpgsql""",
+    "DROP TRIGGER IF EXISTS nfl_specials_bets_no_delete ON nfl_specials_bets",
+    """CREATE TRIGGER nfl_specials_bets_no_delete
+    BEFORE DELETE ON nfl_specials_bets
+    FOR EACH ROW EXECUTE FUNCTION reject_nfl_specials_bet_delete()""",
 ]
 
 INDEXES = [
@@ -5048,6 +5244,13 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_event_closing_lines_quality ON event_closing_lines(sport, quality, frozen_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_event_closing_lines_cohort ON event_closing_lines(clv_cohort, sport, scheduled_start_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_odds_api_usage_day ON odds_api_usage(requested_at DESC, sport, purpose)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_captures_wk ON nfl_specials_market_captures(season, week, family, slate_scope)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_captures_key ON nfl_specials_market_captures(capture_key)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_runs_wk ON nfl_specials_sim_runs(season, week, slate_scope, model_version, generated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_probs_family ON nfl_specials_probs(run_id, family)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bets_wk ON nfl_specials_bets(season, week, slate_scope, family, status)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bets_settle ON nfl_specials_bets(status, locked, event_commence)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bet_snapshots_bet ON nfl_specials_bet_snapshots(bet_id, captured_at DESC)",
 ]
 
 # Shared observation DDL is dependency-free and also used by the targeted migration.
