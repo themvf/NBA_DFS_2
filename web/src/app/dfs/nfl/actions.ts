@@ -23,6 +23,7 @@ import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
+import { availabilityNote, zeroOutProjection, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
 import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/workload-selection";
 import { prepareProjectionAudits, validateSituations, type SituationTeam } from '@/lib/nfl-dfs/projection-audit';
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
@@ -219,11 +220,17 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       workloadEligible:workloadPoolEligible({...row,availability:availability(row)},now),
       identityMethod: row.identityMethod,
       identityEvidence: row.identityEvidence,
-      projectionStatus: row.projectionStatus,
-      ourProj: numeric(row.ourProj),
-      floorFpts: numeric(row.floorFpts),
-      ceilingFpts: numeric(row.ceilingFpts),
-      boomRate: numeric(row.boomRate),
+      // A player who is not playing projects zero, not his healthy number.
+      // DK's own Status column is the trigger here: the model's availability
+      // feed runs off separate observations that are routinely empty, which is
+      // how a ruled-out Nico Collins reached the pool carrying 17.4 points.
+      ...zeroOutProjection({
+        projectionStatus: row.projectionStatus,
+        ourProj: numeric(row.ourProj),
+        floorFpts: numeric(row.floorFpts),
+        ceilingFpts: numeric(row.ceilingFpts),
+        boomRate: numeric(row.boomRate),
+      }, row.isOut || Boolean(availability(row).blockedReason)),
       modelConfidence: numeric(row.modelConfidence),
       historyGames: row.historyGames,
       fantasyprosProj: numeric(row.fantasyprosProj),
@@ -528,6 +535,8 @@ export type NflProjectionExplanation = {
   player: { name: string; position: string; team: string; opponent: string | null; salary: number | null };
   status: string;                       // historical | position_prior | unavailable | out
   projection: number | null;            // model_proj_fpts — the headline number
+  /** What the model had before an availability ruling zeroed it. Null unless out. */
+  projectionBeforeRuling: number | null;
   baseline: number | null;              // recency-weighted historical mean, pre-environment
   floor: number | null;                 // P10 of the 2000 sims
   median: number | null;                // P50
@@ -592,19 +601,25 @@ export async function explainNflPlayerProjection(
     return Number.isFinite(n) ? n : null;
   };
   const source = (proj.sourceEvidence ?? {}) as Record<string, unknown>;
-  const availability = (source.availability ?? null) as { rule?: string; status?: string } | null;
+  const availability = (source.availability ?? null) as ModelAvailabilityNote | null;
+  const outHere = slateRow.isOut || availability?.rule === "zeroed";
 
   return {
     ok: true,
     player: { name: slateRow.name, position: slateRow.position, team: slateRow.team,
               opponent: slateRow.opponent, salary: slateRow.salary },
-    status: proj.projectionStatus,
-    projection: num(proj.modelProjFpts),
-    baseline: num(proj.baselineFpts),
-    floor: num(proj.floorFpts),
-    median: num(proj.medianFpts),
-    ceiling: num(proj.ceilingFpts),
-    boomRate: num(proj.boomRate),
+    // Same ruling the pool table applies, so the two surfaces cannot quote
+    // different numbers for one player. `baseline` is deliberately left at
+    // its pre-ruling value: the drawer draws it as the step the ruling took
+    // away, which is more use than a column of zeroes.
+    projectionBeforeRuling: outHere ? num(proj.modelProjFpts) : null,
+    ...(outHere
+      ? { status: "out", projection: 0, floor: 0, median: 0, ceiling: 0, boomRate: 0,
+          baseline: num(proj.baselineFpts) }
+      : { status: proj.projectionStatus, projection: num(proj.modelProjFpts),
+          baseline: num(proj.baselineFpts), floor: num(proj.floorFpts),
+          median: num(proj.medianFpts), ceiling: num(proj.ceilingFpts),
+          boomRate: num(proj.boomRate) }),
     confidence: num(proj.confidence),
     historyGames: proj.historyGames,
     priorGames: proj.priorGames,
@@ -617,8 +632,6 @@ export async function explainNflPlayerProjection(
     touchdownFactor: num(fs.touchdown_factor),
     draws: num(fs.draws),
     statMeans,
-    availabilityNote: availability?.status
-      ? `Ruled ${availability.status}${availability.rule === "zeroed" ? " — projection zeroed, opportunity handed to the backup." : "."}`
-      : null,
+    availabilityNote: availabilityNote(availability, { isOut: slateRow.isOut, dkStatus: slateRow.dkStatus }),
   };
 }

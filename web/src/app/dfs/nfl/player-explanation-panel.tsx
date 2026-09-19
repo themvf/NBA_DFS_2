@@ -260,14 +260,21 @@ function Breakdown({ e, player, peers, valueIndex }: {
    * is drawn rather than hidden so the parts always reconcile to the whole. */
   const afterEnv = baseline != null && factor != null ? baseline * factor : null;
   const envDelta = baseline != null && afterEnv != null ? afterEnv - baseline : null;
-  const simDelta = afterEnv != null ? proj - afterEnv : null;
+  // When an availability ruling has zeroed this player, the simulation step
+  // must land on what the model actually produced, and the drop to zero gets
+  // its own step. Folding the ruling into the simulation residual would blame
+  // the wrong thing for the whole projection.
+  const beforeRuling = e.projectionBeforeRuling;
+  const simTarget = beforeRuling ?? proj;
+  const simDelta = afterEnv != null ? simTarget - afterEnv : null;
+  const rulingDelta = beforeRuling != null ? proj - beforeRuling : null;
 
   // One scale shared by the waterfall and the outcome range: both describe this
   // player in DK points, so sharing an axis makes the spread directly readable
   // against the steps. The peer strip gets its own scale -- folding the slate's
   // top scorer into this one would shrink this player's own bars for no gain,
   // chart carries its own labelled axis anyway.
-  const scaleMax = Math.max(proj, baseline ?? 0, afterEnv ?? 0, e.ceiling ?? 0, 1) * 1.06;
+  const scaleMax = Math.max(proj, beforeRuling ?? 0, baseline ?? 0, afterEnv ?? 0, e.ceiling ?? 0, 1) * 1.06;
   const peerScale = Math.max(peers[0]?.proj ?? 0, proj, 1) * 1.06;
 
   // The same assessment the pool row shows, from the same index -- the two
@@ -350,7 +357,7 @@ function Breakdown({ e, player, peers, valueIndex }: {
       <Card
         icon={<TrendingUp className="h-4 w-4" style={{ color: ACCENT }} />}
         title="How the number is built"
-        hint="Each step starts where the last one finished. All four bars share one scale."
+        hint="Each step starts where the last one finished. Every bar shares one scale."
       >
         {baseline == null ? (
           <p className="text-xs text-slate-500">
@@ -381,9 +388,17 @@ function Breakdown({ e, player, peers, valueIndex }: {
                 <Row label="Simulation &amp; DK scoring" sub="bonuses, variance, availability" value={signed(simDelta)}>
                   <Grid />
                   {Math.abs(simDelta) >= 0.05 && (
-                    <Bar from={afterEnv} to={proj} max={scaleMax} color={simDelta > 0 ? UP : DOWN}
+                    <Bar from={afterEnv} to={simTarget} max={scaleMax} color={simDelta > 0 ? UP : DOWN}
                          title={`Re-scoring the simulated draws under DK rules moves the mean ${signed(simDelta)} DK pts`} />
                   )}
+                </Row>
+              )}
+
+              {rulingDelta != null && (
+                <Row label="Ruled out" sub="availability" value={signed(rulingDelta)}>
+                  <Grid />
+                  <Bar from={simTarget} to={proj} max={scaleMax} color={DOWN}
+                       title={`Not playing, so the projection is zeroed: ${signed(rulingDelta)} DK pts`} />
                 </Row>
               )}
 
