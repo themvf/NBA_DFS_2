@@ -265,8 +265,14 @@ function Breakdown({ e, player, peers, valueIndex }: {
   // its own step. Folding the ruling into the simulation residual would blame
   // the wrong thing for the whole projection.
   const beforeRuling = e.projectionBeforeRuling;
-  const simTarget = beforeRuling ?? proj;
+  // Opportunity inherited from a ruled-out teammate is a separate step for
+  // the same reason the ruling is: it is a slate decision applied on top of
+  // the simulation, so folding it into the simulation residual would credit
+  // the model for work it never projected.
+  const beforeInherit = e.projectionBeforeInheritance;
+  const simTarget = beforeInherit ?? beforeRuling ?? proj;
   const simDelta = afterEnv != null ? simTarget - afterEnv : null;
+  const inheritDelta = beforeInherit != null ? (beforeRuling ?? proj) - beforeInherit : null;
   const rulingDelta = beforeRuling != null ? proj - beforeRuling : null;
 
   // One scale shared by the waterfall and the outcome range: both describe this
@@ -274,7 +280,7 @@ function Breakdown({ e, player, peers, valueIndex }: {
   // against the steps. The peer strip gets its own scale -- folding the slate's
   // top scorer into this one would shrink this player's own bars for no gain,
   // chart carries its own labelled axis anyway.
-  const scaleMax = Math.max(proj, beforeRuling ?? 0, baseline ?? 0, afterEnv ?? 0, e.ceiling ?? 0, 1) * 1.06;
+  const scaleMax = Math.max(proj, beforeRuling ?? 0, beforeInherit ?? 0, baseline ?? 0, afterEnv ?? 0, e.ceiling ?? 0, 1) * 1.06;
   const peerScale = Math.max(peers[0]?.proj ?? 0, proj, 1) * 1.06;
 
   // The same assessment the pool row shows, from the same index -- the two
@@ -353,6 +359,13 @@ function Breakdown({ e, player, peers, valueIndex }: {
         </div>
       )}
 
+      {e.inheritedNote && (
+        // Amber, not red: this is a gain the slate applied, not a warning.
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <TrendingUp className="h-4 w-4 shrink-0" />{e.inheritedNote}
+        </div>
+      )}
+
       {/* Waterfall */}
       <Card
         icon={<TrendingUp className="h-4 w-4" style={{ color: ACCENT }} />}
@@ -391,6 +404,15 @@ function Breakdown({ e, player, peers, valueIndex }: {
                     <Bar from={afterEnv} to={simTarget} max={scaleMax} color={simDelta > 0 ? UP : DOWN}
                          title={`Re-scoring the simulated draws under DK rules moves the mean ${signed(simDelta)} DK pts`} />
                   )}
+                </Row>
+              )}
+
+              {inheritDelta != null && Math.abs(inheritDelta) >= 0.005 && (
+                <Row label="Inherited opportunity" sub="ruled-out teammate" value={signed(inheritDelta)}>
+                  <Grid />
+                  <Bar from={simTarget} to={beforeRuling ?? proj} max={scaleMax}
+                       color={inheritDelta > 0 ? UP : DOWN}
+                       title={e.inheritedNote ?? `Inherited volume adds ${signed(inheritDelta)} DK pts`} />
                 </Row>
               )}
 

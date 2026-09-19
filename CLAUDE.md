@@ -6795,3 +6795,75 @@ here — and the in-play question is the only place in this family where being
 - Caches are gzipped per `(endpoint, season, season_type, week)`, and the
   `/games` cache is shared with `ingest.cfb_history` so the schedule costs
   nothing extra.
+
+---
+
+## NFL DFS — Out-Player Opportunity Redistribution (2026-09-19)
+
+A ruled-out player's work goes to his teammates. Implemented at the **slate
+read layer** (`web/src/lib/nfl-dfs/opportunity-redistribution.ts`,
+`nfl-dfs-redistribution-v1`), applied in `workspaceSlate` immediately before
+`zeroOutProjection`.
+
+**Why not in the Python pipeline, which already models this.**
+`model/nfl_dfs_availability.py` cannot fire in production for two independent,
+measured reasons: its status feed (our FantasyPros injury observations) carried
+**0 OUT rows on a real 13-game slate while DK flagged 77**, and `apply()`
+defaults to `positions=("QB",)` so no non-quarterback has ever received a
+transfer regardless of the feed. The OUT flag we actually have is DK's `Status`
+column, which only exists at the slate layer. The immutable
+`nfl_dfs_player_projections` row is never rewritten — same decision-record /
+display-cache separation as the MLB ledger.
+
+**The two layers cannot double-pay, structurally.** TS pays recipients only out
+of the donor's opportunity pool. If Python already transferred, it also zeroed
+the donor's `stat_means`, so the pool is empty and TS pays nothing. No flag or
+coordination required.
+
+**Three pools, because passing, rushing and receiving are separate budgets:**
+
+| pool | unit | donors | recipients | split |
+|---|---|---|---|---|
+| `pass` | `attempts` | QB | QB | winner-take-all |
+| `rush` | `carries` | any | RB | proportional to own carries |
+| `target` | `receptions` | RB/WR/TE | **RB + WR + TE** | proportional to own receptions |
+
+The target pool spans the whole pass-catching group deliberately (user decision,
+2026-09-19): a receiver's targets do not stay in the WR room, and restricting
+recipients to the absent man's own position would systematically understate the
+TE/RB bump. The pass pool is winner-take-all because only one QB plays.
+
+**`targets` is not available and is not a bug in the allocation.** Neither
+projection path persists it — the coupled simulation in
+`model/nfl_dfs_efficiency.py` never emits it, and only `receptions` survives
+into `stat_means` on both paths. `attempts`/`carries` exist only on the
+historical path (`OFFENSE_FIELDS`). Receptions understate opportunity for a
+low-catch-rate player; that is a limitation of the available unit.
+
+**Never re-score a mean stat line.** DK's three yardage bonuses are step
+functions, so a recipient crossing 100 mean receiving yards would collect a
+full +3 for an outcome only ~50% likely. Instead the projection is adjusted by
+the *marginal* points of inherited volume through a new
+`scoreNflOffenseLinear()` (DK's formula minus the bonus terms):
+`newProj = oldProj + linear(scaled) - linear(own)`. Understates ceiling gain —
+the conservative direction, flagged not hidden. Same mean-vs-distribution rule
+as MLB totals.
+
+**A zero share receives zero.** A teammate with no history in a pool inherits
+nothing; scaling a player who has never caught a pass invents a number backed by
+nothing. `MAX_MULTIPLIER = 4.0` (matching Python's `MAX_TRANSFER_MULTIPLIER`)
+caps a deep backup, and **the capped remainder is dropped, not rehomed** —
+reported via `cappedFrom` rather than silently reassigned.
+
+**Points created are less than points removed, by design.** Collins' real
+numbers (5.8 rec / 84.1 yds / 0.52 TD / 17.44 pts) redistribute all 5.8
+receptions across Dell/Schultz/Mixon/Kirk and create **13.89** points against
+17.44 removed. Opportunity transfers; efficiency does not. A slate that
+conserved points would mean the backups had been given the starter's rates.
+
+**Status: shipped live, NOT validated.** The pool boundaries, the proportional
+split, the cap, and receptions-as-unit are reasoned defaults, not measured
+effects. Every transfer is reported with its inputs (`inherited[]`,
+`unresolved[]`, `donorsWithoutOpportunity[]`) specifically so it can be graded
+after the week. Grade it before treating any of these constants as settled, and
+bump the version rather than tuning in place.

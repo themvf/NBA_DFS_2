@@ -24,6 +24,7 @@ import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnap
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
 import { availabilityNote, zeroOutProjection, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
+import { redistributeOutOpportunity, inheritanceNote, paidByDonor, type RedistributionRow, type InheritedFrom } from '@/lib/nfl-dfs/opportunity-redistribution';
 import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/workload-selection";
 import { prepareProjectionAudits, validateSituations, type SituationTeam } from '@/lib/nfl-dfs/projection-audit';
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
@@ -50,6 +51,16 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   dkStatus: string | null;
   availability?: Availability;
   gameInfo: string | null;
+  /**
+   * Opportunity this player picked up from a ruled-out teammate, one entry
+   * per pool. `null` when he inherited nothing, which is the common case.
+   * `ourProj`, `floorFpts` and `ceilingFpts` on this row already include it;
+   * `projectionBeforeInheritance` is what they were without it, so a
+   * breakdown can show the step rather than assert it.
+   */
+  inherited?: InheritedFrom[] | null;
+  inheritedNote?: string | null;
+  projectionBeforeInheritance?: number | null;
 };
 
 export type NflWorkspaceSlate = {
@@ -65,6 +76,17 @@ export type NflWorkspaceSlate = {
   warnings: string[];
   players: NflWorkspacePlayer[];
   fileName: string;
+  /**
+   * What happened to the opportunity of every player ruled out on this
+   * slate. Reported whether or not it could be placed -- an unplaceable
+   * pool is a fact about the slate, not a failure to hide.
+   */
+  redistribution?: {
+    version: string;
+    recipients: number;
+    unresolved: { team: string; pool: string; pooled: number; from: string[]; reason: string }[];
+    donorsWithoutOpportunity: { team: string; name: string; position: string; reason: string }[];
+  };
 };
 
 export type NflComparisonSource = "fantasypros" | "linestar" | "custom";
@@ -187,7 +209,46 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const now = Date.now();
   const situations=run?.week?await loadSituationContext(run.season,run.week,roster,now):null;
   const availability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
+
+  // A ruled-out player's work does not vanish -- it goes to his teammates.
+  // The OUT flag is known here and only here (DK's Status column), while the
+  // stat line needed to move opportunity lives on the immutable projection
+  // row, so the two are joined at read time. Neither table is rewritten.
+  const outFlag = (row: typeof rows[number]) => row.isOut || Boolean(availability(row).blockedReason);
+  const projectionStats = upload.projectionRunId
+    ? await db.select({
+        playerId: nflDfsPlayerProjections.playerId,
+        statMeans: nflDfsPlayerProjections.statMeans,
+      }).from(nflDfsPlayerProjections).where(eq(nflDfsPlayerProjections.runId, upload.projectionRunId))
+    : [];
+  const statsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId), (r.statMeans ?? {}) as Record<string, number>]));
+  const redistribution = redistributeOutOpportunity(
+    rows.flatMap((row): RedistributionRow[] => {
+      const stats = statsByPlayer.get(row.ffPlayerId ?? -1);
+      if (!stats || !row.team) return [];
+      return [{
+        key: row.dkPlayerId,
+        name: row.name,
+        position: row.position,
+        team: row.team,
+        isOut: outFlag(row),
+        projectionStatus: row.projectionStatus,
+        statMeans: stats,
+        ourProj: numeric(row.ourProj),
+        floorFpts: numeric(row.floorFpts),
+        ceilingFpts: numeric(row.ceilingFpts),
+      }];
+    }),
+  );
+  const inheritedBy = new Map(redistribution.applied.map(r => [r.key, r]));
+
   return {
+    redistribution: {
+      version: redistribution.version,
+      unresolved: redistribution.unresolved,
+      donorsWithoutOpportunity: redistribution.donorsWithoutOpportunity,
+      recipients: redistribution.applied.length,
+    },
     situationTeams:situations?.teams??[],
     injuryCoverage,
     uploadId,
@@ -224,13 +285,21 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       // DK's own Status column is the trigger here: the model's availability
       // feed runs off separate observations that are routinely empty, which is
       // how a ruled-out Nico Collins reached the pool carrying 17.4 points.
+      // Order matters: inherit first, then zero. A player cannot be both a
+      // recipient and ruled out -- `redistributeOutOpportunity` only ever
+      // pays available players -- but applying the ruling last means the
+      // zero is final under every path.
       ...zeroOutProjection({
         projectionStatus: row.projectionStatus,
-        ourProj: numeric(row.ourProj),
-        floorFpts: numeric(row.floorFpts),
-        ceilingFpts: numeric(row.ceilingFpts),
+        ourProj: inheritedBy.get(row.dkPlayerId)?.ourProj ?? numeric(row.ourProj),
+        floorFpts: inheritedBy.get(row.dkPlayerId)?.floorFpts ?? numeric(row.floorFpts),
+        ceilingFpts: inheritedBy.get(row.dkPlayerId)?.ceilingFpts ?? numeric(row.ceilingFpts),
         boomRate: numeric(row.boomRate),
-      }, row.isOut || Boolean(availability(row).blockedReason)),
+      }, outFlag(row)),
+      inherited: inheritedBy.get(row.dkPlayerId)?.inherited ?? null,
+      inheritedNote: inheritedBy.has(row.dkPlayerId)
+        ? inheritanceNote(inheritedBy.get(row.dkPlayerId)!.inherited) : null,
+      projectionBeforeInheritance: inheritedBy.get(row.dkPlayerId)?.pointsBefore ?? null,
       modelConfidence: numeric(row.modelConfidence),
       historyGames: row.historyGames,
       fantasyprosProj: numeric(row.fantasyprosProj),
@@ -537,6 +606,11 @@ export type NflProjectionExplanation = {
   projection: number | null;            // model_proj_fpts — the headline number
   /** What the model had before an availability ruling zeroed it. Null unless out. */
   projectionBeforeRuling: number | null;
+  /** Opportunity picked up from a ruled-out teammate; null if none. */
+  inherited: InheritedFrom[] | null;
+  inheritedNote: string | null;
+  /** The projection before that inheritance, so the step can be drawn. */
+  projectionBeforeInheritance: number | null;
   baseline: number | null;              // recency-weighted historical mean, pre-environment
   floor: number | null;                 // P10 of the 2000 sims
   median: number | null;                // P50
@@ -604,6 +678,24 @@ export async function explainNflPlayerProjection(
   const availability = (source.availability ?? null) as ModelAvailabilityNote | null;
   const outHere = slateRow.isOut || availability?.rule === "zeroed";
 
+  // Read the same slate the pool table reads, so the drawer cannot quote a
+  // pre-inheritance number for a player the table has already paid. This
+  // costs an extra read on a drawer the user opened deliberately; two
+  // surfaces disagreeing about one player costs more.
+  const slate = await workspaceSlate(uploadId);
+  const here = slate.players.find(p => p.dkPlayerId === slateRow.dkPlayerId);
+  const inherited = here?.inherited ?? null;
+  const donors = paidByDonor({
+    version: slate.redistribution?.version ?? "",
+    applied: slate.players.flatMap(p => p.inherited && p.inherited.length > 0
+      ? [{ key: p.dkPlayerId, name: p.name, ourProj: p.ourProj ?? 0, floorFpts: null,
+           ceilingFpts: null, statMeans: {}, inherited: p.inherited,
+           pointsBefore: p.projectionBeforeInheritance ?? 0, pointsAfter: p.ourProj ?? 0 }]
+      : []),
+    unresolved: slate.redistribution?.unresolved as never ?? [],
+    donorsWithoutOpportunity: slate.redistribution?.donorsWithoutOpportunity ?? [],
+  }).get(slateRow.name) ?? null;
+
   return {
     ok: true,
     player: { name: slateRow.name, position: slateRow.position, team: slateRow.team,
@@ -612,13 +704,22 @@ export async function explainNflPlayerProjection(
     // different numbers for one player. `baseline` is deliberately left at
     // its pre-ruling value: the drawer draws it as the step the ruling took
     // away, which is more use than a column of zeroes.
-    projectionBeforeRuling: outHere ? num(proj.modelProjFpts) : null,
+    projectionBeforeRuling: outHere ? num(here?.ourProj ?? proj.modelProjFpts) : null,
+    // A recipient's headline already includes what he inherited, so the
+    // waterfall gets its own step for it rather than burying the gain in
+    // "Simulation & DK scoring" -- the same treatment the OUT ruling gets.
+    inherited,
+    inheritedNote: here?.inheritedNote ?? null,
+    projectionBeforeInheritance: here?.projectionBeforeInheritance ?? null,
     ...(outHere
       ? { status: "out", projection: 0, floor: 0, median: 0, ceiling: 0, boomRate: 0,
           baseline: num(proj.baselineFpts) }
-      : { status: proj.projectionStatus, projection: num(proj.modelProjFpts),
-          baseline: num(proj.baselineFpts), floor: num(proj.floorFpts),
-          median: num(proj.medianFpts), ceiling: num(proj.ceilingFpts),
+      : { status: proj.projectionStatus,
+          projection: here?.ourProj ?? num(proj.modelProjFpts),
+          baseline: num(proj.baselineFpts),
+          floor: here?.floorFpts ?? num(proj.floorFpts),
+          median: num(proj.medianFpts),
+          ceiling: here?.ceilingFpts ?? num(proj.ceilingFpts),
           boomRate: num(proj.boomRate) }),
     confidence: num(proj.confidence),
     historyGames: proj.historyGames,
@@ -632,6 +733,7 @@ export async function explainNflPlayerProjection(
     touchdownFactor: num(fs.touchdown_factor),
     draws: num(fs.draws),
     statMeans,
-    availabilityNote: availabilityNote(availability, { isOut: slateRow.isOut, dkStatus: slateRow.dkStatus }),
+    availabilityNote: availabilityNote(availability, { isOut: slateRow.isOut, dkStatus: slateRow.dkStatus },
+      slateRow.isOut ? (donors ?? { paidTo: [], units: [] }) : null),
   };
 }

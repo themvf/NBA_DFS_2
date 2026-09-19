@@ -100,10 +100,16 @@ const num = (value: unknown): number | null => {
  * the sentence asserted a redistribution that had not occurred.
  *
  * Each branch below now states only what its own evidence supports.
+ *
+ * `redistributed` is the slate layer's answer to the same question, from
+ * `opportunity-redistribution.ts`: it knows whether this player's work was
+ * actually placed with teammates, which the model's own note never can.
+ * Passing it turns the DK branch from a denial into a statement of fact.
  */
 export function availabilityNote(
   note: ModelAvailabilityNote | null | undefined,
   dk: { isOut: boolean; dkStatus?: string | null },
+  redistributed?: { paidTo: string[]; units: string[] } | null,
 ): string | null {
   const rule = note?.rule ?? null;
 
@@ -126,7 +132,17 @@ export function availabilityNote(
   if (dk.isOut) {
     // The common case on a real slate: DK says out, our own feed never saw it.
     const status = dk.dkStatus ? String(dk.dkStatus).trim().toUpperCase() : "OUT";
-    return `DraftKings lists this player as ${status}, so his projection is zeroed here. The model's own availability feed has no observation for him, so no teammate inherited his opportunity.`;
+    const zeroed = `DraftKings lists this player as ${status}, so his projection is zeroed here.`;
+    if (redistributed && redistributed.paidTo.length > 0) {
+      const units = [...new Set(redistributed.units)].join(" and ");
+      return `${zeroed} His ${units} are redistributed on this slate to ${redistributed.paidTo.join(", ")}.`;
+    }
+    if (redistributed) {
+      // Out, and we tried: say that nothing was placed rather than implying
+      // we never looked.
+      return `${zeroed} No teammate could be paid his opportunity — see the slate's redistribution report for why.`;
+    }
+    return `${zeroed} The model's own availability feed has no observation for him, so no teammate inherited his opportunity.`;
   }
 
   return null;

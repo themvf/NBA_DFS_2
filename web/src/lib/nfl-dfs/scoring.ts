@@ -223,3 +223,39 @@ export function scoreNflSlot(
   const base = scoreNflStatLine(position, stats);
   return slot === "CPT" ? applyCaptainMultiplier(base) : base;
 }
+
+/**
+ * Offensive points with the three yardage bonuses omitted.
+ *
+ * For scoring a MEAN stat line only. `scoreNflOffense` is correct for a
+ * realized or drawn line, but applying it to a mean crosses the bonus
+ * thresholds discontinuously: a 96-yard mean scores no bonus despite real
+ * 100-yard probability, and a 104-yard mean collects the full +3 for an
+ * outcome that is only about half likely. Both errors are large relative to
+ * the quantity being measured.
+ *
+ * So a caller comparing two mean lines -- "what does this extra volume add?"
+ * -- scores the linear part of both and takes the difference, leaving the
+ * bonus-bearing distribution work to whatever produced the projection. This
+ * understates the gain from a larger workload, which is the conservative
+ * direction. See `opportunity-redistribution.ts`.
+ *
+ * Do NOT use this to score a game result. It is not DK's formula; it is DK's
+ * formula minus the part that only a distribution can answer.
+ */
+export function scoreNflOffenseLinear(stats: NflStatLine): number {
+  return (
+    n(stats.passYds) * PASS_YARD_PTS +
+    n(stats.passTds) * PASS_TD_PTS +
+    n(stats.interceptions) * INTERCEPTION_PTS +
+    n(stats.rushYds) * RUSH_YARD_PTS +
+    n(stats.rushTds) * RUSH_TD_PTS +
+    n(stats.recYds) * REC_YARD_PTS +
+    n(stats.recTds) * REC_TD_PTS +
+    n(stats.receptions) * RECEPTION_PTS +
+    n(stats.returnTds) * RETURN_TD_PTS +
+    n(stats.fumblesLost) * FUMBLE_LOST_PTS +
+    n(stats.twoPointConversions) * TWO_POINT_CONVERSION_PTS +
+    n(stats.offensiveFumbleRecoveryTds) * OFFENSIVE_FUMBLE_RECOVERY_TD_PTS
+  );
+}
