@@ -1254,3 +1254,14 @@
 }
 .watchRow .watchLine::before { content: "LINE"; }
 .watchRow > .positive::before, .watchRow > .negative::before, .watchRow > .neutral::before { content: "MOVE"; }
+
+/* The tile board scrolls inside a fixed-height region so the game detail below
+   keeps its place near the top of the viewport instead of being pushed down. */
+.watchList {
+  max-height: 340px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (max-width: 650px) {
+  .watchList { max-height: 300px; }
+}
