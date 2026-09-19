@@ -3660,6 +3660,27 @@ TABLES = [
         captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """,
+
+    # ── Pipeline health ───────────────────────────────────────────
+    # Append-only record of whether each scheduled job is still writing.
+    # Deliberately snapshots rather than upserts: "it has been stale since
+    # Tuesday" is the useful statement, and an upsert cannot make it.
+    """
+    CREATE TABLE IF NOT EXISTS pipeline_health_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        checked_at TIMESTAMPTZ NOT NULL,
+        check_version TEXT NOT NULL,
+        dataset_key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        status TEXT NOT NULL,
+        last_row_at TIMESTAMPTZ,
+        age_hours DOUBLE PRECISION,
+        max_age_hours DOUBLE PRECISION NOT NULL,
+        owner_workflow TEXT NOT NULL,
+        detail_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        CHECK (status IN ('fresh', 'stale', 'empty', 'dormant'))
+    )
+    """,
 ]
 
 MIGRATIONS = [
@@ -5284,6 +5305,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bets_wk ON nfl_specials_bets(season, week, slate_scope, family, status)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bets_settle ON nfl_specials_bets(status, locked, event_commence)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_specials_bet_snapshots_bet ON nfl_specials_bet_snapshots(bet_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_pipeline_health_latest ON pipeline_health_snapshots(dataset_key, checked_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_pipeline_health_run ON pipeline_health_snapshots(checked_at DESC)",
 ]
 
 # Shared observation DDL is dependency-free and also used by the targeted migration.

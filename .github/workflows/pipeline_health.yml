@@ -1,0 +1,49 @@
+name: Pipeline Health
+
+# Asks one question of every scheduled job: is it still writing data?
+#
+# It reads the DATA, not workflow status, because status lies in both
+# directions. refresh_nfl_dfs_projections has reported FAILURE on every run
+# since 2026-09-17 while its projection build succeeds daily; the MLB refresh
+# went GREEN for weeks while skipping prop capture entirely. Only max(timestamp)
+# on the table a job is supposed to fill settles it.
+#
+# Runs more often than most of what it watches, so a dead pipeline surfaces in
+# hours rather than the five days it took last time.
+#
+# Deliberately does NOT fail on a stale dataset. This job going red would be one
+# more red nobody reads -- which is the failure it exists to catch. It reports;
+# /health is where that report is read.
+
+on:
+  schedule:
+    - cron: "40 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      fail_on_stale:
+        description: "Exit non-zero if anything is stale (for a one-off check)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: pipeline-health
+  cancel-in-progress: false
+
+jobs:
+  pipeline-health:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Check every pipeline's freshness
+        run: |
+          FLAGS="--record"
+          if [ "${{ inputs.fail_on_stale }}" = "true" ]; then FLAGS="$FLAGS --fail-on-stale"; fi
+          python -m model.pipeline_health $FLAGS | tee -a "$GITHUB_STEP_SUMMARY"

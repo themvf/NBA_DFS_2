@@ -14447,3 +14447,72 @@ export async function getNflSpecialsBoard(
 
   return { season, week, scope, run, rows, captures, weeksInScope, weeksAnyScope };
 }
+
+// ── Pipeline health ──────────────────────────────────────────
+// Read-only. model/pipeline_health.py owns the table.
+
+export type PipelineHealthRow = {
+  datasetKey: string;
+  label: string;
+  status: "fresh" | "stale" | "empty" | "dormant";
+  lastRowAt: string | null;
+  ageHours: number | null;
+  maxAgeHours: number;
+  ownerWorkflow: string;
+  detail: string;
+  note: string;
+  table: string;
+};
+
+export type PipelineHealth = {
+  checkedAt: string | null;
+  /** Hours since the monitor itself last ran; null when it never has. */
+  monitorAgeHours: number | null;
+  rows: PipelineHealthRow[];
+};
+
+/**
+ * The latest snapshot per dataset.
+ *
+ * Also reports the monitor's own age, because a freshness monitor that has
+ * itself stopped is the one failure it cannot otherwise report — the page has
+ * to be able to say "these numbers are old" about itself.
+ */
+export async function getPipelineHealth(): Promise<PipelineHealth> {
+  const result = await db.execute(sql`
+    SELECT DISTINCT ON (dataset_key)
+           dataset_key AS "datasetKey", label, status,
+           last_row_at::text AS "lastRowAt", age_hours AS "ageHours",
+           max_age_hours AS "maxAgeHours", owner_workflow AS "ownerWorkflow",
+           checked_at::text AS "checkedAt",
+           EXTRACT(EPOCH FROM (NOW() - checked_at)) / 3600 AS "monitorAgeHours",
+           detail_json AS "detailJson"
+      FROM pipeline_health_snapshots
+     ORDER BY dataset_key, checked_at DESC
+  `);
+  const rows: PipelineHealthRow[] = [];
+  let checkedAt: string | null = null;
+  let monitorAgeHours: number | null = null;
+  for (const raw of result.rows) {
+    const r = raw as Record<string, unknown>;
+    const detail = (r.detailJson ?? {}) as Record<string, unknown>;
+    const seen = String(r.checkedAt);
+    if (!checkedAt || seen > checkedAt) {
+      checkedAt = seen;
+      monitorAgeHours = asNumber(r.monitorAgeHours);
+    }
+    rows.push({
+      datasetKey: String(r.datasetKey),
+      label: String(r.label),
+      status: r.status as PipelineHealthRow["status"],
+      lastRowAt: r.lastRowAt ? String(r.lastRowAt) : null,
+      ageHours: asNumber(r.ageHours),
+      maxAgeHours: Number(r.maxAgeHours),
+      ownerWorkflow: String(r.ownerWorkflow),
+      detail: String(detail.detail ?? ""),
+      note: String(detail.note ?? ""),
+      table: String(detail.table ?? ""),
+    });
+  }
+  return { checkedAt, monitorAgeHours, rows };
+}
