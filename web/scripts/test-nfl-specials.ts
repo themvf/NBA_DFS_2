@@ -29,6 +29,9 @@ import {
   formatAmerican,
   formatExpected,
   impliedProb,
+  PROJECTION_STALE_AFTER_HOURS,
+  projectionAgeHours,
+  stalenessWarning,
   type SpecialsBoard,
   type SpecialsRow,
 } from "../src/lib/nfl/specials-board";
@@ -77,6 +80,7 @@ function board(rows: SpecialsRow[], over: Partial<SpecialsBoard> = {}): Specials
       method: "expected_stats",
       generatedAt: "2026-09-19T12:00:00Z",
       projectionRunId: "proj-1",
+      projectionAsOf: "2026-09-19T09:00:00Z",
       gitSha: "abc123",
       games: [],
       blockedReasons: [],
@@ -290,6 +294,42 @@ console.log("\nThe page never invents a week");
     resolve(null, [], [1, 2]) === 2,
   );
   check("and 0 when nothing exists, never a fabricated week 1", resolve(null, [], []) === 0);
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nThe board checks its own input freshness");
+// ---------------------------------------------------------------------------
+
+{
+  // refresh_nfl_dfs_projections reports FAILURE on every run for a shadow step
+  // unrelated to the projection build, so its red X cannot signal a real
+  // outage. The board therefore judges the projections it actually ranked.
+  check("the stale threshold is 36 hours", PROJECTION_STALE_AFTER_HOURS === 36);
+
+  const run = (asOf: string | null, generatedAt = "2026-09-19T21:00:00Z", projId: string | null = "p1") => ({
+    runId: "r", modelVersion: "nfl-specials-board-v1", method: "expected_stats",
+    generatedAt, projectionRunId: projId, projectionAsOf: asOf,
+    gitSha: null, games: [], blockedReasons: [],
+  });
+
+  check("age is measured from the projections to the board", 
+    Math.round(projectionAgeHours(run("2026-09-19T09:00:00Z"))!) === 12);
+  check("fresh projections raise no warning", stalenessWarning(run("2026-09-19T09:00:00Z")) === null);
+  check(
+    "projections a day and a half old do",
+    (stalenessWarning(run("2026-09-18T05:00:00Z")) ?? "").includes("not ranking current numbers"),
+  );
+  check(
+    "and the warning says how old in plain units",
+    (stalenessWarning(run("2026-09-16T21:00:00Z")) ?? "").includes("3 days"),
+    stalenessWarning(run("2026-09-16T21:00:00Z")) ?? "",
+  );
+  check(
+    "no projection run at all is its own warning, not silence",
+    (stalenessWarning(run(null, "2026-09-19T21:00:00Z", null)) ?? "").includes("player topics are empty"),
+  );
+  check("an unknown cutoff does not manufacture a warning", stalenessWarning(run(null)) === null);
+  check("no run means nothing to warn about", stalenessWarning(null) === null);
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
