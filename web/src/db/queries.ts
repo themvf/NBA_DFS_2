@@ -14296,3 +14296,140 @@ export async function getNflWeekPlayContext(
     description: r.description == null ? null : String(r.description),
   }));
 }
+
+// ── NFL slate specials board ─────────────────────────────────
+// Python owns every nfl_specials_* table (model/nfl_specials_board.py writes
+// them, ingest/nfl_specials_market.py writes the captures). This is read-only:
+// no ensureSchema, no DDL, same discipline as mlb_matchups.
+
+import type {
+  SpecialsBoard,
+  SpecialsCapture,
+  SpecialsRow,
+  SpecialsRun,
+} from "@/lib/nfl/specials-board";
+
+const asNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+/**
+ * The latest board run for one (season, week, scope), its ranked rows, and — if
+ * anybody managed to paste one — DK's prices beside them.
+ *
+ * The market join is a LEFT JOIN on purpose. These specials markets are not on
+ * The Odds API and DK's board is a manual paste, so a week with no capture is
+ * the normal case, not an error. The board is what we project whether or not
+ * anyone is pricing the question.
+ */
+export async function getNflSpecialsBoard(
+  season: number,
+  week: number,
+  scope: string,
+): Promise<SpecialsBoard> {
+  const weekRows = await db.execute(sql`
+    SELECT DISTINCT week FROM nfl_specials_runs
+     WHERE season = ${season} ORDER BY week
+  `);
+  const weeksAvailable = weekRows.rows.map((r) => Number((r as Record<string, unknown>).week));
+
+  const runRows = await db.execute(sql`
+    SELECT run_id::text AS "runId", model_version AS "modelVersion", method,
+           generated_at::text AS "generatedAt", projection_run_id::text AS "projectionRunId",
+           git_sha AS "gitSha", games_json AS "gamesJson", blocked_reasons AS "blockedReasons"
+      FROM nfl_specials_runs
+     WHERE season = ${season} AND week = ${week} AND slate_scope = ${scope}
+     ORDER BY generated_at DESC
+     LIMIT 1
+  `);
+  const runRaw = runRows.rows[0] as Record<string, unknown> | undefined;
+  if (!runRaw) {
+    return { season, week, scope, run: null, rows: [], captures: [], weeksAvailable };
+  }
+  const run: SpecialsRun = {
+    runId: String(runRaw.runId),
+    modelVersion: String(runRaw.modelVersion),
+    method: String(runRaw.method),
+    generatedAt: String(runRaw.generatedAt),
+    projectionRunId: runRaw.projectionRunId ? String(runRaw.projectionRunId) : null,
+    gitSha: runRaw.gitSha ? String(runRaw.gitSha) : null,
+    games: Array.isArray(runRaw.gamesJson) ? (runRaw.gamesJson as SpecialsRun["games"]) : [],
+    blockedReasons: Array.isArray(runRaw.blockedReasons)
+      ? (runRaw.blockedReasons as Array<Record<string, unknown>>)
+      : [],
+  };
+
+  // One capture per family: the most recent paste for this week and scope.
+  const rowResult = await db.execute(sql`
+    WITH latest_capture AS (
+      SELECT DISTINCT ON (family) family, capture_key
+        FROM nfl_specials_market_captures
+       WHERE season = ${season} AND week = ${week} AND slate_scope = ${scope}
+       ORDER BY family, captured_at DESC
+    )
+    SELECT r.family, r.rank, r.selection_key AS "selectionKey",
+           r.selection_label AS "selectionLabel", r.stat_key AS "statKey",
+           r.expected_value AS "expectedValue", r.is_proxy AS "isProxy",
+           r.p_leads AS "pLeads", r.context_json AS "contextJson",
+           r.status, r.block_reason AS "blockReason",
+           c.american AS "marketAmerican"
+      FROM nfl_specials_board_rows r
+      LEFT JOIN latest_capture lc ON lc.family = r.family
+      LEFT JOIN nfl_specials_market_captures c
+        ON c.capture_key = lc.capture_key AND c.selection_key = r.selection_key
+     WHERE r.run_id = ${run.runId}::uuid
+     ORDER BY r.family, r.rank NULLS LAST, r.selection_label
+  `);
+  const rows: SpecialsRow[] = rowResult.rows.map((raw) => {
+    const r = raw as Record<string, unknown>;
+    return {
+      family: String(r.family),
+      rank: asNumber(r.rank),
+      selectionKey: String(r.selectionKey),
+      selectionLabel: String(r.selectionLabel),
+      statKey: String(r.statKey),
+      expectedValue: asNumber(r.expectedValue),
+      isProxy: Boolean(r.isProxy),
+      pLeads: asNumber(r.pLeads),
+      context:
+        r.contextJson && typeof r.contextJson === "object"
+          ? (r.contextJson as Record<string, unknown>)
+          : {},
+      status: r.status === "blocked" ? "blocked" : "ok",
+      blockReason: r.blockReason ? String(r.blockReason) : null,
+      marketAmerican: asNumber(r.marketAmerican),
+    };
+  });
+
+  // Overround is the whole point of a capture: on a board summing to 250% a raw
+  // implied probability is a price, not a probability. Computed over every
+  // selection DK printed, including ones we could not name.
+  const captureResult = await db.execute(sql`
+    WITH latest_capture AS (
+      SELECT DISTINCT ON (family) family, capture_key
+        FROM nfl_specials_market_captures
+       WHERE season = ${season} AND week = ${week} AND slate_scope = ${scope}
+       ORDER BY family, captured_at DESC
+    )
+    SELECT c.family, MAX(c.captured_at)::text AS "capturedAt", COUNT(*)::int AS selections,
+           SUM(CASE WHEN c.american < 0
+                    THEN (-c.american)::numeric / ((-c.american) + 100)
+                    ELSE 100::numeric / (c.american + 100) END) - 1 AS overround
+      FROM nfl_specials_market_captures c
+      JOIN latest_capture lc ON lc.capture_key = c.capture_key
+     GROUP BY c.family
+  `);
+  const captures: SpecialsCapture[] = captureResult.rows.map((raw) => {
+    const r = raw as Record<string, unknown>;
+    return {
+      family: String(r.family),
+      capturedAt: String(r.capturedAt),
+      selections: Number(r.selections),
+      overround: asNumber(r.overround),
+    };
+  });
+
+  return { season, week, scope, run, rows, captures, weeksAvailable };
+}

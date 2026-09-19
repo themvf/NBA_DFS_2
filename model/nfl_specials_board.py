@@ -261,6 +261,44 @@ def build_player_rows(
     return rows, excluded
 
 
+def dedupe_or_block(rows: list[BoardRow], family: str) -> tuple[list[BoardRow], list[dict[str, Any]]]:
+    """Convert a duplicated selection key into blocked rows, never a crash.
+
+    `nfl_specials_board_rows` is UNIQUE on (run_id, family, selection_key), and a
+    duplicate used to surface as an opaque UniqueViolation that killed the whole
+    board build. It is reachable: `nfl_season_games` is UNIQUE on
+    (season, week, home_team_id, away_team_id), which permits BOTH `CIN@NYG` and
+    `NYG@CIN` in the same week, and a team in two in-scope games has no single
+    expected-points number. A duplicated player key is likewise possible when two
+    same-named players on one team both lack a gsis id.
+
+    Either way the honest answer is the same: that selection cannot be ranked, so
+    it is carried blocked with a reason while the rest of the family publishes.
+    A data anomaly should cost one row's visibility, not the entire board.
+    """
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row.selection_key] = counts.get(row.selection_key, 0) + 1
+    duplicated = {key for key, count in counts.items() if count > 1}
+    if not duplicated:
+        return rows, []
+    kept: list[BoardRow] = []
+    blocked: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        if row.selection_key not in duplicated:
+            kept.append(row)
+            continue
+        if row.selection_key in seen:
+            continue
+        seen.add(row.selection_key)
+        blocked.append({"family": family, "selection": row.selection_key,
+                        "reason": "duplicate_selection_in_scope"})
+        kept.append(replace(row, rank=None, expected_value=None, status="blocked",
+                            block_reason="duplicate_selection_in_scope"))
+    return kept, blocked
+
+
 def build_board(inputs: Inputs, *, season: int, week: int, scope: str) -> Board:
     kept, dropped = games_in_scope(inputs.games, scope)
     teams = {team for game in kept for team in (game.home, game.away)}
@@ -279,6 +317,8 @@ def build_board(inputs: Inputs, *, season: int, week: int, scope: str) -> Board:
             family_blocked = []
             excluded.extend(family_excluded)
         blocked.extend(family_blocked)
+        family_rows, duplicate_blocked = dedupe_or_block(family_rows, family)
+        blocked.extend(duplicate_blocked)
         ok = [row for row in family_rows if row.status == "ok"]
         rows.extend(_rank(ok, family))
         rows.extend(row for row in family_rows if row.status != "ok")

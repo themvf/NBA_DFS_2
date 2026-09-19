@@ -525,6 +525,16 @@ up dead on `/vegas/detectors`.
 
 ## 5. Web UI
 
+> **Superseded 2026-09-19 by §0a's reframe; the page as BUILT is described in
+> §11.** Everything below was written for the bet-ledger product and still
+> describes stars, EV, edge columns and a P5 gate state. The shipped page is a
+> projection board: ranked lists with expected stats, DK's price as an optional
+> extra column, and no probability or star anywhere. Keep reading this section
+> only for the parts the reframe did not touch — the route, the nav entry, and
+> the rule that a selection on DK's board but absent from our run is LISTED
+> rather than hidden.
+
+
 Route: `/nfl/specials`. Nav: add `{ href: "/nfl/specials", label: "Slate
 Specials", sports: ["nfl"] }` to `PAGE_LINKS` in
 `web/src/components/sport-nav.tsx`.
@@ -801,7 +811,75 @@ tests** in this file, **892 passed** overall (the same 3 unrelated failures).
   score the touchdown he throws. A pure pocket passer returns `None` for the
   first-TD proxy rather than a zero that would still occupy a rank.
 
-**Not started:** the `/nfl/specials` page (§5) — the board is persisted but
+### The `/nfl/specials` page → shipped 2026-09-19
+
+**State: Built + Tested,** and rendered against real query output. Not yet run
+end to end through Neon (see the limitation below).
+
+| Piece | File |
+|---|---|
+| Pure shaping, family metadata, bar scaling, calibration notes | `web/src/lib/nfl/specials-board.ts` |
+| Read-only query (run + rows + optional captures + weeks) | `getNflSpecialsBoard` in `web/src/db/queries.ts` |
+| Server component | `web/src/app/nfl/specials/page.tsx` |
+| Client renderer | `web/src/app/nfl/specials/specials-client.tsx` |
+| Nav entry | `web/src/components/sport-nav.tsx` |
+| Tests (41) | `web/scripts/test-nfl-specials.ts`, `npm run test:nfl-specials` |
+
+**The layout follows from §12's measurement, not from taste.** Our top-ranked
+name leads 11-16% of the time, so:
+
+- every topic renders a DEEP ranked list and no single name is presented as a
+  pick;
+- the measured hit rate sits in each panel header ("our top-ranked name led the
+  week 4.4% of the time and the actual leader sat around 25th"), and a family
+  with no measurement says so rather than borrowing a number;
+- nothing on the page is a probability. `p_leads` is NULL on an
+  `expected_stats` run and a test asserts none is rendered;
+- the three timing families carry a `proxy` badge and a one-line explanation of
+  what they are a proxy for.
+
+**The magnitude bar is scaled within each family's own range, not from zero.**
+These ranges are narrow by nature — an 18-to-26 point team board anchored at
+zero makes every bar identical and hides the only thing the bar is for. It is a
+single-series monochrome encoding (so no categorical palette and no legend),
+redundant with the number beside it (so `aria-hidden`), and carries a 6% floor
+so the last row stays visible. Read it as "how far ahead is the leader", never
+as probability.
+
+**DK's price is an optional column.** It appears only when a capture exists for
+that family, and the panel header then also shows the board's overround,
+because on a board summing far above 100% a raw implied percentage is a price
+with margin in it. A row we rank but DK never priced shows an em dash rather
+than being dropped.
+
+**A bug this found, which only running it could.** `nfl_season_games` is UNIQUE
+on `(season, week, home_team_id, away_team_id)`, which permits BOTH `CIN@NYG`
+and `NYG@CIN` in one week. With both in scope each team got two rows and the
+insert died on `nfl_specials_board_rows`' UNIQUE constraint, taking the entire
+board build with it. `dedupe_or_block()` now converts a duplicated selection
+key into blocked rows with reason `duplicate_selection_in_scope`, so a data
+anomaly costs one row's visibility rather than the whole board. Regression test:
+`test_a_team_in_two_scoped_games_is_blocked_rather_than_crashing`.
+
+**Verification performed, and its limit.** The web app talks to Neon over HTTP,
+which cannot reach a local Unix-socket PostgreSQL, so the two halves were
+verified separately rather than together:
+
+- the four SQL statements were extracted *verbatim from the shipped source* and
+  run against real PostgreSQL 16.13 — 92 rows, correct camelCase aliases, and
+  the SQL's overround (8.2%) matching `ingest/nfl_specials_market.py`'s
+  independently-computed report exactly;
+- the real client component was then rendered against that real query output
+  and screenshotted in both light and dark mode, with the panel tabs, bars,
+  blocked list and DK column inspected.
+
+What has NOT happened: a single request travelling page → Neon → database.
+That needs a Neon-backed environment.
+
+`npm run build` passes and registers the route as dynamic; `npm run lint`
+reports nothing in these files.
+
+**Not started:** P0.5 onward — the board is persisted but
 nothing renders it yet — plus P0.5 onward — `build_slate`, `simulate`, `readout`, the score
 table, the ledger, settlement, the backtest, the workflow, and the `/nfl`
 tab. Nothing in the `nfl_specials_sim_runs` / `_probs` / `_bets` /

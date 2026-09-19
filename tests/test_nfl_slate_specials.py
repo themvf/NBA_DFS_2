@@ -388,6 +388,7 @@ from model.nfl_dfs_research import implied_totals
 from model.nfl_specials_board import (
     BOARD_METHOD,
     BOARD_MODEL_VERSION,
+    BoardRow,
     Game,
     Inputs,
     Player,
@@ -562,3 +563,31 @@ def test_board_depth_truncates_a_long_family() -> None:
     published = [r for r in board.rows if r.family == "most_receiving_yards" and r.status == "ok"]
     assert len(published) == depth
     assert published[0].expected_value == 200.0, "truncation keeps the top, not an arbitrary slice"
+
+
+def test_a_team_in_two_scoped_games_is_blocked_rather_than_crashing() -> None:
+    """Found by running the board on real data, not by reading it.
+
+    nfl_season_games is UNIQUE on (season, week, home, away), which permits BOTH
+    CIN@NYG and NYG@CIN in one week. With both in scope each team got two rows
+    and the insert died on nfl_specials_board_rows' UNIQUE constraint, taking the
+    whole board with it. A team in two games has no single expected-points
+    number, so the row is blocked and the rest of the board still publishes.
+    """
+    from model.nfl_specials_board import dedupe_or_block
+
+    board = build_board(
+        Inputs((game("CIN", "NYG", total=44.0), game("NYG", "CIN", total=51.0)), (), None),
+        season=2026, week=3, scope="sunday_all",
+    )
+    teams = [r for r in board.rows if r.family == "highest_scoring_team"]
+    assert {r.selection_key for r in teams} == {"CIN", "NYG"}, "one row per team, not two"
+    assert all(r.status == "blocked" for r in teams)
+    assert {r.block_reason for r in teams} == {"duplicate_selection_in_scope"}
+    assert all(r.expected_value is None and r.rank is None for r in teams)
+    # The games themselves are distinct propositions and still rank.
+    games = [r for r in board.rows if r.family == "highest_scoring_game" and r.status == "ok"]
+    assert len(games) == 2
+    # And the helper leaves a clean family untouched.
+    clean = [BoardRow("f", "a", "A", "s", False, expected_value=1.0)]
+    assert dedupe_or_block(clean, "f") == (clean, [])
