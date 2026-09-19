@@ -8,6 +8,9 @@ import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis
 import { reportSummary, VARIANT_LABELS, type ReportRow, type ReportVariant, type WeeklyReport } from "@/lib/nfl-dfs/report-card";
 import { DELTA_FILL, DELTA_POLE, delta as rowDelta, deltaBucket, deltaScales,
   matchesReviewPosition, REVIEW_POSITIONS, topMovers, type ReviewPosition } from "@/lib/nfl-dfs/review-insights";
+import { appearances, classifyRemoval, findAppearance, injuriesFor, injuryEvents,
+  NEEDS_ATTENTION, teamOffensivePlays, VERDICT_LABEL, VERDICT_MARK,
+  type ParticipantRow, type PlayRow, type Proposal } from "@/lib/nfl-dfs/removal";
 
 const fmt = (v: number | null | undefined) => v == null ? "—" : v.toFixed(1);
 const date = (v: string) => new Date(v).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "short", timeStyle: "short" });
@@ -40,7 +43,39 @@ function MoverList({ title, note, rows, tone, scales, widest }: {
   </div>;
 }
 
-export default function WeeklyReview({ reports, availableWeeks, season, viewedAt }: { reports: WeeklyReport[]; availableWeeks: number[]; season: number; viewedAt: number }) {
+/** Was he available, or did he just not produce?
+ *
+ * Deliberately coarse: we are removing players who were not available to earn
+ * their projection, not players who were uncomfortable. A man who tweaked
+ * something and came back is, here, a man who played.
+ *
+ * A proposal, never a finding. */
+function AvailabilityNote({ proposal }: { proposal: Proposal | null }) {
+  if (!proposal) {
+    return <p className="text-xs text-slate-500">Play-by-play has not been loaded for this week, so
+      no read on availability is offered. This is not a finding of &ldquo;played normally&rdquo;.</p>;
+  }
+  const e = proposal.evidence;
+  return <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+    <p className="text-sm font-semibold">{VERDICT_MARK[proposal.verdict]} {VERDICT_LABEL[proposal.verdict]}</p>
+    <p className="mt-1 text-xs text-slate-600">{proposal.reason}</p>
+    <p className="mt-2 text-xs tabular-nums text-slate-500">
+      {e.targets} targets · {e.carries} carries · {e.dropbacks} dropbacks
+      {e.lastQuarter != null ? ` · last touch Q${e.lastQuarter}` : ""}
+      {e.playsAfter != null ? ` · ${e.playsAfter} team plays after` : ""}
+    </p>
+    {e.injuries.length > 0 && <p className="mt-1 text-xs text-slate-600">
+      Play-by-play names him injured: {e.injuries.map(i =>
+        `${i.name} in Q${i.quarter ?? "?"}${i.clock ? ` (${i.clock})` : ""}`).join("; ")}.
+    </p>}
+    <p className="mt-2 text-[11px] text-slate-500">Proposed by {proposal.version} ({proposal.confidence} confidence).
+      Nothing is tagged until you confirm it. Snap-level presence is not available in season —
+      nflverse publishes it after the postseason — so a player on the field but never thrown to
+      is invisible here.</p>
+  </div>;
+}
+
+export default function WeeklyReview({ reports, availableWeeks, season, viewedAt, participants, playContext }: { reports: WeeklyReport[]; availableWeeks: number[]; season: number; viewedAt: number; participants: ParticipantRow[] | null; playContext: PlayRow[] | null }) {
   const router = useRouter();
   const week = reports.at(-1)?.week ?? 1;
   const [variant, setVariant] = useState<ReportVariant>("production");
@@ -54,6 +89,39 @@ export default function WeeklyReview({ reports, availableWeeks, season, viewedAt
   const scales = useMemo(() => deltaScales(variantRows), [variantRows]);
   const positionRows = useMemo(() => variantRows.filter(r => matchesReviewPosition(r.position, position)), [variantRows, position]);
   const movers = useMemo(() => topMovers(positionRows, 10), [positionRows]);
+  // Built once per week, not per row: each is a full scan of a week of plays.
+  const quarters = useMemo(() => new Map(
+    (playContext ?? []).map(p => [`${p.gameId}:${p.playId}`, p.quarter])), [playContext]);
+  const injuries = useMemo(() => injuryEvents(playContext ?? []), [playContext]);
+  const appearanceIndex = useMemo(
+    () => participants ? appearances(participants, quarters) : null, [participants, quarters]);
+  const teamPlays = useMemo(
+    () => participants ? teamOffensivePlays(participants) : null, [participants]);
+  // The report card's game_id is our internal numeric id, not the nflverse
+  // text one, so a player is located by (team, name) across the week's games.
+  const gamesByTeam = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const row of participants ?? []) {
+      if (row.team == null) continue;
+      const games = map.get(row.team) ?? [];
+      if (!games.includes(row.gameId)) map.set(row.team, [...games, row.gameId]);
+    }
+    return map;
+  }, [participants]);
+  const proposalFor = useMemo(() => (row: ReportRow): Proposal | null => {
+    if (!appearanceIndex || !teamPlays) return null;
+    let gameId: string | null = null;
+    let appearance = null;
+    for (const candidate of gamesByTeam.get(row.team) ?? []) {
+      const found = findAppearance(appearanceIndex, candidate, row.name);
+      if (found) { gameId = candidate; appearance = found; break; }
+    }
+    return classifyRemoval({
+      position: row.position, appearance,
+      teamPlays: teamPlays.get(`${gameId ?? ""}:${appearance?.team ?? row.team}`) ?? [],
+      injuries: gameId ? injuriesFor(injuries, gameId, row.name) : [],
+    });
+  }, [appearanceIndex, teamPlays, gamesByTeam, injuries]);
   const moverBarScale = useMemo(() => Math.max(
     ...[...movers.exceeded, ...movers.disappointed].map(r => Math.abs(rowDelta(r)!)), 1), [movers]);
   const rows = useMemo(() => positionRows.filter(r => `${r.name} ${r.team}`.toLowerCase().includes(query.toLowerCase()))
@@ -116,12 +184,13 @@ export default function WeeklyReview({ reports, availableWeeks, season, viewedAt
         <span>· shaded relative to the biggest swing at that player&apos;s own position, so a tight-end week is not judged on a quarterback&apos;s scale. Unscored rows are never shaded.</span>
       </p>
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <div className="max-h-[650px] overflow-auto rounded-xl border bg-white"><table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-100"><tr>{["Player", "Team", "Projected", "P10–P90", "Final", "Delta", "Status"].map(c => <th className="p-3" key={c}>{c}</th>)}</tr></thead><tbody>{rows.map(r => <tr key={`${r.player_id}:${r.game_id}`} className={`border-t ${selected === r ? "bg-slate-100" : ""}`}><td className="p-3"><button className="text-left font-bold hover:underline" onClick={() => setPlayerId(r.player_id)}>{r.name}</button><div className="text-slate-500">{r.position} · vs {r.opponent}</div></td><td className="p-3 font-medium">{r.team}</td><td className="p-3 tabular-nums">{fmt(r.forecast?.mean)}</td><td className="whitespace-nowrap p-3 tabular-nums text-slate-500">{fmt(r.forecast?.p10)} – {fmt(r.forecast?.p90)}</td><td className="p-3 tabular-nums">{fmt(r.actual)}</td><td className="p-3 font-semibold tabular-nums" style={{ backgroundColor: DELTA_FILL[deltaBucket(rowDelta(r), scales[r.position])] }}>{signed(rowDelta(r))}</td><td className="p-3">{label(r.status)}{r.overdue ? " · overdue" : ""}</td></tr>)}</tbody></table>{!rows.length && <p className="p-5">No matching player rows.</p>}</div>
+        <div className="max-h-[650px] overflow-auto rounded-xl border bg-white"><table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-100"><tr>{["Player", "Team", "Projected", "P10–P90", "Final", "Delta", "Status"].map(c => <th className="p-3" key={c}>{c}</th>)}</tr></thead><tbody>{rows.map(r => <tr key={`${r.player_id}:${r.game_id}`} className={`border-t ${selected === r ? "bg-slate-100" : ""}`}><td className="p-3"><button className="text-left font-bold hover:underline" onClick={() => setPlayerId(r.player_id)}>{r.name}</button><div className="text-slate-500">{r.position} · vs {r.opponent}</div></td><td className="p-3 font-medium">{r.team}</td><td className="p-3 tabular-nums">{fmt(r.forecast?.mean)}</td><td className="whitespace-nowrap p-3 tabular-nums text-slate-500">{fmt(r.forecast?.p10)} – {fmt(r.forecast?.p90)}</td><td className="p-3 tabular-nums">{fmt(r.actual)}</td><td className="p-3 font-semibold tabular-nums" style={{ backgroundColor: DELTA_FILL[deltaBucket(rowDelta(r), scales[r.position])] }}>{signed(rowDelta(r))}{(() => { const p = proposalFor(r); return p && NEEDS_ATTENTION.has(p.verdict) ? <span className="ml-1" title={`${VERDICT_LABEL[p.verdict]} — ${p.reason}`}>{VERDICT_MARK[p.verdict]}</span> : null; })()}</td><td className="p-3">{label(r.status)}{r.overdue ? " · overdue" : ""}</td></tr>)}</tbody></table>{!rows.length && <p className="p-5">No matching player rows.</p>}</div>
         {selected && <aside className="space-y-4 rounded-xl border bg-white p-5"><div><h2 className="text-xl font-bold">{selected.name}</h2><p className="text-xs text-slate-500">{VARIANT_LABELS[variant]} · {selected.forecast?.history_games ?? 0} prior games</p></div>
           <div className="h-64" role="img" aria-label={`Weekly projected score, P10, P90 and actual score for ${selected.name}`}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={trajectory}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="week"/><YAxis/><Tooltip/><Line dataKey="P10" stroke="#94a3b8" strokeDasharray="3 3" connectNulls={false}/><Line dataKey="P90" stroke="#64748b" strokeDasharray="3 3" connectNulls={false}/><Line dataKey="expected" stroke="#2563eb" strokeWidth={2} connectNulls={false}/><Line dataKey="actual" stroke="#059669" strokeWidth={2} connectNulls={false}/></ComposedChart></ResponsiveContainer></div>
           <p className="text-xs text-slate-500">Blue: expected · Green: actual · Dashed: P10/P90. Dots remain visible with one week. No actual point is drawn while results are missing.</p>
           {history?.key === historyKey && history.error && <p role="alert" className="text-xs text-amber-800">{history.error} Showing the selected week only.</p>}
           <div className="grid grid-cols-3 gap-2 text-xs"><div>Median<strong className="block">{fmt(selected.forecast?.median)}</strong></div><div>Boom probability<strong className="block">{selected.forecast?.boom_probability == null ? "—" : `${(selected.forecast.boom_probability*100).toFixed(1)}%`}</strong></div><div>Within range<strong className="block">{selected.interval_hit === null ? "Pending" : selected.interval_hit ? "Yes" : "No"}</strong></div></div>
+          <h3 className="font-semibold">Availability read</h3><AvailabilityNote proposal={proposalFor(selected)}/>
           <h3 className="font-semibold">Component breakdown</h3>{selected.components.length ? <table className="w-full text-xs"><thead><tr><th className="text-left">Stat</th><th>Projected</th><th>Actual</th></tr></thead><tbody>{selected.components.map(c => <tr key={c.stat} className="border-t"><td className="py-1">{label(c.stat)}</td><td className="text-center">{fmt(c.projected)}</td><td className="text-center">{fmt(c.actual)}</td></tr>)}</tbody></table> : <p className="text-xs text-slate-500">Component forecasts were not frozen for this snapshot/model. They are not reconstructed after the game.</p>}
           <details className="rounded border p-3 text-xs"><summary className="cursor-pointer font-semibold">Audit evidence & revisions</summary><p className="mt-2">Kickoff: {date(selected.kickoff)} ET</p><p>Captured: {selected.forecast ? `${date(selected.forecast.captured_at)} ET` : "No accepted forecast"}</p><p>Outcome revisions: {selected.result_revision_count} · Scorer: {selected.scoring_version ?? "pending"}</p><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(selected, null, 2)}</pre></details>
         </aside>}

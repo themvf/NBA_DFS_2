@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getNflWeeklyReports } from "@/db/nfl-dfs-report-card";
+import { getNflWeekBallParticipants, getNflWeekPlayContext } from "@/db/queries";
 import WeeklyReview from "./weekly-review";
 
 export const dynamic = "force-dynamic";
@@ -19,5 +20,23 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
   if (!reports) return <main className="mx-auto max-w-5xl space-y-4 p-8"><Link href="/dfs/nfl">← NFL DFS workspace</Link>
       <h1 className="text-2xl font-bold">Weekly Player Review</h1>
       <p role="alert">Saved reports are unavailable. Check the daily NFL DFS report-card job. This is not a zero-result report.</p></main>;
-  return <WeeklyReview key={`${season}:${reports.reports[0]?.week}`} reports={reports.reports} availableWeeks={reports.weeks} season={season} viewedAt={now.getTime()} />;
+  // Participation for the week actually rendered. Fetched here rather than in
+  // the client so a missing play-by-play refresh degrades to "not available"
+  // instead of an empty panel that reads like "nobody left the game".
+  const shown = reports.reports.at(-1)?.week;
+  let participants = null;
+  let playContext = null;
+  try {
+    if (shown) {
+      [participants, playContext] = await Promise.all([
+        getNflWeekBallParticipants(season, shown),
+        getNflWeekPlayContext(season, shown),
+      ]);
+    }
+  } catch (error) {
+    console.error("NFL week play-by-play unavailable", error);
+    participants = null;
+    playContext = null;
+  }
+  return <WeeklyReview key={`${season}:${reports.reports[0]?.week}`} reports={reports.reports} availableWeeks={reports.weeks} season={season} viewedAt={now.getTime()} participants={participants} playContext={playContext} />;
 }
