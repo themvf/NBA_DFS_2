@@ -26,6 +26,7 @@ import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
 import { availabilityNote, zeroOutProjection, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
 import { redistributeOutOpportunity, inheritanceNote, paidByDonor, type RedistributionRow, type InheritedFrom } from '@/lib/nfl-dfs/opportunity-redistribution';
 import { staleRunWarning } from '@/lib/nfl-dfs/stale-run';
+import { chunkRows, assertSlateFullyPersisted, incompleteSlateWarning, isSlateComplete } from '@/lib/nfl-dfs/slate-persist';
 import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/workload-selection";
 import { prepareProjectionAudits, validateSituations, type SituationTeam } from '@/lib/nfl-dfs/projection-audit';
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
@@ -195,6 +196,10 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     ? (await db.select().from(nflDfsProjectionRuns).where(eq(nflDfsProjectionRuns.runId, upload.projectionRunId)).limit(1))[0] ?? null
     : null;
   const rows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  // A slate written before the batched write could stop part-way and still
+  // leave a header row claiming the full pool. Say so rather than serving a
+  // short pool as though it were the slate.
+  const incompleteWarning = incompleteSlateWarning(upload.playerCount, rows.length, upload.fileName);
   let snapshots: CalibrationSnapshot[] = [];
   // A saved slate keeps its original run on purpose, so it stays reproducible.
   // The cost is that a model fix can ship and the slate silently keeps the old
@@ -270,7 +275,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
-    warnings: [...upload.warnings as string[], ...(staleWarning ? [staleWarning] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
+    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
     fileName: upload.fileName,
     players: rows.map((row) => ({
       id: row.id,
@@ -357,8 +362,10 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
     .where(run ? and(eq(nflDfsSlateUploads.fileDigest, digest), eq(nflDfsSlateUploads.projectionRunId, run.runId)) : eq(nflDfsSlateUploads.fileDigest, digest))
     .orderBy(desc(nflDfsSlateUploads.createdAt)).limit(1);
   const uploadId = existing[0]?.uploadId ?? randomUUID();
-  if (!existing[0]) {
-    await db.insert(nflDfsSlateUploads).values({
+  // Built, NOT awaited: the header row goes into the same transaction as the
+  // players below. Committing it on its own is what let a failed player write
+  // leave a slate that still looked whole -- see `slate-persist.ts`.
+  const headerWrite = existing[0] ? null : db.insert(nflDfsSlateUploads).values({
       uploadId,
       slateSignature: signature,
       fileName: file.name,
@@ -370,8 +377,7 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
       playerCount: slate.players.length,
       projectionRunId: run?.runId ?? null,
     });
-  }
-  for (const [playerIndex,player] of slate.players.entries()) {
+  const playerRows = slate.players.map((player, playerIndex) => {
     const normalized = normalizeName(player.name);
     const {decision,permanent}=identityDecisions[playerIndex];
     const projection = decision.match;
@@ -411,38 +417,59 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
       historyGames: projection?.historyGames ?? null,
       updatedAt: new Date(),
     };
-    await db.insert(nflDfsSlatePlayers).values(values).onConflictDoUpdate({
+    return values;
+  });
+
+  // ONE transaction for the whole slate. `drizzle-orm/neon-http` has no
+  // interactive transactions and every `await db.insert(...)` is its own HTTPS
+  // request, so the previous per-player loop was ~670 independent commits that
+  // could stop anywhere. `db.batch` sends these statements together and the
+  // server runs them in a single transaction: the header and every player land
+  // together, or nothing does.
+  const excluded = (column: { name: string }) => sql.raw(`excluded."${column.name}"`);
+  const playerWrites = chunkRows(playerRows).map((rows) =>
+    db.insert(nflDfsSlatePlayers).values(rows).onConflictDoUpdate({
       target: [nflDfsSlatePlayers.uploadId, nflDfsSlatePlayers.dkPlayerId],
       set: {
-        captainDkPlayerId: values.captainDkPlayerId,
-        ffPlayerId: values.ffPlayerId,
-        name: values.name,
-        normalizedName: values.normalizedName,
-        position: values.position,
-        rosterPositions: values.rosterPositions,
-        team: values.team,
-        opponent: values.opponent,
-        gameKey: values.gameKey,
-        gameInfo: values.gameInfo,
-        salary: values.salary,
-        captainSalary: values.captainSalary,
-        avgFptsDk: values.avgFptsDk,
-        dkStatus: values.dkStatus,
-        isOut: values.isOut,
-        identityMethod: values.identityMethod,
-        identityEvidence: values.identityEvidence,
-        projectionStatus: values.projectionStatus,
-        ourProj: values.ourProj,
-        floorFpts: values.floorFpts,
-        medianFpts: values.medianFpts,
-        ceilingFpts: values.ceilingFpts,
-        boomRate: values.boomRate,
-        modelConfidence: values.modelConfidence,
-        historyGames: values.historyGames,
-        updatedAt: values.updatedAt,
+        captainDkPlayerId: excluded(nflDfsSlatePlayers.captainDkPlayerId),
+        ffPlayerId: excluded(nflDfsSlatePlayers.ffPlayerId),
+        name: excluded(nflDfsSlatePlayers.name),
+        normalizedName: excluded(nflDfsSlatePlayers.normalizedName),
+        position: excluded(nflDfsSlatePlayers.position),
+        rosterPositions: excluded(nflDfsSlatePlayers.rosterPositions),
+        team: excluded(nflDfsSlatePlayers.team),
+        opponent: excluded(nflDfsSlatePlayers.opponent),
+        gameKey: excluded(nflDfsSlatePlayers.gameKey),
+        gameInfo: excluded(nflDfsSlatePlayers.gameInfo),
+        salary: excluded(nflDfsSlatePlayers.salary),
+        captainSalary: excluded(nflDfsSlatePlayers.captainSalary),
+        avgFptsDk: excluded(nflDfsSlatePlayers.avgFptsDk),
+        dkStatus: excluded(nflDfsSlatePlayers.dkStatus),
+        isOut: excluded(nflDfsSlatePlayers.isOut),
+        identityMethod: excluded(nflDfsSlatePlayers.identityMethod),
+        identityEvidence: excluded(nflDfsSlatePlayers.identityEvidence),
+        projectionStatus: excluded(nflDfsSlatePlayers.projectionStatus),
+        ourProj: excluded(nflDfsSlatePlayers.ourProj),
+        floorFpts: excluded(nflDfsSlatePlayers.floorFpts),
+        medianFpts: excluded(nflDfsSlatePlayers.medianFpts),
+        ceilingFpts: excluded(nflDfsSlatePlayers.ceilingFpts),
+        boomRate: excluded(nflDfsSlatePlayers.boomRate),
+        modelConfidence: excluded(nflDfsSlatePlayers.modelConfidence),
+        historyGames: excluded(nflDfsSlatePlayers.historyGames),
+        updatedAt: excluded(nflDfsSlatePlayers.updatedAt),
       },
-    });
-  }
+    }),
+  );
+  const writes = [...(headerWrite ? [headerWrite] : []), ...playerWrites];
+  if (writes.length) await db.batch(writes as [(typeof writes)[number], ...(typeof writes)[number][]]);
+
+  // Trust, then verify. The transaction is a claim made by the driver; the row
+  // count is the fact. A slate that half-saved becomes a loud error here rather
+  // than a believable short player pool in the workspace.
+  const [stored] = await db.select({ n: sql<number>`count(*)::int` })
+    .from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  assertSlateFullyPersisted(slate.players.length, stored?.n ?? 0, file.name);
+
   return workspaceSlate(uploadId);
 }
 
@@ -454,16 +481,23 @@ export async function loadLatestNflSlate(): Promise<NflWorkspaceSlate | null> {
 
 export async function listSavedNflSlates() {
   const rows = await db.select({ uploadId: nflDfsSlateUploads.uploadId, signature: nflDfsSlateUploads.slateSignature,
-    format: nflDfsSlateUploads.format, games: nflDfsSlateUploads.games,
+    format: nflDfsSlateUploads.format, games: nflDfsSlateUploads.games, claimed: nflDfsSlateUploads.playerCount,
+    stored: sql<number>`(select count(*)::int from nfl_dfs_slate_players p where p.upload_id = nfl_dfs_slate_uploads.upload_id)`,
     gameInfo: sql<string | null>`(select min(game_info) from nfl_dfs_slate_players p where p.upload_id = nfl_dfs_slate_uploads.upload_id)`,
   }).from(nflDfsSlateUploads).orderBy(desc(nflDfsSlateUploads.createdAt));
   const seen = new Set<string>();
-  return rows.map(row => ({ uploadId: row.uploadId, label: savedSlateLabel(row.format, row.gameInfo, row.games as string[]) }))
+  return rows
+    // An incomplete slate is filtered BEFORE the newest-per-label dedupe, so a
+    // half-written upload cannot shadow the complete one it sits next to. That
+    // is exactly what happened on 2026-09-19: a 10-player row hid a 670-player
+    // row for the same file, and the workspace served the 10.
+    .filter(row => isSlateComplete(row.claimed, row.stored))
+    .map(row => ({ uploadId: row.uploadId, label: savedSlateLabel(row.format, row.gameInfo, row.games as string[]) }))
     .filter(row => { if (seen.has(row.label)) return false; seen.add(row.label); return true; });
 }
 
 export async function loadSavedNflWorkspace(uploadId: string) {
-  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error(`Invalid saved slate: ${JSON.stringify(uploadId)}`);
   const slate = await workspaceSlate(uploadId);
   const uploads = await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
   const runs = await db.select({ runId: nflDfsOptimizerRuns.runId, createdAt: nflDfsOptimizerRuns.createdAt,
