@@ -329,6 +329,34 @@ def test_unresolved_selections_keep_their_label_and_are_still_recorded(lookups) 
     assert resolved[0].row.american == 900, "the price survives even when the name does not"
 
 
+def test_a_proposition_side_resolves_without_a_roster_lookup(lookups) -> None:
+    """"Yes" is not a player.
+
+    Run through the player resolver it would never match, so the price would be
+    stored under UNRESOLVED:Yes and could never join to the board's `yes` row --
+    i.e. a captured proposition price would silently never appear on the page.
+    """
+    rows, problems = parse_board_text("Yes\n+125\nNo\n-165\n")
+    assert problems == []
+    resolved = resolve_selections(rows, "all_teams_td", lookups)
+    assert [r.selection_key for r in resolved] == ["yes", "no"]
+    assert all(r.resolved for r in resolved)
+    assert {r.method for r in resolved} == {"proposition_side"}
+
+
+def test_a_proposition_side_is_matched_regardless_of_how_dk_cases_it(lookups) -> None:
+    rows, _ = parse_board_text("YES\n+125\nno\n-165\n")
+    assert [r.selection_key for r in resolve_selections(rows, "all_teams_td", lookups)] == ["yes", "no"]
+
+
+def test_an_unexpected_third_side_stays_unresolved_rather_than_being_invented(lookups) -> None:
+    """A label we do not model is evidence DK changed the market, not a key."""
+    rows, _ = parse_board_text("Yes\n+125\nNo\n-165\nMaybe\n+400\n")
+    resolved = resolve_selections(rows, "all_teams_td", lookups)
+    assert resolved[2].selection_key == "UNRESOLVED:Maybe"
+    assert not resolved[2].resolved
+
+
 def test_resolution_degrades_when_no_projection_run_exists() -> None:
     """A perishable market price must never be lost waiting on a projection."""
     empty = Lookups(team_by_alias={}, games=(), players=())

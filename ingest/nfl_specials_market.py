@@ -381,11 +381,24 @@ class ResolvedRow:
         return not self.selection_key.startswith("UNRESOLVED:")
 
 
+# An "All Teams to Score ..." board has two selections and neither is a name to
+# look up. Spelled out rather than lowercased generically so that a third label
+# on such a board -- which would mean DK is offering something we do not model
+# -- stays unresolved instead of being silently accepted as a selection key.
+PROPOSITION_LABELS: dict[str, str] = {"yes": "yes", "no": "no"}
+
+
+def resolve_proposition(label: str) -> str | None:
+    return PROPOSITION_LABELS.get(label.strip().casefold())
+
+
 def resolve_selections(rows: Sequence[ParsedRow], family: str, lookups: Lookups) -> list[ResolvedRow]:
     kind = selection_kind(family)
     resolved: list[ResolvedRow] = []
     for row in rows:
-        if kind == "team":
+        if kind == "proposition":
+            key, method = resolve_proposition(row.label), "proposition_side"
+        elif kind == "team":
             key, method = resolve_team(row.label, lookups), "team_alias"
         elif kind == "game":
             key, method = resolve_game(row.label, lookups), "schedule_pair"

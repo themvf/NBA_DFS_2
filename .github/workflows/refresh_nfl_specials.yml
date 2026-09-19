@@ -1,7 +1,8 @@
 name: Refresh NFL Slate Specials
 
 # Publishes the weekly specials board: our ranking and expected stat for each
-# of DK's nine slate questions.
+# of DK's "who leads" slate questions, and a fitted probability for each of its
+# "all teams to score" ones.
 #
 # Timed to land AFTER refresh_nfl_dfs_projections (35 13 and 35 21 UTC), whose
 # player projections are this board's input for the six player topics. Running
@@ -35,7 +36,10 @@ on:
         required: false
         default: both
         type: choice
-        options: [both, sunday_all, sunday_1pm]
+        # DK slices Sunday four ways and they are not interchangeable --
+        # sunday_main is its "1pm, 4.05 & 4.25pm" market, which excludes SNF,
+        # so it is a different window from sunday_all. 'both' publishes all four.
+        options: [both, sunday_1pm, sunday_late, sunday_main, sunday_all]
       dry_run:
         description: "Report what would publish, write nothing"
         required: false
