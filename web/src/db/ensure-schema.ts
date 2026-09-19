@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { SLATE_PLAYER_STATUSES } from "@/lib/nfl-dfs/slate-persist";
 
 import { db } from ".";
 
@@ -1222,6 +1223,20 @@ export async function ensureNflDfsTables(): Promise<void> {
         DROP CONSTRAINT IF EXISTS nfl_dfs_optimizer_runs_projection_source_check,
         ADD CONSTRAINT nfl_dfs_optimizer_runs_projection_source_check
         CHECK (projection_source IN ('our','calibrated','workload','dk_avg','fantasypros','linestar','custom'));
+        END IF;
+      END $$`));
+      // `nfl_dfs_slate_players.projection_status` copies its value straight from
+      // `nfl_dfs_player_projections`, so it must accept everything that table can
+      // emit. It did not accept 'out', which the availability pipeline began
+      // writing, so the first ruled-out player in a salary file was unwritable.
+      await db.execute(sql.raw(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'nfl_dfs_slate_players'::regclass
+          AND conname = 'nfl_dfs_slate_players_projection_status_check'
+          AND pg_get_constraintdef(oid) LIKE '%out%') THEN
+        ALTER TABLE nfl_dfs_slate_players
+        DROP CONSTRAINT IF EXISTS nfl_dfs_slate_players_projection_status_check,
+        ADD CONSTRAINT nfl_dfs_slate_players_projection_status_check
+        CHECK (projection_status IN (${SLATE_PLAYER_STATUSES.map((s) => `'${s}'`).join(',')}));
         END IF;
       END $$`));
     })().catch((error) => {

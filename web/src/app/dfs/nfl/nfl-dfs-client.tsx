@@ -86,6 +86,10 @@ export default function NflDfsClient() {
     const saved = await listSavedNflSlates(); setSavedSlates(saved); return saved;
   }
   function openSaved(uploadId: string, restoreLineups = true) {
+    // The chooser's placeholder option carries an empty value. Posting that to
+    // the server just to be told it is not a slate turns a no-op into an error
+    // banner, so it never leaves the browser.
+    if (!uploadId) return;
     setError(null); setMessage(null);
     startTransition(async () => {
       try {

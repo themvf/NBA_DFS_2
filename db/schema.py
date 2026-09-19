@@ -2573,7 +2573,12 @@ TABLES = [
         UNIQUE(upload_id, dk_player_id),
         CHECK(position IN ('QB','RB','WR','TE','K','DST')),
         CHECK(identity_method IN ('gsis_id','exact_name_position_team','exact_name_position','unmatched','ambiguous','team_position_dst','team_conflict','position_conflict','missing_team','identifier_conflict')),
-        CHECK(projection_status IN ('historical','position_prior','unavailable','unmatched'))
+        -- Must be the UNION of two vocabularies, not either one alone: 'unmatched'
+        -- is this table's own fallback for a salary row with no projection, and
+        -- 'out' is copied verbatim from nfl_dfs_player_projections, whose own CHECK
+        -- allows it. Omitting 'out' here made the first ruled-out player in a
+        -- salary file unwritable -- see web/src/lib/nfl-dfs/slate-persist.ts.
+        CHECK(projection_status IN ('historical','position_prior','unavailable','unmatched','out'))
     )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_optimizer_runs (
         run_id UUID PRIMARY KEY,
