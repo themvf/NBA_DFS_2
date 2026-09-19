@@ -6723,13 +6723,38 @@ plays. The schedule lists those weeks and the feed has nothing in them — the
 "weeks come from the schedule" rule is what makes those known-empty rather
 than possibly-missed.
 
-**Still unmeasured: the audit metrics.** The run was launched with
-`audit_only` unticked, so it went straight to the write pass; play->drive link
-rate and `down`/`distance`/`ppa`/`wallclock` coverage come only from
-`audit_rows()` and have never been computed. Re-running with `audit_only`
-ticked costs **zero CFBD requests** — the run saved the `cfb-plays-2022-2025`
-Actions cache (170MB), so the audit replays from gzipped cache. Do that before
-building anything on drive-level completeness.
+**Audit pass, run 35438172357 (2026-09-19), 55 seconds from cache with zero
+CFBD requests** — the write run above was launched with `audit_only` unticked,
+so completeness was measured afterwards rather than first.
+
+**Every one of the 648,264 plays links to a drive — link rate 1.0000 in all
+four seasons, 0 duplicate play ids.** Drive-level work (drive count, points per
+drive, endgame transition matrices) rests entirely on that join and it is
+complete. `driveResult`, `plays`, `yards` and `startYardsToGoal` are also 1.00
+on every drive.
+
+Play field coverage:
+
+| field | 2022 | 2023 | 2024 | 2025 |
+|---|---:|---:|---:|---:|
+| down, distance, yardsGained, clock, playType | 1.00 | 1.00 | 1.00 | 1.00 |
+| `ppa` | 0.755 | 0.752 | 0.739 | 0.754 |
+| `wallclock` | 0.955 | 0.988 | 0.978 | 0.995 |
+
+Two things not to read past:
+
+- **`down: 1.00` means non-null, not meaningful.** `audit_rows()` tests
+  `is not None`, and a kickoff or PAT plausibly carries `down = 0` rather than
+  null — the tell is that `ppa` is absent on ~25% of plays (almost certainly
+  the same non-scrimmage rows) while `down` is absent on none. Check
+  `SELECT count(*) FROM cfb_plays WHERE down = 0` before filtering on down.
+- **`wallclock` is the weakest field and the only real-time anchor.**
+  Irrelevant to score-range work; but a latency study run against historical
+  plays would be working from a 4.5% gap in 2022.
+
+The audit's play/drive counts match the write run's exactly, season by season —
+the audit counts payload rows and the ingest counted rows written, so the
+agreement is an independent check that nothing was dropped in the write path.
 
 **Why these two endpoints and not the rest of the unused surface.** A play
 that happened is a fact: re-fetching 2022 today returns the events it returned
