@@ -25,6 +25,7 @@ import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
 import { availabilityNote, zeroOutProjection, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
 import { redistributeOutOpportunity, inheritanceNote, paidByDonor, type RedistributionRow, type InheritedFrom } from '@/lib/nfl-dfs/opportunity-redistribution';
+import { staleRunWarning } from '@/lib/nfl-dfs/stale-run';
 import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/workload-selection";
 import { prepareProjectionAudits, validateSituations, type SituationTeam } from '@/lib/nfl-dfs/projection-audit';
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
@@ -195,6 +196,17 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     : null;
   const rows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
   let snapshots: CalibrationSnapshot[] = [];
+  // A saved slate keeps its original run on purpose, so it stays reproducible.
+  // The cost is that a model fix can ship and the slate silently keeps the old
+  // one -- which is exactly how the `attempts`/`carries` fix sat unused and
+  // left the pass and rush redistribution pools with no input at all.
+  // Both keys must be known: comparing across weeks would flag every slate.
+  const newestRun = run && run.season !== null && run.week !== null
+    ? (await db.select().from(nflDfsProjectionRuns)
+        .where(and(eq(nflDfsProjectionRuns.season, run.season), eq(nflDfsProjectionRuns.week, run.week)))
+        .orderBy(desc(nflDfsProjectionRuns.asOfAt)).limit(1))[0] ?? null
+    : null;
+  const staleWarning = staleRunWarning(run, newestRun);
   let calibrationWarning: string | null = null;
   if (run?.week) {
     try { snapshots = await getCalibratedSnapshots(run.season, run.week); }
@@ -258,7 +270,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
-    warnings: [...upload.warnings as string[], ...(calibrationWarning ? [calibrationWarning] : [])],
+    warnings: [...upload.warnings as string[], ...(staleWarning ? [staleWarning] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
     fileName: upload.fileName,
     players: rows.map((row) => ({
       id: row.id,
