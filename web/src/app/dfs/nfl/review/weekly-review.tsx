@@ -81,7 +81,7 @@ export default function WeeklyReview({ reports, availableWeeks, season, viewedAt
   }
   return <main className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6">
     <header className="rounded-2xl bg-slate-950 p-6 text-white">
-      <Link className="text-sm text-emerald-300" href="/dfs/nfl">← NFL DFS workspace</Link>
+      <Link className="text-sm text-emerald-300" href="/dfs/nfl">← NFL DFS workspace</Link><Link className="ml-4 text-sm text-emerald-300" href="/dfs/nfl/availability">Availability review →</Link>
       <p className="mt-5 text-xs font-bold uppercase tracking-widest text-emerald-300">Forecast accountability · {season}</p>
       <h1 className="mt-1 text-3xl font-black">Weekly Player Review</h1>
       <p className="mt-2 max-w-3xl text-sm text-slate-300">Frozen pregame forecasts, realized scores and every unresolved result. Production and research models stay separate. These are projection metrics, not lineup ROI.</p>

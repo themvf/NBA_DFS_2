@@ -6693,3 +6693,105 @@ loss. `ledgerVerdict()` refuses to quote a rate below 30 settled weeks, which an
 
 Verify with `verify:pickem-ledger` (30 assertions against the live database,
 using the real `ensurePickemTables` DDL rather than a copy).
+
+---
+
+## CFBD Drives + Plays Backfill (2026-09-19)
+
+`ingest/cfb_plays.py` backfills CollegeFootballData's `/drives` and `/plays`
+into `cfb_drives` / `cfb_plays`, via the manual `backfill_cfb_plays.yml`
+workflow.
+
+**Ran 2026-09-19 (run 35437340135), 2022-2025, ~14 minutes:**
+
+| season | games | drives | plays | plays/game |
+|---|---:|---:|---:|---:|
+| 2022 | 896 | 21,917 | 160,282 | 178.9 |
+| 2023 | 910 | 21,866 | 158,995 | 174.7 |
+| 2024 | 919 | 21,766 | 162,751 | 177.1 |
+| 2025 | 934 | 21,762 | 166,236 | 178.0 |
+| total | 3,659 | 87,311 | 648,264 | |
+
+**`skipped` was empty in all four seasons** — zero plays orphaned to a game
+missing from the schedule, zero offense/defense names unmapped to a team id
+across 648k plays. Those were the two silent-loss paths worth counting and
+neither fired.
+
+Week discovery behaved as designed including where it looks odd: 2023
+postseason w11-15 and 2025 postseason w13-14 each returned 0 drives and 0
+plays. The schedule lists those weeks and the feed has nothing in them — the
+"weeks come from the schedule" rule is what makes those known-empty rather
+than possibly-missed.
+
+**Audit pass, run 35438172357 (2026-09-19), 55 seconds from cache with zero
+CFBD requests** — the write run above was launched with `audit_only` unticked,
+so completeness was measured afterwards rather than first.
+
+**Every one of the 648,264 plays links to a drive — link rate 1.0000 in all
+four seasons, 0 duplicate play ids.** Drive-level work (drive count, points per
+drive, endgame transition matrices) rests entirely on that join and it is
+complete. `driveResult`, `plays`, `yards` and `startYardsToGoal` are also 1.00
+on every drive.
+
+Play field coverage:
+
+| field | 2022 | 2023 | 2024 | 2025 |
+|---|---:|---:|---:|---:|
+| down, distance, yardsGained, clock, playType | 1.00 | 1.00 | 1.00 | 1.00 |
+| `ppa` | 0.755 | 0.752 | 0.739 | 0.754 |
+| `wallclock` | 0.955 | 0.988 | 0.978 | 0.995 |
+
+Two things not to read past:
+
+- **`down: 1.00` means non-null, not meaningful.** `audit_rows()` tests
+  `is not None`, and a kickoff or PAT plausibly carries `down = 0` rather than
+  null — the tell is that `ppa` is absent on ~25% of plays (almost certainly
+  the same non-scrimmage rows) while `down` is absent on none. Check
+  `SELECT count(*) FROM cfb_plays WHERE down = 0` before filtering on down.
+- **`wallclock` is the weakest field and the only real-time anchor.**
+  Irrelevant to score-range work; but a latency study run against historical
+  plays would be working from a 4.5% gap in 2022.
+
+The audit's play/drive counts match the write run's exactly, season by season —
+the audit counts payload rows and the ingest counted rows written, so the
+agreement is an independent check that nothing was dropped in the write path.
+
+**Why these two endpoints and not the rest of the unused surface.** A play
+that happened is a fact: re-fetching 2022 today returns the events it returned
+then, so drives and plays are leak-proof by construction and need no
+point-in-time snapshot discipline. `ratings/sp`, `ratings/fpi`, `talent` and
+`player/returning` are the opposite — queried for a past season they return
+**end-of-season** state, so joining them to a week-3 game is a leak, and any
+backtest built on them without a captured-at-the-time snapshot is invalid.
+That asymmetry is the whole reason this backfill is cheap and the ratings
+families are not.
+
+**What it does not claim.** Nothing here is a signal, a feature, or evidence
+of an edge. It is the raw material the score-range and endgame ideas depend
+on. Whether CFBD's LIVE feed arrives fast enough to beat an in-play book is a
+separate latency measurement against a stopwatch, deliberately not attempted
+here — and the in-play question is the only place in this family where being
+*faster* rather than *smarter* is even on the table.
+
+**Design decisions worth not rediscovering:**
+- **Weeks come from the season's own `/games` payload**, never a blind 1..20
+  probe. An empty week then means the week genuinely had no plays, rather than
+  that the range was guessed wrong — the same class of distinction the
+  detector-health work exists to preserve.
+- **Parent games are upserted from the play feed itself**, not inherited from
+  `ingest.cfb_history`'s ingest, which keeps only completed FBS-vs-FBS games
+  that also carry betting lines. Tying play coverage to line coverage would
+  make a data property of one source silently govern another.
+- **`game_seconds_remaining` is derived, and overtime is 0, never negative.**
+  A negative value would silently corrupt any endgame slice that filters on a
+  threshold.
+- **A play whose game is not in the schedule is skipped and COUNTED**, not
+  written; an unmapped team name keeps the play with a NULL team id and the
+  raw name preserved, and is also counted. Both appear in the audit's
+  `skipped` map rather than vanishing.
+- **`classification=fbs`** bounds the team universe and row volume to the
+  cohort every other CFB table here is built on. Widening it is a scope
+  decision, not a default.
+- Caches are gzipped per `(endpoint, season, season_type, week)`, and the
+  `/games` cache is shared with `ingest.cfb_history` so the schedule costs
+  nothing extra.

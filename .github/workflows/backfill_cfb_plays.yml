@@ -1,0 +1,67 @@
+name: Backfill CFB Drives and Plays
+
+# Manual only.  This is a one-off historical backfill of static facts, not a
+# recurring refresh: re-fetching 2022 returns the same events it always did,
+# so there is nothing for a schedule to keep current.  Re-run it for a season
+# once that season finishes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_season:
+        description: First season to backfill
+        required: false
+        default: "2022"
+      end_season:
+        description: Last season to backfill
+        required: false
+        default: "2025"
+      audit_only:
+        description: Audit the payloads without writing to the database
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: backfill-cfb-plays
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      # The schedule cache is shared with ingest.cfb_history, which already
+      # pays for the /games payloads this backfill needs.
+      - uses: actions/cache@v4
+        with:
+          path: data/cfb/history-cache
+          key: cfb-history-${{ inputs.start_season }}-${{ inputs.end_season }}-${{ hashFiles('ingest/cfb_history.py') }}
+          restore-keys: cfb-history-
+      - uses: actions/cache@v4
+        with:
+          path: data/cfb/play-cache
+          key: cfb-plays-${{ inputs.start_season }}-${{ inputs.end_season }}
+          restore-keys: cfb-plays-
+      - name: Backfill drives and plays
+        run: |
+          python -m ingest.cfb_plays \
+            --start-season "${{ inputs.start_season }}" \
+            --end-season "${{ inputs.end_season }}" \
+            ${{ inputs.audit_only && '--audit-only' || '' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cfb-play-audits
+          path: artifacts/cfb/play-audits
+          if-no-files-found: warn
