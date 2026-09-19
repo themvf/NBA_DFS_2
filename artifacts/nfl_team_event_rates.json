@@ -1,0 +1,112 @@
+{
+  "fit_version": "nfl-team-events-v1",
+  "seasons": [
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "team_games": 2718,
+  "events": {
+    "td": {
+      "kind": "logistic",
+      "coef": 0.1953291026723623,
+      "intercept": -1.502379710983082,
+      "n": 2718,
+      "base_rate": 0.9319352465047829,
+      "slope_effect": 0.14792555687690256,
+      "range": [
+        16.0,
+        28.5
+      ],
+      "at_low": 0.8351927506146903,
+      "at_high": 0.9831183074915929,
+      "label": "scores 1+ TD",
+      "dk_market": "All Teams to Score 1+ TD"
+    },
+    "two_td": {
+      "kind": "logistic",
+      "coef": 0.18256619184478418,
+      "intercept": -2.903041116374966,
+      "n": 2718,
+      "base_rate": 0.7413539367181752,
+      "slope_effect": 0.40438056919704535,
+      "range": [
+        16.0,
+        28.5
+      ],
+      "at_low": 0.5045043664254375,
+      "at_high": 0.9088849356224828,
+      "label": "scores 2+ TDs",
+      "dk_market": "All Teams to Score 2+ TDs"
+    },
+    "fg": {
+      "kind": "flat",
+      "rate": 0.8300220750551877,
+      "n": 2718,
+      "reason": "implied total moves this only 2.3pp across the range",
+      "slope_effect": 0.023477985532232792,
+      "label": "kicks 1+ FG",
+      "dk_market": "All Teams to Score 1+ FG"
+    },
+    "td_and_fg": {
+      "kind": "logistic",
+      "coef": 0.06311950668519394,
+      "intercept": -0.16480310582742705,
+      "n": 2718,
+      "base_rate": 0.7729948491537896,
+      "slope_effect": 0.1371907726478392,
+      "range": [
+        16.0,
+        28.5
+      ],
+      "at_low": 0.699540138426331,
+      "at_high": 0.8367309110741702,
+      "label": "scores 1+ TD and 1+ FG",
+      "dk_market": "All Teams to Score 1+ TD & 1+ FG"
+    },
+    "passing_td": {
+      "kind": "logistic",
+      "coef": 0.12700284258294411,
+      "intercept": -1.4653968426337414,
+      "n": 2718,
+      "base_rate": 0.7855040470934511,
+      "slope_effect": 0.2580696180794808,
+      "range": [
+        16.0,
+        28.5
+      ],
+      "at_low": 0.6379895069505315,
+      "at_high": 0.8960591250300123,
+      "label": "throws 1+ passing TD",
+      "dk_market": "All Teams to Score 1+ Passing TD"
+    },
+    "rushing_td": {
+      "kind": "logistic",
+      "coef": 0.0926890532595027,
+      "intercept": -1.6573920402700353,
+      "n": 2718,
+      "base_rate": 0.5974981604120677,
+      "slope_effect": 0.2714315832376669,
+      "range": [
+        16.0,
+        28.5
+      ],
+      "at_low": 0.4565183149779821,
+      "at_high": 0.727949898215649,
+      "label": "runs in 1+ rushing TD",
+      "dk_market": "All Teams to Score 1+ Rushing TD"
+    },
+    "any_points": {
+      "kind": "flat",
+      "rate": 0.9893303899926417,
+      "n": 2718,
+      "reason": "implied total moves this only 3.2pp across the range",
+      "slope_effect": 0.03197319473181204,
+      "label": "scores at all",
+      "dk_market": "All Teams to Score"
+    }
+  },
+  "independence_note": "Per-team probabilities are multiplied. Checked on 89 real Sunday 1pm windows: independence predicted 32.9% of slates with every team scoring a TD against 31.5% observed, 6.6% vs 5.6% for FG, 85.1% vs 79.8% for any points. Independence is mildly optimistic; the gaps sit inside sampling noise at n=89, so no correction is fitted."
+}

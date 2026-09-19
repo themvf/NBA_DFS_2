@@ -3529,7 +3529,7 @@ TABLES = [
         capture_key TEXT NOT NULL,
         raw_text TEXT,
         CHECK (american <= -100 OR american >= 100),
-        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm'))
+        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm', 'sunday_late', 'sunday_main'))
     )
     """,
 
@@ -3559,7 +3559,7 @@ TABLES = [
         blocked_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
         generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         git_sha TEXT,
-        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm')),
+        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm', 'sunday_late', 'sunday_main')),
         CHECK (method IN ('expected_stats', 'simulated')),
         CHECK (n_draws IS NULL OR n_draws > 0),
         CHECK (method <> 'simulated' OR (seed IS NOT NULL AND n_draws IS NOT NULL))
@@ -3639,7 +3639,7 @@ TABLES = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(season, week, slate_scope, family, selection_key, model_version),
-        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm')),
+        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm', 'sunday_late', 'sunday_main')),
         CHECK (status IN ('pending', 'won', 'lost', 'push', 'void', 'unresolved')),
         CHECK (stars >= 1 AND stars <= 5)
     )
@@ -4651,6 +4651,20 @@ MIGRATIONS = [
     "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_book_count INTEGER",
     "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_overround DOUBLE PRECISION",
     "ALTER TABLE nfl_season_games ADD COLUMN IF NOT EXISTS market_captured_at TIMESTAMPTZ",
+
+    # DK slices Sunday four ways (1pm / 4.05-4.25 / both / everything incl. SNF),
+    # which the original two-scope CHECK could not express. Widened here as well
+    # as in CREATE TABLE, because these tables already exist in production and a
+    # CREATE TABLE IF NOT EXISTS will not revisit their constraints.
+    "ALTER TABLE nfl_specials_market_captures DROP CONSTRAINT IF EXISTS nfl_specials_market_captures_slate_scope_check",
+    """ALTER TABLE nfl_specials_market_captures ADD CONSTRAINT nfl_specials_market_captures_slate_scope_check
+       CHECK (slate_scope IN ('sunday_all', 'sunday_1pm', 'sunday_late', 'sunday_main'))""",
+    "ALTER TABLE nfl_specials_runs DROP CONSTRAINT IF EXISTS nfl_specials_runs_slate_scope_check",
+    """ALTER TABLE nfl_specials_runs ADD CONSTRAINT nfl_specials_runs_slate_scope_check
+       CHECK (slate_scope IN ('sunday_all', 'sunday_1pm', 'sunday_late', 'sunday_main'))""",
+    "ALTER TABLE nfl_specials_bets DROP CONSTRAINT IF EXISTS nfl_specials_bets_slate_scope_check",
+    """ALTER TABLE nfl_specials_bets ADD CONSTRAINT nfl_specials_bets_slate_scope_check
+       CHECK (slate_scope IN ('sunday_all', 'sunday_1pm', 'sunday_late', 'sunday_main'))""",
 
     # ── NFL slate specials: freeze what has to stay frozen ────────
     # A board run and its rows are evidence of what we projected at a point in

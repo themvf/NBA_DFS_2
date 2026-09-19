@@ -19,14 +19,36 @@ from datetime import datetime
 MODEL_VERSION = "nfl-specials-v1"
 N_DRAWS = 50_000
 
-FAMILIES: tuple[str, ...] = (
+RANKED_FAMILIES: tuple[str, ...] = (
     "highest_scoring_game", "lowest_scoring_game",
     "highest_scoring_team", "lowest_scoring_team",
-    "most_passing_yards", "most_receiving_yards",
+    "most_passing_yards", "most_receiving_yards", "most_rushing_yards",
     "first_td_scorer", "first_qb_td_pass", "first_qb_int",
 )
-MAGNITUDE_FAMILIES = FAMILIES[:6]   # Layers A+B only
-TIMING_FAMILIES = FAMILIES[6:]      # need Layer C
+
+# DK's "All Teams to Score ..." markets. A different KIND of question: there is
+# nothing to rank, so the only honest answer is a probability, computed by
+# multiplying a fitted per-team rate across the teams in the window rather than
+# derived from any projected mean. See model/nfl_team_event_fit.py.
+PROPOSITION_FAMILIES: tuple[str, ...] = (
+    "all_teams_td", "all_teams_two_td", "all_teams_fg", "all_teams_td_and_fg",
+    "all_teams_passing_td", "all_teams_rushing_td", "all_teams_score",
+)
+
+FAMILIES: tuple[str, ...] = RANKED_FAMILIES + PROPOSITION_FAMILIES
+MAGNITUDE_FAMILIES = RANKED_FAMILIES[:7]   # Layers A+B only
+TIMING_FAMILIES = RANKED_FAMILIES[7:]      # need Layer C
+
+# family -> the event key in artifacts/nfl_team_event_rates.json
+PROPOSITION_EVENT: dict[str, str] = {
+    "all_teams_td": "td",
+    "all_teams_two_td": "two_td",
+    "all_teams_fg": "fg",
+    "all_teams_td_and_fg": "td_and_fg",
+    "all_teams_passing_td": "passing_td",
+    "all_teams_rushing_td": "rushing_td",
+    "all_teams_score": "any_points",
+}
 
 # Families whose DK overround, measured in P0, was wide enough that our number
 # cannot be compared to a fair price: they are read for calibration only and
@@ -45,6 +67,7 @@ SELECTION_KIND: dict[str, str] = {
     "lowest_scoring_team": "team",
     "most_passing_yards": "player",
     "most_receiving_yards": "player",
+    "most_rushing_yards": "player",
     "first_td_scorer": "player",
     "first_qb_td_pass": "player",
     "first_qb_int": "player",
@@ -59,14 +82,28 @@ FAMILY_POSITIONS: dict[str, frozenset[str]] = {
     "first_qb_td_pass": frozenset({"QB"}),
     "first_qb_int": frozenset({"QB"}),
     "most_receiving_yards": frozenset({"WR", "TE", "RB"}),
+    "most_rushing_yards": frozenset({"RB", "QB", "WR"}),
     "first_td_scorer": frozenset({"QB", "RB", "WR", "TE"}),
 }
 
 # Exclusion is by scope, never by down-weighting: a 4:25 kickoff is not in the
 # 1pm market at all.
+# DK slices Sunday four ways, and they are NOT interchangeable. In particular
+# its "1pm, 4.05pm & 4.25pm" market is `sunday_main`, which EXCLUDES Sunday
+# Night Football -- comparing our `sunday_all` number to that market would be
+# comparing a 15-game slate to a 14-game one.
 SLATE_SCOPES: dict[str, object] = {
     "sunday_all": lambda kickoff_et: kickoff_et.weekday() == 6,
     "sunday_1pm": lambda kickoff_et: kickoff_et.weekday() == 6 and kickoff_et.hour == 13,
+    "sunday_late": lambda kickoff_et: kickoff_et.weekday() == 6 and kickoff_et.hour == 16,
+    "sunday_main": lambda kickoff_et: kickoff_et.weekday() == 6 and kickoff_et.hour in (13, 16),
+}
+
+SCOPE_LABELS: dict[str, str] = {
+    "sunday_all": "All Sunday games",
+    "sunday_1pm": "1pm ET only",
+    "sunday_late": "4.05 & 4.25pm ET",
+    "sunday_main": "1pm, 4.05 & 4.25pm ET",
 }
 
 
@@ -104,6 +141,7 @@ RANKING_STAT: dict[str, tuple[str, bool]] = {
     "lowest_scoring_team": ("implied_team_points", False),
     "most_passing_yards": ("passing_yards", False),
     "most_receiving_yards": ("receiving_yards", False),
+    "most_rushing_yards": ("rushing_yards", False),
     # Expected touchdowns is not P(scores first): that needs drive order and
     # clock, which is Layer C. Ranked and labelled as a proxy until then.
     "first_td_scorer": ("expected_touchdowns", True),
@@ -119,9 +157,15 @@ ASCENDING_FAMILIES: frozenset[str] = frozenset({"lowest_scoring_game", "lowest_s
 BOARD_DEPTH: dict[str, int] = {
     "highest_scoring_game": 16, "lowest_scoring_game": 16,
     "highest_scoring_team": 32, "lowest_scoring_team": 32,
-    "most_passing_yards": 32, "most_receiving_yards": 50,
+    "most_passing_yards": 32, "most_receiving_yards": 50, "most_rushing_yards": 40,
     "first_td_scorer": 60, "first_qb_td_pass": 32, "first_qb_int": 32,
 }
+
+
+for _family, _event in PROPOSITION_EVENT.items():
+    SELECTION_KIND[_family] = "proposition"
+    RANKING_STAT[_family] = (f"p_{_event}", False)
+    BOARD_DEPTH[_family] = 1
 
 
 def ranking_stat(family: str) -> tuple[str, bool]:
