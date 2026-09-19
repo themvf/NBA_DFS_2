@@ -63,7 +63,10 @@ export type SpecialsBoard = {
   run: SpecialsRun | null;
   rows: SpecialsRow[];
   captures: SpecialsCapture[];
-  weeksAvailable: number[];
+  /** Weeks with a board in THIS slate scope. */
+  weeksInScope: number[];
+  /** Weeks with a board in any scope, so the empty state can point at one. */
+  weeksAnyScope: number[];
 };
 
 /**

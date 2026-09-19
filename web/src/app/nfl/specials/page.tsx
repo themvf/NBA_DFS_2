@@ -22,12 +22,19 @@ export default async function SpecialsPage({
   const targetSeason = Number.isFinite(parsedSeason) && parsedSeason > 2000 ? parsedSeason : 2026;
   const targetScope = scope && SCOPES.has(scope) ? scope : "sunday_all";
 
-  // With no week given, probe for which weeks have a run and take the newest.
-  // The probe query is cheap and it beats guessing a week that has no board.
+  // With no week given, probe for which weeks have a run and take the newest,
+  // preferring this scope and falling back to any scope.
+  //
+  // It used to fall back to `?? 1`, which invented a week: with no boards at
+  // all the page announced "no board for week 1" -- naming a week nobody asked
+  // about and that has no special status. 0 means "no week to show", and the
+  // empty state says that instead of blaming a week.
   const parsedWeek = Number(week);
   const requested = Number.isFinite(parsedWeek) && parsedWeek > 0 ? parsedWeek : null;
   const probe = await getNflSpecialsBoard(targetSeason, requested ?? -1, targetScope);
-  const targetWeek = requested ?? probe.weeksAvailable[probe.weeksAvailable.length - 1] ?? 1;
+  const newestInScope = probe.weeksInScope[probe.weeksInScope.length - 1];
+  const newestAnywhere = probe.weeksAnyScope[probe.weeksAnyScope.length - 1];
+  const targetWeek = requested ?? newestInScope ?? newestAnywhere ?? 0;
   const board =
     targetWeek === probe.week
       ? probe
