@@ -553,7 +553,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--season", type=int, required=True)
     parser.add_argument("--week", type=int, help="omit to target the next scheduled week")
     parser.add_argument("--scope", default="both", choices=[*sorted(SLATE_SCOPES), "both"],
-                        help="'both' publishes the all-Sunday and 1pm-only boards")
+                        help="'both' publishes every scope in SLATE_SCOPES")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     db = DatabaseManager(load_config().database_url)
