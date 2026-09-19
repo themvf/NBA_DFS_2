@@ -1,7 +1,7 @@
 "use client";
 import { SPORTSBOOK_KEYS, SPORTSBOOK_NAMES, selectedSportsbooks } from "@/lib/sportsbook-policy";
 
-import { Activity, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ArrowRight, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CfbBookQuote, CfbResearchBoard, CfbResearchContext, CfbResearchRecord, CfbSignalBacktestRow, CfbTeamFeatureContext, CfbTerminalBoard, CfbTerminalRow, LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow } from "@/db/queries";
@@ -279,6 +279,12 @@ function WatchGame({ item, signals, active, asOf, onChoose }: { item: CfbTermina
 
 export default function CfbTerminalClient({ board, observations, signals, backtest, research, scorecard, captureHealth }: { board: CfbTerminalBoard; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null }) {
   const router = useRouter();
+  function goToDate(next: string) { if (next) router.push(`/cfb?date=${next}`); }
+  function shiftDate(delta: number) {
+    const next = new Date(`${board.gameDate}T12:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + delta);
+    goToDate(next.toISOString().slice(0, 10));
+  }
   const [gameId, setGameId] = useState(board.games[0]?.matchupId ?? 0);
   const [marketKey, setMarketKey] = useState<MarketKey>("spread");
   const [side, setSide] = useState<SelectionSide>("home");
@@ -307,15 +313,24 @@ export default function CfbTerminalClient({ board, observations, signals, backte
   const sideOptions: SelectionSide[] = marketKey === "total" ? ["over", "under"] : ["home", "away"];
   return <div className={styles.terminal}>
     <header className={styles.topbar}><div className={styles.brand}>CFB LINE TERMINAL</div><label className={styles.command}><Search aria-hidden="true" /><span className={styles.srOnly}>Search market watch</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SEARCH TEAM OR GAME" /></label><div className={styles.marketOpen}><Radio aria-hidden="true" /> {board.games.length ? "MARKET BOARD" : "NO BOARD"}</div><div className={styles.shadowMode} title={board.statusDetail}>{statusLabel} · AS OF {fmtEt(board.asOf, true)}</div></header>
+    <nav className={styles.nav} aria-label="CFB board date">
+      <span>SLATE DATE</span>
+      <div className={styles.date}>
+        <button type="button" aria-label="Previous day" onClick={() => shiftDate(-1)}><ArrowLeft size={14} aria-hidden="true" /></button>
+        <input aria-label="CFB game date" type="date" value={board.gameDate} onChange={(event) => goToDate(event.target.value)} />
+        <button type="button" aria-label="Next day" onClick={() => shiftDate(1)}><ArrowRight size={14} aria-hidden="true" /></button>
+      </div>
+      <span className={styles.navCount}>{board.games.length} SCHEDULED</span>
+    </nav>
     <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket(item.market); chooseSide(item.side); }} />
-    <div className={styles.shell}>
-      <aside className={styles.watchPane} aria-label="CFB market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div>
+    <section className={styles.watchPane} aria-label="CFB market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div>
         <div className={styles.movementFilters} aria-label="Filter recorded movements">{["all", "steam", "walk", "reversal"].map((kind) => <button key={kind} type="button" aria-pressed={movementFilter === kind} onClick={() => setMovementFilter(kind)}>{kind.toUpperCase()}</button>)}</div>
         <p className={styles.watchLegend}>S = home spread · T = total · ML = moneyline. Badges are recorded signals, not recommendations. Charts show observed consensus; dashed gaps exceed 30m.</p>
-        <div className={styles.watchHeader}><span>GAME</span><span>LINE</span><span>MOVE</span></div><div className={styles.watchList}>
+        <div className={styles.watchList}>
         {filteredGames.map((item) => <WatchGame key={item.matchupId} item={item} signals={signals} active={item.matchupId === game?.matchupId} asOf={board.asOf} onChoose={() => chooseGame(item.matchupId)} />)}
         {!filteredGames.length ? <div className={styles.empty}>{board.games.length ? "No games match this search and movement filter." : board.statusDetail}</div> : null}
-      </div></aside>
+      </div></section>
+    <div className={styles.shell}>
       <main className={styles.instrumentPane}>{!game || !market ? <section className={styles.chartSection}><div className={styles.empty}>Load the canonical CFB schedule to begin. No sample quotes are substituted.</div></section> : <>
         <section className={styles.instrumentHeader}><div className={styles.instrumentTop}><div><div className={styles.instrumentTitle}>{game.awayTeam} @ {game.homeTeam}</div><div className={styles.instrumentMeta}>{game.venue ?? "Venue TBD"} · {game.commenceTime ? fmtEt(game.commenceTime) : "Kickoff TBD"} · {game.network ?? "Network TBD"} · {market.label}</div></div><div className={styles.primaryQuote}><strong>{market.current}</strong><span>OPEN {market.open} · {market.move.toUpperCase()} · CLV CLOSE {market.close}</span></div></div><div className={styles.marketTabs}>{(Object.keys(MARKET_LABELS) as MarketKey[]).map((key) => <button key={key} type="button" data-active={marketKey === key} onClick={() => chooseMarket(key)}>{MARKET_LABELS[key]}</button>)}</div><div className={styles.marketTabs}>{sideOptions.map((option) => <button key={option} type="button" data-active={side === option} onClick={() => chooseSide(option)}>{option === "home" ? game.homeTeam : option === "away" ? game.awayTeam : option.toUpperCase()}</button>)}</div></section>
         <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{market.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)} · ${marketSignals.length} signals` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><MarketChart key={`${game.matchupId}:${marketKey}:${side}`} market={market} marketKey={marketKey} signals={marketSignals} /></div></section>
