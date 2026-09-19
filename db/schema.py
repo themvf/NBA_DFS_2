@@ -2435,7 +2435,7 @@ TABLES = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(run_id, player_id),
         CHECK(position IN ('QB', 'RB', 'WR', 'TE', 'K', 'DST')),
-        CHECK(projection_status IN ('historical', 'position_prior', 'unavailable')),
+        CHECK(projection_status IN ('historical', 'position_prior', 'unavailable', 'out')),
         CHECK(identity_method IN ('draftkings_id', 'gsis_id', 'exact_name_position_team', 'exact_name_position', 'unmatched', 'ambiguous')),
         CHECK(history_games >= 0 AND prior_games >= 0),
         CHECK(confidence >= 0 AND confidence <= 1),
