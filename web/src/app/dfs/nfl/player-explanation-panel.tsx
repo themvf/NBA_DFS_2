@@ -9,6 +9,8 @@ import {
   REC_YARD_PTS, REC_TD_PTS, RECEPTION_PTS, FUMBLE_LOST_PTS, TWO_POINT_CONVERSION_PTS,
   PASS_YARD_BONUS_THRESHOLD, RUSH_YARD_BONUS_THRESHOLD, YARDAGE_BONUS_PTS,
 } from "@/lib/nfl-dfs/scoring";
+import { VALUE_TIER_LABEL, type ValueIndex } from "@/lib/nfl-dfs/salary-value";
+import { ValueChip, valueTooltip } from "./value-chip";
 import { explainNflPlayerProjection, type NflProjectionExplanation, type NflWorkspacePlayer } from "./actions";
 
 /*
@@ -160,10 +162,12 @@ type Props = {
   player: NflWorkspacePlayer | null;
   /** The whole slate pool, read only for same-position peer context. */
   slatePlayers: readonly NflWorkspacePlayer[];
+  /** Built once by the pool so the drawer cannot disagree with the row. */
+  valueIndex: ValueIndex;
   onClose: () => void;
 };
 
-export default function PlayerExplanationPanel({ uploadId, player, slatePlayers, onClose }: Props) {
+export default function PlayerExplanationPanel({ uploadId, player, slatePlayers, valueIndex, onClose }: Props) {
   // Keyed by the player id we last fetched for, so a stale response from a
   // previously-opened player can never be painted under this one's header.
   const [state, setState] = useState<{ id: number | null; data: NflProjectionExplanation | null }>({ id: null, data: null });
@@ -231,17 +235,18 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
             </div>
           )}
 
-          {e && <Breakdown e={e} player={player} peers={peers} />}
+          {e && <Breakdown e={e} player={player} peers={peers} valueIndex={valueIndex} />}
         </div>
       </div>
     </div>
   );
 }
 
-function Breakdown({ e, player, peers }: {
+function Breakdown({ e, player, peers, valueIndex }: {
   e: Extract<NflProjectionExplanation, { ok: true }>;
   player: NflWorkspacePlayer;
   peers: { id: number; name: string; proj: number }[];
+  valueIndex: ValueIndex;
 }) {
   const proj = e.projection ?? 0;
   const baseline = e.baseline;
@@ -265,8 +270,9 @@ function Breakdown({ e, player, peers }: {
   const scaleMax = Math.max(proj, baseline ?? 0, afterEnv ?? 0, e.ceiling ?? 0, 1) * 1.06;
   const peerScale = Math.max(peers[0]?.proj ?? 0, proj, 1) * 1.06;
 
-  const salary = player.salary || null;
-  const value = salary ? (proj / salary) * 1000 : null;
+  // The same assessment the pool row shows, from the same index -- the two
+  // surfaces must never quote different value for one player.
+  const value = valueIndex.assess(player);
   const peerRank = peers.findIndex((p) => p.id === player.id);
 
   /* -- Linear DK points by stat ---------------------------------------
@@ -320,7 +326,11 @@ function Breakdown({ e, player, peers }: {
           {e.status.replace(/_/g, " ")} &middot; model confidence {pct(e.confidence)}
         </p>
         <div className="mt-3 grid grid-cols-3 gap-2">
-          <Tile label="Value" value={value == null ? "—" : fmt(value, 2)} sub="pts per $1K" />
+          <Tile
+            label="Value"
+            value={<span title={valueTooltip(value, player.position)}><ValueChip assessment={value} position={player.position} /></span>}
+            sub={value.tier === "unproven" ? "position prior" : `pts per $1K · ${VALUE_TIER_LABEL[value.tier].toLowerCase()}`}
+          />
           <Tile
             label={`${player.position} rank`}
             value={peerRank >= 0 ? `#${peerRank + 1}` : "—"}
