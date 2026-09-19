@@ -522,3 +522,103 @@ export async function readNflOptimizerAudit(runId:string) {
     return {run,lineups,digestMethod:'SHA-256 of recursively key-sorted JSON {settings,inputSnapshot,optimizerVersion}; applies to v5-audited-situations and later.'};
   }catch{throw new Error('Saved optimizer audit could not be loaded.');}
 }
+
+export type NflProjectionExplanation = {
+  ok: true;
+  player: { name: string; position: string; team: string; opponent: string | null; salary: number | null };
+  status: string;                       // historical | position_prior | unavailable | out
+  projection: number | null;            // model_proj_fpts — the headline number
+  baseline: number | null;              // recency-weighted historical mean, pre-environment
+  floor: number | null;                 // P10 of the 2000 sims
+  median: number | null;                // P50
+  ceiling: number | null;               // P90
+  boomRate: number | null;
+  confidence: number | null;
+  historyGames: number | null;          // his own games used
+  priorGames: number | null;            // position-peer games available
+  playerWeight: number | null;          // share of sims drawn from HIS history vs peers
+  cutoffSeason: number | null;
+  cutoffWeek: number | null;
+  teamImpliedTotal: number | null;      // Vegas team total for this game
+  environmentFactor: number | null;     // combined team environment multiplier
+  yardageFactor: number | null;
+  touchdownFactor: number | null;
+  draws: number | null;                 // Monte Carlo sample count
+  statMeans: Record<string, number>;    // projected mean stat line
+  availabilityNote: string | null;      // why zeroed, if out
+} | { ok: false; error: string };
+
+/** Decompose WHY a slate player carries his projection: pull the full immutable
+ *  projection-run row (baseline, weights, environment factors, sim distribution,
+ *  stat line) that the slate table only partially carries. Read-only. */
+export async function explainNflPlayerProjection(
+  uploadId: string,
+  slatePlayerId: number,
+): Promise<NflProjectionExplanation> {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) return { ok: false, error: "Invalid slate." };
+
+  const slateRow = (await db.select().from(nflDfsSlatePlayers)
+    .where(and(eq(nflDfsSlatePlayers.uploadId, uploadId), eq(nflDfsSlatePlayers.id, slatePlayerId)))
+    .limit(1))[0];
+  if (!slateRow) return { ok: false, error: "Player not found in this slate." };
+
+  const upload = (await db.select().from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1))[0];
+  if (!upload?.projectionRunId) {
+    return { ok: false, error: "This slate is not linked to a model projection run, so no explanation is available." };
+  }
+  if (slateRow.ffPlayerId == null) {
+    return { ok: false, error: "This player was never matched to a model identity, so the projection is DK-average only — no model decomposition exists." };
+  }
+
+  const proj = (await db.select().from(nflDfsPlayerProjections)
+    .where(and(eq(nflDfsPlayerProjections.runId, upload.projectionRunId),
+               eq(nflDfsPlayerProjections.playerId, slateRow.ffPlayerId)))
+    .limit(1))[0];
+  if (!proj) {
+    return { ok: false, error: "No model projection row exists for this player in the linked run." };
+  }
+
+  const fs = (proj.featureSnapshot ?? {}) as Record<string, unknown>;
+  const rawStats = (proj.statMeans ?? {}) as Record<string, unknown>;
+  const statMeans: Record<string, number> = {};
+  for (const [key, value] of Object.entries(rawStats)) {
+    const n = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(n) && Math.abs(n) > 0.01) statMeans[key] = n;
+  }
+  const num = (v: unknown): number | null => {
+    if (v === null || v === undefined) return null;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const source = (proj.sourceEvidence ?? {}) as Record<string, unknown>;
+  const availability = (source.availability ?? null) as { rule?: string; status?: string } | null;
+
+  return {
+    ok: true,
+    player: { name: slateRow.name, position: slateRow.position, team: slateRow.team,
+              opponent: slateRow.opponent, salary: slateRow.salary },
+    status: proj.projectionStatus,
+    projection: num(proj.modelProjFpts),
+    baseline: num(proj.baselineFpts),
+    floor: num(proj.floorFpts),
+    median: num(proj.medianFpts),
+    ceiling: num(proj.ceilingFpts),
+    boomRate: num(proj.boomRate),
+    confidence: num(proj.confidence),
+    historyGames: proj.historyGames,
+    priorGames: proj.priorGames,
+    playerWeight: num(fs.player_weight),
+    cutoffSeason: num(fs.cutoff_season),
+    cutoffWeek: num(fs.cutoff_week),
+    teamImpliedTotal: num(fs.team_implied_total),
+    environmentFactor: num(fs.team_environment_factor),
+    yardageFactor: num(fs.yardage_factor),
+    touchdownFactor: num(fs.touchdown_factor),
+    draws: num(fs.draws),
+    statMeans,
+    availabilityNote: availability?.status
+      ? `Ruled ${availability.status}${availability.rule === "zeroed" ? " — projection zeroed, opportunity handed to the backup." : "."}`
+      : null,
+  };
+}
