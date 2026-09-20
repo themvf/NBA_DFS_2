@@ -11,13 +11,13 @@ const easternTime = new Intl.DateTimeFormat("en-US", {
 export function OddsFreshnessBanner({ games, evidence, now, week }: {
   games: PickemSlateGame[]; evidence: PickemEvidence; now: string; week: number;
 }) {
-  const at = timestamp(now);
+  const at = Math.max(timestamp(now), timestamp(evidence.loadedAt));
   const captures = games.map(g => timestamp(evidence.games[g.gameId]?.latest?.capturedAt))
     .filter(t => Number.isFinite(t) && t <= at);
   const latest = captures.length ? Math.max(...captures) : null;
   const upcoming = games.filter(g => !g.completed && !(timestamp(g.kickoff) <= at));
   const needsRefresh = upcoming.filter(g => marketReview(
-    evidence.games[g.gameId] ?? EMPTY_EVIDENCE, g.pHome, g.kickoff, now,
+    evidence.games[g.gameId] ?? EMPTY_EVIDENCE, g.pHome, g.kickoff, new Date(at).toISOString(),
   ).stale).length;
   const incomplete = evidence.warnings.some(w => w.startsWith("Odds history"));
   const warning = latest == null || needsRefresh > 0 || incomplete;
@@ -42,13 +42,13 @@ export function OddsFreshnessBanner({ games, evidence, now, week }: {
           {upcoming.length === 0 ? "No upcoming games in this week. Showing the last pregame capture."
             : `${upcoming.length - needsRefresh} of ${upcoming.length} upcoming games have fresh odds.${needsRefresh ? ` ${needsRefresh} have stale or missing odds.` : ""}`}
           {incomplete && " Odds history is unavailable; coverage is incomplete."}
-          {" "}Odds are flagged after 2 hours within a day of kickoff, or 24 hours otherwise. Reload to check for newer captures.
+          {" "}Odds are flagged after 2 hours within a day of kickoff, or 24 hours otherwise.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Checks automatically every minute while this page is visible and when you return.
+          {" "}Last checked: <time dateTime={evidence.loadedAt}>{easternTime.format(timestamp(evidence.loadedAt))}</time>.
         </p>
       </div>
-      <button type="button" onClick={() => window.location.reload()}
-        className="rounded border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted">
-        Reload odds
-      </button>
     </section>
   );
 }

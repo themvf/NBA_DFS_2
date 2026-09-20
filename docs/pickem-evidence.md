@@ -10,6 +10,7 @@ The pick'em board uses the latest captured pregame moneylines for upcoming picks
 - The latest persisted model row is selected per game, preventing duplicate games when multiple model versions exist. Frozen cards are never rewritten.
 - Quote age is checked independently of `nfl_game_win_probs.computed_at`. The operational freshness threshold is two hours inside 24 hours of kickoff, otherwise 24 hours. These thresholds are not probability adjustments.
 - The board warns when a quote is stale, the favored team changed, the stored forecast favors the opposite team, or a report is newer than the captured quote. Page reload reads stored data; the existing odds/survivor jobs own refreshing it.
+- The open board automatically re-reads stored data every minute while visible, and on return/focus or reconnection. Next router refresh preserves local picks and form state. The banner separates the latest odds capture from the last successful page data check; checking the page does not trigger a new sportsbook capture.
 
 ## News
 

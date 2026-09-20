@@ -23,6 +23,7 @@
  */
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Check,
@@ -147,6 +148,7 @@ function gapNote(c: ArchetypeCode): string {
 }
 
 export default function PickemClient({ slate, pools, ledger, evidence, initialWeek, loadedAt }: Props) {
+  const router = useRouter();
   const [scenarios, setScenarios] = useState<Record<number, PickemScenario>>({});
   const [reviewAt, setReviewAt] = useState(loadedAt);
   const [week, setWeek] = useState(initialWeek);
@@ -186,9 +188,28 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
 
   // ---- local persistence -------------------------------------------------
   useEffect(() => {
-    const timer = window.setInterval(() => setReviewAt(new Date().toISOString()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
+    let lastRefresh = Date.now();
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      setReviewAt(new Date(now).toISOString());
+      // Focus and visibility events can arrive together. Coalesce them.
+      if (now - lastRefresh < 5_000) return;
+      lastRefresh = now;
+      // Merge fresh server props without remounting local picks or form state.
+      router.refresh();
+    };
+    const timer = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+    };
+  }, [router]);
   // Restore is deferred off the render pass and re-run on cross-tab writes,
   // matching the survivor page. Two tabs open on the same pool should not
   // silently disagree about the entry.
