@@ -96,6 +96,51 @@ export const VERSION = "nfl-dfs-redistribution-v1";
  */
 export const MAX_MULTIPLIER = 4.0;
 
+/**
+ * Games of a player's own history before his stat line may be used as
+ * opportunity -- to donate, or to earn a share of someone else's.
+ *
+ * ## Why a line can describe somebody else entirely
+ *
+ * `model/nfl_dfs_historical.py` calls a player `historical` at
+ * `minimum_historical_games = 2` and `position_prior` below it, and for a
+ * `position_prior` player it sets `player_strength = 0.0` -- so every draw in
+ * the simulation is taken from PEERS. His stat line is not a weak estimate of
+ * him; it is the average man at his position wearing his name.
+ *
+ * Measured on the live 2026 week-3 run, that inverts the thing it is supposed
+ * to measure:
+ *
+ *   real receivers          2.02 receptions/game   (n=216)
+ *   never-played receivers  2.21 receptions/game   (n=174, 0.2 career games)
+ *
+ * So a body who has never caught an NFL pass "vacated" MORE work than a real
+ * starter, and out-earned a genuine rotational receiver when sharing someone
+ * else's. On that slate 41.9 of 109.6 redistributed receptions -- 38% -- came
+ * from players in that group.
+ *
+ * This module already claimed to refuse exactly that ("a teammate with no
+ * history in the pool is paid nothing"), but it tested `statMeans[unit] > 0`,
+ * and the position prior fills that in for everybody. The guard was real and
+ * the prior walked straight through it.
+ *
+ * The threshold is the model's own, not a new invention, and a binary cut is
+ * enough: with `prior_equivalent_games = 4.0` the qualifying group
+ * self-regulates, because a player's own sparse games drag his blend DOWN
+ * (2-game receivers average 0.59 receptions). It is the zero-game group that
+ * runs away, and only that group.
+ *
+ * `history_games` rather than `projection_status` because `zero_out`
+ * overwrites the status with `out` -- the history count survives, so this
+ * reads correctly for a player the Python layer already ruled out.
+ */
+export const MIN_OBSERVED_GAMES = 2;
+
+/** Whether this player's stat line is his own work rather than his position's. */
+export function hasObservedOpportunity(row: { historyGames?: number | null }): boolean {
+  return (row.historyGames ?? 0) >= MIN_OBSERVED_GAMES;
+}
+
 export type PoolName = "pass" | "rush" | "target";
 
 type PoolSpec = {
@@ -156,12 +201,21 @@ export type RedistributionRow = {
   team: string;
   isOut: boolean;
   /**
-   * `projection_status` from the immutable row. When it already reads `out`,
-   * the Python pipeline zeroed this player upstream and his opportunity is
-   * gone from `statMeans` -- so the pool is empty and nothing double-pays.
-   * Carried only so the report can say which of the two happened.
+   * `projection_status` from the immutable row. When it reads `out`, the
+   * Python pipeline ruled this player out upstream. That alone does NOT mean
+   * his work was placed: it hands a transfer only to the positions it is
+   * called with (quarterbacks by default) and clears the donor's `statMeans`
+   * only once a replacement was actually paid. So an empty pool means
+   * "already handled" and a full one means "still to place", and nothing can
+   * double-pay either way. Carried so the report can say which happened.
    */
   projectionStatus?: string;
+  /**
+   * Games of this player's OWN history behind the projection. The gate that
+   * decides whether his stat line describes him or the average man at his
+   * position -- see `MIN_OBSERVED_GAMES`.
+   */
+  historyGames?: number | null;
   statMeans: Record<string, number>;
   ourProj: number | null;
   floorFpts: number | null;
@@ -274,18 +328,19 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
     const contributed = new Set<number>();
 
     for (const [name, spec] of Object.entries(POOLS) as [PoolName, PoolSpec][]) {
-      const donors = absent.filter(r => spec.donors.has(r.position) && num(r.statMeans[spec.unit]) > 0);
+      const donors = absent.filter(r =>
+        spec.donors.has(r.position) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
       const pooled = donors.reduce((sum, r) => sum + num(r.statMeans[spec.unit]), 0);
       if (pooled <= 0) continue;
       for (const donor of donors) contributed.add(donor.key);
       const donorNames = donors.map(d => d.name);
 
       const eligible = available.filter(r =>
-        spec.recipients.has(r.position) && num(r.statMeans[spec.unit]) > 0);
+        spec.recipients.has(r.position) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
       if (eligible.length === 0) {
         report.unresolved.push({
           team, pool: name, pooled: round(pooled), from: donorNames,
-          reason: `no available ${[...spec.recipients].join("/")} on this team has any ${spec.label} history to scale`,
+          reason: `no available ${[...spec.recipients].join("/")} on this team has ${MIN_OBSERVED_GAMES}+ games of ${spec.label} history to scale`,
         });
         continue;
       }
@@ -308,11 +363,20 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
 
     for (const donor of absent) {
       if (contributed.has(donor.key)) continue;
+      // Three genuinely different reasons, and `out` no longer distinguishes
+      // them: the pipeline rules a player out whether or not it found anyone
+      // to hand his work to, and only clears his line in the case where it
+      // did. Collapsing these would hide the phantom refusal, which is the
+      // one a reader most needs to see.
+      const cleared = Object.values(donor.statMeans).every(v => num(v) === 0);
       report.donorsWithoutOpportunity.push({
         team, name: donor.name, position: donor.position,
-        reason: donor.projectionStatus === "out"
-          ? "the projection pipeline had already ruled him out and moved his opportunity upstream"
-          : "his projection carries no opportunity history to hand on",
+        reason: !hasObservedOpportunity(donor)
+          ? `he has fewer than ${MIN_OBSERVED_GAMES} games of his own, so his stat line describes the average `
+            + `${donor.position} rather than him — there is no workload of his to hand on`
+          : cleared
+            ? "the projection pipeline had already ruled him out and placed his opportunity upstream"
+            : "his projection carries no opportunity history to hand on",
       });
     }
 

@@ -283,6 +283,12 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
                 "event_id": row["event_id"],
                 "commence_time": row["commence_time"].isoformat() if row["commence_time"] else None,
                 "prop_inputs": [],
+                # Availability was computed and then dropped on the way to the
+                # database: no jsonb column on this table held it, so nothing
+                # downstream could tell "ruled out and handed on" apart from
+                # "ruled out and dropped". Both the web drawer's note and the
+                # slate layer's double-pay guard read this.
+                "availability": row.get("availability"),
             }
             values.append((
                 run_id, row["player_id"], row["player_gsis_id"], row["player_name"],

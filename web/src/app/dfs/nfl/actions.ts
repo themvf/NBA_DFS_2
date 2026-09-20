@@ -248,6 +248,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
         name: row.name,
         position: row.position,
         team: row.team,
+        historyGames: row.historyGames,
         isOut: outFlag(row),
         projectionStatus: row.projectionStatus,
         statMeans: stats,
