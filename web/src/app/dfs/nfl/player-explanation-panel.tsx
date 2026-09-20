@@ -319,6 +319,7 @@ function Breakdown({ e, player, peers, valueIndex }: {
     .map((group) => ({
       group,
       rows: Object.entries(e.statMeans)
+        .filter(([, mean]) => Number.isFinite(mean) && Math.abs(mean) > 0.01)
         .map(([key, mean]) => ({ key, mean, ...spec(key) }))
         .filter((r) => r.group === group)
         .sort((a, b) => b.mean - a.mean),
@@ -335,9 +336,13 @@ function Breakdown({ e, player, peers, valueIndex }: {
           <span className="text-sm font-bold text-slate-400">DK pts</span>
         </div>
         <p className="mt-1.5 text-[11px] text-slate-500">
-          Mean of {e.draws ? e.draws.toLocaleString() : "—"} simulated games &middot;{" "}
-          {e.status.replace(/_/g, " ")} &middot; model confidence {pct(e.confidence)}
+          {e.projectionScenario === 'availability_estimate'
+            ? 'Availability-adjusted estimate; not re-simulated'
+            : e.projectionScenario === 'unavailable' ? 'Unavailable for this slate'
+            : `Baseline mean of ${e.draws ? e.draws.toLocaleString() : '—'} simulated games`} &middot;{" "}
+          {e.status.replace(/_/g, " ")} &middot; history support {pct(e.confidence)}
         </p>
+        <p className="mt-1 text-[11px] text-slate-500">History support reflects sample size and available context; it is not a probability of forecast accuracy.</p>
         <div className="mt-3 grid grid-cols-3 gap-2">
           <Tile
             label="Value"
@@ -349,7 +354,7 @@ function Breakdown({ e, player, peers, valueIndex }: {
             value={peerRank >= 0 ? `#${peerRank + 1}` : "—"}
             sub={peerRank >= 0 ? `of ${peers.length} on slate` : "not ranked"}
           />
-          <Tile label="Boom rate" value={pct(e.boomRate)} sub="sims with a big game" />
+          <Tile label="Boom rate" value={pct(e.boomRate)} sub={e.projectionScenario === 'availability_estimate' ? 'not re-simulated' : 'baseline sims with a big game'} />
         </div>
       </section>
 
@@ -365,6 +370,8 @@ function Breakdown({ e, player, peers, valueIndex }: {
           <TrendingUp className="h-4 w-4 shrink-0" />{e.inheritedNote}
         </div>
       )}
+      {e.adjustmentUnresolved && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{e.adjustmentUnresolved}</p>}
+      {e.projectionScenario === 'availability_estimate' && !e.inheritedNote && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The pipeline applied an availability estimate. No new simulation was run; median, outcome range and boom rate are withheld.</p>}
 
       {/* Waterfall */}
       <Card
@@ -446,10 +453,10 @@ function Breakdown({ e, player, peers, valueIndex }: {
       <Card
         icon={<Dice5 className="h-4 w-4" style={{ color: ACCENT }} />}
         title="Outcome range"
-        hint="P10 to P90 of the simulated games, drawn on the same scale as the steps above."
+        hint={e.projectionScenario === 'availability_estimate' ? 'No simulated distribution for the adjusted scenario.' : 'P10 to P90 of the baseline simulated games.'}
       >
         {e.floor == null || e.ceiling == null ? (
-          <p className="text-xs text-slate-500">This run stored no simulated distribution.</p>
+          <p className="text-xs text-slate-500">{e.projectionScenario === 'availability_estimate' ? 'Outcome range, median and boom rate require a new simulation of the adjusted workload.' : 'This run stored no simulated distribution.'}</p>
         ) : (
           <>
             <div className="relative h-8">
@@ -591,7 +598,7 @@ function Breakdown({ e, player, peers, valueIndex }: {
       </Card>
 
       {/* Trust: this player's own history against position peers */}
-      <Card icon={<Gauge className="h-4 w-4" style={{ color: ACCENT }} />} title="How much we trust this player's own history">
+      <Card icon={<Gauge className="h-4 w-4" style={{ color: ACCENT }} />} title="History used by the baseline simulation">
         <Meter value={e.playerWeight ?? 0}
                title={`${pct(e.playerWeight)} of simulated games were drawn from this player's own history`} />
         <p className="mt-2 text-[11px] leading-snug text-slate-600">

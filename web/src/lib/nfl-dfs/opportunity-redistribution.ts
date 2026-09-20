@@ -1,95 +1,23 @@
 /**
- * When a player is ruled out, his opportunity goes to his teammates.
+ * Slate availability adjustments, v3 staged release.
+ * Non-QB historical averages do not establish incremental vacated workload.
+ * Without a released team/game budget and mutually consistent current roles,
+ * retain baseline projections and report donor history as unresolved evidence.
+ * Research workload/target-share models must not be silently promoted here.
  *
- * Pure: no React, no database, no clock. One rule, applied at the slate
- * layer, so the pool table and the projection drawer cannot disagree about
- * who inherited what.
+ * Supported QB1-to-backup promotions remain separate: replace (never add to)
+ * the backup workload, keep QB rushing with the QB, and preserve upstream
+ * rejection, history and depth guards. Callers verify roster freshness.
  *
- * ## Why this lives here and not only in Python
- *
- * `model/nfl_dfs_availability.py` already models this, but it cannot fire in
- * production for two independent reasons, both measured:
- *
- *  1. Its status feed is our own FantasyPros injury observations, which on a
- *     real 13-game slate carried **zero** OUT rows while DraftKings flagged
- *     77. The player we actually need to handle -- a ruled-out Nico Collins
- *     -- is known out only through DK's `Status` column, which reaches us at
- *     the slate layer, not the projection run.
- *  2. `apply()` defaults to `positions=("QB",)`, so no receiver, back or
- *     tight end has ever received a transfer regardless of the feed.
- *
- * So the redistribution has to happen where the OUT flag is known. This is a
- * read-time slate decision, exactly like `zeroOutProjection`: the immutable
- * `nfl_dfs_player_projections` row is never rewritten.
- *
- * ## The model
- *
- * Opportunity moves; efficiency does not. A backup handed 8 targets is not
- * the starter handed 8 targets -- he catches them at his own rate, for his
- * own yards. So each recipient's *volume* stats scale and his *rates* are
- * left alone, which is the same mechanic as the Python `transfer_opportunity`.
- *
- * Three independent pools, because a team's passing, rushing and receiving
- * work are separate budgets that redistribute to different people:
- *
- * | pool     | unit         | who inherits                                  |
- * |----------|--------------|-----------------------------------------------|
- * | `pass`   | `attempts`   | the next available QB by verified depth order        |
- * | `rush`   | `carries`    | available RBs, proportional to their own carries |
- * | `target` | `receptions` | available WR **and** TE **and** pass-catching RB, proportional to their own receptions |
- *
- * The target pool spans the whole pass-catching group on purpose. A WR's
- * targets do not stay inside the WR room -- the tight end and the back catch
- * some of them -- and restricting recipients to the absent man's own position
- * would systematically understate the TE/RB bump that follows a receiver
- * absence.
- *
- * The pass pool promotes a backup to the starter workload (not their sum),
- * requires an absent QB1 and a known backup depth, and excludes pipeline-resolved
- * donors. QB rushing production moves with that promotion, never to the RB pool.
- * The pass pool is the one winner-take-all case, and that is football rather
- * than an inconsistency: only one quarterback plays.
- *
- * A player with no history in a pool inherits nothing from it. That falls out
- * of proportional allocation (a zero share receives zero) and is deliberate:
- * scaling a player who has never caught a pass produces a number backed by
- * nothing.
- *
- * ## What this deliberately does NOT do
- *
- * **It does not re-score a mean stat line.** DK's three yardage bonuses are
- * step functions, so `E[score(mean)] != E[score]` -- scoring a 96-yard mean
- * throws away real 100-yard bonus probability, and scoring a 104-yard mean
- * invents a bonus that is only ~50% likely. `scoring.ts` documents this and
- * CLAUDE.md records the same mean-versus-distribution error for MLB totals.
- * So the projection is adjusted by the *marginal* points of the inherited
- * volume, scored linearly, and added to the existing simulated projection:
- *
- *     newProjection = oldProjection + linear(scaledStats) - linear(ownStats)
- *
- * The distribution-aware work that produced `oldProjection` survives intact.
- * The cost is that the ceiling gain is understated, because a bigger workload
- * genuinely does raise bonus probability. That is the conservative direction
- * and it is flagged rather than hidden.
- *
- * **It does not re-simulate the interval.** Floor and ceiling scale by the
- * same ratio as the projection -- crude, honest, and reported as such.
- *
- * **It does not touch `boomRate`.** Boom is a distributional quantity and a
- * proportional scale would be meaningless for it.
- *
- * ## Status
- *
- * Shipped live and NOT yet validated. This is a stated model, not a measured
- * effect: the 50/50-style split questions, the cap, and the choice of
- * receptions as the target unit are all reasoned defaults awaiting a
- * backtest. Every applied transfer is reported with its inputs so the
- * decision can be graded after the week.
+ * Promotions add marginal linear scoring to the original expected points.
+ * Yardage bonuses cannot be re-scored from a mean stat line. No new draws are
+ * generated, so adjusted distribution metrics are withheld, not scaled.
+ * Immutable model rows and saved lineup audits are never rewritten.
  */
 
 import { scoreNflOffenseLinear } from "./scoring";
 
-export const VERSION = "nfl-dfs-redistribution-v2";
+export const VERSION = "nfl-dfs-redistribution-v3-budget-required";
 
 /**
  * A backup with a handful of mop-up snaps has a noisy efficiency estimate.
@@ -267,6 +195,9 @@ export type RedistributionReport = {
   applied: RedistributionResult[];
   unresolved: UnresolvedPool[];
   pools: { team: string; pool: PoolName; offered: number; assigned: number; unassigned: number }[];
+  /** Historical averages are NOT an established incremental team budget. */
+  withheld?: { team: string; pool: PoolName; unit: string; reason: string;
+    donors: { key: number; name: string; historicalUnits: number }[] }[];
   /** OUT players who contributed no opportunity to any pool, and why. */
   donorsWithoutOpportunity: { team: string; name: string; position: string; reason: string }[];
 };
@@ -308,15 +239,16 @@ function linearPoints(stats: Record<string, number>): number {
 }
 
 /**
- * Hand every ruled-out player's opportunity to his available teammates.
+ * Resolve supported QB promotions and report unsupported non-QB adjustments.
  *
  * Returns only the rows that actually changed, plus a report of every pool
- * that could not be placed and why. A caller applies the results by `key`;
+ * that could not be placed and why. Historical non-QB units are separate
+ * withheld evidence, not a transferable pool. A caller applies results by `key`;
  * rows absent from `applied` are untouched.
  */
 export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): RedistributionReport {
   const report: RedistributionReport = {
-    version: VERSION, applied: [], unresolved: [], pools: [], donorsWithoutOpportunity: [],
+    version: VERSION, applied: [], unresolved: [], pools: [], withheld: [], donorsWithoutOpportunity: [],
   };
 
   const byTeam = new Map<string, RedistributionRow[]>();
@@ -343,6 +275,25 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
       for (const donor of donors) contributed.add(donor.key);
       const donorNames = donors.map(d => d.name);
 
+      // Independent historical averages can overlap and can already include
+      // the absence. Neither a salary pool nor research-only team shares prove
+      // incremental vacated work. Preserve the baseline until a released,
+      // game-matched budget and current role scenario are supplied upstream.
+      // Do not call their sum "offered" or an "unassigned reserve".
+      if (!spec.single) {
+        report.withheld!.push({ team, pool: name, unit: spec.label,
+          reason: 'Adjustment unresolved: no supported team/game budget, current role allocation, or evidence that this absence is not already reflected in the baseline. Baseline projections retained.',
+          donors: donors.map(d => ({ key: d.key, name: d.name, historicalUnits: round(num(d.statMeans[spec.unit])) })),
+        });
+        continue;
+      }
+
+      if (donors.length !== 1) {
+        report.unresolved.push({ team, pool: name, pooled: round(pooled), from: donorNames,
+          reason: 'Conflicting QB1 role evidence; multiple starter workloads cannot be combined.' });
+        continue;
+      }
+
       const eligible = available.filter(r =>
         spec.recipients.has(r.position) && (r.position !== "QB" || (r.depthOrder ?? 0) > 1) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
       if (eligible.length === 0) {
@@ -356,18 +307,13 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
 
       const allocation = new Map<number, number>();
       let offered = pooled;
-      if (spec.single) {
+      {
         // Only one quarterback plays, so the load does not spread.
         const winner = [...eligible].sort((a,b) => (a.depthOrder! - b.depthOrder!) || a.name.localeCompare(b.name))[0];
         // A promoted QB replaces the starter's workload; attempts do not add
         // on top of a second complete QB workload.
         offered = Math.max(0, pooled - num(winner.statMeans[spec.unit]));
         allocation.set(winner.key, offered);
-      } else {
-        const total = eligible.reduce((sum, r) => sum + num(r.statMeans[spec.unit]), 0);
-        for (const r of eligible) {
-          allocation.set(r.key, pooled * num(r.statMeans[spec.unit]) / total);
-        }
       }
       const assigned = eligible.reduce((sum, r) => sum + Math.min(allocation.get(r.key) ?? 0,
         num(r.statMeans[spec.unit]) * (MAX_MULTIPLIER - 1)), 0);
@@ -449,14 +395,13 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
       const delta = linearPoints(stats) - linearPoints(before);
       const oldProj = num(player.ourProj);
       const newProj = oldProj + delta;
-      const ratio = oldProj > 0 ? newProj / oldProj : 1;
 
       report.applied.push({
         key: player.key,
         name: player.name,
         ourProj: round(newProj),
-        floorFpts: player.floorFpts === null ? null : round(player.floorFpts * ratio),
-        ceilingFpts: player.ceilingFpts === null ? null : round(player.ceilingFpts * ratio),
+        floorFpts: null,
+        ceilingFpts: null,
         statMeans: Object.fromEntries(Object.entries(stats).map(([k, v]) => [k, round(v)])),
         inherited,
         pointsBefore: round(oldProj),
@@ -505,5 +450,5 @@ export function inheritanceNote(inherited: readonly InheritedFrom[]): string {
       ` -- ${item.multiplier.toFixed(2)}x his own ${item.own.toFixed(1)}${capped}`;
   });
   return `Inherits opportunity from a ruled-out teammate: ${parts.join("; ")}. ` +
-    `His own efficiency is unchanged; the interval is scaled proportionally, not re-simulated.`;
+    `His own efficiency is unchanged. This is an adjusted estimate, not a new simulation; outcome range and boom rate are unavailable for this scenario.`;
 }

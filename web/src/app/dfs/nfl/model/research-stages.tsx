@@ -39,13 +39,14 @@ export default function ResearchStages({ mode, workload, workloadDigest, efficie
   }
 
   if (mode === "Workload" && workloadForecast) return <section className="space-y-5">
+    <p className="text-sm text-amber-100">Research scenario {workload.version} · {workloadForecast.season} week {workloadForecast.week} · {workloadForecast.team} vs {workloadForecast.opponent}. Shares use the full modeled roster and each team/game budget below; selecting a player does not change the denominator. Targets are pass opportunities, not receptions. This research scenario does not describe the historical DFS pool or its optimizer projections.</p>
     <div className="flex flex-wrap items-center justify-between gap-4">{selectors()}<span className="rounded-full border border-amber-700 px-3 py-1 text-xs text-amber-200">ROLE UNRESOLVED · RESEARCH ONLY · {workload.version}</span></div>
     <p role="alert" className="rounded-lg border border-amber-800 bg-amber-950/50 p-4 text-sm text-amber-100">No verified depth chart or historical weekly roster is integrated. Multiple quarterbacks and stale active-roster candidates can appear. These allocations expose the formula and missing role evidence; they are not lineup-ready projections.</p>
     <div className="grid gap-4 lg:grid-cols-3">{Object.entries(workloadForecast.budgets).map(([field, budget]) => <div className={panel} key={field}>
       <p className="text-xs uppercase text-slate-400">Team {field}</p><p className="mt-2 text-3xl font-semibold">{budget ? budget.mean.toFixed(1) : "Unavailable"}</p>
       {budget && <><p className="mt-2 text-sm text-slate-300">Recent {budget.history_mean.toFixed(1)} · league prior {budget.prior.toFixed(1)}</p>
         <div className="mt-4 h-2 rounded bg-slate-700"><div className="h-full rounded bg-teal-400" style={{ width: `${100 * (budget.allocated_share ?? 0)}%` }} /></div>
-        <p className="mt-2 text-xs text-slate-400">Known players {(100 * (budget.allocated_share ?? 0)).toFixed(0)}% · unallocated {(100 * (budget.unallocated_share ?? 1)).toFixed(0)}%</p></>}
+        <p className="mt-2 text-xs text-slate-400">Known players {(100 * (budget.allocated_share ?? 0)).toFixed(0)}% · unallocated {(100 * (budget.unallocated_share ?? 1)).toFixed(0)}% ({(budget.mean * (budget.unallocated_share ?? 1)).toFixed(1)} {field} per team game)</p></>}
     </div>)}</div>
     <div className={panel}><h2 className="text-xl font-semibold">{team} player allocation</h2><p className="mt-1 text-sm text-slate-400">Expected opportunities; unallocated work remains visible.</p>
       {(["attempts", "carries", "targets"] as const).map(field => <div key={field} className="mt-5"><h3 className="mb-2 capitalize">{field}</h3>

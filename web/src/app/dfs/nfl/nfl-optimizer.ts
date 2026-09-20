@@ -333,6 +333,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
   }
   const warnings: string[] = [];
+  const missingTails = pool.filter(p => (p.resolvedSource === 'our' || p.resolvedSource === 'our_fallback')
+    && (finite(p.floorFpts) === null || finite(p.ceilingFpts) === null)).length;
+  if (missingTails) warnings.push(`${missingTails} historical-source players have no usable scenario distribution. Search uses 0.74×/1.28× point-estimate heuristics for missing lower/upper tails; these are not simulated percentiles. Missing boom rates receive no boom bonus.`);
   const dkFallback = pool.filter(p => p.resolvedSource === "dk_avg_fallback").length;
   const ourFallback = pool.filter(p => p.resolvedSource === "our_fallback").length;
   if (dkFallback) warnings.push(`${dkFallback} players used DK Avg fallback.`);

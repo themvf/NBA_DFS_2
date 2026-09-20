@@ -1,0 +1,61 @@
+{
+  "codeRevision": "5a8623b348fd7ab341f271d80a5b773451bb793a",
+  "upload": "f067c8b9-f920-4b26-b77c-36f43a2c9df0",
+  "run": "73cd196d-cc66-51f4-be0b-f19f7a98a015",
+  "jones": {
+    "key": 44132714,
+    "name": "Aaron Jones Sr.",
+    "ourProj": 19.764,
+    "floorFpts": 9.411,
+    "ceilingFpts": 27.7895,
+    "statMeans": {
+      "carries": 26.8946,
+      "attempts": 0.0005,
+      "receptions": 2.9136,
+      "passing_tds": 0,
+      "rushing_tds": 0.6381,
+      "passing_yards": 0,
+      "receiving_tds": 0.0783,
+      "rushing_yards": 106.2342,
+      "receiving_yards": 19.9517,
+      "special_teams_tds": 0,
+      "fumbles_lost_total": 0.1604,
+      "fumble_recovery_tds": 0,
+      "passing_interceptions": 0,
+      "passing_2pt_conversions": 0,
+      "rushing_2pt_conversions": 0.0072,
+      "receiving_2pt_conversions": 0
+    },
+    "inherited": [
+      {
+        "pool": "rush",
+        "unit": "carries",
+        "from": [
+          "Jordan Mason",
+          "Kyler Murray",
+          "Jauan Jennings",
+          "Ben Yurosek"
+        ],
+        "gained": 13.7581,
+        "own": 13.1365,
+        "multiplier": 2.0473,
+        "cappedFrom": null
+      },
+      {
+        "pool": "target",
+        "unit": "receptions",
+        "from": [
+          "Jordan Mason",
+          "Jauan Jennings",
+          "Ben Yurosek"
+        ],
+        "gained": 0.6288,
+        "own": 2.2848,
+        "multiplier": 1.2752,
+        "cappedFrom": null
+      }
+    ],
+    "pointsBefore": 11.2802,
+    "pointsAfter": 19.764
+  }
+}

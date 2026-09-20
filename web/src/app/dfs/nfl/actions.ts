@@ -24,8 +24,9 @@ import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
-import { availabilityNote, zeroOutProjection, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
+import { availabilityNote, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
 import { redistributeOutOpportunity, inheritanceNote, paidByDonor, type RedistributionRow, type InheritedFrom } from '@/lib/nfl-dfs/opportunity-redistribution';
+import { resolveOpportunityProjection, type ProjectionScenario } from '@/lib/nfl-dfs/resolved-projection';
 import { staleRunWarning } from '@/lib/nfl-dfs/stale-run';
 import { chunkRows, assertSlateFullyPersisted, incompleteSlateWarning, isSlateComplete } from '@/lib/nfl-dfs/slate-persist';
 import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/workload-selection";
@@ -64,6 +65,9 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   inherited?: InheritedFrom[] | null;
   inheritedNote?: string | null;
   projectionBeforeInheritance?: number | null;
+  projectionScenario?: ProjectionScenario;
+  statMeans?: Record<string, number>;
+  medianFpts?: number | null;
 };
 
 export type NflWorkspaceSlate = {
@@ -90,6 +94,8 @@ export type NflWorkspaceSlate = {
     version: string;
     recipients: number;
     pools?: { team: string; pool: string; offered: number; assigned: number; unassigned: number }[];
+    withheld?: { team: string; pool: string; unit: string; reason: string;
+      donors: { key: number; name: string; historicalUnits: number }[] }[];
     unresolved: { team: string; pool: string; pooled: number; from: string[]; reason: string }[];
     donorsWithoutOpportunity: { team: string; name: string; position: string; reason: string }[];
   };
@@ -254,7 +260,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     : [];
   const statsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId), (r.statMeans ?? {}) as Record<string, number>]));
   const notesByPlayer = new Map(projectionStats.map(r => [Number(r.playerId),
-    (r.sourceEvidence as { availability?: { slate_transfer_allowed?: boolean } })?.availability]));
+    (r.sourceEvidence as { availability?: ModelAvailabilityNote & { slate_transfer_allowed?: boolean; points_before?: number } })?.availability]));
   const redistribution = redistributeOutOpportunity(
     rows.flatMap((row): RedistributionRow[] => {
       const stats = statsByPlayer.get(row.ffPlayerId ?? -1);
@@ -295,6 +301,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       donorsWithoutOpportunity: redistribution.donorsWithoutOpportunity,
       recipients: redistribution.applied.length,
       pools: redistribution.pools,
+      withheld: redistribution.withheld,
     },
     situationTeams:situations?.teams??[],
     injuryCoverage,
@@ -337,17 +344,21 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       // recipient and ruled out -- `redistributeOutOpportunity` only ever
       // pays available players -- but applying the ruling last means the
       // zero is final under every path.
-      ...zeroOutProjection({
+      ...resolveOpportunityProjection({
         projectionStatus: row.projectionStatus,
-        ourProj: inheritedBy.get(row.dkPlayerId)?.ourProj ?? numeric(row.ourProj),
-        floorFpts: inheritedBy.get(row.dkPlayerId)?.floorFpts ?? numeric(row.floorFpts),
-        ceilingFpts: inheritedBy.get(row.dkPlayerId)?.ceilingFpts ?? numeric(row.ceilingFpts),
+        ourProj: numeric(row.ourProj),
+        floorFpts: numeric(row.floorFpts),
+        medianFpts: numeric(row.medianFpts),
+        ceilingFpts: numeric(row.ceilingFpts),
         boomRate: numeric(row.boomRate),
-      }, outFlag(row)),
+        statMeans: statsByPlayer.get(row.ffPlayerId ?? -1) ?? {},
+      }, inheritedBy.get(row.dkPlayerId), notesByPlayer.get(row.ffPlayerId ?? -1), outFlag(row)),
       inherited: inheritedBy.get(row.dkPlayerId)?.inherited ?? null,
       inheritedNote: inheritedBy.has(row.dkPlayerId)
         ? inheritanceNote(inheritedBy.get(row.dkPlayerId)!.inherited) : null,
-      projectionBeforeInheritance: inheritedBy.get(row.dkPlayerId)?.pointsBefore ?? null,
+      projectionBeforeInheritance: inheritedBy.get(row.dkPlayerId)?.pointsBefore ??
+        (notesByPlayer.get(row.ffPlayerId ?? -1)?.rule === 'inherits' && notesByPlayer.get(row.ffPlayerId ?? -1)?.applied === true
+          ? numeric(notesByPlayer.get(row.ffPlayerId ?? -1)?.points_before) : null),
       modelConfidence: numeric(row.modelConfidence),
       historyGames: row.historyGames,
       fantasyprosProj: numeric(row.fantasyprosProj),
@@ -659,6 +670,8 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     id:player.id,captainDkPlayerId:player.captainDkPlayerId,opponent:player.opponent,gameKey:player.gameKey,boomRate:player.boomRate,projectionStatus:player.projectionStatus,
     salary: player.salary, captainSalary: player.captainSalary, status: player.dkStatus,
     ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,
+    projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
+    statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, ownership: player.linestarOwnPct, custom: player.customProj,
     availability: player.availability, isOut: player.isOut,
@@ -713,6 +726,9 @@ export type NflProjectionExplanation = {
   player: { name: string; position: string; team: string; opponent: string | null; salary: number | null };
   status: string;                       // historical | position_prior | unavailable | out
   projection: number | null;            // model_proj_fpts — the headline number
+  projectionScenario: ProjectionScenario;
+  scenarioVersion: string;
+  adjustmentUnresolved: string | null;
   /** What the model had before an availability ruling zeroed it. Null unless out. */
   projectionBeforeRuling: number | null;
   /** Opportunity picked up from a ruled-out teammate; null if none. */
@@ -785,7 +801,6 @@ export async function explainNflPlayerProjection(
   };
   const source = (proj.sourceEvidence ?? {}) as Record<string, unknown>;
   const availability = (source.availability ?? null) as ModelAvailabilityNote | null;
-  const outHere = slateRow.isOut || availability?.rule === "zeroed";
 
   // Read the same slate the pool table reads, so the drawer cannot quote a
   // pre-inheritance number for a player the table has already paid. This
@@ -793,6 +808,8 @@ export async function explainNflPlayerProjection(
   // surfaces disagreeing about one player costs more.
   const slate = await workspaceSlate(uploadId);
   const here = slate.players.find(p => p.dkPlayerId === slateRow.dkPlayerId);
+  const outHere = here?.projectionStatus === 'out' || slateRow.isOut || availability?.rule === 'zeroed';
+  const estimated = here?.projectionScenario === 'availability_estimate';
   const inherited = here?.inherited ?? null;
   const donors = paidByDonor({
     version: slate.redistribution?.version ?? "",
@@ -810,11 +827,15 @@ export async function explainNflPlayerProjection(
     ok: true,
     player: { name: slateRow.name, position: slateRow.position, team: slateRow.team,
               opponent: slateRow.opponent, salary: slateRow.salary },
+    projectionScenario: here?.projectionScenario ?? 'baseline_simulation',
+    scenarioVersion: slate.redistribution?.version ?? '',
+    adjustmentUnresolved: slate.redistribution?.withheld?.some(p => p.team === slateRow.team) && !outHere && !estimated && ['RB','WR','TE'].includes(slateRow.position)
+      ? 'Teammate absences are unresolved: a supported team/game budget and incremental role changes are unavailable. This projection retains the baseline workload.' : null,
     // Same ruling the pool table applies, so the two surfaces cannot quote
     // different numbers for one player. `baseline` is deliberately left at
     // its pre-ruling value: the drawer draws it as the step the ruling took
     // away, which is more use than a column of zeroes.
-    projectionBeforeRuling: outHere ? num(here?.ourProj ?? proj.modelProjFpts) : null,
+    projectionBeforeRuling: outHere ? num(proj.modelProjFpts) : null,
     // A recipient's headline already includes what he inherited, so the
     // waterfall gets its own step for it rather than burying the gain in
     // "Simulation & DK scoring" -- the same treatment the OUT ruling gets.
@@ -827,10 +848,10 @@ export async function explainNflPlayerProjection(
       : { status: proj.projectionStatus,
           projection: here?.ourProj ?? num(proj.modelProjFpts),
           baseline: num(proj.baselineFpts),
-          floor: here?.floorFpts ?? num(proj.floorFpts),
-          median: num(proj.medianFpts),
-          ceiling: here?.ceilingFpts ?? num(proj.ceilingFpts),
-          boomRate: num(proj.boomRate) }),
+          floor: estimated ? null : here ? here.floorFpts : num(proj.floorFpts),
+          median: estimated ? null : here ? here.medianFpts ?? null : num(proj.medianFpts),
+          ceiling: estimated ? null : here ? here.ceilingFpts : num(proj.ceilingFpts),
+          boomRate: estimated ? null : here ? here.boomRate : num(proj.boomRate) }),
     confidence: num(proj.confidence),
     historyGames: proj.historyGames,
     priorGames: proj.priorGames,
@@ -842,7 +863,7 @@ export async function explainNflPlayerProjection(
     yardageFactor: num(fs.yardage_factor),
     touchdownFactor: num(fs.touchdown_factor),
     draws: num(fs.draws),
-    statMeans,
+    statMeans: here?.statMeans ?? statMeans,
     availabilityNote: availabilityNote(availability, { isOut: slateRow.isOut, dkStatus: slateRow.dkStatus },
       slateRow.isOut ? (donors ?? { paidTo: [], units: [] }) : null),
   };
