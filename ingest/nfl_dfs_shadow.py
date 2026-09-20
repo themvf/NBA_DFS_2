@@ -49,6 +49,14 @@ def matches_source_digest(content: bytes, expected: str) -> bool:
                         for value in (content, lf, lf.replace(b"\n", b"\r\n"))}
 
 
+def study_history_cutoff(report: dict) -> int:
+    split = report["split"]
+    cutoff = max(year for group in ("fit", "select", "retrospective") for year in split[group])
+    if cutoff >= min(split["fresh_forward"]):
+        raise ValueError("Study history overlaps its forward evaluation season")
+    return cutoff
+
+
 def freeze(connection, report: dict, season: int, week: int, now: datetime) -> dict:
     baseline_source = Path("model/nfl_dfs_historical.py").read_bytes()
     baseline_hash = hashlib.sha256(baseline_source).hexdigest()
@@ -60,7 +68,12 @@ def freeze(connection, report: dict, season: int, week: int, now: datetime) -> d
     if not historical:
         raise ValueError("Study's full-cohort frozen history is missing")
     history = [HistoricalWeek(**r["payload"]) for r in historical]
-    last_study_season = max(r.season for r in history)
+    # The results ledger can already contain forward-season DST rows when a
+    # study is rerun midseason. They were not used by evaluate(), whose splits
+    # are explicit. Never let those rows move the frozen history cutoff ahead
+    # and suppress ingestion of the rest of the current season.
+    last_study_season = study_history_cutoff(report)
+    history = [r for r in history if r.season <= last_study_season]
     # Append only new seasons to the full source cohort, without replacing
     # retired players with the current-player convenience universe.
     for row in _history(reader, season, week):

@@ -52,3 +52,11 @@ def test_weekly_metrics_keeps_week_and_baseline_separate():
     assert weeks[0]["candidate"]["mae"] == 0
     assert weeks[0]["baseline"]["mae"] == 2
     assert weeks[1]["baseline"]["n"] == 1
+
+
+def test_history_cutoff_uses_evaluation_splits_not_new_ledger_rows():
+    from ingest.nfl_dfs_shadow import study_history_cutoff
+    split = {"fit":[2023],"select":[2024],"retrospective":[2025],"fresh_forward":[2026]}
+    assert study_history_cutoff({"split":split}) == 2025
+    with pytest.raises(ValueError,match="overlaps"):
+        study_history_cutoff({"split":{**split,"retrospective":[2026]}})
