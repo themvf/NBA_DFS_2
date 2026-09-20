@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import { gradePool, matchPoolGame, poolCaptureDue, selectPoolCaptures, summarizePool, type AuditGame, type PoolAuditPlayer, type PoolCapture, type PoolOutcome } from '../src/lib/nfl-dfs/pool-audit';
+const game:AuditGame={id:1,season:2026,week:2,home:'MIN',away:'ATL',kickoff:'2026-09-20T17:00:00Z',completed:true};
+const player:PoolAuditPlayer={dkPlayerId:11,playerId:101,name:'Test RB',team:'MIN',position:'RB',salary:5000,
+  gameInfo:'ATL@MIN 09/20/2026 01:00PM ET',gameKey:'ATL@MIN',isOut:false,projection:10,floor:5,ceiling:20,median:9,boom:.2,scenario:'baseline_simulation',stats:{carries:12},evidence:{original:'preserved'}};
+const capture=(at:string,players=[player],g=game):PoolCapture=>({digest:at,capturedAt:at,observedAt:at,payload:{version:'v1',uploadId:'test',fileName:'salary.csv',fileDigest:'salary',projectionRunId:'run',modelAsOf:'2026-09-20T13:00:00Z',codeRevision:'commit',origin:'live_pool',game:g,players,context:{}}});
+const early=capture('2026-09-20T16:00:00Z'),last=capture('2026-09-20T16:59:00Z'),late=capture(game.kickoff,[{...player,projection:99}]);
+const kickoff=Date.parse(game.kickoff);
+assert.equal(poolCaptureDue(game.kickoff,kickoff-86400001,false),false);
+assert.equal(poolCaptureDue(game.kickoff,kickoff-86400000,false),true);
+assert.equal(poolCaptureDue(game.kickoff,kickoff-21*60000,true),false);
+assert.equal(poolCaptureDue(game.kickoff,kickoff-20*60000,true),true);
+assert.equal(poolCaptureDue(game.kickoff,kickoff-1,true),true);
+assert.equal(poolCaptureDue(game.kickoff,kickoff,true),false);
+assert.equal(poolCaptureDue(game.kickoff,kickoff,false),true);
+assert.equal(poolCaptureDue(game.kickoff,kickoff+15*60000,false),false);
+const result:PoolOutcome={id:'1',playerId:101,gameId:1,team:'MIN',position:'RB',actual:0,status:'exact',digest:'r1',computedAt:'2026-09-21T01:00:00Z',scoringVersion:'dk-v1',evidence:{rush_yards:0}};
+assert.equal(matchPoolGame(player,[game]).id,1);
+assert.throws(()=>matchPoolGame({...player,gameInfo:'ATL@MIN 09/20/2026 04:00PM ET'},[game]));
+assert.throws(()=>matchPoolGame(player,[game,{...game,id:2}]));
+assert.throws(()=>matchPoolGame({...player,team:'SEA'},[game]));
+assert.equal(selectPoolCaptures([late,early,last])[0].digest,last.digest);
+assert.equal(selectPoolCaptures([capture('2026-09-20T18:00:00Z'),late])[0].digest,late.digest);
+assert.equal(selectPoolCaptures([{...last,observedAt:'2026-09-20T19:00:00Z'}]).length,0);
+assert.equal(selectPoolCaptures([{...last,capturedAt:'invalid'}]).length,0);
+const frozen=JSON.stringify([last,result]);
+let rows=gradePool([last],[result],[game]);
+assert.equal(rows[0].actual,0);assert.equal(rows[0].error,-10);assert.equal(rows[0].intervalHit,false);
+assert.equal(JSON.stringify([last,result]),frozen);
+assert.equal(gradePool([late],[result],[game])[0].error,null);
+assert.equal(gradePool([late],[result],[game])[0].status,'late_capture');
+assert.equal(gradePool([last],[],[game])[0].actual,null);
+assert.equal(gradePool([last],[],[game])[0].status,'result_missing');
+assert.equal(gradePool([last],[result],[{...game,completed:false}])[0].actual,null);
+assert.equal(gradePool([last],[result],[{...game,kickoff:'2026-09-20T18:00:00Z'}])[0].status,'schedule_changed');
+for(const mismatch of [{team:'ATL'},{position:'WR'},{playerId:202},{gameId:2}])
+  assert.equal(gradePool([last],[{...result,...mismatch}],[game])[0].status,'result_missing');
+const correction={...result,id:'2',actual:14,digest:'r2',computedAt:'2026-09-22T01:00:00Z'};
+rows=gradePool([last],[correction,result],[game]);
+assert.equal(rows[0].actual,14);assert.equal(rows[0].result?.digest,'r2');assert.equal(rows[0].resultRevisions,2);
+assert.equal(gradePool([last],[result,{...correction,status:'excluded'}],[game])[0].status,'result_unscorable');
+assert.equal(gradePool([last],[{...result,actual:NaN}],[game])[0].actual,null);
+const complete=capture(last.observedAt,[player,{...player,dkPlayerId:12,playerId:102,isOut:true,projection:0},
+  {...player,dkPlayerId:13,playerId:null},{...player,dkPlayerId:14,playerId:103,projection:null}]);
+rows=gradePool([complete],[result,{...result,id:'2',playerId:102}],[game]);
+assert.equal(rows.length,4);assert.equal(rows[1].player.isOut,true);assert.equal(rows[1].actual,0);
+assert.equal(rows[2].status,'identity_unmatched');assert.equal(rows[3].status,'projection_missing');
+const summary=summarizePool(rows);assert.equal(summary.scored,2);assert.equal(summary.mae,5);assert.equal(summary.bias,-5);
+assert.equal(summarizePool([]).mae,null);
+for(const scenario of ['legacy_saved_estimate','availability_estimate','unknown'])
+  assert.equal(gradePool([capture(last.observedAt,[{...player,scenario}])],[result],[game])[0].intervalHit,null);
+const archived={...last,capturedAt:'2026-09-20T19:00:00Z',payload:{...last.payload,origin:'saved_optimizer' as const}};
+assert.equal(gradePool([archived],[result],[game])[0].pregame,true);
+const laterGame={...game,id:2,kickoff:'2026-09-20T20:00:00Z'};
+assert.equal(selectPoolCaptures([early,last,late,capture('2026-09-20T19:59:00Z',[player],laterGame)]).length,2);
+console.log('Full pool audit: capture selection, strict kickoff, complete pool, zero/missing results, corrections, identity joins, schedule changes, and metrics passed.');

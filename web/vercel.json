@@ -2,6 +2,10 @@
   "framework": "nextjs",
   "crons": [
     {
+      "path": "/api/cron/nfl-pool-capture",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/mlb-odds-capture",
       "schedule": "7,37 14-23,0-3 * * *"
     },
