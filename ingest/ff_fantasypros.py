@@ -277,6 +277,15 @@ def audit_fantasypros_endpoints(
                     else None
                 ),
                 "top_level_keys": sorted(str(key) for key in payload),
+                # Scalar top-level values only -- no player data, so the report
+                # stays safe to upload as a build artifact. An empty payload is
+                # otherwise indistinguishable from a wrong-period one: the
+                # vendor answers 200 with the right SHAPE and no rows, and only
+                # its own echoed season/week/count says which period it served.
+                "top_level_scalars": {
+                    str(key): value for key, value in payload.items()
+                    if isinstance(value, (str, int, float, bool)) or value is None
+                },
                 "row_field_keys": sorted({str(key) for row in row_dicts[:25] for key in row}),
                 "identifier_field_counts": {
                     key: sum(as_int(row.get(key)) is not None for row in row_dicts)
