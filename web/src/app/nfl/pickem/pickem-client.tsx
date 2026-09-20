@@ -188,16 +188,37 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
 
   // ---- local persistence -------------------------------------------------
   useEffect(() => {
-    let lastRefresh = Date.now();
+    // Local clock checks are free of database reads. Re-read the page only
+    // after a scheduled capture window, with no retries/polling of Neon.
+    const eastern = (date: Date) => new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(date);
+    const morningSlot = (date: Date) => {
+      const p = Object.fromEntries(eastern(date).map(p => [p.type, p.value]));
+      return Number(p.hour) * 60 + Number(p.minute) >= 8 * 60 + 20
+        ? `${p.year}-${p.month}-${p.day}` : null;
+    };
+    let lastMorning = morningSlot(new Date(loadedAt));
+    const checked = new Set<number>();
+    const loaded = Date.parse(loadedAt);
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
       setReviewAt(new Date(now).toISOString());
-      // Focus and visibility events can arrive together. Coalesce them.
-      if (now - lastRefresh < 5_000) return;
-      lastRefresh = now;
-      // Merge fresh server props without remounting local picks or form state.
-      router.refresh();
+      const morning = morningSlot(new Date(now));
+      let due = Boolean(morning && morning !== lastMorning);
+      if (morning) lastMorning = morning;
+      for (const game of slate.games) {
+        // T-30 capture has a ten-minute scheduler window. Check its saved
+        // result once after that window, still before kickoff.
+        const closes = Date.parse(game.kickoff ?? "") - 20 * 60_000;
+        if (closes > loaded && closes <= now && !checked.has(game.gameId)) {
+          checked.add(game.gameId);
+          due = true;
+        }
+      }
+      if (due) router.refresh();
     };
     const timer = window.setInterval(refresh, 60_000);
     document.addEventListener("visibilitychange", refresh);
@@ -209,7 +230,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
       window.removeEventListener("focus", refresh);
       window.removeEventListener("online", refresh);
     };
-  }, [router]);
+  }, [router, loadedAt, slate.games]);
   // Restore is deferred off the render pass and re-run on cross-tab writes,
   // matching the survivor page. Two tabs open on the same pool should not
   // silently disagree about the entry.

@@ -100,7 +100,9 @@ def nfl_checkpoint_schedule(scheduled_start: datetime | str) -> list[dict]:
 
     for days_before, hours_between in ((7, 3), (6, 3), (5, 3), (4, 3), (3, 3), (2, 3), (1, 1)):
         local_date = kickoff_et.date() - timedelta(days=days_before)
-        for hour in range(0, 24, hours_between):
+        # Pick'em's daily 08:00 Eastern snapshot shares this durable worker.
+        # Keep existing research checkpoints and add 08:00 where absent.
+        for hour in sorted(set(range(0, 24, hours_between)) | {8}):
             local_target = datetime.combine(local_date, time(hour=hour), tzinfo=EASTERN)
             add(f"d_minus_{days_before}_{hour:02d}", local_target)
 

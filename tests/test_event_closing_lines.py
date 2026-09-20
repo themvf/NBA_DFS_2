@@ -50,7 +50,10 @@ def test_nfl_calendar_cadence_for_sunday_early_game() -> None:
     jobs = closes.nfl_checkpoint_schedule(kickoff)
     keyed = {job["checkpoint"]: job for job in jobs}
 
-    assert len(jobs) == 112
+    assert len(jobs) == 118
+    for day in range(1, 8):
+        assert keyed[f"d_minus_{day}_08"]["target_at"].astimezone(closes.EASTERN).hour == 8
+    assert keyed["game_day_08"]["target_at"] == datetime(2026, 9, 13, 12, tzinfo=timezone.utc)
     for lead in range(120, 0, -5):
         job = keyed[f"nfl_t_minus_{lead}m"]
         assert (kickoff - job["target_at"]).total_seconds() == lead * 60
@@ -72,6 +75,8 @@ def test_nfl_calendar_cadence_respects_dst_offset() -> None:
     keyed = {job["checkpoint"]: job for job in jobs}
     assert keyed["game_day_00"]["target_at"] == datetime(2026, 11, 1, 4, tzinfo=timezone.utc)
     assert keyed["game_day_12"]["target_at"] == datetime(2026, 11, 1, 17, tzinfo=timezone.utc)
+    assert keyed["game_day_08"]["target_at"] == datetime(2026, 11, 1, 13, tzinfo=timezone.utc)
+    assert keyed["t_minus_30m"]["target_at"] == datetime(2026, 11, 1, 17, 30, tzinfo=timezone.utc)
 
 
 def test_every_nfl_checkpoint_is_allowed_by_schema_migration():

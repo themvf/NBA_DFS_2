@@ -45,8 +45,9 @@ export function OddsFreshnessBanner({ games, evidence, now, week }: {
           {" "}Odds are flagged after 2 hours within a day of kickoff, or 24 hours otherwise.
         </p>
         <p className="text-xs text-muted-foreground">
-          Checks automatically every minute while this page is visible and when you return.
-          {" "}Last checked: <time dateTime={evidence.loadedAt}>{easternTime.format(timestamp(evidence.loadedAt))}</time>.
+          Scheduled captures: daily at 8:00 a.m. Eastern and 30 minutes before each kickoff.
+          {" "}This page checks once after each capture window; scheduler delays can occur.
+          {" "}Last loaded: <time dateTime={evidence.loadedAt}>{easternTime.format(timestamp(evidence.loadedAt))}</time>.
         </p>
       </div>
     </section>
