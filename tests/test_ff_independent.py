@@ -408,3 +408,46 @@ def test_roster_is_committed_before_any_market_feed_is_fetched() -> None:
         assert source.index(market) > checkpoint_at, f"{market} is fetched before the roster is durable"
     # And the roster itself must be written before the checkpoint.
     assert source.index("build_player_universe") < checkpoint_at
+
+
+def test_consensus_rank_never_reaches_board_membership() -> None:
+    """Expert consensus is an ordinal rank; board membership compares picks.
+
+    `market_prices` takes the earliest price across FFC, Yahoo and DK Best Ball
+    -- all real pick numbers. FantasyPros returns rank_ecr with no `adp` field
+    anywhere in the payload, so feeding it into that min() would be a units
+    mismatch, the same class of error as arithmetic-averaging American odds.
+    """
+    import inspect
+    from ingest import ff_independent
+
+    source = inspect.getsource(ff_independent._run)
+    membership = source[source.index("market_prices: dict[int, float]"):source.index("_must_include_ids")] \
+        if "market_prices: dict[int, float]" in source else ""
+    board = inspect.getsource(ff_independent.create_ranking_set)
+    membership = board[board.index("market_prices: dict[int, float]"):board.index("_must_include_ids(")]
+    assert "consensus" not in membership
+    assert "rank_ecr" not in membership
+
+
+def test_consensus_is_read_from_a_capture_not_fetched() -> None:
+    """ff_independent stays key-free: FantasyPros is owned by ff_fantasypros."""
+    import inspect
+    from ingest import ff_independent
+
+    source = inspect.getsource(ff_independent._run)
+    assert "ff_market_consensus" in source
+    assert "FANTASYPROS_API_KEY" not in inspect.getsource(ff_independent)
+    # The capture's hash must join board_digest or the idempotency guard would
+    # keep serving a board built against a stale consensus.
+    digest_at = source.index("board_digest = _response_hash")
+    assert source.index('source_digests.append(str(capture["response_hash"]))') < digest_at
+
+
+def test_buy_fade_prefers_consensus_and_records_which_basis_it_used() -> None:
+    import inspect
+    from ingest.ff_fantasypros import create_indicators
+
+    source = inspect.getsource(create_indicators)
+    assert '"basis": basis' in source
+    assert source.index('"consensus_rank", as_float(row.get("consensus_rank"))') < source.index('("adp", as_float(row.get("adp")))')

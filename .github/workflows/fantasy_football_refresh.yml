@@ -44,9 +44,6 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Build independent rankings from Sleeper and nflverse
-        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
-        run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
       - name: Audit upgraded FantasyPros endpoint contracts
         id: fantasypros-audit
         if: ${{ inputs.mode != 'fantasypros-history-audit' && inputs.mode != 'fantasypros-rookie-check' }}
@@ -72,6 +69,11 @@ jobs:
           --require-contracts
           --audit-output fantasypros-audit.json
       - name: Persist verified FantasyPros source snapshots
+        # Runs BEFORE the board build so it reads a capture from minutes ago
+        # rather than the previous cycle's. continue-on-error because
+        # FantasyPros is a documented soft dependency: it must never again be
+        # able to stop the independent board or the roster write behind it.
+        continue-on-error: true
         if: ${{ steps.fantasypros-audit.outcome == 'success' && inputs.mode != 'fantasypros-audit' && inputs.mode != 'fantasypros-history-audit' && inputs.mode != 'fantasypros-rookie-check' }}
         env:
           FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
@@ -79,6 +81,10 @@ jobs:
           python -m ingest.ff_fantasypros
           --season "${{ inputs.season || '2026' }}"
           --snapshot-contracts
+
+      - name: Build independent rankings from Sleeper and nflverse
+        if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
+        run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
       - name: "Read-only check: FantasyPros historical rookie projection accuracy"
         id: fantasypros-rookie-check
         if: ${{ inputs.mode == 'fantasypros-rookie-check' }}

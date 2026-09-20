@@ -2414,6 +2414,49 @@ TABLES = [
         notes TEXT,
         UNIQUE(ranking_set_id, player_id)
     )""",
+    # FantasyPros expert-consensus rankings and in-season roster ownership.
+    #
+    # NOT ADP, despite FantasyPros calling the endpoint `type=ADP`. The payload
+    # carries rank_ecr/rank_ave/rank_min/rank_max plus total_experts and no
+    # `adp` field at all -- it is an ordinal expert ranking, not an observed
+    # draft pick. Verified against a live 2026 payload (audit run 35544596570)
+    # rather than assumed from the parameter name. Anything needing a real pick
+    # NUMBER (board membership, which mixes Yahoo and DK Best Ball prices) must
+    # keep using Fantasy Football Calculator, Yahoo or DK, never this.
+    #
+    # Its value over FFC is coverage that does not decay once drafts stop:
+    # 336/366/712 rows on 2026-09-13 against FFC's 128/154/193, and FFC fell to
+    # 118/54/45 a week later.
+    #
+    # Append-only per source snapshot so consensus movement stays measurable.
+    """CREATE TABLE IF NOT EXISTS ff_market_consensus (
+        id BIGSERIAL PRIMARY KEY,
+        source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id) ON DELETE CASCADE,
+        season INTEGER NOT NULL,
+        scoring TEXT NOT NULL,
+        player_id BIGINT REFERENCES ff_players(id),
+        fp_player_id INTEGER,
+        player_name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        position TEXT,
+        team_abbrev TEXT,
+        rank_ecr DOUBLE PRECISION,
+        rank_ave DOUBLE PRECISION,
+        rank_min DOUBLE PRECISION,
+        rank_max DOUBLE PRECISION,
+        rank_std DOUBLE PRECISION,
+        position_rank INTEGER,
+        tier INTEGER,
+        owned_avg DOUBLE PRECISION,
+        owned_espn DOUBLE PRECISION,
+        owned_yahoo DOUBLE PRECISION,
+        total_experts INTEGER,
+        source_updated_at TIMESTAMPTZ,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(source_snapshot_id, fp_player_id)
+    )""",
+    """CREATE INDEX IF NOT EXISTS ff_market_consensus_lookup
+       ON ff_market_consensus (season, scoring, source_snapshot_id)""",
     """CREATE TABLE IF NOT EXISTS ff_player_season_features (
         id BIGSERIAL PRIMARY KEY,
         player_id BIGINT NOT NULL REFERENCES ff_players(id),
@@ -3684,6 +3727,14 @@ TABLES = [
 ]
 
 MIGRATIONS = [
+    # Expert-consensus rank and roster ownership, kept SEPARATE from `adp`.
+    # They are different quantities: `adp` is a mean draft pick from Fantasy
+    # Football Calculator, `consensus_rank` is an ordinal expert ranking, and
+    # `owned_pct` is in-season roster share. Overloading one column would make
+    # the rank-delta silently change meaning when a source went thin.
+    "ALTER TABLE ff_player_rankings ADD COLUMN IF NOT EXISTS consensus_rank DOUBLE PRECISION",
+    "ALTER TABLE ff_player_rankings ADD COLUMN IF NOT EXISTS owned_pct DOUBLE PRECISION",
+
     # Preserve every point-in-time feature snapshot.  The initial research
     # schema keyed only by game/team/version and would overwrite a prior week.
     "ALTER TABLE cfb_team_game_features DROP CONSTRAINT IF EXISTS cfb_team_game_features_game_id_team_id_feature_version_key",

@@ -1399,6 +1399,7 @@ def create_ranking_set(
     universe: list[dict[str, Any]],
     histories: dict[int, list[dict[str, Any]]],
     adp_lookup: dict[tuple[str, str], dict[str, Any]],
+    consensus: dict[int, dict[str, float | None]] | None = None,
     playoff_sos: dict[tuple[str, str], dict[str, Any]] | None = None,
     yahoo_adp: dict[int, float] | None = None,
 ) -> int:
@@ -1430,6 +1431,7 @@ def create_ranking_set(
                 Json({
                     "model_version": MODEL_VERSION,
                     "adp_source": "Fantasy Football Calculator",
+                    "consensus_rank_source": "FantasyPros expert consensus (ECR); not a draft pick",
                     "adp_used_for_projection": False,
                     "board_size": BOARD_SIZE,
                     "must_include_positions": list(STARTER_POSITIONS),
@@ -1459,6 +1461,8 @@ def create_ranking_set(
             "overall_rank": None,
             "adp": as_float(adp_row.get("adp")) if adp_row else None,
             "adp_source_row": adp_row,
+            "consensus_rank": (consensus or {}).get(int(player["player_id"]), {}).get("consensus_rank"),
+            "owned_pct": (consensus or {}).get(int(player["player_id"]), {}).get("owned_pct"),
         })
     ranked_all = rank_rows(model_rows)
     board = ranked_all[:BOARD_SIZE]
@@ -1483,11 +1487,13 @@ def create_ranking_set(
         db.execute(
             """INSERT INTO ff_player_rankings
                (ranking_set_id,player_id,overall_rank,position_rank,tier,adp,
+                consensus_rank,owned_pct,
                 projected_points,projection_low,projection_high,projected_stats,
                 our_rank,our_projected_points,expected_games,confidence,source_row,notes)
-               VALUES (%s,%s,NULL,%s,%s,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               VALUES (%s,%s,NULL,%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT(ranking_set_id,player_id) DO UPDATE SET
                 position_rank=EXCLUDED.position_rank,tier=EXCLUDED.tier,adp=EXCLUDED.adp,
+                consensus_rank=EXCLUDED.consensus_rank,owned_pct=EXCLUDED.owned_pct,
                 projection_low=EXCLUDED.projection_low,projection_high=EXCLUDED.projection_high,
                 projected_stats=EXCLUDED.projected_stats,our_rank=EXCLUDED.our_rank,
                 our_projected_points=EXCLUDED.our_projected_points,
@@ -1495,7 +1501,8 @@ def create_ranking_set(
                 source_row=EXCLUDED.source_row,notes=EXCLUDED.notes""",
             (
                 ranking_set_id, row["player_id"], row["position_rank"], row["tier"],
-                row["adp"], row["projection_low"], row["projection_high"], Json(row["explanation"]),
+                row["adp"], row["consensus_rank"], row["owned_pct"],
+                row["projection_low"], row["projection_high"], Json(row["explanation"]),
                 row["our_rank"], row["our_projected_points"], row["expected_games"],
                 row["confidence"], Json({
                     "player": _clean(row.get("metadata") or {}),
@@ -1716,6 +1723,40 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
                 yahoo_adp[int(row["player_id"])] = price
         source_digests.append(str(yahoo_capture["response_hash"]))
 
+    # FantasyPros expert-consensus rank and roster ownership, read from the
+    # last capture rather than fetched here -- the API key lives with
+    # ff_fantasypros, which owns that vendor, and this script stays key-free.
+    # Same pattern as the Yahoo pre-draft prices above, including folding the
+    # capture's hash into board_digest so a fresh capture forces a rebuild.
+    #
+    # It is NOT ADP: rank_ecr is an ordinal expert ranking with no pick number
+    # anywhere in the payload, so it feeds the rank DELTA and buy/fade only.
+    # `market_prices` above, which decides board membership by comparing real
+    # pick numbers across FFC, Yahoo and DK, deliberately never sees it.
+    consensus: dict[str, dict[int, dict[str, float | None]]] = {}
+    for scoring in SCORING_TYPES:
+        capture = db.execute_one(
+            """SELECT s.id,s.response_hash FROM ff_source_snapshots s
+               WHERE s.source='fantasypros' AND s.dataset=%s AND s.season=%s
+                 AND EXISTS (SELECT 1 FROM ff_market_consensus c WHERE c.source_snapshot_id=s.id)
+               ORDER BY s.fetched_at DESC, s.id DESC LIMIT 1""",
+            (f"adp-{scoring.lower()}", season),
+        )
+        if not capture:
+            continue
+        consensus[scoring] = {
+            int(row["player_id"]): {
+                "consensus_rank": as_float(row["rank_ecr"]),
+                "owned_pct": as_float(row["owned_avg"]),
+            }
+            for row in db.execute(
+                """SELECT player_id,rank_ecr,owned_avg FROM ff_market_consensus
+                   WHERE source_snapshot_id=%s AND player_id IS NOT NULL""",
+                (int(capture["id"]),),
+            )
+        }
+        source_digests.append(str(capture["response_hash"]))
+
     board_digest = _response_hash({
         "model_version": MODEL_VERSION,
         "season": season,
@@ -1750,6 +1791,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         create_ranking_set(
             db, season=season, scoring=scoring, source_snapshot_id=board_snapshot_id,
             universe=universe, histories=histories, adp_lookup=adp_lookups.get(scoring, {}),
+            consensus=consensus.get(scoring, {}),
             playoff_sos=playoff_sos, yahoo_adp=yahoo_adp,
         )
         for scoring in SCORING_TYPES
@@ -1764,6 +1806,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         "bye_weeks": len(bye_weeks),
         "adp_coverage": {scoring: len(lookup) for scoring, lookup in adp_lookups.items()},
         "adp_windows": adp_windows,
+        "consensus_coverage": {scoring: len(rows) for scoring, rows in consensus.items()},
         "adp_skipped": adp_skipped,
         "yahoo_adp_prices": len(yahoo_adp),
         "adp_used_for_projection": False,

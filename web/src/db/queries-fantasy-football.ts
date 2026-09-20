@@ -21,6 +21,16 @@ export type FantasyRankingRow = {
   ourRank: number | null;
   tier: number | null;
   adp: number | null;
+  /**
+   * FantasyPros expert-consensus rank (ECR). NOT a draft pick: their payload
+   * carries rank_ecr and total_experts with no `adp` field anywhere, so this
+   * is expert opinion on a 1..N scale, not observed market behaviour. It backs
+   * the rank delta and the buy/fade chips because FFC's ADP coverage collapses
+   * once drafts stop; anything needing a real pick number uses `adp`.
+   */
+  consensusRank: number | null;
+  /** In-season roster ownership %, averaged across ESPN and Yahoo. */
+  ownedPct: number | null;
   adpStdev: number | null;
   adpHigh: number | null;
   adpLow: number | null;
@@ -239,6 +249,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
     p.injury_status AS "injuryStatus",injury.details AS "injuryDetails",
     r.overall_rank AS ecr,r.position_rank AS "positionRank",
     r.our_rank AS "ourRank",r.tier,r.adp,
+    r.consensus_rank AS "consensusRank",r.owned_pct AS "ownedPct",
     (r.source_row->'adp'->>'stdev')::double precision AS "adpStdev",
     (r.source_row->'adp'->>'high')::double precision AS "adpHigh",
     (r.source_row->'adp'->>'low')::double precision AS "adpLow",

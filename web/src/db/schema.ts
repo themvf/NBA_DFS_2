@@ -1073,6 +1073,8 @@ export const ffPlayerRankings = pgTable(
     positionRank: integer("position_rank"),
     tier: integer("tier"),
     adp: doublePrecision("adp"),
+    consensusRank: doublePrecision("consensus_rank"),
+    ownedPct: doublePrecision("owned_pct"),
     projectedPoints: doublePrecision("projected_points"),
     projectionLow: doublePrecision("projection_low"),
     projectionHigh: doublePrecision("projection_high"),

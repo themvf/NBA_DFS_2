@@ -24,6 +24,8 @@ function row(overrides: Partial<FantasyRankingRow> & { position: string }): Fant
     ourRank: playerId,
     tier: 1,
     adp: null,
+    consensusRank: null,
+    ownedPct: null,
     adpStdev: null,
     adpHigh: null,
     adpLow: null,

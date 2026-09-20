@@ -535,6 +535,85 @@ def link_fantasypros_players(
     }
 
 
+def persist_fantasypros_consensus(
+    db: DatabaseManager | RefreshDatabase,
+    *,
+    season: int,
+    scoring: str,
+    source_snapshot_id: int,
+    payload: dict[str, Any],
+) -> dict[str, int]:
+    """Store per-player expert-consensus ranks and roster ownership.
+
+    This is NOT ADP. FantasyPros names the parameter `type=ADP`, but the rows
+    carry rank_ecr/rank_ave/rank_min/rank_max and no `adp` key, and the payload
+    reports `total_experts` -- it is an ordinal expert ranking. Verified against
+    the live 2026 payload, not inferred from the parameter name. Board
+    membership, which compares real pick numbers across Yahoo and DK Best Ball,
+    must never read these values.
+
+    `player_owned_espn`/`player_owned_yahoo` are in-season roster-ownership
+    percentages and are the one genuinely market-behavioural field here.
+    """
+    rows = payload.get("players")
+    if not isinstance(rows, list):
+        return {"rows": 0, "matched": 0}
+    by_fp_id: dict[int, int] = {}
+    by_identity: dict[tuple[str, str], int] = {}
+    for player in db.execute(
+        "SELECT id,normalized_name,position,fantasypros_player_id FROM ff_players WHERE season=%s",
+        (season,),
+    ):
+        local_id = int(player["id"])
+        fp_id = as_int(player.get("fantasypros_player_id"))
+        if fp_id is not None:
+            by_fp_id.setdefault(fp_id, local_id)
+        by_identity.setdefault((str(player["normalized_name"]), str(player["position"])), local_id)
+
+    experts = as_int(payload.get("total_experts"))
+    updated = payload.get("last_updated") or None
+    stored = matched = 0
+    seen: set[int] = set()
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        fp_id = as_int(raw.get("player_id"))
+        # UNIQUE(source_snapshot_id, fp_player_id) cannot dedupe NULLs, so a
+        # row without a vendor id is skipped rather than inserted repeatedly.
+        if fp_id is None or fp_id in seen:
+            continue
+        seen.add(fp_id)
+        name = str(raw.get("player_name") or "")
+        if not name:
+            continue
+        normalized = normalize_name(name)
+        position = str(raw.get("player_position_id") or "") or None
+        player_id = by_fp_id.get(fp_id) or by_identity.get((normalized, position or ""))
+        if player_id is not None:
+            matched += 1
+        db.execute(
+            """INSERT INTO ff_market_consensus
+               (source_snapshot_id,season,scoring,player_id,fp_player_id,player_name,
+                normalized_name,position,team_abbrev,rank_ecr,rank_ave,rank_min,rank_max,
+                rank_std,position_rank,tier,owned_avg,owned_espn,owned_yahoo,
+                total_experts,source_updated_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT(source_snapshot_id,fp_player_id) DO NOTHING""",
+            (
+                source_snapshot_id, season, scoring, player_id, fp_id, name, normalized,
+                position, str(raw.get("player_team_id") or "") or None,
+                as_float(raw.get("rank_ecr")), as_float(raw.get("rank_ave")),
+                as_float(raw.get("rank_min")), as_float(raw.get("rank_max")),
+                as_float(raw.get("rank_std")), position_rank(raw.get("pos_rank")),
+                as_int(raw.get("tier")), as_float(raw.get("player_owned_avg")),
+                as_float(raw.get("player_owned_espn")), as_float(raw.get("player_owned_yahoo")),
+                experts, updated,
+            ),
+        )
+        stored += 1
+    return {"rows": stored, "matched": matched}
+
+
 def count_fantasypros_payload_matches(
     db: DatabaseManager | RefreshDatabase,
     season: int,
@@ -713,6 +792,14 @@ def snapshot_fantasypros_contracts(
                 season,
                 snapshot_id,
                 payload,
+            )
+        elif contract.dataset.startswith("adp-"):
+            saved_row["consensus"] = persist_fantasypros_consensus(
+                db,
+                season=season,
+                scoring=str(contract.params.get("scoring") or contract.dataset[4:].upper()),
+                source_snapshot_id=snapshot_id,
+                payload=payload,
             )
         elif contract.dataset == "injuries":
             saved_row["injury_observations"] = persist_fantasypros_injury_observations(
@@ -1094,12 +1181,26 @@ def create_indicators(
                 None,
                 {"from": hist["prior_team"], "to": team},
             ))
-        if row.get("adp") is not None:
-            delta = float(row["adp"]) - float(row.get("our_rank") or row.get("overall_rank") or 0)
+        # Buy/fade reads FantasyPros expert consensus in preference to Fantasy
+        # Football Calculator ADP. Both are "where the field puts him" on a
+        # 1..N scale, so the +-12 threshold carries over, but they are NOT the
+        # same quantity and the evidence records which one produced the delta:
+        # ADP is an observed mean draft pick, consensus rank is expert opinion.
+        # Consensus is preferred because FFC's coverage collapses once drafts
+        # stop (118/54/45 rows against FantasyPros' 336/366/712), so an
+        # ADP-only chip silently vanishes for most of the board in-season.
+        basis, market_rank = (
+            ("consensus_rank", as_float(row.get("consensus_rank")))
+            if as_float(row.get("consensus_rank")) is not None
+            else ("adp", as_float(row.get("adp")))
+        )
+        if market_rank is not None:
+            delta = market_rank - float(row.get("our_rank") or row.get("overall_rank") or 0)
+            evidence = {"delta": delta, "basis": basis, "market_rank": market_rank}
             if delta >= 12:
-                codes.append(("OUR_BUY", "model", "OUR BUY", delta, {"adp_delta": delta}))
+                codes.append(("OUR_BUY", "model", "OUR BUY", delta, evidence))
             elif delta <= -12:
-                codes.append(("OUR_FADE", "model", "OUR FADE", delta, {"adp_delta": delta}))
+                codes.append(("OUR_FADE", "model", "OUR FADE", delta, evidence))
         for code, klass, label, value, evidence in codes:
             db.execute(
                 """INSERT INTO ff_player_indicators
