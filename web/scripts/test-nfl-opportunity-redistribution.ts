@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import {
-  MAX_MULTIPLIER, POOLS, VERSION, inheritanceNote, redistributeOutOpportunity,
-  type RedistributionRow,
+  MAX_MULTIPLIER, MIN_OBSERVED_GAMES, POOLS, VERSION, hasObservedOpportunity,
+  inheritanceNote, redistributeOutOpportunity, type RedistributionRow,
 } from "../src/lib/nfl-dfs/opportunity-redistribution";
 import { scoreNflOffense, scoreNflOffenseLinear } from "../src/lib/nfl-dfs/scoring";
 
 const player = (over: Partial<RedistributionRow> & Pick<RedistributionRow, "key" | "name" | "position">): RedistributionRow => ({
-  team: "HOU", isOut: false, statMeans: {}, ourProj: 10, floorFpts: 4, ceilingFpts: 20, ...over,
+  team: "HOU", isOut: false, statMeans: {}, ourProj: 10, floorFpts: 4, ceilingFpts: 20,
+  // A real track record by default. `MIN_OBSERVED_GAMES` is exercised
+  // deliberately below; every other case here is about allocation, not the gate.
+  historyGames: 17, ...over,
 });
 
 const receiver = (key: number, name: string, receptions: number, over: Partial<RedistributionRow> = {}) =>
@@ -208,6 +211,89 @@ const find = (report: ReturnType<typeof redistributeOutOpportunity>, key: number
   assert.equal(POOLS.target.unit, "receptions",
     "targets are never persisted by either projection path; receptions is the available unit");
   assert.ok(POOLS.pass.single && !POOLS.rush.single && !POOLS.target.single);
+}
+
+// ── A player with no career cannot vacate work he never had ───────────
+{
+  // The live measurement: a never-played receiver carries MORE projected
+  // receptions (2.21/gm) than a real one (2.02), because his line is drawn
+  // entirely from peers. Ruled out, he used to donate that phantom workload.
+  const rows = [
+    receiver(1, "Never played", 6, { isOut: true, historyGames: 0, projectionStatus: "position_prior" }),
+    receiver(2, "Real WR2", 4),
+  ];
+  const report = redistributeOutOpportunity(rows);
+  assert.equal(report.applied.length, 0, "nobody is paid out of a workload that was never real");
+  assert.equal(report.donorsWithoutOpportunity.length, 1);
+  assert.match(report.donorsWithoutOpportunity[0].reason, /fewer than 2 games of his own/);
+  assert.match(report.donorsWithoutOpportunity[0].reason, /average WR rather than him/);
+}
+
+// ── ...and cannot earn a share of someone else's either ───────────────
+{
+  // The same inversion on the receiving end: the phantom would have
+  // out-earned a genuine rotational receiver, since his peer-drawn line is
+  // larger. The whole pool goes to the man with a real record.
+  const rows = [
+    receiver(1, "Starter", 6, { isOut: true }),
+    receiver(2, "Real WR2", 4),
+    receiver(3, "Never played", 5, { historyGames: 0, projectionStatus: "position_prior" }),
+  ];
+  const report = redistributeOutOpportunity(rows);
+  assert.equal(find(report, 3), undefined, "a peer-drawn line is not evidence he will get the work");
+  assert.equal(find(report, 2)!.inherited[0].gained, 6, "so the real receiver takes all of it");
+}
+
+// ── The honest refusal: no qualifying teammate means nobody is paid ────
+{
+  // Deliberate. Inventing a recipient is how the 38% got in; saying "we do
+  // not know who picks this up" is the weaker claim and the true one.
+  const rows = [
+    receiver(1, "Starter", 6, { isOut: true }),
+    receiver(2, "Camp body", 5, { historyGames: 1, projectionStatus: "position_prior" }),
+  ];
+  const report = redistributeOutOpportunity(rows);
+  assert.equal(report.applied.length, 0);
+  assert.equal(report.unresolved.length, 1, "the work is reported as unplaced, never quietly dropped");
+  assert.equal(report.unresolved[0].pooled, 6);
+  assert.match(report.unresolved[0].reason, /2\+ games/);
+}
+
+// ── The threshold is the model's own, and the boundary is inclusive ────
+{
+  assert.equal(MIN_OBSERVED_GAMES, 2, "matches minimum_historical_games in nfl_dfs_historical.py");
+  assert.ok(!hasObservedOpportunity({ historyGames: 1 }));
+  assert.ok(hasObservedOpportunity({ historyGames: 2 }), "2 games qualifies, same as the model");
+  assert.ok(!hasObservedOpportunity({}), "unknown history is treated as none, not as a pass");
+  assert.ok(!hasObservedOpportunity({ historyGames: null }));
+}
+
+// ── A donor the pipeline already placed is not paid a second time ─────
+{
+  // Python clears the line only when it actually handed the work to someone.
+  // A cleared line therefore means "handled", and the reason says so rather
+  // than blaming his history.
+  const rows = [
+    receiver(1, "Handled upstream", 0, { isOut: true, projectionStatus: "out", statMeans: { receptions: 0 } }),
+    receiver(2, "WR2", 4),
+  ];
+  const report = redistributeOutOpportunity(rows);
+  assert.equal(report.applied.length, 0, "the two layers cannot stack");
+  assert.match(report.donorsWithoutOpportunity[0].reason, /already ruled him out and placed his opportunity/);
+}
+
+// ── A ruled-out player the pipeline did NOT place still hands work on ──
+{
+  // The 79-of-86 case: zeroed by Python, never offered a transfer because he
+  // is not a quarterback, stat line preserved. This is the whole point of the
+  // upstream change -- his work must still reach his teammates.
+  const rows = [
+    receiver(1, "Zeroed, unplaced", 6, { isOut: true, projectionStatus: "out" }),
+    receiver(2, "WR2", 4),
+  ];
+  const report = redistributeOutOpportunity(rows);
+  assert.equal(find(report, 2)!.inherited[0].gained, 6,
+    "an out status alone must not strand the workload");
 }
 
 console.log("nfl opportunity redistribution: all assertions passed");

@@ -3,7 +3,7 @@ import pytest
 
 from model.nfl_dfs_availability import (
     MAX_TRANSFER_MULTIPLIER, OUT_CLASS, apply, is_out, replacement_for,
-    transfer_opportunity, zero_out,
+    transfer_opportunity, zero_out, mark_transferred,
 )
 
 def qb(pid, name, depth, attempts, yards, tds, points, team="LAR"):
@@ -36,8 +36,61 @@ def test_zeroing_is_zero_not_a_discount():
     zeroed = zero_out(qb(1, "Starter", 1, 35, 250, 1.6, 23.6), "OUT")
     for key in ("model_proj_fpts", "floor_fpts", "median_fpts", "ceiling_fpts", "boom_rate"):
         assert zeroed[key] == 0.0, key
-    assert all(v == 0.0 for v in zeroed["stat_means"].values())
     assert zeroed["projection_status"] == "out"
+
+
+def test_zeroing_preserves_the_workload_he_is_vacating():
+    # The projection is the claim "he will not score" and is zero. The stat
+    # line is the record of the work now going spare, and blanking it is what
+    # left 79 ruled-out receivers/backs/tight ends on a real slate with their
+    # work deleted rather than reassigned -- `apply()` only offers a transfer
+    # for `positions` (quarterbacks by default), and the slate layer that
+    # handles every position had nothing left to share out.
+    zeroed = zero_out(qb(1, "Starter", 1, 35, 250, 1.6, 23.6), "OUT")
+    assert zeroed["stat_means"]["attempts"] == 35
+    assert zeroed["stat_means"]["passing_yards"] == 250
+    assert zeroed["availability"]["transferred"] is False, "nobody has been paid yet"
+
+
+def test_marking_transferred_closes_the_pool_so_nothing_is_paid_twice():
+    zeroed = zero_out(qb(1, "Starter", 1, 35, 250, 1.6, 23.6), "OUT")
+    moved = mark_transferred(zeroed, "Backup")
+    assert all(v == 0.0 for v in moved["stat_means"].values()), "his work is gone because it was placed"
+    assert moved["availability"]["transferred"] is True
+    assert moved["availability"]["transferred_to"] == "Backup"
+    assert moved["availability"]["rule"] == "zeroed", "the original reason survives"
+    assert zeroed["stat_means"]["attempts"] == 35, "the input is not mutated"
+
+
+def test_a_real_transfer_closes_the_donor_pool_and_a_failed_one_does_not():
+    starter, backup = qb(1, "Starter", 1, 35, 250, 1.6, 23.6), qb(2, "Backup", 2, 6, 40, 0.2, 4.0)
+    out, _ = apply([starter, backup], {1: "OUT"})
+    donor = next(p for p in out if p["player_id"] == 1)
+    assert donor["availability"]["transferred"] is True
+    assert donor["stat_means"]["attempts"] == 0.0
+
+    # Backup has never thrown a pass, so there is nothing to scale and the
+    # transfer does not apply. The donor's line MUST survive that, or the work
+    # is lost to both layers -- exactly the bug this pair of tests pins.
+    empty = qb(3, "Third", 2, 0, 0, 0, 0.0)
+    out2, _ = apply([starter, empty], {1: "OUT"})
+    donor2 = next(p for p in out2 if p["player_id"] == 1)
+    assert donor2["availability"]["transferred"] is False
+    assert donor2["stat_means"]["attempts"] == 35, "still available for the slate layer to place"
+
+
+def test_a_ruled_out_receiver_keeps_his_line_because_nobody_offers_him_a_transfer():
+    # positions defaults to ("QB",), so an absent receiver is zeroed and never
+    # even considered for a handoff. That is the 79-of-86 case.
+    wr = {"player_id": 9, "player_name": "WR1", "position": "WR", "team": "HOU",
+          "depth_order": 1, "model_proj_fpts": 14.0, "floor_fpts": 5.0, "median_fpts": 13.0,
+          "ceiling_fpts": 25.0, "boom_rate": 0.2, "baseline_fpts": 14.0,
+          "stat_means": {"receptions": 5.8, "receiving_yards": 84.0, "receiving_tds": 0.5}}
+    out, report = apply([wr], {9: "OUT"})
+    assert out[0]["model_proj_fpts"] == 0.0
+    assert out[0]["stat_means"]["receptions"] == 5.8, "his 5.8 catches are still on the table"
+    assert out[0]["availability"]["transferred"] is False
+    assert report["transfers"] == [], "no transfer was even attempted for a receiver"
 
 # ── who replaces him ───────────────────────────────────────────────────
 def test_replacement_is_the_shallowest_available_teammate():

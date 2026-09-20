@@ -58,15 +58,51 @@ def _num(value: Any) -> float:
 
 
 def zero_out(projection: Mapping[str, Any], status: str) -> dict[str, Any]:
-    """A player who is not playing scores zero. Not shrunk — zero."""
+    """A player who is not playing scores zero. Not shrunk — zero.
+
+    His STAT LINE is deliberately preserved. Zeroing the projection is the
+    correct statement (he will not score); zeroing the stat line destroys the
+    only record of the workload he is vacating, and that record is what a
+    replacement is scaled against.
+
+    This mattered in production. `apply()` reassigns work only when the absent
+    player is one of `positions`, which defaults to quarterbacks. On a real
+    13-game slate 86 players were ruled out and 79 of them were receivers,
+    backs and tight ends, so their work was never offered to anyone -- and
+    because this function had already blanked their stat line, the slate layer
+    that DOES handle every position (`opportunity-redistribution.ts`) found an
+    empty pool and could not recover it either. The two layers cancelled each
+    other out and the work simply vanished.
+
+    `transferred` says which of the two happened, so a later reader never has
+    to guess: False here, and set True by `apply()` only once a replacement has
+    actually been paid.
+    """
     zeroed = dict(projection)
     for key in ("model_proj_fpts", "baseline_fpts", "floor_fpts", "median_fpts",
                 "ceiling_fpts", "boom_rate"):
         zeroed[key] = 0.0
-    zeroed["stat_means"] = {key: 0.0 for key in projection.get("stat_means") or {}}
     zeroed["projection_status"] = "out"
-    zeroed["availability"] = {"version": VERSION, "rule": "zeroed", "status": status}
+    zeroed["availability"] = {"version": VERSION, "rule": "zeroed", "status": status,
+                              "transferred": False}
     return zeroed
+
+
+def mark_transferred(donor: Mapping[str, Any], replacement_name: str | None) -> dict[str, Any]:
+    """Empty a donor's pool once his work has actually been handed on.
+
+    This is what keeps the two layers from paying the same work twice, and it
+    is now an explicit act rather than a side effect of `zero_out`: the slate
+    layer pays recipients only out of a donor's remaining stat line, so a
+    cleared line means "already handled" and a preserved one means "still
+    available to hand on".
+    """
+    moved = dict(donor)
+    moved["stat_means"] = {key: 0.0 for key in donor.get("stat_means") or {}}
+    note = dict(donor.get("availability") or {})
+    note.update(transferred=True, transferred_to=replacement_name)
+    moved["availability"] = note
+    return moved
 
 
 def replacement_for(
@@ -185,6 +221,12 @@ def apply(
             continue
         updated, note = transfer_opportunity(player, result[backup["player_id"]], cap=cap)
         result[backup["player_id"]] = updated
+        # Only a transfer that actually applied closes the donor's pool. When
+        # it did not (no usable opportunity history, no stat for the position),
+        # his line stays intact so the slate layer can still place the work.
+        if note.get("applied"):
+            result[player["player_id"]] = mark_transferred(
+                result[player["player_id"]], backup.get("player_name"))
         report["transfers"].append({"to": backup.get("player_name"), **note})
 
     return [result[player.get("player_id")] for player in projections], report
