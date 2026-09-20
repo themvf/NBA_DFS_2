@@ -751,6 +751,18 @@ class RefreshDatabase:
         cursor.execute(statement, params or ())
         return cursor.fetchone()
 
+    def checkpoint(self) -> None:
+        """Commit what is written so far and keep the connection open.
+
+        Used to make the roster and depth chart durable BEFORE any market feed
+        is fetched. Without it the whole refresh is one transaction, so a
+        failure in a comparison-only ADP fetch rolls back the Sleeper roster
+        that had already been written -- which froze the depth chart for six
+        days in September 2026 and silently disabled the NFL DFS optimizer's
+        backup-quarterback block.
+        """
+        self.conn.commit()
+
     def close(self, error: bool = False) -> None:
         try:
             self.conn.rollback() if error else self.conn.commit()
