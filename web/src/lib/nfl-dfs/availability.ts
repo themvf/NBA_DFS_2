@@ -6,20 +6,40 @@ const normalize = (value: unknown) => String(value ?? "UNKNOWN").trim().toUpperC
 const aliases: Record<string, string> = { LA: "LAR", WAS: "WSH", AZ: "ARI", JAC: "JAX" };
 const teamKey = (value: unknown) => { const key = normalize(value); return aliases[key] ?? key; };
 
-/** Current roster evidence only; never infer a replacement starter or clear a DK exclusion. */
+export const ROSTER_FRESH_MS = 72 * 3600000;
+
+/**
+ * Current roster evidence only; never infer a replacement starter or clear a DK exclusion.
+ *
+ * Stale evidence may BLOCK but never CLEAR. A four-day-old depth chart saying a player is
+ * QB3 is still evidence he is not the starter -- it is only evidence of HEALTH that decays.
+ * Failing open here once put three backup quarterbacks into a Showdown pool at starter
+ * projections, because "my note is six days old" was treated identically to "I have never
+ * heard of him". A corrupt or future-dated capture is a different thing from an old one and
+ * still resolves to unknown.
+ */
 export function resolveAvailability(evidence: RosterEvidence | undefined, team: string, position: string, now: number): Availability {
   const unknown: Availability = { role: position === "QB" ? "QB role unresolved" : "Role unresolved", status: "UNKNOWN", source: "No matching current roster", capturedAt: null, blockedReason: null, fresh: false };
   if (!evidence || teamKey(evidence.team) !== teamKey(team) || evidence.position !== position) return unknown;
   const captured = Date.parse(evidence.fetchedAt);
-  if (!Number.isFinite(captured) || captured > now || now - captured > 72 * 3600000) return { ...unknown, source: "Roster stale or invalid", capturedAt: evidence.fetchedAt };
+  if (!Number.isFinite(captured) || captured > now) return { ...unknown, source: "Roster capture time invalid", capturedAt: evidence.fetchedAt };
+  const fresh = now - captured <= ROSTER_FRESH_MS;
   const s = evidence.sleeper as Record<string, unknown> | null;
-  if (!s || teamKey(s.team) !== teamKey(team) || s.position !== position) return unknown;
+  if (!s || teamKey(s.team) !== teamKey(team) || s.position !== position) return { ...unknown, capturedAt: evidence.fetchedAt, ...(fresh ? {} : { source: "Roster stale and unmatched" }) };
   const depth = typeof s.depth_chart_order === "number" && Number.isInteger(s.depth_chart_order) && s.depth_chart_order > 0 ? s.depth_chart_order : null;
   const status = normalize(s.injury_status || s.status);
   const rosterStatus = normalize(s.status);
-  const blockedReason = unavailable.has(status) || unavailable.has(rosterStatus) ? `Unavailable: ${unavailable.has(status) ? status : rosterStatus}`
-    : position === "QB" && depth !== null && depth > 1 ? `Listed QB${depth}; starter workload not supported` : null;
-  return { role: depth === null ? unknown.role : position === "QB" ? depth === 1 ? "Expected starter · QB1" : `Backup · QB${depth}` : `Listed ${position}${depth}`, status, source: "Sleeper roster (retrieval time; not game-day confirmation)", capturedAt: evidence.fetchedAt, blockedReason, fresh: true };
+  const staleNote = fresh ? "" : ` (roster captured ${evidence.fetchedAt.slice(0, 10)}; blocks still apply, clearances do not)`;
+  const blockedReason = unavailable.has(status) || unavailable.has(rosterStatus) ? `Unavailable: ${unavailable.has(status) ? status : rosterStatus}${staleNote}`
+    : position === "QB" && depth !== null && depth > 1 ? `Listed QB${depth}; starter workload not supported${staleNote}` : null;
+  return {
+    role: depth === null ? unknown.role : position === "QB" ? depth === 1 ? "Expected starter · QB1" : `Backup · QB${depth}` : `Listed ${position}${depth}`,
+    // The status string is kept even when stale: a stale OUT still blocks, and the
+    // opportunity-redistribution donor path reads it. `fresh` carries the caveat.
+    status,
+    source: fresh ? "Sleeper roster (retrieval time; not game-day confirmation)" : "Sleeper roster, STALE (depth chart used to block only; health unknown)",
+    capturedAt: evidence.fetchedAt, blockedReason, fresh,
+  };
 }
 
 /** Freeze the evidence used at decision time. Never infer health from an omitted row. */
