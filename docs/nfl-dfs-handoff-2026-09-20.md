@@ -95,8 +95,16 @@ source review. This was not a full browser or optimizer validation.
 - Research sample cache keys include the baseline implementation hash so a
   baseline change cannot silently reuse the old study's sampled forecasts.
 
-Verified locally: 51 Python availability/projection/shadow tests; TypeScript
+Verified locally: 56 Python availability/projection/shadow tests; TypeScript
 slate-week/settings, redistribution, stale-run, FLEX, workspace, atomic-persist,
 and OUT-projection suites; production build. The real 670-player upload matches
 week 2. Browser checks verified the refresh notice, workload accounting panel,
 FLEX (555 players), and warning on a salary-limit change without regenerating.
+
+
+The pipeline also requires a roster capture no more than 72 hours old, not in
+future, before accepting its depth order. Missing/stale roles are unresolved,
+not guessed. A real-data dry run confirmed 1,086 players and restored the
+unmodified simulated means for Stroud (16.2048), Lamar (21.8468), and Stafford
+(22.2635). That dry run preceded the stricter roster-age gate, which only removes
+unsupported promotions and cannot reintroduce those backup-driven changes.

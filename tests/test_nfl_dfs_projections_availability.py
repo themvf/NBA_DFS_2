@@ -39,9 +39,9 @@ def run(captured_at):
                     "team_implied_total": 24.0}},
         "_players": lambda db, season, teams: [
             {"id": 1, "gsis_id": "00-1", "canonical_name": "Starter", "normalized_name": "starter",
-             "position": "QB", "team_abbrev": "LAR", "depth_order": 1},
+             "position": "QB", "team_abbrev": "LAR", "depth_order": 1, "roster_fetched_at": TUESDAY},
             {"id": 2, "gsis_id": "00-2", "canonical_name": "Backup", "normalized_name": "backup",
-             "position": "QB", "team_abbrev": "LAR", "depth_order": 2}],
+             "position": "QB", "team_abbrev": "LAR", "depth_order": 2, "roster_fetched_at": TUESDAY}],
     }
     originals = {name: getattr(proj, name) for name in monkey}
     for name, fn in monkey.items():
@@ -125,3 +125,11 @@ def test_no_kickoff_time_means_no_pregame_claim():
 def test_no_captures_at_all():
     assert status_before_kickoff([], SUN) is None
     assert status_before_kickoff(None, SUN) is None
+
+
+@pytest.mark.parametrize("captured", [None, TUESDAY-timedelta(days=4), TUESDAY+timedelta(seconds=1), TUESDAY.replace(tzinfo=None)])
+def test_unverified_roster_age_cannot_authorize_a_promotion(captured):
+    assert proj.qualified_depth({"depth_order":1,"roster_fetched_at":captured},TUESDAY) is None
+
+def test_fresh_role_evidence_keeps_depth():
+    assert proj.qualified_depth({"depth_order":2,"roster_fetched_at":TUESDAY},TUESDAY)==2

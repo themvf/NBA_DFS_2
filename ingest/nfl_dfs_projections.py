@@ -123,7 +123,7 @@ def _players(db: DatabaseManager, season: int, teams: list[str]) -> list[dict[st
     if not teams:
         return []
     return db.execute(
-        """SELECT id,gsis_id,canonical_name,normalized_name,position,team_abbrev,
+        """SELECT id,gsis_id,canonical_name,normalized_name,position,team_abbrev, fetched_at AS roster_fetched_at,
                   NULLIF(metadata->'sleeper'->>'depth_chart_order','')::int AS depth_order
            FROM ff_players
            WHERE season=%s AND active AND team_abbrev=ANY(%s)
@@ -179,6 +179,18 @@ def status_before_kickoff(captures, commence) -> str | None:
     return max(eligible, key=lambda c: c["captured_at"]).get("status")
 
 
+def qualified_depth(player: dict[str, Any], as_of_at: datetime) -> int | None:
+    """A stale or future roster capture cannot establish a QB promotion."""
+    captured = player.get("roster_fetched_at")
+    if not isinstance(captured, datetime) or captured.tzinfo is None:
+        return None
+    age = (as_of_at - captured).total_seconds()
+    depth = player.get("depth_order")
+    if not 0 <= age <= 72 * 3600 or not isinstance(depth, int) or isinstance(depth, bool) or depth < 1:
+        return None
+    return depth
+
+
 def build_week(
     db: DatabaseManager,
     *,
@@ -211,7 +223,7 @@ def build_week(
             **projection.as_dict(),
             "normalized_name": player["normalized_name"],
             # Carried so the replacement rule can resolve the next man up.
-            "depth_order": player.get("depth_order"),
+            "depth_order": qualified_depth(player, as_of_at),
             "team": player["team_abbrev"],
             "opponent": env["opponent"],
             "event_id": env["event_id"],
