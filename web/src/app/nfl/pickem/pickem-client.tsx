@@ -39,6 +39,7 @@ import {
 import type { PickemLedgerRow, PickemPoolRow, PickemSlate, PickemSlateGame } from "@/db/queries";
 import PickemTabs from "./pickem-tabs";
 import { EvidencePanel, EvidenceLedger } from "./evidence-panel";
+import { OddsFreshnessBanner } from "./odds-freshness-banner";
 import { EMPTY_EVIDENCE, marketReview, type PickemEvidence, type PickemScenario } from "@/lib/nfl/pickem-evidence";
 import {
   ledgerVerdict,
@@ -575,6 +576,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
         </p>
       </header>
       <PickemTabs active="board" />
+      <OddsFreshnessBanner games={weekGames} evidence={evidence} now={reviewAt} week={week} />
 
       {/* ---- controls --------------------------------------------------- */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3">
