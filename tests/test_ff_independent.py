@@ -451,3 +451,43 @@ def test_buy_fade_prefers_consensus_and_records_which_basis_it_used() -> None:
     source = inspect.getsource(create_indicators)
     assert '"basis": basis' in source
     assert source.index('"consensus_rank", as_float(row.get("consensus_rank"))') < source.index('("adp", as_float(row.get("adp")))')
+
+
+def test_every_fantasypros_contract_pins_the_week() -> None:
+    """An unpinned week is not a default, it is the live week.
+
+    `nfl/players` was the only contract without `week`, and once the season
+    started FantasyPros served it the CURRENT week: 200, correct shape, zero
+    rows, no error. It echoed `"week": "2", "count": 0` while every week-0
+    sibling returned 336-985 rows.
+    """
+    from ingest.ff_fantasypros import fantasypros_endpoint_contracts
+
+    for contract in fantasypros_endpoint_contracts(2026):
+        if contract.dataset == "injuries":
+            continue  # scoped by `year`/`week` under different names
+        assert "week" in contract.params, f"{contract.dataset} does not pin a week"
+        assert contract.params["week"] in (0, "0"), f"{contract.dataset} is not the full-season view"
+
+
+def test_consensus_uses_the_draft_aggregate_not_the_thin_adp_one() -> None:
+    """Same fields, same shape, ~35x the experts.
+
+    `type=ADP` is aggregated from 2-5 experts; `type=DRAFT` from 176-186, and
+    was fresher at capture. Neither is a draft pick.
+    """
+    import inspect
+    from ingest.ff_fantasypros import snapshot_fantasypros_contracts
+
+    source = inspect.getsource(snapshot_fantasypros_contracts)
+    assert 'contract.dataset.startswith("draft-rankings-")' in source
+    assert 'contract.dataset.startswith("adp-")' not in source
+
+
+def test_consensus_carries_the_vendor_publish_time_not_our_retrieval_time() -> None:
+    """Both draft products freeze once drafts stop; staleness must be visible."""
+    import inspect
+    from ingest.ff_fantasypros import persist_fantasypros_consensus
+
+    source = inspect.getsource(persist_fantasypros_consensus)
+    assert 'as_int(payload.get("last_updated_ts"))' in source

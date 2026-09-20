@@ -22,14 +22,19 @@ export type FantasyRankingRow = {
   tier: number | null;
   adp: number | null;
   /**
-   * FantasyPros expert-consensus rank (ECR). NOT a draft pick: their payload
+   * FantasyPros DRAFT expert-consensus rank (ECR), 176-186 experts. NOT a
+   * draft pick, and NOT their `type=ADP` variant, which aggregates 2-5. Their payload
    * carries rank_ecr and total_experts with no `adp` field anywhere, so this
    * is expert opinion on a 1..N scale, not observed market behaviour. It backs
    * the rank delta and the buy/fade chips because FFC's ADP coverage collapses
    * once drafts stop; anything needing a real pick number uses `adp`.
    */
   consensusRank: number | null;
-  /** In-season roster ownership %, averaged across ESPN and Yahoo. */
+  /**
+   * Roster ownership %, ESPN/Yahoo average, from the same FantasyPros capture
+   * as `consensusRank`. NOT live: both draft products freeze at their publish
+   * date once drafts end, so this is ownership as of that date. Display only.
+   */
   ownedPct: number | null;
   adpStdev: number | null;
   adpHigh: number | null;

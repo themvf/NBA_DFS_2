@@ -62,7 +62,15 @@ def fantasypros_endpoint_contracts(season: int) -> list[FantasyProsEndpointContr
         FantasyProsEndpointContract(
             dataset="players",
             path="nfl/players",
-            params={"ecr": "included", "show": "pos_rank", "external_ids": "yahoo:espn:cbs:nfl:mfl:draftkings"},
+            # `week` is not optional in-season. Every sibling contract sends
+            # week 0 (the full-season view); this one did not, so once the
+            # season started FantasyPros defaulted it to the LIVE week and
+            # answered 200 with the right shape and zero rows. It echoed
+            # `"week": "2", "count": 0` on 2026-09-20 while week-0 contracts
+            # returned 336-985 rows. Last success was 2026-09-14, i.e. before
+            # week 2 -- the endpoint did not break, the default moved.
+            params={"ecr": "included", "show": "pos_rank", "week": 0,
+                    "external_ids": "yahoo:espn:cbs:nfl:mfl:draftkings"},
             row_key="players",
             minimum_rows=100,
         ),
@@ -549,6 +557,7 @@ def persist_fantasypros_consensus(
     *,
     season: int,
     scoring: str,
+    ranking_type: str,
     source_snapshot_id: int,
     payload: dict[str, Any],
 ) -> dict[str, int]:
@@ -580,7 +589,11 @@ def persist_fantasypros_consensus(
         by_identity.setdefault((str(player["normalized_name"]), str(player["position"])), local_id)
 
     experts = as_int(payload.get("total_experts"))
-    updated = payload.get("last_updated") or None
+    # The vendor's own publish time, not our retrieval time. Both draft
+    # products freeze once drafts stop -- 2026-09-10 for DRAFT -- so a consumer
+    # must be able to see how old the consensus it is reading actually is.
+    stamp = as_int(payload.get("last_updated_ts"))
+    updated = datetime.fromtimestamp(stamp, tz=timezone.utc) if stamp else None
     stored = matched = 0
     seen: set[int] = set()
     for raw in rows:
@@ -602,14 +615,14 @@ def persist_fantasypros_consensus(
             matched += 1
         db.execute(
             """INSERT INTO ff_market_consensus
-               (source_snapshot_id,season,scoring,player_id,fp_player_id,player_name,
+               (source_snapshot_id,season,scoring,ranking_type,player_id,fp_player_id,player_name,
                 normalized_name,position,team_abbrev,rank_ecr,rank_ave,rank_min,rank_max,
                 rank_std,position_rank,tier,owned_avg,owned_espn,owned_yahoo,
                 total_experts,source_updated_at)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT(source_snapshot_id,fp_player_id) DO NOTHING""",
             (
-                source_snapshot_id, season, scoring, player_id, fp_id, name, normalized,
+                source_snapshot_id, season, scoring, ranking_type, player_id, fp_id, name, normalized,
                 position, str(raw.get("player_team_id") or "") or None,
                 as_float(raw.get("rank_ecr")), as_float(raw.get("rank_ave")),
                 as_float(raw.get("rank_min")), as_float(raw.get("rank_max")),
@@ -802,11 +815,16 @@ def snapshot_fantasypros_contracts(
                 snapshot_id,
                 payload,
             )
-        elif contract.dataset.startswith("adp-"):
+        elif contract.dataset.startswith("draft-rankings-"):
+            # DRAFT, not the `type=ADP` variant. Same fields, same shape, but
+            # the ADP flavour is aggregated from 2-5 experts while DRAFT uses
+            # 176-186, and DRAFT was 2 days fresher at capture. Neither is a
+            # draft pick; both are ordinal expert rankings.
             saved_row["consensus"] = persist_fantasypros_consensus(
                 db,
                 season=season,
-                scoring=str(contract.params.get("scoring") or contract.dataset[4:].upper()),
+                scoring=str(contract.params.get("scoring") or contract.dataset.rsplit("-", 1)[-1].upper()),
+                ranking_type=str(contract.params.get("type") or "DRAFT"),
                 source_snapshot_id=snapshot_id,
                 payload=payload,
             )

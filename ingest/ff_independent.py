@@ -1400,6 +1400,7 @@ def create_ranking_set(
     histories: dict[int, list[dict[str, Any]]],
     adp_lookup: dict[tuple[str, str], dict[str, Any]],
     consensus: dict[int, dict[str, float | None]] | None = None,
+    consensus_provenance: dict[str, Any] | None = None,
     playoff_sos: dict[tuple[str, str], dict[str, Any]] | None = None,
     yahoo_adp: dict[int, float] | None = None,
 ) -> int:
@@ -1431,7 +1432,8 @@ def create_ranking_set(
                 Json({
                     "model_version": MODEL_VERSION,
                     "adp_source": "Fantasy Football Calculator",
-                    "consensus_rank_source": "FantasyPros expert consensus (ECR); not a draft pick",
+                    "consensus_rank_source": "FantasyPros DRAFT expert consensus (ECR); not a draft pick",
+                    "consensus_provenance": consensus_provenance,
                     "adp_used_for_projection": False,
                     "board_size": BOARD_SIZE,
                     "must_include_positions": list(STARTER_POSITIONS),
@@ -1729,32 +1731,46 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     # Same pattern as the Yahoo pre-draft prices above, including folding the
     # capture's hash into board_digest so a fresh capture forces a rebuild.
     #
+    # Sourced from FantasyPros' DRAFT consensus (176-186 experts), not their
+    # `type=ADP` variant (2-5 experts). Both freeze once drafts stop, so the
+    # capture's own publish time travels with it.
+    #
     # It is NOT ADP: rank_ecr is an ordinal expert ranking with no pick number
     # anywhere in the payload, so it feeds the rank DELTA and buy/fade only.
     # `market_prices` above, which decides board membership by comparing real
     # pick numbers across FFC, Yahoo and DK, deliberately never sees it.
     consensus: dict[str, dict[int, dict[str, float | None]]] = {}
+    consensus_provenance: dict[str, dict[str, Any]] = {}
     for scoring in SCORING_TYPES:
         capture = db.execute_one(
             """SELECT s.id,s.response_hash FROM ff_source_snapshots s
                WHERE s.source='fantasypros' AND s.dataset=%s AND s.season=%s
                  AND EXISTS (SELECT 1 FROM ff_market_consensus c WHERE c.source_snapshot_id=s.id)
                ORDER BY s.fetched_at DESC, s.id DESC LIMIT 1""",
-            (f"adp-{scoring.lower()}", season),
+            (f"draft-rankings-{scoring.lower()}", season),
         )
         if not capture:
             continue
+        rows = db.execute(
+            """SELECT player_id,rank_ecr,owned_avg,total_experts,source_updated_at
+               FROM ff_market_consensus
+               WHERE source_snapshot_id=%s AND player_id IS NOT NULL""",
+            (int(capture["id"]),),
+        )
         consensus[scoring] = {
             int(row["player_id"]): {
                 "consensus_rank": as_float(row["rank_ecr"]),
                 "owned_pct": as_float(row["owned_avg"]),
             }
-            for row in db.execute(
-                """SELECT player_id,rank_ecr,owned_avg FROM ff_market_consensus
-                   WHERE source_snapshot_id=%s AND player_id IS NOT NULL""",
-                (int(capture["id"]),),
-            )
+            for row in rows
         }
+        if rows:
+            published = rows[0]["source_updated_at"]
+            consensus_provenance[scoring] = {
+                "experts": as_int(rows[0]["total_experts"]),
+                "published_at": published.isoformat() if published else None,
+                "players": len(rows),
+            }
         source_digests.append(str(capture["response_hash"]))
 
     board_digest = _response_hash({
@@ -1792,6 +1808,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
             db, season=season, scoring=scoring, source_snapshot_id=board_snapshot_id,
             universe=universe, histories=histories, adp_lookup=adp_lookups.get(scoring, {}),
             consensus=consensus.get(scoring, {}),
+            consensus_provenance=consensus_provenance.get(scoring),
             playoff_sos=playoff_sos, yahoo_adp=yahoo_adp,
         )
         for scoring in SCORING_TYPES
@@ -1807,6 +1824,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         "adp_coverage": {scoring: len(lookup) for scoring, lookup in adp_lookups.items()},
         "adp_windows": adp_windows,
         "consensus_coverage": {scoring: len(rows) for scoring, rows in consensus.items()},
+        "consensus_provenance": consensus_provenance,
         "adp_skipped": adp_skipped,
         "yahoo_adp_prices": len(yahoo_adp),
         "adp_used_for_projection": False,

@@ -2434,6 +2434,7 @@ TABLES = [
         source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id) ON DELETE CASCADE,
         season INTEGER NOT NULL,
         scoring TEXT NOT NULL,
+        ranking_type TEXT NOT NULL DEFAULT 'DRAFT',
         player_id BIGINT REFERENCES ff_players(id),
         fp_player_id INTEGER,
         player_name TEXT NOT NULL,
@@ -3732,6 +3733,7 @@ MIGRATIONS = [
     # Football Calculator, `consensus_rank` is an ordinal expert ranking, and
     # `owned_pct` is in-season roster share. Overloading one column would make
     # the rank-delta silently change meaning when a source went thin.
+    "ALTER TABLE ff_market_consensus ADD COLUMN IF NOT EXISTS ranking_type TEXT NOT NULL DEFAULT 'DRAFT'",
     "ALTER TABLE ff_player_rankings ADD COLUMN IF NOT EXISTS consensus_rank DOUBLE PRECISION",
     "ALTER TABLE ff_player_rankings ADD COLUMN IF NOT EXISTS owned_pct DOUBLE PRECISION",
 
