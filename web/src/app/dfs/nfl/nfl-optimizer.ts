@@ -51,6 +51,8 @@ export type NflOptimizerSettings = {
   situations?: SituationSettings;
   nLineups: number;
   minSalary: number;
+  /** Per-player salary floor. Drops minimum-priced roster filler (Showdown $200 bodies) from the pool. Absent/0 = no floor. */
+  minPlayerSalary?: number;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -166,6 +168,8 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (!["our", "workload", "calibrated", "dk_avg", "fantasypros", "linestar", "custom"].includes(settings.projectionSource)) throw new Error("Unknown projection source.");
   if (!Number.isInteger(settings.nLineups) || settings.nLineups < 1 || settings.nLineups > 150) throw new Error("Lineup count must be between 1 and 150.");
   if (settings.minSalary < 0 || settings.minSalary > 50000) throw new Error("Minimum salary must be between $0 and $50,000.");
+  const floor = settings.minPlayerSalary ?? 0;
+  if (!Number.isFinite(floor) || floor < 0 || floor > 50000) throw new Error("Minimum player salary must be between $0 and $50,000.");
   if (settings.maxExposure <= 0 || settings.maxExposure > 1) throw new Error("Maximum exposure must be greater than 0 and at most 100%.");
   const rosterSize = settings.format === "classic" ? 9 : 6;
   if (settings.minUnique < 1 || settings.minUnique > rosterSize) throw new Error(`Minimum unique players must be 1-${rosterSize}.`);
@@ -317,10 +321,18 @@ function buildOne(
 export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflOptimizerSettings): NflOptimizerResult {
   validateSettings(settings);
   const excluded = new Set(settings.excludedPlayerIds);
+  const salaryFloor = settings.minPlayerSalary ?? 0;
+  // Locked players and explicit exposure targets are the user's own instruction and outrank the floor.
+  const floorExempt = new Set([...settings.lockedPlayerIds,
+    ...Object.entries(settings.minExposureByPlayer).filter(([, target]) => target > 0).map(([id]) => Number(id))]);
+  let belowSalaryFloor = 0;
   const coverage = { requested: players.length, direct: 0, fallback: 0, excluded: 0 };
   const pool: ResolvedPlayer[] = [];
   for (const player of players) {
     if (player.isOut || excluded.has(player.dkPlayerId)) { coverage.excluded++; continue; }
+    if (salaryFloor > 0 && player.salary < salaryFloor && !floorExempt.has(player.dkPlayerId)) {
+      belowSalaryFloor++; coverage.excluded++; continue;
+    }
     const resolved = projectionFor(player, settings);
     if (!resolved) { coverage.excluded++; continue; }
     if (resolved.source === "dk_avg_fallback" || resolved.source === "our_fallback") coverage.fallback++; else coverage.direct++;
@@ -333,6 +345,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
   }
   const warnings: string[] = [];
+  if (belowSalaryFloor) warnings.push(`${belowSalaryFloor} player(s) priced under the $${salaryFloor.toLocaleString()} per-player salary floor were removed from the pool. Lock a player to keep him regardless.`);
   const missingTails = pool.filter(p => (p.resolvedSource === 'our' || p.resolvedSource === 'our_fallback')
     && (finite(p.floorFpts) === null || finite(p.ceilingFpts) === null)).length;
   if (missingTails) warnings.push(`${missingTails} historical-source players have no usable scenario distribution. Search uses 0.74×/1.28× point-estimate heuristics for missing lower/upper tails; these are not simulated percentiles. Missing boom rates receive no boom bonus.`);
