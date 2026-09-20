@@ -1,4 +1,6 @@
 import { selectedSportsbooks } from "@/lib/sportsbook-policy";
+import { getPickemEvidence } from "./pickem-evidence";
+import { usablePickemQuote, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
 import { db } from ".";
 import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
@@ -13804,13 +13806,12 @@ export type PickemSlate = {
  * One row per GAME (not per team-side) for a season, with the win probability
  * the survivor pipeline already computes.
  *
- * Deliberately reads `nfl_game_win_probs` rather than re-deriving anything: a
- * pick'em pool and a survivor pool are asking about the same event, and two
- * pages in this app disagreeing about the same game's win probability would be
- * a defect, not a feature. Provenance rides along so a modeled far-out week is
- * never rendered like a quoted one.
+ * Upcoming picks use the same latest pregame moneylines as the evidence panel.
+ * Persisted model probabilities remain the fallback and historical baseline.
+ * Share an evidence snapshot with callers so the card and its audit agree.
  */
-export async function getNflPickemSlate(season = 2026): Promise<PickemSlate> {
+export async function getNflPickemSlate(season = 2026, evidence?: PickemEvidence): Promise<PickemSlate> {
+  evidence ??= await getPickemEvidence(season);
   const rows = await db.execute(sql`
     SELECT
       g.id AS "gameId", g.week, g.kickoff::text AS kickoff, g.completed,
@@ -13826,8 +13827,11 @@ export async function getNflPickemSlate(season = 2026): Promise<PickemSlate> {
     FROM nfl_season_games g
     JOIN nfl_teams h ON h.team_id = g.home_team_id
     JOIN nfl_teams a ON a.team_id = g.away_team_id
-    LEFT JOIN nfl_game_win_probs w
-      ON w.game_id = g.id AND w.team_id = g.home_team_id
+    LEFT JOIN LATERAL (
+      SELECT * FROM nfl_game_win_probs p
+      WHERE p.game_id = g.id AND p.team_id = g.home_team_id
+      ORDER BY p.computed_at DESC, p.model_version DESC LIMIT 1
+    ) w ON TRUE
     WHERE g.season = ${season}
     ORDER BY g.week, g.kickoff NULLS LAST, a.abbreviation
   `);
@@ -13842,6 +13846,17 @@ export async function getNflPickemSlate(season = 2026): Promise<PickemSlate> {
     const week = Number(record.week);
     weeks.add(week);
 
+    const quote = evidence.games[Number(record.gameId)]?.latest;
+    if (usablePickemQuote(quote, record.kickoff == null ? null : String(record.kickoff),
+      Boolean(record.completed), evidence.loadedAt)) {
+      // Moneylines are conditional on no tie, matching the slate's pHome contract.
+      record.pWin = quote.pHome * (1 - Number(record.pTie ?? 0));
+      record.provenance = "market_ml_novig";
+      record.spread = quote.homeSpread == null ? null : -quote.homeSpread;
+      record.spreadSource = "odds_api_ml";
+      record.horizonWeeks = null;
+      record.computedAt = quote.capturedAt;
+    }
     const pWin = record.pWin != null ? Number(record.pWin) : null;
     const pTie = record.pTie != null ? Number(record.pTie) : null;
     if (pWin == null || !Number.isFinite(pWin)) continue;

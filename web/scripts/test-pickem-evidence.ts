@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { EMPTY_EVIDENCE, evidenceGrades, marketReview, noVigHome, safeSourceUrl,
+import { EMPTY_EVIDENCE, evidenceGrades, marketReview, noVigHome, safeSourceUrl, usablePickemQuote,
   recentForm, scenarioDecision, timestamp, type FrozenEvidence, type GameEvidence, type Performance } from "../src/lib/nfl/pickem-evidence";
 
 const now = "2026-09-20T15:00:00Z", kickoff = "2026-09-20T17:00:00Z";
@@ -19,6 +19,14 @@ assert.equal(safeSourceUrl("javascript:alert(1)"), null);
 assert.equal(safeSourceUrl("https://user:secret@example.com"), null);
 assert.equal(safeSourceUrl("https://example.com/report"), "https://example.com/report");
 const review = marketReview(evidence, 0.532, kickoff, now);
+assert.equal(usablePickemQuote(evidence.latest, kickoff, false, now), true);
+assert.equal(usablePickemQuote(evidence.latest, kickoff, true, now), false);
+assert.equal(usablePickemQuote(evidence.latest, kickoff, false, kickoff), false);
+assert.equal(usablePickemQuote(evidence.latest, null, false, now), false);
+assert.equal(usablePickemQuote(null, kickoff, false, now), false);
+assert.equal(usablePickemQuote({ ...evidence.latest!, pHome: null }, kickoff, false, now), false);
+assert.equal(usablePickemQuote({ ...evidence.latest!, pHome: NaN }, kickoff, false, now), false);
+assert.equal(usablePickemQuote({ ...evidence.latest!, capturedAt: "2026-09-20T16:00:00Z" }, kickoff, false, now), false);
 assert.equal(review.favoriteChanged, true);
 assert.equal(review.probabilityConflict, true);
 assert.equal(review.newsAfterQuote, 1);

@@ -1,11 +1,13 @@
 # Pick'em evidence and decision review
 
-The pick'em board now pairs its existing forecast with stored market evidence, availability reports, prior-game performance, a hypothetical scenario comparison, and an immutable pregame evidence snapshot.
+The pick'em board uses the latest captured pregame moneylines for upcoming picks, alongside availability reports, prior-game performance, a hypothetical scenario comparison, and an immutable pregame evidence snapshot.
 
 ## Data and freshness
 
 - `game_odds_history` supplies the first and latest captured pregame consensus; `nfl_season_games.market_*` supplies an additional season quote. Home spread conventions are normalized before display. A first captured quote is not claimed to be the actual sportsbook opener.
 - Two-sided moneylines are normalized without vig. Missing moneylines stay missing; spread-only quotes can still detect a favorite change. No quote at or after kickoff is used.
+- Upcoming picks and the evidence panel share one capture snapshot. Valid two-sided moneylines replace the persisted probability directly, including its spread and capture timestamp; missing/invalid moneylines retain the model fallback. Started/completed games retain their stored forecast. Saving a card reads a fresh shared snapshot and rejects a stale submitted probability. This removes the dependency on the separately scheduled probability refresh for upcoming picks.
+- The latest persisted model row is selected per game, preventing duplicate games when multiple model versions exist. Frozen cards are never rewritten.
 - Quote age is checked independently of `nfl_game_win_probs.computed_at`. The operational freshness threshold is two hours inside 24 hours of kickoff, otherwise 24 hours. These thresholds are not probability adjustments.
 - The board warns when a quote is stale, the favored team changed, the stored forecast favors the opposite team, or a report is newer than the captured quote. Page reload reads stored data; the existing odds/survivor jobs own refreshing it.
 
@@ -45,3 +47,5 @@ npx tsc --noEmit
 ```
 
 The two database checks load `.env.local`. The verification command reads real feeds and applies idempotent schema additions. The freeze integration test creates an isolated test pool, exercises the real action with only Next cache invalidation stubbed, and removes its own test pool in `finally`. It does not modify user cards.
+
+To repair stored probabilities for other consumers using already captured moneylines, run `node --env-file=.env.local -r ./scripts/server-only-stub.cjs --import tsx ./scripts/refresh-pickem-market.ts 2026 2` from `web`. It defaults to a dry run; `--apply` updates only older rows for upcoming games in the requested week, preserving tie mass and using the quote's capture time. It makes no external odds purchases and sends no alerts.

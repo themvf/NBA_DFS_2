@@ -165,7 +165,8 @@ export async function freezePickemRecommendation(input: {
       };
     }
 
-    const [slate, evidence] = await Promise.all([getNflPickemSlate(input.season), getPickemEvidence(input.season)]);
+    const evidence = await getPickemEvidence(input.season);
+    const slate = await getNflPickemSlate(input.season, evidence);
     const canonical = slate.games.filter(g => g.week === input.week);
     const exactBaseline = evOptimalEntry(canonical.map(g => ({ ...g, fieldHomePct: null })), input.format);
     const validProbability = (n: number) => Number.isFinite(n) && n > 0 && n < 1;

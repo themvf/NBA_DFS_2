@@ -2,14 +2,22 @@
 import assert from "node:assert/strict";
 import { getPickemEvidence } from "../src/db/pickem-evidence";
 import { getNflPickemSlate } from "../src/db/queries";
-import { timestamp } from "../src/lib/nfl/pickem-evidence";
+import { timestamp, usablePickemQuote } from "../src/lib/nfl/pickem-evidence";
 
 async function main() {
   const season = Number(process.argv[2] ?? 2026);
-  const [evidence, slate] = await Promise.all([getPickemEvidence(season), getNflPickemSlate(season)]);
+  const evidence = await getPickemEvidence(season);
+  const slate = await getNflPickemSlate(season, evidence);
+  assert.equal(new Set(slate.games.map(g => g.gameId)).size, slate.games.length);
   for (const g of slate.games) {
     const e = evidence.games[g.gameId];
     if (!e) continue;
+    if (usablePickemQuote(e.latest, g.kickoff, g.completed, evidence.loadedAt)) {
+      assert.ok(Math.abs(g.pHome - e.latest.pHome) < 1e-10, `${g.awayAbbrev} at ${g.homeAbbrev}: stale probability`);
+      assert.equal(g.computedAt, e.latest.capturedAt);
+      assert.equal(g.provenance, "market_ml_novig");
+      assert.equal(g.spread, e.latest.homeSpread == null ? null : -e.latest.homeSpread);
+    }
     for (const q of [e.opening, e.latest]) {
       if (!q) continue;
       assert.ok(timestamp(q.capturedAt) < timestamp(g.kickoff));

@@ -19,11 +19,12 @@ export default async function PickemPage({
   const parsedSeason = Number(season);
   const targetSeason = Number.isFinite(parsedSeason) && parsedSeason > 2000 ? parsedSeason : 2026;
 
+  const evidencePromise = getPickemEvidence(targetSeason);
   const [slate, pools, ledger, evidence] = await Promise.all([
-    getNflPickemSlate(targetSeason),
+    evidencePromise.then(evidence => getNflPickemSlate(targetSeason, evidence)),
     getPickemPools(targetSeason),
     getPickemLedger(targetSeason),
-    getPickemEvidence(targetSeason),
+    evidencePromise,
   ]);
 
   // Default to the first week that still has an unplayed game -- the week the

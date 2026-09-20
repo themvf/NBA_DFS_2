@@ -69,6 +69,14 @@ export function noVigHome(home: number | null, away: number | null): number | nu
   return h / (h + a);
 }
 
+/** Only an observed pregame moneyline can replace an upcoming game's forecast. */
+export function usablePickemQuote(quote: MarketQuote | null | undefined, kickoff: string | null,
+  completed: boolean, now: string): quote is MarketQuote & { pHome: number } {
+  const captured = timestamp(quote?.capturedAt), starts = timestamp(kickoff), at = timestamp(now);
+  return !completed && starts > at && captured <= at && captured < starts &&
+    quote?.pHome != null && Number.isFinite(quote.pHome) && quote.pHome > 0 && quote.pHome < 1;
+}
+
 export function safeSourceUrl(value: string): string | null {
   try {
     const url = new URL(value);
