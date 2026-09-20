@@ -84,6 +84,19 @@ export function SportNav() {
     return `${pathname}?sport=${sport}`;
   };
 
+  // Keep the compact workspace navigation specific to NFL DFS.
+  if (pathname === "/dfs/nfl") return <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur"><nav aria-label="NFL DFS navigation" className="mx-auto flex h-14 max-w-[1600px] items-center gap-4 px-4">
+    <Link href="/dfs/nfl" className="font-bold tracking-tight">DFS <span className="ml-1 rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-800">NFL</span></Link>
+    <Link href="/dfs/nfl" aria-current="page" className="text-sm font-semibold text-emerald-800">Workspace</Link>
+    <Link href="/nfl" className="text-sm text-slate-600">NFL board</Link>
+    <details className="relative ml-auto"><summary className="cursor-pointer rounded-lg border px-3 py-2 text-sm">More</summary><div className="absolute right-0 mt-2 max-h-[75vh] w-56 overflow-auto rounded-xl border bg-white p-2 shadow-lg">
+      <p className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Sports</p>
+      {SPORTS.map(({sport, label}) => <Link key={sport} href={sportHref(sport)} className="block rounded px-3 py-2 text-sm hover:bg-slate-50">{label}</Link>)}
+      <p className="border-t px-3 py-2 text-xs font-semibold uppercase text-slate-500">Tools</p>
+      {visiblePageLinks.map(link => <Link key={link.href} href={link.href} className="block rounded px-3 py-2 text-sm hover:bg-slate-50">{link.label}</Link>)}
+    </div></details>
+  </nav></header>;
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap px-4">

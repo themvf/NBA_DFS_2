@@ -1,0 +1,46 @@
+/* All overrides are scoped to the NFL workspace; other sports retain their UI. */
+body:has(.nfl-dfs-workspace) { background: #f3f5f7; }
+body:has(.nfl-dfs-workspace) > main { max-width: 1600px; }
+.nfl-dfs-workspace { color: #17232d; }
+.nfl-dfs-workspace [hidden] { display: none !important; }
+.nfl-workspace-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.nfl-workspace-tabs { display: flex; gap: 6px; border-bottom: 1px solid #dce3e8; padding-bottom: 12px; }
+.nfl-workspace-tabs button { min-height: 40px; padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+.nfl-workspace-tabs button[aria-current="page"] { background: #047857; color: white; }
+.nfl-dfs-workspace :is(button, input, select, summary, a):focus-visible { outline: 2px solid #047857; outline-offset: 3px; }
+.nfl-dfs-workspace button:disabled { cursor: not-allowed; }
+.nfl-dfs-workspace h2 { font-size: 16px; }
+.nfl-dfs-workspace button:is(.bg-blue-600, .bg-blue-700) { background: white; color: #334155; border: 1px solid #cbd5e1; }
+.nfl-dfs-workspace table { font-variant-numeric: tabular-nums; }
+.nfl-player-pool .nfl-pool-table { min-width: 960px; }
+.nfl-player-pool[data-columns="research"] .nfl-pool-table { min-width: 1260px; }
+.nfl-player-pool[data-columns="essential"] .nfl-pool-table tr > :is(:nth-child(2), :nth-child(9), :nth-child(11), :nth-child(12), :nth-child(13)),
+.nfl-player-pool[data-columns="essential"] [data-research-detail] { display: none; }
+.nfl-player-pool .nfl-pool-table :is(td, th) { padding: 10px 8px; }
+.nfl-player-pool .nfl-pool-table th { font-size: 11px; letter-spacing: .025em; }
+.nfl-player-pool .nfl-pool-table tr > :nth-child(3) { position: sticky; left: 0; z-index: 2; min-width: 185px; max-width: 260px; background: #fff; box-shadow: 1px 0 #e2e8f0; }
+.nfl-player-pool .nfl-pool-table thead tr > :nth-child(3) { background: #f1f5f9; }
+.nfl-player-pool .nfl-pool-table tr > :nth-child(8) { background: #ecfdf5; color: #065f46; }
+.nfl-player-pool .nfl-pool-table tbody tr:hover > td { background-color: #f0f7f4; }
+.nfl-player-pool .nfl-pool-table td:nth-child(3) > button:first-child { color: #17232d; text-decoration: none; }
+.nfl-player-pool .nfl-pool-table td:nth-child(3) > button:first-child:hover { color: #047857; text-decoration: underline; }
+.nfl-lineup-detail[open] { background: #f8fcfa; }
+.nfl-lineup-detail summary:hover { background: #f0f7f4; }
+.nfl-work-grid > div { min-width: 0; }
+@media (min-width: 1280px) {
+  .nfl-builder { position: sticky; top: 76px; align-self: start; max-height: calc(100vh - 92px); overflow-y: auto; }
+}
+@media (max-width: 767px) {
+  .nfl-workspace-tabs button { flex: 1; padding: 8px; font-size: 13px; }
+  .nfl-player-pool .nfl-pool-table { min-width: 820px; }
+  .nfl-data-tools > summary span { display: block; margin: 4px 0 0; }
+}
+
+.nfl-slate-status > div { padding: 10px 14px; box-shadow: none; }
+.nfl-slate-status > div > div:last-child { font-size: 14px; font-weight: 600; }
+.nfl-mobile-builder-toggle { display: none; }
+@media (max-width: 1279px) {
+  .nfl-mobile-builder-toggle { display: block; }
+  .nfl-builder { order: -1; }
+  .nfl-builder[data-mobile-open="false"] { display: none; }
+}
