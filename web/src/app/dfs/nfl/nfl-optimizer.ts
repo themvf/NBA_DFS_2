@@ -3,6 +3,7 @@ import {selectedWorkload,validateWorkloadPositions,WORKLOAD_POSITIONS,type Workl
 import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
 import type { SituationSettings, ProjectionAudit, SituationEvidence } from '@/lib/nfl-dfs/projection-audit';
+import { hasObservedOpportunity, MIN_OBSERVED_GAMES } from '@/lib/nfl-dfs/opportunity-redistribution';
 
 export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v5-audited-situations";
 
@@ -23,6 +24,8 @@ export type NflOptimizerPlayer = {
   captainSalary: number | null;
   isOut: boolean;
   projectionStatus: string;
+  /** The player's OWN games behind his projection. 0 means the number is his position's average, not his. */
+  historyGames?: number | null;
   ourProj: number | null;
   floorFpts: number | null;
   ceilingFpts: number | null;
@@ -53,6 +56,8 @@ export type NflOptimizerSettings = {
   minSalary: number;
   /** Per-player salary floor. Drops minimum-priced roster filler (Showdown $200 bodies) from the pool. Absent/0 = no floor. */
   minPlayerSalary?: number;
+  /** Drop players with no observed games of their own, whose projection is a position average. */
+  requireObservedHistory?: boolean;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -326,12 +331,19 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const floorExempt = new Set([...settings.lockedPlayerIds,
     ...Object.entries(settings.minExposureByPlayer).filter(([, target]) => target > 0).map(([id]) => Number(id))]);
   let belowSalaryFloor = 0;
+  let withoutHistory = 0;
   const coverage = { requested: players.length, direct: 0, fallback: 0, excluded: 0 };
   const pool: ResolvedPlayer[] = [];
   for (const player of players) {
     if (player.isOut || excluded.has(player.dkPlayerId)) { coverage.excluded++; continue; }
     if (salaryFloor > 0 && player.salary < salaryFloor && !floorExempt.has(player.dkPlayerId)) {
       belowSalaryFloor++; coverage.excluded++; continue;
+    }
+    // A zero-game player's projection is drawn entirely from position peers, so the model
+    // hands a third-string quarterback the average NFL START. That is not a projection of
+    // him, and it outranked real starters in the pool it was measured on.
+    if (settings.requireObservedHistory && !hasObservedOpportunity(player) && !floorExempt.has(player.dkPlayerId)) {
+      withoutHistory++; coverage.excluded++; continue;
     }
     const resolved = projectionFor(player, settings);
     if (!resolved) { coverage.excluded++; continue; }
@@ -345,6 +357,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
   }
   const warnings: string[] = [];
+  if (withoutHistory) warnings.push(`${withoutHistory} player(s) with fewer than ${MIN_OBSERVED_GAMES} games of their own were removed: their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
   if (belowSalaryFloor) warnings.push(`${belowSalaryFloor} player(s) priced under the $${salaryFloor.toLocaleString()} per-player salary floor were removed from the pool. Lock a player to keep him regardless.`);
   const missingTails = pool.filter(p => (p.resolvedSource === 'our' || p.resolvedSource === 'our_fallback')
     && (finite(p.floorFpts) === null || finite(p.ceilingFpts) === null)).length;
