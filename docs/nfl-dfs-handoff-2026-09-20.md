@@ -108,3 +108,16 @@ not guessed. A real-data dry run confirmed 1,086 players and restored the
 unmodified simulated means for Stroud (16.2048), Lamar (21.8468), and Stafford
 (22.2635). That dry run preceded the stricter roster-age gate, which only removes
 unsupported promotions and cannot reintroduce those backup-driven changes.
+
+
+## Replacement research pin
+
+Study `4b726852851f17b4b8b01158386061e8a95afdd37e4f9abf79a6c338665daec1`
+was recomputed against the current baseline and persisted. Output digest:
+`82f07383bbd7369cb688e8dae930ea3ff7de1408140b6ef0506ad81eccd927ad`.
+All 43,631 saved predictions belong to the explicit 2023–2025 evaluation splits;
+none are forward-season evaluations. The model-code hash and recomputed output
+digest both pass. All five opportunity candidates meet the existing shadow-only
+gate; production promotion remains false. The shadow history cutoff now follows
+these evaluation splits, so already-present 2026 ledger rows cannot prevent
+fresh current-season history from being appended. Six shadow tests pass.
