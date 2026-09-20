@@ -9,7 +9,7 @@ const player = (over: Partial<RedistributionRow> & Pick<RedistributionRow, "key"
   team: "HOU", isOut: false, statMeans: {}, ourProj: 10, floorFpts: 4, ceilingFpts: 20,
   // A real track record by default. `MIN_OBSERVED_GAMES` is exercised
   // deliberately below; every other case here is about allocation, not the gate.
-  historyGames: 17, ...over,
+  historyGames: 17, depthOrder: over.isOut ? 1 : 2, ...over,
 });
 
 const receiver = (key: number, name: string, receptions: number, over: Partial<RedistributionRow> = {}) =>
@@ -107,9 +107,9 @@ const find = (report: ReturnType<typeof redistributeOutOpportunity>, key: number
   const backup = find(report, 2)!;
   assert.equal(backup.inherited[0].pool, "pass");
 
-  // 34 on top of 12 is 3.83x, inside the cap.
+  // Promotion scales 12 attempts to the starter workload of 34.
   assert.ok(backup.inherited[0].cappedFrom === null);
-  assert.ok(Math.abs(backup.statMeans.attempts - 46) < 1e-9);
+  assert.ok(Math.abs(backup.statMeans.attempts - 34) < 1e-9);
   assert.ok(backup.statMeans.passing_interceptions > 0.5,
     "interceptions scale with attempts too -- a transfer cannot move only the upside");
 }
@@ -125,7 +125,7 @@ const find = (report: ReturnType<typeof redistributeOutOpportunity>, key: number
   const backup = find(redistributeOutOpportunity(rows), 2)!;
   assert.equal(backup.inherited[0].multiplier, MAX_MULTIPLIER,
     "a 21x scale-up of two mop-up attempts is noise, not a projection");
-  assert.equal(backup.inherited[0].cappedFrom, 21);
+  assert.equal(backup.inherited[0].cappedFrom, 20);
   assert.ok(inheritanceNote(backup.inherited).includes("capped"), "and the cap is visible, not hidden");
 }
 
@@ -297,3 +297,20 @@ const find = (report: ReturnType<typeof redistributeOutOpportunity>, key: number
 }
 
 console.log("nfl opportunity redistribution: all assertions passed");
+
+// Caps remain visible at the pool level, not only on a recipient's note.
+{
+  const report = redistributeOutOpportunity([
+    player({key:100,name:'Out RB',position:'RB',isOut:true,statMeans:{carries:16,rushing_yards:64}}),
+    player({key:101,name:'Backup',position:'RB',statMeans:{carries:4,rushing_yards:16}}),
+  ]);
+  assert.deepEqual(report.pools, [{team:'HOU',pool:'rush',offered:16,assigned:12,unassigned:4}]);
+  assert.equal(report.unresolved[0].pooled,4);
+}
+{
+  const starter = player({key:100,name:'Healthy QB1',position:'QB',depthOrder:1,statMeans:{attempts:30,passing_yards:250}});
+  const absent = player({key:101,name:'Backup on IR',position:'QB',isOut:true,depthOrder:2,statMeans:{attempts:20,passing_yards:150}});
+  assert.equal(redistributeOutOpportunity([starter,absent]).applied.length,0);
+  absent.depthOrder=1; absent.canDonate=false;
+  assert.equal(redistributeOutOpportunity([starter,absent]).applied.length,0,'pipeline-rejected transfers cannot be retried');
+}

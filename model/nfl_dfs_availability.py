@@ -18,9 +18,10 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping
 
-from model.nfl_dfs_historical import draftkings_points
+from model.nfl_dfs_historical import MODEL_CONFIG, draftkings_points
 
-VERSION = "nfl-dfs-availability-v1"
+VERSION = "nfl-dfs-availability-v2"
+MIN_OBSERVED_GAMES = int(MODEL_CONFIG["minimum_historical_games"])
 
 # A designation in this set means "not playing". QUESTIONABLE is deliberately
 # absent: most Questionable players play, so zeroing them would fire on far
@@ -36,7 +37,8 @@ OPPORTUNITY_KEY = {"QB": "attempts", "RB": "carries", "WR": "receptions", "TE": 
 VOLUME_SCALED = (
     "passing_yards", "passing_tds", "passing_interceptions",
     "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds",
-    "receptions", "fumbles_lost_total",
+    "receptions", "carries", "fumbles_lost_total", "passing_2pt_conversions",
+    "rushing_2pt_conversions", "receiving_2pt_conversions",
 )
 
 # A backup with a handful of mop-up snaps has a noisy efficiency estimate.
@@ -115,6 +117,8 @@ def replacement_for(
     Returns None rather than guessing when no candidate has a depth order —
     a silent wrong handoff is worse than no handoff.
     """
+    if absent.get("depth_order") != 1:
+        return None
     candidates = [
         player for player in teammates
         if player.get("player_id") != absent.get("player_id")
@@ -122,6 +126,7 @@ def replacement_for(
         and player.get("position") == absent.get("position")
         and not is_out(statuses.get(player.get("player_id")))
         and player.get("depth_order") is not None
+        and int(player["depth_order"]) > 1
     ]
     if not candidates:
         return None
@@ -149,6 +154,13 @@ def transfer_opportunity(
         note.update(applied=False, reason="no opportunity stat defined for this position")
         return dict(replacement), note
 
+    if absent.get("depth_order") != 1 or _num(replacement.get("depth_order")) <= 1:
+        note.update(applied=False, reason="absence does not establish a starter-to-backup promotion")
+        return dict(replacement), note
+    if any(_num(p.get("history_games")) < MIN_OBSERVED_GAMES for p in (absent, replacement)):
+        note.update(applied=False, reason="fewer than two observed games; position priors cannot transfer workload")
+        return dict(replacement), note
+
     target = _num((absent.get("stat_means") or {}).get(key))
     current = _num((replacement.get("stat_means") or {}).get(key))
     note.update(target_opportunity=round(target, 3), current_opportunity=round(current, 3))
@@ -157,9 +169,15 @@ def transfer_opportunity(
         note.update(applied=False, reason="no usable opportunity history for the transfer")
         return dict(replacement), note
 
+    if target <= current:
+        note.update(applied=False, reason="recipient already has at least the donor workload")
+        return dict(replacement), note
     raw = target / current
     factor = min(raw, cap)
-    note.update(raw_multiplier=round(raw, 3), multiplier=round(factor, 3), capped=raw > cap)
+    note.update(raw_multiplier=round(raw, 3), multiplier=round(factor, 3), capped=raw > cap,
+                offered_opportunity=round(target-current, 4),
+                assigned_opportunity=round(current*(factor-1), 4),
+                unassigned_opportunity=round(max(0.0, target-current*factor), 4))
 
     stats = {k: _num(v) for k, v in (replacement.get("stat_means") or {}).items()}
     for stat in VOLUME_SCALED:
@@ -170,7 +188,14 @@ def transfer_opportunity(
 
     updated = dict(replacement)
     before = _num(replacement.get("model_proj_fpts"))
-    after = draftkings_points(position, stats)
+    def linear(line):
+        # Preserve the simulation's existing bonus expectation. Mean stat lines
+        # cannot be used to recompute threshold-based yardage bonuses.
+        bonus = sum(3.0 for field, threshold in (("passing_yards", 300),
+                    ("rushing_yards", 100), ("receiving_yards", 100))
+                    if _num(line.get(field)) >= threshold)
+        return draftkings_points(position, line) - bonus
+    after = before + linear(stats) - linear(replacement.get("stat_means") or {})
     updated["stat_means"] = {k: round(v, 4) for k, v in stats.items()}
     updated["model_proj_fpts"] = round(after, 4)
     # The interval is scaled proportionally rather than re-simulated. Crude but
@@ -202,6 +227,7 @@ def apply(
     result = {pid: dict(player) for pid, player in by_id.items()}
     report = {"version": VERSION, "zeroed": [], "transfers": [], "unresolved": []}
 
+    positions = set(positions)
     absent = [p for p in projections if is_out(statuses.get(p.get("player_id")))]
     for player in absent:
         status = statuses.get(player.get("player_id"))
@@ -210,20 +236,27 @@ def apply(
                                  "player": player.get("player_name"),
                                  "position": player.get("position"),
                                  "team": player.get("team"), "status": status})
-        if player.get("position") not in set(positions):
+        if player.get("position") == "QB":
+            # QB promotions are resolved here with role evidence, never retried
+            # by the slate layer against rejected or already-consumed donors.
+            result[player["player_id"]]["availability"]["slate_transfer_allowed"] = False
+        if player.get("position") not in positions:
             continue
         backup = replacement_for(player, projections, statuses)
         if backup is None:
             report["unresolved"].append({"player": player.get("player_name"),
                                          "team": player.get("team"),
                                          "position": player.get("position"),
-                                         "reason": "no available teammate with a depth order"})
+                                         "reason": "no verified starter-to-backup promotion with depth evidence"})
             continue
         updated, note = transfer_opportunity(player, result[backup["player_id"]], cap=cap)
         result[backup["player_id"]] = updated
         # Only a transfer that actually applied closes the donor's pool. When
         # it did not (no usable opportunity history, no stat for the position),
         # his line stays intact so the slate layer can still place the work.
+        if not note.get("applied"):
+            report["unresolved"].append({"player": player.get("player_name"),
+                "team": player.get("team"), "position": player.get("position"), "reason": note["reason"]})
         if note.get("applied"):
             result[player["player_id"]] = mark_transferred(
                 result[player["player_id"]], backup.get("player_name"))

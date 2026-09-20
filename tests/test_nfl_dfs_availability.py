@@ -8,7 +8,7 @@ from model.nfl_dfs_availability import (
 
 def qb(pid, name, depth, attempts, yards, tds, points, team="LAR"):
     return {"player_id": pid, "player_name": name, "position": "QB", "team": team,
-            "depth_order": depth, "model_proj_fpts": points, "baseline_fpts": points,
+            "depth_order": depth, "history_games": 10, "model_proj_fpts": points, "baseline_fpts": points,
             "floor_fpts": points * 0.5, "median_fpts": points, "ceiling_fpts": points * 1.6,
             "boom_rate": 0.2, "projection_status": "historical",
             "stat_means": {"attempts": attempts, "passing_yards": yards, "passing_tds": tds,
@@ -136,6 +136,9 @@ def test_the_multiplier_is_capped_and_says_so():
     _, note = transfer_opportunity(starter, backup)
     assert note["capped"] and note["multiplier"] == MAX_TRANSFER_MULTIPLIER
     assert note["raw_multiplier"] == 35.0, "the uncapped figure is still reported"
+    assert note["offered_opportunity"] == 34
+    assert note["assigned_opportunity"] == 3
+    assert note["unassigned_opportunity"] == 31
 
 def test_a_backup_with_no_history_is_reported_not_invented():
     starter, backup = qb(1, "Starter", 1, 35, 245, 1.6, 23.6), qb(2, "Rookie", 2, 0, 0, 0, 0.0)
@@ -174,3 +177,34 @@ def test_no_injuries_changes_nothing():
     out, report = apply([starter, backup], {})
     assert [p["model_proj_fpts"] for p in out] == [23.6, 4.0]
     assert report["zeroed"] == [] and report["transfers"] == []
+
+
+@pytest.mark.parametrize("history", [0, 1, 2, 30])
+def test_absent_backup_never_rescales_healthy_starter(history):
+    starter, backup = qb(1, "Starter", 1, 30, 250, 2, 20), qb(2, "Backup", 3, 20, 150, 1, 12)
+    backup["history_games"] = history
+    rows, report = apply([starter, backup], {2: "IR"})
+    assert rows[0] == starter
+    assert not report["transfers"]
+    assert rows[1]["availability"]["slate_transfer_allowed"] is False
+
+@pytest.mark.parametrize("which", [0, 1])
+def test_prior_only_stats_cannot_donate_or_receive(which):
+    players = [qb(1, "S", 1, 32, 256, 2, 20), qb(2, "B", 2, 8, 50, .3, 4)]
+    players[which]["history_games"] = 0
+    rows, report = apply(players, {1: "OUT"})
+    assert rows[1] == players[1]
+    assert report["unresolved"]
+    assert not rows[0]["availability"]["transferred"]
+
+def test_existing_starter_workload_is_not_reduced():
+    starter, backup = qb(1, "S", 1, 20, 200, 1, 15), qb(2, "B", 2, 30, 250, 2, 20)
+    updated, note = transfer_opportunity(starter, backup)
+    assert updated == backup and not note["applied"]
+
+def test_transfer_preserves_simulated_bonus_expectation():
+    starter, backup = qb(1, "S", 1, 32, 310, 2, 25), qb(2, "B", 2, 16, 160, 1, 14)
+    updated, note = transfer_opportunity(starter, backup)
+    # Doubling crosses 300 yards, but must not invent a deterministic +3 bonus.
+    expected_delta = 160/25 + 4 - .8 + 10/10 + .6 - .2
+    assert updated["model_proj_fpts"] == pytest.approx(14 + expected_delta)

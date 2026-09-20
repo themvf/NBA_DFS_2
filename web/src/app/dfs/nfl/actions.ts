@@ -1,5 +1,6 @@
 "use server";
 
+import { resolveSlateWeek, type SlateGame, type ScheduledGame } from "@/lib/nfl-dfs/slate-week";
 import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
 import { and, desc, eq, or, sql } from "drizzle-orm";
@@ -15,7 +16,7 @@ import {
 } from "@/db/schema";
 import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdentities } from "@/lib/nfl-dfs/identity";
 import { getNflIdentityRoster } from "@/db/nfl-identity";
-import { parseNflDkSalaryCsv } from "@/lib/nfl-dfs/dk-salary-csv";
+import { parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
 import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
@@ -72,6 +73,8 @@ export type NflWorkspaceSlate = {
   projectionRunId: string | null;
   modelVersion: string | null;
   modelAsOf: string | null;
+  refreshAvailable?: boolean;
+  refreshMessage?: string | null;
   format: "classic" | "showdown";
   games: string[];
   teams: string[];
@@ -86,6 +89,7 @@ export type NflWorkspaceSlate = {
   redistribution?: {
     version: string;
     recipients: number;
+    pools?: { team: string; pool: string; offered: number; assigned: number; unassigned: number }[];
     unresolved: { team: string; pool: string; pooled: number; from: string[]; reason: string }[];
     donorsWithoutOpportunity: { team: string; name: string; position: string; reason: string }[];
   };
@@ -177,14 +181,23 @@ function numeric(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-async function latestProjectionRun() {
+async function latestProjectionRun(players: readonly SlateGame[]) {
+  const dates = players.flatMap(p => [...(p.gameInfo?.matchAll(/\b\d{2}\/\d{2}\/(\d{4})\b/g) ?? [])].map(m => Number(m[1])));
+  if (!dates.length) throw new Error('Salary Game Info must include a game date.');
+  const schedule = await db.execute(sql`SELECT g.season,g.week,g.kickoff,
+    h.abbreviation AS "homeTeam", a.abbreviation AS "awayTeam"
+    FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id
+    JOIN nfl_teams a ON a.team_id=g.away_team_id
+    WHERE g.game_type='REG' AND g.season BETWEEN ${Math.min(...dates)-1} AND ${Math.max(...dates)}`);
+  const target = resolveSlateWeek(players, schedule.rows as unknown as ScheduledGame[]);
   const rows = await db.select({
     runId: nflDfsProjectionRuns.runId,
     modelVersion: nflDfsProjectionRuns.modelVersion,
     asOfAt: nflDfsProjectionRuns.asOfAt,
     season: nflDfsProjectionRuns.season,
     week: nflDfsProjectionRuns.week,
-  }).from(nflDfsProjectionRuns).orderBy(desc(nflDfsProjectionRuns.season), desc(nflDfsProjectionRuns.week), desc(nflDfsProjectionRuns.asOfAt)).limit(1);
+  }).from(nflDfsProjectionRuns).where(and(eq(nflDfsProjectionRuns.season, target.season), eq(nflDfsProjectionRuns.week, target.week)))
+    .orderBy(desc(nflDfsProjectionRuns.asOfAt)).limit(1);
   return rows[0] ?? null;
 }
 
@@ -206,12 +219,12 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   // one -- which is exactly how the `attempts`/`carries` fix sat unused and
   // left the pass and rush redistribution pools with no input at all.
   // Both keys must be known: comparing across weeks would flag every slate.
-  const newestRun = run && run.season !== null && run.week !== null
-    ? (await db.select().from(nflDfsProjectionRuns)
-        .where(and(eq(nflDfsProjectionRuns.season, run.season), eq(nflDfsProjectionRuns.week, run.week)))
-        .orderBy(desc(nflDfsProjectionRuns.asOfAt)).limit(1))[0] ?? null
-    : null;
+  let newestRun: Awaited<ReturnType<typeof latestProjectionRun>> | null = null;
+  let refreshMessage: string | null = null;
+  try { newestRun = await latestProjectionRun(rows); }
+  catch (error) { refreshMessage = error instanceof Error ? error.message : 'Could not check projection freshness.'; }
   const staleWarning = staleRunWarning(run, newestRun);
+  const refreshAvailable = Boolean(newestRun && newestRun.runId !== upload.projectionRunId);
   let calibrationWarning: string | null = null;
   if (run?.week) {
     try { snapshots = await getCalibratedSnapshots(run.season, run.week); }
@@ -231,14 +244,17 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   // The OUT flag is known here and only here (DK's Status column), while the
   // stat line needed to move opportunity lives on the immutable projection
   // row, so the two are joined at read time. Neither table is rewritten.
-  const outFlag = (row: typeof rows[number]) => row.isOut || Boolean(availability(row).blockedReason);
+  const outFlag = (row: typeof rows[number]) => row.isOut || row.projectionStatus === "out" || Boolean(availability(row).blockedReason);
   const projectionStats = upload.projectionRunId
     ? await db.select({
         playerId: nflDfsPlayerProjections.playerId,
         statMeans: nflDfsPlayerProjections.statMeans,
+        sourceEvidence: nflDfsPlayerProjections.sourceEvidence,
       }).from(nflDfsPlayerProjections).where(eq(nflDfsPlayerProjections.runId, upload.projectionRunId))
     : [];
   const statsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId), (r.statMeans ?? {}) as Record<string, number>]));
+  const notesByPlayer = new Map(projectionStats.map(r => [Number(r.playerId),
+    (r.sourceEvidence as { availability?: { slate_transfer_allowed?: boolean } })?.availability]));
   const redistribution = redistributeOutOpportunity(
     rows.flatMap((row): RedistributionRow[] => {
       const stats = statsByPlayer.get(row.ffPlayerId ?? -1);
@@ -249,6 +265,9 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
         position: row.position,
         team: row.team,
         historyGames: row.historyGames,
+        depthOrder: availability(row).fresh ? Number((roster.get(row.ffPlayerId ?? -1)?.sleeper as { depth_chart_order?: number })?.depth_chart_order) || null : null,
+        canDonate: (row.isOut || row.projectionStatus === 'out' || ['OUT','IR','PUP','NFI','SUSPENDED','INACTIVE'].includes(availability(row).status))
+          && notesByPlayer.get(row.ffPlayerId ?? -1)?.slate_transfer_allowed !== false,
         isOut: outFlag(row),
         projectionStatus: row.projectionStatus,
         statMeans: stats,
@@ -258,6 +277,15 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       }];
     }),
   );
+  for (const row of rows) {
+    const note = notesByPlayer.get(row.ffPlayerId ?? -1) as { rule?: string; from_player?: string;
+      offered_opportunity?: number; assigned_opportunity?: number; unassigned_opportunity?: number } | undefined;
+    if (note?.rule !== 'inherits' || note.offered_opportunity == null || note.assigned_opportunity == null || note.unassigned_opportunity == null) continue;
+    redistribution.pools.push({team:row.team, pool:'pass', offered:note.offered_opportunity,
+      assigned:note.assigned_opportunity, unassigned:note.unassigned_opportunity});
+    if (note.unassigned_opportunity > 0) redistribution.unresolved.push({team:row.team,pool:'pass',pooled:note.unassigned_opportunity,
+      from:[note.from_player ?? 'Upstream donor'],reason:'Pipeline QB transfer reached its workload cap.'});
+  }
   const inheritedBy = new Map(redistribution.applied.map(r => [r.key, r]));
 
   return {
@@ -266,6 +294,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       unresolved: redistribution.unresolved,
       donorsWithoutOpportunity: redistribution.donorsWithoutOpportunity,
       recipients: redistribution.applied.length,
+      pools: redistribution.pools,
     },
     situationTeams:situations?.teams??[],
     injuryCoverage,
@@ -273,10 +302,11 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     projectionRunId: upload.projectionRunId,
     modelVersion: run?.modelVersion ?? null,
     modelAsOf: run?.asOfAt?.toISOString() ?? null,
+    refreshAvailable, refreshMessage,
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
-    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
+    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
     fileName: upload.fileName,
     players: rows.map((row) => ({
       id: row.id,
@@ -342,7 +372,13 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
   const content = await file.text();
   const slate = parseNflDkSalaryCsv(content);
   const digest = sha256(content);
-  const run = await latestProjectionRun();
+  return persistSalarySlate(slate, digest, file.name);
+}
+
+async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: string,
+  comparisonRows: (typeof nflDfsSlatePlayers.$inferSelect)[] = []): Promise<NflWorkspaceSlate> {
+  const run = await latestProjectionRun(slate.players);
+  if (!run) throw new Error('No projection snapshot exists for this slate game week. Refresh projections before uploading.');
   const projectionRows = run
     ? await db.select().from(nflDfsPlayerProjections).where(eq(nflDfsPlayerProjections.runId, run.runId))
     : [];
@@ -357,11 +393,16 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
   });
   assertUniqueNflSalaryIdentities(identityDecisions.map(({decision},i)=>({name:slate.players[i].name,
     gsisId:decision.match?.gsisId,localPlayerId:decision.match?.playerId})));
-  const signature = sha256(`${slate.format}|${slate.games.join("|")}`);
+  const signature = sha256(`${slate.format}|${[...new Set(slate.players.map(p => p.gameInfo))].sort().join("|")}`);
   const existing = await db.select({ uploadId: nflDfsSlateUploads.uploadId })
     .from(nflDfsSlateUploads)
     .where(run ? and(eq(nflDfsSlateUploads.fileDigest, digest), eq(nflDfsSlateUploads.projectionRunId, run.runId)) : eq(nflDfsSlateUploads.fileDigest, digest))
     .orderBy(desc(nflDfsSlateUploads.createdAt)).limit(1);
+  if (existing[0]) {
+    const [stored] = await db.select({n:sql<number>`count(*)::int`}).from(nflDfsSlatePlayers)
+      .where(eq(nflDfsSlatePlayers.uploadId,existing[0].uploadId));
+    if (isSlateComplete(slate.players.length,stored?.n ?? 0)) return workspaceSlate(existing[0].uploadId);
+  }
   const uploadId = existing[0]?.uploadId ?? randomUUID();
   // Built, NOT awaited: the header row goes into the same transaction as the
   // players below. Committing it on its own is what let a failed player write
@@ -369,7 +410,7 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
   const headerWrite = existing[0] ? null : db.insert(nflDfsSlateUploads).values({
       uploadId,
       slateSignature: signature,
-      fileName: file.name,
+      fileName,
       fileDigest: digest,
       format: slate.format,
       games: slate.games,
@@ -416,6 +457,11 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
       boomRate: projection?.boomRate ?? null,
       modelConfidence: projection?.confidence ?? null,
       historyGames: projection?.historyGames ?? null,
+      ...(() => {
+        const old = comparisonRows.find(r => r.dkPlayerId === player.dkPlayerId);
+        return old ? { fantasyprosProj: old.fantasyprosProj, linestarProj: old.linestarProj,
+          linestarOwnPct: old.linestarOwnPct, customProj: old.customProj, comparisonEvidence: old.comparisonEvidence } : {};
+      })(),
       updatedAt: new Date(),
     };
     return values;
@@ -469,9 +515,25 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
   // than a believable short player pool in the workspace.
   const [stored] = await db.select({ n: sql<number>`count(*)::int` })
     .from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
-  assertSlateFullyPersisted(slate.players.length, stored?.n ?? 0, file.name);
+  assertSlateFullyPersisted(slate.players.length, stored?.n ?? 0, fileName);
 
   return workspaceSlate(uploadId);
+}
+
+/** Clone salaries onto a compatible newer run; old slate and lineup snapshots stay immutable. */
+export async function refreshNflSlateProjections(uploadId: string): Promise<NflWorkspaceSlate> {
+  await ensureNflDfsTables();
+  const [upload] = await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload) throw new Error('Saved salary slate not found.');
+  const rows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  assertSlateFullyPersisted(upload.playerCount, rows.length, upload.fileName);
+  const slate: NflDkSlate = { format: upload.format as NflDkSlate['format'], games: upload.games as string[],
+    teams: upload.teams as string[], warnings: upload.warnings as string[],
+    players: rows.map(r => ({ dkPlayerId:r.dkPlayerId, name:r.name, position:r.position as NflDkSlate['players'][number]['position'],
+      rosterPositions:r.rosterPositions as string[], teamAbbrev:r.team, opponent:r.opponent, homeAway:null,
+      gameKey:r.gameKey, gameInfo:r.gameInfo, salary:r.salary, avgFptsDk:numeric(r.avgFptsDk), status:r.dkStatus, isOut:r.isOut,
+      captain:r.captainDkPlayerId != null && r.captainSalary != null ? {dkPlayerId:r.captainDkPlayerId,salary:r.captainSalary}:null })) };
+  return persistSalarySlate(slate, upload.fileDigest, upload.fileName, rows);
 }
 
 /** Resume an existing salary snapshot while reading the latest qualified candidates. */
@@ -739,6 +801,7 @@ export async function explainNflPlayerProjection(
            ceilingFpts: null, statMeans: {}, inherited: p.inherited,
            pointsBefore: p.projectionBeforeInheritance ?? 0, pointsAfter: p.ourProj ?? 0 }]
       : []),
+    pools: slate.redistribution?.pools as never ?? [],
     unresolved: slate.redistribution?.unresolved as never ?? [],
     donorsWithoutOpportunity: slate.redistribution?.donorsWithoutOpportunity ?? [],
   }).get(slateRow.name) ?? null;

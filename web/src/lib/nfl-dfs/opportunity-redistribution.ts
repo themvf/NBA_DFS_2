@@ -34,7 +34,7 @@
  *
  * | pool     | unit         | who inherits                                  |
  * |----------|--------------|-----------------------------------------------|
- * | `pass`   | `attempts`   | the single highest-volume available QB        |
+ * | `pass`   | `attempts`   | the next available QB by verified depth order        |
  * | `rush`   | `carries`    | available RBs, proportional to their own carries |
  * | `target` | `receptions` | available WR **and** TE **and** pass-catching RB, proportional to their own receptions |
  *
@@ -44,6 +44,9 @@
  * would systematically understate the TE/RB bump that follows a receiver
  * absence.
  *
+ * The pass pool promotes a backup to the starter workload (not their sum),
+ * requires an absent QB1 and a known backup depth, and excludes pipeline-resolved
+ * donors. QB rushing production moves with that promotion, never to the RB pool.
  * The pass pool is the one winner-take-all case, and that is football rather
  * than an inconsistency: only one quarterback plays.
  *
@@ -86,7 +89,7 @@
 
 import { scoreNflOffenseLinear } from "./scoring";
 
-export const VERSION = "nfl-dfs-redistribution-v1";
+export const VERSION = "nfl-dfs-redistribution-v2";
 
 /**
  * A backup with a handful of mop-up snaps has a noisy efficiency estimate.
@@ -164,13 +167,14 @@ export const POOLS: Readonly<Record<PoolName, PoolSpec>> = {
     recipients: new Set(["QB"]),
     // Interceptions are in here on purpose: more attempts means more chances
     // to throw one. A transfer that moved only the upside would be a cheat.
-    scales: ["passing_yards", "passing_tds", "passing_interceptions", "passing_2pt_conversions"],
+    scales: ["passing_yards", "passing_tds", "passing_interceptions", "passing_2pt_conversions",
+      "carries", "rushing_yards", "rushing_tds", "rushing_2pt_conversions", "receptions", "receiving_yards", "receiving_tds", "receiving_2pt_conversions", "fumbles_lost_total"],
     single: true,
     label: "pass attempts",
   },
   rush: {
     unit: "carries",
-    donors: new Set(["QB", "RB", "WR", "TE"]),
+    donors: new Set(["RB", "WR", "TE"]),
     recipients: new Set(["RB"]),
     scales: ["rushing_yards", "rushing_tds", "rushing_2pt_conversions"],
     single: false,
@@ -200,6 +204,9 @@ export type RedistributionRow = {
   position: string;
   team: string;
   isOut: boolean;
+  /** Eligibility blocks (e.g. QB2) are not evidence of an injury donation. */
+  canDonate?: boolean;
+  depthOrder?: number | null;
   /**
    * `projection_status` from the immutable row. When it reads `out`, the
    * Python pipeline ruled this player out upstream. That alone does NOT mean
@@ -259,6 +266,7 @@ export type RedistributionReport = {
   version: string;
   applied: RedistributionResult[];
   unresolved: UnresolvedPool[];
+  pools: { team: string; pool: PoolName; offered: number; assigned: number; unassigned: number }[];
   /** OUT players who contributed no opportunity to any pool, and why. */
   donorsWithoutOpportunity: { team: string; name: string; position: string; reason: string }[];
 };
@@ -308,7 +316,7 @@ function linearPoints(stats: Record<string, number>): number {
  */
 export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): RedistributionReport {
   const report: RedistributionReport = {
-    version: VERSION, applied: [], unresolved: [], donorsWithoutOpportunity: [],
+    version: VERSION, applied: [], unresolved: [], pools: [], donorsWithoutOpportunity: [],
   };
 
   const byTeam = new Map<string, RedistributionRow[]>();
@@ -329,15 +337,16 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
 
     for (const [name, spec] of Object.entries(POOLS) as [PoolName, PoolSpec][]) {
       const donors = absent.filter(r =>
-        spec.donors.has(r.position) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
+        spec.donors.has(r.position) && r.canDonate !== false && (r.position !== "QB" || r.depthOrder === 1) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
       const pooled = donors.reduce((sum, r) => sum + num(r.statMeans[spec.unit]), 0);
       if (pooled <= 0) continue;
       for (const donor of donors) contributed.add(donor.key);
       const donorNames = donors.map(d => d.name);
 
       const eligible = available.filter(r =>
-        spec.recipients.has(r.position) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
+        spec.recipients.has(r.position) && (r.position !== "QB" || (r.depthOrder ?? 0) > 1) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
       if (eligible.length === 0) {
+        report.pools.push({ team, pool: name, offered: round(pooled), assigned: 0, unassigned: round(pooled) });
         report.unresolved.push({
           team, pool: name, pooled: round(pooled), from: donorNames,
           reason: `no available ${[...spec.recipients].join("/")} on this team has ${MIN_OBSERVED_GAMES}+ games of ${spec.label} history to scale`,
@@ -346,17 +355,26 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
       }
 
       const allocation = new Map<number, number>();
+      let offered = pooled;
       if (spec.single) {
         // Only one quarterback plays, so the load does not spread.
-        const winner = eligible.reduce((best, r) =>
-          num(r.statMeans[spec.unit]) > num(best.statMeans[spec.unit]) ? r : best);
-        allocation.set(winner.key, pooled);
+        const winner = [...eligible].sort((a,b) => (a.depthOrder! - b.depthOrder!) || a.name.localeCompare(b.name))[0];
+        // A promoted QB replaces the starter's workload; attempts do not add
+        // on top of a second complete QB workload.
+        offered = Math.max(0, pooled - num(winner.statMeans[spec.unit]));
+        allocation.set(winner.key, offered);
       } else {
         const total = eligible.reduce((sum, r) => sum + num(r.statMeans[spec.unit]), 0);
         for (const r of eligible) {
           allocation.set(r.key, pooled * num(r.statMeans[spec.unit]) / total);
         }
       }
+      const assigned = eligible.reduce((sum, r) => sum + Math.min(allocation.get(r.key) ?? 0,
+        num(r.statMeans[spec.unit]) * (MAX_MULTIPLIER - 1)), 0);
+      const unassigned = Math.max(0, offered - assigned);
+      report.pools.push({ team, pool: name, offered: round(offered), assigned: round(assigned), unassigned: round(unassigned) });
+      if (unassigned > 0.00005) report.unresolved.push({ team, pool: name, pooled: round(unassigned), from: donorNames,
+        reason: 'Workload remains unassigned because recipients reached the transfer cap.' });
       gains.set(name, allocation);
       sources.set(name, donorNames);
     }
@@ -371,7 +389,9 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
       const cleared = Object.values(donor.statMeans).every(v => num(v) === 0);
       report.donorsWithoutOpportunity.push({
         team, name: donor.name, position: donor.position,
-        reason: !hasObservedOpportunity(donor)
+        reason: donor.canDonate === false || donor.position === "QB" && donor.depthOrder !== 1
+          ? "no new donation: role evidence or the pipeline transfer decision does not support it"
+          : !hasObservedOpportunity(donor)
           ? `he has fewer than ${MIN_OBSERVED_GAMES} games of his own, so his stat line describes the average `
             + `${donor.position} rather than him — there is no workload of his to hand on`
           : cleared
@@ -420,7 +440,7 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
 
       if (inherited.length === 0) continue;
 
-      if (TOUCH_SCALED in stats && touchOwn > 0) {
+      if (TOUCH_SCALED in stats && touchOwn > 0 && !inherited.some(i => i.pool === "pass")) {
         stats[TOUCH_SCALED] = num(before[TOUCH_SCALED]) * (touchAfter / touchOwn);
       }
 

@@ -174,7 +174,7 @@ def main() -> None:
         conn.close()
     # No database connection is held during the long pure calculation.
     if rows:
-        input_digest = artifact_digest({"rows": [r.__dict__ for r in rows], "games": sorted(games.items()), "draws": args.draws, "version": VERSION})
+        input_digest = artifact_digest({"rows": [r.__dict__ for r in rows], "games": sorted(games.items()), "draws": args.draws, "version": VERSION, "baseline_implementation": hashlib.sha256(Path("model/nfl_dfs_historical.py").read_bytes().replace(b"\r\n", b"\n")).hexdigest()})
         directory = Path("artifacts") / f"nfl_dfs_research_{input_digest[:16]}"
         directory.mkdir(exist_ok=True, parents=True)
         cache = directory / "samples.json.gz"

@@ -70,5 +70,5 @@ export function staleRunWarning(linked: RunStamp | null, newest: RunStamp | null
     + ` a newer one from ${day(newest.asOfAt)} is available.${versions}`
     + ` Projections, and anything derived from them, still reflect the older run --`
     + ` a ruled-out player can only hand on opportunity his own run recorded.`
-    + ` Re-upload the same DraftKings CSV to rebuild this slate on the current model.`;
+    + ` Use Refresh projections to create a new slate snapshot. Existing lineup audits stay unchanged.`;
 }

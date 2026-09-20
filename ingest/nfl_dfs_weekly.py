@@ -178,6 +178,16 @@ def main():
     db = PipelineDatabase(load_config().database_url)
     result = refresh_results(db, season) if args.phase == "results" else refresh_projections(db, season, args.week)
     print(json.dumps(result, indent=2))
+    if args.phase == "projections":
+        import os
+        from pathlib import Path
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with Path(summary).open("a", encoding="utf-8") as stream:
+                stream.write("## Production projection snapshot\n\n")
+                stream.write(f"Completed at {datetime.now(timezone.utc).isoformat()}.\n\n")
+                stream.write("```json\n" + json.dumps(result, indent=2) + "\n```\n\n")
+                stream.write("Research forecasts run in a separate job; their status does not invalidate this saved snapshot.\n")
 
 
 if __name__ == "__main__":

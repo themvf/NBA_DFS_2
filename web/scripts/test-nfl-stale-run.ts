@@ -14,7 +14,7 @@ const run = (over: Partial<RunStamp> = {}): RunStamp => ({
   assert.match(warning, /2026-09-16/, "names the run it is on");
   assert.match(warning, /2026-09-19/, "names the run available");
   assert.match(warning, /nfl-dfs-historical-v2 to nfl-dfs-historical-v3/, "names the version change");
-  assert.match(warning, /Re-upload the same DraftKings CSV/, "gives the remedy");
+  assert.match(warning, /Refresh projections/, "gives the remedy");
   assert.match(warning, /hand on opportunity his own run recorded/, "says what it actually costs");
 }
 

@@ -1,5 +1,14 @@
 # NBA DFS v2 — Project Instructions
 
+## NFL DFS Lab transfer and refresh contracts
+
+Before changing NFL DFS availability transfers or declaring a refreshed slate
+ready, read [the September 20 handoff](docs/nfl-dfs-handoff-2026-09-20.md).
+It records the QB-transfer defect and its regression checks, plus projection
+matching, workload accounting, immutable slate refresh, full settings freshness,
+and production/research workflow separation. Keep those contracts intact.
+Successful snapshot persistence alone does not establish projection correctness.
+
 ## Data Sources
 
 ### NBA Stats (`nba_api`)
